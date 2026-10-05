@@ -161,3 +161,12 @@ Tested headless only (a hooked match run to a win, the tutorial page render); no
 | Name tags over golfers and staff | PLACEHOLDER | Seen in real screenshots; font, offset and Shift+N toggle are mine |
 
 Tested headless only; not run on the Mac.
+
+## Update 77 additions
+
+| Item | Status | Notes |
+|---|---|---|
+| Tournament reveal | PLACEHOLDER | After accepting, the results screen fills in hole by hole (0.7 s per hole) as a running leaderboard, then shows the final results; any key or click skips. The rounds are still computed up front, so this is a presentation of them, not live play on the course |
+| Multi-slot saves | already present | Named save files and the Load screen list were already in place; the old gap entry was stale |
+
+Tested headless only (a 7-hole reveal render); not run on the Mac.

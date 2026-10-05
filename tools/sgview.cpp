@@ -258,6 +258,7 @@ struct App {
     int blSel = -1, blPrice[9] = {}, blSale[9] = {}; bool blRolled = false; std::string blNote;
     int matchPro = -1, matchWager = 0, matchMonth = -1, matchPl = -1, matchOp = -1, matchLead = 0, matchDoneN = 0; bool matchOn = false, matchDone[18] = {};   // a pro's challenge, the wager per hole (units of $100), the two golfer slots and the holes decided so far
     int tutPage = -1; bool tutWasPaused = false;   // the tutorial: eleven pages on fun and nine on skill (structure from the exe, wording is my own); -1 when closed
+    double tRevealStart = -1e9;   // tournament results reveal hole by hole (a presentation of the precomputed rounds, PLACEHOLDER for live play)
     bool showNames = true;   // name tags over golfers and employees, as in the real screenshots (Shift+N toggles, PLACEHOLDER key)
     bool playerPanel = false; int shotShape = 0, plHover = -1;   // the Player (JoeCool) panel behind the golfers tab with the player's name, and the shot oval picked (0 straight, 1 fade, 2 draw, 3 backspin, 4 punch)
     bool golfersMode = true;     // People dock: Golfers list (true) or the Employee overlay (false)
@@ -2437,6 +2438,7 @@ static void openSgaScreen(App& app) {
 }
 // Accepts the pending offer and plays the tournament out. Each entrant's strokes come from the shot simulation on this course (see playHole below);
 // everything around it is the exe's.
+static int g_revealForce = -1; static bool g_scriptedRun = false;   // test hooks: --reveal N shows N holes; scripted renders skip the reveal
 static void runTournament(App& app) {
     loadPros(app);
     if (app.pros.empty()) { say(app, "progolfers.dta was not found on the disc folder"); return; }
@@ -2476,7 +2478,7 @@ static void runTournament(App& app) {
         app.tResult = res;
         app.econ.earn(res.cashDeltaUnits * 100.0); app.fame += res.fameDelta;
         sg::GoalEvent e; e.kind = sg::GoalEvent::TournamentResult; e.place = res.playerPlace; e.prizeThousands = app.tPrize; e.prizeDollars = res.playerPrizeThousands * 1000L; e.theme = themeExe(app.theme); goalEvent(app, e);
-        app.sgaMode = 2; app.screen = App::ScreenSga;
+        app.sgaMode = 2; app.screen = App::ScreenSga; app.tRevealStart = g_scriptedRun ? -1e9 : SDL_GetTicks() / 1000.0;
         say(app, "You placed " + std::to_string(res.playerPlace) + " in the " + app.tName, 8);
         addHighlight(app, app.charName + " places " + std::to_string(res.playerPlace) + " in tournament"); snd(app, res.playerPlace <= 3 ? "ApplauseGood.wav" : res.playerPlace > 10 ? "ApplauseBad.wav" : "Applause.wav", 0.6f); logEv(app, 0xe0, res.playerPlace);
     }
@@ -2892,13 +2894,34 @@ static void drawSga(App& app) {
         ui::fillRect(0, 0, 800, 600, 0.05f, 0.07f, 0.05f, 0.6f);
         auto piece = [&](const sg::ui_screens::Rect& r, float dy) { ui::drawImage(app.tourArt, 0, dy, (float)r.x, (float)r.y, (float)r.w, (float)r.h); };
         piece(tn::headerPiece, 0);
-        app.font.drawCentered((float)tn::title.x, (float)tn::title.y + 18, "TOURNAMENT RESULTS", 20, 0.15f, 0.12f, 0.3f);
+        const int Hn = (int)app.tPars.size();
+        const int shownHoles = g_revealForce >= 0 ? std::min(g_revealForce, Hn) : std::min(Hn, (int)((SDL_GetTicks() / 1000.0 - app.tRevealStart) / 0.7));
+        const bool live = shownHoles < Hn;
+        app.font.drawCentered((float)tn::title.x, (float)tn::title.y + 18, live ? "TOURNAMENT IN PROGRESS" : "TOURNAMENT RESULTS", 20, 0.15f, 0.12f, 0.3f);
         app.font.drawCentered(88, (float)tn::name.y + 12, app.tName.size() > 20 ? app.tName.substr(0, 20) : app.tName, 10, 0.1f, 0.1f, 0.3f);
         const int H = (int)app.tPars.size();
         for (int h = 0; h < 18 && h < H; h++) app.font.drawCentered((float)tn::holeCx(h), (float)tn::kHeadY + 12, std::to_string(h + 1), 11, 0.1f, 0.1f, 0.3f);
         app.font.drawCentered((float)tn::headFinal.x, (float)tn::headFinal.y + 12, "F", 12, 0.1f, 0.1f, 0.3f);
         app.font.drawCentered((float)tn::headPrize.x, (float)tn::headPrize.y + 12, "Prize", 12, 0.1f, 0.1f, 0.3f);
         float y = (float)tn::kRowY0;
+        if (live) {   // running leaderboard: lowest total over the holes played so far leads
+            std::vector<std::pair<int, int>> ord;   // (total, slot)
+            for (const auto& kv : app.tStrokes) { int t = 0; for (int c = 0; c < shownHoles && c < (int)kv.second.size(); c++) t += kv.second[(size_t)c]; ord.push_back({t, kv.first}); }
+            std::sort(ord.begin(), ord.end());
+            std::vector<size_t> pick; for (size_t k = 0; k < ord.size() && k < 14; k++) pick.push_back(k);
+            for (size_t k = 14; k < ord.size(); k++) if (ord[k].second == 1) pick.push_back(k);
+            for (size_t q : pick) {
+                piece(tn::rowMid, y); const float ty = y + 16, me = ord[q].second == 1 ? 1.0f : 0.0f;
+                std::string nm = "?"; for (const sg::Entrant& e : app.tField) if (e.slot == ord[q].second) nm = e.name;
+                app.font.draw(16, ty, std::to_string(q + 1) + ". " + nm, 11, 0, me * 0.5f, me ? 0.1f : 0.09f);
+                const std::vector<int>& sv = app.tStrokes[ord[q].second];
+                for (int c = 0; c < shownHoles && c < (int)sv.size() && c < 18; c++) app.font.drawCentered((float)tn::holeCx(c), ty, std::to_string(sv[(size_t)c]), 11, 0, me * 0.5f, me ? 0.1f : 0.09f);
+                app.font.drawCentered((float)tn::kTotalCx, ty, std::to_string(ord[q].first), 11, 0, me * 0.5f, me ? 0.1f : 0.09f);
+                y += 22;
+            }
+            app.font.drawCentered(400, y + 24, "Click or press a key to skip to the results", 12, 1, 1, 1);
+            ui::endScreen(); return;
+        }
         std::vector<const sg::Standing*> show; const sg::Standing* you = nullptr;
         for (const sg::Standing& st : app.tResult.standings) { if (st.slot == 1) you = &st; if ((st.paid && (int)show.size() < 16) || (!st.paid && 0)) show.push_back(&st); }
         if (you && std::find(show.begin(), show.end(), you) == show.end()) show.push_back(you);
@@ -6044,6 +6067,7 @@ int main(int argc, char** argv) {
         else if (a == "--screen") screenArg = next();
         else if (a == "--popup") popArg = std::atoi(next());
         else if (a == "--sga") sgaTest = std::atoi(next());
+        else if (a == "--reveal") g_revealForce = std::atoi(next());   // test hook: show N holes of the tournament reveal
         else if (a == "--cash") app.econ.startCash = std::atof(next());   // test hook: starting cash
         else if (a == "--open") openN = std::atoi(next());                   // test hook: press H this many times after the edits
         else if (a == "--new") newGameIdx = std::atoi(next());               // test hook: start a new game on this property
@@ -6119,6 +6143,7 @@ int main(int argc, char** argv) {
     if (!loadUi(app)) std::fprintf(stderr, "ui: could not load the Interface art or KLEPTO__.TTF, starting on the course\n");
     loadStory(app);
     {
+        g_scriptedRun = pngOut != nullptr;
         const bool scripted = pngOut || loadFile || newGameIdx >= 0 || loadGameFile || !editSpec.empty() || saveFile || !golfer.empty() || app.econ.sandbox || app.follow;
         std::string s = screenArg.empty() ? (scripted ? "play" : "menu") : screenArg;
         if (s == "report" && app.uiOk) app.screen = App::ScreenReport;
@@ -6329,6 +6354,7 @@ int main(int argc, char** argv) {
                 else if (app.screen == App::ScreenFinance) {
                     if ((e.type == SDL_KEYDOWN && (e.key.keysym.sym == SDLK_ESCAPE || e.key.keysym.sym == SDLK_F4 || e.key.keysym.sym == SDLK_RETURN)) || e.type == SDL_MOUSEBUTTONDOWN) { app.screen = App::ScreenPlay; app.hover = -1; }
                 }
+                else if (app.screen == App::ScreenSga && app.sgaMode == 2 && g_revealForce < 0 && (SDL_GetTicks() / 1000.0 - app.tRevealStart) / 0.7 < (double)app.tPars.size() && (e.type == SDL_KEYDOWN || e.type == SDL_MOUSEBUTTONDOWN)) app.tRevealStart = -1e9;
                 else if (app.screen == App::ScreenSga) {
                     if (e.type == SDL_KEYDOWN) {
                         const SDL_Keycode k = e.key.keysym.sym;
