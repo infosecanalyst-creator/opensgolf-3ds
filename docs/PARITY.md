@@ -137,3 +137,16 @@ Not yet run on the Mac. Headless checks only.
 | Title screen | fixed | Logo blob no longer cut; Start New Game on two lines; Theme line only for non-standard packs |
 
 Not run on the Mac. Practice Round clicks were not exercised, only the hooked headless render.
+
+## Update 75 additions
+
+| Area | State | Notes |
+|------|-------|-------|
+| Shot shapes | PLACEHOLDER numbers | The player's chosen oval now bends (fade, draw), tightens (backspin) or shortens (punch) the player's own shots; reliability follows the matching skill |
+| Match against a pro | DERIVED | A pro within a quarter of the table size of the player's skill sum may challenge each month (one in three); Play starts player and pro on the course, holes are compared when both finish, the winner collects or pays the lead times the wager. Wager, odds and window are PLACEHOLDER; "First match victory" is awarded |
+| Cancel Match | DERIVED | System menu item works while a match is on |
+| Begin Tournament button | EXACT enable rule | Lit while an SGA offer is pending; opens the SGA response screen |
+| Per-employee counters | DERIVED | Each employee keeps own greeted, hurried or sold count in the info box; a loaded game restarts the individual counts |
+| Tutorial | structure EXACT, wording my own, start key PLACEHOLDER | 11 fun and 9 skill pages, any key advances, Escape stops, game pauses; Shift+F8 starts it |
+
+Tested headless only (a hooked match run to a win, the tutorial page render); not run on the Mac, no button clicks exercised.

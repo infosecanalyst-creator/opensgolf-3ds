@@ -102,6 +102,7 @@ struct Golfer {
     unsigned lastTick = 0; int seenPlans = 0, seenLands = 0; float hz = 0; int visitedHole = -1; unsigned visits = 0; int seenObs = 0, clubMask = 0; float planYards = 0; bool leaving = false; int ordinal = 0, leaveWait = 0;   // visits: facilities used this round (4 range, 8 pro shop, 0x10 putting green)   // reaction clock and the shot plan hazard score (PLACEHOLDER formula)
     int greetedHole = -1; bool hurried = false;   // club pro greeted on this hole, ranger has hurried this golfer
     int holeStrokes[18] = {};    // strokes on each finished hole, for the info card scorecard
+    int proIdx = -1;             // index into the pro table for the opponent in a match against a pro
     bool isPlayer = false;       // the player's own character out on a practice round (docs/DECODE_TOURNAMENTS.md section 7)
     int mood = 4;                // the golfer's mood value, which sets the green fee (the exe keeps it per golfer as a small integer)
 };
@@ -246,7 +247,7 @@ struct App {
     std::vector<sg::Celebrity> celebs;
     // Land (docs/UI_SCREENS2.md section 4): a 50 x 50 map is cut into nine 16 x 16 tracts; ownMask has a bit per tract. Courses that are not 50 x 50
     // (older saves, editor files) have no land model and everything is owned.
-    struct Emp { int kind = 0; bool skilled = false; float x = 0, z = 0, heading = 0; int target = -1; int phase = 0; float timer = 0, cool = 0; float wx = 0, wz = 0; std::string name; int hired = 1; };
+    struct Emp { int kind = 0; bool skilled = false; float x = 0, z = 0, heading = 0; int target = -1; int phase = 0; float timer = 0, cool = 0; float wx = 0, wz = 0; std::string name; int hired = 1; int n = 0; };   // n: what this employee has done (greeted, hurried, sold)
     int empMoveArm = -1, empRenameRow = -1;
     // Shot Analysis (the Analyze Golf Shot tool and the / key): sample first shots of golfers with all skills and without one group, drawn on the hole.
     bool anArm = false; int anHole = -1; std::vector<float> anPath[4][5]; float anYds[4] = {}; float anLand[4][5][2] = {};   // Move armed for a roster row (the next map click places it), the row being renamed
@@ -254,6 +255,8 @@ struct App {
     int ovMode = -1, ovSel = -1; std::vector<float> ovAura, ovValue;   // course overview (F5): -1 routing, 1 aura, 2 home site value, 3 employees
     bool landModel = false; int ownMask = 0x1ff; int landBought = 0; bool landOffer = false;
     int blSel = -1, blPrice[9] = {}, blSale[9] = {}; bool blRolled = false; std::string blNote;
+    int matchPro = -1, matchWager = 0, matchMonth = -1, matchPl = -1, matchOp = -1, matchLead = 0, matchDoneN = 0; bool matchOn = false, matchDone[18] = {};   // a pro's challenge, the wager per hole (units of $100), the two golfer slots and the holes decided so far
+    int tutPage = -1; bool tutWasPaused = false;   // the tutorial: eleven pages on fun and nine on skill (structure from the exe, wording is my own); -1 when closed
     bool playerPanel = false; int shotShape = 0, plHover = -1;   // the Player (JoeCool) panel behind the golfers tab with the player's name, and the shot oval picked (0 straight, 1 fade, 2 draw, 3 backspin, 4 punch)
     bool golfersMode = true;     // People dock: Golfers list (true) or the Employee overlay (false)
     int golfOff = 0;             // scroll offset of the Golfers list
@@ -892,15 +895,16 @@ static int g_resetSeed = -1, g_hoverHook = -1, g_confirmHook = -1;   // test hoo
 static int g_moodHook = -99;   // test hook --mood N: starting mood of every new golfer
 static int g_needsHook[3] = {0, 0, 0};   // test hook --needs hunger,thirst,fatigue: starting counters of every new golfer
 static sg::BodyLook chrLook(const App& app);
-static void spawnGolfer(App& app, bool player = false) {
+static void spawnGolfer(App& app, bool player = false, int proIdx = -1) {
     if (app.holes.empty()) return;
     if (!app.rosterReady) { app.roster.newGame(app.srng); app.rosterReady = true; }
     std::vector<int> onC; unsigned onBits = 0;
     for (const Golfer& o : app.golfers) if (o.active) { if (o.memberId) onC.push_back(o.memberId); onBits |= o.vis == sg::Visitor::Ceo ? sg::kCeoOnCourse : o.vis == sg::Visitor::Commissioner ? sg::kCommissionerOnCourse : o.vis == sg::Visitor::Heiress ? sg::kHeiressOnCourse : 0; }
-    const int arrivalId = player ? 0 : app.roster.pickArrival(app.srng, onC);
-    if (!player && arrivalId < 0) { if (app.simTime - app.declineWarn > 60) { say(app, "Your membership is declining.", 8); app.declineWarn = (int)app.simTime; } return; }
+    const int arrivalId = player || proIdx >= 0 ? 0 : app.roster.pickArrival(app.srng, onC);
+    if (!player && proIdx < 0 && arrivalId < 0) { if (app.simTime - app.declineWarn > 60) { say(app, "Your membership is declining.", 8); app.declineWarn = (int)app.simTime; } return; }
     for (int i = 0; i < kMaxGolfers; i++) {
         if (app.golfers[(size_t)i].active) continue;
+        if (app.matchOn && (i == app.matchPl || i == app.matchOp)) continue;   // the slots of a match keep their scores until it is settled
         Golfer& g = app.golfers[(size_t)i];
         uint32_t r = app.seed * 2654435761u + (uint32_t)(app.simTime * 1000) + (uint32_t)i * 97u + (uint32_t)app.roundsStarted * 7919u + 1u;
         auto next = [&]() { r ^= r << 13; r ^= r >> 17; r ^= r << 5; return r; };
@@ -909,13 +913,14 @@ static void spawnGolfer(App& app, bool player = false) {
         g.look = (int)(next() % kLooks);
         if (!app.lookOk[g.look]) g.look = 0;
         for (int k = 0; k < 10; k++) g.sim.skills.v[k] = 4 + (int)(next() % 8);
-        if (app.roundsStarted == 0 || player) g.sim.skills = app.skills;   // the first golfer is the one picked with --golfer
+        if (app.roundsStarted == 0 || player) g.sim.skills = app.skills;
+        if (proIdx >= 0 && proIdx < (int)app.pros.size()) { g.proIdx = proIdx; for (int k = 0; k < 10; k++) g.sim.skills.v[k] = app.pros[(size_t)proIdx].skills[k]; }   // the first golfer is the one picked with --golfer
         g.route = app.holes[0].route;
         g.holeStart = app.simTime;
         g.memberId = arrivalId; g.skillMask = skillMaskOf(g.sim.skills);
         { sg::SpawnContext c; c.pairIndex = (app.roundsStarted / 2) % 6; c.holes = (int)app.holes.size(); c.difficulty = app.difficulty; c.funRating = clubFun(app); c.skillRating = (int)(clubSkill(app) * 100);
           c.sandbox = app.econ.sandbox; c.onCourse = onBits;
-          g.vis = player ? sg::Visitor::None : sg::visitorFor(app.vstate, c); if (g.vis != sg::Visitor::None) { g.memberId = 0; say(app, g.vis == sg::Visitor::Ceo ? "A corporate CEO is playing your course today. If he likes it he may invest in a seat on your board!" : g.vis == sg::Visitor::Commissioner ? "A county commissioner is playing your course today." : "A wealthy heiress is playing your course today.", 9); } }
+          g.vis = player || proIdx >= 0 ? sg::Visitor::None : sg::visitorFor(app.vstate, c); if (g.vis != sg::Visitor::None) { g.memberId = 0; say(app, g.vis == sg::Visitor::Ceo ? "A corporate CEO is playing your course today. If he likes it he may invest in a seat on your board!" : g.vis == sg::Visitor::Commissioner ? "A county commissioner is playing your course today." : "A wealthy heiress is playing your course today.", 9); } }
         // The exe starts each golfer's mood at 3 plus a random 0 to 2, or at 4 on the easiest difficulty.
         g.mood = app.bsys.arrivalMood((int)(next() % 3), app.difficulty == 0);
         if (g.memberId) { auto& en = app.roster.e[g.memberId]; en.rounds = (uint16_t)std::min(65535, en.rounds + 1); }   // Rnds counts rounds started (docs/DECODE_HOLE_STATS2.md section 5)
@@ -929,6 +934,7 @@ static void spawnGolfer(App& app, bool player = false) {
         g.sim.theme = app.theme; g.ordinal = app.roundsStarted;
         g.sim.init(app.terrain, next());
         if (player) { g.isPlayer = true; g.mood = 6; g.look = app.chr.female() ? 2 : 0; assignBody(app, g, 0); }
+        else if (proIdx >= 0) { g.mood = 6; assignBody(app, g, 0); }
         else app.roundsStarted++;
         return;
     }
@@ -1047,8 +1053,8 @@ static std::string memberName(App& app, int id);
 static void assignBody(App& app, Golfer& g, int spin) {
     if (!app.prosTried) { app.prosTried = true; sg::loadTourPros(app.gameDir + "/Themes/Standard/progolfers.dta", app.pros, nullptr); }
     sg::BodyLook l; const bool fem = g.look >= 2;
-    if (g.memberId > 0 && !app.pros.empty()) {
-        const sg::TourPro& r = app.pros[(size_t)(g.memberId - 1) % app.pros.size()];
+    if ((g.memberId > 0 || g.proIdx >= 0) && !app.pros.empty() && !g.isPlayer) {
+        const sg::TourPro& r = app.pros[(size_t)(g.proIdx >= 0 ? g.proIdx : (g.memberId - 1)) % app.pros.size()];
         l.female = r.female(); l.body = r.body; l.skin = std::clamp(r.skin, 0, 3); l.hat = r.hat; l.shirt = r.shirt; l.pants = r.pants; l.hair = r.hat % 6; l.altSkin = 4;
         g.look = l.female ? 2 : 0;
     } else {
@@ -1059,6 +1065,7 @@ static void assignBody(App& app, Golfer& g, int spin) {
 }
 static void endRound(App& app, Golfer& g, bool finished) {
     const int holes = (int)app.holes.size();
+    if (g.proIdx >= 0) { g.active = false; return; }   // the pro in a match is not a member of the club
     if (g.isPlayer) {   // a practice round: nothing is recorded in the club's books
         int tp = 0; for (const auto& hh : app.holes) tp += hh.par;
         if (finished) say(app, app.charName + " finished the practice round with " + std::to_string(g.strokesRound) + " strokes on a par " + std::to_string(tp) + " course.", 8);
@@ -1442,14 +1449,14 @@ static void stepEmployees(App& app, float dt) {
             if (e.kind == 0) {          // Club Pro: stops the golfer 16 ticks; +1 mood (basic only when the golfer is not badly in need)
                 e.timer = 16.0f / 13.0f; g.sim.hold = std::max(g.sim.hold, e.timer); g.greetedHole = g.hole;
                 raiseReaction(app, (size_t)best, (e.skilled || (g.rx.thirst <= 16 && g.rx.hunger <= 16 && g.rx.fatigue <= 160)) ? 34 : 58, g.rx.polarity());   // a pleasant word, or just a chat when the golfer is in need
-                app.empCount[0][e.skilled]++;
+                app.empCount[0][e.skilled]++; e.n++;
             } else if (e.kind == 1) {   // Ranger: hurries the golfer
-                e.timer = 28.0f / 13.0f; g.hurried = true; app.empCount[1][e.skilled]++;
+                e.timer = 28.0f / 13.0f; g.hurried = true; app.empCount[1][e.skilled]++; e.n++;
             } else {                    // Soda Vendor: stops the golfer 32 ticks, thirst to 0, pays 2, +1 mood if thirst was above 7 (always for the skilled)
                 e.timer = 32.0f / 13.0f; g.sim.hold = std::max(g.sim.hold, e.timer);
                 if (e.skilled) g.rx.thirst = 99;
                 raiseReaction(app, (size_t)best, 25, 0x14);   // the drink pleases only a thirsty golfer (counter read before the reset)
-                g.rx.thirst = 0; app.econ.earn(2 * Economy::kUnit); app.econ.book(sg::costs::FoodDrink, 2 * Economy::kUnit); app.empCount[3][e.skilled]++;
+                g.rx.thirst = 0; app.econ.earn(2 * Economy::kUnit); app.econ.book(sg::costs::FoodDrink, 2 * Economy::kUnit); app.empCount[3][e.skilled]++; e.n++;
             }
             continue;
         }
@@ -1515,6 +1522,52 @@ static void drawAward(App& app) {
         app.font.drawCentered(x + 50, 358, b == 0 ? "Yes" : "No", 14, 0.1f, 0.1f, 0.3f);
     }
 }
+static void loadPros(App& app);
+static void matchFinish(App& app, bool canceled);
+// A pro's challenge and the match itself (docs/DECODE_TOURNAMENTS.md section 7). The wager size, the strength window and the odds are PLACEHOLDER.
+static void matchStep(App& app) {
+    if (!app.matchOn) {
+        if (app.matchPro >= 0 || app.autoOpen || app.holes.size() < 2 || app.econ.gameOver || app.tourney.state() == sg::Tournament::State::InProgress) { app.matchMonth = app.econ.day; return; }
+        if (app.econ.day == app.matchMonth) return;
+        app.matchMonth = app.econ.day;
+        loadPros(app); if (app.pros.empty()) return;
+        int mine = 0; for (int k = 0; k < 10; k++) mine += app.skills.v[k];
+        std::vector<int> cand; for (size_t i = 1; i < app.pros.size(); i++) if (std::abs(app.pros[i].skillSum - mine) <= (int)app.pros.size() / 4) cand.push_back((int)i);
+        if (cand.empty() || app.srng.below(3) != 0) return;
+        app.matchPro = cand[(size_t)app.srng.below((int)cand.size())];
+        app.matchWager = 10 * (1 + app.difficulty);
+        say(app, app.pros[(size_t)app.matchPro].name + " challenges you to a match at your course with a wager of " + money((long long)app.matchWager * 100) + " per hole. Open the Player panel and press Play.", 12);
+        return;
+    }
+    const Golfer& pl = app.golfers[(size_t)app.matchPl]; const Golfer& op = app.golfers[(size_t)app.matchOp];
+    const int nh = (int)app.holes.size();
+    for (int h = 0; h < nh && h < 18; h++) {
+        if (app.matchDone[h] || pl.holeStrokes[h] <= 0 || op.holeStrokes[h] <= 0) continue;
+        app.matchDone[h] = true; app.matchDoneN++;
+        const int d = op.holeStrokes[h] - pl.holeStrokes[h];   // positive: the player won the hole
+        app.matchLead += d > 0 ? 1 : d < 0 ? -1 : 0;
+        const std::string who = d > 0 ? app.charName + " wins" : d < 0 ? app.pros[(size_t)op.proIdx].name + " wins" : "Tied on";
+        const std::string st = app.matchLead > 0 ? app.charName + " leads by " + std::to_string(app.matchLead) : app.matchLead < 0 ? app.pros[(size_t)op.proIdx].name + " leads by " + std::to_string(-app.matchLead) : "all square";
+        say(app, who + " hole " + std::to_string(h + 1) + ": " + st + ".", 5);
+    }
+    if (app.matchDoneN >= nh || (!pl.active && !op.active)) matchFinish(app, false);
+}
+static void matchFinish(App& app, bool canceled) {
+    if (!app.matchOn) return;
+    const std::string pro = app.golfers[(size_t)app.matchOp].proIdx >= 0 ? app.pros[(size_t)app.golfers[(size_t)app.matchOp].proIdx].name : std::string("The pro");
+    if (canceled) { app.golfers[(size_t)app.matchPl].active = false; app.golfers[(size_t)app.matchOp].active = false; say(app, "Match canceled.", 5); }
+    else if (app.matchLead > 0) {
+        const long long amt = (long long)app.matchLead * app.matchWager * 100; app.econ.earn((double)amt);
+        say(app, "You beat " + pro + " by " + std::to_string(app.matchLead) + (app.matchLead == 1 ? " hole" : " holes") + ". Collect " + money(amt) + ".", 10);
+        { sg::GoalEvent e; e.kind = sg::GoalEvent::MatchWon; goalEvent(app, e); }
+        addHighlight(app, "Won a match against " + pro);
+    } else if (app.matchLead < 0) {
+        const long long amt = (long long)(-app.matchLead) * app.matchWager * 100; app.econ.spend((double)amt);
+        say(app, pro + " beat you by " + std::to_string(-app.matchLead) + (app.matchLead == -1 ? " hole" : " holes") + ". Pay " + money(amt) + ".", 10);
+    } else say(app, "The match with " + pro + " ended all square. No money changes hands.", 8);
+    app.matchOn = false; app.matchPro = -1; app.matchLead = 0; app.matchDoneN = 0; for (bool& b : app.matchDone) b = false;
+    app.matchPl = app.matchOp = -1;
+}
 static void stepHomes(App& app) {
     if (app.homes.empty()) { app.homeMonth = app.econ.day; return; }
     if (app.econ.day == app.homeMonth) return;
@@ -1539,7 +1592,13 @@ static void stepHomes(App& app) {
     if (changed) refreshBuildingProps(app);
 }
 
+static bool g_practiceTest, g_matchTest; static int g_tutTest = -1;
 static void stepGame(App& app, float dt) {
+    if (g_tutTest >= 0) { app.tutPage = g_tutTest; g_tutTest = -1; }
+    { static bool once3 = false; if (!once3 && g_matchTest && !app.holes.empty()) { once3 = true; loadPros(app); app.matchPro = 5; app.matchWager = 10; spawnGolfer(app, true); spawnGolfer(app, false, app.matchPro);
+        for (size_t i = 0; i < app.golfers.size(); i++) { if (app.golfers[i].active && app.golfers[i].isPlayer) app.matchPl = (int)i; if (app.golfers[i].active && app.golfers[i].proIdx == app.matchPro) app.matchOp = (int)i; }
+        app.matchOn = app.matchPl >= 0 && app.matchOp >= 0; } }
+    { static bool once2 = false; if (!once2 && g_practiceTest && !app.holes.empty()) { once2 = true; spawnGolfer(app, true); } }
     const bool open = !app.holes.empty() && !app.econ.gameOver;
     // Arrivals (PLACEHOLDER rates): the first golfer comes at once, then one every 25 s when golfers are happy, slower when not;
     // the course takes at most two golfers per hole, up to the size of the pool.
@@ -1551,7 +1610,7 @@ static void stepGame(App& app, float dt) {
     app.econ.step(dt);
     stepEmployees(app, dt);
     stepHomes(app);
-    julyCheck(app);
+    julyCheck(app); matchStep(app);
     checkGoals(app);
     syncHoleStats(app);
     stepAwards(app);
@@ -1577,6 +1636,7 @@ static void stepGame(App& app, float dt) {
         { const unsigned nowTick = (unsigned)(app.simTime * sg::kSimTickHz); for (unsigned t = g.lastTick + 1; t <= nowTick && t <= g.lastTick + 60; ++t) golferTick(app, gi, t); g.lastTick = nowTick; }
         if (!g.active) continue;   // removed by a tick above
         if (g.leaving) continue;
+        g.sim.shape = g.isPlayer ? app.shotShape : 0;
         g.sim.step(dt);
         if (g.sim.walking() && g.sim.stroke == 0 && g.visitedHole != g.hole) { g.visitedHole = g.hole; teeVisits(app, gi); }
         if (g.sim.planCount != g.seenPlans) { g.seenPlans = g.sim.planCount; onShotPlan(app, gi); }
@@ -1594,7 +1654,7 @@ static void stepGame(App& app, float dt) {
                 // flags (probably Top 100 and Top 18) and an Airstrip bonus; none of those exist here yet.
                 sg::HoleFeeInput fi; fi.golferMood = g.mood; fi.memberTier = g.memberId ? (int)app.roster.e[g.memberId].tier : 0;
                 const unsigned hflags = g.hole < (int)app.hstats.size() ? app.hstats[(size_t)g.hole].flags : 0u;
-                const int feeUnits = g.isPlayer ? 0 : std::max(0, sg::holeFee(fi, hflags) + app.bsys.airstripFeeBonus());   // the player pays no fee on a practice round
+                const int feeUnits = g.isPlayer || g.proIdx >= 0 ? 0 : std::max(0, sg::holeFee(fi, hflags) + app.bsys.airstripFeeBonus());   // the player pays no fee on a practice round
                 app.econ.holeFinished(g.sim.stroke, par, feeUnits);
                 // After the hole the exe lowers mood by (hole field + 6 + holes played) * (mood - 1 + difficulty) * (difficulty + 1) /
                 // ((course factor * 5 + 15) * 8), integer division. The hole field and the course factor are not decoded; both are taken as 0.
@@ -1617,7 +1677,7 @@ static void stepGame(App& app, float dt) {
                 std::printf("[%6.1fs] golfer %zu holed hole %d in %d (par %d), fee $%.0f, cash $%.0f, fun %.0f\n", app.simTime, gi, g.hole + 1, g.sim.stroke, par, app.econ.cash - before, app.econ.cash, app.econ.fun);
             }
         }
-        if (!g.isPlayer && (g.sim.finished && g.hole + 1 < (int)app.holes.size() && sg::wantsToQuit(g.rx, g.mood, 0)) || (!g.sim.finished && g.sim.walking() && g.sim.stroke == 0 && sg::wantsToQuit(g.rx, g.mood, 0))) {   // mood below zero and a silent speaker   // a golfer in a bad mood gives up (the exe's rule: mood below zero)
+        if (!g.isPlayer && g.proIdx < 0 && ((g.sim.finished && g.hole + 1 < (int)app.holes.size() && sg::wantsToQuit(g.rx, g.mood, 0)) || (!g.sim.finished && g.sim.walking() && g.sim.stroke == 0 && sg::wantsToQuit(g.rx, g.mood, 0)))) {   // mood below zero and a silent speaker   // a golfer in a bad mood gives up (the exe's rule: mood below zero)
             startLeaving(app, gi);
         } else if (g.sim.finished) {
             if (++g.hole < (int)app.holes.size()) {
@@ -1903,6 +1963,33 @@ static bool canAfford(App& app, int i) {
     return app.sandboxChoice || propPrice(app, i) <= kStartFunds;
 }
 
+// Tutorial pages (DECODE_SOCIAL.md section 4: pages 1 to 11 on fun, 21 to 29 on skill; any key advances, Escape stops). The exe text is not copied; these are my own words
+// about the rules the port implements. The start trigger is not decoded, so Shift+F8 starts it (PLACEHOLDER).
+static const char* const kTutorial[20] = {
+    "Welcome to the tutorial. Every course is judged on two ratings: fun, shown in yellow at the top right, and skill, shown in light blue. Money is the green number above them.",
+    "Fun comes from happy golfers. Golfers are happier when holes are varied, scenic and fair, and when their needs for food, drink and rest are met.",
+    "Start with a tee and a green. Paint a tee, paint a putting green a good distance away, then press H to open the hole. Golfers only play open holes.",
+    "Make holes different from each other. A long hole, a short one and a dogleg each feel new; a row of identical holes bores golfers and lowers fun.",
+    "Hazards add excitement but they also add frustration. Water, sand and trees make a hole interesting when a good player can see a way round them.",
+    "Trees, flowers, benches and landmarks make the course pretty. Scenic holes are rated higher by the magazines and by your visitors.",
+    "Golfers do not live by golf alone. Put up a snack bar beside a path that joins the clubhouse, and add a pro shop and a swim club as your course grows.",
+    "Benches let tired golfers rest, and a ball washer near a tee helps their next shot. Place them where golfers will actually walk past.",
+    "Employees keep golfers content. The club pro greets them, the ranger keeps play moving, the groundskeeper tends the turf and the soda vendor sells drinks.",
+    "Watch the comments golfers make. Praise tells you what works; complaints tell you what to fix. Press F2 for the Player Comments report.",
+    "That covers fun. Next we look at skill, the rating that decides which tournaments and which visitors come to your course.",
+    "Skill measures how hard and how interesting the shots are. Holes that test length, accuracy and imagination all raise it.",
+    "Length: a hole long enough that a golfer needs a big drive rates well on length. Short holes are pleasant but easy.",
+    "Accuracy: narrow fairways, hazards beside the line and small landing areas make golfers aim carefully. That raises the accuracy rating.",
+    "Imagination: doglegs, carries over water and choices between a safe and a risky route reward golfers who think. That raises the imagination rating.",
+    "Press F1 for the Course Report to see each hole's length, accuracy and imagination, and the type of hole it makes.",
+    "Your own golfer matters too. Spend skill points on the Customise screen, and use the Player panel to play a practice round on your own course.",
+    "Good scores and big prizes bring accomplishments. Each one earns a trophy and extra skill points to spend on your golfer.",
+    "The SGA may offer a tournament once your course scores well. Press F7 to read its evaluation and respond to the offer.",
+    "Now back to your course. Press Shift+F8 whenever you want to see the tutorial again."};
+static void tutStart(App& app) { if (app.tutPage >= 0) return; app.tutPage = 0; app.tutWasPaused = app.paused; app.paused = true; }
+static void tutNext(App& app, bool stop) {
+    if (stop || ++app.tutPage >= 20) { app.tutPage = -1; app.paused = app.tutWasPaused; }
+}
 // Happy ending: the story's first letter picks the landmark design that is donated (DECODE_WORLD2 1.5), one heart is added, and it is logged as a highlight.
 static void storyHappyEnding(App& app) {
     int kind;
@@ -3798,7 +3885,7 @@ static void pnlDraw(App& app, float mx, float my) {
             const int openH = (int)app.holes.size();
             for (int b = 1; b <= 3; b++) {
                 const up::PlayerButton& pb = up::kPlayerButtons[b];
-                const bool ok = b == 1 && openH >= 2 && !pg;
+                const bool ok = openH >= 2 && !pg && !app.matchOn && (b == 1 || (b == 2 && app.matchPro >= 0) || (b == 3 && app.tourney.state() == sg::Tournament::State::Offered));
                 if (!ok) pnlBlit(app.joeArt, up::Rect{100, pb.hoverCut.y, pb.hoverCut.w, pb.hoverCut.h}, pb.hoverDst.x, pb.hoverDst.y);
                 else if (h == b) pnlBlit(app.joeArt, up::Rect{50, pb.hoverCut.y, pb.hoverCut.w, pb.hoverCut.h}, pb.hoverDst.x, pb.hoverDst.y);
             }
@@ -3872,7 +3959,7 @@ static void pnlDraw(App& app, float mx, float my) {
             // "Paid" is the wage times the months employed (PLACEHOLDER: the exe books each payment on the employee record; the port pays the whole staff together).
             app.font.drawCentered((float)up::kEmpInfoX, (float)up::kEmpInfoY[2], "Paid: " + money(up::kStaffKinds[r.kind].wageUnits[r.skilled] * 100LL * (em ? std::max(0, app.econ.day - em->hired) : 0)), 12, 0.1f, 0.08f, 0.3f);
             app.font.drawCentered((float)up::kEmpInfoX, (float)up::kEmpInfoY[3], up::kStaffKinds[r.kind].counter[r.skilled], 11, 0.25f, 0.2f, 0.45f);
-            app.font.drawCentered((float)up::kEmpInfoX, (float)up::kEmpInfoY[4], std::to_string(app.empCount[r.kind][r.skilled ? 1 : 0]), 12, 0.1f, 0.08f, 0.3f);   // the kind's total (the exe counts per employee)
+            app.font.drawCentered((float)up::kEmpInfoX, (float)up::kEmpInfoY[4], std::to_string(em ? em->n : app.empCount[r.kind][r.skilled ? 1 : 0]), 12, 0.1f, 0.08f, 0.3f);   // this employee's own count (the exe counts per employee); a loaded game restarts the individual counts
         }
         if (tip) {
             if (h == 0) pnlTip(app, up::kEmpHireTip, mx);
@@ -3948,11 +4035,28 @@ static bool pnlClick(App& app, float vx, float vy, bool rightClick) {
         if (h == 10) { app.playerPanel = false; app.golfersMode = false; snd(app, "Interface/Button2.wav"); return true; }
         if (h == 0) { openCustomise(app); snd(app, "Interface/Button2.wav"); return true; }
         if (h == 1) {
-            if ((int)app.holes.size() < 2) { say(app, "You need at least two open holes for a practice round.", 4); }
+            if (app.matchOn) say(app, "Finish or cancel the match first.", 4);
+            else if ((int)app.holes.size() < 2) { say(app, "You need at least two open holes for a practice round.", 4); }
             else if (!out) { spawnGolfer(app, true); say(app, app.charName + " is out on a practice round.", 4); snd(app, "Interface/Button2.wav"); }
             return true;
         }
-        if (h == 2 || h == 3) { say(app, h == 2 ? "Matches against a pro are not in the port yet." : "Tournament play is not in the port yet.", 4); return true; }
+        if (h == 2) {
+            if (app.matchOn || out) say(app, "A match or practice round is already under way.", 4);
+            else if (app.matchPro < 0) say(app, "No pro has challenged you to a match yet.", 4);
+            else if ((int)app.holes.size() < 2) say(app, "You need at least two open holes for a match.", 4);
+            else {
+                spawnGolfer(app, true); spawnGolfer(app, false, app.matchPro);
+                for (size_t i = 0; i < app.golfers.size(); i++) { if (app.golfers[i].active && app.golfers[i].isPlayer) app.matchPl = (int)i; if (app.golfers[i].active && app.golfers[i].proIdx == app.matchPro) app.matchOp = (int)i; }
+                if (app.matchPl >= 0 && app.matchOp >= 0) { app.matchOn = true; app.matchLead = 0; app.matchDoneN = 0; for (bool& b : app.matchDone) b = false; say(app, "I'm ready for a match with " + app.pros[(size_t)app.matchPro].name + ".", 5); snd(app, "Interface/Button2.wav"); }
+                else say(app, "There is no room on the course for a match right now.", 4);
+            }
+            return true;
+        }
+        if (h == 3) {
+            if (app.tourney.state() == sg::Tournament::State::Offered) { snd(app, "Interface/Button2.wav"); openSgaScreen(app); }
+            else say(app, "The SGA has not offered to hold a tournament at your course.", 4);
+            return true;
+        }
         if (h >= 4 && h <= 8 && out) { app.shotShape = h - 4; snd(app, "Interface/Button2.wav"); return true; }
         return vx >= 214 && vy >= 474;
     }
@@ -4064,7 +4168,7 @@ static void drawPopup(App& app) {
     if (app.popKind == 3 || app.popKind == 5) app.font.drawCentered(x + w / 2, y + 26, app.popKind == 3 ? "Preferences" : app.popHead, 16, 1, 1, 1);
     for (size_t i = 0; i < app.popLines.size(); i++) {
         const float ty = fy + 24.0f * (float)i; const bool hot = app.popHover == (int)i;
-        const bool dis = app.popKind == 2 && ((i == 2) || (i == 3 && false));   // nothing to cancel: the port plays a tournament out at once
+        const bool dis = app.popKind == 2 && ((i == 2 && !app.matchOn) || (i == 3 && false));   // nothing to cancel: the port plays a tournament out at once
         if (menu) {
             if (hot && !dis) app.font.draw(x + 0x24 + 1, ty + 17, app.popLines[i], 16, 0.25f, 0.25f, 0.3f);
             const float c[3] = {dis ? 0.55f : hot ? 0.97f : 0.08f, dis ? 0.55f : hot ? 0.97f : 0.45f, dis ? 0.62f : hot ? 0.9f : 0.48f};
@@ -4116,7 +4220,7 @@ static void popChoose(App& app, int kind, int idx) {
                 std::string e2; const std::string wb = browsePath(app);
                 if (saveGame(app, wb, e2)) { app.browsing = true; t2LoadArt(app); app.t2Mode = 0; t2ListSaves(app); app.t2Files.erase(std::remove(app.t2Files.begin(), app.t2Files.end(), wb), app.t2Files.end()); app.t2Sel = -1; app.t2Scroll = 0; app.t2Confirm = 0; app.t2Hover = -1; app.screen = App::ScreenLoad; }
                 break; }
-            case 2: toastMsg(app, "There is no match or tournament to cancel"); break;
+            case 2: if (app.matchOn) matchFinish(app, true); else toastMsg(app, "There is no match or tournament to cancel"); break;
             case 3: { const std::string pf = app.gameDir + "/Themes/Championship/" + app.charName + ".pro"; toastMsg(app, sg::charSaveFile(pf, app.chr) ? app.charName + " saved for championship play." : "The player could not be saved"); break; }
             case 4: app.popKind = 4; app.popPromptFor = 1; app.popHead = "Rename Course..."; app.popBuf = app.courseName; SDL_StartTextInput(); break;
             case 5: popOpen(app, 3); break;
@@ -4352,6 +4456,15 @@ static void drawDockUi(App& app) {
             app.font.draw(252, y + 16, app.storyTitle + (a ? " (golfer one)" : " (golfer two)"), 12, 0.8f, 0.9f, 1);
             for (size_t i = 0; i < sl.size(); i++) app.font.draw(252, y + 33 + 17.0f * i, sl[i], 14, 1, 1, 1);
         }
+    }
+    if (app.tutPage >= 0) {
+        const float nx = 160, ny = 150, nw = 480;
+        const std::vector<std::string> ln = wrapText(app, kTutorial[app.tutPage], 15, nw - 40);
+        const float nh = 78 + 20.0f * (float)ln.size();
+        ui::fillRect(nx - 2, ny - 2, nw + 4, nh + 4, 0.62f, 0.6f, 0.86f, 0.97f); ui::fillRect(nx, ny, nw, nh, 0.1f, 0.2f, 0.1f, 0.94f);
+        app.font.drawCentered(400, ny + 24, std::string(app.tutPage < 11 ? "Tutorial: Fun" : "Tutorial: Skill") + "  (" + std::to_string(app.tutPage + 1) + " of 20)", 16, 1, 0.9f, 0.4f);
+        for (size_t i = 0; i < ln.size(); i++) app.font.draw(nx + 20, ny + 52 + 20.0f * (float)i, ln[i], 15, 0.98f, 0.97f, 0.9f);
+        app.font.drawCentered(400, ny + nh - 12, "Press any key to continue, Escape to stop.", 12, 0.75f, 0.85f, 0.75f);
     }
     if (!app.toast.empty() && SDL_GetTicks() / 1000.0 < app.toastUntil) {
         if (app.toastKind == 1 && app.shArt.tex) {   // notice: dark green translucent panel, lavender edge, an icon plate on the left (SGA offers show the trophy); measured on the real screenshots (PLACEHOLDER geometry)
@@ -4925,7 +5038,6 @@ static bool cardBtnLive(int b) { return b == 1 || b == 2 || b == 4; }   // Custo
 // Read only skills dialog (FUN_0045f0f0 with x offset -50): a 208 by 316 panel at (28,50), the title white and centred at x 160, ten rows from y 90 in steps of 24,
 // names at x 88 (grey when the skill is 0, else black), values "+N%" at x 37 (docs/DECODE_CARDS2.md section 1). PLACEHOLDER: the row strips and panel art (TransPopups and the
 // 0x4c1570 sheet cuts are not measured), so the panel is the popup frame and the rows are plain boxes; skills are the port's 0..15 mapped onto the exe's 0..10.
-static bool g_practiceTest = false;
 static bool g_skillsTest = false;
 static void drawSkillsPanel(App& app, const Golfer& g, const std::string& who) {
     drawFrame9(app, 28, 50, 208, 316);
@@ -5172,7 +5284,6 @@ static void drawHud(App& app) {
     drawHireDialog(app, app.testHx >= 0 ? app.testHx : app.vmx, app.testHx >= 0 ? app.testHy : app.vmy);
     drawPopup(app);
     { static bool once = false; if (!once && g_skillsTest) { once = true; skillsOpen(app, 10); } }
-    { static bool once2 = false; if (!once2 && g_practiceTest && !app.holes.empty()) { once2 = true; spawnGolfer(app, true); } }
     if (app.anHole >= 0 && app.anHole < (int)app.allHoles.size()) {   // the Shot Analysis panel: dark translucent, lavender edge (real screenshot)
         static const float col[4][3] = {{1.0f, 0.95f, 0.3f}, {0.4f, 1.0f, 0.45f}, {0.4f, 0.9f, 1.0f}, {1.0f, 1.0f, 0.9f}};
         static const char* kL[4] = {"golfers with ALL skills", "no Imagination skill", "no Accuracy skill", "no Length skill"};
@@ -5855,6 +5966,8 @@ int main(int argc, char** argv) {
         else if (a == "--skills") g_skillsTest = true;
         else if (a == "--player") { app.panel = 3; app.golfersMode = true; app.playerPanel = true; app.dockHover = 2; }
         else if (a == "--practice") g_practiceTest = true;
+        else if (a == "--tutorial") g_tutTest = std::atoi(next());
+        else if (a == "--match") g_matchTest = true;
         else if (a == "--analyze") app.anHole = std::atoi(next()) + 1000000;   // hole index to analyse once the course is ready
         else if (a == "--say") { app.lastMsg = next(); app.toast = app.lastMsg; app.toastKind = 1; app.toastUntil = 1e12; app.showAdvisor = false; }
         else if (a == "--prop" && i + 1 < argc) app.curProp = std::atoi(argv[++i]);
@@ -6213,6 +6326,7 @@ int main(int argc, char** argv) {
                 continue;
             }
             if (e.type == SDL_QUIT) running = false;
+            else if (e.type == SDL_KEYDOWN && app.tutPage >= 0) { tutNext(app, e.key.keysym.sym == SDLK_ESCAPE); }
             else if (e.type == SDL_KEYDOWN) {
                 float step = 60.0f / app.zoom;
                 // Hotkeys of the original (manual p. 3 and 4): Z / X zoom, Shift+S / Shift+L save and load, Shift+P pause,
@@ -6236,6 +6350,7 @@ int main(int argc, char** argv) {
                     else if (shift && k == SDLK_k && app.screen == App::ScreenPlay && !app.edit) { std::string err; const std::string nm = app.courseName.empty() ? std::string("Course") : app.courseName; toastMsg(app, champSave(app, nm, err) ? nm + " saved for championship play." : "Could not save the course for championship play"); }   // PLACEHOLDER key: the exe has a menu item
                     else if (k == SDLK_F1) { reportCourse(app, true); if (app.uiOk && app.reportArt.tex) { app.ratings.clear(); app.screen = App::ScreenReport; } }
                     else if (k == SDLK_F7 && app.uiOk) openSgaScreen(app);
+                    else if (k == SDLK_F8 && shift && app.uiOk && app.screen == App::ScreenPlay) tutStart(app);
                     else if (k == SDLK_F6 && app.uiOk && app.screen == App::ScreenPlay && !app.edit) { app.switchMode = true; app.screen = App::ScreenProperty; app.hover = -1; }
                     else if ((k == SDLK_F5 || (k == SDLK_r && shift && !app.edit)) && app.uiOk && app.screen == App::ScreenPlay) { app.ovMode = -1; app.ovSel = -1; app.screen = App::ScreenOverview; }
                     else if (k == SDLK_b && shift && app.uiOk && app.screen == App::ScreenPlay) openBuyLand(app);

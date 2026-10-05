@@ -35,6 +35,7 @@ struct ShotSim {
     bool washed = false;                // the ball was washed: the next shot's sideways error loses a third; cleared when the ball stops anywhere but on fairway
     float driveBonus = 0.0f;            // Driving Range: extra carry (world units) for long hitters on drives
     GolferSkills skills;                // set before init(); init() keeps them
+    int shape = 0;                      // the shot shape the player picked on the Player panel: 0 straight, 1 fade L to R, 2 draw R to L, 3 high backspin, 4 low punch (effects are PLACEHOLDER)
     // Outputs, read by the viewer every frame.
     GolferAnim anim = GolferAnim::Walk;
     float animTime = 0;                 // seconds since the animation started

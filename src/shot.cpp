@@ -147,8 +147,14 @@ void ShotSim::step(float dt) {
                     const float reach = previewRest(rMax) + (!approach && skills.v[S::LongDriver] >= 8 ? driveBonus : 0.0f);
                     int range = rMax;
                     if (want < reach) { int lo = 1, hi = rMax; while (lo < hi) { const int mid = (lo + hi) / 2; if (previewRest(mid) < want) lo = mid + 1; else hi = mid; } range = lo; }
-                    range = std::max(1, (int)std::lround(range * (0.94f + 0.12f * rnd())));
-                    float dev = (rnd() - 0.5f) * spread; if (washed) dev -= dev / 3.0f;   // EXACT: the direction error loses one third
+                    // Shot shapes (PLACEHOLDER numbers; the exe's effect is not decoded): a fade or draw bends the ball a few degrees and is only
+                    // reliable with the matching skill, backspin shortens the roll and is tighter, a punch keeps the ball low and short.
+                    float shapeBias = 0, rangeK = 1.0f;
+                    if (shape == 1 || shape == 2) { const float k = skills.v[shape == 1 ? S::Fade : S::Draw] / 15.0f; shapeBias = (shape == 1 ? 1.0f : -1.0f) * (3.0f + 5.0f * k); spread *= 1.5f - 0.7f * k; }
+                    else if (shape == 3) { const float k = skills.v[S::Backspin] / 15.0f; spread *= 1.3f - 0.5f * k; rangeK = 0.97f; }
+                    else if (shape == 4) { spread *= 0.85f; rangeK = 0.88f; }
+                    range = std::max(1, (int)std::lround(range * rangeK * (0.94f + 0.12f * rnd())));
+                    float dev = (rnd() - 0.5f) * spread + shapeBias; if (washed) dev -= dev / 3.0f;   // EXACT: the direction error loses one third
                     float h = aimHeading_ + dev;
                     landDev = h - aimHeading_;
                     {
