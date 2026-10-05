@@ -88,6 +88,7 @@ struct Prop {
 struct BodySet;
 struct Golfer {
     ShotSim sim;
+    std::string said; float saidUntil = 0, saidR = 1, saidG = 1, saidB = 1;   // remark floating over the golfer (the real game shows these in the world)
     const BodySet* bset = nullptr;   // recoloured body sprites (docs/DECODE_BODIES.md), null falls back to the stock looks
     bool active = false;
     int look = 0, hole = 0, strokesRound = 0, lastStroke = -1;
@@ -1154,6 +1155,8 @@ static void speakVoice(App& app, const Golfer& g, int type) {
     std::string rel = std::string("simsfx/") + (female ? "female/f" : "male/m") + stem + ".wav";
     snd(app, rel.c_str(), 0.8f);
 }
+static sg::CommentCtx commentCtxFor(const App& app, int holeIdx, int loc);
+static void commentPen(sg::CommentColour c, float& r, float& g, float& b);
 static void raiseReaction(App& app, size_t gi, int type, int loc) {
     Golfer& g = app.golfers[gi];
     sg::ReactIn in; in.type = type; in.loc = loc; in.difficulty = app.difficulty; in.kind = g.vis == sg::Visitor::None ? 0 : 0x60; in.strokes = g.sim.stroke; in.slot = (int)gi;
@@ -1163,6 +1166,9 @@ static void raiseReaction(App& app, size_t gi, int type, int loc) {
     if (getenv("SG_REACTLOG")) std::fprintf(stderr, "[%.1fs] golfer %zu hole %d stroke %d reacts type %d loc %d: %s delta %d mood %d\n", app.simTime, gi, g.hole + 1, g.sim.stroke, type, loc & 0x3fff, o.ignored ? "ignored" : "applied", o.delta, g.mood);
     if (o.ignored) return;
     speakVoice(app, g, type);
+    { sg::CommentCtx cx = commentCtxFor(app, g.hole, loc & 0x3fff); const std::string full = g.isPlayer ? app.charName : g.memberId ? memberName(app, g.memberId) : std::string("Pat"); cx.name = full.substr(0, full.find(' '));
+      const sg::CommentOut co = sg::commentText(type, loc & 0x3fff, cx);
+      if (!co.text.empty()) { g.said = co.text; g.saidUntil = app.simTime + 5.0f; commentPen(co.colour, g.saidR, g.saidG, g.saidB); } }
     if (!g.leaving && g.hole >= 0 && g.hole < (int)app.hstats.size()) app.hstats[(size_t)g.hole].recordEvent(type, loc & 0x3fff, o.delta);   // a leaving golfer files into record 19, which no screen shows
     if (!g.leaving && g.hole >= 0 && g.hole < (int)app.holeStats.size()) app.holeStats[(size_t)g.hole].moodSum += o.delta;   // the hole's fun total
     if (o.delta > 0) { if (g.memberId) { app.roster.like(g.memberId, g.hole + 1); g.liked++; } g.likedLast = true; } else if (o.delta < 0) g.likedLast = false;
@@ -5316,14 +5322,14 @@ static void golferCardEvent(App& app, const SDL_Event& e) {
     else if (h == 1) { const size_t gi = (size_t)app.cardG; app.screen = App::ScreenPlay; app.cardG = -1; if (app.golfers[gi].active) startLeaving(app, gi); }   // PLACEHOLDER: ejecting is filed like a quit
     else if (h == 4) { app.screen = App::ScreenPlay; app.cardG = -1; }
 }
-static void worldTag(App& app, float gx, float gz, const std::string& text) {
+static void worldTag(App& app, float gx, float gz, const std::string& text, float dy = 0, float r = 1, float gr = 1, float b = 1, int fpx = 11) {
     const float y = app.terrain.heightAt(gx, gz);
     const double ex = app.mv[0] * gx + app.mv[4] * y + app.mv[8] * gz + app.mv[12], ey = app.mv[1] * gx + app.mv[5] * y + app.mv[9] * gz + app.mv[13];
     const float px = (float)(ex / app.upp + app.drawW * 0.5), py = (float)(app.drawH * 0.5 - ey / app.upp);   // drawable pixels
     const float vx = app.view.toVirtualX(px), vy = app.view.toVirtualY(py);
     if (vx < 0 || vx > 800 || vy < 20 || vy > 570) return;
-    app.font.drawCentered(vx + 1, vy + 11, text, 11, 0, 0, 0);
-    app.font.drawCentered(vx, vy + 10, text, 11, 1, 1, 1);
+    app.font.drawCentered(vx + 1, vy + 11 + dy, text, (float)fpx, 0, 0, 0);
+    app.font.drawCentered(vx, vy + 10 + dy, text, (float)fpx, r, gr, b);
 }
 static void drawNameTags(App& app) {
     if (!app.showNames || app.screen != App::ScreenPlay) return;
@@ -5332,6 +5338,7 @@ static void drawNameTags(App& app) {
         std::string nm = g.isPlayer ? app.charName : g.proIdx >= 0 ? app.pros[(size_t)g.proIdx].name : g.memberId ? memberName(app, g.memberId) : std::string();
         const size_t sp = nm.find(' '); if (!g.isPlayer && g.proIdx < 0 && sp != std::string::npos) nm = nm.substr(0, sp);   // members show a first name
         if (!nm.empty()) worldTag(app, g.sim.golferX, g.sim.golferZ, nm);
+        if (!g.said.empty() && g.saidUntil > app.simTime) worldTag(app, g.sim.golferX, g.sim.golferZ, g.said, -34, g.saidR, g.saidG, g.saidB, 10);
     }
     for (const App::Emp& e : app.emps) {
         const std::string job = e.skilled ? up::kStaffKinds[e.kind].skilledName : up::kStaffKinds[e.kind].name;

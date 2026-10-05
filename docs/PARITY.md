@@ -172,3 +172,9 @@ Tested headless only; not run on the Mac.
 Tested headless only (a 7-hole reveal render); not run on the Mac.
 
 Note (update 77): the pair-selection screen builder FUN_0044bde0 has no caller and no address reference anywhere in spec/golf_decomp.c, so its real trigger cannot be recovered from the decompile. The backquote key stays a PLACEHOLDER until another source shows it.
+
+## Update 78 additions
+
+| Item | Status | Notes |
+|---|---|---|
+| Golfer remarks in the world | DERIVED | Each accepted reaction floats its comment sentence (from the existing comment generator, coloured by polarity) above the golfer for 5 seconds; the position, size, duration and fade are my choices from the real screenshots. Shares the Shift+N toggle with name tags |
