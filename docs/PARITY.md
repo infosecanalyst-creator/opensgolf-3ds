@@ -76,7 +76,12 @@ Audit count: 982 gaps (down from 987).
 ## Update 70 additions (headless only, never run on the Mac)
 | Area | State |
 |---|---|
-| Club emblem | Exact-as-derived property to emblem table (parklink and tropdesert cuts, DERIVED from art and screenshots) replaces the old prop/8 guess; Load panel and in-game HUD both use it |
-| HUD emblem | Drawn left of the course pill via new ui::drawImageScaled; placement and 58 px size are PLACEHOLDER |
-| Test hook | --prop N sets the current property for screenshots |
-| Not done | Per-property terrain generator, editable start skills dialog, 18-dot rating row, Customise preview bodies |
+| Club emblem | Property to emblem table (parklink and tropdesert cuts, DERIVED from the art and your real HUD screenshots: Las Vegas roulette, Ireland shield, Hawaii flamingo agree) replaces the old prop/8 guess; Load panel and in-game HUD both use it |
+| HUD emblem | Drawn at the left of the course pill via new ui::drawImageScaled; 76 px size and position are PLACEHOLDER (measured by eye from screenshots) |
+| Terrain generator | Terrain::generate from the site record: theme scatter mix, coastal shore on one side, island ring on four, ponds inland, relief amplitude from terrain kind and price slot (96 / base, PLACEHOLDER reading of the exe's 0x30/0x20/0x10 base height), clubhouse at a random cell of the 17 x 17 centre window with a cleared lot. The exe's stroke tables are not decoded, so the land is generated, not the original's |
+| Starting land | The tract holding the clubhouse first, then nearest tracts (PLACEHOLDER count and order) |
+| Ugly landmarks | As many as the difficulty, kind 16 parkland, 18 desert, 17 tropical and links, on open rough ground; their pictures (Radio Tower, Red Oil Pump, TarPit, Railroad Tracks) are PLACEHOLDER picks; golfers that glance at one get the ugly view reaction |
+| Skills dialog | Editable dialog for your own character at X = 200 (frame, name, "N skill points", ten rows with add/refund toggles, value badges, cream name boxes, portrait, OK, unspent confirm); rules per DECODE_CARDS2 (cap 10, refund only to the entry value). Opens at a normal new game with 10 minus spent points; badge, toggle and name box shapes are PLACEHOLDER because the row sprites are not located; skills do not change shot accuracy yet |
+| Test hooks | --prop N, --skills |
+| Tests | terrain_gen added (11 in all) |
+| Not done | 18-dot rating row, Paused label, Customise preview bodies, stats card art, tutorial triggers, SGA offer popup art, employee Move and Rename, Information menu styling |

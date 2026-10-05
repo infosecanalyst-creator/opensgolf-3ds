@@ -258,6 +258,7 @@ struct App {
     unsigned amenCounter = 0;    // the exe's running selection counter, used for the variant rolls
     int raiseSign = 1;           // = selects raising, - selects lowering (the original's hotkeys); shift flips it
     bool paused = false;
+    bool skOpen = false, skConfirm = false, skWasPaused = false; int skLeft = 0, skHover = -1, skConfHover = -1; uint8_t skStart[10] = {};   // editable skills dialog (FUN_0045f0f0 with points to spend)
     int wallDir = 0;             // edge chosen under the mouse, for the wall tool            // 1 gravel, 2 paved
     int paintIdx = 0;
     int brush = 0;               // radius in tiles
@@ -669,8 +670,10 @@ static bool isOwned(const App& app, int x, int y) {
 static const char* kBenchArt[5] = {"Flowers/Iron Bench", "Flowers/red bench", "Flowers/round wood bench", "Flowers/woodplank bench", "Flowers/lovers bench"};
 static const char* kFlowerArt[5] = {"Flowers/Flowers_Single", "Flowers/WalledFlowers_Single", "Flowers/SinFlowers_Single", "Flowers/TropFB_Single", "Flowers/TropFlowers_Single"};
 static const char* kTreeArt[7] = {"Trees/WillowTree", "Scenic/Aspen", "Scenic/Dogwood", "Scenic/Cypress", "Scenic/BlackPine", "Scenic/Bamboo", "Scenic/Bougainvillea"};
-static const char* kLandmarkArt[14] = {"Landmarks/Pagoda", "Landmarks/Windmill", "Landmarks/Buddha", "Landmarks/Chapel", "Landmarks/LighthouseB", "Landmarks/Sundial", "Landmarks/barn",
-    "Landmarks/civilwarstatue", "Landmarks/equestrian", "Landmarks/gargoyle", "Landmarks/pyramid", "Landmarks/volcano", "Landmarks/Radio Tower", "Landmarks/Gold"};
+static const char* kLandmarkArt[19] = {"Landmarks/Pagoda", "Landmarks/Windmill", "Landmarks/Buddha", "Landmarks/Chapel", "Landmarks/LighthouseB", "Landmarks/Sundial", "Landmarks/barn",
+    "Landmarks/civilwarstatue", "Landmarks/equestrian", "Landmarks/gargoyle", "Landmarks/pyramid", "Landmarks/volcano", "Landmarks/Radio Tower", "Landmarks/Gold",
+    // Kinds 14 and 15 and the ugly kinds 16 to 18: which picture is which is not recorded (PLACEHOLDER picks from the Landmarks folder).
+    "Landmarks/Rock Garden", "Landmarks/Easter", "Landmarks/Red Oil Pump", "Landmarks/TarPit", "Landmarks/Railroad Tracks"};
 static const char* amenArt(const App::Amen& m) {
     switch (m.kind) {
         case 0: return kBenchArt[std::clamp(m.var, 0, 4)];
@@ -678,7 +681,7 @@ static const char* amenArt(const App::Amen& m) {
         case 2: return kTreeArt[std::clamp(m.var, 0, 6)];
         case 3: return "Scenic/ScenicBridge";
         case 4: return "Bldgs/upgrade bwasher";
-        default: return kLandmarkArt[std::clamp(m.var, 0, 13)];
+        default: return kLandmarkArt[std::clamp(m.var, 0, 18)];
     }
 }
 static void addAmenityProps(App& app) {
@@ -1141,7 +1144,7 @@ static void walkingGlance(App& app, size_t gi) {
     const int k = (f - 2 + (int)app.srng.below(5) + 8) & 7;
     const int a = tx + kNbDx[k], b = ty + kNbDy[k];
     for (const App::Amen& m : app.amen) if (m.tx == a && m.ty == b) {
-        if (m.kind == 5) raiseReaction(app, gi, sg::kEvScenicView, a + 50 * b);                         // a landmark of a pleasant design
+        if (m.kind == 5) raiseReaction(app, gi, m.var >= 16 ? sg::kEvUglyView : sg::kEvScenicView, a + 50 * b);   // a landmark: kinds 16 and up are the ugly ones
         else if (m.kind == 1 && g.rx.polarity() == 2) raiseReaction(app, gi, sg::kEvScenicView, a + 50 * b);   // flower beds only please golfers whose last reaction was bad
         return;
     }
@@ -3311,10 +3314,14 @@ static void startGame(App& app, int propIdx, bool sandbox) {
     const int price = propPrice(app, propIdx), acres = propAcres(app, propIdx);
     app.econ.startCash = sandbox ? kStartFunds : kStartFunds - price;   // the property is paid for out of the starting funds
     app.seed = app.seed * 1664525u + 1013904223u + (uint32_t)propIdx * 7919u;
-    app.terrain = Terrain::emptyPlot(50, 50, app.seed);
+    { const auto& site = ui_screens2::worldmap::kSites[propIdx]; if (!app.worldInit) worldDefault(app);
+      app.terrain = Terrain::generate(50, 50, app.seed, p.theme, site.lie, site.terrain, app.siteSlot[propIdx], sandbox); }
     // The land you start with: whole tracts, beginning with the one that holds the clubhouse, enough for the property's acres (PLACEHOLDER: the exe's
     // starting ownership per property is not decoded).
-    { static const int order[9] = {6, 7, 3, 4, 0, 8, 1, 5, 2};
+    { int order[9]; for (int i = 0; i < 9; i++) order[i] = i;
+      const int cx = app.terrain.clubhouseX, cy = app.terrain.clubhouseY;
+      auto d2 = [&](int t) { const int tx = 1 + (t % 3) * 16 + 8, ty = 1 + (t / 3) * 16 + 8; return (tx - cx) * (tx - cx) + (ty - cy) * (ty - cy); };
+      std::stable_sort(order, order + 9, [&](int a, int b) { return d2(a) < d2(b); });   // the tract with the clubhouse first, then its neighbours (PLACEHOLDER: the exe's starting ownership is not decoded)
       const int n = std::clamp((acres * 10 + 255) / 256, 1, 9);
       app.landModel = true; app.ownMask = 0; for (int i = 0; i < n; i++) app.ownMask |= 1 << order[i];
       app.landBought = 0; app.landOffer = false; }
@@ -3328,6 +3335,16 @@ static void startGame(App& app, int propIdx, bool sandbox) {
     app.autoOpen = false; app.openKeys.clear(); app.unlockLevel = sandbox ? 17 : 6; app.courseStage = 0; app.vipDay = 0; app.investors = 0;
     app.tracker = sg::GoalTracker(app.difficulty); app.vstate = sg::VisitorState(); if (sandbox) app.vstate.availMask = 0x3fffu; app.srng = sg::SocialRng((uint64_t)app.seed); app.rosterReady = false; app.tourney.cancel(); app.offerMonth = -1; app.fame = 0; app.hstats.clear();   // the exe: a normal game starts with counter 6, sandbox with everything (17)
     app.econ.staff[0] = app.econ.staff[1] = app.econ.staff[2] = app.econ.staff[3] = 0;
+    // Ugly landmarks: as many as the difficulty (exe: kind 16 on parkland, 18 on desert, 17 on tropical and links), on open rough ground away from the clubhouse.
+    app.amen.clear();
+    { const int kind = p.theme == 0 ? 16 : p.theme == 1 ? 18 : 17; sg::SocialRng pr((uint64_t)app.seed ^ 0x9e3779b97f4a7c15ull);
+      for (int placed = 0, tries = 0; placed < app.difficulty && tries < 400; tries++) {
+          const int x = 6 + (int)pr.below(38), y = 6 + (int)pr.below(38);
+          if (app.terrain.type[(size_t)y * 50 + x] != sg::TT_Rough) continue;
+          if (std::abs(x - app.terrain.clubhouseX) + std::abs(y - app.terrain.clubhouseY) < 10) continue;
+          bool dup = false; for (const App::Amen& m : app.amen) if (std::abs(m.tx - x) + std::abs(m.ty - y) < 8) dup = true;
+          if (dup) continue;
+          app.amen.push_back({5, x, y, kind}); placed++; } }
     rebuildBatches(app); populateProps(app); app.dirty = true;
     loadStory(app);
     app.resetClock = true;
@@ -4736,6 +4753,7 @@ static bool cardBtnLive(int b) { return b == 1 || b == 2 || b == 4; }   // Custo
 // Read only skills dialog (FUN_0045f0f0 with x offset -50): a 208 by 316 panel at (28,50), the title white and centred at x 160, ten rows from y 90 in steps of 24,
 // names at x 88 (grey when the skill is 0, else black), values "+N%" at x 37 (docs/DECODE_CARDS2.md section 1). PLACEHOLDER: the row strips and panel art (TransPopups and the
 // 0x4c1570 sheet cuts are not measured), so the panel is the popup frame and the rows are plain boxes; skills are the port's 0..15 mapped onto the exe's 0..10.
+static bool g_skillsTest = false;
 static void drawSkillsPanel(App& app, const Golfer& g, const std::string& who) {
     drawFrame9(app, 28, 50, 208, 316);
     app.font.drawCentered(132, 58 + 14, who + "'s skills", 14, 1, 1, 1);
@@ -4747,6 +4765,81 @@ static void drawSkillsPanel(App& app, const Golfer& g, const std::string& who) {
         app.font.draw(88, y + 7 + 11, kSk[i], 12, c, c, c);
         if (pts > 0) { if (pts < 10) drawPlusPct(app, 37, y + 7 + 11, pts * 10, 12, 1, 1, 1, false); else app.font.draw(37, y + 7 + 11, "100%", 12, 1, 1, 1); }
     }
+}
+// ---- Editable skills dialog (docs/DECODE_CARDS2.md section 1, FUN_0045f0f0 with X = 200): the player's own skills, spend the points left ----
+static const char* kSkName[10] = {"Power Hitter", "Long Driver", "Accurate Driver", "Accurate Irons", "Accurate Putter", "Draw Shot (R to L)", "Fade Shot (L to R)", "High Backspin Shot", "Recovery Skills", "Luck"};
+static void skillsOpen(App& app, int points) {
+    if (points <= 0) return;
+    app.skOpen = true; app.skConfirm = false; app.skLeft = points; app.skHover = -1; app.skConfHover = -1;
+    for (int i = 0; i < 10; i++) app.skStart[i] = app.chr.skills[i];
+    app.skWasPaused = app.paused; app.paused = true;
+}
+static void skillsClose(App& app) { app.skOpen = false; app.skConfirm = false; app.paused = app.skWasPaused; app.chr.flags |= 0x80; }
+static const float kSkX = 200.0f;
+static void drawSkillsEdit(App& app) {
+    if (!app.skOpen) return;
+    app.view = ui::beginScreen(app.drawW, app.drawH, false);
+    const float X = kSkX;
+    drawFrame9(app, X + 0x2e, 50, 320, 316);
+    app.font.drawCentered(X + 0xd2, 58 + 14, app.charName, 16, 1, 1, 1);
+    { const std::string t = std::to_string(app.skLeft) + " skill points"; app.font.drawCentered(X + 0xd2, 80 + 10, t, 13, 1.0f, app.skLeft > 0 ? 0.95f : 0.65f, app.skLeft > 0 ? 0.3f : 0.2f); }
+    for (int i = 0; i < 10; i++) {
+        const float y = 90.0f + 24 * i; const int v = app.chr.skills[i];
+        // up/down toggle pad: the top half adds a point, the lower half refunds one (hover brightens the half)
+        const bool hu = app.skHover == i, hd = app.skHover == i + 10;
+        ui::fillRect(X + 0x32, y + 1, 20, 22, 0.55f, 0.5f, 0.85f, 1);
+        ui::fillRect(X + 0x32, y + 1, 20, 11, hu ? 0.9f : 0.72f, hu ? 0.85f : 0.68f, 1.0f, 1);
+        ui::fillRect(X + 0x32, y + 12, 20, 11, hd ? 0.9f : 0.62f, hd ? 0.85f : 0.58f, 1.0f, 1);
+        ui::fillRect(X + 0x32 + 6, y + 8, 8, 2, 0.15f, 0.1f, 0.4f, 1); ui::fillRect(X + 0x32 + 8, y + 5, 4, 2, 0.15f, 0.1f, 0.4f, 1); ui::fillRect(X + 0x32 + 9, y + 3, 2, 2, 0.15f, 0.1f, 0.4f, 1);
+        ui::fillRect(X + 0x32 + 6, y + 15, 8, 2, 0.15f, 0.1f, 0.4f, 1); ui::fillRect(X + 0x32 + 8, y + 17, 4, 2, 0.15f, 0.1f, 0.4f, 1); ui::fillRect(X + 0x32 + 9, y + 19, 2, 2, 0.15f, 0.1f, 0.4f, 1);
+        // value oval and name box (PLACEHOLDER shapes: the row strip sprite is not located)
+        ui::fillRect(X + 0x52, y + 2, 52, 20, 0.22f, 0.18f, 0.42f, 1);
+        if (v > 0) { if (v < 10) drawPlusPct(app, X + 0x57, y + 7 + 11, v * 10, 12, 1, 1, 1, false); else app.font.draw(X + 0x57, y + 7 + 11, "100%", 12, 1, 1, 1); }
+        ui::fillRect(X + 0x8a - 6, y + 2, 112, 20, 0.95f, 0.92f, 0.82f, 1);
+        const float c = v > 0 ? 0.0f : 0.5f;
+        app.font.draw(X + 0x8a, y + 7 + 11, kSkName[i], 11, c, c, c);
+    }
+    if (app.ballArt.tex) ui::drawImageScaled(app.ballArt, X + 0xf7 - 7, 86, 124, 124, 0, 300, 140, 140);
+    drawFace(app, app.chr.female(), app.chr.head, 1, X + 0xff, 100, false);
+    if (app.okArt.tex) { const auto& k = sg::ui_screens::kOkCut[(app.skHover == 100) ? 1 : 0]; ui::drawImage(app.okArt, X + 0x146 + 4, 0x13e - 6, (float)k.x, (float)k.y, (float)k.w, (float)k.h); }
+    if (app.skConfirm) {   // modal confirm (FUN_0046d6e0 400 x 200): points are still unspent
+        drawFrame9(app, 200, 200, 400, 128);
+        app.font.drawCentered(400, 232, "You haven't used all your skill points.", 14, 1, 1, 1);
+        app.font.drawCentered(400, 252, "Do you want to go on without them?", 13, 1, 1, 1);
+        static const char* kB[2] = {"Yea, I don't need no stinkin' skill points", "No, let me finish"};
+        for (int i = 0; i < 2; i++) { const bool h = app.skConfHover == i; ui::fillRect(214, 264.0f + 28 * i, 372, 22, h ? 1.0f : 0.28f, h ? 1.0f : 0.25f, h ? 1.0f : 0.5f, 1); app.font.drawCentered(400, 264.0f + 28 * i + 16, kB[i], 12, h ? 0.1f : 1, h ? 0.1f : 1, h ? 0.3f : 1); }
+    }
+    ui::endScreen();
+}
+static bool skillsEvent(App& app, const SDL_Event& e) {
+    if (!app.skOpen) return false;
+    const bool mouse = e.type == SDL_MOUSEMOTION || e.type == SDL_MOUSEBUTTONDOWN;
+    float vx = 0, vy = 0;
+    if (mouse) { vx = app.view.toVirtualX((e.type == SDL_MOUSEMOTION ? e.motion.x : e.button.x) * app.dpi); vy = app.view.toVirtualY((e.type == SDL_MOUSEMOTION ? e.motion.y : e.button.y) * app.dpi); }
+    const float X = kSkX;
+    if (app.skConfirm) {
+        int h = -1; for (int i = 0; i < 2; i++) if (vx >= 214 && vx < 586 && vy >= 264.0f + 28 * i && vy < 286.0f + 28 * i) h = i;
+        if (e.type == SDL_MOUSEMOTION) { app.skConfHover = h; return true; }
+        if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) { if (h == 0) skillsClose(app); else if (h == 1) app.skConfirm = false; return true; }
+        if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) { app.skConfirm = false; return true; }
+        return e.type == SDL_MOUSEBUTTONUP || e.type == SDL_KEYDOWN || e.type == SDL_TEXTINPUT;
+    }
+    auto hit = [&]() { if (std::fabs(vx - (X + 0x15e)) < 20 && std::fabs(vy - 0x14e) < 20) return 100;
+        if (vx >= X + 0x32 && vx < X + 0x52) for (int r = 0; r < 10; r++) { const float y = 90.0f + 24 * r; if (vy > y && vy <= y + 12) return r; if (vy > y + 12 && vy <= y + 24) return r + 10; }
+        return -1; };
+    if (e.type == SDL_MOUSEMOTION) { app.skHover = hit(); return true; }
+    if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
+        const int h = hit();
+        if (h == 100) { if (app.skLeft > 0) { app.skConfirm = true; app.skConfHover = -1; } else skillsClose(app); snd(app, "Interface/Button1.wav"); }
+        else if (h >= 0 && h < 10) {   // add: needs a free point and a skill below 10
+            if (app.skLeft > 0 && app.chr.skills[h] < 10) { app.chr.skills[h]++; app.skLeft--; snd(app, "Interface/Button1.wav"); } else snd(app, "Interface/Button2.wav");
+        } else if (h >= 10 && h < 20) {   // refund: only down to the value the dialog started with
+            const int r = h - 10; if (app.chr.skills[r] > app.skStart[r]) { app.chr.skills[r]--; app.skLeft++; snd(app, "Interface/Button1.wav"); } else snd(app, "Interface/Button2.wav");
+        }
+        return true;
+    }
+    if (e.type == SDL_KEYDOWN && (e.key.keysym.sym == SDLK_RETURN)) { if (app.skLeft > 0) app.skConfirm = true; else skillsClose(app); return true; }
+    return e.type == SDL_MOUSEBUTTONUP || e.type == SDL_KEYDOWN || e.type == SDL_TEXTINPUT || e.type == SDL_MOUSEWHEEL;
 }
 static void drawGolferCard(App& app) {
     if (app.cardG < 0 || app.cardG >= (int)app.golfers.size()) { app.screen = App::ScreenPlay; return; }
@@ -4834,11 +4927,13 @@ static void drawHud(App& app) {
     { const std::string m = app.econ.sandbox ? "Sandbox" : money((long long)app.econ.cash); app.font.draw(750 - 8 - app.font.width(m, 17) - 26 + 18, 37, m, 17, 1.0f, neg ? 0.45f : 1.0f, neg ? 0.45f : 1.0f); }
     { char f[24]; std::snprintf(f, sizeof f, "%d", clubFun(app)); app.font.draw(762 - app.font.width(f, 16) - 22 + 6 - 6, 80, f, 16, 1, 1, 1); }
     { char f[24]; std::snprintf(f, sizeof f, "%.2f", clubSkill(app)); app.font.draw(783 - app.font.width(f, 16) - 22 - 6, 123, f, 16, 1, 1, 1); }
-    if (app.curProp >= 0) drawEmblem(app, app.curProp, -2, 2, 58);   // PLACEHOLDER placement: left of the course pill as in the real HUD screenshots
+    if (app.curProp >= 0) drawEmblem(app, app.curProp, 2, 0, 76);   // PLACEHOLDER placement: left of the course pill as in the real HUD screenshots
     drawHomePreview(app);
     drawDockUi(app);
     drawHireDialog(app, app.testHx >= 0 ? app.testHx : app.vmx, app.testHx >= 0 ? app.testHy : app.vmy);
     drawPopup(app);
+    { static bool once = false; if (!once && g_skillsTest) { once = true; skillsOpen(app, 10); } }
+    drawSkillsEdit(app);
     if (app.econ.gameOver) {
         ui::fillRect(200, 250, 400, 80, 0.5f, 0.05f, 0.05f, 0.9f);
         app.font.drawCentered(400, 300, "GAME OVER", 40, 1, 1, 1);
@@ -5445,6 +5540,7 @@ int main(int argc, char** argv) {
         else if (a == "--mute") app.mute = true;
         else if (a == "--sound-log") app.soundLog = true;
         else if (a == "--sandbox") app.econ.sandbox = true;
+        else if (a == "--skills") g_skillsTest = true;
         else if (a == "--prop" && i + 1 < argc) app.curProp = std::atoi(argv[++i]);
         else if (a == "--screen") screenArg = next();
         else if (a == "--popup") popArg = std::atoi(next());
@@ -5669,6 +5765,7 @@ int main(int argc, char** argv) {
     while (running) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
+            if (app.skOpen && app.screen == App::ScreenPlay && e.type != SDL_QUIT && skillsEvent(app, e)) continue;
             if (app.popKind && app.screen == App::ScreenPlay && e.type != SDL_QUIT && popEvent(app, e)) continue;
             if (app.screen != App::ScreenPlay && app.uiOk) {   // title menu and property chooser
                 if (e.type == SDL_QUIT) running = false;
@@ -5920,7 +6017,7 @@ int main(int argc, char** argv) {
         if (app.goTarget >= 0 && app.screen == App::ScreenProperty && app.goFrames-- <= 0) {   // after the "off to" screen has been drawn
             const int t = app.goTarget; app.goTarget = -1; app.hover = -1;
             if (app.switchMode) switchCourse(app, t);
-            else { chrInit(app); startGame(app, t, app.sandboxChoice); }
+            else { chrInit(app); startGame(app, t, app.sandboxChoice); if (!app.sandboxChoice) { int sum = 0; for (int i = 0; i < 10; i++) sum += app.chr.skills[i]; skillsOpen(app, 10 - sum); } }
         }
         if (app.screen == App::ScreenMenu && app.uiOk) drawMenu(app);
         else if (app.screen == App::ScreenProperty && app.uiOk) drawProperty(app);
