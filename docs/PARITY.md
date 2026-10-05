@@ -180,3 +180,16 @@ Note (update 77): the pair-selection screen builder FUN_0044bde0 has no caller a
 | Golfer remarks in the world | DERIVED | Each accepted reaction floats its comment sentence (from the existing comment generator, coloured by polarity) above the golfer for 5 seconds; the position, size, duration and fade are my choices from the real screenshots. Shares the Shift+N toggle with name tags |
 
 Soak check (update 78): an AddressSanitizer plus UBSan build ran headless through long hooked sessions (3000 simulated seconds on a new property with a match, practice round, tournament reveal, tutorial page, skills dialog) with no reports. Leak detection was off and no real mouse input was exercised.
+
+## Update 79 additions
+
+| Item | Status | Notes |
+|---|---|---|
+| Starting land | EXACT | Replaces the tract guess: the owned area is a centred square of tiles [k, 49-k] with k from the acres byte (FUN_00470a60: smallest k >= 1 with 4*(25-k)^2 <= acres*10); coastal leaves the y-low side open, islands are fully owned, sandbox owns tiles 1..48. Ownership is per tile; buying a tract takes the whole tract. Tract price and acres shown use the remaining unowned tile count. Which screen side is "y-low" for coastal is a weak reading. Saves write LAND 2 (k, lie); old saves keep their tract mask. Notes in DECODE_LAND.md |
+| Voice emotion banks | EXACT ids, DERIVED shadowing | Type 1 plays Happy (Success when upset), types 2, 3, 8 play Sad (when upset the exe's Failure slots are shadowed by HARD/EASY/TRICKY/BLIND voices or the boing, played here). Male PLS, KLS, SSS use the exe's "PLS/MKLS/SSS ... mix" files; male PLS Sad is silent (the exe asks for a file that is not on the disc). "Upset" (exe flag 0x20000) is still a stand-in: the last reaction was bad |
+| Types 12 and 13 | DERIVED | mWATER0 for men; women get the tree leaves effect (the exe's female slot is shadowed); 500 ms delay |
+| Voice positioning | EXACT formulas, GUESSED units | Golfers off an 800 x 500 screen area are silent; pan = sx*127/800 - 64; volume byte = (|sx-400|>>4)+50 (the zoom subtraction is not applied, the port's zoom is another scale); pitch jitter 300 - rand(600) treated as cents; gain = volume/127*1.5. New Mixer::playAt (pan, pitch, delay) checked with a synthetic clip |
+| Golfer card skills panel | EXACT rule | Drawn automatically for pros and the player's golfer, never for ordinary golfers; the S key toggle is gone (DECODE_CARDS3.md) |
+| Golfer card Customize | weak reading | Live only on the player's own golfer, opens the character editor; View Story stays pale (its screen is not in the decompile) |
+
+Not found in the decompile: the info card click handlers, the story screen, the Load panel class words. Tested headless only (start renders on two properties, a tract purchase, card render, synthetic mixer test, sanitizer soak); not run on the Mac.

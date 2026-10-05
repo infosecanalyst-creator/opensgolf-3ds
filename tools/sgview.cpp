@@ -256,6 +256,7 @@ struct App {
     std::vector<Emp> emps; int empCount[4][2] = {};   // staff walking the course, and the counters they earn (greeted/cheered and so on)
     int ovMode = -1, ovSel = -1; std::vector<float> ovAura, ovValue;   // course overview (F5): -1 routing, 1 aura, 2 home site value, 3 employees
     bool landModel = false; int ownMask = 0x1ff; int landBought = 0; bool landOffer = false;
+    int ownK = 0, ownLie = 0;   // starting land: the exe owns a centred square of tiles [k, 49-k] (FUN_00470a60); ownMask holds the tracts bought since. ownK 0 = old saves (tracts only)
     int blSel = -1, blPrice[9] = {}, blSale[9] = {}; bool blRolled = false; std::string blNote;
     int matchPro = -1, matchWager = 0, matchMonth = -1, matchPl = -1, matchOp = -1, matchLead = 0, matchDoneN = 0; bool matchOn = false, matchDone[18] = {};   // a pro's challenge, the wager per hole (units of $100), the two golfer slots and the holes decided so far
     int tutPage = -1; bool tutWasPaused = false;   // the tutorial: eleven pages on fun and nine on skill (structure from the exe, wording is my own); -1 when closed
@@ -675,8 +676,14 @@ static int tractOfTile(int x, int y) { if (x < 1 || y < 1 || x > 48 || y > 48) r
 static bool isOwned(const App& app, int x, int y) {
     if (!app.landModel) return true;
     const int t = tractOfTile(x, y);
-    return t >= 0 && ((app.ownMask >> t) & 1);
+    if (t >= 0 && ((app.ownMask >> t) & 1)) return true;
+    if (app.ownK <= 0 || x < 0 || y < 0 || x > 49 || y > 49) return false;
+    const int k = app.ownK;   // EXACT start ring (docs/DECODE_LAND.md): inland all four sides, coastal leaves the y-low side open, island owns everything
+    if (app.ownLie == 2) return true;
+    if (x < k || x > 49 - k || y > 49 - k) return false;
+    return app.ownLie == 1 ? true : y >= k;
 }
+static int ownRingK(int acres) { int n = 25, k = 0; do { n--; k++; } while (acres * 10 < n * n * 4 && k < 25); return k; }   // FUN_00470a60 lines 86365-86371
 
 // ---- Amenities on single tiles (benches, flower beds, scenic trees, scenic bridge, ball washers, landmarks) ----
 // Which picture belongs to which design number is not recorded, so the order of these lists is the port's own (PLACEHOLDER).
@@ -1139,21 +1146,52 @@ static const char* voiceStem(int type, bool female) {
         default: return nullptr;
     }
 }
+// Positioned voice (FUN_0040c500, EXACT formulas from research): silent when the golfer is off screen (fixed 800 x 500 test), pan = sx*127/800 - 64,
+// volume byte = (|sx-400| >> 4) + 50 (minus 40 when zoomed out to 3 or less), pitch = 300 - rand(600). The pitch unit (cents) and the volume to gain
+// mapping (vol / 127 * 1.5) are GUESSES; the exe's delay argument is in milliseconds (inferred).
+static void sndAt(App& app, const char* rel, float wx, float wz, int delayMs) {
+    if (!app.mixer || app.mute) return;
+    static uint32_t jit = 2463534242u; jit ^= jit << 13; jit ^= jit >> 17; jit ^= jit << 5;   // pitch jitter, kept off the game's own random streams
+    int sx = 400, sy = 250;
+    if (app.upp > 0) {
+    const float y = app.terrain.heightAt(wx, wz);
+    const double ex = app.mv[0] * wx + app.mv[4] * y + app.mv[8] * wz + app.mv[12], ey = app.mv[1] * wx + app.mv[5] * y + app.mv[9] * wz + app.mv[13];
+    const float px = (float)(ex / app.upp + app.drawW * 0.5), py = (float)(app.drawH * 0.5 - ey / app.upp);
+    sx = (int)app.view.toVirtualX(px); sy = (int)app.view.toVirtualY(py); }
+    if (sx < 0 || sx > 799 || sy < 0 || sy > 500) { if (app.soundLog) std::printf("  sound: %s  (off screen)\n", rel); return; }
+    const int pan = std::clamp(sx * 127 / 800 - 64, -64, 63);
+    const int vol = (std::abs(sx - 400) >> 4) + 50;   // the exe subtracts 40 when its zoom level is 3 or lower; this port's zoom is not that scale, so the zoomed in value is used
+    const int pitch = 300 - (int)(jit % 600u);
+    const int id = app.mixer->playAt(rel, std::min(1.0f, vol / 127.0f * 1.5f), pan, pitch, delayMs);
+    if (app.soundLog) std::printf("  sound: %s%s pan %d vol %d pitch %d delay %d\n", rel, id < 0 ? "  (missing)" : "", pan, vol, pitch, delayMs);
+}
 static void speakVoice(App& app, const Golfer& g, int type) {
     const bool female = g.look >= 2;   // looks 2 and 3 use the female body sets (PLACEHOLDER until golfers carry a character template)
-    if (type == 1 || type == 2 || type == 3 || type == 8) {   // emotion clips by body class (DECODE_VOICES.md 4.1; which bank is which kind is a weak reading)
-        static const char* kM[4] = {"MalePLS", "MaleKLS", "MalePSS", "MaleSSS"}, *kF[4] = {"FemalePLS", "FemaleSSS", "FemalePSS", "FemaleSKTT"};
-        const bool bad = type != 1, after = g.rx.polarity() == 2;
-        const std::string kind = bad ? (after ? "Sad" : "Failure") : (after ? "Happy" : "Success");
-        const char* cls = female ? kF[g.bodyCls & 3] : kM[g.bodyCls & 3];
-        std::string rel = std::string("Emotion/") + cls + kind + (!female && (g.bodyCls & 3) == 1 && kind == "Sad" ? " mix" : "") + ".wav";
-        snd(app, rel.c_str(), 0.55f);
+    const float gx = g.sim.golferX, gz = g.sim.golferZ;
+    if (type == 1 || type == 2 || type == 3 || type == 8) {   // emotion banks (EXACT ids from the exe bytes: Happy 0xd2, Sad 0xdc, Success 0xe6, Failure 0x10)
+        const int cl = g.bodyCls & 3; const bool upset = g.rx.polarity() == 2;   // PLACEHOLDER stand-in for the exe's flag 0x20000 (upset)
+        std::string kind = type == 1 ? (upset ? "Success" : "Happy") : "Sad";
+        std::string rel;
+        if (type != 1 && upset) {   // the Failure bank is shadowed in the exe by earlier registrations (DERIVED): other voices play instead
+            static const char* kSh[2][4] = {{"simsfx/female/fHARD0.wav", "simsfx/male/mHARD0.wav", "simsfx/female/fEASY0.wav", "simsfx/male/mEASY0.wav"},
+                                            {"simsfx/male/mTRICKY0.wav", "simsfx/female/fBLIND.wav", "simsfx/male/mBLIND.wav", "Effects/Boing.wav"}};
+            rel = kSh[female ? 1 : 0][cl];
+        } else if (female) { static const char* kF[4] = {"FemalePLS", "FemaleSSS", "FemalePSS", "FemaleSKTT"}; rel = std::string("Emotion/") + kF[cl] + kind + ".wav"; }
+        else if (cl == 0) { if (kind == "Sad") return; rel = "Emotion/PLS " + kind + " mix.wav"; }   // the exe asks for "PLS Sid mix.wav", which is not on the disc: silent
+        else if (cl == 1) rel = "Emotion/MKLS " + kind + " mix.wav";
+        else if (cl == 2) rel = "Emotion/MalePSS" + kind + ".wav";
+        else rel = "Emotion/SSS " + kind + " mix.wav";
+        sndAt(app, rel.c_str(), gx, gz, 0);
+        return;
+    }
+    if (type == 12 || type == 13) {   // id 8 + male: mWATER0 for men; the female slot is shadowed by the tree-leaves effect in the exe (DERIVED); delay 500
+        sndAt(app, female ? "Golf_Sfx/Ball Tree Leaves.wav" : "simsfx/male/mWATER0.wav", gx, gz, 500);
         return;
     }
     const char* stem = voiceStem(type, female);
     if (!stem) return;
     std::string rel = std::string("simsfx/") + (female ? "female/f" : "male/m") + stem + ".wav";
-    snd(app, rel.c_str(), 0.8f);
+    sndAt(app, rel.c_str(), gx, gz, 0);
 }
 static sg::CommentCtx commentCtxFor(const App& app, int holeIdx, int loc);
 static void commentPen(sg::CommentColour c, float& r, float& g, float& b);
@@ -3041,21 +3079,28 @@ static void drawSga(App& app) {
 
 // ---- Buy Land (docs/UI_SCREENS2.md section 4, art infoscreens/buy_land.pcx) ----
 namespace bl2 = sg::ui_screens2::buyland2;
-static bool tractForSale(const App& app, int t) { return app.landModel && !((app.ownMask >> t) & 1); }
+static int tractSaleTiles(const App& app, int t) {   // purchasable tiles of the tract that are not owned yet (the exe's remaining 0x14 tiles)
+    if (!app.landModel || t < 0 || t > 8 || ((app.ownMask >> t) & 1)) return 0;
+    int n = 0; const int x0 = 1 + (t % 3) * 16, y0 = 1 + (t / 3) * 16;
+    for (int y = y0; y < y0 + 16; y++) for (int x = x0; x < x0 + 16; x++) if (!isOwned(app, x, y)) n++;
+    return n;
+}
+static bool tractForSale(const App& app, int t) { return tractSaleTiles(app, t) > 0; }
 static void rollTractPrices(App& app) {
     uint32_t r = app.seed * 2654435761u + (uint32_t)app.landBought * 40503u + (uint32_t)app.econ.day * 9973u + 77u;
     auto rnd3 = [&]() { r ^= r << 13; r ^= r >> 17; r ^= r << 5; return (int)(r % 3u); };
     const int n = std::min(app.landBought & 0x7f, 18);
     for (int t = 0; t < 9; t++) {
         long long f = bl2::kBaseF; int sale = 0;
-        if (tractForSale(app, t)) for (int i = 0; i < bl2::kTractSide * bl2::kTractSide; i++) { sale++; if (rnd3() == 0) f += 1LL << n; }
+        if (tractForSale(app, t)) for (int i = 0, m = tractSaleTiles(app, t); i < m; i++) { sale++; if (rnd3() == 0) f += 1LL << n; }
         app.blSale[t] = sale;
         app.blPrice[t] = sale ? bl2::priceUnits((int)std::min<long long>(f, 100000000LL)) : 0;
     }
     app.blRolled = true;
 }
 static bool openBuyLand(App& app) {
-    if (!app.landModel) { say(app, "This course has no land for sale", 4); return false; }
+    bool any = false; for (int t = 0; t < 9; t++) any = any || tractForSale(app, t);
+    if (!app.landModel || !any) { say(app, "This course has no land for sale", 4); return false; }
     if (!app.econ.sandbox && !app.landOffer) { say(app, "The county commissioner has not offered you any land yet", 5); return false; }
     app.blRolled = false; app.blSel = -1; app.blNote.clear(); app.screen = App::ScreenBuyLand; return true;
 }
@@ -3302,6 +3347,7 @@ static bool saveGame(App& app, const std::string& file, std::string& err) {
     std::fprintf(f, "SOCIAL 1\n%d %d %d %u %d %d\n", app.vstate.ceoCount, app.vstate.commissionerCount, app.vstate.heiressVisits, app.vstate.landmarkMask, app.fame, app.rosterReady ? 1 : 0);
     if (app.rosterReady) { for (int i = 1; i <= sg::Roster::kPool; i++) std::fprintf(f, "%d %d ", (int)app.roster.e[i].tier, app.roster.e[i].resigned ? 1 : 0); std::fprintf(f, "\n"); }
     std::fprintf(f, "LAVAIL 1 %u\n", app.vstate.availMask);
+    std::fprintf(f, "LAND 2 %d %d\n", app.ownK, app.ownLie);
     std::fprintf(f, "LAND 1 %d %d %d %d\n", app.landModel ? 1 : 0, app.ownMask, app.landBought, app.landOffer ? 1 : 0);
     std::fprintf(f, "CAREER 1 %d %u\n", app.curProp, app.careerOwned);
     std::fprintf(f, "HOMES 1 %zu %d\n", app.homes.size(), app.homeSales);
@@ -3382,10 +3428,10 @@ static bool loadGame(App& app, const std::string& file, std::string& err) {
     }
     vsLoaded.availMask = 0x3fffu;   // older saves had every design on the strip
     if (FILE* f = std::fopen(file.c_str(), "r")) { char line[512]; while (std::fgets(line, sizeof line, f)) if (!std::strncmp(line, "LAVAIL 1", 8)) { unsigned am = 0x3fffu; if (std::sscanf(line + 8, "%u", &am) == 1) vsLoaded.availMask = am; break; } std::fclose(f); }
-    int landModelL = 0, ownMaskL = 0x1ff, landBoughtL = 0, landOfferL = 0;
+    int landModelL = 0, ownMaskL = 0x1ff, landBoughtL = 0, landOfferL = 0, ownKL = 0, ownLieL = 0;
     if (FILE* f = std::fopen(file.c_str(), "r")) {
         char line[512];
-        while (std::fgets(line, sizeof line, f)) if (!std::strncmp(line, "LAND 1", 6)) { std::sscanf(line + 6, "%d %d %d %d", &landModelL, &ownMaskL, &landBoughtL, &landOfferL); break; }
+        while (std::fgets(line, sizeof line, f)) if (!std::strncmp(line, "LAND 2", 6)) std::sscanf(line + 6, "%d %d", &ownKL, &ownLieL); else if (!std::strncmp(line, "LAND 1", 6)) { std::sscanf(line + 6, "%d %d %d %d", &landModelL, &ownMaskL, &landBoughtL, &landOfferL); }
         std::fclose(f);
     }
     int curPropL = -1; unsigned careerL = 0;
@@ -3451,7 +3497,7 @@ static bool loadGame(App& app, const std::string& file, std::string& err) {
     if (haveGame) { app.curProp = curPropL; app.careerOwned = careerL | (curPropL >= 0 ? 1u << curPropL : 0u); } else { app.curProp = -1; app.careerOwned = 0; }
     app.amen = haveGame ? amenLoaded : std::vector<App::Amen>();
     app.homes = haveGame ? homesLoaded : std::vector<App::Home>(); app.homeSales = haveGame ? salesLoaded : 0; app.homeMonth = -1; app.homeConfirm = -1;
-    app.landModel = haveGame && landModelL && app.terrain.w == 50 && app.terrain.h == 50; app.ownMask = app.landModel ? (ownMaskL & 0x1ff) : 0x1ff; app.landBought = landBoughtL; app.landOffer = landOfferL != 0;
+    app.landModel = haveGame && landModelL && app.terrain.w == 50 && app.terrain.h == 50; app.ownMask = app.landModel ? (ownMaskL & 0x1ff) : 0x1ff; app.landBought = landBoughtL; app.landOffer = landOfferL != 0; app.ownK = app.landModel ? ownKL : 0; app.ownLie = ownLieL;
     app.tracker = sg::GoalTracker(std::clamp(diff, 0, 3));
     for (int g : goalsLoaded) app.tracker.mark(g);
     if (app.econ.sandbox) vsLoaded.availMask |= 0x3fffu;
@@ -3508,14 +3554,9 @@ static void startGame(App& app, int propIdx, bool sandbox) {
     app.seed = app.seed * 1664525u + 1013904223u + (uint32_t)propIdx * 7919u;
     { const auto& site = ui_screens2::worldmap::kSites[propIdx]; if (!app.worldInit) worldDefault(app);
       app.terrain = Terrain::generate(50, 50, app.seed, p.theme, site.lie, site.terrain, app.siteSlot[propIdx], sandbox); }
-    // The land you start with: whole tracts, beginning with the one that holds the clubhouse, enough for the property's acres (PLACEHOLDER: the exe's
-    // starting ownership per property is not decoded).
-    { int order[9]; for (int i = 0; i < 9; i++) order[i] = i;
-      const int cx = app.terrain.clubhouseX, cy = app.terrain.clubhouseY;
-      auto d2 = [&](int t) { const int tx = 1 + (t % 3) * 16 + 8, ty = 1 + (t / 3) * 16 + 8; return (tx - cx) * (tx - cx) + (ty - cy) * (ty - cy); };
-      std::stable_sort(order, order + 9, [&](int a, int b) { return d2(a) < d2(b); });   // the tract with the clubhouse first, then its neighbours (PLACEHOLDER: the exe's starting ownership is not decoded)
-      const int n = std::clamp((acres + 10) / 15, 4, 9);   // PLACEHOLDER: real starts show far more owned land than acres/25 gives
-      app.landModel = true; app.ownMask = 0; for (int i = 0; i < n; i++) app.ownMask |= 1 << order[i];
+    // The land you start with (EXACT, FUN_00470a60, docs/DECODE_LAND.md): a centred square of tiles [k, 49-k] with k from the acres byte; the rest is for sale.
+    { const int acresByte = sandbox ? ui_screens2::worldmap::kUnlimitedAcres : acres;
+      app.landModel = true; app.ownMask = 0; app.ownK = ownRingK(acresByte); app.ownLie = ui_screens2::worldmap::kSites[propIdx].lie;
       app.landBought = 0; app.landOffer = false; }
     app.courseName = std::string(p.name) + " GC";
     if (!std::strcmp(p.name, "Scotland")) snd(app, "World/Bagpipe.wav", 0.7f);
@@ -5110,7 +5151,7 @@ static const float kCardBtnX[5] = {0x125, 0x166, 0x1a7, 0x1e8, 0x23a}, kCardBtnC
 static const int kCardBtnRow[5] = {0, 2, 3, 4, 5};   // person with list, runner, camera, book, tick on the GolferStats strips
 static const char* kCardTip[5] = {"Customize", "Move/Eject Golfer", "Take Snapshot", "View Story", ""};
 static int cardHit(float vx, float vy) { for (int b = 0; b < 5; b++) if (std::hypot(vx - kCardBtnCx[b], vy - 0x106) < 25) return b; return -1; }
-static bool cardBtnLive(int b) { return b == 1 || b == 2 || b == 4; }   // Customize and View Story have no port action yet, so they are drawn in the pale strip
+static bool cardBtnLive(int b, const Golfer& g) { return b == 1 || b == 2 || b == 4 || (b == 0 && g.isPlayer); }   // Customize opens the character editor for the player's own golfer only (weak reading of the exe); View Story needs the unknown story screen, so it stays pale
 // Read only skills dialog (FUN_0045f0f0 with x offset -50): a 208 by 316 panel at (28,50), the title white and centred at x 160, ten rows from y 90 in steps of 24,
 // names at x 88 (grey when the skill is 0, else black), values "+N%" at x 37 (docs/DECODE_CARDS2.md section 1). PLACEHOLDER: the row strips and panel art (TransPopups and the
 // 0x4c1570 sheet cuts are not measured), so the panel is the popup frame and the rows are plain boxes; skills are the port's 0..15 mapped onto the exe's 0..10.
@@ -5261,7 +5302,8 @@ static void drawGolferCard(App& app) {
     ui::drawImage(app.cardArt, 236, 26, 64, 33, 402, 244);   // the plate (sheet cut measured on the art)
     ui::drawImage(app.ballArt, 172, -2, 0, 300, 140, 140);
     drawFace(app, golferFemale(g), golferHead(g), golferExpr(g), 172, -2, true);
-    if (app.cardSkills) drawSkillsPanel(app, g, g.memberId ? memberName(app, g.memberId) : std::string("Visiting golfer"));
+    if (g.isPlayer || g.proIdx >= 0 || app.cardSkills)   // the exe draws the skills panel on the card for pros, the player's golfer and VIPs, never for ordinary golfers (FUN_0045c560 line 60064)
+        drawSkillsPanel(app, g, g.isPlayer ? app.charName : g.proIdx >= 0 && g.proIdx < (int)app.pros.size() ? app.pros[(size_t)g.proIdx].name : g.memberId ? memberName(app, g.memberId) : std::string("Visiting golfer"));
     const float cx = 420;
     const std::string nm = g.memberId ? memberName(app, g.memberId) : std::string("Visiting golfer");
     app.font.drawCentered(cx, 0x28 + 6, nm, 17, 0.1f, 0.08f, 0.3f);
@@ -5296,7 +5338,7 @@ static void drawGolferCard(App& app) {
     app.font.drawCentered(0x256 + 1, 0x94 + 6, std::to_string(total), 14, 0, 0, 0);
     // Round buttons: strip 0 normal, strip 1 pale (no action in the port), strip 2 hover.
     for (int b = 0; b < 5; b++) {
-        const int strip = !cardBtnLive(b) ? 1 : app.cardHover == b ? 2 : 0;
+        const int strip = !cardBtnLive(b, g) ? 1 : app.cardHover == b ? 2 : 0;
         ui::drawImage(app.cardArt, kCardBtnX[b], 0xed, 498.0f + 100 * strip, 50.0f * kCardBtnRow[b], 60, 50);
     }
     if (app.cardHover >= 0 && app.cardFrames > 7 && kCardTip[app.cardHover][0]) {
@@ -5307,7 +5349,6 @@ static void drawGolferCard(App& app) {
 }
 static void golferCardEvent(App& app, const SDL_Event& e) {
     if (e.type == SDL_KEYDOWN && (e.key.keysym.sym == SDLK_ESCAPE || e.key.keysym.sym == SDLK_RETURN)) { app.screen = App::ScreenPlay; app.cardG = -1; app.cardSkills = false; return; }
-    if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_s) { app.cardSkills = !app.cardSkills; return; }   // PLACEHOLDER trigger: the exe shows the dialog from the card when a slot flag is set
     if (e.type != SDL_MOUSEMOTION && e.type != SDL_MOUSEBUTTONDOWN) return;
     const bool click = e.type == SDL_MOUSEBUTTONDOWN;
     const float vx = app.view.toVirtualX((click ? e.button.x : e.motion.x) * app.dpi), vy = app.view.toVirtualY((click ? e.button.y : e.motion.y) * app.dpi);
@@ -5316,8 +5357,9 @@ static void golferCardEvent(App& app, const SDL_Event& e) {
     if (h != app.cardHover) { app.cardHover = h; app.cardFrames = 0; }
     if (!click || e.button.button != SDL_BUTTON_LEFT) return;
     if (h < 0) { app.screen = App::ScreenPlay; app.cardG = -1; return; }   // a click elsewhere puts the card away
-    if (!cardBtnLive(h)) return;
+    if (!cardBtnLive(h, app.golfers[(size_t)app.cardG])) return;
     snd(app, "Interface/Button1.wav");
+    if (h == 0) { app.screen = App::ScreenPlay; app.cardG = -1; openCustomise(app); return; }
     if (h == 2) { if (screenshot(app, "simgolf-shot.png")) toastMsg(app, "Snapshot saved"); }
     else if (h == 1) { const size_t gi = (size_t)app.cardG; app.screen = App::ScreenPlay; app.cardG = -1; if (app.golfers[gi].active) startLeaving(app, gi); }   // PLACEHOLDER: ejecting is filed like a quit
     else if (h == 4) { app.screen = App::ScreenPlay; app.cardG = -1; }
@@ -5896,7 +5938,7 @@ static void drawCursor(App& app) {
 
 // Land you do not own is shaded dark (PLACEHOLDER look: the exe shows for-sale tiles with tile code 0x14, whose art is not identified).
 static void drawUnowned(App& app) {
-    if (!app.landModel || app.ownMask == 0x1ff) return;
+    if (!app.landModel) return;
     const Terrain& t = app.terrain;
     const float ox = -t.w * kTileSize * 0.5f, oz = -t.h * kTileSize * 0.5f;
     glDisable(GL_LIGHTING); glDisable(GL_TEXTURE_2D); glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);

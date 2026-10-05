@@ -1,6 +1,7 @@
 #include "sg/audio.h"
 #include <SDL.h>
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <filesystem>
 
@@ -84,6 +85,21 @@ int Mixer::play(const std::string& rel, float volume, bool loop) {
     return id;
 }
 
+int Mixer::playAt(const std::string& rel, float volume, int pan, int pitchCents, int delayMs) {
+    std::lock_guard<std::mutex> lock(m_);
+    const Clip* c = load(lowerStr(rel));
+    if (!c || c->pcm.empty()) return -1;
+    if (voices_.size() >= 32) voices_.erase(voices_.begin());
+    Voice v{nextId_++, c, 0, volume, false};
+    v.general = true;
+    v.rate = std::pow(2.0, std::clamp(pitchCents, -1200, 1200) / 1200.0);
+    pan = std::clamp(pan, -64, 63);
+    v.gl = pan > 0 ? 1.0f - pan / 64.0f : 1.0f; v.gr = pan < 0 ? 1.0f + pan / 64.0f : 1.0f;   // DirectSound style: pan attenuates the far side
+    v.delay = (long)delayMs * 44100 / 1000;
+    voices_.push_back(v);
+    return v.id;
+}
+
 void Mixer::stop(int voice) {
     std::lock_guard<std::mutex> lock(m_);
     voices_.erase(std::remove_if(voices_.begin(), voices_.end(), [&](const Voice& v) { return v.id == voice; }), voices_.end());
@@ -100,6 +116,19 @@ void Mixer::mix(int16_t* out, int frames) {
     for (Voice& v : voices_) {
         const size_t total = v.clip->pcm.size();
         const int gain = (int)(v.vol * master * 256.0f);
+        if (v.general) {   // positioned voice: start delay, pitch (resampled with linear interpolation), pan
+            const size_t nf = total / 2;
+            for (int f = 0; f < frames; f++) {
+                if (v.delay > 0) { v.delay--; continue; }
+                const size_t i0 = (size_t)v.fpos;
+                if (i0 >= nf) { v.pos = total; break; }
+                const size_t i1 = std::min(i0 + 1, nf - 1); const float fr = (float)(v.fpos - (double)i0);
+                const float l = v.clip->pcm[i0 * 2] * (1 - fr) + v.clip->pcm[i1 * 2] * fr, r = v.clip->pcm[i0 * 2 + 1] * (1 - fr) + v.clip->pcm[i1 * 2 + 1] * fr;
+                acc[(size_t)f * 2] += (int)(l * gain * v.gl) >> 8; acc[(size_t)f * 2 + 1] += (int)(r * gain * v.gr) >> 8;
+                v.fpos += v.rate;
+            }
+            continue;
+        }
         size_t i = 0;
         while (i < acc.size()) {
             if (v.pos >= total) { if (v.loop) v.pos = 0; else break; }

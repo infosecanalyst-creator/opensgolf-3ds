@@ -16,6 +16,8 @@ class Mixer {
     explicit Mixer(const std::string& soundsDir);
     // Finds a clip by path relative to Sounds/ (case-insensitive, forward slashes) and plays it. Returns a voice id, or -1.
     int play(const std::string& rel, float volume = 1.0f, bool loop = false);
+    // Positioned play (the exe's FUN_0040c500 path): pan -64..63 (left to right), pitch in cents (+-1200), start delay in milliseconds.
+    int playAt(const std::string& rel, float volume, int pan, int pitchCents, int delayMs);
     void stop(int voice);
     void stopAll();
     void setVoiceVolume(int voice, float volume);
@@ -29,7 +31,7 @@ class Mixer {
 
   private:
     struct Clip { std::vector<int16_t> pcm; };  // stereo interleaved
-    struct Voice { int id; const Clip* clip; size_t pos; float vol; bool loop; };
+    struct Voice { int id; const Clip* clip; size_t pos; float vol; bool loop; bool general = false; double fpos = 0, rate = 1; float gl = 1, gr = 1; long delay = 0; };
     std::string dir_;
     std::map<std::string, std::string> index_;  // lower-case relative path -> real path
     std::map<std::string, std::unique_ptr<Clip>> clips_;

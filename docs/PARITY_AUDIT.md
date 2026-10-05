@@ -131,19 +131,16 @@ Files the exe uses that the port never names are likely gaps. Pattern loaded set
 - Interface/s_TransPopups.pcx
 - Interface/tropdesert_A.pcx
 
-## SimsFX: 76 files, 0 named in the port, 66 used by the exe but never named in the port
+## SimsFX: 76 files, 8 named in the port, 58 used by the exe but never named in the port
 
 - SimsFX/Female/fBAD0.wav
 - SimsFX/Female/fBADHOLE.wav
 - SimsFX/Female/fBENCH0.wav
-- SimsFX/Female/fBLIND.wav
 - SimsFX/Female/fCELEB0.wav
 - SimsFX/Female/fCOKE0.wav
 - SimsFX/Female/fCRAB0.wav
-- SimsFX/Female/fEASY0.wav
 - SimsFX/Female/fHAPPY0.wav
 - SimsFX/Female/fHAPPY1.wav
-- SimsFX/Female/fHARD0.wav
 - SimsFX/Female/fHAVEADRINK.wav
 - SimsFX/Female/fHUNGRY.wav
 - SimsFX/Female/fLOVELY0.wav
@@ -168,18 +165,15 @@ Files the exe uses that the port never names are likely gaps. Pattern loaded set
 - SimsFX/Male/mBAD0.wav
 - SimsFX/Male/mBADHOLE.wav
 - SimsFX/Male/mBENCH0.wav
-- SimsFX/Male/mBLIND.wav
 - SimsFX/Male/mCELEB0.wav
 - SimsFX/Male/mCOKE0.wav
 - SimsFX/Male/mCRAB0.wav
 - SimsFX/Male/mCRABGRASS.wav
 - SimsFX/Male/mCRABGRASS2.wav
-- SimsFX/Male/mEASY0.wav
 - SimsFX/Male/mGREETING.wav
 - SimsFX/Male/mHAPPY0.wav
 - SimsFX/Male/mHAPPY1.wav
 - SimsFX/Male/mHUNGRY.wav
-- SimsFX/Male/mHard0.wav
 - SimsFX/Male/mLOVELY0.wav
 - SimsFX/Male/mMAD0.wav
 - SimsFX/Male/mOOPS0.wav
@@ -193,15 +187,17 @@ Files the exe uses that the port never names are likely gaps. Pattern loaded set
 - SimsFX/Male/mSTORYYES.wav
 - SimsFX/Male/mTHIRSTY.wav
 - SimsFX/Male/mTIRED.wav
-- ... 6 more
+- SimsFX/Male/mUGLY0.wav
+- SimsFX/Male/mVARIETY.wav
+- SimsFX/Male/mWAITING0.wav
+- SimsFX/Male/mWET0.wav
 
-## Sounds: 245 files, 53 named in the port, 40 used by the exe but never named in the port
+## Sounds: 245 files, 55 named in the port, 39 used by the exe but never named in the port
 
 - Sounds/Buy3Short.wav
 - Sounds/Buy4Short.wav
 - Sounds/Effects/Alligator .wav
 - Sounds/Effects/Belch.wav
-- Sounds/Effects/Boing.wav
 - Sounds/Effects/Fly.wav
 - Sounds/Effects/TAUNT009.wav
 - Sounds/Effects/TimeTunnelClip2.wav
