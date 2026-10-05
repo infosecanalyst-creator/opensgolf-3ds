@@ -114,3 +114,11 @@ Audit count: 982 gaps (down from 987).
 | clang -Wall pass | checked | 3 harmless warnings, no portability errors in sgview.cpp |
 
 Not yet run on the Mac. Headless checks only.
+
+## Update 73 fixes
+
+| Area | State | Notes |
+|------|-------|-------|
+| Colour-key fringe | fixed | Keyed art loses blended key-colour edge pixels, and transparent pixels take the nearest opaque colour so filtering cannot pull pink in |
+| Skills dialog OK button | fixed | Drawn through a circle mask (the art is a round button on a square lavender backdrop) |
+| Starting land | PLACEHOLDER | Tracts owned at start = clamp((acres + 10) / 15, 4, 9); the exe's real starting ownership is still not decoded |

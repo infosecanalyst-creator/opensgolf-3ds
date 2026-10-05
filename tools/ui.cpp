@@ -1,5 +1,6 @@
 #include "ui.h"
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <vector>
@@ -12,6 +13,39 @@
 #endif
 
 namespace ui {
+
+// Colour-keyed art keeps anti-aliased pixels that are a blend of the art and the key colour, which show as a pink ring once the texture is filtered.
+// Remove those pixels next to the transparent area, then copy the nearest opaque colour into the transparent pixels so filtering cannot pull the key colour in.
+static void cleanKeyFringe(sg::Rgba& img, bool pinkKey) {
+    const int w = (int)img.w, h = (int)img.h;
+    auto A = [&](int x, int y) -> unsigned char& { return img.px[((size_t)y * w + x) * 4 + 3]; };
+    auto R = [&](int x, int y) -> unsigned char* { return &img.px[((size_t)y * w + x) * 4]; };
+    auto nearClear = [&](int x, int y) { for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) { const int xx = x + dx, yy = y + dy; if (xx >= 0 && yy >= 0 && xx < w && yy < h && A(xx, yy) == 0) return true; } return false; };
+    if (pinkKey)
+        for (int pass = 0; pass < 2; pass++) {
+            std::vector<size_t> kill;
+            for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
+                if (A(x, y) == 0) continue;
+                const unsigned char* c = R(x, y);
+                const int r = c[0], g = c[1], b = c[2];
+                if (r > 150 && b > 110 && g + 55 < std::min(r, b) && nearClear(x, y)) kill.push_back((size_t)y * w + x);
+            }
+            for (size_t i : kill) img.px[i * 4 + 3] = 0;
+        }
+    std::vector<unsigned char> copy = img.px;
+    for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
+        if (A(x, y) != 0) continue;
+        int sr = 0, sg = 0, sb = 0, n = 0;
+        for (int dy = -2; dy <= 2; dy++) for (int dx = -2; dx <= 2; dx++) {
+            const int xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+            const unsigned char* c = &copy[((size_t)yy * w + xx) * 4]; if (c[3] == 0) continue;
+            sr += c[0]; sg += c[1]; sb += c[2]; n++;
+        }
+        unsigned char* d = R(x, y);
+        if (n) { d[0] = (unsigned char)(sr / n); d[1] = (unsigned char)(sg / n); d[2] = (unsigned char)(sb / n); }
+        else { d[0] = d[1] = d[2] = 0; }
+    }
+}
 
 bool loadPcx(const std::string& path, Image& out, bool magentaKey, int keyRgb, const std::string& alphaPath) {
     sg::Bytes d; sg::Rgba img; std::string err;
@@ -27,6 +61,30 @@ bool loadPcx(const std::string& path, Image& out, bool magentaKey, int keyRgb, c
     if (keyRgb >= 0)
         for (size_t i = 0; i + 3 < img.px.size(); i += 4)
             if (img.px[i] == ((keyRgb >> 16) & 255) && img.px[i + 1] == ((keyRgb >> 8) & 255) && img.px[i + 2] == (keyRgb & 255)) img.px[i + 3] = 0;
+    if (magentaKey || keyRgb >= 0) cleanKeyFringe(img, magentaKey || keyRgb == 0xff00ff);
+    glGenTextures(1, &out.tex);
+    glBindTexture(GL_TEXTURE_2D, out.tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)img.w, (GLsizei)img.h, 0, GL_RGBA, GL_UNSIGNED_BYTE, img.px.data());
+    out.w = (int)img.w; out.h = (int)img.h;
+    return true;
+}
+
+bool loadPcxCircles(const std::string& path, Image& out, int cx0, int cy0, int pitch, int count, float r) {
+    sg::Bytes d; sg::Rgba img; std::string err;
+    if (!sg::readFile(path, d) || !sg::decodePcx(d, img, err)) return false;
+    for (int y = 0; y < (int)img.h; y++) for (int x = 0; x < (int)img.w; x++) {
+        float best = 1e9f;
+        for (int k = 0; k < count; k++) { const float dx = x + 0.5f - (cx0 + k * pitch), dy = y + 0.5f - cy0; best = std::min(best, std::sqrt(dx * dx + dy * dy)); }
+        unsigned char* p = &img.px[((size_t)y * img.w + x) * 4];
+        const float a = std::clamp(r + 0.5f - best, 0.0f, 1.0f);
+        p[3] = (unsigned char)(a * 255);
+    }
+    cleanKeyFringe(img, false);
     glGenTextures(1, &out.tex);
     glBindTexture(GL_TEXTURE_2D, out.tex);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);

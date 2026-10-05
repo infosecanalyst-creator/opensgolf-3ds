@@ -148,7 +148,7 @@ struct App {
     // Screens: the title menu, the property chooser and the course itself.
     enum { ScreenMenu, ScreenProperty, ScreenPlay, ScreenReport, ScreenCharacter, ScreenCustomise, ScreenSga, ScreenFinance, ScreenRoster, ScreenHoleStat, ScreenKeys, ScreenEoy, ScreenComments, ScreenHisto, ScreenBoard, ScreenBuyLand, ScreenOverview, ScreenAward, ScreenGolfer, ScreenDiff, ScreenThemes, ScreenLoad, ScreenCredits, ScreenTop10, ScreenPro, ScreenBest, ScreenPair, ScreenStats };
     int screen = ScreenPlay;
-    ui::Image titleBase, titleUn, titleMo, worldBase, themeIcons[4], reportArt, holeArt, keysArt, eoyArt, comtArt, sgaArt, tourArt, histArt, boardArt, partsArt, tacsArt, pinArt, finArt, okArt, rosterArt, rosterBtn, rosterBar, dockArt, terrPanel, terrBtns;
+    ui::Image titleBase, titleUn, titleMo, worldBase, themeIcons[4], reportArt, holeArt, keysArt, eoyArt, comtArt, sgaArt, tourArt, histArt, boardArt, partsArt, tacsArt, pinArt, finArt, okArt, okRound, rosterArt, rosterBtn, rosterBar, dockArt, terrPanel, terrBtns;
     ui::Image amenArt, elevArt, bldgArt, empArt, layoutArt, hireArt, memberArt, landArt, landBtn, ovHead[4], ovBottom;   // dock panel sheets (docs/UI_PANELS.md)
     bool amenities = false, elevation = false, hireOpen = false;       // sub panels: Amenities (of Build Course), Elevation (of Add Buildings), the hire dialog
     int elevTool = 0, pHover = -99, pHoverLast = -99, pHoverFrames = 0, empSel = -1, empOff = 0;
@@ -1807,7 +1807,8 @@ static bool loadUi(App& app) {
     ui::loadPcx(i + "infoscreens/memberRoster.pcx", app.rosterArt, true);
     ui::loadPcx(i + "infoscreens/memberRoster_buttons.pcx", app.rosterBtn, true);
     ui::loadPcx(i + "infoscreens/memberRoster_scrollbar.pcx", app.rosterBar, true);
-    ui::loadPcx(i + "infoscreens/OkStates.pcx", app.okArt, true);           // optional
+    ui::loadPcx(i + "infoscreens/OkStates.pcx", app.okArt, true);
+    ui::loadPcxCircles(i + "infoscreens/OkStates.pcx", app.okRound, 23, 22, 45, 3, 20.5f);           // optional
     ui::loadPcx(i + "3mainLowerLeft.pcx", app.dockArt, false, 0xF800F8);               // optional: the lower left dock
     ui::loadPcx(i + "BaseTerrainPanel.pcx", app.terrPanel, true);
     ui::loadPcx(i + "AmenitiesPanel.pcx", app.amenArt, false, 0xF800F8);
@@ -3372,7 +3373,7 @@ static void startGame(App& app, int propIdx, bool sandbox) {
       const int cx = app.terrain.clubhouseX, cy = app.terrain.clubhouseY;
       auto d2 = [&](int t) { const int tx = 1 + (t % 3) * 16 + 8, ty = 1 + (t / 3) * 16 + 8; return (tx - cx) * (tx - cx) + (ty - cy) * (ty - cy); };
       std::stable_sort(order, order + 9, [&](int a, int b) { return d2(a) < d2(b); });   // the tract with the clubhouse first, then its neighbours (PLACEHOLDER: the exe's starting ownership is not decoded)
-      const int n = std::clamp((acres * 10 + 255) / 256, 1, 9);
+      const int n = std::clamp((acres + 10) / 15, 4, 9);   // PLACEHOLDER: real starts show far more owned land than acres/25 gives
       app.landModel = true; app.ownMask = 0; for (int i = 0; i < n; i++) app.ownMask |= 1 << order[i];
       app.landBought = 0; app.landOffer = false; }
     app.courseName = std::string(p.name) + " GC";
@@ -4952,7 +4953,7 @@ static void drawSkillsEdit(App& app) {
     { ui::fillRect(193, 364, 414, 94, 0.62f, 0.6f, 0.86f, 0.9f); ui::fillRect(195, 366, 410, 90, 0.12f, 0.2f, 0.12f, 0.94f);   // the explanation box under the dialog
       static const char* kT = "Before you play your course you may customize your character by improving his or her golf skills. You can also win additional skill points for each accomplishment added to your trophy.";
       float ty = 384; for (const std::string& ln : wrapText(app, kT, 13, 392)) { app.font.draw(204, ty, ln, 13, 0.98f, 0.95f, 0.8f); ty += 17; } }
-    if (app.okArt.tex) { const auto& k = sg::ui_screens::kOkCut[(app.skHover == 100) ? 1 : 0]; ui::drawImage(app.okArt, X + 0x146 + 4, 0x13e - 6, (float)k.x, (float)k.y, (float)k.w, (float)k.h); }
+    if (app.okRound.tex) { const auto& k = sg::ui_screens::kOkCut[(app.skHover == 100) ? 1 : 0]; ui::drawImage(app.okRound, X + 0x146 + 4, 0x13e - 6, (float)k.x, (float)k.y, (float)k.w, (float)k.h); }
     if (app.skConfirm) {   // modal confirm (FUN_0046d6e0 400 x 200): points are still unspent
         drawFrame9(app, 200, 200, 400, 128);
         app.font.drawCentered(400, 232, "You haven't used all your skill points.", 14, 1, 1, 1);

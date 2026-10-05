@@ -17,6 +17,7 @@ struct Image {
 // Loads a shadow sheet (the disc's s_*.pcx): green pixels become translucent black (alpha 0..1), everything else transparent. The exe blends these as drop shades behind panels.
 bool uploadRgba(const unsigned char* rgba, int w, int h, Image& out);   // makes a texture from raw RGBA
 bool loadShade(const std::string& path, Image& out, float alpha);
+bool loadPcxCircles(const std::string& path, Image& out, int cx0, int cy0, int pitch, int count, float r);   // keys everything outside a circle in each cell (round buttons drawn on a square backdrop)
 bool loadPcx(const std::string& path, Image& out, bool magentaKey, int keyRgb = -1, const std::string& alphaPath = "");   // keyRgb: another colour key as 0xRRGGBB
 
 class Font {
