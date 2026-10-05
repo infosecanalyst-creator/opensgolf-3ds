@@ -193,3 +193,11 @@ Soak check (update 78): an AddressSanitizer plus UBSan build ran headless throug
 | Golfer card Customize | weak reading | Live only on the player's own golfer, opens the character editor; View Story stays pale (its screen is not in the decompile) |
 
 Not found in the decompile: the info card click handlers, the story screen, the Load panel class words. Tested headless only (start renders on two properties, a tract purchase, card render, synthetic mixer test, sanitizer soak); not run on the Mac.
+
+## Update 80 fixes
+
+| Item | Status | Notes |
+|---|---|---|
+| Dock hover overlay | FIXED | The hover sprites on 3mainLowerLeft.pcx carry their own hard edged shadow, which was drawn over the shadow already baked into the dock, and the sprite was placed by its centre, a few pixels off. Hover now draws only the pixels that differ from the normal sprite (new ui::loadPcxHoverDiff) at the exact spot the normal sprite sits on the baked dock (found by matching the sheet cut against the dock art, kDockPos). Buttons 4 (zoom out) and 9 (tools) have no exact baked match, so they keep the whole sprite at the old position |
+
+Checked headless on all dock buttons; the panel tab and player panel hovers were not changed and not re-verified with real mouse input.

@@ -1,6 +1,7 @@
 #include "ui.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <cstdio>
 #include <cstring>
 #include <vector>
@@ -66,6 +67,32 @@ bool loadPcx(const std::string& path, Image& out, bool magentaKey, int keyRgb, c
     glBindTexture(GL_TEXTURE_2D, out.tex);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)img.w, (GLsizei)img.h, 0, GL_RGBA, GL_UNSIGNED_BYTE, img.px.data());
+    out.w = (int)img.w; out.h = (int)img.h;
+    return true;
+}
+
+bool loadPcxHoverDiff(const std::string& path, Image& out, int keyRgb, const std::vector<std::array<int, 6>>& cuts) {
+    sg::Bytes d; sg::Rgba img; std::string err;
+    if (!sg::readFile(path, d) || !sg::decodePcx(d, img, err)) return false;
+    const std::vector<unsigned char> src = img.px;
+    for (size_t i = 3; i < img.px.size(); i += 4) img.px[i] = 0;
+    auto isKey = [&](const unsigned char* p) { return p[0] == ((keyRgb >> 16) & 255) && p[1] == ((keyRgb >> 8) & 255) && p[2] == (keyRgb & 255); };
+    for (const std::array<int, 6>& c : cuts) for (int y = 0; y < c[5]; y++) for (int x = 0; x < c[4]; x++) {
+        const size_t hi = ((size_t)(c[3] + y) * img.w + (size_t)(c[2] + x)) * 4, ni = c[0] < 0 ? hi : ((size_t)(c[1] + y) * img.w + (size_t)(c[0] + x)) * 4;
+        if (isKey(&src[hi])) continue;
+        if (c[0] < 0) { img.px[hi + 3] = 255; continue; }   // no exact baked match for this button: keep the whole sprite
+        const int diff = std::abs((int)src[hi] - (int)src[ni]) + std::abs((int)src[hi + 1] - (int)src[ni + 1]) + std::abs((int)src[hi + 2] - (int)src[ni + 2]);
+        if (!isKey(&src[ni]) && diff <= 18) continue;   // same as the normal sprite: already on the baked dock
+        img.px[hi + 3] = 255;
+    }
+    glGenTextures(1, &out.tex);
+    glBindTexture(GL_TEXTURE_2D, out.tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);

@@ -5,7 +5,9 @@
 #define GL_SILENCE_DEPRECATION
 #endif
 #include <SDL_opengl.h>
+#include <array>
 #include <string>
+#include <vector>
 
 namespace ui {
 
@@ -18,6 +20,9 @@ struct Image {
 bool uploadRgba(const unsigned char* rgba, int w, int h, Image& out);   // makes a texture from raw RGBA
 bool loadShade(const std::string& path, Image& out, float alpha);
 bool loadPcxCircles(const std::string& path, Image& out, int cx0, int cy0, int pitch, int count, float r);   // keys everything outside a circle in each cell (round buttons drawn on a square backdrop)
+// Hover sheets: for each cut {normalX, normalY, hoverX, hoverY, w, h}, hover pixels that equal the normal sprite (its baked shadow and rim) or are the key colour become transparent,
+// so only what really changes is drawn over the already baked dock art. Everything outside the cuts is transparent.
+bool loadPcxHoverDiff(const std::string& path, Image& out, int keyRgb, const std::vector<std::array<int, 6>>& cuts);
 bool loadPcx(const std::string& path, Image& out, bool magentaKey, int keyRgb = -1, const std::string& alphaPath = "");   // keyRgb: another colour key as 0xRRGGBB
 
 class Font {

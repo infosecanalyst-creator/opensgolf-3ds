@@ -152,7 +152,7 @@ struct App {
     // Screens: the title menu, the property chooser and the course itself.
     enum { ScreenMenu, ScreenProperty, ScreenPlay, ScreenReport, ScreenCharacter, ScreenCustomise, ScreenSga, ScreenFinance, ScreenRoster, ScreenHoleStat, ScreenKeys, ScreenEoy, ScreenComments, ScreenHisto, ScreenBoard, ScreenBuyLand, ScreenOverview, ScreenAward, ScreenGolfer, ScreenDiff, ScreenThemes, ScreenLoad, ScreenCredits, ScreenTop10, ScreenPro, ScreenBest, ScreenPair, ScreenStats };
     int screen = ScreenPlay;
-    ui::Image titleBase, titleUn, titleMo, worldBase, themeIcons[4], reportArt, holeArt, keysArt, eoyArt, comtArt, sgaArt, tourArt, histArt, boardArt, partsArt, tacsArt, pinArt, finArt, okArt, okRound, rosterArt, rosterBtn, rosterBar, dockArt, terrPanel, terrBtns;
+    ui::Image titleBase, titleUn, titleMo, worldBase, themeIcons[4], reportArt, holeArt, keysArt, eoyArt, comtArt, sgaArt, tourArt, histArt, boardArt, partsArt, tacsArt, pinArt, finArt, okArt, okRound, rosterArt, rosterBtn, rosterBar, dockArt, dockHov, terrPanel, terrBtns;
     ui::Image amenArt, elevArt, bldgArt, empArt, layoutArt, hireArt, memberArt, faceArt, joeArt, landArt, landBtn, ovHead[4], ovBottom;   // dock panel sheets (docs/UI_PANELS.md)
     bool amenities = false, elevation = false, hireOpen = false;       // sub panels: Amenities (of Build Course), Elevation (of Add Buildings), the hire dialog
     int elevTool = 0, pHover = -99, pHoverLast = -99, pHoverFrames = 0, empSel = -1, empOff = 0;
@@ -1935,7 +1935,8 @@ static bool loadUi(App& app) {
     ui::loadPcx(i + "infoscreens/memberRoster_scrollbar.pcx", app.rosterBar, true);
     ui::loadPcx(i + "infoscreens/OkStates.pcx", app.okArt, true);
     ui::loadPcxCircles(i + "infoscreens/OkStates.pcx", app.okRound, 23, 22, 45, 3, 20.5f);           // optional
-    ui::loadPcx(i + "3mainLowerLeft.pcx", app.dockArt, false, 0xF800F8);               // optional: the lower left dock
+    ui::loadPcx(i + "3mainLowerLeft.pcx", app.dockArt, false, 0xF800F8);
+              // optional: the lower left dock
     ui::loadPcx(i + "BaseTerrainPanel.pcx", app.terrPanel, true);
     ui::loadPcx(i + "AmenitiesPanel.pcx", app.amenArt, false, 0xF800F8);
     ui::loadPcx(i + "ElevationPanel.pcx", app.elevArt, true);
@@ -3620,6 +3621,8 @@ static const DockBtn kDock[10] = {
     {107, 568, 14, 598, 298, 34, 34, 50}, // pause
     {133, 583, 13, 598, 348, 34, 34, 50}, // tools (save the course)
 };
+// Where each normal sprite sits on the baked dock (found by matching the sheet's normal cut against the dock art; exact = 1). Buttons 4 and 9 have no exact baked match.
+static const int kDockPos[10][3] = {{7, 437, 1}, {84, 464, 1}, {146, 504, 1}, {17, 529, 1}, {17, 570, 0}, {2, 550, 1}, {31, 551, 1}, {57, 534, 1}, {92, 552, 1}, {116, 566, 0}};
 static const char* kDockHelp[10] = {"Build Course", "Add Buildings", "People", "Zoom in", "Zoom out", "Rotate right", "Rotate left", "Information", "Pause or Unpause", "System Functions"};
 
 // Opens the next finished hole (the exe's H key). Golfers only play open holes. Each opened hole may unlock a building type (the exe unlocks
@@ -4526,12 +4529,15 @@ static void drawDockUi(App& app) {
     if (!app.uiOk) return;
     drawGolferStrip(app);
     if (app.testHx >= 0) dockHoverUpdate(app, app.testHx, app.testHy);
+    if (app.dockArt.tex && !app.dockHov.tex) {
+        std::vector<std::array<int, 6>> cuts; for (int b = 0; b < 10; b++) cuts.push_back({kDockPos[b][2] ? (int)kDock[b].sx : -1, (int)kDock[b].sy, (int)(kDock[b].sx + kDock[b].hoverDx), (int)kDock[b].sy, (int)kDock[b].sw, (int)kDock[b].sh});
+        ui::loadPcxHoverDiff(app.gameDir + "/Interface/3mainLowerLeft.pcx", app.dockHov, 0xF800F8, cuts);
+    }
     if (app.dockArt.tex) {
         ui::drawImage(app.dockArt, 0, 430, 0, 430, 215, 170);
         if (app.dockHover >= 0) {
             const DockBtn& b = kDock[app.dockHover];
-            const float dx = b.cx - (b.sx + b.sw * 0.5f), dy = b.cy - (b.sy + b.sh * 0.5f);
-            ui::drawImage(app.dockArt, b.sx + dx, b.sy + dy, b.sx + b.hoverDx, b.sy, b.sw, b.sh);
+            ui::drawImage(app.dockHov.tex ? app.dockHov : app.dockArt, (float)kDockPos[app.dockHover][0], (float)kDockPos[app.dockHover][1], b.sx + b.hoverDx, b.sy, b.sw, b.sh);   // only the pixels that differ from the normal sprite, so the baked shadow is not drawn twice
         }
         if (app.dockHover >= 0) app.font.draw(228, 448, kDockHelp[app.dockHover], 14, 1, 1, 0.7f);
     }
