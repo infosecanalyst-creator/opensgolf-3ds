@@ -122,3 +122,18 @@ Not yet run on the Mac. Headless checks only.
 | Colour-key fringe | fixed | Keyed art loses blended key-colour edge pixels, and transparent pixels take the nearest opaque colour so filtering cannot pull pink in |
 | Skills dialog OK button | fixed | Drawn through a circle mask (the art is a round button on a square lavender backdrop) |
 | Starting land | PLACEHOLDER | Tracts owned at start = clamp((acres + 10) / 15, 4, 9); the exe's real starting ownership is still not decoded |
+
+## Update 74 additions
+
+| Area | State | Notes |
+|------|-------|-------|
+| Player panel (JoeCoolPanel, dock modes 3 and 4) | DERIVED | Opens from the player tab of the Golfers panel; hit zones, tooltips and button table are EXACT (ui_panels.h). Skill list, scorecard dst (297,366) and the hover and disabled cut columns (50, 100) are PLACEHOLDER |
+| Practice Round | DERIVED | Needs two open holes and no player out; the player's character walks the course with its own skills and body, pays no fee, is not recorded in the books and never quits. Play (vs a pro) and Begin Tournament only show a notice |
+| Shot shape ovals | DERIVED | Selection is stored and drawn; it does not change shots yet |
+| Hole open message | PLACEHOLDER wording | Odd and even hole texts and the dogleg side follow DECODE_WORLD2 5.4 |
+| Building advice | DERIVED | Advisor suggests the newest unlocked building that is not built yet |
+| Unowned land | DERIVED | Drawn black as in the real game |
+| Course Report | fixed | The keyed gap under the Total row is lavender; legend labels moved down |
+| Title screen | fixed | Logo blob no longer cut; Start New Game on two lines; Theme line only for non-standard packs |
+
+Not run on the Mac. Practice Round clicks were not exercised, only the hooked headless render.
