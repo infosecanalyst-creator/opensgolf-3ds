@@ -102,6 +102,7 @@ struct Golfer {
     unsigned lastTick = 0; int seenPlans = 0, seenLands = 0; float hz = 0; int visitedHole = -1; unsigned visits = 0; int seenObs = 0, clubMask = 0; float planYards = 0; bool leaving = false; int ordinal = 0, leaveWait = 0;   // visits: facilities used this round (4 range, 8 pro shop, 0x10 putting green)   // reaction clock and the shot plan hazard score (PLACEHOLDER formula)
     int greetedHole = -1; bool hurried = false;   // club pro greeted on this hole, ranger has hurried this golfer
     int holeStrokes[18] = {};    // strokes on each finished hole, for the info card scorecard
+    int bodyCls = 0;             // body class 0..7 (male PLS, KLS, PSS, SSS; female PLS, SSS, PSS, SkTT) for the emotion clips
     int proIdx = -1;             // index into the pro table for the opponent in a match against a pro
     bool isPlayer = false;       // the player's own character out on a practice round (docs/DECODE_TOURNAMENTS.md section 7)
     int mood = 4;                // the golfer's mood value, which sets the green fee (the exe keeps it per golfer as a small integer)
@@ -151,7 +152,7 @@ struct App {
     enum { ScreenMenu, ScreenProperty, ScreenPlay, ScreenReport, ScreenCharacter, ScreenCustomise, ScreenSga, ScreenFinance, ScreenRoster, ScreenHoleStat, ScreenKeys, ScreenEoy, ScreenComments, ScreenHisto, ScreenBoard, ScreenBuyLand, ScreenOverview, ScreenAward, ScreenGolfer, ScreenDiff, ScreenThemes, ScreenLoad, ScreenCredits, ScreenTop10, ScreenPro, ScreenBest, ScreenPair, ScreenStats };
     int screen = ScreenPlay;
     ui::Image titleBase, titleUn, titleMo, worldBase, themeIcons[4], reportArt, holeArt, keysArt, eoyArt, comtArt, sgaArt, tourArt, histArt, boardArt, partsArt, tacsArt, pinArt, finArt, okArt, okRound, rosterArt, rosterBtn, rosterBar, dockArt, terrPanel, terrBtns;
-    ui::Image amenArt, elevArt, bldgArt, empArt, layoutArt, hireArt, memberArt, joeArt, landArt, landBtn, ovHead[4], ovBottom;   // dock panel sheets (docs/UI_PANELS.md)
+    ui::Image amenArt, elevArt, bldgArt, empArt, layoutArt, hireArt, memberArt, faceArt, joeArt, landArt, landBtn, ovHead[4], ovBottom;   // dock panel sheets (docs/UI_PANELS.md)
     bool amenities = false, elevation = false, hireOpen = false;       // sub panels: Amenities (of Build Course), Elevation (of Add Buildings), the hire dialog
     int elevTool = 0, pHover = -99, pHoverLast = -99, pHoverFrames = 0, empSel = -1, empOff = 0;
     float vmx = -1, vmy = -1;        // mouse in virtual coordinates
@@ -257,6 +258,7 @@ struct App {
     int blSel = -1, blPrice[9] = {}, blSale[9] = {}; bool blRolled = false; std::string blNote;
     int matchPro = -1, matchWager = 0, matchMonth = -1, matchPl = -1, matchOp = -1, matchLead = 0, matchDoneN = 0; bool matchOn = false, matchDone[18] = {};   // a pro's challenge, the wager per hole (units of $100), the two golfer slots and the holes decided so far
     int tutPage = -1; bool tutWasPaused = false;   // the tutorial: eleven pages on fun and nine on skill (structure from the exe, wording is my own); -1 when closed
+    bool showNames = true;   // name tags over golfers and employees, as in the real screenshots (Shift+N toggles, PLACEHOLDER key)
     bool playerPanel = false; int shotShape = 0, plHover = -1;   // the Player (JoeCool) panel behind the golfers tab with the player's name, and the shot oval picked (0 straight, 1 fade, 2 draw, 3 backspin, 4 punch)
     bool golfersMode = true;     // People dock: Golfers list (true) or the Employee overlay (false)
     int golfOff = 0;             // scroll offset of the Golfers list
@@ -944,7 +946,7 @@ static int golfersOnCourse(const App& app) { int n = 0; for (const Golfer& g : a
 
 static void golferSounds(App& app, Golfer& g) {
     const char* ev = g.sim.event;
-    if (!std::strcmp(ev, "drive")) snd(app, !std::strcmp(g.sim.club, "iron") ? "Golf_Sfx/Iron.wav" : "Golf_Sfx/Drive With Ball.wav", 0.8f);
+    if (!std::strcmp(ev, "drive")) snd(app, !std::strcmp(g.sim.club, "iron") ? (g.sim.planDist * 0.15f < 45.0f ? "Golf_Sfx/Chip.wav" : "Golf_Sfx/Iron.wav") : "Golf_Sfx/Drive With Ball.wav", 0.8f);   // a short approach is a chip (DECODE_VOICES.md section 5)
     else if (!std::strcmp(ev, "putt")) snd(app, "Golf_Sfx/Putt.wav", 0.8f);
     else if (!std::strcmp(ev, "on the course")) snd(app, "Golf_Sfx/Ball Drop Fairway.wav", 0.5f);
     else if (!std::strcmp(ev, "in the sand")) snd(app, "Golf_Sfx/Ball Drop Sand.wav", 0.6f);
@@ -963,7 +965,7 @@ static void say(App& app, const std::string& m, double secs);
 // ---- Club systems decoded from the publisher exe (docs/DECODE_*.md). Placeholders are marked where inputs are not available yet. ----
 static void awardGoals(App& app, const std::vector<int>& v) {
     for (int g : v) {
-        say(app, std::string("Accomplishment: ") + sg::goalName(g), 7);
+        say(app, std::string("Accomplishment: ") + sg::goalName(g), 7); snd(app, "Effects/TaDa.wav", 0.7f);
         if (g >= 0 && g < 22 && app.miles[g].tick == 0) { app.miles[g].tick = (long)(app.econ.day - 1) * 1024 + 512; app.miles[g].course = app.courseName; app.snapPending = g; }
     }
 }
@@ -1061,7 +1063,7 @@ static void assignBody(App& app, Golfer& g, int spin) {
         const int id = (spin & 0x7fffffff) % 75 + 1;
         l.female = fem; l.body = fem ? 4 + (id & 1) : id & 3; l.pants = id % 10; l.shirt = fem ? (id * 2) % 3 + 1 : (id * 3) % 10; l.skin = id % 4; l.hat = l.shirt; l.hair = id % 6; l.altSkin = 4;
     }
-    g.bset = bodySetFor(app, g.isPlayer ? chrLook(app) : l);
+    { const sg::BodyLook use = g.isPlayer ? chrLook(app) : l; g.bodyCls = std::clamp(use.body, 0, 7); g.bset = bodySetFor(app, use); }
 }
 static void endRound(App& app, Golfer& g, bool finished) {
     const int holes = (int)app.holes.size();
@@ -1084,6 +1086,7 @@ static void endRound(App& app, Golfer& g, bool finished) {
         if (o.landmarkType >= 0) {   // the exe names the design, its value, where to place it and one sentence for the effect class (docs/DECODE_WORLD2.md 1.5); the wording is PLACEHOLDER paraphrase
             static const char* kEff[4] = {"Golfers will have happy thoughts near it.", "Golfers will find no dandelions near it.", "will improve their skills rapidly near it.", "Golfer stories will proceed happily near it."};
             const std::string eff = o.effect == 2 ? app.charName + " " + kEff[2] : kEff[o.effect & 3];
+            snd(app, "Effects/Twinkle.wav", 0.7f);
             say(app, "The wealthy heiress donated a " + std::string(sg::landmarkKindName(o.landmarkType)) + " worth " + money(o.landmarkDollars) + ". Place it for free from Landmarks on the Amenities panel. " + eff, 12);
         }
         if (o.buyLand) { app.landOffer = true; say(app, "The county commissioner approves of your course and will let you buy more land", 9); openBuyLand(app); }
@@ -1136,6 +1139,15 @@ static const char* voiceStem(int type, bool female) {
 }
 static void speakVoice(App& app, const Golfer& g, int type) {
     const bool female = g.look >= 2;   // looks 2 and 3 use the female body sets (PLACEHOLDER until golfers carry a character template)
+    if (type == 1 || type == 2 || type == 3 || type == 8) {   // emotion clips by body class (DECODE_VOICES.md 4.1; which bank is which kind is a weak reading)
+        static const char* kM[4] = {"MalePLS", "MaleKLS", "MalePSS", "MaleSSS"}, *kF[4] = {"FemalePLS", "FemaleSSS", "FemalePSS", "FemaleSKTT"};
+        const bool bad = type != 1, after = g.rx.polarity() == 2;
+        const std::string kind = bad ? (after ? "Sad" : "Failure") : (after ? "Happy" : "Success");
+        const char* cls = female ? kF[g.bodyCls & 3] : kM[g.bodyCls & 3];
+        std::string rel = std::string("Emotion/") + cls + kind + (!female && (g.bodyCls & 3) == 1 && kind == "Sad" ? " mix" : "") + ".wav";
+        snd(app, rel.c_str(), 0.55f);
+        return;
+    }
     const char* stem = voiceStem(type, female);
     if (!stem) return;
     std::string rel = std::string("simsfx/") + (female ? "female/f" : "male/m") + stem + ".wav";
@@ -1625,7 +1637,7 @@ static void stepGame(App& app, float dt) {
         if (yr > app.lastYear) {
             App::YearRec rec; rec.cash = (long long)app.econ.cash; rec.fun = clubFun(app); rec.skill = clubSkill(app); rec.members = app.roster.memberCount();
             app.yearHist.push_back(rec); app.eoyYear = app.lastYear; app.lastYear = yr;
-            if (app.uiOk && app.screen == App::ScreenPlay) { top10Submit(app); app.screen = App::ScreenEoy; }
+            if (app.uiOk && app.screen == App::ScreenPlay) { top10Submit(app); app.screen = App::ScreenEoy; snd(app, "Buy2Short.wav", 0.8f); }   // the end of year sound is list entry 0x7f, buy2short (DECODE_VOICES.md)
         }
     }
     if (app.econ.notice[0]) { std::printf("[%6.1fs] board: %s\n", app.simTime, app.econ.notice); say(app, std::string("The board: ") + app.econ.notice, 12); app.econ.notice = ""; }
@@ -1886,6 +1898,7 @@ static bool loadUi(App& app) {
     ui::loadPcx(i + "EmployeePanel.pcx", app.empArt, true);
     ui::loadPcx(i + "MemberPanel.pcx", app.memberArt, true);
     ui::loadPcx(i + "JoeCoolPanel.pcx", app.joeArt, true);
+    ui::loadPcxCircles(i + "MemberPanel.pcx", app.faceArt, 458, 108, 16, 10, 7.6f);   // the ten mood faces as round pieces without their square backdrop
     ui::loadPcx(i + "infoscreens/buy_land.pcx", app.landArt, true);
     ui::loadPcx(i + "infoscreens/route screens_course.pcx", app.ovHead[0], true);
     ui::loadPcx(i + "infoscreens/route screens_aura.pcx", app.ovHead[1], true);
@@ -2465,7 +2478,7 @@ static void runTournament(App& app) {
         sg::GoalEvent e; e.kind = sg::GoalEvent::TournamentResult; e.place = res.playerPlace; e.prizeThousands = app.tPrize; e.prizeDollars = res.playerPrizeThousands * 1000L; e.theme = themeExe(app.theme); goalEvent(app, e);
         app.sgaMode = 2; app.screen = App::ScreenSga;
         say(app, "You placed " + std::to_string(res.playerPlace) + " in the " + app.tName, 8);
-        addHighlight(app, app.charName + " places " + std::to_string(res.playerPlace) + " in tournament"); logEv(app, 0xe0, res.playerPlace);
+        addHighlight(app, app.charName + " places " + std::to_string(res.playerPlace) + " in tournament"); snd(app, res.playerPlace <= 3 ? "ApplauseGood.wav" : res.playerPlace > 10 ? "ApplauseBad.wav" : "Applause.wav", 0.6f); logEv(app, 0xe0, res.playerPlace);
     }
 }
 struct SgaBtn { float x, y, w, h; };
@@ -3476,6 +3489,7 @@ static void startGame(App& app, int propIdx, bool sandbox) {
       app.landModel = true; app.ownMask = 0; for (int i = 0; i < n; i++) app.ownMask |= 1 << order[i];
       app.landBought = 0; app.landOffer = false; }
     app.courseName = std::string(p.name) + " GC";
+    if (!std::strcmp(p.name, "Scotland")) snd(app, "World/Bagpipe.wav", 0.7f);
     loadTheme(app, p.theme);
     app.screen = App::ScreenPlay;
     app.hover = -1;
@@ -3543,7 +3557,12 @@ static const char* kDockHelp[10] = {"Build Course", "Add Buildings", "People", "
 static const char* kUnlockEffect[15] = {"", "", "", "", "", "", "Putting Green: golfers with imagination improve their putting", "Snack Bar: feeds hungry golfers", "Pro Shop: accurate golfers upgrade equipment",
                                         "Swim Club: golfers start in a better mood", "Driving Range: long hitters gain distance", "Cart Garage: faster play", "Marina: raises home values",
                                         "Resort Hotel: golfers tire less late in a round", "Airstrip: lets you charge higher green fees"};
-static void say(App& app, const std::string& m, double secs) { app.lastMsg = m; app.toast = m; app.toastKind = 1; app.toastUntil = SDL_GetTicks() / 1000.0 + secs; std::printf("%s\n", m.c_str()); }
+static bool isRefusal(const std::string& m) {
+    static const char* const kP[] = {"You do not own", "Not enough money", "Not available", "Out of bounds", "Invalid", "That is not", "Nothing to undo", "This building", "You need", "No ", "There is no", "Could not", "Finish or cancel", "This course has no", "The SGA has not", "The county commissioner has not", "A match or practice"};
+    for (const char* p : kP) if (m.rfind(p, 0) == 0) return true;
+    return false;
+}
+static void say(App& app, const std::string& m, double secs) { if (isRefusal(m)) snd(app, "Interface/Wrong.wav", 0.7f); app.lastMsg = m; app.toast = m; app.toastKind = 1; app.toastUntil = SDL_GetTicks() / 1000.0 + secs; std::printf("%s\n", m.c_str()); }
 static void openHole(App& app) {
     refreshHoles(app);
     int pick = -1;
@@ -3916,7 +3935,7 @@ static void pnlDraw(App& app, float mx, float my) {
             const std::string nm = g.isPlayer ? app.charName : g.memberId ? memberName(app, g.memberId) : std::string("Golfer");
             app.font.draw((float)(cx + 16), (float)(cy + 14), nm.substr(0, 11), 11, 0.1f, 0.1f, 0.25f);
             const int face = std::clamp(g.mood + 2, 1, 10) - 1;
-            pnlBlit(app.memberArt, up::Rect{594 - 16 * face, 100, 16, 16}, cx + 102, cy + 2);   // the faces run right to left on the sheet (docs/DECODE_FACES.md)
+            pnlBlit(app.faceArt.tex ? app.faceArt : app.memberArt, up::Rect{594 - 16 * face, 100, 16, 16}, cx + 102, cy + 2);   // the faces run right to left on the sheet (docs/DECODE_FACES.md)
             const int hole = g.hole + 1;
             if (!(row & 1)) app.font.draw((float)(cx + (hole >= 10 ? 5 : 8)), (float)(cy + 27), std::to_string(hole), 10, 0.1f, 0.1f, 0.25f);   // the round tab on the plate shows the pair's hole
         }
@@ -4283,7 +4302,10 @@ static bool popEvent(App& app, const SDL_Event& e) {
 }
 
 // Returns true when the click was on the dock or an open panel.
+static int stripHit(const App& app, float vx, float vy);
+static void openGolferCard(App& app, int gi);
 static bool dockClick(App& app, float vx, float vy, bool rightClick, bool& togglePause) {
+    if (!rightClick && app.screen == App::ScreenPlay) { const int sg_ = stripHit(app, vx, vy); if (sg_ >= 0) { openGolferCard(app, sg_); return true; } }
     if (!app.uiOk || !app.dockArt.tex) return false;
     if (hireClick(app, vx, vy)) return true;
     const int d = dockHit(vx, vy);
@@ -4406,8 +4428,33 @@ static std::string advisorText(const App& app) {
 }
 
 static void drawRoundBox(float x, float y, float w, float h, float r, float g, float b);
+// The mood face strip along the bottom edge while no dock panel is open (seen in the real screenshots): one face per golfer on the course in hole order, the
+// golfer's hole number under it; a click opens that golfer's card. The face art and the mood slot are exact (DECODE_FACES.md 1.5); the strip position is measured by eye (PLACEHOLDER).
+static std::vector<int> stripGolfers(const App& app) {
+    std::vector<int> v; for (size_t i = 0; i < app.golfers.size(); i++) if (app.golfers[i].active) v.push_back((int)i);
+    std::stable_sort(v.begin(), v.end(), [&](int a, int b) { return app.golfers[(size_t)a].hole < app.golfers[(size_t)b].hole; });
+    return v;
+}
+static int stripHit(const App& app, float vx, float vy) {
+    if (app.panel || !app.memberArt.tex || vy < 574 || vy >= 600 || vx < 218) return -1;
+    const int k = (int)((vx - 218) / 16); const std::vector<int> v = stripGolfers(app);
+    return k >= 0 && k < (int)v.size() ? v[(size_t)k] : -1;
+}
+static void drawGolferStrip(App& app) {
+    if (app.panel || !app.memberArt.tex) return;
+    const std::vector<int> v = stripGolfers(app);
+    for (size_t i = 0; i < v.size(); i++) {
+        const Golfer& g = app.golfers[(size_t)v[i]];
+        const int face = std::clamp(g.mood + 2, 1, 10) - 1;
+        const float x = 218.0f + 16.0f * (float)i;
+        ui::drawImage(app.faceArt.tex ? app.faceArt : app.memberArt, x, 574, (float)(594 - 16 * face), 100, 16, 16);
+        ui::fillRect(x, 590, 16, 10, 0.96f, 0.95f, 0.9f, 1); ui::fillRect(x, 590, 1, 10, 0.25f, 0.25f, 0.4f, 1);
+        app.font.drawCentered(x + 8, 599, std::to_string(g.hole + 1), 9, 0.1f, 0.1f, 0.25f);
+    }
+}
 static void drawDockUi(App& app) {
     if (!app.uiOk) return;
+    drawGolferStrip(app);
     if (app.testHx >= 0) dockHoverUpdate(app, app.testHx, app.testHy);
     if (app.dockArt.tex) {
         ui::drawImage(app.dockArt, 0, 430, 0, 430, 215, 170);
@@ -5246,9 +5293,32 @@ static void golferCardEvent(App& app, const SDL_Event& e) {
     else if (h == 1) { const size_t gi = (size_t)app.cardG; app.screen = App::ScreenPlay; app.cardG = -1; if (app.golfers[gi].active) startLeaving(app, gi); }   // PLACEHOLDER: ejecting is filed like a quit
     else if (h == 4) { app.screen = App::ScreenPlay; app.cardG = -1; }
 }
+static void worldTag(App& app, float gx, float gz, const std::string& text) {
+    const float y = app.terrain.heightAt(gx, gz);
+    const double ex = app.mv[0] * gx + app.mv[4] * y + app.mv[8] * gz + app.mv[12], ey = app.mv[1] * gx + app.mv[5] * y + app.mv[9] * gz + app.mv[13];
+    const float px = (float)(ex / app.upp + app.drawW * 0.5), py = (float)(app.drawH * 0.5 - ey / app.upp);   // drawable pixels
+    const float vx = app.view.toVirtualX(px), vy = app.view.toVirtualY(py);
+    if (vx < 0 || vx > 800 || vy < 20 || vy > 570) return;
+    app.font.drawCentered(vx + 1, vy + 11, text, 11, 0, 0, 0);
+    app.font.drawCentered(vx, vy + 10, text, 11, 1, 1, 1);
+}
+static void drawNameTags(App& app) {
+    if (!app.showNames || app.screen != App::ScreenPlay) return;
+    for (size_t i = 0; i < app.golfers.size(); i++) {
+        const Golfer& g = app.golfers[i]; if (!g.active || g.leaving) continue;
+        std::string nm = g.isPlayer ? app.charName : g.proIdx >= 0 ? app.pros[(size_t)g.proIdx].name : g.memberId ? memberName(app, g.memberId) : std::string();
+        const size_t sp = nm.find(' '); if (!g.isPlayer && g.proIdx < 0 && sp != std::string::npos) nm = nm.substr(0, sp);   // members show a first name
+        if (!nm.empty()) worldTag(app, g.sim.golferX, g.sim.golferZ, nm);
+    }
+    for (const App::Emp& e : app.emps) {
+        const std::string job = e.skilled ? up::kStaffKinds[e.kind].skilledName : up::kStaffKinds[e.kind].name;
+        worldTag(app, e.x, e.z, e.name.empty() ? job : e.name + " " + job);
+    }
+}
 static void drawHud(App& app) {
     if (!app.uiOk) return;
     app.view = ui::beginScreen(app.drawW, app.drawH, false);
+    drawNameTags(app);
     // The exe's date stamp routine counts months in blocks of 1024 ticks and shows month numbers 3..10, so a year here is eight months,
     // March to October (medium confidence; the start year 2001 is a placeholder).
     const int mi = app.econ.day - 1;
@@ -5419,7 +5489,7 @@ static void editPath(App& app, int tx, int ty, bool remove) {
 
 // Amenity placement. Rules from the game text: buildings go on a building lot and need a path to the clubhouse. The lot must touch a path tile that
 // is connected to the clubhouse. Removing refunds the cost (the "money will be refunded" undo text).
-static void toastMsg(App& app, const std::string& m) { app.toast = m; app.toastKind = 0; app.toastUntil = SDL_GetTicks() / 1000.0 + 3; }
+static void toastMsg(App& app, const std::string& m) { if (isRefusal(m)) snd(app, "Interface/Wrong.wav", 0.7f); app.toast = m; app.toastKind = 0; app.toastUntil = SDL_GetTicks() / 1000.0 + 3; }
 static void applyBuildChanges(App& app, const sg::PlaceResult& res) {
     for (const sg::TileChange& c : res.changes) if (c.newId >= 0) app.terrain.paint(c.tile / 50, c.tile % 50, c.newId == sg::buildings_exe::kTileBuildingHome ? (int)TT_Building : c.newId, 0);
     for (int tl : res.vacatedTiles) app.terrain.paint(tl / 50, tl % 50, TT_Rough, 0);   // PLACEHOLDER: what a vacated tile becomes is not recorded
@@ -6340,6 +6410,7 @@ int main(int argc, char** argv) {
                     else if (shift && k == SDLK_l) { std::string err; if (loadGame(app, app.courseFile, err)) { std::printf("loaded %s\n", app.courseFile.c_str()); } else std::fprintf(stderr, "error: %s\n", err.c_str()); }
                     else if (shift && k == SDLK_p) { app.paused = !app.paused; if (app.paused) pauseStart = SDL_GetTicks() / 1000.0; else pausedTotal += SDL_GetTicks() / 1000.0 - pauseStart; }
                     else if (shift && k == SDLK_t) app.showProps = !app.showProps;
+                    else if (shift && k == SDLK_n) app.showNames = !app.showNames;
                     else if ((shift || (SDL_GetModState() & KMOD_CTRL)) && (k == SDLK_c || k == SDLK_r || k == SDLK_g || k == SDLK_v)) {
                         // Hire (Shift) or fire (Ctrl) a Club Pro, Ranger, Groundskeeper or Soda Vendor.
                         const int kind = k == SDLK_c ? Economy::ClubPro : k == SDLK_r ? Economy::Ranger : k == SDLK_g ? Economy::Groundskeeper : Economy::SodaVendor;

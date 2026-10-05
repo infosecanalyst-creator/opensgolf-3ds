@@ -150,3 +150,14 @@ Not run on the Mac. Practice Round clicks were not exercised, only the hooked he
 | Tutorial | structure EXACT, wording my own, start key PLACEHOLDER | 11 fun and 9 skill pages, any key advances, Escape stops, game pauses; Shift+F8 starts it |
 
 Tested headless only (a hooked match run to a win, the tutorial page render); not run on the Mac, no button clicks exercised.
+
+## Update 76 additions
+
+| Item | Status | Notes |
+|---|---|---|
+| Refusal, chip, TaDa, Twinkle, bagpipe, end-of-year, tournament place sounds | DERIVED | Wired to the shipped wav files; trigger points are my reading |
+| Emotion voice clips | weak reading | Bank-to-reaction mapping guessed from file names |
+| Bottom golfer mood strip | PLACEHOLDER position | Round faces from MemberPanel.pcx with number cells; click opens the golfer card |
+| Name tags over golfers and staff | PLACEHOLDER | Seen in real screenshots; font, offset and Shift+N toggle are mine |
+
+Tested headless only; not run on the Mac.

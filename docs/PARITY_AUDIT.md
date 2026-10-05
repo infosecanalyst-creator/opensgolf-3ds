@@ -195,10 +195,8 @@ Files the exe uses that the port never names are likely gaps. Pattern loaded set
 - SimsFX/Male/mTIRED.wav
 - ... 6 more
 
-## Sounds: 245 files, 46 named in the port, 47 used by the exe but never named in the port
+## Sounds: 245 files, 53 named in the port, 40 used by the exe but never named in the port
 
-- Sounds/ApplauseBad.wav
-- Sounds/Buy2Short.wav
 - Sounds/Buy3Short.wav
 - Sounds/Buy4Short.wav
 - Sounds/Effects/Alligator .wav
@@ -206,9 +204,7 @@ Files the exe uses that the port never names are likely gaps. Pattern loaded set
 - Sounds/Effects/Boing.wav
 - Sounds/Effects/Fly.wav
 - Sounds/Effects/TAUNT009.wav
-- Sounds/Effects/TaDa.wav
 - Sounds/Effects/TimeTunnelClip2.wav
-- Sounds/Effects/Twinkle.wav
 - Sounds/Effects/desert3.wav
 - Sounds/Effects/grass3.wav
 - Sounds/Effects/winter.wav
@@ -240,10 +236,7 @@ Files the exe uses that the port never names are likely gaps. Pattern loaded set
 - Sounds/Emotion/MaleSSSHappy.wav
 - Sounds/Emotion/MaleSSSSad.wav
 - Sounds/Emotion/MaleSSSSuccess.wav
-- Sounds/Golf_Sfx/Chip.wav
 - Sounds/Interface/Button3.wav
-- Sounds/Interface/Wrong.wav
-- Sounds/World/Bagpipe.wav
 
 ## Themes: 74 files, 14 named in the port, 1 used by the exe but never named in the port
 
