@@ -264,6 +264,14 @@ bool Tournament::evaluateOffer(const SgaInput& in) {
     return state_ == State::Offered;
 }
 
+bool Tournament::forceOffer(const SgaInput& in) {
+    if (state_ == State::InProgress) return false;
+    recompute(in);
+    if (prize_ <= 0) { prize_ = std::max(20, defaultPrizeThousands(in.holes)); name_ = tournamentName(std::max(1, eval_.total), false); }
+    state_ = State::Offered;
+    return true;
+}
+
 bool Tournament::reopenOffer(const SgaInput& in) {
     if (state_ != State::Offered) return false;
     recompute(in);
@@ -284,10 +292,12 @@ bool Tournament::accept(const std::vector<TourPro>& pros, const std::vector<int>
     fp.difficulty = difficulty;
     fp.prizeThousands = prize_;
     fp.cashUnits = cashUnits;
+    fp.championshipMode = champ_;
     field_ = selectField(pros, fp, playerName, playerSkillSum, rng);
     state_ = State::InProgress;
     if (accomplishments) {
         accomplishments->clear();
+        if (champ_) return true;   // the exe's stamping routine does nothing in championship play
         accomplishments->push_back(kAccomplishmentFirstTournament);
         if (prize_ >= 500) accomplishments->push_back(kAccomplishment500kTournament);
         if (prize_ >= 1000) accomplishments->push_back(kAccomplishment1mTournament);

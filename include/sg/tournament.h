@@ -160,6 +160,9 @@ public:
     // Pressing the tournament button with an offer pending: the course is evaluated again and the prize recomputed (it can change or drop
     // to zero, in which case the SGA evaluation screen is shown instead). Returns true if the offer dialog should be shown.
     bool reopenOffer(const SgaInput& in);
+    // Championship play starts the field draw without a July offer. PLACEHOLDER: the prize and name when the course earns none are the port's choice
+    // (default prize for the hole count, lowest tournament name); FUN_0046c970 is to be re-read for the exe's values.
+    bool forceOffer(const SgaInput& in);
     // "I think I need more practice": the prize is cleared but the offer stays pending (the button re-evaluates next time).
     void decline();
     // "Great, let the games begin": draws the field and starts. Fails unless an offer with a prize is pending. `pars` has one entry per open hole.
@@ -167,6 +170,9 @@ public:
                 int playerSkillSum, const RandFn& rng, std::vector<int>* accomplishments = nullptr);
     // "Cancel match/tournament" confirmed: the running tournament and the pending offer are both dropped, no payout.
     void cancel();
+    // Championship play from the main menu (exe flag 0x4000000): the field's strength score is randomised and no accomplishments are stamped.
+    void setChampionship(bool on) { champ_ = on; }
+    bool championship() const { return champ_; }
 
     // Play. Strokes are supplied by the caller, one hole at a time or a whole round at once.
     bool recordHole(int slot, int hole, int strokes);   // marks the golfer as being on hole + 1 (0 after the last hole of his loop)
@@ -178,6 +184,7 @@ public:
 
 private:
     State state_ = State::Idle;
+    bool champ_ = false;
     int holes_ = 0, prize_ = 0;
     const char* name_ = nullptr;
     std::vector<int> pars_;

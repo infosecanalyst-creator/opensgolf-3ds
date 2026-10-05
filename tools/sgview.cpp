@@ -33,6 +33,7 @@
 #include "sg/reactions.h"
 #include "sg/membership.h"
 #include "sg/top10.h"
+#include "sg/bestscores.h"
 #include "sg/sga.h"
 #include "sg/buildings.h"
 #include "sg/homes.h"
@@ -142,7 +143,7 @@ struct App {
     int difficulty = 1;              // 0..3 as in the exe (the standard game's value is not known yet; 1 is a guess)
     std::string courseName = "Demo Course";
     // Screens: the title menu, the property chooser and the course itself.
-    enum { ScreenMenu, ScreenProperty, ScreenPlay, ScreenReport, ScreenCharacter, ScreenCustomise, ScreenSga, ScreenFinance, ScreenRoster, ScreenHoleStat, ScreenKeys, ScreenEoy, ScreenComments, ScreenHisto, ScreenBoard, ScreenBuyLand, ScreenOverview, ScreenAward, ScreenGolfer, ScreenDiff, ScreenThemes, ScreenLoad, ScreenCredits, ScreenTop10 };
+    enum { ScreenMenu, ScreenProperty, ScreenPlay, ScreenReport, ScreenCharacter, ScreenCustomise, ScreenSga, ScreenFinance, ScreenRoster, ScreenHoleStat, ScreenKeys, ScreenEoy, ScreenComments, ScreenHisto, ScreenBoard, ScreenBuyLand, ScreenOverview, ScreenAward, ScreenGolfer, ScreenDiff, ScreenThemes, ScreenLoad, ScreenCredits, ScreenTop10, ScreenPro, ScreenBest, ScreenPair, ScreenStats };
     int screen = ScreenPlay;
     ui::Image titleBase, titleUn, titleMo, worldBase, themeIcons[4], reportArt, holeArt, keysArt, eoyArt, comtArt, sgaArt, tourArt, histArt, boardArt, partsArt, tacsArt, pinArt, finArt, okArt, rosterArt, rosterBtn, rosterBar, dockArt, terrPanel, terrBtns;
     ui::Image amenArt, elevArt, bldgArt, empArt, layoutArt, hireArt, memberArt, landArt, landBtn, ovHead[4], ovBottom;   // dock panel sheets (docs/UI_PANELS.md)
@@ -165,6 +166,11 @@ struct App {
     bool charFemale = false, charEditing = false;
     sg::CharRec chr, chrUndo; bool chrReady = false;   // the player's character record (Customise screen)
     ui::Image t2Diff, t2DiffMo, t2Theme, t2ThemeMo, t2Load, t2LoadMo, t10Blank, t10Troph, creditsBg, creditsLogo; bool t2Ok = false, top10Ready = false, top10Show = false; int t2Hover = -1, t2Sel = -1, t2Scroll = 0, t2Confirm = 0, diffPending = -1, top10Return = 0; Uint32 creditStart = 0;
+    ui::Image t2Pro, bestArt, ciArt, ciShade, ibArt;
+    // Generic popup menus (FUN_0046d6e0): 1 Information, 2 System Functions, 3 Preferences, 4 text prompt.
+    int popKind = 0, popHover = -1, popPrefs = 0x25; std::vector<std::string> popLines; std::string popBuf, popHead, lastMsg; bool browsing = false; int popPromptFor = 0; int t2Mode = 0; bool champ = false;
+    sg::BestScores best; std::string thumbReq; GLuint t2Thumb = 0;   // Best N Hole Scores for this course; a save thumbnail is captured on the next frame
+    struct SaveInfo { bool ok = false; int holes = 0, par = 0, yards = 0, fun = 0, len = 0, acc = 0, img = 0, theme = 0; double cash = 0; std::string designer, themeName; std::vector<std::pair<int, int>> hole; int record = 0; std::string recordBy; } t2Info; std::string t2InfoPath;   // t2Mode 1 = the Load screen lists championship courses (.cse); champ = championship play (exe flag 0x4000000)
     std::vector<std::string> t2Files, creditLines; sg::Top10 top10;   // title side screens and the Top 10 table
     ui::Image cardArt; int cardG = -1, cardHover = -1, cardFrames = 0; float cardMx = 0, cardMy = 0;   // golfer info card (docs/DECODE_GOLFERCARD.md)
     ui::Image ballArt, cgBtn, custBg[2], headWin, headSel, headExp[2], headHalo[2]; std::vector<ui::Image> headCustom[2];
@@ -825,6 +831,7 @@ static double clubSkill(const App& app);
 static int golfersOnCourse(const App& app);
 // Starts a golfer on the first hole. Skills vary from golfer to golfer (PLACEHOLDER spread of 4 to 11 out of 15).
 static int g_cuHover = -1, g_cuFace = -1, g_cardHook = -1, g_cardHover = -1;   // test hooks --card N (open after the --time run), --cardhover B;    // test hooks --cuhover N, --cuface PAGE
+static std::string g_saveChamp; static int g_champGo = -1;   // test hooks --savechamp NAME and --champgo PRO_INDEX
 static int g_t2Hover = -1;   // test hook --t2hover N (hover or selection on the title side screens)
 static int g_resetSeed = -1, g_hoverHook = -1, g_confirmHook = -1;   // test hooks --worldreset SEED, --worldhover N, --worldconfirm N
 static int g_moodHook = -99;   // test hook --mood N: starting mood of every new golfer
@@ -975,8 +982,16 @@ static unsigned skillMaskOf(const sg::GolferSkills& k) {
     return m ? m : 7;
 }
 static void visitors(App& app) { (void)app; }   // visitors are decided when a pair launches (see spawnGolfer)
+static std::string memberName(App& app, int id);
 static void endRound(App& app, Golfer& g, bool finished) {
     const int holes = (int)app.holes.size();
+    if (finished && holes > 0 && g.strokesRound > 0) {   // Best N Hole Scores: a full round of every hole (docs/DECODE_TOP10_PAIR.md section 2)
+        int tp = 0; for (const auto& hh : app.holes) tp += hh.par;
+        const std::string who = g.memberId ? memberName(app, g.memberId) : std::string("Visiting golfer");   // PLACEHOLDER: visitors have no names yet
+        const bool rec = app.best.setsRecord(g.strokesRound, holes, tp);
+        app.best.insert(g.strokesRound, who);
+        if (rec) say(app, who + " has just set a new course record of " + std::to_string(g.strokesRound) + " strokes!", 8);
+    }
     if (g.vis != sg::Visitor::None) {
         const sg::Outcome o = sg::resolve(g.vis, app.vstate, finished, g.mood, holes, app.srng);
         if (o.cashUnits > 0) { app.econ.earn(o.cashUnits * 100.0); say(app, "The corporate CEO enjoyed your course and invested " + money((long long)o.cashUnits * 100) + " in the club", 9); }
@@ -2200,7 +2215,7 @@ static void runTournament(App& app) {
     std::vector<int> acc;
     if (!app.tourney.accept(app.pros, pars, app.difficulty, (int)(app.econ.cash / 100), app.charName, skillSum, fn, &acc)) { say(app, "There is no tournament offer to accept"); return; }
     app.tName = app.tourney.name() ? app.tourney.name() : ""; app.tPrize = app.tourney.firstPrizeThousands(); app.tPars = pars;
-    { sg::GoalEvent e; e.kind = sg::GoalEvent::TournamentAccepted; e.prizeThousands = app.tPrize; goalEvent(app, e); }
+    if (!app.champ) { sg::GoalEvent e; e.kind = sg::GoalEvent::TournamentAccepted; e.prizeThousands = app.tPrize; goalEvent(app, e); }   // championship play stamps nothing
     app.tStrokes.clear();
     const std::vector<sg::Entrant> fld = app.tourney.field();
     // Every entrant plays every hole of this course through the same shot simulation the golfers on the course use, with the pro's own ten skills
@@ -3042,8 +3057,19 @@ static bool saveGame(App& app, const std::string& file, std::string& err) {
     for (const std::vector<short>* v : {&app.hgSkill, &app.hgCash, &app.hgFun, &app.hgStaff, &app.evLog}) { for (short x : *v) std::fprintf(f, "%d ", (int)x); std::fprintf(f, "\n"); }
     for (int i = 0; i < 22; i++) std::fprintf(f, "%ld\n%s\n", app.miles[i].tick, app.miles[i].course.c_str());
     for (int k = 0; k < 4; k++) std::fprintf(f, "%d %d ", app.empCount[k][0], app.empCount[k][1]);
-    std::fprintf(f, "\nEND\n");
+    std::fprintf(f, "\nBEST 1 %d\n", app.best.count);
+    for (int i = 0; i < app.best.count; i++) std::fprintf(f, "%d %s\n", app.best.score[i], app.best.name[i]);
+    if (app.holes.empty()) refreshHoles(app);
+    if (app.hstats.size() != app.holes.size()) syncHoleStats(app);
+    { int par = 0, yards = 0; for (size_t i = 0; i < app.holes.size() && i < app.hstats.size(); i++) { par += app.holes[i].par; yards += app.hstats[i].yards; }
+      if (app.ratings.size() != app.holes.size()) { app.ratings.clear(); for (const HoleRoute& r : app.holes) app.ratings.push_back(rateHole(app.terrain, r, 20, app.difficulty)); }
+      double lenS = 0, accS = 0, imgS = 0; if (app.ratings.size() == app.holes.size()) for (const HoleRating& r : app.ratings) { lenS += r.len; accS += r.acc; imgS += r.img; }
+      std::fprintf(f, "INFO 1 %zu %d %d %.0f %d %.0f %.0f %.0f %d\n", app.holes.size(), par, yards, app.econ.cash, clubFun(app), lenS * 100, accS * 100, imgS * 100, app.themePack);
+      for (size_t i = 0; i < app.holes.size() && i < app.hstats.size(); i++) std::fprintf(f, "%d %d\n", app.holes[i].par, app.hstats[i].yards);
+      std::fprintf(f, "%s\n", app.charName.empty() ? "Gary Golf" : app.charName.c_str()); }
+    std::fprintf(f, "END\n");
     std::fclose(f);
+    app.thumbReq = file + ".thumb";   // the course view is captured on the next frame for the Load screen
     return true;
 }
 static bool loadGame(App& app, const std::string& file, std::string& err) {
@@ -3122,6 +3148,22 @@ static bool loadGame(App& app, const std::string& file, std::string& err) {
         }
         std::fclose(f);
     }
+    sg::BestScores bestL;
+    if (FILE* f = std::fopen(file.c_str(), "r")) {
+        char line[512];
+        while (std::fgets(line, sizeof line, f)) {
+            if (std::strncmp(line, "BEST 1", 6) != 0) continue;
+            int n = 0; if (std::sscanf(line + 6, "%d", &n) != 1) break;
+            for (int i = 0; i < n && i < sg::BestScores::kMax; i++) {
+                if (!std::fgets(line, sizeof line, f)) break;
+                int sc = 0, off = 0; if (std::sscanf(line, "%d %n", &sc, &off) < 1) break;
+                std::string nm = line + off; while (!nm.empty() && (nm.back() == '\n' || nm.back() == '\r')) nm.pop_back();
+                bestL.insert(sc, nm);
+            }
+            break;
+        }
+        std::fclose(f);
+    }
     struct StateL { bool ok = false; int skilled[4] = {}; sg::costs::Ledger ledger; std::vector<App::YearRec> years; int eoy = 0, last = 0, hgDay = 1; std::vector<short> hg[5]; long tick[22] = {}; std::string course[22]; int emp[4][2] = {}; } stl;
     if (FILE* f = std::fopen(file.c_str(), "r")) {
         char line[512];
@@ -3141,6 +3183,7 @@ static bool loadGame(App& app, const std::string& file, std::string& err) {
         std::fclose(f);
     }
     app.terrain = std::move(t);
+    app.best = haveGame ? bestL : sg::BestScores();
     if (haveGame) { app.curProp = curPropL; app.careerOwned = careerL | (curPropL >= 0 ? 1u << curPropL : 0u); } else { app.curProp = -1; app.careerOwned = 0; }
     app.amen = haveGame ? amenLoaded : std::vector<App::Amen>();
     app.homes = haveGame ? homesLoaded : std::vector<App::Home>(); app.homeSales = haveGame ? salesLoaded : 0; app.homeMonth = -1; app.homeConfirm = -1;
@@ -3192,7 +3235,7 @@ static void switchCourse(App& app, int target) {
 
 static void loadStory(App& app);
 static void startGame(App& app, int propIdx, bool sandbox) {
-    app.curProp = propIdx; app.careerOwned |= 1u << propIdx;
+    app.curProp = propIdx; app.careerOwned |= 1u << propIdx; app.best = sg::BestScores();
     const Property& p = kProperties[propIdx];
     app.econ.sandbox = sandbox;
     const int price = propPrice(app, propIdx), acres = propAcres(app, propIdx);
@@ -3256,14 +3299,14 @@ static const DockBtn kDock[10] = {
     {107, 568, 14, 598, 298, 34, 34, 50}, // pause
     {133, 583, 13, 598, 348, 34, 34, 50}, // tools (save the course)
 };
-static const char* kDockHelp[10] = {"Build Course", "Add Buildings", "People", "Zoom in", "Zoom out", "Rotate right", "Rotate left", "Course report", "Pause", "Save the course"};
+static const char* kDockHelp[10] = {"Build Course", "Add Buildings", "People", "Zoom in", "Zoom out", "Rotate right", "Rotate left", "Information", "Pause or Unpause", "System Functions"};
 
 // Opens the next finished hole (the exe's H key). Golfers only play open holes. Each opened hole may unlock a building type (the exe unlocks
 // one when the number of open holes is greater than the unlock counter minus 5), and holes 6, 10 and 18 upgrade the course.
 static const char* kUnlockEffect[15] = {"", "", "", "", "", "", "Putting Green: golfers with imagination improve their putting", "Snack Bar: feeds hungry golfers", "Pro Shop: accurate golfers upgrade equipment",
                                         "Swim Club: golfers start in a better mood", "Driving Range: long hitters gain distance", "Cart Garage: faster play", "Marina: raises home values",
                                         "Resort Hotel: golfers tire less late in a round", "Airstrip: lets you charge higher green fees"};
-static void say(App& app, const std::string& m, double secs) { app.toast = m; app.toastUntil = SDL_GetTicks() / 1000.0 + secs; std::printf("%s\n", m.c_str()); }
+static void say(App& app, const std::string& m, double secs) { app.lastMsg = m; app.toast = m; app.toastUntil = SDL_GetTicks() / 1000.0 + secs; std::printf("%s\n", m.c_str()); }
 static void openHole(App& app) {
     refreshHoles(app);
     int pick = -1;
@@ -3727,6 +3770,138 @@ static int dockHit(float vx, float vy) {
     return -1;
 }
 
+// ---- Popup menus (docs/DECODE_MENUS.md). The frame is the 9 piece panel cut from InfoButtons.pcx at (200,0), 16 px pieces on a 17 px pitch, over a lavender fill (exe colour 0x4e79).
+// PLACEHOLDER: the radio ball beside each option (the exe's sprite is not located) and the System menu captions the exe keeps in its data.
+static void ibLoad(App& app) { if (!app.ibArt.tex) { const std::string i = app.gameDir + "/Interface/"; ui::loadPcx(i + "InfoButtons.pcx", app.ibArt, false, -1, i + "InfoButtons_A.pcx"); } }
+static void drawFrame9(App& app, float x, float y, float w, float h) {
+    ibLoad(app);
+    if (int r = (int)w & 15) { w += 15 - r; x -= (15 - r) / 2; }
+    if (int r = (int)h & 15) { h += 15 - r; y -= (15 - r) / 2; }
+    ui::fillRect(x + 4, y + 4, w - 8, h - 8, 152 / 255.0f, 152 / 255.0f, 200 / 255.0f, 1);
+    auto piece = [&](int col, int row, float dx, float dy) { ui::drawImage(app.ibArt, dx, dy, 200.0f + 17 * col, 17.0f * row, 16, 16); };
+    piece(0, 0, x, y);
+    for (float t = x + 16; t < x + w - 16; t += 16) { piece(1, 0, t, y); piece(1, 2, t, y + h - 16); }
+    for (float t = y + 16; t < y + h - 16; t += 16) { piece(0, 1, x, t); piece(2, 1, x + w - 16, t); }
+    piece(2, 0, x + w - 16, y); piece(2, 2, x + w - 16, y + h - 16); piece(0, 2, x, y + h - 16);
+}
+static const char* kInfoMenu[12] = {"Repeat Last Message", "Course Report", "Player Comments", "Routing Map", "Histogram", "SGA Evaluation", "Financial Report", "Membership Roster", "Professional Accomplishments", "World Map", "Best Scores", "Top 10 Designers"};
+static void popOpen(App& app, int kind) {
+    app.popKind = kind; app.popHover = -1; app.popLines.clear(); app.popHead.clear();
+    if (kind == 1) for (const char* c : kInfoMenu) app.popLines.push_back(c);
+    else if (kind == 2) {
+        app.popLines = {"Save Game", "Load Game", "Cancel Match or Tournament", "Save " + app.charName + " for Championship", "Rename Your Course", "Preferences", "Save Course for Championship", "Quit"};
+    } else if (kind == 3) {
+        app.popLines = {"Display golfer names on screen", "Show advisor and first-time messages", "Show ambient animals"};   // bits 1, 4 and 0x20; the exe's other three labels are not in the text
+    }
+}
+static void popGeom(const App& app, float& x, float& y, float& w, float& h, float& firstY) {
+    float mw = 0; for (const std::string& l : app.popLines) mw = std::max(mw, app.font.width(l, 16));
+    const float cx = app.popKind == 1 ? 200.0f : app.popKind == 2 ? 250.0f : 400.0f, top = app.popKind == 1 ? 250.0f : app.popKind == 2 ? 340.0f : 200.0f;
+    const int n = (int)app.popLines.size() + (app.popKind == 3 ? 1 : 0);
+    w = (float)(((int)mw - 1) | 15) + 0x31; h = (float)((n * 3 + 3) * 8); x = cx - w / 2; y = top; firstY = y + 12.0f + (app.popKind == 3 ? 18.0f : 0.0f);
+}
+static int popArg = 0;
+static void drawPopup(App& app) {
+    static bool once = false; if (!once && popArg) { once = true; popOpen(app, popArg); }
+    if (!app.popKind) return;
+    float x, y, w, h, fy; popGeom(app, x, y, w, h, fy);
+    app.view = ui::beginScreen(app.drawW, app.drawH, false);
+    if (app.popKind == 4) {
+        const float bw = 400, bh = 80, bx = 200, by = 240; drawFrame9(app, bx, by, bw, bh);
+        app.font.drawCentered(400, by + 28, app.popHead, 16, 1, 1, 1);
+        ui::fillRect(bx + 20, by + 40, bw - 40, 24, 0.97f, 0.95f, 0.85f, 1);
+        app.font.draw(bx + 26, by + 58, app.popBuf + ((SDL_GetTicks() / 400) % 2 ? "_" : ""), 15, 0, 0, 0);
+        ui::endScreen(); return;
+    }
+    drawFrame9(app, x, y, w, h);
+    if (app.popKind == 3) app.font.drawCentered(x + w / 2, y + 26, "Preferences", 16, 1, 1, 1);
+    for (size_t i = 0; i < app.popLines.size(); i++) {
+        const float ty = fy + 24.0f * (float)i; const bool hot = app.popHover == (int)i;
+        const float tb = hot ? 1.0f : 0.0f; const float tg = hot ? 1.0f : 0.5f;
+        const bool dis = app.popKind == 2 && ((i == 2) || (i == 3 && false));   // nothing to cancel: the port plays a tournament out at once
+        app.font.draw(x + 0x24, ty + 16, app.popLines[i], 16, dis ? 0.75f : tb, dis ? 0.75f : tg, dis ? 0.75f : tg);
+        const bool on = app.popKind == 3 && (app.popPrefs & (i == 0 ? 1 : i == 1 ? 4 : 0x20));
+        ui::fillRect(x + 12, ty + 6, 12, 12, 0.35f, 0.35f, 0.6f, 1);   // PLACEHOLDER ball / box
+        if (app.popKind != 3 || on) ui::fillRect(x + 14, ty + 8, 8, 8, hot ? 1.0f : 0.1f, hot ? 1.0f : 0.8f, hot ? 1.0f : 0.8f, 1);
+    }
+    if (app.okArt.tex) { const auto& k = sg::ui_screens::kOkCut[(app.popHover == 100) ? 1 : 0]; ui::drawImage(app.okArt, x + w - 44, y + h - 42, (float)k.x, (float)k.y, (float)k.w, (float)k.h); }
+    ui::endScreen();
+}
+static void pushKey(SDL_Keycode k) { SDL_Event ev; SDL_zero(ev); ev.type = SDL_KEYDOWN; ev.key.keysym.sym = k; ev.key.state = SDL_PRESSED; SDL_PushEvent(&ev); }
+static void toastMsg(App& app, const std::string& m);
+static bool champSave(App& app, const std::string& name, std::string& err);
+static void t2ListSaves(App& app);
+static void t2LoadArt(App& app);
+static bool saveGame(App& app, const std::string& file, std::string& err);
+static bool loadGame(App& app, const std::string& file, std::string& err);
+static void openBest(App& app);
+static void openTop10(App& app);
+static void popChoose(App& app, int kind, int idx) {
+    app.popKind = 0; SDL_StopTextInput();
+    if (kind == 1) {
+        static const SDL_Keycode k[12] = {SDLK_UNKNOWN, SDLK_F1, SDLK_F2, SDLK_F5, SDLK_F3, SDLK_F7, SDLK_F4, SDLK_F9, SDLK_F10, SDLK_F6, SDLK_UNKNOWN, SDLK_UNKNOWN};
+        if (idx == 0) { if (!app.lastMsg.empty()) { app.toast = app.lastMsg; app.toastUntil = SDL_GetTicks() / 1000.0 + 5; } }
+        else if (idx == 10) openBest(app); else if (idx == 11) openTop10(app);
+        else if (idx > 0 && idx < 10) pushKey(k[idx]);
+    } else if (kind == 2) {
+        std::string err;
+        switch (idx) {
+            case 0: toastMsg(app, saveGame(app, app.courseFile, err) ? "Game Saved" : "Could not save the game"); break;
+            case 1: {   // the exe saves "While Browsing" and Cancel restores it
+                std::string e2; const std::string wb = (std::filesystem::path(app.courseFile).has_parent_path() ? std::filesystem::path(app.courseFile).parent_path() : std::filesystem::path(".")).string() + "/While Browsing.sgc";
+                if (saveGame(app, wb, e2)) { app.browsing = true; t2LoadArt(app); app.t2Mode = 0; t2ListSaves(app); app.t2Files.erase(std::remove(app.t2Files.begin(), app.t2Files.end(), wb), app.t2Files.end()); app.t2Sel = -1; app.t2Scroll = 0; app.t2Confirm = 0; app.t2Hover = -1; app.screen = App::ScreenLoad; }
+                break; }
+            case 2: toastMsg(app, "There is no match or tournament to cancel"); break;
+            case 3: { const std::string pf = app.gameDir + "/Themes/Championship/" + app.charName + ".pro"; toastMsg(app, sg::charSaveFile(pf, app.chr) ? app.charName + " saved for championship play." : "The player could not be saved"); break; }
+            case 4: app.popKind = 4; app.popPromptFor = 1; app.popHead = "Rename Course..."; app.popBuf = app.courseName; SDL_StartTextInput(); break;
+            case 5: popOpen(app, 3); break;
+            case 6: toastMsg(app, champSave(app, app.courseName.empty() ? std::string("Course") : app.courseName, err) ? app.courseName + " saved for championship play." : "Could not save the course for championship play"); break;
+            case 7: { SDL_Event q; SDL_zero(q); q.type = SDL_QUIT; SDL_PushEvent(&q); break; }
+        }
+    }
+}
+static bool popEvent(App& app, const SDL_Event& e) {
+    if (!app.popKind) return false;
+    float x, y, w, h, fy; popGeom(app, x, y, w, h, fy);
+    const int n = (int)app.popLines.size();
+    if (app.popKind == 4) {
+        if (e.type == SDL_TEXTINPUT) { if (app.popBuf.size() < 32) app.popBuf += e.text.text; return true; }
+        if (e.type == SDL_KEYDOWN) {
+            const SDL_Keycode k = e.key.keysym.sym;
+            if (k == SDLK_ESCAPE) { app.popKind = 0; SDL_StopTextInput(); }
+            else if (k == SDLK_BACKSPACE && !app.popBuf.empty()) app.popBuf.pop_back();
+            else if (k == SDLK_RETURN && !app.popBuf.empty()) { app.courseName = app.popBuf; app.popKind = 0; SDL_StopTextInput(); toastMsg(app, "Course renamed"); }
+            return true;
+        }
+        return e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEMOTION;
+    }
+    float vx = 0, vy = 0; const bool mouse = e.type == SDL_MOUSEMOTION || e.type == SDL_MOUSEBUTTONDOWN;
+    if (mouse) { vx = app.view.toVirtualX((e.type == SDL_MOUSEMOTION ? e.motion.x : e.button.x) * app.dpi); vy = app.view.toVirtualY((e.type == SDL_MOUSEMOTION ? e.motion.y : e.button.y) * app.dpi); }
+    auto rowAt = [&]() { return (vx > x && vx < x + w - 0x30 && vy >= fy && vy < fy + 24.0f * n) ? (int)((vy - fy) / 24) : -1; };
+    auto onOk = [&]() { return std::fabs(vx - (x + w - 22)) < 22 && std::fabs(vy - (y + h - 21)) < 22; };
+    if (e.type == SDL_MOUSEMOTION) { app.popHover = onOk() ? 100 : rowAt(); return true; }
+    if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
+        const int r = rowAt();
+        if (app.popKind == 3) {
+            if (r >= 0) app.popPrefs ^= (r == 0 ? 1 : r == 1 ? 4 : 0x20);
+            else if (onOk()) { app.popKind = 0; app.showAdvisor = (app.popPrefs & 4) != 0; }
+            return true;
+        }
+        if (r >= 0 && !(app.popKind == 2 && r == 2)) { popChoose(app, app.popKind, r); return true; }
+        if (r < 0 && !onOk() && !(vx > x && vx < x + w && vy > y && vy < y + h)) app.popKind = 0;   // a click outside closes it
+        return true;
+    }
+    if (e.type == SDL_KEYDOWN) {
+        const SDL_Keycode k = e.key.keysym.sym;
+        if (k == SDLK_ESCAPE) { if (app.popKind == 3) app.showAdvisor = (app.popPrefs & 4) != 0; app.popKind = 0; }
+        else if (k == SDLK_UP) app.popHover = std::max(0, (app.popHover < 0 || app.popHover > 50 ? 1 : app.popHover) - 1);
+        else if (k == SDLK_DOWN) app.popHover = std::min(n - 1, (app.popHover < 0 || app.popHover > 50 ? -1 : app.popHover) + 1);
+        else if ((k == SDLK_RETURN || k == SDLK_SPACE) && app.popHover >= 0 && app.popHover < n) { if (app.popKind == 3) app.popPrefs ^= (app.popHover == 0 ? 1 : app.popHover == 1 ? 4 : 0x20); else popChoose(app, app.popKind, app.popHover); }
+        return true;
+    }
+    return e.type == SDL_MOUSEBUTTONUP || e.type == SDL_MOUSEWHEEL;
+}
+
 // Returns true when the click was on the dock or an open panel.
 static bool dockClick(App& app, float vx, float vy, bool rightClick, bool& togglePause) {
     if (!app.uiOk || !app.dockArt.tex) return false;
@@ -3745,9 +3920,9 @@ static bool dockClick(App& app, float vx, float vy, bool rightClick, bool& toggl
         else if (d == 4) app.zoom /= 1.12f;
         else if (d == 5) app.rot += 15;
         else if (d == 6) app.rot -= 15;
-        else if (d == 7) { reportCourse(app, true); if (app.reportArt.tex) { app.ratings.clear(); app.screen = App::ScreenReport; } }
+        else if (d == 7) popOpen(app, 1);   // Information
         else if (d == 8) togglePause = true;
-        else if (d == 9) { std::string err; app.toast = saveGame(app, app.courseFile, err) ? "Game saved" : "Could not save the game"; app.toastUntil = SDL_GetTicks() / 1000.0 + 3; }
+        else if (d == 9) popOpen(app, 2);   // System Functions
         snd(app, "Interface/Button1.wav");
         return true;
     }
@@ -3927,7 +4102,7 @@ static void t2LoadArt(App& app) {
     const std::string i = app.gameDir + "/Interface/";
     ui::loadPcx(i + "TitleSelDiffUnSel.pcx", app.t2Diff, false); ui::loadPcx(i + "TitleSelDiffMO.pcx", app.t2DiffMo, true);
     ui::loadPcx(i + "Title_ThemePacks.pcx", app.t2Theme, false); ui::loadPcx(i + "Title_ThemePacks_MO.pcx", app.t2ThemeMo, true);
-    ui::loadPcx(i + "Title_LoadGame.pcx", app.t2Load, false); ui::loadPcx(i + "Title_LoadGame_MO.pcx", app.t2LoadMo, true);
+    ui::loadPcx(i + "Title_Pickapro.pcx", app.t2Pro, false); ui::loadPcx(i + "infoscreens/lowscore.pcx", app.bestArt, true); ui::loadPcx(i + "Title_LoadGame.pcx", app.t2Load, false); ui::loadPcx(i + "Title_LoadGame_MO.pcx", app.t2LoadMo, true);
     ui::loadPcx(i + "Top10_Blank.pcx", app.t10Blank, false); ui::loadPcx(i + "Top10_Trophies.pcx", app.t10Troph, false);
     ui::loadPcx(app.gameDir + "/creditsbckgrd.pcx", app.creditsBg, false); ui::loadPcx(app.gameDir + "/bink64.pcx", app.creditsLogo, false);
 }
@@ -3998,10 +4173,24 @@ static void drawThemes(App& app) {
 }
 
 // Load Previous Game (FUN_0043b610). The port keeps its saves as *.sgc files beside the course file.
+static std::string t2RowName(const std::string& path) {   // names starting with '&' are autosaves (DECODE_TITLE2 section 1); the bracket punctuation is DERIVED
+    std::string n = std::filesystem::path(path).stem().string();
+    if (!n.empty() && n[0] == '&') n = "autosave (" + n.substr(1) + ")";
+    return n;
+}
+static void t2ListFolder(App& app, const char* sub, const char* ext) {   // championship courses (.cse) and pros (.pro) live in Themes/Championship
+    app.t2Files.clear();
+    std::error_code ec;
+    for (const auto& f : std::filesystem::directory_iterator(std::filesystem::path(app.gameDir) / "Themes" / sub, ec)) {
+        std::string x = f.path().extension().string(); for (char& ch : x) ch = (char)std::tolower((unsigned char)ch);
+        if (x == ext && f.path().filename().string().find("Shadow") == std::string::npos) app.t2Files.push_back(f.path().string());
+    }
+    std::sort(app.t2Files.begin(), app.t2Files.end());
+}
 static void t2ListSaves(App& app) {
     app.t2Files.clear();
     std::error_code ec; const std::filesystem::path dir = std::filesystem::path(app.courseFile).has_parent_path() ? std::filesystem::path(app.courseFile).parent_path() : std::filesystem::path(".");
-    for (const auto& f : std::filesystem::directory_iterator(dir, ec)) if (f.path().extension() == ".sgc") app.t2Files.push_back(f.path().string());
+    for (const auto& f : std::filesystem::directory_iterator(dir, ec)) if (f.path().extension() == ".sgc" && f.path().filename().string().find("Shadow") == std::string::npos) app.t2Files.push_back(f.path().string());
     std::sort(app.t2Files.begin(), app.t2Files.end());
 }
 static int loadHit(float x, float y) {
@@ -4012,9 +4201,88 @@ static int loadHit(float x, float y) {
     if (std::hypot(x - 704, y - 555) < 23) return 104;
     return -1;
 }
+// Load screen side panel (DECODE_TITLE2 section 1): the numbers come from the INFO section the port writes into its saves, the picture from a thumbnail
+// captured when the game was saved. PLACEHOLDER: the exe's own save file layout is not used; the oval picture's source in the exe is unknown.
+static void t2ReadInfo(App& app, const std::string& path) {
+    if (app.t2InfoPath == path) return;
+    app.t2InfoPath = path; app.t2Info = App::SaveInfo();
+    if (app.t2Thumb) { glDeleteTextures(1, &app.t2Thumb); app.t2Thumb = 0; }
+    FILE* f = std::fopen(path.c_str(), "r"); if (!f) return;
+    char line[512];
+    while (std::fgets(line, sizeof line, f)) {
+        if (!std::strncmp(line, "GAME ", 5) && std::fgets(line, sizeof line, f)) { line[std::strcspn(line, "\r\n")] = 0; app.t2Info.designer = ""; app.t2Info.themeName = line; }   // the course name line
+        else if (!std::strncmp(line, "BEST 1", 6)) { int n = 0; std::sscanf(line + 6, "%d", &n); if (n > 0 && std::fgets(line, sizeof line, f)) { int sc = 0, off = 0; if (std::sscanf(line, "%d %n", &sc, &off) >= 1) { app.t2Info.record = sc; app.t2Info.recordBy = line + off; while (!app.t2Info.recordBy.empty() && (app.t2Info.recordBy.back() == '\n' || app.t2Info.recordBy.back() == '\r')) app.t2Info.recordBy.pop_back(); } } }
+        else if (!std::strncmp(line, "INFO 1", 6)) {
+            size_t h = 0; double cash = 0, len = 0, acc = 0, img = 0;
+            if (std::sscanf(line + 6, "%zu %d %d %lf %d %lf %lf %lf %d", &h, &app.t2Info.par, &app.t2Info.yards, &cash, &app.t2Info.fun, &len, &acc, &img, &app.t2Info.theme) == 9) {
+                app.t2Info.holes = (int)h; app.t2Info.cash = cash; app.t2Info.len = (int)len; app.t2Info.acc = (int)acc; app.t2Info.img = (int)img;
+                for (size_t i = 0; i < h && i < 18; i++) { int p = 0, y = 0; if (!std::fgets(line, sizeof line, f) || std::sscanf(line, "%d %d", &p, &y) != 2) break; app.t2Info.hole.push_back({p, y}); }
+                if (std::fgets(line, sizeof line, f)) { line[std::strcspn(line, "\r\n")] = 0; app.t2Info.designer = line; }
+                app.t2Info.ok = true;
+            }
+            break;
+        }
+    }
+    std::fclose(f);
+    if (FILE* t = std::fopen((path + ".thumb").c_str(), "rb")) {
+        int w = 0, hh = 0; char hdr[64] = {}; if (std::fgets(hdr, sizeof hdr, t) && std::sscanf(hdr, "SGT1 %d %d", &w, &hh) == 2 && w > 0 && hh > 0 && w <= 512 && hh <= 512) {
+            std::vector<unsigned char> px((size_t)w * hh * 3);
+            if (std::fread(px.data(), 1, px.size(), t) == px.size()) { glGenTextures(1, &app.t2Thumb); glBindTexture(GL_TEXTURE_2D, app.t2Thumb); glPixelStorei(GL_UNPACK_ALIGNMENT, 1); glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w, hh, 0, GL_RGB, GL_UNSIGNED_BYTE, px.data()); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR); }
+        }
+        std::fclose(t);
+    }
+}
+static void captureThumb(App& app) {   // a 116 x 90 picture of the world view, taken the frame after a save
+    const std::string path = app.thumbReq; app.thumbReq.clear();
+    const int W = 116, H = 90;
+    const float sc = std::min(app.drawW / 800.0f, app.drawH / 600.0f);
+    const int cw = std::min(app.drawW, (int)(480 * sc)), ch = std::min(app.drawH, (int)(cw * H / (float)W));
+    const int x0 = std::max(0, (app.drawW - cw) / 2), y0 = std::max(0, (app.drawH - ch) / 2);
+    std::vector<unsigned char> px((size_t)cw * ch * 4); glPixelStorei(GL_PACK_ALIGNMENT, 1); glReadPixels(x0, y0, cw, ch, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
+    FILE* t = std::fopen(path.c_str(), "wb"); if (!t) return;
+    std::fprintf(t, "SGT1 %d %d\n", W, H);
+    for (int y = H - 1; y >= 0; y--) for (int x = 0; x < W; x++) {   // box average, top row first
+        int r = 0, g = 0, b = 0, n = 0;
+        for (int sy = y * ch / H; sy < std::max(y * ch / H + 1, (y + 1) * ch / H); sy++) for (int sx = x * cw / W; sx < std::max(x * cw / W + 1, (x + 1) * cw / W); sx++) { const unsigned char* q = &px[((size_t)sy * cw + sx) * 4]; r += q[0]; g += q[1]; b += q[2]; n++; }
+        unsigned char o[3] = {(unsigned char)(r / n), (unsigned char)(g / n), (unsigned char)(b / n)}; std::fwrite(o, 1, 3, t);
+    }
+    std::fclose(t);
+}
+static void drawLoadPanel(App& app) {
+    const bool sel = app.t2Sel >= 0 && app.t2Sel < (int)app.t2Files.size();
+    if (!sel) return;
+    t2ReadInfo(app, app.t2Files[(size_t)app.t2Sel]);
+    const App::SaveInfo& in = app.t2Info;
+    if (app.t2Thumb) { ui::fillRect(67, 24, 116, 90, 0, 0, 0, 1); glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D, app.t2Thumb); glColor4f(1, 1, 1, 1); glBegin(GL_QUADS); glTexCoord2f(0, 1); glVertex2f(67, 24); glTexCoord2f(1, 1); glVertex2f(183, 24); glTexCoord2f(1, 0); glVertex2f(183, 114); glTexCoord2f(0, 0); glVertex2f(67, 114); glEnd(); }
+    if (in.ok) {
+        float g[3]; c15(0x4210, g); float fg[3]; c15(0x1284, fg); float sk[3]; c15(0x0210, sk);
+        static const char* kH[3] = {"Holes", "Par", "Yards"};
+        const float cx[3] = {66, 125, 184};
+        const std::string v[3] = {std::to_string(in.holes), std::to_string(in.par), std::to_string(in.yards)};
+        for (int k = 0; k < 3; k++) { tText(app, cx[k], 124, kH[k], 11, g[0], g[1], g[2], true); tText(app, cx[k], 146, v[k], 12, 0, 0, 0, true); }
+        tText(app, 75, 169, "Cash", 11, g[0], g[1], g[2], true); tText(app, 161, 169, money((long long)in.cash), 12, 0, 0, 0, true);
+        static const char* kL[4] = {"Fun Rating", "Length Skill", "Accuracy Skill", "Imagination"};
+        for (int k = 0; k < 4; k++) {
+            tText(app, 48, 192.0f + 18 * k, kL[k], 11, g[0], g[1], g[2], false);
+            char b[32]; const int val = k == 0 ? in.fun : k == 1 ? in.len : k == 2 ? in.acc : in.img;
+            if (k == 0) std::snprintf(b, sizeof b, "%d", val); else std::snprintf(b, sizeof b, "%.2f", val / 100.0);
+            tText(app, 184, 192.0f + 18 * k, b, 12, k == 0 ? fg[0] : sk[0], k == 0 ? fg[1] : sk[1], k == 0 ? fg[2] : sk[2], true);
+        }
+        static const char* kT[3] = {"Hole", "Par", "Yards"};
+        for (int k = 0; k < 3; k++) tText(app, cx[k], 270, kT[k], 11, g[0], g[1], g[2], true);
+        for (size_t h = 0; h < in.hole.size(); h++) {
+            const float y = 286.0f + 17 * (float)h;
+            tText(app, cx[0], y, std::to_string(h + 1), 12, 0, 0, 0, true); tText(app, cx[1], y, std::to_string(in.hole[h].first), 12, 0, 0, 0, true); tText(app, cx[2], y, std::to_string(in.hole[h].second), 12, 0, 0, 0, true);
+        }
+        tText(app, 388, 442, " (Theme: " + std::string(kThemePacks[std::clamp(in.theme, 0, 4)]) + ")", 12, 1, 1, 1, false);
+        tText(app, 388, 458, "Designed by " + in.designer, 12, 1, 1, 1, false);
+        if (in.record > 0) tText(app, 388, 474, "Course Record: " + std::to_string(in.record) + " by " + in.recordBy, 12, 1, 1, 1, false);
+    }
+}
 static void drawLoad(App& app) {
+    const bool pro = app.screen == App::ScreenPro;   // Pick A Pro shares the layout and hit circles of the Load screen (DECODE_TITLE2 section 2)
     app.view = ui::beginScreen(app.drawW, app.drawH);
-    ui::drawImage(app.t2Load, 0, 0);
+    ui::drawImage(pro ? app.t2Pro : app.t2Load, 0, 0);
     const bool sel = app.t2Sel >= 0 && app.t2Sel < (int)app.t2Files.size();
     if (!sel) { ui::drawImage(app.t2LoadMo, 600, 520, 600, 435, 70, 70); ui::drawImage(app.t2LoadMo, 670, 520, 670, 435, 70, 70); }
     else {
@@ -4024,15 +4292,18 @@ static void drawLoad(App& app) {
     if (app.t2Hover == 101) ui::drawImage(app.t2LoadMo, 740, 530, 740, 530, 60, 60);
     if (app.t2Hover == 102) ui::drawImage(app.t2LoadMo, 778, 100, 778, 100, 22, 40);
     if (app.t2Hover == 103) ui::drawImage(app.t2LoadMo, 778, 380, 778, 380, 22, 40);
-    tText(app, 504, 42, "Load Previous Game", 18, 0, 0, 0, true);
+    tText(app, 504, 42, pro ? "Pick A Pro" : app.t2Mode == 1 ? "Select Championship Course" : "Load Previous Game", 18, 0, 0, 0, true);
     const int n = (int)app.t2Files.size();
     for (int r = 0; r < 16 && app.t2Scroll + r < n; r++) {
         const int idx = app.t2Scroll + r; const float y = 116.0f + 16 * r;
-        if (idx == app.t2Sel) { float c[3]; c15(0x7b20, c); ui::fillRect(310, y - 1, 456, 15, c[0], c[1], c[2], 1); }
-        tText(app, 320, y, std::filesystem::path(app.t2Files[(size_t)idx]).stem().string(), 13, 0, 0, 0, false);
+        const bool on = idx == app.t2Sel;
+        if (on) { float c[3]; c15(pro ? 0x1284 : 0x7b20, c); ui::fillRect(310, y - 1, 456, 15, c[0], c[1], c[2], 1); }
+        const float tc = on && pro ? 1.0f : 0.0f;
+        tText(app, 320, y, t2RowName(app.t2Files[(size_t)idx]), 13, tc, tc, tc, false);
     }
     if (n > 16 && app.t2Scroll + 16 < n) tText(app, 320, 372, "(more...)", 13, 0, 0, 0, false);
-    if (n == 0) tText(app, 320, 116, "No saved games found.", 13, 0.3f, 0.3f, 0.3f, false);
+    if (n == 0) tText(app, 320, 116, pro ? "No pros found." : app.t2Mode == 1 ? "No championship courses saved yet." : "No saved games found.", 13, 0.3f, 0.3f, 0.3f, false);
+    if (!pro) drawLoadPanel(app);
     if (app.t2Confirm) tText(app, 395, 442, "Click the delete button again to remove this game.", 12, 1, 1, 1, false);
     if (n > 16) { const float th = std::clamp(16.0f * 228 / n, 8.0f, 228.0f); ui::fillRect(781, 147 + app.t2Scroll * 228.0f / n, 6, th, 1, 1, 1, 1); }
     ui::endScreen();
@@ -4105,12 +4376,51 @@ static void drawTop10(App& app) {
     ui::endScreen();
 }
 
+// Championship play (FUN_0046ddd0): a course saved for championship play is loaded, Pick A Pro chooses the player's record, then the field is drawn and the
+// tournament runs at once. Cash is reset to $100,000 and the clock to year 1, month 3 (tick 0x2c00); the difficulty chosen at the title is kept.
+static bool champSave(App& app, const std::string& name, std::string& err) {   // "Save Course for Championship": Themes/Championship/<name>.cse
+    std::error_code ec; const std::filesystem::path d = std::filesystem::path(app.gameDir) / "Themes" / "Championship"; std::filesystem::create_directories(d, ec);
+    return saveGame(app, (d / (name + ".cse")).string(), err);
+}
+static void champStart(App& app) {
+    app.screen = App::ScreenPlay; app.hover = -1; app.t2Hover = -1;
+    refreshHoles(app); syncHoleStats(app);
+    app.tourney.cancel(); app.tourney.setChampionship(true);
+    if (app.holes.empty()) { toastMsg(app, "This course has no complete holes"); app.champ = false; app.screen = App::ScreenMenu; app.tourney.setChampionship(false); return; }
+    app.tourney.forceOffer(sgaInput(app));
+    runTournament(app);
+    app.tourney.setChampionship(false);
+}
+// Best N Hole Scores (FUN_00455a30). PLACEHOLDER: the key that opens it (F12; the exe uses its Information menu) and the text colours (the exe's are not decoded).
+static void openBest(App& app) { if (!app.uiOk) return; t2LoadArt(app); app.top10Return = app.screen; app.screen = App::ScreenBest; app.t2Hover = -1; }
+static void drawBest(App& app) {
+    app.view = ui::beginScreen(app.drawW, app.drawH, false);
+    ui::fillRect(0, 0, 800, 600, 0, 0, 0, 0.55f);
+    ui::drawImage(app.bestArt, 195, 45, 195, 45, 411, 79);
+    tText(app, 413, 59, "Best " + std::to_string(app.holes.size()) + " Hole Scores", 20, 0, 0, 0, true);
+    tText(app, 236, 96, "Golfer", 13, 0, 0, 0, false); tText(app, 551, 96, "Score", 13, 0, 0, 0, true);
+    const int n = app.best.count;
+    for (int i = 0; i < n; i++) {
+        const float y = 124.0f + 17 * i;
+        ui::drawImage(app.bestArt, 195, y, 195, 224, 411, 17);
+        tText(app, 246, y, app.best.name[i], 13, 0, 0, 0, false); tText(app, 551, y, std::to_string(app.best.score[i]), 13, 0, 0, 0, true);
+    }
+    const float ye = 124.0f + 17 * n;
+    ui::drawImage(app.bestArt, 195, ye, 195, 321, 411, 61);
+    if (app.t2Hover == 1) ui::drawImage(app.bestArt, 544, ye + 14, 593, 434, 44, 44);
+    ui::endScreen();
+}
 static void t2Event(App& app, const SDL_Event& e, bool& running) {
     const int scr = app.screen;
     const bool click = e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT, move = e.type == SDL_MOUSEMOTION;
     const bool key = e.type == SDL_KEYDOWN;
     float vx = 0, vy = 0; if (click || move) { vx = app.view.toVirtualX((click ? e.button.x : e.motion.x) * app.dpi); vy = app.view.toVirtualY((click ? e.button.y : e.motion.y) * app.dpi); }
     auto toMenu = [&] { app.screen = App::ScreenMenu; app.hover = -1; app.t2Hover = -1; };
+    if (scr == App::ScreenBest) {
+        if (move) { const float ye = 124.0f + 17 * app.best.count; app.t2Hover = vx >= 544 && vx <= 587 && vy >= ye + 14 && vy <= ye + 58 ? 1 : -1; }
+        if (key || e.type == SDL_MOUSEBUTTONDOWN) { app.screen = app.top10Return == App::ScreenBest ? App::ScreenPlay : app.top10Return; app.t2Hover = -1; }
+        return;
+    }
     if (scr == App::ScreenCredits) { if (key || e.type == SDL_MOUSEBUTTONDOWN) toMenu(); return; }
     if (scr == App::ScreenTop10) { if (key || e.type == SDL_MOUSEBUTTONDOWN) { app.screen = app.top10Return == App::ScreenTop10 ? App::ScreenPlay : app.top10Return; app.top10.lastRank = -1; } return; }
     if (scr == App::ScreenDiff) {
@@ -4133,18 +4443,33 @@ static void t2Event(App& app, const SDL_Event& e, bool& running) {
         }
         return;
     }
-    if (scr == App::ScreenLoad) {
-        const int n = (int)app.t2Files.size();
-        if (key) { if (e.key.keysym.sym == SDLK_ESCAPE) toMenu(); return; }
+    if (scr == App::ScreenLoad || scr == App::ScreenPro) {
+        const int n = (int)app.t2Files.size(); const bool pro = scr == App::ScreenPro;
+        auto leave = [&] { app.champ = false; app.t2Mode = 0; toMenu(); };
+        if (key) { if (e.key.keysym.sym == SDLK_ESCAPE) leave(); return; }
         if (move) app.t2Hover = loadHit(vx, vy);
         if (!click) return;
         const int h = loadHit(vx, vy); const bool sel = app.t2Sel >= 0 && app.t2Sel < n;
         if (h != 104) app.t2Confirm = 0;
-        if (h == 101) { toMenu(); return; }
+        if (h == 101) { leave(); return; }
         if (h == 102) { app.t2Scroll = std::max(0, std::min(app.t2Scroll - 4, std::max(0, n - 16))); return; }
         if (h == 103) { app.t2Scroll = std::max(0, std::min(app.t2Scroll + 4, std::max(0, n - 16))); return; }
+        if (h == 100 && sel && pro) {   // Pick A Pro: the chosen record becomes the player's character, then the tournament starts
+            sg::CharRec c;
+            if (!sg::charLoadFile(app.t2Files[(size_t)app.t2Sel], c)) { toastMsg(app, "Could not read that pro"); return; }
+            if (c.head >= cuHeadCount(app)) c.head = 8;
+            app.chr = c; app.chrUndo = c; chrSync(app); snd(app, "Interface/Button1.wav"); champStart(app); return;
+        }
+        if (h == 100 && sel && app.t2Mode == 1) {   // championship course chosen
+            const int keep = app.difficulty; std::string err;
+            if (!loadGame(app, app.t2Files[(size_t)app.t2Sel], err)) { toastMsg(app, "Could not load: " + err); return; }
+            app.difficulty = keep; app.tracker = sg::GoalTracker(keep); app.champ = true; app.t2Mode = 0;
+            app.econ.sandbox = false; app.econ.cash = 100000; app.econ.startCash = 100000; app.econ.day = 12; app.econ.version++;
+            t2ListFolder(app, "Championship", ".pro"); app.t2Sel = -1; app.t2Scroll = 0; app.t2Confirm = 0; app.t2Hover = -1; app.screen = App::ScreenPro; return;
+        }
         if (h == 100 && sel) { std::string err; if (loadGame(app, app.t2Files[(size_t)app.t2Sel], err)) { app.t2Hover = -1; std::printf("loaded %s\n", app.t2Files[(size_t)app.t2Sel].c_str()); } else toastMsg(app, "Could not load: " + err); return; }
-        if (h == 104 && sel) { if (!app.t2Confirm) app.t2Confirm = 1; else { std::error_code ec; std::filesystem::remove(app.t2Files[(size_t)app.t2Sel], ec); app.t2Confirm = 0; app.t2Sel = -1; t2ListSaves(app); } return; }
+        if (h == 104 && sel && pro) return;   // PLACEHOLDER: the exe's delete button on Pick A Pro is not decoded; the pros are disc files, so it does nothing here
+        if (h == 104 && sel) { if (!app.t2Confirm) app.t2Confirm = 1; else { std::error_code ec; std::filesystem::remove(app.t2Files[(size_t)app.t2Sel], ec); app.t2Confirm = 0; app.t2Sel = -1; if (app.t2Mode == 1) t2ListFolder(app, "Championship", ".cse"); else t2ListSaves(app); } return; }
         if (vx > 320 && vy > 115) { const int row = (int)((vy - 116) / 16) + app.t2Scroll; app.t2Sel = row < n ? row : -1; snd(app, "Interface/Button2.wav"); }
         return;
     }
@@ -4252,19 +4577,21 @@ static void drawHud(App& app) {
     // March to October (medium confidence; the start year 2001 is a placeholder).
     const int mi = app.econ.day - 1;
     char date[48]; std::snprintf(date, sizeof date, "%s %d", kMonths[(2 + mi % 8) % 12], 2001 + mi / 8);
-    ui::fillRect(8, 8, 230, 46, 0.12f, 0.1f, 0.3f, 0.78f);
-    app.font.draw(18, 28, app.courseName, 17, 1, 1, 1);
-    app.font.draw(18, 47, date, 14, 0.85f, 0.85f, 1);
-    ui::fillRect(560, 8, 232, 70, 0.12f, 0.1f, 0.3f, 0.78f);
-    app.font.draw(572, 30, app.econ.sandbox ? "Sandbox" : money((long long)app.econ.cash), 19, app.econ.cash < 0 && !app.econ.sandbox ? 1.0f : 1.0f, app.econ.cash < 0 && !app.econ.sandbox ? 0.5f : 1.0f, app.econ.cash < 0 && !app.econ.sandbox ? 0.5f : 0.7f);
+    // The four HUD pills are cuts of Interface/courseinfo.pcx (+ _A alpha), drawn at their own sheet positions (FUN_00442180 loader; DERIVED placement).
+    if (!app.ciArt.tex) { const std::string i = app.gameDir + "/Interface/"; ui::loadPcx(i + "courseinfo.pcx", app.ciArt, false, -1, i + "courseinfo_A.pcx"); ui::loadShade(i + "s_courseinfo.pcx", app.ciShade, 0.55f); }
     if (app.ratings.size() != app.holes.size()) { app.ratings.clear(); for (const HoleRoute& r : app.holes) app.ratings.push_back(rateHole(app.terrain, r, 20, app.difficulty)); }
-    char fun[64]; std::snprintf(fun, sizeof fun, "Fun %d  Skill %.2f", clubFun(app), clubSkill(app));
-    app.font.draw(572, 52, fun, 15, 0.9f, 0.9f, 1);
-    char g[64]; std::snprintf(g, sizeof g, "Golfers %d, holes %zu, members %d, goals %d/%d", golfersOnCourse(app), app.holes.size(), app.roster.memberCount(), app.tracker.doneCount(), sg::kGoalCount);
-    app.font.draw(572, 71, g, 13, 0.75f, 0.75f, 0.95f);
+    ui::drawImage(app.ciShade, 48, 6, 48, 6, 183, 58); ui::drawImage(app.ciShade, 647, 13, 647, 13, 138, 36); ui::drawImage(app.ciShade, 675, 55, 675, 55, 110, 37); ui::drawImage(app.ciShade, 697, 99, 697, 99, 88, 36);
+    ui::drawImage(app.ciArt, 48, 6, 48, 6, 183, 58); ui::drawImage(app.ciArt, 647, 13, 647, 13, 138, 36); ui::drawImage(app.ciArt, 675, 55, 675, 55, 110, 37); ui::drawImage(app.ciArt, 697, 99, 697, 99, 88, 36);
+    const bool neg = app.econ.cash < 0 && !app.econ.sandbox;
+    app.font.drawCentered(140, 28, app.courseName, 16, 1, 1, 1);
+    app.font.drawCentered(140, 49, date, 13, 1, 1, 1);
+    { const std::string m = app.econ.sandbox ? "Sandbox" : money((long long)app.econ.cash); app.font.draw(750 - 8 - app.font.width(m, 17) - 26 + 18, 37, m, 17, 1.0f, neg ? 0.45f : 1.0f, neg ? 0.45f : 1.0f); }
+    { char f[24]; std::snprintf(f, sizeof f, "%d", clubFun(app)); app.font.draw(762 - app.font.width(f, 16) - 22 + 6 - 6, 80, f, 16, 1, 1, 1); }
+    { char f[24]; std::snprintf(f, sizeof f, "%.2f", clubSkill(app)); app.font.draw(783 - app.font.width(f, 16) - 22 - 6, 123, f, 16, 1, 1, 1); }
     drawHomePreview(app);
     drawDockUi(app);
     drawHireDialog(app, app.testHx >= 0 ? app.testHx : app.vmx, app.testHx >= 0 ? app.testHy : app.vmy);
+    drawPopup(app);
     if (app.econ.gameOver) {
         ui::fillRect(200, 250, 400, 80, 0.5f, 0.05f, 0.05f, 0.9f);
         app.font.drawCentered(400, 300, "GAME OVER", 40, 1, 1, 1);
@@ -4872,6 +5199,7 @@ int main(int argc, char** argv) {
         else if (a == "--sound-log") app.soundLog = true;
         else if (a == "--sandbox") app.econ.sandbox = true;
         else if (a == "--screen") screenArg = next();
+        else if (a == "--popup") popArg = std::atoi(next());
         else if (a == "--sga") sgaTest = std::atoi(next());
         else if (a == "--cash") app.econ.startCash = std::atof(next());   // test hook: starting cash
         else if (a == "--open") openN = std::atoi(next());                   // test hook: press H this many times after the edits
@@ -4881,6 +5209,8 @@ int main(int argc, char** argv) {
         else if (a == "--home") { int hx = 0, hy = 0; if (std::sscanf(next(), "%d,%d", &hx, &hy) == 2) homeAt.push_back({hx, hy}); }   // test hook: place a home site (after --open and --fake)
         else if (a == "--unhome") { int hx = 0, hy = 0; if (std::sscanf(next(), "%d,%d", &hx, &hy) == 2) unhomeAt.push_back({hx, hy}); }   // test hook: demolish the home site at x,y (two right clicks)
         else if (a == "--t2hover") g_t2Hover = std::atoi(next());
+        else if (a == "--savechamp") g_saveChamp = next();
+        else if (a == "--champgo") g_champGo = std::atoi(next());
         else if (a == "--card") g_cardHook = std::atoi(next());
         else if (a == "--cardhover") g_cardHover = std::atoi(next());
         else if (a == "--cuhover") g_cuHover = std::atoi(next());
@@ -4966,9 +5296,26 @@ int main(int argc, char** argv) {
     if (screenArg == "world" && app.uiOk) { app.switchMode = true; app.screen = App::ScreenProperty; }
     if (screenArg == "character" && app.uiOk) { openCustomise(app); if (g_cuHover >= 0) { app.cuHover = g_cuHover; app.cuFrames = 20; } if (g_cuFace >= 0) { app.cuFace = true; app.cuFacePage = g_cuFace; } }
     if (screenArg == "diff" && app.uiOk) { t2LoadArt(app); app.diffPending = 1; app.t2Hover = g_t2Hover; app.screen = App::ScreenDiff; }
+    if (!g_saveChamp.empty() && app.uiOk) { std::string err; std::printf("championship save %s: %s\n", g_saveChamp.c_str(), champSave(app, g_saveChamp, err) ? "ok" : err.c_str()); }
+    if (screenArg == "champload" && app.uiOk) { t2LoadArt(app); app.t2Mode = 1; t2ListFolder(app, "Championship", ".cse"); app.t2Sel = g_t2Hover >= 0 && !app.t2Files.empty() ? 0 : -1; app.t2Hover = g_t2Hover; app.screen = App::ScreenLoad; }
+    if (screenArg == "pro" && app.uiOk) { t2LoadArt(app); app.champ = true; t2ListFolder(app, "Championship", ".pro"); app.t2Sel = g_t2Hover >= 0 && !app.t2Files.empty() ? 0 : -1; app.t2Hover = g_t2Hover; app.screen = App::ScreenPro; }
+    if (g_champGo >= 0 && app.uiOk) {   // headless run of the whole flow: first championship course, then pro number g_champGo
+        t2LoadArt(app); app.t2Mode = 1; t2ListFolder(app, "Championship", ".cse");
+        if (app.t2Files.empty()) std::printf("no championship courses saved\n");
+        else {
+            const int keep = app.difficulty; std::string err;
+            if (loadGame(app, app.t2Files[0], err)) {
+                app.difficulty = keep; app.tracker = sg::GoalTracker(keep); app.champ = true; app.t2Mode = 0; app.econ.sandbox = false; app.econ.cash = 100000; app.econ.startCash = 100000; app.econ.day = 12; app.econ.version++;
+                t2ListFolder(app, "Championship", ".pro"); sg::CharRec c;
+                if (!app.t2Files.empty() && sg::charLoadFile(app.t2Files[(size_t)std::min<int>(g_champGo, (int)app.t2Files.size() - 1)], c)) { app.chr = c; chrSync(app); }
+                champStart(app); std::printf("championship: player place %d of %zu, prize %d,000\n", app.tResult.playerPlace, app.tField.size(), app.tPrize);
+            } else std::printf("load failed: %s\n", err.c_str());
+        }
+    }
     if (screenArg == "themes" && app.uiOk) { t2LoadArt(app); app.t2Hover = g_t2Hover; app.screen = App::ScreenThemes; }
     if (screenArg == "load" && app.uiOk) { t2LoadArt(app); t2ListSaves(app); app.t2Sel = g_t2Hover >= 0 && !app.t2Files.empty() ? 0 : -1; app.t2Hover = g_t2Hover; app.screen = App::ScreenLoad; }
     if (screenArg == "credits" && app.uiOk) { creditsOpen(app); app.creditStart = SDL_GetTicks() - 20000; }
+    if (screenArg == "best" && app.uiOk) { refreshHoles(app); if (g_t2Hover >= 0) { const char* nm[6] = {"Avery Gale", "B. Houston", "Kelley Greens", "Joe Pro", "Ivana Richman", "J.P. Bigdome"}; for (int i = 0; i < 6; i++) app.best.insert(68 + i * 2 + (i == 3), nm[i]); } openBest(app); app.t2Hover = g_t2Hover; }
     if (screenArg == "top10" && app.uiOk) { openTop10(app); if (g_t2Hover >= 0) { sg::DesignerEntry n; std::snprintf(n.name, sizeof n.name, "Gary Golf"); std::snprintf(n.course, sizeof n.course, "Test Course"); n.fun = 700; n.skill = 600; n.cash = 5000; n.difficulty = 2; n.courseId = 3; app.top10.insert(n); } }
     if (screenArg == "property" && app.uiOk) { app.switchMode = false; app.screen = App::ScreenProperty; }
     if (g_resetSeed >= 0) worldReset(app, (uint64_t)g_resetSeed);
@@ -5072,6 +5419,7 @@ int main(int argc, char** argv) {
     while (running) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
+            if (app.popKind && app.screen == App::ScreenPlay && e.type != SDL_QUIT && popEvent(app, e)) continue;
             if (app.screen != App::ScreenPlay && app.uiOk) {   // title menu and property chooser
                 if (e.type == SDL_QUIT) running = false;
                 else if (app.screen == App::ScreenAward) {
@@ -5138,7 +5486,7 @@ int main(int argc, char** argv) {
                         const SDL_Keycode k = e.key.keysym.sym;
                         if (app.sgaMode == 1 && (k == SDLK_y || k == SDLK_RETURN)) runTournament(app);
                         else if (app.sgaMode == 1 && k == SDLK_n) { app.tourney.decline(); app.screen = App::ScreenPlay; }
-                        else if (k == SDLK_ESCAPE || (app.sgaMode != 1 && (k == SDLK_RETURN || k == SDLK_F7))) { if (app.sgaMode == 1) app.tourney.decline(); app.screen = App::ScreenPlay; app.hover = -1; }
+                        else if (k == SDLK_ESCAPE || (app.sgaMode != 1 && (k == SDLK_RETURN || k == SDLK_F7))) { if (app.sgaMode == 1) app.tourney.decline(); app.screen = app.champ && app.sgaMode == 2 ? App::ScreenMenu : App::ScreenPlay; if (app.champ && app.sgaMode == 2) app.champ = false; app.hover = -1; }   // championship play ends at the results
                     } else if (e.type == SDL_MOUSEMOTION && app.sgaMode == 1) {
                         const float vx = app.view.toVirtualX(e.motion.x * app.dpi), vy = app.view.toVirtualY(e.motion.y * app.dpi); app.hover = -1;
                         for (int b = 0; b < 2; b++) { const SgaBtn r = sgaBtn(b); if (vx >= r.x && vx < r.x + r.w && vy >= r.y && vy < r.y + r.h) app.hover = b; }
@@ -5179,10 +5527,10 @@ int main(int argc, char** argv) {
                         }
                     } else if (click && hit >= 0) {
                         if (app.screen == App::ScreenMenu) {
-                            if (hit == 0) { t2LoadArt(app); t2ListSaves(app); app.t2Sel = -1; app.t2Scroll = 0; app.t2Confirm = 0; app.t2Hover = -1; app.screen = App::ScreenLoad; app.hover = -1; }
+                            if (hit == 0) { t2LoadArt(app); app.t2Mode = 0; t2ListSaves(app); app.t2Sel = -1; app.t2Scroll = 0; app.t2Confirm = 0; app.t2Hover = -1; app.screen = App::ScreenLoad; app.hover = -1; }
                             else if (hit == 1 || hit == 2) { t2LoadArt(app); app.diffPending = hit; app.t2Hover = -1; app.screen = App::ScreenDiff; app.hover = -1; }
                             else if (hit == 3) { t2LoadArt(app); app.t2Hover = -1; app.screen = App::ScreenThemes; app.hover = -1; }
-                            else if (hit == 4) { app.toast = "Championships are not available yet"; app.toastUntil = SDL_GetTicks() / 1000.0 + 3; }
+                            else if (hit == 4) { t2LoadArt(app); app.t2Mode = 1; app.champ = false; t2ListFolder(app, "Championship", ".cse"); app.t2Sel = -1; app.t2Scroll = 0; app.t2Confirm = 0; app.t2Hover = -1; app.screen = App::ScreenLoad; app.hover = -1; }
                             else if (hit == 5) running = false;
                         } else {
                             if (app.switchMode) {
@@ -5219,12 +5567,14 @@ int main(int argc, char** argv) {
                         std::printf("%s %s: %s (staff now %d, wages $%.0f a day)\n", shift ? "hire" : "fire", Economy::staffName(kind), ok ? "done" : "not possible", app.econ.staffCount(), app.econ.dailyWages());
                         snd(app, "Interface/Button2.wav"); setTitle(app, win);
                     }
+                    else if (shift && k == SDLK_k && app.screen == App::ScreenPlay && !app.edit) { std::string err; const std::string nm = app.courseName.empty() ? std::string("Course") : app.courseName; toastMsg(app, champSave(app, nm, err) ? nm + " saved for championship play." : "Could not save the course for championship play"); }   // PLACEHOLDER key: the exe has a menu item
                     else if (k == SDLK_F1) { reportCourse(app, true); if (app.uiOk && app.reportArt.tex) { app.ratings.clear(); app.screen = App::ScreenReport; } }
                     else if (k == SDLK_F7 && app.uiOk) openSgaScreen(app);
                     else if (k == SDLK_F6 && app.uiOk && app.screen == App::ScreenPlay && !app.edit) { app.switchMode = true; app.screen = App::ScreenProperty; app.hover = -1; }
                     else if ((k == SDLK_F5 || (k == SDLK_r && shift && !app.edit)) && app.uiOk && app.screen == App::ScreenPlay) { app.ovMode = -1; app.ovSel = -1; app.screen = App::ScreenOverview; }
                     else if (k == SDLK_b && shift && app.uiOk && app.screen == App::ScreenPlay) openBuyLand(app);
                     else if (k == SDLK_F10 && app.uiOk) app.screen = App::ScreenBoard;
+                    else if (k == SDLK_F12 && app.uiOk && app.screen == App::ScreenPlay) openBest(app);   // PLACEHOLDER key: the exe reaches it from its Information menu
                     else if (k == SDLK_F11 && app.uiOk && app.screen == App::ScreenPlay) openTop10(app);   // PLACEHOLDER key: the exe reaches the Top 10 from its Information menu
                     else if (k == SDLK_F3 && app.uiOk && app.screen == App::ScreenPlay) app.screen = App::ScreenHisto;
                     else if (k == SDLK_F2 && app.uiOk) { syncHoleStats(app); app.screen = App::ScreenComments; }
@@ -5325,10 +5675,10 @@ int main(int argc, char** argv) {
         else if (app.screen == App::ScreenCustomise && app.uiOk) { app.cuFrames++; drawCustomise(app); }
         else if (app.screen == App::ScreenDiff && app.uiOk) drawDiff(app);
         else if (app.screen == App::ScreenThemes && app.uiOk) drawThemes(app);
-        else if (app.screen == App::ScreenLoad && app.uiOk) drawLoad(app);
+        else if ((app.screen == App::ScreenLoad || app.screen == App::ScreenPro) && app.uiOk) drawLoad(app);
         else if (app.screen == App::ScreenCredits && app.uiOk) drawCredits(app);
         else if (app.screen == App::ScreenTop10 && app.uiOk) drawTop10(app);
-        else { if (app.testBoard > 0 && --app.testBoard == 0) app.screen = App::ScreenBoard; render(app); if (app.snapPending >= 0) captureSnap(app); drawHud(app); if (app.screen == App::ScreenReport) drawReport(app); if (app.screen == App::ScreenSga) drawSga(app); if (app.screen == App::ScreenBuyLand) drawBuyLand(app); if (app.screen == App::ScreenOverview) drawOverview(app); if (app.screen == App::ScreenFinance) drawFinance(app); if (app.screen == App::ScreenRoster) drawRoster(app); if (app.screen == App::ScreenHoleStat) drawHoleStat(app); if (app.screen == App::ScreenKeys) drawKeys(app); if (app.screen == App::ScreenEoy) drawEoy(app); if (app.screen == App::ScreenComments) drawComments(app); if (app.screen == App::ScreenHisto) drawHisto(app); if (app.screen == App::ScreenBoard) drawBoard(app); if (app.screen == App::ScreenAward) drawAward(app); if (app.screen == App::ScreenGolfer) { app.cardFrames++; drawGolferCard(app); } }
+        else { if (app.testBoard > 0 && --app.testBoard == 0) app.screen = App::ScreenBoard; render(app); if (app.snapPending >= 0) captureSnap(app); if (!app.thumbReq.empty()) captureThumb(app); drawHud(app); if (app.screen == App::ScreenReport) drawReport(app); if (app.screen == App::ScreenSga) drawSga(app); if (app.screen == App::ScreenBuyLand) drawBuyLand(app); if (app.screen == App::ScreenOverview) drawOverview(app); if (app.screen == App::ScreenFinance) drawFinance(app); if (app.screen == App::ScreenRoster) drawRoster(app); if (app.screen == App::ScreenHoleStat) drawHoleStat(app); if (app.screen == App::ScreenKeys) drawKeys(app); if (app.screen == App::ScreenEoy) drawEoy(app); if (app.screen == App::ScreenComments) drawComments(app); if (app.screen == App::ScreenHisto) drawHisto(app); if (app.screen == App::ScreenBoard) drawBoard(app); if (app.screen == App::ScreenAward) drawAward(app); if (app.screen == App::ScreenGolfer) { app.cardFrames++; drawGolferCard(app); } if (app.screen == App::ScreenBest) drawBest(app); }
         if (getenv("SG_PICKTEST") && frames == 1) {  // project known ground points to the screen and pick them back
             float worst = 0;
             for (float wx : {-600.f, 0.f, 750.f}) for (float wz : {-500.f, 100.f, 900.f}) {

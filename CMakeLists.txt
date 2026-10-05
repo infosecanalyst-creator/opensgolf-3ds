@@ -67,6 +67,10 @@ add_executable(reactions_test tests/reactions_test.cpp)
 target_link_libraries(reactions_test sgassets)
 add_test(NAME reactions COMMAND reactions_test)
 
+add_executable(best_test tests/best_test.cpp)
+target_link_libraries(best_test sgassets)
+add_test(NAME best COMMAND best_test)
+
 add_executable(charrec_test tests/charrec_test.cpp)
 target_link_libraries(charrec_test sgassets)
 add_test(NAME charrec COMMAND charrec_test)

@@ -39,6 +39,23 @@ bool loadPcx(const std::string& path, Image& out, bool magentaKey, int keyRgb, c
     return true;
 }
 
+bool loadShade(const std::string& path, Image& out, float alpha) {
+    sg::Bytes d; sg::Rgba img; std::string err;
+    if (!sg::readFile(path, d) || !sg::decodePcx(d, img, err)) return false;
+    for (size_t i = 0; i + 3 < img.px.size(); i += 4) {
+        const bool green = img.px[i] == 0 && img.px[i + 1] == 255 && img.px[i + 2] == 0;
+        img.px[i] = img.px[i + 1] = img.px[i + 2] = 0; img.px[i + 3] = green ? (unsigned char)(alpha * 255) : 0;
+    }
+    glGenTextures(1, &out.tex);
+    glBindTexture(GL_TEXTURE_2D, out.tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)img.w, (GLsizei)img.h, 0, GL_RGBA, GL_UNSIGNED_BYTE, img.px.data());
+    out.w = (int)img.w; out.h = (int)img.h;
+    return true;
+}
+
 bool Font::load(const std::string& ttfPath) {
     sg::Bytes ttf;
     if (!sg::readFile(ttfPath, ttf)) return false;
@@ -128,7 +145,10 @@ void drawImage(const Image& im, float dx, float dy, float sx, float sy, float sw
     glBindTexture(GL_TEXTURE_2D, im.tex);
     glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
     glColor4f(1, 1, 1, 1);
-    const float u0 = sx / im.w, v0 = sy / im.h, u1 = (sx + sw) / im.w, v1 = (sy + sh) / im.h;
+    // A sub-rectangle of a sheet is sampled half a texel inside its edges, so linear filtering at a scaled window does not pull in the neighbouring cut.
+    const bool sub = sx > 0 || sy > 0 || sw < (float)im.w || sh < (float)im.h;
+    const float in = sub ? 0.5f : 0.0f;
+    const float u0 = (sx + in) / im.w, v0 = (sy + in) / im.h, u1 = (sx + sw - in) / im.w, v1 = (sy + sh - in) / im.h;
     glBegin(GL_QUADS);
     glTexCoord2f(u0, v0); glVertex2f(dx, dy);
     glTexCoord2f(u1, v0); glVertex2f(dx + sw, dy);

@@ -17,7 +17,7 @@ The pre-game character page the port used to show does not exist in the original
 |---|---|---|
 | Character | DONE (first pass): Customise screen on the original art, face picker, .pro load and save, advisor portrait. Still open: preview bodies (palette swaps), exact trait and toggle label texts, hit centres from the exe tables, stock default sayings, Save portrait | CustGolfBckgrnd, CGButtons, HeadSelect, HeadBodyBck; spec in DECODE_CUSTOMISE.md |
 | Faces | Advisor popup, Customise and the golfer info card done. Open: stats card, pair selection, Pick a Pro, remark popups for golfers, member heads (exe table unknown, port uses a PLACEHOLDER rule) | spec in DECODE_FACES.md |
-| Pick a Pro | Not built (spec DECODE_TITLE2.md section 2; needs the Championships flow, which needs the tournament field draw) | Title_Pickapro.pcx, .pro files in Themes/Championship |
+| Pick a Pro | Championship flow, course picker and Pick A Pro screen built (headless only). Open: left panel (portrait, ten skill rows, signature saying), per DECODE_PICKAPRO.md | Title_Pickapro.pcx, .pro files in Themes/Championship |
 | Pair selection | Not built (spec DECODE_TOP10_PAIR.md section 3; the exe's call site is unknown and the port has no waiting queue yet) | PairBase, PairButtons |
 | Golfer card | DONE (first pass, single layout): plate, ball and face, five meters, 18 hole scorecard, five round buttons with hover art and tooltip. Open: partner layout (needs group play), shaded backdrop and s_GolferStats shadow, stats card (skills dialog), exact text lines (exe literals unknown, port lines are PLACEHOLDER), Customize and View Story buttons (drawn pale, no action) | GolferStats; spec DECODE_GOLFERCARD.md |
 | Course info | courseinfo art unused | courseinfo, s_courseinfo |
@@ -42,3 +42,12 @@ The pre-game character page the port used to show does not exist in the original
 * Before building any screen or feature, check what the exe draws and plays for it: list the art files, sounds and animations it references (grep the decompile for the screen's routine) and use them. A screen built from flat boxes is a placeholder and must be tagged `PLACEHOLDER` with the art it should use.
 * After each batch run `python3 tools/parity_audit.py GAME_DIR spec/golf_decomp.c` and compare the gap count with the last commit; it must not rise, and the finished screen's files must leave the list.
 * Update the gap table above in the same commit.
+
+## Update 67 additions (headless only, never run on the Mac)
+| Area | State |
+|---|---|
+| HUD | Top bar uses the original courseinfo art and shade sheet |
+| Best Scores | Module, test, recording, persistence and screen done; trigger keys F12 (Best), F11 (Top 10), Shift+K are PLACEHOLDERS until menus fully replace them |
+| Popup menus | Information (12 items) and System Functions (8 items) on the InfoButtons 9-slice frame, plus Preferences and rename prompt. PLACEHOLDER: radio ball sprite, text colours, Preferences labels beyond three. Load Game saves a While Browsing file but Cancel does not yet restore it |
+| Open | Load screen emblem and tooltips, pair selection trigger, stats card, golfer bodies and palettes, play-core constants from DECODE_PLAYCORE.md, world facts from DECODE_WORLD2.md |
+Audit count: 982 gaps (down from 987).
