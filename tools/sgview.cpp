@@ -166,11 +166,14 @@ struct App {
     bool charFemale = false, charEditing = false;
     sg::CharRec chr, chrUndo; bool chrReady = false;   // the player's character record (Customise screen)
     ui::Image t2Diff, t2DiffMo, t2Theme, t2ThemeMo, t2Load, t2LoadMo, t10Blank, t10Troph, creditsBg, creditsLogo; bool t2Ok = false, top10Ready = false, top10Show = false; int t2Hover = -1, t2Sel = -1, t2Scroll = 0, t2Confirm = 0, diffPending = -1, top10Return = 0; Uint32 creditStart = 0;
+    ui::Image emblem[2], pairBase, pairBtn; std::vector<int> pairIds; unsigned pairSel = 0; int pairHover = -1; std::string pairMsg;
+    ui::Image emblemUnused; int t2Go = 0, t2ConfirmHover = -1; double t2HoverSince = 0; int t2HoverPrev = -1;
     ui::Image t2Pro, bestArt, ciArt, ciShade, ibArt;
     // Generic popup menus (FUN_0046d6e0): 1 Information, 2 System Functions, 3 Preferences, 4 text prompt.
+    sg::CharRec proPrev; std::string proPrevPath; bool proPrevOk = false;
     int popKind = 0, popHover = -1, popPrefs = 0x25; std::vector<std::string> popLines; std::string popBuf, popHead, lastMsg; bool browsing = false; int popPromptFor = 0; int t2Mode = 0; bool champ = false;
     sg::BestScores best; std::string thumbReq; GLuint t2Thumb = 0;   // Best N Hole Scores for this course; a save thumbnail is captured on the next frame
-    struct SaveInfo { bool ok = false; int holes = 0, par = 0, yards = 0, fun = 0, len = 0, acc = 0, img = 0, theme = 0; double cash = 0; std::string designer, themeName; std::vector<std::pair<int, int>> hole; int record = 0; std::string recordBy; } t2Info; std::string t2InfoPath;   // t2Mode 1 = the Load screen lists championship courses (.cse); champ = championship play (exe flag 0x4000000)
+    struct SaveInfo { bool ok = false; int holes = 0, par = 0, yards = 0, fun = 0, len = 0, acc = 0, img = 0, theme = 0; double cash = 0; std::string designer, themeName; std::vector<std::pair<int, int>> hole; int record = 0; std::string recordBy; int prop = 0; } t2Info; std::string t2InfoPath;   // t2Mode 1 = the Load screen lists championship courses (.cse); champ = championship play (exe flag 0x4000000)
     std::vector<std::string> t2Files, creditLines; sg::Top10 top10;   // title side screens and the Top 10 table
     ui::Image cardArt; int cardG = -1, cardHover = -1, cardFrames = 0; float cardMx = 0, cardMy = 0;   // golfer info card (docs/DECODE_GOLFERCARD.md)
     ui::Image ballArt, cgBtn, custBg[2], headWin, headSel, headExp[2], headHalo[2]; std::vector<ui::Image> headCustom[2];
@@ -3836,6 +3839,7 @@ static bool saveGame(App& app, const std::string& file, std::string& err);
 static bool loadGame(App& app, const std::string& file, std::string& err);
 static void openBest(App& app);
 static void openTop10(App& app);
+static std::string browsePath(const App& app) { return (std::filesystem::path(app.courseFile).has_parent_path() ? std::filesystem::path(app.courseFile).parent_path() : std::filesystem::path(".")).string() + "/While Browsing.sgc"; }
 static void popChoose(App& app, int kind, int idx) {
     app.popKind = 0; SDL_StopTextInput();
     if (kind == 1) {
@@ -3848,7 +3852,7 @@ static void popChoose(App& app, int kind, int idx) {
         switch (idx) {
             case 0: toastMsg(app, saveGame(app, app.courseFile, err) ? "Game Saved" : "Could not save the game"); break;
             case 1: {   // the exe saves "While Browsing" and Cancel restores it
-                std::string e2; const std::string wb = (std::filesystem::path(app.courseFile).has_parent_path() ? std::filesystem::path(app.courseFile).parent_path() : std::filesystem::path(".")).string() + "/While Browsing.sgc";
+                std::string e2; const std::string wb = browsePath(app);
                 if (saveGame(app, wb, e2)) { app.browsing = true; t2LoadArt(app); app.t2Mode = 0; t2ListSaves(app); app.t2Files.erase(std::remove(app.t2Files.begin(), app.t2Files.end(), wb), app.t2Files.end()); app.t2Sel = -1; app.t2Scroll = 0; app.t2Confirm = 0; app.t2Hover = -1; app.screen = App::ScreenLoad; }
                 break; }
             case 2: toastMsg(app, "There is no match or tournament to cancel"); break;
@@ -4190,7 +4194,7 @@ static void t2ListFolder(App& app, const char* sub, const char* ext) {   // cham
 static void t2ListSaves(App& app) {
     app.t2Files.clear();
     std::error_code ec; const std::filesystem::path dir = std::filesystem::path(app.courseFile).has_parent_path() ? std::filesystem::path(app.courseFile).parent_path() : std::filesystem::path(".");
-    for (const auto& f : std::filesystem::directory_iterator(dir, ec)) if (f.path().extension() == ".sgc" && f.path().filename().string().find("Shadow") == std::string::npos) app.t2Files.push_back(f.path().string());
+    for (const auto& f : std::filesystem::directory_iterator(dir, ec)) if (f.path().extension() == ".sgc" && f.path().filename().string().find("Shadow") == std::string::npos && f.path().filename().string().find("While Browsing") == std::string::npos) app.t2Files.push_back(f.path().string());
     std::sort(app.t2Files.begin(), app.t2Files.end());
 }
 static int loadHit(float x, float y) {
@@ -4212,6 +4216,7 @@ static void t2ReadInfo(App& app, const std::string& path) {
     while (std::fgets(line, sizeof line, f)) {
         if (!std::strncmp(line, "GAME ", 5) && std::fgets(line, sizeof line, f)) { line[std::strcspn(line, "\r\n")] = 0; app.t2Info.designer = ""; app.t2Info.themeName = line; }   // the course name line
         else if (!std::strncmp(line, "BEST 1", 6)) { int n = 0; std::sscanf(line + 6, "%d", &n); if (n > 0 && std::fgets(line, sizeof line, f)) { int sc = 0, off = 0; if (std::sscanf(line, "%d %n", &sc, &off) >= 1) { app.t2Info.record = sc; app.t2Info.recordBy = line + off; while (!app.t2Info.recordBy.empty() && (app.t2Info.recordBy.back() == '\n' || app.t2Info.recordBy.back() == '\r')) app.t2Info.recordBy.pop_back(); } } }
+        else if (!std::strncmp(line, "CAREER 1", 8)) { int cp = 0; unsigned co = 0; if (std::sscanf(line + 8, "%d %u", &cp, &co) >= 1) app.t2Info.prop = std::max(0, cp); }
         else if (!std::strncmp(line, "INFO 1", 6)) {
             size_t h = 0; double cash = 0, len = 0, acc = 0, img = 0;
             if (std::sscanf(line + 6, "%zu %d %d %lf %d %lf %lf %lf %d", &h, &app.t2Info.par, &app.t2Info.yards, &cash, &app.t2Info.fun, &len, &acc, &img, &app.t2Info.theme) == 9) {
@@ -4253,7 +4258,11 @@ static void drawLoadPanel(App& app) {
     if (!sel) return;
     t2ReadInfo(app, app.t2Files[(size_t)app.t2Sel]);
     const App::SaveInfo& in = app.t2Info;
-    if (app.t2Thumb) { ui::fillRect(67, 24, 116, 90, 0, 0, 0, 1); glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D, app.t2Thumb); glColor4f(1, 1, 1, 1); glBegin(GL_QUADS); glTexCoord2f(0, 1); glVertex2f(67, 24); glTexCoord2f(1, 1); glVertex2f(183, 24); glTexCoord2f(1, 0); glVertex2f(183, 114); glTexCoord2f(0, 0); glVertex2f(67, 114); glEnd(); }
+    if (in.ok) {   // club emblem in the black oval (docs/DECODE_MENUS.md section 9: 8 cuts of 80 x 80 on parklink.pcx and tropdesert.pcx)
+        const int sheet = (in.prop / 8) & 1, cut = in.prop % 8; ui::Image& im = app.emblem[sheet];
+        if (!im.tex) { const std::string i = app.gameDir + "/Interface/"; const char* nm = sheet ? "tropdesert" : "parklink"; ui::loadPcx(i + nm + ".pcx", im, false, -1, i + nm + "_A.pcx"); }
+        if (im.tex) ui::drawImage(im, 84, 32, 4.0f + 88 * cut, sheet ? 481.0f : 396.0f, 80, 80);
+    }
     if (in.ok) {
         float g[3]; c15(0x4210, g); float fg[3]; c15(0x1284, fg); float sk[3]; c15(0x0210, sk);
         static const char* kH[3] = {"Holes", "Par", "Yards"};
@@ -4279,6 +4288,7 @@ static void drawLoadPanel(App& app) {
         if (in.record > 0) tText(app, 388, 474, "Course Record: " + std::to_string(in.record) + " by " + in.recordBy, 12, 1, 1, 1, false);
     }
 }
+static void t2Ok(App& app);
 static void drawLoad(App& app) {
     const bool pro = app.screen == App::ScreenPro;   // Pick A Pro shares the layout and hit circles of the Load screen (DECODE_TITLE2 section 2)
     app.view = ui::beginScreen(app.drawW, app.drawH);
@@ -4303,10 +4313,42 @@ static void drawLoad(App& app) {
     }
     if (n > 16 && app.t2Scroll + 16 < n) tText(app, 320, 372, "(more...)", 13, 0, 0, 0, false);
     if (n == 0) tText(app, 320, 116, pro ? "No pros found." : app.t2Mode == 1 ? "No championship courses saved yet." : "No saved games found.", 13, 0.3f, 0.3f, 0.3f, false);
+    {   // tooltips appear after the pointer rests on a button for 30 frames (about half a second)
+        if (app.t2Hover != app.t2HoverPrev) { app.t2HoverPrev = app.t2Hover; app.t2HoverSince = SDL_GetTicks(); }
+        if (app.t2Hover >= 100 && SDL_GetTicks() - app.t2HoverSince > 500 && !(app.t2Hover == 100 && !sel) && !(app.t2Hover == 104 && !sel)) {
+            static const float cx[5] = {600, 740, 778, 778, 670}, cy[5] = {520, 530, 100, 380, 520};
+            const int k = app.t2Hover - 100; static const char* tip[5] = {"OK", "Cancel", "", "", "Delete"};   // PLACEHOLDER: the OK word lives in a shared literal under five characters
+            if (tip[k][0]) { ui::fillRect(cx[k] + 6, cy[k] + 14, 48, 16, 0.1f, 0.1f, 0.1f, 0.9f); tText(app, cx[k] + 30, cy[k] + 16, tip[k], 11, 1, 1, 1, true); }
+        }
+    }
+    if (app.t2Go) { if (pro) tText(app, 388, 472, "Loading...", 13, 1, 1, 1, false); else { float c[3]; c15(0x7b20, c); tText(app, 550, 456, "Loading...", 13, c[0], c[1], c[2], false); } }
     if (!pro) drawLoadPanel(app);
-    if (app.t2Confirm) tText(app, 395, 442, "Click the delete button again to remove this game.", 12, 1, 1, 1, false);
+    else if (sel) {   // Pick A Pro left panel
+        if (!app.headHalo[0].tex && !app.headHalo[1].tex) loadCharArt(app);
+        if (app.proPrevPath != app.t2Files[(size_t)app.t2Sel]) { app.proPrevPath = app.t2Files[(size_t)app.t2Sel]; app.proPrevOk = sg::charLoadFile(app.proPrevPath, app.proPrev); if (app.proPrevOk && app.proPrev.head >= cuHeadCount(app)) app.proPrev.head = 8; }
+        if (app.proPrevOk) {
+            const sg::CharRec& c = app.proPrev;
+            drawFace(app, c.female(), c.head, 1, 69, 61, true);
+            tText(app, 56, 255, std::string(c.name) + "'s skills", 13, 0, 0, 0, false);
+            static const char* kSk[10] = {"Power Hitter", "Long Driver", "Accurate Driver", "Accurate Irons", "Accurate Putter", "Draw Shot (R to L)", "Fade Shot (L to R)", "High Backspin Shot", "Recovery Skills", "Luck"};
+            for (int k = 0; k < 10; k++) {
+                const float y = 279.0f + 24 * k;
+                tText(app, 94, y, kSk[k], 12, 0, 0.5f, 0.5f, false);
+                tText(app, 59, y, "+" + std::to_string(c.skills[k] * 10) + "%", 12, 0, 0.5f, 0.5f, true);
+            }
+            tText(app, 56, 544, "Signature saying:", 13, 0, 0, 0, false);
+            const std::string say = c.dialogue[0][0] ? c.dialogue[0] : "Fore!";   // PLACEHOLDER stock fallback; the exe takes dialogue event 0x3e
+            tText(app, 36, 562, "\"" + say + "\"", 12, 1, 1, 1, false);
+        }
+    }
+    if (app.t2Confirm && sel) {   // FUN_0046d6e0(400,100,1,1,0): heading with the file name and two options (PLACEHOLDER: the second option's wording beyond "No, never" is unknown)
+        drawFrame9(app, 150, 80, 500, 120);
+        tText(app, 400, 100, "Are you sure you want to delete " + t2RowName(app.t2Files[(size_t)app.t2Sel]) + "?", 13, 1, 1, 1, true);
+        for (int k = 0; k < 2; k++) { const bool hot = app.t2ConfirmHover == k; tText(app, 400, 138.0f + 24 * k, k == 0 ? "Yes, delete this file." : "No, never mind.", 14, hot ? 1.0f : 0.0f, hot ? 1.0f : 0.5f, hot ? 1.0f : 0.5f, true); }
+    }
     if (n > 16) { const float th = std::clamp(16.0f * 228 / n, 8.0f, 228.0f); ui::fillRect(781, 147 + app.t2Scroll * 228.0f / n, 6, th, 1, 1, 1, 1); }
     ui::endScreen();
+    if (app.t2Go == 1) app.t2Go = 2; else if (app.t2Go == 2) { app.t2Go = 0; t2Ok(app); }
 }
 
 // Credits (FUN_0044b9c0)
@@ -4410,6 +4452,25 @@ static void drawBest(App& app) {
     if (app.t2Hover == 1) ui::drawImage(app.bestArt, 544, ye + 14, 593, 434, 44, 44);
     ui::endScreen();
 }
+static void t2Ok(App& app) {
+    const int n = (int)app.t2Files.size(); const bool pro = app.screen == App::ScreenPro; const bool sel = app.t2Sel >= 0 && app.t2Sel < n;
+    if (!sel) return;
+    const int h = 100;
+        if (h == 100 && sel && pro) {   // Pick A Pro: the chosen record becomes the player's character, then the tournament starts
+            sg::CharRec c;
+            if (!sg::charLoadFile(app.t2Files[(size_t)app.t2Sel], c)) { toastMsg(app, "Could not read that pro"); return; }
+            if (c.head >= cuHeadCount(app)) c.head = 8;
+            app.chr = c; app.chrUndo = c; chrSync(app); snd(app, "Interface/Button1.wav"); champStart(app); return;
+        }
+        if (h == 100 && sel && app.t2Mode == 1) {   // championship course chosen
+            const int keep = app.difficulty; std::string err;
+            if (!loadGame(app, app.t2Files[(size_t)app.t2Sel], err)) { toastMsg(app, "Could not load: " + err); return; }
+            app.difficulty = keep; app.tracker = sg::GoalTracker(keep); app.champ = true; app.t2Mode = 0;
+            app.econ.sandbox = false; app.econ.cash = 100000; app.econ.startCash = 100000; app.econ.day = 12; app.econ.version++;
+            t2ListFolder(app, "Championship", ".pro"); app.t2Sel = -1; app.t2Scroll = 0; app.t2Confirm = 0; app.t2Hover = -1; app.screen = App::ScreenPro; return;
+        }
+        if (h == 100 && sel) { std::string err; if (loadGame(app, app.t2Files[(size_t)app.t2Sel], err)) { app.t2Hover = -1; if (app.browsing) { app.browsing = false; std::error_code ec; std::filesystem::remove(browsePath(app), ec); std::filesystem::remove(browsePath(app) + ".thumb", ec); } std::printf("loaded %s\n", app.t2Files[(size_t)app.t2Sel].c_str()); } else toastMsg(app, "Could not load: " + err); return; }
+}
 static void t2Event(App& app, const SDL_Event& e, bool& running) {
     const int scr = app.screen;
     const bool click = e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT, move = e.type == SDL_MOUSEMOTION;
@@ -4445,35 +4506,91 @@ static void t2Event(App& app, const SDL_Event& e, bool& running) {
     }
     if (scr == App::ScreenLoad || scr == App::ScreenPro) {
         const int n = (int)app.t2Files.size(); const bool pro = scr == App::ScreenPro;
-        auto leave = [&] { app.champ = false; app.t2Mode = 0; toMenu(); };
-        if (key) { if (e.key.keysym.sym == SDLK_ESCAPE) leave(); return; }
+        auto leave = [&] {
+            app.champ = false; app.t2Mode = 0;
+            if (app.browsing) { std::string err; app.browsing = false; if (!loadGame(app, browsePath(app), err)) toastMsg(app, "Could not restore the game"); std::error_code ec; std::filesystem::remove(browsePath(app), ec); std::filesystem::remove(browsePath(app) + ".thumb", ec); app.screen = App::ScreenPlay; app.t2Hover = -1; return; }
+            toMenu(); };
+        if (app.t2Go) return;
+        if (app.t2Confirm && (click || move)) {   // the delete box: option rows at y 138 and 162
+            const int r = (vx > 250 && vx < 550 && vy >= 126 && vy < 174) ? (int)((vy - 126) / 24) : -1;
+            if (move) app.t2ConfirmHover = r;
+            if (click) {
+                if (r == 0 && app.t2Sel >= 0 && app.t2Sel < n) { std::error_code ec; std::filesystem::remove(app.t2Files[(size_t)app.t2Sel], ec); std::filesystem::remove(app.t2Files[(size_t)app.t2Sel] + ".thumb", ec); app.t2Sel = -1; if (app.t2Mode == 1) t2ListFolder(app, "Championship", ".cse"); else t2ListSaves(app); }
+                app.t2Confirm = 0; app.t2ConfirmHover = -1;
+            }
+            return;
+        }
+        if (key) { if (e.key.keysym.sym == SDLK_ESCAPE) { if (app.t2Confirm) app.t2Confirm = 0; else leave(); } return; }
         if (move) app.t2Hover = loadHit(vx, vy);
         if (!click) return;
         const int h = loadHit(vx, vy); const bool sel = app.t2Sel >= 0 && app.t2Sel < n;
-        if (h != 104) app.t2Confirm = 0;
         if (h == 101) { leave(); return; }
         if (h == 102) { app.t2Scroll = std::max(0, std::min(app.t2Scroll - 4, std::max(0, n - 16))); return; }
         if (h == 103) { app.t2Scroll = std::max(0, std::min(app.t2Scroll + 4, std::max(0, n - 16))); return; }
-        if (h == 100 && sel && pro) {   // Pick A Pro: the chosen record becomes the player's character, then the tournament starts
-            sg::CharRec c;
-            if (!sg::charLoadFile(app.t2Files[(size_t)app.t2Sel], c)) { toastMsg(app, "Could not read that pro"); return; }
-            if (c.head >= cuHeadCount(app)) c.head = 8;
-            app.chr = c; app.chrUndo = c; chrSync(app); snd(app, "Interface/Button1.wav"); champStart(app); return;
-        }
-        if (h == 100 && sel && app.t2Mode == 1) {   // championship course chosen
-            const int keep = app.difficulty; std::string err;
-            if (!loadGame(app, app.t2Files[(size_t)app.t2Sel], err)) { toastMsg(app, "Could not load: " + err); return; }
-            app.difficulty = keep; app.tracker = sg::GoalTracker(keep); app.champ = true; app.t2Mode = 0;
-            app.econ.sandbox = false; app.econ.cash = 100000; app.econ.startCash = 100000; app.econ.day = 12; app.econ.version++;
-            t2ListFolder(app, "Championship", ".pro"); app.t2Sel = -1; app.t2Scroll = 0; app.t2Confirm = 0; app.t2Hover = -1; app.screen = App::ScreenPro; return;
-        }
-        if (h == 100 && sel) { std::string err; if (loadGame(app, app.t2Files[(size_t)app.t2Sel], err)) { app.t2Hover = -1; std::printf("loaded %s\n", app.t2Files[(size_t)app.t2Sel].c_str()); } else toastMsg(app, "Could not load: " + err); return; }
+        if (h == 100 && sel) { app.t2Go = 1; return; }
         if (h == 104 && sel && pro) return;   // PLACEHOLDER: the exe's delete button on Pick A Pro is not decoded; the pros are disc files, so it does nothing here
-        if (h == 104 && sel) { if (!app.t2Confirm) app.t2Confirm = 1; else { std::error_code ec; std::filesystem::remove(app.t2Files[(size_t)app.t2Sel], ec); app.t2Confirm = 0; app.t2Sel = -1; if (app.t2Mode == 1) t2ListFolder(app, "Championship", ".cse"); else t2ListSaves(app); } return; }
+        if (h == 104 && sel) { app.t2Confirm = 1; return; }
         if (vx > 320 && vy > 115) { const int row = (int)((vy - 116) / 16) + app.t2Scroll; app.t2Sel = row < n ? row : -1; snd(app, "Interface/Button2.wav"); }
         return;
     }
     (void)running;
+}
+
+// ---- Pair selection (FUN_00459850, docs/DECODE_TOP10_PAIR.md section 3). PLACEHOLDER: the exe's call site is unknown, so the screen opens from the ` key with six roster members;
+// trait lines use made-up labels (the exe's five trait words are not in the text), the age is a stand-in, and the invalid click sound (id 0x18) is silent here.
+static void pairOpen(App& app) {
+    if (!app.uiOk) return;
+    if (!app.pairBase.tex) { const std::string i = app.gameDir + "/Interface/"; ui::loadPcx(i + "PairBase.pcx", app.pairBase, false); ui::loadPcx(i + "PairButtons.pcx", app.pairBtn, true); }
+    app.pairIds.clear(); app.pairSel = 0; app.pairHover = -1; app.pairMsg.clear();
+    for (int id = 1; id <= 75 && app.pairIds.size() < 6; id++) {
+        const int pick = (id * 7 + (int)(SDL_GetTicks() / 1000)) % 75 + 1; bool dup = false;
+        for (int q : app.pairIds) dup |= q == pick;
+        if (!dup && !app.roster.e[pick].resigned) app.pairIds.push_back(pick);
+    }
+    app.top10Return = app.screen; app.screen = App::ScreenPair;
+}
+static int pairCell(float vx, float vy, size_t n) { if (vx < 6 || vx >= 664 || vy < 50) return -1; const int c = (int)((vx - 6) / 334) + (int)((vy - 50) / 136) * 2; return c >= 0 && c < (int)n ? c : -1; }
+static void drawPair(App& app) {
+    app.view = ui::beginScreen(app.drawW, app.drawH);
+    ui::drawImage(app.pairBase, 0, 0);
+    app.font.drawCentered(338, 32, "SELECT THE NEXT PAIR OF GOLFERS", 22, 0, 0, 0);
+    static const char* kMar[4] = {"Single", "Married", "Divorced", "Widowed"};
+    for (size_t k = 0; k < app.pairIds.size(); k++) {
+        const int id = app.pairIds[k]; const float x0 = 329.0f * (float)(k & 1), y = 50.0f + 136 * (float)(k / 2);
+        const bool on = app.pairSel >> k & 1, hot = app.pairHover == (int)k;
+        const float yy = hot && !on ? y - 1 : y;
+        ui::drawImage(app.pairBtn, x0 + 6, yy, 0, on ? 272.0f : 0.0f, 329, 136);
+        drawFace(app, id % 3 == 0, (id - 1) % 19, 1, x0, yy + 4, true);
+        app.font.drawCentered(x0 + 214, yy + 23, memberName(app, id), 15, 0, 0, 0);
+        app.font.drawCentered(x0 + 262, yy + 52, "Golf Pro", 13, 0, 0, 0);
+        app.font.drawCentered(x0 + 262, yy + 84, std::to_string(20 + (id * 7) % 35) + " years old", 13, 0, 0, 0);
+        app.font.drawCentered(x0 + 262, yy + 116, kMar[id % 4], 13, 0, 0, 0);
+        const int tb = (id * 5 + 3) & 31; int cnt = 0; for (int t = 0; t < 5; t++) if (tb >> t & 1) cnt++;
+        int line = 0; for (int t = 0; t < 5; t++) if (tb >> t & 1) app.font.draw(x0 + 146, yy + (5 - cnt) * 9 + 48 + 18.0f * line++, kCuTrait[t], 12, 0, 0, 0);
+    }
+    if (!app.pairMsg.empty()) app.font.drawCentered(338, 560, app.pairMsg, 14, 1, 1, 1);
+    if (__builtin_popcount(app.pairSel) == 2) ui::drawImage(app.pairBtn, 693, 502, 693, 502, 75, 75);   // DERIVED: the lit OK shows once a pair is chosen
+    ui::endScreen();
+}
+static void pairEvent(App& app, const SDL_Event& e) {
+    float vx = 0, vy = 0; const bool mouse = e.type == SDL_MOUSEMOTION || e.type == SDL_MOUSEBUTTONDOWN;
+    if (mouse) { vx = app.view.toVirtualX((e.type == SDL_MOUSEMOTION ? e.motion.x : e.button.x) * app.dpi); vy = app.view.toVirtualY((e.type == SDL_MOUSEMOTION ? e.motion.y : e.button.y) * app.dpi); }
+    if (e.type == SDL_MOUSEMOTION) { app.pairHover = pairCell(vx, vy, app.pairIds.size()); return; }
+    const bool click = e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT;
+    if (!click && e.type != SDL_KEYDOWN) return;
+    const int c = click ? pairCell(vx, vy, app.pairIds.size()) : -1;
+    if (c >= 0) {
+        const int have = __builtin_popcount(app.pairSel);
+        if (have < 2 || (app.pairSel >> c & 1)) { app.pairSel ^= 1u << c; snd(app, "Interface/Button2.wav"); }
+        return;
+    }
+    const int have = __builtin_popcount(app.pairSel);   // empty space or a key accepts
+    if (have == 1) { app.pairMsg = "Choose two golfers to play together."; return; }
+    if (have == 2) {   // PLACEHOLDER: group play is not built, so the pair is only announced
+        std::string a, b; for (size_t k = 0; k < app.pairIds.size(); k++) if (app.pairSel >> k & 1) (a.empty() ? a : b) = memberName(app, app.pairIds[k]);
+        say(app, a + " and " + b + " will play together", 6);
+    }
+    app.screen = app.top10Return == App::ScreenPair ? App::ScreenPlay : app.top10Return;
 }
 
 // ---- Golfer info card (docs/DECODE_GOLFERCARD.md section 2, layout S). Plate, ball and face, five meters, 18 hole scorecard and five round buttons follow the exe.
@@ -5298,6 +5415,7 @@ int main(int argc, char** argv) {
     if (screenArg == "diff" && app.uiOk) { t2LoadArt(app); app.diffPending = 1; app.t2Hover = g_t2Hover; app.screen = App::ScreenDiff; }
     if (!g_saveChamp.empty() && app.uiOk) { std::string err; std::printf("championship save %s: %s\n", g_saveChamp.c_str(), champSave(app, g_saveChamp, err) ? "ok" : err.c_str()); }
     if (screenArg == "champload" && app.uiOk) { t2LoadArt(app); app.t2Mode = 1; t2ListFolder(app, "Championship", ".cse"); app.t2Sel = g_t2Hover >= 0 && !app.t2Files.empty() ? 0 : -1; app.t2Hover = g_t2Hover; app.screen = App::ScreenLoad; }
+    if (screenArg == "pair" && app.uiOk) { app.screen = App::ScreenPlay; loadCharArt(app); pairOpen(app); app.pairSel = 5; }
     if (screenArg == "pro" && app.uiOk) { t2LoadArt(app); app.champ = true; t2ListFolder(app, "Championship", ".pro"); app.t2Sel = g_t2Hover >= 0 && !app.t2Files.empty() ? 0 : -1; app.t2Hover = g_t2Hover; app.screen = App::ScreenPro; }
     if (g_champGo >= 0 && app.uiOk) {   // headless run of the whole flow: first championship course, then pro number g_champGo
         t2LoadArt(app); app.t2Mode = 1; t2ListFolder(app, "Championship", ".cse");
@@ -5498,6 +5616,7 @@ int main(int argc, char** argv) {
                 }
                 else if (app.screen == App::ScreenCustomise) customiseEvent(app, e);
                 else if (app.screen == App::ScreenGolfer) golferCardEvent(app, e);
+                else if (app.screen == App::ScreenPair) pairEvent(app, e);
                 else if (app.screen >= App::ScreenDiff) t2Event(app, e, running);
                 else if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) { if (app.switchMode) { app.switchMode = false; app.screen = App::ScreenPlay; } else if (app.screen == App::ScreenMenu) running = false; else app.screen = App::ScreenMenu; app.hover = -1; }
                 else if (e.type == SDL_MOUSEMOTION || (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT)) {
@@ -5574,6 +5693,7 @@ int main(int argc, char** argv) {
                     else if ((k == SDLK_F5 || (k == SDLK_r && shift && !app.edit)) && app.uiOk && app.screen == App::ScreenPlay) { app.ovMode = -1; app.ovSel = -1; app.screen = App::ScreenOverview; }
                     else if (k == SDLK_b && shift && app.uiOk && app.screen == App::ScreenPlay) openBuyLand(app);
                     else if (k == SDLK_F10 && app.uiOk) app.screen = App::ScreenBoard;
+                    else if (k == SDLK_BACKQUOTE && app.uiOk && app.screen == App::ScreenPlay) pairOpen(app);   // PLACEHOLDER key for the pair screen
                     else if (k == SDLK_F12 && app.uiOk && app.screen == App::ScreenPlay) openBest(app);   // PLACEHOLDER key: the exe reaches it from its Information menu
                     else if (k == SDLK_F11 && app.uiOk && app.screen == App::ScreenPlay) openTop10(app);   // PLACEHOLDER key: the exe reaches the Top 10 from its Information menu
                     else if (k == SDLK_F3 && app.uiOk && app.screen == App::ScreenPlay) app.screen = App::ScreenHisto;
@@ -5676,6 +5796,7 @@ int main(int argc, char** argv) {
         else if (app.screen == App::ScreenDiff && app.uiOk) drawDiff(app);
         else if (app.screen == App::ScreenThemes && app.uiOk) drawThemes(app);
         else if ((app.screen == App::ScreenLoad || app.screen == App::ScreenPro) && app.uiOk) drawLoad(app);
+        else if (app.screen == App::ScreenPair && app.uiOk) drawPair(app);
         else if (app.screen == App::ScreenCredits && app.uiOk) drawCredits(app);
         else if (app.screen == App::ScreenTop10 && app.uiOk) drawTop10(app);
         else { if (app.testBoard > 0 && --app.testBoard == 0) app.screen = App::ScreenBoard; render(app); if (app.snapPending >= 0) captureSnap(app); if (!app.thumbReq.empty()) captureThumb(app); drawHud(app); if (app.screen == App::ScreenReport) drawReport(app); if (app.screen == App::ScreenSga) drawSga(app); if (app.screen == App::ScreenBuyLand) drawBuyLand(app); if (app.screen == App::ScreenOverview) drawOverview(app); if (app.screen == App::ScreenFinance) drawFinance(app); if (app.screen == App::ScreenRoster) drawRoster(app); if (app.screen == App::ScreenHoleStat) drawHoleStat(app); if (app.screen == App::ScreenKeys) drawKeys(app); if (app.screen == App::ScreenEoy) drawEoy(app); if (app.screen == App::ScreenComments) drawComments(app); if (app.screen == App::ScreenHisto) drawHisto(app); if (app.screen == App::ScreenBoard) drawBoard(app); if (app.screen == App::ScreenAward) drawAward(app); if (app.screen == App::ScreenGolfer) { app.cardFrames++; drawGolferCard(app); } if (app.screen == App::ScreenBest) drawBest(app); }

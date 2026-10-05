@@ -17,7 +17,7 @@ The pre-game character page the port used to show does not exist in the original
 |---|---|---|
 | Character | DONE (first pass): Customise screen on the original art, face picker, .pro load and save, advisor portrait. Still open: preview bodies (palette swaps), exact trait and toggle label texts, hit centres from the exe tables, stock default sayings, Save portrait | CustGolfBckgrnd, CGButtons, HeadSelect, HeadBodyBck; spec in DECODE_CUSTOMISE.md |
 | Faces | Advisor popup, Customise and the golfer info card done. Open: stats card, pair selection, Pick a Pro, remark popups for golfers, member heads (exe table unknown, port uses a PLACEHOLDER rule) | spec in DECODE_FACES.md |
-| Pick a Pro | Championship flow, course picker and Pick A Pro screen built (headless only). Open: left panel (portrait, ten skill rows, signature saying), per DECODE_PICKAPRO.md | Title_Pickapro.pcx, .pro files in Themes/Championship |
+| Pick a Pro | Championship flow, course picker and Pick A Pro screen built (headless only). Left panel done (portrait, ten skill rows, signature saying; stock saying is a PLACEHOLDER) | Title_Pickapro.pcx, .pro files in Themes/Championship |
 | Pair selection | Not built (spec DECODE_TOP10_PAIR.md section 3; the exe's call site is unknown and the port has no waiting queue yet) | PairBase, PairButtons |
 | Golfer card | DONE (first pass, single layout): plate, ball and face, five meters, 18 hole scorecard, five round buttons with hover art and tooltip. Open: partner layout (needs group play), shaded backdrop and s_GolferStats shadow, stats card (skills dialog), exact text lines (exe literals unknown, port lines are PLACEHOLDER), Customize and View Story buttons (drawn pale, no action) | GolferStats; spec DECODE_GOLFERCARD.md |
 | Course info | courseinfo art unused | courseinfo, s_courseinfo |
@@ -51,3 +51,11 @@ The pre-game character page the port used to show does not exist in the original
 | Popup menus | Information (12 items) and System Functions (8 items) on the InfoButtons 9-slice frame, plus Preferences and rename prompt. PLACEHOLDER: radio ball sprite, text colours, Preferences labels beyond three. Load Game saves a While Browsing file but Cancel does not yet restore it |
 | Open | Load screen emblem and tooltips, pair selection trigger, stats card, golfer bodies and palettes, play-core constants from DECODE_PLAYCORE.md, world facts from DECODE_WORLD2.md |
 Audit count: 982 gaps (down from 987).
+
+## Update 68 additions (headless only, never run on the Mac)
+| Area | State |
+|---|---|
+| Pick A Pro | Left panel on the real art |
+| Load screen | Club emblem (parklink/tropdesert cuts) replaces the thumbnail; Cancel/Delete tooltips; Loading... text; delete yes/no box in the popup frame; Cancel from System Load restores the While Browsing save. PLACEHOLDER: OK tooltip word, second delete option wording |
+| Pair selection | Screen built from PairBase/PairButtons; trigger key backquote is a PLACEHOLDER (exe call site unknown); trait labels and ages are stand-ins; pairing only announced |
+| Not done | Golfer stats card (skills dialog), golfer bodies and palettes, play-core constant swaps, world data facts |
