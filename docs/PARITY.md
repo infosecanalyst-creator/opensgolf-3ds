@@ -170,3 +170,5 @@ Tested headless only; not run on the Mac.
 | Multi-slot saves | already present | Named save files and the Load screen list were already in place; the old gap entry was stale |
 
 Tested headless only (a 7-hole reveal render); not run on the Mac.
+
+Note (update 77): the pair-selection screen builder FUN_0044bde0 has no caller and no address reference anywhere in spec/golf_decomp.c, so its real trigger cannot be recovered from the decompile. The backquote key stays a PLACEHOLDER until another source shows it.
