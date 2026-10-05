@@ -85,3 +85,18 @@ Audit count: 982 gaps (down from 987).
 | Test hooks | --prop N, --skills |
 | Tests | terrain_gen added (11 in all) |
 | Not done | 18-dot rating row, Paused label, Customise preview bodies, stats card art, tutorial triggers, SGA offer popup art, employee Move and Rename, Information menu styling |
+
+## Update 71 additions (headless only, never run on the Mac)
+| Area | State |
+|---|---|
+| Skills dialog | Rebuilt to match the real screenshot: black panel with a lavender edge, yellow "Add N skill points." line, oval toggles, cream "+N0%" ovals and name boxes, standing portrait (Bodies/<set>.pcx recoloured with the swap palette, head on top at the Customise offsets) on a white oval, explanation box under the dialog. Shapes and colours measured by eye (PLACEHOLDER) |
+| Skill points | Closing the dialog sets the player's tournament skills (point x 1.5, cap 15); the exe's real use of each skill in the player's shots is still the shot model's |
+| HUD rating row | Golf ball dots, stars (course grade + 1) and hearts from StarsHeartsETC.pcx, spaced over 146 px; flags per hole up to six, otherwise a flag and "x N". The dot count (1.5 per hole) is PLACEHOLDER; the hearts counter is 0 until happy endings are tracked |
+| HUD text | Course name and date moved to the real rows; money green (red when negative), fun yellow, skill cyan, as in the screenshots; "Paused" label at the top centre (position DERIVED) |
+| Notices | `say` messages use the dark green translucent panel with lavender edge; SGA offers show the trophy plate (geometry PLACEHOLDER) |
+| Menus | Information and System menus restyled (slate panel, heading row, teal items, amber ball bullets, no OK button) and the heading row now sits inside the exe's (n*3+3)*8 height |
+| Employees | Per-employee names (Rename Employee prompt, 31 characters), hire date, Move (armed, next map click places the employee), Fire removes that employee; info box text is dark (PLACEHOLDER colour); Paid is wage x months employed (PLACEHOLDER) |
+| Shot Analysis | Analyze Golf Shot tool and the / key: 5 sample first shots for ALL skills, no Imagination, no Accuracy, no Length drawn on the hole, with the panel and a yards figure (DERIVED: closer to the green than the all-skills average; the exe's own routine is not decoded) |
+| Bug fix | Body palette loader used a 96 byte path buffer, so a long install path silently disabled recoloured golfers; now a std::string |
+| Test hooks | --empsel N, --say TEXT, --analyze N |
+| Not done | Customise preview bodies, stats card art, tutorial triggers, employee info colours, per-employee counters and wages, happy ending hearts, Practice Round button |

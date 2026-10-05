@@ -3,6 +3,7 @@
 // each from the Swap file numbered value + 1, then 80..89 and 90..96 from two more choices. Index 255 stays the key colour.
 // DERIVED: which variable feeds 80..89 and 90..96 (male: 80..86 take the alternate skin; female: 80..89 the hair, 90..96 the alternate skin), from the way the files vary.
 #pragma once
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <map>
@@ -29,7 +30,8 @@ inline const char* bodySetName(const BodyLook& l) {
 inline bool composeBodyPalette(const std::string& gameDir, const BodyLook& l, uint8_t out[768]) {
     static std::map<std::string, std::vector<uint8_t>> cache;
     auto swap = [&](int n) -> const uint8_t* {
-        char nm[96]; std::snprintf(nm, sizeof nm, "%s/Bodies/%sSwap%02d.pcx", gameDir.c_str(), l.female ? "Female" : "Male", std::clamp(n, 0, 9) + 1);
+        char num[16]; std::snprintf(num, sizeof num, "%02d", std::clamp(n, 0, 9) + 1);
+        const std::string nm = gameDir + "/Bodies/" + (l.female ? "Female" : "Male") + "Swap" + num + ".pcx";   // a std::string: long install paths overflowed the old fixed buffer
         auto it = cache.find(nm);
         if (it == cache.end()) {
             std::vector<uint8_t> pal(768, 0); Bytes d; uint8_t p[768];

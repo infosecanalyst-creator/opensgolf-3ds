@@ -226,7 +226,7 @@ struct App {
     bool resetClock = false;
     bool sandboxChoice = false;      // the property chooser was opened from Sandbox Mode
     std::string toast;
-    double toastUntil = 0;
+    double toastUntil = 0; int toastKind = 0;   // 1 = a notice (the dark green message panel of the real game), 0 = a short confirmation
     bool follow = false;         // camera follows the golfer
     // Course editing
     bool edit = false;
@@ -245,7 +245,10 @@ struct App {
     std::vector<sg::Celebrity> celebs;
     // Land (docs/UI_SCREENS2.md section 4): a 50 x 50 map is cut into nine 16 x 16 tracts; ownMask has a bit per tract. Courses that are not 50 x 50
     // (older saves, editor files) have no land model and everything is owned.
-    struct Emp { int kind = 0; bool skilled = false; float x = 0, z = 0, heading = 0; int target = -1; int phase = 0; float timer = 0, cool = 0; float wx = 0, wz = 0; };
+    struct Emp { int kind = 0; bool skilled = false; float x = 0, z = 0, heading = 0; int target = -1; int phase = 0; float timer = 0, cool = 0; float wx = 0, wz = 0; std::string name; int hired = 1; };
+    int empMoveArm = -1, empRenameRow = -1;
+    // Shot Analysis (the Analyze Golf Shot tool and the / key): sample first shots of golfers with all skills and without one group, drawn on the hole.
+    bool anArm = false; int anHole = -1; std::vector<float> anPath[4][5]; float anYds[4] = {}; float anLand[4][5][2] = {};   // Move armed for a roster row (the next map click places it), the row being renamed
     std::vector<Emp> emps; int empCount[4][2] = {};   // staff walking the course, and the counters they earn (greeted/cheered and so on)
     int ovMode = -1, ovSel = -1; std::vector<float> ovAura, ovValue;   // course overview (F5): -1 routing, 1 aura, 2 home site value, 3 employees
     bool landModel = false; int ownMask = 0x1ff; int landBought = 0; bool landOffer = false;
@@ -257,7 +260,7 @@ struct App {
     int amenVar[5] = {0, 0, 0, 0, 0};   // chosen design per strip: bench, flower bed, scenic tree, scenic bridge, landmark
     unsigned amenCounter = 0;    // the exe's running selection counter, used for the variant rolls
     int raiseSign = 1;           // = selects raising, - selects lowering (the original's hotkeys); shift flips it
-    bool paused = false;
+    bool paused = false; int hearts = 0; ui::Image shArt;
     bool skOpen = false, skConfirm = false, skWasPaused = false; int skLeft = 0, skHover = -1, skConfHover = -1; uint8_t skStart[10] = {};   // editable skills dialog (FUN_0045f0f0 with points to spend)
     int wallDir = 0;             // edge chosen under the mouse, for the wall tool            // 1 gravel, 2 paved
     int paintIdx = 0;
@@ -511,7 +514,7 @@ static GlSprite* spriteForRaw(App& app, const std::string& rel, bool shadow, con
     auto it = app.sprites.find(k);
     if (it != app.sprites.end()) return it->second.get();
     auto gs = std::make_unique<GlSprite>(); std::string err;
-    if (!loadSprite(path, gs->s, err, shadow, std::string(), shadow ? nullptr : pal)) { app.sprites[k] = nullptr; return nullptr; }
+    if (!loadSprite(path, gs->s, err, shadow, std::string(), shadow ? nullptr : pal)) { std::fprintf(stderr, "sprite raw: %s\n", err.c_str()); app.sprites[k] = nullptr; return nullptr; }
     gs->tex.assign(gs->s.frames.size(), 0);
     return (app.sprites[k] = std::move(gs)).get();
 }
@@ -533,6 +536,7 @@ static const BodySet* bodySetFor(App& app, const sg::BodyLook& l) {
             if (!bs->body[i]) bs->ok = false;
         }
     }
+    if (!bs->ok) std::fprintf(stderr, "bodyset %s failed (gameDir %s)\n", key.c_str(), app.gameDir.c_str());
     const BodySet* r = bs->ok ? bs.get() : nullptr;
     app.bodySets[key] = std::move(bs);
     return r;
@@ -1385,9 +1389,14 @@ static void syncEmployees(App& app) {
     for (int k = 0; k < 4; k++) for (int sk = 0; sk < 2; sk++) {
         int have = 0; for (const App::Emp& e : app.emps) if (e.kind == k && e.skilled == (sk != 0)) have++;
         while (have > want[k][sk]) { for (size_t i = app.emps.size(); i-- > 0;) if (app.emps[i].kind == k && app.emps[i].skilled == (sk != 0)) { app.emps.erase(app.emps.begin() + (long)i); break; } have--; changed = true; }
-        while (have < want[k][sk]) { App::Emp e; e.kind = k; e.skilled = sk != 0; clubhouseWorld(app, e.x, e.z); e.wx = e.x; e.wz = e.z; app.emps.push_back(e); have++; changed = true; }
+        while (have < want[k][sk]) { App::Emp e; e.kind = k; e.skilled = sk != 0; clubhouseWorld(app, e.x, e.z); e.wx = e.x; e.wz = e.z; e.hired = app.econ.day; app.emps.push_back(e); have++; changed = true; }
     }
     if (changed) refreshEmpProps(app);
+}
+// The roster row r (kind order, regular after skilled as in empRows) is the n-th walking employee of its kind and grade.
+static int empForRow(const App& app, int kind, bool skilled, int nth) {
+    int c = 0; for (size_t i = 0; i < app.emps.size(); i++) if (app.emps[i].kind == kind && app.emps[i].skilled == skilled) { if (c == nth) return (int)i; c++; }
+    return -1;
 }
 static void stepEmployees(App& app, float dt) {
     syncEmployees(app);
@@ -3393,7 +3402,7 @@ static const char* kDockHelp[10] = {"Build Course", "Add Buildings", "People", "
 static const char* kUnlockEffect[15] = {"", "", "", "", "", "", "Putting Green: golfers with imagination improve their putting", "Snack Bar: feeds hungry golfers", "Pro Shop: accurate golfers upgrade equipment",
                                         "Swim Club: golfers start in a better mood", "Driving Range: long hitters gain distance", "Cart Garage: faster play", "Marina: raises home values",
                                         "Resort Hotel: golfers tire less late in a round", "Airstrip: lets you charge higher green fees"};
-static void say(App& app, const std::string& m, double secs) { app.lastMsg = m; app.toast = m; app.toastUntil = SDL_GetTicks() / 1000.0 + secs; std::printf("%s\n", m.c_str()); }
+static void say(App& app, const std::string& m, double secs) { app.lastMsg = m; app.toast = m; app.toastKind = 1; app.toastUntil = SDL_GetTicks() / 1000.0 + secs; std::printf("%s\n", m.c_str()); }
 static void openHole(App& app) {
     refreshHoles(app);
     int pick = -1;
@@ -3510,6 +3519,10 @@ static std::vector<EmpRow> empRows(const App& a) {
     std::vector<EmpRow> v;
     for (int k = 0; k < Economy::StaffKinds; k++) for (int n = 0; n < a.econ.staff[k]; n++) v.push_back({k, n < a.econ.skilled[k]});
     return v;
+}
+static int rowEmp(const App& app, const std::vector<EmpRow>& rows, int r) {
+    int nth = 0; for (int i = 0; i < r; i++) if (rows[(size_t)i].kind == rows[(size_t)r].kind && rows[(size_t)i].skilled == rows[(size_t)r].skilled) nth++;
+    return empForRow(app, rows[(size_t)r].kind, rows[(size_t)r].skilled, nth);
 }
 static int pnlHit(const App& a, int px, int py) {
     if (a.panel == 1 && a.amenities) return up::amenitiesHit(px, py);
@@ -3751,12 +3764,19 @@ static void pnlDraw(App& app, float mx, float my) {
             const bool has = app.empSel >= 0 && app.empSel < n;
             pnlBlit(app.empArt, up::empActionCut(a, has ? 3 : 2), up::kEmpActions[a].dst.x, up::kEmpActions[a].dst.y);
             if (has && h == 4 + a) pnlBlit(app.empArt, up::empActionCut(a, 0), up::kEmpActions[a].dst.x, up::kEmpActions[a].dst.y);
+            if (a == 0 && has && app.empMoveArm == app.empSel) pnlBlit(app.empArt, up::empActionCut(0, 1), up::kEmpActions[0].dst.x, up::kEmpActions[0].dst.y);   // armed cut
         }
         if (app.empSel >= 0 && app.empSel < n) {
             const EmpRow& r = rows[app.empSel];
-            app.font.drawCentered((float)up::kEmpInfoX, (float)up::kEmpInfoY[0], std::string(r.skilled ? up::kStaffKinds[r.kind].skilledName : up::kStaffKinds[r.kind].name), 12, 1, 1, 1);
-            app.font.drawCentered((float)up::kEmpInfoX, (float)up::kEmpInfoY[2], "Paid: " + money(up::kStaffKinds[r.kind].wageUnits[r.skilled] * 100LL), 12, 1, 1, 1);
-            app.font.drawCentered((float)up::kEmpInfoX, (float)up::kEmpInfoY[3], up::kStaffKinds[r.kind].counter[r.skilled], 11, 0.9f, 0.9f, 1);
+            const int ei = rowEmp(app, rows, app.empSel); const App::Emp* em = ei >= 0 ? &app.emps[(size_t)ei] : nullptr;
+            const std::string job = r.skilled ? up::kStaffKinds[r.kind].skilledName : up::kStaffKinds[r.kind].name;
+            app.font.drawCentered((float)up::kEmpInfoX, (float)up::kEmpInfoY[0], em && !em->name.empty() ? em->name : job, 12, 0.1f, 0.08f, 0.3f);
+            if (em) { static const char* kMo[12] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}; const int mi = em->hired - 1;
+                      app.font.drawCentered((float)up::kEmpInfoX, (float)up::kEmpInfoY[1], std::string("Hired: ") + kMo[(2 + mi % 8) % 12] + " " + std::to_string(2001 + mi / 8), 12, 0.1f, 0.08f, 0.3f); }
+            // "Paid" is the wage times the months employed (PLACEHOLDER: the exe books each payment on the employee record; the port pays the whole staff together).
+            app.font.drawCentered((float)up::kEmpInfoX, (float)up::kEmpInfoY[2], "Paid: " + money(up::kStaffKinds[r.kind].wageUnits[r.skilled] * 100LL * (em ? std::max(0, app.econ.day - em->hired) : 0)), 12, 0.1f, 0.08f, 0.3f);
+            app.font.drawCentered((float)up::kEmpInfoX, (float)up::kEmpInfoY[3], up::kStaffKinds[r.kind].counter[r.skilled], 11, 0.25f, 0.2f, 0.45f);
+            app.font.drawCentered((float)up::kEmpInfoX, (float)up::kEmpInfoY[4], std::to_string(app.empCount[r.kind][r.skilled ? 1 : 0]), 12, 0.1f, 0.08f, 0.3f);   // the kind's total (the exe counts per employee)
         }
         if (tip) {
             if (h == 0) pnlTip(app, up::kEmpHireTip, mx);
@@ -3811,7 +3831,7 @@ static bool pnlClick(App& app, float vx, float vy, bool rightClick) {
         if (h == -2) { app.elevation = false; app.tool = 4; snd(app, "Interface/Button2.wav"); return true; }
         if (h == -3) { app.tool = 6; app.edit = true; snd(app, "Interface/Button2.wav"); return true; }
         if (h >= 0 && h <= 2) { app.elevTool = h; app.tool = 1; app.raiseSign = 1; app.brush = h == 0 ? 0 : (h == 1 ? 1 : 3); app.edit = true; snd(app, "Interface/Button2.wav"); return true; }   // brush sizes are PLACEHOLDERS; left click raises, shift lowers
-        if (h == 3) { say(app, "Analyze Golf Shot is not in the port yet", 3); return true; }
+        if (h == 3) { app.anArm = !app.anArm; if (!app.anArm) app.anHole = -1; else say(app, "Click a hole to see how golfers will play it.", 4); snd(app, "Interface/Button2.wav"); return true; }
         return vx >= 215 && vy >= 482;
     }
     if (app.panel == 2) {
@@ -3843,8 +3863,14 @@ static bool pnlClick(App& app, float vx, float vy, bool rightClick) {
         if (h == 2 && app.empOff > 0) { app.empOff -= 2; return true; }
         if (h == 3) { if (n - app.empOff > 8) app.empOff += 2; return true; }
         if (h == -2) { app.golfersMode = true; snd(app, "Interface/Button2.wav"); return true; }
-        if (h == 5 && app.empSel >= 0 && app.empSel < n) { app.econ.fire(rows[app.empSel].kind, rows[app.empSel].skilled); app.empSel = -1; snd(app, "Interface/Button2.wav"); return true; }
-        if ((h == 4 || h == 6) && app.empSel >= 0) { say(app, h == 4 ? "Moving employees is not in the port yet" : "Renaming employees is not in the port yet", 3); return true; }
+        if (h == 5 && app.empSel >= 0 && app.empSel < n) {
+            const int ei = rowEmp(app, rows, app.empSel); if (ei >= 0) app.emps.erase(app.emps.begin() + ei);   // this very employee leaves, not just the last of the kind
+            app.econ.fire(rows[app.empSel].kind, rows[app.empSel].skilled); app.empSel = -1; app.empMoveArm = -1; refreshEmpProps(app); snd(app, "Interface/Button2.wav"); return true; }
+        if (h == 4 && app.empSel >= 0 && app.empSel < n) { app.empMoveArm = app.empMoveArm == app.empSel ? -1 : app.empSel; if (app.empMoveArm >= 0) say(app, "Click on the course where this employee should wait.", 4); return true; }
+        if (h == 6 && app.empSel >= 0 && app.empSel < n) {
+            const int ei = rowEmp(app, rows, app.empSel);
+            if (ei >= 0) { app.empRenameRow = ei; app.popKind = 4; app.popPromptFor = 3; app.popHead = "Rename Employee..."; app.popBuf = app.emps[(size_t)ei].name; SDL_StartTextInput(); }
+            return true; }
         if (h >= 8 && app.empOff + (h - 8) < n) { app.empSel = app.empOff + (h - 8); snd(app, "Interface/Button2.wav"); return true; }
         return vx >= 215 && vy >= 474;
     }
@@ -3902,7 +3928,7 @@ static void popGeom(const App& app, float& x, float& y, float& w, float& h, floa
     float mw = 0; for (const std::string& l : app.popLines) mw = std::max(mw, app.font.width(l, 16));
     const float cx = app.popKind == 1 ? 200.0f : app.popKind == 2 ? 250.0f : 400.0f, top = app.popKind == 1 ? 250.0f : app.popKind == 2 ? 340.0f : app.popKind == 5 ? 140.0f : 200.0f;
     const int n = (int)app.popLines.size() + (app.popKind == 3 || app.popKind == 5 ? 1 : 0);
-    w = (float)(((int)mw - 1) | 15) + 0x31; h = (float)((n * 3 + 3) * 8); x = cx - w / 2; y = top; firstY = y + 12.0f + (app.popKind == 3 || app.popKind == 5 ? 18.0f : 0.0f);
+    w = (float)(((int)mw - 1) | 15) + 0x31; h = (float)((n * 3 + 3) * 8); x = cx - w / 2; y = top; firstY = y + 12.0f + (app.popKind == 3 || app.popKind == 5 ? 18.0f : 0.0f) + (app.popKind == 1 || app.popKind == 2 ? 12.0f : 0.0f);   // the exe's (n * 3 + 3) * 8 height holds a heading row on the menus
 }
 static int popArg = 0;
 static void popChoose(App& app, int kind, int idx);
@@ -3919,18 +3945,32 @@ static void drawPopup(App& app) {
         app.font.draw((sv ? 64.0f : bx + 20) + 6, (sv ? 102.0f : by + 40) + 18, app.popBuf + ((SDL_GetTicks() / 400) % 2 ? "_" : ""), 15, 0, 0, 0);
         ui::endScreen(); return;
     }
-    drawFrame9(app, x, y, w, h);
+    const bool menu = app.popKind == 1 || app.popKind == 2;
+    if (menu) {   // the real screenshots: slate panel, light heading, teal items, amber ball bullets that turn bright with white text under the cursor (colours measured by eye, PLACEHOLDER)
+        ui::fillRect(x + 3, y + 3, w, h, 0, 0, 0, 0.35f); ui::fillRect(x, y, w, h, 0.30f, 0.30f, 0.50f, 1); ui::fillRect(x + 2, y + 2, w - 4, h - 4, 0.43f, 0.43f, 0.66f, 1);
+        const std::string hd = app.popKind == 1 ? "Information..." : "System...";
+        app.font.drawCentered(x + w / 2 + 1, y + 21, hd, 16, 0.2f, 0.2f, 0.3f); app.font.drawCentered(x + w / 2, y + 20, hd, 16, 0.92f, 0.92f, 0.95f);
+    } else drawFrame9(app, x, y, w, h);
     if (app.popKind == 3 || app.popKind == 5) app.font.drawCentered(x + w / 2, y + 26, app.popKind == 3 ? "Preferences" : app.popHead, 16, 1, 1, 1);
     for (size_t i = 0; i < app.popLines.size(); i++) {
         const float ty = fy + 24.0f * (float)i; const bool hot = app.popHover == (int)i;
-        const float tb = hot ? 1.0f : 0.0f; const float tg = hot ? 1.0f : 0.5f;
         const bool dis = app.popKind == 2 && ((i == 2) || (i == 3 && false));   // nothing to cancel: the port plays a tournament out at once
+        if (menu) {
+            if (hot && !dis) app.font.draw(x + 0x24 + 1, ty + 17, app.popLines[i], 16, 0.25f, 0.25f, 0.3f);
+            const float c[3] = {dis ? 0.55f : hot ? 0.97f : 0.08f, dis ? 0.55f : hot ? 0.97f : 0.45f, dis ? 0.62f : hot ? 0.9f : 0.48f};
+            app.font.draw(x + 0x24, ty + 16, app.popLines[i], 16, c[0], c[1], c[2]);
+            const float bx = x + 18, by = ty + 12, br = 6.5f;   // an amber ball with a highlight
+            for (int j = -(int)br; j <= (int)br; j++) { const float hw = std::sqrt(std::max(0.0f, br * br - (float)(j * j))); ui::fillRect(bx - hw, by + (float)j, 2 * hw, 1, hot ? 0.95f : 0.45f, hot ? 0.8f : 0.33f, hot ? 0.1f : 0.05f, 1); }
+            ui::fillRect(bx - 3, by - 3, 2, 2, hot ? 1.0f : 0.8f, hot ? 0.97f : 0.65f, hot ? 0.6f : 0.3f, 1);
+            continue;
+        }
+        const float tb = hot ? 1.0f : 0.0f; const float tg = hot ? 1.0f : 0.5f;
         app.font.draw(x + 0x24, ty + 16, app.popLines[i], 16, dis ? 0.75f : tb, dis ? 0.75f : tg, dis ? 0.75f : tg);
         const bool on = app.popKind == 3 && (app.popPrefs & (i == 0 ? 1 : i == 1 ? 4 : 0x20));
         ui::fillRect(x + 12, ty + 6, 12, 12, 0.35f, 0.35f, 0.6f, 1);   // PLACEHOLDER ball / box
         if (app.popKind != 3 || on) ui::fillRect(x + 14, ty + 8, 8, 8, hot ? 1.0f : 0.1f, hot ? 1.0f : 0.8f, hot ? 1.0f : 0.8f, 1);
     }
-    if (app.okArt.tex) { const auto& k = sg::ui_screens::kOkCut[(app.popHover == 100) ? 1 : 0]; ui::drawImage(app.okArt, x + w - 44, y + h - 42, (float)k.x, (float)k.y, (float)k.w, (float)k.h); }
+    if (app.okArt.tex && !menu) { const auto& k = sg::ui_screens::kOkCut[(app.popHover == 100) ? 1 : 0]; ui::drawImage(app.okArt, x + w - 44, y + h - 42, (float)k.x, (float)k.y, (float)k.w, (float)k.h); }
     ui::endScreen();
 }
 static void pushKey(SDL_Keycode k) { SDL_Event ev; SDL_zero(ev); ev.type = SDL_KEYDOWN; ev.key.keysym.sym = k; ev.key.state = SDL_PRESSED; SDL_PushEvent(&ev); }
@@ -3980,7 +4020,7 @@ static bool popEvent(App& app, const SDL_Event& e) {
     float x, y, w, h, fy; popGeom(app, x, y, w, h, fy);
     const int n = (int)app.popLines.size();
     if (app.popKind == 4) {
-        if (e.type == SDL_TEXTINPUT) { if (app.popBuf.size() < (app.popPromptFor == 2 ? 48u : 32u)) app.popBuf += e.text.text; return true; }
+        if (e.type == SDL_TEXTINPUT) { if (app.popBuf.size() < (app.popPromptFor == 2 ? 48u : app.popPromptFor == 3 ? 31u : 32u)) app.popBuf += e.text.text; return true; }
         if (e.type == SDL_KEYDOWN) {
             const SDL_Keycode k = e.key.keysym.sym;
             if (k == SDLK_ESCAPE) { app.popKind = 0; SDL_StopTextInput(); }
@@ -3995,6 +4035,7 @@ static bool popEvent(App& app, const SDL_Event& e) {
                     else { std::string err; app.popKind = 0; toastMsg(app, saveGame(app, path, err) ? "Game Saved." : "Invalid File Name"); }
                 }
             }
+            else if (k == SDLK_RETURN && app.popPromptFor == 3) { if (app.empRenameRow >= 0 && app.empRenameRow < (int)app.emps.size() && !app.popBuf.empty()) app.emps[(size_t)app.empRenameRow].name = app.popBuf; app.popKind = 0; SDL_StopTextInput(); app.empRenameRow = -1; }
             else if (k == SDLK_RETURN && !app.popBuf.empty()) { app.courseName = app.popBuf; app.popKind = 0; SDL_StopTextInput(); toastMsg(app, "Course renamed"); }
             return true;
         }
@@ -4140,6 +4181,7 @@ static std::string advisorText(const App& app) {
     return "Watch the fun and skill numbers at the top right. Press the information button for the course report, and keep cash above zero so the board stays calm.";
 }
 
+static void drawRoundBox(float x, float y, float w, float h, float r, float g, float b);
 static void drawDockUi(App& app) {
     if (!app.uiOk) return;
     if (app.testHx >= 0) dockHoverUpdate(app, app.testHx, app.testHy);
@@ -4192,9 +4234,19 @@ static void drawDockUi(App& app) {
         }
     }
     if (!app.toast.empty() && SDL_GetTicks() / 1000.0 < app.toastUntil) {
-        const float w = app.font.width(app.toast, 16) + 24;
-        ui::fillRect(400 - w / 2, 410, w, 28, 0.5f, 0.1f, 0.1f, 0.88f);
-        app.font.drawCentered(400, 430, app.toast, 16, 1, 1, 1);
+        if (app.toastKind == 1 && app.shArt.tex) {   // notice: dark green translucent panel, lavender edge, an icon plate on the left (SGA offers show the trophy); measured on the real screenshots (PLACEHOLDER geometry)
+            const bool trophy = app.toast.rfind("The SGA", 0) == 0;
+            const float nx = 190, nw = 420, tx0 = trophy ? nx + 96 : nx + 16, tw = nx + nw - 14 - tx0;
+            const std::vector<std::string> ln = wrapText(app, app.toast, 14, tw);
+            const float nh = std::max(14 + 18.0f * (float)ln.size(), trophy ? 88.0f : 40.0f), ny = app.showAdvisor ? 112.0f : 12.0f;
+            ui::fillRect(nx - 2, ny - 2, nw + 4, nh + 4, 0.62f, 0.6f, 0.86f, 0.95f); ui::fillRect(nx, ny, nw, nh, 0.1f, 0.2f, 0.1f, 0.9f);
+            if (trophy) { drawRoundBox(nx + 14, ny + nh / 2 - 36, 56, 72, 0.2f, 0.22f, 0.3f); ui::drawImageScaled(app.shArt, nx + 20, ny + nh / 2 - 30, 44, 55, 64, 0, 16, 20); }
+            for (size_t i = 0; i < ln.size(); i++) app.font.draw(tx0, ny + 22 + 18.0f * (float)i, ln[i], 14, 0.98f, 0.97f, 0.9f);
+        } else {
+            const float w = app.font.width(app.toast, 16) + 24;
+            ui::fillRect(400 - w / 2, 410, w, 28, 0.5f, 0.1f, 0.1f, 0.88f);
+            app.font.drawCentered(400, 430, app.toast, 16, 1, 1, 1);
+        }
     }
 }
 
@@ -4774,33 +4826,85 @@ static void skillsOpen(App& app, int points) {
     for (int i = 0; i < 10; i++) app.skStart[i] = app.chr.skills[i];
     app.skWasPaused = app.paused; app.paused = true;
 }
-static void skillsClose(App& app) { app.skOpen = false; app.skConfirm = false; app.paused = app.skWasPaused; app.chr.flags |= 0x80; }
+static void skillsClose(App& app) {
+    app.skOpen = false; app.skConfirm = false; app.paused = app.skWasPaused; app.chr.flags |= 0x80;
+    for (int k = 0; k < 10; k++) app.skills.v[k] = std::min(15, (int)app.chr.skills[k] * 15 / 10);   // the player's tournament skills follow the points spent (a point is 10 percent, a skill value is 0..15)
+}
 static const float kSkX = 200.0f;
+// Draws one frame of a golfer sprite on the 2D screen, ground point at (x, y), scaled so the frame is `hgt` pixels tall (docs/DECODE_BODIES.md; the dialog shows the standing pose).
+static void drawBodyUi(GlSprite* sp, int view, int frame, float x, float y, float hgt) {
+    if (!sp) return;
+    const GLuint tex = spriteTexture(*sp, view, frame);
+    const float sc = hgt / (float)sp->s.h, w = (float)sp->s.w * sc, h = (float)sp->s.h * sc;
+    const float dx = x - (float)sp->s.anchorX * sc, dy = y - (float)sp->s.anchorY * sc;
+    glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D, tex); glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE); glColor4f(1, 1, 1, 1);
+    glBegin(GL_QUADS); glTexCoord2f(0, 0); glVertex2f(dx, dy); glTexCoord2f(1, 0); glVertex2f(dx + w, dy); glTexCoord2f(1, 1); glVertex2f(dx + w, dy + h); glTexCoord2f(0, 1); glVertex2f(dx, dy + h); glEnd();
+}
+// The standing portrait body (Bodies/<set>.pcx, 60 x 120, docs/DECODE_BODIES.md section 4): the sheet's own palette index of each pixel is looked up in the composed
+// swap palette, so shirt, pants, skin and hat follow the character. Cached per look.
+static ui::Image* bodyPortrait(App& app, const sg::BodyLook& l) {
+    static std::map<std::string, ui::Image> cache;
+    const std::string key = l.key(); auto it = cache.find(key);
+    if (it != cache.end()) return it->second.tex ? &it->second : nullptr;
+    ui::Image& im = cache[key];
+    uint8_t pal[768], own[768]; sg::Bytes d; sg::Rgba rgb; std::string err;
+    if (sg::composeBodyPalette(app.gameDir, l, pal) && sg::readFile(app.gameDir + "/Bodies/" + sg::bodySetName(l) + ".pcx", d) && sg::readPcxPalette(d, own) && sg::decodePcx(d, rgb, err)) {
+        std::map<unsigned, int> idx; for (int i = 255; i >= 0; i--) idx[(unsigned)own[i * 3] << 16 | (unsigned)own[i * 3 + 1] << 8 | own[i * 3 + 2]] = i;
+        std::vector<unsigned char> out(rgb.px.size());
+        for (size_t i = 0; i + 3 < rgb.px.size(); i += 4) {
+            const unsigned c = (unsigned)rgb.px[i] << 16 | (unsigned)rgb.px[i + 1] << 8 | rgb.px[i + 2]; const int k = idx.count(c) ? idx[c] : 255;
+            if (k == 255 || c == 0xff00ff) { out[i] = out[i + 1] = out[i + 2] = out[i + 3] = 0; }
+            else { out[i] = pal[k * 3]; out[i + 1] = pal[k * 3 + 1]; out[i + 2] = pal[k * 3 + 2]; out[i + 3] = 255; }
+        }
+        ui::uploadRgba(out.data(), (int)rgb.w, (int)rgb.h, im);
+    }
+    return im.tex ? &im : nullptr;
+}
+static sg::BodyLook chrLook(const App& app) {
+    sg::BodyLook l; l.female = app.chr.female(); l.body = l.female ? 4 + app.chr.bodyType() : app.chr.bodyType();
+    l.shirt = app.chr.shirt; l.pants = app.chr.pants; l.skin = app.chr.skin; l.hat = app.chr.bodyHat & 15; l.hair = app.chr.hair; l.altSkin = app.chr.altSkin;
+    return l;
+}
+static void drawRoundBox(float x, float y, float w, float h, float r, float g, float b) {   // a pill, one scanline at a time so there are no seams
+    const float rad = h * 0.5f;
+    for (int j = 0; j < (int)h; j++) { const float dy = rad - (float)j - 0.5f, inset = rad - std::sqrt(std::max(0.0f, rad * rad - dy * dy)); ui::fillRect(x + inset, y + (float)j, w - 2 * inset, 1, r, g, b, 1); }
+}
+// The editable skills dialog as in the real screenshot: black panel with a lavender edge, white title, a yellow "Add N skill points." line, ten rows (lavender
+// toggle oval, cream value oval with "+N0%", cream name box) and a standing portrait on the right. Row shapes and colours are measured by eye (PLACEHOLDER).
 static void drawSkillsEdit(App& app) {
     if (!app.skOpen) return;
     app.view = ui::beginScreen(app.drawW, app.drawH, false);
-    const float X = kSkX;
-    drawFrame9(app, X + 0x2e, 50, 320, 316);
+    const float X = kSkX, px = X + 0x2e, py = 50, pw = 320, ph = 316;
+    ui::fillRect(px - 2, py - 2, pw + 4, ph + 4, 0.62f, 0.6f, 0.86f, 1); ui::fillRect(px, py, pw, ph, 0.03f, 0.03f, 0.05f, 1);
     app.font.drawCentered(X + 0xd2, 58 + 14, app.charName, 16, 1, 1, 1);
-    { const std::string t = std::to_string(app.skLeft) + " skill points"; app.font.drawCentered(X + 0xd2, 80 + 10, t, 13, 1.0f, app.skLeft > 0 ? 0.95f : 0.65f, app.skLeft > 0 ? 0.3f : 0.2f); }
+    { const std::string t = "Add " + std::to_string(app.skLeft) + " skill point" + (app.skLeft == 1 ? "" : "s") + "."; app.font.drawCentered(X + 0xd2, 80 + 10, t, 13, 1.0f, 0.95f, 0.35f); }
+    // portrait: navy sky with a white oval, grass at the foot, the standing figure
+    { const float qx = X + 0xf7 + 21, qy = 96, qw = 92, qh = 216;
+      ui::fillRect(qx, qy, qw, qh, 0.1f, 0.1f, 0.33f, 1);
+      { const float ecx = qx + qw * 0.5f, ecy = qy + qh * 0.5f - 16, erx = qw * 0.5f + 2, ery = qh * 0.5f - 12;   // the white oval behind the figure
+        for (int j = 0; j < (int)(2 * ery); j++) { const float dy = ((float)j + 0.5f - ery) / ery, hw = erx * std::sqrt(std::max(0.0f, 1 - dy * dy)); ui::fillRect(std::max(qx, ecx - hw), ecy - ery + (float)j, std::min(qx + qw, ecx + hw) - std::max(qx, ecx - hw), 1, 0.97f, 0.97f, 0.98f, 1); } }
+      ui::fillRect(qx, qy + qh - 36, qw, 36, 0.35f, 0.55f, 0.2f, 1);
+      const sg::BodyLook l = chrLook(app); ui::Image* bi = bodyPortrait(app, l);
+      const float hx = qx + qw * 0.5f - 45, hy = qy + 6;   // head cell 90 x 120, body 60 x 120 placed 19 px right and 96 px below the head origin (the Customise preview offsets)
+      if (bi) ui::drawImage(*bi, hx + 19, hy + 96 - 18, 0, 0, 60, 120);
+      drawFace(app, app.chr.female(), app.chr.head, 1, hx, hy - 18, false); }
     for (int i = 0; i < 10; i++) {
         const float y = 90.0f + 24 * i; const int v = app.chr.skills[i];
-        // up/down toggle pad: the top half adds a point, the lower half refunds one (hover brightens the half)
         const bool hu = app.skHover == i, hd = app.skHover == i + 10;
-        ui::fillRect(X + 0x32, y + 1, 20, 22, 0.55f, 0.5f, 0.85f, 1);
-        ui::fillRect(X + 0x32, y + 1, 20, 11, hu ? 0.9f : 0.72f, hu ? 0.85f : 0.68f, 1.0f, 1);
-        ui::fillRect(X + 0x32, y + 12, 20, 11, hd ? 0.9f : 0.62f, hd ? 0.85f : 0.58f, 1.0f, 1);
-        ui::fillRect(X + 0x32 + 6, y + 8, 8, 2, 0.15f, 0.1f, 0.4f, 1); ui::fillRect(X + 0x32 + 8, y + 5, 4, 2, 0.15f, 0.1f, 0.4f, 1); ui::fillRect(X + 0x32 + 9, y + 3, 2, 2, 0.15f, 0.1f, 0.4f, 1);
-        ui::fillRect(X + 0x32 + 6, y + 15, 8, 2, 0.15f, 0.1f, 0.4f, 1); ui::fillRect(X + 0x32 + 8, y + 17, 4, 2, 0.15f, 0.1f, 0.4f, 1); ui::fillRect(X + 0x32 + 9, y + 19, 2, 2, 0.15f, 0.1f, 0.4f, 1);
-        // value oval and name box (PLACEHOLDER shapes: the row strip sprite is not located)
-        ui::fillRect(X + 0x52, y + 2, 52, 20, 0.22f, 0.18f, 0.42f, 1);
-        if (v > 0) { if (v < 10) drawPlusPct(app, X + 0x57, y + 7 + 11, v * 10, 12, 1, 1, 1, false); else app.font.draw(X + 0x57, y + 7 + 11, "100%", 12, 1, 1, 1); }
-        ui::fillRect(X + 0x8a - 6, y + 2, 112, 20, 0.95f, 0.92f, 0.82f, 1);
-        const float c = v > 0 ? 0.0f : 0.5f;
-        app.font.draw(X + 0x8a, y + 7 + 11, kSkName[i], 11, c, c, c);
+        drawRoundBox(X + 0x32, y + 1, 35, 21, 0.62f, 0.58f, 0.86f);
+        // the toggle holds a small double arrow; the half under the cursor lights up
+        const float tc = X + 0x32 + 17.5f;
+        const float up[3] = {hu ? 1.0f : 0.85f, hu ? 1.0f : 0.78f, hu ? 0.4f : 0.3f}, dn[3] = {hd ? 1.0f : 0.85f, hd ? 1.0f : 0.78f, hd ? 0.4f : 0.3f};
+        for (int k = 0; k < 4; k++) { ui::fillRect(tc - 1 - k, y + 4 + k, 2 + 2 * k, 1, up[0], up[1], up[2], 1); ui::fillRect(tc - 1 - (3 - k), y + 13 + k, 2 + 2 * (3 - k), 1, dn[0], dn[1], dn[2], 1); }
+        drawRoundBox(X + 0x52 + 1, y + 1, 46, 21, 0.97f, 0.96f, 0.9f);
+        if (v > 0) { if (v < 10) drawPlusPct(app, X + 0x57 + 1, y + 7 + 11, v * 10, 12, 0, 0, 0, false); else app.font.draw(X + 0x57 + 4, y + 7 + 11, "100%", 12, 0, 0, 0); }
+        drawRoundBox(X + 0x8a - 5, y + 1, 139, 21, 0.97f, 0.96f, 0.9f);
+        const float c = v > 0 ? 0.0f : 0.55f;
+        app.font.draw(X + 0x8a, y + 7 + 11, kSkName[i], 12, c, c, c);
     }
-    if (app.ballArt.tex) ui::drawImageScaled(app.ballArt, X + 0xf7 - 7, 86, 124, 124, 0, 300, 140, 140);
-    drawFace(app, app.chr.female(), app.chr.head, 1, X + 0xff, 100, false);
+    { ui::fillRect(193, 364, 414, 94, 0.62f, 0.6f, 0.86f, 0.9f); ui::fillRect(195, 366, 410, 90, 0.12f, 0.2f, 0.12f, 0.94f);   // the explanation box under the dialog
+      static const char* kT = "Before you play your course you may customize your character by improving his or her golf skills. You can also win additional skill points for each accomplishment added to your trophy.";
+      float ty = 384; for (const std::string& ln : wrapText(app, kT, 13, 392)) { app.font.draw(204, ty, ln, 13, 0.98f, 0.95f, 0.8f); ty += 17; } }
     if (app.okArt.tex) { const auto& k = sg::ui_screens::kOkCut[(app.skHover == 100) ? 1 : 0]; ui::drawImage(app.okArt, X + 0x146 + 4, 0x13e - 6, (float)k.x, (float)k.y, (float)k.w, (float)k.h); }
     if (app.skConfirm) {   // modal confirm (FUN_0046d6e0 400 x 200): points are still unspent
         drawFrame9(app, 200, 200, 400, 128);
@@ -4922,17 +5026,44 @@ static void drawHud(App& app) {
     ui::drawImage(app.ciShade, 48, 6, 48, 6, 183, 58); ui::drawImage(app.ciShade, 647, 13, 647, 13, 138, 36); ui::drawImage(app.ciShade, 675, 55, 675, 55, 110, 37); ui::drawImage(app.ciShade, 697, 99, 697, 99, 88, 36);
     ui::drawImage(app.ciArt, 48, 6, 48, 6, 183, 58); ui::drawImage(app.ciArt, 647, 13, 647, 13, 138, 36); ui::drawImage(app.ciArt, 675, 55, 675, 55, 110, 37); ui::drawImage(app.ciArt, 697, 99, 697, 99, 88, 36);
     const bool neg = app.econ.cash < 0 && !app.econ.sandbox;
-    app.font.drawCentered(140, 28, app.courseName, 16, 1, 1, 1);
-    app.font.drawCentered(140, 49, date, 13, 1, 1, 1);
-    { const std::string m = app.econ.sandbox ? "Sandbox" : money((long long)app.econ.cash); app.font.draw(750 - 8 - app.font.width(m, 17) - 26 + 18, 37, m, 17, 1.0f, neg ? 0.45f : 1.0f, neg ? 0.45f : 1.0f); }
-    { char f[24]; std::snprintf(f, sizeof f, "%d", clubFun(app)); app.font.draw(762 - app.font.width(f, 16) - 22 + 6 - 6, 80, f, 16, 1, 1, 1); }
-    { char f[24]; std::snprintf(f, sizeof f, "%.2f", clubSkill(app)); app.font.draw(783 - app.font.width(f, 16) - 22 - 6, 123, f, 16, 1, 1, 1); }
+    app.font.drawCentered(140, 23, app.courseName, 15, 1, 1, 1);
+    app.font.drawCentered(140, 37, date, 12, 1, 1, 1);
+    // Rating row and hole flags (measured on the real screenshots, DERIVED): golf ball dots, then one star per course grade step (grade + 1, from the exe's grade table), then a heart
+    // per happy ending; the row is 146 px wide and spaced evenly (8 px for 18 slots, at most 12.4). The number of dots is a PLACEHOLDER (about 1.5 per hole, capped at 18 slots in all).
+    // Below it one flag per hole up to six, otherwise a flag and "x N".
+    if (!app.shArt.tex) { const std::string i = app.gameDir + "/Interface/"; ui::loadPcx(i + "StarsHeartsETC.pcx", app.shArt, false, 0x00ff00); }
+    { const int nh = (int)app.holes.size(); const int g = sg::courseGrade(nh); const int stars = nh == 0 ? 0 : g < 0 ? 4 : g + 1; const int hearts = std::min(app.hearts, 3);
+      const int balls = std::clamp(nh * 3 / 2, 0, 18 - stars - hearts), n = balls + stars + hearts;
+      if (n > 0 && app.shArt.tex) {
+          const float step = std::min(12.4f, 146.0f / (float)n);
+          for (int k = 0; k < n; k++) { const int cell = k < balls ? 3 : k < balls + stars ? 2 : 0; ui::drawImage(app.shArt, 79.5f + step * (float)k - 8, 32, 16.0f * cell, 0, 16, 20); }
+      }
+      auto flag = [&](float fx, float fy) { ui::fillRect(fx, fy, 1, 9, 0.9f, 0.9f, 0.9f, 1); ui::fillRect(fx + 1, fy, 5, 4, 0.85f, 0.25f, 0.25f, 1); ui::fillRect(fx - 2, fy + 9, 5, 1, 0.9f, 0.9f, 0.9f, 1); };
+      if (nh >= 1 && nh <= 6) { const float x0 = 139.5f - 6.0f * (float)nh + 3; for (int k = 0; k < nh; k++) flag(x0 + 12.0f * (float)k, 48); }
+      else if (nh > 6) { const std::string t = "x" + std::to_string(nh); const float w = app.font.width(t, 12) + 14; flag(139.5f - w / 2 + 3, 48); app.font.draw(139.5f - w / 2 + 14, 58, t, 12, 1, 1, 1); } }
+    if (app.paused && !app.skOpen) { app.font.drawCentered(401, 13, "Paused", 13, 0, 0, 0); app.font.drawCentered(400, 12, "Paused", 13, 1, 1, 0.9f); }
+    { const std::string m = app.econ.sandbox ? "Sandbox" : money((long long)app.econ.cash); app.font.draw(750 - 8 - app.font.width(m, 17) - 26 + 18, 37, m, 17, neg ? 1.0f : 0.5f, neg ? 0.4f : 1.0f, neg ? 0.4f : 0.2f); }
+    { char f[24]; std::snprintf(f, sizeof f, "%d", clubFun(app)); app.font.draw(762 - app.font.width(f, 16) - 22 + 6 - 6, 80, f, 16, 1, 0.92f, 0.3f); }
+    { char f[24]; std::snprintf(f, sizeof f, "%.2f", clubSkill(app)); app.font.draw(783 - app.font.width(f, 16) - 22 - 6, 123, f, 16, 0.35f, 0.92f, 0.95f); }
     if (app.curProp >= 0) drawEmblem(app, app.curProp, 2, 0, 76);   // PLACEHOLDER placement: left of the course pill as in the real HUD screenshots
     drawHomePreview(app);
     drawDockUi(app);
     drawHireDialog(app, app.testHx >= 0 ? app.testHx : app.vmx, app.testHx >= 0 ? app.testHy : app.vmy);
     drawPopup(app);
     { static bool once = false; if (!once && g_skillsTest) { once = true; skillsOpen(app, 10); } }
+    if (app.anHole >= 0 && app.anHole < (int)app.allHoles.size()) {   // the Shot Analysis panel: dark translucent, lavender edge (real screenshot)
+        static const float col[4][3] = {{1.0f, 0.95f, 0.3f}, {0.4f, 1.0f, 0.45f}, {0.4f, 0.9f, 1.0f}, {1.0f, 1.0f, 0.9f}};
+        static const char* kL[4] = {"golfers with ALL skills", "no Imagination skill", "no Accuracy skill", "no Length skill"};
+        const float px = 232, py = 18, pw = 262, ph = 128;
+        ui::fillRect(px - 2, py - 2, pw + 4, ph + 4, 0.62f, 0.6f, 0.86f, 0.9f); ui::fillRect(px, py, pw, ph, 0.08f, 0.14f, 0.12f, 0.88f);
+        app.font.drawCentered(px + pw / 2, py + 20, "Shot Analysis:", 15, 0.4f, 0.95f, 0.9f);
+        app.font.drawCentered(px + pw / 2, py + 35, "Golfers playing hole " + std::to_string(app.anHole + 1) + "...", 11, 0.4f, 0.95f, 0.9f);
+        for (int v = 0; v < 4; v++) {
+            const float y = py + 58 + 17.0f * (float)v;
+            app.font.draw(px + 12, y, kL[v], 13, col[v][0], col[v][1], col[v][2]);
+            if (v > 0) { char b[32]; std::snprintf(b, sizeof b, "%+d yds.", (int)std::lround(app.anYds[v])); app.font.draw(px + pw - 12 - app.font.width(b, 12), y, b, 12, 0.55f, 0.6f, 0.6f); }
+        }
+    }
     drawSkillsEdit(app);
     if (app.econ.gameOver) {
         ui::fillRect(200, 250, 400, 80, 0.5f, 0.05f, 0.05f, 0.9f);
@@ -5055,7 +5186,7 @@ static void editPath(App& app, int tx, int ty, bool remove) {
 
 // Amenity placement. Rules from the game text: buildings go on a building lot and need a path to the clubhouse. The lot must touch a path tile that
 // is connected to the clubhouse. Removing refunds the cost (the "money will be refunded" undo text).
-static void toastMsg(App& app, const std::string& m) { app.toast = m; app.toastUntil = SDL_GetTicks() / 1000.0 + 3; }
+static void toastMsg(App& app, const std::string& m) { app.toast = m; app.toastKind = 0; app.toastUntil = SDL_GetTicks() / 1000.0 + 3; }
 static void applyBuildChanges(App& app, const sg::PlaceResult& res) {
     for (const sg::TileChange& c : res.changes) if (c.newId >= 0) app.terrain.paint(c.tile / 50, c.tile % 50, c.newId == sg::buildings_exe::kTileBuildingHome ? (int)TT_Building : c.newId, 0);
     for (int tl : res.vacatedTiles) app.terrain.paint(tl / 50, tl % 50, TT_Rough, 0);   // PLACEHOLDER: what a vacated tile becomes is not recorded
@@ -5302,6 +5433,64 @@ static void applyTool(App& app, bool lower, bool dragging) {
 // Shot path preview while editing: for every tee and green pair, a dotted line along the hole's route with a marker where each shot of a typical golfer
 // would land, and a flag at the green. The line and the landing spacing (a drive of about 900 world units, the report's placeholder figure) are
 // the port's own presentation; the exe's own preview is not decoded.
+// Runs the analysis for one hole: 5 sample drives per skill set (all skills, no Imagination, no Accuracy, no Length), recording the first shot's flight. The yard figure is
+// how much closer to the green the average first shot ends than the all-skills golfer's (negative when worse), 25 yards to a tile. The exe's own routine is not decoded
+// (docs/SCREENSHOT_NOTES.md only shows the panel), so the sets and the figure are DERIVED from that screenshot.
+static void shotAnalysisRun(App& app, int holeIdx) {
+    if (holeIdx < 0 || holeIdx >= (int)app.allHoles.size()) return;
+    const HoleRoute& r = app.allHoles[(size_t)holeIdx];
+    if (r.route.size() < 4) return;
+    app.anHole = holeIdx;
+    double meanDist[4] = {};
+    for (int v = 0; v < 4; v++) {
+        sg::GolferSkills sk; for (int& x : sk.v) x = 15;
+        if (v == 1) { sk.v[sg::GolferSkills::Draw] = 0; sk.v[sg::GolferSkills::Fade] = 0; sk.v[sg::GolferSkills::Backspin] = 0; sk.v[sg::GolferSkills::Recovery] = 0; }
+        if (v == 2) { sk.v[sg::GolferSkills::AccDriver] = 0; sk.v[sg::GolferSkills::AccIrons] = 0; sk.v[sg::GolferSkills::AccPutter] = 0; }
+        if (v == 3) { sk.v[sg::GolferSkills::Power] = 0; sk.v[sg::GolferSkills::LongDriver] = 0; }
+        double dsum = 0;
+        for (int i = 0; i < 5; i++) {
+            sg::ShotSim sim; sim.skills = sk; sim.loop = false; sim.setRoute(&r.route); sim.theme = app.theme; sim.init(app.terrain, 4321u + (uint32_t)i * 977u);
+            std::vector<float>& P = app.anPath[v][i]; P.clear();
+            bool flew = false; int guard = 0;
+            while (!sim.finished && guard++ < 30 * 120) {
+                sim.step(1.0f / 30.0f);
+                if (sim.stroke >= 1) {
+                    P.push_back(sim.ballX); P.push_back(sim.ballZ); P.push_back(sim.ballH);
+                    if (sim.ballH > 0) flew = true;
+                    if (flew && sim.ballH <= 0) { for (int k = 0; k < 20 && !sim.finished; k++) { sim.step(1.0f / 30.0f); if (sim.stroke != 1) break; P.push_back(sim.ballX); P.push_back(sim.ballZ); P.push_back(sim.ballH); } break; }
+                }
+            }
+            const float lx = P.size() >= 3 ? P[P.size() - 3] : r.route[0], lz = P.size() >= 3 ? P[P.size() - 2] : r.route[1];
+            app.anLand[v][i][0] = lx; app.anLand[v][i][1] = lz;
+            dsum += std::hypot(lx - r.greenX, lz - r.greenZ);
+        }
+        meanDist[v] = dsum / 5.0;
+    }
+    for (int v = 1; v < 4; v++) app.anYds[v] = (float)((meanDist[0] - meanDist[v]) * 25.0 / 1024.0);
+    app.anYds[0] = 0;
+}
+static int holeNearGround(const App& app, float wx, float wz) {
+    int best = -1; float bd = 1e9f;
+    for (size_t h = 0; h < app.allHoles.size(); h++) { const std::vector<float>& P = app.allHoles[h].route; for (size_t i = 0; i + 1 < P.size(); i += 2) { const float d = std::hypot(P[i] - wx, P[i + 1] - wz); if (d < bd) { bd = d; best = (int)h; } } }
+    return best;
+}
+static void drawShotAnalysisWorld(App& app) {
+    if (app.anHole < 0 || app.anHole >= (int)app.allHoles.size()) return;
+    static const float col[4][3] = {{1.0f, 0.95f, 0.3f}, {0.4f, 1.0f, 0.45f}, {0.4f, 0.9f, 1.0f}, {1.0f, 1.0f, 0.9f}};
+    const Terrain& t = app.terrain;
+    glDisable(GL_LIGHTING); glDisable(GL_TEXTURE_2D); glDisable(GL_DEPTH_TEST); glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glLineWidth(2.0f);
+    for (int v = 3; v >= 0; v--) for (int i = 0; i < 5; i++) {
+        const std::vector<float>& P = app.anPath[v][i]; if (P.size() < 6) continue;
+        glColor4f(col[v][0], col[v][1], col[v][2], 0.9f);
+        glBegin(GL_LINE_STRIP);
+        for (size_t k = 0; k + 2 < P.size(); k += 3) glVertex3f(P[k], t.heightAt(P[k], P[k + 1]) + P[k + 2] + 4.0f, P[k + 1]);
+        glEnd();
+        const float lx = app.anLand[v][i][0], lz = app.anLand[v][i][1], y = t.heightAt(lx, lz) + 6.0f;   // a ring where the shot came down
+        glBegin(GL_LINE_LOOP); for (int a = 0; a < 12; a++) { const float an = (float)a * 0.5236f; glVertex3f(lx + 14 * std::cos(an), y, lz + 14 * std::sin(an)); } glEnd();
+    }
+    glLineWidth(1.0f); glDisable(GL_BLEND);
+}
 static void drawShotPath(App& app) {
     const Terrain& t = app.terrain;
     glDisable(GL_LIGHTING); glDisable(GL_TEXTURE_2D); glDisable(GL_DEPTH_TEST);
@@ -5486,6 +5675,7 @@ static void render(App& app) {
     drawUnowned(app);
     drawProps(app);
     if (app.edit) drawShotPath(app);
+    drawShotAnalysisWorld(app);
     if (app.edit && app.hasHit) drawCursor(app);
 }
 
@@ -5541,6 +5731,8 @@ int main(int argc, char** argv) {
         else if (a == "--sound-log") app.soundLog = true;
         else if (a == "--sandbox") app.econ.sandbox = true;
         else if (a == "--skills") g_skillsTest = true;
+        else if (a == "--analyze") app.anHole = std::atoi(next()) + 1000000;   // hole index to analyse once the course is ready
+        else if (a == "--say") { app.lastMsg = next(); app.toast = app.lastMsg; app.toastKind = 1; app.toastUntil = 1e12; app.showAdvisor = false; }
         else if (a == "--prop" && i + 1 < argc) app.curProp = std::atoi(argv[++i]);
         else if (a == "--screen") screenArg = next();
         else if (a == "--popup") popArg = std::atoi(next());
@@ -5577,6 +5769,7 @@ int main(int argc, char** argv) {
         else if (a == "--save") saveFile = next();
         else if (a == "--edit") editSpec = next();
         else if (a == "--panel") { app.panel = std::atoi(next()); app.dockHover = app.panel > 0 ? app.panel - 1 : -1; app.edit = app.panel == 1 || app.panel == 2; }
+        else if (a == "--empsel") { app.panel = 3; app.golfersMode = false; app.empSel = std::atoi(next()); }
         else if (a == "--center") std::sscanf(next(), "%d,%d", &centerX, &centerY);
         else { std::fprintf(stderr, "usage: sgview --game DIR [--theme T] [--seed N] [--size WxH] [--zoom Z] [--rot DEG] [--png FILE]\n"); return 2; }
     }
@@ -5721,6 +5914,7 @@ int main(int argc, char** argv) {
         } else std::fprintf(stderr, "bad --edit item: %s\n", item.c_str());
     }
     if (!editSpec.empty()) { rebuildBatches(app); refreshTrees(app); app.econ.updateUpkeep(app.terrain); }
+    if (app.anHole >= 1000000) { const int hh = app.anHole - 1000000; app.anHole = -1; refreshHoles(app); shotAnalysisRun(app, hh); }
     if (openN > 0) { refreshHoles(app); for (int i = 0; i < openN; i++) openHole(app); std::printf("open holes %zu of %zu, unlock level %d, stage %s\n", app.holes.size(), app.allHoles.size(), app.unlockLevel, kCourseStage[app.courseStage]); }
     if (swapA > 0) swapHoles(app, swapA - 1, swapB - 1);
     if (!evHook.empty() || !hhHook.empty()) {
@@ -5970,6 +6164,7 @@ int main(int argc, char** argv) {
                         break;
                     case SDLK_p: app.showProps = !app.showProps; break;
                     case SDLK_h: openHole(app); break;
+                    case SDLK_SLASH: { refreshHoles(app); int hi = 0; float gx, gz; int mx, my; SDL_GetMouseState(&mx, &my); if (pickGround(app, mx, my, app.dpi, gx, gz)) hi = std::max(0, holeNearGround(app, gx, gz)); if (app.anHole >= 0 && app.anHole == hi) app.anHole = -1; else shotAnalysisRun(app, hi); break; }   // instant shot analysis (docs/UI_SCREENS.md)
                     case SDLK_F1: app.showAdvisor = !app.showAdvisor; break;
                     case SDLK_f: app.follow = !app.follow; break;
                     case SDLK_F2: if (screenshot(app, "simgolf-shot.png")) std::printf("saved simgolf-shot.png\n"); break;
@@ -5981,6 +6176,15 @@ int main(int argc, char** argv) {
                        && app.uiOk && dockClick(app, app.view.toVirtualX(e.button.x * app.dpi), app.view.toVirtualY(e.button.y * app.dpi), e.button.button == SDL_BUTTON_RIGHT, app.pauseToggle)) {
                 setTitle(app, win);
             } else if (e.type == SDL_MOUSEBUTTONDOWN && (e.button.button == SDL_BUTTON_LEFT || e.button.button == SDL_BUTTON_RIGHT)) {
+                if (app.anArm && e.button.button == SDL_BUTTON_LEFT && app.screen == App::ScreenPlay) {   // Analyze Golf Shot: the clicked ground picks the hole
+                    float gx, gz; if (pickGround(app, e.button.x, e.button.y, app.dpi, gx, gz)) shotAnalysisRun(app, holeNearGround(app, gx, gz));
+                    continue;
+                }
+                if (app.empMoveArm >= 0 && e.button.button == SDL_BUTTON_LEFT && app.screen == App::ScreenPlay) {   // Move: the next map click sends the employee there
+                    float mx2, mz2; const std::vector<EmpRow> rows = empRows(app);
+                    if (app.empMoveArm < (int)rows.size() && pickGround(app, e.button.x, e.button.y, app.dpi, mx2, mz2)) { const int ei = rowEmp(app, rows, app.empMoveArm); if (ei >= 0) { app.emps[(size_t)ei].wx = mx2; app.emps[(size_t)ei].wz = mz2; app.emps[(size_t)ei].x = mx2; app.emps[(size_t)ei].z = mz2; } }
+                    app.empMoveArm = -1; continue;
+                }
                 int pg = -1; if (!app.edit && app.uiOk && app.screen == App::ScreenPlay && e.button.button == SDL_BUTTON_LEFT) pg = pickGolfer(app, (float)e.button.x, (float)e.button.y);
                 if (pg >= 0) openGolferCard(app, pg);
                 else if (app.edit && e.button.button == SDL_BUTTON_LEFT) { editing = true; app.lastCell = -1; applyTool(app, (SDL_GetModState() & KMOD_SHIFT) != 0, false); }

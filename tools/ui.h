@@ -15,6 +15,7 @@ struct Image {
 };
 // Loads a PCX from the disc. With magentaKey, pure magenta pixels become transparent (the original's colour key).
 // Loads a shadow sheet (the disc's s_*.pcx): green pixels become translucent black (alpha 0..1), everything else transparent. The exe blends these as drop shades behind panels.
+bool uploadRgba(const unsigned char* rgba, int w, int h, Image& out);   // makes a texture from raw RGBA
 bool loadShade(const std::string& path, Image& out, float alpha);
 bool loadPcx(const std::string& path, Image& out, bool magentaKey, int keyRgb = -1, const std::string& alphaPath = "");   // keyRgb: another colour key as 0xRRGGBB
 
