@@ -42,6 +42,7 @@ struct View {
 View beginScreen(int drawW, int drawH, bool clear = true);   // orthographic projection for 800x600 virtual units; clears to black unless told not to
 void endScreen();
 void drawImage(const Image& im, float dx, float dy, float sx, float sy, float sw, float sh);   // sub-rectangle at its own size
+void drawImageScaled(const Image& im, float dx, float dy, float dw, float dh, float sx, float sy, float sw, float sh);   // sub-rectangle stretched to dw x dh
 void drawImage(const Image& im, float dx, float dy);                                           // whole image
 void fillRect(float x, float y, float w, float h, float r, float g, float b, float a);
 

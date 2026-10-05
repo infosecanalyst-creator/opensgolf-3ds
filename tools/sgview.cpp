@@ -4357,15 +4357,23 @@ static void captureThumb(App& app) {   // a 116 x 90 picture of the world view, 
     }
     std::fclose(t);
 }
+// Club emblem per property: sheet 0 = parklink.pcx (cuts at x=4+88*cut, y=396), sheet 1 = tropdesert.pcx (y=481). DERIVED from the art and the real screenshots
+// (site table order Monterey, San Diego, Rocky, Las Vegas, Phoenix, Hawaii, Oahu, Nova Scotia, Northeast, Carolina, Ireland, Scotland, Wales, Spain, Florida, Jamaica).
+static void drawEmblem(App& app, int prop, float x, float y, float size) {
+    static const int kEmb[16][2] = {{0,1},{1,4},{0,3},{1,3},{1,0},{1,7},{1,6},{0,0},{0,7},{0,2},{0,6},{0,4},{0,5},{1,2},{1,5},{1,1}};
+    if (prop < 0 || prop > 15) return;
+    const int sheet = kEmb[prop][0], cut = kEmb[prop][1]; ui::Image& im = app.emblem[sheet];
+    if (!im.tex) { const std::string i = app.gameDir + "/Interface/"; const char* nm = sheet ? "tropdesert" : "parklink"; ui::loadPcx(i + nm + ".pcx", im, false, -1, i + nm + "_A.pcx"); }
+    if (im.tex) ui::drawImageScaled(im, x, y, size, size, 4.0f + 88 * cut, sheet ? 481.0f : 396.0f, 80, 80);
+}
+
 static void drawLoadPanel(App& app) {
     const bool sel = app.t2Sel >= 0 && app.t2Sel < (int)app.t2Files.size();
     if (!sel) return;
     t2ReadInfo(app, app.t2Files[(size_t)app.t2Sel]);
     const App::SaveInfo& in = app.t2Info;
     if (in.ok) {   // club emblem in the black oval (docs/DECODE_MENUS.md section 9: 8 cuts of 80 x 80 on parklink.pcx and tropdesert.pcx)
-        const int sheet = (in.prop / 8) & 1, cut = in.prop % 8; ui::Image& im = app.emblem[sheet];
-        if (!im.tex) { const std::string i = app.gameDir + "/Interface/"; const char* nm = sheet ? "tropdesert" : "parklink"; ui::loadPcx(i + nm + ".pcx", im, false, -1, i + nm + "_A.pcx"); }
-        if (im.tex) ui::drawImage(im, 84, 32, 4.0f + 88 * cut, sheet ? 481.0f : 396.0f, 80, 80);
+        drawEmblem(app, in.prop, 84, 32, 80);
     }
     if (in.ok) {
         float g[3]; c15(0x4210, g); float fg[3]; c15(0x1284, fg); float sk[3]; c15(0x0210, sk);
@@ -4826,6 +4834,7 @@ static void drawHud(App& app) {
     { const std::string m = app.econ.sandbox ? "Sandbox" : money((long long)app.econ.cash); app.font.draw(750 - 8 - app.font.width(m, 17) - 26 + 18, 37, m, 17, 1.0f, neg ? 0.45f : 1.0f, neg ? 0.45f : 1.0f); }
     { char f[24]; std::snprintf(f, sizeof f, "%d", clubFun(app)); app.font.draw(762 - app.font.width(f, 16) - 22 + 6 - 6, 80, f, 16, 1, 1, 1); }
     { char f[24]; std::snprintf(f, sizeof f, "%.2f", clubSkill(app)); app.font.draw(783 - app.font.width(f, 16) - 22 - 6, 123, f, 16, 1, 1, 1); }
+    if (app.curProp >= 0) drawEmblem(app, app.curProp, -2, 2, 58);   // PLACEHOLDER placement: left of the course pill as in the real HUD screenshots
     drawHomePreview(app);
     drawDockUi(app);
     drawHireDialog(app, app.testHx >= 0 ? app.testHx : app.vmx, app.testHx >= 0 ? app.testHy : app.vmy);
@@ -5436,6 +5445,7 @@ int main(int argc, char** argv) {
         else if (a == "--mute") app.mute = true;
         else if (a == "--sound-log") app.soundLog = true;
         else if (a == "--sandbox") app.econ.sandbox = true;
+        else if (a == "--prop" && i + 1 < argc) app.curProp = std::atoi(argv[++i]);
         else if (a == "--screen") screenArg = next();
         else if (a == "--popup") popArg = std::atoi(next());
         else if (a == "--sga") sgaTest = std::atoi(next());

@@ -72,3 +72,11 @@ Audit count: 982 gaps (down from 987).
 | Golfer colours | Palette composer (Swap01..10) recolours in-world golfers by shirt, pants, skin, hat, alternate skin; members use their progolfers.dta row. PLACEHOLDER: female hair, default skin for non members. Customise preview bodies not done |
 | Tests | ballphys, shot and visitors tests added (10 in all) |
 | Not done | Customise preview bodies and the stats card art, tutorial triggers, SGA offer popup art, employee Move and Rename, multi slot saves |
+
+## Update 70 additions (headless only, never run on the Mac)
+| Area | State |
+|---|---|
+| Club emblem | Exact-as-derived property to emblem table (parklink and tropdesert cuts, DERIVED from art and screenshots) replaces the old prop/8 guess; Load panel and in-game HUD both use it |
+| HUD emblem | Drawn left of the course pill via new ui::drawImageScaled; placement and 58 px size are PLACEHOLDER |
+| Test hook | --prop N sets the current property for screenshots |
+| Not done | Per-property terrain generator, editable start skills dialog, 18-dot rating row, Customise preview bodies |

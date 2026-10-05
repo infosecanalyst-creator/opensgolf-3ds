@@ -157,6 +157,21 @@ void drawImage(const Image& im, float dx, float dy, float sx, float sy, float sw
     glEnd();
 }
 
+void drawImageScaled(const Image& im, float dx, float dy, float dw, float dh, float sx, float sy, float sw, float sh) {
+    if (!im.tex) return;
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, im.tex);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+    glColor4f(1, 1, 1, 1);
+    const float u0 = (sx + 0.5f) / im.w, v0 = (sy + 0.5f) / im.h, u1 = (sx + sw - 0.5f) / im.w, v1 = (sy + sh - 0.5f) / im.h;
+    glBegin(GL_QUADS);
+    glTexCoord2f(u0, v0); glVertex2f(dx, dy);
+    glTexCoord2f(u1, v0); glVertex2f(dx + dw, dy);
+    glTexCoord2f(u1, v1); glVertex2f(dx + dw, dy + dh);
+    glTexCoord2f(u0, v1); glVertex2f(dx, dy + dh);
+    glEnd();
+}
+
 void drawImage(const Image& im, float dx, float dy) { drawImage(im, dx, dy, 0, 0, (float)im.w, (float)im.h); }
 
 void fillRect(float x, float y, float w, float h, float r, float g, float b, float a) {
