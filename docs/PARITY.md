@@ -201,3 +201,5 @@ Not found in the decompile: the info card click handlers, the story screen, the 
 | Dock hover overlay | FIXED | The hover sprites on 3mainLowerLeft.pcx carry their own hard edged shadow, which was drawn over the shadow already baked into the dock, and the sprite was placed by its centre, a few pixels off. Hover now draws only the pixels that differ from the normal sprite (new ui::loadPcxHoverDiff) at the exact spot the normal sprite sits on the baked dock (found by matching the sheet cut against the dock art, kDockPos). Buttons 4 (zoom out) and 9 (tools) have no exact baked match, so they keep the whole sprite at the old position |
 
 Checked headless on all dock buttons; the panel tab and player panel hovers were not changed and not re-verified with real mouse input.
+
+Tool (update 80): `sgsprites <game dir> <output dir>` exports every Flics sprite to a PNG sheet (row per view, column per frame, shadows as _shadow). Palette variants are not applied.

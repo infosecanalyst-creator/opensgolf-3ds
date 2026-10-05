@@ -14,6 +14,8 @@ endif()
 
 add_executable(sgtool tools/sgtool.cpp)
 target_link_libraries(sgtool sgassets)
+add_executable(sgsprites tools/spriteexport.cpp)
+target_link_libraries(sgsprites sgassets)
 
 # Native terrain viewer: needs SDL2 (brew install sdl2) and OpenGL.
 find_package(SDL2 QUIET)
