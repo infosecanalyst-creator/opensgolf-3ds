@@ -178,3 +178,5 @@ Note (update 77): the pair-selection screen builder FUN_0044bde0 has no caller a
 | Item | Status | Notes |
 |---|---|---|
 | Golfer remarks in the world | DERIVED | Each accepted reaction floats its comment sentence (from the existing comment generator, coloured by polarity) above the golfer for 5 seconds; the position, size, duration and fade are my choices from the real screenshots. Shares the Shift+N toggle with name tags |
+
+Soak check (update 78): an AddressSanitizer plus UBSan build ran headless through long hooked sessions (3000 simulated seconds on a new property with a match, practice round, tournament reveal, tutorial page, skills dialog) with no reports. Leak detection was off and no real mouse input was exercised.
