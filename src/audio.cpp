@@ -23,6 +23,17 @@ Mixer::Mixer(const std::string& soundsDir) : dir_(soundsDir) {
     if (index_.empty()) lastError = "no sounds found in " + soundsDir;
 }
 
+void Mixer::addFolder(const std::string& realDir, const std::string& keyPrefix) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    std::lock_guard<std::mutex> lk(m_);
+    for (auto it = fs::recursive_directory_iterator(realDir, ec); !ec && it != fs::recursive_directory_iterator(); it.increment(ec)) {
+        if (!it->is_regular_file()) continue;
+        std::string low = lowerStr(keyPrefix + fs::relative(it->path(), realDir, ec).generic_string());
+        if (low.size() > 4 && low.compare(low.size() - 4, 4, ".wav") == 0) index_[low] = it->path().string();
+    }
+}
+
 bool Mixer::known(const std::string& rel) const { return index_.count(lowerStr(rel)) != 0; }
 
 std::vector<std::string> Mixer::list(const std::string& prefix) const {

@@ -78,6 +78,9 @@ struct Terrain {
     static bool load(const std::string& file, Terrain& out, std::string& err);
     // A made-up demonstration course (tee, winding fairway, green, bunkers, pond, woods).
     static Terrain demoCourse(int w, int h, uint32_t seed);
+    // A new property as the player first sees it: untouched land (rough, woods, brush, a pond) with a clubhouse lot and no tee, fairway,
+    // green or path. The layout is generated here and is not the original's land.
+    static Terrain emptyPlot(int w, int h, uint32_t seed);
 };
 
 struct Vertex { float x, y, z, u, v, nx, ny, nz; };

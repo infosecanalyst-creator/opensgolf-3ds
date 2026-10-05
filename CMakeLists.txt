@@ -3,7 +3,7 @@ project(simgolf_native CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_library(sgassets src/images.cpp src/sprites.cpp src/flc.cpp src/png.cpp src/formats.cpp src/terrain.cpp src/shot.cpp src/economy.cpp src/holes.cpp)
+add_library(sgassets src/images.cpp src/sprites.cpp src/flc.cpp src/png.cpp src/formats.cpp src/terrain.cpp src/shot.cpp src/economy.cpp src/holes.cpp src/sga.cpp src/holestats.cpp src/comments.cpp src/reactions.cpp src/tournament.cpp src/membership.cpp src/goals.cpp src/visitors.cpp src/costs.cpp src/buildings.cpp src/homes.cpp src/charrec.cpp src/top10.cpp)
 target_include_directories(sgassets PUBLIC include)
 # Compressed PNG output when zlib is available (it ships with macOS and most Linux).
 find_package(ZLIB QUIET)
@@ -47,3 +47,29 @@ if((SDL2_FOUND) AND (OpenGL_FOUND OR OPENGL_FOUND))
 else()
   message(STATUS "SDL2/OpenGL not found: sgview will not be built (brew install sdl2)")
 endif()
+
+# Unit test for the pure building logic (run with ctest or build/buildings_test).
+enable_testing()
+add_executable(buildings_test tests/buildings_test.cpp)
+target_link_libraries(buildings_test sgassets)
+add_test(NAME buildings COMMAND buildings_test)
+
+# Unit test for the home site logic (lot value, sale rule, counters).
+add_executable(homes_test tests/homes_test.cpp)
+target_link_libraries(homes_test sgassets)
+add_test(NAME homes COMMAND homes_test)
+
+add_executable(stats_test tests/stats_test.cpp)
+target_link_libraries(stats_test sgassets)
+add_test(NAME stats COMMAND stats_test)
+
+add_executable(reactions_test tests/reactions_test.cpp)
+target_link_libraries(reactions_test sgassets)
+add_test(NAME reactions COMMAND reactions_test)
+
+add_executable(charrec_test tests/charrec_test.cpp)
+target_link_libraries(charrec_test sgassets)
+add_test(NAME charrec COMMAND charrec_test)
+add_executable(top10_test tests/top10_test.cpp)
+target_link_libraries(top10_test sgassets)
+add_test(NAME top10 COMMAND top10_test)

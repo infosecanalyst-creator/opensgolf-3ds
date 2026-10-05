@@ -14,7 +14,7 @@ struct Image {
     int w = 0, h = 0;
 };
 // Loads a PCX from the disc. With magentaKey, pure magenta pixels become transparent (the original's colour key).
-bool loadPcx(const std::string& path, Image& out, bool magentaKey, int keyRgb = -1);   // keyRgb: another colour key as 0xRRGGBB
+bool loadPcx(const std::string& path, Image& out, bool magentaKey, int keyRgb = -1, const std::string& alphaPath = "");   // keyRgb: another colour key as 0xRRGGBB
 
 class Font {
   public:

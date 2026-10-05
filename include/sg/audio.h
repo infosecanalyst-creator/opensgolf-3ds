@@ -22,6 +22,7 @@ class Mixer {
     void mix(int16_t* out, int frames);    // interleaved stereo S16 at 44100 Hz; thread safe
     float master = 0.8f;
     int clipsLoaded() const { return (int)clips_.size(); }
+    void addFolder(const std::string& realDir, const std::string& keyPrefix);   // indexes extra wav files under keyPrefix (for example the voice folders that sit beside Sounds/)
     bool known(const std::string& rel) const;
     std::vector<std::string> list(const std::string& folderPrefix) const;   // relative paths under a folder, sorted
     std::string lastError;

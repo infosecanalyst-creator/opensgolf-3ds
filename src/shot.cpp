@@ -48,6 +48,7 @@ void ShotSim::aimAtGreen() {
 
 void ShotSim::step(float dt) {
     if (!t_ || !route_ || route_->size() < 4) return;
+    if (hold > 0) { hold -= dt; return; }
     phaseTime_ += dt;
     animTime += dt;
     const float rad = kPi / 180.0f;
@@ -72,6 +73,7 @@ void ShotSim::step(float dt) {
             } else {
                 golferX = sx; golferZ = sz;
                 bool putt = distToHole() < kPuttRange;
+                ++planCount; planPutt = putt; planFromX = golferX; planFromZ = golferZ; planAim = aimHeading_; planDist = distToHole();
                 anim = putt ? GolferAnim::PuttAddress : GolferAnim::Address; animTime = 0;
                 setPhase(putt ? Phase::PuttAddress : Phase::Address);
             }
@@ -120,13 +122,16 @@ void ShotSim::step(float dt) {
                     const int maxR = flight::maxRange(1, 3 + skills.v[S::Power] * 6 / 15, lenDigit, accDigit, false, 0, onTee);
                     const float unitsPerRange = kTileSizeWorld / flight::kRangeUnitsPerTile;
                     float carry = maxR * unitsPerRange * 0.8f;
+                    if (!approach && skills.v[S::LongDriver] >= 8) carry += driveBonus;   // long hitters only (the exe's attribute bit 1, mapped from skill >= 8 as a PLACEHOLDER)
                     float acc = skills.v[approach ? S::AccIrons : S::AccDriver] / 15.0f;
                     float spread = 24.0f - 20.0f * acc;
+                    if (acc >= 8.0f / 15.0f) spread /= spreadDivisor;   // accurate golfers only (the exe's attribute bit 2, mapped from skill >= 8 as a PLACEHOLDER)
                     int here = t_->typeAtWorld(ballX, ballZ);
                     if (here == 7 || here == TT_PotSandBunker || here == TT_GrassySand || here >= TT_SandBunker1)
                         spread *= 1.6f - 0.8f * skills.v[S::Recovery] / 15.0f;
                     float dist = std::min(carry, distToHole()) * (0.88f + 0.24f * rnd());
                     float h = aimHeading_ + (rnd() - 0.5f) * spread;
+                    landDev = h - aimHeading_;
                     landX_ = ballX + std::cos(h * rad) * dist; landZ_ = ballZ + std::sin(h * rad) * dist;
                     {
                         const flight::Arc arc = flight::simulate(std::max(1, (int)std::lround(dist / (unitsPerRange * 0.8f))));
@@ -135,6 +140,7 @@ void ShotSim::step(float dt) {
                     }
                     club = approach ? "iron" : "drive";
                     event = "drive";
+                    flightFromX_ = ballX; flightFromZ_ = ballZ; fallFrom_ = 0; hitObstacle_ = false; tickAcc_ = 0;
                     setPhase(Phase::Flight); anim = GolferAnim::Swing;
                     animTime = kSwingImpactSec;
                 }
@@ -143,8 +149,37 @@ void ShotSim::step(float dt) {
         }
         case Phase::Flight: {
             float u = std::min(1.0f, phaseTime_ / flightSec_);
-            ballX = shotFromX_ + (landX_ - shotFromX_) * u; ballZ = shotFromZ_ + (landZ_ - shotFromZ_) * u;
-            ballH = 4.0f * flightPeak_ * u * (1 - u);
+            ballX = flightFromX_ + (landX_ - flightFromX_) * u; ballZ = flightFromZ_ + (landZ_ - flightFromZ_) * u;
+            ballH = fallFrom_ > 0 ? fallFrom_ * (1 - u) : 4.0f * flightPeak_ * u * (1 - u);
+            // Obstacle trouble (exe 21780 to 21815): once per shot, while the ball is at least 2 units up over a tree or building tile, each tick draws a band and
+            // the ball is hit when its height lies inside it and the distance to the tile centre is below rand(0x180). The first hit turns the ball and kills
+            // part of its speed. The tick rate is the placeholder of flight.h.
+            if (!hitObstacle_ && u < 1.0f) {
+                tickAcc_ += dt * flight::kTicksPerSecond;
+                for (; tickAcc_ >= 1.0f && !hitObstacle_; tickAcc_ -= 1.0f) {
+                    const int tt = t_->typeAtWorld(ballX, ballZ);
+                    const float hU = ballH / kTileSizeWorld * 1024.0f;
+                    if (hU < 2.0f || (tt != TT_Woods && tt != TT_Building)) continue;
+                    int lo = 0, hi = 200;
+                    if (tt == TT_Woods) {
+                        const int r100 = (int)(rnd() * 100.0f);
+                        lo = theme == 2 ? 20 : theme == 3 ? 20 : 50;
+                        hi = theme == 2 ? 100 + r100 : 400 + r100;
+                    }
+                    if (!(hU > lo && hU < hi)) continue;
+                    const float fx = ballX / kTileSizeWorld - std::floor(ballX / kTileSizeWorld) - 0.5f, fz = ballZ / kTileSizeWorld - std::floor(ballZ / kTileSizeWorld) - 0.5f;
+                    const float dist = std::hypot(fx, fz) * 1024.0f;
+                    if (!(dist < rnd() * 384.0f)) continue;
+                    hitObstacle_ = true; ++obsCount; obsType = tt;
+                    const float turn = (64.0f + rnd() * 128.0f) / 256.0f * 360.0f * rad, keep = 1.0f - rnd();
+                    const float rx = (landX_ - ballX) * keep, rz = (landZ_ - ballZ) * keep;
+                    const float c = std::cos(turn), sn = std::sin(turn);
+                    flightFromX_ = ballX; flightFromZ_ = ballZ;
+                    landX_ = ballX + rx * c - rz * sn; landZ_ = ballZ + rx * sn + rz * c;
+                    fallFrom_ = std::max(ballH, 1.0f);
+                    flightSec_ = std::max(0.25f, (1.0f - u) * flightSec_); phaseTime_ = 0; u = 0;
+                }
+            }
             if (animTime > kSwingSec) animTime = kSwingSec - 0.001f;  // hold the follow through
             if (u >= 1.0f) {
                 ballH = 0;
@@ -161,6 +196,8 @@ void ShotSim::step(float dt) {
                     ty = t_->typeAtWorld(ballX, ballZ);
                 }
                 bool water = ty == TT_WaterShallow || ty == TT_WaterMiddle || ty == TT_WaterDeep || ty == TT_WaterShallowDesert;
+                ++landCount; landType = ty; landFromType = t_->typeAtWorld(shotFromX_, shotFromZ_); landWater = water; landOut = ty < 0;
+                landCloser = std::hypot(ballX - holeX(), ballZ - holeZ()) < std::hypot(shotFromX_ - holeX(), shotFromZ_ - holeZ());
                 if (ty < 0) { event = "out of bounds, replay"; stroke++; ballX = shotFromX_; ballZ = shotFromZ_; }
                 else if (water) { event = "splash, replay with a penalty"; stroke++; ballX = shotFromX_; ballZ = shotFromZ_; }
                 else if (ty == 7 || ty == TT_PotSandBunker || ty == TT_GrassySand || ty >= TT_SandBunker1) event = "in the sand";

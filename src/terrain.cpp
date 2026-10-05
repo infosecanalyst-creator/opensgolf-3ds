@@ -338,6 +338,67 @@ Terrain Terrain::demoCourse(int w, int h, uint32_t seed) {
     return t;
 }
 
+Terrain Terrain::emptyPlot(int w, int h, uint32_t seed) {
+    Terrain t;
+    t.w = w; t.h = h;
+    t.type.assign((size_t)w * h, TT_Rough);
+    t.variation.assign((size_t)w * h, 0);
+    t.set.resize((size_t)w * h);
+    t.corner.assign((size_t)(w + 1) * (h + 1), 0);
+    t.pathKind.assign((size_t)w * h, 0);
+    t.wallMask.assign((size_t)w * h, 0);
+    Rng rng{seed ? seed : 1u};
+    auto at = [&](int x, int y) -> uint8_t& { return t.type[(size_t)y * w + x]; };
+    auto disc = [&](float cx, float cy, float rx, float ry, uint8_t ty, bool onlyRough) {
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++) {
+                float dx = (x + 0.5f - cx) / rx, dy = (y + 0.5f - cy) / ry;
+                if (dx * dx + dy * dy <= 1.f && (!onlyRough || at(x, y) == TT_Rough || at(x, y) == TT_DeepRough)) at(x, y) = ty;
+            }
+    };
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++)
+            if (std::min({x, y, w - 1 - x, h - 1 - y}) < 2) at(x, y) = TT_DeepRough;
+    for (int i = 0; i < w * h / 16; i++) {
+        float cx = (float)rng.range(w), cy = (float)rng.range(h), r = 1.0f + rng.unit() * 2.4f;
+        uint8_t ty = rng.range(3) == 0 ? TT_Brush : (rng.range(4) == 0 ? TT_Rock : TT_Woods);
+        disc(cx, cy, r, r, ty, true);
+    }
+    // Clubhouse lot near the bottom left; keep the ground around it clear so the first tee can go beside it.
+    t.clubhouseX = 8; t.clubhouseY = h - 8;
+    disc((float)t.clubhouseX + 0.5f, (float)t.clubhouseY + 0.5f, 7.0f, 7.0f, TT_Rough, false);
+    for (int y = t.clubhouseY - 2; y <= t.clubhouseY + 2; y++)
+        for (int x = t.clubhouseX - 2; x <= t.clubhouseX + 2; x++)
+            if (x >= 0 && y >= 0 && x < w && y < h) at(x, y) = TT_Building;
+    // A pond away from the clubhouse.
+    float pcx = w * (0.55f + 0.2f * rng.unit()), pcy = h * (0.25f + 0.2f * rng.unit());
+    disc(pcx, pcy, 5.0f, 3.8f, TT_WaterShallow, false);
+    disc(pcx, pcy, 3.6f, 2.6f, TT_WaterMiddle, false);
+    disc(pcx, pcy, 2.0f, 1.4f, TT_WaterDeep, false);
+    for (size_t i = 0; i < t.type.size(); i++) {
+        t.set[i] = (uint8_t)rng.range(5);
+        if (t.type[i] == TT_WaterMiddle) { t.type[i] = TT_WaterShallow; t.variation[i] = 1; }
+        else if (t.type[i] == TT_WaterDeep) { t.type[i] = TT_WaterShallow; t.variation[i] = 2; }
+    }
+    float p1 = rng.unit() * 6.28f, p2 = rng.unit() * 6.28f;
+    for (int y = 0; y <= h; y++)
+        for (int x = 0; x <= w; x++) {
+            float v = 2.6f * std::sin(x * 0.17f + p1) + 2.2f * std::cos(y * 0.13f + p2) + 1.6f * std::sin((x + y) * 0.09f);
+            t.corner[(size_t)y * (w + 1) + x] = (int8_t)std::clamp((int)std::lround(v + 5.0f), 0, 12);
+        }
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++) {
+            uint8_t ty = at(x, y);
+            bool flat = ty == TT_WaterShallow || ty == TT_Building;
+            if (!flat) continue;
+            int level = ty == TT_Building ? 5 : 1;
+            for (int dy = 0; dy <= 1; dy++)
+                for (int dx = 0; dx <= 1; dx++) t.corner[(size_t)(y + dy) * (w + 1) + (x + dx)] = (int8_t)level;
+        }
+    t.relax();
+    return t;
+}
+
 int typeClass(int type) {
     switch (type) {
         case TT_Tee: return 0;

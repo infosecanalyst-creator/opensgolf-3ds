@@ -16,6 +16,7 @@
 // wage amounts, the length of a game day, and how long in the red ends the game. Those are PLACEHOLDERS; the per tile upkeep below is
 // only a stand-in for wages and other running costs. The real figures live in golf.exe, which this project does not read.
 #pragma once
+#include "sg/costs.h"
 #include "sg/terrain.h"
 
 namespace sg {
@@ -31,12 +32,14 @@ struct Economy {
     double dayLength = 120;         // real seconds per game day (placeholder)
     int day = 1;
     int holesPlayed = 0;
-    int daysInRed = 0;
-    int graceDays = 24;             // PLACEHOLDER: days in the red before the board ends the game (the game text says "two years to
-                                    // return to positive cash"; the length of a game year is unknown, 12 days here)
-    // The board's messages, in the order the original's text implies: a first warning, then concern, then worry, then the sack.
-    // The days at which each fires are PLACEHOLDERS.
-    int debtStage = 0;              // 0 none, 1 warned, 2 board concerned, 3 board very worried
+    static constexpr int kMonthsPerYear = 8;   // the original's year runs March to October: 1024 ticks a month, 8192 a year (read from the exe)
+    // Board strikes at year end (exact rule, see yearEnd): 0 none, 1 concerned, 2 very worried, 3 contract terminated.
+    int debtStage = 0;
+    int difficulty = 1, holes = 0;   // set by the viewer; wages and upkeep depend on them (docs/EXE_COSTS.md)
+    double ledgerSalaries = 0;       // running total booked under Salaries
+    costs::Ledger ledger;            // the Financial Report's monthly ledger (units of 100); the viewer books its own events with book()
+    void book(int row, double dollars) { ledger.add(row, (int)(dollars >= 0 ? dollars / kUnit + 0.5 : dollars / kUnit - 0.5)); }
+    void yearEnd();
     const char* notice = "";        // latest message for the player, cleared by the viewer once shown
     bool gameOver = false;
     double income = 0, upkeepPaid = 0;
@@ -51,8 +54,9 @@ struct Economy {
     double wagesPaid = 0;
     int staffCount() const { int n = 0; for (int s : staff) n += s; return n; }
     double dailyWages() const;
-    bool hire(int kind);                         // false when no money (sandbox always works)
-    bool fire(int kind);
+    int skilled[StaffKinds] = {};                // how many of each kind are the skilled version (counted inside staff[])
+    bool hire(int kind, bool skilledHire = false);
+    bool fire(int kind, bool skilledFire = false);
     // Golfer fun, 0..100, the average of the golfers' comments (manual p. 13 and 15). Shown as the attitude colour: red, yellow, green.
     double fun = 50;
     const char* attitude() const { return fun < 35 ? "red" : fun < 65 ? "yellow" : "green"; }
@@ -80,6 +84,7 @@ struct Economy {
 
   private:
     double clock_ = 0;
+    unsigned rng_ = 12345;
 };
 
 }  // namespace sg

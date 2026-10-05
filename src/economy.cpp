@@ -1,5 +1,6 @@
 #include "sg/economy.h"
 #include <algorithm>
+#include "sg/costs.h"
 
 namespace sg {
 
@@ -29,18 +30,21 @@ double Economy::upkeepFor(const Terrain& t) {
 
 void Economy::init(const Terrain& t) {
     for (int& n : staff) n = 0;
+    for (int& n : skilled) n = 0;
     wagesPaid = 0; fun = 50;
-    cash = startCash; day = 1; holesPlayed = 0; daysInRed = 0; debtStage = 0; notice = ""; gameOver = false; income = upkeepPaid = 0; clock_ = 0;
+    cash = startCash; day = 1; holesPlayed = 0; debtStage = 0; notice = ""; gameOver = false; income = upkeepPaid = 0; clock_ = 0;
     updateUpkeep(t);
     version++;
 }
 
-void Economy::updateUpkeep(const Terrain& t) { dailyUpkeep = upkeepFor(t) * kMoneyScale; }
+// Exe rule (docs/EXE_COSTS.md): every hole costs 1 unit per period, with (difficulty + 2) periods a month. Tile upkeep is not in the exe.
+void Economy::updateUpkeep(const Terrain&) { dailyUpkeep = holes * costs::kHoleUpkeepUnits * kUnit * (difficulty + 2); }
 
 void Economy::holeCompleted(double feeUnits) {
     if (gameOver) return;
     const double fee = feeUnits * kUnit;
     cash += fee; income += fee; holesPlayed++; version++;
+    book(costs::GreensFees, fee);
 }
 
 const char* Economy::staffName(int k) {
@@ -48,23 +52,28 @@ const char* Economy::staffName(int k) {
     return k >= 0 && k < StaffKinds ? n[k] : "?";
 }
 
-// PLACEHOLDER daily wages.
+// Expected wages for a month: each employee draws (difficulty + 2) wage events, each paid when a roll in [0, 4 - difficulty) is at most the course grade
+// (docs/EXE_COSTS.md). Basic wages by kind: Club Pro 3, Ranger 2, Groundskeeper 2, Soda Vendor 2 units. Skilled staff are not modelled yet.
 double Economy::dailyWages() const {
-    static const double w[StaffKinds] = {30, 25, 20, 15};
+    const int g = costs::courseGrade(holes) < 0 ? 3 : costs::courseGrade(holes);
+    const int span = 4 - difficulty;
+    const double p = span <= 0 ? 1.0 : std::min(1.0, (g + 1.0) / span);
     double sum = 0;
-    for (int k = 0; k < StaffKinds; k++) sum += w[k] * staff[k];
-    return sum * kMoneyScale;
+    for (int k = 0; k < StaffKinds; k++) sum += (costs::wageUnits(k, false) * (staff[k] - skilled[k]) + costs::wageUnits(k, true) * skilled[k]) * kUnit * (difficulty + 2) * p;
+    return sum;
 }
 
-bool Economy::hire(int kind) {
-    if (kind < 0 || kind >= StaffKinds || (!sandbox && cash < 100)) return false;   // PLACEHOLDER: hiring needs some cash in hand
-    staff[kind]++; version++;
+bool Economy::hire(int kind, bool skilledHire) {
+    if (kind < 0 || kind >= StaffKinds) return false;
+    staff[kind]++; if (skilledHire) skilled[kind]++; version++;
+    if (!sandbox) { cash -= costs::kHireFeeUnits * kUnit; ledgerSalaries -= costs::kHireFeeUnits * kUnit; book(costs::Salaries, -costs::kHireFeeUnits * kUnit); }   // hire fee 2 units (probable)
     return true;
 }
 
-bool Economy::fire(int kind) {
+bool Economy::fire(int kind, bool skilledFire) {
     if (kind < 0 || kind >= StaffKinds || staff[kind] == 0) return false;
-    staff[kind]--; version++;
+    staff[kind]--; if (skilledFire && skilled[kind] > 0) skilled[kind]--; version++;
+    if (!sandbox) { cash -= costs::kFireFeeUnits * kUnit; ledgerSalaries -= costs::kFireFeeUnits * kUnit; book(costs::Salaries, -costs::kFireFeeUnits * kUnit); }   // firing costs 25 units
     return true;
 }
 
@@ -80,20 +89,40 @@ void Economy::holeFinished(int strokes, int par, double feeUnits) {
     funEvent(0.12 * (mood - fun));
 }
 
+// Year-end board check, read from the publisher exe (docs/PUBLISHER_EXE_NOTES.md): with cash below zero the strike counter goes 0 to 1 (the board is
+// concerned, two years left), 1 to 2 (very worried, one more year), and on the third negative year end the contract is terminated. Cash at or above
+// zero resets the counter. Sandbox games skip the check.
+void Economy::yearEnd() {
+    if (sandbox) return;
+    if (cash >= 0) { debtStage = 0; return; }
+    if (debtStage == 0) { debtStage = 1; notice = "The board is concerned about our negative cash situation. You have two years to return to positive cash."; }
+    else if (debtStage == 1) { debtStage = 2; notice = "The board is very worried about our lingering debt. You have one more year to get out of debt."; }
+    else { debtStage = 3; gameOver = true; notice = "You have been unable to make a profit on this course. Regrettably, the board has terminated your contract."; }
+}
+
 void Economy::step(double dt) {
     if (gameOver) return;
     clock_ += dt;
     while (clock_ >= dayLength) {
         clock_ -= dayLength;
         day++; version++;
+        ledger.monthCounter = day - 1;
         if (sandbox) continue;   // unlimited funds: nothing is charged and the game cannot end
-        cash -= dailyUpkeep + dailyWages(); upkeepPaid += dailyUpkeep; wagesPaid += dailyWages();
-        daysInRed = cash < 0 ? daysInRed + 1 : 0;
-        if (daysInRed == 0) debtStage = 0;
-        else if (daysInRed >= graceDays) { gameOver = true; notice = "The board has ended your contract. Game over."; }
-        else if (daysInRed >= graceDays * 3 / 4 && debtStage < 3) { debtStage = 3; notice = "The board is very worried about the lingering debt."; }
-        else if (daysInRed >= graceDays / 2 && debtStage < 2) { debtStage = 2; notice = "The board is concerned about the club's negative cash."; }
-        else if (debtStage < 1) { debtStage = 1; notice = "Warning: you have two years to get the club back into the black."; }
+        // Per month: hole upkeep, wage events (each rolls against the course grade) and interest on debt, as read from the exe.
+        {
+            const int g = costs::courseGrade(holes) < 0 ? 3 : costs::courseGrade(holes);
+            const int periods = difficulty + 2, span = std::max(1, 4 - difficulty);
+            double wages = 0;
+            for (int k = 0; k < StaffKinds; k++)
+                for (int n = 0; n < staff[k]; n++)
+                    for (int e = 0; e < periods; e++) { rng_ = rng_ * 1664525u + 1013904223u; if ((int)((rng_ >> 16) % span) <= g) wages += costs::wageUnits(k, n < skilled[k]) * kUnit; }
+            const double upkeep = dailyUpkeep;
+            const double interest = cash < 0 ? -(double)((long long)(-cash / kUnit) / 50) * kUnit : 0;   // cash / 50 units, truncated toward zero
+            cash -= upkeep + wages; cash += interest;
+            upkeepPaid += upkeep - interest; wagesPaid += wages; ledgerSalaries -= wages;
+            book(costs::Salaries, -wages); book(costs::MaintInterest, -upkeep + interest);
+        }
+        if ((day - 1) % kMonthsPerYear == 0) yearEnd();
     }
 }
 

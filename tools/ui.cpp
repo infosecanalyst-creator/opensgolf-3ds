@@ -13,9 +13,14 @@
 
 namespace ui {
 
-bool loadPcx(const std::string& path, Image& out, bool magentaKey, int keyRgb) {
+bool loadPcx(const std::string& path, Image& out, bool magentaKey, int keyRgb, const std::string& alphaPath) {
     sg::Bytes d; sg::Rgba img; std::string err;
     if (!sg::readFile(path, d) || !sg::decodePcx(d, img, err)) return false;
+    if (!alphaPath.empty()) {   // a separate greyscale alpha sheet of the same size (the disc's _A / _alpha files)
+        sg::Bytes da; sg::Rgba al;
+        if (sg::readFile(alphaPath, da) && sg::decodePcx(da, al, err) && al.w == img.w && al.h == img.h)
+            for (size_t i = 0; i + 3 < img.px.size(); i += 4) img.px[i + 3] = al.px[i];
+    }
     if (magentaKey)
         for (size_t i = 0; i + 3 < img.px.size(); i += 4)
             if (img.px[i] == 255 && img.px[i + 1] == 0 && img.px[i + 2] == 255) img.px[i + 3] = 0;
