@@ -26,7 +26,7 @@ struct Sprite {
 // a ramp of 4 greens plus white that becomes translucent black of increasing density.
 // `palettePcx`, when not empty, replaces the FLC palette with the one of an 8-bit PCX (colour variants).
 bool loadSprite(const std::string& flcPath, Sprite& out, std::string& err, bool shadow = false,
-                const std::string& palettePcx = std::string());
+                const std::string& palettePcx = std::string(), const uint8_t* rawPalette = nullptr);   // rawPalette: 768 RGB bytes, wins over palettePcx
 
 // Palette of an 8-bit PCX (the 768 bytes after the 0x0C marker at the end of the file).
 bool readPcxPalette(const Bytes& pcx, uint8_t pal[768]);

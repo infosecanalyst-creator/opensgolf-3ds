@@ -9,14 +9,15 @@ bool readPcxPalette(const Bytes& d, uint8_t pal[768]) {
     return true;
 }
 
-bool loadSprite(const std::string& path, Sprite& out, std::string& err, bool shadow, const std::string& palettePcx) {
+bool loadSprite(const std::string& path, Sprite& out, std::string& err, bool shadow, const std::string& palettePcx, const uint8_t* rawPalette) {
     Bytes d;
     Flc f;
     if (!readFile(path, d)) { err = "cannot read " + path; return false; }
     if (!decodeFlc(d, f, err)) { err = path + ": " + err; return false; }
     uint8_t override_[768];
     bool useOverride = false;
-    if (!palettePcx.empty()) {
+    if (rawPalette) { std::memcpy(override_, rawPalette, 768); useOverride = true; }
+    else if (!palettePcx.empty()) {
         Bytes p;
         useOverride = readFile(palettePcx, p) && readPcxPalette(p, override_);
     }

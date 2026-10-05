@@ -1,6 +1,6 @@
 // Special visitors: corporate CEO, county commissioner, wealthy heiress. Spawn and outcome rules read from the publisher's golf.exe
 // (docs/DECODE_SOCIAL.md). EXACT: pair slot rule, thresholds, counts, payouts. The international celebrity is dead code in that build
-// and is not implemented. PLACEHOLDER: the landmark pick distribution (shape known, exact draw loop approximate) and which rating the
+// and is not implemented. The heiress landmark draw follows docs/DECODE_WORLD2.md 1.5 exactly. PLACEHOLDER: which rating the
 // heiress test uses (the fun/skill choice is shared with the commissioner, probable).
 #pragma once
 #include "sg/rng.h"
@@ -14,7 +14,8 @@ struct VisitorState {
     int ceoCount = 0;            // CEOs hosted so far (max 8)
     int commissionerCount = 0;   // land purchases accepted so far
     int heiressVisits = 0;       // donations so far
-    unsigned landmarkMask = 0;   // 16 landmark types already donated
+    unsigned landmarkMask = 0;   // landmark designs that are free (donated), the exe's DAT_00822c70
+    unsigned availMask = 0x000f; // designs on the Landmarks strip (DAT_00543cfc); the starting set is UNKNOWN in the text, 0x000f is a PLACEHOLDER (sandbox shows all 14)
 };
 
 struct SpawnContext {

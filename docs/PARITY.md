@@ -59,3 +59,16 @@ Audit count: 982 gaps (down from 987).
 | Load screen | Club emblem (parklink/tropdesert cuts) replaces the thumbnail; Cancel/Delete tooltips; Loading... text; delete yes/no box in the popup frame; Cancel from System Load restores the While Browsing save. PLACEHOLDER: OK tooltip word, second delete option wording |
 | Pair selection | Screen built from PairBase/PairButtons; trigger key backquote is a PLACEHOLDER (exe call site unknown); trait labels and ages are stand-ins; pairing only announced |
 | Not done | Golfer stats card (skills dialog), golfer bodies and palettes, play-core constant swaps, world data facts |
+
+## Update 69 additions (headless only, never run on the Mac)
+| Area | State |
+|---|---|
+| Surface table | include/sg/lie.h holds the exe's 23 surface records (bounce, friction, penalty, costs, walk effort, class) read from golf.exe's data section; the port's tile ids map onto them (editor-only tiles are PLACEHOLDER picks) |
+| Ball flight | include/sg/ballphys.h runs the exe's per-tick flight, bounce (rebound = -64 + vertical * k / 12, rolls under 0x80), ground friction, water stop and tree hits. Shots now pick the launch range by previewing the roll, as the exe does. PLACEHOLDER: slope term, edge friction, curve of draw and fade, tick rate in seconds |
+| Ball washer | Golfers whose tee has a washer within 3 tiles lose a third of their direction error, cleared when the ball stops off the fairway (EXACT rule) |
+| Heiress | Exact landmark draw, separate available mask (strip lists only available designs) and free mask; price fixed to 50 + 10 * kind units; donation message names design, value, placement and effect. PLACEHOLDER: starting available set (0x000f; sandbox all) |
+| Save dialog | System menu Save Game opens the exe's box (54,80,628x80, 48 character field, default name course + day + month + year, trim and character check, overwrite confirm) |
+| Skills panel | Read only skills panel from the golfer card (S key is a PLACEHOLDER trigger); panel art is the popup frame, row strips unmeasured |
+| Golfer colours | Palette composer (Swap01..10) recolours in-world golfers by shirt, pants, skin, hat, alternate skin; members use their progolfers.dta row. PLACEHOLDER: female hair, default skin for non members. Customise preview bodies not done |
+| Tests | ballphys, shot and visitors tests added (10 in all) |
+| Not done | Customise preview bodies and the stats card art, tutorial triggers, SGA offer popup art, employee Move and Rename, multi slot saves |

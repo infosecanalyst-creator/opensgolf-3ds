@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "sg/visitors.h"
 
 namespace sg {
@@ -14,7 +15,7 @@ Visitor visitorFor(const VisitorState& s, const SpawnContext& c) {
         return Visitor::Ceo;
     if (c.pairIndex == 3 && !(c.onCourse & kCommissionerOnCourse) && c.propertyKind != 2 && r > commissionerThreshold(s, c.difficulty))
         return Visitor::Commissioner;
-    if (c.pairIndex == 5 && !(c.onCourse & kHeiressOnCourse) && heiressThreshold(s) < r && s.landmarkMask < 0xffffu)
+    if (c.pairIndex == 5 && !(c.onCourse & kHeiressOnCourse) && heiressThreshold(s) < r && s.availMask < 0xffffu)
         return Visitor::Heiress;
     return Visitor::None;
 }
@@ -35,15 +36,12 @@ Outcome resolve(Visitor v, VisitorState& s, bool finished, int mood, int holes, 
         break;
     case Visitor::Heiress:
         if (finished && mood >= 3) {
-            int range = mood < 1 ? 1 : mood;
-            int t = -1;
-            for (; range <= 25 && t < 0; ++range) {
-                int p = rng.below(range);
-                if (p < 16 && !(s.landmarkMask & (1u << p))) t = p;
-            }
-            if (t < 0) for (int p = 0; p < 16; ++p) if (!(s.landmarkMask & (1u << p))) { t = p; break; }
-            if (t >= 0) {
-                s.landmarkMask |= 1u << t;
+            // Start at the mood; draw a kind below it (clamped to 0..15); stop at the first design the strip does not have; otherwise widen the draw by one while below 25.
+            // If every try hits a design already available, the last draw is donated anyway (EXACT).
+            int i = mood, t = 0;
+            do { t = std::clamp(rng.below(std::max(1, i)), 0, 15); if (!(s.availMask >> t & 1u)) break; ++i; } while (i < 25);
+            {
+                s.landmarkMask |= 1u << t; s.availMask |= 1u << t;
                 ++s.heiressVisits;
                 o.accepted = true;
                 o.landmarkType = t;

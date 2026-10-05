@@ -1,5 +1,6 @@
 #include "sg/shot.h"
 #include "sg/flight.h"
+#include "sg/ballphys.h"
 #include <algorithm>
 #include <cmath>
 
@@ -21,7 +22,7 @@ void ShotSim::init(const Terrain& t, uint32_t seed) {
     if (!route_) route_ = &t.path;
     finished = false;
     rng_ = seed ? seed : 1u;
-    stroke = 0;
+    stroke = 0; washed = false;
     ballX = route_->size() >= 2 ? (*route_)[0] : 0; ballZ = route_->size() >= 2 ? (*route_)[1] : 0; ballH = 0;
     golferX = ballX; golferZ = ballZ;
     event = "on the tee";
@@ -73,6 +74,7 @@ void ShotSim::step(float dt) {
             } else {
                 golferX = sx; golferZ = sz;
                 bool putt = distToHole() < kPuttRange;
+                if (stroke == 0 && washerAtTee && !washed) { washed = true; hold = (12.0f + 8.0f * rnd()) / flight::kTicksPerSecond; }   // stop of 12 to 19 ticks at the washer
                 ++planCount; planPutt = putt; planFromX = golferX; planFromZ = golferZ; planAim = aimHeading_; planDist = distToHole();
                 anim = putt ? GolferAnim::PuttAddress : GolferAnim::Address; animTime = 0;
                 setPhase(putt ? Phase::PuttAddress : Phase::Address);
@@ -129,14 +131,36 @@ void ShotSim::step(float dt) {
                     int here = t_->typeAtWorld(ballX, ballZ);
                     if (here == 7 || here == TT_PotSandBunker || here == TT_GrassySand || here >= TT_SandBunker1)
                         spread *= 1.6f - 0.8f * skills.v[S::Recovery] / 15.0f;
-                    float dist = std::min(carry, distToHole()) * (0.88f + 0.24f * rnd());
-                    float h = aimHeading_ + (rnd() - 0.5f) * spread;
+                    // The exe previews the flight along the aim, bounce and roll included, to pick the club (FUN_004226a0). The port does the same: it finds the launch range
+                    // whose resting point is the intended distance, then adds a PLACEHOLDER spread of 6 percent either way on the range.
+                    const float s = kTileSizeWorld / 1024.0f;
+                    const float ah = aimHeading_ * rad;
+                    auto tileAtRel = [&](float x, float z, float dx, float dz) { return t_->typeAtWorld(ballX + (dx * x - dz * z) * s, ballZ + (dz * x + dx * z) * s); };
+                    auto previewRest = [&](int range) {
+                        const flight::Launch l = flight::launchFor(range);
+                        const float dx = std::cos(ah), dz = std::sin(ah);
+                        auto r = ballphys::run(1, 0, l.speed, l.vertical, theme, false, [&](float x, float z) { return tileAtRel(x, z, dx, dz); }, [] { return 0.5f; });
+                        return r.restX * s;   // distance along the aim, world units
+                    };
+                    const int rMax = std::max(1, maxR);
+                    float want = distToHole();
+                    const float reach = previewRest(rMax) + (!approach && skills.v[S::LongDriver] >= 8 ? driveBonus : 0.0f);
+                    int range = rMax;
+                    if (want < reach) { int lo = 1, hi = rMax; while (lo < hi) { const int mid = (lo + hi) / 2; if (previewRest(mid) < want) lo = mid + 1; else hi = mid; } range = lo; }
+                    range = std::max(1, (int)std::lround(range * (0.94f + 0.12f * rnd())));
+                    float dev = (rnd() - 0.5f) * spread; if (washed) dev -= dev / 3.0f;   // EXACT: the direction error loses one third
+                    float h = aimHeading_ + dev;
                     landDev = h - aimHeading_;
-                    landX_ = ballX + std::cos(h * rad) * dist; landZ_ = ballZ + std::sin(h * rad) * dist;
                     {
-                        const flight::Arc arc = flight::simulate(std::max(1, (int)std::lround(dist / (unitsPerRange * 0.8f))));
-                        flightSec_ = std::max(0.5f, arc.ticks / flight::kTicksPerSecond);
-                        flightPeak_ = arc.peak / 1024.0f * kTileSizeWorld;
+                        const flight::Launch l = flight::launchFor(range);
+                        const float dx = std::cos(h * rad), dz = std::sin(h * rad);
+                        const float fx = ballX, fz = ballZ;
+                        auto rr = ballphys::run(dx, dz, l.speed, l.vertical, theme, true, [&](float x, float z) { return t_->typeAtWorld(fx + x * s, fz + z * s); }, [&] { return rnd(); });
+                        trajX_.clear(); trajZ_.clear(); trajH_.clear();
+                        for (const auto& p : rr.pts) { trajX_.push_back(fx + p.x * s); trajZ_.push_back(fz + p.z * s); trajH_.push_back(p.h * s); }
+                        trajHitTick_ = rr.hitTick; trajHitType_ = rr.hitType; trajLandTile_ = rr.landTile; trajRestTile_ = rr.restTile; trajWater_ = rr.water; trajOob_ = rr.oob;
+                        landX_ = trajX_.back(); landZ_ = trajZ_.back();
+                        flightSec_ = std::max(0.5f, (float)rr.pts.size() / flight::kTicksPerSecond); trajCounted_ = false;
                     }
                     club = approach ? "iron" : "drive";
                     event = "drive";
@@ -148,60 +172,23 @@ void ShotSim::step(float dt) {
             break;
         }
         case Phase::Flight: {
-            float u = std::min(1.0f, phaseTime_ / flightSec_);
-            ballX = flightFromX_ + (landX_ - flightFromX_) * u; ballZ = flightFromZ_ + (landZ_ - flightFromZ_) * u;
-            ballH = fallFrom_ > 0 ? fallFrom_ * (1 - u) : 4.0f * flightPeak_ * u * (1 - u);
-            // Obstacle trouble (exe 21780 to 21815): once per shot, while the ball is at least 2 units up over a tree or building tile, each tick draws a band and
-            // the ball is hit when its height lies inside it and the distance to the tile centre is below rand(0x180). The first hit turns the ball and kills
-            // part of its speed. The tick rate is the placeholder of flight.h.
-            if (!hitObstacle_ && u < 1.0f) {
-                tickAcc_ += dt * flight::kTicksPerSecond;
-                for (; tickAcc_ >= 1.0f && !hitObstacle_; tickAcc_ -= 1.0f) {
-                    const int tt = t_->typeAtWorld(ballX, ballZ);
-                    const float hU = ballH / kTileSizeWorld * 1024.0f;
-                    if (hU < 2.0f || (tt != TT_Woods && tt != TT_Building)) continue;
-                    int lo = 0, hi = 200;
-                    if (tt == TT_Woods) {
-                        const int r100 = (int)(rnd() * 100.0f);
-                        lo = theme == 2 ? 20 : theme == 3 ? 20 : 50;
-                        hi = theme == 2 ? 100 + r100 : 400 + r100;
-                    }
-                    if (!(hU > lo && hU < hi)) continue;
-                    const float fx = ballX / kTileSizeWorld - std::floor(ballX / kTileSizeWorld) - 0.5f, fz = ballZ / kTileSizeWorld - std::floor(ballZ / kTileSizeWorld) - 0.5f;
-                    const float dist = std::hypot(fx, fz) * 1024.0f;
-                    if (!(dist < rnd() * 384.0f)) continue;
-                    hitObstacle_ = true; ++obsCount; obsType = tt;
-                    const float turn = (64.0f + rnd() * 128.0f) / 256.0f * 360.0f * rad, keep = 1.0f - rnd();
-                    const float rx = (landX_ - ballX) * keep, rz = (landZ_ - ballZ) * keep;
-                    const float c = std::cos(turn), sn = std::sin(turn);
-                    flightFromX_ = ballX; flightFromZ_ = ballZ;
-                    landX_ = ballX + rx * c - rz * sn; landZ_ = ballZ + rx * sn + rz * c;
-                    fallFrom_ = std::max(ballH, 1.0f);
-                    flightSec_ = std::max(0.25f, (1.0f - u) * flightSec_); phaseTime_ = 0; u = 0;
-                }
-            }
+            const size_t n = trajX_.size();
+            const float pos = std::min((float)(n - 1), phaseTime_ * flight::kTicksPerSecond);
+            const size_t i0 = (size_t)pos, i1 = std::min(n - 1, i0 + 1); const float fr = pos - (float)i0;
+            ballX = trajX_[i0] + (trajX_[i1] - trajX_[i0]) * fr; ballZ = trajZ_[i0] + (trajZ_[i1] - trajZ_[i0]) * fr; ballH = trajH_[i0] + (trajH_[i1] - trajH_[i0]) * fr;
+            if (!trajCounted_ && trajHitTick_ >= 0 && pos >= (float)trajHitTick_) { trajCounted_ = true; ++obsCount; obsType = trajHitType_; }
             if (animTime > kSwingSec) animTime = kSwingSec - 0.001f;  // hold the follow through
-            if (u >= 1.0f) {
+            if (pos >= (float)(n - 1)) {
                 ballH = 0;
                 int ty = t_->typeAtWorld(ballX, ballZ);
-                // The manual: firm fairway makes balls bounce higher and roll farther, and rocks deflect the ball at random.
-                // The amounts are PLACEHOLDERS (a 12 percent run on, a 40 to 90 unit kick in a random direction).
-                if (ty == TT_FirmFairway) {
-                    float dx = landX_ - shotFromX_, dz = landZ_ - shotFromZ_;
-                    ballX += dx * 0.12f; ballZ += dz * 0.12f;
-                    ty = t_->typeAtWorld(ballX, ballZ);
-                } else if (ty == TT_Rock) {
-                    float a = rnd() * 2 * kPi, off = 40.0f + 50.0f * rnd();
-                    ballX += std::cos(a) * off; ballZ += std::sin(a) * off;
-                    ty = t_->typeAtWorld(ballX, ballZ);
-                }
-                bool water = ty == TT_WaterShallow || ty == TT_WaterMiddle || ty == TT_WaterDeep || ty == TT_WaterShallowDesert;
+                bool water = trajWater_ && isWater(ty >= 0 ? ty : (int)TT_WaterDeep);
                 ++landCount; landType = ty; landFromType = t_->typeAtWorld(shotFromX_, shotFromZ_); landWater = water; landOut = ty < 0;
                 landCloser = std::hypot(ballX - holeX(), ballZ - holeZ()) < std::hypot(shotFromX_ - holeX(), shotFromZ_ - holeZ());
                 if (ty < 0) { event = "out of bounds, replay"; stroke++; ballX = shotFromX_; ballZ = shotFromZ_; }
                 else if (water) { event = "splash, replay with a penalty"; stroke++; ballX = shotFromX_; ballZ = shotFromZ_; }
                 else if (ty == 7 || ty == TT_PotSandBunker || ty == TT_GrassySand || ty >= TT_SandBunker1) event = "in the sand";
                 else event = "on the course";
+                if (ty != 2) washed = false;   // EXACT: the flag clears when the ball stops, unless it rests on a fairway tile
                 setPhase(Phase::Settle);
             }
             break;

@@ -284,9 +284,9 @@ inline constexpr Rect kBadgeIdle{600, 400, 47, 41};
 
 // Landmark effect names by design number & 3 (exact): 0 Happy Golfers, 1 No Dandelions, 2 Skill Upgrade, 3 Happy Endings.
 inline constexpr const char* kLandmarkEffect[4] = {"Happy Golfers", "No Dandelions", "Skill Upgrade", "Happy Endings"};
-// Landmark price units = 250 + 50 * design (exact, from the placement code); it is 0 ("FREE!") when that design's bit is
+// Landmark price units = 50 + 10 * design (docs/DECODE_WORLD2.md 1.3 corrects an earlier 250 + 50 * design); it is 0 ("FREE!") when that design's bit is
 // already set in DAT_00822c70 (a landmark you already own, for example a property bonus).
-constexpr int landmarkPriceUnits(int design) { return 250 + 50 * design; }
+constexpr int landmarkPriceUnits(int design) { return (5 * design + 25) * 2; }   // corrected from the exe's tooltip code: 50 + 10 * design units (docs/DECODE_WORLD2.md 1.3)
 
 // Building table rows used by this panel (id, name, footprint, level 0 price units, exact).
 struct Item {

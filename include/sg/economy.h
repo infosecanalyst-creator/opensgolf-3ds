@@ -16,6 +16,7 @@
 // wage amounts, the length of a game day, and how long in the red ends the game. Those are PLACEHOLDERS; the per tile upkeep below is
 // only a stand-in for wages and other running costs. The real figures live in golf.exe, which this project does not read.
 #pragma once
+#include <algorithm>
 #include "sg/costs.h"
 #include "sg/terrain.h"
 
@@ -80,6 +81,7 @@ struct Economy {
     void earn(double amount) { cash += amount; version++; }
     void spend(double amount) { if (sandbox) return; cash -= amount; version++; }
     void step(double dt);
+    double monthProgress() const { return dayLength > 0 ? std::min(0.999, clock_ / dayLength) : 0.0; }   // 0..1 through the current month (a game "day" here is the exe's month)
     static double upkeepFor(const Terrain& t);
 
   private:

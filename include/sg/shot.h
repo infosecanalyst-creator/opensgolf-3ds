@@ -7,6 +7,7 @@
 #pragma once
 #include <vector>
 #include "sg/terrain.h"
+#include "sg/lie.h"
 
 namespace sg {
 
@@ -30,6 +31,8 @@ struct ShotSim {
     float paceScale = 1.0f;             // walking speed multiplier (a Ranger speeds play up)
     float hold = 0;                     // seconds the golfer is held in place (an employee has stopped them)
     float spreadDivisor = 1.0f;         // Pro Shop: error spread of accurate golfers is divided by this (relative to the level 0 shop)
+    bool washerAtTee = false;           // a ball washer stands within 3 tiles of this hole's tee (docs/DECODE_WORLD2.md 2.1); the viewer sets it per hole
+    bool washed = false;                // the ball was washed: the next shot's sideways error loses a third; cleared when the ball stops anywhere but on fairway
     float driveBonus = 0.0f;            // Driving Range: extra carry (world units) for long hitters on drives
     GolferSkills skills;                // set before init(); init() keeps them
     // Outputs, read by the viewer every frame.
@@ -67,6 +70,8 @@ struct ShotSim {
     float shotFromX_ = 0, shotFromZ_ = 0, landX_ = 0, landZ_ = 0, flightSec_ = 1, flightPeak_ = 0, aimHeading_ = 0;
     bool struck_ = false, missed_ = false, hitObstacle_ = false;
     float flightFromX_ = 0, flightFromZ_ = 0, fallFrom_ = 0, tickAcc_ = 0;
+    std::vector<float> trajX_, trajZ_, trajH_;   // the ball's path tick by tick (docs/DECODE_PLAYCORE.md section 3)
+    int trajHitTick_ = -1, trajHitType_ = -1, trajLandTile_ = -1, trajRestTile_ = -1; bool trajWater_ = false, trajOob_ = false, trajCounted_ = false;
     float rnd();                        // 0..1
     void setPhase(Phase p) { phase = p; phaseTime_ = 0; }
     void aimAtGreen();
