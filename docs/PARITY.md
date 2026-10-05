@@ -100,3 +100,17 @@ Audit count: 982 gaps (down from 987).
 | Bug fix | Body palette loader used a 96 byte path buffer, so a long install path silently disabled recoloured golfers; now a std::string |
 | Test hooks | --empsel N, --say TEXT, --analyze N |
 | Not done | Customise preview bodies, stats card art, tutorial triggers, employee info colours, per-employee counters and wages, happy ending hearts, Practice Round button |
+
+## Update 72 additions
+
+| Area | State | Notes |
+|------|-------|-------|
+| Course emblems (HUD, 16 sites) | DERIVED | Sheet/cut table checked against three real screenshots |
+| World map status dots, globe pins, legend | DERIVED | Pin positions from the site table match the real map |
+| Font capital I glyph | EXACT quirk | Mapped to the l glyph |
+| Customise preview stack (body, head, two walkers) | DERIVED | Offsets measured by eye, PLACEHOLDER |
+| Story selection from Themes/Standard and More_Stories | DERIVED | First pair forced to OpeningDay; later pairs by seed and count |
+| Story happy ending | EXACT table, DERIVED trigger | Full pass of the story lines ends it: hearts +1, highlight 0x120, landmark donated by first letter (DECODE_WORLD2 1.5). The chapter timing is a PLACEHOLDER |
+| clang -Wall pass | checked | 3 harmless warnings, no portability errors in sgview.cpp |
+
+Not yet run on the Mac. Headless checks only.

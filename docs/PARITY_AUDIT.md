@@ -2,7 +2,7 @@
 
 Files the exe uses that the port never names are likely gaps. Pattern loaded sets (terrain tiles, FLC animations) need a manual look.
 
-## (root): 27 files, 11 named in the port, 11 used by the exe but never named in the port
+## (root): 28 files, 11 named in the port, 11 used by the exe but never named in the port
 
 - GBUBBLES.pcx
 - JPEG.lib
@@ -16,16 +16,13 @@ Files the exe uses that the port never names are likely gaps. Pattern loaded set
 - manu3_.TTF
 - manu3_.fot
 
-## Bodies: 42 files, 5 named in the port, 32 used by the exe but never named in the port
+## Bodies: 42 files, 10 named in the port, 27 used by the exe but never named in the port
 
 - Bodies/Barrel.pcx
 - Bodies/FemalePLS_sm.pcx
-- Bodies/FemalePSS.pcx
 - Bodies/FemalePSS_sm.pcx
 - Bodies/FemaleSSS_sm.pcx
-- Bodies/FemaleSkTT.pcx
 - Bodies/FemaleSkTT_sm.pcx
-- Bodies/FemaleSwap01.pcx
 - Bodies/FemaleSwap02.pcx
 - Bodies/FemaleSwap03.pcx
 - Bodies/FemaleSwap04.pcx
@@ -37,10 +34,8 @@ Files the exe uses that the port never names are likely gaps. Pattern loaded set
 - Bodies/FemaleSwap10.pcx
 - Bodies/MaleKLS_sm.pcx
 - Bodies/MalePLS_sm.pcx
-- Bodies/MalePSS.pcx
 - Bodies/MalePSS_sm.pcx
 - Bodies/MaleSSS_sm.pcx
-- Bodies/MaleSwap01.pcx
 - Bodies/MaleSwap02.pcx
 - Bodies/MaleSwap03.pcx
 - Bodies/MaleSwap04.pcx
@@ -51,10 +46,10 @@ Files the exe uses that the port never names are likely gaps. Pattern loaded set
 - Bodies/MaleSwap09.pcx
 - Bodies/MaleSwap10.pcx
 
-## Data: 2674 files, 27 named in the port, 0 used by the exe but never named in the port
+## Data: 2675 files, 27 named in the port, 0 used by the exe but never named in the port
 
 
-## Flics: 2345 files, 209 named in the port, 809 used by the exe but never named in the port
+## Flics: 2345 files, 212 named in the port, 809 used by the exe but never named in the port
 
 - Flics/Animals/CranePal.pcx
 - Flics/Animals/Crane_DrinkDown.flc
@@ -121,30 +116,19 @@ Files the exe uses that the port never names are likely gaps. Pattern loaded set
 ## Heads: 12 files, 4 named in the port, 0 used by the exe but never named in the port
 
 
-## Interface: 141 files, 95 named in the port, 23 used by the exe but never named in the port
+## Interface: 141 files, 107 named in the port, 12 used by the exe but never named in the port
 
 - Interface/3mainLowerLeft_A.pcx
 - Interface/Barrel.pcx
 - Interface/BaseTerrainPanel_A.pcx
 - Interface/ChooseAlphaButtons_A.pcx
-- Interface/InfoButtons.pcx
-- Interface/InfoButtons_A.pcx
 - Interface/JoeCoolPanel_A.pcx
 - Interface/MemberPanel_A.pcx
-- Interface/PairBase.pcx
-- Interface/PairButtons.pcx
 - Interface/PopUpIcons.pcx
 - Interface/PopUpIcons_A.pcx
-- Interface/Title_Pickapro.pcx
-- Interface/courseinfo.pcx
-- Interface/courseinfo_A.pcx
-- Interface/infoscreens/lowscore.pcx
-- Interface/parklink.pcx
 - Interface/parklink_A.pcx
 - Interface/s_GolferStats.pcx
 - Interface/s_TransPopups.pcx
-- Interface/s_courseinfo.pcx
-- Interface/tropdesert.pcx
 - Interface/tropdesert_A.pcx
 
 ## SimsFX: 76 files, 0 named in the port, 66 used by the exe but never named in the port
@@ -261,6 +245,6 @@ Files the exe uses that the port never names are likely gaps. Pattern loaded set
 - Sounds/Interface/Wrong.wav
 - Sounds/World/Bagpipe.wav
 
-## Themes: 73 files, 9 named in the port, 1 used by the exe but never named in the port
+## Themes: 74 files, 14 named in the port, 1 used by the exe but never named in the port
 
 - Themes/Firaxis/Buck.chr

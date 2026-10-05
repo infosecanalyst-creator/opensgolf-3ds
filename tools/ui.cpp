@@ -92,7 +92,7 @@ static std::vector<int> decode(const std::string& s) {
     std::vector<int> out;
     for (size_t i = 0; i < s.size(); i++) {
         unsigned char c = (unsigned char)s[i];
-        if (c < 0x80) out.push_back(c);
+        if (c < 0x80) out.push_back(c == 'I' ? 'l' : c);   // the face's capital I is drawn like a dotted i; its l is the plain stroke the game shows for I
         else if ((c & 0xE0) == 0xC0 && i + 1 < s.size()) { out.push_back(((c & 0x1F) << 6) | ((unsigned char)s[i + 1] & 0x3F)); i++; }
         else out.push_back('?');
     }

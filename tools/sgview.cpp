@@ -203,7 +203,7 @@ struct App {
     int panelHover = -1;         // list row under the mouse in an open panel
     std::vector<std::string> storyLines;   // lines of a story file from the disc (loaded at run time, never copied into the repo)
     std::string storyTitle;
-    size_t storyPos = 0; double storyNext = 0;
+    size_t storyPos = 0; double storyNext = 0; char storyLetter = 'x'; int storiesDone = 0;
     // Per hole statistics for the course report (reset when the course changes shape).
     struct HoleStat { int plays = 0; double strokes = 0, seconds = 0, revenue = 0, mood = 0; int hist[6] = {}; int moodSum = 0; };   // moodSum: total of the mood changes golfers had on this hole (the exe's per-hole counter)
     std::vector<HoleStat> holeStats;
@@ -880,6 +880,7 @@ static unsigned skillMaskOf(const sg::GolferSkills& k);
 static int clubFun(const App& app);
 static double clubSkill(const App& app);
 static int golfersOnCourse(const App& app);
+static void loadStory(App& app);
 // Starts a golfer on the first hole. Skills vary from golfer to golfer (PLACEHOLDER spread of 4 to 11 out of 15).
 static bool g_cardSkills = false;
 static int g_cuHover = -1, g_cuFace = -1, g_cardHook = -1, g_cardHover = -1;   // test hooks --card N (open after the --time run), --cardhover B;    // test hooks --cuhover N, --cuface PAGE
@@ -1890,6 +1891,23 @@ static bool canAfford(App& app, int i) {
     return app.sandboxChoice || propPrice(app, i) <= kStartFunds;
 }
 
+// Happy ending: the story's first letter picks the landmark design that is donated (DECODE_WORLD2 1.5), one heart is added, and it is logged as a highlight.
+static void storyHappyEnding(App& app) {
+    int kind;
+    switch (app.storyLetter) {
+        case 'C': kind = 0; break; case 'P': kind = 1; break; case 'A': kind = 2; break; case 'M': kind = 3; break; case 'L': kind = 4; break;
+        case 'H': kind = 5; break; case 'G': kind = 7; break; case 'F': case 'R': kind = 8; break; case 'X': kind = 9; break; case 'S': kind = 11; break;
+        default: kind = (int)(app.seed * 2654435761u >> 8) % 10 + (app.storiesDone % 10); kind %= 10; break;
+    }
+    app.vstate.availMask |= 1u << kind; app.vstate.landmarkMask |= 1u << kind;
+    app.hearts++; app.storiesDone++;
+    logEv(app, 0x120, kind);
+    addHighlight(app, "Happy ending: " + app.storyTitle);
+    snd(app, "Buy1Short.wav", 0.9f);
+    say(app, "A love story has a happy ending. A new landmark design is donated to the club.");
+    loadStory(app);
+}
+
 static std::vector<std::string> wrapText(const App& app, const std::string& s, float size, float maxW);
 // ---- Customise Character (docs/DECODE_CUSTOMISE.md). Opened from the Golfers dock tab with the player's name on it. Art, cuts, controls and rules follow the
 // exe; hit centres and the small label texts come from data tables the decompile does not show, so they are measured from the art (DERIVED) or marked PLACEHOLDER. ----
@@ -1969,6 +1987,9 @@ static int cuHit(const App& app, float vx, float vy) {
     return best;
 }
 static const float kCuNavy[3] = {0.06f, 0.06f, 0.26f};
+static ui::Image* bodyPortrait(App& app, const sg::BodyLook& l);
+static sg::BodyLook chrLook(const App& app);
+static void drawBodyUi(GlSprite* sp, int view, int frame, float x, float y, float hgt);
 static void drawCustomise(App& app) {
     app.view = ui::beginScreen(app.drawW, app.drawH);
     const sg::CharRec& c = app.chr;
@@ -1994,7 +2015,12 @@ static void drawCustomise(App& app) {
     // Preview window: sky and grass, then the head (PLACEHOLDER: the exe also draws two small walking bodies and a child sprite here). The window is wider than the
     // gap between the round buttons and the tabs, so the idle buttons are printed again from the background before the lit ones.
     ui::drawImage(app.headWin, 336, 20);
-    drawFace(app, c.female(), c.head, 1, 355, 116, false);
+    { // The preview window holds the stack the exe draws: the body sheet at (355,116), the head cell at (336,20), and two small walking figures at (315,239) and (335,239) (frame 5 of the normal walk,
+      // views 0 and 4; docs/DECODE_CUSTOMISE.md 3.3 and DECODE_BODIES.md). The figures are drawn at their own size, not zoomed (the exe's zoom variable is unknown).
+      const sg::BodyLook l = chrLook(app);
+      if (ui::Image* bi = bodyPortrait(app, l)) ui::drawImage(*bi, 355, 116, 0, 0, 60, 120);
+      drawFace(app, c.female(), c.head, 1, 336, 20, false);
+      if (const BodySet* bs = bodySetFor(app, l)) { drawBodyUi(bs->body[0], 0, 5, 315, 239, 35); drawBodyUi(bs->body[0], 4, 5, 335, 239, 35); } }
     for (int k = 0; k < 3; k++) ui::drawImage(app.custBg[c.female() ? 0 : 1], 310, 38 + 50.0f * k, 310, 38 + 50.0f * k, 50, 50);
     for (int k = 0; k < 5; k++) ui::drawImage(app.custBg[c.female() ? 0 : 1], 436, 12 + 50.0f * k, 436, 12 + 50.0f * k, 50, 50);
     for (int t = 0; t < 3; t++) if (c.flags >> t & 1) yellow(t);
@@ -2148,6 +2174,12 @@ static void customiseEvent(App& app, const SDL_Event& e) {
     }
 }
 
+static void drawStatusDot(float cx, float cy, float r, int st) {
+    const float c[3][3] = {{0.98f, 0.82f, 0.1f}, {0.5f, 0.5f, 0.48f}, {0.8f, 0.1f, 0.25f}};
+    for (int j = -(int)r - 1; j <= (int)r + 1; j++) { const float hw = std::sqrt(std::max(0.0f, (r + 1) * (r + 1) - (float)(j * j))); ui::fillRect(cx - hw, cy + (float)j, 2 * hw, 1, 0.15f, 0.12f, 0.12f, 1); }
+    for (int j = -(int)r; j <= (int)r; j++) { const float hw = std::sqrt(std::max(0.0f, r * r - (float)(j * j))); ui::fillRect(cx - hw, cy + (float)j, 2 * hw, 1, c[st][0], c[st][1], c[st][2], 1); }
+    ui::fillRect(cx - 2, cy - 2, 2, 2, std::min(1.0f, c[st][0] + 0.35f), std::min(1.0f, c[st][1] + 0.35f), std::min(1.0f, c[st][2] + 0.35f), 1);
+}
 static void drawProperty(App& app) {
     app.view = ui::beginScreen(app.drawW, app.drawH);
     ui::drawImage(app.worldBase, 0, 0);
@@ -2167,6 +2199,15 @@ static void drawProperty(App& app) {
         else if (!app.sandboxChoice && !(app.switchMode && app.econ.sandbox)) app.font.drawCentered(cx, r.y + 43, std::string(line) + money(propPrice(app, i)), 12, 0.25f, 0.18f, 0.1f, ok ? 1.0f : 0.55f);
         if (app.switchMode && i == app.curProp) { ui::fillRect(r.x, r.y, r.w, 2, 0.1f, 0.4f, 0.1f, 0.9f); ui::fillRect(r.x, r.y + r.h - 2, r.w, 2, 0.1f, 0.4f, 0.1f, 0.9f); }
         if (app.hover == i) { ui::fillRect(r.x, r.y, r.w, r.h, 1, 1, 0.4f, 0.22f); }
+        // Status ball at the right end of the card and a pin on the globe: yellow available, grey insufficient funds, red already purchased (real screenshots; the sprites are not located, PLACEHOLDER discs)
+        const int st = (app.switchMode && (app.careerOwned >> i & 1)) ? 2 : ok ? 0 : 1;
+        drawStatusDot(r.x + r.w - 9, r.y + 14, 5.0f, st);
+        drawStatusDot((float)ui_screens2::worldmap::kSites[i].pinX, (float)ui_screens2::worldmap::kSites[i].pinY, 5.0f, st);
+    }
+    if (app.hover < 0 || app.hover > 15) {   // the legend box, bottom left
+        static const char* kLg[3] = {"Available", "Insufficient funds", "Already purchased"};
+        static const float lx[3] = {26, 124, 270};
+        for (int k = 0; k < 3; k++) { drawStatusDot(lx[k], 563, 5.0f, k == 0 ? 0 : k == 1 ? 1 : 2); app.font.draw(lx[k] + 12, 568, kLg[k], 11, 0.1f, 0.1f, 0.3f); }
     }
     // Reset World (before the game starts) or Save Game (in the course switch screen), and Load Game: strips cut from WorldButton.pcx (blue idle, yellow under the pointer).
     if (app.worldBtn.tex) {
@@ -4135,9 +4176,15 @@ static void loadStory(App& app) {
     std::error_code ec;
     for (const fs::directory_entry& de : fs::directory_iterator(app.gameDir + "/Themes/Standard", ec))
         if (de.path().extension() == ".txt") files.push_back(de.path().string());
+    for (const fs::directory_entry& de : fs::directory_iterator(app.gameDir + "/Themes/More_Stories", ec))
+        if (de.path().extension() == ".txt") files.push_back(de.path().string());
     if (files.empty()) return;
     std::sort(files.begin(), files.end());
-    std::ifstream in(files[app.seed % files.size()], std::ios::binary);
+    // The first pair always gets the opening story (DECODE_WORLD2 5.1); later pairs are picked by seed and count.
+    size_t pick = (size_t)((app.seed + (unsigned)app.storiesDone * 7u) % files.size());
+    if (app.storiesDone == 0) for (size_t i = 0; i < files.size(); i++) if (files[i].find("OpeningDay") != std::string::npos) pick = i;
+    app.storyLetter = std::filesystem::path(files[pick]).filename().string()[0];
+    std::ifstream in(files[pick], std::ios::binary);
     std::string line; bool first = true, newBlock = true;
     while (std::getline(in, line)) {
         while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) line.pop_back();
@@ -6205,7 +6252,7 @@ int main(int argc, char** argv) {
             }
         }
         if (app.pauseToggle) { app.pauseToggle = false; app.paused = !app.paused; if (app.paused) pauseStart = SDL_GetTicks() / 1000.0; else pausedTotal += SDL_GetTicks() / 1000.0 - pauseStart; }
-        if (!app.storyLines.empty() && !app.paused && SDL_GetTicks() / 1000.0 > app.storyNext) { app.storyPos++; app.storyNext = SDL_GetTicks() / 1000.0 + 7.0; }
+        if (!app.storyLines.empty() && !app.paused && SDL_GetTicks() / 1000.0 > app.storyNext) { app.storyPos++; app.storyNext = SDL_GetTicks() / 1000.0 + 7.0; if (app.storyPos >= app.storyLines.size() && golfersOnCourse(app) >= 2) storyHappyEnding(app); }
         if (app.edit) { int mx, my; SDL_GetMouseState(&mx, &my); app.hasHit = pickGround(app, mx, my, app.dpi, app.hitX, app.hitZ); }
         if (app.dirty) { rebuildBatches(app); refreshTrees(app); app.econ.updateUpkeep(app.terrain); app.dirty = false; reportCourse(app, false); setTitle(app, win); }
         if (app.econ.version != shownVersion) { shownVersion = app.econ.version; setTitle(app, win); }
