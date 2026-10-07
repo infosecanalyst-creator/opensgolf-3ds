@@ -18,6 +18,7 @@ pub mod holes;
 pub mod land;
 pub mod mixer;
 pub mod mood;
+pub mod objects;
 pub mod png;
 pub mod properties;
 pub mod rng;

@@ -46,6 +46,10 @@ pub struct Prop {
     pub golfer: Option<usize>,
     /// Index into App::employees.
     pub employee: Option<usize>,
+    /// Facing 0..3 of a 4-view object (added to the camera's quarter turn, as the exe does).
+    pub facing: i32,
+    /// Frames advance with the game tick (landmarks and building animations).
+    pub animated: bool,
     /// A pool golfer who is not on the course.
     pub hidden: bool,
     /// Scenery regenerated from the terrain after edits.
@@ -65,6 +69,8 @@ impl Default for Prop {
             frame: 0,
             heading: -1000.0,
             employee: None,
+            facing: 0,
+            animated: false,
             golfer: None,
             hidden: false,
             tree: false,
@@ -914,7 +920,9 @@ impl App {
         for b in self.buildings.clone() {
             self.add_building_prop(b);
         }
-        if self.terrain.clubhouse_x >= 0 {
+        if self.land.is_some() {
+            self.add_land_objects();
+        } else if self.terrain.clubhouse_x >= 0 {
             let (mut x, mut z) = self.terrain.tile_centre(self.terrain.clubhouse_x, self.terrain.clubhouse_y);
             if self.terrain.clubhouse_size > 0 && self.terrain.clubhouse_size % 2 == 0 {
                 x -= TILE_SIZE * 0.5;
@@ -1324,6 +1332,13 @@ impl App {
             p.frame = if looping { (fr as i32) % n } else { (fr as i32).min(n - 1) };
         }
         self.update_staff_props();
+        for p in self.props.iter_mut() {
+            if p.animated {
+                if let Some(b) = p.body {
+                    p.frame = (self.game_tick % self.sprites[b].s.frames_per_view.max(1) as u32) as i32;
+                }
+            }
+        }
     }
 
     /// Course Status Report (the original's F1): the hole's class and length, and how many paths are joined to the clubhouse.
@@ -1974,6 +1989,39 @@ impl App {
             p.z = wz;
             p.frame = f;
             p.heading = DY[k].atan2(DX[k]).to_degrees();
+        }
+    }
+}
+
+impl App {
+    /// The generated land's objects as the exe draws them: landmarks (sprite 0x168 + type, animated, facing one of four ways)
+    /// and buildings (layers by kind, theme and level; level 2 once the course has more than 10 holes), each standing in the
+    /// middle of its footprint.
+    fn add_land_objects(&mut self) {
+        let Some(land) = self.land.clone() else { return };
+        let theme = land.slot.record().theme;
+        let level = (self.holes.len() > 10) as u16;
+        for o in &land.objects {
+            let size = land::BUILDINGS.get(o.kind as usize).map(|b| b.1).unwrap_or(1);
+            let (cx, cz) = self.terrain.tile_centre(o.a, o.b);
+            let off = (size - 1) as f32 * TILE_SIZE * 0.5;
+            let (x, z) = (cx + off, cz + off);
+            let layers: Vec<(String, bool, bool)> = if o.kind == land::K_LANDMARK {
+                match sg_core::objects::LANDMARKS.get(o.sub as usize) {
+                    Some(f) => vec![(f.to_string(), false, true)],
+                    None => continue,
+                }
+            } else {
+                sg_core::objects::building_layers(o.kind, level, theme).iter().map(|l| (l.file.to_string(), l.flat, l.animated)).collect()
+            };
+            for (file, flat, animated) in layers {
+                let body = self.sprite_for(&format!("{file}.flc"), false, None);
+                if body.is_none() {
+                    continue;
+                }
+                let shadow = if flat { None } else { self.sprite_for(&format!("{file}Shadow.flc"), true, None) };
+                self.props.push(Prop { x, z, body, shadow, flat, facing: o.dir as i32, animated, ..Default::default() });
+            }
         }
     }
 }

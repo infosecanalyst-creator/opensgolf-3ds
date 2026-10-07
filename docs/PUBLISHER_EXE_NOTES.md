@@ -381,3 +381,16 @@ in `sg-core/src/staff.rs`.
   the neighbouring weeds. Only fairway and rough- or tree-class tiles take weeds. The weed sprite is the theme's
   (dandelion for Parkland and Links, oil slick for Desert, dry grass for Tropical); its sound is slot 34 (`effects/fly.wav`).
 - Sound slots are not load order: the loader passes each file's slot in a register. The full table was read from the machine code.
+
+## Drawing objects (sprite registration around 0x43e000 and the object drawing routine 0x463180)
+
+Confidence: high. Implemented in `sg-core/src/objects.rs`.
+- At start-up the exe registers every sprite under a number. Building sprites keep their numbers across themes and load a
+  different file per theme (so the Airstrip's numbers load the castle in Links, a casino in the Desert and a theme park in the
+  Tropics; the Swim Club's load tennis courts in Parkland, a spa in the Desert and stables in Links).
+- The drawing routine picks numbers by object kind and level, the level being 2 once the course has more than 10 holes:
+  clubhouse base 0x1f9 (0x1f8), body 0x1f6 (0x1f7), animation 0x1fa (0x1fb); hotel base 0x1e9, body 0x1e6; airstrip base
+  0x1dd, body 0x1da; pro shop base 0x1e3, body 0x1e0; swim club 0x1d7/0x1d4; cart garage 0x1c5/0x1c2; marina 0x1d1/0x1ce;
+  putting green 0x1f1/0x1f0; snack bar 0x1ed/0x1ec (level 2: 0x1ef/0x1ee). Some themes skip a base layer.
+- Landmarks draw as sprite 0x168 + their type (Sundial, Barn, civil war cannon, standing stones, ..., radio tower, oil pump),
+  animated by the game tick, facing (their direction + the camera's quarter turn) of four views.

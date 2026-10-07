@@ -113,7 +113,7 @@ impl App {
             let mut view = if views >= 8 {
                 (quarter * 2) % 8
             } else if views >= 4 {
-                quarter % views
+                (quarter + p.facing).rem_euclid(views)
             } else if views == 2 {
                 quarter % 2
             } else {
