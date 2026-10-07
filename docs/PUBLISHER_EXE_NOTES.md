@@ -240,3 +240,15 @@ Confidence: medium; the counters and thresholds are read directly, the terrain t
 - A third counter, tiredness, drives the bench events (0x1a, 0x1b); benches are not built in the game yet.
 - The game follows these rules with two placeholders: needs update every 4 seconds (160 ticks at the assumed 40 ticks a second),
   and a vendor or snack bar is "reached" by chance or distance instead of by walking there.
+
+## The game tick (machine code; the decompile has a gap here)
+
+Confidence: high for the tick, open for its length in seconds.
+- The decompile has no functions between 0x40f190 and 0x421b60: Ghidra did not turn about 74 KB of code into C, and the main
+  frame routine is in that stretch. The facts below come from the machine code.
+- One tick is one simulation step. At the end of the frame routine the game updates the golfers, then the staff, then a third
+  routine, then adds one to the tick counter at 0x834170. When bit 0x8 of the game state flags is set, the counter is also rounded
+  up to an even number, so updates gated on odd ticks are skipped (a fast mode). Right after, `(tick & 3) <= difficulty` gates a
+  further update.
+- The pacing routine waits in units of 10 ms (its argument times 1000 / 100). Which wait the main loop uses, and so how many ticks
+  run per second, is not settled yet: it sits in the undecompiled stretch. Until it is, the port keeps 40 ticks a second.
