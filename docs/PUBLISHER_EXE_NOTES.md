@@ -129,11 +129,15 @@ Confidence: high for the structure, medium for which in-game action fills each l
   (presumably the terrain table's cost byte) is still to be confirmed.
 - The Financial Report keeps one ledger record per year: 10 signed 16-bit values in units of 100, indexed by years since 2001
   (the report prints the year as 2001 + index). Values 0..7 are categories, value 8 is written by the report as their sum.
-  The report's label table starts with "Greens Fees". Writers found:
-  - column 0: green fees (the per-hole fee routine adds the fee here, and also to a running total in the golfer's record);
-  - column 1: removal refunds or costs (the object removal routine subtracts here);
-  - column 2: amenity visits (snack bar style income, +2 to +12) and a +2 income elsewhere;
-  - column 3: terrain construction (above);
-  - column 5: the fixed 25 unit removal charge;
-  - column 7: several incomes and expenses (prize money style additions, a subtraction in a monthly routine, wagers).
-  The labels of columns 1 to 7 are in the exe's data section, not in the decompile; read them from golf.exe next.
+  The report's labels, read from the exe's data: Greens Fees, Home Sites, Food/Drink, Build course, Facilities, Salaries,
+  Maint./Interest, Other, then the total. Writers found in the code:
+  - Greens Fees: the per-hole fee routine (it also adds the fee to a running total in the golfer's record);
+  - Home Sites: a lot routine (object type 5) subtracts a cost of (stored price / 50 + a tile value / 2) when a lot is cleared;
+  - Food/Drink: amenity visits (+2 to +12) and the Soda Vendor: when a vendor reaches a golfer it serves them, the course earns
+    2 units ($200), the golfer's thirst field is reset and the golfer gets mood event 0x19 (argument 20);
+  - Build course: terrain work as above;
+  - Salaries: the only writer found is one action in the employee dialog (the dialog that also offers Hire employee and Rename
+    Employee) that charges 25 units ($2,500) for the selected employee. No periodic wage deduction exists in the decompile, so the
+    staff appear to cost a one-off amount rather than a running wage; which dialog action this is still needs the UI;
+  - Maint./Interest: no direct writer found yet (it may be updated through a pointer);
+  - Other: prize style additions, a deduction in a monthly routine, wagers.

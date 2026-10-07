@@ -15,15 +15,19 @@ pub const RANGER: usize = 1;
 pub const GROUNDSKEEPER: usize = 2;
 pub const SODA_VENDOR: usize = 3;
 
-/// Columns of the exe's yearly money ledger (docs/PUBLISHER_EXE_NOTES.md, "Construction charges and the yearly ledger").
-/// Only the sources are known so far; the report's labels for columns 1..7 are still to be read from the exe.
+/// Columns of the exe's yearly money ledger, in the Financial Report's order (docs/PUBLISHER_EXE_NOTES.md).
 pub const LEDGER_GREEN_FEES: usize = 0;
-pub const LEDGER_REMOVALS: usize = 1;
-pub const LEDGER_AMENITIES: usize = 2;
-pub const LEDGER_CONSTRUCTION: usize = 3;
-pub const LEDGER_REMOVAL_CHARGE: usize = 5;
+pub const LEDGER_HOME_SITES: usize = 1;
+pub const LEDGER_FOOD_DRINK: usize = 2;
+pub const LEDGER_BUILD_COURSE: usize = 3;
+pub const LEDGER_FACILITIES: usize = 4;
+pub const LEDGER_SALARIES: usize = 5;
+pub const LEDGER_MAINTENANCE: usize = 6;
 pub const LEDGER_OTHER: usize = 7;
 pub const LEDGER_COLUMNS: usize = 8;
+/// The report's row labels (the exe's own wording; the money sign is the section sign).
+pub const LEDGER_LABELS: [&str; LEDGER_COLUMNS] =
+    ["Greens Fees", "Home Sites", "Food/Drink", "Build course", "Facilities", "Salaries", "Maint./Interest", "Other"];
 /// Months per year in the exe's calendar (March to October).
 pub const MONTHS_PER_YEAR: i32 = 8;
 
@@ -360,13 +364,13 @@ mod tests {
         let mut e = Economy::default();
         e.init(&t);
         e.hole_completed(4.0);
-        e.spend_to(LEDGER_CONSTRUCTION, 500.0);
+        e.spend_to(LEDGER_BUILD_COURSE, 500.0);
         e.day = 1 + MONTHS_PER_YEAR;
-        e.earn_to(LEDGER_AMENITIES, 200.0);
+        e.earn_to(LEDGER_FOOD_DRINK, 200.0);
         assert_eq!(e.ledger.len(), 2);
         assert_eq!(e.ledger[0][LEDGER_GREEN_FEES], 400.0);
-        assert_eq!(e.ledger[0][LEDGER_CONSTRUCTION], -500.0);
-        assert_eq!(e.ledger[1][LEDGER_AMENITIES], 200.0);
+        assert_eq!(e.ledger[0][LEDGER_BUILD_COURSE], -500.0);
+        assert_eq!(e.ledger[1][LEDGER_FOOD_DRINK], 200.0);
     }
 
     #[test]
