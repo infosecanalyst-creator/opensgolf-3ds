@@ -1,13 +1,16 @@
 # simgolf-native
 
-Clean-room native (Apple silicon friendly) port of Sid Meier's SimGolf (Firaxis, 2002).
-It reads the data files from your own legitimately owned copy of the game. No game assets
-or code from the original are included here, and nothing here removes or bypasses copy protection.
+Clean-room native port of Sid Meier's SimGolf (Firaxis, 2002), written in Rust, for macOS (Apple silicon and Intel), Windows and Linux.
+It reads the data files from your own legitimately owned copy of the game. No game assets or code from the original are included here,
+and nothing here removes or bypasses copy protection. The goal is a game that plays like the original in every respect; the rules are
+being decoded from the publisher-supplied golf.exe (facts only, written down in docs/PUBLISHER_EXE_NOTES.md, no code copied).
 
 ## Status
 
-Steps 1 to 3 of 4 done: asset loaders, custom data formats, and a first native terrain viewer.
-See docs/FORMATS.md (data formats) and docs/TERRAIN.md (terrain engine analysis).
+Playable first loop: title menu, property chooser, a generated course on that property's theme, golfers who play every hole and pay
+green fees, money and the board's debt warnings, course editing, buildings, staff, the course report, sound and the intro videos.
+Many numbers are still placeholders until they are read from the exe; every placeholder is marked as one in the code and docs.
+See docs/FORMATS.md (data formats), docs/TERRAIN.md (terrain engine) and docs/PLAYING.md (what plays today).
 
 | Format | Files on disc | Decoded OK |
 |--------|---------------|------------|
@@ -17,24 +20,35 @@ See docs/FORMATS.md (data formats) and docs/TERRAIN.md (terrain engine analysis)
 | FLC animation (8-bit) | 1893 | 1893 |
 | WAV (PCM) | 320 | 319 (1 is AIFF with a .wav name) |
 
-## Build
+## Build and run
 
-    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j
-    build/sgtool check /path/to/extracted/game      # decode everything, report failures
-    build/sgtool png   file.pcx out.png             # also tga, bmp, flc [frame]
-    build/sgtool sheet anim.flc sheet.png           # contact sheet of all frames
-    build/sgtool chr  Gack.chr gack                 # dump a character, writes gack_0..2.png portraits
-    build/sgtool top10 top10.sve | dta file.dta | story file.txt
+Install Rust (https://rustup.rs), then from this folder:
 
-## Terrain viewer (macOS or Linux)
+    cargo build --release
+    target/release/simgolf --game "/path/to/game/Program_Files_(ENGLISH)"
 
-    brew install sdl2 cmake
-    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j
-    build/sgview --game "/path/to/game/Program_Files_(ENGLISH)" --theme parkland
+On Windows the programs are `target\release\simgolf.exe` and so on. Nothing else needs installing on macOS or Windows. On Linux the
+sound needs the ALSA headers to build (`sudo apt install libasound2-dev`), or build without sound with
+`cargo build --release -p simgolf --no-default-features`.
+
+| Program | What it does |
+|---------|--------------|
+| `simgolf` | The game. |
+| `sgtool` | Inspect and convert the original assets: `check DIR` decodes everything and reports failures; `png file.pcx out.png` (also tga, bmp, flc [frame]); `sheet anim.flc sheet.png`; `chr Gack.chr gack`; `top10 top10.sve`; `dta file.dta`; `story file.txt`; `fixture DIR [font.ttf]` writes a stand-in game folder with placeholder art for tests. |
+| `sgplay` | Plays the Bink intro and closing videos through an installed ffmpeg (docs/SOUND_VIDEO.md). |
+
+Code layout: `crates/sg-core` holds the decoders and the game rules (no window, no audio device, unit tested, including golden values
+captured from the earlier C++ port); `crates/simgolf` is the game (miniquad for the window and OpenGL, cpal for sound, fontdue for the
+game's font); `crates/sgtool` and `crates/sgplay` are the tools. The earlier C++ port is kept in `legacy/cpp` for reference.
+
+`cargo test` runs the unit tests. CI builds and tests on macOS, Windows and Linux, and on Linux also starts the game on a virtual
+display against a placeholder data folder and saves a screenshot.
+
+## Playing
 
 Keys: arrows/WASD pan, Q/E rotate, +/- or mouse wheel zoom, 1-4 themes, R new demo course, P toggle scenery, F follow the golfer,
-F2 screenshot, M music, N mute, Esc quit. Tab toggles course editing (see docs/EDITING.md). `--png out.png --size 1280x800 [--time SECONDS]` renders one frame and exits.
-Videos: `brew install ffmpeg`, then `build/sgplay "/path/to/game/Program_Files_(ENGLISH)/Flics/SMSG_IntroFinal.bik"` (docs/SOUND_VIDEO.md).
+F2 screenshot, M music, N mute, H advisor, Esc menu. Tab toggles course editing (see docs/EDITING.md). `--png out.png --size 1280x800 [--time SECONDS]` renders one frame and exits.
+Videos: install ffmpeg (macOS: `brew install ffmpeg`), then `target/release/sgplay "/path/to/game/Program_Files_(ENGLISH)/Flics/SMSG_IntroFinal.bik"`.
 The course is a made-up demo. Terrain edges are blended per triangle exactly as the original
 `Terrain.dll` does it (see docs/TERRAIN.md); the type grouping that decides where borders appear is my
 own, because the original receives it from the protected executable.
@@ -51,7 +65,7 @@ Extract it with `unshield` (`brew install unshield`, then `unshield x data1.cab`
   exports such as `Terrain::tileAt`, `getElevation`, `render`), `jgl.dll` (2D layer on GDI),
   `sound.dll` (DirectSound/WinMM), `binkw32.dll` (video).
 * FLC quirk: Firaxis' writer left some chunk size fields uninitialised (0xCDCDCDCD), mostly on
-  palette chunks. The decoder recovers the real size (see src/flc.cpp).
+  palette chunks. The decoder recovers the real size (see crates/sg-core/src/flc.rs).
 * Sprite FLCs use magenta as the transparency key. Sprites have 8 camera angles per animation.
 * Character files (.glf/.chr/.pro): 1826-byte record (title, name, 25 dialogue slots) plus an
   optional embedded 140x420 PCX of three portraits (happy, neutral, angry).
@@ -63,10 +77,12 @@ Extract it with `unshield` (`brew install unshield`, then `unshield x data1.cab`
 2. Reverse the custom formats (done, a few fields unresolved, see docs/FORMATS.md)
 3. Analyse Terrain.dll to reproduce the tile model and rendering (viewer with edge blending, paths, walls and a water shimmer done; the original water animation and cliff rules are not decoded)
 3b. Sprite layer: FLC sprite format, views and anchors decoded, trees, a clubhouse and walking golfers in the viewer (see docs/SPRITES.md)
-4. Game logic: started with a one-golfer shot loop (walk, address, swing, ball flight, putt) in sg/shot.h, with placeholder numbers; see docs/GAMELOGIC.md
+4. Game logic: started with a one-golfer shot loop (walk, address, swing, ball flight, putt) in crates/sg-core/src/shot.rs, with placeholder numbers; see docs/GAMELOGIC.md
 5. Course editing: paint tile types, raise and lower terrain, save and load (done, basic, with path overlays; see docs/EDITING.md)
 6. Club money (placeholder numbers, see docs/EDITING.md), retaining walls, water shimmer and the desert water swap (done)
-7. Sound (mixer plus event sounds in sgview) and Bink video playback via ffmpeg (done, see docs/SOUND_VIDEO.md)
+7. Sound (mixer plus event sounds in the game) and Bink video playback via ffmpeg (done, see docs/SOUND_VIDEO.md)
 8. Notes from the original manual (rules only, it gives no amounts): docs/MANUAL_NOTES.md. Done from it: SGA hole classes, basic employees, golfer fun and attitude, the pathway-to-clubhouse rule
 9. Facts read from a publisher-supplied golf.exe (rules and numbers only, no code copied): docs/PUBLISHER_EXE_NOTES.md
-10. First playable loop: several holes, a stream of golfers paying fees, the board's debt warnings (docs/PLAYING.md). Next: menu and difficulties, buildings, ratings, memberships, tournaments, whole-game saves
+10. First playable loop: several holes, a stream of golfers paying fees, the board's debt warnings (docs/PLAYING.md)
+11. Port to Rust for macOS, Windows and Linux (done; the C++ port's courses, shots, ratings and exe maths are reproduced exactly, checked by golden tests)
+12. Next: difficulties, the real mood events and fee rules, building prices and wages from the exe, ratings, memberships, tournaments, whole-game saves

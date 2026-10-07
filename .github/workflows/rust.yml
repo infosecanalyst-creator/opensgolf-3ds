@@ -1,0 +1,49 @@
+name: rust
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: Linux packages
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev xvfb libgl1-mesa-dri fonts-dejavu-core
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --release --all-targets -- -D warnings
+      - name: Test
+        run: cargo test --release
+      - name: Build
+        run: cargo build --release
+      # The game against a placeholder data folder (no game data in CI): start it on a virtual display and save a frame.
+      - name: Headless smoke test
+        if: runner.os == 'Linux'
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+        run: |
+          target/release/sgtool fixture fixture /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
+          target/release/sgtool check fixture
+          xvfb-run -a target/release/simgolf --game fixture --mute --size 1024x700 --time 30 --png play.png
+          xvfb-run -a target/release/simgolf --game fixture --mute --size 800x600 --screen menu --png menu.png
+          test -s play.png && test -s menu.png
+      - uses: actions/upload-artifact@v4
+        with:
+          name: simgolf-${{ matrix.os }}
+          path: |
+            target/release/simgolf${{ runner.os == 'Windows' && '.exe' || '' }}
+            target/release/sgtool${{ runner.os == 'Windows' && '.exe' || '' }}
+            target/release/sgplay${{ runner.os == 'Windows' && '.exe' || '' }}
+            *.png
+          if-no-files-found: warn

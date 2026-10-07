@@ -4,7 +4,7 @@ The rules of SimGolf live in `golf.exe`, which is SafeDisc protected. This proje
 strip or read it, so rules cannot be copied from it. Game logic here is a clean-room reimplementation
 that is *driven by what the data files show*, and everything that is a guess is marked as a placeholder.
 
-## What exists: `sg/shot.h`, `src/shot.cpp`
+## What exists: `crates/sg-core/src/shot.rs`
 
 `ShotSim` plays one hole with one golfer along the demo course's route, as a state machine:
 walk to the ball, address, swing, ball flight, lie check, repeat; inside 230 units of the hole it putts,
@@ -28,7 +28,7 @@ Placeholders (explicitly not the original's behaviour):
 `Themes/Standard/progolfers.dta` documents itself in its comment header: name, body type, skin, hat, shirt,
 pants, then ten skill levels as hex digits 0..F: power hitter, long driver, accurate driver, accurate irons,
 accurate putter, draw shot, fade shot, high backspin shot, recovery skills, luck (see docs/FORMATS.md).
-`sgview --golfer "Nick Jacklaus"` plays the demo hole with that golfer's skills (name match is a case-insensitive substring).
+`simgolf --golfer "Nick Jacklaus"` plays the demo hole with that golfer's skills (name match is a case-insensitive substring).
 
 What the levels DO is a placeholder, since the real formulas are in golf.exe, which is not read:
 * carry = 900 x (0.8 + 0.2 x (power + long driver) / 15)
@@ -50,5 +50,5 @@ See the club money section of docs/EDITING.md: what public sources say about the
 
 ## Viewer
 
-`sgview` prints each event (`stroke 3: in the sand`). `F` makes the camera follow the golfer;
+`simgolf` prints each event (`stroke 3: in the sand`). `F` makes the camera follow the golfer;
 `--follow --time 5` renders a still of that moment.

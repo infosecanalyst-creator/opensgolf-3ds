@@ -1,0 +1,15 @@
+[package]
+name = "sgplay"
+description = "SimGolf native port: plays the game's Bink videos through an installed ffmpeg"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+sg-core = { path = "../sg-core" }
+miniquad = "0.4"
+cpal = { version = "0.15", optional = true }
+
+[features]
+default = ["audio"]
+audio = ["dep:cpal"]

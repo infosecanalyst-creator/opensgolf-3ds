@@ -1,0 +1,9 @@
+[package]
+name = "sgtool"
+description = "SimGolf native port: inspect and convert the original game's assets"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+sg-core = { path = "../sg-core" }

@@ -1,8 +1,8 @@
 # Playing the club
 
-Run `./sgview --game "../game/Program_Files_(ENGLISH)"`. It opens on the title menu, drawn from the disc's own Interface art with the game's font: Start New Game (Standard) or Sandbox Mode opens the property chooser, and picking a property starts a course on that property's theme. A property is paid for out of the §100,000 starting funds (sandbox: unlimited). Esc goes back, and from the course returns to the menu. Continue Saved Game loads `course.sgc` if it exists.
+Run `simgolf --game "../game/Program_Files_(ENGLISH)"`. It opens on the title menu, drawn from the disc's own Interface art with the game's font: Start New Game (Standard) or Sandbox Mode opens the property chooser, and picking a property starts a course on that property's theme. A property is paid for out of the §100,000 starting funds (sandbox: unlimited). Esc goes back, and from the course returns to the menu. Continue Saved Game loads `course.sgc` if it exists.
 
-For scripted runs (any of `--png`, `--course`, `--edit`, `--golfer`, `--sandbox`, `--follow`) the viewer skips the menu and opens on the demo course; `--screen menu|property|play` forces a screen. Add `--theme Desert` for another look there.
+For scripted runs (any of `--png`, `--course`, `--edit`, `--golfer`, `--sandbox`, `--follow`) the game skips the menu and opens on the demo course; `--screen menu|property|play` forces a screen. Add `--theme Desert` for another look there.
 
 - **Holes** are found from the terrain: each cluster of Tee tiles is paired with the nearest unused cluster of Putting Green tiles (at least 2 tiles each, at least 250 units apart), tees taken top row first. Paint a tee (G twice, or the Paint tool) and a green to add a hole. The console prints "N holes" after every edit.
 - **Golfers** arrive over time, play every hole in order, pay a green fee at the end of each hole and leave. The first golfer comes at once, then one about every 25 seconds (slower if golfers are unhappy), up to two per hole and eight at a time. Each has different skills and one of four looks.

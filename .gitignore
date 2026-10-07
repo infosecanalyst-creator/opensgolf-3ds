@@ -14,3 +14,4 @@ game/
 *.TTF
 spec/
 .DS_Store
+target/

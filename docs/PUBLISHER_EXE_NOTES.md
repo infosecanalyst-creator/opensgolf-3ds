@@ -41,9 +41,9 @@ Confidence: medium. The structure is read from the code; the meaning of some inp
 - Money is stored in units of 100 (display multiplies by 100).
 - Fee per hole, in units: the golfer's mood value, doubled when one global setting equals 2, plus 2 for each of two hole flags (probably Top 100 and Top 18), plus an airstrip bonus, plus, when the hole type value is above 3, 2 and 3 more unless the value is exactly 4.
 - Initial mood: 3 plus a random 0 to 2, or 4 on difficulty 0.
-- After each hole mood falls by (hole field + 6 + holes played) * (mood - 1 + difficulty) * (difficulty + 1) / ((course factor * 5 + 15) * 8), integer division. The hole field and course factor are not decoded; the viewer uses 0.
-- Mood smoothing uses old * 7 / 8 + new (not used by the viewer yet).
-- Not yet decoded: the events that raise mood, the club fun and skill ratings. The viewer's +1 for par or better is a placeholder.
+- After each hole mood falls by (hole field + 6 + holes played) * (mood - 1 + difficulty) * (difficulty + 1) / ((course factor * 5 + 15) * 8), integer division. The hole field and course factor are not decoded; the game uses 0.
+- Mood smoothing uses old * 7 / 8 + new (not used by the game yet).
+- Not yet decoded: the events that raise mood, the club fun and skill ratings. The game's +1 for par or better is a placeholder.
 
 ## Golfer mood events (decompile of the golfer event routine, around line 71400 of golf_decomp.c)
 
@@ -64,7 +64,7 @@ Confidence: structure read from the code; some counters are not decoded.
 - For each hole the exe keeps average strokes per golfer skill class, starting from a prior of 8 samples at par. A skill counts as demanded when golfers lacking it average 50 hundredths of a stroke or more above full-skill golfers (25 on the easiest difficulty); 50 or more also sets a "strong" flag. The three classes are Length, Accuracy and Imagination.
 - Club skill rating = sum over holes of the three differences, kept in hundredths and printed with two decimals. Length, Accuracy and Imagination sub-ratings are the same sums per skill.
 - Hole fun = 100 * (sum of mood changes at the hole) / (half of an undecoded counter + 4 + plays). Club fun rating = sum of hole fun, printed as a whole number.
-- The viewer implements these; mood changes on a hole are placeholders (+1 par or better, -1 triple bogey or worse).
+- The game implements these; mood changes on a hole are placeholders (+1 par or better, -1 triple bogey or worse).
 
 ## Terrain table (static table at 0x4c1a40 in the publisher exe, 0x30 bytes per entry)
 
@@ -79,7 +79,7 @@ Course ranks named in the exe text: Municipal, Golf Club, Country Club, Champion
 Confidence: low to medium; only the outline is read.
 - The exe names 14 clubs by index 0..13: Putter, Sand Wedge, Lob Wedge, 9 Iron down to 2 Iron, 4 Wood, 3 Wood, Driver (names table around 0x4c51b0).
 - The golfer's club index is chosen in the shot planner (around line 15290 of golf_decomp.c) from the distance to the target after scoring candidate landing spots; the planner weighs the terrain value under each spot (the second byte per entry of the terrain table) times distance, with a 5 added when two risky spots are found. The club is then derived as (max range - needed range) * 60 / (3 * max range), clamped to 1..11, with 5 forced and 13 (putter) used on a green.
-- Not decoded: per-club distances and spread, skill scaling. The viewer's shot model stays a placeholder.
+- Not decoded: per-club distances and spread, skill scaling. The game's shot model stays a placeholder.
 
 ## Maximum range and ball flight (golf_decomp.c, functions near 0x422530 and 0x422bxx)
 
@@ -96,14 +96,14 @@ Ball flight (per tick, fixed point, one tile = 1024 units): position moves along
 
 ## Launch speed and aim error (follow-up)
 
-- The club choice does not set distance: the golfer asks for a range (distance to the target in range units, capped at the maximum range) and the exe solves the launch speed by bisection so the carry is 4/5 of that range; the club is only a display. The solver uses a coarse two-tick step version of the flight. include/sg/flight.h reproduces this; its output carries about 96 percent of the 4/5 target.
+- The club choice does not set distance: the golfer asks for a range (distance to the target in range units, capped at the maximum range) and the exe solves the launch speed by bisection so the carry is 4/5 of that range; the club is only a display. The solver uses a coarse two-tick step version of the flight. crates/sg-core/src/flight.rs reproduces this; its output carries about 96 percent of the 4/5 target.
 - Vertical launch speed = (est / 8) + 512 where est = u * 33 - u * u / 48 + 64 and u = range * 20 / 25.
 - Aim error: a random hook or slice amount is drawn per shot (a table-free random value: 50-wide roll, halved under 20, minus 10 under 40, doubled less 50 above) and scaled by skill bytes; it bends the heading every tick. Full scaling by skill is not decoded.
-- Scale: 25 range units equal one tile. How many yards a range unit is, and the tick length in seconds, are unknown; the viewer uses placeholders (kTicksPerSecond = 40).
+- Scale: 25 range units equal one tile. How many yards a range unit is, and the tick length in seconds, are unknown; the game uses placeholders (TICKS_PER_SECOND = 40).
 
 ## Calendar (date stamp routine in the exe, near golf_decomp.c line 8081)
 
-Confidence: medium. The stamp shows month = (ticks and 0x1fff) / 1024 + 3, so months 3 to 10, and day = (ticks and 0x3ff) * 30 / 1024 + 1. One month is 1024 ticks, one day about 34 ticks, and the exe's time wraps every eight months (March to October). The viewer now uses an eight-month year; the start year is a placeholder.
+Confidence: medium. The stamp shows month = (ticks and 0x1fff) / 1024 + 3, so months 3 to 10, and day = (ticks and 0x3ff) * 30 / 1024 + 1. One month is 1024 ticks, one day about 34 ticks, and the exe's time wraps every eight months (March to October). The game now uses an eight-month year; the start year is a placeholder.
 
 ## Property prices and amenity income (golf_decomp.c, near 0x46f1d0 and the golfer visit code)
 
@@ -114,5 +114,5 @@ Confidence: prices high (table read directly), amenity income medium.
 
 ## Where money moves (search result, negative findings included)
 
-Confidence: low to medium. Direct writes to the cash variable (0x571fd4) in the decompile are: the starting value 1000 units, golfer fees and amenity payments (additions), property purchase (price table), the 25 unit removal charge, a building removal cost in a second routine, golfer wagers, and a few small additions. No direct monthly wage or upkeep deduction was found, and the construction cost deduction was not found either. Cash may also be changed through another alias or a ledger of per-month entries (100-entry table with income and expense columns around 0x584212 to 0x58421e), so the absence is not proof that wages do not exist. Staff wages and upkeep in the viewer therefore stay placeholders.
+Confidence: low to medium. Direct writes to the cash variable (0x571fd4) in the decompile are: the starting value 1000 units, golfer fees and amenity payments (additions), property purchase (price table), the 25 unit removal charge, a building removal cost in a second routine, golfer wagers, and a few small additions. No direct monthly wage or upkeep deduction was found, and the construction cost deduction was not found either. Cash may also be changed through another alias or a ledger of per-month entries (100-entry table with income and expense columns around 0x584212 to 0x58421e), so the absence is not proof that wages do not exist. Staff wages and upkeep in the game therefore stay placeholders.
 - The cash reserve display and the finance graph choose their scale from cash thresholds 2500, 5000, 10000, 25000, 50000 and 100000 units (graph steps 2, 4, 10, 20, 40, 80).

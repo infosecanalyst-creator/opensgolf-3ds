@@ -53,7 +53,7 @@ Helper for reproducing the analysis: `tools/re/x86dis.py`.
 
 Note: the meaning of the values behind `getElevation` is not settled. A separate routine writes
 heights to vertices through a similar looking index table, so these may be vertex indices rather
-than heights. Elevation scale in world units is therefore not recovered; the viewer uses 12 units
+than heights. Elevation scale in world units is therefore not recovered; the game uses 12 units
 per level as a placeholder (`kHeightStep`).
 
 ## Tile types (confirmed from the constructor)
@@ -140,7 +140,7 @@ function that copies `count` ints into a global at 0x10106b48). That table lives
 executable, which this project does not read, so `typeClass()` in `terrain.cpp` is my own grouping
 (greens, fairways, rough, deep rough and brush, sand, water, rock, woods, building).
 
-## What the sgview viewer does and does not reproduce
+## What the game's renderer does and does not reproduce
 
 Reproduces: orthographic camera and angles, world scale, 3x3 vertex patches with 0/0.5/1 UVs, 8 triangles
 per tile with per-triangle texture variation exactly as above, random sets, tee/pot bunker/water depth

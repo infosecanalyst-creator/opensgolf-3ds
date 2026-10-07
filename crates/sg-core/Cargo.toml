@@ -1,0 +1,9 @@
+[package]
+name = "sg-core"
+description = "SimGolf native port: asset decoders, data formats and game rules (no windowing, no audio device)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+miniz_oxide = "0.8"
