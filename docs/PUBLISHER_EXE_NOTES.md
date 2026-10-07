@@ -225,3 +225,18 @@ Confidence: high for the table and the plays listed; the ball and swing sounds' 
 - The ball and swing sounds (`Golf sfx/*`, slots 188 and up) are never passed as constants; they are chosen by computed slot
   numbers in code not yet traced. The game keeps its file-name based choice for those.
 - Change made: the game no longer plays applause and the cash register on every holed ball.
+
+## Golfer needs (golfer behaviour routine)
+
+Confidence: medium; the counters and thresholds are read directly, the terrain test and the tick length are not decoded.
+- Each golfer has a hunger counter and a thirst counter. Every 160 ticks (120 in one golfer state) one of them grows by one:
+  hunger when the golfer stands near terrain of three particular kinds or, in the Tropical theme, half the time (and then only for
+  some golfer types, on a coin flip); thirst otherwise.
+- Once a counter is above 15, the golfer raises the hungry event (0xf) or the thirsty event (0xe) on every fourth update
+  (special golfers of one kind are held at 16 instead).
+- A snack bar visit (building type 7) raises the snack event (0x12, +1 when hunger was above 7) and resets both counters.
+- A Soda Vendor who reaches a golfer serves them: the club earns 2 units under Food/Drink, thirst resets, and the drink event
+  (0x19) follows. A vendor will not bother a golfer whose hunger and thirst are both 16 or less and whose tiredness is under 161.
+- A third counter, tiredness, drives the bench events (0x1a, 0x1b); benches are not built in the game yet.
+- The game follows these rules with two placeholders: needs update every 4 seconds (160 ticks at the assumed 40 ticks a second),
+  and a vendor or snack bar is "reached" by chance or distance instead of by walking there.

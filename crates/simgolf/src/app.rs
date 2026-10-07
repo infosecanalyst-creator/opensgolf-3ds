@@ -81,6 +81,11 @@ pub struct Golfer {
     pub hole_start: f64,
     /// The golfer's mood value, which sets the green fee (the exe keeps it per golfer as a small integer).
     pub mood: i32,
+    /// Hunger and thirst counters, as the exe keeps them per golfer (docs/PUBLISHER_EXE_NOTES.md, "Golfer needs").
+    pub hunger: i32,
+    pub thirst: i32,
+    /// Seconds until the next needs update.
+    pub needs_clock: f64,
 }
 
 /// Per hole statistics for the course report (reset when the course changes shape).
@@ -1024,6 +1029,15 @@ impl App {
                 let g = &mut self.golfers[gi];
                 g.sim.pace_scale = if ranger { 1.2 } else { 1.0 }; // a Ranger speeds play up (PLACEHOLDER; the original works near one tee)
                 g.sim.step(&self.terrain, dt);
+                g.needs_clock -= dt as f64;
+            }
+            if self.golfers[gi].needs_clock <= 0.0 {
+                // The exe updates a golfer's needs every 160 ticks (at 40 ticks a second, a PLACEHOLDER rate, every 4 seconds).
+                self.golfers[gi].needs_clock += 160.0 / sg_core::flight::TICKS_PER_SECOND as f64;
+                self.needs_tick(gi);
+                if !self.golfers[gi].active {
+                    continue;
+                }
             }
             let (ev, stroke) = (self.golfers[gi].sim.event, self.golfers[gi].sim.stroke);
             if ev != self.golfers[gi].last_event || stroke != self.golfers[gi].last_stroke {
@@ -1074,10 +1088,47 @@ impl App {
     /// and a golfer pushed below -10 leaves the course.
     pub fn mood_event(&mut self, gi: usize, event: u32, arg: i32) {
         let d = mood::delta(event, self.difficulty, arg, false);
-        let hole = self.golfers[gi].hole;
         if self.hole_stats.len() != self.holes.len() {
             self.hole_stats = vec![HoleStat::default(); self.holes.len()];
         }
+        self.mood_delta(gi, d);
+    }
+
+    /// One needs update, following the exe: one counter grows by one (hunger near some terrain kinds or, in the Tropical theme, half
+    /// the time; thirst otherwise), and once a counter is above 15 the golfer complains every fourth update. A hired Soda Vendor
+    /// serves a thirsty golfer: the club earns 2 units under Food/Drink and the golfer's thirst resets. The terrain test and the
+    /// chance that a vendor reaches a golfer in time are PLACEHOLDERS (the exe sends the vendor walking to the golfer).
+    fn needs_tick(&mut self, gi: usize) {
+        let seed = (self.sim_time * 1000.0) as u32 ^ (gi as u32).wrapping_mul(2654435761);
+        let mut rng = Rng::new(seed | 1);
+        let hungry_side = self.theme == 3 && rng.range(2) == 0 || rng.range(4) == 0;
+        let (event, value) = {
+            let g = &mut self.golfers[gi];
+            if hungry_side {
+                if rng.range(2) == 0 {
+                    g.hunger += 1;
+                }
+                (mood::ev::HUNGRY, g.hunger)
+            } else {
+                g.thirst += 1;
+                (mood::ev::THIRSTY, g.thirst)
+            }
+        };
+        if value > 15 && value % 4 == 0 {
+            self.mood_event(gi, event, 0x14);
+        }
+        let vendors = self.econ.staff[economy::SODA_VENDOR];
+        if vendors > 0 && self.golfers[gi].active && self.golfers[gi].thirst > 16 && rng.range(4) < vendors.min(4) {
+            let counter_ok = self.golfers[gi].thirst > 7;
+            self.golfers[gi].thirst = 0;
+            self.econ.earn_to(economy::LEDGER_FOOD_DRINK, 2.0 * Economy::UNIT);
+            let d = mood::delta(mood::ev::DRINK, self.difficulty, 0x14, counter_ok);
+            self.mood_delta(gi, d);
+        }
+    }
+
+    fn mood_delta(&mut self, gi: usize, d: i32) {
+        let hole = self.golfers[gi].hole;
         if let Some(hs) = self.hole_stats.get_mut(hole) {
             hs.mood_sum += d;
         }
@@ -1108,18 +1159,22 @@ impl App {
         }
         let fee_units = mood.max(0) + bonus;
         self.econ.hole_finished(stroke, par, fee_units as f64);
-        // PLACEHOLDER rule: a golfer who holes out within 6 tiles of a paying amenity uses it once (the exe's visit rules are not decoded).
-        if let Some(h) = self.holes.get(hole) {
+        // A hungry or thirsty golfer who holes out within 6 tiles of a snack bar visits it (PLACEHOLDER reach rule; the exe walks the
+        // golfer there). As in the exe, the visit resets hunger and thirst and raises the snack event, worth +1 when hunger was above 7.
+        let needy = self.golfers[gi].hunger > 7 || self.golfers[gi].thirst > 7;
+        if let (Some(h), true) = (self.holes.get(hole), needy) {
             let (gx, gz) = (h.green_x, h.green_z);
-            for b in &self.buildings {
-                if BUILD[b.def].visit <= 0 {
-                    continue;
-                }
+            let visit = self.buildings.iter().find_map(|b| {
                 let (bx, bz) = self.terrain.tile_centre(b.tx, b.ty);
-                if (bx - gx).hypot(bz - gz) < 6.0 * TILE_SIZE {
-                    self.econ.earn_to(economy::LEDGER_FOOD_DRINK, BUILD[b.def].visit as f64 * Economy::UNIT);
-                    break;
-                }
+                (BUILD[b.def].visit > 0 && (bx - gx).hypot(bz - gz) < 6.0 * TILE_SIZE).then_some(BUILD[b.def].visit)
+            });
+            if let Some(v) = visit {
+                self.econ.earn_to(economy::LEDGER_FOOD_DRINK, v as f64 * Economy::UNIT);
+                let counter_ok = self.golfers[gi].hunger > 7;
+                self.golfers[gi].hunger = 0;
+                self.golfers[gi].thirst = 0;
+                let d = mood::delta(mood::ev::SNACK, self.difficulty, 0x14, counter_ok);
+                self.mood_delta(gi, d);
             }
         }
         // After the hole the exe lowers mood by (hole field + 6 + holes played) * (mood - 1 + difficulty) * (difficulty + 1) /
