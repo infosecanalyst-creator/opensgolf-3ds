@@ -1077,7 +1077,7 @@ impl App {
                 }
                 let (bx, bz) = self.terrain.tile_centre(b.tx, b.ty);
                 if (bx - gx).hypot(bz - gz) < 6.0 * TILE_SIZE {
-                    self.econ.earn(BUILD[b.def].visit as f64 * Economy::UNIT);
+                    self.econ.earn_to(economy::LEDGER_AMENITIES, BUILD[b.def].visit as f64 * Economy::UNIT);
                     break;
                 }
             }
@@ -1300,7 +1300,7 @@ impl App {
                 // tees use this byte as their look
                 let vb = if pe.ty == 0 { ((x * 7 + y * 13) as u32 % 5) as i32 } else { pe.vbyte };
                 if self.terrain.inside(x, y) && self.terrain.ty[self.terrain.tile_index(x, y)] as i32 != pe.ty {
-                    self.econ.spend(Economy::terrain_cost_units(pe.ty) as f64 * Economy::UNIT);
+                    self.econ.spend_to(economy::LEDGER_CONSTRUCTION, Economy::terrain_cost_units(pe.ty) as f64 * Economy::UNIT);
                 }
                 self.terrain.paint(x, y, pe.ty, vb);
                 if matches!(pe.ty, 0 | 1 | 17 | 22) {
@@ -1335,7 +1335,7 @@ impl App {
                 }
                 let i = self.terrain.tile_index(x, y);
                 if !remove && self.terrain.path_kind[i] == 0 {
-                    self.econ.spend(Economy::PATH_TILE_COST);
+                    self.econ.spend_to(economy::LEDGER_CONSTRUCTION, Economy::PATH_TILE_COST);
                 }
                 self.terrain.path_kind[i] = if remove { 0 } else { self.path_kind as u8 };
             }
@@ -1352,7 +1352,7 @@ impl App {
         }
         if let Some(i) = self.buildings.iter().position(|b| b.tx == tx && b.ty == ty) {
             if remove {
-                self.econ.earn(BUILD[self.buildings[i].def].cost as f64 * Economy::UNIT);
+                self.econ.earn_to(economy::LEDGER_REMOVALS, BUILD[self.buildings[i].def].cost as f64 * Economy::UNIT);
                 self.buildings.remove(i);
                 self.props.retain(|p| !p.building);
                 for b in self.buildings.clone() {
@@ -1386,7 +1386,7 @@ impl App {
         if !self.econ.sandbox && self.econ.cash < cost {
             return self.show_toast("Not enough money");
         }
-        self.econ.spend(cost);
+        self.econ.spend_to(economy::LEDGER_CONSTRUCTION, cost);
         let b = Placed { def: self.build_idx, tx, ty };
         self.buildings.push(b);
         self.add_building_prop(b);

@@ -116,3 +116,24 @@ Confidence: prices high (table read directly), amenity income medium.
 
 Confidence: low to medium. Direct writes to the cash variable (0x571fd4) in the decompile are: the starting value 1000 units, golfer fees and amenity payments (additions), property purchase (price table), the 25 unit removal charge, a building removal cost in a second routine, golfer wagers, and a few small additions. No direct monthly wage or upkeep deduction was found, and the construction cost deduction was not found either. Cash may also be changed through another alias or a ledger of per-month entries (100-entry table with income and expense columns around 0x584212 to 0x58421e), so the absence is not proof that wages do not exist. Staff wages and upkeep in the game therefore stay placeholders.
 - The cash reserve display and the finance graph choose their scale from cash thresholds 2500, 5000, 10000, 25000, 50000 and 100000 units (graph steps 2, 4, 10, 20, 40, 80).
+
+## Construction charges and the yearly ledger (golf_decomp.c, read for facts only)
+
+Confidence: high for the structure, medium for which in-game action fills each ledger column.
+
+- The map is at most 50 x 50 tiles: every per-tile array is 2500 entries with a row stride of 50.
+- Terrain work is queued, not paid at once. A queuing routine stores, per tile, the target type and a signed cost byte (units of
+  100). When the work on that tile is carried out, the cost byte is added to cash (it is negative for a charge), shown as a floating
+  money number at the tile, and added to ledger column 3; the pending entry is then cleared. So money leaves as the crew works.
+  The callers of the queuing routine are reached through a table the decompile does not resolve; where the cost byte comes from
+  (presumably the terrain table's cost byte) is still to be confirmed.
+- The Financial Report keeps one ledger record per year: 10 signed 16-bit values in units of 100, indexed by years since 2001
+  (the report prints the year as 2001 + index). Values 0..7 are categories, value 8 is written by the report as their sum.
+  The report's label table starts with "Greens Fees". Writers found:
+  - column 0: green fees (the per-hole fee routine adds the fee here, and also to a running total in the golfer's record);
+  - column 1: removal refunds or costs (the object removal routine subtracts here);
+  - column 2: amenity visits (snack bar style income, +2 to +12) and a +2 income elsewhere;
+  - column 3: terrain construction (above);
+  - column 5: the fixed 25 unit removal charge;
+  - column 7: several incomes and expenses (prize money style additions, a subtraction in a monthly routine, wagers).
+  The labels of columns 1 to 7 are in the exe's data section, not in the decompile; read them from golf.exe next.

@@ -15,6 +15,18 @@ pub const RANGER: usize = 1;
 pub const GROUNDSKEEPER: usize = 2;
 pub const SODA_VENDOR: usize = 3;
 
+/// Columns of the exe's yearly money ledger (docs/PUBLISHER_EXE_NOTES.md, "Construction charges and the yearly ledger").
+/// Only the sources are known so far; the report's labels for columns 1..7 are still to be read from the exe.
+pub const LEDGER_GREEN_FEES: usize = 0;
+pub const LEDGER_REMOVALS: usize = 1;
+pub const LEDGER_AMENITIES: usize = 2;
+pub const LEDGER_CONSTRUCTION: usize = 3;
+pub const LEDGER_REMOVAL_CHARGE: usize = 5;
+pub const LEDGER_OTHER: usize = 7;
+pub const LEDGER_COLUMNS: usize = 8;
+/// Months per year in the exe's calendar (March to October).
+pub const MONTHS_PER_YEAR: i32 = 8;
+
 #[derive(Clone, Debug)]
 pub struct Economy {
     /// Starting amount: 1000 stored units of $100 in the publisher's golf.exe.
@@ -47,6 +59,8 @@ pub struct Economy {
     pub fun: f64,
     /// How the golfer who just finished felt, 0..100.
     pub last_mood: f64,
+    /// One record per year since the start (index 0 is 2001 in the exe's report), in dollars per ledger column.
+    pub ledger: Vec<[f64; LEDGER_COLUMNS]>,
     clock: f64,
 }
 
@@ -72,6 +86,7 @@ impl Default for Economy {
             wages_paid: 0.0,
             fun: 50.0,
             last_mood: 50.0,
+            ledger: Vec::new(),
             clock: 0.0,
         }
     }
@@ -169,6 +184,7 @@ impl Economy {
         self.income = 0.0;
         self.upkeep_paid = 0.0;
         self.clock = 0.0;
+        self.ledger.clear();
         self.update_upkeep(t);
         self.version = self.version.wrapping_add(1);
     }
@@ -186,6 +202,7 @@ impl Economy {
         let fee = fee_units * Self::UNIT;
         self.cash += fee;
         self.income += fee;
+        self.book(LEDGER_GREEN_FEES, fee);
         self.holes_played += 1;
         self.version = self.version.wrapping_add(1);
     }
@@ -230,6 +247,35 @@ impl Economy {
         mood = mood.min(100.0);
         self.last_mood = mood;
         self.fun_event(0.12 * (mood - self.fun));
+    }
+
+    /// Year index of the current game day (one game day is one month here).
+    pub fn year_index(&self) -> usize {
+        ((self.day - 1).max(0) / MONTHS_PER_YEAR) as usize
+    }
+
+    /// Adds a signed amount (dollars) to this year's ledger column.
+    pub fn book(&mut self, column: usize, amount: f64) {
+        let y = self.year_index();
+        if self.ledger.len() <= y {
+            self.ledger.resize(y + 1, [0.0; LEDGER_COLUMNS]);
+        }
+        self.ledger[y][column] += amount;
+    }
+
+    /// Income booked to a ledger column.
+    pub fn earn_to(&mut self, column: usize, amount: f64) {
+        self.earn(amount);
+        self.book(column, amount);
+    }
+
+    /// Expense booked to a ledger column (nothing in sandbox mode).
+    pub fn spend_to(&mut self, column: usize, amount: f64) {
+        if self.sandbox {
+            return;
+        }
+        self.spend(amount);
+        self.book(column, -amount);
     }
 
     pub fn earn(&mut self, amount: f64) {
@@ -306,6 +352,21 @@ mod tests {
         e.step(e.day_length * 10.0);
         assert_eq!(e.cash, e.start_cash);
         assert_eq!(e.day, 11);
+    }
+
+    #[test]
+    fn ledger_books_by_year() {
+        let t = Terrain::demo_course(10, 10, 1);
+        let mut e = Economy::default();
+        e.init(&t);
+        e.hole_completed(4.0);
+        e.spend_to(LEDGER_CONSTRUCTION, 500.0);
+        e.day = 1 + MONTHS_PER_YEAR;
+        e.earn_to(LEDGER_AMENITIES, 200.0);
+        assert_eq!(e.ledger.len(), 2);
+        assert_eq!(e.ledger[0][LEDGER_GREEN_FEES], 400.0);
+        assert_eq!(e.ledger[0][LEDGER_CONSTRUCTION], -500.0);
+        assert_eq!(e.ledger[1][LEDGER_AMENITIES], 200.0);
     }
 
     #[test]
