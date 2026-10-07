@@ -38,7 +38,7 @@ pub struct Economy {
     pub cash: f64,
     /// Sandbox mode: unlimited funds, nothing is charged and the game cannot end.
     pub sandbox: bool,
-    /// Real seconds per game day (placeholder).
+    /// Real seconds per game day, which the game counts as one month: 1024 ticks of 87 ms (about 89 s).
     pub day_length: f64,
     pub day: i32,
     pub holes_played: i32,
@@ -74,7 +74,7 @@ impl Default for Economy {
             start_cash: 100000.0,
             cash: 100000.0,
             sandbox: false,
-            day_length: 120.0,
+            day_length: crate::flight::TICKS_PER_MONTH as f64 * crate::flight::TICK_MS as f64 / 1000.0,
             day: 1,
             holes_played: 0,
             days_in_red: 0,
@@ -353,7 +353,7 @@ mod tests {
         let mut e = Economy { sandbox: true, ..Default::default() };
         e.init(&t);
         e.hire(CLUB_PRO);
-        e.step(e.day_length * 10.0);
+        e.step(e.day_length * 10.0 + 0.001);
         assert_eq!(e.cash, e.start_cash);
         assert_eq!(e.day, 11);
     }

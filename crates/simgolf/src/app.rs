@@ -1032,7 +1032,7 @@ impl App {
                 g.needs_clock -= dt as f64;
             }
             if self.golfers[gi].needs_clock <= 0.0 {
-                // The exe updates a golfer's needs every 160 ticks (at 40 ticks a second, a PLACEHOLDER rate, every 4 seconds).
+                // The exe updates a golfer's needs every 160 ticks (14 seconds at 87 ms a tick).
                 self.golfers[gi].needs_clock += 160.0 / sg_core::flight::TICKS_PER_SECOND as f64;
                 self.needs_tick(gi);
                 if !self.golfers[gi].active {

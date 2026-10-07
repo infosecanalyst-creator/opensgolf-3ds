@@ -4,8 +4,13 @@
 
 /// From the exe: target distance in world units = range * 1024 / 25.
 pub const RANGE_UNITS_PER_TILE: i32 = 25;
-/// PLACEHOLDER: the exe's tick length is not decoded.
-pub const TICKS_PER_SECOND: f32 = 40.0;
+/// One game tick in milliseconds at normal speed. The exe's main loop waits until (175 + 75 if a game-state flag is set) / 2 ms
+/// have passed since the frame started, and one tick is one frame: 87 ms (125 ms with the flag). See docs/PUBLISHER_EXE_NOTES.md.
+pub const TICK_MS: f32 = 87.0;
+/// Ticks per real second at normal speed (about 11.5).
+pub const TICKS_PER_SECOND: f32 = 1000.0 / TICK_MS;
+/// Ticks in one game month (the exe's date stamp counts months in blocks of 1024 ticks).
+pub const TICKS_PER_MONTH: i32 = 1024;
 
 /// Coarse range estimate the exe uses while searching for the launch speed (its routine at 0x4223f0): steps stand for two ticks.
 pub fn coarse_distance(mut speed: i32, mut vertical: i32) -> i32 {

@@ -1,5 +1,7 @@
 //! Golden values from the C++ port (src/*.cpp), so the Rust port keeps producing the same courses, shots, ratings and exe maths.
-//! They were captured by running the same scenario through both implementations; the outputs matched line for line.
+//! They were captured by running the same scenario through both implementations; the outputs matched line for line. The shot trace
+//! step counts were updated when the 87 ms tick read from the exe replaced the C++ port's 40-ticks-a-second guess (ball flights
+//! take longer, so the hole takes more steps); strokes and every course, flight and rating value are unchanged.
 use sg_core::{economy::Economy, flight, holes::*, shot::ShotSim, terrain::*};
 
 fn fnv(s: &str) -> u64 {
@@ -26,9 +28,9 @@ fn play(t: &Terrain, seed: u32) -> (i32, &'static str, i32, f32, f32) {
 #[test]
 fn demo_courses_match_cpp() {
     for (seed, hash, upkeep, near, last_step, strokes) in [
-        (7u32, 0xcaad5ef2046ea4e9u64, "151.040000", 38, 1961, 8),
-        (12345, 0x6c053b4f5dd1c717, "150.440000", 38, 1998, 8),
-        (99, 0x811b607feb2ab7fd, "151.400000", 26, 1813, 7),
+        (7u32, 0xcaad5ef2046ea4e9u64, "151.040000", 38, 2368, 8),
+        (12345, 0x6c053b4f5dd1c717, "150.440000", 38, 2368, 8),
+        (99, 0x811b607feb2ab7fd, "151.400000", 26, 2183, 7),
     ] {
         let t = Terrain::demo_course(40, 40, seed);
         assert_eq!(fnv(&t.to_course_text()), hash, "course text, seed {seed}");

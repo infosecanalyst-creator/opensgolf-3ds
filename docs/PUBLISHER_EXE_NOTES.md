@@ -241,14 +241,19 @@ Confidence: medium; the counters and thresholds are read directly, the terrain t
 - The game follows these rules with two placeholders: needs update every 4 seconds (160 ticks at the assumed 40 ticks a second),
   and a vendor or snack bar is "reached" by chance or distance instead of by walking there.
 
-## The game tick (machine code; the decompile has a gap here)
+## The game tick
 
-Confidence: high for the tick, open for its length in seconds.
-- The decompile has no functions between 0x40f190 and 0x421b60: Ghidra did not turn about 74 KB of code into C, and the main
-  frame routine is in that stretch. The facts below come from the machine code.
-- One tick is one simulation step. At the end of the frame routine the game updates the golfers, then the staff, then a third
-  routine, then adds one to the tick counter at 0x834170. When bit 0x8 of the game state flags is set, the counter is also rounded
-  up to an even number, so updates gated on odd ticks are skipped (a fast mode). Right after, `(tick & 3) <= difficulty` gates a
-  further update.
-- The pacing routine waits in units of 10 ms (its argument times 1000 / 100). Which wait the main loop uses, and so how many ticks
-  run per second, is not settled yet: it sits in the undecompiled stretch. Until it is, the port keeps 40 ticks a second.
+Confidence: high.
+- A fresh, complete Ghidra 12.1 decompile of golf_publisher.exe now covers the stretch the earlier export lost (0x40f190 to
+  0x421b60). Ghidra's own analysis left 13% of the code outside functions; functions were added only where routines really start
+  (after padding or a return), which brought coverage to 93%, and all 2,688 functions plus the 18 remaining code runs decompile.
+  The 59 KB main frame routine at 0x40f5c0 needed a larger decompiler output buffer. The decompile stays outside the repository.
+- One tick is one frame of that main routine. Near its end the game updates the golfers, then the staff, then a third routine,
+  and adds one to the tick counter at 0x834170. When bit 0x8 of the game state flags is set, the counter is also rounded up to an
+  even number, so updates gated on odd ticks are skipped (a fast mode). Right after, `(tick & 3) <= difficulty` gates a further
+  update.
+- Frame pacing: the routine notes the time when a frame starts, and at the end waits until (175 + 75 when game-state flag 0x20000 is
+  set) / 2 ms have passed, using the 10 ms wait routine. So a tick lasts at least 87 ms at normal speed (about 11.5 ticks a second)
+  and 125 ms with that flag. The wait is skipped while another flag (0x59b04c) is set.
+- Consequences used by the game: a month (1024 ticks) lasts 89 seconds, a golfer's needs update every 160 ticks (14 seconds), and
+  ball flights last their tick count times 87 ms.
