@@ -106,14 +106,14 @@ pub fn delta(event: u32, difficulty: i32, arg: i32, counter_ok: bool) -> i32 {
     }
 }
 
-/// Mood bounds: the routine clamps the mood to -10..10; a golfer pushed below -10 leaves the course.
+/// Mood bounds: the routine clamps the mood to -10..10. A golfer whose mood is below 0 between shots quits.
 pub const MOOD_MIN: i32 = -10;
 pub const MOOD_MAX: i32 = 10;
 
-/// Applies an event to a mood value. Returns the new mood and whether the golfer leaves.
+/// Applies an event to a mood value. Returns the new mood and whether the golfer quits (mood below 0).
 pub fn apply(mood: i32, delta: i32) -> (i32, bool) {
-    let m = mood + delta;
-    (m.clamp(MOOD_MIN, MOOD_MAX), m < MOOD_MIN)
+    let m = (mood + delta).clamp(MOOD_MIN, MOOD_MAX);
+    (m, m < 0)
 }
 
 #[cfg(test)]
@@ -136,8 +136,9 @@ mod tests {
     }
 
     #[test]
-    fn leaving_below_minus_ten() {
+    fn quitting_below_zero() {
         assert_eq!(apply(-9, -2), (-10, true));
+        assert_eq!(apply(1, -2), (-1, true));
         assert_eq!(apply(9, 3), (10, false));
     }
 }

@@ -578,7 +578,7 @@ impl App {
         self.view = s.view;
         // The exe's date stamp routine counts months in blocks of 1024 ticks and shows month numbers 3..10, so a year here is eight
         // months, March to October (medium confidence; the start year 2001 is a placeholder). One economy day counts as one month.
-        let mi = self.econ.day - 1;
+        let mi = self.econ.month_index();
         let date = format!("{} {}", MONTHS[((2 + mi % 8) % 12) as usize], 2001 + mi / 8);
         let panel_bg = rgba(0.12, 0.1, 0.3, 0.78);
         s.fill(g, 8.0, 8.0, 230.0, 46.0, panel_bg);

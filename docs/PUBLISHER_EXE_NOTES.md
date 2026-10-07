@@ -385,9 +385,7 @@ in `sg-core/src/staff.rs`.
   grow first; a grown weed is one a golfer complains about (event 0x18, -2, raised while planning a shot from that tile) and
   one the Groundskeeper must work on (his first visit marks it and sets its counter to the weed animation's frame count minus 3,
   later visits count it down and pull it below 2).
-- Open question: the only weed seeds found are tiles with the generator's 0x1000 flag, which the generator clears except
-  around Oahu's garden landmarks. No other code that sets 0x800 on a tile has been found, so on most properties weeds never
-  start in this reading; there may be a trigger not yet located.
+- Weed seeds: besides the generator's 0x1000 tiles, weeds start where unhappy golfers stand (see "Money over time").
 - Sound slots are not load order: the loader passes each file's slot in a register. The full table was read from the machine code.
 
 ## Drawing objects (sprite registration around 0x43e000 and the object drawing routine 0x463180)
@@ -402,3 +400,24 @@ Confidence: high. Implemented in `sg-core/src/objects.rs`.
   putting green 0x1f1/0x1f0; snack bar 0x1ed/0x1ec (level 2: 0x1ef/0x1ee). Some themes skip a base layer.
 - Landmarks draw as sprite 0x168 + their type (Sundial, Barn, civil war cannon, standing stones, ..., radio tower, oil pump),
   animated by the game tick, facing (their direction + the camera's quarter turn) of four views.
+
+## Money over time, fees and quitting (main frame 0x40f5c0, fee routine 0x427380, mood routine 0x467a00)
+
+Confidence: high. Implemented in `sg-core/src/economy.rs` and the game.
+- Every 1024/(difficulty+2) ticks each active hole costs 1 unit (Maint./Interest), and each employee's wage is charged when
+  rand(4 - difficulty) <= course rank. Wages per charge (units), basic/experienced: Club Pro 3/7, Ranger 2/3,
+  Groundskeeper 2/4, Soda Vendor 2/5 (the hire screen shows them times 100 "per week"). Hiring is free; firing costs 25.
+- No upkeep exists for terrain, paths, walls or buildings; no taxes, loans or interest on savings.
+- At each month start (1024 ticks) debt pays cash/50 (2%, toward zero) under Maint./Interest.
+- At each year end (8 months) negative cash moves the board one step (concerned, very worried, contract terminated); the third
+  negative year end in a row ends the game, any positive one resets it. Sandbox games pay all costs but skip the board and
+  the affordability check.
+- An action is affordable when it costs under 1 unit, or no more than the cash, or in sandbox, or while the course has fewer
+  than 3 holes.
+- Course rank by holes: Municipal under 6, Daily Fee 6..9 (experienced staff), Country Club 10..17 (building upgrades, level 2
+  art), Championship 18.
+- Green fee per hole = the golfer's mood + 2 (Top 100 hole) + 2 (Top 18 hole) + the Airstrip's level + 2 (Gold member) or
+  5 (Platinum member). The player cannot set a fee. (Earlier notes read the type bonus wrongly; corrected.)
+- Golfers quit when their mood is below 0 between shots (not below -10).
+- Weeds start from golfers: after a negative mood event, with chance (difficulty+1)/6, the golfer's tile gets a new growing
+  weed (not on water, nor where a weed or footprint is). This answers the open question in "Staff".

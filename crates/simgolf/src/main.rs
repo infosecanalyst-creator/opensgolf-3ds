@@ -397,7 +397,6 @@ impl Stage {
         if !o.edit_spec.is_empty() {
             app.rebuild_batches(&mut g);
             app.refresh_trees();
-            app.econ.update_upkeep(&app.terrain);
         }
         if let Some(f) = &o.save {
             if let Err(e) = app.terrain.save(f) {
@@ -664,12 +663,12 @@ impl Stage {
                 };
                 let ok = if shift { app.hire_staff(kind) } else { app.fire_staff(kind) };
                 println!(
-                    "{} {}: {} (staff now {}, wages ${:.0} a day)",
+                    "{} {}: {} (staff now {}, wage ${} a charge)",
                     if shift { "hire" } else { "fire" },
                     Economy::staff_name(kind),
                     if ok { "done" } else { "not possible" },
                     app.econ.staff_count(),
-                    app.econ.daily_wages()
+                    economy::WAGE_UNITS[kind][0] * 100
                 );
                 app.snd("Interface/Button2.wav", 1.0, false);
                 return;
@@ -879,7 +878,6 @@ impl EventHandler for Stage {
         if app.dirty {
             app.rebuild_batches(&mut self.g);
             app.refresh_trees();
-            app.econ.update_upkeep(&app.terrain);
             app.dirty = false;
             app.report_course(false);
         }

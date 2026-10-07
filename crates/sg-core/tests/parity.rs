@@ -2,7 +2,7 @@
 //! They were captured by running the same scenario through both implementations; the outputs matched line for line. The shot trace
 //! step counts were updated when the 87 ms tick read from the exe replaced the C++ port's 40-ticks-a-second guess (ball flights
 //! take longer, so the hole takes more steps); strokes and every course, flight and rating value are unchanged.
-use sg_core::{economy::Economy, flight, holes::*, shot::ShotSim, terrain::*};
+use sg_core::{flight, holes::*, shot::ShotSim, terrain::*};
 
 fn fnv(s: &str) -> u64 {
     s.bytes().fold(0xcbf29ce484222325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100000001b3))
@@ -27,14 +27,11 @@ fn play(t: &Terrain, seed: u32) -> (i32, &'static str, i32, f32, f32) {
 
 #[test]
 fn demo_courses_match_cpp() {
-    for (seed, hash, upkeep, near, last_step, strokes) in [
-        (7u32, 0xcaad5ef2046ea4e9u64, "151.040000", 38, 2368, 8),
-        (12345, 0x6c053b4f5dd1c717, "150.440000", 38, 2368, 8),
-        (99, 0x811b607feb2ab7fd, "151.400000", 26, 2183, 7),
-    ] {
+    for (seed, hash, near, last_step, strokes) in
+        [(7u32, 0xcaad5ef2046ea4e9u64, 38, 2368, 8), (12345, 0x6c053b4f5dd1c717, 38, 2368, 8), (99, 0x811b607feb2ab7fd, 26, 2183, 7)]
+    {
         let t = Terrain::demo_course(40, 40, seed);
         assert_eq!(fnv(&t.to_course_text()), hash, "course text, seed {seed}");
-        assert_eq!(format!("{:.6}", Economy::upkeep_for(&t)), upkeep);
         assert_eq!(analyze_hole(&t).hazards_near_line, near);
         let (step, event, stroke, bx, bz) = play(&t, seed);
         assert_eq!((step, event, stroke), (last_step, "holed", strokes), "shot trace, seed {seed}");

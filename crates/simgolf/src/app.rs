@@ -974,7 +974,7 @@ impl App {
         self.holes = find_holes(&self.terrain);
         self.golfers = vec![Golfer::default(); MAX_GOLFERS];
         self.staff_golfers.clear();
-        self.econ.init(&self.terrain);
+        self.econ.init();
         self.sim_time = 0.0;
         self.spawn_timer = 1e9;
         for i in 0..MAX_GOLFERS {
@@ -1099,16 +1099,15 @@ impl App {
     /// Advances the club by dt seconds: arrivals, every golfer's round, fees, wages and the board's messages.
     pub fn step_game(&mut self, dt: f32) {
         let open = !self.holes.is_empty() && !self.econ.game_over;
-        // Arrivals (PLACEHOLDER rates): the first golfer comes at once, then one every 25 s when golfers are happy, slower when not;
-        // the course takes at most two golfers per hole, up to the size of the pool.
+        // Arrivals (PLACEHOLDER rates until the exe's arrival queue is in): one golfer every 25 s, at most two per hole, up to the
+        // size of the pool.
         self.spawn_timer += dt as f64;
-        let every = 25.0 / (0.5 + self.econ.fun / 100.0);
+        let every = 25.0;
         let capacity = MAX_GOLFERS.min(2 * self.holes.len());
         if open && self.spawn_timer >= every && self.golfers_on_course() < capacity {
             self.spawn_golfer();
             self.spawn_timer = 0.0;
         }
-        self.econ.step(dt as f64);
         if !self.econ.notice.is_empty() {
             println!("[{:6.1}s] board: {}", self.sim_time, self.econ.notice);
             self.econ.notice.clear();
@@ -1231,6 +1230,22 @@ impl App {
     }
 
     fn mood_delta(&mut self, gi: usize, d: i32) {
+        // After a negative mood event the exe may start a weed on the golfer's tile: chance (difficulty + 1) / 6, not on water,
+        // not where a weed or footprint already is. (The exe also checks for nearby weed-proof landmarks, not decoded.)
+        if d < 0 && self.exe_rng.below(6) <= self.difficulty {
+            let s = &self.golfers[gi].sim;
+            let (tx, ty) = self.terrain.tile_of(s.golfer_x, s.golfer_z);
+            if self.terrain.inside(tx, ty)
+                && self.terrain.type_at(tx, ty) != 17
+                && self.staff_tiles.flags.len() == (self.terrain.w * self.terrain.h) as usize
+            {
+                let i = (ty * self.terrain.w + tx) as usize;
+                if self.staff_tiles.flags[i] & 0x0c00 == 0 {
+                    self.staff_tiles.flags[i] |= staff::WEEDS | staff::WORKED;
+                    self.staff_tiles.counter[i] = 1;
+                }
+            }
+        }
         let hole = self.golfers[gi].hole;
         if let Some(hs) = self.hole_stats.get_mut(hole) {
             hs.mood_sum += d;
@@ -1250,18 +1265,11 @@ impl App {
         };
         let par = self.holes.get(hole).map(|h| h.par).unwrap_or(4);
         let before = self.econ.cash;
-        // Green fee, from the exe's fee routine, in units of 100: the golfer's mood, plus 2 for a Creative class hole or 5 for a Heroic,
-        // Strategic or Classic one (the exe adds 2 for the hole type values above 3, and 3 more unless the value is 4; here the type
-        // index is L + 2A + 4I, which is an ASSUMPTION about the exe's numbering). The exe also adds 2 each for two hole flags (probably
-        // Top 100 and Top 18) and an Airstrip bonus; none of those exist here yet.
-        let mut bonus = 0;
-        if let Some(r) = self.ratings.get(hole) {
-            if r.type_index > 3 {
-                bonus = 2 + if r.type_index != 4 { 3 } else { 0 };
-            }
-        }
-        let fee_units = mood.max(0) + bonus;
-        self.econ.hole_finished(stroke, par, fee_units as f64);
+        // Green fee, from the exe's fee routine, in units of 100: the golfer's mood, +2 for a Top 100 hole, +2 for a Top 18 hole,
+        // + the Airstrip's level, +2 from a Gold and +5 from a Platinum member. Top holes, the Airstrip and memberships are not
+        // in this game yet, so only the mood counts for now.
+        let fee_units = mood.max(0);
+        self.econ.hole_completed(fee_units as f64);
         // A hungry or thirsty golfer who holes out within 6 tiles of a snack bar visits it (PLACEHOLDER reach rule; the exe walks the
         // golfer there). As in the exe, the visit resets hunger and thirst and raises the snack event, worth +1 when hunger was above 7.
         let needy = self.golfers[gi].hunger > 7 || self.golfers[gi].thirst > 7;
@@ -1295,16 +1303,15 @@ impl App {
             hs.strokes += stroke as f64;
             hs.seconds += self.sim_time - hole_start;
             hs.revenue += self.econ.cash - before;
-            hs.mood += self.econ.last_mood;
+            hs.mood += mood as f64 * 10.0;
             hs.hist[(stroke - 3).clamp(0, 5) as usize] += 1;
         }
         println!(
-            "[{:6.1}s] golfer {gi} holed hole {} in {stroke} (par {par}), fee ${:.0}, cash ${:.0}, fun {:.0}",
+            "[{:6.1}s] golfer {gi} holed hole {} in {stroke} (par {par}), fee ${:.0}, cash ${:.0}, mood {mood}",
             self.sim_time,
             hole + 1,
             self.econ.cash - before,
-            self.econ.cash,
-            self.econ.fun
+            self.econ.cash
         );
     }
 
@@ -1423,7 +1430,6 @@ impl App {
         self.screen = Screen::Play;
         self.hover = -1;
         self.edit = false;
-        self.econ.day = 1;
         self.panel = 0;
         self.buildings.clear();
         self.reset_staff();
@@ -1839,13 +1845,20 @@ impl App {
         if let Some(e) = self.employees.iter_mut().rev().find(|e| e.active && e.job == job) {
             e.active = false;
         }
-        self.econ.spend_to(economy::LEDGER_SALARIES, 25.0 * Economy::UNIT);
         true
     }
 
     /// One game tick of staff work and weeds.
     fn staff_tick(&mut self) {
         self.game_tick = self.game_tick.wrapping_add(1);
+        let payroll: Vec<economy::Payroll> = self
+            .employees
+            .iter()
+            .filter(|e| e.active && e.job != staff::job::OWNER)
+            .map(|e| economy::Payroll { kind: (-2 - e.job as i32).clamp(0, 3) as usize, experienced: e.upgraded })
+            .collect();
+        let holes = self.holes.len();
+        self.econ.on_tick(self.game_tick, self.difficulty, holes, &payroll, &mut self.exe_rng);
         if self.staff_tiles.flags.len() != (self.terrain.w * self.terrain.h) as usize {
             self.staff_tiles = TileState::new(self.terrain.w, self.terrain.h);
         }

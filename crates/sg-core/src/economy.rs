@@ -1,13 +1,11 @@
-//! A minimal club economy.
+//! The club's money, as the publisher's golf.exe runs it (docs/PUBLISHER_EXE_NOTES.md, "Money over time").
 //!
-//! WHAT THE ORIGINAL MANUAL SAYS (no amounts are given anywhere in it): the player starts with a fixed allotment of cash that depends
-//! on the property chosen and on the difficulty (Easy, Moderate, Difficult, Impossible); Sandbox mode has unlimited funds; a golfer
-//! pays a green fee when completing a hole, and it is the primary income; Top 100 / Top 18 holes earn higher fees and an Airstrip
-//! raises fees; building lots earn income; prize money from challenges and tournaments; employees are paid; moving the Clubhouse
-//! costs a fee; skilled staff need a daily fee course of six or more holes.
-//! FROM THE PUBLISHER'S golf.exe (docs/PUBLISHER_EXE_NOTES.md): money is stored in units of 100, a new game starts with 1000 units,
-//! and the terrain costs below. Upkeep, wages, the day length and the debt ladder timing are PLACEHOLDERS.
-use crate::terrain::*;
+//! Money is kept in units of 100. Everything happens on the game tick (87 ms): every 1024/(difficulty+2) ticks each active hole
+//! costs 1 unit of maintenance and each employee's wage is charged with a chance that grows with the course rank; at each
+//! month start (1024 ticks) debt pays 2% interest; at each year end (8 months) the board looks at the cash, and three year ends
+//! in a row in the red end the game. There is no upkeep for terrain, paths or buildings, no taxes and no loans. Sandbox games
+//! pay the same costs; they only skip the affordability checks and the board.
+use crate::land::ExeRng;
 
 pub const STAFF_KINDS: usize = 4;
 pub const CLUB_PRO: usize = 0;
@@ -33,39 +31,28 @@ pub const MONTHS_PER_YEAR: i32 = 8;
 
 #[derive(Clone, Debug)]
 pub struct Economy {
-    /// Starting amount: 1000 stored units of $100 in the publisher's golf.exe.
+    /// Starting amount: 1000 units in a normal game, 10000 in sandbox, less the property's price.
     pub start_cash: f64,
     pub cash: f64,
-    /// Sandbox mode: unlimited funds, nothing is charged and the game cannot end.
+    /// Sandbox mode: actions are never refused for lack of money and the board never ends the game. Costs are still paid.
     pub sandbox: bool,
-    /// Real seconds per game day, which the game counts as one month: 1024 ticks of 87 ms (about 89 s).
-    pub day_length: f64,
-    pub day: i32,
+    /// The game tick the economy last ran on.
+    pub tick: u32,
     pub holes_played: i32,
-    pub days_in_red: i32,
-    /// PLACEHOLDER: days in the red before the board ends the game (the game text says "two years to return to positive cash").
-    pub grace_days: i32,
-    /// 0 none, 1 warned, 2 board concerned, 3 board very worried. The days at which each fires are PLACEHOLDERS.
+    /// Negative year ends in a row (the exe's debt stage); the game ends when it passes 2.
     pub debt_stage: i32,
     /// Latest message for the player, taken (cleared) by the game once shown.
     pub notice: String,
     pub game_over: bool,
     pub income: f64,
     pub upkeep_paid: f64,
-    /// PLACEHOLDER, recomputed from the course.
-    pub daily_upkeep: f64,
     /// Bumps whenever cash changes (for the HUD).
     pub version: u32,
-    /// Basic employees (manual p. 20): Club Pro, Ranger, Groundskeeper, Soda Vendor. Wages and effects are PLACEHOLDERS.
+    /// Hired employees by kind (Club Pro, Ranger, Groundskeeper, Soda Vendor).
     pub staff: [i32; STAFF_KINDS],
     pub wages_paid: f64,
-    /// Golfer fun, 0..100, the average of the golfers' comments. Shown as the attitude colour: red, yellow, green.
-    pub fun: f64,
-    /// How the golfer who just finished felt, 0..100.
-    pub last_mood: f64,
     /// One record per year since the start (index 0 is 2001 in the exe's report), in dollars per ledger column.
     pub ledger: Vec<[f64; LEDGER_COLUMNS]>,
-    clock: f64,
 }
 
 impl Default for Economy {
@@ -74,69 +61,57 @@ impl Default for Economy {
             start_cash: 100000.0,
             cash: 100000.0,
             sandbox: false,
-            day_length: crate::flight::TICKS_PER_MONTH as f64 * crate::flight::TICK_MS as f64 / 1000.0,
-            day: 1,
+            tick: 0,
             holes_played: 0,
-            days_in_red: 0,
-            grace_days: 24,
             debt_stage: 0,
             notice: String::new(),
             game_over: false,
             income: 0.0,
             upkeep_paid: 0.0,
-            daily_upkeep: 0.0,
             version: 0,
             staff: [0; STAFF_KINDS],
             wages_paid: 0.0,
-            fun: 50.0,
-            last_mood: 50.0,
             ledger: Vec::new(),
-            clock: 0.0,
         }
     }
 }
 
-/// PLACEHOLDER upkeep per tile per game day, by tile type.
-fn tile_upkeep(ty: u8) -> f64 {
-    match ty {
-        TT_PUTTING_GREEN | TT_TRICKY_GREEN => 3.0,
-        TT_TEE => 2.0,
-        TT_FAIRWAY | TT_FIRM_FAIRWAY => 1.5,
-        TT_ROUGH | TT_GRASSY_SAND => 0.4,
-        TT_POT_SAND_BUNKER | TT_SAND | 27..=30 | TT_ZEN_SAND | TT_GRASS_BUNKER => 1.0,
-        TT_FLOWER_BED => 1.2,
-        TT_BUILDING => 5.0,
-        TT_WATER_SHALLOW | TT_WATER_MIDDLE | TT_WATER_DEEP | TT_MARSH => 0.3,
-        _ => 0.1,
+/// Wage per charge in money units (the exe's table 0x4c2e2c; the hire screen shows it times 100 "per week"): by kind,
+/// basic and experienced.
+pub const WAGE_UNITS: [[i32; 2]; STAFF_KINDS] = [[3, 7], [2, 3], [2, 4], [2, 5]];
+
+/// Course rank by number of holes: 0 Municipal (under 6), 1 Daily Fee (6..9), 2 Country Club (10..17), 3 Championship (18).
+pub fn rank(holes: usize) -> i32 {
+    match holes {
+        0..=5 => 0,
+        6..=9 => 1,
+        10..=17 => 2,
+        _ => 3,
     }
+}
+
+pub const RANK_NAMES: [&str; 4] = ["Municipal", "Daily Fee", "Country Club", "Championship"];
+
+/// One employee as the wage charge sees it: kind 0..3 and whether experienced.
+#[derive(Clone, Copy, Debug)]
+pub struct Payroll {
+    pub kind: usize,
+    pub experienced: bool,
 }
 
 impl Economy {
     /// Money in the original is stored in units of 100.
     pub const UNIT: f64 = 100.0;
-    /// Placeholder upkeep and wages are scaled by this to stay in proportion.
-    pub const MONEY_SCALE: f64 = 25.0;
-    /// Laying a path tile costs 100 dollars a square (a strategy guide). Removing a tile is free here.
+    /// A pathway tile costs 1 unit (the exe's building table).
     pub const PATH_TILE_COST: f64 = 100.0;
+    /// Firing an employee costs 25 units (booked under Salaries).
+    pub const FIRING_UNITS: f64 = 25.0;
 
     pub fn staff_name(k: usize) -> &'static str {
         ["Club Pro", "Ranger", "Groundskeeper", "Soda Vendor"].get(k).copied().unwrap_or("?")
     }
     pub fn staff_count(&self) -> i32 {
         self.staff.iter().sum()
-    }
-    pub fn attitude(&self) -> &'static str {
-        if self.fun < 35.0 {
-            "red"
-        } else if self.fun < 65.0 {
-            "yellow"
-        } else {
-            "green"
-        }
-    }
-    pub fn fun_event(&mut self, delta: f64) {
-        self.fun = (self.fun + delta).clamp(0.0, 100.0);
-        self.version = self.version.wrapping_add(1);
     }
 
     /// Cost per tile of laying a terrain type, in units of 100, from the exe's terrain table (the figure its build menu shows is this
@@ -152,50 +127,27 @@ impl Economy {
         }
     }
 
-    pub fn upkeep_for(t: &Terrain) -> f64 {
-        let mut sum = 0.0;
-        for &ty in &t.ty {
-            sum += tile_upkeep(ty) * 0.2;
-        }
-        for &p in &t.path_kind {
-            sum += match p {
-                2 => 0.12,
-                1 => 0.06,
-                _ => 0.0,
-            };
-        }
-        for &w in &t.wall_mask {
-            for b in 0..4 {
-                if w & (1 << b) != 0 {
-                    sum += 0.05;
-                }
-            }
-        }
-        sum
-    }
-
-    pub fn init(&mut self, t: &Terrain) {
+    pub fn init(&mut self) {
         self.staff = [0; STAFF_KINDS];
         self.wages_paid = 0.0;
-        self.fun = 50.0;
         self.cash = self.start_cash;
-        self.day = 1;
+        self.tick = 0;
         self.holes_played = 0;
-        self.days_in_red = 0;
         self.debt_stage = 0;
         self.notice.clear();
         self.game_over = false;
         self.income = 0.0;
         self.upkeep_paid = 0.0;
-        self.clock = 0.0;
         self.ledger.clear();
-        self.update_upkeep(t);
+        // The exe starts year 0's "Other" column at the cash left after buying the property.
+        self.book(LEDGER_OTHER, self.start_cash);
         self.version = self.version.wrapping_add(1);
     }
 
-    /// Call after editing the course.
-    pub fn update_upkeep(&mut self, t: &Terrain) {
-        self.daily_upkeep = Self::upkeep_for(t) * Self::MONEY_SCALE;
+    /// Whether an action costing `amount` dollars may go ahead: it is cheap enough, or affordable, or a sandbox game, or the
+    /// course has fewer than 3 holes (the first two holes can be built on credit).
+    pub fn affordable(&self, amount: f64, holes: usize) -> bool {
+        amount < Self::UNIT || amount <= self.cash || self.sandbox || holes < 3
     }
 
     /// Collects a green fee (in units of 100).
@@ -211,16 +163,10 @@ impl Economy {
         self.version = self.version.wrapping_add(1);
     }
 
-    /// PLACEHOLDER daily wages.
-    pub fn daily_wages(&self) -> f64 {
-        const W: [f64; STAFF_KINDS] = [30.0, 25.0, 20.0, 15.0];
-        (0..STAFF_KINDS).map(|k| W[k] * self.staff[k] as f64).sum::<f64>() * Self::MONEY_SCALE
-    }
-
-    /// False when there is no money (sandbox always works).
+    /// Hiring is free in the exe; experienced staff need a Daily Fee course (6 holes or more).
     pub fn hire(&mut self, kind: usize) -> bool {
-        if kind >= STAFF_KINDS || (!self.sandbox && self.cash < 100.0) {
-            return false; // PLACEHOLDER: hiring needs some cash in hand
+        if kind >= STAFF_KINDS {
+            return false;
         }
         self.staff[kind] += 1;
         self.version = self.version.wrapping_add(1);
@@ -232,30 +178,17 @@ impl Economy {
             return false;
         }
         self.staff[kind] -= 1;
-        self.version = self.version.wrapping_add(1);
+        self.spend_to(LEDGER_SALARIES, Self::FIRING_UNITS * Self::UNIT);
         true
     }
 
-    /// Collects the fee (in units of 100) and applies the effect on fun.
-    pub fn hole_finished(&mut self, strokes: i32, par: i32, fee_units: f64) {
-        self.hole_completed(fee_units);
-        // PLACEHOLDER mood model: par or better pleases golfers, a bad hole annoys them; the Club Pro and Soda Vendor help.
-        let mut mood: f64 = if strokes <= par {
-            85.0
-        } else if strokes <= par + 1 {
-            55.0
-        } else {
-            20.0
-        };
-        mood += 8.0 * (self.staff[CLUB_PRO] > 0) as i32 as f64 + 6.0 * (self.staff[SODA_VENDOR] > 0) as i32 as f64;
-        mood = mood.min(100.0);
-        self.last_mood = mood;
-        self.fun_event(0.12 * (mood - self.fun));
-    }
-
-    /// Year index of the current game day (one game day is one month here).
+    /// Year index of a tick (8 months of 1024 ticks a year).
     pub fn year_index(&self) -> usize {
-        ((self.day - 1).max(0) / MONTHS_PER_YEAR) as usize
+        (self.tick >> 13) as usize
+    }
+    /// Months since the start (0 is March 2001).
+    pub fn month_index(&self) -> i32 {
+        (self.tick >> 10) as i32
     }
 
     /// Adds a signed amount (dollars) to this year's ledger column.
@@ -273,11 +206,8 @@ impl Economy {
         self.book(column, amount);
     }
 
-    /// Expense booked to a ledger column (nothing in sandbox mode).
+    /// Expense booked to a ledger column (sandbox games pay too, as in the exe).
     pub fn spend_to(&mut self, column: usize, amount: f64) {
-        if self.sandbox {
-            return;
-        }
         self.spend(amount);
         self.book(column, -amount);
     }
@@ -287,46 +217,61 @@ impl Economy {
         self.version = self.version.wrapping_add(1);
     }
     pub fn spend(&mut self, amount: f64) {
-        if self.sandbox {
-            return;
-        }
         self.cash -= amount;
         self.version = self.version.wrapping_add(1);
     }
 
-    pub fn step(&mut self, dt: f64) {
+    /// One game tick: maintenance and wages every 1024/(difficulty+2) ticks, debt interest at month start, the board at year end.
+    pub fn on_tick(&mut self, tick: u32, difficulty: i32, active_holes: usize, staff: &[Payroll], rng: &mut ExeRng) {
+        self.tick = tick;
         if self.game_over {
             return;
         }
-        self.clock += dt;
-        while self.clock >= self.day_length {
-            self.clock -= self.day_length;
-            self.day += 1;
-            self.version = self.version.wrapping_add(1);
-            if self.sandbox {
-                continue; // unlimited funds: nothing is charged and the game cannot end
+        let interval = 1024 / (difficulty.clamp(0, 3) as u32 + 2);
+        if tick.is_multiple_of(interval) {
+            for _ in 0..active_holes {
+                self.spend_to(LEDGER_MAINTENANCE, Self::UNIT);
+                self.upkeep_paid += Self::UNIT;
             }
-            let wages = self.daily_wages();
-            self.cash -= self.daily_upkeep + wages;
-            self.upkeep_paid += self.daily_upkeep;
-            self.wages_paid += wages;
-            self.days_in_red = if self.cash < 0.0 { self.days_in_red + 1 } else { 0 };
-            if self.days_in_red == 0 {
-                self.debt_stage = 0;
-            } else if self.days_in_red >= self.grace_days {
-                self.game_over = true;
-                self.notice = "The board has ended your contract. Game over.".into();
-            } else if self.days_in_red >= self.grace_days * 3 / 4 && self.debt_stage < 3 {
-                self.debt_stage = 3;
-                self.notice = "The board is very worried about the lingering debt.".into();
-            } else if self.days_in_red >= self.grace_days / 2 && self.debt_stage < 2 {
-                self.debt_stage = 2;
-                self.notice = "The board is concerned about the club's negative cash.".into();
-            } else if self.debt_stage < 1 {
-                self.debt_stage = 1;
-                self.notice = "Warning: you have two years to get the club back into the black.".into();
+            let r = rank(active_holes);
+            for p in staff {
+                if rng.below(4 - difficulty.clamp(0, 3)) <= r {
+                    let w = WAGE_UNITS[p.kind.min(3)][p.experienced as usize] as f64 * Self::UNIT;
+                    self.spend_to(LEDGER_SALARIES, w);
+                    self.wages_paid += w;
+                }
             }
         }
+        if tick & 0x3ff == 0 && self.cash < 0.0 {
+            // 2% a month on debt, in whole units, truncated toward zero.
+            let units = (self.cash / Self::UNIT).trunc() as i64;
+            let interest = (units / 50) as f64 * Self::UNIT;
+            self.earn(interest);
+            self.book(LEDGER_MAINTENANCE, interest);
+        }
+        if tick & 0x1fff == 0 && tick > 0 {
+            self.year_end();
+        }
+    }
+
+    /// The board at year end: three year ends in a row with negative cash end the game; a positive one clears the record.
+    fn year_end(&mut self) {
+        if self.cash < 0.0 && !self.sandbox {
+            let stage = self.debt_stage;
+            self.debt_stage += 1;
+            self.notice = match stage {
+                0 => "The board is concerned about our negative cash situation. You have two years to return to positive cash.",
+                1 => "The board is very worried about our lingering debt. You have one more year to get out of debt.",
+                _ => "You have been unable to make a profit on this course. Regrettably, the board has terminated your contract.",
+            }
+            .to_string();
+            if self.debt_stage > 2 {
+                self.game_over = true;
+            }
+        } else {
+            self.debt_stage = 0;
+        }
+        self.version = self.version.wrapping_add(1);
     }
 }
 
@@ -335,48 +280,63 @@ mod tests {
     use super::*;
 
     #[test]
-    fn debt_ladder_ends_the_game() {
-        let t = Terrain::demo_course(10, 10, 1);
-        let mut e = Economy { start_cash: -1.0, ..Default::default() };
-        e.init(&t);
-        e.step(e.day_length);
-        assert_eq!(e.debt_stage, 1);
-        for _ in 0..30 {
-            e.step(e.day_length);
+    fn three_negative_year_ends_end_the_game() {
+        let mut e = Economy { start_cash: -100.0, ..Default::default() };
+        e.init();
+        let mut rng = ExeRng::from_clock(1);
+        for t in 1..=3 * 0x2000u32 {
+            e.on_tick(t, 1, 0, &[], &mut rng);
+            if t == 0x2000 {
+                assert_eq!(e.debt_stage, 1);
+                assert!(!e.game_over);
+            }
         }
         assert!(e.game_over);
     }
 
     #[test]
-    fn sandbox_never_pays() {
-        let t = Terrain::demo_course(10, 10, 1);
-        let mut e = Economy { sandbox: true, ..Default::default() };
-        e.init(&t);
-        e.hire(CLUB_PRO);
-        e.step(e.day_length * 10.0 + 0.001);
-        assert_eq!(e.cash, e.start_cash);
-        assert_eq!(e.day, 11);
+    fn holes_cost_one_unit_per_interval() {
+        let mut e = Economy { start_cash: 100000.0, ..Default::default() };
+        e.init();
+        let mut rng = ExeRng::from_clock(1);
+        for t in 1..=1024u32 {
+            e.on_tick(t, 0, 3, &[], &mut rng);
+        }
+        // Easy: interval 512, two charges a month, 3 holes.
+        assert_eq!(e.cash, 100000.0 - 6.0 * 100.0);
     }
 
     #[test]
-    fn ledger_books_by_year() {
-        let t = Terrain::demo_course(10, 10, 1);
+    fn wages_on_impossible_always_charged() {
         let mut e = Economy::default();
-        e.init(&t);
-        e.hole_completed(4.0);
-        e.spend_to(LEDGER_BUILD_COURSE, 500.0);
-        e.day = 1 + MONTHS_PER_YEAR;
-        e.earn_to(LEDGER_FOOD_DRINK, 200.0);
-        assert_eq!(e.ledger.len(), 2);
-        assert_eq!(e.ledger[0][LEDGER_GREEN_FEES], 400.0);
-        assert_eq!(e.ledger[0][LEDGER_BUILD_COURSE], -500.0);
-        assert_eq!(e.ledger[1][LEDGER_FOOD_DRINK], 200.0);
+        e.init();
+        let mut rng = ExeRng::from_clock(9);
+        let staff = [Payroll { kind: CLUB_PRO, experienced: false }];
+        e.on_tick(204, 3, 0, &staff, &mut rng);
+        assert_eq!(e.cash, e.start_cash - 300.0);
+    }
+
+    #[test]
+    fn debt_interest_two_percent() {
+        let mut e = Economy { start_cash: -10000.0, ..Default::default() };
+        e.init();
+        let mut rng = ExeRng::from_clock(1);
+        e.on_tick(1024, 0, 0, &[], &mut rng);
+        assert_eq!(e.cash, -10200.0);
     }
 
     #[test]
     fn terrain_costs_from_exe_table() {
-        assert_eq!(Economy::terrain_cost_units(TT_WATER_SHALLOW as i32), 50);
-        assert_eq!(Economy::terrain_cost_units(TT_PUTTING_GREEN as i32), 10);
-        assert_eq!(Economy::terrain_cost_units(TT_BUILDING as i32), 0);
+        assert_eq!(Economy::terrain_cost_units(17), 50);
+        assert_eq!(Economy::terrain_cost_units(1), 10);
+        assert_eq!(Economy::terrain_cost_units(22), 0);
+    }
+
+    #[test]
+    fn rank_by_holes() {
+        assert_eq!(rank(5), 0);
+        assert_eq!(rank(6), 1);
+        assert_eq!(rank(10), 2);
+        assert_eq!(rank(18), 3);
     }
 }
