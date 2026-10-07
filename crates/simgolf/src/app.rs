@@ -50,6 +50,8 @@ pub struct Prop {
     pub facing: i32,
     /// Frames advance with the game tick (landmarks and building animations).
     pub animated: bool,
+    /// A weed, rebuilt from the tile flags every update.
+    pub weed: bool,
     /// A pool golfer who is not on the course.
     pub hidden: bool,
     /// Scenery regenerated from the terrain after edits.
@@ -71,6 +73,7 @@ impl Default for Prop {
             employee: None,
             facing: 0,
             animated: false,
+            weed: false,
             golfer: None,
             hidden: false,
             tree: false,
@@ -270,6 +273,8 @@ pub struct App {
     pub tick_acc: f64,
     /// Last ground tile the player clicked (the player's own pro walks there).
     pub clicked_tile: Option<(i32, i32)>,
+    /// An employee picked up to be moved: the next click on the course becomes their post (the exe's "Move this employee").
+    pub moving_employee: Option<usize>,
     /// Employee clips by sprite set (0 Greeter, 1 Ranger, 2 Groundskeeper, 3 Tray Girl, 4 Golf Celebrity, 5 Marshall,
     /// 6 Lawn Technician, 7 Soda Vendor; 8 the player's pro) and state (walk, stand, action): body and shadow.
     pub staff_clips: [[(Option<usize>, Option<usize>); 3]; 9],
@@ -413,6 +418,7 @@ impl App {
             game_tick: 0,
             tick_acc: 0.0,
             clicked_tile: None,
+            moving_employee: None,
             staff_clips: [[(None, None); 3]; 9],
             weed_sprite: None,
             course_name: "Demo Course".into(),
@@ -1143,6 +1149,15 @@ impl App {
                 self.golfers[gi].last_stroke = stroke;
                 self.golfer_sounds(gi);
                 self.shot_mood_event(gi, ev);
+                // The exe raises the weeds event (0x18) while a golfer plans a shot from a tile with a grown weed. Golfer shot
+                // planning here is not the exe's, so the test is made where the ball lies when a stroke begins.
+                if stroke != 0 && self.golfers[gi].active {
+                    let (bx, bz) = (self.golfers[gi].sim.ball_x, self.golfers[gi].sim.ball_z);
+                    let (tx, ty) = self.terrain.tile_of(bx, bz);
+                    if staff::grown_weed(&self.staff_tiles, tx, ty) {
+                        self.mood_event(gi, mood::ev::WEEDS, 0x14);
+                    }
+                }
                 if !self.golfers[gi].active {
                     continue;
                 }
@@ -1332,6 +1347,7 @@ impl App {
             p.frame = if looping { (fr as i32) % n } else { (fr as i32).min(n - 1) };
         }
         self.update_staff_props();
+        self.update_weed_props();
         for p in self.props.iter_mut() {
             if p.animated {
                 if let Some(b) = p.body {
@@ -1869,6 +1885,7 @@ impl App {
             };
             staff::tick(&mut self.employees, &mut world, &mut self.exe_rng, &mut out);
             staff::spread_weeds(&self.terrain, &mut self.staff_tiles, self.game_tick, self.difficulty, &mut self.exe_rng, &mut out);
+            staff::grow_weeds(&mut self.staff_tiles, &mut self.exe_rng);
         }
         for gi in 0..self.golfers.len() {
             if self.golfers[gi].active {
@@ -2023,5 +2040,71 @@ impl App {
                 self.props.push(Prop { x, z, body, shadow, flat, facing: o.dir as i32, animated, ..Default::default() });
             }
         }
+    }
+}
+
+impl App {
+    /// Weed sprites on the weed tiles: a growing weed shows the frame of its counter, a grown one the last frame.
+    fn update_weed_props(&mut self) {
+        self.props.retain(|p| !p.weed);
+        let Some(w) = self.weed_sprite else { return };
+        let n = self.sprites[w].s.frames_per_view.max(1);
+        let t = &self.staff_tiles;
+        let mut add = Vec::new();
+        for b in 0..t.h {
+            for a in 0..t.w {
+                let i = (b * t.w + a) as usize;
+                if t.flags[i] & staff::WEEDS == 0 {
+                    continue;
+                }
+                let frame = if t.flags[i] & staff::WORKED != 0 { (t.counter[i] as i32).min(n - 1) } else { n - 1 };
+                add.push((a, b, frame));
+            }
+        }
+        for (a, b, frame) in add {
+            let (x, z) = self.terrain.tile_centre(a, b);
+            self.props.push(Prop { x, z, body: Some(w), frame, weed: true, ..Default::default() });
+        }
+    }
+}
+
+/// Names of the employee kinds, basic and experienced, as the exe shows them.
+pub const STAFF_NAMES: [[&str; 2]; 4] =
+    [["Club Pro", "Celebrity"], ["Ranger", "Marshall"], ["Groundskeeper", "Technician"], ["Soda Vendor", "Refresher"]];
+
+impl App {
+    /// A left click on the course: drop an employee being moved on that tile, or pick up a hired employee standing at the click,
+    /// or else send the player's own pro there.
+    pub fn course_click(&mut self, wx: f32, wz: f32) {
+        let t = self.terrain.tile_of(wx, wz);
+        if !self.terrain.inside(t.0, t.1) {
+            return;
+        }
+        if let Some(i) = self.moving_employee.take() {
+            if let Some(e) = self.employees.get_mut(i) {
+                e.post = Some(t);
+                e.steps = 0;
+                let name = STAFF_NAMES[(-2 - e.job as i32).clamp(0, 3) as usize][e.upgraded as usize];
+                self.show_toast(&format!("{name} will work around here"));
+            }
+            return;
+        }
+        let mut pick = None;
+        for (i, e) in self.employees.iter().enumerate() {
+            if !e.active || e.job == staff::job::OWNER {
+                continue;
+            }
+            let (ex, ez) = self.units_to_world(e.x, e.y);
+            if (ex - wx).hypot(ez - wz) < 70.0 {
+                pick = Some((i, STAFF_NAMES[(-2 - e.job as i32).clamp(0, 3) as usize][e.upgraded as usize]));
+                break;
+            }
+        }
+        if let Some((i, name)) = pick {
+            self.moving_employee = Some(i);
+            self.show_toast(&format!("Click the course where the {name} should work"));
+            return;
+        }
+        self.clicked_tile = Some(t);
     }
 }

@@ -994,12 +994,8 @@ impl EventHandler for Stage {
         } else {
             self.dragging = true;
             if button == MouseButton::Left {
-                // The player's own pro walks to the last tile clicked.
                 if let Some((hx, hz)) = self.app.pick_ground(x, y) {
-                    let t = self.app.terrain.tile_of(hx, hz);
-                    if self.app.terrain.inside(t.0, t.1) {
-                        self.app.clicked_tile = Some(t);
-                    }
+                    self.app.course_click(hx, hz);
                 }
             }
         }

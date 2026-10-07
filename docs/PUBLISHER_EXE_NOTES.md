@@ -380,6 +380,14 @@ in `sg-core/src/staff.rs`.
   one tee, green or fairway on its four sides and one of them is a weed, or (creek and garden tiles) with a chance that grows with
   the neighbouring weeds. Only fairway and rough- or tree-class tiles take weeds. The weed sprite is the theme's
   (dandelion for Parkland and Links, oil slick for Desert, dry grass for Tropical); its sound is slot 34 (`effects/fly.wav`).
+- Weed growth (done per tile while drawing, so once per tick): a tile marked as being worked on advances its counter by one
+  (with chance 1/8 while a weed stands there) and drops the mark once the counter is past 24. New weeds start marked, so they
+  grow first; a grown weed is one a golfer complains about (event 0x18, -2, raised while planning a shot from that tile) and
+  one the Groundskeeper must work on (his first visit marks it and sets its counter to the weed animation's frame count minus 3,
+  later visits count it down and pull it below 2).
+- Open question: the only weed seeds found are tiles with the generator's 0x1000 flag, which the generator clears except
+  around Oahu's garden landmarks. No other code that sets 0x800 on a tile has been found, so on most properties weeds never
+  start in this reading; there may be a trigger not yet located.
 - Sound slots are not load order: the loader passes each file's slot in a register. The full table was read from the machine code.
 
 ## Drawing objects (sprite registration around 0x43e000 and the object drawing routine 0x463180)

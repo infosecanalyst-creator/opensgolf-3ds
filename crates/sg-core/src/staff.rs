@@ -795,6 +795,33 @@ pub fn spread_weeds(t: &Terrain, tiles: &mut TileState, tick: u32, difficulty: i
     }
 }
 
+/// Weed growth, once per tick (the exe does it while drawing each tile): a tile marked as being worked on advances its counter
+/// by one (with chance 1/8 while a weed stands there) and stops being worked on once the counter is past 24. A new weed is
+/// therefore growing until then; a grown weed is what golfers complain about and what a Groundskeeper has to work on.
+pub fn grow_weeds(tiles: &mut TileState, rng: &mut ExeRng) {
+    for i in 0..tiles.flags.len() {
+        if tiles.flags[i] & WORKED == 0 {
+            continue;
+        }
+        let c = tiles.counter[i];
+        if tiles.flags[i] & WEEDS == 0 || rng.below(8) == 0 {
+            tiles.counter[i] = c.wrapping_add(1);
+        }
+        if c > 0x18 {
+            tiles.flags[i] &= !WORKED;
+        }
+    }
+}
+
+/// A grown weed on a tile (one golfers notice).
+pub fn grown_weed(tiles: &TileState, a: i32, b: i32) -> bool {
+    if a < 0 || b < 0 || a >= tiles.w || b >= tiles.h {
+        return false;
+    }
+    let f = tiles.flags[tiles.i(a, b)];
+    f & WEEDS != 0 && f & WORKED == 0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
