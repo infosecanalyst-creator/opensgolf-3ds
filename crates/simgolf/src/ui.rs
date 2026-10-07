@@ -18,7 +18,7 @@ pub struct Image {
 pub fn load_pcx(g: &mut Gfx, path: &Path, magenta_key: bool, key_rgb: Option<u32>) -> Option<Image> {
     let d = std::fs::read(path).ok()?;
     let mut img = decode_pcx(&d).ok()?;
-    for p in img.px.chunks_exact_mut(4) {
+    for p in img.px.as_chunks_mut::<4>().0 {
         if magenta_key && p[0] == 255 && p[1] == 0 && p[2] == 255 {
             p[3] = 0;
         }

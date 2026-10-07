@@ -146,7 +146,7 @@ impl EventHandler for Player {
         };
         if let Some(rgb) = current.take() {
             let mut rgba = Vec::with_capacity(rgb.len() / 3 * 4);
-            for p in rgb.chunks_exact(3) {
+            for p in rgb.as_chunks::<3>().0 {
                 rgba.extend_from_slice(&[p[0], p[1], p[2], 255]);
             }
             self.ctx.texture_update(self.bindings.images[0], &rgba);
@@ -318,7 +318,7 @@ fn main() {
         let _ = video.kill();
         let _ = video.wait();
         let mut img = sg_core::assets::Rgba::new(info.width, info.height);
-        for (o, p) in img.px.chunks_exact_mut(4).zip(buf.chunks_exact(3)) {
+        for (o, p) in img.px.as_chunks_mut::<4>().0.iter_mut().zip(buf.as_chunks::<3>().0) {
             o.copy_from_slice(&[p[0], p[1], p[2], 255]);
         }
         if !sg_core::png::write_png(&out, &img) {
@@ -377,7 +377,7 @@ fn main() {
                         Ok(0) | Err(_) => break,
                         Ok(n) => {
                             let mut q = sh.audio.lock().unwrap();
-                            q.extend(buf[..n & !1].chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]])));
+                            q.extend(buf[..n & !1].as_chunks::<2>().0.iter().map(|b| i16::from_le_bytes(*b)));
                         }
                     }
                 }

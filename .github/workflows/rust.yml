@@ -22,7 +22,8 @@ jobs:
       - name: Format
         run: cargo fmt --all --check
       - name: Clippy
-        run: cargo clippy --release --all-targets -- -D warnings
+        # Bug-class lints fail the build; style lints only warn, so a new Rust release cannot turn CI red on its own.
+        run: cargo clippy --release --all-targets -- -D clippy::correctness -D clippy::suspicious
       - name: Test
         run: cargo test --release
       - name: Build

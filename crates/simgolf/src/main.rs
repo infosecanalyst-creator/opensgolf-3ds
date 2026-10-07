@@ -784,7 +784,7 @@ impl Stage {
             // GL origin is bottom-left
             img.px[y * stride..(y + 1) * stride].copy_from_slice(&raw[(h as usize - 1 - y) * stride..(h as usize - y) * stride]);
         }
-        img.px.chunks_exact_mut(4).for_each(|p| p[3] = 255);
+        img.px.as_chunks_mut::<4>().0.iter_mut().for_each(|p| p[3] = 255);
         sg_core::png::write_png(file, &img)
     }
 
