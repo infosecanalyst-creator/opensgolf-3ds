@@ -83,6 +83,18 @@ impl Mixer {
         Mixer { index, state: Mutex::new(State { clips: BTreeMap::new(), voices: Vec::new(), next_id: 1, master: 0.8, last_error }) }
     }
 
+    /// Also indexes every .wav under `dir`, keyed under `prefix/` (the exe reads its Sims voice clips from SimsFX).
+    pub fn add_dir(&mut self, prefix: &str, dir: &Path) {
+        for p in crate::fsutil::walk(dir) {
+            if let Ok(rel) = p.strip_prefix(dir) {
+                let key = rel.components().map(|c| c.as_os_str().to_string_lossy().to_lowercase()).collect::<Vec<_>>().join("/");
+                if key.ends_with(".wav") {
+                    self.index.insert(format!("{}/{key}", prefix.to_lowercase()), p.clone());
+                }
+            }
+        }
+    }
+
     pub fn is_empty(&self) -> bool {
         self.index.is_empty()
     }

@@ -23,6 +23,7 @@ pub mod properties;
 pub mod rng;
 pub mod shot;
 pub mod sprites;
+pub mod staff;
 pub mod terrain;
 
 pub use assets::{Indexed, Rgba};

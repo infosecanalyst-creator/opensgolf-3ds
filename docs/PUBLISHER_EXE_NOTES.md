@@ -110,7 +110,7 @@ Confidence: medium. The stamp shows month = (ticks and 0x1fff) / 1024 + 3, so mo
 Confidence: prices high (table read directly), amenity income medium.
 - The property price table in the exe has 16 entries, in units of 100: 500, 600, 700, 800, 1200, 1500, 2000, 2500, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000. The price belongs to an offer slot, not to a place: see "Properties and new-game land" below.
 - Amenity visits pay the course in units of 100: building type 7 pays 5; type 6 pays 4 or 8, type 8 pays 6 or 10, type 10 pays 8 or 12, where the lower value applies when the building's upgrade level is below 2.
-- Removing a building 25 units is charged by one routine (-0x19); a removal pays back part of the build cost (not decoded).
+- The 25-unit charge (-0x19) found earlier is for firing an employee (booked under Salaries), not for removing a building; what a building removal pays back is not decoded.
 
 ## Where money moves (search result, negative findings included)
 
@@ -345,3 +345,39 @@ except deep rough and sand trap, is sent as class 4. Terrain.dll does not draw o
 ### Re-check of the facts taken from the first decompile
 The routines the port relies on were compared between the earlier decompile and the complete one: 14 are identical, and two
 (the course statistics routine and the club planning routine) differ only in how Ghidra typed an array; the formulas are the same.
+
+## Staff (employee routines 0x402970 and 0x402a40, path search 0x42e7e0, weeds in the main loop)
+
+Confidence: high for the rules below (read from the decompile, with the machine code where Ghidra lost arguments). Implemented
+in `sg-core/src/staff.rs`.
+
+- Employee records: 64 of 0x4c bytes at 0x585850. Position in map units (1024 per tile), post tile, an active byte, a job code,
+  facing 0..7, steps left on the current heading, a wait counter, an animation state (7..10 walking, 11 standing, 12 working),
+  an action code with a countdown, the golfer last served and a count of golfers served.
+- Jobs: the hire menu offers three choices per kind and maps choice c to job -2 - c/3 (Club Pro -2, Ranger -3,
+  Groundskeeper -4, Soda Vendor -5); the third choice of each kind is the experienced version (Celebrity, Marshall, Lawn
+  Technician, Refresher), which walks 2 faster, works faster and has its own clips and sounds. A new game creates job -6, the
+  player's own pro ("Gary Golf" by default), posted on the clubhouse; it does all four jobs, walks 2 faster, and is drawn with
+  golfer clips. Hired staff appear inside the clubhouse with a post 3 tiles off it on each axis (either side at random).
+- Each tick an idle employee looks for work. The Groundskeeper (and Gary) looks for weeds within 16 tiles of the post, nearest
+  by a measure that counts distance from both the post and the employee. The others look at every golfer standing on neither
+  a tee nor a building and within 4 tiles of the post: the Ranger takes golfers not yet hurried and not busy, the Club Pro golfers
+  he has not just talked to, the Soda Vendor golfers whose thirst is above 4 (above 0 for the Refresher). Gary takes whichever
+  applies, and walks to the tile the player last clicked (except every other 512 ticks).
+- Walking: one path decision per tile from a weighted flood out of the target tile (walking cost per ground type, diagonals +1,
+  water and out of bounds +16 near the target, paths cost 0 or 1 when the target is a few tiles away, staff pay +1 on greens,
+  fairways, tees and sand and half elsewhere, a tile next to another walker +2). Speed per tick is 6 minus the ground's walking
+  cost, kept in 2..5, or 6 on a path, +2 experienced, +2 for Gary, 3 when leaving; a straight step moves speed x 32/3 units, a
+  diagonal one speed x 8 on each axis. An employee gives way (waits 4..7 ticks) to another just ahead.
+- On arrival: the Soda Vendor stops the golfer for 64 ticks and, four counts later (a count is 4 ticks), sells a drink: mood
+  event 0x19, +2 units under Food/Drink, thirst back to 0 (the Refresher's drink always counts as quenching). The Club Pro stops
+  the golfer for 32 more ticks and then raises event 0x22 (+1), or 0x3a (no change) when an inexperienced pro finds the golfer
+  hungry, thirsty or tired. The Ranger marks the golfer as hurried: the golfer's walking speed is one step faster. The
+  Groundskeeper pulls a weed (a weed already being worked on goes on the first visit). Each action plays a sound: slots 92..95
+  for the four jobs, +4 experienced, +8 for Gary.
+- Firing removes the employee at once and costs 25 units under Salaries.
+- Weeds: on every tick with (tick & 3) <= difficulty one random tile may sprout a weed, if it has at most three weeds and at least
+  one tee, green or fairway on its four sides and one of them is a weed, or (creek and garden tiles) with a chance that grows with
+  the neighbouring weeds. Only fairway and rough- or tree-class tiles take weeds. The weed sprite is the theme's
+  (dandelion for Parkland and Links, oil slick for Desert, dry grass for Tropical); its sound is slot 34 (`effects/fly.wav`).
+- Sound slots are not load order: the loader passes each file's slot in a register. The full table was read from the machine code.

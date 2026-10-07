@@ -13,6 +13,7 @@ use sg_core::properties::{PROPERTIES, START_FUNDS};
 use sg_core::rng::Rng;
 use sg_core::shot::{GolferAnim, GolferSkills, ShotSim};
 use sg_core::sprites::{load_sprite, Sprite};
+use sg_core::staff::{self, Employee, StaffEvent, StaffGolfer, TileState};
 use sg_core::terrain::*;
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -43,6 +44,8 @@ pub struct Prop {
     pub heading: f32,
     /// Index into App::golfers, None for other props.
     pub golfer: Option<usize>,
+    /// Index into App::employees.
+    pub employee: Option<usize>,
     /// A pool golfer who is not on the course.
     pub hidden: bool,
     /// Scenery regenerated from the terrain after edits.
@@ -61,6 +64,7 @@ impl Default for Prop {
             flat: false,
             frame: 0,
             heading: -1000.0,
+            employee: None,
             golfer: None,
             hidden: false,
             tree: false,
@@ -252,6 +256,18 @@ pub struct App {
     pub slot_of: [usize; 16],
     /// The land of the current game, when it was generated (None for the demo course or a loaded course file).
     pub land: Option<Land>,
+    /// Course staff, the tile flags they work on (weeds), what they know of each golfer, and the game tick that drives them.
+    pub employees: Vec<Employee>,
+    pub staff_tiles: TileState,
+    pub staff_golfers: Vec<StaffGolfer>,
+    pub game_tick: u32,
+    pub tick_acc: f64,
+    /// Last ground tile the player clicked (the player's own pro walks there).
+    pub clicked_tile: Option<(i32, i32)>,
+    /// Employee clips by sprite set (0 Greeter, 1 Ranger, 2 Groundskeeper, 3 Tray Girl, 4 Golf Celebrity, 5 Marshall,
+    /// 6 Lawn Technician, 7 Soda Vendor; 8 the player's pro) and state (walk, stand, action): body and shadow.
+    pub staff_clips: [[(Option<usize>, Option<usize>); 3]; 9],
+    pub weed_sprite: Option<usize>,
     pub course_name: String,
     pub screen: Screen,
     pub title_base: Image,
@@ -385,6 +401,14 @@ impl App {
             offer,
             slot_of,
             land: None,
+            employees: Vec::new(),
+            staff_tiles: TileState::new(0, 0),
+            staff_golfers: Vec::new(),
+            game_tick: 0,
+            tick_acc: 0.0,
+            clicked_tile: None,
+            staff_clips: [[(None, None); 3]; 9],
+            weed_sprite: None,
             course_name: "Demo Course".into(),
             screen: Screen::Play,
             title_base: Image::default(),
@@ -465,6 +489,28 @@ impl App {
             println!("  sound: {rel}{}", if id < 0 { "  (missing)" } else { "" });
         }
         id
+    }
+
+    /// Plays one of the exe's sound slots (the ones the staff use). The exe pans and scales these by screen position; here
+    /// they play centred.
+    pub fn slot_sound(&mut self, slot: i32, _x: f32, _z: f32) {
+        let file = match slot {
+            34 => "effects/fly.wav",
+            92 => "simsfx/male/mgreeting.wav",
+            93 => "celebs/ranger.wav",
+            94 => "simsfx/male/mcrabgrass2.wav",
+            95 => "celebs/tray girl.wav",
+            // Slot 96 is loaded from "sound\Celebs\..." (no such folder), so the original plays nothing here.
+            97 => "celebs/marshal male.wav",
+            98 => "celebs/lawn technician.wav",
+            99 => "simsfx/female/fhaveadrink.wav",
+            100 => "celebs/mgreeting.wav",
+            101 => "celebs/politician dislike.wav",
+            102 => "celebs/action star dislike.wav",
+            103 => "celebs/politician like.wav",
+            _ => return,
+        };
+        self.snd(file, 0.7, false);
     }
 
     pub fn start_ambience(&mut self) {
@@ -911,8 +957,10 @@ impl App {
                 }
             }
         }
+        self.load_staff_sprites();
         self.holes = find_holes(&self.terrain);
         self.golfers = vec![Golfer::default(); MAX_GOLFERS];
+        self.staff_golfers.clear();
         self.econ.init(&self.terrain);
         self.sim_time = 0.0;
         self.spawn_timer = 1e9;
@@ -1052,15 +1100,25 @@ impl App {
             println!("[{:6.1}s] board: {}", self.sim_time, self.econ.notice);
             self.econ.notice.clear();
         }
+        self.tick_acc += dt as f64;
+        let tick_s = sg_core::flight::TICK_MS as f64 / 1000.0;
+        while self.tick_acc >= tick_s {
+            self.tick_acc -= tick_s;
+            self.staff_tick();
+        }
         for gi in 0..self.golfers.len() {
             if !self.golfers[gi].active {
                 continue;
             }
             {
-                let ranger = self.econ.staff[economy::RANGER] > 0;
+                let sg = self.staff_golfers.get(gi).copied().unwrap_or_default();
+                let pace = self.hurry_pace(gi, sg.hurried);
                 let g = &mut self.golfers[gi];
-                g.sim.pace_scale = if ranger { 1.2 } else { 1.0 }; // a Ranger speeds play up (PLACEHOLDER; the original works near one tee)
-                g.sim.step(&self.terrain, dt);
+                g.sim.pace_scale = pace;
+                // A golfer an employee is talking to stands still until the pause runs out.
+                if sg.pause >= 0 {
+                    g.sim.step(&self.terrain, dt);
+                }
                 g.needs_clock -= dt as f64;
             }
             if self.golfers[gi].needs_clock <= 0.0 {
@@ -1127,9 +1185,8 @@ impl App {
     }
 
     /// One needs update, following the exe: one counter grows by one (hunger near some terrain kinds or, in the Tropical theme, half
-    /// the time; thirst otherwise), and once a counter is above 15 the golfer complains every fourth update. A hired Soda Vendor
-    /// serves a thirsty golfer: the club earns 2 units under Food/Drink and the golfer's thirst resets. The terrain test and the
-    /// chance that a vendor reaches a golfer in time are PLACEHOLDERS (the exe sends the vendor walking to the golfer).
+    /// the time; thirst otherwise), and once a counter is above 15 the golfer complains every fourth update. Drinks come from the
+    /// Soda Vendor walking to the golfer (staff_tick). The terrain test is a PLACEHOLDER.
     fn needs_tick(&mut self, gi: usize) {
         let seed = (self.sim_time * 1000.0) as u32 ^ (gi as u32).wrapping_mul(2654435761);
         let mut rng = Rng::new(seed | 1);
@@ -1148,14 +1205,6 @@ impl App {
         };
         if value > 15 && value % 4 == 0 {
             self.mood_event(gi, event, 0x14);
-        }
-        let vendors = self.econ.staff[economy::SODA_VENDOR];
-        if vendors > 0 && self.golfers[gi].active && self.golfers[gi].thirst > 16 && rng.range(4) < vendors.min(4) {
-            let counter_ok = self.golfers[gi].thirst > 7;
-            self.golfers[gi].thirst = 0;
-            self.econ.earn_to(economy::LEDGER_FOOD_DRINK, 2.0 * Economy::UNIT);
-            let d = mood::delta(mood::ev::DRINK, self.difficulty, 0x14, counter_ok);
-            self.mood_delta(gi, d);
         }
     }
 
@@ -1274,6 +1323,7 @@ impl App {
             p.heading = s.golfer_heading;
             p.frame = if looping { (fr as i32) % n } else { (fr as i32).min(n - 1) };
         }
+        self.update_staff_props();
     }
 
     /// Course Status Report (the original's F1): the hole's class and length, and how many paths are joined to the clubhouse.
@@ -1346,6 +1396,7 @@ impl App {
         self.econ.day = 1;
         self.panel = 0;
         self.buildings.clear();
+        self.reset_staff();
         self.load_story();
         self.reset_clock = true;
         println!(
@@ -1680,4 +1731,249 @@ fn slots_of(offer: &[Slot; 16]) -> [usize; 16] {
         out[s.property] = i;
     }
     out
+}
+
+impl App {
+    /// The exe's golfer walking speed is 6 minus the ground's walking cost, kept in 3..5 (3 when tired); a golfer a Ranger has
+    /// hurried walks one step faster. Golfer walking here is not the exe's yet, so the extra step becomes a pace factor.
+    fn hurry_pace(&self, gi: usize, hurried: bool) -> f32 {
+        if !hurried {
+            return 1.0;
+        }
+        let s = &self.golfers[gi].sim;
+        let (tx, ty) = self.terrain.tile_of(s.golfer_x, s.golfer_z);
+        let t = self.terrain.type_at(tx, ty);
+        let cost = land::TYPES.get(t as usize).map(|i| i.layer as i32).unwrap_or(2);
+        let speed = (6 - cost).clamp(3, 5) as f32;
+        (speed + 1.0) / speed
+    }
+
+    fn to_units(&self, x: f32, z: f32) -> (i32, i32) {
+        let k = staff::UNIT as f32 / TILE_SIZE;
+        (((x + self.terrain.w as f32 * TILE_SIZE * 0.5) * k) as i32, ((z + self.terrain.h as f32 * TILE_SIZE * 0.5) * k) as i32)
+    }
+
+    fn units_to_world(&self, x: i32, y: i32) -> (f32, f32) {
+        let k = TILE_SIZE / staff::UNIT as f32;
+        (x as f32 * k - self.terrain.w as f32 * TILE_SIZE * 0.5, y as f32 * k - self.terrain.h as f32 * TILE_SIZE * 0.5)
+    }
+
+    /// Clubhouse anchor tile (the exe's first object), from the generated land or the demo course's clubhouse.
+    pub fn club_anchor(&self) -> (i32, i32) {
+        match &self.land {
+            Some(l) => l.clubhouse,
+            None => (self.terrain.clubhouse_x - 2, self.terrain.clubhouse_y - 2),
+        }
+    }
+
+    /// Resets the staff for a new course: the player's own pro starts at the clubhouse, posted on its anchor tile, and the
+    /// generator's creek and garden tiles can start weeds.
+    pub fn reset_staff(&mut self) {
+        self.employees.clear();
+        self.staff_tiles = TileState::new(self.terrain.w, self.terrain.h);
+        if let Some(l) = &self.land {
+            for a in 0..land::N {
+                for b in 0..land::N {
+                    if l.flags[(a * land::N + b) as usize] & land::flag::CREEK != 0 {
+                        let i = (b * self.terrain.w + a) as usize;
+                        self.staff_tiles.flags[i] |= staff::SEEDS_WEEDS;
+                    }
+                }
+            }
+        }
+        let club = self.club_anchor();
+        if self.terrain.clubhouse_x >= 0 {
+            let i = staff::create(&mut self.employees, staff::job::OWNER, club, &mut self.exe_rng);
+            self.employees[i].post = Some(club);
+        }
+        self.game_tick = 0;
+        self.tick_acc = 0.0;
+    }
+
+    /// Hires an employee of kind 0..3 (Club Pro, Ranger, Groundskeeper, Soda Vendor).
+    pub fn hire_staff(&mut self, kind: usize) -> bool {
+        if !self.econ.hire(kind) {
+            return false;
+        }
+        let club = self.club_anchor();
+        staff::hire(&mut self.employees, kind, false, club, &mut self.exe_rng);
+        true
+    }
+
+    /// Fires the most recently hired employee of a kind: the exe removes the employee at once and charges 25 units under
+    /// Salaries.
+    pub fn fire_staff(&mut self, kind: usize) -> bool {
+        if !self.econ.fire(kind) {
+            return false;
+        }
+        let job = -2 - kind as i8;
+        if let Some(e) = self.employees.iter_mut().rev().find(|e| e.active && e.job == job) {
+            e.active = false;
+        }
+        self.econ.spend_to(economy::LEDGER_SALARIES, 25.0 * Economy::UNIT);
+        true
+    }
+
+    /// One game tick of staff work and weeds.
+    fn staff_tick(&mut self) {
+        self.game_tick = self.game_tick.wrapping_add(1);
+        if self.staff_tiles.flags.len() != (self.terrain.w * self.terrain.h) as usize {
+            self.staff_tiles = TileState::new(self.terrain.w, self.terrain.h);
+        }
+        self.staff_golfers.resize(self.golfers.len(), StaffGolfer { face: -1, ..Default::default() });
+        for gi in 0..self.golfers.len() {
+            let g = &self.golfers[gi];
+            let (x, y) = self.to_units(g.sim.golfer_x, g.sim.golfer_z);
+            let sg = &mut self.staff_golfers[gi];
+            if !g.active {
+                *sg = StaffGolfer { face: -1, ..Default::default() };
+                continue;
+            }
+            sg.present = true;
+            sg.x = x;
+            sg.y = y;
+            sg.hunger = g.hunger;
+            sg.thirst = g.thirst;
+            if sg.pause < 0 && self.game_tick & 1 != 0 {
+                sg.pause += 1;
+            }
+        }
+        let mut out = Vec::new();
+        {
+            let weed_frames = self.weed_sprite.map(|w| self.sprites[w].s.frames_per_view).unwrap_or(1);
+            let club = self.club_anchor();
+            let mut world = staff::World {
+                terrain: &self.terrain,
+                tiles: &mut self.staff_tiles,
+                golfers: &mut self.staff_golfers,
+                club,
+                clicked: self.clicked_tile,
+                tick: self.game_tick,
+                difficulty: self.difficulty,
+                weed_frames,
+            };
+            staff::tick(&mut self.employees, &mut world, &mut self.exe_rng, &mut out);
+            staff::spread_weeds(&self.terrain, &mut self.staff_tiles, self.game_tick, self.difficulty, &mut self.exe_rng, &mut out);
+        }
+        for gi in 0..self.golfers.len() {
+            if self.golfers[gi].active {
+                self.golfers[gi].thirst = self.staff_golfers[gi].thirst;
+            }
+        }
+        for ev in out {
+            match ev {
+                StaffEvent::Mood { golfer, event, arg, counter_ok } => {
+                    if self.golfers.get(golfer).map(|g| g.active).unwrap_or(false) {
+                        if event == 0x22 || event == 0x3a {
+                            println!("[{:6.1}s] club pro talked to golfer {golfer} (event {event:#x})", self.sim_time);
+                        }
+                        let d = mood::delta(event, self.difficulty, arg, counter_ok);
+                        self.mood_delta(golfer, d);
+                    }
+                }
+                StaffEvent::DrinkSold { golfer } => {
+                    self.econ.earn_to(economy::LEDGER_FOOD_DRINK, 2.0 * Economy::UNIT);
+                    println!("[{:6.1}s] soda vendor sold golfer {golfer} a drink", self.sim_time);
+                }
+                StaffEvent::Sound { slot, x, y } => {
+                    let (wx, wz) = self.units_to_world(x, y);
+                    self.slot_sound(slot, wx, wz);
+                }
+                StaffEvent::WeedPulled { a, b } => println!("[{:6.1}s] groundskeeper pulled a weed at {a},{b}", self.sim_time),
+                StaffEvent::Left { .. } => {}
+            }
+        }
+    }
+
+    /// Loads the employee clips (the exe's sprite sets, in its order) and the theme's weed.
+    pub fn load_staff_sprites(&mut self) {
+        const SETS: [&str; 8] = [
+            "GreeterWalk|GreeterSQ|GreeterAction2",
+            "RangerWalk|RangerSQ|RangerAction",
+            "GKWalk|GKSQ|GKAction",
+            "TrayGirl_Walk|TrayGirl_SQ|TrayGirl_Action",
+            "GolfCeleb_Walk|GolfCeleb_SQ|GolfCeleb_Action",
+            "Marshall_Walk|Marshall_SQ|Marshall_Action",
+            "LawnTech_Walk|LawnTech_Sq|LawnTech_Action",
+            "SodaVendorWalk|SodaVendorSQ|SodaVendorAction",
+        ];
+        const PALS: [&str; 8] =
+            ["GreeterPal", "RangerPal", "GKPal", "TrayGirlPal", "GolfCelebPal", "MarshallPal", "LawnTechPal", "SodaVendorPal"];
+        for (k, set) in SETS.iter().enumerate() {
+            let pal = format!("Employee/{}.pcx", PALS[k]);
+            for (m, name) in set.split('|').enumerate() {
+                let body = self.sprite_for(&format!("Employee/{name}.flc"), false, Some(&pal));
+                let shadow = self.sprite_for(&format!("Employee/{name}Shadow.flc"), true, None);
+                self.staff_clips[k][m] = (body, shadow);
+            }
+        }
+        // The player's pro uses a golfer's clips: walk, stand and the happy gesture.
+        for (m, name) in ["Male/MaleKLS_NormalWalk", "Male/MaleKLS_Sq", "Male/MaleKLS_Happy"].iter().enumerate() {
+            let body = self.sprite_for(&format!("{name}.flc"), false, None);
+            let shadow = self.sprite_for(&format!("{name}Shadow.flc"), true, None);
+            self.staff_clips[8][m] = (body, shadow);
+        }
+        let weed = match self.theme {
+            2 => "Flowers/OilSlick.flc",
+            3 => "Flowers/DryGrass.flc",
+            _ => "Flowers/dandelion_01.flc",
+        };
+        self.weed_sprite = self.sprite_for(weed, false, None);
+    }
+
+    /// Points the employee props at the employees: clip by job and state, frame advanced like the exe's (two a frame when
+    /// walking), facing from the employee's direction.
+    pub fn update_staff_props(&mut self) {
+        let want = self.employees.len();
+        let have = self.props.iter().filter(|p| p.employee.is_some()).count();
+        for i in have..want {
+            self.props.push(Prop { employee: Some(i), hidden: true, ..Default::default() });
+        }
+        for pi in 0..self.props.len() {
+            let Some(ei) = self.props[pi].employee else { continue };
+            let Some(e) = self.employees.get(ei).copied() else {
+                self.props[pi].hidden = true;
+                continue;
+            };
+            if !e.active {
+                self.props[pi].hidden = true;
+                continue;
+            }
+            let set =
+                if e.job == staff::job::OWNER { 8 } else { ((-(e.job as i32) - 2) + if e.upgraded { 4 } else { 0 }).clamp(0, 7) as usize };
+            let state = if e.anim < staff::ANIM_STAND {
+                0
+            } else if e.anim == staff::ANIM_STAND {
+                1
+            } else {
+                2
+            };
+            let (body, shadow) = self.staff_clips[set][state];
+            let Some(b) = body else {
+                self.props[pi].hidden = true;
+                continue;
+            };
+            let n = self.sprites[b].s.frames_per_view.max(1);
+            let step = if state == 0 { 2 } else { 1 };
+            let e = &mut self.employees[ei];
+            e.frame = e.frame.wrapping_add(step);
+            let f = e.frame as i32 % n;
+            if f == 0 && e.anim == staff::ANIM_ACTION {
+                e.anim = staff::ANIM_STAND;
+            }
+            const DX: [f32; 8] = [0.0, 1.0, 1.0, 1.0, 0.0, -1.0, -1.0, -1.0];
+            const DY: [f32; 8] = [-1.0, -1.0, 0.0, 1.0, 1.0, 1.0, 0.0, -1.0];
+            let k = (e.dir as i32 & 7) as usize;
+            let (x, z) = (e.x, e.y);
+            let (wx, wz) = self.units_to_world(x, z);
+            let p = &mut self.props[pi];
+            p.hidden = false;
+            p.body = Some(b);
+            p.shadow = shadow;
+            p.x = wx;
+            p.z = wz;
+            p.frame = f;
+            p.heading = DY[k].atan2(DX[k]).to_degrees();
+        }
+    }
 }

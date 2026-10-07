@@ -203,7 +203,8 @@ fn load_ui(app: &mut App, g: &mut Gfx) -> bool {
     ok
 }
 
-/// Scripted edits for tests: "p:x,y,type[,vbyte,radius];w:x,y,kind[,radius];b:x,y,building;k:x,y,dir;r:cx,cy,delta[,radius]".
+/// Scripted edits for tests: "p:x,y,type[,vbyte,radius];w:x,y,kind[,radius];b:x,y,building;k:x,y,dir;r:cx,cy,delta[,radius];
+/// h:kind[,x,y]" (h hires an employee: 0 Club Pro, 1 Ranger, 2 Groundskeeper, 3 Soda Vendor; x,y is the post tile).
 fn apply_edit_spec(app: &mut App, spec: &str) {
     for item in spec.split(';').filter(|s| !s.is_empty()) {
         let (kind, rest) = (item.as_bytes()[0], item.get(2..).unwrap_or(""));
@@ -251,6 +252,15 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                     app.terrain.clubhouse_x,
                     app.terrain.clubhouse_y
                 );
+            }
+            b'h' if item.len() > 2 && !v.is_empty() => {
+                let ok = app.hire_staff(at(0).clamp(0, 3) as usize);
+                if ok && v.len() >= 3 {
+                    if let Some(e) = app.employees.iter_mut().rev().find(|e| e.active) {
+                        e.post = Some((at(1), at(2)));
+                    }
+                }
+                println!("hired staff kind {}: {ok}", at(0));
             }
             b'k' if item.len() > 2 && v.len() == 3 => app.terrain.set_wall(at(0), at(1), at(2), true),
             b'r' if item.len() > 2 && v.len() >= 3 => {
@@ -315,7 +325,8 @@ impl Stage {
         let info = g.ctx.info();
         println!("GL: {:?}", info.backend);
 
-        let mixer = Mixer::new(&app.game_path("Sounds"));
+        let mut mixer = Mixer::new(&app.game_path("Sounds"));
+        mixer.add_dir("simsfx", &app.game_path("SimsFX"));
         if mixer.is_empty() {
             eprintln!("sound: {}", mixer.last_error());
         } else {
@@ -530,9 +541,9 @@ impl Stage {
                         }
                         _ => {
                             if right {
-                                app.econ.fire(it.arg);
+                                app.fire_staff(it.arg);
                             } else {
-                                app.econ.hire(it.arg);
+                                app.hire_staff(it.arg);
                             }
                         }
                     }
@@ -650,7 +661,7 @@ impl Stage {
                     KeyCode::G => economy::GROUNDSKEEPER,
                     _ => economy::SODA_VENDOR,
                 };
-                let ok = if shift { app.econ.hire(kind) } else { app.econ.fire(kind) };
+                let ok = if shift { app.hire_staff(kind) } else { app.fire_staff(kind) };
                 println!(
                     "{} {}: {} (staff now {}, wages ${:.0} a day)",
                     if shift { "hire" } else { "fire" },
@@ -982,6 +993,15 @@ impl EventHandler for Stage {
             self.app.apply_tool(self.shift, false);
         } else {
             self.dragging = true;
+            if button == MouseButton::Left {
+                // The player's own pro walks to the last tile clicked.
+                if let Some((hx, hz)) = self.app.pick_ground(x, y) {
+                    let t = self.app.terrain.tile_of(hx, hz);
+                    if self.app.terrain.inside(t.0, t.1) {
+                        self.app.clicked_tile = Some(t);
+                    }
+                }
+            }
         }
     }
 
