@@ -16,6 +16,7 @@ pub mod formats;
 pub mod fsutil;
 pub mod holes;
 pub mod mixer;
+pub mod mood;
 pub mod png;
 pub mod properties;
 pub mod rng;

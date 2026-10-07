@@ -43,6 +43,7 @@ struct Options {
     sandbox: bool,
     screen: Option<String>,
     cash: Option<f64>,
+    difficulty: Option<i32>,
     course: Option<PathBuf>,
     save: Option<PathBuf>,
     edit_spec: String,
@@ -51,7 +52,7 @@ struct Options {
 }
 
 const USAGE: &str = "usage: simgolf --game DIR [--theme T] [--seed N] [--size WxH] [--zoom Z] [--rot DEG] [--center TX,TY] [--png FILE] \
-[--time S] [--follow] [--golfer NAME] [--sandbox] [--cash N] [--screen menu|property|play|report] [--course FILE] [--save FILE] \
+[--time S] [--follow] [--golfer NAME] [--sandbox] [--cash N] [--difficulty 0-3] [--screen menu|property|play|report] [--course FILE] [--save FILE] \
 [--edit SPEC] [--panel N] [--mute] [--sound-log]";
 
 /// Leading comma separated integers, like sscanf("%d,%d,...") (stops at the first one that does not parse).
@@ -86,6 +87,7 @@ fn parse_args() -> Options {
         sandbox: false,
         screen: None,
         cash: None,
+        difficulty: None,
         course: None,
         save: None,
         edit_spec: String::new(),
@@ -127,6 +129,7 @@ fn parse_args() -> Options {
             "--sandbox" => o.sandbox = true,
             "--screen" => o.screen = Some(next()),
             "--cash" => o.cash = next().parse().ok(), // test hook: starting cash
+            "--difficulty" => o.difficulty = next().parse().ok().map(|d: i32| d.clamp(0, 3)),
             "--course" => o.course = Some(PathBuf::from(next())),
             "--save" => o.save = Some(PathBuf::from(next())),
             "--edit" => o.edit_spec = next(),
@@ -271,6 +274,9 @@ impl Stage {
         app.mute = o.mute;
         app.sound_log = o.sound_log;
         app.econ.sandbox = o.sandbox;
+        if let Some(d) = o.difficulty {
+            app.difficulty = d;
+        }
         if let Some(c) = o.cash {
             app.econ.start_cash = c;
         }
@@ -552,6 +558,9 @@ impl Stage {
             if BACK_BUTTON.has(vx, vy) {
                 hit = 100;
             }
+            if DIFFICULTY_BUTTON.has(vx, vy) {
+                hit = 101;
+            }
         }
         app.hover = hit;
         if !click || hit < 0 {
@@ -579,6 +588,8 @@ impl Stage {
                 4 => app.show_toast("Championships are not available yet"),
                 _ => window::order_quit(),
             }
+        } else if hit == 101 {
+            app.difficulty = (app.difficulty + 1) % 4;
         } else if hit == 100 {
             app.screen = Screen::Menu;
             app.hover = -1;

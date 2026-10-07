@@ -7,6 +7,7 @@ use sg_core::economy::{self, Economy};
 use sg_core::fsutil::resolve;
 use sg_core::holes::*;
 use sg_core::mixer::Mixer;
+use sg_core::mood;
 use sg_core::properties::{PROPERTIES, START_FUNDS};
 use sg_core::rng::Rng;
 use sg_core::shot::{GolferAnim, GolferSkills, ShotSim};
@@ -1029,6 +1030,10 @@ impl App {
                 self.golfers[gi].last_event = ev;
                 self.golfers[gi].last_stroke = stroke;
                 self.golfer_sounds(gi);
+                self.shot_mood_event(gi, ev);
+                if !self.golfers[gi].active {
+                    continue;
+                }
                 if ev == "holed" {
                     self.hole_out(gi);
                 }
@@ -1046,6 +1051,41 @@ impl App {
                     g.active = false;
                 }
             }
+        }
+    }
+
+    /// Raises the exe's mood events for what just happened to a golfer's ball. Which shot outcome raises which event is our reading
+    /// of the event meanings; the putt distances that count as easy or tough are PLACEHOLDERS.
+    fn shot_mood_event(&mut self, gi: usize, ev: &'static str) {
+        const EASY_PUTT: f32 = 60.0;
+        const TOUGH_PUTT: f32 = 150.0;
+        let putt = self.golfers[gi].sim.last_putt_dist;
+        let event = match ev {
+            "holed" if putt > TOUGH_PUTT => mood::ev::TOUGH_PUTT_MADE,
+            "putt missed" if putt < EASY_PUTT => mood::ev::EASY_PUTT_MISSED,
+            e if e.starts_with("splash") => mood::ev::IN_HAZARD,
+            e if e.starts_with("out of bounds") => mood::ev::BAD_SHOT,
+            _ => return,
+        };
+        self.mood_event(gi, event, 0);
+    }
+
+    /// Applies one mood event to a golfer: the mood changes by the exe's amount, the change is tallied for the hole's fun rating,
+    /// and a golfer pushed below -10 leaves the course.
+    pub fn mood_event(&mut self, gi: usize, event: u32, arg: i32) {
+        let d = mood::delta(event, self.difficulty, arg, false);
+        let hole = self.golfers[gi].hole;
+        if self.hole_stats.len() != self.holes.len() {
+            self.hole_stats = vec![HoleStat::default(); self.holes.len()];
+        }
+        if let Some(hs) = self.hole_stats.get_mut(hole) {
+            hs.mood_sum += d;
+        }
+        let (m, leaves) = mood::apply(self.golfers[gi].mood, d);
+        self.golfers[gi].mood = m;
+        if leaves {
+            println!("[{:6.1}s] golfer {gi} left the course unhappy", self.sim_time);
+            self.golfers[gi].active = false;
         }
     }
 
@@ -1088,24 +1128,12 @@ impl App {
         let dec = ((6 + hole as i32) * (mood - 1 + d) * (d + 1)) / 120;
         let g = &mut self.golfers[gi];
         g.mood -= dec;
-        // PLACEHOLDER: par or better makes a golfer a little happier (the real mood events are not decoded yet).
-        let mood_delta = if stroke <= par {
-            1
-        } else if stroke >= par + 3 {
-            -1
-        } else {
-            0
-        };
-        if mood_delta > 0 && g.mood < 10 {
-            g.mood += 1;
-        }
         g.strokes_round += stroke;
         if self.hole_stats.len() != self.holes.len() {
             self.hole_stats = vec![HoleStat::default(); self.holes.len()];
         }
         if let Some(hs) = self.hole_stats.get_mut(hole) {
             hs.plays += 1;
-            hs.mood_sum += mood_delta;
             hs.strokes += stroke as f64;
             hs.seconds += self.sim_time - hole_start;
             hs.revenue += self.econ.cash - before;

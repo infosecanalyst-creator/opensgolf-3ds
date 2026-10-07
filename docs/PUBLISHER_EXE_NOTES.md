@@ -141,3 +141,65 @@ Confidence: high for the structure, medium for which in-game action fills each l
     staff appear to cost a one-off amount rather than a running wage; which dialog action this is still needs the UI;
   - Maint./Interest: no direct writer found yet (it may be updated through a pointer);
   - Other: prize style additions, a deduction in a monthly routine, wagers.
+
+## Golfer mood events, completed (event routine and its message table)
+
+Confidence: high. The routine has two switches: the first sets the mood change, the second picks the golfer's thought to show,
+indexed by event - 1. Reading both together gives each event's meaning (described in our own words) and its exact amount.
+This replaces the event list further up, which had a few amounts wrong (for example a missed easy putt is -1, not -2).
+crates/sg-core/src/mood.rs holds the table.
+
+| Event | Meaning | Mood |
+|---|---|---|
+| 1 | holed a difficult putt | +1 |
+| 2 | missed a putt that looked easy | -1 |
+| 3 | unhappy with how the shot turned out | -2 |
+| 4 | the next shot will not involve what the golfer hoped for | -2 |
+| 6 | plans to use the slope of the hill | +1 |
+| 7 | (positive, only when the argument is 0) | +1 |
+| 8 | cannot find a safe place to aim | -2 |
+| 9 | nearly hit by another group's shot | -3 |
+| 0xa | no path built where the golfer wants to walk (the hint points at the path tool) | -2 |
+| 0xb | scenic view in sight of the next shot | +1 |
+| 0xc | ball bounced off a tree | -1 |
+| 0xd | ball ended up in a hazard | -1 |
+| 0xe | thirsty, needs a soda vendor | -1 |
+| 0xf | hungry, needs a snack bar | -1 |
+| 0x10, 0x11 | amazed the last shot drew / faded | 0 |
+| 0x12 | eating a snack at a snack bar | +1 once a golfer counter is above 7 |
+| 0x14 | sees an eyesore in the middle of the hole | -2 |
+| 0x15 | frustrated by slow play (the hint suggests a Ranger near the tee) | -2 |
+| 0x16 | excited to see a celebrity's vacation home on the course | +1 |
+| 0x17 | (negative) | -1, -2 above the easiest difficulty |
+| 0x18 | sees weeds (the hint suggests a Groundskeeper) | -2 |
+| 0x19 | refreshing drink from a Soda Vendor | +1 once a golfer counter is above 7 |
+| 0x1a | tired, needs a bench | -1 |
+| 0x1b | resting on a bench | +1 once a golfer counter is above 59 |
+| 0x1c | enjoys a feature the player built | +1 |
+| 0x1d / 0x1e | likes / dislikes something about this hole | +1 / -2 |
+| 0x20, 0x21 | faces an interesting (strategic) decision | +1 |
+| 0x23 | quits in frustration | -2 |
+| 0x24 | sees an angry golfer | -3 |
+| 0x27 | intrigued by the wildlife | +1 on the two easiest difficulties |
+| 0x33, 0x34, 0x35 | appreciates a new driving range, pro shop, putting green | +1 on the easiest difficulty |
+| 0x36 | uses a club for the first time | +1 on the two easiest difficulties |
+| 0x37 to 0x3c | sets up a draw, fade, high or low shot (thought only) | 0 |
+| 0x41 | good shot but cannot see where it went | -2 above difficulty 1 |
+
+Events 0x22, 0x2c, 0x2e give +1; 0x2b and 0x2f give -2 (meanings not attached to a thought). The mood is clamped to -10..10 and a
+golfer pushed below -10 leaves. The game raises 1, 2, 3 and 0xd from shot outcomes today (the putt distances that count as easy or
+tough are placeholders); the rest need the systems that trigger them (needs, benches, wildlife, landmarks, other groups).
+
+## Difficulty (every reader of the difficulty variable, 0 easiest to 3)
+
+Confidence: medium to high; the rules are read directly, some inputs are not decoded.
+- Starting mood of an ordinary golfer: 3 + random 0..2, or 4 on Easy (a game setting can override it as value + 4). Pro and
+  celebrity golfers start at 3 + random 0..3, or 5 on Easy.
+- Mood events: the difficulty-dependent amounts in the table above.
+- After each hole: the mood drop (formula above) grows with difficulty.
+- SGA skill demand: a skill counts as demanded at 25 hundredths of a stroke on Easy, 50 otherwise; a second rating threshold is
+  50 on Easy and 100 otherwise.
+- Which golfers come: a candidate from the 100-entry golfer roster is accepted when (its rating - 10)^2 / ((difficulty * 5 + 20) * 2)
+  is at most tries / (4 - difficulty) + club reputation / 10 + cash in units / 200. Harder games make strong golfers pickier.
+- Waiting: a waiting golfer gives up when a random 0..5 is at least difficulty + 1, so patience falls as difficulty rises.
+- The game offers the four difficulties on the property chooser (our own control) and with `--difficulty 0-3`.

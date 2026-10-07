@@ -274,6 +274,10 @@ pub fn property_card(i: usize) -> Rect {
 }
 
 pub const BACK_BUTTON: Rect = Rect::new(748.0, 538.0, 46.0, 46.0);
+/// Our own control on the property chooser (the original picks the difficulty at the start of a game; its screen is not drawn yet).
+pub const DIFFICULTY_BUTTON: Rect = Rect::new(20.0, 46.0, 220.0, 22.0);
+/// The four difficulties the manual names, in the exe's order (0 easiest).
+pub const DIFFICULTY_NAMES: [&str; 4] = ["Easy", "Moderate", "Difficult", "Impossible"];
 
 /// The lower left dock: centre and radius of each button; its normal sprite on the sheet; the offset to the highlighted one.
 pub struct DockBtn {
@@ -412,6 +416,10 @@ impl App {
         self.view = s.view;
         s.image(g, &self.world_base, 0.0, 0.0);
         s.text(g, 24.0, 36.0, "Where will you build your golf course?", 14.0, rgb(0.1, 0.1, 0.35));
+        let d = DIFFICULTY_BUTTON;
+        s.fill(g, d.x, d.y, d.w, d.h, if self.hover == 101 { rgba(1.0, 1.0, 0.4, 0.35) } else { rgba(1.0, 1.0, 1.0, 0.25) });
+        let label = format!("Difficulty: {} (click to change)", DIFFICULTY_NAMES[self.difficulty.clamp(0, 3) as usize]);
+        s.text(g, d.x + 6.0, d.y + 16.0, &label, 13.0, rgb(0.1, 0.1, 0.35));
         let funds = if self.sandbox_choice { "Unlimited \u{a7}".to_string() } else { money(START_FUNDS as i64) };
         s.text_centered(g, 737.0, 32.0, &funds, 17.0, rgb(0.1, 0.1, 0.35));
         for (i, p) in PROPERTIES.iter().enumerate() {

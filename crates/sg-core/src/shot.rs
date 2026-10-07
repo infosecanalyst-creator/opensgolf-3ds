@@ -98,6 +98,8 @@ pub struct ShotSim {
     pub club: &'static str,
     /// Short text of the latest event (for the log).
     pub event: &'static str,
+    /// Distance from the hole of the latest putt when it was struck (world units).
+    pub last_putt_dist: f32,
     /// Start over after the hole (the game turns this off to move to the next hole).
     pub looping: bool,
     /// Set after the celebration when `looping` is false.
@@ -134,6 +136,7 @@ impl Default for ShotSim {
             stroke: 0,
             club: "",
             event: "",
+            last_putt_dist: 0.0,
             looping: true,
             finished: false,
             route: None,
@@ -345,6 +348,7 @@ impl ShotSim {
         // PLACEHOLDER: chance to hole out grows with the putting skill, and a little with luck.
         let s = &self.skills.v;
         let chance = 0.40 + 0.55 * s[GolferSkills::ACC_PUTTER] as f32 / 15.0 + 0.05 * s[GolferSkills::LUCK] as f32 / 15.0;
+        self.last_putt_dist = self.dist_to_hole();
         let far = self.dist_to_hole() > 60.0;
         let r = self.rnd();
         self.missed = if far { r > chance } else { r > (chance + 0.3).min(1.0) };
