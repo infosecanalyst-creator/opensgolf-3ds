@@ -969,7 +969,7 @@ impl App {
     }
 
     fn golfer_sounds(&mut self, gi: usize) {
-        let (ev, club, stroke) = (self.golfers[gi].sim.event, self.golfers[gi].sim.club, self.golfers[gi].sim.stroke);
+        let (ev, club) = (self.golfers[gi].sim.event, self.golfers[gi].sim.club);
         match ev {
             "drive" => {
                 self.snd(if club == "iron" { "Golf_Sfx/Iron.wav" } else { "Golf_Sfx/Drive With Ball.wav" }, 0.8, false);
@@ -984,9 +984,9 @@ impl App {
                 self.snd("Golf_Sfx/Ball Drop Sand.wav", 0.6, false);
             }
             "holed" => {
+                // The exe's green fee routine plays no sound; applause belongs to the SGA rating announcements and the cash
+                // register to "Other" income (docs/PUBLISHER_EXE_NOTES.md, "Sounds").
                 self.snd("Golf_Sfx/Ball In Hole.wav", 0.8, false);
-                self.snd(if stroke <= 5 { "ApplauseGood.wav" } else { "Applause.wav" }, 0.5, false);
-                self.snd("Effects/cash.wav", 0.6, false);
             }
             e if e.starts_with("splash") => {
                 self.snd("Golf_Sfx/Ball Water.wav", 0.8, false);

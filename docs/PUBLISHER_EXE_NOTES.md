@@ -203,3 +203,25 @@ Confidence: medium to high; the rules are read directly, some inputs are not dec
   is at most tries / (4 - difficulty) + club reputation / 10 + cash in units / 200. Harder games make strong golfers pickier.
 - Waiting: a waiting golfer gives up when a random 0..5 is at least difficulty + 1, so patience falls as difficulty rises.
 - The game offers the four difficulties on the property chooser (our own control) and with `--difficulty 0-3`.
+
+## Sounds (golf_publisher.exe machine code plus the decompile)
+
+Confidence: high for the table and the plays listed; the ball and swing sounds' trigger code is not found yet.
+- The exe keeps a table of 300 sound slots, 0x6c bytes each, starting at 0x80d840. One start-up routine loads 219 files into
+  slots (the file list in the exe matches the folders under Sounds/). Two helpers play slot N: one with volume and three more
+  settings, one with a 1000 ms argument (probably a fade). Slots 16 to 24 are loaded twice: first effects, then golfer emotion
+  sounds, so their meaning depends on when they are played.
+- Plays with a fixed slot, by what the calling routine does:
+  - green fee collected: no sound;
+  - "Other" income from a golfer (prize style money): `effects/cash.wav`;
+  - the two wager outcomes that also book "Other": `effects/taunt009.wav` and `effects/unrest 2.wav`;
+  - the SGA hole rating announcements: `Applause.wav` and `ApplauseGood.wav`;
+  - the player's own golfer receiving a bad mood event (while a flag is set): `ApplauseBad.wav`;
+  - golfer behaviour routine: `effects/belch.wav`, `effects/tada.wav`;
+  - course editing routine: `interface/bass up 2.wav` and `bass down 2.wav` (raise, lower), `interface/building.wav`,
+    `effects/tree sprout 3.wav`, `effects/palm.wav`, `effects/maple.wav` (tree planting), `effects/camera.wav`,
+    `effects/fly.wav`, `effects/club 2 drop no wtr.wav`;
+  - `GolfAmbience122.wav` from the ambience routine; `Golf Harp 6/7.wav` from two screen transitions.
+- The ball and swing sounds (`Golf sfx/*`, slots 188 and up) are never passed as constants; they are chosen by computed slot
+  numbers in code not yet traced. The game keeps its file-name based choice for those.
+- Change made: the game no longer plays applause and the cash register on every holed ball.
