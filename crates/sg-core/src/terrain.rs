@@ -8,8 +8,9 @@ use std::path::{Path, PathBuf};
 pub const TYPE_COUNT: usize = 36;
 /// World units per tile edge (original: 100).
 pub const TILE_SIZE: f32 = 100.0;
-/// APPROXIMATION: world units per elevation level.
-pub const HEIGHT_STEP: f32 = 12.0;
+/// World units per elevation level: Terrain.dll sets a corner to (level x 15.0); the exe never changes that scale
+/// (setSplineHeight is not imported).
+pub const HEIGHT_STEP: f32 = 15.0;
 /// Original ortho near/far: -5000 .. +5000.
 pub const DEPTH_RANGE: f32 = 5000.0;
 
@@ -244,6 +245,9 @@ pub struct Terrain {
     /// Tile of the demo clubhouse footprint centre, -1 if none.
     pub clubhouse_x: i32,
     pub clubhouse_y: i32,
+    /// Clubhouse footprint edge in tiles when it is even: the sprite then stands on the corner between the middle tiles, half a
+    /// tile on from (clubhouse_x, clubhouse_y). 0 for the demo course's odd footprint.
+    pub clubhouse_size: i32,
 }
 
 pub const MAX_LEVEL: i32 = 24;
@@ -505,6 +509,7 @@ impl Terrain {
         t.path = prev.path.clone();
         t.clubhouse_x = prev.clubhouse_x;
         t.clubhouse_y = prev.clubhouse_y;
+        t.clubhouse_size = prev.clubhouse_size;
         t.desert = prev.desert;
         Some(t)
     }
@@ -527,6 +532,7 @@ impl Terrain {
             path_kind: vec![0; n],
             clubhouse_x: -1,
             clubhouse_y: -1,
+            clubhouse_size: 0,
             ..Default::default()
         };
         let mut rng = Rng::new(if seed != 0 { seed } else { 1 });
@@ -689,25 +695,15 @@ pub struct TileTri {
     pub v: [Vertex; 3],
 }
 
-/// Terrain "class" used to decide where borders are drawn: tiles of the same class blend seamlessly.
-/// APPROXIMATION: the original receives this table from golf.exe at run time (SetTypeClasses export), so the grouping here is
-/// chosen to look like the game, not read from it.
-pub fn type_class(ty: i32) -> i32 {
+/// Terrain "class" used to decide where borders are drawn: tiles of the same class blend seamlessly. For the game's tile types
+/// 0..22 this is the table golf.exe hands to Terrain.dll at start-up (`land::border_class`, with its Desert rule); the editor-only
+/// ids above 22 are grouped with the type they look like.
+pub fn type_class(ty: i32, desert: bool) -> i32 {
     match ty {
-        0 => 0,
-        1 | 26 => 1,
-        2 | 3 => 2,
-        4 | 6 => 3,
-        5 | 10 | 19 | 11 => 4,
-        7 | 8 | 9 | 27 | 28 | 29 | 30 => 5,
-        17 | 23 | 24 | 25 | 18 => 6,
-        12 => 7,
-        13..=16 => 8,
-        22 => 9,
-        31 => 10,
-        32 => 11,
-        33 => 12,
-        34 | 35 => 5,
+        0..=22 => crate::land::border_class(ty as u8, desert) as i32,
+        23..=25 => crate::land::border_class(17, desert) as i32,
+        26 => 1,
+        27..=30 | 34 | 35 => 7,
         _ => 100 + ty,
     }
 }
@@ -731,7 +727,7 @@ pub fn tile_relation(t: &Terrain, x: i32, y: i32, nx: i32, ny: i32) -> i32 {
         }
         return if level == 0 || (level == 1 && nl == 2) { 2 } else { 1 };
     }
-    if type_class(mt as i32) != type_class(nt as i32) {
+    if type_class(mt as i32, t.desert) != type_class(nt as i32, t.desert) {
         return 1;
     }
     if mt != nt {

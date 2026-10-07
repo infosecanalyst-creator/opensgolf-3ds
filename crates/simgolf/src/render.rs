@@ -408,7 +408,7 @@ impl App {
     }
 
     pub fn can_afford(&self, i: usize) -> bool {
-        self.sandbox_choice || PROPERTIES[i].price <= START_FUNDS
+        self.sandbox_choice || self.offer_for(i).1 <= START_FUNDS
     }
 
     pub fn draw_property(&mut self, g: &mut Gfx) {
@@ -424,6 +424,7 @@ impl App {
         s.text_centered(g, 737.0, 32.0, &funds, 17.0, rgb(0.1, 0.1, 0.35));
         for (i, p) in PROPERTIES.iter().enumerate() {
             let r = property_card(i);
+            let (acres, price) = self.offer_for(i);
             let ok = self.can_afford(i);
             let a = if ok { 1.0 } else { 0.55 };
             s.image_part(g, &self.theme_icons[p.theme], r.x + 1.0, r.y - 1.0, if ok { 200.0 } else { 0.0 }, 0.0, 52.0, 52.0);
@@ -431,14 +432,7 @@ impl App {
             s.text_centered(g, cx, r.y + 15.0, p.name, 16.0, rgba(0.08, 0.08, 0.3, a));
             s.text_centered(g, cx, r.y + 26.0, p.bonus, 11.0, rgba(0.2, 0.2, 0.35, a));
             if !self.sandbox_choice {
-                s.text_centered(
-                    g,
-                    cx,
-                    r.y + 43.0,
-                    &format!("{} acres: {}", p.acres, money(p.price as i64)),
-                    12.0,
-                    rgba(0.25, 0.18, 0.1, a),
-                );
+                s.text_centered(g, cx, r.y + 43.0, &format!("{} acres: {}", acres, money(price as i64)), 12.0, rgba(0.25, 0.18, 0.1, a));
             }
             if self.hover == i as i32 {
                 s.fill(g, r.x, r.y, r.w, r.h, rgba(1.0, 1.0, 0.4, 0.22));
@@ -446,7 +440,8 @@ impl App {
         }
         if (0..16).contains(&self.hover) {
             let p = &PROPERTIES[self.hover as usize];
-            s.text(g, 26.0, 568.0, &format!("{}, {} acres. Bonus: {}.", p.name, p.acres, p.bonus), 14.0, rgb(0.1, 0.1, 0.3));
+            let (acres, _) = self.offer_for(self.hover as usize);
+            s.text(g, 26.0, 568.0, &format!("{}, {} acres. Bonus: {}.", p.name, acres, p.bonus), 14.0, rgb(0.1, 0.1, 0.3));
             if !self.can_afford(self.hover as usize) {
                 s.text(g, 26.0, 586.0, "Not enough funds.", 12.0, rgb(0.55, 0.1, 0.1));
             }

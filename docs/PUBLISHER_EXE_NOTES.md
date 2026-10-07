@@ -108,7 +108,7 @@ Confidence: medium. The stamp shows month = (ticks and 0x1fff) / 1024 + 3, so mo
 ## Property prices and amenity income (golf_decomp.c, near 0x46f1d0 and the golfer visit code)
 
 Confidence: prices high (table read directly), amenity income medium.
-- The property price table in the exe has 16 entries, in units of 100: 500, 600, 700, 800, 1200, 1500, 2000, 2500, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000. That is the same set of prices as properties.h, so the chooser prices match the exe. (Which price belongs to which place is not read from the exe; properties.h keeps the screenshot order.)
+- The property price table in the exe has 16 entries, in units of 100: 500, 600, 700, 800, 1200, 1500, 2000, 2500, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000. The price belongs to an offer slot, not to a place: see "Properties and new-game land" below.
 - Amenity visits pay the course in units of 100: building type 7 pays 5; type 6 pays 4 or 8, type 8 pays 6 or 10, type 10 pays 8 or 12, where the lower value applies when the building's upgrade level is below 2.
 - Removing a building 25 units is charged by one routine (-0x19); a removal pays back part of the build cost (not decoded).
 
@@ -257,3 +257,91 @@ Confidence: high.
   and 125 ms with that flag. The wait is skipped while another flag (0x59b04c) is set.
 - Consequences used by the game: a month (1024 ticks) lasts 89 seconds, a golfer's needs update every 160 ticks (14 seconds), and
   ball flights last their tick count times 87 ms.
+
+## Properties and new-game land (offer routine 0x46f2b0, land generator 0x470a60 and their helpers)
+
+Confidence: high. Every rule below was read from the complete Ghidra decompile and checked against the machine code where the
+decompile was unclear. Implemented in `sg-core/src/land.rs`.
+
+### Random numbers and noise
+- One generator serves the whole game: a 32-bit LCG, state = state x 1103515245 + 12345. A draw in 0..n-1 takes bits 16..30 of
+  the state as a fraction of 32768, multiplies by n and truncates. The state is seeded with the Windows millisecond clock x 37.
+- A height noise grid of 16 x 16 random values 0..15 (wrapping) is filled once at start-up (18 x 18 draws). It is read with
+  bilinear interpolation (cells of 256 units, 32 sub-steps). The "field" used by the land is two octaves mixed 6:4, times 7,
+  divided by 128 and clamped to 0..512.
+
+### Property records (16 records of 0x82 bytes at 0x4c1e90)
+Name, bonus text, a marker position on the world map art, and three small numbers: theme (exe order 0 Parkland, 1 Desert,
+2 Tropical, 3 Links), coast (0 inland, 1 sea along one side, 2 island) and relief (0 gentle, 1 rolling, 2 hilly).
+
+| # | Property | Theme | Coast | Relief | # | Property | Theme | Coast | Relief |
+|---|---|---|---|---|---|---|---|---|---|
+| 0 | Monterey | Parkland | 1 | 1 | 8 | Northeast | Parkland | 0 | 1 |
+| 1 | San Diego | Parkland | 1 | 0 | 9 | Carolina | Parkland | 0 | 0 |
+| 2 | Rocky Mtns. | Parkland | 0 | 2 | 10 | Ireland | Links | 0 | 2 |
+| 3 | Las Vegas | Desert | 0 | 0 | 11 | Scotland | Links | 1 | 0 |
+| 4 | Phoenix | Desert | 0 | 0 | 12 | Wales | Links | 2 | 1 |
+| 5 | Hawaii | Tropical | 1 | 1 | 13 | Spain | Desert | 1 | 1 |
+| 6 | Oahu | Tropical | 2 | 0 | 14 | Florida | Tropical | 1 | 0 |
+| 7 | Nova Scotia | Links | 1 | 1 | 15 | Jamaica | Tropical | 0 | 1 |
+
+### The offer
+At the start of a new game the properties are dealt into 16 offer slots. Slots 12..15 are filled first, at random, with four
+different themes. Slots 0..11 then take the remaining properties at random, except that slot 0 must be a Parkland property. A
+slot's price is the price table entry of the slot. Its acreage is (slot + 4) x 10, plus 10 (slots 0..3) or 20 (slots 4..15)
+for an inland property, minus the same for an island; in sandbox mode every slot has 250 acres and the starting money is
+10000 units instead of 1000. The chooser draws each property on its own fixed card (properties 0..9 down the left, 10..15 down
+the right) with the acreage and price of the slot it was dealt into, greyed when the price is above the cash.
+
+### The land generator (map 50 x 50 tiles, corner heights 51 x 51, sea level 3)
+1. Height scale: 48, 32 or 16 for relief 0, 1, 2; then +1/2 for slots 0..3, +1/4 for slots 4..7, -1/4 for slots 12..15;
+   +16 in sandbox mode. Bigger is flatter.
+2. Ground: rough. Not in sandbox: slots 8..11 deep rough, slots 12..15 brush; Desert uses rocks for both.
+3. Tree streaks: random walks from a random tile, each step moving -1..1 in both directions, each walk at most limit/128 tiles
+   where the limit starts at 5000 and grows by 2500 per walk; stop when the walks total more than 1250 tiles or the limit
+   reaches 45000. Types by theme: Parkland trees (pines on the far half, all pines at Carolina), Desert pine/rocks alternating,
+   Tropical pine then rocks or trees, Links deep rough/brush alternating. 1 tile in 64 becomes a "spot" (see 9).
+4. Creek (not on islands): from the far edge, at 16 + rand(16), stepping to whichever of three neighbours has the lowest
+   noise, never straight back; water (brush in the Desert). A random side tile at sea level becomes a waste bunker or rocks
+   bank (ravine in the Desert). It stops at existing water or the near edge.
+5. Coast (coast 1): along the b = 0 side, each row's first w tiles become water, w starting at 5 and moving by -2..2 each row,
+   kept in 2..12; the outermost tile of each row is out of bounds.
+6. Corner heights: from the noise (finer scale for relief 2), lowered towards the near edge in the Desert, divided by the
+   height scale, plus 1, clamped to 3 (4 above Easy)..15. Corners of water, wetlands and marsh tiles are at sea level.
+7. 24 patches on a 4 x 6 grid, each a random walk of at least 5 tiles that ends with chance 1/16 per step: low ground gets
+   water (Parkland, Tropical), palm (Desert) or rocks (Links); high ground gets rocks (Parkland, Desert) or palm (Tropical,
+   Links). The first patch, and on Difficult/Impossible each with chance 1 in 8/(difficulty-1), is wetlands instead.
+8. Elm trees become ordinary trees.
+9. (4 - difficulty) x 9 wildlife spots on tiles that are not buildings, rough, wetlands, brush/ravine, or water near the coast.
+10. Where a tile edge next to water or wetlands has both corners above sea level, the corner is lowered (at 4) or moved up or
+    down by one at random.
+11. Clubhouse (4 x 4): a random spot with both coordinates in 15..31 on plain ground where the footprint fits. Placing a
+    building flattens its corners to the anchor's height and makes its tiles building tiles.
+12. The property's feature: Monterey 16 brush spots (the cypresses), Ireland 16 rough spots (the leprechauns), San Diego
+    (8 - difficulty) dolphin spots at sea, a free building beside the clubhouse with a 3-tile path (Rocky Mtns. Resort Hotel,
+    Phoenix Swim Club plus a landmark, Carolina Putting Green, Scotland the Airstrip slot (drawn as the castle in Links),
+    Florida Pro Shop), Nova Scotia two lighthouses on the shore, and (8 - difficulty) landmarks for Hawaii (waterfall pools),
+    Oahu (garden pieces), Northeast (battlefield statues and cannons), Wales (standing stones), Spain (vineyards) and Jamaica
+    (statues), each with its own ring of tiles around it.
+13. Obstacles: one per difficulty step, on plain ground, ringed with brush in the Desert.
+14. The first employee starts beside the clubhouse.
+15. Owned land: m = the first k with acres x 10 >= 4 (25 - k)^2. Inland: a border m tiles wide all round becomes out of
+    bounds (type 20). Coast: the same except on the sea side. Island: each row's border is |row - 25| clamped to 8..50,
+    plus m - 12 + rand(3), and becomes water. The map before this step is kept; buying land later restores tiles from it.
+16. Water depth: water tiles next to land are shallow, next to shallow water middling, the rest deep.
+
+### Buildings (records of 0x14 bytes ending at 0x4c27f0: name, footprint edge, price in units)
+Pathway 1/1, Benches 1/2, Flower Bed 1/5, Ball Washer 1/50, Landmark 1/15, Home Site 2/10, Putting Green 3/100, Snack Bar 2/150,
+Pro Shop 2/200, Swim Club 3/300, Driving Range 5/250, Cart Garage 2/400, Marina 2/1000, Resort Hotel 4/2500, Airstrip 6/5000,
+Clubhouse 4/200, Willow Tree 1/25, TV Tower 1/10, TV Booth 1/10, Scenic Bridge 1/100. The sprite for a building depends on
+the theme (for example the Links set draws the Airstrip slot as a castle); that table is not decoded yet.
+
+### Terrain classes and the out-of-bounds land
+At start-up the exe hands Terrain.dll one class per tile type (byte +0x26 of the terrain table): tee 0, green 1, fairway and
+firm fairway 2, rough, deep rough, mound, ravine, brush, rocks, wetlands and marsh 4, sand trap and pot bunker 7, waste bunker 8,
+the four tree types 13, water 17, out of bounds and buildings 18. In the Desert theme every type with a positive byte +0x22,
+except deep rough and sand trap, is sent as class 4. Terrain.dll does not draw out-of-bounds tiles at all.
+
+### Re-check of the facts taken from the first decompile
+The routines the port relies on were compared between the earlier decompile and the complete one: 14 are identical, and two
+(the course statistics routine and the club planning routine) differ only in how Ghidra typed an array; the formulas are the same.

@@ -6,6 +6,7 @@ use miniquad::TextureId;
 use sg_core::economy::{self, Economy};
 use sg_core::fsutil::resolve;
 use sg_core::holes::*;
+use sg_core::land::{self, ExeRng, Land, Noise, Slot};
 use sg_core::mixer::Mixer;
 use sg_core::mood;
 use sg_core::properties::{PROPERTIES, START_FUNDS};
@@ -243,6 +244,14 @@ pub struct App {
     pub rounds_started: u32,
     /// 0..3 as in the exe (the standard game's value is not known yet; 1 is a guess).
     pub difficulty: i32,
+    /// The exe's random number generator (land, offer) and the height noise it fills once at start-up.
+    pub exe_rng: ExeRng,
+    pub noise: Noise,
+    /// This game's deal of properties to offer slots, and the slot each property is in.
+    pub offer: [Slot; 16],
+    pub slot_of: [usize; 16],
+    /// The land of the current game, when it was generated (None for the demo course or a loaded course file).
+    pub land: Option<Land>,
     pub course_name: String,
     pub screen: Screen,
     pub title_base: Image,
@@ -326,6 +335,15 @@ pub fn now() -> f64 {
 
 impl App {
     pub fn new(game_dir: PathBuf) -> App {
+        Self::with_clock(game_dir, clock_ms())
+    }
+
+    /// `clock` stands in for the Windows millisecond clock the exe seeds its generator with.
+    pub fn with_clock(game_dir: PathBuf, clock: u32) -> App {
+        let mut exe_rng = ExeRng::from_clock(clock);
+        let noise = Noise::new(&mut exe_rng);
+        let offer = land::deal_offer(&mut exe_rng, false);
+        let slot_of = slots_of(&offer);
         App {
             game_dir,
             theme: 0,
@@ -362,6 +380,11 @@ impl App {
             look_ok: [false; LOOKS],
             rounds_started: 0,
             difficulty: 1,
+            exe_rng,
+            noise,
+            offer,
+            slot_of,
+            land: None,
             course_name: "Demo Course".into(),
             screen: Screen::Play,
             title_base: Image::default(),
@@ -516,6 +539,10 @@ impl App {
         for y in 0..self.terrain.h {
             for x in 0..self.terrain.w {
                 tris.clear();
+                // Terrain.dll does not draw out-of-bounds tiles (type 20): the land outside the property is left empty.
+                if self.terrain.type_at(x, y) == 20 {
+                    continue;
+                }
                 build_tile_triangles(&self.terrain, x, y, &mut tris);
                 for t in &tris {
                     let path = self.catalog.pick(t.tex_type, t.set, t.variation).cloned();
@@ -767,7 +794,8 @@ impl App {
         ];
         for ty in 0..self.terrain.h {
             for tx in 0..self.terrain.w {
-                if self.terrain.ty[self.terrain.tile_index(tx, ty)] != TT_WOODS {
+                // Tile types 13..16 (tree, pine, palm, elm) all draw the Woods texture and carry trees.
+                if !(TT_WOODS..=16).contains(&self.terrain.ty[self.terrain.tile_index(tx, ty)]) {
                     continue;
                 }
                 let mut rng = Rng::new(
@@ -841,7 +869,11 @@ impl App {
             self.add_building_prop(b);
         }
         if self.terrain.clubhouse_x >= 0 {
-            let (x, z) = self.terrain.tile_centre(self.terrain.clubhouse_x, self.terrain.clubhouse_y);
+            let (mut x, mut z) = self.terrain.tile_centre(self.terrain.clubhouse_x, self.terrain.clubhouse_y);
+            if self.terrain.clubhouse_size > 0 && self.terrain.clubhouse_size % 2 == 0 {
+                x -= TILE_SIZE * 0.5;
+                z -= TILE_SIZE * 0.5;
+            }
             let [b, gr] = CLUB[self.theme];
             let body = Prop {
                 x,
@@ -1284,13 +1316,28 @@ impl App {
 
     // ---- new games, stories --------------------------------------------------------------------------------------------------
 
+    /// Deals the properties out to the offer slots for a new game, as the exe does before showing the property chooser.
+    pub fn deal_offer(&mut self, sandbox: bool) {
+        self.offer = land::deal_offer(&mut self.exe_rng, sandbox);
+        self.slot_of = slots_of(&self.offer);
+    }
+
+    /// Acres and price (in money) of a property in this game's offer.
+    pub fn offer_for(&self, prop_idx: usize) -> (i32, i32) {
+        let slot = self.slot_of[prop_idx];
+        (self.offer[slot].acres, land::SLOT_PRICE_UNITS[slot] * 100)
+    }
+
     pub fn start_game(&mut self, g: &mut Gfx, prop_idx: usize, sandbox: bool) {
         let p = PROPERTIES[prop_idx];
+        let (acres, price) = self.offer_for(prop_idx);
         self.econ.sandbox = sandbox;
         // The property is paid for out of the starting funds.
-        self.econ.start_cash = if sandbox { START_FUNDS as f64 } else { (START_FUNDS - p.price) as f64 };
-        self.seed = self.seed.wrapping_mul(1664525).wrapping_add(1013904223).wrapping_add((prop_idx as u32).wrapping_mul(7919));
-        self.terrain = Terrain::demo_course(40, 40, self.seed);
+        self.econ.start_cash = if sandbox { START_FUNDS as f64 } else { (START_FUNDS - price) as f64 };
+        let slot_index = self.slot_of[prop_idx];
+        let land = land::generate(slot_index, self.offer[slot_index], self.difficulty, sandbox, &mut self.exe_rng, &self.noise);
+        self.terrain = land.to_terrain();
+        self.land = Some(land);
         self.course_name = format!("{} GC", p.name);
         self.load_theme(g, p.theme);
         self.screen = Screen::Play;
@@ -1304,8 +1351,8 @@ impl App {
         println!(
             "new game: {}, {} acres, price {}, cash left {:.0}{}",
             p.name,
-            p.acres,
-            p.price,
+            acres,
+            price,
             self.econ.start_cash,
             if sandbox { " (sandbox)" } else { "" }
         );
@@ -1620,4 +1667,17 @@ pub fn pitch_for(w: f32, h: f32) -> f64 {
     } else {
         40.541603
     }
+}
+
+/// Milliseconds from the system clock, wrapped to 32 bits like the Windows tick count.
+pub fn clock_ms() -> u32 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u32).unwrap_or(0)
+}
+
+fn slots_of(offer: &[Slot; 16]) -> [usize; 16] {
+    let mut out = [0; 16];
+    for (i, s) in offer.iter().enumerate() {
+        out[s.property] = i;
+    }
+    out
 }

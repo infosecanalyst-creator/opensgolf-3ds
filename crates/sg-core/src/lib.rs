@@ -15,6 +15,7 @@ pub mod flight;
 pub mod formats;
 pub mod fsutil;
 pub mod holes;
+pub mod land;
 pub mod mixer;
 pub mod mood;
 pub mod png;

@@ -1,42 +1,27 @@
-//! The sixteen properties of the property chooser. Names, sizes, prices and bonuses were read from screenshots of the original game
-//! (docs/SCREENSHOT_NOTES.md). The theme is inferred from the icon on each card (tree = Parkland, castle = Links, desert building =
-//! Desert, dolphin = Tropical). The money symbol of the game is the section sign. The exe's price table (docs/PUBLISHER_EXE_NOTES.md)
-//! holds the same sixteen prices.
+//! The sixteen properties of the property chooser, in the exe's order (docs/PUBLISHER_EXE_NOTES.md, "Properties and new-game
+//! land"). The card a property is drawn on is fixed: properties 0..9 down the left arc, 10..15 down the right. The acreage and
+//! price on a card are not fixed: they come from the offer slot the property was dealt into for this game (`land::deal_offer`,
+//! `land::SLOT_PRICE_UNITS`). The money symbol of the game is the section sign.
+
+use crate::land::{port_theme, RECORDS};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Property {
     pub name: &'static str,
     pub bonus: &'static str,
-    pub acres: i32,
-    pub price: i32,
-    /// 0 Parkland, 1 Links, 2 Desert, 3 Tropical.
+    /// The port's theme order: 0 Parkland, 1 Links, 2 Desert, 3 Tropical.
     pub theme: usize,
     /// 0 left, 1 right in the chooser.
     pub column: i32,
 }
 
+/// Starting funds: the exe starts a game with 1000 money units (one unit is 100).
 pub const START_FUNDS: i32 = 100_000;
 
-const fn p(name: &'static str, bonus: &'static str, acres: i32, price: i32, theme: usize, column: i32) -> Property {
-    Property { name, bonus, acres, price, theme, column }
+const fn p(i: usize) -> Property {
+    let r = &RECORDS[i];
+    Property { name: r.name, bonus: r.bonus, theme: port_theme(r.theme), column: if i < 10 { 0 } else { 1 } }
 }
 
-/// In the order the cards appear, top to bottom, left column first.
-pub const PROPERTIES: [Property; 16] = [
-    p("Monterey", "Scenic Cypress", 110, 250000, 0, 0),
-    p("San Diego", "Dolphins", 50, 60000, 0, 0),
-    p("Rocky Mtns.", "Free Hotel", 180, 700000, 0, 0),
-    p("Las Vegas", "Fun, Fun, Fun", 100, 120000, 2, 0),
-    p("Phoenix", "Free Spa", 210, 1000000, 2, 0),
-    p("Hawaii", "Scenic Waterfall", 70, 80000, 3, 0),
-    p("Oahu", "Japanese Garden", 50, 70000, 3, 0),
-    p("Nova Scotia", "Scenic Lighthouse", 170, 800000, 1, 0),
-    p("Northeast", "Civil War Battlefield", 50, 50000, 0, 0),
-    p("Carolina", "Free Putting Green", 160, 500000, 0, 0),
-    p("Ireland", "Leprechauns", 170, 600000, 1, 1),
-    p("Scotland", "Free Castle", 130, 400000, 1, 1),
-    p("Wales", "Stonehenge", 80, 200000, 1, 1),
-    p("Spain", "Scenic Vineyards", 120, 300000, 2, 1),
-    p("Florida", "Free Pro Shop", 90, 150000, 3, 1),
-    p("Jamaica", "Scenic Statues", 200, 900000, 3, 1),
-];
+pub const PROPERTIES: [Property; 16] =
+    [p(0), p(1), p(2), p(3), p(4), p(5), p(6), p(7), p(8), p(9), p(10), p(11), p(12), p(13), p(14), p(15)];

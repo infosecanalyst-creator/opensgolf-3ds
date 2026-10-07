@@ -22,6 +22,7 @@ use render::*;
 use sg_core::economy::{self, Economy};
 use sg_core::formats::{atoi, parse_pro_golfers};
 use sg_core::mixer::Mixer;
+use sg_core::properties::PROPERTIES;
 use sg_core::terrain::{Terrain, TT_FAIRWAY, TT_PUTTING_GREEN, TT_ROUGH, TT_SAND, TT_TEE, TT_WATER_SHALLOW};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -49,11 +50,13 @@ struct Options {
     edit_spec: String,
     panel: Option<i32>,
     center: Option<(i32, i32)>,
+    clock: Option<u32>,
+    property: Option<String>,
 }
 
 const USAGE: &str = "usage: simgolf --game DIR [--theme T] [--seed N] [--size WxH] [--zoom Z] [--rot DEG] [--center TX,TY] [--png FILE] \
 [--time S] [--follow] [--golfer NAME] [--sandbox] [--cash N] [--difficulty 0-3] [--screen menu|property|play|report] [--course FILE] [--save FILE] \
-[--edit SPEC] [--panel N] [--mute] [--sound-log]";
+[--edit SPEC] [--panel N] [--mute] [--sound-log] [--clock MS] [--property N|NAME]";
 
 /// Leading comma separated integers, like sscanf("%d,%d,...") (stops at the first one that does not parse).
 fn ints(s: &str) -> Vec<i32> {
@@ -93,6 +96,8 @@ fn parse_args() -> Options {
         edit_spec: String::new(),
         panel: None,
         center: None,
+        clock: None,
+        property: None,
     };
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -111,6 +116,8 @@ fn parse_args() -> Options {
                 }
             }
             "--seed" => o.seed = next().parse().unwrap_or(7),
+            "--clock" => o.clock = next().parse().ok(),
+            "--property" => o.property = Some(next()),
             "--size" => {
                 let s = next();
                 if let Some((w, h)) = s.split_once('x') {
@@ -264,7 +271,10 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
 impl Stage {
     fn new(o: Options) -> Stage {
         let mut g = Gfx::new();
-        let mut app = App::new(o.game_dir.clone());
+        let mut app = match o.clock {
+            Some(c) => App::with_clock(o.game_dir.clone(), c),
+            None => App::new(o.game_dir.clone()),
+        };
         app.theme = o.theme;
         app.seed = o.seed;
         app.zoom = o.zoom;
@@ -347,6 +357,18 @@ impl Stage {
                     _ => {}
                 }
             }
+        }
+        if let Some(name) = &o.property {
+            let k = name.parse::<usize>().ok().filter(|&k| k < 16).or_else(|| {
+                let n = name.to_lowercase();
+                PROPERTIES.iter().position(|p| p.name.to_lowercase().starts_with(&n))
+            });
+            let Some(k) = k else {
+                eprintln!("error: unknown property {name}");
+                std::process::exit(1)
+            };
+            app.deal_offer(o.sandbox);
+            app.start_game(&mut g, k, o.sandbox);
         }
         if let Some(f) = &o.course {
             match Terrain::load(f, &app.terrain) {
@@ -581,6 +603,7 @@ impl Stage {
                 },
                 1 | 2 => {
                     app.sandbox_choice = hit == 2;
+                    app.deal_offer(app.sandbox_choice);
                     app.screen = Screen::Property;
                     app.hover = -1;
                 }
