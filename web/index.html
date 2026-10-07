@@ -9,7 +9,7 @@
   #glcanvas { display: none; width: 100vw; height: 100vh; outline: none; }
   #picker { max-width: 640px; margin: 12vh auto 0; padding: 0 16px; }
   #picker h1 { font-weight: 600; }
-  #picker label { display: inline-block; margin-top: 12px; padding: 10px 18px; background: #3b4a8a; border-radius: 6px; cursor: pointer; }
+  #picker label { margin-right: 8px;  display: inline-block; margin-top: 12px; padding: 10px 18px; background: #3b4a8a; border-radius: 6px; cursor: pointer; }
   #picker input { display: none; }
   a { color: #9fb4ff; }
   code { color: #d8dcff; }
@@ -28,7 +28,15 @@
     <li>Your browser may ask to confirm reading the folder ("upload" in its wording): the files are only read inside this tab,
       nothing is sent anywhere.</li>
   </ol>
+  <div id="again" style="display:none">
+    <p><b>Your game files are already in this browser.</b></p>
+    <label id="playstored">Play</label>
+    <a href="#" onclick="sgForget(); return false;" class="note" style="margin-left:12px">Forget my game files</a>
+    <p class="note">Or load them again:</p>
+  </div>
   <label>Choose your SimGolf game folder<input id="folder" type="file" webkitdirectory directory multiple></label>
+  <label>Or a .zip of it<input id="zip" type="file" accept=".zip"></label>
+  <p class="note"><input type="checkbox" id="remember" checked style="display:inline"> Keep the files in this browser so next time it starts at once</p>
   <div id="status"></div>
   <p class="note">The game's art, sounds and data belong to Electronic Arts and are not included here, which is why the page
   needs your copy. Works in desktop Chrome, Edge and Firefox. Sound starts after your first click. Saved courses stay in this
@@ -39,6 +47,8 @@
 <script src="simgolf.js"></script>
 <script>
   document.getElementById("folder").addEventListener("change", e => sgLoadFolder(e.target.files));
+  document.getElementById("zip").addEventListener("change", e => sgLoadZip(e.target.files[0]));
+  sgInit();
 </script>
 </body>
 </html>
