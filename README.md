@@ -1,5 +1,16 @@
 # simgolf-native
 
+## ▶ [Play SimGolf in your browser](https://crspytopgn.github.io/simgolf-native/)
+
+Open the link above in a desktop browser (Chrome, Edge or Firefox), click **Choose your SimGolf game folder** and pick the
+folder of your own installed copy of SimGolf (the folder that contains `Flics`, `Sounds` and `Data`). The game starts right away.
+
+**You need your own copy of SimGolf.** The game's art, sounds and data belong to Electronic Arts and cannot be put on GitHub, so the
+page uses the files from your copy. They are read inside your browser tab only; nothing is uploaded anywhere. Saved courses stay in
+your browser. Sound starts after your first click.
+
+---
+
 Clean-room native port of Sid Meier's SimGolf (Firaxis, 2002), written in Rust, for macOS (Apple silicon and Intel), Windows and Linux.
 It reads the data files from your own legitimately owned copy of the game. No game assets or code from the original are included here,
 and nothing here removes or bypasses copy protection. The goal is a game that plays like the original in every respect; the rules are
