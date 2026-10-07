@@ -74,7 +74,8 @@ fn ints(s: &str) -> Vec<i32> {
 
 fn parse_args() -> Options {
     let mut o = Options {
-        game_dir: PathBuf::from("game/Program_Files_(ENGLISH)"),
+        // In a browser the page puts the player's game folder at "game" (web/simgolf.js).
+        game_dir: PathBuf::from(if cfg!(target_arch = "wasm32") { "game" } else { "game/Program_Files_(ENGLISH)" }),
         theme: 0,
         seed: 7,
         win_w: 1280,
@@ -307,8 +308,8 @@ impl Stage {
         }
         if let Some(name) = &o.golfer {
             // Play as a golfer from progolfers.dta (case-insensitive name match).
-            let pros = std::fs::read(app.game_path("Themes/Standard/progolfers.dta"))
-                .map_err(|e| e.to_string())
+            let pros = sg_core::fsutil::read_file(app.game_path("Themes/Standard/progolfers.dta"))
+                .ok_or_else(|| "cannot read progolfers.dta".to_string())
                 .and_then(|d| parse_pro_golfers(&sg_core::formats::latin1(&d)));
             let pros = pros.unwrap_or_else(|e| {
                 eprintln!("error: cannot read progolfers.dta ({e})");
@@ -1043,6 +1044,8 @@ fn main() {
         window_height: o.win_h,
         high_dpi: true,
         window_resizable: true,
+        // 32-bit mesh indices need WebGL 2 in a browser.
+        platform: conf::Platform { webgl_version: conf::WebGLVersion::WebGL2, ..Default::default() },
         ..Default::default()
     };
     miniquad::start(conf, move || Box::new(Stage::new(o)));

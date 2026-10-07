@@ -559,8 +559,7 @@ impl App {
             return *t;
         }
         let tga = sg_core::fsutil::ext_lower(path) == ".tga";
-        let id = std::fs::read(path)
-            .ok()
+        let id = sg_core::fsutil::read_file(path)
             .and_then(|d| if tga { sg_core::assets::decode_tga(&d).ok() } else { sg_core::assets::decode_bmp(&d).ok() })
             .map(|img| g.texture(&img, true));
         self.textures.insert(path.to_path_buf(), id);
@@ -1010,7 +1009,7 @@ impl App {
             }
         }
         self.sprite_index.clear();
-        let lighting = std::fs::read(self.game_path(&format!("{}Lighting.txt", THEMES[theme])))
+        let lighting = sg_core::fsutil::read_file(self.game_path(&format!("{}Lighting.txt", THEMES[theme])))
             .map(|d| sg_core::terrain::parse_lighting(&sg_core::formats::latin1(&d)))
             .unwrap_or_default();
         self.light = lighting;
@@ -1450,14 +1449,13 @@ impl App {
         self.story_pos = 0;
         self.story_next = 0.0;
         let dir = self.game_path("Themes/Standard");
-        let mut files: Vec<PathBuf> = std::fs::read_dir(&dir)
-            .map(|rd| rd.flatten().map(|e| e.path()).filter(|p| sg_core::fsutil::ext_lower(p) == ".txt").collect())
-            .unwrap_or_default();
+        let mut files: Vec<PathBuf> =
+            sg_core::fsutil::list_dir(&dir).into_iter().filter(|p| sg_core::fsutil::ext_lower(p) == ".txt").collect();
         if files.is_empty() {
             return;
         }
         files.sort();
-        let Ok(d) = std::fs::read(&files[self.seed as usize % files.len()]) else { return };
+        let Some(d) = sg_core::fsutil::read_file(&files[self.seed as usize % files.len()]) else { return };
         let text = sg_core::formats::latin1(&d);
         let (mut first, mut new_block) = (true, true);
         for raw in text.split('\n') {
@@ -1753,7 +1751,7 @@ pub fn pitch_for(w: f32, h: f32) -> f64 {
 
 /// Milliseconds from the system clock, wrapped to 32 bits like the Windows tick count.
 pub fn clock_ms() -> u32 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u32).unwrap_or(0)
+    (miniquad::date::now() * 1000.0) as u64 as u32
 }
 
 fn slots_of(offer: &[Slot; 16]) -> [usize; 16] {

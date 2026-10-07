@@ -16,7 +16,7 @@ pub struct Image {
 /// Loads a PCX from the disc. With `magenta_key`, pure magenta pixels become transparent (the original's colour key); `key_rgb` is
 /// another colour key as 0xRRGGBB.
 pub fn load_pcx(g: &mut Gfx, path: &Path, magenta_key: bool, key_rgb: Option<u32>) -> Option<Image> {
-    let d = std::fs::read(path).ok()?;
+    let d = sg_core::fsutil::read_file(path)?;
     let mut img = decode_pcx(&d).ok()?;
     for p in img.px.as_chunks_mut::<4>().0 {
         if magenta_key && p[0] == 255 && p[1] == 0 && p[2] == 255 {
@@ -71,7 +71,7 @@ impl Font {
     }
 
     fn load_inner(g: &mut Gfx, ttf_path: &Path) -> Option<Font> {
-        let ttf = std::fs::read(ttf_path).ok()?;
+        let ttf = sg_core::fsutil::read_file(ttf_path)?;
         let font = fontdue::Font::from_bytes(ttf, fontdue::FontSettings::default()).ok()?;
         let mut atlas = vec![0u8; ATLAS * ATLAS * 4];
         let mut glyphs = Vec::with_capacity(COUNT as usize);

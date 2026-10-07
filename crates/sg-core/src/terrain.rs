@@ -115,11 +115,10 @@ pub struct TextureCatalog {
 impl TextureCatalog {
     pub fn load(theme_dir: &Path) -> Result<TextureCatalog, String> {
         let mut index: HashMap<String, PathBuf> = HashMap::new();
-        if let Ok(rd) = std::fs::read_dir(theme_dir) {
-            for e in rd.flatten() {
-                let p = e.path();
-                if p.is_file() {
-                    index.insert(e.file_name().to_string_lossy().to_lowercase(), p);
+        for p in crate::fsutil::list_dir(theme_dir) {
+            if !crate::fsutil::is_dir(&p) {
+                if let Some(n) = p.file_name() {
+                    index.insert(n.to_string_lossy().to_lowercase(), p.clone());
                 }
             }
         }
@@ -455,7 +454,11 @@ impl Terrain {
     }
 
     pub fn save(&self, file: &Path) -> Result<(), String> {
-        std::fs::write(file, self.to_course_text()).map_err(|_| format!("cannot write {}", file.display()))
+        if crate::fsutil::write_file(file, self.to_course_text().as_bytes()) {
+            Ok(())
+        } else {
+            Err(format!("cannot write {}", file.display()))
+        }
     }
 
     /// Parses a course file. The golfers' route, the clubhouse and the desert flag are scenery of the demo, not part of the course
@@ -515,7 +518,7 @@ impl Terrain {
     }
 
     pub fn load(file: &Path, prev: &Terrain) -> Result<Terrain, String> {
-        let text = std::fs::read_to_string(file).map_err(|_| format!("cannot read {}", file.display()))?;
+        let text = crate::fsutil::read_text(file).ok_or_else(|| format!("cannot read {}", file.display()))?;
         Terrain::from_course_text(&text, prev).ok_or_else(|| format!("bad course file {}", file.display()))
     }
 

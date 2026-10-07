@@ -44,6 +44,14 @@ game's font); `crates/sgtool` and `crates/sgplay` are the tools. The earlier C++
 `cargo test` runs the unit tests. CI builds and tests on macOS, Windows and Linux, and on Linux also starts the game on a virtual
 display against a placeholder data folder and saves a screenshot.
 
+## In a browser
+
+`web/build.sh` builds the browser version into `web/dist` (needs `rustup target add wasm32-unknown-unknown`). Serve that folder
+with any static web server, for example `python3 -m http.server -d web/dist`, and open it. The page asks for the folder of your
+own SimGolf copy (the one containing Flics, Sounds and Data); its files are read into the browser tab only, nothing is uploaded.
+Sound starts after the first click (a browser rule). Saved courses are kept in the browser's local storage. CI builds it too
+(artifact `simgolf-web`).
+
 ## Playing
 
 Keys: arrows/WASD pan, Q/E rotate, +/- or mouse wheel zoom, 1-4 themes, R new demo course, P toggle scenery, F follow the golfer,

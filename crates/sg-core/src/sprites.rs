@@ -36,9 +36,9 @@ impl Sprite {
 /// sprites the palette is a ramp of 4 greens plus white that becomes translucent black of increasing density.
 /// `palette_pcx`, when given, replaces the FLC palette with the one of an 8-bit PCX (colour variants).
 pub fn load_sprite(flc_path: &Path, shadow: bool, palette_pcx: Option<&Path>) -> Result<Sprite, String> {
-    let d = std::fs::read(flc_path).map_err(|_| format!("cannot read {}", flc_path.display()))?;
+    let d = crate::fsutil::read_file(flc_path).ok_or_else(|| format!("cannot read {}", flc_path.display()))?;
     let f = decode_flc(&d).map_err(|e| format!("{}: {}", flc_path.display(), e))?;
-    let over = palette_pcx.and_then(|p| std::fs::read(p).ok()).and_then(|p| read_pcx_palette(&p));
+    let over = palette_pcx.and_then(crate::fsutil::read_file).and_then(|p| read_pcx_palette(&p));
     let mut out = Sprite {
         shadow,
         w: f.w,

@@ -123,8 +123,8 @@ impl Mixer {
             s.last_error = format!("unknown sound {key}");
             return None;
         };
-        let clip = std::fs::read(path)
-            .map_err(|e| e.to_string())
+        let clip = crate::fsutil::read_file(path)
+            .ok_or_else(|| "cannot read".to_string())
             .and_then(|d| decode_wav(&d))
             .and_then(|w| to_stereo_44k(w.channels, w.bits, w.sample_rate, &w.pcm).ok_or_else(|| "unsupported PCM layout".to_string()));
         match clip {

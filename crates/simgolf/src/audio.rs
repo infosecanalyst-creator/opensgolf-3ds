@@ -96,7 +96,43 @@ mod device {
     }
 }
 
-#[cfg(not(feature = "audio"))]
+/// In a browser the page pulls sound through Web Audio (web/simgolf.js): it calls `sg_audio_fill` with its output rate and a
+/// frame count and gets back interleaved stereo f32 samples.
+#[cfg(target_arch = "wasm32")]
+mod device {
+    use super::Feed;
+    pub struct AudioOut;
+    static mut FEED: Option<(Box<dyn FnOnce(u32) -> Feed>, Option<Feed>, Vec<f32>)> = None;
+
+    pub fn open(make_feed: impl FnOnce(u32) -> Feed + 'static) -> Option<AudioOut> {
+        // SAFETY: the browser build is single threaded; the page only calls back between frames.
+        unsafe { FEED = Some((Box::new(make_feed), None, Vec::new())) };
+        Some(AudioOut)
+    }
+
+    #[no_mangle]
+    pub extern "C" fn sg_audio_fill(rate: u32, frames: u32) -> *const f32 {
+        // SAFETY: as above.
+        #[allow(static_mut_refs)]
+        let Some((make, feed, buf)) = (unsafe { FEED.as_mut() }) else {
+            return std::ptr::null();
+        };
+        if feed.is_none() {
+            let m = std::mem::replace(make, Box::new(|r| panic!("audio opened twice at {r}")));
+            *feed = Some(m(rate));
+        }
+        let f = feed.as_mut().unwrap();
+        buf.clear();
+        for _ in 0..frames {
+            let (l, r) = f.next_frame();
+            buf.push(l);
+            buf.push(r);
+        }
+        buf.as_ptr()
+    }
+}
+
+#[cfg(all(not(feature = "audio"), not(target_arch = "wasm32")))]
 mod device {
     use super::Feed;
     pub struct AudioOut;
@@ -108,6 +144,7 @@ mod device {
 pub use device::AudioOut;
 
 /// Opens the default output device and feeds it from the mixer. None (and silence) when there is no device.
+#[allow(clippy::arc_with_non_send_sync)]
 pub fn open(mixer: Arc<Mixer>) -> Option<AudioOut> {
     device::open(move |rate| Feed::new(mixer, rate))
 }

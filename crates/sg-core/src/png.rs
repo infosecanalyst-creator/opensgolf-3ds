@@ -1,6 +1,5 @@
 //! Minimal PNG writer (RGBA8, zlib via miniz_oxide). For screenshots and asset export.
 use crate::assets::Rgba;
-use std::io::Write;
 
 fn crc_table() -> [u32; 256] {
     let mut t = [0u32; 256];
@@ -52,7 +51,7 @@ pub fn encode_png(img: &Rgba) -> Option<Vec<u8>> {
 
 pub fn write_png(path: impl AsRef<std::path::Path>, img: &Rgba) -> bool {
     let Some(bytes) = encode_png(img) else { return false };
-    std::fs::File::create(path).and_then(|mut f| f.write_all(&bytes)).is_ok()
+    crate::fsutil::write_file(path, &bytes)
 }
 
 #[cfg(test)]

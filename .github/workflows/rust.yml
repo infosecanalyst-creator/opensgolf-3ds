@@ -48,3 +48,17 @@ jobs:
             target/release/sgplay${{ runner.os == 'Windows' && '.exe' || '' }}
             *.png
           if-no-files-found: warn
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Build the browser version
+        run: ./web/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: simgolf-web
+          path: web/dist
