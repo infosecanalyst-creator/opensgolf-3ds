@@ -626,6 +626,8 @@ mod tests {
         cl.match_money(2);
         let earned: i32 = cl.out.iter().map(|e| if let crate::golfer::Event::Earn { units, .. } = e { *units } else { 0 }).sum();
         assert_eq!(earned, 40);
+        let said = |cl: &Club, t: &str| cl.out.iter().any(|e| matches!(e, crate::golfer::Event::Message { text, .. } if text.ends_with(t)));
+        assert!(said(&cl, " wins hole #1 by a score of 4 to 5! Collect \u{a7}4,000."));
         // last hole: a tie on the hole, the pro wins the match by a stroke
         cl.out.clear();
         cl.g[2].card[2] = 3;
@@ -635,6 +637,7 @@ mod tests {
         cl.match_money(2);
         let earned: i32 = cl.out.iter().map(|e| if let crate::golfer::Event::Earn { units, .. } = e { *units } else { 0 }).sum();
         assert_eq!(earned, 40);
+        assert!(said(&cl, "At the end of the match, you win \u{a7}4,000."));
         assert_eq!(cl.trophies, 1);
         assert_eq!(cl.gary, -1);
         assert!(cl.awards & (1 << 5) != 0);
