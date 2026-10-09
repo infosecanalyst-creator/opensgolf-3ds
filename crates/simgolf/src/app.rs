@@ -399,6 +399,8 @@ pub struct App {
     /// = selects raising, - selects lowering (the original's hotkeys); shift flips it.
     pub raise_sign: i32,
     pub paused: bool,
+    /// Game speed (Space cycles 1, 2, 4): above 1 the exe's fast mode is on as well (golfers walk twice as far a tick).
+    pub speed: u8,
     pub paint_idx: usize,
     /// The paint tool's variant (0x5a34f0, drawn when a terrain brush is picked) and the brush it was drawn for.
     pub paint_variant: Option<(usize, i32)>,
@@ -556,6 +558,7 @@ impl App {
             build_idx: 7,
             raise_sign: 1,
             paused: false,
+            speed: 1,
             paint_idx: 0,
             paint_variant: None,
             tracts: Default::default(),
@@ -1546,6 +1549,17 @@ impl App {
             // clock went backwards
             self.sim_time = 0.0;
         }
+        // where each golfer is on screen, or -1 when off it (the exe's drawing records this; a golfer who has finished and is
+        // out of sight goes straight home)
+        for gi in 0..golf::SLOTS {
+            if self.club.g[gi].hole == 0 {
+                continue;
+            }
+            let (x, y) = (self.club.g[gi].x, self.club.g[gi].y);
+            let (sx, sy) = self.screen_of(x, y).map(|(a, b)| (a as i32, b as i32)).unwrap_or((-1, -1));
+            self.club.g[gi].sx = sx;
+            self.club.g[gi].sy = sy;
+        }
         const DX: [f32; 8] = [0.0, 1.0, 1.0, 1.0, 0.0, -1.0, -1.0, -1.0];
         const DY: [f32; 8] = [-1.0, -1.0, 0.0, 1.0, 1.0, 1.0, 0.0, -1.0];
         for pi in 0..self.props.len() {
@@ -2465,7 +2479,7 @@ impl App {
             sg.thirst = g.thirst;
             sg.fatigue = g.fatigue;
             sg.hurried = g.flags & golf::flag::HURRIED != 0;
-            sg.busy = g.sub != 0;
+            sg.busy = g.strokes > 1;
             sg.last_pro_event = g.thoughts.iter().copied().find(|&t| t == 0x22 || t == 0x3a).unwrap_or(0) as u32;
             sg.pause = g.pause;
             sg.face = -1;
@@ -2506,7 +2520,6 @@ impl App {
             }
             let sg = self.staff_golfers[gi];
             let g = &mut self.club.g[gi];
-            g.thirst = sg.thirst;
             g.pause = sg.pause;
             if sg.face >= 0 {
                 g.facing = sg.face as i32;
@@ -2517,8 +2530,13 @@ impl App {
         }
         for ev in out {
             match ev {
-                StaffEvent::Mood { golfer, event, arg, .. } => {
+                StaffEvent::Mood { golfer, event, arg, counter_ok } => {
                     if self.club.g.get(golfer).map(|g| g.hole > 0).unwrap_or(false) {
+                        if event == sg_core::mood::ev::DRINK {
+                            // the drink's bonus reads the thirst at the sale (the experienced vendor's always counts);
+                            // the vendor's zero is copied back below
+                            self.club.g[golfer].thirst = if counter_ok { 99 } else { 0 };
+                        }
                         self.club.event(&mut self.course, &mut self.exe_rng, golfer, event, arg);
                     }
                 }
@@ -2532,6 +2550,12 @@ impl App {
                 }
                 StaffEvent::WeedPulled { a, b } => println!("[{:6.1}s] groundskeeper pulled a weed at {a},{b}", self.sim_time),
                 StaffEvent::Left { .. } => {}
+            }
+        }
+        // thirst last, after the drink's mood event
+        for gi in 0..golf::SLOTS {
+            if self.club.g[gi].hole > 0 {
+                self.club.g[gi].thirst = self.staff_golfers[gi].thirst;
             }
         }
     }
@@ -2660,6 +2684,17 @@ impl App {
         let have = self.props.iter().filter(|p| p.resident.is_some()).count();
         for i in have..want {
             self.props.push(Prop { resident: Some(i), hidden: true, ..Default::default() });
+        }
+        // where each golfer is on screen, or -1 when off it (the exe's drawing records this; a golfer who has finished and is
+        // out of sight goes straight home)
+        for gi in 0..golf::SLOTS {
+            if self.club.g[gi].hole == 0 {
+                continue;
+            }
+            let (x, y) = (self.club.g[gi].x, self.club.g[gi].y);
+            let (sx, sy) = self.screen_of(x, y).map(|(a, b)| (a as i32, b as i32)).unwrap_or((-1, -1));
+            self.club.g[gi].sx = sx;
+            self.club.g[gi].sy = sy;
         }
         const DX: [f32; 8] = [0.0, 1.0, 1.0, 1.0, 0.0, -1.0, -1.0, -1.0];
         const DY: [f32; 8] = [-1.0, -1.0, 0.0, 1.0, 1.0, 1.0, 0.0, -1.0];

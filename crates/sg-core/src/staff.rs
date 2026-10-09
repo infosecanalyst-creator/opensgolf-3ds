@@ -69,7 +69,7 @@ pub struct StaffGolfer {
     pub fatigue: i32,
     /// Hurried along by a Ranger: walks one speed step faster.
     pub hurried: bool,
-    /// Busy with something else (the exe skips such golfers for the Ranger).
+    /// Past the second shot of the hole (the Ranger only hurries golfers with at most one stroke taken).
     pub busy: bool,
     /// The last thing a Club Pro said to the golfer (mood event 0x22 or 0x3a), 0 if none.
     pub last_pro_event: u32,

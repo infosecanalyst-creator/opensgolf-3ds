@@ -855,6 +855,19 @@ impl Stage {
             KeyCode::S if shift => return self.save_course(false),
             KeyCode::L if shift => return self.load_course(),
             KeyCode::P if shift => return self.toggle_pause(),
+            KeyCode::Space if app.screen == Screen::Play => {
+                app.speed = match app.speed {
+                    1 => 2,
+                    2 => 4,
+                    _ => 1,
+                };
+                let name = match app.speed {
+                    1 => "Normal speed",
+                    2 => "Fast (x2)",
+                    _ => "Fastest (x4)",
+                };
+                return app.show_toast(name);
+            }
             KeyCode::T if shift => {
                 app.show_props = !app.show_props;
                 return;
@@ -1199,13 +1212,13 @@ impl EventHandler for Stage {
             }
             app.reset_clock = false;
         }
-        if app.screen != Screen::Play && !app.paused {
-            self.paused_total += t - self.last_tick; // the club does not run while a menu is open
-        }
+        // the club runs only on the course view and not while paused; a long stall (a dragged window) is not caught up
+        let dt = (t - self.last_tick).clamp(0.0, 0.25);
         self.last_tick = t;
         if self.png_out.is_none() && !app.paused && app.screen == Screen::Play {
-            app.time = t - self.paused_total;
+            app.time += dt * app.speed.max(1) as f64;
         }
+        app.club.turbo = app.speed > 1;
         let (w, h) = window::screen_size();
         app.draw_w = w.max(1.0);
         app.draw_h = h.max(1.0);

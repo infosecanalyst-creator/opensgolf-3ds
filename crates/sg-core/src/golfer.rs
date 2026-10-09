@@ -1312,6 +1312,8 @@ impl Club {
             m.best = padded as u8;
         }
         m.avg = if m.avg == 0 { over as i8 } else { ((m.avg as i32 + over) / 2) as i8 };
+        // rounds played (+0x2a): the roster lists members who have played, and regulars expect more of each hole
+        m.rounds = (m.rounds + 1).min(0x7fff);
         let last_flags = m.holes.get((next - 1).clamp(0, 18) as usize).copied().unwrap_or(0);
         if last_flags & 3 != 0 || diff == 0 || year == 0 || poor {
             points += 1;
@@ -1670,16 +1672,18 @@ impl Club {
                     {
                         yield_ = true;
                     }
-                    if (c.h(l.bt) < 1 && c.h(pt) > 0) || pg.flags & flag::BALL_MOVING != 0 {
-                        yield_ = false;
+                }
+                // these two apply to both golfers, not only the one nearer the pin
+                let pt = c.tile_type(pg.bx, pg.by);
+                if (c.h(l.bt) < 1 && c.h(pt) > 0) || pg.flags & flag::BALL_MOVING != 0 {
+                    yield_ = false;
+                }
+                if l.bt != t::GREEN {
+                    if len(me.bx - pg.bx, me.by - pg.by) < 0x600 {
+                        yield_ = true;
                     }
-                    if l.bt != t::GREEN {
-                        if len(me.bx - pg.bx, me.by - pg.by) < 0x600 {
-                            yield_ = true;
-                        }
-                        if len(me.bx - pg.x, me.by - pg.y) < 0x200 {
-                            yield_ = true;
-                        }
+                    if len(me.bx - pg.x, me.by - pg.y) < 0x200 {
+                        yield_ = true;
                     }
                 }
             }

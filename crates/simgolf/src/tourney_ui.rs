@@ -83,12 +83,9 @@ impl App {
         self.club.start_tournament(&self.course, &mut self.exe_rng, (e.x, e.y), e.dir as i32, cash);
         self.panel = 3;
         self.edit = false;
-        println!(
-            "[{:6.1}s] the tournament begins: purse ${},000, {} players",
-            self.sim_time,
-            self.club.purse,
-            self.club.leaderboard().0.len()
-        );
+        // a tournament started without the SGA's offer has no purse yet; the prize money is set when it ends
+        let purse = if self.club.purse > 0 { format!("purse ${},000", self.club.purse) } else { "purse set at the end".into() };
+        println!("[{:6.1}s] the tournament begins: {purse}, {} players", self.sim_time, self.club.leaderboard().0.len());
     }
 
     /// After the club's tick: the mid-year offer, the preparation checklist on the frame after the start, and the results.

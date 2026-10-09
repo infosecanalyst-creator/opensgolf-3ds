@@ -78,7 +78,7 @@ const SHORTCUTS: [(&str, &str); 16] = [
     ("J / Shift+J", "Practice round / match"),
     ("Esc", "Quit to the title menu"),
 ];
-const SHORTCUTS_RIGHT: [(&str, &str); 14] = [
+const SHORTCUTS_RIGHT: [(&str, &str); 15] = [
     ("G", "Select GREEN/TEES tool"),
     ("F", "Select FAIRWAY tool"),
     ("R", "Select ROUGH tool"),
@@ -93,6 +93,7 @@ const SHORTCUTS_RIGHT: [(&str, &str); 14] = [
     ("H", "Open the hole being built"),
     ("Shift+H", "Hide the advisor"),
     ("N twice", "Cancel the pro's round"),
+    ("Space", "Game speed: normal, x2, x4"),
 ];
 
 impl App {
