@@ -291,6 +291,26 @@ impl Gfx {
         id
     }
 
+    /// A texture from an HD pack picture (only used in HD mode, see hd.rs): trilinear filtered with mipmaps, since it is drawn
+    /// smaller than its own resolution. The pack's pictures carry their colours under transparent pixels already.
+    pub fn texture_hd(&mut self, img: &Rgba) -> TextureId {
+        let params = TextureParams {
+            kind: TextureKind::Texture2D,
+            width: img.w,
+            height: img.h,
+            format: TextureFormat::RGBA8,
+            wrap: TextureWrap::Clamp,
+            min_filter: FilterMode::Linear,
+            mag_filter: FilterMode::Linear,
+            mipmap_filter: MipmapFilterMode::Linear,
+            allocate_mipmaps: true,
+            sample_count: 1,
+        };
+        let id = self.ctx.new_texture(TextureAccess::Static, TextureSource::Bytes(&img.px), params);
+        self.ctx.texture_generate_mipmaps(id);
+        id
+    }
+
     pub fn mesh(&mut self, verts: &[Vert]) -> Mesh {
         let vb = self.ctx.new_buffer(BufferType::VertexBuffer, BufferUsage::Immutable, BufferSource::slice(verts));
         let ib = self.ctx.new_buffer(BufferType::IndexBuffer, BufferUsage::Immutable, BufferSource::slice(&seq_indices(verts.len())));

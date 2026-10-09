@@ -3,6 +3,7 @@
 //!   simgolf --game "<dir>/Program_Files_(ENGLISH)" [--theme parkland|links|desert|tropical] [--seed N] [--size WxH] [--zoom Z]
 //!           [--rot DEG] [--center TX,TY] [--time SECONDS] [--follow] [--png out.png] [--golfer NAME] [--sandbox] [--cash N]
 //!           [--screen menu|property|play|report] [--course FILE] [--save FILE] [--edit SPEC] [--panel N] [--mute] [--sound-log]
+//!           [--hd | --classic] [--hd-pack DIR]
 //!
 //! Keys: arrows/WASD pan, Q/E rotate, +/- or mouse wheel zoom, 1-4 theme, R new demo course, P toggle scenery, F follow the golfer,
 //! F6 screenshot, F1-F10 reports, M music, N mute, H open the new hole, Shift+H advisor, Tab edit mode, Esc menu. Left-drag pans.
@@ -16,6 +17,7 @@ mod cursor_ui;
 mod cust_ui;
 mod files_ui;
 mod gfx;
+mod hd;
 mod holemarks;
 mod hud_ui;
 mod info_ui;
@@ -73,11 +75,14 @@ struct Options {
     center: Option<(i32, i32)>,
     clock: Option<u32>,
     property: Option<String>,
+    /// --hd / --classic: the graphics mode for this run (else the saved choice).
+    hd: Option<bool>,
+    hd_pack: Option<PathBuf>,
 }
 
 const USAGE: &str = "usage: simgolf --game DIR [--theme T] [--seed N] [--size WxH] [--zoom Z] [--rot DEG] [--center TX,TY] [--png FILE] \
 [--time S] [--follow] [--golfer NAME] [--sandbox] [--cash N] [--difficulty 0-3] [--screen menu|property|play|report] [--course FILE] [--save FILE] \
-[--edit SPEC] [--panel N] [--mute] [--sound-log] [--clock MS] [--property N|NAME]";
+[--edit SPEC] [--panel N] [--mute] [--sound-log] [--clock MS] [--property N|NAME] [--hd | --classic] [--hd-pack DIR]";
 
 /// Leading comma separated integers, like sscanf("%d,%d,...") (stops at the first one that does not parse).
 fn ints(s: &str) -> Vec<i32> {
@@ -124,6 +129,8 @@ fn parse_args() -> Options {
         center: None,
         clock: None,
         property: None,
+        hd: None,
+        hd_pack: None,
     };
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -172,6 +179,9 @@ fn parse_args() -> Options {
                 o.champ = Some((c, PathBuf::from(next())));
             }
             "--edit" => o.edit_spec = next(),
+            "--hd" => o.hd = Some(true),
+            "--classic" => o.hd = Some(false),
+            "--hd-pack" => o.hd_pack = Some(PathBuf::from(next())),
             "--panel" => o.panel = Some(atoi(&next())),
             "--center" => {
                 let v = ints(&next());
@@ -214,6 +224,11 @@ struct Stage {
 
 fn load_ui(app: &mut App, g: &mut Gfx) -> bool {
     let font = ui::Font::load(g, |f| app.game_path(f));
+    load_art(app, g) && font
+}
+
+/// The interface art (at start up, and again when the graphics mode changes). False when the title art is missing.
+fn load_art(app: &mut App, g: &mut Gfx) -> bool {
     let mut img = |rel: &str, magenta: bool, key: Option<u32>| ui::load_pcx(g, &app.game_path(&format!("Interface/{rel}")), magenta, key);
     let base = img("TitleBASE.pcx", false, None);
     let un = img("TitleUnSel.pcx", true, None);
@@ -225,7 +240,7 @@ fn load_ui(app: &mut App, g: &mut Gfx) -> bool {
     let dock = img("3mainLowerLeft.pcx", false, Some(0xF800F8)); // optional: the lower left dock
     const ICON: [&str; 4] = ["ChooseParklandButtons.pcx", "ChooseLinksButtons.pcx", "ChooseDesertButtons.pcx", "ChooseTropicalButtons.pcx"];
     let icons: Vec<Option<ui::Image>> = ICON.iter().map(|f| img(f, false, Some(0xFF0000))).collect(); // icons are optional
-    let ok = font && base.is_some() && un.is_some() && mo.is_some() && world.is_some();
+    let ok = base.is_some() && un.is_some() && mo.is_some() && world.is_some();
     app.title_base = base.unwrap_or_default();
     app.title_un = un.unwrap_or_default();
     app.title_mo = mo.unwrap_or_default();
@@ -681,6 +696,11 @@ impl Stage {
         }
         app.terrain = Terrain::demo_course(40, 40, app.seed);
         app.land = None;
+        // the graphics mode, before any art is loaded: Classic unless HD was chosen (--hd or the saved choice) and a pack exists
+        if let Some(d) = &o.hd_pack {
+            app.hd.pack_dir = d.clone();
+        }
+        let hd_msg = app.init_hd(o.hd.unwrap_or_else(hd::saved_choice));
         if !app.load_theme(&mut g, app.theme) {
             std::process::exit(1);
         }
@@ -795,6 +815,9 @@ impl Stage {
         app.report_course(true);
         let t = now();
         app.clock = t;
+        if let Some(msg) = hd_msg {
+            app.show_toast(&msg);
+        }
         Stage {
             g,
             app,
@@ -890,6 +913,9 @@ impl Stage {
                 self.app.show_thoughts = m & 1 != 0;
                 self.app.show_advisor = m & 2 != 0;
                 self.app.club.wildlife.enabled = m & 4 != 0;
+                if self.app.switch_hd(&mut self.g, m & 16 != 0) {
+                    self.app.ui_ok &= load_art(&mut self.app, &mut self.g);
+                }
                 let sound = m & 8 != 0;
                 if sound == self.app.mute {
                     self.app.mute = !sound;
@@ -1455,8 +1481,12 @@ impl Stage {
         let params = |format| TextureParams { width: w, height: h, format, ..Default::default() };
         let color = self.g.ctx.new_render_texture(params(TextureFormat::RGBA8));
         let depth = self.g.ctx.new_render_texture(params(TextureFormat::Depth));
-        let pass = self.g.ctx.new_render_pass(color, Some(depth));
+        let msaa = hd::msaa_pass(&mut self.g, color, w, h);
+        let pass = msaa.map(|m| m.0).unwrap_or_else(|| self.g.ctx.new_render_pass(color, Some(depth)));
         self.draw_frame(Some(pass));
+        for t in msaa.map(|m| m.1).into_iter().flatten() {
+            self.g.ctx.delete_texture(t);
+        }
         let mut raw = vec![0u8; (w * h * 4) as usize];
         self.g.ctx.texture_read_pixels(color, &mut raw);
         self.g.ctx.delete_render_pass(pass);
@@ -1568,7 +1598,13 @@ impl EventHandler for Stage {
     }
 
     fn draw(&mut self) {
-        self.draw_frame(None);
+        match self.app.hd_frame_pass(&mut self.g) {
+            Some(pass) => {
+                self.draw_frame(Some(pass));
+                self.app.hd_present(&mut self.g);
+            }
+            None => self.draw_frame(None),
+        }
         self.g.ctx.commit_frame();
         if !self.app.snapshot_due.is_empty() {
             while !self.app.snapshot_due.is_empty()

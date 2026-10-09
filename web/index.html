@@ -38,6 +38,17 @@
   <label>Or a .zip of it<input id="zip" type="file" accept=".zip"></label>
   <p class="note"><input type="checkbox" id="remember" checked style="display:inline"> Keep the files in this browser so next time it starts at once</p>
   <div id="status"></div>
+  <details class="note">
+    <summary>Optional: HD graphics from an art pack you made yourself</summary>
+    <p>HD mode draws the game's art upscaled (with an AI upscaler such as Real-ESRGAN). The pack is made on your computer from
+      your own copy of the game with <code>tools/hd_pack</code> (see docs/HD.md in the source); it is never downloaded from
+      anywhere and must not be shared. Pick the pack's folder (the one with <code>manifest.json</code>) or a .zip of it.
+      Classic graphics stay the default; the game's Preferences switch between the two.</p>
+    <label>Choose your HD pack folder<input id="hdfolder" type="file" webkitdirectory directory multiple></label>
+    <label>Or a .zip of it<input id="hdzip" type="file" accept=".zip"></label>
+    <a href="#" onclick="sgForgetHd(); return false;" style="margin-left:12px">Forget my HD pack</a>
+    <div id="hdstatus"></div>
+  </details>
   <p class="note">The game's art, sounds and data belong to Electronic Arts and are not included here, which is why the page
   needs your copy. Works in desktop Chrome, Edge and Firefox, and on phones and tablets by touch: tap to click, drag to scroll, hold
   for a right click, pinch to zoom, twist two fingers to turn the view. Sound starts after your first click or tap. Saved courses stay in this
@@ -49,6 +60,8 @@
 <script>
   document.getElementById("folder").addEventListener("change", e => sgLoadFolder(e.target.files));
   document.getElementById("zip").addEventListener("change", e => sgLoadZip(e.target.files[0]));
+  document.getElementById("hdfolder").addEventListener("change", e => sgLoadHdFolder(e.target.files));
+  document.getElementById("hdzip").addEventListener("change", e => sgLoadHdZip(e.target.files[0]));
   sgInit();
 </script>
 </body>

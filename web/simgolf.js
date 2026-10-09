@@ -129,18 +129,21 @@ function sgStatus(t) {
 // --- browser storage of the game files --------------------------------------------------------------------------------------
 function sgDb() {
     return new Promise((ok, fail) => {
-        const r = indexedDB.open("simgolf", 1);
-        r.onupgradeneeded = () => r.result.createObjectStore("files");
+        const r = indexedDB.open("simgolf", 2);
+        r.onupgradeneeded = () => {
+            // "files": the game folder; "hd": the player's own HD art pack (optional, docs/HD.md)
+            for (const s of ["files", "hd"]) if (!r.result.objectStoreNames.contains(s)) r.result.createObjectStore(s);
+        };
         r.onsuccess = () => ok(r.result);
         r.onerror = () => fail(r.error);
     });
 }
-async function sgStoreAll(entries) {
+async function sgStoreAll(entries, store = "files") {
     try {
         const db = await sgDb();
         await new Promise((ok, fail) => {
-            const tx = db.transaction("files", "readwrite");
-            const st = tx.objectStore("files");
+            const tx = db.transaction(store, "readwrite");
+            const st = tx.objectStore(store);
             st.clear();
             for (const [path, bytes] of entries) st.put(bytes, path);
             tx.oncomplete = ok;
@@ -150,13 +153,13 @@ async function sgStoreAll(entries) {
         console.warn("could not keep the game files in this browser", e);
     }
 }
-async function sgLoadStored() {
+async function sgLoadStored(store = "files") {
     try {
         const db = await sgDb();
         return await new Promise((ok, fail) => {
             const out = [];
-            const tx = db.transaction("files", "readonly");
-            const req = tx.objectStore("files").openCursor();
+            const tx = db.transaction(store, "readonly");
+            const req = tx.objectStore(store).openCursor();
             req.onsuccess = () => {
                 const c = req.result;
                 if (c) { out.push([c.key, c.value]); c.continue(); } else ok(out);
@@ -270,7 +273,92 @@ async function sgLoadZip(file) {
     await sgUse(entries);
 }
 
+// --- the optional HD art pack -------------------------------------------------------------------------------------------------
+// A pack the player made with tools/hd_pack from their own copy of the game (never downloaded from anywhere). Its files go
+// under "HD/", where the game looks for it (the save folder's HD folder), and are kept in this browser like the game files.
+function sgHdStatus(t) {
+    document.getElementById("hdstatus").textContent = t;
+}
+function sgHdRootOf(paths) {
+    let best = null;
+    for (const p of paths) {
+        const parts = p.split("/");
+        if (parts[parts.length - 1].toLowerCase() === "manifest.json") {
+            const root = parts.slice(0, -1).join("/");
+            if (best === null || root.length < best.length) best = root;
+        }
+    }
+    return best;
+}
+async function sgUseHd(entries) {
+    const root = sgHdRootOf(entries.map(e => e[0]));
+    if (root === null) {
+        sgHdStatus("That is not an HD pack (no manifest.json found). Pick the folder tools/hd_pack wrote, or a .zip of it.");
+        return;
+    }
+    const keep = [];
+    for (const [path, bytes] of entries) {
+        if (!path.startsWith(root)) continue;
+        const low = path.toLowerCase();
+        if (!low.endsWith(".png") && !low.endsWith(".json")) continue;
+        const rel = "HD/" + path.substring(root.length).replace(/^\//, "");
+        sgAddFile(rel, bytes);
+        keep.push([rel, bytes]);
+    }
+    // start in HD from now on (the game's Preferences switch it back to Classic)
+    try {
+        const k = SAVE_PREFIX + "settings.json";
+        let s = {};
+        try { s = JSON.parse(atob(localStorage.getItem(k) || "")) || {}; } catch (e) { s = {}; }
+        s.graphics = "hd";
+        localStorage.setItem(k, btoa(JSON.stringify(s)));
+    } catch (e) {}
+    sgHdStatus("HD pack ready (" + keep.length + " files). The game starts in HD; Preferences switch between HD and Classic.");
+    if (document.getElementById("remember").checked) sgStoreAll(keep, "hd");
+}
+async function sgLoadHdFolder(fileList) {
+    const entries = [];
+    const files = Array.from(fileList);
+    for (let i = 0; i < files.length; i++) {
+        entries.push([files[i].webkitRelativePath, new Uint8Array(await files[i].arrayBuffer())]);
+        if (i % 100 === 0) {
+            sgHdStatus("Reading the HD pack: " + (i + 1) + " of " + files.length);
+            await new Promise(r => setTimeout(r, 0));
+        }
+    }
+    await sgUseHd(entries);
+}
+async function sgLoadHdZip(file) {
+    if (!file) return;
+    const entries = [];
+    try {
+        await sgUnzip(await file.arrayBuffer(), async (name, bytes, i, n) => {
+            entries.push([name, bytes]);
+            if (i % 100 === 0) {
+                sgHdStatus("Unpacking the HD pack: " + (i + 1) + " of " + n);
+                await new Promise(r => setTimeout(r, 0));
+            }
+        });
+    } catch (e) {
+        sgHdStatus("Could not read that zip: " + e.message);
+        return;
+    }
+    await sgUseHd(entries);
+}
+async function sgForgetHd() {
+    try {
+        const db = await sgDb();
+        db.transaction("hd", "readwrite").objectStore("hd").clear();
+    } catch (e) {}
+    sgHdStatus("The HD pack was removed from this browser.");
+}
+
 async function sgInit() {
+    const hd = await sgLoadStored("hd");
+    if (hd.length > 0) {
+        for (const [path, bytes] of hd) sgAddFile(path, bytes);
+        sgHdStatus("Your HD pack is kept in this browser (" + hd.length + " files).");
+    }
     const stored = await sgLoadStored();
     if (stored.length > 0) {
         document.getElementById("again").style.display = "block";

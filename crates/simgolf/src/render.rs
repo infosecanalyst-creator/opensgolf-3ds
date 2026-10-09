@@ -136,6 +136,13 @@ impl App {
         if let Some(t) = self.sprites[si].tex[i] {
             return t;
         }
+        if crate::hd::active() {
+            if let Some(img) = self.hd.sprites.get(&si).and_then(|h| h.frame(i)) {
+                let t = g.texture_hd(&img);
+                self.sprites[si].tex[i] = Some(t);
+                return t;
+            }
+        }
         let t = g.texture(&self.sprites[si].s.frames[i], false);
         self.sprites[si].tex[i] = Some(t);
         t

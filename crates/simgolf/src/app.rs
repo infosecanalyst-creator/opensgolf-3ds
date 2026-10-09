@@ -323,6 +323,8 @@ pub struct App {
     pub light: Lighting,
     /// Loaded textures by file (None when the file could not be decoded).
     pub textures: HashMap<PathBuf, Option<TextureId>>,
+    /// The optional HD graphics (off by default; see hd.rs).
+    pub hd: crate::hd::HdState,
     pub batches: Vec<Batch>,
     pub path_batches: Vec<Batch>,
     /// Paths not joined to the clubhouse, drawn as mud tracks (manual p. 18).
@@ -601,6 +603,7 @@ impl App {
             catalog: TextureCatalog::default(),
             light: Lighting::default(),
             textures: HashMap::new(),
+            hd: crate::hd::HdState { pack_dir: save_dir().join("HD"), ..Default::default() },
             batches: Vec::new(),
             path_batches: Vec::new(),
             mud_batches: Vec::new(),
@@ -904,6 +907,12 @@ impl App {
         if let Some(t) = self.textures.get(path) {
             return *t;
         }
+        if crate::hd::active() {
+            if let Some(t) = crate::hd::texture(g, path) {
+                self.textures.insert(path.to_path_buf(), Some(t));
+                return Some(t);
+            }
+        }
         let tga = sg_core::fsutil::ext_lower(path) == ".tga";
         let id = sg_core::fsutil::read_file(path)
             .and_then(|d| if tga { sg_core::assets::decode_tga(&d).ok() } else { sg_core::assets::decode_bmp(&d).ok() })
@@ -1152,6 +1161,11 @@ impl App {
         let r = match load_sprite(&path, shadow, pal_path.as_deref()) {
             Ok(s) => {
                 let n = s.frames.len();
+                if crate::hd::active() && !shadow {
+                    if let Some(h) = crate::hd::sprite(&path, pal_path.as_deref(), &s) {
+                        self.hd.sprites.insert(self.sprites.len(), h);
+                    }
+                }
                 self.sprites.push(GlSprite { s, tex: vec![None; n] });
                 Some(self.sprites.len() - 1)
             }
@@ -1433,6 +1447,7 @@ impl App {
             }
         }
         self.sprite_index.clear();
+        self.hd.sprites.clear();
         for (_, t) in self.red_tex.drain() {
             g.ctx.delete_texture(t);
         }

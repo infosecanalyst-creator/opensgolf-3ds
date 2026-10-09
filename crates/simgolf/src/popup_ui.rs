@@ -103,7 +103,14 @@ impl App {
                 340.0,
             ),
             PopupKind::Prefs => (
-                vec!["Preferences...", " Show golfers' thoughts", " Advisor and first-time messages", " Ambient animals", " Sound"],
+                vec![
+                    "Preferences...",
+                    " Show golfers' thoughts",
+                    " Advisor and first-time messages",
+                    " Ambient animals",
+                    " Sound",
+                    " HD graphics (off: Classic)",
+                ],
                 0,
                 400.0,
                 200.0,
@@ -121,6 +128,7 @@ impl App {
                 | (self.show_advisor as u32) << 1
                 | (self.club.wildlife.enabled as u32) << 2
                 | (!self.mute as u32) << 3
+                | (self.hd.enabled as u32) << 4
         } else {
             0
         };

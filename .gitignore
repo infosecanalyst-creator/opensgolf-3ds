@@ -24,3 +24,8 @@ web/dist/
 Championship/
 snapshots/
 .claude/worktrees/
+# HD art packs (tools/hd_pack) are made from the player's own copy of the game's art: never commit or ship them
+HD/
+hdpack*/
+*.hdpack
+hd_pack_out/

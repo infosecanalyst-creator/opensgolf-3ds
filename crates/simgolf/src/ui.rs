@@ -16,6 +16,11 @@ pub struct Image {
 /// Loads a PCX from the disc. With `magenta_key`, pure magenta pixels become transparent (the original's colour key); `key_rgb` is
 /// another colour key as 0xRRGGBB.
 pub fn load_pcx(g: &mut Gfx, path: &Path, magenta_key: bool, key_rgb: Option<u32>) -> Option<Image> {
+    if crate::hd::active() {
+        if let Some(im) = crate::hd::load_pcx(g, path, magenta_key, key_rgb) {
+            return Some(im);
+        }
+    }
     let d = sg_core::fsutil::read_file(path)?;
     let mut img = decode_pcx(&d).ok()?;
     for p in img.px.as_chunks_mut::<4>().0 {
@@ -29,6 +34,7 @@ pub fn load_pcx(g: &mut Gfx, path: &Path, magenta_key: bool, key_rgb: Option<u32
         }
     }
     let tex = g.texture(&img, false);
+    crate::hd::track(tex);
     Some(Image { tex: Some(tex), w: img.w as f32, h: img.h as f32 })
 }
 
@@ -36,6 +42,11 @@ pub fn load_pcx(g: &mut Gfx, path: &Path, magenta_key: bool, key_rgb: Option<u32
 /// least one pixel inside the rectangle is kept whole. The title menu's highlight art is one picture for every button; this
 /// gives each button exactly its own lit shapes instead of a rectangle cut out of the picture.
 pub fn split_overlay(g: &mut Gfx, path: &Path, rects: &[(f32, f32, f32, f32)]) -> Vec<Image> {
+    if crate::hd::active() {
+        if let Some(v) = crate::hd::split_overlay(g, path, rects) {
+            return v;
+        }
+    }
     let Some(mut img) = sg_core::fsutil::read_file(path).and_then(|d| decode_pcx(&d).ok()) else { return Vec::new() };
     for p in img.px.as_chunks_mut::<4>().0 {
         if p[0] == 255 && p[1] == 0 && p[2] == 255 {
@@ -86,13 +97,20 @@ pub fn split_overlay(g: &mut Gfx, path: &Path, rects: &[(f32, f32, f32, f32)]) -
                     p[3] = 0;
                 }
             }
-            Image { tex: Some(g.texture(&part, false)), w: part.w as f32, h: part.h as f32 }
+            let tex = g.texture(&part, false);
+            crate::hd::track(tex);
+            Image { tex: Some(tex), w: part.w as f32, h: part.h as f32 }
         })
         .collect()
 }
 
 /// Loads a PCX with a separate alpha PCX of the same size (the interface's `_A` / `_alpha` files: white opaque, black clear).
 pub fn load_pcx_alpha(g: &mut Gfx, path: &Path, alpha: &Path) -> Option<Image> {
+    if crate::hd::active() {
+        if let Some(im) = crate::hd::load_pcx_alpha(g, path, alpha) {
+            return Some(im);
+        }
+    }
     let d = sg_core::fsutil::read_file(path)?;
     let mut img = decode_pcx(&d).ok()?;
     if let Some(a) = sg_core::fsutil::read_file(alpha).and_then(|d| decode_pcx(&d).ok()) {
@@ -105,6 +123,7 @@ pub fn load_pcx_alpha(g: &mut Gfx, path: &Path, alpha: &Path) -> Option<Image> {
         }
     }
     let tex = g.texture(&img, false);
+    crate::hd::track(tex);
     Some(Image { tex: Some(tex), w: img.w as f32, h: img.h as f32 })
 }
 

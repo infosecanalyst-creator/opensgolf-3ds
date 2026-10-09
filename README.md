@@ -63,6 +63,14 @@ own SimGolf copy (the one containing Flics, Sounds and Data); its files are read
 Sound starts after the first click (a browser rule). Saved courses are kept in the browser's local storage. CI builds it too
 (artifact `simgolf-web`).
 
+## HD graphics (optional)
+
+An opt-in **HD mode** draws the game's art upscaled ×4 (or ×2) with an AI upscaler such as Real-ESRGAN, plus trilinear
+filtering and anti-aliasing, without changing any layout. **Classic stays the default and is unchanged**: with HD off the game
+runs the same code and draws the same pixels as before. The upscaled art is a derivative of EA's art, so you make the pack
+yourself from your own copy with `tools/hd_pack/hd_pack.py`. It is never shipped, downloaded from this project, or to be
+shared. Turn it on in Preferences (*HD graphics*), with `--hd` / `--classic`, or `--hd-pack DIR`. See [docs/HD.md](docs/HD.md).
+
 ## Playing
 
 Keys: arrows/WASD pan, Q/E rotate, +/- or mouse wheel zoom, 1-4 themes, R new demo course, P toggle scenery, F follow the golfer,
