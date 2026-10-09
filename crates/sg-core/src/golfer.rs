@@ -307,6 +307,25 @@ pub struct Club {
     pub types_announced: u32,
     pub ratings: crate::ratings::ClubRatings,
     pub home_sites: i32,
+    /// The theme's stories, Happy Endings so far (0x561258) and the tick of the last story beat (0x59b048).
+    pub stories: crate::stories::Stories,
+    pub happy_endings: i32,
+    pub last_beat: u32,
+    /// Landmark types available (0x543cfc) and free to place once (0x822c70).
+    pub landmarks_owned: u32,
+    pub free_landmarks: u32,
+    /// CEO visits started, bit 0x80 while one is on the course (0x572cac); heiress donations (0x59aaf8); a land offer pending
+    /// (0x567a1c bit 0); celebrity homes bought (0x4c284c).
+    pub ceo_count: i32,
+    pub donations: i32,
+    pub land_offer: bool,
+    pub celeb_homes: i32,
+    /// The property is an island (no commissioner comes) and a sandbox game (no visitors come).
+    pub island: bool,
+    pub sandbox: bool,
+    /// celebrities.dta and progolfers.dta of the theme.
+    pub celebrities: Vec<crate::vips::Celebrity>,
+    pub pros: Vec<crate::vips::Pro>,
     /// Year number and the year's first fee flag, for the green fee tutorial.
     pub year: i32,
     pub fees_this_year: i32,
@@ -367,6 +386,19 @@ impl Club {
             types_announced: 0,
             ratings: Default::default(),
             home_sites: 0,
+            stories: Default::default(),
+            happy_endings: 0,
+            last_beat: 0,
+            landmarks_owned: 0,
+            free_landmarks: 0,
+            ceo_count: 0,
+            donations: 0,
+            land_offer: false,
+            celeb_homes: 0,
+            island: false,
+            sandbox: false,
+            celebrities: Vec::new(),
+            pros: Vec::new(),
             year: 0,
             fees_this_year: 0,
             cash: 0,
@@ -396,12 +428,12 @@ impl Club {
         (self.g[g].partner.clamp(0, SLOTS as i32 - 1)) as usize
     }
 
-    fn member_mut(&mut self, g: usize) -> &mut Member {
+    pub(crate) fn member_mut(&mut self, g: usize) -> &mut Member {
         let r = self.g[g].roster.clamp(0, self.members.len() as i32 - 1) as usize;
         &mut self.members[r]
     }
 
-    fn member(&self, g: usize) -> &Member {
+    pub(crate) fn member(&self, g: usize) -> &Member {
         let r = self.g[g].roster.clamp(0, self.members.len() as i32 - 1) as usize;
         &self.members[r]
     }
@@ -422,7 +454,7 @@ impl Club {
         }
     }
 
-    fn sound(&mut self, slot: i32, at: Option<(i32, i32)>) {
+    pub(crate) fn sound(&mut self, slot: i32, at: Option<(i32, i32)>) {
         self.out.push(Event::Sound { slot, at });
     }
 
@@ -431,7 +463,7 @@ impl Club {
         self.out.push(Event::Earn { units, column, at });
     }
 
-    fn message(&mut self, s: String) {
+    pub(crate) fn message(&mut self, s: String) {
         self.out.push(Event::Message(s));
     }
 
@@ -938,7 +970,7 @@ impl Club {
     }
 
     /// Sends a waiting pair to the first tee (0x45de80).
-    fn start_pair(&mut self, c: &Course, rng: &mut ExeRng, u: usize) {
+    fn start_pair(&mut self, c: &mut Course, rng: &mut ExeRng, u: usize) {
         let v = u ^ 1;
         for (a, b) in [(u, v), (v, u)] {
             let gg = &mut self.g[a];
@@ -954,11 +986,61 @@ impl Club {
         self.tee_counter += 2;
         self.g[u].pause = -6 - rng.below(6);
         self.g[v].pause = 0;
+        self.pair_setup(rng, u, v);
+        if self.tick & 0x40 != 0 {
+            for gg in [u, v] {
+                let m = self.g[gg].mood;
+                self.event(c, rng, gg, 0x3d, m);
+            }
+        }
+    }
+
+    /// The pairing routine (0x45de80) for owner-to-be p1 and p2: a story, a possible visitor in p2's place, both moods from
+    /// the pair's compatibility, the story kept only by chance once many have ended happily, the pair relationship.
+    pub(crate) fn pair_setup(&mut self, rng: &mut ExeRng, p1: usize, p2: usize) {
+        let compat = self.compatibility(p1, p2);
+        self.pick_story(rng, p1, p2);
+        if self.g[p2].flags & crate::stories::MANUAL_PAIR == 0 {
+            let sandbox = self.sandbox;
+            self.vip_check(rng, p2, sandbox);
+        }
+        for gg in [p1, p2] {
+            self.g[gg].mood = compat + 2;
+            self.g[gg].smooth_mood = 2 * compat;
+        }
+        let owner = if self.g[p1].flags & flag::STORY != 0 { p1 } else { p2 };
+        self.g[owner].hole_mood[1] = (2 * compat) as u8;
+        let r = rng.below(self.happy_endings);
+        if (r > 6 && self.g[p1].flags & crate::stories::MANUAL_PAIR == 0) || self.g[p2].kind != 0 {
+            for gg in [p1, p2] {
+                self.g[gg].story = -1;
+                self.g[gg].field_ae = 0;
+            }
+        }
+        self.vip_skills(rng, p2);
+        let female = |c: &Club, g: usize| c.male(g) == 0;
+        let mut rel = 0;
+        if compat < 2 && female(self, p1) == female(self, p2) {
+            rel = 2;
+        }
+        if compat == 5 {
+            rel = 3;
+        }
+        if compat >= 4 && female(self, p1) != female(self, p2) && self.g[p1].looks & 0x10 != 0 && self.g[p2].looks & 0x10 != 0 {
+            rel = 1;
+        }
+        if rel != 0 {
+            self.g[p1].field_ae = rel;
+            self.g[p2].field_ae = rel;
+        }
+        for gg in [p1, p2] {
+            self.g[gg].flags &= !crate::stories::MANUAL_PAIR;
+        }
     }
 
     /// The main frame's arrivals: a waiting pair goes to the first tee when it is free, and a new golfer arrives whenever fewer
     /// than two are queued, or every 128 ticks, up to eight queued.
-    pub fn arrivals(&mut self, c: &Course, rng: &mut ExeRng) {
+    pub fn arrivals(&mut self, c: &mut Course, rng: &mut ExeRng) {
         let mut queue = 0;
         let mut waiting_pair: i32 = -1;
         let mut on_hole1 = 0;
@@ -1069,7 +1151,7 @@ impl Club {
         let p = self.partner(g);
         if self.game & game::REPEAT == 0 {
             if self.par(nh) == 0 || self.g[p].hole == 0 || self.g[p].hole == 19 {
-                self.round_end(g);
+                self.round_end(rng, g);
                 return;
             }
         } else {
@@ -1079,7 +1161,7 @@ impl Club {
             self.g[g].tee_order += self.next_hole * 2;
             let nh = self.g[g].hole.clamp(0, 18) as usize;
             if self.g[g].card[nh] != 0 {
-                self.round_end(g);
+                self.round_end(rng, g);
             }
         }
         let nh = self.g[g].hole;
@@ -1090,7 +1172,8 @@ impl Club {
                 _ => None,
             };
             if let Some(w) = who {
-                self.message(format!("{w} {} is playing the last hole.", self.name(g)));
+                let r = crate::vips::mood_remark(self.g[g].mood);
+                self.message(format!("{w} {} is playing the last hole on your course. \"{r}\"", self.vip_name(g)));
             }
         }
         let nhu = nh.clamp(0, 18) as usize;
@@ -1197,24 +1280,12 @@ impl Club {
     }
 
     /// End of a golfer's round (0x4266b0): special visitors give their verdict, then the golfer heads home.
-    pub fn round_end(&mut self, g: usize) {
-        // The commissioner, CEO and heiress verdicts are made at the course level (see `Club::vip_verdict`).
-        self.vip_verdict(g);
+    pub fn round_end(&mut self, rng: &mut ExeRng, g: usize) {
+        self.vip_verdict(rng, g);
         self.g[g].bx = 0;
         self.g[g].hole = 19;
         if self.g[g].flags & flag::GARY != 0 {
             self.gary = -1;
-        }
-    }
-
-    /// Special visitors' verdicts at the end of their round. Their visits are not started by this port yet, so this only names
-    /// the outcome when one is on the course.
-    fn vip_verdict(&mut self, g: usize) {
-        let v = self.g[g].vip();
-        if v == 0x40 || v == 0x60 || v == 0x80 {
-            let happy = self.par(self.g[g].hole) == 0 && self.g[g].mood > 2;
-            let name = self.name(g);
-            self.message(if happy { format!("{name} enjoyed the course.") } else { format!("{name} was not impressed this time.") });
         }
     }
 
@@ -1300,6 +1371,9 @@ impl Club {
                 let _ = rng.below(6) > diff;
             }
         }
+        if self.g[g].flags & flag::STORY != 0 {
+            self.story_trigger(c, rng, g);
+        }
         self.scenery_glance(c, rng, g);
         // Ball tile and type, before the ball moves this tick.
         let (ba, bb) = (self.g[g].bx >> 10, self.g[g].by >> 10);
@@ -1331,7 +1405,7 @@ impl Club {
         }
         let p = self.partner(g);
         if self.g[p].hole == 0 && self.g[g].strokes == 0 && self.g[g].hole != 19 {
-            self.round_end(g);
+            self.round_end(rng, g);
         }
         let (me, pp) = (&self.g[g], &self.g[p]);
         l.wait_tee = pp.hole != 0 && pp.hole == me.hole && me.flags & flag::TEED_OFF != 0 && pp.flags & flag::TEED_OFF == 0;
@@ -1508,8 +1582,8 @@ impl Club {
                     let og = &self.g[o];
                     if og.hole > 0 && o != g && og.hole == h && og.strokes == 0 && og.tee_order <= self.g[g].tee_order && o != p {
                         if (g as i32 == self.gary || p as i32 == self.gary) && self.game & game::REPEAT == 0 {
-                            self.round_end(o);
-                            self.round_end(o ^ 1);
+                            self.round_end(rng, o);
+                            self.round_end(rng, o ^ 1);
                         } else {
                             queue += 1;
                         }
@@ -2100,7 +2174,7 @@ impl Club {
             self.member_mut(g).gone = 0xff;
             self.g[p].bx = 0;
             self.g[p].x = 0;
-            self.round_end(p);
+            self.round_end(rng, p);
             let gg = &mut self.g[g];
             gg.hole = 19;
             gg.flags = (gg.flags & !flag::MAY_CART) | flag::LEAVING;

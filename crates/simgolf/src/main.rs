@@ -937,10 +937,6 @@ impl EventHandler for Stage {
             self.toggle_pause();
         }
         let app = &mut self.app;
-        if !app.story_lines.is_empty() && !app.paused && t > app.story_next {
-            app.story_pos += 1;
-            app.story_next = t + 7.0;
-        }
         if app.edit {
             let hit = app.pick_ground(self.mouse.0, self.mouse.1);
             app.has_hit = hit.is_some();

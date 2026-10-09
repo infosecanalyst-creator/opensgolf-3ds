@@ -773,22 +773,17 @@ impl App {
                 s.text(g, 252.0, 25.0 + 17.0 * i as f32, l, 14.0, rgb(1.0, 0.95, 0.7));
             }
             let y = 8.0 + h + 6.0;
-            if !self.story_lines.is_empty() && self.golfers_on_course() >= 2 {
-                let line = &self.story_lines[self.story_pos % self.story_lines.len()];
-                let a = line.starts_with('A');
-                let sl = wrap_text(line.get(2..).unwrap_or(""), 14.0, 290.0);
-                let sh = 12.0 + 17.0 * (sl.len() + 1) as f32;
-                let bg = if a { rgba(0.25, 0.12, 0.12, 0.82) } else { rgba(0.12, 0.22, 0.12, 0.82) };
-                s.fill(g, 244.0, y, 306.0, sh, bg);
-                s.text(
-                    g,
-                    252.0,
-                    y + 16.0,
-                    &format!("{}{}", self.story_title, if a { " (golfer one)" } else { " (golfer two)" }),
-                    12.0,
-                    rgb(0.8, 0.9, 1.0),
-                );
-                for (i, l) in sl.iter().enumerate() {
+            if !self.story_lines.is_empty() && self.game_tick < self.story_until {
+                // the latest story lines (the exe shows them as thought bubbles over the two golfers)
+                let mut rows: Vec<String> = Vec::new();
+                for l in self.story_lines.iter() {
+                    let (who, text) = l.split_once('|').unwrap_or(("", l));
+                    rows.extend(wrap_text(&format!("{who}: {text}"), 14.0, 290.0));
+                }
+                let sh = 26.0 + 17.0 * rows.len() as f32;
+                s.fill(g, 244.0, y, 306.0, sh, rgba(0.12, 0.2, 0.25, 0.85));
+                s.text(g, 252.0, y + 16.0, &self.story_title, 12.0, rgb(0.8, 0.9, 1.0));
+                for (i, l) in rows.iter().enumerate() {
                     s.text(g, 252.0, y + 33.0 + 17.0 * i as f32, l, 14.0, rgb(1.0, 1.0, 1.0));
                 }
             }

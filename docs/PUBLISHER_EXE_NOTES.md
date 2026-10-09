@@ -551,3 +551,34 @@ Confidence: high.
   pieces, caps toward dry path neighbours, and a ramp where a straight piece meets land on one side (which ramp view goes
   with which side is inferred from the order of the exe's cases).
 
+## Golfer stories (story table 0x4659a0, pairing 0x45de80, beat 0x466370, choice 0x4669f0)
+
+Confidence: high.
+- Every *.txt in the theme's folder (the Standard folder when it has none) is a story: a title line, then four scenes, each an
+  opening line and indented replies, best first. The exe stores the file names 100 bytes apart but reads them 50 apart, so
+  story id 2i is file i and odd ids are empty; the tutorial id is the OpeningDay file's list index used as an id (kept).
+- The first eight letters of the file name are conditions on the pair (genders, marital status, trait bits, ages) and the
+  landmark the story gives. A pair gets one of up to three random stories that fit and are not being played on the course;
+  the opening pair before tick 0x800 gets the tutorial. After N Happy Endings a pair keeps its story with chance 7/N.
+- Pairing also sets both moods to 2 + compatibility (5 less the differing trait bits).
+- A beat needs the pair on one hole, both standing, within 0x3000 / (scene + 6) map units, 150 ticks since the last beat on
+  the course and the owner's smoothed mood above 4 * scene + 4 (the exe also needs the owner on screen). The partner's reply is
+  (mood - 1) / 2, capped below the best after scene 1, nudged by the newest thought and a "stories go well" landmark. The best
+  reply passes the scene (owner mood + 1), one less fails quietly, lower fails with owner mood - 1; a failed scene goes back
+  and the owner's smoothed mood loses a third.
+- Passing scene 4 is a Happy Ending: the hole is marked in both members' records (worth membership points and a good thought
+  later) and the story's landmark type becomes available and free once, if a random walk from the owner reaches rough.
+
+## Special visitors (pairing 0x45de80, verdicts 0x4266b0, celebrity homes 0x417a08)
+
+Confidence: high.
+- The second golfer of pair number v = (slot / 2) % 6 becomes a visitor when: v = 1, a CEO (at most 8 a game, CEO k needs hole
+  2k + 2); v = 3, the County commissioner (not on islands, rating above (purchases + 2) * (difficulty + 2) * 50); v = 5, the
+  Wealthy heiress (rating above (donations + 1)^2 * 25). The rating is fun on the two easier difficulties, skill (hundredths)
+  on the harder ones. No visitors in sandbox games. Visitors get four random special skills plus fixed ones, values 1..8.
+- A visitor is pleased after playing to the last hole with mood 3 or more: the CEO invests $5,000 ($10,000 at mood 5 or
+  more), the commissioner approves an expansion (the land offer follows), the heiress donates a landmark type (free to place
+  once). Otherwise only a message.
+- Each re-valued home site draws a celebrity; an unowned site worth more than (300 * homes bought + 400) * (difficulty + 2)
+  is bought as a vacation home. No money changes hands.
+

@@ -55,11 +55,16 @@ The people who come to play are compiled into the exe. When the player's game fo
 the retail exe is copy protected and is not touched, and a roster written for this port (own names, the exe's gender split and
 skill classes) stands in. The special visitors are read from the Standard theme's golfer files.
 
+## Stories, visitors, land and home sites
+
+`stories.rs`: the theme's story files, chosen per pair by their name code and played scene by scene as the pair walks
+together. `vips.rs`: the CEO, the County commissioner and the Wealthy heiress, their verdicts, and celebrity vacation homes.
+`tracts.rs` and `homes.rs`: buying land after the commissioner's approval, and home sites. `ratings.rs`: the exe's statistics
+pass and Course Report.
+
 ## Not yet in
 
-Stories between golfer pairs, the special visitors' verdicts, wagers and matches, tournaments, the player's own golfer (Gary),
-and the course statistics routine that rates holes; the course report still measures +Len/+Acc/+Img with the older shot model
-in `shot.rs`.
+Wagers and match play, tournaments, and the player's own golfer (Gary).
 
 ## Viewer
 

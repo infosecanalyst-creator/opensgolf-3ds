@@ -1,6 +1,7 @@
 //! The game state and rules that sit above sg-core: the course and its scenery, the golfers on it, money, editing, the in-game
 //! panels and the story banner. Drawing lives in render.rs, input and the window in main.rs.
 use crate::gfx::{Gfx, Mesh, Vert};
+use crate::render::THEME_PACKS;
 use crate::ui::{money, Image};
 use miniquad::TextureId;
 use sg_core::course::Course;
@@ -170,7 +171,7 @@ pub const PAINT: [PaintEntry; 20] = [
 /// Building kinds the Add Buildings panel offers, in the exe's order (kind numbers of `land::BUILDINGS`): benches, flower beds,
 /// ball washers, then the amenities as holes unlock them. Paths have their own tool; landmarks and home sites need donations and
 /// members first.
-pub const OFFERED_KINDS: [i32; 15] = [1, 2, 3, 16, 19, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
+pub const OFFERED_KINDS: [i32; 16] = [1, 2, 3, 16, 19, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Screen {
@@ -299,8 +300,7 @@ pub struct App {
     /// Lines of a story file from the disc (read at run time, never stored in the project). "A|text" or "B|text".
     pub story_lines: Vec<String>,
     pub story_title: String,
-    pub story_pos: usize,
-    pub story_next: f64,
+    pub story_until: u32,
     pub hole_stats: Vec<HoleStat>,
     pub ui_ok: bool,
     pub view: crate::ui::View,
@@ -439,8 +439,7 @@ impl App {
             panel_hover: -1,
             story_lines: Vec::new(),
             story_title: String::new(),
-            story_pos: 0,
-            story_next: 0.0,
+            story_until: 0,
             hole_stats: Vec::new(),
             ui_ok: false,
             view: crate::ui::View::default(),
@@ -956,6 +955,10 @@ impl App {
     pub fn build_available(&self, kind: usize) -> bool {
         // The garden page (kinds up to 5, the willow and the bridge) is always open; buildings unlock with holes.
         let k = kind as i32;
+        // landmarks once the club owns a type (the property's own, donations, Happy Endings)
+        if k == land::K_LANDMARK && self.club.landmarks_owned & 0x3fff == 0 {
+            return false;
+        }
         // home sites only while Silver and better members outnumber them (0x56d1b0)
         if k == land::K_HOME_SITE && self.club.homesite_demand < 1 && !self.econ.sandbox {
             return false;
@@ -1010,7 +1013,22 @@ impl App {
         self.adopt_holes = true;
         self.golfer_clips.clear();
         let roster = std::mem::take(&mut self.club.roster);
+        let stories = std::mem::take(&mut self.club.stories);
+        let celebrities = std::mem::take(&mut self.club.celebrities);
+        let pros = std::mem::take(&mut self.club.pros);
         self.club = Club::new(if roster.is_empty() { sg_core::roster::load(&self.game_dir) } else { roster });
+        self.club.stories = stories;
+        self.club.celebrities = celebrities;
+        self.club.pros = pros;
+        // the property's own landmark is available from the start; a sandbox has them all
+        self.club.landmarks_owned = if self.econ.sandbox {
+            0x3fff
+        } else {
+            self.land
+                .as_ref()
+                .map(|l| l.objects.iter().filter(|o| o.kind == land::K_LANDMARK && o.sub < 16).fold(0, |m, o| m | 1 << o.sub))
+                .unwrap_or(0)
+        };
         self.club.new_game(&mut self.exe_rng);
         self.course = Course::default();
         self.staff_golfers.clear();
@@ -1282,6 +1300,13 @@ impl App {
         self.club.year = self.econ.year_index() as i32;
         let tick = self.game_tick;
         let sites = self.land.as_ref().map(|l| l.objects.iter().filter(|o| o.kind == land::K_HOME_SITE).count()).unwrap_or(0) as i32;
+        self.club.sandbox = self.econ.sandbox;
+        self.club.island = self.land.as_ref().map(|l| l.slot.record().coast == 2).unwrap_or(false);
+        if std::mem::take(&mut self.club.land_offer) {
+            // the commissioner approved an expansion: the exe asks whether to buy land, then shows the tracts
+            self.show_toast("Do you wish to purchase additional land to expand your course?");
+            self.open_land_screen();
+        }
         self.club.home_sites = sites;
         self.club.homesite_demand = self.club.ratings.waitlist;
         if tick.is_multiple_of(1024 / (self.difficulty.clamp(0, 3) as u32 + 2)) {
@@ -1296,7 +1321,13 @@ impl App {
             let sizes = |l: &land::Land| l.objects.iter().map(|o| sg_core::homes::house_size(o.val)).collect::<Vec<_>>();
             if let Some(l) = self.land.as_mut() {
                 let before = sizes(l);
-                sg_core::homes::revalue(&mut l.objects, &self.course, &self.club.holes, self.difficulty, tick);
+                let visited = sg_core::homes::revalue(&mut l.objects, &self.course, &self.club.holes, self.difficulty, tick);
+                for i in visited {
+                    let (val, owner) = (l.objects[i].val, l.objects[i].sub);
+                    if let Some(o) = self.club.celebrity_home(&mut self.exe_rng, val, owner, &self.course) {
+                        l.objects[i].sub = o;
+                    }
+                }
                 if sizes(l) != before {
                     self.props.retain(|p| !p.object);
                     self.add_land_objects();
@@ -1349,6 +1380,19 @@ impl App {
                         hs.mood += mood as f64 * 10.0;
                         hs.hist[(strokes - 3).clamp(0, 5) as usize] += 1;
                         hs.mood_sum = mood_sum;
+                    }
+                }
+                golf::Event::Thought { g, id: 0x32, .. } => {
+                    if let Some(line) = self.club.story_line(g) {
+                        let story = self.club.g[g].story;
+                        self.story_title = self.club.stories.title(story).trim().to_string();
+                        let who = self.club.name(g);
+                        println!("[{:6.1}s] story '{}': {who}: {line}", self.sim_time, self.story_title);
+                        self.story_lines.push(format!("{who}|{line}"));
+                        if self.story_lines.len() > 2 {
+                            self.story_lines.remove(0);
+                        }
+                        self.story_until = self.game_tick + 90;
                     }
                 }
                 golf::Event::Thought { .. } => {}
@@ -1539,6 +1583,9 @@ impl App {
             return Err("could not load the theme".into());
         }
         self.club = s.club;
+        let tutorial = self.club.stories.tutorial;
+        self.load_story();
+        self.club.stories.tutorial = tutorial;
         self.course = s.course;
         self.econ = s.econ;
         self.exe_rng = s.exe_rng;
@@ -1557,46 +1604,42 @@ impl App {
         Ok(())
     }
 
-    /// Loads one story script from the disc's Themes folder. Format (read from the files): a title line, then blocks separated by
-    /// blank lines; the first line of a block is one golfer's line, the lines after it that start with a space are the other
-    /// golfer's possible replies. PARTNER stands for the other golfer. What decides which story plays, and when, is not decoded;
-    /// this picks one by seed and shows it when two golfers are on the course.
+    /// Loads the theme pack's stories (every *.txt in its Themes folder, or the Standard folder's when it has none, listed in
+    /// case-insensitive name order as the original's file system does), its celebrities and its pro golfers.
     pub fn load_story(&mut self) {
         self.story_lines.clear();
         self.story_title.clear();
-        self.story_pos = 0;
-        self.story_next = 0.0;
-        let dir = self.game_path("Themes/Standard");
-        let mut files: Vec<PathBuf> =
-            sg_core::fsutil::list_dir(&dir).into_iter().filter(|p| sg_core::fsutil::ext_lower(p) == ".txt").collect();
+        let pack = THEME_PACKS.get(self.theme_pack).copied().unwrap_or("Standard").replace(' ', "_");
+        let list = |dir: &Path| -> Vec<(String, String)> {
+            let mut files: Vec<PathBuf> = sg_core::fsutil::list_dir(dir)
+                .into_iter()
+                .filter(|p| sg_core::fsutil::ext_lower(p) == ".txt")
+                .filter(|p| !p.file_name().map(|n| n.to_string_lossy().to_lowercase().contains("shadow")).unwrap_or(false))
+                .collect();
+            files.sort_by_key(|p| p.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default());
+            files
+                .iter()
+                .filter_map(|p| {
+                    let name = p.file_name()?.to_string_lossy().into_owned();
+                    let text = sg_core::formats::latin1(&sg_core::fsutil::read_file(p)?);
+                    Some((name, text))
+                })
+                .collect()
+        };
+        let mut files = list(&self.game_path(&format!("Themes/{pack}")));
         if files.is_empty() {
-            return;
+            files = list(&self.game_path("Themes/Standard"));
         }
-        files.sort();
-        let Some(d) = sg_core::fsutil::read_file(&files[self.seed as usize % files.len()]) else { return };
-        let text = sg_core::formats::latin1(&d);
-        let (mut first, mut new_block) = (true, true);
-        for raw in text.split('\n') {
-            let mut line = raw.trim_end_matches(['\r', '\n']).to_string();
-            if first {
-                self.story_title = line.trim_start_matches(' ').to_string();
-                first = false;
-                continue;
-            }
-            if line.is_empty() {
-                new_block = true;
-                continue;
-            }
-            let indented = line.starts_with(' ');
-            line = line.replace("PARTNER", "pal");
-            let t = line.trim_start_matches(' ');
-            if t.is_empty() {
-                continue;
-            }
-            let who = if !indented || new_block { "A" } else { "B" };
-            self.story_lines.push(format!("{who}|{t}"));
-            new_block = false;
-        }
+        self.club.stories = sg_core::stories::Stories::build(&files, self.club.stories.tutorial);
+        let read = |name: &str| -> Option<String> {
+            sg_core::fsutil::read_file(self.game_path(&format!("Themes/{pack}/{name}")))
+                .or_else(|| sg_core::fsutil::read_file(self.game_path(&format!("Themes/Standard/{name}"))))
+                .map(|d| sg_core::formats::latin1(&d))
+        };
+        let celebs = read("celebrities.dta").map(|t| sg_core::vips::parse_celebrities(&t)).unwrap_or_default();
+        let pros = read("progolfers.dta").map(|t| sg_core::vips::parse_pros(&t)).unwrap_or_default();
+        self.club.celebrities = celebs;
+        self.club.pros = pros;
     }
 
     /// Advisor text from what the club looks like now. These hints are our own words.
@@ -1953,7 +1996,16 @@ impl App {
             clear /= 2;
         }
         let level = existing.map(|i| land.objects[i].sub + 1).unwrap_or(0);
-        let cost = (land::BUILDINGS[kind as usize].2 * (level + 2) / 2 + clear) as f64 * Economy::UNIT;
+        let mut cost = (land::BUILDINGS[kind as usize].2 * (level + 2) / 2 + clear) as f64 * Economy::UNIT;
+        // a landmark: the first owned type still free to place, else the first owned one; (type * 5 + 25) * 2, or nothing
+        // the first time a donated type is placed (clearing is not charged)
+        let landmark = (0..14)
+            .find(|t| self.club.free_landmarks & (1 << t) != 0)
+            .or_else(|| (0..14).find(|t| self.club.landmarks_owned & (1 << t) != 0));
+        if kind == land::K_LANDMARK {
+            let Some(t) = landmark else { return };
+            cost = if self.club.free_landmarks & (1 << t) != 0 { 0.0 } else { ((t * 5 + 25) * 2) as f64 * Economy::UNIT };
+        }
         if !self.econ.affordable(cost, holes) {
             return self.show_toast(&format!("This change costs {}. You have only {}.", money(cost as i64), money(self.econ.cash as i64)));
         }
@@ -1977,6 +2029,11 @@ impl App {
         }
         let n = land.place(&mut self.exe_rng, tx, ty, kind, 0, theme);
         land.objects[n].sub = level;
+        if kind == land::K_LANDMARK {
+            let t = landmark.unwrap_or(0);
+            land.objects[n].sub = t;
+            self.club.free_landmarks &= !(1 << t);
+        }
         land.write_area(&mut self.terrain, tx, ty, tx + size - 1, ty + size - 1);
         self.econ.spend_to(economy::LEDGER_FACILITIES, cost);
         if lot > 0 {
