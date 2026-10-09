@@ -231,6 +231,44 @@ impl Club {
         Some(hu)
     }
 
+    /// The figures the course view shows over the green of the hole being built once it has a tee and a green (0x417277):
+    /// its number, its length in yards and the par it would open with. A hole the layout pass has not measured gets the
+    /// straight length from the back tee, 25 yards a tile plus a quarter of what is over 200, and keeps it, as the exe
+    /// stores it while drawing. The par rule is open_hole's, except that the dogleg's 25 yards count at any length.
+    pub fn building_figures(&mut self, c: &Course) -> Option<(i32, i32, i32)> {
+        let h = self.next_hole;
+        if !(1..19).contains(&h) {
+            return None;
+        }
+        let hr = &mut self.holes[h as usize];
+        if hr.back.0 == 0 || hr.pin.0 == 0 {
+            return None;
+        }
+        if hr.length == 0 {
+            let (dx, dy) = ((hr.back.0 - hr.pin.0) as f64, (hr.back.1 - hr.pin.1) as f64);
+            let mut l = ((dx * dx + dy * dy) * 625.0).sqrt() as i32 as i16 as i32;
+            if l > 200 {
+                l += (l - 200) / 4;
+            }
+            hr.length = l as i16 as i32;
+        }
+        let mut eff = hr.length;
+        if hr.flags & 0x60 != 0 {
+            eff += 25;
+        }
+        if eff > 300 {
+            eff -= 25 * c.level[10];
+        }
+        let par = match eff {
+            e if e > 625 => 6,
+            e if e >= 475 => 5,
+            e if e >= 250 => 4,
+            e if e > 50 => 3,
+            _ => 2,
+        };
+        Some((h, hr.length, par))
+    }
+
     /// The layout pass the exe's main frame runs over the hole being built once it has a tee and a green (0x41353d): a trial
     /// golfer of the Length and Accuracy classes plans the tee shot, then one of all three classes plays up to five shots
     /// toward the pin, stopping in a hazard. Their landings are kept and replayed until the course changes (game flag LAYOUT,
@@ -284,7 +322,9 @@ impl Club {
                     first = land;
                     break;
                 }
-                if c.h(c.tile_type(land.0, land.1)) > 1 {
+                // the landing tile's own type (0x413725 indexes the tile map directly)
+                let lt = if inside(land.0, land.1) { c.ty[idx(land.0, land.1)] } else { t::OUT };
+                if c.h(lt) > 1 {
                     break;
                 }
                 let gg = &self.g[TRIAL];

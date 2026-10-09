@@ -15,6 +15,7 @@ mod champ_ui;
 mod cust_ui;
 mod files_ui;
 mod gfx;
+mod holemarks;
 mod hud_ui;
 mod info_ui;
 mod message_ui;
@@ -503,6 +504,19 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                     app.ui_ok = ui;
                 }
             }
+            // test hooks: the instant shot analysis from tile a,b ('/' at the pointer), and hole h's flag word
+            b'/' if v.len() >= 2 => {
+                app.start_analysis(Some((at(0), at(1))), true);
+                app.analysis_shown = 12;
+                println!(
+                    "shot analysis of hole {} from {},{}: {:?}",
+                    app.analysis_hole,
+                    at(0),
+                    at(1),
+                    app.analysis.as_ref().map(|a| a.sums)
+                );
+            }
+            b'F' if v.len() >= 2 => app.club.holes[at(0).clamp(0, 19) as usize].flags = at(1) as u32,
             b'o' => {
                 let ok = app.open_hole();
                 println!("open hole: {ok}, next hole {}", app.club.next_hole);
@@ -1121,6 +1135,9 @@ impl Stage {
                     _ => app.pan(step, 0.0),
                 }
             }
+            // instant shot analysis: '/' of the hole nearest the pointer, '.' of the last one analysed
+            KeyCode::Slash => app.start_analysis(None, true),
+            KeyCode::Period => app.start_analysis(None, false),
             KeyCode::PageUp => app.rotate_view(1),
             KeyCode::Home => app.rotate_view(-1),
             KeyCode::Key0 => {
@@ -1232,6 +1249,7 @@ impl Stage {
             app.draw_difficulty(&mut self.g);
         } else {
             app.render_world(&mut self.g);
+            app.draw_building_label(&mut self.g);
             if !app.no_hud {
                 app.draw_hud(&mut self.g);
             }
@@ -1270,6 +1288,7 @@ impl Stage {
                 Screen::Customise => app.draw_customise(&mut self.g),
                 _ => {}
             }
+            app.draw_analysis(&mut self.g);
         }
         self.g.flush();
         self.g.ctx.end_render_pass();
@@ -1425,7 +1444,13 @@ impl EventHandler for Stage {
         // the club runs only on the course view and not while paused; a long stall (a dragged window) is not caught up
         let dt = (t - self.last_tick).clamp(0.0, 0.25);
         self.last_tick = t;
-        if self.png_out.is_none() && !app.paused && app.screen == Screen::Play && app.rename.is_none() && app.title.save_name.is_none() {
+        if self.png_out.is_none()
+            && !app.paused
+            && app.screen == Screen::Play
+            && app.rename.is_none()
+            && app.title.save_name.is_none()
+            && app.analysis.is_none()
+        {
             app.time += dt * app.speed.max(1) as f64;
         }
         app.club.turbo = app.speed > 1;
@@ -1532,6 +1557,9 @@ impl EventHandler for Stage {
 
     fn mouse_button_down_event(&mut self, button: MouseButton, x: f32, y: f32) {
         self.mouse = (x, y);
+        if self.app.analysis_input() {
+            return;
+        }
         self.app.info.pointer = self.app.view.to_virtual(x, y);
         if self.app.screen == Screen::Land {
             let (vx, vy) = self.app.view.to_virtual(x, y);
@@ -1639,7 +1667,7 @@ impl EventHandler for Stage {
         self.shift = mods.shift || k == KeyCode::LeftShift || k == KeyCode::RightShift;
         self.app.shift_held = self.shift;
         self.ctrl = mods.ctrl || k == KeyCode::LeftControl || k == KeyCode::RightControl;
-        if self.app.rename_key(k) || self.app.save_key(k) {
+        if self.app.rename_key(k) || self.app.save_key(k) || self.app.analysis_input() {
             return;
         }
         if self.app.screen == Screen::Popup {

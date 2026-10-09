@@ -67,6 +67,7 @@ impl App {
             self.draw_cursor(g, &Uniforms::flat(&proj, &mv));
         }
         self.draw_aim(g, &Uniforms::flat(&proj, &mv));
+        self.draw_layout_path(g, &Uniforms::flat(&proj, &mv));
         g.flush();
     }
 
@@ -298,7 +299,7 @@ impl App {
     }
 
     /// A line through world points, `px` pixels either side, closed into a loop or not.
-    fn draw_lines(&self, g: &mut Gfx, u: &Uniforms, pts: &[[f32; 3]], closed: bool, px: f32, col: [f32; 4]) {
+    pub(crate) fn draw_lines(&self, g: &mut Gfx, u: &Uniforms, pts: &[[f32; 3]], closed: bool, px: f32, col: [f32; 4]) {
         let mv = self.mv;
         let (rx, ry, rz, ux, uy, uz) = (mv[0], mv[4], mv[8], mv[1], mv[5], mv[9]);
         let half = self.upp * px;

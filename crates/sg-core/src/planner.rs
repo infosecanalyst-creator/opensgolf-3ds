@@ -29,6 +29,17 @@ pub struct State {
     pub options: u32,
     pub(crate) cache: Vec<(i32, i32, i32)>,
     pub(crate) cache_at: usize,
+    /// The ball trace of the next trial shot (the flight record 0x59fc60 the exe gives a golfer before 0x4226a0): when set,
+    /// [`preview`] adds the ball's point at each apex, every eighth tick and each bounce, up to 31 points.
+    #[serde(skip)]
+    pub trace: Option<Vec<(i32, i32)>>,
+}
+
+/// Adds a point to a ball trace (0x409950): the record keeps 31 points.
+fn trace_point(t: &mut Option<Vec<(i32, i32)>>, p: (i32, i32)) {
+    if let Some(v) = t.as_mut().filter(|v| v.len() < 31) {
+        v.push(p);
+    }
 }
 
 /// Maximum range of the golfer's next shot in range units (0x422530).
@@ -994,6 +1005,7 @@ fn route_risk(c: &mut Course, sx: i32, sy: i32, pa: i32, pb: i32, reach: i32, sh
 pub fn preview(cl: &mut Club, c: &mut Course, rng: &mut ExeRng, g: usize, wx: i32, wy: i32, shape: i32) -> (i32, i32) {
     let saved = cl.g[g].clone();
     let saved_events = cl.out.len();
+    let mut trace = cl.planner.trace.take();
     plan_shot(cl, c, rng, g, false, wx, wy, shape);
     cl.out.truncate(saved_events);
     cl.g[g].curve /= 2;
@@ -1014,8 +1026,14 @@ pub fn preview(cl: &mut Club, c: &mut Course, rng: &mut ExeRng, g: usize, wx: i3
         gg.bz += gg.vz / 32;
         if gg.bz != 0 || gg.vz != 0 {
             gg.vz -= 0x40;
+            if 0 < gg.vz && gg.vz < 0x40 {
+                trace_point(&mut trace, (gg.bx, gg.by));
+            }
         }
         ticks += 1;
+        if ticks & 7 == 0 {
+            trace_point(&mut trace, (gg.bx, gg.by));
+        }
         let ux = (gg.bx >> 6) & 0xf;
         let uy = (gg.by >> 6) & 0xf;
         let tf = |a: i32, b: i32| h_index_type(c, a, b);
@@ -1102,6 +1120,7 @@ pub fn preview(cl: &mut Club, c: &mut Course, rng: &mut ExeRng, g: usize, wx: i3
             }
             gg.vz = vz;
             gg.bz = 0;
+            trace_point(&mut trace, (gg.bx, gg.by));
             if gg.flags & flag::TO_SHOP != 0 {
                 gg.heading ^= 0x8000_0000;
                 gg.flags &= !flag::TO_SHOP;
@@ -1143,6 +1162,7 @@ pub fn preview(cl: &mut Club, c: &mut Course, rng: &mut ExeRng, g: usize, wx: i3
         }
     }
     cl.planner.end = end;
+    cl.planner.trace = trace;
     cl.g[g] = saved;
     end
 }

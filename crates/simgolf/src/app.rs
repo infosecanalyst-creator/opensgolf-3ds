@@ -373,6 +373,11 @@ pub struct App {
     pub clicked_tile: Option<(i32, i32)>,
     /// The tile under the pointer (the pro's employee follows it until a hole exists).
     pub hover_tile: Option<(i32, i32)>,
+    /// The instant shot analysis on screen ('/' and '.'), how many of its shots are drawn so far, and the hole it analyses
+    /// (0x56c790, kept for '.').
+    pub analysis: Option<sg_core::analysis::Analysis>,
+    pub analysis_shown: usize,
+    pub analysis_hole: i32,
     /// The pro's skill dialog while open, and the shot preview while he waits for the player's aim.
     pub skill_dialog: Option<crate::pro_ui::SkillDialog>,
     pub aim: Option<sg_core::pro::AimPreview>,
@@ -608,6 +613,9 @@ impl App {
             tick_acc: 0.0,
             clicked_tile: None,
             hover_tile: None,
+            analysis: None,
+            analysis_shown: 0,
+            analysis_hole: 0,
             skill_dialog: None,
             aim: None,
             cancel_until: 0,
@@ -1223,6 +1231,7 @@ impl App {
                 }
             }
         }
+        self.push_holemarks();
     }
 
     /// The tile's growth counter is running (flag 0x4000).

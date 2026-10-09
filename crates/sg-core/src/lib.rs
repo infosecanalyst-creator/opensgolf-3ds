@@ -7,6 +7,7 @@
 // The port keeps the original code's own constants (3.14159, 6.28) so its results stay identical; index loops mirror its tables.
 #![allow(clippy::approx_constant, clippy::needless_range_loop, clippy::should_implement_trait)]
 
+pub mod analysis;
 pub mod assets;
 pub mod bink;
 pub mod bodies;

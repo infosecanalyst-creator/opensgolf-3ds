@@ -372,6 +372,15 @@ impl Screen {
     pub fn text_centered(&self, g: &mut Gfx, cx: f32, y: f32, s: &str, size: f32, c: [f32; 4]) {
         self.text(g, cx - text_width(s, size) * 0.5, y, s, size, c);
     }
+
+    /// A straight line from (x0, y0) to (x1, y1), `w` pixels wide.
+    pub fn line(&self, g: &mut Gfx, x0: f32, y0: f32, x1: f32, y1: f32, w: f32, c: [f32; 4]) {
+        let (dx, dy) = (x1 - x0, y1 - y0);
+        let l = (dx * dx + dy * dy).sqrt().max(1e-6);
+        let (nx, ny) = (-dy / l * w * 0.5, dx / l * w * 0.5);
+        let v = |x: f32, y: f32| Vert::new(x, y, 0.0, 0.0, 0.0).col(c);
+        g.quad(Mode::Flat, None, &self.u, [v(x0 + nx, y0 + ny), v(x1 + nx, y1 + ny), v(x1 - nx, y1 - ny), v(x0 - nx, y0 - ny)]);
+    }
 }
 
 pub fn text_width(s: &str, size: f32) -> f32 {
