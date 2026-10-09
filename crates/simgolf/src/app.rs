@@ -2458,6 +2458,28 @@ impl App {
             for b in 0..land::N {
                 let i = (a * land::N + b) as usize;
                 let f = land.flags[i];
+                if f & 0x20 != 0 && land.ty[i] == land::T_WATER {
+                    // bridge pieces on a path over water
+                    let (mut path, mut dry, mut water_path) = (0u8, 0u8, false);
+                    for k in 0..4 {
+                        let (na, nb) = (a + sg_core::geom::DX[2 * k], b + sg_core::geom::DY[2 * k]);
+                        if !(0..land::N).contains(&na) || !(0..land::N).contains(&nb) {
+                            continue;
+                        }
+                        let j = (na * land::N + nb) as usize;
+                        if land.flags[j] & 0x20 != 0 {
+                            path |= 1 << k;
+                            if land.ty[j] == land::T_WATER {
+                                water_path = true;
+                            } else {
+                                dry |= 1 << k;
+                            }
+                        }
+                    }
+                    for d in sg_core::decor::bridge(path, dry, water_path, f & 0x100 != 0, (f & 0x1f) as u8, 0, 1) {
+                        draws.push((a, b, d));
+                    }
+                }
                 if f & 0x200 != 0 {
                     let course = &self.course;
                     for d in sg_core::decor::benches(land.var[i], &|d| course.bench_ok(a, b, d as i32)) {

@@ -229,11 +229,78 @@ pub fn ornamental(var: u8, a: i32, b: i32, grown: bool, field: &dyn Fn(i32, i32)
     ]
 }
 
+/// The bridge pieces of a path tile on water (0x41192c). `path` has bit k set when the neighbour at heading 2k carries a
+/// path, `land` the same for neighbours that are not water, `water_path` whether any path neighbour is on water; `scenic`
+/// and `style` are the scenic bridge flag and the tile's low flag bits (the bridge tool's look). Anim is the frame counter.
+pub fn bridge(path: u8, land: u8, water_path: bool, scenic: bool, style: u8, anim: i32, reflect_frames: i32) -> Vec<Draw> {
+    let d = |sprite: u16, view: i32, dx: f32, dy: f32, frame: Option<i32>, pal: u8| {
+        let (da, db) = screen(dx, dy);
+        Draw { sprite, frame, view, pal, da, db }
+    };
+    if !water_path {
+        // a bridge on its own: the scenic bridge, or a deck with a cap at each end
+        let along = (path & 5 != 0) as i32;
+        if scenic {
+            return vec![d(0x226 + (style & 0x1f) as u16, along, 0.0, 0.0, Some(0), 0xa9)];
+        }
+        let s = if along != 0 { -1.0 } else { 1.0 };
+        return vec![d(0x1ff, along, 4.0 * s, -2.5, Some(0), 0x4e), d(0x1ff, along + 2, -4.0 * s, 2.5, Some(0), 0x4e)];
+    }
+    const PIECE: [u16; 16] = [0, 0x1fe, 0x1fe, 0x200, 0x1fe, 0x1fe, 0x200, 0x201, 0x1fe, 0x200, 0x1fe, 0x201, 0x200, 0x201, 0x201, 0x202];
+    const VIEW: [i32; 16] = [0, 1, 0, 2, 1, 1, 1, 2, 0, 3, 0, 3, 0, 0, 1, 0];
+    let m = (path & 15) as usize;
+    let piece = PIECE[m];
+    // a straight deck that reaches land on one side ends in a ramp (view by side: inferred from the order of the exe's cases)
+    if piece == 0x1fe {
+        if let Some(view) = match land & 15 {
+            1 => Some(3),
+            2 => Some(2),
+            4 => Some(1),
+            8 => Some(0),
+            _ => None,
+        } {
+            return vec![d(0x205, view, 0.0, 0.0, Some(0), 0x4e)];
+        }
+    }
+    let mut out = Vec::new();
+    for k in 0..4 {
+        if land & (1 << k) != 0 {
+            out.push(d(0x1ff, (-1 - k) & 3, 0.0, 0.0, Some(0), 0x4e));
+        }
+    }
+    if m != 0 {
+        out.push(d(piece, VIEW[m], 0.0, 0.0, Some(0), 0x4e));
+        if piece == 0x1fe {
+            out.push(d(0x204, VIEW[m], 0.0, 0.0, Some(anim.rem_euclid(reflect_frames.max(1))), 0x4e));
+        }
+    }
+    out
+}
+
 /// The file (under Flics, without extension) the theme loads for a decoration sprite id.
 pub fn sprite_file(id: u16, theme: u8) -> Option<&'static str> {
     let t = theme.min(3) as usize;
     let pick = |v: [&'static str; 4]| Some(v[t]);
     match id {
+        0x1fe => pick(["Bridges/bridgeTILE", "Bridges/DESbridgeTILE", "Bridges/TROPbridgeTILE", "Bridges/LinksBridgeTILE"]),
+        0x1ff => pick(["Bridges/bridgeCAP", "Bridges/DESbridgeCAP", "Bridges/TROPbridgeCAP", "Bridges/LinksBridgeCAP"]),
+        0x200 => pick(["Bridges/bridgeL", "Bridges/DESbridgeL", "Bridges/TROPbridgeL", "Bridges/LinksBridgeL"]),
+        0x201 => pick(["Bridges/bridgeT", "Bridges/DESbridgeT", "Bridges/TROPbridgeT", "Bridges/LinksBridgeT"]),
+        0x202 => pick(["Bridges/bridgeX", "Bridges/DESbridgeX", "Bridges/TROPbridgeX", "Bridges/LinksBridgeX"]),
+        0x204 => pick(["Bridges/bridgeREFLECT", "Bridges/DESbridgeREFLECT", "Bridges/TROPbridgeREFLECT", "Bridges/LinksBridgeREFLECT"]),
+        0x205 => pick(["Bridges/bridgeXtra", "Bridges/DESbridgeXtra", "Bridges/TROPbridgeXtra", "Bridges/LinksBridgeXtra"]),
+        0x226..=0x22d => Some(
+            [
+                "Bridges/SCENICgen03",
+                "Bridges/SCENICgen04",
+                "Bridges/SCENICgen05",
+                "Bridges/SCENICgen06",
+                "Bridges/SCENICgen07",
+                "Bridges/SCENICgen08",
+                "Bridges/SCENICgen09",
+                "Bridges/SCENICgen10",
+            ][(id - 0x226) as usize],
+        ),
         0x12f => Some("Scenic/Plum"),
         0x130 => Some("Scenic/Dogwood"),
         0x131 => Some("Scenic/ScenicElm"),
@@ -331,6 +398,10 @@ pub fn palette_file(pal: u8, theme: u8) -> Option<&'static str> {
                 ),
             }
         }
+        0x4e => {
+            pick(["Bridges/PARKbridgepal.pcx", "Bridges/DESbridgepal.pcx", "Bridges/TROPbridgepal.pcx", "Bridges/LinksBridgePalette.pcx"])
+        }
+        0xa9 => Some("Bridges/SCENICgenpal.pcx"),
         0x4c => Some("Flowers/CrabgrassPal.pcx"),
         0x4d => pick(["Flowers/dandelionPal.pcx", "Flowers/OilSlickPal.pcx", "Flowers/DryGrassPal.pcx", "Flowers/dandelionPal.pcx"]),
         0xa6 | 0xb6 => Some("Scenic/ScenicElmPal.pcx"),

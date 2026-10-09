@@ -533,4 +533,9 @@ Confidence: high.
 - Placing sells the lot at once for a quarter of its value (Home Sites); demolishing buys it back for its smoothed value / 50
   plus half its value. At each charge interval every (difficulty + 2)th object, starting at (tick / interval) % (difficulty + 2),
   re-values its site: v = value + v - v / 12. The site shows a sign below 200, a house being built below 600, then a house.
+- Path tiles on water are bridges (0x41192c). With no path neighbour on water: a scenic bridge (one of eight looks, the tile's
+  low flag bits) for the bridge tool, otherwise a deck end cap on either side. Connected to other water path tiles: the deck
+  piece by the four-neighbour path mask (straight, corner, T, cross, with a view per mask), a reflection under straight
+  pieces, caps toward dry path neighbours, and a ramp where a straight piece meets land on one side (which ramp view goes
+  with which side is inferred from the order of the exe's cases).
 
