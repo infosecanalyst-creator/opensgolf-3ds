@@ -62,8 +62,6 @@ impl App {
             return self.show_toast("Cannot save course during a tournament.");
         }
         let dir = self.championship_dir();
-        #[cfg(not(target_arch = "wasm32"))]
-        let _ = std::fs::create_dir_all(&dir);
         let path = dir.join(format!("{}.{COURSE_EXT}", self.course_name));
         match self.save_game(&path) {
             Ok(()) => self.show_toast(&format!("{} saved for championship play.", self.course_name)),
@@ -74,8 +72,6 @@ impl App {
     /// Saves the player's pro for championship play.
     pub fn save_championship_pro(&mut self) {
         let dir = self.championship_dir();
-        #[cfg(not(target_arch = "wasm32"))]
-        let _ = std::fs::create_dir_all(&dir);
         let p = self.club.pro_file();
         let path = dir.join(format!("{}.pro", p.person.name));
         if sg_core::fsutil::write_file(&path, &championship::pro_bytes(&p)) {

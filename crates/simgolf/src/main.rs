@@ -466,6 +466,11 @@ impl Stage {
             };
             app.deal_offer(o.sandbox);
             app.start_game(&mut g, k, o.sandbox);
+            if let Some(c) = o.cash {
+                // the property's price came out of the default funds; the test hook sets the cash after it
+                app.econ.start_cash = c;
+                app.econ.cash = c;
+            }
             match o.screen.as_deref() {
                 Some("land") => app.open_land_screen(),
                 Some("report") if app.ui_ok => app.screen = Screen::Report,
@@ -1061,24 +1066,30 @@ impl Stage {
     /// An accomplishment's snapshot (0x46e810): 200 x 160 of the screen around the award's map point, kept for the board
     /// and written to snapshots/accomp<id>.png. When the point is off screen the view moves there first.
     fn take_snapshot(&mut self) {
-        let Some((id, pt)) = self.app.snapshot_due else { return };
-        if !matches!(self.app.screen, Screen::Play | Screen::Board) || !self.app.ui_ok {
+        let Some(&(id, pt)) = self.app.snapshot_due.first() else { return };
+        // any screen of a game in progress will do: the grab draws the course alone
+        if matches!(self.app.screen, Screen::Menu | Screen::Property | Screen::Champ) || !self.app.ui_ok {
             return;
         }
-        let Some((vx, vy)) = self.app.screen_of(pt.0, pt.1) else {
+        // When the point is off screen the view looks there for the grab only (a followed golfer would pull a lasting camera
+        // move straight back, and the snapshot would never be taken).
+        let cam = (self.app.cam_x, self.app.cam_z);
+        if self.app.screen_of(pt.0, pt.1).is_none() {
             let (x, z) = self.app.units_to_world(pt.0, pt.1);
             self.app.cam_x = x;
             self.app.cam_z = z;
-            return;
-        };
-        self.app.snapshot_due = None;
+        }
+        self.app.snapshot_due.remove(0);
         // the snapshot is of the course, so a board that opened first is set aside for the grab
         let shown = std::mem::replace(&mut self.app.screen, Screen::Play);
         self.app.no_hud = true;
         let img = self.grab();
+        let at = self.app.screen_of(pt.0, pt.1);
+        let v = self.app.view;
         self.app.no_hud = false;
         self.app.screen = shown;
-        let v = self.app.view;
+        (self.app.cam_x, self.app.cam_z) = cam;
+        let (vx, vy) = at.unwrap_or((400.0, 300.0));
         let (left, top) = ((vx - 100.0).clamp(0.0, 600.0), (vy - 100.0).clamp(0.0, 440.0));
         let mut out = sg_core::assets::Rgba::new(200, 160);
         for y in 0..160u32 {
@@ -1093,9 +1104,6 @@ impl Stage {
             }
         }
         let dir = self.app.course_file.parent().map(|p| p.to_path_buf()).unwrap_or_default().join("snapshots");
-        #[cfg(not(target_arch = "wasm32"))]
-        #[cfg(not(target_arch = "wasm32"))]
-        let _ = std::fs::create_dir_all(&dir);
         sg_core::png::write_png(dir.join(format!("accomp{id}.png")), &out);
         let tex = self.g.texture(&out, false);
         self.app.snapshots.insert(id, ui::Image { tex: Some(tex), w: 200.0, h: 160.0 });
@@ -1207,9 +1215,14 @@ impl EventHandler for Stage {
     fn draw(&mut self) {
         self.draw_frame(None);
         self.g.ctx.commit_frame();
-        if self.app.snapshot_due.is_some() {
-            self.take_snapshot();
-            if self.png_out.is_some() && self.app.snapshot_due.is_none() && self.app.screen == Screen::Board {
+        if !self.app.snapshot_due.is_empty() {
+            while !self.app.snapshot_due.is_empty()
+                && self.app.ui_ok
+                && !matches!(self.app.screen, Screen::Menu | Screen::Property | Screen::Champ)
+            {
+                self.take_snapshot();
+            }
+            if self.png_out.is_some() && self.app.snapshot_due.is_empty() && self.app.screen == Screen::Board {
                 self.frames = 1; // a scripted still of the board waits one more frame for its photo
             }
         }

@@ -14,6 +14,9 @@ mod imp {
         std::fs::read(p).ok()
     }
     pub fn write(p: &Path, data: &[u8]) -> bool {
+        if let Some(d) = p.parent().filter(|d| !d.as_os_str().is_empty()) {
+            let _ = std::fs::create_dir_all(d);
+        }
         std::fs::write(p, data).is_ok()
     }
     pub fn exists(p: &Path) -> bool {

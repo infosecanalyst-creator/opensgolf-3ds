@@ -333,8 +333,8 @@ pub struct App {
     pub card: Option<usize>,
     pub year_notice: String,
     pub roster_offset: usize,
-    /// The accomplishment snapshot still to take (id and map point), and the snapshots taken this session.
-    pub snapshot_due: Option<(usize, (i32, i32))>,
+    /// The accomplishment snapshots still to take (id and map point), and the snapshots taken this session.
+    pub snapshot_due: Vec<(usize, (i32, i32))>,
     pub snapshots: HashMap<usize, crate::ui::Image>,
     /// The report screens' art, the routing map's tab and selected hole.
     pub reports: crate::reports_ui::ReportArt,
@@ -513,7 +513,7 @@ impl App {
             card: None,
             year_notice: String::new(),
             roster_offset: 0,
-            snapshot_due: None,
+            snapshot_due: Vec::new(),
             snapshots: HashMap::new(),
             no_hud: false,
             reports: Default::default(),

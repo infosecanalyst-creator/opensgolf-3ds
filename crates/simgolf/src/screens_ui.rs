@@ -332,7 +332,7 @@ impl App {
             return;
         }
         if self.club.award_frames == 0 && self.club.award_point.0 >= 0 {
-            self.snapshot_due = Some((self.club.award_pending as usize, self.club.award_point));
+            self.snapshot_due.push((self.club.award_pending as usize, self.club.award_point));
         }
         self.club.award_frames += 1;
         if self.club.award_frames > 19 {
