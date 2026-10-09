@@ -3027,7 +3027,7 @@ impl App {
     }
 
     /// The clip set and state of an employee: (set, state) into staff_clips (state 0 walking, 1 standing, 2 working).
-    fn staff_clip_of(&self, e: &staff::Employee) -> (usize, usize) {
+    pub(crate) fn staff_clip_of(&self, e: &staff::Employee) -> (usize, usize) {
         let set =
             if e.job == staff::job::OWNER { 8 } else { ((-(e.job as i32) - 2) + if e.upgraded { 4 } else { 0 }).clamp(0, 7) as usize };
         let state = if e.anim < staff::ANIM_STAND {
