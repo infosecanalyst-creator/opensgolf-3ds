@@ -983,7 +983,9 @@ impl App {
         for ty in 0..t.h {
             for tx in 0..t.w {
                 let kind = t.path_at(tx, ty);
-                if kind == 0 {
+                // nothing is drawn out of bounds: a property's paths beyond the purchased land (round a landmark the
+                // land generator placed there) show once the tract is bought
+                if kind == 0 || t.type_at(tx, ty) == 20 {
                     continue;
                 }
                 let n = t.path_at(tx, ty - 1) != 0;
@@ -3203,6 +3205,10 @@ impl App {
         for a in 0..land::N {
             for b in 0..land::N {
                 let i = (a * land::N + b) as usize;
+                // nothing stands on land outside the property (the generator's benches round a landmark beyond the border)
+                if land.ty[i] == land::T_OUT {
+                    continue;
+                }
                 let f = land.flags[i];
                 if f & 0x20 != 0 && land.ty[i] == land::T_WATER {
                     // bridge pieces on a path over water
