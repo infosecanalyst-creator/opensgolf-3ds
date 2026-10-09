@@ -12,6 +12,7 @@
 mod app;
 mod audio;
 mod gfx;
+mod pro_ui;
 mod render;
 mod ui;
 
@@ -287,6 +288,14 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 app.land_pointer(20.0 + 260.0 * col as f32, 60.0 + 68.0 * row as f32);
                 app.land_click(false);
             }
+            b'j' => {
+                // the pro's round: j:0 practice, j:1 the match; scripted runs aim every full shot at the pin
+                let ui = std::mem::replace(&mut app.ui_ok, false);
+                app.auto_aim = if v.len() > 1 && at(1) == 1 { 2 } else { 1 };
+                app.pro_button(if at(0) == 1 { 1 } else { 0 });
+                app.ui_ok = ui;
+                println!("pro round requested: game flags {:#x}, skills {:?}", app.club.game, &app.club.pro_skill[..10]);
+            }
             b'o' => {
                 let ok = app.open_hole();
                 println!("open hole: {ok}, next hole {}", app.club.next_hole);
@@ -414,6 +423,10 @@ impl Stage {
             match o.screen.as_deref() {
                 Some("land") => app.open_land_screen(),
                 Some("report") if app.ui_ok => app.screen = Screen::Report,
+                Some("skills") if app.ui_ok => {
+                    let pts = app.club.first_skill_points();
+                    app.open_skills(pts, Some(false));
+                }
                 _ => {}
             }
         }
@@ -598,6 +611,9 @@ impl Stage {
                             app.build_idx = it.arg;
                             app.edit = true;
                         }
+                        6 => app.pro_button(it.arg),
+                        7 => app.club.set_shot_option(SHOT_OPTS[it.arg]),
+                        8 => {}
                         _ => {
                             if right {
                                 app.fire_staff(it.arg);
@@ -711,6 +727,41 @@ impl Stage {
         // Hotkeys of the original (manual p. 3 and 4): Z / X zoom, Shift+S / Shift+L save and load, Shift+P pause, Shift+T trees;
         // in edit mode F fairway, G green/tee, R rough, S sandtrap, W water, P pathway, - lower, = raise.
         let edit = app.edit && !shift;
+        if app.club.pro_aiming().is_some() && !shift {
+            // the shot keys of the aiming panel (key switch, L169087): s straight, f fade, d draw, h high, l low
+            let opt = match k {
+                KeyCode::S => Some(0),
+                KeyCode::F => Some(-1),
+                KeyCode::D => Some(1),
+                KeyCode::H => Some(3),
+                KeyCode::L => Some(4),
+                _ => None,
+            };
+            if let Some(o) = opt {
+                app.club.set_shot_option(o);
+                return;
+            }
+        }
+        if k == KeyCode::N && !shift && app.club.gary > 0 {
+            // 'n' cancels the pro's round after a question; here a second press answers it
+            if app.game_tick <= app.cancel_until {
+                app.pro_button(3);
+                app.cancel_until = 0;
+            } else {
+                app.cancel_until = app.game_tick + 40;
+                app.show_toast("Are you sure you want to cancel this round? Press N again to cancel.");
+            }
+            return;
+        }
+        if k == KeyCode::J && !edit {
+            // the pro panel's first two buttons: J a practice round, Shift+J the match
+            app.pro_button(if shift { 1 } else { 0 });
+            return;
+        }
+        if k == KeyCode::K && !edit {
+            app.pro_button(2);
+            return;
+        }
         match k {
             KeyCode::S if shift => return self.save_course(false),
             KeyCode::L if shift => return self.load_course(),
@@ -879,6 +930,9 @@ impl Stage {
             if app.screen == Screen::Land {
                 app.draw_land(&mut self.g);
             }
+            if app.screen == Screen::Skills {
+                app.draw_skills(&mut self.g);
+            }
         }
         self.g.flush();
         self.g.ctx.end_render_pass();
@@ -937,6 +991,20 @@ impl EventHandler for Stage {
             self.toggle_pause();
         }
         let app = &mut self.app;
+        if app.screen == Screen::Play {
+            let hit = app.pick_ground(self.mouse.0, self.mouse.1);
+            app.hover_tile = hit.map(|(x, z)| app.terrain.tile_of(x, z));
+            let (vx, vy) = app.view.to_virtual(self.mouse.0, self.mouse.1);
+            match hit {
+                _ if app.auto_aim != 0 => {}
+                // the aiming frame runs while the pointer is above the panel (mouse y < 480)
+                Some((x, z)) if app.club.pro_aiming().is_some() && vy < 452.0 && !(app.ui_ok && dock_hit(vx, vy) >= 0) => {
+                    app.aim_pointer(x, z)
+                }
+                _ if app.club.pro_aiming().is_none() => app.aim = None,
+                _ => {}
+            }
+        }
         if app.edit {
             let hit = app.pick_ground(self.mouse.0, self.mouse.1);
             app.has_hit = hit.is_some();
@@ -1009,7 +1077,7 @@ impl EventHandler for Stage {
             return;
         }
         if self.app.screen != Screen::Play && self.app.ui_ok {
-            if self.app.screen != Screen::Report {
+            if self.app.screen != Screen::Report && self.app.screen != Screen::Skills {
                 self.menu_pointer(x, y, false);
             }
             return;
@@ -1057,6 +1125,9 @@ impl EventHandler for Stage {
             if self.app.screen == Screen::Report {
                 self.app.screen = Screen::Play;
                 self.app.hover = -1;
+            } else if self.app.screen == Screen::Skills {
+                let (vx, vy) = self.app.view.to_virtual(x, y);
+                self.app.skills_click(vx, vy);
             } else if button == MouseButton::Left {
                 self.menu_pointer(x, y, true);
             }
@@ -1067,6 +1138,13 @@ impl EventHandler for Stage {
         }
         let (vx, vy) = self.app.view.to_virtual(x, y);
         if self.app.ui_ok && self.dock_click(vx, vy, button == MouseButton::Right) {
+            return;
+        }
+        if button == MouseButton::Left && self.app.club.pro_aiming().is_some() && !self.app.edit {
+            if let Some((hx, hz)) = self.app.pick_ground(x, y) {
+                self.app.aim_pointer(hx, hz);
+            }
+            self.app.aim_click();
             return;
         }
         if self.app.edit && button == MouseButton::Left {
@@ -1103,6 +1181,10 @@ impl EventHandler for Stage {
                 if k == KeyCode::Escape || k == KeyCode::F1 {
                     app.screen = Screen::Play;
                     app.hover = -1;
+                }
+            } else if app.screen == Screen::Skills {
+                if k == KeyCode::Enter || k == KeyCode::Escape {
+                    app.skills_click(-1.0, -1.0);
                 }
             } else if k == KeyCode::Escape {
                 if app.screen == Screen::Menu {

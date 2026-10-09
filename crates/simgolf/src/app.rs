@@ -181,6 +181,8 @@ pub enum Screen {
     Report,
     /// The exe's TRACTS FOR SALE screen.
     Land,
+    /// The pro's skill dialog.
+    Skills,
 }
 
 /// A whole game as saved: the land and terrain, the golfers and holes, the staff, the money and calendar, and the exe's random
@@ -274,6 +276,17 @@ pub struct App {
     pub tick_acc: f64,
     /// Last ground tile the player clicked (the player's own pro walks there).
     pub clicked_tile: Option<(i32, i32)>,
+    /// The tile under the pointer (the pro's employee follows it until a hole exists).
+    pub hover_tile: Option<(i32, i32)>,
+    /// The pro's skill dialog while open, and the shot preview while he waits for the player's aim.
+    pub skill_dialog: Option<crate::pro_ui::SkillDialog>,
+    pub aim: Option<sg_core::pro::AimPreview>,
+    /// The first 'n' while the pro plays asks; a second one within this game tick cancels the round.
+    pub cancel_until: u32,
+    /// Scripted runs: 1 the pro aims each full shot at the pin by himself, 2 he only shows that aim (for stills).
+    pub auto_aim: u8,
+    /// The pro's golfer slot while he plays (to notice the round's end).
+    pub pro_slot: i32,
     /// An employee picked up to be moved: the next click on the course becomes their post (the exe's "Move this employee").
     pub moving_employee: Option<usize>,
     /// Employee clips by sprite set (0 Greeter, 1 Ranger, 2 Groundskeeper, 3 Tray Girl, 4 Golf Celebrity, 5 Marshall,
@@ -421,6 +434,12 @@ impl App {
             game_tick: 0,
             tick_acc: 0.0,
             clicked_tile: None,
+            hover_tile: None,
+            skill_dialog: None,
+            aim: None,
+            cancel_until: 0,
+            auto_aim: 0,
+            pro_slot: -1,
             moving_employee: None,
             staff_clips: [[(None, None); 3]; 9],
             weed_sprite: None,
@@ -1334,8 +1353,10 @@ impl App {
                 }
             }
         }
+        self.pro_round_tick();
         self.club.tick(&mut self.course, &mut self.exe_rng, tick);
         sg_core::ratings::pass(&mut self.club, self.difficulty);
+        self.pro_after_tick();
         self.weeds_from_course();
         let events: Vec<golf::Event> = self.club.out.drain(..).collect();
         for e in events {
@@ -2346,12 +2367,24 @@ impl App {
                 tiles: &mut self.staff_tiles,
                 golfers: &mut self.staff_golfers,
                 club,
-                clicked: self.clicked_tile,
+                clicked: if self.club.holes[1].par == 0 { self.hover_tile } else { None },
                 tick: self.game_tick,
                 difficulty: self.difficulty,
                 weed_frames,
             };
+            // the pro's employee is away while he plays a round (staff routine 0x402a40)
+            let away = self.club.gary != -1;
+            if away {
+                for e in self.employees.iter_mut().filter(|e| e.job == staff::job::OWNER) {
+                    e.active = false;
+                }
+            }
             staff::tick(&mut self.employees, &mut world, &mut self.exe_rng, &mut out);
+            if away {
+                for e in self.employees.iter_mut().filter(|e| e.job == staff::job::OWNER) {
+                    e.active = true;
+                }
+            }
             staff::spread_weeds(&self.terrain, &mut self.staff_tiles, self.game_tick, self.difficulty, &mut self.exe_rng, &mut out);
             staff::grow_weeds(&mut self.staff_tiles, &mut self.exe_rng);
         }
@@ -2441,7 +2474,7 @@ impl App {
                 self.props[pi].hidden = true;
                 continue;
             };
-            if !e.active {
+            if !e.active || (e.job == staff::job::OWNER && self.club.gary != -1) {
                 self.props[pi].hidden = true;
                 continue;
             }

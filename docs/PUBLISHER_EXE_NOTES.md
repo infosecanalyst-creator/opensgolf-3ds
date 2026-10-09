@@ -582,3 +582,26 @@ Confidence: high.
 - Each re-valued home site draws a celebrity; an unowned site worth more than (300 * homes bought + 400) * (difficulty + 2)
   is bought as a vacation home. No money changes hands.
 
+
+## The player's pro (round start 0x40f190, aiming 0x41b20f, skills 0x409620 and 0x407e00, match money 0x427380)
+
+Confidence: high unless marked.
+- Panel button 1 asks for a practice round and drops a pending challenge's flag; button 2 asks for the match while a challenge
+  is pending. Both need two holes, no tournament and the pro off the course. The round starts next frame: golfers waiting
+  or unstarted on hole 1 go home, an even slot and the next one are made partners; in a match the even one becomes the
+  famous golfer (his table skills, stake nibble L*16 + 7), and the odd one the pro (stake nibble 4, his own skills) at his
+  employee's place. The employee is hidden while he plays and stands where he finished.
+- Each full shot off the green 25 or more yards from the pin waits for the player. The aiming frame snaps to the hovered
+  tile's nearest corner when the pointer is closer to it, limits the distance to the shot type's range (high 13/18, low
+  1/2), refuses fade, draw and high from a hazard (sound 0x18) and picks a preview club; a click is refused for the first
+  ten frames. The real shot goes to the centre of the tile whose corner was chosen. The aim line uses fractions 5, 9, 12,
+  15, 16 and 20 of the distance over 20 (16 for the high shot), bending by a sixth of a turn times the shot shape (the
+  second point's bend and the heights are medium confidence).
+- When a shot of the pro ends on a playable lie and beats (D + 1) times a bar that grows with his skills, difficulty and the
+  shot's difficulty, one skill grows (picked at random among those the shot showed: putting on the green, recovery from a
+  hazard, luck after a tree or a hole-out, driving off the tee, the shot shape, power when the shot beat his range, irons
+  for middle clubs), up to 6, 8, 10 or 99 by course rank; a new skill starts at 3 - difficulty. Ending in a hazard may
+  cost a skill above 3 one point and his momentum.
+- A famous golfer challenges when a newcomer with all three skills arrives after the first year, hole L + 3 exists and no
+  pro is out; the challenger's skill total is close to 20 + 5L. Each hole of the match is worth 20L units, and the match
+  again; a loss or a tie lowers L, a win adds an accomplishment (three skill points).

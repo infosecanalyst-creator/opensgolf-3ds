@@ -65,7 +65,41 @@ impl App {
         if self.edit && self.has_hit {
             self.draw_cursor(g, &Uniforms::flat(&proj, &mv));
         }
+        self.draw_aim(g, &Uniforms::flat(&proj, &mv));
         g.flush();
+    }
+
+    /// The pro's aim line (0x41bbe1): from the ball, bending with the shot type, drawn white over a dark copy; and a box on
+    /// the aimed tile.
+    fn draw_aim(&mut self, g: &mut Gfx, u: &Uniforms) {
+        let (Some(gi), Some(p)) = (self.club.pro_aiming(), self.aim) else { return };
+        let gg = &self.club.g[gi];
+        let ball = (gg.bx, gg.by);
+        let opt = self.club.planner.option;
+        let line = sg_core::pro::aim_line(ball, &p, opt);
+        let n = line.len().max(2) as f32 - 1.0;
+        let lift = match opt {
+            3 => 3.0,
+            4 => 0.0,
+            _ => 2.0,
+        } * p.distance as f32 / 24.0;
+        let pts: Vec<[f32; 3]> = line
+            .iter()
+            .enumerate()
+            .map(|(i, &(x, y))| {
+                let (wx, wz) = self.units_to_world(x, y);
+                let t = i as f32 / n;
+                // the arc's height: zero at both ends (an approximation of the exe's per-point screen lift)
+                [wx, self.terrain.height_at(wx, wz) + 4.0 + lift * 4.0 * t * (1.0 - t) * TILE_SIZE / 8.0, wz]
+            })
+            .collect();
+        self.draw_lines(g, u, &pts, false, 2.5, [0.0, 0.0, 0.0, 0.6]);
+        self.draw_lines(g, u, &pts, false, 1.2, [1.0, 1.0, 1.0, 1.0]);
+        let (wx, wz) = self.units_to_world(p.x, p.y);
+        let r = TILE_SIZE * 0.5;
+        let corners = [(wx - r, wz - r), (wx + r, wz - r), (wx + r, wz + r), (wx - r, wz + r)];
+        let bx: Vec<[f32; 3]> = corners.iter().map(|&(x, z)| [x, self.terrain.height_at(x, z) + 3.0, z]).collect();
+        self.draw_lines(g, u, &bx, true, 1.0, [1.0, 0.95, 0.3, 1.0]);
     }
 
     fn sprite_texture(&mut self, g: &mut Gfx, si: usize, view: i32, frame: i32) -> miniquad::TextureId {
@@ -229,12 +263,17 @@ impl App {
         for i in 0..N {
             pts.push(pt(x0, z1 - (z1 - z0) * i as f32 / N as f32));
         }
+        self.draw_lines(g, u, &pts, true, 1.0, [1.0, 0.95, 0.3, 1.0]);
+    }
+
+    /// A line through world points, `px` pixels either side, closed into a loop or not.
+    fn draw_lines(&self, g: &mut Gfx, u: &Uniforms, pts: &[[f32; 3]], closed: bool, px: f32, col: [f32; 4]) {
         let mv = self.mv;
         let (rx, ry, rz, ux, uy, uz) = (mv[0], mv[4], mv[8], mv[1], mv[5], mv[9]);
-        let half = self.upp; // one pixel either side
-        let col = [1.0, 0.95, 0.3, 1.0];
+        let half = self.upp * px;
         let mut v = Vec::new();
-        for i in 0..pts.len() {
+        let n = if closed { pts.len() } else { pts.len().saturating_sub(1) };
+        for i in 0..n {
             let (a, b) = (pts[i], pts[(i + 1) % pts.len()]);
             let d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
             let (sx, sy) = (rx * d[0] + ry * d[1] + rz * d[2], ux * d[0] + uy * d[1] + uz * d[2]);
@@ -329,6 +368,11 @@ pub const DOCK_HELP: [&str; 10] = [
     "Save the course",
 ];
 
+/// The pro's shot buttons (panel buttons 4..8) and their option values and keys.
+pub const SHOT_NAMES: [&str; 5] = ["Straight shot", "Fade shot (L to R)", "Draw shot (R to L)", "High backspin shot", "Low punch shot"];
+pub const SHOT_OPTS: [i32; 5] = [0, -1, 1, 3, 4];
+pub const SHOT_KEYS: [&str; 5] = ["S", "F", "D", "H", "L"];
+
 /// Items in the open panel. kind: 0 paint (arg PAINT index), 1 path, 2 raise, 3 lower, 4 building (arg BUILD index), 5 staff.
 pub struct PanelItem {
     pub label: String,
@@ -382,7 +426,29 @@ impl App {
                     }
                 }
             }
+            3 if self.club.pro_aiming().is_some() => {
+                // the pro waits for the aim: the five shot buttons (panel buttons 4..8)
+                for (i, name) in SHOT_NAMES.iter().enumerate() {
+                    v.push(PanelItem { label: format!("{name}  ({})", SHOT_KEYS[i]), kind: 7, arg: i });
+                }
+                v.push(PanelItem { label: "Click the course to aim and swing.  N twice cancels the round.".into(), kind: 8, arg: 0 });
+            }
             3 => {
+                let pro = self.pro_name();
+                if self.club.gary == -1 {
+                    v.push(PanelItem { label: format!("{pro}: Practice Round"), kind: 6, arg: 0 });
+                    let m = if self.club.game & sg_core::pro::CHALLENGE != 0 && self.club.challenge_pro >= 0 {
+                        let who = self.club.pros.get(self.club.challenge_pro as usize).map(|p| p.name.clone()).unwrap_or_default();
+                        format!("{pro}: Match vs. {who}  (${}/hole)", self.club.wager_level * 2000)
+                    } else {
+                        format!("{pro}: Match vs. a pro  (waiting for a challenge)")
+                    };
+                    v.push(PanelItem { label: m, kind: 6, arg: 1 });
+                } else {
+                    v.push(PanelItem { label: format!("{pro} is playing: cancel the round"), kind: 6, arg: 3 });
+                }
+                let pts = if self.club.skill_points > 0 { format!("  ({} points to add)", self.club.skill_points) } else { String::new() };
+                v.push(PanelItem { label: format!("{pro}'s skills{pts}"), kind: 6, arg: 2 });
                 for k in 0..STAFF_KINDS {
                     v.push(PanelItem {
                         label: format!("{}: {}  (click to hire, right click to fire)", Economy::staff_name(k), self.econ.staff[k]),
@@ -726,6 +792,15 @@ impl App {
             s.text_centered(g, 400.0, 120.0, "PAUSED", 24.0, rgb(1.0, 1.0, 0.8));
         }
         self.draw_dock(g, &s);
+        let lines = self.aim_text();
+        if !lines.is_empty() {
+            let h = 12.0 + 16.0 * lines.len() as f32;
+            s.fill(g, 600.0, 440.0 - h, 192.0, h, rgba(0.12, 0.1, 0.3, 0.85));
+            for (i, (l, on)) in lines.iter().enumerate() {
+                let c = if *on { rgb(1.0, 1.0, 1.0) } else { rgb(0.55, 0.55, 0.65) };
+                s.text(g, 608.0, 440.0 - h + 20.0 + 16.0 * i as f32, l, 13.0, c);
+            }
+        }
         if self.econ.game_over {
             s.fill(g, 200.0, 250.0, 400.0, 80.0, rgba(0.5, 0.05, 0.05, 0.9));
             s.text_centered(g, 400.0, 300.0, "GAME OVER", 40.0, rgb(1.0, 1.0, 1.0));
@@ -754,6 +829,7 @@ impl App {
                     2 => self.tool == 1 && self.raise_sign > 0,
                     3 => self.tool == 1 && self.raise_sign < 0,
                     4 => self.tool == 4 && self.build_idx == it.arg,
+                    7 => self.club.planner.option == SHOT_OPTS[it.arg],
                     _ => false,
                 };
                 if sel {

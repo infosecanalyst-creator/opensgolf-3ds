@@ -26,6 +26,7 @@ pub mod mixer;
 pub mod mood;
 pub mod objects;
 pub mod planner;
+pub mod pro;
 pub mod png;
 pub mod properties;
 pub mod ratings;

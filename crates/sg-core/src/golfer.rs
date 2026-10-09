@@ -270,6 +270,7 @@ pub enum Event {
 
 /// The golfers and everything they share (the exe's globals near them).
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct Club {
     pub g: Vec<Golfer>,
     pub holes: Vec<Hole>,
@@ -326,6 +327,20 @@ pub struct Club {
     /// celebrities.dta and progolfers.dta of the theme.
     pub celebrities: Vec<crate::vips::Celebrity>,
     pub pros: Vec<crate::vips::Pro>,
+    /// The pro's skill bytes (0x5a5a04) and which he has (0x4c2c9c), points left to hand out, the wager level L (0x59b730),
+    /// the famous golfer who challenged the club (0x4c2e14) and matches won.
+    pub pro_skill: [u8; 16],
+    pub pro_mask: u16,
+    pub skill_points: i32,
+    pub wager_level: i32,
+    pub challenge_pro: i32,
+    pub matches_won: i32,
+    /// Accomplishments earned (bit per id, 0x4c15a0).
+    pub awards: u32,
+    /// Aiming: the hovered tile, whether the pointer was nearer its corner, and the frames a click is still refused.
+    pub aim_tile: (i32, i32),
+    pub aim_corner: bool,
+    pub aim_lock: i32,
     /// Year number and the year's first fee flag, for the green fee tutorial.
     pub year: i32,
     pub fees_this_year: i32,
@@ -398,6 +413,16 @@ impl Club {
             island: false,
             sandbox: false,
             celebrities: Vec::new(),
+            pro_skill: [0; 16],
+            pro_mask: 0,
+            skill_points: 0,
+            wager_level: 0,
+            challenge_pro: -1,
+            matches_won: 0,
+            awards: 0,
+            aim_tile: (0, 0),
+            aim_corner: false,
+            aim_lock: 0,
             pros: Vec::new(),
             year: 0,
             fees_this_year: 0,
@@ -458,7 +483,7 @@ impl Club {
         self.out.push(Event::Sound { slot, at });
     }
 
-    fn earn(&mut self, units: i32, column: Column, at: (i32, i32)) {
+    pub(crate) fn earn(&mut self, units: i32, column: Column, at: (i32, i32)) {
         self.cash += units;
         self.out.push(Event::Earn { units, column, at });
     }
@@ -1079,6 +1104,7 @@ impl Club {
                 let su = s as usize;
                 self.g[su].partner = s;
                 self.g[su].pause = -6 - rng.below(6);
+                self.pro_challenge_check(rng, su);
             }
         }
     }
@@ -1132,6 +1158,7 @@ impl Club {
         }
         let strokes = self.g[g].strokes;
         self.member_mut(g).card[hu.min(18)] = strokes as u8;
+        self.match_money(g);
         let mood = self.g[g].mood;
         self.out.push(Event::HoleDone { g, hole: h, strokes, mood, fee });
         self.g[g].bx = 0;
@@ -2465,6 +2492,7 @@ impl Club {
                     if self.g[g].aim_a == 0 {
                         self.g[g].aim_a = -1;
                         self.planner.option = 0;
+                        self.aim_lock = 10;
                         if h == 1 && self.g[p].vip() == 0x20 && self.g[g].strokes == 0 && self.game & game::TOURNAMENT == 0 {
                             self.sound(0x2a, None);
                             self.message(format!("{} challenges {} to a match!", self.name(p), self.name(g)));
@@ -2934,6 +2962,7 @@ impl Club {
                 hr.fairways += 1;
             }
         }
+        self.shot_review(c, rng, g);
         let gg = &mut self.g[g];
         gg.strokes += 1;
         if gg.strokes == self.holes[h].par - 2 && rt == t::GREEN {
