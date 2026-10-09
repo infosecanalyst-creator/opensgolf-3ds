@@ -98,7 +98,7 @@ pub fn money_digits(v: i64) -> String {
     let d = v.unsigned_abs().to_string();
     let mut out = String::from(if v < 0 { "-" } else { "" });
     for (k, c) in d.chars().enumerate() {
-        if k > 0 && (d.len() - k) % 3 == 0 {
+        if k > 0 && (d.len() - k).is_multiple_of(3) {
             out.push(',');
         }
         out.push(c);
