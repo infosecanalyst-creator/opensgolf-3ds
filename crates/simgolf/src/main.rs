@@ -13,6 +13,7 @@ mod app;
 mod audio;
 mod champ_ui;
 mod gfx;
+mod popup_ui;
 mod pro_ui;
 mod render;
 mod reports_ui;
@@ -391,6 +392,11 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
             b'x' => app.save_championship_course(),
             b'q' => app.save_championship_pro(),
             b'A' => app.auto_aim = 1, // scripted runs: the pro aims every full shot at the pin
+            b'M' => app.open_popup(match at(0) {
+                0 => popup_ui::PopupKind::Info,
+                1 => popup_ui::PopupKind::System,
+                _ => popup_ui::PopupKind::Prefs,
+            }),
             b'm' if v.len() >= 2 => app.move_hole(at(0) as usize, at(1) as usize),
             b'a' if v.len() >= 3 => {
                 // test hook: an animal of kind v[2] and a follower at x,y
@@ -665,6 +671,80 @@ impl Stage {
         }
     }
 
+    /// What a popup menu's choice does (docs/DECODE_MENUS.md 3, 4, 5).
+    fn popup_done(&mut self, r: popup_ui::PopupResult) {
+        let Some(kind) = self.app.popup.as_ref().map(|p| p.kind) else { return };
+        let Some(k) = r else {
+            self.app.close_popup();
+            return;
+        };
+        if k == usize::MAX {
+            return; // refused or toggled: the popup stays
+        }
+        self.app.close_popup();
+        use popup_ui::PopupKind;
+        match kind {
+            PopupKind::Info => match k {
+                0 => {
+                    let m = self.app.last_message.clone();
+                    self.app.show_toast(&m);
+                }
+                1 => self.open_report(),
+                2 => self.app.open_report_screen(Screen::Comments),
+                3 => self.app.open_report_screen(Screen::Routing),
+                4 => self.app.open_report_screen(Screen::Histograph),
+                5 => self.app.begin_tournament(),
+                6 => self.app.open_report_screen(Screen::Finance),
+                7 => self.app.screen = Screen::Roster,
+                8 => {
+                    self.app.screen = Screen::Board;
+                    self.app.screen_jingle(0x7e, Screen::Board);
+                }
+                _ => self.app.open_world_map(),
+            },
+            PopupKind::System => match k {
+                0 => self.save_course(true),
+                1 => self.load_course(),
+                2 => {
+                    if self.app.club.game & sg_core::golfer::game::TOURNAMENT != 0 {
+                        self.app.cancel_tournament();
+                    } else {
+                        let mut rng = self.app.exe_rng;
+                        self.app.club.cancel_pro_round(&mut rng);
+                        self.app.exe_rng = rng;
+                    }
+                }
+                3 => self.app.save_championship_pro(),
+                4 => self.app.open_rename(),
+                5 => self.app.open_popup(PopupKind::Prefs),
+                6 => self.app.save_championship_course(),
+                7 => {
+                    self.app.screen = Screen::Menu;
+                    self.app.hover = -1;
+                }
+                _ => {}
+            },
+            PopupKind::Prefs => {
+                let m = k as u32;
+                self.app.show_thoughts = m & 1 != 0;
+                self.app.show_advisor = m & 2 != 0;
+                self.app.club.wildlife.enabled = m & 4 != 0;
+                let sound = m & 8 != 0;
+                if sound == self.app.mute {
+                    self.app.mute = !sound;
+                    if self.app.mute {
+                        if let Some(mx) = &self.app.mixer {
+                            mx.stop_all();
+                        }
+                        self.app.ambience = -1;
+                        self.app.title_music = -1;
+                    }
+                    self.app.music_screen = None;
+                }
+            }
+        }
+    }
+
     fn open_report(&mut self) {
         self.app.report_course(true);
         if self.app.ui_ok && self.app.report_art.tex.is_some() {
@@ -699,9 +779,9 @@ impl Stage {
                 4 => app.zoom /= 1.12,
                 5 => app.rot += 15.0,
                 6 => app.rot -= 15.0,
-                7 => self.open_report(),
+                7 => app.open_popup(popup_ui::PopupKind::Info),
                 8 => self.pause_toggle = true,
-                _ => self.save_course(true),
+                _ => app.open_popup(popup_ui::PopupKind::System),
             }
             self.app.snd("Interface/Button1.wav", 1.0, false);
             return true;
@@ -982,7 +1062,8 @@ impl Stage {
         match k {
             KeyCode::Escape => {
                 if app.ui_ok {
-                    app.screen = Screen::Menu;
+                    // the pause menu: System Functions over the stopped game
+                    app.open_popup(popup_ui::PopupKind::System);
                     app.hover = -1;
                 } else {
                     window::order_quit();
@@ -1101,6 +1182,10 @@ impl Stage {
             if !app.no_hud {
                 app.draw_hud(&mut self.g);
             }
+            if app.screen == Screen::Popup {
+                app.draw_popup(&mut self.g);
+            }
+            app.draw_rename(&mut self.g);
             if app.screen == Screen::Report {
                 app.draw_report(&mut self.g);
             }
@@ -1276,7 +1361,7 @@ impl EventHandler for Stage {
         // the club runs only on the course view and not while paused; a long stall (a dragged window) is not caught up
         let dt = (t - self.last_tick).clamp(0.0, 0.25);
         self.last_tick = t;
-        if self.png_out.is_none() && !app.paused && app.screen == Screen::Play {
+        if self.png_out.is_none() && !app.paused && app.screen == Screen::Play && app.rename.is_none() {
             app.time += dt * app.speed.max(1) as f64;
         }
         app.club.turbo = app.speed > 1;
@@ -1336,6 +1421,11 @@ impl EventHandler for Stage {
             self.app.pair_pointer(vx, vy);
             return;
         }
+        if self.app.screen == Screen::Popup {
+            let (vx, vy) = self.app.view.to_virtual(x, y);
+            self.app.popup_pointer(vx, vy, false);
+            return;
+        }
         if self.app.screen != Screen::Play && self.app.ui_ok {
             if matches!(self.app.screen, Screen::Menu | Screen::Difficulty | Screen::Property) {
                 self.menu_pointer(x, y, false);
@@ -1379,6 +1469,13 @@ impl EventHandler for Stage {
             let (vx, vy) = self.app.view.to_virtual(x, y);
             self.app.land_pointer(vx, vy);
             self.app.land_click(button == MouseButton::Right);
+            return;
+        }
+        if self.app.screen == Screen::Popup {
+            let (vx, vy) = self.app.view.to_virtual(x, y);
+            if let Some(r) = self.app.popup_pointer(vx, vy, true) {
+                self.popup_done(r);
+            }
             return;
         }
         if self.app.screen != Screen::Play && self.app.ui_ok {
@@ -1461,6 +1558,15 @@ impl EventHandler for Stage {
     fn key_down_event(&mut self, k: KeyCode, mods: KeyMods, _repeat: bool) {
         self.shift = mods.shift || k == KeyCode::LeftShift || k == KeyCode::RightShift;
         self.ctrl = mods.ctrl || k == KeyCode::LeftControl || k == KeyCode::RightControl;
+        if self.app.rename_key(k) {
+            return;
+        }
+        if self.app.screen == Screen::Popup {
+            if let Some(r) = self.app.popup_key(k) {
+                self.popup_done(r);
+            }
+            return;
+        }
         if self.app.screen != Screen::Play && self.app.ui_ok {
             let app = &mut self.app;
             if app.screen == Screen::Report {
@@ -1505,6 +1611,10 @@ impl EventHandler for Stage {
             return;
         }
         self.play_key(k);
+    }
+
+    fn char_event(&mut self, c: char, _mods: KeyMods, _repeat: bool) {
+        self.app.rename_char(c);
     }
 
     fn key_up_event(&mut self, k: KeyCode, mods: KeyMods) {

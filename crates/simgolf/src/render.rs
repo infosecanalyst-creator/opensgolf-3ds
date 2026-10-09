@@ -415,9 +415,9 @@ pub const DOCK_HELP: [&str; 10] = [
     "Zoom out",
     "Rotate right",
     "Rotate left",
-    "Course report",
-    "Pause",
-    "Save the course",
+    "Information",
+    "Pause or Unpause",
+    "System Functions",
 ];
 
 /// The pro's shot buttons (panel buttons 4..8) and their option values and keys.

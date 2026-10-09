@@ -197,6 +197,8 @@ pub enum Screen {
     Land,
     /// Select Difficulty, between Start New Game (or Sandbox Mode) and the property chooser.
     Difficulty,
+    /// A popup menu over the game (Information, System Functions, Preferences).
+    Popup,
     /// The pro's skill dialog.
     Skills,
     /// The SGA report or tournament offer, the preparation checklist, the tournament results.
@@ -382,6 +384,11 @@ pub struct App {
     pub no_hud: bool,
     /// Option "show golfer thoughts" (option bit 0x10).
     pub show_thoughts: bool,
+    /// The popup menu shown, and the last ticker message (Repeat Last Message).
+    pub popup: Option<crate::popup_ui::Popup>,
+    pub last_message: String,
+    /// The course name being typed (Rename Course...), while the prompt is open.
+    pub rename: Option<String>,
     pub water_depth: Vec<u8>,
     /// An employee picked up to be moved: the next click on the course becomes their post (the exe's "Move this employee").
     pub moving_employee: Option<usize>,
@@ -560,6 +567,9 @@ impl App {
             champ: None,
             retyped: Vec::new(),
             show_thoughts: true,
+            popup: None,
+            last_message: String::new(),
+            rename: None,
             art: Default::default(),
             pair_picks: Vec::new(),
             golfer_page: 0,
@@ -1610,6 +1620,7 @@ impl App {
                     if !m.is_empty() {
                         println!("[{:6.1}s] {m}", self.sim_time);
                         self.show_toast(&m);
+                        self.last_message = m.clone();
                     }
                 }
                 golf::Event::HoleDone { hole, strokes, mood, fee, .. } => {
