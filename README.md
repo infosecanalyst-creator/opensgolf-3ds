@@ -96,7 +96,7 @@ Extract it with `unshield` (`brew install unshield`, then `unshield x data1.cab`
 2. Reverse the custom formats (done, a few fields unresolved, see docs/FORMATS.md)
 3. Analyse Terrain.dll to reproduce the tile model and rendering (viewer with edge blending, paths, walls and a water shimmer done; the original water animation and cliff rules are not decoded)
 3b. Sprite layer: FLC sprite format, views and anchors decoded, trees, a clubhouse and walking golfers in the viewer (see docs/SPRITES.md)
-4. Game logic: started with a one-golfer shot loop (walk, address, swing, ball flight, putt) in crates/sg-core/src/shot.rs, with placeholder numbers; see docs/GAMELOGIC.md
+4. Game logic: the exe's golfers (arrivals, walking, needs, amenities, the shot planner, ball flight, fees, memberships), see docs/GAMELOGIC.md
 5. Course editing: paint tile types, raise and lower terrain, save and load (done, basic, with path overlays; see docs/EDITING.md)
 6. Club money (placeholder numbers, see docs/EDITING.md), retaining walls, water shimmer and the desert water swap (done)
 7. Sound (mixer plus event sounds in the game) and Bink video playback via ffmpeg (done, see docs/SOUND_VIDEO.md)
@@ -104,4 +104,4 @@ Extract it with `unshield` (`brew install unshield`, then `unshield x data1.cab`
 9. Facts read from a publisher-supplied golf.exe (rules and numbers only, no code copied): docs/PUBLISHER_EXE_NOTES.md
 10. First playable loop: several holes, a stream of golfers paying fees, the board's debt warnings (docs/PLAYING.md)
 11. Port to Rust for macOS, Windows and Linux (done; the C++ port's courses, shots, ratings and exe maths are reproduced exactly, checked by golden tests)
-12. Next: difficulties, the real mood events and fee rules, building prices and wages from the exe, ratings, memberships, tournaments, whole-game saves
+12. Next: the hole tool, tile decoration drawing, stories and special visitors, ratings, tournaments, whole-game saves

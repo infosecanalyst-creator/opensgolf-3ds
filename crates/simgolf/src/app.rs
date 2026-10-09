@@ -165,7 +165,7 @@ pub const PAINT: [PaintEntry; 20] = [
 /// Building kinds the Add Buildings panel offers, in the exe's order (kind numbers of `land::BUILDINGS`): benches, flower beds,
 /// ball washers, then the amenities as holes unlock them. Paths have their own tool; landmarks and home sites need donations and
 /// members first.
-pub const OFFERED_KINDS: [i32; 12] = [1, 2, 3, 6, 7, 8, 9, 10, 11, 12, 13, 14];
+pub const OFFERED_KINDS: [i32; 14] = [1, 2, 3, 16, 19, 6, 7, 8, 9, 10, 11, 12, 13, 14];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Screen {
@@ -847,7 +847,10 @@ impl App {
 
     /// Whether the building tool may place this kind now: unlocked by the course's holes (sandbox: all).
     pub fn build_available(&self, kind: usize) -> bool {
-        OFFERED_KINDS.contains(&(kind as i32)) && (kind as i32) < land::unlocked_kinds(self.holes.len(), self.econ.sandbox)
+        // The garden page (kinds up to 5, the willow and the bridge) is always open; buildings unlock with holes.
+        let k = kind as i32;
+        OFFERED_KINDS.contains(&k)
+            && (k <= 5 || k == land::K_WILLOW || k == land::K_BRIDGE || k < land::unlocked_kinds(self.holes.len(), self.econ.sandbox))
     }
 
     /// Scenery: trees on Woods tiles, the placed buildings, a clubhouse, and the pool of golfers.
@@ -1390,22 +1393,113 @@ impl App {
                 if dx * dx + dy * dy > r * r + r || !self.terrain.inside(x, y) {
                     continue;
                 }
-                let i = self.terrain.tile_index(x, y);
-                if !remove && self.terrain.path_kind[i] == 0 {
-                    self.econ.spend_to(economy::LEDGER_BUILD_COURSE, Economy::PATH_TILE_COST);
+                if remove {
+                    self.undo_tile(x, y);
+                } else {
+                    self.place_tile_item(x, y, land::K_PATH);
                 }
-                self.terrain.path_kind[i] = if remove { 0 } else { self.path_kind as u8 };
             }
         }
         self.dirty = true;
         self.snd("Interface/Path.wav", 0.7, false);
     }
 
+    /// One tile item (path, bench, flower bed, willow, scenic bridge) through the exe's building tool: the item's price (half
+    /// the clearing for paths; willows 25 and bridges 100 flat), the affordability test, Facilities in the ledger, an undo record.
+    pub fn place_tile_item(&mut self, x: i32, y: i32, kind: i32) -> bool {
+        self.ensure_land();
+        let theme = self.exe_theme();
+        let holes = self.holes.len();
+        let variant = match kind {
+            land::K_BENCH => self.exe_rng.below(5),
+            land::K_FLOWERS => self.exe_rng.below(4),
+            land::K_WILLOW => self.exe_rng.below(7),
+            land::K_BRIDGE => self.exe_rng.below(8),
+            _ => 0,
+        };
+        let Some(land) = self.land.as_mut() else { return false };
+        land.sync_from_terrain(&self.terrain);
+        let cost = match land.tile_item_cost(x, y, kind, theme) {
+            Ok(c) => c,
+            Err(m) => {
+                if !m.is_empty() {
+                    self.show_toast(m);
+                }
+                self.slot_sound(24, 0.0, 0.0);
+                return false;
+            }
+        };
+        let amount = cost as f64 * Economy::UNIT;
+        if !self.econ.affordable(amount, holes) {
+            self.show_toast(&format!("This change costs {}. You have only {}.", money(amount as i64), money(self.econ.cash as i64)));
+            self.slot_sound(24, 0.0, 0.0);
+            return false;
+        }
+        let Some(land) = self.land.as_mut() else { return false };
+        if land.place_tile_item(x, y, kind, variant, theme).is_err() {
+            return false;
+        }
+        let i = self.terrain.tile_index(x, y);
+        if (kind == land::K_PATH || kind == land::K_BENCH || kind == land::K_BRIDGE) && self.terrain.path_kind[i] == 0 {
+            self.terrain.path_kind[i] = self.path_kind.max(1) as u8;
+        }
+        land.write_area(&mut self.terrain, x, y, x, y);
+        if cost != 0 {
+            self.econ.spend_to(economy::LEDGER_FACILITIES, amount);
+        }
+        match kind {
+            land::K_BENCH => self.slot_sound(262, 0.0, 0.0),
+            land::K_FLOWERS => self.slot_sound(148, 0.0, 0.0),
+            land::K_BRIDGE => self.slot_sound(263, 0.0, 0.0),
+            _ => {}
+        }
+        self.after_object_change();
+        true
+    }
+
+    /// Undo on a tile, as the exe's second right-click does: an item comes off with exactly what it cost back (booked to Build
+    /// course), a building is demolished with no refund.
+    pub fn undo_tile(&mut self, x: i32, y: i32) {
+        self.ensure_land();
+        let Some(land) = self.land.as_mut() else { return };
+        land.sync_from_terrain(&self.terrain);
+        match land.undo_tile(x, y) {
+            land::Undone::Refused => self.slot_sound(24, 0.0, 0.0),
+            land::Undone::Building(i) => {
+                if land.objects[i].kind == land::K_CLUBHOUSE {
+                    return;
+                }
+                let o = land.objects[i];
+                let size = land.footprint_size(&o);
+                land.remove_object(i);
+                land.write_area(&mut self.terrain, o.a, o.b, o.a + size - 1, o.b + size - 1);
+                self.after_object_change();
+                self.show_toast("Building demolished");
+                self.snd("Interface/Building.wav", 0.7, false);
+            }
+            land::Undone::Refund(r) => {
+                let i = self.terrain.tile_index(x, y);
+                let f = land.flags[(x * land::N + y) as usize];
+                if f & land::flag::PATH == 0 {
+                    self.terrain.path_kind[i] = 0;
+                }
+                land.write_area(&mut self.terrain, x, y, x, y);
+                if r != 0 {
+                    let amount = r as f64 * Economy::UNIT;
+                    self.econ.earn(amount);
+                    self.econ.book(economy::LEDGER_BUILD_COURSE, amount);
+                }
+                self.after_object_change();
+            }
+        }
+    }
+
     /// Placing and removing buildings, as the exe does it. A building goes wherever its footprint fits (no water, cliffs, tees,
     /// other buildings or land outside the property under it); it costs its price times (level + 2) / 2 plus a clearing charge for
     /// trees, rocks and water under it, booked to Facilities. Building a kind that already stands again upgrades it (level + 1)
     /// and moves it there, which needs a Country Club (10 holes). It only earns money once a path joins it to the clubhouse.
-    /// Removing one gives back the price of the small kinds only (benches, flower beds, ball washers, landmarks).
+    /// Benches, flower beds, willows and bridges are tile items (see place_tile_item). Removing goes through undo: items give
+    /// back what they cost, buildings are demolished with no refund.
     pub fn edit_building(&mut self, tx: i32, ty: i32, remove: bool) {
         if !self.terrain.inside(tx, ty) {
             return;
@@ -1413,35 +1507,16 @@ impl App {
         self.ensure_land();
         let theme = self.exe_theme();
         let holes = self.holes.len();
-        let Some(land) = self.land.as_mut() else { return };
-        land.sync_from_terrain(&self.terrain);
-        let hit = land.objects.iter().position(|o| {
-            let s = land::BUILDINGS.get(o.kind as usize).map(|b| b.1).unwrap_or(1);
-            o.kind >= 0 && o.kind != land::K_CLUBHOUSE && (o.a..o.a + s).contains(&tx) && (o.b..o.b + s).contains(&ty)
-        });
         if remove {
-            let Some(i) = hit else { return };
-            let o = land.objects[i];
-            let size = land.footprint_size(&o);
-            let refund = match o.kind {
-                0..=3 | 5 => land::BUILDINGS[o.kind as usize].2,
-                4 => (o.sub + 5) * 10,
-                _ => 0,
-            } as f64
-                * Economy::UNIT;
-            land.remove_object(i);
-            land.write_area(&mut self.terrain, o.a, o.b, o.a + size - 1, o.b + size - 1);
-            if refund > 0.0 {
-                // The exe adds the refund to the cash but also takes it off the Facilities column again (kept as it is).
-                self.econ.earn(refund);
-                self.econ.book(economy::LEDGER_FACILITIES, -refund);
-            }
-            self.after_object_change();
-            self.show_toast(if refund > 0.0 { "Building removed, price refunded" } else { "Building removed" });
-            self.snd("Interface/Building.wav", 0.7, false);
-            return;
+            return self.undo_tile(tx, ty);
         }
         let kind = self.build_idx as i32;
+        if matches!(kind, land::K_PATH | land::K_BENCH | land::K_FLOWERS | land::K_WILLOW | land::K_BRIDGE) {
+            self.place_tile_item(tx, ty, kind);
+            return;
+        }
+        let Some(land) = self.land.as_mut() else { return };
+        land.sync_from_terrain(&self.terrain);
         if !self.build_available(kind as usize) {
             return self.show_toast("Build more holes to unlock this building");
         }
@@ -1924,6 +1999,37 @@ impl App {
     fn add_land_objects(&mut self) {
         let Some(land) = self.land.clone() else { return };
         let theme = land.slot.record().theme;
+        // Tile items. INTERIM until the exe's tile decoration drawing is decoded: a bench shows its variant's sprite, a flower bed
+        // the single-bed sprite of the theme, a willow the willow sprite.
+        const BENCHES: [&str; 5] =
+            ["Flowers/box_bench", "Flowers/red_bench", "Flowers/round_wood_bench", "Flowers/backless_bench", "Flowers/lovers_bench"];
+        let beds = match theme {
+            1 => "flowers/DesFlowers_Single",
+            2 => "flowers/TropFlowers_Single",
+            _ => "flowers/Flowers_Single",
+        };
+        for a in 0..land::N {
+            for b in 0..land::N {
+                let i = (a * land::N + b) as usize;
+                let f = land.flags[i];
+                let file = if f & 0x200 != 0 {
+                    BENCHES[(land.var[i] % 5) as usize].to_string()
+                } else if f & 0x1000 != 0 && land.ty[i] != land::T_OUT {
+                    beds.to_string()
+                } else if land.ty[i] == land::T_ELM && land.var[i] != 0 {
+                    "trees/WillowTree".to_string()
+                } else {
+                    continue;
+                };
+                let body = self.sprite_for(&format!("{file}.flc"), false, None);
+                if body.is_none() {
+                    continue;
+                }
+                let shadow = self.sprite_for(&format!("{file}Shadow.flc"), true, None);
+                let (x, z) = self.terrain.tile_centre(a, b);
+                self.props.push(Prop { x, z, body, shadow, facing: (land.var[i] & 3) as i32, object: true, ..Default::default() });
+            }
+        }
         let level = (self.holes.len() > 10) as u16;
         for o in land.objects.iter().filter(|o| o.kind >= 0) {
             let size = land::BUILDINGS.get(o.kind as usize).map(|b| b.1).unwrap_or(1);

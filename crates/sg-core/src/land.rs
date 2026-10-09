@@ -283,6 +283,13 @@ pub const BUILDINGS: [(&str, i32, i32); 20] = [
     ("TV Booth", 1, 10),
     ("Scenic Bridge", 1, 100),
 ];
+/// No undo record on a tile.
+pub const UNDO_NONE: u8 = 0xff;
+pub const K_PATH: i32 = 0;
+pub const K_BENCH: i32 = 1;
+pub const K_FLOWERS: i32 = 2;
+pub const K_WILLOW: i32 = 16;
+pub const K_BRIDGE: i32 = 19;
 pub const K_LANDMARK: i32 = 4;
 pub const K_HOME_SITE: i32 = 5;
 pub const K_PUTTING_GREEN: i32 = 6;
@@ -348,6 +355,12 @@ pub struct Land {
     /// Width of the unowned border.
     pub margin: i32,
     hill: i32,
+    /// Per tile undo record (0x5830b8): 0xff none, below 0x7d the tile type before a terrain change, 0x80 | kind for an item
+    /// placed on the tile; and the amount (units) an undo gives back (0x59c090).
+    pub undo: Vec<u8>,
+    pub refund: Vec<i8>,
+    /// Growth counter per tile (0x578804; flower beds and willows grow, as weeds do).
+    pub growth: Vec<u8>,
 }
 
 const DX: [i32; 8] = [0, 1, 1, 1, 0, -1, -1, -1];
@@ -664,6 +677,9 @@ pub fn generate(slot_index: usize, slot: Slot, difficulty: i32, sandbox: bool, r
         view: (-1, -1),
         margin: 0,
         hill,
+        undo: vec![UNDO_NONE; NN],
+        refund: vec![0; NN],
+        growth: vec![0; NN],
     };
 
     // Streaks of trees (and rocks, brush or deep rough, by theme), each a random walk. Up to 1250 tiles in all.
@@ -1328,6 +1344,9 @@ impl Land {
             view: (-1, -1),
             margin: 0,
             hill: 48,
+            undo: vec![UNDO_NONE; NN],
+            refund: vec![0; NN],
+            growth: vec![0; NN],
         };
         land.sync_from_terrain(t);
         land.original = land.ty.clone();
@@ -1633,5 +1652,238 @@ mod tests {
         assert_eq!(land.tile(7, 25), T_OUT);
         assert_ne!(land.tile(8, 25), T_OUT);
         assert_eq!(land.tile(49 - 7, 25), T_OUT);
+    }
+}
+
+/// What undoing a tile did.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Undone {
+    /// Nothing could be undone (out of the property or a permanent obstacle).
+    Refused,
+    /// An item or change was taken back; the amount (units) is given back.
+    Refund(i32),
+    /// A building stands here: the exe asks before demolishing it, and never refunds it.
+    Building(usize),
+}
+
+impl Land {
+    fn in_play(&self, a: i32, b: i32) -> bool {
+        (0..N).contains(&a) && (0..N).contains(&b) && self.ty[idx(a, b)] != T_OUT
+    }
+
+    /// Price of an item placed on one tile (path, bench, flower bed, willow, scenic bridge), or a reason it cannot go there.
+    /// Paths pay half the clearing; willows and bridges cost a flat amount (main frame building tool, 0x41f34e).
+    pub fn tile_item_cost(&self, a: i32, b: i32, kind: i32, theme: u8) -> Result<i32, &'static str> {
+        if !self.in_play(a, b) {
+            return Err("");
+        }
+        let Some(mut clear) = self.fits(a, b, 1, kind, theme) else { return Err("Can't build there.") };
+        if kind == K_PATH {
+            clear /= 2;
+        }
+        let i = idx(a, b);
+        let f = self.flags[i];
+        Ok(match kind {
+            K_PATH if f & flag::PATH != 0 => 0,
+            K_BENCH if f & 0x200 != 0 => 0,
+            K_BENCH if ![0, 2, 4, 6].iter().any(|&d| self.bench_ok(a, b, d)) => return Err("Can't build bench there."),
+            K_FLOWERS if f & 0x1000 != 0 => 0,
+            K_WILLOW => 25,
+            K_BRIDGE if self.ty[i] != T_WATER => return Err("Can't build bridge there."),
+            K_BRIDGE => 100,
+            _ => BUILDINGS[kind as usize].2 + clear,
+        })
+    }
+
+    /// Can a bench at (a, b) face heading d (0x407400): both tiles playable rough-or-worse ground, the neighbour in the property and
+    /// free of paths and scenery.
+    pub fn bench_ok(&self, a: i32, b: i32, d: i32) -> bool {
+        if !(0..N).contains(&a) || !(0..N).contains(&b) {
+            return false;
+        }
+        let ty = self.ty[idx(a, b)];
+        if TYPES[ty as usize].desert_group <= 0 || ty == T_BUILDING || ty == T_HOME_SITE {
+            return false;
+        }
+        let (na, nb) = (a + DX[d as usize & 7], b + DY[d as usize & 7]);
+        if !self.in_play(na, nb) {
+            return false;
+        }
+        let j = idx(na, nb);
+        self.flags[j] & 0x120 == 0 && TYPES[self.ty[j] as usize].desert_group > 0
+    }
+
+    /// Puts an item on one tile as the exe's building tool does (paths, benches, flower beds, willows, scenic bridges), recording
+    /// the undo. `variant` picks the look (bench 0..4, flowers 0..3, willow 0..6, bridge 0..7). Returns the units charged.
+    pub fn place_tile_item(&mut self, a: i32, b: i32, kind: i32, variant: i32, theme: u8) -> Result<i32, &'static str> {
+        let cost = self.tile_item_cost(a, b, kind, theme)?;
+        let i = idx(a, b);
+        match kind {
+            K_PATH => {
+                if self.flags[i] & flag::PATH == 0 {
+                    self.flags[i] |= flag::PATH;
+                    if self.ty[i] == T_WATER {
+                        self.flags[i] &= !flag::SPOT;
+                    }
+                    for d in [0usize, 2, 4, 6] {
+                        let (na, nb) = (a + DX[d], b + DY[d]);
+                        if !(0..N).contains(&na) || !(0..N).contains(&nb) {
+                            continue;
+                        }
+                        let j = idx(na, nb);
+                        if (self.ty[j] == T_BUILDING || self.ty[j] == T_HOME_SITE)
+                            && self.objects.get(self.var[j] as usize).map(|o| o.kind >= 6).unwrap_or(false)
+                        {
+                            self.flags[j] |= flag::PATH;
+                        }
+                    }
+                    self.undo[i] = 0x80;
+                    self.refund[i] = cost as i8;
+                }
+            }
+            K_BENCH => {
+                if self.flags[i] & 0x200 == 0 {
+                    self.flags[i] = (self.flags[i] & !0x1000) | 0x220;
+                    self.var[i] = (variant % 5) as u8;
+                    self.undo[i] = 0x81;
+                    self.refund[i] = cost as i8;
+                }
+            }
+            K_FLOWERS => {
+                if self.flags[i] & 0x1000 != 0 {
+                    self.var[i] = variant as u8;
+                } else {
+                    self.flags[i] |= 0x5000;
+                    self.growth[i] = 0;
+                    self.flags[i] &= !(0x0100 | 0x0200 | 0x0800);
+                    self.var[i] = variant as u8;
+                    self.ty[i] = T_ROUGH;
+                    self.layer[i] = TYPES[T_ROUGH as usize].layer;
+                    self.undo[i] = 0x82;
+                    self.refund[i] = cost as i8;
+                }
+            }
+            K_WILLOW => {
+                self.ty[i] = T_ELM;
+                self.layer[i] = TYPES[T_ELM as usize].layer;
+                self.growth[i] = 0;
+                self.var[i] = (variant + 1) as u8;
+                self.flags[i] = (self.flags[i] & !0x1800) | 0x4100;
+                self.undo[i] = 0x90;
+                self.refund[i] = 25;
+            }
+            K_BRIDGE => {
+                self.flags[i] = (self.flags[i] & 0xe7f8) | (variant & 7) as u16 | 0x120;
+                self.undo[i] = 0x93;
+                self.refund[i] = 100;
+            }
+            _ => return Err(""),
+        }
+        Ok(cost)
+    }
+
+    /// Takes back what was done on a tile (the exe's right-click undo, 0x40a4e0).
+    pub fn undo_tile(&mut self, a: i32, b: i32) -> Undone {
+        if !self.in_play(a, b) {
+            return Undone::Refused;
+        }
+        let i = idx(a, b);
+        self.flags[i] &= !0x100;
+        if self.flags[i] & 0x8000 != 0 {
+            return Undone::Refused;
+        }
+        let on_object = self.flags[i] & flag::FOOTPRINT != 0;
+        if on_object {
+            if let Some(o) = self.objects.iter().position(|o| {
+                let s = BUILDINGS.get(o.kind as usize).map(|b| b.1).unwrap_or(1);
+                o.kind >= 0 && (o.a..o.a + s).contains(&a) && (o.b..o.b + s).contains(&b)
+            }) {
+                return Undone::Building(o);
+            }
+        }
+        let code = self.undo[i];
+        if code == UNDO_NONE {
+            let f = self.flags[i];
+            if f & 0x200 != 0 {
+                self.flags[i] &= !0x200;
+            } else if f & flag::PATH != 0 {
+                self.flags[i] &= !flag::PATH;
+            } else if f & 0x1000 != 0 {
+                self.flags[i] &= !0x1000;
+            }
+            return Undone::Refund(0);
+        }
+        if code < 0x7d {
+            self.ty[i] = code;
+            self.layer[i] = TYPES[(code as usize).min(22)].layer;
+        } else {
+            match code & 0x7f {
+                0x10 => {
+                    self.ty[i] = T_ROUGH;
+                    self.layer[i] = TYPES[T_ROUGH as usize].layer;
+                }
+                0x13 | 0 => self.flags[i] &= !flag::PATH,
+                1 => self.flags[i] &= !0x200,
+                _ => {
+                    if self.flags[i] & 0x1000 != 0 {
+                        self.flags[i] &= !0x1000;
+                    } else {
+                        self.flags[i] &= !0x1220;
+                    }
+                }
+            }
+        }
+        let r = self.refund[i] as i32;
+        self.undo[i] = UNDO_NONE;
+        self.refund[i] = 0;
+        Undone::Refund(r)
+    }
+}
+
+#[cfg(test)]
+mod tile_item_tests {
+    use super::*;
+    use crate::terrain::Terrain;
+
+    fn rough_land() -> Land {
+        let t = Terrain {
+            w: N,
+            h: N,
+            ty: vec![T_ROUGH; NN],
+            variation: vec![0; NN],
+            set: vec![0; NN],
+            corner: vec![0; ((N + 1) * (N + 1)) as usize],
+            path_kind: vec![0; NN],
+            wall_mask: vec![0; NN],
+            desert: false,
+            path: Vec::new(),
+            clubhouse_x: -1,
+            clubhouse_y: -1,
+            clubhouse_size: 0,
+        };
+        Land::from_terrain(&t, 0)
+    }
+
+    #[test]
+    fn benches_flowers_and_undo() {
+        let mut l = rough_land();
+        assert_eq!(l.place_tile_item(10, 10, K_BENCH, 3, 0), Ok(2));
+        assert_eq!(l.flags[idx(10, 10)] & 0x220, 0x220);
+        // A second bench on the same tile is free and changes nothing.
+        assert_eq!(l.place_tile_item(10, 10, K_BENCH, 1, 0), Ok(0));
+        assert_eq!(l.undo_tile(10, 10), Undone::Refund(2));
+        assert_eq!(l.flags[idx(10, 10)] & 0x200, 0);
+        // Benches need rough-or-worse ground with a free neighbour: none on fairway.
+        l.ty[idx(20, 20)] = 2;
+        assert!(l.place_tile_item(20, 20, K_BENCH, 0, 0).is_err());
+        // A flower bed turns the tile to rough and grows; willows cost a flat 25 and become elms.
+        assert_eq!(l.place_tile_item(12, 12, K_FLOWERS, 0, 0), Ok(5));
+        assert_eq!(l.flags[idx(12, 12)] & 0x5000, 0x5000);
+        assert_eq!(l.place_tile_item(14, 14, K_WILLOW, 2, 0), Ok(25));
+        assert_eq!(l.ty[idx(14, 14)], T_ELM);
+        assert_eq!(l.undo_tile(14, 14), Undone::Refund(25));
+        assert_eq!(l.ty[idx(14, 14)], T_ROUGH);
+        // Bridges only on water.
+        assert!(l.place_tile_item(16, 16, K_BRIDGE, 0, 0).is_err());
     }
 }

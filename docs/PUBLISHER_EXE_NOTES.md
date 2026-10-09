@@ -79,7 +79,7 @@ Course ranks named in the exe text: Municipal, Golf Club, Country Club, Champion
 Confidence: low to medium; only the outline is read.
 - The exe names 14 clubs by index 0..13: Putter, Sand Wedge, Lob Wedge, 9 Iron down to 2 Iron, 4 Wood, 3 Wood, Driver (names table around 0x4c51b0).
 - The golfer's club index is chosen in the shot planner (around line 15290 of golf_decomp.c) from the distance to the target after scoring candidate landing spots; the planner weighs the terrain value under each spot (the second byte per entry of the terrain table) times distance, with a 5 added when two risky spots are found. The club is then derived as (max range - needed range) * 60 / (3 * max range), clamped to 1..11, with 5 forced and 13 (putter) used on a green.
-- Not decoded: per-club distances and spread, skill scaling. The game's shot model stays a placeholder.
+- Superseded by "Golfers and shots" below: the club is only a label; distance, spread and skill scaling are decoded there.
 
 ## Maximum range and ball flight (golf_decomp.c, functions near 0x422530 and 0x422bxx)
 
@@ -237,7 +237,7 @@ Confidence: medium; the counters and thresholds are read directly, the terrain t
 - A snack bar visit (building type 7) raises the snack event (0x12, +1 when hunger was above 7) and resets both counters.
 - A Soda Vendor who reaches a golfer serves them: the club earns 2 units under Food/Drink, thirst resets, and the drink event
   (0x19) follows. A vendor will not bother a golfer whose hunger and thirst are both 16 or less and whose tiredness is under 161.
-- A third counter, tiredness, drives the bench events (0x1a, 0x1b); benches are not built in the game yet.
+- A third counter, tiredness, drives the bench events (0x1a, 0x1b); see "Golfers and shots" below.
 - The game follows these rules with two placeholders: needs update every 4 seconds (160 ticks at the assumed 40 ticks a second),
   and a vendor or snack bar is "reached" by chance or distance instead of by walking there.
 
@@ -435,3 +435,29 @@ Confidence: high for the rules listed; the per-kind special cases (flower bed, l
 - Landmark cost (5 x id + 25) x 2 units, free when donated. Home sites need a site value of at least 50 (0x42ef40).
 - Removal frees the record and turns the footprint into rough (deep rough on slots 12..15; water under a Marina in Parkland
   and Tropical), clearing its path marks; kinds 0..5 give their price back (landmark (level + 5) x 10).
+
+## Golfers and shots (golfer update 0x4289e0, mood events 0x467a00, hole end 0x427380, planner 0x424120)
+
+Confidence: high; read routine by routine, with the machine code where the decompile lost arguments. Implemented in
+`sg-core/src/golfer.rs`, `planner.rs`, `course.rs` and `geom.rs`; docs/GAMELOGIC.md describes the behaviour.
+- Golfer records: 152 of 0x100 bytes. Partners are slots g and g^1. Mood is the 16-bit field at +0xa4 (-10..10); the byte at +0x36
+  is a separate momentum used only by pro golfers' shots, and it is what the shot planner reads as "mood" (so ordinary golfers
+  always plan as if their momentum were below 2).
+- Mood events: the event's amount is the table above; then an amount of -1 only counts for an ordinary golfer when the same event
+  is among the last 3 (Easy), 5 or 10 (Hard) thoughts or the previous change was negative; other negative amounts become
+  (amount - 1) / 2 except for the County commissioner; on Hard settings a negative event can pass event 0x2f to a cheerful
+  partner. Snack (0x12), drink (0x19) and bench (0x1b) test hunger > 7, thirst > 7 and tiredness > 59.
+- Walking: the speed is 6 minus the ground's walking cost (3..5, 3 when tired), 6 on a path, +1 for hurried golfers and on one
+  tick in four; carts run at 8 + 4 per cart garage. Easy golfers walk slower (divisor 7 instead of 5).
+- Arrival, detours, give-way, slow play, quitting, the swing and the ball are restated in docs/GAMELOGIC.md; the constants are in
+  the code with the exe routine named.
+- Quirks kept: the course record announcement compares with the table it has just updated, so it never happens; the ready test
+  compares a y offset with a distance; ball tree sounds share slot 8 with a golfer's voice because the loader fills it twice.
+
+## Garden items and undo (building tool 0x41f34e, undo 0x40a4e0)
+
+Confidence: high.
+- Paths, benches, flower beds, willows and scenic bridges are tile flags, not objects: a bench sets path + bench (0x220), a flower
+  bed 0x5000 and turns the tile to rough, a willow turns it into an elm tile, a bridge sets path + scenic (0x120) on water.
+- Each records an undo code and the amount paid; undoing gives exactly that back (booked to Build course). Buildings are never
+  refunded: undo on one demolishes it.
