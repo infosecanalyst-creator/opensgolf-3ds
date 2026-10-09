@@ -609,6 +609,7 @@ impl App {
             s.text(g, 572.0, 52.0, &format!("Fun {fun}  Skill {skill}"), 15.0, rgb(0.9, 0.9, 1.0));
         }
         self.draw_names(g, &s);
+        self.draw_floats(g, &s);
         self.draw_thoughts(g, &s);
         self.draw_advisor(g, &s);
         self.draw_dock(g, &s);

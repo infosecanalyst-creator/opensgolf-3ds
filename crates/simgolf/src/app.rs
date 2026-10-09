@@ -423,6 +423,9 @@ pub struct App {
     pub show_names: bool,
     /// The dock button under the pointer and for how many frames (its tooltip waits for 11).
     pub dock_tip: (i32, u32),
+    /// Floating money (0x40c890): an 8-entry ring of (amount in $100 units, map x, map y, ticks left).
+    pub floats: [(i32, i32, i32, u8); 8],
+    pub float_next: usize,
     /// The popup menu shown, and the last ticker message (Repeat Last Message).
     pub popup: Option<crate::popup_ui::Popup>,
     pub last_message: String,
@@ -614,6 +617,8 @@ impl App {
             show_thoughts: true,
             show_names: true,
             dock_tip: (-1, 0),
+            floats: [(0, 0, 0, 0); 8],
+            float_next: 0,
             popup: None,
             last_message: String::new(),
             ticker: Default::default(),
@@ -1591,6 +1596,13 @@ impl App {
         let tick = self.game_tick;
         let sites = self.land.as_ref().map(|l| l.objects.iter().filter(|o| o.kind == land::K_HOME_SITE).count()).unwrap_or(0) as i32;
         self.club.sandbox = self.econ.sandbox;
+        for f in self.floats.iter_mut() {
+            f.3 = f.3.saturating_sub(1);
+        }
+        if self.econ.sandbox {
+            // the exe holds a sandbox's cash at 10000 units every frame
+            self.econ.cash = 10000.0 * Economy::UNIT;
+        }
         self.club.island = self.land.as_ref().map(|l| l.slot.record().coast == 2).unwrap_or(false);
         if std::mem::take(&mut self.club.land_offer) {
             // the commissioner approved an expansion: sound 56 and the question; yes shows the tracts
@@ -1672,7 +1684,8 @@ impl App {
                     let at = at.map(|(x, y)| self.units_to_world(x, y));
                     self.slot_sound_after(slot, at, delay);
                 }
-                golf::Event::Earn { units, column, .. } => {
+                golf::Event::Earn { units, column, at } => {
+                    self.float_money(units, at);
                     let col = match column {
                         golf::Column::GreensFees => economy::LEDGER_GREEN_FEES,
                         golf::Column::FoodDrink => economy::LEDGER_FOOD_DRINK,
@@ -2594,6 +2607,15 @@ impl App {
     /// PageUp / Home and the Rotate Map buttons: a quarter turn of the view (the exe's rotation steps by 2 of 8).
     pub fn rotate_view(&mut self, quarters: i32) {
         self.rot = ((self.rot / 90.0).round() + quarters as f32).rem_euclid(4.0) * 90.0;
+    }
+
+    /// Queues a floating amount at a map point for 24 ticks (0x40c890); none in a sandbox.
+    pub fn float_money(&mut self, units: i32, at: (i32, i32)) {
+        if units == 0 || self.econ.sandbox {
+            return;
+        }
+        self.floats[self.float_next] = (units, at.0, at.1, 0x18);
+        self.float_next = (self.float_next + 1) % 8;
     }
 
     pub fn pan(&mut self, right: f32, up: f32) {
