@@ -210,8 +210,12 @@ pub enum Screen {
     Sga,
     Prep,
     Results,
-    /// Play a Championship: the course and pro choosers.
-    Champ,
+    /// Load Previous Game, and the championship course and Pick A Pro choosers built on it (files_ui).
+    Files,
+    /// Select a Theme Pack.
+    Themes,
+    /// The credits, from the title logo.
+    Credits,
     /// SELECT THE NEXT PAIR OF GOLFERS, the accomplishments board, the year-end report, the Membership Roster.
     Pair,
     Board,
@@ -275,9 +279,20 @@ pub struct SaveGame {
     pub staff_tiles: TileState,
     pub game_tick: u32,
     pub hole_stats: Vec<HoleStat>,
+    /// The theme pack folder the game was played with (older saves: Standard).
+    #[serde(default)]
+    pub theme_pack: String,
 }
 
 const SAVE_MAGIC: &[u8] = b"SIMGOLF-NATIVE-SAVE\n";
+
+/// Reads a whole game saved by `App::save_game` (also used for the Load screen's preview of a save).
+pub fn read_save(path: &Path) -> Result<SaveGame, String> {
+    let data = sg_core::fsutil::read_file(path).ok_or_else(|| format!("{}: not found", path.display()))?;
+    let body = data.strip_prefix(SAVE_MAGIC).ok_or_else(|| format!("{}: not a saved game", path.display()))?;
+    let json = miniz_oxide::inflate::decompress_to_vec_zlib(body).map_err(|e| format!("{}: {e:?}", path.display()))?;
+    serde_json::from_slice(&json).map_err(|e| format!("{}: {e}", path.display()))
+}
 
 /// One texture-batched mesh of the course.
 pub struct Batch {
@@ -365,7 +380,8 @@ pub struct App {
     pub sga: Option<crate::tourney_ui::SgaScreen>,
     pub prep: Option<(sg_core::tournament::Prep, i32)>,
     pub results: Option<sg_core::tournament::Results>,
-    pub champ: Option<crate::champ_ui::ChampScreen>,
+    /// The title's side screens (Load Previous Game, championship choosers, Theme Packs, credits) and the Save dialog.
+    pub title: crate::files_ui::TitleScreens,
     /// Tiles the player retyped since the last tick (each may draw wildlife), and the water depth of each tile.
     pub retyped: Vec<(i32, i32)>,
     /// The clubhouse and record screens: their art, the pair screen's picks, the golfers list page, the golfer card open,
@@ -574,7 +590,7 @@ impl App {
             sga: None,
             prep: None,
             results: None,
-            champ: None,
+            title: Default::default(),
             retyped: Vec::new(),
             show_thoughts: true,
             popup: None,
@@ -741,7 +757,8 @@ impl App {
                 self.jingle = None;
             }
         }
-        let title = matches!(self.screen, Screen::Menu | Screen::Difficulty | Screen::Property | Screen::Champ);
+        let title = matches!(self.screen, Screen::Menu | Screen::Difficulty | Screen::Property | Screen::Themes | Screen::Credits)
+            || (self.screen == Screen::Files && !self.title.over_game());
         if self.music_screen == Some(title) {
             return;
         }
@@ -1379,22 +1396,6 @@ impl App {
         self.rebuild_hole_routes();
     }
 
-    /// Forgets every hole (new terrain loaded); its painted tees and greens are adopted at the next sync.
-    pub fn reset_holes(&mut self) {
-        for h in 1..19 {
-            let rec = &mut self.club.holes[h];
-            rec.par = 0;
-            rec.back = (0, 0);
-            rec.fwd = (0, 0);
-            rec.pin = (0, 0);
-            rec.length = 0;
-            rec.flags = 0;
-            rec.markers = [(-1, -1); 3];
-        }
-        self.club.next_hole = 1;
-        self.adopt_holes = true;
-    }
-
     /// The open holes as routes for drawing and the course report.
     fn rebuild_hole_routes(&mut self) {
         let numbers: Vec<i32> = (1..19).filter(|&h| self.club.holes[h as usize].par != 0).collect();
@@ -1852,6 +1853,7 @@ impl App {
             staff_tiles: self.staff_tiles.clone(),
             game_tick: self.game_tick,
             hole_stats: self.hole_stats.clone(),
+            theme_pack: THEME_PACKS.get(self.theme_pack).copied().unwrap_or("Standard").replace(' ', "_"),
         };
         let json = serde_json::to_vec(&save).map_err(|e| e.to_string())?;
         let mut out = SAVE_MAGIC.to_vec();
@@ -1865,10 +1867,10 @@ impl App {
 
     /// Loads a whole game saved by `save_game` and goes on from where it was.
     pub fn load_game(&mut self, g: &mut Gfx, path: &Path) -> Result<(), String> {
-        let data = sg_core::fsutil::read_file(path).ok_or_else(|| format!("{}: not found", path.display()))?;
-        let body = data.strip_prefix(SAVE_MAGIC).ok_or_else(|| format!("{}: not a saved game", path.display()))?;
-        let json = miniz_oxide::inflate::decompress_to_vec_zlib(body).map_err(|e| format!("{}: {e:?}", path.display()))?;
-        let s: SaveGame = serde_json::from_slice(&json).map_err(|e| format!("{}: {e}", path.display()))?;
+        let s = read_save(path)?;
+        if let Some(k) = THEME_PACKS.iter().position(|p| p.replace(' ', "_").eq_ignore_ascii_case(&s.theme_pack)) {
+            self.theme_pack = k;
+        }
         self.terrain = s.terrain;
         self.land = s.land;
         self.course_name = s.course_name;

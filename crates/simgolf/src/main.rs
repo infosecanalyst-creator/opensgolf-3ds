@@ -12,6 +12,7 @@
 mod app;
 mod audio;
 mod champ_ui;
+mod files_ui;
 mod gfx;
 mod panels_ui;
 mod popup_ui;
@@ -235,6 +236,7 @@ fn load_ui(app: &mut App, g: &mut Gfx) -> bool {
     app.art = crate::screens_ui::Art::load(g, app);
     app.reports = crate::reports_ui::ReportArt::load(g, app);
     app.panel_art = crate::panels_ui::PanelArt::load(g, app);
+    app.title.art = crate::files_ui::TitleArt::load(g, app);
     ok
 }
 
@@ -262,6 +264,9 @@ fn open_screen(app: &mut App, screen: Option<&str>) {
         Some("skills") if app.ui_ok => {
             let pts = app.club.first_skill_points();
             app.open_skills(pts, Some(false));
+        }
+        Some(s) if app.ui_ok => {
+            app.test_title_screen(s, true);
         }
         _ => {}
     }
@@ -539,7 +544,9 @@ impl Stage {
                     "property" => app.screen = Screen::Property,
                     "difficulty" => app.screen = Screen::Difficulty,
                     "land" => app.open_land_screen(),
-                    _ => {}
+                    s => {
+                        app.test_title_screen(s, false);
+                    }
                 }
             }
         }
@@ -650,53 +657,6 @@ impl Stage {
         }
     }
 
-    fn save_course(&mut self, toast: bool) {
-        let gf = self.app.game_file();
-        match self.app.save_game(&gf) {
-            Ok(()) => println!("saved game {}", gf.display()),
-            Err(e) => eprintln!("error: {e}"),
-        }
-        let f = self.app.course_file.clone();
-        match self.app.terrain.save(&f) {
-            Ok(()) => {
-                println!("saved {}", f.display());
-                if toast {
-                    self.app.show_toast("Course saved");
-                }
-            }
-            Err(e) => {
-                eprintln!("error: {e}");
-                if toast {
-                    self.app.show_toast("Could not save the course");
-                }
-            }
-        }
-    }
-
-    fn load_course(&mut self) {
-        let gf = self.app.game_file();
-        if sg_core::fsutil::exists(&gf) {
-            match self.app.load_game(&mut self.g, &gf) {
-                Ok(()) => {
-                    println!("loaded game {}", gf.display());
-                    return;
-                }
-                Err(e) => eprintln!("error: {e}"),
-            }
-        }
-        let f = self.app.course_file.clone();
-        match Terrain::load(&f, &self.app.terrain) {
-            Ok(t) => {
-                self.app.terrain = t;
-                self.app.land = None;
-                self.app.reset_holes();
-                self.app.dirty = true;
-                println!("loaded {}", f.display());
-            }
-            Err(e) => eprintln!("error: {e}"),
-        }
-    }
-
     /// What a popup menu's choice does (docs/DECODE_MENUS.md 3, 4, 5).
     fn popup_done(&mut self, r: popup_ui::PopupResult) {
         let Some(kind) = self.app.popup.as_ref().map(|p| p.kind) else { return };
@@ -729,8 +689,8 @@ impl Stage {
                 _ => self.app.open_world_map(),
             },
             PopupKind::System => match k {
-                0 => self.save_course(true),
-                1 => self.load_course(),
+                0 => self.app.open_save(),
+                1 => self.app.open_files(files_ui::ListKind::Load, true),
                 2 => {
                     if self.app.club.game & sg_core::golfer::game::TOURNAMENT != 0 {
                         self.app.cancel_tournament();
@@ -896,6 +856,10 @@ impl Stage {
                     hit = b as i32;
                 }
             }
+            // the logo's hover region (docs/DECODE_MENUS.md 8) opens the credits (DERIVED)
+            if hit < 0 && Rect::new(168.0, 198.0, 472.0, 176.0).has(vx, vy) {
+                hit = 6;
+            }
         } else {
             for p in 0..16 {
                 if property_card(p).has(vx, vy) {
@@ -914,6 +878,9 @@ impl Stage {
             if hit == 100 || hit < 0 {
                 // the back button, or a click on nothing, goes back (0x43a400 returns -1)
                 app.screen = Screen::Menu;
+            } else if std::mem::take(&mut app.title.champ_pending) {
+                app.difficulty = hit;
+                app.open_championship();
             } else {
                 app.difficulty = hit;
                 app.deal_offer(app.sandbox_choice);
@@ -924,32 +891,16 @@ impl Stage {
         }
         if app.screen == Screen::Menu {
             match hit {
-                0 if sg_core::fsutil::exists(app.game_file()) => {
-                    let gf = app.game_file();
-                    if let Err(e) = app.load_game(&mut self.g, &gf) {
-                        app.show_toast(&format!("Could not load the saved game: {e}"));
-                    }
-                }
-                0 => match Terrain::load(&app.course_file, &app.terrain) {
-                    Ok(t) => {
-                        app.terrain = t;
-                        app.land = None;
-                        app.rebuild_batches(&mut self.g);
-                        app.populate_props();
-                        app.screen = Screen::Play;
-                        app.reset_clock = true;
-                        app.econ.sandbox = false;
-                    }
-                    Err(_) => app.show_toast("No saved game found (course.sgc)"),
-                },
-                1 | 2 => {
-                    // Start New Game and Sandbox Mode ask for the difficulty first (0x43a400)
+                0 => app.open_files(files_ui::ListKind::Load, false),
+                1 | 2 | 4 => {
+                    // Start New Game, Sandbox Mode and Play a Championship ask for the difficulty first (0x43a400)
                     app.sandbox_choice = hit == 2;
+                    app.title.champ_pending = hit == 4;
                     app.screen = Screen::Difficulty;
                     app.hover = -1;
                 }
-                3 => app.theme_pack = (app.theme_pack + 1) % THEME_PACKS.len(),
-                4 => app.open_championship(),
+                3 => app.open_themes(),
+                6 => app.open_credits(),
                 _ => window::order_quit(),
             }
         } else if hit == 100 {
@@ -1011,8 +962,8 @@ impl Stage {
             return;
         }
         match k {
-            KeyCode::S if shift => return self.save_course(false),
-            KeyCode::L if shift => return self.load_course(),
+            KeyCode::S if shift => return app.open_save(),
+            KeyCode::L if shift => return app.open_files(files_ui::ListKind::Load, true),
             KeyCode::P if shift => return self.toggle_pause(),
             KeyCode::Space if app.screen == Screen::Play => {
                 app.speed = match app.speed {
@@ -1227,8 +1178,8 @@ impl Stage {
         let menu_like = app.ui_ok && matches!(app.screen, Screen::Menu | Screen::Difficulty | Screen::Property);
         let clear = if menu_like { PassAction::clear_color(0.0, 0.0, 0.0, 1.0) } else { PassAction::clear_color(0.04, 0.06, 0.09, 1.0) };
         self.g.ctx.begin_pass(target, clear);
-        if app.screen == Screen::Champ && app.ui_ok {
-            app.draw_champ(&mut self.g);
+        if matches!(app.screen, Screen::Files | Screen::Themes | Screen::Credits) && app.ui_ok {
+            app.draw_title_screen(&mut self.g);
         } else if app.screen == Screen::Menu && app.ui_ok {
             app.draw_menu(&mut self.g);
         } else if app.screen == Screen::Property && app.ui_ok {
@@ -1244,6 +1195,7 @@ impl Stage {
                 app.draw_popup(&mut self.g);
             }
             app.draw_rename(&mut self.g);
+            app.draw_save_dialog(&mut self.g);
             if app.screen == Screen::Report {
                 app.draw_report(&mut self.g);
             }
@@ -1284,7 +1236,11 @@ impl Stage {
     fn take_snapshot(&mut self) {
         let Some(&(id, pt)) = self.app.snapshot_due.first() else { return };
         // any screen of a game in progress will do: the grab draws the course alone
-        if matches!(self.app.screen, Screen::Menu | Screen::Difficulty | Screen::Property | Screen::Champ) || !self.app.ui_ok {
+        if matches!(
+            self.app.screen,
+            Screen::Menu | Screen::Difficulty | Screen::Property | Screen::Files | Screen::Themes | Screen::Credits
+        ) || !self.app.ui_ok
+        {
             return;
         }
         // When the point is off screen the view looks there for the grab only (a followed golfer would pull a lasting camera
@@ -1419,7 +1375,7 @@ impl EventHandler for Stage {
         // the club runs only on the course view and not while paused; a long stall (a dragged window) is not caught up
         let dt = (t - self.last_tick).clamp(0.0, 0.25);
         self.last_tick = t;
-        if self.png_out.is_none() && !app.paused && app.screen == Screen::Play && app.rename.is_none() {
+        if self.png_out.is_none() && !app.paused && app.screen == Screen::Play && app.rename.is_none() && app.title.save_name.is_none() {
             app.time += dt * app.speed.max(1) as f64;
         }
         app.club.turbo = app.speed > 1;
@@ -1435,7 +1391,10 @@ impl EventHandler for Stage {
         if !self.app.snapshot_due.is_empty() {
             while !self.app.snapshot_due.is_empty()
                 && self.app.ui_ok
-                && !matches!(self.app.screen, Screen::Menu | Screen::Difficulty | Screen::Property | Screen::Champ)
+                && !matches!(
+                    self.app.screen,
+                    Screen::Menu | Screen::Difficulty | Screen::Property | Screen::Files | Screen::Themes | Screen::Credits
+                )
             {
                 self.take_snapshot();
             }
@@ -1487,6 +1446,9 @@ impl EventHandler for Stage {
         if self.app.screen != Screen::Play && self.app.ui_ok {
             if matches!(self.app.screen, Screen::Menu | Screen::Difficulty | Screen::Property) {
                 self.menu_pointer(x, y, false);
+            } else if matches!(self.app.screen, Screen::Files | Screen::Themes | Screen::Credits) {
+                let (vx, vy) = self.app.view.to_virtual(x, y);
+                self.app.title_pointer(vx, vy, false);
             }
             return;
         }
@@ -1540,9 +1502,11 @@ impl EventHandler for Stage {
             if self.app.screen == Screen::Report {
                 self.app.screen = Screen::Play;
                 self.app.hover = -1;
-            } else if self.app.screen == Screen::Champ {
+            } else if matches!(self.app.screen, Screen::Files | Screen::Themes | Screen::Credits) {
                 let (vx, vy) = self.app.view.to_virtual(x, y);
-                self.app.champ_click(&mut self.g, vx, vy);
+                if button == MouseButton::Left {
+                    self.app.title_pointer(vx, vy, true);
+                }
             } else if self.app.screen == Screen::Pair {
                 let (vx, vy) = self.app.view.to_virtual(x, y);
                 self.app.pair_click(vx, vy);
@@ -1616,7 +1580,7 @@ impl EventHandler for Stage {
     fn key_down_event(&mut self, k: KeyCode, mods: KeyMods, _repeat: bool) {
         self.shift = mods.shift || k == KeyCode::LeftShift || k == KeyCode::RightShift;
         self.ctrl = mods.ctrl || k == KeyCode::LeftControl || k == KeyCode::RightControl;
-        if self.app.rename_key(k) {
+        if self.app.rename_key(k) || self.app.save_key(k) {
             return;
         }
         if self.app.screen == Screen::Popup {
@@ -1632,10 +1596,8 @@ impl EventHandler for Stage {
                     app.screen = Screen::Play;
                     app.hover = -1;
                 }
-            } else if app.screen == Screen::Champ {
-                if k == KeyCode::Escape {
-                    app.screen = Screen::Menu;
-                }
+            } else if matches!(app.screen, Screen::Files | Screen::Themes | Screen::Credits) {
+                app.title_key(k);
             } else if app.screen == Screen::Pair {
                 app.close_pair_screen();
             } else if matches!(
@@ -1673,6 +1635,7 @@ impl EventHandler for Stage {
 
     fn char_event(&mut self, c: char, _mods: KeyMods, _repeat: bool) {
         self.app.rename_char(c);
+        self.app.save_char(c);
     }
 
     fn key_up_event(&mut self, k: KeyCode, mods: KeyMods) {

@@ -629,6 +629,11 @@ pub fn course_opinion(mood: i32, d: i32) -> &'static str {
     }
 }
 
+/// The stock signature saying (event 0x3e) of roster entry r, for screens that show it without a golfer (Pick A Pro).
+pub fn signature_saying(r: i32, male: bool) -> &'static str {
+    signature(r, male)
+}
+
 /// Signature sayings by face and sex (0x4d55ec): the exe's forty lines are data that is not available; these are our own.
 fn signature(r: i32, male: bool) -> &'static str {
     const MEN: [&str; 8] = [
