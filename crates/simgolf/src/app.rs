@@ -1408,6 +1408,9 @@ impl App {
         self.floats = [(0, 0, 0, 0); 8];
         self.card = None;
         self.analysis = None;
+        // and its messages: one showing would carry over, and Repeat Last Message would bring it back
+        self.ticker = Default::default();
+        self.last_message.clear();
         self.econ.init();
         self.sim_time = 0.0;
         self.sync_course();
