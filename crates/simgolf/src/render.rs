@@ -85,7 +85,7 @@ impl App {
         }
         self.update_props();
         if self.follow {
-            if let Some(gl) = self.club.g.iter().find(|g| g.hole > 0 && g.hole < 19) {
+            if let Some(gl) = self.club.g.iter().take(sg_core::golfer::SLOTS).find(|g| g.hole > 0 && g.hole < 19) {
                 let (x, z) = self.units_to_world(gl.x, gl.y);
                 self.cam_x = x;
                 self.cam_z = z;

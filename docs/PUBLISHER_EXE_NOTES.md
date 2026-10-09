@@ -461,3 +461,27 @@ Confidence: high.
   bed 0x5000 and turns the tile to rough, a willow turns it into an elm tile, a bridge sets path + scenic (0x120) on water.
 - Each records an undo code and the amount paid; undoing gives exactly that back (booked to Build course). Buildings are never
   refunded: undo on one demolishes it.
+
+## Building holes (painting 0x41fee2, layout pass 0x41353d, open hole 0x40e720)
+
+Confidence: high (layout pass read from the machine code, where the decompiler lost call arguments).
+- One hole is built at a time, number `next_hole` (0x5685f0). Painting a tee records it as that hole's back tee (and forward tee
+  unless the game has two tees); a tee is one tile, so painting a second one for the same hole is refused with a message.
+  Painting a green records the cup when the hole has none yet and the tile is not next to another green (or the tee is already
+  down); the cup tile carries the hole number and 0x80. Painting over a hole's tee or cup takes the hole out of play (par 0)
+  and lowers `next_hole` to it. With eighteen holes no more tees or new greens can be painted.
+- While the hole being built has a tee and a cup, the main frame plans it with a trial golfer record (0x9a): first a golfer of
+  the Length and Accuracy classes plans the tee shot only, then one of all three classes plays up to five shots from the tee,
+  stopping when a landing is in a hazard (hazard byte above 1) or at the cup. The landings are kept and replayed until a
+  terrain refresh clears game flag 0x40000. From them: the tee facing (heading to the first landing), the length (sum of the
+  shot distances in range units, only when the shots reach the cup), flags 0x1000 / 0x2000 when the cup is more than one height
+  step above / below the tee, flags 0x20 / 0x40 when the line to the cup bends more than 1/36 of a turn one way or the other
+  (holes shorter than 250 count as straight), and three yardage markers 4, 6 and 8 tiles from the cup on holes longer than 150,
+  200 and 250. A marker must stand on fairway clear of its tile's non-fairway edges; the exe tries 25 headings around the line
+  toward the first landing and keeps the last that fits.
+- Opening (key H, or a click on the cup green of a hole with no par) needs the tee and the cup. Without a planned length it
+  uses the straight distance, with a quarter of anything over 250 added. Par: 2 under 51, 3, 4 over 249, 5 over 474, 6 over
+  625, after adding 25 to doglegs over 250 and taking 25 per driving-range level off lengths over 300. It clears the hole's
+  statistics and the best rounds, sets the heading from the forward tee to the cup, and `next_hole` becomes the first hole
+  without a par. Opening hole 1 moves the first employee's post a third of the way from the tee toward the clubhouse.
+

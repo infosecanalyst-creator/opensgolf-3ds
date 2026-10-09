@@ -216,8 +216,12 @@ pub struct App {
     /// The golfers and the course as they see it (the exe's golfer table and tile arrays).
     pub club: Club,
     pub course: Course,
-    /// Found from the painted tees and greens.
+    /// The open holes (par set), drawn and reported from the golfers' hole records, and their hole numbers.
     pub holes: Vec<HoleRoute>,
+    pub hole_numbers: Vec<i32>,
+    /// The terrain came from outside the hole tool (demo course, saved terrain, scripted edits): its painted tee and green
+    /// pairs become holes at the next course sync.
+    pub adopt_holes: bool,
     pub sim_time: f64,
     /// Golfer clips by sprite id (clip + body): body and shadow sprites.
     pub golfer_clips: HashMap<i32, (Option<usize>, Option<usize>)>,
@@ -367,6 +371,8 @@ impl App {
             club: Club::default(),
             course: Course::default(),
             holes: Vec::new(),
+            hole_numbers: Vec::new(),
+            adopt_holes: true,
             sim_time: 0.0,
             golfer_clips: HashMap::new(),
             difficulty: 1,
@@ -896,7 +902,7 @@ impl App {
             }
         }
         self.load_staff_sprites();
-        self.holes = find_holes(&self.terrain);
+        self.adopt_holes = true;
         self.golfer_clips.clear();
         let roster = std::mem::take(&mut self.club.roster);
         self.club = Club::new(if roster.is_empty() { sg_core::roster::load(&self.game_dir) } else { roster });
@@ -945,7 +951,7 @@ impl App {
 
     /// Golfers playing or walking home (the waiting ones are inside the clubhouse).
     pub fn golfers_on_course(&self) -> usize {
-        self.club.g.iter().filter(|g| g.hole > 0).count()
+        self.club.g.iter().take(golf::SLOTS).filter(|g| g.hole > 0).count()
     }
 
     /// Brings the golfers' view of the course up to date: tiles, objects and levels from the land, weeds from the staff's tiles,
@@ -964,24 +970,15 @@ impl App {
         for f in self.course.flags.iter_mut() {
             *f &= !(sg_core::course::f::CUP | if *f & sg_core::course::f::FOOTPRINT == 0 { sg_core::course::f::LOW } else { 0 });
         }
-        let n = self.holes.len().min(18);
-        for h in 1..golf::HOLE_RECORDS {
-            let rec = &mut self.club.holes[h];
-            rec.par = 0;
-        }
-        for (k, r) in self.holes.iter().take(n).enumerate() {
-            let h = k + 1;
-            let tee = self.terrain.tile_of(r.tee_x, r.tee_z);
-            let pin = self.terrain.tile_of(r.green_x, r.green_z);
-            let rec = &mut self.club.holes[h];
-            rec.par = r.par;
-            rec.back = tee;
-            rec.fwd = tee;
-            rec.pin = pin;
-            rec.tee_facing = sg_core::geom::dir8(sg_core::geom::angle(pin.0 - tee.0, pin.1 - tee.1));
-            if sg_core::course::inside(pin.0, pin.1) {
-                let i = sg_core::course::idx(pin.0, pin.1);
-                self.course.flags[i] = (self.course.flags[i] & !0x1f) | sg_core::course::f::CUP | h as u16;
+        // the hole numbers on tees and cup greens, from the golfers' hole records
+        for h in 1..19 {
+            let rec = &self.club.holes[h];
+            for (k, (a, b)) in [rec.back, rec.fwd, rec.pin].into_iter().enumerate() {
+                if a != 0 && sg_core::course::inside(a, b) {
+                    let i = sg_core::course::idx(a, b);
+                    let cup = if k == 2 { sg_core::course::f::CUP } else { 0 };
+                    self.course.flags[i] = (self.course.flags[i] & !0x1f) | cup | h as u16;
+                }
             }
         }
         let door = self.course.door;
@@ -990,7 +987,106 @@ impl App {
         home.back = door;
         home.fwd = door;
         home.pin = door;
-        self.club.next_hole = n as i32 + 1;
+        if std::mem::take(&mut self.adopt_holes) {
+            self.adopt_painted_holes();
+        }
+        // every terrain change plans the hole being built again
+        self.club.game &= !golf::game::LAYOUT;
+        self.club.layout(&mut self.course, &mut self.exe_rng);
+        self.rebuild_hole_routes();
+    }
+
+    /// Forgets every hole (new terrain loaded); its painted tees and greens are adopted at the next sync.
+    pub fn reset_holes(&mut self) {
+        for h in 1..19 {
+            let rec = &mut self.club.holes[h];
+            rec.par = 0;
+            rec.back = (0, 0);
+            rec.fwd = (0, 0);
+            rec.pin = (0, 0);
+            rec.length = 0;
+            rec.flags = 0;
+            rec.markers = [(-1, -1); 3];
+        }
+        self.club.next_hole = 1;
+        self.adopt_holes = true;
+    }
+
+    /// The open holes as routes for drawing and the course report.
+    fn rebuild_hole_routes(&mut self) {
+        let numbers: Vec<i32> = (1..19).filter(|&h| self.club.holes[h as usize].par != 0).collect();
+        let p = &self.terrain.path;
+        self.holes = numbers
+            .iter()
+            .map(|&h| {
+                let rec = &self.club.holes[h as usize];
+                let (tx, tz) = self.terrain.tile_centre(rec.back.0, rec.back.1);
+                let (gx, gz) = self.terrain.tile_centre(rec.pin.0, rec.pin.1);
+                let near = |x: f32, z: f32, px: f32, pz: f32| (x - px).hypot(z - pz) < 300.0;
+                let route = if p.len() >= 4 && near(p[0], p[1], tx, tz) && near(p[p.len() - 2], p[p.len() - 1], gx, gz) {
+                    p.clone()
+                } else {
+                    vec![tx, tz, gx, gz]
+                };
+                HoleRoute { tee_x: tx, tee_z: tz, green_x: gx, green_z: gz, length: (gx - tx).hypot(gz - tz), par: rec.par, route }
+            })
+            .collect();
+        if numbers != self.hole_numbers {
+            self.hole_numbers = numbers;
+            self.hole_stats = vec![HoleStat::default(); self.holes.len()];
+            self.ratings.clear();
+        }
+    }
+
+    /// Terrain from outside the hole tool: each painted tee and green pair not yet a hole is built and opened, in the order
+    /// the pairs are found (tees top row first), as if made with the tool.
+    fn adopt_painted_holes(&mut self) {
+        for r in find_holes(&self.terrain) {
+            let h = self.club.next_hole;
+            if !(1..19).contains(&h) {
+                break;
+            }
+            let tee = self.terrain.tile_of(r.tee_x, r.tee_z);
+            let pin = self.terrain.tile_of(r.green_x, r.green_z);
+            let numbered =
+                |c: &Course, (a, b): (i32, i32)| sg_core::course::inside(a, b) && c.flags[sg_core::course::idx(a, b)] & 0x1f != 0;
+            if numbered(&self.course, tee) || numbered(&self.course, pin) {
+                continue;
+            }
+            let rec = &mut self.club.holes[h as usize];
+            rec.back = tee;
+            rec.fwd = tee;
+            rec.pin = pin;
+            for (k, (a, b)) in [tee, pin].into_iter().enumerate() {
+                if sg_core::course::inside(a, b) {
+                    let i = sg_core::course::idx(a, b);
+                    let cup = if k == 1 { sg_core::course::f::CUP } else { 0 };
+                    self.course.flags[i] = (self.course.flags[i] & !0x1f) | cup | h as u16;
+                }
+            }
+            self.club.game &= !golf::game::LAYOUT;
+            // adoption is not part of the exe's game, so it plans with a copy and leaves the game's generator alone
+            let mut rng = self.exe_rng;
+            self.club.layout(&mut self.course, &mut rng);
+            self.club.open_hole(&mut self.course);
+        }
+        // adopted holes open quietly
+        self.club.out.retain(|e| !matches!(e, golf::Event::Sound { .. } | golf::Event::Message(_)));
+    }
+
+    /// The exe's open-hole command (key H, or a click on the new hole's cup green): the hole being built needs a tee and a
+    /// green; its par comes from its length.
+    pub fn open_hole(&mut self) -> bool {
+        self.sync_course();
+        let Some(h) = self.club.open_hole(&mut self.course) else { return false };
+        if let Some(post) = self.club.first_post.take() {
+            if let Some(e) = self.employees.first_mut().filter(|e| e.active) {
+                e.post = Some(post);
+            }
+        }
+        println!("hole {h} open: par {}, length {}", self.club.holes[h].par, self.club.holes[h].length);
+        self.sync_course();
+        true
     }
 
     /// The staff's weed tiles into the golfers' tile flags (the exe keeps both in one array).
@@ -1072,9 +1168,6 @@ impl App {
 
     /// One game tick of the golfers (the exe updates them just before the staff).
     fn club_tick(&mut self) {
-        if self.club.holes[1].par == 0 && !self.holes.is_empty() {
-            self.sync_course();
-        }
         self.load_golfer_bodies();
         self.weeds_to_course();
         self.club.difficulty = self.difficulty;
@@ -1115,7 +1208,7 @@ impl App {
                     if self.hole_stats.len() != self.holes.len() {
                         self.hole_stats = vec![HoleStat::default(); self.holes.len()];
                     }
-                    let k = (hole - 1).max(0) as usize;
+                    let k = self.hole_numbers.iter().position(|&n| n == hole).unwrap_or(usize::MAX);
                     let time = self.club.holes.get(hole as usize).map(|h| h.time).unwrap_or(0);
                     let mood_sum = self.club.holes.get(hole as usize).map(|h| h.mood_sum).unwrap_or(0);
                     if let Some(hs) = self.hole_stats.get_mut(k) {
@@ -1209,10 +1302,6 @@ impl App {
     /// Course Status Report (the original's F1): the hole's class and length, and how many paths are joined to the clubhouse.
     pub fn report_course(&mut self, force: bool) {
         self.hole = analyze_hole(&self.terrain);
-        self.holes = find_holes(&self.terrain);
-        if self.hole_stats.len() != self.holes.len() {
-            self.hole_stats = vec![HoleStat::default(); self.holes.len()];
-        }
         self.sync_course();
         let conn = paths_connected_to_clubhouse(&self.terrain);
         let paths = self.terrain.path_kind.iter().filter(|&&k| k != 0).count();
@@ -1357,9 +1446,23 @@ impl App {
                     continue;
                 }
                 let (x, y) = (tx + dx, ty + dy);
+                if !self.terrain.inside(x, y) {
+                    continue;
+                }
+                // tees and greens go through the hole tool's bookkeeping (the hole being built gets its tee or cup)
+                let old = self.terrain.ty[self.terrain.tile_index(x, y)];
+                let new = pe.ty as u8;
+                if old <= 1 || new <= 1 {
+                    let green_next = [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().any(|&(ex, ey)| {
+                        self.terrain.inside(x + ex, y + ey) && self.terrain.ty[self.terrain.tile_index(x + ex, y + ey)] == 1
+                    });
+                    if !self.club.paint_hole_tile(&mut self.course, x, y, old, new, green_next) {
+                        continue;
+                    }
+                }
                 // tees use this byte as their look
                 let vb = if pe.ty == 0 { ((x * 7 + y * 13) as u32 % 5) as i32 } else { pe.vbyte };
-                if self.terrain.inside(x, y) && self.terrain.ty[self.terrain.tile_index(x, y)] as i32 != pe.ty {
+                if self.terrain.ty[self.terrain.tile_index(x, y)] as i32 != pe.ty {
                     self.econ.spend_to(economy::LEDGER_BUILD_COURSE, Economy::terrain_cost_units(pe.ty) as f64 * Economy::UNIT);
                 }
                 self.terrain.paint(x, y, pe.ty, vb);
@@ -1368,6 +1471,8 @@ impl App {
                 }
             }
         }
+        // one "already has its tee" message per stroke, not per tile
+        self.club.out.dedup();
         self.dirty = true;
         let s = match pe.ty {
             2 | 3 => "Interface/Place Fairway.wav",
@@ -2092,6 +2197,15 @@ impl App {
         let t = self.terrain.tile_of(wx, wz);
         if !self.terrain.inside(t.0, t.1) {
             return;
+        }
+        // a click on the cup green of a hole not yet open opens it, as in the exe
+        if self.moving_employee.is_none() && sg_core::course::inside(t.0, t.1) {
+            let fl = self.course.flags[sg_core::course::idx(t.0, t.1)];
+            let h = (fl & 0x1f) as usize;
+            if fl & sg_core::course::f::CUP != 0 && h > 0 && h < 19 && self.club.holes[h].par == 0 {
+                self.open_hole();
+                return;
+            }
         }
         if let Some(i) = self.moving_employee.take() {
             if let Some(e) = self.employees.get_mut(i) {

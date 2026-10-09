@@ -5,7 +5,7 @@
 //!           [--screen menu|property|play|report] [--course FILE] [--save FILE] [--edit SPEC] [--panel N] [--mute] [--sound-log]
 //!
 //! Keys: arrows/WASD pan, Q/E rotate, +/- or mouse wheel zoom, 1-4 theme, R new demo course, P toggle scenery, F follow the golfer,
-//! F2 screenshot, M music, N mute, H advisor, Tab edit mode, Esc menu. Left-drag pans.
+//! F2 screenshot, M music, N mute, H open the new hole, Shift+H advisor, Tab edit mode, Esc menu. Left-drag pans.
 // UI drawing takes source and destination rectangles as plain numbers; index loops mirror the original's tables.
 #![allow(clippy::too_many_arguments, clippy::needless_range_loop)]
 
@@ -205,7 +205,7 @@ fn load_ui(app: &mut App, g: &mut Gfx) -> bool {
 }
 
 /// Scripted edits for tests: "p:x,y,type[,vbyte,radius];w:x,y,kind[,radius];b:x,y,building;k:x,y,dir;r:cx,cy,delta[,radius];
-/// h:kind[,x,y]" (h hires an employee: 0 Club Pro, 1 Ranger, 2 Groundskeeper, 3 Soda Vendor; x,y is the post tile).
+/// h:kind[,x,y];t:x,y,type;o" (t paints one tile through the hole tool, o opens the hole being built; h hires an employee: 0 Club Pro, 1 Ranger, 2 Groundskeeper, 3 Soda Vendor; x,y is the post tile).
 fn apply_edit_spec(app: &mut App, spec: &str) {
     for item in spec.split(';').filter(|s| !s.is_empty()) {
         let (kind, rest) = (item.as_bytes()[0], item.get(2..).unwrap_or(""));
@@ -214,6 +214,7 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
         match kind {
             b'p' if item.len() > 2 && v.len() >= 3 => {
                 let (a, b, c, d, r) = (at(0), at(1), at(2), at(3), at(4));
+                app.adopt_holes = true;
                 for dy in -r..=r {
                     for dx in -r..=r {
                         if dx * dx + dy * dy <= r * r + r {
@@ -263,6 +264,19 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 println!("hired staff kind {}: {ok}", at(0));
             }
             b'k' if item.len() > 2 && v.len() == 3 => app.terrain.set_wall(at(0), at(1), at(2), true),
+            b't' if item.len() > 2 && v.len() >= 3 => {
+                // paint one tile through the hole tool (type 0 tee, 1 green)
+                app.paint_idx = PAINT.iter().position(|p| p.ty == at(2)).unwrap_or(app.paint_idx);
+                let r = std::mem::replace(&mut app.brush, 0);
+                app.sync_course();
+                app.edit_paint(at(0), at(1));
+                app.brush = r;
+                app.sync_course();
+            }
+            b'o' => {
+                let ok = app.open_hole();
+                println!("open hole: {ok}, next hole {}", app.club.next_hole);
+            }
             b'r' if item.len() > 2 && v.len() >= 3 => {
                 let (a, b, c, d) = (at(0), at(1), at(2), at(3));
                 for dy in -d..=d {
@@ -465,6 +479,7 @@ impl Stage {
             Ok(t) => {
                 self.app.terrain = t;
                 self.app.land = None;
+                self.app.reset_holes();
                 self.app.dirty = true;
                 println!("loaded {}", f.display());
             }
@@ -783,7 +798,12 @@ impl Stage {
                 }
             }
             KeyCode::P => app.show_props = !app.show_props,
-            KeyCode::H => app.show_advisor = !app.show_advisor,
+            KeyCode::H if shift => app.show_advisor = !app.show_advisor,
+            KeyCode::H => {
+                if !app.open_hole() {
+                    app.show_toast("A new hole needs a tee and a green");
+                }
+            }
             KeyCode::F => app.follow = !app.follow,
             KeyCode::F2 if self.screenshot(&PathBuf::from("simgolf-shot.png")) => {
                 println!("saved simgolf-shot.png");
@@ -888,7 +908,9 @@ impl EventHandler for Stage {
         }
         if app.reset_clock {
             self.paused_total = t;
-            app.time = 0.0;
+            if self.png_out.is_none() {
+                app.time = 0.0; // a scripted still keeps its --time
+            }
             app.reset_clock = false;
         }
         if app.screen != Screen::Play && !app.paused {

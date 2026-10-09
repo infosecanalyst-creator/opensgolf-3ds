@@ -39,6 +39,12 @@ golfer stands.
   backspin shots onto the green and low punches under trees, the spread of the launch speed by lie, and the golfer's thoughts
   about the shot (views, the hole, hazards, the shot type, a new club).
 
+## Building holes (`crates/sg-core/src/holetool.rs`)
+
+Painting a tee and a green records them for the hole being built. While it has both, a trial golfer plans it with real shots:
+the tee facing, the length, dogleg and slope marks and the yardage markers come from those shots. Opening the hole gives it a
+par from its length and clears its statistics.
+
 ## The course as golfers see it (`crates/sg-core/src/course.rs`)
 
 The tiles, flags, corner heights, building levels and walls in the exe's layout, rebuilt from the land after every change.

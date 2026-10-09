@@ -220,8 +220,8 @@ pub fn find_holes(t: &Terrain) -> Vec<HoleRoute> {
                         }
                     }
                 }
-                if n < 2 {
-                    continue; // ignore a single stray tile
+                if n < 2 && ty != TT_TEE {
+                    continue; // ignore a single stray green tile (a tee is one tile with the hole tool)
                 }
                 let (bx, bz) = centre_of((sx / n as f64) as f32, (sy / n as f64) as f32);
                 res.push(Blob { x: bx, z: bz, used: false });

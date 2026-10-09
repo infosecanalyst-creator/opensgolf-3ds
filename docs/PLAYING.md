@@ -4,7 +4,7 @@ Run `simgolf --game "../game/Program_Files_(ENGLISH)"`. It opens on the title me
 
 For scripted runs (any of `--png`, `--course`, `--edit`, `--golfer`, `--sandbox`, `--follow`) the game skips the menu and opens on the demo course; `--screen menu|property|play` forces a screen. Add `--theme Desert` for another look there. `--property NAME` (or 0..15) starts a new game on that property straight away, and `--clock MS` fixes the value the exe's random generator is seeded from, so the same land comes back every run.
 
-- **Holes** are found from the terrain: each cluster of Tee tiles is paired with the nearest unused cluster of Putting Green tiles (at least 2 tiles each, at least 250 units apart), tees taken top row first. Paint a tee (G twice, or the Paint tool) and a green to add a hole. The console prints "N holes" after every edit.
+- **Holes** are built one at a time with the exe's rules (docs/GAMELOGIC.md): paint one Tee tile (G twice, or the Paint tool) and a Putting Green, then press H or click the cup green to open the hole. Its par comes from its planned length. Painting over a hole's tee or cup closes that hole until it is rebuilt. Courses made outside the tool (the demo course, saved terrain) have their tee and green pairs turned into holes when they load. Shift+H hides the advisor.
 - **Golfers** follow the exe's rules (docs/GAMELOGIC.md): invited members come in pairs, walk and play every hole, use the amenities, pay a green fee equal to their mood at the end of each hole, and quit for good when their mood falls below zero. Happy members upgrade their membership and bring friends.
 - **Fun** sums each hole's mood changes the way the exe does. Happy golfers pay more, unhappy ones less.
 - **Money:** you start with §100,000 (confirmed from the publisher's golf.exe and the property screen). The green fee defaults to 1000 per hole, from the scale seen in course reports. Upkeep and wages are charged every game day (120 seconds). When cash stays below zero the board sends warnings and then ends the game, in four steps (the days are placeholders). Sandbox mode never charges.
@@ -12,7 +12,7 @@ For scripted runs (any of `--png`, `--course`, `--edit`, `--golfer`, `--sandbox`
 
 - **Course Report:** press F1 on the course. It uses the disc's report art and lists every hole: yards, par, average strokes, time, fun, the +Len/+Acc/+Img scores (measured by simulating golfers with and without each skill, as the original's Shot Analysis suggests), type, average fee, revenue and profit. Yards, minutes and the profit split are placeholder scales. Esc, F1 or a click closes it. `--screen report` opens it directly.
 
-Test hooks: `--cash N` sets the starting cash, `--time S` simulates S seconds before taking `--png`.
+Test hooks: `--cash N` sets the starting cash, `--time S` simulates S seconds before taking `--png`, `--edit "t:x,y,type;o"` paints one tile through the hole tool (type 0 tee, 1 green) and opens the hole being built.
 
 ## Buildings and garden items
 
@@ -22,4 +22,4 @@ In edit mode (Tab), press T until the title shows "Building", then [ and ] choos
 
 The lower left of the course screen now shows the game's own dock art (Interface/3mainLowerLeft.pcx). The three big round buttons open panels along the bottom: **Build Course** (terrain brushes, paths, raise and lower, each with its cost), **Add Buildings** (the amenities for the theme) and **People** (click to hire, right click to fire a club pro, ranger, groundskeeper or soda vendor). Click an item, then click the map. The small buttons zoom, rotate, open the course report, pause, and save the course. Keyboard shortcuts still work.
 
-The advisor box at the top gives hints based on the state of your club, written by me, not taken from the game; press H to hide it. When two or more golfers are on the course a story from the disc's Themes folder plays line by line underneath. Which story plays and what triggers it are not decoded yet, so one is picked by the game seed. The story text is read from your disc at run time and is not stored in this project.
+The advisor box at the top gives hints based on the state of your club, written by me, not taken from the game; press Shift+H to hide it. When two or more golfers are on the course a story from the disc's Themes folder plays line by line underneath. Which story plays and what triggers it are not decoded yet, so one is picked by the game seed. The story text is read from your disc at run time and is not stored in this project.

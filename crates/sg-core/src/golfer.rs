@@ -52,7 +52,10 @@ pub mod flag {
 /// Game state flags (0x59e7b8) the golfers read.
 pub mod game {
     pub const DEBUG_TELEPORT: u32 = 0x10;
+    pub const TWO_TEES: u32 = 0x40;
     pub const SLOW: u32 = 0x20000;
+    /// The hole layout pass has planned the hole being built.
+    pub const LAYOUT: u32 = 0x40000;
     pub const BRIDGE: u32 = 0x80000;
     pub const TOURNAMENT: u32 = 0x200000;
     pub const AIM_SEARCH: u32 = 0x800000;
@@ -185,9 +188,12 @@ impl Golfer {
 /// One hole record (0x208 bytes at 0x575ab0 + h*0x208).
 #[derive(Clone, Debug, Default)]
 pub struct Hole {
-    /// +0x00 par (0: no hole), +0x01 tee facing
+    /// +0x00 par (0: no hole), +0x01 tee facing (toward the planned tee shot), +0x02 heading from the forward tee to the pin
     pub par: i32,
     pub tee_facing: i32,
+    pub fwd_facing: i32,
+    /// +0x04 length in range units (25 per tile)
+    pub length: i32,
     /// +0x08 back tee, +0x10 forward tee, +0x18 pin, all tiles
     pub back: (i32, i32),
     pub fwd: (i32, i32),
@@ -213,8 +219,13 @@ pub struct Hole {
     pub time: i32,
     pub fees: i32,
     pub monotony: i32,
-    /// +0x200: 1 Top 100 hole, 2 Top 18 hole, 4 / 8 hard / easy marks
+    /// +0x1f0 money spent building it
+    pub build_cost: i32,
+    /// +0x200: 1 Top 100 hole, 2 Top 18 hole, 4 / 8 hard / easy marks, 0x20 / 0x40 dogleg one way or the other,
+    /// 0x1000 uphill, 0x2000 downhill
     pub flags: u32,
+    /// The three yardage markers in map units ((-1, -1) none; 0x59ae80 + h*24)
+    pub markers: [(i32, i32); 3],
 }
 
 /// Membership record per roster person (0x2c bytes at 0x5849e0).
@@ -298,6 +309,10 @@ pub struct Club {
     pub homesite_demand: i32,
     pub planner: crate::planner::State,
     pub out: Vec<Event>,
+    /// Landing tiles of the hole layout pass (0x542dfc/0x542e24), replayed while game flag LAYOUT is set.
+    pub layout_land: Vec<(i32, i32)>,
+    /// Post the first employee gets when hole 1 opens (0x585860).
+    pub first_post: Option<(i32, i32)>,
     /// What the drawing code shows for each golfer this tick: sprite id (clip + body) and frame.
     pub drawn: Vec<(i32, i32)>,
 }
@@ -314,9 +329,15 @@ const DEFAULT_CLIP: i32 = 8;
 impl Club {
     pub fn new(roster: Vec<Person>) -> Club {
         Club {
-            g: vec![Golfer::default(); SLOTS],
+            g: vec![Golfer::default(); crate::holetool::TRIAL + 1],
             holes: (0..HOLE_RECORDS)
-                .map(|_| Hole { hist: vec![0; 11 * 16], events: vec![0; 0x50], event_args: vec![0; 0x50], ..Default::default() })
+                .map(|_| Hole {
+                    hist: vec![0; 11 * 16],
+                    events: vec![0; 0x50],
+                    event_args: vec![0; 0x50],
+                    markers: [(-1, -1); 3],
+                    ..Default::default()
+                })
                 .collect(),
             next_hole: 1,
             members: vec![Member::default(); crate::roster::PEOPLE],
@@ -341,6 +362,8 @@ impl Club {
             homesite_demand: 0,
             planner: crate::planner::State { class_bits: 7, ..Default::default() },
             out: Vec::new(),
+            layout_land: Vec::new(),
+            first_post: None,
             drawn: vec![(0, 0); SLOTS],
         }
     }
@@ -793,7 +816,7 @@ impl Club {
         for m in self.members.iter_mut() {
             *m = Member::default();
         }
-        for g in self.g.iter_mut() {
+        for g in self.g.iter_mut().take(SLOTS) {
             *g = Golfer::default();
         }
         self.gary = -1;
@@ -3256,7 +3279,7 @@ mod tests {
         let mut fees = 0;
         let mut strokes = Vec::new();
         for tick in 1..6000u32 {
-            for g in club.g.iter_mut() {
+            for g in club.g.iter_mut().take(SLOTS) {
                 g.sx = 400;
                 g.sy = 300;
             }
@@ -3293,7 +3316,7 @@ mod soak {
             club.new_game(&mut rng);
             let mut done = 0;
             for tick in 1..50_000u32 {
-                for g in club.g.iter_mut() {
+                for g in club.g.iter_mut().take(SLOTS) {
                     g.sx = 400;
                 }
                 club.tick(&mut c, &mut rng, tick);
@@ -3301,7 +3324,7 @@ mod soak {
             }
             let gone = club.members.iter().filter(|m| m.gone == 0xff).count();
             let invited = club.members.iter().filter(|m| m.level & 7 != 0 && m.gone != 0xff).count();
-            let playing = club.g.iter().filter(|g| g.hole != 0).count();
+            let playing = club.g.iter().take(SLOTS).filter(|g| g.hole != 0).count();
             println!("difficulty {diff}: {done} holes, {gone} quit for good, {invited} invited left, {playing} on course");
             // On a bare course the harder settings drive the members away for good, as in the exe; the easier ones keep playing.
             assert!(done > 5, "difficulty {diff}: {done} holes finished");
