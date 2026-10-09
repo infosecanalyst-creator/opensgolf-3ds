@@ -464,7 +464,7 @@ impl App {
     }
 
     /// The level the next building of a kind would have: 0 when none stands, 1 for an upgrade, 2 when it is upgraded already.
-    fn lot_level(&self, kind: i32) -> i32 {
+    pub(crate) fn lot_level(&self, kind: i32) -> i32 {
         self.land.as_ref().and_then(|l| l.objects.iter().find(|o| o.kind == kind)).map(|o| o.sub + 1).unwrap_or(0)
     }
 
@@ -1010,7 +1010,8 @@ impl App {
                 let Some(k) = Self::paint_index_of(tile_id(i as usize)) else { return false };
                 self.tool = 0;
                 self.paint_idx = k;
-                self.paint_variant = None;
+                // picking a brush rolls its variant (0x41eaa0); the green always starts as a plain green
+                self.paint_variant = if PAINT[k].ty == 1 { Some((k, 0)) } else { None };
                 self.edit = true;
             }
             _ => return false,

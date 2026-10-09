@@ -64,7 +64,7 @@ impl App {
         self.upp = upp;
         self.draw_props(g, &Uniforms::flat(&proj, &mv));
         if self.edit && self.has_hit {
-            self.draw_cursor(g, &Uniforms::flat(&proj, &mv));
+            self.draw_cursor_preview(g, &Uniforms::flat(&proj, &mv));
         }
         self.draw_aim(g, &Uniforms::flat(&proj, &mv));
         self.draw_layout_path(g, &Uniforms::flat(&proj, &mv));
@@ -253,49 +253,6 @@ impl App {
             disc(g, bx, gy + 1.0, bz, 4.5, [0.0, 0.0, 0.0, 0.45], false);
             disc(g, bx, gy + bh + 4.0, bz, 5.0, [1.0; 4], true);
         }
-    }
-
-    /// The brush outline on the ground, two pixels wide.
-    fn draw_cursor(&mut self, g: &mut Gfx, u: &Uniforms) {
-        let t = &self.terrain;
-        let (ox, oz) = (-t.w as f32 * TILE_SIZE * 0.5, -t.h as f32 * TILE_SIZE * 0.5);
-        let r = self.brush as f32;
-        let (x0, z0, x1, z1) = if self.tool != 1 {
-            let (tx, ty) = t.tile_of(self.hit_x, self.hit_z);
-            (
-                ox + (tx as f32 - r) * TILE_SIZE,
-                oz + (ty as f32 - r) * TILE_SIZE,
-                ox + (tx as f32 + r + 1.0) * TILE_SIZE,
-                oz + (ty as f32 + r + 1.0) * TILE_SIZE,
-            )
-        } else {
-            let (cx, cy) = t.corner_of(self.hit_x, self.hit_z);
-            (
-                ox + (cx as f32 - r - 0.5) * TILE_SIZE,
-                oz + (cy as f32 - r - 0.5) * TILE_SIZE,
-                ox + (cx as f32 + r + 0.5) * TILE_SIZE,
-                oz + (cy as f32 + r + 0.5) * TILE_SIZE,
-            )
-        };
-        const N: i32 = 8;
-        let pt = |x: f32, z: f32| {
-            let (x, z) = (x.clamp(ox, -ox), z.clamp(oz, -oz));
-            [x, t.height_at(x, z) + 3.0, z]
-        };
-        let mut pts = Vec::new();
-        for i in 0..N {
-            pts.push(pt(x0 + (x1 - x0) * i as f32 / N as f32, z0));
-        }
-        for i in 0..N {
-            pts.push(pt(x1, z0 + (z1 - z0) * i as f32 / N as f32));
-        }
-        for i in 0..N {
-            pts.push(pt(x1 - (x1 - x0) * i as f32 / N as f32, z1));
-        }
-        for i in 0..N {
-            pts.push(pt(x0, z1 - (z1 - z0) * i as f32 / N as f32));
-        }
-        self.draw_lines(g, u, &pts, true, 1.0, [1.0, 0.95, 0.3, 1.0]);
     }
 
     /// A line through world points, `px` pixels either side, closed into a loop or not.

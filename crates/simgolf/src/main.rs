@@ -12,6 +12,7 @@
 mod app;
 mod audio;
 mod champ_ui;
+mod cursor_ui;
 mod cust_ui;
 mod files_ui;
 mod gfx;
@@ -239,6 +240,10 @@ fn load_ui(app: &mut App, g: &mut Gfx) -> bool {
     for (t, i) in icons.into_iter().enumerate() {
         app.theme_icons[t] = i.unwrap_or_default();
     }
+    // the terrain brushes' tile pictures (0x445a43): 57 x 40 cells, eight to a row
+    for (t, f) in ["parkland", "desert", "tropical", "links"].iter().enumerate() {
+        app.tool_tiles[t] = ui::load_pcx(g, &app.game_path(&format!("Data/{f}.pcx")), true, None).unwrap_or_default();
+    }
     app.ui_ok = ok;
     app.art = crate::screens_ui::Art::load(g, app);
     app.reports = crate::reports_ui::ReportArt::load(g, app);
@@ -249,7 +254,7 @@ fn load_ui(app: &mut App, g: &mut Gfx) -> bool {
     ok
 }
 
-/// Scripted edits for tests: "p:x,y,type[,vbyte,radius];w:x,y,kind[,radius];b:x,y,building;k:x,y,dir;r:cx,cy,delta[,radius];
+/// Scripted edits for tests: "p:x,y,type[,vbyte,radius];w:x,y,kind[,radius];b:x,y,building;r:cx,cy,delta[,radius];
 /// h:kind[,x,y];t:x,y,type;o" (t paints one tile through the hole tool, o opens the hole being built; h hires an employee: 0 Club Pro, 1 Ranger, 2 Groundskeeper, 3 Soda Vendor; x,y is the post tile).
 /// The --screen test hook: opens a screen of a game in progress.
 fn open_screen(app: &mut App, screen: Option<&str>) {
@@ -352,6 +357,16 @@ fn panel_test_hooks(app: &mut App) {
     }
 }
 
+/// Test hook for stills of the tool under the pointer: SG_CURSOR_TILE="x,y" (in tiles, fractions allowed: "10.5,12.5" is a tile
+/// centre, "10,12" a corner) holds the course pointer there.
+fn cursor_pin() -> Option<(f32, f32)> {
+    static PIN: std::sync::OnceLock<Option<(f32, f32)>> = std::sync::OnceLock::new();
+    *PIN.get_or_init(|| {
+        let v: Vec<f32> = std::env::var("SG_CURSOR_TILE").ok()?.split(',').filter_map(|t| t.trim().parse().ok()).collect();
+        (v.len() >= 2).then(|| (v[0], v[1]))
+    })
+}
+
 fn apply_edit_spec(app: &mut App, spec: &str) {
     for item in spec.split(';').filter(|s| !s.is_empty()) {
         let (kind, rest) = (item.as_bytes()[0], item.get(2..).unwrap_or(""));
@@ -439,7 +454,6 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 }
                 println!("hired staff kind {}: {ok}", at(0));
             }
-            b'k' if item.len() > 2 && v.len() == 3 => app.terrain.set_wall(at(0), at(1), at(2), true),
             b't' if item.len() > 2 && v.len() >= 3 => {
                 // paint one tile through the hole tool (type 0 tee, 1 green)
                 app.paint_idx = PAINT.iter().position(|p| p.ty == at(2)).unwrap_or(app.paint_idx);
@@ -1116,6 +1130,10 @@ impl Stage {
             // Tab turns the next building; with the elevation tool it also steps the brush (one point, 2x2, area)
             KeyCode::Tab => {
                 app.turn = (app.turn + 1) & 3;
+                // the exe's Tab adds one to the same variable that holds the paint brush's variant (0x5a34f0)
+                if let Some((k, v)) = app.paint_variant {
+                    app.paint_variant = Some((k, v + 1));
+                }
                 if app.edit && app.tool == 1 {
                     app.pstate.elev_tool = (app.pstate.elev_tool + 1) % 3;
                 }
@@ -1212,8 +1230,9 @@ impl Stage {
 
     fn draw_frame(&mut self, target: Option<RenderPass>) {
         let app = &mut self.app;
-        let menu_like = app.ui_ok && matches!(app.screen, Screen::Menu | Screen::Difficulty | Screen::Property);
-        let clear = if menu_like { PassAction::clear_color(0.0, 0.0, 0.0, 1.0) } else { PassAction::clear_color(0.04, 0.06, 0.09, 1.0) };
+        // black behind everything: the exe fills the frame with colour 0x80000000 before Terrain::render (0x4498a0), and the
+        // land outside the property (type 20) is not drawn, so it shows black
+        let clear = PassAction::clear_color(0.0, 0.0, 0.0, 1.0);
         self.g.ctx.begin_pass(target, clear);
         // the title screens set Klepto ITC (difficulty, the file lists and Pick A Pro, the theme packs); the rest of the game
         // draws in Manual SSi and Arial
@@ -1250,6 +1269,7 @@ impl Stage {
         } else {
             app.render_world(&mut self.g);
             app.draw_building_label(&mut self.g);
+            app.draw_cursor_overlay(&mut self.g);
             if !app.no_hud {
                 app.draw_hud(&mut self.g);
             }
@@ -1418,7 +1438,13 @@ impl EventHandler for Stage {
             }
         }
         if app.edit {
-            let hit = app.pick_ground(self.mouse.0, self.mouse.1);
+            let hit = match cursor_pin() {
+                Some((x, y)) => {
+                    let t = sg_core::terrain::TILE_SIZE;
+                    Some((x * t - app.terrain.w as f32 * t * 0.5, y * t - app.terrain.h as f32 * t * 0.5))
+                }
+                None => app.pick_ground(self.mouse.0, self.mouse.1),
+            };
             app.has_hit = hit.is_some();
             if let Some((x, z)) = hit {
                 app.hit_x = x;

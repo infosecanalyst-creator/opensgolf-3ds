@@ -1843,6 +1843,48 @@ impl Land {
         }
     }
 
+    /// What the undo tool names under the pointer (0x40a160): the label and whether a right click would undo something there
+    /// (the exe draws it green then, white otherwise). An object is demolished; an undo record removes the item placed or
+    /// resets the terrain painted; without a record the label only names the bench, path or flower bed on the tile.
+    pub fn undo_label(&self, a: i32, b: i32) -> (String, bool) {
+        if !self.in_play(a, b) {
+            return ("Out of bounds".into(), false);
+        }
+        let i = idx(a, b);
+        let f = self.flags[i];
+        if f & flag::OBSTACLE != 0 {
+            return ("Permanent".into(), false);
+        }
+        if let Some(o) = self.object_on(a, b) {
+            let name = BUILDINGS.get(self.objects[o].kind as usize).map(|b| b.0).unwrap_or("");
+            return (format!("Demolish {name}"), true);
+        }
+        let code = self.undo[i];
+        if code != UNDO_NONE && code & 0x80 != 0 {
+            let s = match code & 0x7f {
+                0 => "Remove Path",
+                1 => "Remove Bench",
+                0x10 => "Remove Scenic Tree",
+                0x13 => "Remove Scenic Bridge",
+                _ => "Remove Flowers",
+            };
+            return (s.into(), true);
+        }
+        if code < 0x7d {
+            return (format!("Reset to {}", crate::course::type_name(code as i32)), true);
+        }
+        let s = if f & 0x200 != 0 {
+            "Remove Bench"
+        } else if f & flag::PATH != 0 {
+            "Remove Path"
+        } else if f & 0x1000 != 0 {
+            "Remove Flowers"
+        } else {
+            ""
+        };
+        (s.into(), false)
+    }
+
     pub fn undo_tile(&mut self, a: i32, b: i32) -> Undone {
         if !self.in_play(a, b) {
             return Undone::Refused;

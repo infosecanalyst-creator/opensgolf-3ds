@@ -41,6 +41,39 @@ pub mod f {
     pub const OBSTACLE: u16 = 0x8000;
 }
 
+/// The terrain table's names (+0x00, the singular form) as the exe's static table at 0x4c1a40 has them. The exe patches some
+/// names per theme when it copies the table at run time (which ones, and to what, is not decoded: these are the defaults).
+pub const TYPE_NAMES: [&str; 23] = [
+    "tees",
+    "green",
+    "fairway",
+    "firm fairway",
+    "rough",
+    "deep rough",
+    "mound",
+    "sand trap",
+    "waste bunker",
+    "pot bunker",
+    "ravine",
+    "brush",
+    "rocks",
+    "tree",
+    "pine tree",
+    "palm tree",
+    "elm tree",
+    "water",
+    "wetlands",
+    "marsh",
+    "out of bounds",
+    "building",
+    "building",
+];
+
+/// A tile type's name from the terrain table, "" for an unknown type.
+pub fn type_name(ty: i32) -> &'static str {
+    TYPE_NAMES.get(ty as usize).copied().unwrap_or("")
+}
+
 /// One row of the runtime terrain table (0x578350, 0x30 bytes per type).
 #[derive(Clone, Copy, Debug)]
 pub struct TypeRow {
