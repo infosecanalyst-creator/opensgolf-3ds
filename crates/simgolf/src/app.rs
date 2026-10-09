@@ -1599,6 +1599,15 @@ impl App {
         for f in self.floats.iter_mut() {
             f.3 = f.3.saturating_sub(1);
         }
+        if !self.econ.sandbox && self.ui_ok {
+            // the opening story and the first design tip (0x45fd80), told by the course itself
+            if tick == 0x20 {
+                let text = self.welcome_text();
+                self.post_message(&text, 1, -4);
+            } else if tick == 0x1400 {
+                self.post_message(DESIGN_TIP, 0, -4);
+            }
+        }
         if self.econ.sandbox {
             // the exe holds a sandbox's cash at 10000 units every frame
             self.econ.cash = 10000.0 * Economy::UNIT;
@@ -1877,7 +1886,7 @@ impl App {
         let land = land::generate(slot_index, self.offer[slot_index], self.difficulty, sandbox, &mut self.exe_rng, &self.noise);
         self.terrain = land.to_terrain();
         self.land = Some(land);
-        self.course_name = format!("{} GC", p.name);
+        self.course_name = p.course.to_string();
         self.load_theme(g, p.theme);
         self.club.course_name = self.course_name.clone();
         self.club.course_theme = self.exe_theme();
@@ -1888,6 +1897,11 @@ impl App {
         self.reset_staff();
         self.load_story();
         self.reset_clock = true;
+        // the game opens on the clubhouse
+        let (a, b) = self.club_anchor();
+        let (x, z) = self.units_to_world(a * 1024 + 1024, b * 1024 + 1024);
+        self.cam_x = x;
+        self.cam_z = z;
         println!(
             "new game: {}, {} acres, price {}, cash left {:.0}{}",
             p.name,
@@ -2609,6 +2623,40 @@ impl App {
         self.rot = ((self.rot / 90.0).round() + quarters as f32).rem_euclid(4.0) * 90.0;
     }
 
+    /// The welcome for the course's theme (0x45fd80 at tick 0x20), with the course name and the starting cash in thousands,
+    /// in the exe's words (its slips included).
+    pub fn welcome_text(&self) -> String {
+        let n = &self.course_name;
+        let k = (self.econ.cash / Economy::UNIT) as i64 * 100 / 1000;
+        match self.exe_theme() {
+            1 => format!(
+                "Welcome to the {n} Country Club. What was once a vast expanse of featureless desert is now a vast expanse of \
+                 featureless desert interrupted by a lonely golf clubhouse. This area is blessed with sunshine 365 days of the \
+                 year. A rapidly growing population of avid golfers is demanding a larger improved course. As the new manager, \
+                 can you use your \u{a7}{k},000 budget to turn {n} into a world-class golf resort?"
+            ),
+            2 => format!(
+                "Welcome to {n} Golf Course. This delightful slice of tropical paradise needs only your help to become a \
+                 world-class golfing destination. After all, who doesn't enjoy a little humidity - and the alligators have been \
+                 really well behaved lately. With the successful conclusion of the recent mosquito eradication program and the \
+                 dedication of the new 'El Presidente' international airport, {n} is bursting with potential. "
+            ),
+            3 => format!(
+                "Welcome to {n} Golf Links.  This ancient and venerable institution has fallen upon hard times. The sheep have \
+                 returned to graze the pastoral fields whereupon kings and princes did ply the game of Golfe in days of yore. \
+                 But all is not lost, with a tidy sum of money acquired by liquidating your late uncle's butterfly collection \
+                 and a royal deed of grant from the local magistrate, you are ready to return {n} to it's former preeminence \
+                 in the world of Golfe."
+            ),
+            _ => format!(
+                "Welcome to {n} Golf Club.  The unexpected passing of your great-uncle Harry has left you in possession of \
+                 {n}. The property includes rolling hills, crisp woodlands, and a sparkling waters. However, uncle Harry was \
+                 somewhat of a lazy slacker and never built any golf holes! With the \u{a7}{k},000 he left you can you turn {n} \
+                 into a world-class golf course?  Good Luck."
+            ),
+        }
+    }
+
     /// Queues a floating amount at a map point for 24 ticks (0x40c890); none in a sandbox.
     pub fn float_money(&mut self, units: i32, at: (i32, i32)) {
         if units == 0 || self.econ.sandbox {
@@ -2626,6 +2674,12 @@ impl App {
 }
 
 /// Original pitch angles, chosen per resolution in Terrain::initSystem (38.68, 40.54, 40.83 degrees).
+/// The design tip five months in (0x45fd80 at tick 0x1400).
+pub const DESIGN_TIP: &str = "Building a great golf course requires imagination, intuition, persistence, and a bulldozer. The basic \
+     idea is to present the player with a variety of shots which appear challenging and require strategic thinking, but are \
+     within the player's ability. This philosophy is known as 'look hard and play easy.' Players who enjoy your course will \
+     tell their friends, return more often, and pay higher greens fees!";
+
 /// Our zoom at the exe's zoom level 1 (a tile 16 pixels wide on the 800 x 600 screen); its levels are 1, 2 and 4.
 pub const ZOOM_UNIT: f32 = 0.905 / 4.0;
 

@@ -8,6 +8,7 @@ use crate::land::{port_theme, RECORDS};
 #[derive(Clone, Copy, Debug)]
 pub struct Property {
     pub name: &'static str,
+    pub course: &'static str,
     pub bonus: &'static str,
     /// The port's theme order: 0 Parkland, 1 Links, 2 Desert, 3 Tropical.
     pub theme: usize,
@@ -20,7 +21,7 @@ pub const START_FUNDS: i32 = 100_000;
 
 const fn p(i: usize) -> Property {
     let r = &RECORDS[i];
-    Property { name: r.name, bonus: r.bonus, theme: port_theme(r.theme), column: if i < 10 { 0 } else { 1 } }
+    Property { name: r.name, course: r.course, bonus: r.bonus, theme: port_theme(r.theme), column: if i < 10 { 0 } else { 1 } }
 }
 
 pub const PROPERTIES: [Property; 16] =

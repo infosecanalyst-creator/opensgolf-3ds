@@ -92,6 +92,8 @@ fn clamp_exe(v: i32, lo: i32, hi: i32) -> i32 {
 #[derive(Clone, Copy, Debug)]
 pub struct PropertyRecord {
     pub name: &'static str,
+    /// The course's own name (record +0x19), used in the date caption and the messages.
+    pub course: &'static str,
     pub bonus: &'static str,
     /// Marker position on the world map art.
     pub map_x: i32,
@@ -104,27 +106,36 @@ pub struct PropertyRecord {
     pub relief: u8,
 }
 
-const fn rec(name: &'static str, bonus: &'static str, map_x: i32, map_y: i32, theme: u8, coast: u8, relief: u8) -> PropertyRecord {
-    PropertyRecord { name, bonus, map_x, map_y, theme, coast, relief }
+const fn rec(
+    name: &'static str,
+    course: &'static str,
+    bonus: &'static str,
+    map_x: i32,
+    map_y: i32,
+    theme: u8,
+    coast: u8,
+    relief: u8,
+) -> PropertyRecord {
+    PropertyRecord { name, course, bonus, map_x, map_y, theme, coast, relief }
 }
 
 pub const RECORDS: [PropertyRecord; 16] = [
-    rec("Monterey", "Scenic Cypress", 53, 226, 0, 1, 1),
-    rec("San Diego", "Dolphins", 53, 244, 0, 1, 0),
-    rec("Rocky Mtns.", "Free Hotel", 92, 226, 0, 0, 2),
-    rec("Las Vegas", "Fun, Fun, Fun", 73, 241, 1, 0, 0),
-    rec("Phoenix", "Free Spa", 70, 262, 1, 0, 0),
-    rec("Hawaii", "Scenic Waterfall", 26, 327, 2, 1, 1),
-    rec("Oahu", "Japanese Garden", 23, 311, 2, 2, 0),
-    rec("Nova Scotia", "Scenic Lighthouse", 158, 250, 3, 1, 1),
-    rec("Northeast", "Civil War Battlefield", 138, 254, 0, 0, 1),
-    rec("Carolina", "Free Putting Green", 133, 272, 0, 0, 0),
-    rec("Ireland", "Leprechauns", 262, 232, 3, 0, 2),
-    rec("Scotland", "Free Castle", 266, 222, 3, 1, 0),
-    rec("Wales", "Stonehenge", 272, 239, 3, 2, 1),
-    rec("Spain", "Scenic Vineyards", 275, 270, 1, 1, 1),
-    rec("Florida", "Free Pro Shop", 125, 298, 2, 1, 0),
-    rec("Jamaica", "Scenic Statues", 129, 342, 2, 0, 1),
+    rec("Monterey", "Ocean's Edge", "Scenic Cypress", 53, 226, 0, 1, 1),
+    rec("San Diego", "Dolphin Coast", "Dolphins", 53, 244, 0, 1, 0),
+    rec("Rocky Mtns.", "Jurassic Springs", "Free Hotel", 92, 226, 0, 0, 2),
+    rec("Las Vegas", "Ace in the Hole", "Fun, Fun, Fun", 73, 241, 1, 0, 0),
+    rec("Phoenix", "Coyote Flats", "Free Spa", 70, 262, 1, 0, 0),
+    rec("Hawaii", "Flamingo Shores", "Scenic Waterfall", 26, 327, 2, 1, 1),
+    rec("Oahu", "Island Palms", "Japanese Garden", 23, 311, 2, 2, 0),
+    rec("Nova Scotia", "Windy Point", "Scenic Lighthouse", 158, 250, 3, 1, 1),
+    rec("Northeast", "Ravenwood Farms", "Civil War Battlefield", 138, 254, 0, 0, 1),
+    rec("Carolina", "Christmas Pines", "Free Putting Green", 133, 272, 0, 0, 0),
+    rec("Ireland", "County Kincaide", "Leprechauns", 262, 232, 3, 0, 2),
+    rec("Scotland", "Harold's Keep", "Free Castle", 266, 222, 3, 1, 0),
+    rec("Wales", "Thistle Runes", "Stonehenge", 272, 239, 3, 2, 1),
+    rec("Spain", "Sangria Bay", "Scenic Vineyards", 275, 270, 1, 1, 1),
+    rec("Florida", "Ocean Grove", "Free Pro Shop", 125, 298, 2, 1, 0),
+    rec("Jamaica", "Scorpion Cove", "Scenic Statues", 129, 342, 2, 0, 1),
 ];
 
 /// Price of an offer slot, in the exe's money units (one unit is 100 of the game's money).
