@@ -127,7 +127,7 @@ Not yet run on the Mac. Headless checks only.
 
 | Area | State | Notes |
 |------|-------|-------|
-| Player panel (JoeCoolPanel, dock modes 3 and 4) | DERIVED | Opens from the player tab of the Golfers panel; hit zones, tooltips and button table are EXACT (ui_panels.h). Skill list, scorecard dst (297,366) and the hover and disabled cut columns (50, 100) are PLACEHOLDER |
+| Player panel (JoeCoolPanel, dock modes 3 and 4) | EXACT | crates/simgolf/src/player_panel.rs (dock panel 5). Hit zones, draw table (0x4c7ac0), cut states (hover, selected, disabled, idle at x 0/50/100/150, ovals 0/100/200/300), enable conditions, skill list (494,540), the round scorecard over the cover cut (0x461110) and tooltips read from the exe. Port choices: the shot ovals' hits follow the aim (exe: any mode 3), each oval uses its own alpha cell (the exe's two alpha cells are near identical), Customise opens on the pro's slot (exe: slot 0x98); the panel has no cancel button, N twice still cancels |
 | Practice Round | DERIVED | Needs two open holes and no player out; the player's character walks the course with its own skills and body, pays no fee, is not recorded in the books and never quits. Play (vs a pro) and Begin Tournament only show a notice |
 | Shot shape ovals | DERIVED | Selection is stored and drawn; it does not change shots yet |
 | Hole open message | PLACEHOLDER wording | Odd and even hole texts and the dogleg side follow DECODE_WORLD2 5.4 |

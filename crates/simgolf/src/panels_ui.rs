@@ -28,7 +28,7 @@ pub struct Hit {
     ys: i32,
 }
 
-const fn hit(cx: i32, cy: i32, r: i32) -> Hit {
+pub(crate) const fn hit(cx: i32, cy: i32, r: i32) -> Hit {
     Hit { cx, cy, r, xs: 1, ys: 1 }
 }
 
@@ -42,9 +42,9 @@ impl Hit {
 }
 
 /// A rectangle on a sheet: x, y, w, h.
-type Cut = (f32, f32, f32, f32);
+pub(crate) type Cut = (f32, f32, f32, f32);
 
-fn blit(g: &mut Gfx, s: &Ui, im: &Image, c: Cut, dx: f32, dy: f32) {
+pub(crate) fn blit(g: &mut Gfx, s: &Ui, im: &Image, c: Cut, dx: f32, dy: f32) {
     s.image_part(g, im, dx, dy, c.0, c.1, c.2, c.3);
 }
 
@@ -324,6 +324,8 @@ pub struct PanelArt {
     pub layouts: [Image; 4],
     pub elevation: Image,
     pub employees: Image,
+    /// The Player panel (crate::player_panel).
+    pub player: Image,
     pub hire: Image,
     pub frame: Image,
 }
@@ -352,6 +354,7 @@ impl PanelArt {
             ],
             elevation: alpha(g, "ElevationPanel"),
             employees: alpha(g, "EmployeePanel"),
+            player: alpha(g, "JoeCoolPanel"),
             hire: load_pcx_alpha(g, &p("infoscreens/hire.pcx"), &p("infoscreens/hire_alpha.pcx")).unwrap_or_default(),
             frame: alpha(g, "Pop_UpOk"),
         }
@@ -399,7 +402,7 @@ impl Default for PanelState {
 
 /// The exe's tooltip bar (0x432620): half transparent black behind white text, centred on the pointer a few pixels up and
 /// kept on the screen.
-fn tip_bar(g: &mut Gfx, s: &Ui, text: &str, px: f32, py: f32) {
+pub(crate) fn tip_bar(g: &mut Gfx, s: &Ui, text: &str, px: f32, py: f32) {
     let w = text_width(text, 13.0) + 12.0;
     let cx = px.clamp(w * 0.5, 800.0 - w * 0.5);
     s.fill(g, cx - w * 0.5, py - 22.0, w, 17.0, rgba(0.0, 0.0, 0.0, 0.5));
@@ -419,6 +422,15 @@ fn tip_box(g: &mut Gfx, s: &Ui, slot_x: f32, name: &str, price: &str) {
 impl App {
     pub fn panel_art_ready(&self) -> bool {
         self.panel_art.ready()
+    }
+
+    /// The open dock panel is drawn from its art (1..3 and the Player panel, 5); otherwise the dock shows its text list.
+    pub fn art_panel_open(&self) -> bool {
+        match self.panel {
+            1..=3 => self.panel_art_ready(),
+            5 => self.player_panel_ready(),
+            _ => false,
+        }
     }
 
     /// Opens a dock panel from its dock button (1 Build Course, 2 Add Buildings, 3 People); pressing the button of the open one
@@ -558,11 +570,12 @@ impl App {
                 }
                 -1
             }
+            (5, _) => self.player_hit(px, py),
             _ => -1,
         }
     }
 
-    /// Draws the open panel (1..3) from its sheet, with the hover and selected looks and the tooltip.
+    /// Draws the open panel (1..3, 5) from its sheet, with the hover and selected looks and the tooltip.
     pub fn draw_panel(&mut self, g: &mut Gfx, s: &Ui) {
         let (mx, my) = self.pstate.mouse;
         let h = if self.pstate.hire_open { -1 } else { self.panel_hit(mx, my) };
@@ -579,6 +592,7 @@ impl App {
             (2, false) => self.draw_buildings_panel(g, s, h, tip),
             (2, true) => self.draw_elevation_panel(g, s, h, tip),
             (3, _) => self.draw_employee_panel(g, s, h, tip),
+            (5, _) => self.draw_player_panel(g, s, h, tip),
             _ => {}
         }
     }
@@ -952,7 +966,7 @@ impl App {
         }
     }
 
-    /// A click on the open panel (1..3). Returns true when the panel took it.
+    /// A click on the open panel (1..3, 5). Returns true when the panel took it.
     pub fn panel_click(&mut self, px: f32, py: f32) -> bool {
         if self.pstate.hire_open {
             self.hire_click(px, py);
@@ -965,6 +979,7 @@ impl App {
             (2, false) => self.buildings_click(h),
             (2, true) => self.elevation_click(h),
             (3, _) => self.employee_click(h),
+            (5, _) => self.player_click(h),
             _ => false,
         };
         if took {
@@ -972,7 +987,11 @@ impl App {
             return true;
         }
         // the panel's own area swallows the rest
-        let body = if self.panel == 3 { EMPLOYEE_BODY } else { AMENITIES_BODY };
+        let body = match self.panel {
+            3 => EMPLOYEE_BODY,
+            5 => crate::player_panel::PLAYER_BODY,
+            _ => AMENITIES_BODY,
+        };
         Rect::new(body.0, body.1 - 8.0, body.2, body.3 + 8.0).has(px, py)
     }
 

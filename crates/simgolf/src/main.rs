@@ -17,6 +17,7 @@ mod files_ui;
 mod gfx;
 mod info_ui;
 mod panels_ui;
+mod player_panel;
 mod popup_ui;
 mod pro_ui;
 mod render;
@@ -807,7 +808,7 @@ impl Stage {
         if !app.ui_ok || app.dock_art.tex.is_none() {
             return false;
         }
-        let art_panel = (1..=3).contains(&app.panel) && app.panel_art_ready();
+        let art_panel = app.art_panel_open();
         // the hire dialog is modal
         if art_panel && app.pstate.hire_open {
             return app.panel_click(vx, vy);
