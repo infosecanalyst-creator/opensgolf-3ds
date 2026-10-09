@@ -1199,6 +1199,26 @@ impl Stage {
         // the title screens set Klepto ITC (difficulty, the file lists and Pick A Pro, the theme packs); the rest of the game
         // draws in Manual SSi and Arial
         let title = app.ui_ok && matches!(app.screen, Screen::Menu | Screen::Difficulty | Screen::Files | Screen::Themes);
+        // the info screens (reports, roster, SGA, land and the like) draw with their own two fonts
+        let info = app.ui_ok
+            && matches!(
+                app.screen,
+                Screen::Report
+                    | Screen::HoleStats
+                    | Screen::Comments
+                    | Screen::Histograph
+                    | Screen::Finance
+                    | Screen::Routing
+                    | Screen::Shortcuts
+                    | Screen::Roster
+                    | Screen::Board
+                    | Screen::YearEnd
+                    | Screen::Sga
+                    | Screen::Results
+                    | Screen::Land
+                    | Screen::Pair
+                    | Screen::BestScores
+            );
         ui::set_face(title.then_some(ui::Face::Klepto));
         if matches!(app.screen, Screen::Files | Screen::Themes | Screen::Credits) && app.ui_ok {
             app.draw_title_screen(&mut self.g);
@@ -1218,6 +1238,8 @@ impl Stage {
             }
             app.draw_rename(&mut self.g);
             app.draw_save_dialog(&mut self.g);
+            // only the screen over the course takes the info fonts, not the HUD under it
+            ui::set_face(info.then_some(ui::Face::Info));
             if app.screen == Screen::Report {
                 app.draw_report(&mut self.g);
             }

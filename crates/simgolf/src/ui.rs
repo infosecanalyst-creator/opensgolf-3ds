@@ -132,6 +132,8 @@ pub enum Face {
     Klepto,
     Manual,
     Arial,
+    /// The info screens' pair (font objects 0x821020 and 0x821ee8): titles in Klepto 24, everything else in Manual SSi 14.
+    Info,
 }
 
 static FONTS: [std::sync::OnceLock<Font>; 3] = [std::sync::OnceLock::new(), std::sync::OnceLock::new(), std::sync::OnceLock::new()];
@@ -147,7 +149,23 @@ pub fn set_face(f: Option<Face>) {
 }
 
 fn face_for(size: f32) -> Face {
-    FACE.with(|c| c.get()).unwrap_or(if size < 12.0 { Face::Arial } else { Face::Manual })
+    match FACE.with(|c| c.get()) {
+        Some(Face::Info) => {
+            if size >= 20.0 {
+                Face::Klepto
+            } else {
+                Face::Manual
+            }
+        }
+        Some(f) => f,
+        None => {
+            if size < 12.0 {
+                Face::Arial
+            } else {
+                Face::Manual
+            }
+        }
+    }
 }
 
 /// Liberation Sans Bold 2.1.5 (SIL Open Font License 1.1, see fonts/LiberationSans-OFL.txt), standing in for Arial Bold.
