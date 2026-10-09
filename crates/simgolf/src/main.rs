@@ -244,6 +244,7 @@ fn load_ui(app: &mut App, g: &mut Gfx) -> bool {
     for (t, f) in ["parkland", "desert", "tropical", "links"].iter().enumerate() {
         app.tool_tiles[t] = ui::load_pcx(g, &app.game_path(&format!("Data/{f}.pcx")), true, None).unwrap_or_default();
     }
+    app.cliffs = ui::load_pcx(g, &app.game_path("cliffs01.pcx"), true, None).unwrap_or_default();
     app.ui_ok = ok;
     app.art = crate::screens_ui::Art::load(g, app);
     app.reports = crate::reports_ui::ReportArt::load(g, app);
@@ -354,6 +355,12 @@ fn panel_test_hooks(app: &mut App) {
         app.dock_hover = dock_hit(v[0] as f32, v[1] as f32);
         app.info.pointer = (v[0] as f32, v[1] as f32);
         app.dock_tip = (app.dock_hover, 12);
+    }
+    // SG_BUILD=kind arms the building tool with that exe object kind (stills of the pointer's previews)
+    if let Some(k) = std::env::var("SG_BUILD").ok().and_then(|v| v.parse::<usize>().ok()) {
+        app.edit = true;
+        app.tool = 4;
+        app.build_idx = k.min(19);
     }
 }
 
@@ -1167,6 +1174,7 @@ impl Stage {
                     app.cam_z = z;
                 }
                 app.rot = 0.0;
+                app.dirty |= app.terrain.sand_phase != 0;
             }
             KeyCode::Z => app.zoom_step(true),
             KeyCode::X => app.zoom_step(false),
@@ -1268,6 +1276,7 @@ impl Stage {
             app.draw_difficulty(&mut self.g);
         } else {
             app.render_world(&mut self.g);
+            app.draw_water_glints(&mut self.g);
             app.draw_building_label(&mut self.g);
             app.draw_cursor_overlay(&mut self.g);
             if !app.no_hud {

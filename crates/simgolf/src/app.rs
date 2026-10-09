@@ -357,6 +357,9 @@ pub struct App {
     /// A second generator for things only drawn (celebrity residents, wildlife steps, water sparkle), so the club's draws do
     /// not depend on the camera or the frame rate.
     pub deco_rng: ExeRng,
+    /// A generator for what only the pointer and the frame show: the port's pick of a garden item's design and the water
+    /// glints' coin (the exe tosses that with its own generator, 0x822d9c, every frame).
+    pub look_rng: ExeRng,
     pub noise: Noise,
     /// This game's deal of properties to offer slots, and the slot each property is in.
     pub offer: [Slot; 16],
@@ -461,6 +464,8 @@ pub struct App {
     pub red_tex: HashMap<(usize, usize), miniquad::TextureId>,
     /// The terrain brushes' tile pictures under the pointer (Data/parkland.pcx, desert, tropical, links: the exe's theme order).
     pub tool_tiles: [Image; 4],
+    /// The rocks the frame stands along water banks (cliffs01.pcx, cut by 0x445970; see wild_ui's bank rocks).
+    pub cliffs: Image,
     pub world_base: Image,
     /// The main screen's course badge and rating pills (Interface/courseinfo.pcx with its alpha sheet).
     pub hud_art: Image,
@@ -519,6 +524,12 @@ pub struct App {
     pub paint_idx: usize,
     /// The paint tool's variant (0x5a34f0, drawn when a terrain brush is picked) and the brush it was drawn for.
     pub paint_variant: Option<(usize, i32)>,
+    /// The design the next bench, flower bed, willow or scenic bridge takes and the kind it was drawn for (the exe's 0x56a514,
+    /// picked from a strip of designs the port does not have, so the port draws one at random), shown by the pointer.
+    pub design: Option<(i32, i32)>,
+    /// Where each golfer slot's ball was drawn last frame (the exe keeps the screen point, 0x567b34 / 0x567d94), for the
+    /// sweet shot's streak.
+    pub ball_trail: Vec<Option<[f32; 3]>>,
     /// The land screen's tracts and the one under the pointer (9 = the cancel button).
     pub tracts: [sg_core::tracts::Tract; 9],
     pub land_hover: i32,
@@ -607,6 +618,7 @@ impl App {
             difficulty: 1,
             exe_rng,
             deco_rng: ExeRng::from_clock(0x5167),
+            look_rng: ExeRng::from_clock(0x6c1),
             noise,
             offer,
             slot_of,
@@ -673,6 +685,7 @@ impl App {
             outfit_tex: HashMap::new(),
             red_tex: HashMap::new(),
             tool_tiles: [Image::default(); 4],
+            cliffs: Image::default(),
             world_base: Image::default(),
             hud_art: Image::default(),
             hud: Default::default(),
@@ -709,6 +722,8 @@ impl App {
             speed: 1,
             paint_idx: 0,
             paint_variant: None,
+            design: None,
+            ball_trail: Vec::new(),
             tracts: Default::default(),
             land_hover: -1,
             brush: 0,
@@ -907,6 +922,7 @@ impl App {
     pub fn rebuild_batches(&mut self, g: &mut Gfx) {
         self.clear_batches(g);
         self.terrain.desert = self.theme == 2; // the original swaps shallow water for its desert variant in this theme
+        self.terrain.sand_phase = ((self.rot / 90.0).round() as i32).rem_euclid(4);
         let mut map: BTreeMap<usize, (TextureId, Vec<Vert>, bool)> = BTreeMap::new();
         let mut tris = Vec::new();
         let mut order: HashMap<Option<TextureId>, usize> = HashMap::new();
@@ -1039,7 +1055,7 @@ impl App {
     /// type flattens them, against the neighbour's), in the style of its type (1 for water, 2 for any other ground; the
     /// neighbour's style if the tile's is 0). Terrain.dll draws the face; the port's ground is one continuous surface, so
     /// the look here is a PLACEHOLDER: a strip of `RetainingWallA.bmp` standing on the edge as tall as the step, with a thin cap.
-    /// Water banks get the same strip (the exe also stands cliff sprites from cliffs01.pcx on them, not drawn yet).
+    /// Water banks get the same strip (the exe also stands rocks from cliffs01.pcx on them: see draw_bank_rocks).
     fn build_walls(&mut self, g: &mut Gfx) {
         self.terrain.wall_mask = vec![0; self.terrain.ty.len()];
         if self.land.is_none() {
@@ -2305,13 +2321,7 @@ impl App {
         self.ensure_land();
         let theme = self.exe_theme();
         let holes = self.holes.len();
-        let variant = match kind {
-            land::K_BENCH => self.exe_rng.below(5),
-            land::K_FLOWERS => self.exe_rng.below(4),
-            land::K_WILLOW => self.exe_rng.below(7),
-            land::K_BRIDGE => self.exe_rng.below(8),
-            _ => 0,
-        };
+        let variant = self.item_design(kind);
         let Some(land) = self.land.as_mut() else { return false };
         land.sync_from_terrain(&self.terrain);
         let cost = match land.tile_item_cost(x, y, kind, theme) {
@@ -2348,8 +2358,30 @@ impl App {
             land::K_BRIDGE => self.ui_sound(263),
             _ => {}
         }
+        if kind != land::K_PATH {
+            self.design = None;
+        }
         self.after_object_change();
         true
+    }
+
+    /// The design of the next tile item of a kind (bench 0..4, flowers 0..3, willow 0..6, bridge 0..7), drawn once and kept
+    /// until an item is placed, so the pointer shows what a click puts down.
+    pub fn item_design(&mut self, kind: i32) -> i32 {
+        if let Some((k, v)) = self.design {
+            if k == kind {
+                return v;
+            }
+        }
+        let v = match kind {
+            land::K_BENCH => self.look_rng.below(5),
+            land::K_FLOWERS => self.look_rng.below(4),
+            land::K_WILLOW => self.look_rng.below(7),
+            land::K_BRIDGE => self.look_rng.below(8),
+            _ => return 0,
+        };
+        self.design = Some((kind, v));
+        v
     }
 
     /// Undo on a tile, as the exe's second right-click does: an item comes off with exactly what it cost back (booked to Build
@@ -2642,6 +2674,8 @@ impl App {
     /// PageUp / Home and the Rotate Map buttons: a quarter turn of the view (the exe's rotation steps by 2 of 8).
     pub fn rotate_view(&mut self, quarters: i32) {
         self.rot = ((self.rot / 90.0).round() + quarters as f32).rem_euclid(4.0) * 90.0;
+        // the sand traps' pictures turn with the view (Terrain.dll's phase)
+        self.dirty |= self.terrain.ty.contains(&7);
     }
 
     /// The welcome for the course's theme (0x45fd80 at tick 0x20), with the course name and the starting cash in thousands,

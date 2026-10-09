@@ -151,6 +151,8 @@ Approximates (marked `APPROXIMATION` in code): elevation scale; the light direct
 type class grouping; the water-in-desert-theme variant (`m1096` swaps triangles next to land to
 WaterShallowDesert when a global theme flag is 1, not ported yet).
 
-Not decoded yet: path overlays, cliffs and retaining walls, water animation timing (type 7 phase at
-0x10070a14), type 6 geometry, and how `golf.exe` stores a course (that code is in the protected
+The type 7 phase: golf.exe's brush picture for sand (0x41ab87) turns the same way with the view's quarter, so the port takes
+the phase to be the view's quarter turn (`Terrain::sand_phase`, DERIVED) and rebuilds the ground when the view turns.
+
+Not decoded yet: path overlays, cliffs and retaining walls, water animation timing, type 6 geometry, and how `golf.exe` stores a course (that code is in the protected
 executable, which this project does not touch).

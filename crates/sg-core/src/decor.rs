@@ -434,6 +434,17 @@ mod tests {
     use crate::course::NN;
 
     #[test]
+    fn rock_cuts_follow_the_sheet() {
+        // Parkland set 1 (top right), the first column; Desert set 2 (lower half), column 6; empty slots and blocks past Links
+        assert_eq!(rock_cut(0), Some(((539, 13, 17, 46), 5)));
+        assert_eq!(rock_cut(56 + 7 + 6), Some(((359 + 0xa1, 261 + 60 + 1, 12, 46), 6)));
+        assert_eq!(rock_cut(49), None);
+        assert_eq!(rock_cut(4 * 56), None);
+        // Links set 7, column 2, at the sheet's left
+        assert_eq!(rock_cut(3 * 56 + 42 + 2), Some(((0x2c + 1, 12 + 180 + 1, 37, 46), 19)));
+    }
+
+    #[test]
     fn woods_sizes() {
         let mut ty = vec![4u8; NN];
         // a pine wood: the inner tile has pines all round, the edge one only on some axes
@@ -474,4 +485,108 @@ mod tests {
         assert_eq!(weed(2, 0, 0, 10, None).sprite, 0x184);
         assert_eq!(weed(4, 0, 0, 10, None).sprite, 0x190);
     }
+}
+
+/// A rock stood on a water bank (main frame 0x41094f): the cut of cliffs01.pcx (`sheet` x, y, w, h), its anchor in the cut
+/// (`ax`, `ay`) and where the anchor goes, in pixels from the tile's centre on the screen at the closest zoom (`dx`, `dy`;
+/// everything scales with zoom / 4, the queue's scale 4).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BankRock {
+    pub sheet: (i32, i32, i32, i32),
+    pub ax: i32,
+    pub ay: i32,
+    pub dx: i32,
+    pub dy: i32,
+}
+
+/// Left edges of the seven rock columns on cliffs01.pcx and the end of the last (0x445970), and the columns' anchors (the
+/// tile loop's table at 0x41097d).
+const ROCK_X: [i32; 8] = [1, 0x13, 0x2c, 0x52, 0x71, 0x8e, 0xa1, 0xae];
+const ROCK_ANCHOR: [i32; 7] = [6, 0x20, 0x3f, 0x61, 0x81, 0x9b, 0xa7];
+
+/// The rock cut with flat index `n` (0x445970 cuts 4 blocks by theme, 56 slots each: set s = 1..7 of 7 columns, the last 7
+/// slots empty). Set s is a bank s steps high: odd sets on the sheet's upper half, even ones on the lower, right to left.
+pub fn rock_cut(n: i32) -> Option<((i32, i32, i32, i32), i32)> {
+    if !(0..4 * 56).contains(&n) || n % 56 >= 49 {
+        return None;
+    }
+    let (block, k) = (n / 56, n % 56);
+    let (set, col) = (k / 7 + 1, (k % 7) as usize);
+    let x0 = 0x21a - (set / 2) * 179;
+    let y0 = if set & 1 != 0 { 12 } else { 261 } + block * 60 + 1;
+    Some(((ROCK_X[col] + x0, y0, ROCK_X[col + 1] - ROCK_X[col] - 1, 46), ROCK_ANCHOR[col] - ROCK_X[col]))
+}
+
+/// The rocks along the banks of water tile (a, b), as the tile loop stands them (0x41094f to 0x410ea1): where a wall bit
+/// (the neighbour that way stands higher, 0x5619a0) faces the camera, a cut of the bank's height in steps (the higher
+/// neighbour's corner, held to 0..10, less the tile's own corner) is put at the tile's back, right or left point. `rot` is
+/// the exe's view (0, 2, 4, 6), `theme` its theme (0 Parkland, 1 Desert, 2 Tropical, 3 Links).
+pub fn bank_rocks(c: &crate::course::Course, a: i32, b: i32, rot: i32, theme: u8) -> Vec<BankRock> {
+    use crate::course::{idx, inside, t};
+    let mut out = Vec::new();
+    if c.ty_at(a, b) != t::WATER {
+        return out;
+    }
+    let walls = |a: i32, b: i32| if inside(a, b) { c.walls[idx(a, b)] as i32 } else { 0 };
+    let near = |d: i32| (a + DX[(d & 7) as usize], b + DY[(d & 7) as usize]);
+    // the wall bit facing each of the four view directions (j = 0..3: heading rot + 2j)
+    let m = |j: i32| 1 << (2 * ((j + rot / 2) & 3));
+    // a neighbour's corner, held to 0..10
+    let high = |d: i32, k: i32| {
+        let (na, nb) = near(d);
+        c.corner(na, nb, k & 7).clamp(0, 10)
+    };
+    let here = walls(a, b);
+    let base = 56 * theme as i32;
+    let mut rock = |n: i32, dx: i32, dy: i32| {
+        if let Some((sheet, ax)) = rock_cut(n) {
+            out.push(BankRock { sheet, ax, ay: 40, dx, dy });
+        }
+    };
+    let own = c.corner(a, b, (rot + 1) & 7);
+    if here & m(1) != 0 {
+        let (na, nb) = near(rot);
+        let col = if here & m(0) != 0 {
+            3
+        } else if walls(na, nb) & m(1) != 0 {
+            1
+        } else {
+            0
+        };
+        let e = high(rot + 2, rot - 1);
+        if e > own {
+            rock(base + 7 * (e - own - 1) + col, 0, -20);
+        }
+        let (na, nb) = near(rot + 3);
+        if here & m(2) == 0 && walls(na, nb) & m(0) != 0 {
+            let e = high(rot + 2, rot - 3);
+            if e > own {
+                rock(base + 7 * (e - own - 1) + 2, 32, 0);
+            }
+        }
+    }
+    if here & m(0) != 0 && here & m(1) == 0 {
+        let e = high(rot, rot - 3);
+        let (na, nb) = near(rot - 2);
+        if walls(na, nb) & m(0) != 0 && e > own {
+            rock(base + 7 * (e - own - 1) + 4, -32, 0);
+        }
+        // the exe takes the neighbour at heading 2 - rot here (rot - 2 would mirror the test above)
+        let (na, nb) = near(2 - rot);
+        if walls(na, nb) & m(0) == 0 {
+            let e = high(rot, rot + 3);
+            if e > own {
+                rock(base + 7 * (e - own - 1) + 5, 0, -20);
+            }
+        }
+    }
+    let (na, nb) = near(rot - 1);
+    if here & m(3) != 0 && walls(na, nb) & m(2) != 0 {
+        // the last column by the neighbour's own height, not the bank's
+        let e = high(rot - 2, rot + 1);
+        if e > 3 {
+            rock(base + 7 * (e - 4) + 6, -32, 0);
+        }
+    }
+    out
 }

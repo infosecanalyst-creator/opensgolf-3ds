@@ -12,10 +12,17 @@
 //! * Buildings and amenities (0x419d34): the footprint outlined white where it fits and red where it does not, the building
 //!   itself see-through (or red where it does not fit), facing the way Tab turned it; amenities are named over the
 //!   footprint, and a clearing charge shows as "-N" dollars under it.
+//! * Garden items (the same routine's switch at 0x41a0e3): a bench seat (always see-through) on every side of the tile a
+//!   golfer could sit facing, the bench named in red where there is none; the willow (see-through or red, last frame, turned
+//!   by Tab); the scenic bridge (always see-through, the sprite's first view whatever the camera), named in red off water.
+//!   Flower beds and ball washers show only their footprint and name.
+//! * A landmark's reach (0x41a0db): a white ring two pixels wide round the tile, (type * 5 + 40) * 5 / 4 yards across
+//!   (0x407c60: 24 steps, broken where a point leaves the screen).
+//! * The Home Site (0x41a5d3): where the lot fits, a box at the right of the screen with the lot's share, the clearing, the
+//!   site preparation and the profit, and the profit again as "$N" under the footprint, green when above 0 and red otherwise.
 //!
 //! Not drawn yet: the pin flag over the green brush while a hole waits for its green, the tee-to-pointer yardage line (both
-//! belong to the hole tools), the bench, willow and bridge previews, the landmark's reach ring and the Home Site's lot value
-//! box.
+//! belong to the hole tools).
 
 use crate::app::*;
 use crate::gfx::{Gfx, Mode, Uniforms, Vert};
@@ -30,6 +37,7 @@ const WHITE: u16 = 0x7fff;
 const RED: u16 = 0x7d08;
 const GREEN: u16 = 0x23e8;
 const PURPLE: u16 = 0x6090;
+const GREY: u16 = 0x6318;
 
 /// Tile types of the terrain buttons, in the order of their pictures on `Data/<theme>.pcx` (0x4c2d28).
 const ICON_TYPES: [i32; 16] = [0, 1, 7, 4, 9, 10, 17, 13, 2, 3, 5, 8, 11, 12, 14, 18];
@@ -97,7 +105,7 @@ impl App {
     }
 
     /// The exe's zoom (1, 2 or 4).
-    fn exe_zoom(&self) -> f32 {
+    pub(crate) fn exe_zoom(&self) -> f32 {
         (self.zoom / ZOOM_UNIT).max(1.0)
     }
 
@@ -152,6 +160,39 @@ impl App {
                 for si in [shadow, Some(body)].into_iter().flatten() {
                     self.preview_quad(g, u, si, quarter, facing, frame, x, z, Look::Ghost);
                 }
+            }
+            Tool::Building(land::K_BENCH) => {
+                // 0x41a454: the seat on each side a golfer could sit facing, the picked design (0x56a514 % 5), always
+                // see-through, frame 0
+                let v = self.item_design(land::K_BENCH);
+                let course = &self.course;
+                let seats = sg_core::decor::benches(v as u8, &|d| course.bench_ok(a, b, d as i32));
+                let (cx, cz) = self.terrain.tile_centre(a, b);
+                for d in seats {
+                    let (body, _) = self.decor_sprite(d.sprite, d.pal);
+                    if let Some(body) = body {
+                        let (x, z) = (cx + d.da * sg_core::terrain::TILE_SIZE, cz + d.db * sg_core::terrain::TILE_SIZE);
+                        self.preview_quad(g, u, body, quarter, d.view, 0, x, z, Look::Ghost);
+                    }
+                }
+            }
+            Tool::Building(land::K_WILLOW) => {
+                // 0x41a100: sprite 0x12f + design in palette 0xb4 + design, its last frame, turned by Tab
+                let v = self.item_design(land::K_WILLOW);
+                let look = if self.footprint_at(land::K_WILLOW, a, b).1.is_some() { Look::Ghost } else { Look::Red };
+                let (body, _) = self.decor_sprite(0x12f + v as u16, 0xb4 + v as u8);
+                let Some(body) = body else { return };
+                let frame = self.sprites[body].s.frames_per_view - 1;
+                let (x, z) = self.terrain.tile_centre(a, b);
+                self.preview_quad(g, u, body, quarter, self.turn & 3, frame, x, z, look);
+            }
+            Tool::Building(land::K_BRIDGE) => {
+                // 0x41a52e: sprite 0x226 + design & 7, palette 0xa9, frame 0 of view 0 whatever the camera, always see-through
+                let v = self.item_design(land::K_BRIDGE);
+                let (body, _) = self.decor_sprite(0x226 + (v & 7) as u16, 0xa9);
+                let Some(body) = body else { return };
+                let (x, z) = self.terrain.tile_centre(a, b);
+                self.preview_quad(g, u, body, quarter, -quarter, 0, x, z, Look::Ghost);
             }
             Tool::Building(kind) if kind == land::K_LANDMARK || (6..=15).contains(&kind) => {
                 let (size, clear) = self.footprint_at(kind, a, b);
@@ -369,6 +410,14 @@ impl App {
         if kind == land::K_BRIDGE && self.terrain.type_at(a, b) != land::T_WATER as i32 {
             col = c15(RED);
         }
+        if kind == land::K_BENCH && ![0, 2, 4, 6].iter().any(|&d| self.course.bench_ok(a, b, d)) {
+            col = c15(RED);
+        }
+        if kind == land::K_LANDMARK {
+            if let Some(t) = self.next_landmark() {
+                self.draw_reach_ring(g, s, a * 1024 + 512, b * 1024 + 512, (t * 5 + 40) * 5 / 4);
+            }
+        }
         if kind <= 6 {
             let name = if kind == land::K_LANDMARK {
                 let n = sg_core::vips::landmark_short_name(self.next_landmark().unwrap_or(-1));
@@ -377,13 +426,46 @@ impl App {
             } else {
                 land::BUILDINGS[kind as usize].0.to_string()
             };
-            top_text(g, s, sx, sy - 8.0, &name, BODY, col);
+            label(g, s, sx, sy - 8.0, &name, BODY, col);
         }
-        if kind != land::K_HOME_SITE {
-            if let Some(cost) = clear.filter(|&c| c > 0) {
-                top_text(g, s, sx, sy + 8.0, &format!("-{}", cost * 100), BODY, c15(RED));
+        if kind == land::K_HOME_SITE {
+            if let Some(clear) = clear {
+                self.draw_lot_box(g, s, a, b, clear, sx, sy);
             }
+        } else if let Some(cost) = clear.filter(|&c| c > 0) {
+            label(g, s, sx, sy + 8.0, &format!("-{}", cost * 100), BODY, c15(RED));
         }
+    }
+
+    /// The landmark's reach (0x407c60): a white ring 2 pixels wide, `yards` round a map point, in 24 steps; a step with an end
+    /// off the screen is left out.
+    fn draw_reach_ring(&self, g: &mut Gfx, s: &Ui, x: i32, y: i32, yards: i32) {
+        let r = ((yards << 10) / 25) as f32;
+        let mut last: Option<(f32, f32)> = None;
+        for k in 0..25 {
+            let t = k as f32 * std::f32::consts::TAU / 24.0;
+            let p = self.screen_of(x + (t.sin() * r) as i32, y - (t.cos() * r) as i32);
+            if let (Some(p0), Some(p1)) = (last, p) {
+                s.line(g, p0.0, p0.1, p1.0, p1.1, 2.0, c15(WHITE));
+            }
+            last = p;
+        }
+    }
+
+    /// The Home Site's sums (0x41a5d3): the box (0x40cef0 at 676, 380, 120 x 112, grown to whole 16 pixel pieces) with the
+    /// lot's share (a quarter of the lot value), the clearing and the site preparation (the Home Site's price, 10), a rule,
+    /// and the profit; then the profit as "$N" under the footprint, green above 0 and red otherwise. Money in dollars.
+    fn draw_lot_box(&self, g: &mut Gfx, s: &Ui, a: i32, b: i32, clear: i32, sx: f32, sy: f32) {
+        let share = sg_core::homes::lot_value(&self.course, &self.club.holes, self.difficulty, a, b) / 4;
+        let prep = land::BUILDINGS[land::K_HOME_SITE as usize].2;
+        let profit = share - prep - clear;
+        self.art.trans_frame(g, s, 673.0, 380.0, 127.0, 112.0);
+        label(g, s, 736.0, 405.0, &format!("Lot value: {}", share * 100), BODY, c15(GREEN));
+        label(g, s, 736.0, 420.0, &format!("Site clear: {}", clear * 100), BODY, c15(RED));
+        label(g, s, 736.0, 435.0, &format!("Site prep.: {}", prep * 100), BODY, c15(RED));
+        s.line(g, 688.0, 450.5, 784.0, 450.5, 1.0, c15(GREY));
+        label(g, s, 736.0, 455.0, &format!("Profit: {}", profit * 100), BODY, c15(GREEN));
+        label(g, s, sx, sy + 8.0, &format!("${}", profit * 100), BODY, c15(if profit > 0 { GREEN } else { RED }));
     }
 }
 
@@ -393,4 +475,10 @@ fn top_text(g: &mut Gfx, s: &Ui, cx: f32, top: f32, text: &str, size: f32, c: [f
     if !text.is_empty() {
         s.text_centered(g, cx, top + size * 0.8, text, size, c);
     }
+}
+
+/// Text through 0x404bc0: centred, placed by its top, with the palette's black one pixel below.
+fn label(g: &mut Gfx, s: &Ui, cx: f32, top: f32, text: &str, size: f32, c: [f32; 4]) {
+    top_text(g, s, cx, top + 1.0, text, size, [0.0, 0.0, 0.0, c[3]]);
+    top_text(g, s, cx, top, text, size, c);
 }

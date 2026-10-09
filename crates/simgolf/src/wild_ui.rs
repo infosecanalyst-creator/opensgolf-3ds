@@ -229,3 +229,90 @@ impl App {
         }
     }
 }
+
+impl App {
+    /// The glints on the water (0x411574), drawn straight onto the frame in the tile loop: at the closest zoom, on each water
+    /// tile on the screen that wins a 2 in 3 toss every frame, k = (tick / 2 - 9 y - 11 x) & 31 picks a 5 frame twinkle out of
+    /// every 64 frames, one pixel on the line through the tile's centre, (tick + 17 y) % (8 * zoom) pixels from the tile's
+    /// left (the centre less 8 * zoom), grey, light grey, white, light grey, grey. APPROXIMATION: the port draws them after
+    /// the sprites, so one can show over a sprite standing on the water.
+    pub fn draw_water_glints(&mut self, g: &mut crate::gfx::Gfx) {
+        const COLOURS: [u32; 5] = [0x4210, 0x6318, 0x7fff, 0x6318, 0x4210];
+        if self.screen != Screen::Play || self.terrain.ty.is_empty() {
+            return;
+        }
+        let s = crate::ui::Screen::new(self.draw_w, self.draw_h);
+        let ez = self.exe_zoom().round() as i32;
+        let tick = self.game_tick as i32;
+        for x in 0..self.terrain.w {
+            for y in 0..self.terrain.h {
+                if self.terrain.type_at(x, y) != sg_core::course::t::WATER as i32 {
+                    continue;
+                }
+                let Some((sx, sy)) = self.tile_on_screen(x, y) else { continue };
+                if self.look_rng.below(3) == 0 || ez < 4 {
+                    continue;
+                }
+                let k = (tick / 2 - 9 * y - 11 * x) & 31;
+                if k < 5 {
+                    let w = 8 * ez;
+                    let px = (sx - w as f32).floor() + ((tick + 17 * y) % w) as f32;
+                    s.fill(g, px, sy.floor(), 1.0, 1.0, crate::info_ui::c15(COLOURS[k as usize]));
+                }
+            }
+        }
+    }
+
+    /// The screen point of a tile's centre while the tile is on the screen (0x42f940: up to 64 pixels past the sides, 42
+    /// past the top and bottom).
+    pub(crate) fn tile_on_screen(&self, x: i32, y: i32) -> Option<(f32, f32)> {
+        let (wx, wz) = self.terrain.tile_centre(x, y);
+        self.screen_of_world(wx, wz).filter(|&(sx, sy)| (-64.0..864.0).contains(&sx) && (-42.0..642.0).contains(&sy))
+    }
+
+    /// The rocks on the water banks (sg_core::decor::bank_rocks), cuts of cliffs01.pcx stood upright at their points beside
+    /// each water tile's centre, at the scale the exe's queue gives them (zoom / 4). APPROXIMATION: the exe sorts them with the
+    /// other sprites by their point's height on the screen; the port draws them on the ground before the sprites.
+    pub fn draw_bank_rocks(&mut self, g: &mut crate::gfx::Gfx, u: &crate::gfx::Uniforms) {
+        use crate::gfx::{Mode, Vert};
+        let Some(tex) = self.cliffs.tex else { return };
+        let (sw, sh) = (self.cliffs.w, self.cliffs.h);
+        let rot = 2 * ((self.rot / 90.0).round() as i32).rem_euclid(4);
+        let theme = self.exe_theme();
+        let mv = self.mv;
+        let (rx, ry, rz, ux, uy, uz) = (mv[0], mv[4], mv[8], mv[1], mv[5], mv[9]);
+        let vscale = (self.draw_w / 800.0).min(self.draw_h / 600.0);
+        // world units per 800 x 600 pixel, times the queue's scale
+        let k = self.upp * vscale * self.exe_zoom() / 4.0;
+        let mut v = Vec::new();
+        for a in 0..sg_core::course::N {
+            for b in 0..sg_core::course::N {
+                let i = idx(a, b);
+                if self.course.ty[i] != sg_core::course::t::WATER || self.course.walls[i] == 0 || self.tile_on_screen(a, b).is_none() {
+                    continue;
+                }
+                let (cx, cz) = self.terrain.tile_centre(a, b);
+                let cy = self.terrain.height_at(cx, cz);
+                for r in sg_core::decor::bank_rocks(&self.course, a, b, rot, theme) {
+                    let (x, y, w, h) = r.sheet;
+                    let (l, t) = ((r.dx - r.ax) as f32, (r.dy - r.ay) as f32);
+                    let corner = |px: f32, py: f32, tu: f32, tv: f32| {
+                        let (ox, oy) = (px * k, -py * k);
+                        Vert::new(cx + rx * ox + ux * oy, cy + ry * ox + uy * oy, cz + rz * ox + uz * oy, tu / sw, tv / sh)
+                    };
+                    // half a texel in, so the filtering does not reach the green frame round each cut
+                    let (x0, y0, x1, y1) = (x as f32 + 0.5, y as f32 + 0.5, (x + w) as f32 - 0.5, (y + h) as f32 - 0.5);
+                    let (w, h) = (w as f32, h as f32);
+                    let p = corner(l, t, x0, y0);
+                    let q = corner(l + w, t, x1, y0);
+                    let r2 = corner(l + w, t + h, x1, y1);
+                    let s = corner(l, t + h, x0, y1);
+                    v.extend_from_slice(&[p, q, r2, p, r2, s]);
+                }
+            }
+        }
+        if !v.is_empty() {
+            g.tris(Mode::Flat, Some(tex), u, &v);
+        }
+    }
+}

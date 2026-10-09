@@ -62,6 +62,7 @@ impl App {
         }
         self.mv = mv.0;
         self.upp = upp;
+        self.draw_bank_rocks(g, &Uniforms::flat(&proj, &mv));
         self.draw_props(g, &Uniforms::flat(&proj, &mv));
         if self.edit && self.has_hit {
             self.draw_cursor_preview(g, &Uniforms::flat(&proj, &mv));
@@ -219,39 +220,64 @@ impl App {
                 quad(self, g, b, i, false);
             }
         }
-        // The ball: a small white disc with a dark disc on the ground below it.
-        // Height above the ground is in the exe's z units, 16 to a height step (15 world units here).
-        let balls: Vec<(f32, f32, f32)> = self
-            .club
-            .g
-            .iter()
-            .filter(|gl| gl.bx != 0 && gl.hole > 0 && gl.hole < 19 && gl.flags & sg_core::golfer::flag::PENALTY == 0)
-            .map(|gl| {
-                let (x, z) = self.units_to_world(gl.bx, gl.by);
-                (x, z, gl.bz as f32 * sg_core::terrain::HEIGHT_STEP / 16.0)
-            })
-            .collect();
-        for (bx, bz, bh) in balls {
-            let gy = self.terrain.height_at(bx, bz);
-            let disc = |g: &mut Gfx, x: f32, y: f32, z: f32, rpx: f32, col: [f32; 4], upright: bool| {
-                let pt = |i: i32| {
-                    let a = i as f32 * std::f32::consts::TAU / 12.0;
-                    let (cx, cy) = (a.cos() * rpx, a.sin() * rpx);
-                    if upright {
-                        Vert::new(x + rx * cx + ux * cy, y + ry * cx + uy * cy, z + rz * cx + uz * cy, 0.0, 0.0).col(col)
-                    } else {
-                        Vert::new(x + cx, y, z + cy * 0.8, 0.0, 0.0).col(col)
-                    }
-                };
-                let centre = Vert::new(x, y, z, 0.0, 0.0).col(col);
-                let mut v = Vec::with_capacity(36);
-                for i in 0..12 {
-                    v.extend_from_slice(&[centre, pt(i), pt(i + 1)]);
-                }
-                g.tris(Mode::Flat, None, u, &v);
+        self.draw_balls(g, u);
+    }
+
+    /// The balls (0x41557f, for every golfer with a ball): the 2 x 2 white cut at (192, 0) of BLDG.PCX with the 2 x 2 black
+    /// cut under it (192, 2) as its shadow, a pixel below the ground point; a ball resting on ground whose hazard byte is
+    /// above 0 (rough, sand and the like) is a white dash two pixels long instead, without a shadow. Both cuts are queued at
+    /// scale 4, so they are 2 pixels at the closest zoom and shrink with it. A sweet shot (golfer flag 0x400000) leaves a
+    /// yellow streak 2 pixels wide from where the ball was drawn last frame. The ball's height above the ground is the
+    /// port's (the exe lifts it by bz * 0x4c2e00 * zoom / 80 pixels; 0x4c2e00 is data not read).
+    fn draw_balls(&mut self, g: &mut Gfx, u: &Uniforms) {
+        use sg_core::golfer::flag;
+        let mv = self.mv;
+        let (rx, ry, rz) = (mv[0], mv[4], mv[8]);
+        let (ux, uy, uz) = (mv[1], mv[5], mv[9]);
+        let vscale = (self.draw_w / 800.0).min(self.draw_h / 600.0);
+        let px = self.upp * vscale; // world units per 800 x 600 pixel
+        let side = (2.0 * self.exe_zoom() / 4.0).max(1.0f32);
+        if self.ball_trail.len() != self.club.g.len() {
+            self.ball_trail = vec![None; self.club.g.len()];
+        }
+        let white = [1.0; 4];
+        let black = [0.0, 0.0, 0.0, 1.0];
+        let yellow = crate::info_ui::c15(0x7f9c);
+        // a w x h pixel box, its top left (dx, dy) pixels from a world point (screen y down)
+        let quad = |g: &mut Gfx, p: [f32; 3], dx: f32, dy: f32, w: f32, h: f32, col: [f32; 4]| {
+            let c = |cx: f32, cy: f32| {
+                let (cx, cy) = (cx * px, -cy * px);
+                Vert::new(p[0] + rx * cx + ux * cy, p[1] + ry * cx + uy * cy, p[2] + rz * cx + uz * cy, 0.0, 0.0).col(col)
             };
-            disc(g, bx, gy + 1.0, bz, 4.5, [0.0, 0.0, 0.0, 0.45], false);
-            disc(g, bx, gy + bh + 4.0, bz, 5.0, [1.0; 4], true);
+            let (a, b, cc, d) = (c(dx, dy), c(dx + w, dy), c(dx + w, dy + h), c(dx, dy + h));
+            g.tris(Mode::Flat, None, u, &[a, b, cc, a, cc, d]);
+        };
+        for i in 0..self.club.g.len() {
+            let gl = &self.club.g[i];
+            if gl.bx == 0 || gl.hole <= 0 || gl.hole >= 19 || gl.flags & flag::PENALTY != 0 {
+                self.ball_trail[i] = None;
+                continue;
+            }
+            let (bx, bz) = self.units_to_world(gl.bx, gl.by);
+            let gy = self.terrain.height_at(bx, bz);
+            let ground = [bx, gy, bz];
+            let resting = (gl.flags & flag::BALL_MOVING == 0 || gl.speed <= 0x400) && gl.bz == 0;
+            let hazard = self.course.hazard[self.course.tile_type(gl.bx, gl.by).min(22) as usize];
+            if resting && hazard > 0 {
+                quad(g, ground, 0.0, 0.0, 2.0, 1.0, white);
+                self.ball_trail[i] = Some(ground);
+                continue;
+            }
+            let half = side / 2.0;
+            quad(g, ground, -half, 1.0 - half, side, side, black);
+            let ball = [bx, gy + gl.bz as f32 * sg_core::terrain::HEIGHT_STEP / 16.0, bz];
+            quad(g, ball, -half, -half, side, side, white);
+            if gl.flags & flag::SWEET != 0 {
+                if let Some(prev) = self.ball_trail[i] {
+                    self.draw_lines(g, u, &[prev, ball], false, vscale, yellow);
+                }
+            }
+            self.ball_trail[i] = Some(ball);
         }
     }
 

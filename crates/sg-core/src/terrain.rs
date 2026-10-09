@@ -247,6 +247,9 @@ pub struct Terrain {
     /// Clubhouse footprint edge in tiles when it is even: the sprite then stands on the corner between the middle tiles, half a
     /// tile on from (clubhouse_x, clubhouse_y). 0 for the demo course's odd footprint.
     pub clubhouse_size: i32,
+    /// The view's quarter turn (0..3), which turns the sand trap pictures (see `texture_type_for`).
+    #[serde(skip)]
+    pub sand_phase: i32,
 }
 
 pub const MAX_LEVEL: i32 = 24;
@@ -536,6 +539,7 @@ impl Terrain {
             clubhouse_x: -1,
             clubhouse_y: -1,
             clubhouse_size: 0,
+            sand_phase: 0,
             ..Default::default()
         };
         let mut rng = Rng::new(if seed != 0 { seed } else { 1 });
@@ -762,7 +766,7 @@ pub fn blend_variation(a: i32, b: i32, c: i32) -> i32 {
 }
 
 /// Texture type the original picks for a tile type (Tile::m116d).
-fn texture_type_for(tile_type: i32, vbyte: i32, param: i32, desert: bool) -> i32 {
+fn texture_type_for(tile_type: i32, vbyte: i32, param: i32, desert: bool, phase: i32) -> i32 {
     match tile_type {
         1 => {
             if vbyte & 0x80 != 0 {
@@ -772,7 +776,9 @@ fn texture_type_for(tile_type: i32, vbyte: i32, param: i32, desert: bool) -> i32
             }
         }
         6 | 21 => TT_ROUGH as i32,
-        7 => TT_SAND_BUNKER1 as i32 + (vbyte & 3),
+        // DERIVED: Terrain.dll picks the sand picture as (variation & 3) - phase (TERRAIN.md); the exe's brush picture for
+        // sand (0x41ab87) turns the same way with the view's quarter (0x5685f4 / 2), so the phase is taken to be that quarter
+        7 => TT_SAND_BUNKER1 as i32 + ((vbyte & 3) - phase).rem_euclid(4),
         13..=16 => 13,
         17 => match vbyte {
             1 => TT_WATER_MIDDLE as i32,
@@ -866,7 +872,7 @@ pub fn build_tile_triangles(t: &Terrain, tx: i32, ty: i32, out: &mut Vec<TileTri
         // Original triangle index -> (a, b, c), and -> record.
         let abc = [[n, e, ne], [e, n, ne], [e, s, se], [s, e, se], [s, w, sw], [w, s, sw], [w, n, nw], [n, w, nw]];
         const REC_OF: [usize; 8] = [2, 3, 7, 6, 5, 4, 0, 1];
-        let tex_type = texture_type_for(ttype, vbyte, ttype, t.desert);
+        let tex_type = texture_type_for(ttype, vbyte, ttype, t.desert, t.sand_phase);
         for i in 0..8 {
             let mut v = blend_variation(abc[i][0], abc[i][1], abc[i][2]);
             if (tex_type == TT_ROUGH as i32 || ttype == 7 || tex_type == TT_FAIRWAY as i32) && v > 4 {
@@ -875,8 +881,11 @@ pub fn build_tile_triangles(t: &Terrain, tx: i32, ty: i32, out: &mut Vec<TileTri
             var[REC_OF[i]] = v;
         }
     }
-    let tex_type =
-        if ttype == TT_TEE as i32 || ttype == TT_POT_SAND_BUNKER as i32 { ttype } else { texture_type_for(ttype, vbyte, ttype, t.desert) };
+    let tex_type = if ttype == TT_TEE as i32 || ttype == TT_POT_SAND_BUNKER as i32 {
+        ttype
+    } else {
+        texture_type_for(ttype, vbyte, ttype, t.desert, t.sand_phase)
+    };
     let use_set = if ttype == TT_TEE as i32 { vbyte } else { set };
     for q in 0..4 {
         let (j, k) = (q / 2, q % 2);

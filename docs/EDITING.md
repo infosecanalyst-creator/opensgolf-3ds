@@ -43,7 +43,8 @@ highest corner, water at its lowest, buildings at their level), are compared wit
 bits). The style handed to Terrain.dll is the terrain table's byte +0x28 of the tile's type (1 water, 2 any other ground; the
 neighbour's when it is 0). The port derives the walls the same way (`build_walls`); the look is a PLACEHOLDER (a strip of
 `RetainingWallA.bmp` as tall as the step), since the port's ground is one continuous surface rather than Terrain.dll's
-per-tile corners. The exe also stands rock sprites from `cliffs01.pcx` on water banks (not drawn yet).
+per-tile corners. The exe also stands rock cuts of `cliffs01.pcx` on water banks where a wall faces the camera, picked by the
+bank's height in steps (`sg_core::decor::bank_rocks`, drawn by the port before the sprites).
 
 ## The tool under the pointer
 
@@ -52,12 +53,18 @@ Decoded from the main frame (0x40f5c0), see `crates/simgolf/src/cursor_ui.rs`: a
 see-through tree, the green's tricky variant the words "Tricky Green"; Undo names what it would undo ("Reset to rough",
 "Remove Path", "Demolish Snack Bar", green when a right click would undo it); the elevation tools draw a black tile grid, the
 heights of the nearby vertices and a purple mark or square; the building tool outlines the footprint (white, red where it
-will not fit), draws the building see-through (red where refused), names amenities and shows a clearing charge as "-N".
+will not fit), draws the building see-through (red where refused), names amenities and shows a clearing charge as "-N"; a bench
+shows a seat on each side a golfer could sit facing, a willow and a scenic bridge their design; a landmark rings the area it
+cheers; a Home Site shows its sums (lot value share, clearing, site preparation, profit) in a box at the right. The port draws a
+garden item's design at random before the click, so the pointer shows what will be placed (the exe's strip of designs is not
+there). SG_BUILD=kind arms the building tool with an exe object kind for scripted stills.
 SG_CURSOR_TILE="x,y" (tiles, fractions allowed) holds the pointer on a tile for scripted stills.
 
 ## Water
 
 Water tiles drift their texture by about a pixel, a shimmer that is my APPROXIMATION (the original's water animation is not decoded).
+At the closest zoom the frame plots single glinting pixels on water (0x411574, `draw_water_glints`): two tiles in three each
+frame, a 5 frame grey-white-grey twinkle once in 64 frames per tile, on the line through the tile's centre.
 In the Desert theme shallow water uses the `WaterShallowDesert` textures, which the original does by swapping type 17 for 25.
 
 ## Club money (mostly placeholder)
