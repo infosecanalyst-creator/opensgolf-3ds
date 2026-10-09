@@ -183,6 +183,10 @@ pub enum Screen {
     Land,
     /// The pro's skill dialog.
     Skills,
+    /// The SGA report or tournament offer, the preparation checklist, the tournament results.
+    Sga,
+    Prep,
+    Results,
 }
 
 /// A whole game as saved: the land and terrain, the golfers and holes, the staff, the money and calendar, and the exe's random
@@ -287,6 +291,10 @@ pub struct App {
     pub auto_aim: u8,
     /// The pro's golfer slot while he plays (to notice the round's end).
     pub pro_slot: i32,
+    /// Tournament screens: the SGA report or offer, the preparation checklist with its ticks, the results.
+    pub sga: Option<crate::tourney_ui::SgaScreen>,
+    pub prep: Option<(sg_core::tournament::Prep, i32)>,
+    pub results: Option<sg_core::tournament::Results>,
     /// An employee picked up to be moved: the next click on the course becomes their post (the exe's "Move this employee").
     pub moving_employee: Option<usize>,
     /// Employee clips by sprite set (0 Greeter, 1 Ranger, 2 Groundskeeper, 3 Tray Girl, 4 Golf Celebrity, 5 Marshall,
@@ -440,6 +448,9 @@ impl App {
             cancel_until: 0,
             auto_aim: 0,
             pro_slot: -1,
+            sga: None,
+            prep: None,
+            results: None,
             moving_employee: None,
             staff_clips: [[(None, None); 3]; 9],
             weed_sprite: None,
@@ -1357,6 +1368,7 @@ impl App {
         self.club.tick(&mut self.course, &mut self.exe_rng, tick);
         sg_core::ratings::pass(&mut self.club, self.difficulty);
         self.pro_after_tick();
+        self.tourney_after_tick();
         self.weeds_from_course();
         let events: Vec<golf::Event> = self.club.out.drain(..).collect();
         for e in events {
@@ -2066,7 +2078,7 @@ impl App {
     }
 
     /// After objects change: terrain meshes, trees and object sprites are rebuilt.
-    fn after_object_change(&mut self) {
+    pub(crate) fn after_object_change(&mut self) {
         self.dirty = true;
         self.props.retain(|p| !p.object);
         self.add_land_objects();

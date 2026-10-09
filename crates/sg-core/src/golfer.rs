@@ -334,7 +334,13 @@ pub struct Club {
     pub skill_points: i32,
     pub wager_level: i32,
     pub challenge_pro: i32,
-    pub matches_won: i32,
+    pub trophies: i32,
+    /// SGA tournaments: the last evaluation score (0x561250), the purse in thousands (0x567b04), the preparation state and
+    /// options (0x5a47e0: -1 just started, -2 checklist pending, else the ticked mask) and the records the field borrows.
+    pub sga_score: i32,
+    pub purse: i32,
+    pub tourney_opts: i32,
+    pub backup: Option<crate::tournament::Backup>,
     /// Accomplishments earned (bit per id, 0x4c15a0).
     pub awards: u32,
     /// Aiming: the hovered tile, whether the pointer was nearer its corner, and the frames a click is still refused.
@@ -418,8 +424,12 @@ impl Club {
             skill_points: 0,
             wager_level: 0,
             challenge_pro: -1,
-            matches_won: 0,
+            trophies: 0,
             awards: 0,
+            sga_score: 0,
+            purse: 0,
+            tourney_opts: 0,
+            backup: None,
             aim_tile: (0, 0),
             aim_corner: false,
             aim_lock: 0,

@@ -82,7 +82,8 @@ impl App {
             3 => 3.0,
             4 => 0.0,
             _ => 2.0,
-        } * p.distance as f32 / 24.0;
+        } * p.distance as f32
+            / 24.0;
         let pts: Vec<[f32; 3]> = line
             .iter()
             .enumerate()
@@ -444,6 +445,11 @@ impl App {
                         format!("{pro}: Match vs. a pro  (waiting for a challenge)")
                     };
                     v.push(PanelItem { label: m, kind: 6, arg: 1 });
+                    if self.club.can_begin_tournament() {
+                        v.push(PanelItem { label: format!("{pro}: Begin Tournament"), kind: 6, arg: 4 });
+                    }
+                } else if self.club.game & sg_core::golfer::game::TOURNAMENT != 0 {
+                    v.push(PanelItem { label: "Tournament under way: cancel it (no prizes)".into(), kind: 6, arg: 3 });
                 } else {
                     v.push(PanelItem { label: format!("{pro} is playing: cancel the round"), kind: 6, arg: 3 });
                 }
@@ -792,6 +798,7 @@ impl App {
             s.text_centered(g, 400.0, 120.0, "PAUSED", 24.0, rgb(1.0, 1.0, 0.8));
         }
         self.draw_dock(g, &s);
+        self.draw_leaderboard(g, &s);
         let lines = self.aim_text();
         if !lines.is_empty() {
             let h = 12.0 + 16.0 * lines.len() as f32;

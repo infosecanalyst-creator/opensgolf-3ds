@@ -60,6 +60,8 @@ impl App {
                 let pts = self.club.skill_points;
                 self.open_skills(pts, None);
             }
+            4 => self.begin_tournament(),
+            _ if self.club.game & sg_core::golfer::game::TOURNAMENT != 0 => self.cancel_tournament(),
             _ => {
                 if !self.club.cancel_pro_round(&mut self.exe_rng) {
                     self.show_toast("There is no round to cancel");
@@ -103,6 +105,13 @@ impl App {
             }
         }
         self.club.pro_mask = mask;
+        // a pro already out (a tournament started before the first allocation) plays with the new values
+        let gary = self.club.gary;
+        if gary >= 0 && (gary as usize) < sg_core::golfer::SLOTS {
+            let gg = &mut self.club.g[gary as usize];
+            gg.skills[..12].copy_from_slice(&self.club.pro_skill[..12]);
+            gg.skill_mask = mask;
+        }
         if let Some(m) = then {
             if !self.club.request_pro_round(m) {
                 self.show_toast("The round can't start now");
@@ -199,6 +208,10 @@ impl App {
         if self.club.game & pro::START_ROUND == 0 {
             return;
         }
+        if self.club.game & sg_core::golfer::game::REPEAT != 0 {
+            self.club.game &= !pro::START_ROUND;
+            return;
+        }
         let Some(e) = self.employees.iter().find(|e| e.active && e.job == staff::job::OWNER).copied() else {
             self.club.game &= !pro::START_ROUND;
             return;
@@ -219,7 +232,13 @@ impl App {
             let gg = &self.club.g[self.pro_slot as usize];
             let total: i32 = gg.card[1..].iter().map(|&v| v as i32).sum();
             let holes = gg.card[1..].iter().filter(|&&v| v != 0).count();
-            println!("[{:6.1}s] {}'s round is over: {total} strokes on {holes} holes (hole {}, strokes {})", self.sim_time, self.pro_name(), gg.hole, gg.strokes);
+            println!(
+                "[{:6.1}s] {}'s round is over: {total} strokes on {holes} holes (hole {}, strokes {})",
+                self.sim_time,
+                self.pro_name(),
+                gg.hole,
+                gg.strokes
+            );
             self.panel = 0;
         }
         self.pro_slot = gary;

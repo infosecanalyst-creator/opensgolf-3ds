@@ -236,7 +236,7 @@ impl Club {
         gp.flags |= flag::GARY;
         gp.x = pos.0;
         gp.y = pos.1;
-        gp.pause = 0;
+        gp.pause = 6;
         gp.facing = facing;
         self.gary = p as i32;
     }
@@ -355,7 +355,13 @@ impl Club {
         );
         if best > 0 {
             let names: Vec<&str> = (0..10).filter(|&k| pro.skills[k] == best).map(|k| SKILL_NAMES[k]).collect();
-            text += &format!(" {} is proud of {} {}0 percent skill rating in {}.", if female { "She" } else { "He" }, if female { "her" } else { "his" }, best, names.join(" and "));
+            text += &format!(
+                " {} is proud of {} {}0 percent skill rating in {}.",
+                if female { "She" } else { "He" },
+                if female { "her" } else { "his" },
+                best,
+                names.join(" and ")
+            );
         }
         let pro_name = self.roster.first().map(|p| p.name.clone()).unwrap_or_else(|| "Gary Golf".to_string());
         text += &format!(" Click on the match icon on the {pro_name} panel when you are ready to start.");
@@ -407,7 +413,7 @@ impl Club {
                 self.message(format!("At the end of the match, {} wins! ${}", self.name(o), a * 100));
                 self.earn(a, Column::Other, at);
                 self.sound(0x23, None);
-                self.matches_won += 1;
+                self.trophies += 1;
                 self.award(5);
             }
             let par: i32 = (1..=h).map(|k| self.par(k)).sum();
@@ -616,7 +622,7 @@ mod tests {
         cl.match_money(2);
         let earned: i32 = cl.out.iter().map(|e| if let crate::golfer::Event::Earn { units, .. } = e { *units } else { 0 }).sum();
         assert_eq!(earned, 40);
-        assert_eq!(cl.matches_won, 1);
+        assert_eq!(cl.trophies, 1);
         assert_eq!(cl.gary, -1);
         assert!(cl.awards & (1 << 5) != 0);
     }

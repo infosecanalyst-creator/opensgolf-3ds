@@ -14,6 +14,7 @@ mod audio;
 mod gfx;
 mod pro_ui;
 mod render;
+mod tourney_ui;
 mod ui;
 
 use app::*;
@@ -296,6 +297,18 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 app.ui_ok = ui;
                 println!("pro round requested: game flags {:#x}, skills {:?}", app.club.game, &app.club.pro_skill[..10]);
             }
+            b'g' => {
+                // a tournament: g:0 as the SGA offers it (the evaluation must pass), g:1 straight away with the default purse
+                app.club.game |= sg_core::tournament::OFFERED;
+                app.auto_aim = 1;
+                if at(0) == 1 {
+                    app.accept_tournament();
+                } else {
+                    let ui = std::mem::replace(&mut app.ui_ok, false);
+                    app.begin_tournament();
+                    app.ui_ok = ui;
+                }
+            }
             b'o' => {
                 let ok = app.open_hole();
                 println!("open hole: {ok}, next hole {}", app.club.next_hole);
@@ -423,6 +436,10 @@ impl Stage {
             match o.screen.as_deref() {
                 Some("land") => app.open_land_screen(),
                 Some("report") if app.ui_ok => app.screen = Screen::Report,
+                Some("sga") if app.ui_ok => {
+                    app.club.game |= sg_core::tournament::OFFERED;
+                    app.begin_tournament();
+                }
                 Some("skills") if app.ui_ok => {
                     let pts = app.club.first_skill_points();
                     app.open_skills(pts, Some(false));
@@ -742,7 +759,7 @@ impl Stage {
                 return;
             }
         }
-        if k == KeyCode::N && !shift && app.club.gary > 0 {
+        if k == KeyCode::N && !shift && (app.club.gary > 0 || app.club.game & sg_core::golfer::game::TOURNAMENT != 0) {
             // 'n' cancels the pro's round after a question; here a second press answers it
             if app.game_tick <= app.cancel_until {
                 app.pro_button(3);
@@ -933,6 +950,9 @@ impl Stage {
             if app.screen == Screen::Skills {
                 app.draw_skills(&mut self.g);
             }
+            if matches!(app.screen, Screen::Sga | Screen::Prep | Screen::Results) {
+                app.draw_tourney_screen(&mut self.g);
+            }
         }
         self.g.flush();
         self.g.ctx.end_render_pass();
@@ -1077,7 +1097,7 @@ impl EventHandler for Stage {
             return;
         }
         if self.app.screen != Screen::Play && self.app.ui_ok {
-            if self.app.screen != Screen::Report && self.app.screen != Screen::Skills {
+            if matches!(self.app.screen, Screen::Menu | Screen::Property) {
                 self.menu_pointer(x, y, false);
             }
             return;
@@ -1128,6 +1148,9 @@ impl EventHandler for Stage {
             } else if self.app.screen == Screen::Skills {
                 let (vx, vy) = self.app.view.to_virtual(x, y);
                 self.app.skills_click(vx, vy);
+            } else if matches!(self.app.screen, Screen::Sga | Screen::Prep | Screen::Results) {
+                let (vx, vy) = self.app.view.to_virtual(x, y);
+                self.app.tourney_click(vx, vy);
             } else if button == MouseButton::Left {
                 self.menu_pointer(x, y, true);
             }
@@ -1185,6 +1208,10 @@ impl EventHandler for Stage {
             } else if app.screen == Screen::Skills {
                 if k == KeyCode::Enter || k == KeyCode::Escape {
                     app.skills_click(-1.0, -1.0);
+                }
+            } else if matches!(app.screen, Screen::Sga | Screen::Prep | Screen::Results) {
+                if k == KeyCode::Enter || k == KeyCode::Escape {
+                    app.tourney_click(-1.0, -1.0);
                 }
             } else if k == KeyCode::Escape {
                 if app.screen == Screen::Menu {

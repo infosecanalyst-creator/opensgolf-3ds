@@ -62,9 +62,14 @@ together. `vips.rs`: the CEO, the County commissioner and the Wealthy heiress, t
 `tracts.rs` and `homes.rs`: buying land after the commissioner's approval, and home sites. `ratings.rs`: the exe's statistics
 pass and Course Report.
 
+`pro.rs`: the player's own pro, his rounds and aiming, famous-golfer challenges and the match money, his skills.
+`tournament.rs`: the SGA evaluation, the mid-year offer, the shotgun field of famous pros, the preparation checklist, the
+leaderboard, prizes and cleanup.
+
 ## Not yet in
 
-Wagers and match play, tournaments, and the player's own golfer (Gary).
+Play a Championship from the main menu (a tournament on a saved course with a saved pro), the pros' tournament speech
+lines, flower bed shapes, water effects and wildlife.
 
 ## Viewer
 

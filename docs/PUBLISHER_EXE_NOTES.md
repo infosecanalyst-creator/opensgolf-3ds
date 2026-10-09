@@ -605,3 +605,25 @@ Confidence: high unless marked.
 - A famous golfer challenges when a newcomer with all three skills arrives after the first year, hole L + 3 exists and no
   pro is out; the challenger's skill total is close to 20 + 5L. Each hole of the match is worth 20L units, and the match
   again; a loss or a tie lowers L, a win adds an accomplishment (three skill points).
+
+## SGA tournaments (evaluation 0x44fb30, offer 0x418000, field 0x46c970, checklist 0x46d200, results 0x45a090, cleanup 0x46d0c0)
+
+Confidence: high unless marked.
+- The evaluation scores ten criteria from 0 to 10 against the course class (Municipal under 6 holes, Daily Fee to 9, Country
+  Club to 17, Championship at 18): length against (ideal holes * 100 / 18) * (5 * class + 57) yards, the number of holes,
+  time against 235 minutes, average hole fun against 109, and counts of varied, scenic, length, accuracy and imagination
+  holes against the class's count (5, 9, the holes built, 18), and facilities against half of it. Any 0 fails the course.
+  The event's name follows the score in steps of 5; the first prize is ((score - 50) / 5 + 5) * (class + 1) * (holes + 1)
+  * 2 thousand dollars. A passing evaluation also lights the match button (the exe sets both flags).
+- The offer comes when tick % 0x2000 == 0x1000, outside sandbox games, with the pro off the course.
+- The field: two players for each hole (slots 2(h - 1) and 2(h - 1) + 1, starting on hole h and playing round), waits that
+  make the earlier holes start later, moods 3..6 (5 on Easy); the pro is slot 1. Each famous pro is drawn with a weight
+  (rating - 10)^2 / ((5 * difficulty + 20) * 2) against a window that grows with the purse, the club's cash and the number
+  of tries; repeats become pro 0 after 800 tries. The roster and member records are saved and come back afterwards.
+- The checklist writes the tournament par at once (3; 4 past 299 yards; 5 past 499); an unticked change gets par + 1. TV
+  towers (and booths on the last two holes) go up to seven random steps from the green along the hole's facing, on the
+  first rough or tree tile from the third step. Smooth greens and deep rough go to the shot planner.
+- The leaderboard ranks by strokes against par over the holes played, ties to the lower slot. Prizes run down the top N
+  places (purse, then two thirds of the one before). The pro's prize is paid to the club; first place brings 3 trophies,
+  second 2, others 1. The cleanup's par restore works on the record after the last hole, so tournament pars stay; the port
+  leaves that record alone instead of writing it.

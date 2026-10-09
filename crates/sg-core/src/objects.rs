@@ -28,6 +28,11 @@ pub const LANDMARKS: [&str; 19] = [
 
 /// Building sprites 0x1b6..0x1fb by exe theme (0 Parkland, 1 Desert, 2 Tropical, 3 Links); None where a theme loads nothing.
 const SPRITES: &[(u16, [Option<&str>; 4])] = &[
+    // tournament TV tower and commentary booth (loaded by 0x442180); the same art in every theme
+    (0x246, [Some("Tees/TVTowerSTATIC"), Some("Tees/TVTowerSTATIC"), Some("Tees/TVTowerSTATIC"), Some("Tees/TVTowerSTATIC")]),
+    (0x247, [Some("Tees/TVTowerANIM"), Some("Tees/TVTowerANIM"), Some("Tees/TVTowerANIM"), Some("Tees/TVTowerANIM")]),
+    (0x248, [Some("Tees/TVCommentSTATIC"), Some("Tees/TVCommentSTATIC"), Some("Tees/TVCommentSTATIC"), Some("Tees/TVCommentSTATIC")]),
+    (0x249, [Some("Tees/TVCommentANIM"), Some("Tees/TVCommentANIM"), Some("Tees/TVCommentANIM"), Some("Tees/TVCommentANIM")]),
     (
         0x1b6,
         [
@@ -436,6 +441,10 @@ pub fn building_layers(kind: i32, level: u16, theme: u8) -> Vec<Layer> {
                 add(&mut v, 0x1fa + l, theme, false, true);
             }
         }
+        // the TV tower and booth: which of the two sprites each kind draws goes through a table not decoded; the static
+        // and animated pairs are taken to belong to kinds 17 and 18 in that order
+        17 => add(&mut v, 0x247, theme, false, true),
+        18 => add(&mut v, 0x249, theme, false, true),
         _ => {}
     }
     v

@@ -104,4 +104,5 @@ Extract it with `unshield` (`brew install unshield`, then `unshield x data1.cab`
 9. Facts read from a publisher-supplied golf.exe (rules and numbers only, no code copied): docs/PUBLISHER_EXE_NOTES.md
 10. First playable loop: several holes, a stream of golfers paying fees, the board's debt warnings (docs/PLAYING.md)
 11. Port to Rust for macOS, Windows and Linux (done; the C++ port's courses, shots, ratings and exe maths are reproduced exactly, checked by golden tests)
-12. Next: tile decoration drawing (the hole tool is in: holes are built, planned and opened as in the exe), stories and special visitors, ratings, tournaments, whole-game saves
+12. The rest of the exe's game (done): the hole tool, tile decorations, golfer stories, special visitors, buying land, home sites, ratings and the Course Report, whole-game saves, the player's pro with matches against famous golfers, and SGA tournaments
+13. Next: flower bed shapes (they need a data table not available), water effects and wildlife, celebrity residents, Play a Championship from the menu

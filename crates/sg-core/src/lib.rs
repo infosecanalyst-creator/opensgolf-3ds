@@ -26,8 +26,8 @@ pub mod mixer;
 pub mod mood;
 pub mod objects;
 pub mod planner;
-pub mod pro;
 pub mod png;
+pub mod pro;
 pub mod properties;
 pub mod ratings;
 pub mod rng;
@@ -38,6 +38,7 @@ pub mod sprites;
 pub mod staff;
 pub mod stories;
 pub mod terrain;
+pub mod tournament;
 pub mod tracts;
 pub mod vips;
 
