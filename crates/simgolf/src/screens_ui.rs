@@ -529,7 +529,7 @@ impl App {
         s.text_centered(g, 249.0, 66.0, "Rnds", 11.0, black());
         s.text_centered(g, 320.0, 66.0, "Status", 12.0, black());
         for h in 1..19 {
-            s.text_centered(g, 381.0 + 21.0 * (h - 1) as f32, 66.0, &format!("{h}"), 10.0, black());
+            s.text_centered(g, 390.5 + 21.0 * (h - 1) as f32, 66.0, &format!("{h}"), 10.0, black());
         }
         let mut rows: Vec<usize> = (0..self.club.members.len()).filter(|&r| self.club.members[r].rounds != 0).collect();
         rows.sort_by_key(|&r| self.club.roster.get(r).map(|p| p.name.to_lowercase()).unwrap_or_default());
@@ -553,14 +553,15 @@ impl App {
             s.text_centered(g, 320.0, y, status, 11.0, c);
             for h in 1..19 {
                 let b = m.holes[h];
-                let x = 375.0 + 21.0 * (h - 1) as f32;
+                // the grid's columns are 21 wide from x 380
+                let x = 383.0 + 21.0 * (h - 1) as f32;
                 if b & 1 != 0 {
-                    s.fill(g, x, y - 10.0, 12.0, 10.0, rgb(0.3, 0.3, 0.35));
+                    s.fill(g, x, y - 10.0, 15.0, 10.0, rgb(0.3, 0.3, 0.35));
                 } else if b & 2 != 0 {
-                    s.fill(g, x, y - 10.0, 12.0, 10.0, rgb(0.85, 0.2, 0.35));
+                    s.fill(g, x, y - 10.0, 15.0, 10.0, rgb(0.85, 0.2, 0.35));
                 }
                 if b & 4 != 0 {
-                    s.fill(g, x + 2.0, y - 8.0, 8.0, 6.0, rgb(0.55, 0.55, 0.55));
+                    s.fill(g, x + 3.5, y - 8.0, 8.0, 6.0, rgb(0.55, 0.55, 0.55));
                 }
             }
         }

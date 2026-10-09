@@ -228,6 +228,33 @@ fn load_ui(app: &mut App, g: &mut Gfx) -> bool {
 
 /// Scripted edits for tests: "p:x,y,type[,vbyte,radius];w:x,y,kind[,radius];b:x,y,building;k:x,y,dir;r:cx,cy,delta[,radius];
 /// h:kind[,x,y];t:x,y,type;o" (t paints one tile through the hole tool, o opens the hole being built; h hires an employee: 0 Club Pro, 1 Ranger, 2 Groundskeeper, 3 Soda Vendor; x,y is the post tile).
+/// The --screen test hook: opens a screen of a game in progress.
+fn open_screen(app: &mut App, screen: Option<&str>) {
+    match screen {
+        Some("land") => app.open_land_screen(),
+        Some("report") if app.ui_ok => app.screen = Screen::Report,
+        Some("pair") if app.ui_ok => app.screen = Screen::Pair,
+        Some("board") if app.ui_ok => app.screen = Screen::Board,
+        Some("yearend") if app.ui_ok => app.screen = Screen::YearEnd,
+        Some("roster") if app.ui_ok => app.screen = Screen::Roster,
+        Some("comments") if app.ui_ok => app.screen = Screen::Comments,
+        Some("histograph") if app.ui_ok => app.screen = Screen::Histograph,
+        Some("finance") if app.ui_ok => app.screen = Screen::Finance,
+        Some("routing") if app.ui_ok => app.screen = Screen::Routing,
+        Some("shortcuts") if app.ui_ok => app.screen = Screen::Shortcuts,
+        Some("golfers") if app.ui_ok => app.panel = 4,
+        Some("sga") if app.ui_ok => {
+            app.club.game |= sg_core::tournament::OFFERED;
+            app.begin_tournament();
+        }
+        Some("skills") if app.ui_ok => {
+            let pts = app.club.first_skill_points();
+            app.open_skills(pts, Some(false));
+        }
+        _ => {}
+    }
+}
+
 fn apply_edit_spec(app: &mut App, spec: &str) {
     for item in spec.split(';').filter(|s| !s.is_empty()) {
         let (kind, rest) = (item.as_bytes()[0], item.get(2..).unwrap_or(""));
@@ -261,6 +288,32 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                             app.terrain.path_kind[i] = c as u8;
                         }
                     }
+                }
+            }
+            b'd' => {
+                // ASCII map of the tile types: '#' out of bounds, 'C' the clubhouse door, '~' water, 'T' woods, '.' rough,
+                // '=' fairway, 'o' green, 't' tee, '*' other
+                let door = app.course.door;
+                for y in 0..app.terrain.h {
+                    let row: String = (0..app.terrain.w)
+                        .map(|x| match ((x, y) == door, app.terrain.type_at(x, y)) {
+                            (true, _) => 'C',
+                            (_, 20) => '#',
+                            (_, 17 | 23 | 24 | 25) => '~',
+                            (_, 13) => 'T',
+                            (_, 4 | 5) => '.',
+                            (_, 2 | 3) => '=',
+                            (_, 1) => 'o',
+                            (_, 0) => 't',
+                            (_, 22) => 'B',
+                            _ => '*',
+                        })
+                        .collect();
+                    println!("map {y:3} {row}");
+                }
+                for y in 9..20 {
+                    let row: Vec<String> = (9..22).map(|x| format!("{:2}", app.terrain.type_at(x, y))).collect();
+                    println!("types {y:3} {}", row.join(" "));
                 }
             }
             b'b' if item.len() > 2 && v.len() == 3 => {
@@ -471,29 +524,7 @@ impl Stage {
                 app.econ.start_cash = c;
                 app.econ.cash = c;
             }
-            match o.screen.as_deref() {
-                Some("land") => app.open_land_screen(),
-                Some("report") if app.ui_ok => app.screen = Screen::Report,
-                Some("pair") if app.ui_ok => app.screen = Screen::Pair,
-                Some("board") if app.ui_ok => app.screen = Screen::Board,
-                Some("yearend") if app.ui_ok => app.screen = Screen::YearEnd,
-                Some("roster") if app.ui_ok => app.screen = Screen::Roster,
-                Some("comments") if app.ui_ok => app.screen = Screen::Comments,
-                Some("histograph") if app.ui_ok => app.screen = Screen::Histograph,
-                Some("finance") if app.ui_ok => app.screen = Screen::Finance,
-                Some("routing") if app.ui_ok => app.screen = Screen::Routing,
-                Some("shortcuts") if app.ui_ok => app.screen = Screen::Shortcuts,
-                Some("golfers") if app.ui_ok => app.panel = 4,
-                Some("sga") if app.ui_ok => {
-                    app.club.game |= sg_core::tournament::OFFERED;
-                    app.begin_tournament();
-                }
-                Some("skills") if app.ui_ok => {
-                    let pts = app.club.first_skill_points();
-                    app.open_skills(pts, Some(false));
-                }
-                _ => {}
-            }
+            open_screen(&mut app, o.screen.as_deref());
         }
         if let Some(f) = &o.course {
             match Terrain::load(f, &app.terrain) {
@@ -522,6 +553,7 @@ impl Stage {
                 std::process::exit(1);
             }
             println!("loaded game {} at tick {}", f.display(), app.game_tick);
+            open_screen(&mut app, o.screen.as_deref());
         }
         apply_edit_spec(&mut app, &o.edit_spec);
         if !o.edit_spec.is_empty() {
