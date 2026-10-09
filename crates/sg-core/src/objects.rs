@@ -156,6 +156,15 @@ const SPRITES: &[(u16, [Option<&str>; 4])] = &[
         ],
     ),
     (0x1c7, [Some("bldgs/park/CartL2_ANIM"), Some("bldgs/Desert/DESCartL2Anim"), None, None]),
+    (
+        0x1ca,
+        [
+            Some("Homes/Regular/Parkland/A/ParkHouseA"),
+            Some("Homes/Regular/Desert/A/DesHouseA"),
+            Some("Homes/Regular/Tropical/B/TropHouseB"),
+            Some("Homes/Regular/Links/B/LinksHouseB"),
+        ],
+    ),
     (0x1c8, [Some("bldgs/park/sign"), Some("bldgs/desert/DESsign"), Some("bldgs/tropical/tropsign"), Some("bldgs/links/sign_links")]),
     (
         0x1c9,

@@ -326,8 +326,10 @@ pub struct Object {
     /// Facing 0..3.
     pub dir: u8,
     pub flags: u8,
-    /// Landmark look (what the landmark is), for kind 4.
+    /// Landmark look (what the landmark is), for kind 4; building level for kinds 6 and up; a home site's owner.
     pub sub: i32,
+    /// A home site's smoothed lot value (+0xc), which sizes the house drawn on it.
+    pub val: i32,
 }
 
 /// Generated land in the exe's layout.
@@ -555,11 +557,11 @@ impl Land {
         // The exe reuses the first free object record.
         let n = match self.objects.iter().position(|o| o.kind == -1) {
             Some(i) => {
-                self.objects[i] = Object { kind, a, b, dir: 0, flags: 0, sub: 0 };
+                self.objects[i] = Object { kind, a, b, dir: 0, flags: 0, sub: 0, val: 0 };
                 i
             }
             None => {
-                self.objects.push(Object { kind, a, b, dir: 0, flags: 0, sub: 0 });
+                self.objects.push(Object { kind, a, b, dir: 0, flags: 0, sub: 0, val: 0 });
                 self.objects.len() - 1
             }
         };

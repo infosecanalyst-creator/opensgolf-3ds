@@ -518,3 +518,19 @@ shape table is data this project could not read).
 - Scenic elm tile (the willow tool): a bed of scenic flowers and an ornamental tree, plum, dogwood, elm, Japanese maple,
   cypress, scenic tree or peach by variant & 7, or the willow (coloured by the noise) for 0.
 
+## Buying land and home sites (land screen 0x4587a0, lot value 0x42ef40, main frame 0x417a08)
+
+Confidence: high.
+- Nine tracts of 16 x 16 tiles from (1, 1); a tract is for sale while it holds out-of-bounds tiles. Price: f = 5, plus
+  2^purchases for each out-of-bounds tile with chance 1/3; price = f * 20 / 100 thousand dollars. The rolls repeat on every
+  redraw of the screen (consuming the generator) but the first prices stay. Buying restores the tiles the land generator had
+  marked out of bounds. A bought tract keeps a price of $5,000, and clicking it charges that again and still counts as a
+  purchase (an exe bug kept as is).
+- A home site needs Silver or better members to outnumber the sites, and a lot value of 50: the twelve tiles around the 2 x 2
+  lot (rough 12, water 32, trees 25 or more, other lots -16, tees, greens and fairways -8, ...) times the best hole fun over
+  distance (fun = mood sum * 1000 / (planned / 2 + 4 + tee shots) + (3 - difficulty) * 100, +100 each for Top 100 and Top 18
+  marks; distance in tiles to tee, cup or the far yardage marker, plus 8), divided by 40; a Marina in use adds a third per level.
+- Placing sells the lot at once for a quarter of its value (Home Sites); demolishing buys it back for its smoothed value / 50
+  plus half its value. At each charge interval every (difficulty + 2)th object, starting at (tick / interval) % (difficulty + 2),
+  re-values its site: v = value + v - v / 12. The site shows a sign below 200, a house being built below 600, then a house.
+

@@ -20,6 +20,7 @@ pub mod geom;
 pub mod golfer;
 pub mod holes;
 pub mod holetool;
+pub mod homes;
 pub mod land;
 pub mod mixer;
 pub mod mood;

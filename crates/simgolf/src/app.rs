@@ -170,7 +170,7 @@ pub const PAINT: [PaintEntry; 20] = [
 /// Building kinds the Add Buildings panel offers, in the exe's order (kind numbers of `land::BUILDINGS`): benches, flower beds,
 /// ball washers, then the amenities as holes unlock them. Paths have their own tool; landmarks and home sites need donations and
 /// members first.
-pub const OFFERED_KINDS: [i32; 14] = [1, 2, 3, 16, 19, 6, 7, 8, 9, 10, 11, 12, 13, 14];
+pub const OFFERED_KINDS: [i32; 15] = [1, 2, 3, 16, 19, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Screen {
@@ -935,6 +935,10 @@ impl App {
     pub fn build_available(&self, kind: usize) -> bool {
         // The garden page (kinds up to 5, the willow and the bridge) is always open; buildings unlock with holes.
         let k = kind as i32;
+        // home sites only while Silver and better members outnumber them (0x56d1b0)
+        if k == land::K_HOME_SITE && self.club.homesite_demand < 1 && !self.econ.sandbox {
+            return false;
+        }
         OFFERED_KINDS.contains(&k)
             && (k <= 5 || k == land::K_WILLOW || k == land::K_BRIDGE || k < land::unlocked_kinds(self.holes.len(), self.econ.sandbox))
     }
@@ -1047,7 +1051,7 @@ impl App {
         self.course.theme = self.exe_theme();
         if self.course.objects.first().map(|o| o.kind) != Some(land::K_CLUBHOUSE) {
             let (a, b) = self.course.door;
-            self.course.objects.insert(0, land::Object { kind: land::K_CLUBHOUSE, a, b, dir: 0, flags: 0x40, sub: 0 });
+            self.course.objects.insert(0, land::Object { kind: land::K_CLUBHOUSE, a, b, dir: 0, flags: 0x40, sub: 0, val: 0 });
         }
         self.weeds_to_course();
         for f in self.course.flags.iter_mut() {
@@ -1257,6 +1261,20 @@ impl App {
         self.club.cash = (self.econ.cash / Economy::UNIT) as i32;
         self.club.year = self.econ.year_index() as i32;
         let tick = self.game_tick;
+        let sites = self.land.as_ref().map(|l| l.objects.iter().filter(|o| o.kind == land::K_HOME_SITE).count()).unwrap_or(0) as i32;
+        let rich = self.club.members.iter().filter(|m| m.level & 7 >= 3).count() as i32;
+        self.club.homesite_demand = rich - sites;
+        if sites > 0 && tick.is_multiple_of(1024 / (self.difficulty.clamp(0, 3) as u32 + 2)) {
+            let sizes = |l: &land::Land| l.objects.iter().map(|o| sg_core::homes::house_size(o.val)).collect::<Vec<_>>();
+            if let Some(l) = self.land.as_mut() {
+                let before = sizes(l);
+                sg_core::homes::revalue(&mut l.objects, &self.course, &self.club.holes, self.difficulty, tick);
+                if sizes(l) != before {
+                    self.props.retain(|p| !p.object);
+                    self.add_land_objects();
+                }
+            }
+        }
         self.club.tick(&mut self.course, &mut self.exe_rng, tick);
         self.weeds_from_course();
         let events: Vec<golf::Event> = self.club.out.drain(..).collect();
@@ -1794,6 +1812,11 @@ impl App {
                 let size = land.footprint_size(&o);
                 land.remove_object(i);
                 land.write_area(&mut self.terrain, o.a, o.b, o.a + size - 1, o.b + size - 1);
+                if o.kind == land::K_HOME_SITE {
+                    // buying the lot back (0x40e400): its smoothed value / 50 plus half its value now
+                    let c = o.val / 50 + sg_core::homes::lot_value(&self.course, &self.club.holes, self.difficulty, o.a, o.b) / 2;
+                    self.econ.spend_to(economy::LEDGER_HOME_SITES, c as f64 * Economy::UNIT);
+                }
                 self.after_object_change();
                 self.show_toast("Building demolished");
                 self.snd("Interface/Building.wav", 0.7, false);
@@ -1858,6 +1881,17 @@ impl App {
         if !self.econ.affordable(cost, holes) {
             return self.show_toast(&format!("This change costs {}. You have only {}.", money(cost as i64), money(self.econ.cash as i64)));
         }
+        let lot = if kind == land::K_HOME_SITE {
+            let v = sg_core::homes::lot_value(&self.course, &self.club.holes, self.difficulty, tx, ty);
+            if v < 50 {
+                return self.show_toast(
+                    "This is not a very attractive location for a building lot. Home buyers like water, woods, and grass near a golf hole with a good fun factor.",
+                );
+            }
+            v / 4
+        } else {
+            0
+        };
         let Some(land) = self.land.as_mut() else { return };
         if let Some(i) = existing {
             let o = land.objects[i];
@@ -1869,6 +1903,10 @@ impl App {
         land.objects[n].sub = level;
         land.write_area(&mut self.terrain, tx, ty, tx + size - 1, ty + size - 1);
         self.econ.spend_to(economy::LEDGER_FACILITIES, cost);
+        if lot > 0 {
+            // the lot is sold at once
+            self.econ.earn_to(economy::LEDGER_HOME_SITES, lot as f64 * Economy::UNIT);
+        }
         self.after_object_change();
         self.snd("Interface/Building.wav", 0.7, false);
     }
@@ -1895,7 +1933,7 @@ impl App {
         let mut land = Land::from_terrain(&self.terrain, self.exe_theme());
         if self.terrain.clubhouse_x >= 0 {
             let (a, b) = (self.terrain.clubhouse_x - 2, self.terrain.clubhouse_y - 2);
-            land.objects.push(land::Object { kind: land::K_CLUBHOUSE, a, b, dir: 0, flags: 0x40, sub: 0 });
+            land.objects.push(land::Object { kind: land::K_CLUBHOUSE, a, b, dir: 0, flags: 0x40, sub: 0, val: 0 });
             land.clubhouse = (a, b);
             for r in 0..4 {
                 for c in 0..4 {
@@ -2363,7 +2401,17 @@ impl App {
             let (cx, cz) = self.terrain.tile_centre(o.a, o.b);
             let off = (size - 1) as f32 * TILE_SIZE * 0.5;
             let (x, z) = (cx + off, cz + off);
-            let layers: Vec<(String, bool, bool)> = if o.kind == land::K_LANDMARK {
+            let layers: Vec<(String, bool, bool)> = if o.kind == land::K_HOME_SITE {
+                let id = match sg_core::homes::house_size(o.val) {
+                    0 => 0x1c8,
+                    1 => 0x1c9,
+                    _ => 0x1ca,
+                };
+                match sg_core::objects::sprite(id, theme) {
+                    Some(f) => vec![(f.to_string(), false, false)],
+                    None => continue,
+                }
+            } else if o.kind == land::K_LANDMARK {
                 match sg_core::objects::LANDMARKS.get(o.sub as usize) {
                     Some(f) => vec![(f.to_string(), false, true)],
                     None => continue,

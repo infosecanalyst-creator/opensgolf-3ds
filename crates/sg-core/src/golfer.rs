@@ -3256,7 +3256,7 @@ mod tests {
             }
         }
         c.flags[idx(35, 25)] |= f::CUP | 1;
-        c.objects.push(Object { kind: 15, a: 3, b: 22, dir: 0, flags: 0x40, sub: 0 });
+        c.objects.push(Object { kind: 15, a: 3, b: 22, dir: 0, flags: 0x40, sub: 0, val: 0 });
         for a in 3..7 {
             for b in 22..26 {
                 c.ty[idx(a, b)] = t::BUILDING;
