@@ -250,7 +250,7 @@ impl Club {
         } else {
             format!("{lead} and your fame is spreading... {who} {name} is playing your course today. If she likes it, she may donate a landmark.")
         };
-        self.message(text);
+        self.message_by(text, p2 as i32, 1);
         self.g[p2].class = class;
         let mut mask: u16 = fixed;
         for _ in 0..4 {
@@ -302,45 +302,54 @@ impl Club {
                 if finished && m > 2 {
                     if 2 * k < self.g[g].hole {
                         let amount = ((m > 4) as i32 + 1) * 50;
-                        self.message(format!(
-                            "Corporate CEO {name} has decided to invest ${} for a seat on the board, he says.",
-                            amount * 100
-                        ));
+                        self.message_by(
+                            format!("Corporate CEO {name} has decided to invest ${} for a seat on the board, he says.", amount * 100),
+                            g as i32,
+                            1,
+                        );
                         self.out.push(Event::Earn { units: amount, column: Column::Other, at: (self.g[g].x, self.g[g].y) });
                         self.log_event(crate::records::log::CEO, k);
                         self.sound(0x19, None);
                     } else {
-                        self.message(format!("Corporate CEO {name} has decided not to invest in your club."));
+                        self.message_by(format!("Corporate CEO {name} has decided not to invest in your club."), g as i32, 1);
                         self.ceo_count = k - 1;
                     }
                 } else {
                     let pq = partner_quit(self);
-                    self.message(format!("Corporate CEO {name} has decided not to invest in you.{pq} \"{}\" he fumes.", mood_remark(m)));
+                    self.message_by(
+                        format!("Corporate CEO {name} has decided not to invest in you.{pq} \"{}\" he fumes.", mood_remark(m)),
+                        g as i32,
+                        1,
+                    );
                 }
             }
             0x40 => {
                 if finished && m > 2 {
                     let goal = self.rating_goal((self.difficulty + 2) * (self.purchases + 3) * 50);
-                    self.message(format!(
+                    self.message_by(format!(
                         "County commissioner {name} has decided to approve an expansion request! \"I'll be back again if your {goal},\" he says."
-                    ));
+                    ), g as i32, 1);
                     self.sound(0x2f, None);
                     self.land_offer = true;
                 } else {
                     let pq = partner_quit(self);
-                    self.message(format!(
-                        "County commissioner {name} has decided not to approve your expansion request.{pq} \"{}\" he comments.",
-                        mood_remark(m)
-                    ));
+                    self.message_by(
+                        format!(
+                            "County commissioner {name} has decided not to approve your expansion request.{pq} \"{}\" he comments.",
+                            mood_remark(m)
+                        ),
+                        g as i32,
+                        1,
+                    );
                 }
             }
             0x80 => {
                 if !finished || m < 3 {
                     let pq = partner_quit(self);
-                    self.message(format!(
+                    self.message_by(format!(
                         "Wealthy Heiress {name} has decided not to donate a landmark.{pq} \"{}\" she comments. \"I'll be back in a while.\"",
                         mood_remark(m)
-                    ));
+                    ), g as i32, 1);
                 } else {
                     let mut t = m;
                     let mut id;
@@ -361,11 +370,11 @@ impl Club {
                         _ => "golfer stories will proceed happily".to_string(),
                     };
                     let goal = self.rating_goal((self.donations + 2) * (self.donations + 2) * 25);
-                    self.message(format!(
+                    self.message_by(format!(
                         "Wealthy Heiress {name} has decided to donate a {} to your course. In the area near it, {effect}. More can be added to your course for ${} each. \"I'll be back if your {goal},\" she says.",
                         landmark_name(id),
                         (id * 5 + 5) * 200
-                    ));
+                    ), g as i32, 1);
                     self.donations += 1;
                     self.sound(0x2f, None);
                     self.landmarks_owned |= 1 << id;

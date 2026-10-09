@@ -423,9 +423,14 @@ pub struct App {
     pub show_names: bool,
     /// The dock button under the pointer and for how many frames (its tooltip waits for 11).
     pub dock_tip: (i32, u32),
+    /// Floating money (0x40c890): an 8-entry ring of (amount in $100 units, map x, map y, ticks left).
+    pub floats: [(i32, i32, i32, u8); 8],
+    pub float_next: usize,
     /// The popup menu shown, and the last ticker message (Repeat Last Message).
     pub popup: Option<crate::popup_ui::Popup>,
     pub last_message: String,
+    /// The main screen's message window (the exe's ticker).
+    pub ticker: crate::message_ui::Ticker,
     /// The course name being typed (Rename Course...), while the prompt is open.
     pub rename: Option<String>,
     pub water_depth: Vec<u8>,
@@ -454,6 +459,10 @@ pub struct App {
     pub world_base: Image,
     /// The main screen's course badge and rating pills (Interface/courseinfo.pcx with its alpha sheet).
     pub hud_art: Image,
+    /// The rest of the HUD's art and its face strip (hud_ui).
+    pub hud: crate::hud_ui::HudArt,
+    /// Shift is held (the face strip then shows the back nine only).
+    pub shift_held: bool,
     /// The Select Difficulty art: the screen and the sheet of its lit items.
     pub diff_base: Image,
     pub diff_mo: Image,
@@ -617,8 +626,11 @@ impl App {
             show_thoughts: true,
             show_names: true,
             dock_tip: (-1, 0),
+            floats: [(0, 0, 0, 0); 8],
+            float_next: 0,
             popup: None,
             last_message: String::new(),
+            ticker: Default::default(),
             rename: None,
             art: Default::default(),
             pair_picks: Vec::new(),
@@ -655,6 +667,8 @@ impl App {
             tool_tiles: [Image::default(); 4],
             world_base: Image::default(),
             hud_art: Image::default(),
+            hud: Default::default(),
+            shift_held: false,
             diff_base: Image::default(),
             diff_mo: Image::default(),
             theme_icons: [Image::default(); 4],
@@ -719,9 +733,12 @@ impl App {
         resolve(&self.game_dir, rel)
     }
 
+    /// A message for the player: on the course it goes to the ticker as the exe's messages do (priority 1, nobody
+    /// speaking); the title screens, which have no ticker, show it as a note at the bottom for 3 seconds.
     pub fn show_toast(&mut self, msg: &str) {
         self.toast = msg.to_string();
         self.toast_until = self.clock + 3.0;
+        self.post_message(msg, 1, crate::message_ui::NOBODY);
     }
 
     // ---- sound ------------------------------------------------------------------------------------------------------------
@@ -1495,7 +1512,7 @@ impl App {
             self.club.open_hole(&mut self.course);
         }
         // adopted holes open quietly
-        self.club.out.retain(|e| !matches!(e, golf::Event::Sound { .. } | golf::Event::Message(_)));
+        self.club.out.retain(|e| !matches!(e, golf::Event::Sound { .. } | golf::Event::Message { .. }));
     }
 
     /// The exe's open-hole command (key H, or a click on the new hole's cup green): the hole being built needs a tee and a
@@ -1600,11 +1617,31 @@ impl App {
         let tick = self.game_tick;
         let sites = self.land.as_ref().map(|l| l.objects.iter().filter(|o| o.kind == land::K_HOME_SITE).count()).unwrap_or(0) as i32;
         self.club.sandbox = self.econ.sandbox;
+        for f in self.floats.iter_mut() {
+            f.3 = f.3.saturating_sub(1);
+        }
+        if !self.econ.sandbox && self.ui_ok {
+            // the opening story and the first design tip (0x45fd80), told by the course itself
+            if tick == 0x20 {
+                let text = self.welcome_text();
+                self.post_message(&text, 1, -4);
+            } else if tick == 0x1400 {
+                self.post_message(DESIGN_TIP, 0, -4);
+            }
+        }
+        if self.econ.sandbox {
+            // the exe holds a sandbox's cash at 10000 units every frame
+            self.econ.cash = 10000.0 * Economy::UNIT;
+        }
         self.club.island = self.land.as_ref().map(|l| l.slot.record().coast == 2).unwrap_or(false);
         if std::mem::take(&mut self.club.land_offer) {
-            // the commissioner approved an expansion: the exe asks whether to buy land, then shows the tracts
-            self.show_toast("Do you wish to purchase additional land to expand your course?");
-            self.open_land_screen();
+            // the commissioner approved an expansion: sound 56 and the question; yes shows the tracts
+            self.ui_sound(56);
+            if self.ui_ok {
+                self.open_popup(crate::popup_ui::PopupKind::LandOffer);
+            } else {
+                self.open_land_screen();
+            }
         }
         self.club.home_sites = sites;
         self.club.homesite_demand = self.club.ratings.waitlist;
@@ -1637,6 +1674,7 @@ impl App {
         self.club.course_name = self.course_name.clone();
         self.club.course_theme = self.exe_theme();
         self.pro_round_tick();
+        self.club.ticker_busy = self.ticker.busy() || self.card.is_some();
         self.club.tick(&mut self.course, &mut self.exe_rng, tick);
         sg_core::ratings::pass(&mut self.club, self.difficulty);
         self.pro_after_tick();
@@ -1676,7 +1714,8 @@ impl App {
                     let at = at.map(|(x, y)| self.units_to_world(x, y));
                     self.slot_sound_after(slot, at, delay);
                 }
-                golf::Event::Earn { units, column, .. } => {
+                golf::Event::Earn { units, column, at } => {
+                    self.float_money(units, at);
                     let col = match column {
                         golf::Column::GreensFees => economy::LEDGER_GREEN_FEES,
                         golf::Column::FoodDrink => economy::LEDGER_FOOD_DRINK,
@@ -1688,11 +1727,11 @@ impl App {
                         self.econ.earn_to(col, units as f64 * Economy::UNIT);
                     }
                 }
-                golf::Event::Message(m) => {
-                    if !m.is_empty() {
-                        println!("[{:6.1}s] {m}", self.sim_time);
-                        self.show_toast(&m);
-                        self.last_message = m.clone();
+                golf::Event::Message { text, speaker } => {
+                    if !text.is_empty() {
+                        // the club already refused what the busy ticker would refuse
+                        println!("[{:6.1}s] {text}", self.sim_time);
+                        self.post_message(&text, 1, speaker);
                     }
                 }
                 golf::Event::HoleDone { hole, strokes, mood, fee, .. } => {
@@ -1744,6 +1783,7 @@ impl App {
             if !self.econ.game_over {
                 self.club_tick();
             }
+            self.ticker.step();
             self.staff_tick();
             self.staff_animate();
             self.resident_tick();
@@ -1867,7 +1907,7 @@ impl App {
         let land = land::generate(slot_index, self.offer[slot_index], self.difficulty, sandbox, &mut self.exe_rng, &self.noise);
         self.terrain = land.to_terrain();
         self.land = Some(land);
-        self.course_name = format!("{} GC", p.name);
+        self.course_name = p.course.to_string();
         self.load_theme(g, p.theme);
         self.club.course_name = self.course_name.clone();
         self.club.course_theme = self.exe_theme();
@@ -1878,6 +1918,11 @@ impl App {
         self.reset_staff();
         self.load_story();
         self.reset_clock = true;
+        // the game opens on the clubhouse
+        let (a, b) = self.club_anchor();
+        let (x, z) = self.units_to_world(a * 1024 + 1024, b * 1024 + 1024);
+        self.cam_x = x;
+        self.cam_z = z;
         println!(
             "new game: {}, {} acres, price {}, cash left {:.0}{}",
             p.name,
@@ -1995,21 +2040,6 @@ impl App {
         let pros = read("progolfers.dta").map(|t| sg_core::vips::parse_pros(&t)).unwrap_or_default();
         self.club.celebrities = celebs;
         self.club.pros = pros;
-    }
-
-    /// Advisor text from what the club looks like now. These hints are our own words.
-    pub fn advisor_text(&self) -> &'static str {
-        if self.holes.is_empty() {
-            "Welcome to your new club. Open Build Course (the big round button at the bottom left), then paint a tee and a green a good distance apart to make your first hole."
-        } else if !self.land.as_ref().map(|l| l.objects.iter().any(|o| (6..=14).contains(&o.kind))).unwrap_or(false) {
-            "Golfers are on the course. Open Add Buildings and put up an amenity, then lay a path from it to the clubhouse: buildings only work once a path joins them to the clubhouse."
-        } else if self.holes.len() < 3 {
-            "More holes bring more golfers and more money. Build another tee and green, and make the holes different: long, narrow and tricky shots raise the club's skill rating."
-        } else if self.econ.staff_count() == 0 {
-            "Your course is growing. The People button lets you hire a club pro, ranger, groundskeeper or soda vendor, who cost wages but keep golfers happy."
-        } else {
-            "Watch the fun and skill numbers at the top right. Press the information button for the course report, and keep cash above zero so the board stays calm."
-        }
     }
 
     // ---- course editing ----------------------------------------------------------------------------------------------------
@@ -2604,6 +2634,49 @@ impl App {
         self.rot = ((self.rot / 90.0).round() + quarters as f32).rem_euclid(4.0) * 90.0;
     }
 
+    /// The welcome for the course's theme (0x45fd80 at tick 0x20), with the course name and the starting cash in thousands,
+    /// in the exe's words (its slips included).
+    pub fn welcome_text(&self) -> String {
+        let n = &self.course_name;
+        let k = (self.econ.cash / Economy::UNIT) as i64 * 100 / 1000;
+        match self.exe_theme() {
+            1 => format!(
+                "Welcome to the {n} Country Club. What was once a vast expanse of featureless desert is now a vast expanse of \
+                 featureless desert interrupted by a lonely golf clubhouse. This area is blessed with sunshine 365 days of the \
+                 year. A rapidly growing population of avid golfers is demanding a larger improved course. As the new manager, \
+                 can you use your \u{a7}{k},000 budget to turn {n} into a world-class golf resort?"
+            ),
+            2 => format!(
+                "Welcome to {n} Golf Course. This delightful slice of tropical paradise needs only your help to become a \
+                 world-class golfing destination. After all, who doesn't enjoy a little humidity - and the alligators have been \
+                 really well behaved lately. With the successful conclusion of the recent mosquito eradication program and the \
+                 dedication of the new 'El Presidente' international airport, {n} is bursting with potential. "
+            ),
+            3 => format!(
+                "Welcome to {n} Golf Links.  This ancient and venerable institution has fallen upon hard times. The sheep have \
+                 returned to graze the pastoral fields whereupon kings and princes did ply the game of Golfe in days of yore. \
+                 But all is not lost, with a tidy sum of money acquired by liquidating your late uncle's butterfly collection \
+                 and a royal deed of grant from the local magistrate, you are ready to return {n} to it's former preeminence \
+                 in the world of Golfe."
+            ),
+            _ => format!(
+                "Welcome to {n} Golf Club.  The unexpected passing of your great-uncle Harry has left you in possession of \
+                 {n}. The property includes rolling hills, crisp woodlands, and a sparkling waters. However, uncle Harry was \
+                 somewhat of a lazy slacker and never built any golf holes! With the \u{a7}{k},000 he left you can you turn {n} \
+                 into a world-class golf course?  Good Luck."
+            ),
+        }
+    }
+
+    /// Queues a floating amount at a map point for 24 ticks (0x40c890); none in a sandbox.
+    pub fn float_money(&mut self, units: i32, at: (i32, i32)) {
+        if units == 0 || self.econ.sandbox {
+            return;
+        }
+        self.floats[self.float_next] = (units, at.0, at.1, 0x18);
+        self.float_next = (self.float_next + 1) % 8;
+    }
+
     pub fn pan(&mut self, right: f32, up: f32) {
         let yaw = (45.0 + self.rot) * std::f32::consts::PI / 180.0;
         self.cam_x += yaw.cos() * right + yaw.sin() * up;
@@ -2612,6 +2685,12 @@ impl App {
 }
 
 /// Original pitch angles, chosen per resolution in Terrain::initSystem (38.68, 40.54, 40.83 degrees).
+/// The design tip five months in (0x45fd80 at tick 0x1400).
+pub const DESIGN_TIP: &str = "Building a great golf course requires imagination, intuition, persistence, and a bulldozer. The basic \
+     idea is to present the player with a variety of shots which appear challenging and require strategic thinking, but are \
+     within the player's ability. This philosophy is known as 'look hard and play easy.' Players who enjoy your course will \
+     tell their friends, return more often, and pay higher greens fees!";
+
 /// Our zoom at the exe's zoom level 1 (a tile 16 pixels wide on the 800 x 600 screen); its levels are 1, 2 and 4.
 pub const ZOOM_UNIT: f32 = 0.905 / 4.0;
 

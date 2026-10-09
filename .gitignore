@@ -12,6 +12,8 @@ game/
 *.bik
 *.ttf
 *.TTF
+# the bundled OFL stand-in for Arial Bold is ours to ship (see crates/simgolf/fonts/LiberationSans-OFL.txt)
+!crates/simgolf/fonts/LiberationSans-Bold.ttf
 spec/
 .DS_Store
 target/

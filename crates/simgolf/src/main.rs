@@ -16,7 +16,9 @@ mod cursor_ui;
 mod cust_ui;
 mod files_ui;
 mod gfx;
+mod hud_ui;
 mod info_ui;
+mod message_ui;
 mod panels_ui;
 mod player_panel;
 mod popup_ui;
@@ -246,6 +248,7 @@ fn load_ui(app: &mut App, g: &mut Gfx) -> bool {
     app.reports = crate::reports_ui::ReportArt::load(g, app);
     app.panel_art = crate::panels_ui::PanelArt::load(g, app);
     app.title.art = crate::files_ui::TitleArt::load(g, app);
+    app.hud = crate::hud_ui::HudArt::load(g, app);
     app.info.art = crate::info_ui::InfoArt::load(g, app);
     ok
 }
@@ -494,7 +497,8 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
             b'M' => app.open_popup(match at(0) {
                 0 => popup_ui::PopupKind::Info,
                 1 => popup_ui::PopupKind::System,
-                _ => popup_ui::PopupKind::Prefs,
+                2 => popup_ui::PopupKind::Prefs,
+                _ => popup_ui::PopupKind::LandOffer,
             }),
             b'm' if v.len() >= 2 => app.move_hole(at(0) as usize, at(1) as usize),
             b'a' if v.len() >= 3 => {
@@ -747,10 +751,7 @@ impl Stage {
         use popup_ui::PopupKind;
         match kind {
             PopupKind::Info => match k {
-                0 => {
-                    let m = self.app.last_message.clone();
-                    self.app.show_toast(&m);
-                }
+                0 => self.app.repeat_message(),
                 1 => self.open_report(),
                 2 => self.app.open_report_screen(Screen::Comments),
                 3 => self.app.open_report_screen(Screen::Routing),
@@ -766,6 +767,11 @@ impl Stage {
                 10 => self.app.screen = Screen::BestScores,
                 _ => self.app.open_top10(None),
             },
+            PopupKind::LandOffer => {
+                if k == 0 {
+                    self.app.open_land_screen();
+                }
+            }
             PopupKind::System => match k {
                 0 => self.app.open_save(),
                 1 => self.app.open_files(files_ui::ListKind::Load, true),
@@ -1061,6 +1067,8 @@ impl Stage {
                 KeyCode::J => app.begin_tournament(),
                 KeyCode::C => app.save_championship_course(),
                 KeyCode::N => app.show_names = !app.show_names,
+                // ? repeats the last message
+                KeyCode::Slash => app.repeat_message(),
                 KeyCode::B => {
                     // the Home Site tool, "Sell lot for cash"
                     if app.panel != 2 {
@@ -1212,6 +1220,26 @@ impl Stage {
         // the title screens set Klepto ITC (difficulty, the file lists and Pick A Pro, the theme packs); the rest of the game
         // draws in Manual SSi and Arial
         let title = app.ui_ok && matches!(app.screen, Screen::Menu | Screen::Difficulty | Screen::Files | Screen::Themes);
+        // the info screens (reports, roster, SGA, land and the like) draw with their own two fonts
+        let info = app.ui_ok
+            && matches!(
+                app.screen,
+                Screen::Report
+                    | Screen::HoleStats
+                    | Screen::Comments
+                    | Screen::Histograph
+                    | Screen::Finance
+                    | Screen::Routing
+                    | Screen::Shortcuts
+                    | Screen::Roster
+                    | Screen::Board
+                    | Screen::YearEnd
+                    | Screen::Sga
+                    | Screen::Results
+                    | Screen::Land
+                    | Screen::Pair
+                    | Screen::BestScores
+            );
         ui::set_face(title.then_some(ui::Face::Klepto));
         if matches!(app.screen, Screen::Files | Screen::Themes | Screen::Credits) && app.ui_ok {
             app.draw_title_screen(&mut self.g);
@@ -1232,6 +1260,8 @@ impl Stage {
             }
             app.draw_rename(&mut self.g);
             app.draw_save_dialog(&mut self.g);
+            // only the screen over the course takes the info fonts, not the HUD under it
+            ui::set_face(info.then_some(ui::Face::Info));
             if app.screen == Screen::Report {
                 app.draw_report(&mut self.g);
             }
@@ -1596,6 +1626,9 @@ impl EventHandler for Stage {
         if self.app.ui_ok && self.dock_click(vx, vy, button == MouseButton::Right) {
             return;
         }
+        if self.app.ui_ok && button == MouseButton::Left && self.app.strip_click(vx, vy) {
+            return;
+        }
         if button == MouseButton::Left && self.app.club.pro_aiming().is_some() && !self.app.edit {
             if let Some((hx, hz)) = self.app.pick_ground(x, y) {
                 self.app.aim_pointer(hx, hz);
@@ -1630,6 +1663,7 @@ impl EventHandler for Stage {
 
     fn key_down_event(&mut self, k: KeyCode, mods: KeyMods, _repeat: bool) {
         self.shift = mods.shift || k == KeyCode::LeftShift || k == KeyCode::RightShift;
+        self.app.shift_held = self.shift;
         self.ctrl = mods.ctrl || k == KeyCode::LeftControl || k == KeyCode::RightControl;
         if self.app.rename_key(k) || self.app.save_key(k) {
             return;
@@ -1696,6 +1730,7 @@ impl EventHandler for Stage {
 
     fn key_up_event(&mut self, k: KeyCode, mods: KeyMods) {
         self.shift = mods.shift && k != KeyCode::LeftShift && k != KeyCode::RightShift;
+        self.app.shift_held = self.shift;
         self.ctrl = mods.ctrl && k != KeyCode::LeftControl && k != KeyCode::RightControl;
     }
 }

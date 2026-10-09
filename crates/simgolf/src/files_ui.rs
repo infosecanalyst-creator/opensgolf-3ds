@@ -240,7 +240,7 @@ const PRO_SKILLS: [&str; 10] = [
 ];
 
 /// Club emblem of each property: (sheet 0 parklink / 1 tropdesert, cut). DERIVED from the art and real screenshots.
-const EMBLEM: [(usize, usize); 16] =
+pub(crate) const EMBLEM: [(usize, usize); 16] =
     [(0, 1), (1, 4), (0, 3), (1, 3), (1, 0), (1, 7), (1, 6), (0, 0), (0, 7), (0, 2), (0, 6), (0, 4), (0, 5), (1, 2), (1, 5), (1, 1)];
 
 const CONFIRM_TOP: f32 = 100.0;
@@ -860,7 +860,7 @@ impl App {
                 match self.save_game(&path) {
                     Ok(()) => {
                         println!("saved game {}", path.display());
-                        self.show_toast("Game Saved");
+                        self.post_message("Game Saved.", 1, -4); // the exe says it with the club emblem
                     }
                     Err(e) => self.show_toast(&format!("Could not save: {e}")),
                 }

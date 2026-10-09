@@ -16,6 +16,8 @@ pub enum PopupKind {
     System,
     /// Preferences: a checkbox list.
     Prefs,
+    /// The County Commissioner's offer to buy land.
+    LandOffer,
 }
 
 #[derive(Clone, Debug)]
@@ -44,7 +46,10 @@ impl Popup {
     fn rect(&self) -> Rect {
         let w = self.lines.iter().map(|l| text_width(l.trim(), SIZE)).fold(0.0, f32::max) + 49.0 + 30.0;
         let h = (self.lines.len() as f32 * 3.0 + 3.0) * 8.0 + 20.0;
-        Rect::new(self.cx - w / 2.0, self.top, w, h)
+        // kept on the 800 x 600 screen (the exe's boxes near the edges, like the land offer at x 160, would leave it)
+        let x = (self.cx - w / 2.0).clamp(4.0, (800.0 - w - 4.0).max(4.0));
+        let y = self.top.clamp(4.0, (600.0 - h - 4.0).max(4.0));
+        Rect::new(x, y, w, h)
     }
     fn ok_ball(&self) -> (f32, f32) {
         let r = self.rect();
@@ -78,7 +83,7 @@ impl App {
                 ],
                 if self.last_message.is_empty() { 1 } else { 0 },
                 200.0,
-                40.0,
+                250.0,
             ),
             PopupKind::System => (
                 vec![
@@ -94,14 +99,21 @@ impl App {
                     " Back to the game",
                 ],
                 if tour || pro_out { 0 } else { 1 << 2 } | if tour { 1 << 6 } else { 0 },
-                400.0,
-                110.0,
+                250.0,
+                340.0,
             ),
             PopupKind::Prefs => (
                 vec!["Preferences...", " Show golfers' thoughts", " Advisor and first-time messages", " Ambient animals", " Sound"],
                 0,
                 400.0,
-                150.0,
+                200.0,
+            ),
+            // the commissioner's approval (main routine 0x41e2a0): the two-choice box at (0xa0, 0x1c2)
+            PopupKind::LandOffer => (
+                vec!["Do you wish to purchase additional land to expand your course?", " Yup, I've got big plans.", " No, I'm fine."],
+                0,
+                160.0,
+                450.0,
             ),
         };
         let checks = if kind == PopupKind::Prefs {

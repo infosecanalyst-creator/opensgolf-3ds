@@ -263,8 +263,9 @@ pub enum Event {
     Earn { units: i32, column: Column, at: (i32, i32) },
     /// A thought shown above a golfer (event id and argument).
     Thought { g: usize, id: u32, arg: i32 },
-    /// A message for the ticker.
-    Message(String),
+    /// A message for the ticker (0x40cb00): its text and who says it, as the exe's speaker code (-1 nobody, a golfer slot,
+    /// -k a building kind k's picture, -2/-3/-20/-21/-22 a PopUpIcons piece, -4 the course site, -5 the bare ball).
+    Message { text: String, speaker: i32 },
     /// A golfer finished a hole (employees serving them note it): the hole, strokes taken, mood and fee paid.
     HoleDone { g: usize, hole: i32, strokes: i32, mood: i32, fee: i32 },
 }
@@ -375,6 +376,10 @@ pub struct Club {
     pub homesite_demand: i32,
     pub planner: crate::planner::State,
     pub out: Vec<Event>,
+    /// The ticker is taken (a message showing or waiting, or the golfer card open): set by the game before each tick and
+    /// by every posted message, so a priority 0 message is refused as the exe's 0x40cb00 refuses it.
+    #[serde(skip)]
+    pub ticker_busy: bool,
     /// Landing tiles of the hole layout pass (0x542dfc/0x542e24), replayed while game flag LAYOUT is set.
     pub layout_land: Vec<(i32, i32)>,
     /// Post the first employee gets when hole 1 opens (0x585860).
@@ -471,6 +476,7 @@ impl Club {
             homesite_demand: 0,
             planner: crate::planner::State { class_bits: 7, ..Default::default() },
             out: Vec::new(),
+            ticker_busy: false,
             layout_land: Vec::new(),
             first_post: None,
             drawn: vec![(0, 0); SLOTS],
@@ -536,7 +542,18 @@ impl Club {
     }
 
     pub(crate) fn message(&mut self, s: String) {
-        self.out.push(Event::Message(s));
+        self.message_by(s, -1, 1);
+    }
+
+    /// A ticker message with its speaker (see `Event::Message`). As the exe's 0x40cb00, a priority below 1 is refused while
+    /// the ticker is busy; returns whether it was posted.
+    pub(crate) fn message_by(&mut self, text: String, speaker: i32, priority: i32) -> bool {
+        if priority < 1 && self.ticker_busy {
+            return false;
+        }
+        self.ticker_busy = true;
+        self.out.push(Event::Message { text, speaker });
+        true
     }
 
     fn his_her(&self, g: usize) -> &'static str {
@@ -1191,11 +1208,9 @@ impl Club {
         }
         if self.game & game::TOURNAMENT == 0 {
             if self.year == 0 && self.fees_this_year == 0 {
-                self.message(format!(
-                    "{} has paid ${} in greens fees. Happy golfers pay more, so keep your golfers happy!",
-                    self.name(g),
-                    fee * 100
-                ));
+                let text =
+                    format!("{} has paid ${} in greens fees. Happy golfers pay more, so keep your golfers happy!", self.name(g), fee * 100);
+                self.message_by(text, g as i32, 1);
             }
             self.fees_this_year += fee;
             self.holes[hu].fees += fee;
@@ -1249,7 +1264,7 @@ impl Club {
             };
             if let Some(w) = who {
                 let r = crate::vips::mood_remark(self.g[g].mood);
-                self.message(format!("{w} {} is playing the last hole on your course. \"{r}\"", self.vip_name(g)));
+                self.message_by(format!("{w} {} is playing the last hole on your course. \"{r}\"", self.vip_name(g)), g as i32, 1);
             }
         }
         let nhu = nh.clamp(0, 18) as usize;
@@ -1355,7 +1370,8 @@ impl Club {
             4 => format!("{name} has decided to upgrade to a coveted Gold membership."),
             _ => format!("{name} has decided to upgrade to an exclusive Platinum membership."),
         };
-        self.message(text);
+        // the exe posts this with priority 0 and upgrades only when it shows (0x406670); here it always shows
+        self.message_by(text, g as i32, 1);
         self.invite_friend(rng);
     }
 
@@ -1597,12 +1613,15 @@ impl Club {
         let h = self.g[g].hole;
         let at = if h < 19 { format!("after hole {h}") } else { "after today's round".to_string() };
         let name = self.name(g);
-        self.message(format!("{name} {reason} {at}."));
+        // one ticker message, the resignation appended, said by the golfer; the exe frees the ticker first (0x40cb00 with
+        // priority 0 right after clearing its busy flag), so it always shows
+        let mut text = format!("{name} {reason} {at}.");
         if self.member(g).level & 7 > 1 {
             let hh = self.his_her(g);
-            self.message(format!("{name} resigns {hh} membership."));
+            text += &format!(" {name} resigns {hh} membership.");
             self.member_mut(g).level &= !7;
         }
+        self.message_by(text, g as i32, 1);
         let hu = h.clamp(0, 18) as usize;
         self.member_mut(g).holes[hu] |= 4;
         self.member_mut(g).gone = 0xff;
@@ -2244,11 +2263,9 @@ impl Club {
         self.g[g].anim = anim::STAND;
         if self.g[g].mood < 0 && self.g[g].vip() != 0x20 {
             let h = self.g[g].hole;
-            self.message(format!(
-                "{} and {} are leaving the course at hole {h}. 'Arghh, I am so tired of waiting...'",
-                self.name(g),
-                self.name(p)
-            ));
+            let text =
+                format!("{} and {} are leaving the course at hole {h}. 'Arghh, I am so tired of waiting...'", self.name(g), self.name(p));
+            self.message_by(text, g as i32, 1);
             self.sound(0x29, None);
             self.g[g].pause = 0;
             if let Some(hr) = self.hole_rec(h) {

@@ -296,11 +296,6 @@ const INK: [f32; 4] = [0.12, 0.12, 0.38, 1.0];
 
 /// Select Difficulty (0x43a400, docs/DECODE_TITLE2.md 5): each item's lit cut in TitleSelDiffMO.pcx (x, y, w, h), where it
 /// goes, its hit centre (an ellipse twice as wide as tall, octagonal distance under 80) and its label position.
-/// The main screen's badge and rating pills on courseinfo.pcx (x, y, w, h), drawn where they sit on the sheet
-/// (docs/DECODE_MENUS.md, courseinfo family): course name and date, money, fun rating, skill rating.
-pub const HUD_CUTS: [(f32, f32, f32, f32); 4] =
-    [(48.0, 6.0, 183.0, 58.0), (647.0, 13.0, 138.0, 36.0), (675.0, 55.0, 110.0, 37.0), (697.0, 99.0, 88.0, 36.0)];
-
 pub const DIFF_CUTS: [(f32, f32, f32, f32, f32, f32); 4] = [
     (0.0, 0.0, 338.0, 146.0, 193.0, 32.0),
     (400.0, 0.0, 338.0, 146.0, 150.0, 161.0),
@@ -523,41 +518,30 @@ impl App {
         g.flush();
     }
 
-    /// Heads-up display over the course: club name and date, money, fun and skill, the dock, advisor and story. Layout is our own,
-    /// from the screenshots.
+    /// Heads-up display over the course: the exe's face strip, badge and rating pills (hud_ui), then the dock, advisor and
+    /// story.
     pub fn draw_hud(&mut self, g: &mut Gfx) {
         if !self.ui_ok {
             return;
         }
         let s = Ui::new(self.draw_w, self.draw_h);
         self.view = s.view;
-        // The exe's date stamp routine counts months in blocks of 1024 ticks and shows month numbers 3..10, so a year here is eight
-        // months, March to October (medium confidence; the start year 2001 is a placeholder). One economy day counts as one month.
-        let mi = self.econ.month_index();
-        let date = format!("{} {}", MONTHS[((2 + mi % 8) % 12) as usize], 2001 + mi / 8);
-        let panel_bg = rgba(0.12, 0.1, 0.3, 0.78);
-        let red = self.econ.cash < 0.0 && !self.econ.sandbox;
-        let cash = if self.econ.sandbox { "Sandbox".to_string() } else { money(self.econ.cash as i64) };
-        let rt = self.club.ratings;
-        let fun = format!("{}", rt.fun);
-        let skill = format!("{}.{:02}", rt.skill / 100, (rt.skill % 100).abs());
+        // the golfers' names and thoughts belong to the course, under the HUD
+        self.draw_names(g, &s);
+        self.draw_thoughts(g, &s);
         if self.hud_art.tex.is_some() {
-            // the exe's badge and pills, each cut from courseinfo.pcx and drawn at its own place on the sheet
-            for (x, y, w, h) in HUD_CUTS {
-                s.image_part(g, &self.hud_art, x, y, x, y, w, h);
-            }
-            // the pills are glass over the course: light text, the numbers left of each pill's icon
-            let ink = rgb(1.0, 1.0, 0.85);
-            let shadowed = |g: &mut Gfx, x: f32, y: f32, t: &str, size: f32, c: [f32; 4]| {
-                s.text_centered(g, x + 1.0, y + 1.0, t, size, rgba(0.0, 0.0, 0.1, 0.85));
-                s.text_centered(g, x, y, t, size, c);
-            };
-            shadowed(g, 139.0, 31.0, &self.course_name, 17.0, rgb(1.0, 1.0, 1.0));
-            shadowed(g, 139.0, 52.0, &date, 14.0, rgb(0.85, 0.88, 1.0));
-            shadowed(g, 700.0, 37.0, &cash, 17.0, if red { rgb(1.0, 0.45, 0.45) } else { ink });
-            shadowed(g, 717.0, 80.0, &fun, 17.0, ink);
-            shadowed(g, 733.0, 123.0, &skill, 17.0, ink);
+            // the exe's face strip, badge and rating pills (hud_ui)
+            self.draw_exe_hud(g, &s);
         } else {
+            // a plain stand-in without the art
+            let mi = self.econ.month_index();
+            let date = format!("{} {}", MONTHS[((2 + mi % 8) % 12) as usize], 2001 + mi / 8);
+            let panel_bg = rgba(0.12, 0.1, 0.3, 0.78);
+            let red = self.econ.cash < 0.0 && !self.econ.sandbox;
+            let cash = if self.econ.sandbox { "Sandbox".to_string() } else { money(self.econ.cash as i64) };
+            let rt = self.club.ratings;
+            let fun = format!("{}", rt.fun);
+            let skill = format!("{}.{:02}", rt.skill / 100, (rt.skill % 100).abs());
             s.fill(g, 8.0, 8.0, 230.0, 46.0, panel_bg);
             s.text(g, 18.0, 28.0, &self.course_name, 17.0, rgb(1.0, 1.0, 1.0));
             s.text(g, 18.0, 47.0, &date, 14.0, rgb(0.85, 0.85, 1.0));
@@ -565,18 +549,16 @@ impl App {
             s.text(g, 572.0, 30.0, &cash, 19.0, if red { rgb(1.0, 0.5, 0.5) } else { rgb(1.0, 1.0, 0.7) });
             s.text(g, 572.0, 52.0, &format!("Fun {fun}  Skill {skill}"), 15.0, rgb(0.9, 0.9, 1.0));
         }
-        if self.speed > 1 && !self.paused {
-            s.text(g, 240.0, 30.0, &format!("Speed x{}", self.speed), 14.0, rgb(1.0, 1.0, 0.8));
-        }
-        if self.paused {
-            s.text_centered(g, 400.0, 120.0, "PAUSED", 24.0, rgb(1.0, 1.0, 0.8));
-        }
         self.draw_names(g, &s);
+        self.draw_floats(g, &s);
         self.draw_thoughts(g, &s);
+        self.draw_advisor(g, &s);
         self.draw_dock(g, &s);
         self.draw_leaderboard(g, &s);
-        // the golfer card goes over the dock's advisor box
         self.draw_card(g, &s);
+        self.draw_paused(g, &s);
+        // the ticker goes over the golfer card, as in the exe's frame
+        self.draw_ticker(g, &s);
         let lines = self.aim_text();
         if !lines.is_empty() {
             let h = 12.0 + 16.0 * lines.len() as f32;
@@ -646,15 +628,9 @@ impl App {
                 s.text(g, r.x + 4.0, r.y + 13.0, &it.label, 13.0, rgb(1.0, 1.0, 1.0));
             }
         }
-        // Advisor and story, top centre.
+        // Story lines (port-only, until the exe's portrait bubbles for story talk are drawn), below the ticker's place.
         if self.show_advisor {
-            let lines = wrap_text(self.advisor_text(), 14.0, 290.0);
-            let h = 10.0 + 17.0 * lines.len() as f32;
-            s.fill(g, 244.0, 8.0, 306.0, h, rgba(0.12, 0.1, 0.3, 0.82));
-            for (i, l) in lines.iter().enumerate() {
-                s.text(g, 252.0, 25.0 + 17.0 * i as f32, l, 14.0, rgb(1.0, 0.95, 0.7));
-            }
-            let y = 8.0 + h + 6.0;
+            let y = 124.0;
             if !self.story_lines.is_empty() && self.game_tick < self.story_until {
                 // the latest story lines (the exe shows them as thought bubbles over the two golfers)
                 let mut rows: Vec<String> = Vec::new();
@@ -669,11 +645,6 @@ impl App {
                     s.text(g, 252.0, y + 33.0 + 17.0 * i as f32, l, 14.0, rgb(1.0, 1.0, 1.0));
                 }
             }
-        }
-        if !self.toast.is_empty() && self.clock < self.toast_until {
-            let w = text_width(&self.toast, 16.0) + 24.0;
-            s.fill(g, 400.0 - w / 2.0, 410.0, w, 28.0, rgba(0.5, 0.1, 0.1, 0.88));
-            s.text_centered(g, 400.0, 430.0, &self.toast, 16.0, rgb(1.0, 1.0, 1.0));
         }
         if self.pstate.hire_open && self.panel == 3 && self.panel_art_ready() {
             self.draw_hire_dialog(g, s);

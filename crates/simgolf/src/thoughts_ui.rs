@@ -125,4 +125,22 @@ impl App {
             }
         }
     }
+
+    /// Floating money (0x40c910): "+" and the amount in green for income, the amount in red for a cost, in Manual SSi 15
+    /// with a shadow, its left edge at the map point and 4 pixels up.
+    pub fn draw_floats(&self, g: &mut Gfx, s: &Ui) {
+        let c15 = |v: u16| rgb(((v >> 10) & 31) as f32 / 31.0, ((v >> 5) & 31) as f32 / 31.0, (v & 31) as f32 / 31.0);
+        for &(units, x, y, life) in &self.floats {
+            if life == 0 || self.econ.sandbox {
+                continue;
+            }
+            let Some((sx, sy)) = self.screen_of(x, y) else { continue };
+            let text = format!("{}{}", if units > 0 { "+" } else { "" }, crate::ui::money(units as i64 * 100));
+            let c = c15(if units > 0 { 0x23e8 } else { 0x7d08 });
+            // the exe's y is the text's top; ours is the baseline
+            let base = sy - 4.0 + 12.0;
+            s.text(g, sx + 1.0, base + 1.0, &text, 15.0, rgba(0.0, 0.0, 0.0, 0.8));
+            s.text(g, sx, base, &text, 15.0, c);
+        }
+    }
 }

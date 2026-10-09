@@ -117,7 +117,7 @@ impl App {
             WORLD_RESET_SAVE if self.world_move => {
                 let f = self.game_file();
                 match self.save_game(&f) {
-                    Ok(()) => self.show_toast("Game Saved."),
+                    Ok(()) => _ = self.post_message("Game Saved.", 1, -4),
                     Err(e) => self.show_toast(&format!("Could not save the game: {e}")),
                 }
             }
