@@ -329,8 +329,8 @@ pub const MENU_BTN: [Rect; 6] = [
     Rect::new(285.0, 478.0, 285.0, 105.0),
     Rect::new(718.0, 528.0, 64.0, 64.0),
 ];
-/// The folders under Themes/.
-pub const THEME_PACKS: [&str; 5] = ["Standard", "Firaxis", "More Stories", "The Sims", "Championship"];
+/// The folders under Themes/ offered as theme packs (the exe leaves out Championship, which holds the championship files).
+pub const THEME_PACKS: [&str; 4] = ["Standard", "Firaxis", "More Stories", "The Sims"];
 const MENU_LABEL: [&str; 5] = ["Continue Saved Game", "Start New Game (Standard)", "Sandbox Mode", "Select A Theme", "Play a Championship"];
 const MENU_LABEL_X: [f32; 5] = [180.0, 595.0, 150.0, 650.0, 418.0];
 const MENU_LABEL_Y: [f32; 5] = [83.0, 112.0, 450.0, 427.0, 543.0];

@@ -695,7 +695,7 @@ impl Stage {
                 2 => self.app.open_report_screen(Screen::Comments),
                 3 => self.app.open_report_screen(Screen::Routing),
                 4 => self.app.open_report_screen(Screen::Histograph),
-                5 => self.app.begin_tournament(),
+                5 => self.app.sga_report(),
                 6 => self.app.open_report_screen(Screen::Finance),
                 7 => self.app.screen = Screen::Roster,
                 8 => {
@@ -885,11 +885,12 @@ impl Stage {
             }
         }
         app.hover = hit;
-        if !click || hit < 0 {
+        if !click || (hit < 0 && app.screen != Screen::Difficulty) {
             return;
         }
         if app.screen == Screen::Difficulty {
-            if hit == 100 {
+            if hit == 100 || hit < 0 {
+                // the back button, or a click on nothing, goes back (0x43a400 returns -1)
                 app.screen = Screen::Menu;
             } else {
                 app.difficulty = hit;

@@ -6,7 +6,7 @@
 use crate::app::*;
 use crate::gfx::Gfx;
 use crate::render::Rect;
-use crate::ui::{load_pcx, load_pcx_alpha, money, rgb, rgba, text_width, Image, Screen as Ui};
+use crate::ui::{load_pcx, load_pcx_alpha, rgb, rgba, text_width, Image, Screen as Ui};
 use sg_core::golfer::SLOTS;
 use sg_core::records::TITLES;
 
@@ -40,7 +40,8 @@ impl Art {
 }
 
 const MONTHS: [&str; 8] = ["March", "April", "May", "June", "July", "August", "September", "October"];
-const LEVELS: [&str; 6] = ["", "Visitor", "Member", "Silver Member", "Gold Member", "Platinum Member"];
+// the exe shows no status text for Platinum
+const LEVELS: [&str; 6] = ["", "Visitor", "Member", "Silver Member", "Gold Member", ""];
 
 fn black() -> [f32; 4] {
     rgb(0.05, 0.05, 0.1)
@@ -335,11 +336,12 @@ impl App {
             self.snapshot_due.push((self.club.award_pending as usize, self.club.award_point));
         }
         self.club.award_frames += 1;
-        if self.club.award_frames > 19 {
+        // the board waits until the course view is showing (another screen open would otherwise lose it)
+        if self.club.award_frames > 19 && (!self.ui_ok || self.screen == Screen::Play) {
             let id = self.club.award_pending as usize;
             println!("[{:6.1}s] accomplishment: {}", self.sim_time, self.club.award_title(id));
             self.club.award_pending = -1;
-            if self.ui_ok && self.screen == Screen::Play {
+            if self.ui_ok {
                 self.ui_sound(0x38);
                 self.screen = Screen::Board;
             }
@@ -374,7 +376,8 @@ impl App {
             let day = (e.tick & 0x3ff) * 30 / 1024 + 1;
             let month = MONTHS[((e.tick >> 10) & 7) as usize];
             let year = 2001 + (e.tick >> 13);
-            s.text(g, x, y, &format!("{}, {month} {day}, {year}", e.course), 11.0, rgb(0.13, 0.13, 0.13));
+            // the exe's caption: course, two spaces, day month year
+            s.text(g, x, y, &format!("{}  {day} {month} {year}", e.course), 11.0, rgb(0.13, 0.13, 0.13));
         }
         // the to-do note: the first three not yet earned
         if self.art.tacs.tex.is_some() {
@@ -420,7 +423,6 @@ impl App {
                 s.text_centered(g, 400.0, 340.0 - 16.0 * k as f32, self.club.award_title(*id), 13.0, rgb(1.0, 0.9, 0.4));
             }
         }
-        s.text_centered(g, 400.0, 592.0, "Click to continue", 12.0, rgb(1.0, 1.0, 0.8));
         let _ = TITLES;
         g.flush();
     }
@@ -464,7 +466,7 @@ impl App {
                 _ => "not changed",
             };
             let fmt = |v: i32| match k {
-                0 => money(v as i64 * 100),
+                0 => digits(v as i64 * 100),
                 2 => format!("{}.{:02}", v / 100, (v % 100).abs()),
                 _ => format!("{v}"),
             };
@@ -577,7 +579,11 @@ impl App {
         ] {
             s.text_centered(g, x, 545.0, t, 11.0, black());
         }
-        s.text_centered(g, 400.0, 590.0, "Click to close", 12.0, black());
         g.flush();
     }
+}
+
+/// Money as the info screens print it: digits with thousands commas, no currency sign.
+pub fn digits(v: i64) -> String {
+    format!("{}{}", if v < 0 { "-" } else { "" }, crate::ui::group(v.unsigned_abs()))
 }

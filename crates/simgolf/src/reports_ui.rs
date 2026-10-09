@@ -5,7 +5,7 @@
 use crate::app::*;
 use crate::gfx::Gfx;
 use crate::render::Rect;
-use crate::ui::{load_pcx_alpha, money, rgb, rgba, text_width, wrap_text, Image, Screen as Ui};
+use crate::ui::{load_pcx_alpha, rgb, rgba, text_width, wrap_text, Image, Screen as Ui};
 use sg_core::course::{idx, inside, N, TYPES};
 use sg_core::economy::LEDGER_LABELS;
 use sg_core::land;
@@ -170,7 +170,7 @@ impl App {
                 sg_core::thoughts::Tone::Bad => c15(0x7d08),
                 _ => black(),
             };
-            s.text(g, 182.0, y + 13.0, &format!("\"{}\"", line.text), 11.0, c);
+            s.text(g, 182.0, y + 13.0, &line.text, 11.0, c);
             s.text_centered(g, 504.0, y + 13.0, &format!("{hole}"), 11.0, c);
             s.text_centered(g, 598.0, y + 13.0, &format!("{freq}%"), 11.0, c);
         }
@@ -195,7 +195,7 @@ impl App {
         } else {
             s.fill(g, 100.0, 50.0, 620.0, 490.0, rgb(0.95, 0.95, 0.9));
         }
-        s.text_centered(g, 375.0, 34.0, "HISTOGRAPH", 22.0, black());
+        s.text(g, 375.0, 34.0, "HISTOGRAPH", 22.0, black()); // the exe's x is the title's left edge
         for (x, t) in [(177.0, "Skill"), (332.0, "Cash"), (488.0, "Fun"), (644.0, "Event")] {
             s.text_centered(g, x, 551.0, t, 12.0, black());
         }
@@ -213,9 +213,9 @@ impl App {
         for k in 0..10 {
             let y = 0x202 as f32 - 50.0 * k as f32 + 4.0;
             let lv = if k <= 5 { 100 * skill_s * k } else { skill_s * (500 * k - 2000) };
-            s.text_centered(g, 77.0, y, &format!("{}.{:02}", lv / 100, lv % 100), 11.0, c15(0x4010));
+            s.text_centered(g, 77.0, y, &format!("{lv}"), 11.0, c15(0x4010));
             let n = if k <= 5 { 10 * cdiv * k } else { cdiv * (50 * k - 200) };
-            s.text_centered(g, 727.0, y, &format!("${n}K"), 11.0, black());
+            s.text_centered(g, 727.0, y, &format!("\u{a7}{n}k"), 11.0, black());
         }
         let months = (self.club.tick >> 10) as usize;
         let step = (600 / (months as i32 + 1)).clamp(1, 4) as f32;
@@ -269,7 +269,7 @@ impl App {
         for (i, l) in LEDGER_LABELS.iter().enumerate() {
             s.text_centered(g, 98.0, 99.0 + 17.0 * i as f32, l, 11.0, black());
         }
-        s.text_centered(g, 98.0, 99.0 + 136.0 + 7.0, "Total", 11.0, black());
+        s.text_centered(g, 98.0, 99.0 + 136.0 + 7.0, "Total (\u{a7})", 11.0, black());
         let last = self.econ.year_index().min(99);
         // eight columns fit the art (the exe draws a ninth off the screen)
         let first = last.saturating_sub(7);
@@ -281,12 +281,12 @@ impl App {
             for (i, v) in row.iter().enumerate() {
                 total += v;
                 if *v != 0.0 {
-                    let t = money(*v as i64);
+                    let t = crate::screens_ui::digits(*v as i64);
                     let c = if *v < 0.0 { c15(0x6000) } else { black() };
                     s.text(g, x + 256.0 - text_width(&t, 11.0), 98.0 + 17.0 * i as f32, &t, 11.0, c);
                 }
             }
-            let t = money(total as i64);
+            let t = crate::screens_ui::digits(total as i64);
             let c = if total < 0.0 { c15(0x6000) } else { black() };
             s.text(g, x + 256.0 - text_width(&t, 11.0), 98.0 + 17.0 * 7.0 + 24.0, &t, 11.0, c);
         }
@@ -413,9 +413,10 @@ impl App {
             0 => {
                 s.text_centered(g, 400.0, 92.0, "COURSE ROUTING", 13.0, black());
                 s.text_centered(g, 400.0, 112.0, "Left click to select hole.", 11.0, black());
+                s.text_centered(g, 400.0, 126.0, "Right click to swap holes.", 11.0, black());
                 for half in 0..2 {
-                    let x = if half == 0 { 0x47 as f32 } else { 0x234 as f32 };
-                    for (dx, t) in [(0.0, "Hole"), (61.0, "Par"), (111.0, "Yards"), (168.0, "Minutes")] {
+                    let x = if half == 0 { 0x47 as f32 } else { 0x239 as f32 };
+                    for (dx, t) in [(0.0, "Hole #"), (61.0, "PAR"), (111.0, "YDS"), (168.0, "Time")] {
                         s.text_centered(g, x + dx, 90.0, t, 11.0, black());
                     }
                 }
@@ -432,7 +433,7 @@ impl App {
                         s.text_centered(g, x + 61.0, y + 10.0, &format!("{}", hr.par), 11.0, black());
                         s.text_centered(g, x + 111.0, y + 10.0, &format!("{}", hr.length), 11.0, black());
                         if hr.tee_shots > 0 {
-                            s.text_centered(g, x + 168.0, y + 10.0, &format!("{}", hr.time / hr.tee_shots / 40), 11.0, black());
+                            s.text_centered(g, x + 168.0, y + 10.0, &format!("{}m", hr.time / hr.tee_shots / 40), 11.0, black());
                         }
                     }
                 }
