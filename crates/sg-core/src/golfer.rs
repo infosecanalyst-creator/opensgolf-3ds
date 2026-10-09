@@ -219,8 +219,9 @@ pub struct Hole {
     pub time: i32,
     pub fees: i32,
     pub monotony: i32,
-    /// +0x1f0 money spent building it
+    /// +0x1f0 money spent building it, +0x1f8 maintenance charged (units)
     pub build_cost: i32,
+    pub maint: i32,
     /// +0x200: 1 Top 100 hole, 2 Top 18 hole, 4 / 8 hard / easy marks, 0x20 / 0x40 dogleg one way or the other,
     /// 0x1000 uphill, 0x2000 downhill
     pub flags: u32,
@@ -302,6 +303,10 @@ pub struct Club {
     pub top_rounds: [i32; 10],
     /// Land purchases so far (0x53a450).
     pub purchases: i32,
+    /// Hole types already announced (0x5685f8), the club ratings of the last statistics pass, and the home sites standing.
+    pub types_announced: u32,
+    pub ratings: crate::ratings::ClubRatings,
+    pub home_sites: i32,
     /// Year number and the year's first fee flag, for the green fee tutorial.
     pub year: i32,
     pub fees_this_year: i32,
@@ -359,6 +364,9 @@ impl Club {
             clip_frames: vec![DEFAULT_CLIP; 0x100],
             top_rounds: [0; 10],
             purchases: 0,
+            types_announced: 0,
+            ratings: Default::default(),
+            home_sites: 0,
             year: 0,
             fees_this_year: 0,
             cash: 0,

@@ -272,21 +272,11 @@ pub fn group(n: u64) -> String {
     out
 }
 
-/// Number with `dec` decimals; whole numbers get thousands separators.
-pub fn num(v: f64, dec: usize) -> String {
-    if dec == 0 {
-        let n = v.round() as i64;
-        return format!("{}{}", if n < 0 { "-" } else { "" }, group(n.unsigned_abs()));
-    }
-    format!("{v:.dec$}")
-}
-
 #[cfg(test)]
 mod tests {
     #[test]
     fn money_format() {
         assert_eq!(super::money(1234567), "\u{a7}1,234,567");
         assert_eq!(super::money(-500), "-\u{a7}500");
-        assert_eq!(super::num(-1234.4, 0), "-1,234");
     }
 }

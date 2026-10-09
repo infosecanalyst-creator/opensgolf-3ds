@@ -411,8 +411,10 @@ impl Stage {
             };
             app.deal_offer(o.sandbox);
             app.start_game(&mut g, k, o.sandbox);
-            if o.screen.as_deref() == Some("land") {
-                app.open_land_screen();
+            match o.screen.as_deref() {
+                Some("land") => app.open_land_screen(),
+                Some("report") if app.ui_ok => app.screen = Screen::Report,
+                _ => {}
             }
         }
         if let Some(f) = &o.course {
@@ -532,7 +534,6 @@ impl Stage {
     fn open_report(&mut self) {
         self.app.report_course(true);
         if self.app.ui_ok && self.app.report_art.tex.is_some() {
-            self.app.ratings.clear();
             self.app.screen = Screen::Report;
         }
     }

@@ -28,6 +28,7 @@ pub mod objects;
 pub mod planner;
 pub mod png;
 pub mod properties;
+pub mod ratings;
 pub mod rng;
 pub mod roster;
 pub mod shot;

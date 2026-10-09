@@ -302,7 +302,6 @@ pub struct App {
     pub story_pos: usize,
     pub story_next: f64,
     pub hole_stats: Vec<HoleStat>,
-    pub ratings: Vec<HoleRating>,
     pub ui_ok: bool,
     pub view: crate::ui::View,
     /// Button or card under the mouse, -1 none.
@@ -443,7 +442,6 @@ impl App {
             story_pos: 0,
             story_next: 0.0,
             hole_stats: Vec::new(),
-            ratings: Vec::new(),
             ui_ok: false,
             view: crate::ui::View::default(),
             hover: -1,
@@ -1144,7 +1142,6 @@ impl App {
         if numbers != self.hole_numbers {
             self.hole_numbers = numbers;
             self.hole_stats = vec![HoleStat::default(); self.holes.len()];
-            self.ratings.clear();
         }
     }
 
@@ -1285,8 +1282,16 @@ impl App {
         self.club.year = self.econ.year_index() as i32;
         let tick = self.game_tick;
         let sites = self.land.as_ref().map(|l| l.objects.iter().filter(|o| o.kind == land::K_HOME_SITE).count()).unwrap_or(0) as i32;
-        let rich = self.club.members.iter().filter(|m| m.level & 7 >= 3).count() as i32;
-        self.club.homesite_demand = rich - sites;
+        self.club.home_sites = sites;
+        self.club.homesite_demand = self.club.ratings.waitlist;
+        if tick.is_multiple_of(1024 / (self.difficulty.clamp(0, 3) as u32 + 2)) {
+            // hole maintenance (+0x1f8): one unit per open hole each charge interval
+            for h in self.club.holes.iter_mut() {
+                if h.par != 0 {
+                    h.maint += 1;
+                }
+            }
+        }
         if sites > 0 && tick.is_multiple_of(1024 / (self.difficulty.clamp(0, 3) as u32 + 2)) {
             let sizes = |l: &land::Land| l.objects.iter().map(|o| sg_core::homes::house_size(o.val)).collect::<Vec<_>>();
             if let Some(l) = self.land.as_mut() {
@@ -1299,6 +1304,7 @@ impl App {
             }
         }
         self.club.tick(&mut self.course, &mut self.exe_rng, tick);
+        sg_core::ratings::pass(&mut self.club, self.difficulty);
         self.weeds_from_course();
         let events: Vec<golf::Event> = self.club.out.drain(..).collect();
         for e in events {
@@ -1441,22 +1447,6 @@ impl App {
         if force || r != self.last_report {
             println!("course: {r}");
             self.last_report = r;
-        }
-    }
-
-    /// Club ratings as the exe computes them. Fun: each hole contributes 100 * (sum of mood changes) / (plays + 4), and the club's
-    /// value is the sum over holes (the exe also divides by half of another per-hole counter that is not decoded; taken as 0).
-    pub fn club_fun(&self) -> i32 {
-        self.hole_stats.iter().filter(|h| h.plays > 0).map(|h| (100 * h.mood_sum as i64) / (h.plays as i64 + 4)).sum::<i64>() as i32
-    }
-    /// Skill: the sum over holes of the Length, Accuracy and Imagination differences in strokes.
-    pub fn club_skill(&self) -> f64 {
-        self.ratings.iter().map(|r| (r.len + r.acc + r.img) as f64).sum()
-    }
-
-    pub fn ensure_ratings(&mut self, samples: i32) {
-        if self.ratings.len() != self.holes.len() {
-            self.ratings = self.holes.iter().map(|r| rate_hole(&self.terrain, r, samples, self.difficulty)).collect();
         }
     }
 

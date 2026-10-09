@@ -2,7 +2,7 @@
 //! menu, property chooser, heads-up display with the dock, course report).
 use crate::app::*;
 use crate::gfx::{Gfx, Mat4, Mode, Uniforms, Vert};
-use crate::ui::{money, num, rgb, rgba, text_width, wrap_text, Screen as Ui};
+use crate::ui::{money, rgb, rgba, text_width, wrap_text, Screen as Ui};
 use sg_core::economy::{Economy, STAFF_KINDS};
 use sg_core::land;
 use sg_core::properties::{PROPERTIES, START_FUNDS};
@@ -552,43 +552,42 @@ impl App {
         let ink = rgb(0.1, 0.1, 0.3);
         let n = self.holes.len();
         let (row_h, top, body_y) = (22.0, 104.0, 108.0);
-        let total_y = body_y + n as f32 * row_h + 6.0;
         let band = rgb(148.0 / 255.0, 150.0 / 255.0, 198.0 / 255.0);
-        s.fill(g, 0.0, 100.0, 800.0, total_y - 100.0, band);
+        s.fill(g, 0.0, 100.0, 800.0, body_y + n as f32 * row_h + 6.0 - 100.0, band);
         s.image_part(g, &self.report_art, 0.0, 0.0, 0.0, 0.0, 800.0, top);
         s.text_centered(g, 323.0, 53.0, "COURSE REPORT", 26.0, rgb(0.15, 0.12, 0.3));
         for c in 0..12 {
             s.text_centered(g, CX[c] + CW[c] / 2.0, 89.0, HEAD[c], 12.0, ink);
         }
-        self.ensure_ratings(40);
-        let (mut t_y, mut t_par, mut t_str, mut t_sec, mut t_mood, mut t_rev, mut t_plays, mut t_prof, mut t_len, mut t_acc, mut t_img) =
-            (0.0f64, 0.0f64, 0.0f64, 0.0f64, 0.0f64, 0.0f64, 0.0f64, 0.0f64, 0.0f64, 0.0f64, 0.0f64);
-        let upkeep_share = if n > 0 { (self.econ.upkeep_paid + self.econ.wages_paid) / n as f64 } else { 0.0 };
-        for i in 0..n {
+        // the exe's Course Report (0x44fb30): every number from the hole records (sg_core::ratings::report_row)
+        let all = self.club.game & 0x40 != 0;
+        let rows: Vec<_> = self
+            .hole_numbers
+            .iter()
+            .map(|&h| sg_core::ratings::report_row(h as usize, &self.club.holes[h as usize], self.difficulty, all))
+            .collect();
+        let open = rows.len() as i32;
+        let (mut t_yds, mut t_par, mut t_avg, mut t_min, mut t_fun, mut t_len, mut t_acc, mut t_img, mut t_fee, mut t_rev, mut t_prof) =
+            (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        let mut m_last = 0;
+        let hund = |v: i32| format!("{}{}.{:02}", if v < 0 { "-" } else { "" }, v.abs() / 100, v.abs() % 100);
+        let dollars = |v: i32| money(v as i64);
+        for (i, r) in rows.iter().enumerate() {
             let y = body_y + i as f32 * row_h;
             s.image_part(g, &self.report_art, 0.0, y, 0.0, if i % 2 == 1 { 168.0 } else { 128.0 }, 800.0, 19.0);
-            let r = &self.holes[i];
-            let rt = &self.ratings[i];
-            let hs = self.hole_stats.get(i).copied().unwrap_or_default();
-            let plays = hs.plays as f64;
-            let yds = r.length as f64 * 0.15;
-            let avg = if hs.plays > 0 { hs.strokes / plays } else { 0.0 };
-            let mins = if hs.plays > 0 { hs.seconds / plays * 0.35 } else { 0.0 }; // 0.35 game minutes per sim second: placeholder
-            let fun = if hs.plays > 0 { hs.mood / plays } else { 0.0 };
-            let fee = if hs.plays > 0 { hs.revenue / plays } else { 0.0 };
-            let profit = hs.revenue - upkeep_share;
-            t_y += yds;
-            t_par += r.par as f64;
-            t_str += avg;
-            t_sec += mins;
-            t_mood += fun;
-            t_rev += hs.revenue;
-            t_plays += plays;
-            t_prof += profit;
-            t_len += rt.len as f64;
-            t_acc += rt.acc as f64;
-            t_img += rt.img as f64;
-            // tint: 0 none, 1 green, 2 red
+            t_yds += r.yards;
+            t_par += r.par;
+            t_avg += r.avg;
+            t_min += r.minutes;
+            m_last = r.minutes;
+            t_fun += r.fun;
+            t_len += r.len;
+            t_acc += r.acc;
+            t_img += r.img;
+            t_fee += r.avg_fee;
+            t_rev += r.revenue;
+            t_prof += r.profit;
+            // tint: 0 none, 1 good, 2 bad
             let cell = |g: &mut Gfx, c: usize, txt: &str, tint: i32| {
                 if tint != 0 {
                     s.image_part(g, &self.report_art, CX[c], y + 2.0, CX[c], if tint == 2 { 205.0 } else { 240.0 }, CW[c], 15.0);
@@ -596,59 +595,90 @@ impl App {
                 let col = if tint != 0 { rgb(1.0, 1.0, 1.0) } else { ink };
                 s.text_centered(g, CX[c] + CW[c] / 2.0, y + 14.0, txt, 12.0, col);
             };
-            let played = hs.plays > 0;
-            s.text(g, 16.0, y + 14.0, &format!("Hole {}", i + 1), 12.0, ink);
-            cell(g, 0, &num(yds, 0), 0);
-            cell(g, 1, &r.par.to_string(), 0);
-            cell(g, 2, &if played { num(avg, 2) } else { "-".into() }, 0);
-            cell(g, 3, &if played { format!("{}m", num(mins, 0)) } else { "-".into() }, 0);
-            let fun_tint = if !played {
-                0
-            } else if fun >= 70.0 {
-                1
-            } else if fun < 45.0 {
-                2
-            } else {
-                0
+            let demand = |v: i32| {
+                if v < 0 {
+                    2
+                } else if v >= 50 {
+                    1
+                } else {
+                    0
+                }
             };
-            cell(g, 4, &if played { format!("{}%", num(fun, 0)) } else { "-".into() }, fun_tint);
-            cell(g, 5, &num(rt.len as f64, 2), 0);
-            cell(g, 6, &num(rt.acc as f64, 2), 0);
-            cell(g, 7, &num(rt.img as f64, 2), 0);
-            cell(g, 8, rt.ty, 0);
-            cell(g, 9, &if played { num(fee, 0) } else { "-".into() }, 0);
-            cell(g, 10, &num(hs.revenue, 0), 0);
+            let mark = match (r.flags & 3, r.scenic) {
+                (0, false) | (2, false) => "",
+                (1, false) => " *",
+                (_, false) => " **",
+                (0, true) | (2, true) => " s",
+                _ => " s*",
+            };
+            s.text(g, 16.0, y + 14.0, &format!("Hole {}{}", r.hole, mark), 12.0, ink);
+            cell(g, 0, &r.yards.to_string(), 0);
+            cell(g, 1, &r.par.to_string(), 0);
+            cell(g, 2, &hund(r.avg), if r.flags & 0xc != 0 { 2 } else { 0 });
             cell(
                 g,
-                11,
-                &num(profit, 0),
-                if profit < 0.0 {
+                3,
+                &format!("{}m", r.minutes),
+                if r.minutes >= 5 * r.par {
                     2
-                } else if profit > 0.0 {
+                } else if r.minutes <= 3 * r.par {
                     1
                 } else {
                     0
                 },
             );
+            cell(
+                g,
+                4,
+                &format!("{}%", r.fun),
+                if r.fun < 10 {
+                    2
+                } else if r.fun >= 50 {
+                    1
+                } else {
+                    0
+                },
+            );
+            cell(g, 5, &hund(r.len), demand(r.len));
+            cell(g, 6, &hund(r.acc), demand(r.acc));
+            cell(g, 7, &hund(r.img), demand(r.img));
+            cell(
+                g,
+                8,
+                r.type_name,
+                if r.variety >= 3 {
+                    2
+                } else if r.variety < 2 {
+                    1
+                } else {
+                    0
+                },
+            );
+            cell(g, 9, &dollars(r.avg_fee), 0);
+            cell(g, 10, &dollars(r.revenue), 0);
+            cell(g, 11, &dollars(r.profit), if r.profit < 0 { 2 } else { 0 });
         }
+        let total_y = body_y + rows.len() as f32 * row_h + 6.0;
         s.image_part(g, &self.report_art, 0.0, total_y, 0.0, 420.0, 800.0, 92.0);
         s.fill(g, 0.0, total_y + 28.0, 24.0, 26.0, band); // the art carries some layout numbers in its margin
         let y = total_y + 8.0 + 14.0;
         let cell = |g: &mut Gfx, c: usize, txt: &str| s.text_centered(g, CX[c] + CW[c] / 2.0, y, txt, 12.0, ink);
-        s.text(g, 16.0, y, "Total", 12.0, ink);
-        let k = if n > 0 { 1.0 / n as f64 } else { 0.0 };
-        let any = t_plays > 0.0;
-        cell(g, 0, &num(t_y, 0));
-        cell(g, 1, &num(t_par, 0));
-        cell(g, 2, &if any { num(t_str, 2) } else { "-".into() });
-        cell(g, 3, &if any { format!("{}m", num(t_sec, 0)) } else { "-".into() });
-        cell(g, 4, &if any { format!("{}%", num(t_mood * k, 0)) } else { "-".into() });
-        cell(g, 5, &num(t_len * k, 2));
-        cell(g, 6, &num(t_acc * k, 2));
-        cell(g, 7, &num(t_img * k, 2));
-        cell(g, 9, &if any { num(t_rev / t_plays, 0) } else { "-".into() });
-        cell(g, 10, &num(t_rev, 0));
-        cell(g, 11, &num(t_prof, 0));
+        if open > 0 {
+            s.text(g, 16.0, y, "Total", 12.0, ink);
+            cell(g, 0, &t_yds.to_string());
+            cell(g, 1, &t_par.to_string());
+            cell(g, 2, &hund(t_avg));
+            // the exe shows the last hole's minutes past the hour, not the total's
+            let time = if t_min >= 60 { format!("{}h {}m", t_min / 60, m_last % 60) } else { format!("{}m", m_last % 60) };
+            cell(g, 3, &time);
+            cell(g, 4, &format!("{}%", t_fun / open));
+            cell(g, 5, &hund(t_len / open));
+            cell(g, 6, &hund(t_acc / open));
+            cell(g, 7, &hund(t_img / open));
+            cell(g, 9, &dollars(t_fee / open));
+            cell(g, 10, &dollars(t_rev));
+            cell(g, 11, &dollars(t_prof));
+        }
         let ly = total_y + 55.0 + 6.0;
         s.text(g, 138.0, ly, "Top 100 Hole", 11.0, ink);
         s.text(g, 296.0, ly, "Top 18 Hole", 11.0, ink);
@@ -676,8 +706,15 @@ impl App {
         let red = self.econ.cash < 0.0 && !self.econ.sandbox;
         let cash = if self.econ.sandbox { "Sandbox".to_string() } else { money(self.econ.cash as i64) };
         s.text(g, 572.0, 30.0, &cash, 19.0, if red { rgb(1.0, 0.5, 0.5) } else { rgb(1.0, 1.0, 0.7) });
-        self.ensure_ratings(20);
-        s.text(g, 572.0, 52.0, &format!("Fun {}  Skill {:.2}", self.club_fun(), self.club_skill()), 15.0, rgb(0.9, 0.9, 1.0));
+        let rt = self.club.ratings;
+        s.text(
+            g,
+            572.0,
+            52.0,
+            &format!("Fun {}  Skill {}.{:02}", rt.fun, rt.skill / 100, (rt.skill % 100).abs()),
+            15.0,
+            rgb(0.9, 0.9, 1.0),
+        );
         s.text(g, 572.0, 71.0, &format!("Golfers {}, holes {}", self.golfers_on_course(), self.holes.len()), 13.0, rgb(0.75, 0.75, 0.95));
         if self.edit {
             let st = self.edit_status();

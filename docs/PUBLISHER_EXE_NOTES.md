@@ -57,14 +57,26 @@ Confidence: the deltas are read directly from the code; what in-game situation e
 - From call sites: events 1, 2, 3, 0xd come from the golfer's ball-position terrain checks (ground type under the ball, for example water or rough), 0xc from a shot that leaves the playing area. Treat these as guesses.
 - A golfer whose mood drops below -10 leaves the course.
 
-## Hole and club ratings (decompile of the course statistics routine)
+## Hole and club ratings (course statistics pass 0x42dea0, Course Report 0x44fb30)
 
-Confidence: structure read from the code; some counters are not decoded.
-
-- For each hole the exe keeps average strokes per golfer skill class, starting from a prior of 8 samples at par. A skill counts as demanded when golfers lacking it average 50 hundredths of a stroke or more above full-skill golfers (25 on the easiest difficulty); 50 or more also sets a "strong" flag. The three classes are Length, Accuracy and Imagination.
-- Club skill rating = sum over holes of the three differences, kept in hundredths and printed with two decimals. Length, Accuracy and Imagination sub-ratings are the same sums per skill.
-- Hole fun = 100 * (sum of mood changes at the hole) / (half of an undecoded counter + 4 + plays). Club fun rating = sum of hole fun, printed as a whole number.
-- The game implements these; mood changes on a hole are placeholders (+1 par or better, -1 triple bogey or worse).
+Confidence: high (arithmetic read from the machine code).
+- The pass runs every frame and recomputes everything. Per open hole: every skill class starts with 8 rounds at par; the
+  average strokes (hundredths) of the classes lacking Length, Accuracy or Imagination minus the full-skill class give the
+  three differentials; club skill is their sum over holes, club fun the sum of hole fun = mood sum * 100 /
+  (planned shots / 2 + 4 + tee shots).
+- A skill makes the hole's type when its differential is at least 50 (25 on the easiest difficulty), unless it is the
+  weakest and below 100 (50 on the easiest; the report always uses 100). Types: Breather, Freeway, Precise, Challenge,
+  Creative, Heroic, Strategic, Classic. The first hole of each type is announced once.
+- With 10 or more finished rounds a hole is too hard above (6 - difficulty) / 3 strokes over par on average and too easy
+  below (3 - difficulty) / 6 under. A variety counter compares each hole with the one before (type, dogleg, slope remarks,
+  par, heading within about 56 degrees).
+- Top 100: fees collected above $20,000 and score above 200; Top 18: above $40,000 and 300; score = the three
+  differentials, raised to fun * 3 on the easiest difficulty and fun * 2 on the next; too hard or too easy holes cannot win.
+  Awards are absolute, not a ranking.
+- The report: yards as stored, average strokes of finished rounds, minutes = time / plays / 40, fun, the differentials,
+  type, average fee, revenue and profit = fees - build cost - maintenance (one unit per open hole each charge interval).
+  The total row adds the averages, divides fun and the differentials by the open holes, and (an exe bug, kept) shows the
+  last hole's minutes past the hour.
 
 ## Terrain table (static table at 0x4c1a40 in the publisher exe, 0x30 bytes per entry)
 
