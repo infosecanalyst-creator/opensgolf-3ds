@@ -106,6 +106,7 @@ pub struct PropertyRecord {
     pub relief: u8,
 }
 
+#[allow(clippy::too_many_arguments)]
 const fn rec(
     name: &'static str,
     course: &'static str,
