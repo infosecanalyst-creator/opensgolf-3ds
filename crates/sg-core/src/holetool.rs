@@ -42,7 +42,7 @@ impl Club {
         let old_flags = c.flags[i];
         let cup = old == t::GREEN && old_flags & f::CUP != 0;
         if self.game & game::TOURNAMENT != 0 && (old == t::TEE || cup) {
-            self.out.push(Event::Sound { slot: REFUSED, at: None });
+            self.out.push(Event::Sound { slot: REFUSED, at: None, delay: 0 });
             return false;
         }
         let hu = h.clamp(0, HOLE_RECORDS as i32 - 1) as usize;
@@ -131,18 +131,18 @@ impl Club {
     pub fn open_hole(&mut self, c: &mut Course) -> Option<usize> {
         let h = self.next_hole;
         if !(1..19).contains(&h) {
-            self.out.push(Event::Sound { slot: REFUSED, at: None });
+            self.out.push(Event::Sound { slot: REFUSED, at: None, delay: 0 });
             return None;
         }
         let hu = h as usize;
         let two = self.two_tees();
         let hr = &self.holes[hu];
         if hr.back.0 == 0 || hr.pin.0 == 0 || (two && hr.fwd.0 == 0) {
-            self.out.push(Event::Sound { slot: REFUSED, at: None });
+            self.out.push(Event::Sound { slot: REFUSED, at: None, delay: 0 });
             return None;
         }
         self.top_rounds = [0; 10];
-        self.out.push(Event::Sound { slot: OPENED, at: None });
+        self.out.push(Event::Sound { slot: OPENED, at: None, delay: 0 });
         let level10 = c.level[10];
         let hr = &mut self.holes[hu];
         if hr.length == 0 {

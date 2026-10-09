@@ -14,7 +14,20 @@ struct Voice {
     clip: Arc<Vec<i16>>,
     pos: usize,
     vol: f32,
+    /// -1 left .. 1 right.
+    pan: f32,
+    /// Samples (interleaved) of silence before the clip starts.
+    delay: usize,
+    /// Volume lost per sample while fading out (0: not fading); the voice ends at zero.
+    fade: f32,
     looping: bool,
+}
+
+/// The index key of a path under Sounds/: lower case, forward slashes, and underscores read as spaces (the exe asks for
+/// "Golf sfx/..." and "Tropical Music/..."; copies of the game whose folder names had their spaces turned into underscores
+/// still match).
+fn key_of(rel: &str) -> String {
+    rel.to_lowercase().replace('\\', "/").replace('_', " ")
 }
 
 struct State {
@@ -73,7 +86,7 @@ impl Mixer {
         let mut index = BTreeMap::new();
         for p in crate::fsutil::walk(sounds_dir) {
             if let Ok(rel) = p.strip_prefix(sounds_dir) {
-                let key = rel.components().map(|c| c.as_os_str().to_string_lossy().to_lowercase()).collect::<Vec<_>>().join("/");
+                let key = key_of(&rel.components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect::<Vec<_>>().join("/"));
                 if key.ends_with(".wav") {
                     index.insert(key, p.clone());
                 }
@@ -87,9 +100,9 @@ impl Mixer {
     pub fn add_dir(&mut self, prefix: &str, dir: &Path) {
         for p in crate::fsutil::walk(dir) {
             if let Ok(rel) = p.strip_prefix(dir) {
-                let key = rel.components().map(|c| c.as_os_str().to_string_lossy().to_lowercase()).collect::<Vec<_>>().join("/");
+                let key = key_of(&rel.components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect::<Vec<_>>().join("/"));
                 if key.ends_with(".wav") {
-                    self.index.insert(format!("{}/{key}", prefix.to_lowercase()), p.clone());
+                    self.index.insert(format!("{}/{key}", key_of(prefix)), p.clone());
                 }
             }
         }
@@ -99,11 +112,11 @@ impl Mixer {
         self.index.is_empty()
     }
     pub fn known(&self, rel: &str) -> bool {
-        self.index.contains_key(&rel.to_lowercase())
+        self.index.contains_key(&key_of(rel))
     }
     /// Relative paths under a folder (lower case), sorted.
     pub fn list(&self, folder_prefix: &str) -> Vec<String> {
-        let p = folder_prefix.to_lowercase();
+        let p = key_of(folder_prefix);
         self.index.keys().filter(|k| k.starts_with(&p)).cloned().collect()
     }
     pub fn last_error(&self) -> String {
@@ -142,18 +155,41 @@ impl Mixer {
 
     /// Finds a clip by path relative to Sounds/ (case-insensitive, forward slashes) and plays it. Returns a voice id, or -1.
     pub fn play(&self, rel: &str, volume: f32, looping: bool) -> i32 {
+        self.play_at(rel, volume, 0.0, 0, looping)
+    }
+
+    /// Plays a clip panned (-1 left .. 1 right) and starting `delay_ms` from now. Returns a voice id, or -1.
+    pub fn play_at(&self, rel: &str, volume: f32, pan: f32, delay_ms: u32, looping: bool) -> i32 {
         let Ok(mut s) = self.state.lock() else { return -1 };
-        let Some(clip) = self.load(&mut s, &rel.to_lowercase()) else { return -1 };
+        let Some(clip) = self.load(&mut s, &key_of(rel)) else { return -1 };
         if clip.is_empty() {
             return -1;
         }
         if s.voices.len() >= MAX_VOICES {
-            s.voices.remove(0); // steal the oldest
+            // steal the oldest voice that is not looping (music and ambience stay)
+            let i = s.voices.iter().position(|v| !v.looping).unwrap_or(0);
+            s.voices.remove(i);
         }
         let id = s.next_id;
         s.next_id += 1;
-        s.voices.push(Voice { id, clip, pos: 0, vol: volume, looping });
+        let delay = (delay_ms as usize * RATE as usize / 1000) * 2;
+        s.voices.push(Voice { id, clip, pos: 0, vol: volume, pan: pan.clamp(-1.0, 1.0), delay, fade: 0.0, looping });
         id
+    }
+
+    /// Fades a voice out over `ms` milliseconds, then stops it.
+    pub fn fade_out(&self, voice: i32, ms: u32) {
+        if let Ok(mut s) = self.state.lock() {
+            for v in s.voices.iter_mut().filter(|v| v.id == voice) {
+                let n = (ms.max(1) as f32 * RATE as f32 / 1000.0) * 2.0;
+                v.fade = v.vol / n;
+            }
+        }
+    }
+
+    /// Whether a voice is still sounding (or waiting to start).
+    pub fn playing(&self, voice: i32) -> bool {
+        self.state.lock().map(|s| s.voices.iter().any(|v| v.id == voice)).unwrap_or(false)
     }
 
     pub fn stop(&self, voice: i32) {
@@ -179,8 +215,9 @@ impl Mixer {
             let master = s.master;
             for v in s.voices.iter_mut() {
                 let total = v.clip.len();
-                let gain = (v.vol * master * 256.0) as i32;
-                let mut i = 0;
+                let mut i = v.delay.min(acc.len()) & !1;
+                v.delay -= i;
+                let (pl, pr) = ((1.0 - v.pan).min(1.0), (1.0 + v.pan).min(1.0));
                 while i < acc.len() {
                     if v.pos >= total {
                         if v.looping {
@@ -189,15 +226,33 @@ impl Mixer {
                             break;
                         }
                     }
-                    let n = (acc.len() - i).min(total - v.pos);
-                    for k in 0..n {
-                        acc[i + k] += (v.clip[v.pos + k] as i32 * gain) >> 8;
+                    if v.fade > 0.0 && v.vol <= 0.0 {
+                        break;
+                    }
+                    let n = (acc.len() - i).min(total - v.pos) & !1;
+                    if n == 0 {
+                        break;
+                    }
+                    // gains per channel, stepped every 64 frames while fading
+                    let mut k = 0;
+                    while k < n {
+                        let m = (n - k).min(128);
+                        let gl = (v.vol * master * pl * 256.0) as i32;
+                        let gr = (v.vol * master * pr * 256.0) as i32;
+                        for j in (0..m).step_by(2) {
+                            acc[i + k + j] += (v.clip[v.pos + k + j] as i32 * gl) >> 8;
+                            acc[i + k + j + 1] += (v.clip[v.pos + k + j + 1] as i32 * gr) >> 8;
+                        }
+                        if v.fade > 0.0 {
+                            v.vol = (v.vol - v.fade * m as f32).max(0.0);
+                        }
+                        k += m;
                     }
                     v.pos += n;
                     i += n;
                 }
             }
-            s.voices.retain(|v| v.looping || v.pos < v.clip.len());
+            s.voices.retain(|v| (v.looping || v.pos < v.clip.len() || v.delay > 0) && !(v.fade > 0.0 && v.vol <= 0.0));
         }
         for (o, a) in out.iter_mut().zip(acc) {
             *o = a.clamp(-32768, 32767) as i16;
@@ -216,6 +271,12 @@ mod tests {
         assert_eq!(out.len(), 200 * 2);
         assert_eq!(out[0], out[1]); // mono goes to both channels
         assert_eq!(out[2 * 2], 100); // frame 2 at 44.1k is source frame 1
+    }
+
+    #[test]
+    fn underscores_read_as_spaces() {
+        assert_eq!(key_of("Golf sfx/Ball In Hole.wav"), key_of("Golf_Sfx/Ball_In_Hole.wav"));
+        assert_eq!(key_of("music/Tropical Music/x.wav"), "music/tropical music/x.wav");
     }
 
     #[test]

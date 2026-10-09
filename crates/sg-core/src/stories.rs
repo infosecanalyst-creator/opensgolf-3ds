@@ -368,13 +368,13 @@ impl Club {
             let pm = self.male(p);
             if self.g[p].story_step < step {
                 if ch == step - 1 {
-                    self.sound(0xa4 + pm, Some((self.g[p].x, self.g[p].y)));
+                    self.sound_after(0xa4 + pm, Some((self.g[p].x, self.g[p].y)), 1500);
                 } else {
-                    self.sound(0x5a + pm, Some((self.g[p].x, self.g[p].y)));
+                    self.sound_after(0x5a + pm, Some((self.g[p].x, self.g[p].y)), 1500);
                     self.g[g].mood -= 1;
                 }
             } else {
-                self.sound(0xa6 + pm, Some((self.g[g].x, self.g[g].y)));
+                self.sound_after(0xa6 + pm, Some((self.g[g].x, self.g[g].y)), 1500);
                 if step == 1 {
                     let j = jingle(c.theme, story & 1 != 0, false);
                     self.sound(j, None);

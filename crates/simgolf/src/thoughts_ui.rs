@@ -11,14 +11,18 @@ impl App {
     /// Screen point (virtual 800x600) of a map position, or None when it is off screen.
     pub fn screen_of(&self, x: i32, y: i32) -> Option<(f32, f32)> {
         let (wx, wz) = self.units_to_world(x, y);
+        self.screen_of_world(wx, wz).filter(|&(vx, vy)| (0.0..800.0).contains(&vx) && (0.0..600.0).contains(&vy))
+    }
+
+    /// Screen point (virtual 800x600) of a world position, on screen or not.
+    pub fn screen_of_world(&self, wx: f32, wz: f32) -> Option<(f32, f32)> {
         let h = self.terrain.height_at(wx, wz);
         let m = self.mv;
         let ex = m[0] * wx + m[4] * h + m[8] * wz + m[12];
         let ey = m[1] * wx + m[5] * h + m[9] * wz + m[13];
         let sx = ex / self.upp + self.draw_w * 0.5;
         let sy = self.draw_h * 0.5 - ey / self.upp;
-        let (vx, vy) = self.view.to_virtual(sx, sy);
-        ((0.0..800.0).contains(&vx) && (0.0..600.0).contains(&vy)).then_some((vx, vy))
+        Some(self.view.to_virtual(sx, sy))
     }
 
     pub fn draw_thoughts(&self, g: &mut Gfx, s: &Ui) {

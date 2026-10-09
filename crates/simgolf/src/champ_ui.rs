@@ -58,7 +58,7 @@ impl App {
     /// Saves the course for championship play (File menu, command 0x43): refused during a tournament.
     pub fn save_championship_course(&mut self) {
         if self.club.game & sg_core::golfer::game::TOURNAMENT != 0 {
-            self.slot_sound(24, self.cam_x, self.cam_z);
+            self.ui_sound(24);
             return self.show_toast("Cannot save course during a tournament.");
         }
         let dir = self.championship_dir();

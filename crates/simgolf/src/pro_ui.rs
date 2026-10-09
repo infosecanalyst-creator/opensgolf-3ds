@@ -137,7 +137,7 @@ impl App {
                         d.points -= 1;
                         d.confirm = false;
                     } else {
-                        self.slot_sound(0x18, self.cam_x, self.cam_z);
+                        self.ui_sound(0x18);
                     }
                 } else if minus_rect(k).has(vx, vy) {
                     handled = true;
@@ -145,7 +145,7 @@ impl App {
                         *v -= 1;
                         d.points += 1;
                     } else {
-                        self.slot_sound(0x18, self.cam_x, self.cam_z);
+                        self.ui_sound(0x18);
                     }
                 }
             }
@@ -163,7 +163,7 @@ impl App {
             return;
         }
         if !handled {
-            self.slot_sound(0x18, self.cam_x, self.cam_z);
+            self.ui_sound(0x18);
         }
         self.skill_dialog = Some(d);
     }

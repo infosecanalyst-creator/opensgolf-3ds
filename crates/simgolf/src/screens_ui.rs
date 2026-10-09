@@ -94,7 +94,7 @@ impl App {
             } else if self.pair_picks.len() < 2 {
                 self.pair_picks.push(s);
             } else {
-                self.slot_sound(0x18, self.cam_x, self.cam_z);
+                self.ui_sound(0x18);
             }
             return;
         }
@@ -109,7 +109,7 @@ impl App {
             return;
         }
         if picks.len() != 2 || !self.club.pick_pair(&mut self.course, &mut self.exe_rng, picks[0], picks[1]) {
-            self.slot_sound(0x18, self.cam_x, self.cam_z);
+            self.ui_sound(0x18);
         }
     }
 
@@ -340,7 +340,7 @@ impl App {
             println!("[{:6.1}s] accomplishment: {}", self.sim_time, self.club.award_title(id));
             self.club.award_pending = -1;
             if self.ui_ok && self.screen == Screen::Play {
-                self.slot_sound(0x38, self.cam_x, self.cam_z);
+                self.ui_sound(0x38);
                 self.screen = Screen::Board;
             }
         }
@@ -429,8 +429,8 @@ impl App {
 
     pub fn open_year_end(&mut self) {
         if self.ui_ok && self.screen == Screen::Play {
-            self.slot_sound(0x7f, self.cam_x, self.cam_z);
             self.screen = Screen::YearEnd;
+            self.screen_jingle(0x7f, Screen::YearEnd);
         }
     }
 

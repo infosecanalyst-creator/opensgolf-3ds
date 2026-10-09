@@ -257,7 +257,8 @@ pub enum Column {
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Event {
     /// A sound slot; with a map point it is positional.
-    Sound { slot: i32, at: Option<(i32, i32)> },
+    /// A sound slot, at a map position (None: not positional), starting `delay` ms from now.
+    Sound { slot: i32, at: Option<(i32, i32)>, delay: u32 },
     /// Money earned (units of $100), shown as a floating number at the point.
     Earn { units: i32, column: Column, at: (i32, i32) },
     /// A thought shown above a golfer (event id and argument).
@@ -515,7 +516,13 @@ impl Club {
     }
 
     pub(crate) fn sound(&mut self, slot: i32, at: Option<(i32, i32)>) {
-        self.out.push(Event::Sound { slot, at });
+        self.out.push(Event::Sound { slot, at, delay: 0 });
+    }
+
+    /// A sound that starts `ms` milliseconds later (the exe's sound call takes a start delay: a golfer's voice after the
+    /// splash or tree hit it reacts to, a story partner's reply).
+    pub(crate) fn sound_after(&mut self, slot: i32, at: Option<(i32, i32)>, ms: u32) {
+        self.out.push(Event::Sound { slot, at, delay: ms });
     }
 
     pub(crate) fn earn(&mut self, units: i32, column: Column, at: (i32, i32)) {
@@ -653,7 +660,9 @@ impl Club {
                 1
             }
             2 | 3 | 8 => {
-                self.sound(if bad_lie { 0x10 } else { 0xdc } + voice, Some((x, y)));
+                // after a ball in the water the voice waits a second for the splash (types 2 and 3)
+                let wait = if matches!(id, 2 | 3) && arg == 0x11 { 1000 } else { 0 };
+                self.sound_after(if bad_lie { 0x10 } else { 0xdc } + voice, Some((x, y)), wait);
                 match id {
                     2 => -1,
                     _ => -2,
@@ -692,7 +701,7 @@ impl Club {
                 1
             }
             0xc | 0xd => {
-                self.sound(male + 8, Some((x, y)));
+                self.sound_after(male + 8, Some((x, y)), 500);
                 -1
             }
             0xe => {
@@ -2675,7 +2684,7 @@ impl Club {
                     }
                     self.g[g].flags |= flag::BALL_MOVING;
                     if self.g[g].class & 0xf0 != 0 && l.bt != t::GREEN && g as i32 == self.gary {
-                        self.sound(0x2e, Some(at));
+                        self.sound_after(0x2e, Some(at), 1000);
                     }
                     self.shot_start[g] = self.tick;
                 }

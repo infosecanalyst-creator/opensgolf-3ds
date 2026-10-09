@@ -581,7 +581,7 @@ impl App {
     /// career go along; the course starts afresh (0x407d30).
     pub fn open_world_map(&mut self) {
         if self.club.game & sg_core::golfer::game::REPEAT != 0 {
-            return self.slot_sound(0x18, self.cam_x, self.cam_z);
+            return self.ui_sound(0x18);
         }
         self.world_move = true;
         self.deal_offer(self.econ.sandbox);

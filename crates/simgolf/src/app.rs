@@ -460,6 +460,11 @@ pub struct App {
     pub sound_log: bool,
     pub music_on: bool,
     pub ambience: i32,
+    /// The title tune (slot 0x80) while it plays, and whether the last frame was on the title screens (None: not yet known).
+    pub title_music: i32,
+    pub music_screen: Option<bool>,
+    /// The playing screen jingle and the screen it belongs to.
+    pub jingle: Option<(i32, Screen)>,
     pub music: i32,
     pub music_idx: usize,
     /// Wall clock (seconds) used for toasts and the story timer.
@@ -610,6 +615,9 @@ impl App {
             sound_log: false,
             music_on: false,
             ambience: -1,
+            title_music: -1,
+            music_screen: None,
+            jingle: None,
             music: -1,
             music_idx: 0,
             clock: 0.0,
@@ -640,11 +648,80 @@ impl App {
         id
     }
 
-    /// Plays one of the exe's sound slots (the file each slot holds after the exe's loader, sg_core::sounds). The exe pans and
-    /// scales these by screen position; here they play centred.
-    pub fn slot_sound(&mut self, slot: i32, _x: f32, _z: f32) {
-        if let Some(file) = sg_core::sounds::slot_file(slot) {
-            self.snd(file, 0.7, false);
+    /// Plays one of the exe's sound slots (the file each slot holds after the exe's loader, sg_core::sounds) at a world point,
+    /// as the exe's positional call does: silent off screen, panned by the screen x, louder towards the edges (the exe's own
+    /// odd volume curve, 50 at the centre to 74 of 127 at the edge).
+    pub fn slot_sound(&mut self, slot: i32, x: f32, z: f32) {
+        self.slot_sound_after(slot, Some((x, z)), 0);
+    }
+
+    /// An interface sound: centred, never gated (the exe's position -1).
+    pub fn ui_sound(&mut self, slot: i32) {
+        self.slot_sound_after(slot, None, 0);
+    }
+
+    /// A screen's jingle (year end 0x7f, accomplishments 0x7e): it fades when the player leaves that screen.
+    pub fn screen_jingle(&mut self, slot: i32, screen: Screen) {
+        let id = self.slot_sound_after(slot, None, 0);
+        self.jingle = Some((id, screen));
+    }
+
+    pub fn slot_sound_after(&mut self, slot: i32, at: Option<(f32, f32)>, delay_ms: u32) -> i32 {
+        let Some(file) = sg_core::sounds::slot_file(slot) else { return -1 };
+        let sx = match at {
+            Some((x, z)) => match self.screen_of_world(x, z) {
+                Some((vx, vy)) if (0.0..800.0).contains(&vx) && (0.0..=500.0).contains(&vy) => vx,
+                _ => return -1,
+            },
+            None => 400.0,
+        };
+        let vol = (((sx - 400.0).abs() as i32 >> 4) + 50) as f32 / 127.0 * 1.3;
+        let pan = (sx * 127.0 / 800.0 - 64.0) / 64.0;
+        let (Some(m), false) = (self.mixer.clone(), self.mute) else { return -1 };
+        let id = m.play_at(file, vol, pan, delay_ms, false);
+        if self.sound_log {
+            println!("  sound: {file}{}", if id < 0 { "  (missing)" } else { "" });
+        }
+        id
+    }
+
+    /// Music and ambience by screen, as the exe's main loop has them: the title tune (Music Idea, slot 0x80) plays once when
+    /// the title menu opens and fades over a second when a game starts; the course ambience (slot 0x2d) loops during a game
+    /// and fades when the player goes back to the title. There is no music during play.
+    pub fn screen_audio(&mut self) {
+        if let Some((id, sc)) = self.jingle {
+            if sc != self.screen {
+                if let Some(m) = &self.mixer {
+                    m.fade_out(id, 1000);
+                }
+                self.jingle = None;
+            }
+        }
+        let title = matches!(self.screen, Screen::Menu | Screen::Property | Screen::Champ);
+        if self.music_screen == Some(title) {
+            return;
+        }
+        self.music_screen = Some(title);
+        let Some(m) = self.mixer.clone() else { return };
+        if self.mute {
+            return;
+        }
+        if title {
+            if self.ambience >= 0 {
+                m.fade_out(self.ambience, 1000);
+                self.ambience = -1;
+            }
+            if self.screen == Screen::Menu && !m.playing(self.title_music) {
+                self.title_music = sg_core::sounds::slot_file(0x80).map(|f| m.play(f, 0.8, false)).unwrap_or(-1);
+            }
+        } else {
+            if self.title_music >= 0 {
+                m.fade_out(self.title_music, 1000);
+                self.title_music = -1;
+            }
+            if self.ambience < 0 {
+                self.start_ambience();
+            }
         }
     }
 
@@ -652,7 +729,8 @@ impl App {
         if let (Some(m), true) = (&self.mixer, self.ambience >= 0) {
             m.stop(self.ambience);
         }
-        self.ambience = self.snd("GolfAmbience122.wav", 0.22, true);
+        // slot 0x2d at the exe's full volume (100 of 127)
+        self.ambience = self.snd("GolfAmbience122.wav", 0.6, true);
     }
 
     pub fn toggle_music(&mut self) {
@@ -1491,12 +1569,9 @@ impl App {
         let events: Vec<golf::Event> = self.club.out.drain(..).collect();
         for e in events {
             match e {
-                golf::Event::Sound { slot, at } => {
-                    let (wx, wz) = match at {
-                        Some((x, y)) => self.units_to_world(x, y),
-                        None => (self.cam_x, self.cam_z),
-                    };
-                    self.slot_sound(slot, wx, wz);
+                golf::Event::Sound { slot, at, delay } => {
+                    let at = at.map(|(x, y)| self.units_to_world(x, y));
+                    self.slot_sound_after(slot, at, delay);
                 }
                 golf::Event::Earn { units, column, .. } => {
                     let col = match column {
@@ -1888,7 +1963,7 @@ impl App {
     /// Opens the land screen (after the County Commissioner approves an expansion and the player says yes).
     pub fn open_land_screen(&mut self) {
         self.ensure_land();
-        self.slot_sound(56, 0.0, 0.0);
+        self.ui_sound(56);
         let Some(land) = self.land.as_ref() else { return };
         self.tracts = sg_core::tracts::roll(land, self.club.purchases, &mut self.exe_rng);
         self.land_hover = -1;
@@ -1932,7 +2007,7 @@ impl App {
             return;
         }
         if !(0..9).contains(&self.land_hover) {
-            self.slot_sound(24, 0.0, 0.0);
+            self.ui_sound(24);
             return;
         }
         let i = self.land_hover as usize;
@@ -2010,7 +2085,7 @@ impl App {
             }
         }
         if let Some((slot, _)) = sg_core::decor::tree_sound(new) {
-            self.slot_sound(slot, 0.0, 0.0);
+            self.ui_sound(slot);
         }
     }
 
@@ -2057,14 +2132,14 @@ impl App {
                 if !m.is_empty() {
                     self.show_toast(m);
                 }
-                self.slot_sound(24, 0.0, 0.0);
+                self.ui_sound(24);
                 return false;
             }
         };
         let amount = cost as f64 * Economy::UNIT;
         if !self.econ.affordable(amount, holes) {
             self.show_toast(&format!("This change costs {}. You have only {}.", money(amount as i64), money(self.econ.cash as i64)));
-            self.slot_sound(24, 0.0, 0.0);
+            self.ui_sound(24);
             return false;
         }
         let Some(land) = self.land.as_mut() else { return false };
@@ -2080,9 +2155,9 @@ impl App {
             self.econ.spend_to(economy::LEDGER_FACILITIES, amount);
         }
         match kind {
-            land::K_BENCH => self.slot_sound(262, 0.0, 0.0),
-            land::K_FLOWERS => self.slot_sound(148, 0.0, 0.0),
-            land::K_BRIDGE => self.slot_sound(263, 0.0, 0.0),
+            land::K_BENCH => self.ui_sound(262),
+            land::K_FLOWERS => self.ui_sound(148),
+            land::K_BRIDGE => self.ui_sound(263),
             _ => {}
         }
         self.after_object_change();
@@ -2096,7 +2171,7 @@ impl App {
         let Some(land) = self.land.as_mut() else { return };
         land.sync_from_terrain(&self.terrain);
         match land.undo_tile(x, y) {
-            land::Undone::Refused => self.slot_sound(24, 0.0, 0.0),
+            land::Undone::Refused => self.ui_sound(24),
             land::Undone::Building(i) => {
                 if land.objects[i].kind == land::K_CLUBHOUSE {
                     return;

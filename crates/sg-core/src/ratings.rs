@@ -148,7 +148,7 @@ pub fn pass(club: &mut Club, difficulty: i32) -> ClubRatings {
                 "Hole #{h} has been recognized as your first \"{}\" type hole.",
                 TYPE_NAMES[mask as usize].to_uppercase()
             )));
-            club.out.push(Event::Sound { slot: 0x2a, at: None });
+            club.out.push(Event::Sound { slot: 0x2a, at: None, delay: 0 });
             let green = (hole.pin.0 * 1024 + 512, hole.pin.1 * 1024 + 512);
             match mask {
                 3 if difficulty >= 2 => club.award_at(0, green),
@@ -197,7 +197,7 @@ pub fn pass(club: &mut Club, difficulty: i32) -> ClubRatings {
             club.out.push(Event::Message(format!(
                 "Hole #{h} has been rated as one of the Top 100 golf holes in the country by Golf Enquirer magazine!"
             )));
-            club.out.push(Event::Sound { slot: 0x2e, at: None });
+            club.out.push(Event::Sound { slot: 0x2e, at: None, delay: 0 });
             club.award_at(7, (hole.pin.0 * 1024 + 512, hole.pin.1 * 1024 + 512));
             club.log_event(crate::records::log::TOP100, h as i32);
         }
@@ -207,7 +207,7 @@ pub fn pass(club: &mut Club, difficulty: i32) -> ClubRatings {
             club.out.push(Event::Message(format!(
                 "Hole #{h} has been rated as one of the Top 18 golf holes in the country by Great Golf Holes magazine!"
             )));
-            club.out.push(Event::Sound { slot: 0x2f, at: None });
+            club.out.push(Event::Sound { slot: 0x2f, at: None, delay: 0 });
             club.award_at(10, (hole.pin.0 * 1024 + 512, hole.pin.1 * 1024 + 512));
             club.log_event(crate::records::log::TOP18, h as i32);
         }

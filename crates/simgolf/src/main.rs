@@ -473,13 +473,9 @@ impl Stage {
             app.mixer = Some(mixer.clone());
             if !app.mute && o.png_out.is_none() {
                 app.audio = audio::open(mixer);
-                if app.audio.is_some() {
-                    app.start_ambience();
-                } else {
+                if app.audio.is_none() {
                     eprintln!("sound: no audio device, running silent");
                 }
-            } else if app.sound_log {
-                app.start_ambience();
             }
         }
         app.terrain = Terrain::demo_course(40, 40, app.seed);
@@ -1026,7 +1022,10 @@ impl Stage {
                 app.roster_offset = 0;
                 app.screen = Screen::Roster;
             }
-            KeyCode::F10 => app.screen = Screen::Board,
+            KeyCode::F10 => {
+                app.screen = Screen::Board;
+                app.screen_jingle(0x7e, Screen::Board);
+            }
             KeyCode::M => app.toggle_music(),
             KeyCode::N => {
                 app.mute = !app.mute;
@@ -1037,7 +1036,8 @@ impl Stage {
                     app.ambience = -1;
                     app.music = -1;
                 } else {
-                    app.start_ambience();
+                    app.title_music = -1;
+                    app.music_screen = None; // the next frame restarts what the screen plays
                     if app.music_on {
                         app.music_on = false;
                         app.toggle_music();
@@ -1209,6 +1209,7 @@ impl EventHandler for Stage {
             self.toggle_pause();
         }
         let app = &mut self.app;
+        app.screen_audio();
         if app.screen == Screen::Play {
             let hit = app.pick_ground(self.mouse.0, self.mouse.1);
             app.hover_tile = hit.map(|(x, z)| app.terrain.tile_of(x, z));
