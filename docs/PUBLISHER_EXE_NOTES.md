@@ -421,3 +421,17 @@ Confidence: high. Implemented in `sg-core/src/economy.rs` and the game.
 - Golfers quit when their mood is below 0 between shots (not below -10).
 - Weeds start from golfers: after a negative mood event, with chance (difficulty+1)/6, the golfer's tile gets a new growing
   weed (not on water, nor where a weed or footprint is). This answers the open question in "Staff".
+
+## Placing buildings (main frame near 0x41f3a3, removal 0x40e400)
+
+Confidence: high for the rules listed; the per-kind special cases (flower bed, landmark choice, home site value) partly.
+- The cursor's footprint test (0x40db90) decides where a building may go and returns a clearing charge (trees, rocks, water
+  under it; halved for a path). The cost is price x (level + 2) / 2 + clearing, booked to Facilities when placed. There is no
+  "building lot" and no path needed to build; without a path joining it to the clubhouse a building is not operational
+  (no income, monthly warning on Moderate and up).
+- Each kind from the Putting Green up exists once: building it again removes the old one and places a new one at level + 1
+  (an upgrade, with its cost); the exe only allows that from 10 holes ("Sorry, upgraded buildings are not available until you
+  build beyond 9 holes.").
+- Landmark cost (5 x id + 25) x 2 units, free when donated. Home sites need a site value of at least 50 (0x42ef40).
+- Removal frees the record and turns the footprint into rough (deep rough on slots 12..15; water under a Marina in Parkland
+  and Tropical), clearing its path marks; kinds 0..5 give their price back (landmark (level + 5) x 10).

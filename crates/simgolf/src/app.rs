@@ -1,7 +1,7 @@
 //! The game state and rules that sit above sg-core: the course and its scenery, the golfers on it, money, editing, the in-game
 //! panels and the story banner. Drawing lives in render.rs, input and the window in main.rs.
 use crate::gfx::{Gfx, Mesh, Vert};
-use crate::ui::Image;
+use crate::ui::{money, Image};
 use miniquad::TextureId;
 use sg_core::economy::{self, Economy};
 use sg_core::fsutil::resolve;
@@ -52,12 +52,12 @@ pub struct Prop {
     pub animated: bool,
     /// A weed, rebuilt from the tile flags every update.
     pub weed: bool,
+    /// A land object's sprite (building, landmark, obstacle), rebuilt when objects change.
+    pub object: bool,
     /// A pool golfer who is not on the course.
     pub hidden: bool,
     /// Scenery regenerated from the terrain after edits.
     pub tree: bool,
-    /// An amenity placed by the player (kept when props are regenerated).
-    pub building: bool,
 }
 
 impl Default for Prop {
@@ -74,10 +74,10 @@ impl Default for Prop {
             facing: 0,
             animated: false,
             weed: false,
+            object: false,
             golfer: None,
             hidden: false,
             tree: false,
-            building: false,
         }
     }
 }
@@ -144,60 +144,10 @@ pub const PAINT: [PaintEntry; 20] = [
     PaintEntry { name: "Grass bunker (editor id)", ty: 35, vbyte: 0 },
 ];
 
-/// Amenities. Sprite names are the level 1 files found per theme in Flics/Bldgs; costs are PLACEHOLDERS (the exe's building costs
-/// are not decoded). A Snack Bar visit pays 5 units, which is the exe's figure for building type 7 (assumed to be the snack bar).
-pub struct BuildDef {
-    pub name: &'static str,
-    pub sprite: [Option<&'static str>; 4],
-    pub cost: i32,
-    pub visit: i32,
-}
-
-pub const BUILD: [BuildDef; 6] = [
-    BuildDef {
-        name: "Snack Bar",
-        sprite: [Some("Bldgs/Park/ParkSnackL1"), None, None, Some("Bldgs/Tropical/TROPsnackL1")],
-        cost: 10,
-        visit: 5,
-    },
-    BuildDef {
-        name: "Pro Shop",
-        sprite: [Some("Bldgs/Park/ProsL1"), None, Some("Bldgs/Desert/dproL1"), Some("Bldgs/Tropical/TROPproshopL1")],
-        cost: 30,
-        visit: 0,
-    },
-    BuildDef {
-        name: "Cart Garage",
-        sprite: [
-            Some("Bldgs/Park/cartL1"),
-            Some("Bldgs/links/Cart_garageL1"),
-            Some("Bldgs/Desert/DEScartL1"),
-            Some("Bldgs/Tropical/TROPcartL1"),
-        ],
-        cost: 20,
-        visit: 0,
-    },
-    BuildDef {
-        name: "Hotel",
-        sprite: [
-            Some("Bldgs/Park/HotelL1"),
-            Some("Bldgs/links/HotelL1"),
-            Some("Bldgs/Desert/DesHotelL1"),
-            Some("Bldgs/Tropical/TROPhotelL1"),
-        ],
-        cost: 50,
-        visit: 0,
-    },
-    BuildDef { name: "Tennis Court", sprite: [Some("Bldgs/Park/tenL1"), None, Some("Bldgs/Desert/tenL1"), None], cost: 25, visit: 0 },
-    BuildDef { name: "Marina", sprite: [Some("Bldgs/Park/MarL1"), None, None, Some("Bldgs/Tropical/TROPmarL1")], cost: 40, visit: 0 },
-];
-
-#[derive(Clone, Copy, Debug)]
-pub struct Placed {
-    pub def: usize,
-    pub tx: i32,
-    pub ty: i32,
-}
+/// Building kinds the Add Buildings panel offers, in the exe's order (kind numbers of `land::BUILDINGS`): benches, flower beds,
+/// ball washers, then the amenities as holes unlock them. Paths have their own tool; landmarks and home sites need donations and
+/// members first.
+pub const OFFERED_KINDS: [i32; 12] = [1, 2, 3, 6, 7, 8, 9, 10, 11, 12, 13, 14];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Screen {
@@ -322,8 +272,8 @@ pub struct App {
     pub tool: i32,
     /// 1 gravel, 2 paved.
     pub path_kind: i32,
+    /// Building kind the building tool places (an exe kind, see OFFERED_KINDS).
     pub build_idx: usize,
-    pub buildings: Vec<Placed>,
     /// = selects raising, - selects lowering (the original's hotkeys); shift flips it.
     pub raise_sign: i32,
     pub paused: bool,
@@ -452,8 +402,7 @@ impl App {
             edit: false,
             tool: 0,
             path_kind: 1,
-            build_idx: 0,
-            buildings: Vec::new(),
+            build_idx: 7,
             raise_sign: 1,
             paused: false,
             paint_idx: 0,
@@ -897,19 +846,9 @@ impl App {
         self.props.rotate_left(before);
     }
 
-    fn add_building_prop(&mut self, b: Placed) {
-        let Some(base) = BUILD[b.def].sprite[self.theme] else { return };
-        let (x, z) = self.terrain.tile_centre(b.tx, b.ty);
-        let mut p = Prop { building: true, x, z, ..Default::default() };
-        p.body = self.sprite_for(&format!("{base}.flc"), false, None);
-        p.shadow = self.sprite_for(&format!("{base}Shadow.flc"), true, None);
-        if p.body.is_some() {
-            self.props.push(p);
-        }
-    }
-
-    pub fn build_available(&self, d: usize) -> bool {
-        BUILD[d].sprite[self.theme].is_some()
+    /// Whether the building tool may place this kind now: unlocked by the course's holes (sandbox: all).
+    pub fn build_available(&self, kind: usize) -> bool {
+        OFFERED_KINDS.contains(&(kind as i32)) && (kind as i32) < land::unlocked_kinds(self.holes.len(), self.econ.sandbox)
     }
 
     /// Scenery: trees on Woods tiles, the placed buildings, a clubhouse, and the pool of golfers.
@@ -922,9 +861,7 @@ impl App {
             ["Bldgs/Tropical/TROPclubL2", "Bldgs/Tropical/TROPclubL2_base"],
         ];
         self.add_trees();
-        for b in self.buildings.clone() {
-            self.add_building_prop(b);
-        }
+        self.ensure_land();
         if self.land.is_some() {
             self.add_land_objects();
         } else if self.terrain.clubhouse_x >= 0 {
@@ -1275,9 +1212,39 @@ impl App {
         let needy = self.golfers[gi].hunger > 7 || self.golfers[gi].thirst > 7;
         if let (Some(h), true) = (self.holes.get(hole), needy) {
             let (gx, gz) = (h.green_x, h.green_z);
-            let visit = self.buildings.iter().find_map(|b| {
-                let (bx, bz) = self.terrain.tile_centre(b.tx, b.ty);
-                (BUILD[b.def].visit > 0 && (bx - gx).hypot(bz - gz) < 6.0 * TILE_SIZE).then_some(BUILD[b.def].visit)
+            // Amenity income, in units (the exe's figures; the second is for an upgraded building): Snack Bar 5, Putting Green 4/8,
+            // Pro Shop 6/10, Driving Range 8/12. Only buildings joined to the clubhouse by path work.
+            let visit = self.land.as_ref().and_then(|l| {
+                let joined = l.joined_objects();
+                l.objects.iter().enumerate().find_map(|(i, o)| {
+                    let pay = match o.kind {
+                        7 => 5,
+                        6 => {
+                            if o.sub >= 1 {
+                                8
+                            } else {
+                                4
+                            }
+                        }
+                        8 => {
+                            if o.sub >= 1 {
+                                10
+                            } else {
+                                6
+                            }
+                        }
+                        10 => {
+                            if o.sub >= 1 {
+                                12
+                            } else {
+                                8
+                            }
+                        }
+                        _ => return None,
+                    };
+                    let (bx, bz) = self.terrain.tile_centre(o.a, o.b);
+                    (joined[i] && (bx - gx).hypot(bz - gz) < 6.0 * TILE_SIZE).then_some(pay)
+                })
             });
             if let Some(v) = visit {
                 self.econ.earn_to(economy::LEDGER_FOOD_DRINK, v as f64 * Economy::UNIT);
@@ -1420,7 +1387,8 @@ impl App {
         let (acres, price) = self.offer_for(prop_idx);
         self.econ.sandbox = sandbox;
         // The property is paid for out of the starting funds.
-        self.econ.start_cash = if sandbox { START_FUNDS as f64 } else { (START_FUNDS - price) as f64 };
+        // The exe starts with 1000 units (10000 in sandbox) and takes the property's price off a normal game.
+        self.econ.start_cash = if sandbox { (START_FUNDS * 10) as f64 } else { (START_FUNDS - price) as f64 };
         let slot_index = self.slot_of[prop_idx];
         let land = land::generate(slot_index, self.offer[slot_index], self.difficulty, sandbox, &mut self.exe_rng, &self.noise);
         self.terrain = land.to_terrain();
@@ -1431,7 +1399,6 @@ impl App {
         self.hover = -1;
         self.edit = false;
         self.panel = 0;
-        self.buildings.clear();
         self.reset_staff();
         self.load_story();
         self.reset_clock = true;
@@ -1491,8 +1458,8 @@ impl App {
     pub fn advisor_text(&self) -> &'static str {
         if self.holes.is_empty() {
             "Welcome to your new club. Open Build Course (the big round button at the bottom left), then paint a tee and a green a good distance apart to make your first hole."
-        } else if self.buildings.is_empty() {
-            "Golfers are on the course. Open Add Buildings and put up a snack bar: pick a building lot next to a path that joins the clubhouse. Visitors spend money there."
+        } else if !self.land.as_ref().map(|l| l.objects.iter().any(|o| (6..=14).contains(&o.kind))).unwrap_or(false) {
+            "Golfers are on the course. Open Add Buildings and put up an amenity, then lay a path from it to the clubhouse: buildings only work once a path joins them to the clubhouse."
         } else if self.holes.len() < 3 {
             "More holes bring more golfers and more money. Build another tee and green, and make the holes different: long, narrow and tricky shots raise the club's skill rating."
         } else if self.econ.staff_count() == 0 {
@@ -1560,53 +1527,117 @@ impl App {
         self.snd("Interface/Path.wav", 0.7, false);
     }
 
-    /// Amenity placement. Rules from the game text: buildings go on a building lot and need a path to the clubhouse. The lot must
-    /// touch a path tile that is connected to the clubhouse. Removing refunds the cost.
+    /// Placing and removing buildings, as the exe does it. A building goes wherever its footprint fits (no water, cliffs, tees,
+    /// other buildings or land outside the property under it); it costs its price times (level + 2) / 2 plus a clearing charge for
+    /// trees, rocks and water under it, booked to Facilities. Building a kind that already stands again upgrades it (level + 1)
+    /// and moves it there, which needs a Country Club (10 holes). It only earns money once a path joins it to the clubhouse.
+    /// Removing one gives back the price of the small kinds only (benches, flower beds, ball washers, landmarks).
     pub fn edit_building(&mut self, tx: i32, ty: i32, remove: bool) {
         if !self.terrain.inside(tx, ty) {
             return;
         }
-        if let Some(i) = self.buildings.iter().position(|b| b.tx == tx && b.ty == ty) {
-            if remove {
-                self.econ.earn_to(economy::LEDGER_FACILITIES, BUILD[self.buildings[i].def].cost as f64 * Economy::UNIT);
-                self.buildings.remove(i);
-                self.props.retain(|p| !p.building);
-                for b in self.buildings.clone() {
-                    self.add_building_prop(b);
-                }
-                self.show_toast("Building removed, money refunded");
-                self.snd("Interface/Building.wav", 0.7, false);
-            }
-            return;
-        }
-        if remove {
-            return;
-        }
-        if !self.build_available(self.build_idx) {
-            return self.show_toast("Not available in this theme");
-        }
-        if self.terrain.ty[self.terrain.tile_index(tx, ty)] != TT_BUILDING {
-            return self.show_toast("Buildings go on a building lot");
-        }
-        let conn = paths_connected_to_clubhouse(&self.terrain);
-        const DX: [i32; 4] = [0, 1, 0, -1];
-        const DY: [i32; 4] = [-1, 0, 1, 0];
-        let ok = (0..4).any(|k| {
-            let (nx, ny) = (tx + DX[k], ty + DY[k]);
-            self.terrain.inside(nx, ny) && conn[self.terrain.tile_index(nx, ny)] != 0
+        self.ensure_land();
+        let theme = self.exe_theme();
+        let holes = self.holes.len();
+        let Some(land) = self.land.as_mut() else { return };
+        land.sync_from_terrain(&self.terrain);
+        let hit = land.objects.iter().position(|o| {
+            let s = land::BUILDINGS.get(o.kind as usize).map(|b| b.1).unwrap_or(1);
+            o.kind >= 0 && o.kind != land::K_CLUBHOUSE && (o.a..o.a + s).contains(&tx) && (o.b..o.b + s).contains(&ty)
         });
-        if !ok {
-            return self.show_toast("Buildings need a path to the clubhouse");
+        if remove {
+            let Some(i) = hit else { return };
+            let o = land.objects[i];
+            let size = land.footprint_size(&o);
+            let refund = match o.kind {
+                0..=3 | 5 => land::BUILDINGS[o.kind as usize].2,
+                4 => (o.sub + 5) * 10,
+                _ => 0,
+            } as f64
+                * Economy::UNIT;
+            land.remove_object(i);
+            land.write_area(&mut self.terrain, o.a, o.b, o.a + size - 1, o.b + size - 1);
+            if refund > 0.0 {
+                // The exe adds the refund to the cash but also takes it off the Facilities column again (kept as it is).
+                self.econ.earn(refund);
+                self.econ.book(economy::LEDGER_FACILITIES, -refund);
+            }
+            self.after_object_change();
+            self.show_toast(if refund > 0.0 { "Building removed, price refunded" } else { "Building removed" });
+            self.snd("Interface/Building.wav", 0.7, false);
+            return;
         }
-        let cost = BUILD[self.build_idx].cost as f64 * Economy::UNIT;
-        if !self.econ.sandbox && self.econ.cash < cost {
-            return self.show_toast("Not enough money");
+        let kind = self.build_idx as i32;
+        if !self.build_available(kind as usize) {
+            return self.show_toast("Build more holes to unlock this building");
         }
+        let Some(land) = self.land.as_mut() else { return };
+        let size = land::BUILDINGS[kind as usize].1;
+        let existing = if kind >= 6 { land.objects.iter().position(|o| o.kind == kind) } else { None };
+        if existing.is_some() && economy::rank(holes) < 2 {
+            return self.show_toast("Sorry, upgraded buildings are not available until you build beyond 9 holes.");
+        }
+        let Some(mut clear) = land.fits(tx, ty, size, kind, theme) else {
+            return self.show_toast("There is no room for that building there");
+        };
+        if kind == 0 {
+            clear /= 2;
+        }
+        let level = existing.map(|i| land.objects[i].sub + 1).unwrap_or(0);
+        let cost = (land::BUILDINGS[kind as usize].2 * (level + 2) / 2 + clear) as f64 * Economy::UNIT;
+        if !self.econ.affordable(cost, holes) {
+            return self.show_toast(&format!("This change costs {}. You have only {}.", money(cost as i64), money(self.econ.cash as i64)));
+        }
+        let Some(land) = self.land.as_mut() else { return };
+        if let Some(i) = existing {
+            let o = land.objects[i];
+            let s = land.footprint_size(&o);
+            land.remove_object(i);
+            land.write_area(&mut self.terrain, o.a, o.b, o.a + s - 1, o.b + s - 1);
+        }
+        let n = land.place(&mut self.exe_rng, tx, ty, kind, 0, theme);
+        land.objects[n].sub = level;
+        land.write_area(&mut self.terrain, tx, ty, tx + size - 1, ty + size - 1);
         self.econ.spend_to(economy::LEDGER_FACILITIES, cost);
-        let b = Placed { def: self.build_idx, tx, ty };
-        self.buildings.push(b);
-        self.add_building_prop(b);
+        self.after_object_change();
         self.snd("Interface/Building.wav", 0.7, false);
+    }
+
+    /// After objects change: terrain meshes, trees and object sprites are rebuilt.
+    fn after_object_change(&mut self) {
+        self.dirty = true;
+        self.props.retain(|p| !p.object);
+        self.add_land_objects();
+    }
+
+    /// The exe's theme number (0 Parkland, 1 Desert, 2 Tropical, 3 Links) of the loaded theme.
+    pub fn exe_theme(&self) -> u8 {
+        [0, 3, 1, 2][self.theme.min(3)]
+    }
+
+    /// Every course gets the exe's object model: generated land has it already; for the demo course or a loaded course file it is
+    /// made from the terrain, with the clubhouse as its first object.
+    pub fn ensure_land(&mut self) {
+        if self.land.is_some() {
+            return;
+        }
+        let mut land = Land::from_terrain(&self.terrain, self.exe_theme());
+        if self.terrain.clubhouse_x >= 0 {
+            let (a, b) = (self.terrain.clubhouse_x - 2, self.terrain.clubhouse_y - 2);
+            land.objects.push(land::Object { kind: land::K_CLUBHOUSE, a, b, dir: 0, flags: 0x40, sub: 0 });
+            land.clubhouse = (a, b);
+            for r in 0..4 {
+                for c in 0..4 {
+                    let (ta, tb) = (a + r, b + c);
+                    if (0..land::N).contains(&ta) && (0..land::N).contains(&tb) {
+                        let i = (ta * land::N + tb) as usize;
+                        land.flags[i] |= land::flag::FOOTPRINT;
+                        land.var[i] = 0;
+                    }
+                }
+            }
+        }
+        self.land = Some(land);
     }
 
     pub fn edit_wall(&mut self, remove: bool) {
@@ -1737,7 +1768,7 @@ impl App {
                 }
             }
             3 => "edge",
-            4 => BUILD[self.build_idx].name,
+            4 => land::BUILDINGS.get(self.build_idx).map(|b| b.0).unwrap_or("?"),
             _ => "terrain",
         };
         format!("Edit: {tool}, {what}, brush {}", self.brush * 2 + 1)
@@ -2029,7 +2060,7 @@ impl App {
         let Some(land) = self.land.clone() else { return };
         let theme = land.slot.record().theme;
         let level = (self.holes.len() > 10) as u16;
-        for o in &land.objects {
+        for o in land.objects.iter().filter(|o| o.kind >= 0) {
             let size = land::BUILDINGS.get(o.kind as usize).map(|b| b.1).unwrap_or(1);
             let (cx, cz) = self.terrain.tile_centre(o.a, o.b);
             let off = (size - 1) as f32 * TILE_SIZE * 0.5;
@@ -2048,7 +2079,7 @@ impl App {
                     continue;
                 }
                 let shadow = if flat { None } else { self.sprite_for(&format!("{file}Shadow.flc"), true, None) };
-                self.props.push(Prop { x, z, body, shadow, flat, facing: o.dir as i32, animated, ..Default::default() });
+                self.props.push(Prop { x, z, body, shadow, flat, facing: o.dir as i32, animated, object: true, ..Default::default() });
             }
         }
     }

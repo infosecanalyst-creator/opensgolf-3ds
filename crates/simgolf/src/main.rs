@@ -241,17 +241,16 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 }
             }
             b'b' if item.len() > 2 && v.len() == 3 => {
-                app.build_idx = at(2).rem_euclid(BUILD.len() as i32) as usize;
+                app.build_idx = at(2).clamp(0, 19) as usize;
                 app.edit_building(at(0), at(1), false);
                 println!(
-                    "building {} at {},{}: {} placed, toast '{}' (clubhouse {},{})",
-                    BUILD[app.build_idx].name,
+                    "building {} at {},{}: {} objects, toast '{}', cash {}",
+                    sg_core::land::BUILDINGS[app.build_idx].0,
                     at(0),
                     at(1),
-                    app.buildings.len(),
+                    app.land.as_ref().map(|l| l.objects.iter().filter(|o| o.kind >= 0).count()).unwrap_or(0),
                     app.toast,
-                    app.terrain.clubhouse_x,
-                    app.terrain.clubhouse_y
+                    app.econ.cash
                 );
             }
             b'h' if item.len() > 2 && !v.is_empty() => {
@@ -345,6 +344,7 @@ impl Stage {
             }
         }
         app.terrain = Terrain::demo_course(40, 40, app.seed);
+        app.land = None;
         if !app.load_theme(&mut g, app.theme) {
             std::process::exit(1);
         }
@@ -464,6 +464,7 @@ impl Stage {
         match Terrain::load(&f, &self.app.terrain) {
             Ok(t) => {
                 self.app.terrain = t;
+                self.app.land = None;
                 self.app.dirty = true;
                 println!("loaded {}", f.display());
             }
@@ -497,8 +498,8 @@ impl Stage {
                     }
                     if app.panel == 2 {
                         app.tool = 4;
-                        while !app.build_available(app.build_idx) {
-                            app.build_idx = (app.build_idx + 1) % BUILD.len();
+                        if !app.build_available(app.build_idx) {
+                            app.build_idx = OFFERED_KINDS[0] as usize;
                         }
                     }
                 }
@@ -604,6 +605,7 @@ impl Stage {
                 0 => match Terrain::load(&app.course_file, &app.terrain) {
                     Ok(t) => {
                         app.terrain = t;
+                        app.land = None;
                         app.rebuild_batches(&mut self.g);
                         app.populate_props();
                         app.screen = Screen::Play;
@@ -735,6 +737,7 @@ impl Stage {
             KeyCode::R => {
                 app.seed = app.seed.wrapping_mul(1664525).wrapping_add(1013904223);
                 app.terrain = Terrain::demo_course(40, 40, app.seed);
+                app.land = None;
                 app.rebuild_batches(&mut self.g);
                 app.populate_props();
             }
@@ -743,12 +746,11 @@ impl Stage {
             KeyCode::LeftBracket | KeyCode::RightBracket => {
                 let fwd = k == KeyCode::RightBracket;
                 if app.tool == 4 {
-                    loop {
-                        app.build_idx =
-                            if fwd { (app.build_idx + 1) % BUILD.len() } else { (app.build_idx + BUILD.len() - 1) % BUILD.len() };
-                        if app.build_available(app.build_idx) {
-                            break;
-                        }
+                    let avail: Vec<usize> = OFFERED_KINDS.iter().map(|&k| k as usize).filter(|&k| app.build_available(k)).collect();
+                    if !avail.is_empty() {
+                        let at = avail.iter().position(|&k| k == app.build_idx).unwrap_or(0);
+                        let n = avail.len();
+                        app.build_idx = avail[if fwd { (at + 1) % n } else { (at + n - 1) % n }];
                     }
                 } else if app.tool == 2 {
                     app.path_kind = 3 - app.path_kind;

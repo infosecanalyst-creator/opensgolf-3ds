@@ -365,9 +365,11 @@ impl App {
                 v.push(PanelItem { label: "Lower ground".into(), kind: 3, arg: 0 });
             }
             2 => {
-                for (i, b) in BUILD.iter().enumerate() {
-                    if self.build_available(i) {
-                        v.push(PanelItem { label: format!("{}  {}", b.name, money(b.cost as i64 * 100)), kind: 4, arg: i });
+                for &k in OFFERED_KINDS.iter() {
+                    let k = k as usize;
+                    if self.build_available(k) {
+                        let (name, _, price) = sg_core::land::BUILDINGS[k];
+                        v.push(PanelItem { label: format!("{name}  {}", money(price as i64 * 100)), kind: 4, arg: k });
                     }
                 }
             }

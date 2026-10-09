@@ -439,7 +439,7 @@ impl Land {
 
     /// Footprint test for an object of `kind` and edge `size` at (a, b), with a one-tile ring around it. Returns the clearing
     /// cost, or None when the spot is not allowed.
-    fn fits(&self, a: i32, b: i32, size: i32, kind: i32, theme: u8) -> Option<i32> {
+    pub fn fits(&self, a: i32, b: i32, size: i32, kind: i32, theme: u8) -> Option<i32> {
         let mut cost = 0;
         let mut dry_ring = false;
         if size >= -1 {
@@ -495,7 +495,7 @@ impl Land {
 
     /// Puts down an object: flattens its corners to the anchor's height, turns its tiles into building tiles (a putting green
     /// keeps green tiles, a driving range rough, a marina water) and records it. Returns the object's index.
-    fn place(&mut self, rng: &mut ExeRng, a: i32, b: i32, kind: i32, fl: i32, theme: u8) -> usize {
+    pub fn place(&mut self, rng: &mut ExeRng, a: i32, b: i32, kind: i32, fl: i32, theme: u8) -> usize {
         let size = BUILDINGS[kind as usize].1 + if fl == -2 { 1 } else { 0 };
         let anchor_h = self.h(a * 51 + b);
         for c in 0..size {
@@ -539,8 +539,17 @@ impl Land {
             return 0;
         }
         self.flags_or(a * N + b, kind as u16 + 1);
-        let n = self.objects.len();
-        self.objects.push(Object { kind, a, b, dir: 0, flags: 0, sub: 0 });
+        // The exe reuses the first free object record.
+        let n = match self.objects.iter().position(|o| o.kind == -1) {
+            Some(i) => {
+                self.objects[i] = Object { kind, a, b, dir: 0, flags: 0, sub: 0 };
+                i
+            }
+            None => {
+                self.objects.push(Object { kind, a, b, dir: 0, flags: 0, sub: 0 });
+                self.objects.len() - 1
+            }
+        };
         let size = BUILDINGS[kind as usize].1;
         for r in 0..size {
             for c in 0..size {
@@ -1298,6 +1307,190 @@ fn landmark(land: &mut Land, rng: &mut ExeRng, prop: i32, n: i32, a: i32, b: i32
     }
 }
 
+impl Land {
+    /// Land for a course that was not generated (the demo course, a loaded course file): the terrain's tiles, paths and heights,
+    /// no objects. Slot 0 of a Parkland property stands in for the deal.
+    pub fn from_terrain(t: &Terrain, theme: u8) -> Land {
+        let property = RECORDS.iter().position(|r| r.theme == theme).unwrap_or(0);
+        let mut land = Land {
+            slot_index: 0,
+            slot: Slot { property, acres: 250 },
+            difficulty: 1,
+            ty: vec![T_ROUGH; NN],
+            flags: vec![0; NN],
+            layer: vec![TYPES[T_ROUGH as usize].layer; NN],
+            var: vec![0; NN],
+            height: vec![3; HN],
+            original: Vec::new(),
+            objects: Vec::new(),
+            clubhouse: (-1, -1),
+            staff_start: (-1, -1),
+            view: (-1, -1),
+            margin: 0,
+            hill: 48,
+        };
+        land.sync_from_terrain(t);
+        land.original = land.ty.clone();
+        land
+    }
+
+    /// Takes the player's terrain edits (tile types, paths, corner heights) into the land, keeping objects and their footprints.
+    pub fn sync_from_terrain(&mut self, t: &Terrain) {
+        for a in 0..N.min(t.w) {
+            for b in 0..N.min(t.h) {
+                let i = idx(a, b);
+                let o = t.tile_index(a, b);
+                let mut ty = t.ty[o];
+                // Editor-only and texture ids map back to the game type they stand for.
+                ty = match ty {
+                    23..=25 => T_WATER,
+                    26 => T_GREEN,
+                    27..=30 | 34 | 35 => 7,
+                    31..=33 => T_ROUGH,
+                    v => v,
+                };
+                let footprint = self.flags[i] & flag::FOOTPRINT != 0;
+                if !footprint {
+                    self.ty[i] = ty;
+                    self.layer[i] = TYPES[ty as usize].layer;
+                }
+                if t.path_kind.get(o).copied().unwrap_or(0) != 0 {
+                    self.flags[i] |= flag::PATH;
+                } else if !footprint {
+                    self.flags[i] &= !flag::PATH;
+                }
+            }
+        }
+        for a in 0..=N.min(t.w) {
+            for b in 0..N.min(t.h) {
+                // Our corner (cx, cy) is the exe's vertex (cx, cy - 1).
+                let v = t.corner[((b + 1) * (t.w + 1) + a) as usize] as i32 + 3;
+                if a < 51 {
+                    self.height[(a * 51 + b) as usize] = v.clamp(0, 255) as u8;
+                }
+            }
+        }
+    }
+
+    /// Writes the land's tiles and corner heights inside a rectangle back to the port's terrain (after placing or removing an
+    /// object).
+    pub fn write_area(&self, t: &mut Terrain, a0: i32, b0: i32, a1: i32, b1: i32) {
+        for a in a0.max(0)..=a1.min(N - 1).min(t.w - 1) {
+            for b in b0.max(0)..=b1.min(N - 1).min(t.h - 1) {
+                let o = t.tile_index(a, b);
+                t.ty[o] = self.ty[idx(a, b)];
+                if t.ty[o] == T_WATER {
+                    t.variation[o] = 0;
+                }
+            }
+        }
+        for cx in a0.max(0)..=(a1 + 1).min(t.w) {
+            for cy in b0.max(0)..=(b1 + 1).min(t.h) {
+                let v = self.corner(cx, cy - 1) as i32 - 3;
+                t.corner[(cy * (t.w + 1) + cx) as usize] = v.clamp(0, crate::terrain::MAX_LEVEL) as i8;
+            }
+        }
+    }
+
+    /// Edge of an object's footprint in tiles (with its upgrades for kinds above 5, as the exe counts it).
+    pub fn footprint_size(&self, o: &Object) -> i32 {
+        BUILDINGS.get(o.kind as usize).map(|b| b.1).unwrap_or(1)
+    }
+
+    /// Removes an object as the exe does: its record is freed and its tiles go back to rough (deep rough on the dearer slots;
+    /// water under a Marina in Parkland and Tropical), without paths.
+    pub fn remove_object(&mut self, i: usize) {
+        let Some(o) = self.objects.get(i).copied() else { return };
+        if o.kind < 0 {
+            return;
+        }
+        let size = self.footprint_size(&o);
+        let theme = self.slot.record().theme;
+        self.objects[i].kind = -1;
+        let ai = idx(o.a, o.b);
+        self.flags[ai] &= 0xfde0;
+        for r in 0..size {
+            for c in 0..size {
+                let t = (o.a + r) * N + o.b + c;
+                if !(0..NN as i32).contains(&t) {
+                    continue;
+                }
+                let ty = if o.kind == K_MARINA && (theme == 0 || theme == 2) {
+                    T_WATER
+                } else if self.slot_index > 11 {
+                    T_DEEP_ROUGH
+                } else {
+                    T_ROUGH
+                };
+                let tu = t as usize;
+                self.flags[tu] &= 0xfbdf;
+                self.ty[tu] = ty;
+                self.layer[tu] = TYPES[ty as usize].layer;
+                self.var[tu] = 0;
+            }
+        }
+    }
+
+    /// Objects joined to the clubhouse: a flood from the clubhouse footprint over path and footprint tiles (the exe's flag 0x40,
+    /// which makes a building operational).
+    pub fn joined_objects(&self) -> Vec<bool> {
+        let mut seen = vec![false; NN];
+        let mut stack = Vec::new();
+        for o in &self.objects {
+            if o.kind == K_CLUBHOUSE {
+                let s = self.footprint_size(o);
+                for r in 0..s {
+                    for c in 0..s {
+                        let (a, b) = (o.a + r, o.b + c);
+                        if (0..N).contains(&a) && (0..N).contains(&b) && !seen[idx(a, b)] {
+                            seen[idx(a, b)] = true;
+                            stack.push((a, b));
+                        }
+                    }
+                }
+            }
+        }
+        while let Some((a, b)) = stack.pop() {
+            for k in [0usize, 2, 4, 6] {
+                let (na, nb) = (a + DX[k], b + DY[k]);
+                if !(0..N).contains(&na) || !(0..N).contains(&nb) {
+                    continue;
+                }
+                let i = idx(na, nb);
+                if !seen[i] && self.flags[i] & (flag::PATH | flag::FOOTPRINT) != 0 {
+                    seen[i] = true;
+                    stack.push((na, nb));
+                }
+            }
+        }
+        self.objects
+            .iter()
+            .map(|o| {
+                let s = self.footprint_size(o);
+                o.kind >= 0
+                    && (0..s)
+                        .any(|r| (0..s).any(|c| (0..N).contains(&(o.a + r)) && (0..N).contains(&(o.b + c)) && seen[idx(o.a + r, o.b + c)]))
+            })
+            .collect()
+    }
+}
+
+/// Which building kinds a course has unlocked: kinds 0..5 from the start, then one more each time a hole is completed (holes
+/// 2..5 unlock the Putting Green, Snack Bar, Pro Shop and Swim Club; 7..9 the Driving Range, Cart Garage and Marina; 11 and 12
+/// the Resort Hotel and Airstrip). Holes 6, 10 and 18 raise the course rank instead. Sandbox games have 17 kinds.
+pub fn unlocked_kinds(holes: usize, sandbox: bool) -> i32 {
+    if sandbox {
+        return 17;
+    }
+    let mut unlocked = 6;
+    for n in 1..=holes as i32 {
+        if n != 6 && n != 10 && n > unlocked - 5 && unlocked <= 14 {
+            unlocked += 1;
+        }
+    }
+    unlocked
+}
+
 /// The port's theme index (0 Parkland, 1 Links, 2 Desert, 3 Tropical) for an exe theme.
 pub const fn port_theme(exe_theme: u8) -> usize {
     let t = if exe_theme > 3 { 3 } else { exe_theme };
@@ -1416,6 +1609,17 @@ mod tests {
                 assert_eq!(t.ty.len(), 2500);
             }
         }
+    }
+
+    #[test]
+    fn unlocks_follow_holes() {
+        assert_eq!(unlocked_kinds(1, false), 6);
+        assert_eq!(unlocked_kinds(2, false), 7);
+        assert_eq!(unlocked_kinds(5, false), 10);
+        assert_eq!(unlocked_kinds(6, false), 10);
+        assert_eq!(unlocked_kinds(9, false), 13);
+        assert_eq!(unlocked_kinds(12, false), 15);
+        assert_eq!(unlocked_kinds(18, false), 15);
     }
 
     #[test]
