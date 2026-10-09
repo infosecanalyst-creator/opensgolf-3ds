@@ -24,6 +24,9 @@ pub struct Art {
     pub tacs: Image,
     pub endo: Image,
     pub roster: Image,
+    /// memberRoster_buttons (tier balls, hole icons, arrow hover pieces) and memberRoster_scrollbar (the track).
+    pub roster_buttons: Image,
+    pub roster_scroll: Image,
     /// GolferStats: the golfer card's plates and its round buttons (with its alpha sheet).
     pub stats: Image,
     /// TransPopups: the translucent dialog frame, the skill rows and pads, the balls (with its alpha sheet).
@@ -87,6 +90,8 @@ impl Art {
             tacs: alpha(g, "tacs&tees.pcx", "tacs&tees_A.pcx"),
             endo: alpha(g, "infoscreens/ENDoYEAR.pcx", "infoscreens/ENDoYEAR_alpha.pcx"),
             roster: alpha(g, "infoscreens/memberRoster.pcx", "infoscreens/memberRoster_alpha.pcx"),
+            roster_buttons: load_pcx(g, &p("infoscreens/memberRoster_buttons.pcx"), true, None).unwrap_or_default(),
+            roster_scroll: load_pcx(g, &p("infoscreens/memberRoster_scrollbar.pcx"), true, None).unwrap_or_default(),
             stats: alpha(g, "GolferStats.pcx", "GolferStats_A.pcx"),
             trans: alpha(g, "TransPopups.pcx", "TransPopups_A.pcx"),
             popup_icons: alpha(g, "PopUpIcons.pcx", "PopUpIcons_A.pcx"),
@@ -231,6 +236,34 @@ pub struct CardUi {
 }
 
 const MONTHS: [&str; 8] = ["March", "April", "May", "June", "July", "August", "September", "October"];
+
+/// The board's handwritten to-do strips on tacs&tees, one per accomplishment class (cut table 0x4c2d38, x y w h).
+const TODO_LABELS: [(f32, f32, f32, f32); 22] = [
+    (400.0, 97.0, 135.0, 22.0),
+    (400.0, 133.0, 117.0, 21.0),
+    (400.0, 168.0, 125.0, 21.0),
+    (400.0, 207.0, 124.0, 18.0),
+    (400.0, 239.0, 133.0, 20.0),
+    (400.0, 273.0, 135.0, 21.0),
+    (400.0, 310.0, 137.0, 20.0),
+    (400.0, 341.0, 129.0, 25.0),
+    (400.0, 381.0, 133.0, 32.0),
+    (400.0, 413.0, 110.0, 22.0),
+    (400.0, 448.0, 112.0, 24.0),
+    (400.0, 480.0, 177.0, 37.0),
+    (400.0, 519.0, 160.0, 35.0),
+    (400.0, 556.0, 141.0, 31.0),
+    (610.0, 97.0, 129.0, 20.0),
+    (610.0, 130.0, 180.0, 36.0),
+    (610.0, 168.0, 161.0, 36.0),
+    (610.0, 202.0, 144.0, 40.0),
+    (610.0, 239.0, 144.0, 33.0),
+    (610.0, 274.0, 142.0, 38.0),
+    (610.0, 307.0, 144.0, 35.0),
+    (610.0, 341.0, 155.0, 24.0),
+];
+/// The easy editions' strips for classes 0, 1 and 4: first dogleg right, dogleg left and par five hole (entries 22..24).
+const TODO_ALT: [(f32, f32, f32, f32); 3] = [(610.0, 381.0, 132.0, 20.0), (610.0, 415.0, 126.0, 20.0), (610.0, 450.0, 109.0, 21.0)];
 // the exe shows no status text for Platinum
 const LEVELS: [&str; 6] = ["", "Visitor", "Member", "Silver Member", "Gold Member", ""];
 
@@ -892,12 +925,17 @@ impl App {
             self.club.earned.iter().enumerate().filter_map(|(i, e)| e.clone().map(|e| (i, e))).collect();
         earned.sort_by_key(|(_, e)| e.tick);
         let n = earned.len() as f32;
-        // photos
+        // the easy editions' plaques and labels for classes 0, 1 and 4 (first dogleg right, dogleg left, par 5 hole)
+        let alt = |id: usize| if self.club.difficulty < 2 { [0, 1, 4].iter().position(|&a| a == id) } else { None };
+        let tacs = &self.art.tacs;
+        let has_tacs = tacs.tex.is_some();
+        // photos, oldest first, alternating sides and climbing 14 pixels each: the frame, the snapshot, the pin and the
+        // caption (Arial Bold 10, 0x519fd8, blue)
         for (k, (id, e)) in earned.iter().enumerate() {
             let x = 20.0 + if k % 2 == 1 { 515.0 } else { 0.0 } + ((35 * k) % 50) as f32;
             let y = 443.0 - 14.0 * k as f32;
-            if self.art.tacs.tex.is_some() {
-                s.image_part(g, &self.art.tacs, x - 7.0, y - 173.0, 63.0, 251.0, 229.0, 209.0);
+            if has_tacs {
+                s.image_part(g, tacs, x - 7.0, y - 173.0, 63.0, 251.0, 229.0, 209.0);
             }
             if let Some(img) = self.snapshots.get(id) {
                 s.image_part(g, img, x, y - 166.0, 0.0, 0.0, 200.0, 160.0);
@@ -905,43 +943,62 @@ impl App {
                 s.fill(g, x, y - 166.0, 200.0, 160.0, rgba(0.25, 0.4, 0.25, 0.9));
                 s.text_centered(g, x + 100.0, y - 90.0, self.club.award_title(*id), 12.0, rgb(1.0, 1.0, 0.85));
             }
+            // the pin: TacksandArrow cut 8 (100, 0, 20 x 24)
+            let tk = &self.info.art.tacks;
+            if tk.tex.is_some() {
+                s.image_part(g, tk, x + 100.0, y - 179.0, 100.0, 0.0, 20.0, 24.0);
+            }
             let day = (e.tick & 0x3ff) * 30 / 1024 + 1;
             let month = MONTHS[((e.tick >> 10) & 7) as usize];
             let year = 2001 + (e.tick >> 13);
             // the exe's caption: course, two spaces, day month year
-            s.text(g, x, y, &format!("{}  {day} {month} {year}", e.course), 11.0, rgb(0.13, 0.13, 0.13));
+            crate::ui::set_face(Some(crate::ui::Face::Arial));
+            s.text(g, x, top(y, 10.0), &format!("{}  {day} {month} {year}", e.course), 10.0, c15(0x2108));
+            crate::ui::set_face(Some(crate::ui::Face::Info));
         }
-        // the to-do note: the first three not yet earned
-        if self.art.tacs.tex.is_some() {
-            s.image_part(g, &self.art.tacs, 600.0, 350.0, 58.0, 49.0, 207.0, 178.0);
+        // the Clubhouse Notes pad and on it the first three accomplishments still to do, each its handwritten strip from
+        // tacs&tees; strip j sits at (616 + o / 2, 400 + o), o growing by the strip's height less 4
+        if has_tacs {
+            s.image_part(g, tacs, 600.0, 350.0, 58.0, 49.0, 207.0, 178.0);
+            let mut o = 0.0;
+            for id in (0..22).filter(|&i| self.club.earned[i].is_none()).take(3) {
+                let (sx, sy, w, h) = match alt(id) {
+                    Some(a) => TODO_ALT[a],
+                    None => TODO_LABELS[id],
+                };
+                s.image_part(g, tacs, 616.0 + (o / 2.0f32).floor(), 400.0 + o, sx, sy, w, h);
+                o += h - 4.0;
+            }
+        } else {
+            let todo: Vec<usize> = (0..22).filter(|&i| self.club.earned[i].is_none()).take(3).collect();
+            for (j, id) in todo.iter().enumerate() {
+                s.text(g, 616.0, 420.0 + 28.0 * j as f32, self.club.award_title(*id), 11.0, rgb(0.6, 0.0, 0.0));
+            }
         }
-        let todo: Vec<usize> = (0..22).filter(|&i| self.club.earned[i].is_none()).take(3).collect();
-        for (j, id) in todo.iter().enumerate() {
-            let t = self.club.award_title(*id);
-            s.text(g, 616.0, 420.0 + 28.0 * j as f32, t, 11.0, rgb(0.1, 0.1, 0.4));
+        let tr = &self.art.trophy;
+        if tr.tex.is_some() {
+            // the two clubs on the mantle, the tee and ball at the lower left and the tick at the lower right
+            s.image_part(g, tr, 519.0, 395.0, 510.0, 13.0, 132.0, 162.0);
+            s.image_part(g, tr, 177.0, 395.0, 649.0, 13.0, 130.0, 163.0);
         }
-        // the trophy: rim, plaques (newest on top), cup body and plate
-        if self.art.trophy.tex.is_some() {
-            let tr = &self.art.trophy;
+        if has_tacs {
+            s.image_part(g, tacs, 51.0, 482.0, 51.0, 482.0, 184.0, 80.0);
+            s.image_part(g, tacs, 732.0, 511.0, 732.0, 511.0, 53.0, 52.0);
+        }
+        // the trophy: rim, cap strips, plaques (newest on top, the lower cap under it), cup body and foot; it rises 14
+        // pixels per accomplishment
+        if tr.tex.is_some() {
             s.image_part(g, tr, 284.0, 304.0 - 14.0 * n, 276.0, 292.0, 257.0, 47.0);
             s.image_part(g, tr, 288.0, 339.0 - 14.0 * n, 9.0, 116.0, 248.0, 30.0);
             s.image_part(g, tr, 288.0, 335.0 - 14.0 * n, 9.0, 116.0, 248.0, 30.0);
             let mut y = 349.0 - 14.0 * n;
             for (k, (id, _)) in earned.iter().rev().enumerate() {
-                let alt = self.club.difficulty < 2 && matches!(id, 0 | 1 | 4);
-                let (sx, sy) = if alt {
-                    let a = match id {
-                        0 => 0,
-                        1 => 1,
-                        _ => 2,
-                    };
-                    (282.0, 186.0 + 35.0 * a as f32)
-                } else if *id <= 10 {
-                    (9.0, 221.0 + 35.0 * *id as f32)
-                } else {
-                    (547.0, 221.0 + 35.0 * (*id - 11) as f32)
+                let (sx, sy, h) = match alt(*id) {
+                    Some(a) => (282.0, 186.0 + 35.0 * a as f32, 30.0),
+                    None if *id <= 10 => (9.0, 221.0 + 35.0 * *id as f32, 29.0),
+                    None => (547.0, 221.0 + 35.0 * (*id - 11) as f32, 29.0),
                 };
-                s.image_part(g, tr, 288.0, y, sx, sy, 248.0, 29.0);
+                s.image_part(g, tr, 288.0, y, sx, sy, 248.0, h);
                 y += 14.0;
                 if k == 0 {
                     s.image_part(g, tr, 288.0, y, 9.0, 186.0, 248.0, 19.0);
@@ -1048,57 +1105,126 @@ impl App {
         g.flush();
     }
 
-    // ---- the membership roster ----------------------------------------------------------------------------------------
+    // ---- the membership roster (0x454c50) ---------------------------------------------------------------------------
+
+    /// The members listed: every record that has played a round, by name as the exe's strcmp minimum search orders them
+    /// (byte order, so capitals first; of equal names the later record comes first).
+    pub fn roster_rows(&self) -> Vec<usize> {
+        let name = |r: usize| self.club.roster.get(r).map(|p| p.name.as_str()).unwrap_or("");
+        let mut rows: Vec<usize> = (0..self.club.members.len()).filter(|&r| self.club.members[r].rounds != 0).collect();
+        rows.sort_by(|&a, &b| name(a).as_bytes().cmp(name(b).as_bytes()).then(b.cmp(&a)));
+        rows
+    }
+
+    /// The roster's live spots: 0 the OK tick (732..775, 548..591), 1 the up arrow and 2 the down arrow of the scroll
+    /// column (767..784, 80..116 and 490..526), -1 elsewhere.
+    pub fn roster_spot(vx: f32, vy: f32) -> i32 {
+        let (x, y) = (vx.floor() as i32, vy.floor() as i32);
+        if (732..=775).contains(&x) && (548..=591).contains(&y) {
+            0
+        } else if (767..=784).contains(&x) && (80..=116).contains(&y) {
+            1
+        } else if (767..=784).contains(&x) && (490..=526).contains(&y) {
+            2
+        } else {
+            -1
+        }
+    }
+
+    /// A click on the roster: a left click on the tick closes it, on an arrow scrolls by up to three rows (never past the
+    /// last full page), anywhere else does nothing; a right click closes it, as a key does.
+    pub fn roster_click(&mut self, vx: f32, vy: f32, right: bool) {
+        if right {
+            return self.close_info();
+        }
+        let n = self.roster_rows().len().max(1) as i32;
+        let off = self.roster_offset as i32;
+        match Self::roster_spot(vx, vy) {
+            0 => self.close_info(),
+            1 if off > 0 => self.roster_offset = (off - off.clamp(1, 3)) as usize,
+            2 if off < n - 22 => self.roster_offset = (off + (n - off - 22).clamp(1, 3)) as usize,
+            _ => {}
+        }
+    }
 
     pub fn draw_roster(&mut self, g: &mut Gfx) {
         let s = Ui::new(self.draw_w, self.draw_h);
         self.view = s.view;
+        crate::info_ui::dim(g, &s);
         if self.art.roster.tex.is_some() {
             s.image(g, &self.art.roster, 0.0, 0.0);
         } else {
             s.fill(g, 0.0, 0.0, 800.0, 600.0, rgba(0.9, 0.88, 0.8, 0.97));
         }
-        s.text_centered(g, 212.0, 30.0, "Membership Roster", 22.0, black());
-        s.text(g, 33.0, 66.0, "Member", 12.0, black());
-        s.text_centered(g, 170.0, 66.0, "Low", 11.0, black());
-        s.text_centered(g, 209.0, 66.0, "Hcp", 11.0, black());
-        s.text_centered(g, 249.0, 66.0, "Rnds", 11.0, black());
-        s.text_centered(g, 320.0, 66.0, "Status", 12.0, black());
-        for h in 1..19 {
-            s.text_centered(g, 390.5 + 21.0 * (h - 1) as f32, 66.0, &format!("{h}"), 10.0, black());
+        // the title in the large face (0x821020), the rest in the body face (0x821ee8); all text black; the exe's y are tops
+        let ink = c15(0);
+        s.text(g, 212.0, top(19.0, 24.0), "Membership Roster", 24.0, ink);
+        let row = |y: f32| top(y, 14.0);
+        s.text(g, 33.0, row(60.0), "Member", 14.0, ink);
+        for (x, t) in [(170.0, "Low"), (209.0, "Hcp"), (249.0, "Rnds"), (320.0, "Status")] {
+            s.text_centered(g, x, row(60.0), t, 14.0, ink);
         }
-        let mut rows: Vec<usize> = (0..self.club.members.len()).filter(|&r| self.club.members[r].rounds != 0).collect();
-        rows.sort_by_key(|&r| self.club.roster.get(r).map(|p| p.name.to_lowercase()).unwrap_or_default());
+        // the hole numbers centred in 19 pixel cells, 21 apart
+        for h in 1..19 {
+            s.text_centered(g, 381.0 + 21.0 * (h - 1) as f32 + 9.5, row(60.0), &format!("{h}"), 14.0, ink);
+        }
+        let rows = self.roster_rows();
+        let n = rows.len().max(1);
         let off = self.roster_offset.min(rows.len().saturating_sub(22));
+        self.roster_offset = off;
+        let bt = &self.art.roster_buttons;
+        let has_bt = bt.tex.is_some();
+        // the scroll track and its thumb, only with more than a page of members
+        if rows.len() > 22 {
+            if self.art.roster_scroll.tex.is_some() {
+                s.image(g, &self.art.roster_scroll, 767.0, 80.0);
+            }
+            let ty = (off * 364 / n) as f32;
+            let th = (364.0 - ty).min((8008 / n) as f32);
+            s.fill(g, 773.0, 122.0 + ty, 6.0, th, c15(0x7fff));
+        }
         for (k, &r) in rows.iter().skip(off).take(22).enumerate() {
             let m = &self.club.members[r];
-            let y = 89.0 + 20.0 * k as f32 + 12.0;
+            let y = 89.0 + 20.0 * k as f32;
             let name = self.club.roster.get(r).map(|p| p.name.clone()).unwrap_or_default();
-            s.text(g, 28.0, y, &name, 12.0, black());
+            s.text(g, 28.0, row(y), &name, 14.0, ink);
+            // status: the level bits, -1 for a member who resigned for good
+            let status = if m.gone == 0xff { -1 } else { (m.level & 7) as i32 };
+            if status != 1 && has_bt {
+                // navy (Member and no level), silver, gold (and above), red (resigned)
+                let ball = match status {
+                    -1 => 3,
+                    3 => 1,
+                    s if s > 3 => 2,
+                    _ => 0,
+                };
+                s.image_part(g, bt, 122.0, y - 4.0, 46.0 + 20.0 * ball as f32, 1.0, 19.0, 18.0);
+            }
             let dash = |v: i32| if v <= 0 { "-".to_string() } else { v.to_string() };
-            s.text_centered(g, 170.0, y, &dash(m.best as i32), 12.0, black());
-            s.text_centered(g, 209.0, y, &dash(m.avg as i32), 12.0, black());
-            s.text_centered(g, 249.0, y, &dash(m.rounds), 12.0, black());
-            let status = if m.gone == 0xff { "Resigned" } else { LEVELS[(m.level & 7).min(5) as usize] };
-            let c = match m.level & 7 {
-                3 => rgb(0.45, 0.45, 0.5),
-                4 => rgb(0.7, 0.55, 0.0),
-                _ if m.gone == 0xff => rgb(0.6, 0.1, 0.1),
-                _ => black(),
-            };
-            s.text_centered(g, 320.0, y, status, 11.0, c);
+            s.text_centered(g, 170.0, row(y), &dash(m.best as i32), 14.0, ink);
+            s.text(g, 209.0, row(y), &dash(m.avg as i32), 14.0, ink);
+            s.text(g, 249.0, row(y), &dash(m.rounds), 14.0, ink);
+            // per hole: the camera (bit 0, story scene) or else the heart (bit 1, happy ending), and the red ball where the
+            // member quit (bit 2); odd holes take the cut for the darker checker cell (y 20), even holes the lighter (y 1)
             for h in 1..19 {
                 let b = m.holes[h];
-                // the grid's columns are 21 wide from x 380
-                let x = 383.0 + 21.0 * (h - 1) as f32;
-                if b & 1 != 0 {
-                    s.fill(g, x, y - 10.0, 15.0, 10.0, rgb(0.3, 0.3, 0.35));
-                } else if b & 2 != 0 {
-                    s.fill(g, x, y - 10.0, 15.0, 10.0, rgb(0.85, 0.2, 0.35));
+                let x = 381.0 + 21.0 * (h - 1) as f32;
+                let cy = if h % 2 == 1 { 20.0 } else { 1.0 };
+                if b & 3 != 0 && has_bt {
+                    let cx = if b & 1 != 0 { 126.0 } else { 146.0 };
+                    s.image_part(g, bt, x, y - 4.0, cx, cy, 19.0, 18.0);
                 }
-                if b & 4 != 0 {
-                    s.fill(g, x + 3.5, y - 8.0, 8.0, 6.0, rgb(0.55, 0.55, 0.55));
+                if b & 4 != 0 && has_bt {
+                    s.image_part(g, bt, x, y - 4.0, 106.0, cy, 19.0, 18.0);
                 }
+            }
+            let text = match status {
+                -1 => "Resigned",
+                1..=4 => LEVELS[status as usize],
+                _ => "",
+            };
+            if !text.is_empty() {
+                s.text_centered(g, 320.0, row(y), text, 14.0, ink);
             }
         }
         for (x, t) in [
@@ -1109,7 +1235,17 @@ impl App {
             (573.0, "Photo Opp"),
             (693.0, "Happy Ending"),
         ] {
-            s.text_centered(g, x, 545.0, t, 11.0, black());
+            s.text_centered(g, x, row(536.0), t, 14.0, ink);
+        }
+        // the OK tick and, under the pointer, the arrow's lit piece
+        self.ok_tick(g, &s, 732.0, 548.0, false);
+        let (px, py) = self.info.pointer;
+        if has_bt {
+            match Self::roster_spot(px, py) {
+                1 => s.image_part(g, bt, 767.0, 80.0, 166.0, 1.0, 18.0, 37.0),
+                2 => s.image_part(g, bt, 767.0, 490.0, 185.0, 1.0, 18.0, 37.0),
+                _ => {}
+            }
         }
         g.flush();
     }

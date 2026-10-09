@@ -55,6 +55,12 @@ pub struct Employee {
     pub target: i16,
     /// How many golfers this employee has served.
     pub served: i16,
+    /// The month hired (game tick >> 10, +0x12) and the wages paid so far in units of $100 (+0x14): the routing map's
+    /// employee list shows both.
+    #[serde(default)]
+    pub hired: i32,
+    #[serde(default)]
+    pub paid: i32,
 }
 
 /// What the staff code needs to know about, and may change on, a golfer.

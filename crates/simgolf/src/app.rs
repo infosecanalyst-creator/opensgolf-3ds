@@ -418,6 +418,8 @@ pub struct App {
     pub info: crate::info_ui::Info,
     pub route_tab: usize,
     pub route_hole: usize,
+    /// The routing map's employee list: rows scrolled off the top (eight show at a time).
+    pub route_scroll: usize,
     /// The property chooser was opened from the course (F6) to move the club.
     pub world_move: bool,
     /// Draw the course only (for snapshots).
@@ -657,6 +659,7 @@ impl App {
             info: Default::default(),
             route_tab: 0,
             route_hole: 1,
+            route_scroll: 0,
             world_move: false,
             water_depth: Vec::new(),
             moving_employee: None,
@@ -2776,7 +2779,8 @@ impl App {
             return false;
         }
         let club = self.club_anchor();
-        staff::hire(&mut self.employees, kind, skilled, club, &mut self.exe_rng);
+        let i = staff::hire(&mut self.employees, kind, skilled, club, &mut self.exe_rng);
+        self.employees[i].hired = (self.club.tick >> 10) as i32;
         true
     }
 
@@ -2809,15 +2813,25 @@ impl App {
     /// One game tick of staff work and weeds.
     fn staff_tick(&mut self) {
         self.game_tick = self.game_tick.wrapping_add(1);
-        let payroll: Vec<economy::Payroll> = self
-            .employees
+        // no wages in a championship
+        let staffed: Vec<usize> = (0..self.employees.len())
+            .filter(|&i| {
+                let e = &self.employees[i];
+                e.active && e.job != staff::job::OWNER && !self.club.championship()
+            })
+            .collect();
+        let payroll: Vec<economy::Payroll> = staffed
             .iter()
-            // no wages in a championship
-            .filter(|e| e.active && e.job != staff::job::OWNER && !self.club.championship())
-            .map(|e| economy::Payroll { kind: (-2 - e.job as i32).clamp(0, 3) as usize, experienced: e.upgraded })
+            .map(|&i| {
+                let e = &self.employees[i];
+                economy::Payroll { kind: (-2 - e.job as i32).clamp(0, 3) as usize, experienced: e.upgraded }
+            })
             .collect();
         let holes = self.holes.len();
-        self.econ.on_tick(self.game_tick, self.difficulty, holes, &payroll, &mut self.exe_rng);
+        let paid = self.econ.on_tick(self.game_tick, self.difficulty, holes, &payroll, &mut self.exe_rng);
+        for (&i, units) in staffed.iter().zip(paid) {
+            self.employees[i].paid = (self.employees[i].paid + units).min(0x7fff);
+        }
         if self.staff_tiles.flags.len() != (self.terrain.w * self.terrain.h) as usize {
             self.staff_tiles = TileState::new(self.terrain.w, self.terrain.h);
         }

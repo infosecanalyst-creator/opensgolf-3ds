@@ -234,10 +234,12 @@ impl Economy {
     }
 
     /// One game tick: maintenance and wages every 1024/(difficulty+2) ticks, debt interest at month start, the board at year end.
-    pub fn on_tick(&mut self, tick: u32, difficulty: i32, active_holes: usize, staff: &[Payroll], rng: &mut ExeRng) {
+    /// Returns the wage units paid to each entry of `staff` this tick (the exe adds them to the employee's total paid, +0x14).
+    pub fn on_tick(&mut self, tick: u32, difficulty: i32, active_holes: usize, staff: &[Payroll], rng: &mut ExeRng) -> Vec<i32> {
         self.tick = tick;
+        let mut paid = vec![0; staff.len()];
         if self.game_over {
-            return;
+            return paid;
         }
         let interval = 1024 / (difficulty.clamp(0, 3) as u32 + 2);
         if tick.is_multiple_of(interval) {
@@ -246,11 +248,13 @@ impl Economy {
                 self.upkeep_paid += Self::UNIT;
             }
             let r = rank(active_holes);
-            for p in staff {
+            for (p, paid) in staff.iter().zip(paid.iter_mut()) {
                 if rng.below(4 - difficulty.clamp(0, 3)) <= r {
-                    let w = WAGE_UNITS[p.kind.min(3)][p.experienced as usize] as f64 * Self::UNIT;
+                    let units = WAGE_UNITS[p.kind.min(3)][p.experienced as usize];
+                    let w = units as f64 * Self::UNIT;
                     self.spend_to(LEDGER_SALARIES, w);
                     self.wages_paid += w;
+                    *paid = units;
                 }
             }
         }
@@ -264,6 +268,7 @@ impl Economy {
         if tick & 0x1fff == 0 && tick > 0 {
             self.year_end();
         }
+        paid
     }
 
     /// The board at year end: three year ends in a row with negative cash end the game; a positive one clears the record.
@@ -324,8 +329,10 @@ mod tests {
         e.init();
         let mut rng = ExeRng::from_clock(9);
         let staff = [Payroll { kind: CLUB_PRO, experienced: false }];
-        e.on_tick(204, 3, 0, &staff, &mut rng);
+        let paid = e.on_tick(204, 3, 0, &staff, &mut rng);
         assert_eq!(e.cash, e.start_cash - 300.0);
+        // the units go on the employee's total paid
+        assert_eq!(paid, vec![3]);
     }
 
     #[test]

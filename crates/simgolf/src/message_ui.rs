@@ -161,6 +161,16 @@ fn round16(pos: f32, size: f32) -> (f32, f32) {
 const FIRST_NAMES: [&str; 8] = ["Chuck ", "ChiChi ", "Randy ", "Mike ", "Joe ", "Tommy ", "Sally ", "Rita"];
 
 impl App {
+    /// An employee's name (0x467600): the first name and the title by job and experience ("Chuck Club Pro"; the last
+    /// first name has no space in the exe), or the pro's own name.
+    pub fn employee_name(&self, e: &staff::Employee) -> String {
+        if e.job == staff::job::OWNER {
+            return self.pro_name();
+        }
+        let job = (-2 - e.job as i32).clamp(0, 3) as usize;
+        format!("{}{}", FIRST_NAMES[job * 2 + e.upgraded as usize], STAFF_NAMES[job][e.upgraded as usize])
+    }
+
     /// Posts a ticker message (0x40cb00); see `Ticker::post`.
     pub fn post_message(&mut self, text: &str, priority: i32, speaker: i32) -> bool {
         let card = self.card.is_some();
@@ -372,9 +382,7 @@ impl App {
                     // staff record 1, the first employee hired: its first name and title (0x467600)
                     t = match self.employees.get(1).filter(|e| e.active && e.job != staff::job::OWNER) {
                         Some(e) => {
-                            let job = (-2 - e.job as i32).clamp(0, 3) as usize;
-                            let first = FIRST_NAMES[job * 2 + e.upgraded as usize];
-                            format!("{first}{} is doing a great job.", STAFF_NAMES[job][e.upgraded as usize])
+                            format!("{} is doing a great job.", self.employee_name(e))
                         }
                         None => "If you hire employees I won't have to do everything myself!".into(),
                     }

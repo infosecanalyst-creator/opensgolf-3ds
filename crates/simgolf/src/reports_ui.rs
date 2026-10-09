@@ -4,7 +4,8 @@
 
 use crate::app::*;
 use crate::gfx::Gfx;
-use crate::render::Rect;
+use crate::panels_ui::COUNTERS;
+use crate::screens_ui::top;
 use crate::ui::{load_pcx_alpha, rgb, rgba, text_width, wrap_text, Image, Screen as Ui};
 use sg_core::course::{idx, inside, N, TYPES};
 use sg_core::economy::LEDGER_LABELS;
@@ -311,6 +312,8 @@ impl App {
                 if t == sg_core::course::t::WATER {
                     return Some(c15(0x0218));
                 }
+                // PLACEHOLDER: the exe colours each tile from two per tile maps it builds when the tab opens (0x4616f0, red
+                // from one, green from the other, blue from their sum); the port sums the happy and unhappy marks nearby
                 let (mut good, mut bad) = (0i32, 0i32);
                 for da in -2..=2 {
                     for db in -2..=2 {
@@ -334,6 +337,7 @@ impl App {
                 2 => 0x1310,
                 4 => 0x0204,
                 7 => 0x6310,
+                10 => 0x5304,
                 13 => 0x1184,
                 17 => 0x0218,
                 18 => 0x10c8,
@@ -346,47 +350,99 @@ impl App {
         ((a + b) * 6.0 + 106.0, (b - a) * 3.0 + 441.0)
     }
 
-    pub fn routing_click(&mut self, vx: f32, vy: f32, right: bool) {
-        let tabs = [
-            (Rect::new(183.0, 254.0, 80.0, 80.0), 0),
-            (Rect::new(62.0, 315.0, 80.0, 80.0), 1),
-            (Rect::new(536.0, 254.0, 80.0, 80.0), 2),
-            (Rect::new(659.0, 315.0, 80.0, 80.0), 3),
-        ];
-        for (r, t) in tabs {
-            if r.has(vx, vy) {
-                self.route_tab = t;
-                return;
-            }
+    /// Opens or closes the routing map; it opens on hole 1 with the employee list at its top, in the tab used last.
+    pub fn open_routing(&mut self) {
+        if self.screen != Screen::Routing {
+            self.route_hole = 1;
+            self.route_scroll = 0;
         }
-        if Rect::new(662.0, 532.0, 80.0, 64.0).has(vx, vy) {
-            self.screen = Screen::Play;
+        self.open_report_screen(Screen::Routing);
+    }
+
+    /// The employees listed on the routing map, in record order (the player's own pro is left out).
+    fn routing_staff(&self) -> Vec<usize> {
+        (0..self.employees.len())
+            .filter(|&i| {
+                let e = &self.employees[i];
+                e.active && e.job < 0 && e.job != staff::job::OWNER
+            })
+            .collect()
+    }
+
+    /// What is under the pointer on the routing map (0x456be0's hover test, in its order): the tab buttons 0 routing,
+    /// 1 employees, 2 aura, 3 home site value; -2 the OK tick; 9 and 10 the employee list's arrows (employees tab with more
+    /// than eight employees); -1 nothing.
+    fn routing_spot(&self, vx: f32, vy: f32) -> i32 {
+        let (x, y) = (vx.floor() as i32, vy.floor() as i32);
+        let within = |x0: i32, x1: i32, y0: i32, y1: i32| (x0..=x1).contains(&x) && (y0..=y1).contains(&y);
+        if within(62, 141, 315, 394) {
+            1
+        } else if within(183, 262, 254, 333) {
+            0
+        } else if within(536, 615, 254, 333) {
+            2
+        } else if within(659, 738, 315, 394) {
+            3
+        } else if within(662, 741, 532, 596) {
+            -2
+        } else if self.route_tab == 1 && self.routing_staff().len() > 8 && within(775, 792, 64, 100) {
+            9
+        } else if self.route_tab == 1 && self.routing_staff().len() > 8 && within(775, 792, 205, 241) {
+            10
+        } else {
+            -1
+        }
+    }
+
+    /// A click on the routing map, as the exe handles it: below y 280 the tab buttons switch the tab and the tick closes the
+    /// map (elsewhere nothing happens); the list arrows scroll the employees; a click between y 257 and 280 closes the map;
+    /// above that, in every tab, the row under the pointer (left list holes 1 to 9, right list 10 to 18, by the row the y
+    /// falls in, clamped) is selected by a left click, and a right click moves the selected hole there: the holes between
+    /// shift by one (the help line says "swap"), and the selection stays on the same number.
+    pub fn routing_click(&mut self, vx: f32, vy: f32, right: bool) {
+        let spot = self.routing_spot(vx, vy);
+        let (x, y) = (vx.floor() as i32, vy.floor() as i32);
+        if y > 280 {
+            if (0..=3).contains(&spot) {
+                self.route_tab = spot as usize;
+            } else if spot == -2 {
+                self.close_info();
+            }
             return;
         }
-        if vy > 0x60 as f32 && vy <= 0x118 as f32 {
-            let row = ((vy - 0x68 as f32) / 17.0) as i32 + 1;
-            let h = (row.clamp(1, 9) + if vx > 399.0 { 9 } else { 0 }).clamp(1, 18) as usize;
-            if right {
-                let from = self.route_hole;
-                self.move_hole(from, h);
-            } else {
-                self.route_hole = h;
-            }
+        if spot == 9 {
+            self.route_scroll = self.route_scroll.saturating_sub(1);
+        } else if spot == 10 && self.routing_staff().len() > self.route_scroll + 8 {
+            self.route_scroll += 1;
+        }
+        if y > 256 {
+            return self.close_info();
+        }
+        // C division truncates toward zero, so the rows above the list all clamp to the first
+        let row = ((y - 0x68) / 17 + 1).clamp(1, 19) + if x > 399 { 9 } else { 0 };
+        let h = row.clamp(1, 18) as usize;
+        if right {
+            let from = self.route_hole;
+            self.move_hole(from, h);
+        } else {
+            self.route_hole = h;
         }
     }
 
     pub fn draw_routing(&mut self, g: &mut Gfx) {
         let s = Ui::new(self.draw_w, self.draw_h);
         self.view = s.view;
-        self.dim(g, &s);
+        crate::info_ui::dim(g, &s);
         let tab = self.route_tab.min(3);
         if self.reports.route[tab].tex.is_some() {
             s.image(g, &self.reports.route[tab], 0.0, 0.0);
         }
-        if self.reports.route_bottom.tex.is_some() {
-            s.image_part(g, &self.reports.route_bottom, 0.0, 253.0, 0.0, 253.0, 800.0, 347.0);
+        let bottom = self.reports.route_bottom;
+        let bottom = &bottom;
+        if bottom.tex.is_some() {
+            s.image_part(g, bottom, 0.0, 253.0, 0.0, 253.0, 800.0, 347.0);
         }
-        // the minimap
+        // the minimap: one 12 x 6 diamond per tile
         for a in 0..N {
             for b in 0..N {
                 let Some(c) = self.tile_colour(a, b) else { continue };
@@ -395,122 +451,204 @@ impl App {
                 s.fill(g, x - 2.0, y - 3.0, 4.0, 6.0, c);
             }
         }
-        s.text_centered(g, 400.0, 22.0, "ROUTING MAP", 22.0, black());
+        let ink = c15(0);
+        // the course name in the 16 point face (0x821f28), 10 pixels higher with " Employees" on the employees tab
         let name = if tab == 1 { format!("{} Employees", self.course_name) } else { self.course_name.clone() };
-        s.text_centered(g, 400.0, if tab == 1 { 54.0 } else { 64.0 }, &name, 14.0, black());
-        // holes: tee to green with the hole number
-        for h in 1..19 {
-            let hr = &self.club.holes[h];
-            if hr.par == 0 {
-                continue;
-            }
-            let (tx, ty) = Self::mini(hr.back.0 as f32, hr.back.1 as f32);
-            let (gx, gy) = Self::mini(hr.pin.0 as f32, hr.pin.1 as f32);
-            let n = ((gx - tx).hypot(gy - ty) / 2.0).max(1.0) as i32;
-            for k in 0..=n {
-                let t = k as f32 / n as f32;
-                s.fill(g, tx + (gx - tx) * t - 1.0, ty + (gy - ty) * t - 1.0, 2.0, 2.0, rgb(1.0, 1.0, 1.0));
-            }
-            if tab != 1 {
-                s.text_centered(g, (tx + gx) / 2.0, (ty + gy) / 2.0 - 4.0, &format!("{h}"), 12.0, c15(0x7ff0));
-            }
-        }
+        s.text_centered(g, 400.0, top(if tab == 1 { 48.0 } else { 58.0 }, 16.0), &name, 16.0, ink);
+        s.text_centered(g, 400.0, top(15.0, 24.0), "ROUTING MAP", 24.0, ink);
+        let row = |y: f32| top(y, 14.0);
         match tab {
             0 => {
-                s.text_centered(g, 400.0, 92.0, "COURSE ROUTING", 13.0, black());
-                s.text_centered(g, 400.0, 112.0, "Left click to select hole.", 11.0, black());
-                s.text_centered(g, 400.0, 126.0, "Right click to swap holes.", 11.0, black());
-                for half in 0..2 {
-                    let x = if half == 0 { 0x47 as f32 } else { 0x239 as f32 };
-                    for (dx, t) in [(0.0, "Hole #"), (61.0, "PAR"), (111.0, "YDS"), (168.0, "Time")] {
-                        s.text_centered(g, x + dx, 90.0, t, 11.0, black());
-                    }
+                s.text_centered(g, 400.0, row(85.0), "COURSE ROUTING", 14.0, ink);
+                s.text_centered(g, 400.0, row(108.0), "Left click to select hole.", 14.0, ink);
+                s.text_centered(g, 400.0, row(126.0), "Right click to swap holes.", 14.0, ink);
+                for (x, t) in [(71.0, "Hole #"), (132.0, "PAR"), (182.0, "YDS"), (239.0, "Time")] {
+                    s.text_centered(g, x, row(85.0), t, 14.0, ink);
                 }
-                for h in 1..19 {
-                    let x = if h <= 9 { 0x47 as f32 } else { 0x239 as f32 };
-                    let y = 0x68 as f32 + 17.0 * ((h - 1) % 9) as f32;
-                    let hr = &self.club.holes[h];
-                    if h == self.route_hole {
-                        s.fill(g, x - 39.0, y - 3.0, 238.0, 17.0, c15(0x23e8));
-                    }
-                    let c = if hr.par == 0 { c15(0x6318) } else { black() };
-                    s.text_centered(g, x, y + 10.0, &format!("{h}"), 11.0, c);
-                    if hr.par != 0 {
-                        s.text_centered(g, x + 61.0, y + 10.0, &format!("{}", hr.par), 11.0, black());
-                        s.text_centered(g, x + 111.0, y + 10.0, &format!("{}", hr.length), 11.0, black());
-                        if hr.tee_shots > 0 {
-                            s.text_centered(g, x + 168.0, y + 10.0, &format!("{}m", hr.time / hr.tee_shots / 40), 11.0, black());
-                        }
-                    }
-                }
-            }
-            1 => {
-                let list: Vec<&staff::Employee> =
-                    self.employees.iter().filter(|e| e.active && e.job < 0 && e.job != staff::job::OWNER).collect();
-                for (k, e) in list.iter().take(8).enumerate() {
-                    let r = (k % 4) as f32;
-                    let x = if k < 4 { 0x38 as f32 } else { 0x1ae as f32 };
-                    let jobn = (-2 - e.job as i32).clamp(0, 3) as usize;
-                    let name = STAFF_NAMES[jobn][e.upgraded as usize];
-                    s.text(g, x - 15.0, 0x47 as f32 + 45.0 * r, &format!("{}. {name}", k + 1), 12.0, black());
-                    s.text(g, x, 0x56 as f32 + 45.0 * r + 2.0, &format!("Post: {:?}", e.post.unwrap_or((0, 0))), 11.0, black());
-                }
-                for e in self.employees.iter().filter(|e| e.active) {
-                    let Some((pa, pb)) = e.post else { continue };
-                    let (cx, cy) = Self::mini(pa as f32, pb as f32);
-                    let mut rr = if e.job == staff::job::GROUNDSKEEPER { 48.0 } else { 24.0 };
-                    if e.upgraded {
-                        rr *= 1.5;
-                    }
-                    let col = match e.job {
-                        staff::job::SODA_VENDOR => c15(0x03ff),
-                        staff::job::GROUNDSKEEPER => c15(0x7ff0),
-                        staff::job::RANGER => c15(0x0018),
-                        staff::job::CLUB_PRO => c15(0x6318),
-                        _ => rgb(1.0, 1.0, 1.0),
-                    };
-                    for k in 0..25 {
-                        let a = k as f32 / 25.0 * std::f32::consts::TAU;
-                        s.fill(g, cx + rr * 0.5 * a.cos(), cy + rr * 0.25 * a.sin(), 2.0, 2.0, col);
-                    }
+                for (x, t) in [(564.0, "Hole #"), (630.0, "PAR"), (680.0, "YDS"), (737.0, "Time")] {
+                    s.text_centered(g, x, row(85.0), t, 14.0, ink);
                 }
             }
             2 => {
-                s.text_centered(g, 400.0, 188.0, "COURSE AURA", 14.0, black());
-                s.text(g, 0x88 as f32, 0xce as f32, "Unhappy", 11.0, black());
-                s.text(g, 0x270 as f32, 0xce as f32, "Happy", 11.0, black());
-                for (i, l) in
-                    wrap_text("Course AURA indicates where on your course golfers have been happy (green) or unhappy (red).", 12.0, 300.0)
-                        .iter()
-                        .enumerate()
-                {
-                    s.text(g, 250.0, 110.0 + 15.0 * i as f32, l, 12.0, black());
+                s.text_centered(g, 400.0, row(188.0), "COURSE AURA", 14.0, ink);
+                s.text_centered(g, 400.0, row(85.0), "AURA", 14.0, ink);
+                s.text(g, 624.0, row(206.0), "Happy", 14.0, ink);
+                s.text(g, 136.0, row(206.0), "Unhappy", 14.0, ink);
+                // the paragraph wrapped to 300 pixels from (250, 110) (0x478530); the line pitch is a PLACEHOLDER
+                let text = "Course AURA indicates where on your course players have made mostly happy comments and where they \
+                            have made unhappy comments.";
+                for (i, l) in wrap_text(text, 14.0, 300.0).iter().enumerate() {
+                    s.text(g, 250.0, row(110.0 + 16.0 * i as f32), l, 14.0, ink);
                 }
             }
-            _ => {
-                s.text_centered(g, 400.0, 188.0, "HOME SITE VALUE", 14.0, black());
+            3 => {
+                s.text_centered(g, 400.0, row(188.0), "HOME SITE VALUE", 14.0, ink);
+                s.text(g, 631.0, row(206.0), "High", 14.0, ink);
+                s.text(g, 142.0, row(206.0), "Low", 14.0, ink);
                 let inc = [
-                    "Things which INCREASE home value",
+                    "Things which INCREASE home value:",
                     "Close to water and trees.",
                     "Close to a fun golf hole.",
                     "Close to a top 100 or top 18 hole.",
-                    "Building a Marina.",
+                    "Building a Marina",
                 ];
                 let dec = [
-                    "Things which DECREASE home value",
+                    "Things which DECREASE home value:",
                     "Close to an unfun hole.",
                     "Close to another building.",
                     "Too close to green, fairway, or OB.",
                     "Far away from the golf course.",
                 ];
                 for (i, (a, b)) in inc.iter().zip(dec.iter()).enumerate() {
-                    let y = [0x56, 0x68, 0x79, 0x8a, 0x9c][i] as f32 + 10.0;
-                    s.text(g, 0x33 as f32, y, a, 11.0, black());
-                    s.text(g, 0x1ee as f32, y, b, 11.0, black());
+                    let y = [86.0, 104.0, 121.0, 138.0, 156.0][i];
+                    s.text(g, 51.0, row(y), a, 14.0, ink);
+                    s.text(g, 494.0, row(y), b, 14.0, ink);
                 }
             }
+            _ => {}
+        }
+        // the holes: rows of the routing list (routing tab), the tee to green line and the number on the map (every tab)
+        for h in 1..19 {
+            let hr = &self.club.holes[h];
+            if tab == 0 {
+                let shift = if h <= 9 { 0.0 } else { 498.0 };
+                let y = 104.0 + 17.0 * ((h - 1) % 9) as f32;
+                if h == self.route_hole {
+                    // a green frame one pixel wide round a white row
+                    s.fill(g, shift + 32.0, y - 3.0, 238.0, 17.0, c15(0x23e8));
+                    s.fill(g, shift + 33.0, y - 2.0, 236.0, 15.0, c15(0x7fff));
+                }
+                let x = 71.0 + shift;
+                let c = if hr.par == 0 { c15(0x6318) } else { ink };
+                s.text_centered(g, x, row(y), &format!("{h}"), 14.0, c);
+                if hr.par != 0 {
+                    s.text_centered(g, x + 61.0, row(y), &format!("{}", hr.par), 14.0, ink);
+                    s.text_centered(g, x + 111.0, row(y), &format!("{}", hr.length), 14.0, ink);
+                    if hr.tee_shots > 0 {
+                        s.text_centered(g, x + 168.0, row(y), &format!("{}m", hr.time / hr.tee_shots / 40), 14.0, ink);
+                    }
+                }
+            }
+            if hr.par == 0 {
+                continue;
+            }
+            let (tx, ty) = Self::mini(hr.back.0 as f32, hr.back.1 as f32);
+            let (gx, gy) = Self::mini(hr.pin.0 as f32, hr.pin.1 as f32);
+            s.line(g, tx, ty, gx, gy, 2.0, c15(0x7fff));
+            if tab != 1 {
+                s.text_centered(g, (tx + gx) / 2.0, (ty + gy) / 2.0 - 4.0, &format!("{h}"), 14.0, c15(0x7ff0));
+            }
+        }
+        if tab == 1 {
+            self.draw_routing_staff(g, &s);
+        }
+        // the tab under the pointer lights up (its pale cut), the open tab is yellow; the compass sits in the round well at
+        // the lower left (buy_land_buttons cut 20); the tick lights up under the pointer
+        let spot = self.routing_spot(self.info.pointer.0, self.info.pointer.1);
+        if bottom.tex.is_some() {
+            const HOVER: [(f32, f32, f32, f32, f32, f32); 4] = [
+                (261.0, 0.0, 134.0, 117.0, 182.0, 254.0),
+                (0.0, 0.0, 129.0, 113.0, 60.0, 313.0),
+                (396.0, 0.0, 139.0, 117.0, 483.0, 254.0),
+                (130.0, 0.0, 130.0, 113.0, 612.0, 313.0),
+            ];
+            const OPEN: [(f32, f32, f32, f32, f32, f32); 4] = [
+                (261.0, 118.0, 134.0, 117.0, 182.0, 254.0),
+                (0.0, 114.0, 129.0, 113.0, 60.0, 313.0),
+                (396.0, 118.0, 139.0, 117.0, 482.0, 254.0),
+                (130.0, 114.0, 130.0, 113.0, 612.0, 313.0),
+            ];
+            if (0..=3).contains(&spot) {
+                let (sx, sy, w, h, dx, dy) = HOVER[spot as usize];
+                s.image_part(g, bottom, dx, dy, sx, sy, w, h);
+            } else if spot == -2 {
+                s.image_part(g, bottom, 662.0, 532.0, 536.0, 0.0, 65.0, 65.0);
+            }
+            if tab == 1 && spot == 9 {
+                s.image_part(g, bottom, 775.0, 64.0, 713.0, 1.0, 18.0, 37.0);
+            } else if tab == 1 && spot == 10 {
+                s.image_part(g, bottom, 775.0, 205.0, 732.0, 1.0, 18.0, 37.0);
+            }
+            let (sx, sy, w, h, dx, dy) = OPEN[tab];
+            s.image_part(g, bottom, dx, dy, sx, sy, w, h);
+        }
+        let lb = &self.info.art.land_buttons;
+        if lb.tex.is_some() {
+            s.image_part(g, lb, 71.0, 533.0, 259.0, 127.0, 72.0, 61.0);
         }
         g.flush();
+    }
+
+    /// The employees tab (mode 0 of 0x456be0): eight employees at a time in two columns of four, each with its figure, its
+    /// number and name, the month hired and the wages paid, and its work counter; the scroll track with more than eight; on
+    /// the map every employee's work area (an ellipse 24 pixels across the diagonal, 48 for groundskeepers, half again when
+    /// experienced) in the job's colour with the number and the name.
+    fn draw_routing_staff(&mut self, g: &mut Gfx, s: &Ui) {
+        let list = self.routing_staff();
+        let ink = c15(0);
+        let n = list.len();
+        let off = self.route_scroll.min(n.saturating_sub(1));
+        if n > 8 {
+            let bottom = &self.reports.route_bottom;
+            if bottom.tex.is_some() {
+                s.image_part(g, bottom, 775.0, 64.0, 751.0, 0.0, 18.0, 178.0);
+            }
+            let ty = (off * 95 / n) as f32;
+            let th = (95.0 - ty).min((760 / n) as f32);
+            s.fill(g, 781.0, 106.0 + ty, 6.0, th, c15(0x7fff));
+        }
+        let row = |y: f32| top(y, 14.0);
+        for (k, &i) in list.iter().enumerate().skip(off).take(8) {
+            let e = self.employees[i];
+            let vis = k - off + 1;
+            let x0 = if vis > 4 { 0.0 } else { -374.0 };
+            let y0 = 45.0 * ((vis - 1) & 3) as f32;
+            let kind = (-2 - e.job as i32).clamp(0, 3) as usize;
+            // the figure: the exe draws the employee's current clip; the port shows the standing clip facing the viewer
+            self.draw_standing(g, s, kind + 4 * e.upgraded as usize, x0 + 746.0, y0 + 103.0);
+            s.text(g, x0 + 415.0, row(y0 + 71.0), &format!("{}. {}", k + 1, self.employee_name(&e)), 14.0, ink);
+            let month = ["March", "April", "May", "June", "July", "August", "September", "October"][(e.hired & 7) as usize];
+            let paid = crate::screens_ui::digits(e.paid as i64 * 100);
+            let hired = format!("Hired: {month} {}, paid: \u{a7}{paid}", 2001 + (e.hired >> 3));
+            s.text(g, x0 + 430.0, row(y0 + 86.0), &hired, 14.0, ink);
+            let counter = format!("{} {}", COUNTERS[kind][e.upgraded as usize], e.served);
+            s.text(g, x0 + 430.0, row(y0 + 101.0), &counter, 14.0, ink);
+        }
+        let mut number = 1;
+        for e in self.employees.iter().filter(|e| e.active && e.job < 0) {
+            let Some((pa, pb)) = e.post else { continue };
+            let (cx, cy) = Self::mini(pa as f32, pb as f32);
+            let (col, mut r) = match e.job {
+                staff::job::SODA_VENDOR => (c15(0x03ff), 24.0),
+                staff::job::GROUNDSKEEPER => (c15(0x7ff0), 48.0),
+                staff::job::RANGER => (c15(0x0018), 24.0),
+                staff::job::CLUB_PRO => (c15(0x6318), 24.0),
+                _ => (c15(0x7fff), 24.0),
+            };
+            if e.upgraded {
+                r += (r / 2.0f32).floor();
+            }
+            // 24 segments round the circle, r across and r / 2 down
+            let pt = |k: i32| {
+                let a = k as f32 / 24.0 * std::f32::consts::TAU;
+                (cx + r * a.sin(), cy + (r / 2.0).floor() * a.cos())
+            };
+            for k in 0..24 {
+                let (a, b) = (pt(k), pt(k + 1));
+                s.line(g, a.0, a.1, b.0, b.1, 2.0, col);
+            }
+            let name = if e.job == staff::job::OWNER {
+                self.pro_name()
+            } else {
+                s.text_centered(g, cx, top(cy - 10.0, 14.0), &format!("{number}. "), 14.0, col);
+                number += 1;
+                self.employee_name(e)
+            };
+            // the name in the small face (0x519fd8, Arial Bold 10)
+            crate::ui::set_face(Some(crate::ui::Face::Arial));
+            s.text_centered(g, cx, top(cy, 10.0), &name, 10.0, col);
+            crate::ui::set_face(Some(crate::ui::Face::Info));
+        }
     }
 
     // ---- F8 ---------------------------------------------------------------------------------------------------------
@@ -544,7 +682,8 @@ impl App {
 
 impl App {
     /// Routing map, right click (0x456be0): the selected hole moves to the clicked place in the order; the holes between
-    /// shift by one, the tee and green tiles are renumbered and golfers on the course follow their hole.
+    /// shift by one, the tee and green tiles are renumbered and golfers on the course follow their hole. The selection keeps
+    /// its number, so it now shows the hole that moved into the old place.
     pub fn move_hole(&mut self, from: usize, to: usize) {
         if !(1..=18).contains(&from) || !(1..=18).contains(&to) || from == to {
             return;
@@ -576,7 +715,6 @@ impl App {
             }
         }
         self.club.next_hole = (1..=18).find(|&k| self.club.holes[k].par == 0).unwrap_or(19) as i32;
-        self.route_hole = to;
         if let Some(l) = &self.land {
             l.write_area(&mut self.terrain, 0, 0, land::N - 1, land::N - 1);
         }

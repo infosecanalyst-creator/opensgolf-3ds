@@ -293,7 +293,7 @@ const PORTRAITS: [(f32, f32); 8] =
 const EMP_TAB_GOLFERS: (Hit, Cut, f32, f32) = (hit(286, 492, 16), (0.0, 400.0, 33.0, 33.0), 270.0, 475.0);
 const EMP_TAB_PLAYER: (Hit, Cut, f32, f32) = (hit(256, 510, 16), (0.0, 450.0, 33.0, 33.0), 240.0, 494.0);
 /// What the counter under a selected employee counts (regular, skilled).
-const COUNTERS: [[&str; 2]; 4] = [
+pub(crate) const COUNTERS: [[&str; 2]; 4] = [
     ["Players greeted:", "Players cheered:"],
     ["Players rushed:", "Slackers intimidated:"],
     ["Weeds destroyed:", "Weeds eradicated:"],
@@ -921,7 +921,7 @@ impl App {
     }
 
     /// An employee's standing clip with its ground point at (ax, ay).
-    fn draw_standing(&mut self, g: &mut Gfx, s: &Ui, set: usize, ax: f32, ay: f32) {
+    pub(crate) fn draw_standing(&mut self, g: &mut Gfx, s: &Ui, set: usize, ax: f32, ay: f32) {
         let Some(si) = self.staff_clips.get(set).and_then(|c| c[1].0) else { return };
         let sp = &self.sprites[si].s;
         let n = sp.frames_per_view.max(1);
