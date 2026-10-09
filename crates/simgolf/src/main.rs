@@ -13,6 +13,7 @@ mod app;
 mod audio;
 mod champ_ui;
 mod gfx;
+mod panels_ui;
 mod popup_ui;
 mod pro_ui;
 mod render;
@@ -233,6 +234,7 @@ fn load_ui(app: &mut App, g: &mut Gfx) -> bool {
     app.ui_ok = ok;
     app.art = crate::screens_ui::Art::load(g, app);
     app.reports = crate::reports_ui::ReportArt::load(g, app);
+    app.panel_art = crate::panels_ui::PanelArt::load(g, app);
     ok
 }
 
@@ -262,6 +264,22 @@ fn open_screen(app: &mut App, screen: Option<&str>) {
             app.open_skills(pts, Some(false));
         }
         _ => {}
+    }
+}
+
+/// Test hooks for scripted stills of the dock panels: SG_PANEL_CLICKS="x,y;x,y" clicks the open panel at those 800 x 600
+/// points in turn, SG_PANEL_MOUSE="x,y" leaves the pointer there with its tooltip showing at once.
+fn panel_test_hooks(app: &mut App) {
+    if let Ok(clicks) = std::env::var("SG_PANEL_CLICKS") {
+        for c in clicks.split(';').map(ints).filter(|v| v.len() >= 2) {
+            app.pstate.mouse = (c[0] as f32, c[1] as f32);
+            app.panel_click(c[0] as f32, c[1] as f32);
+        }
+    }
+    if let Some(v) = std::env::var("SG_PANEL_MOUSE").ok().map(|s| ints(&s)).filter(|v| v.len() >= 2) {
+        app.pstate.mouse = (v[0] as f32, v[1] as f32);
+        app.pstate.still = true;
+        app.dock_hover = dock_hit(v[0] as f32, v[1] as f32);
     }
 }
 
@@ -457,11 +475,6 @@ impl Stage {
         if let Some(c) = o.cash {
             app.econ.start_cash = c;
         }
-        if let Some(p) = o.panel {
-            app.panel = p;
-            app.dock_hover = if p > 0 { p - 1 } else { -1 };
-            app.edit = p == 1 || p == 2;
-        }
         if let Some(name) = &o.golfer {
             // Play as a golfer from progolfers.dta (case-insensitive name match).
             let pros = sg_core::fsutil::read_file(app.game_path("Themes/Standard/progolfers.dta"))
@@ -581,6 +594,17 @@ impl Stage {
         if !o.edit_spec.is_empty() {
             app.rebuild_batches(&mut g);
             app.refresh_trees();
+        }
+        // after the game is set up (starting one closes the panels)
+        if let Some(p) = o.panel {
+            app.panel = 0;
+            if (1..=3).contains(&p) {
+                app.open_panel(p);
+            } else {
+                app.panel = p;
+            }
+            app.dock_hover = if (1..=3).contains(&p) { p - 1 } else { -1 };
+            panel_test_hooks(&mut app);
         }
         if let Some(f) = &o.save {
             if let Err(e) = app.terrain.save(f) {
@@ -760,23 +784,15 @@ impl Stage {
         if !app.ui_ok || app.dock_art.tex.is_none() {
             return false;
         }
+        let art_panel = (1..=3).contains(&app.panel) && app.panel_art_ready();
+        // the hire dialog is modal
+        if art_panel && app.pstate.hire_open {
+            return app.panel_click(vx, vy);
+        }
         let d = dock_hit(vx, vy);
         if d >= 0 {
             match d {
-                0..=2 => {
-                    let want = d + 1;
-                    app.panel = if app.panel == want { 0 } else { want };
-                    app.edit = app.panel == 1 || app.panel == 2;
-                    if app.panel == 1 {
-                        app.tool = 0;
-                    }
-                    if app.panel == 2 {
-                        app.tool = 4;
-                        if !app.build_available(app.build_idx) {
-                            app.build_idx = OFFERED_KINDS[0] as usize;
-                        }
-                    }
-                }
+                0..=2 => app.open_panel(d + 1),
                 3 => app.zoom *= 1.12,
                 4 => app.zoom /= 1.12,
                 5 => app.rot += 15.0,
@@ -795,6 +811,9 @@ impl Stage {
             if Rect::new(226.0, 452.0, 570.0, 144.0).has(vx, vy) {
                 return true;
             }
+        }
+        if art_panel {
+            return app.panel_click(vx, vy);
         }
         if app.panel != 0 {
             let items = app.panel_items();
@@ -827,6 +846,7 @@ impl Stage {
                             app.panel = 4;
                             app.golfer_page = 0;
                         }
+                        10 => app.open_panel(3),
                         7 => app.club.set_shot_option(SHOT_OPTS[it.arg]),
                         8 => {}
                         _ => {
@@ -851,6 +871,8 @@ impl Stage {
     fn dock_hover_update(&mut self, vx: f32, vy: f32) {
         let app = &mut self.app;
         app.dock_hover = dock_hit(vx, vy);
+        app.pstate.mouse = (vx, vy);
+        app.pstate.still = false;
         app.panel_hover = -1;
         if app.panel != 0 {
             let cols = app.panel_cols();
@@ -1063,6 +1085,7 @@ impl Stage {
             _ => {}
         }
         match k {
+            KeyCode::Escape if app.pstate.hire_open => app.pstate.hire_open = false,
             KeyCode::Escape => {
                 if app.ui_ok {
                     // the pause menu: System Functions over the stopped game

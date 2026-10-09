@@ -236,7 +236,13 @@ impl Screen {
 
     /// Sub-rectangle (sx, sy, sw, sh) of an image at its own size, top-left at (dx, dy).
     pub fn image_part(&self, g: &mut Gfx, im: &Image, dx: f32, dy: f32, sx: f32, sy: f32, sw: f32, sh: f32) {
+        self.image_scaled(g, im, (dx, dy, sw, sh), (sx, sy, sw, sh));
+    }
+    /// Sub-rectangle `src` (x, y, w, h) of an image stretched over `dst`.
+    pub fn image_scaled(&self, g: &mut Gfx, im: &Image, dst: (f32, f32, f32, f32), src: (f32, f32, f32, f32)) {
         let Some(tex) = im.tex else { return };
+        let (dx, dy, dw, dh) = dst;
+        let (sx, sy, sw, sh) = src;
         let (u0, v0, u1, v1) = (sx / im.w, sy / im.h, (sx + sw) / im.w, (sy + sh) / im.h);
         g.quad(
             Mode::Flat,
@@ -244,9 +250,9 @@ impl Screen {
             &self.u,
             [
                 Vert::new(dx, dy, 0.0, u0, v0),
-                Vert::new(dx + sw, dy, 0.0, u1, v0),
-                Vert::new(dx + sw, dy + sh, 0.0, u1, v1),
-                Vert::new(dx, dy + sh, 0.0, u0, v1),
+                Vert::new(dx + dw, dy, 0.0, u1, v0),
+                Vert::new(dx + dw, dy + dh, 0.0, u1, v1),
+                Vert::new(dx, dy + dh, 0.0, u0, v1),
             ],
         );
     }

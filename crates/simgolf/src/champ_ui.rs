@@ -94,7 +94,7 @@ impl App {
         self.econ.tick = 0x2c00;
         self.club.tick = 0x2c00;
         self.club.start_championship(&self.course, &mut self.exe_rng, pro, 1000);
-        self.panel = 3;
+        self.panel = 5;
         self.edit = false;
         self.screen = Screen::Play;
         println!(
