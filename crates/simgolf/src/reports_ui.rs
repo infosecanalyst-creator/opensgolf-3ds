@@ -180,6 +180,10 @@ impl App {
         let fy = y0 + 15.0 * rows.len().max(1) as f32;
         if has {
             s.image_part(g, im, 148.0, fy, 148.0, 321.0, 505.0, 61.0);
+            // the art's own lit tick over its baked one
+            if self.over_ok(593.0, fy + 14.0) {
+                s.image_part(g, im, 593.0, fy + 14.0, 593.0, 434.0, 44.0, 44.0);
+            }
         }
         g.flush();
     }
@@ -251,6 +255,7 @@ impl App {
                 }
             }
         }
+        self.ok_tick(g, &s, 704.0, 551.0, false);
         g.flush();
     }
 
@@ -290,6 +295,7 @@ impl App {
             let c = if total < 0.0 { c15(0x6000) } else { black() };
             s.text(g, x + 256.0 - text_width(&t, 11.0), 98.0 + 17.0 * 7.0 + 24.0, &t, 11.0, c);
         }
+        self.ok_tick(g, &s, 726.0, 249.0, false);
         g.flush();
     }
 
@@ -531,6 +537,7 @@ impl App {
             s.text_centered(g, 0x1bc as f32, y, k, 11.0, black());
             s.text(g, 0x1e3 as f32, y, d, 11.0, black());
         }
+        self.ok_tick(g, &s, 710.0, 362.0, false);
         g.flush();
     }
 }

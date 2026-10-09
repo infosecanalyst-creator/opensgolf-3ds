@@ -216,6 +216,10 @@ pub enum Screen {
     Themes,
     /// The credits, from the title logo.
     Credits,
+    /// The Hole Stats dialog behind a Course Report row, Best Scores and Top 10 Designers.
+    HoleStats,
+    BestScores,
+    Top10,
     /// SELECT THE NEXT PAIR OF GOLFERS, the accomplishments board, the year-end report, the Membership Roster.
     Pair,
     Board,
@@ -400,6 +404,8 @@ pub struct App {
     /// The dock panels' sheets and their state (panels_ui).
     pub panel_art: crate::panels_ui::PanelArt,
     pub pstate: crate::panels_ui::PanelState,
+    /// The info screens' art and state (OK ticks, report, hole stats, best scores, top 10, land and world screens).
+    pub info: crate::info_ui::Info,
     pub route_tab: usize,
     pub route_hole: usize,
     /// The property chooser was opened from the course (F6) to move the club.
@@ -608,6 +614,7 @@ impl App {
             reports: Default::default(),
             panel_art: Default::default(),
             pstate: Default::default(),
+            info: Default::default(),
             route_tab: 0,
             route_hole: 1,
             world_move: false,
@@ -1623,6 +1630,7 @@ impl App {
         if tick > 0 && tick & 0x1fff == 0 && !self.club.championship() {
             println!("[{:6.1}s] end of year {}", self.sim_time, 2000 + (tick >> 13));
             self.open_year_end();
+            self.top10_year_end();
         }
         self.wildlife_tick();
         self.tourney_after_tick();
@@ -2097,25 +2105,7 @@ impl App {
     /// Pointer over the land screen (virtual 800 x 600 coordinates): which tract or the cancel button. The exe redraws on
     /// every change and rolls the prices again each time (keeping the first ones), which draws from the generator.
     pub fn land_pointer(&mut self, x: f32, y: f32) {
-        let mut hit = -1;
-        if (54.0..258.0).contains(&y) {
-            let row = ((y - 54.0) / 68.0) as i32;
-            let col = if (15.0..262.0).contains(&x) {
-                0
-            } else if (272.0..524.0).contains(&x) {
-                1
-            } else if (538.0..775.0).contains(&x) {
-                2
-            } else {
-                -1
-            };
-            if col >= 0 && row < 3 {
-                hit = row + 3 * col;
-            }
-        }
-        if (662.0..726.0).contains(&x) && (533.0..597.0).contains(&y) {
-            hit = 9;
-        }
+        let hit = self.land_hit(x, y);
         if hit != self.land_hover {
             self.land_hover = hit;
             if let Some(land) = self.land.as_ref() {

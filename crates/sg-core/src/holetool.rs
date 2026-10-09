@@ -142,6 +142,7 @@ impl Club {
             return None;
         }
         self.top_rounds = [0; 10];
+        self.top_names = Default::default();
         self.out.push(Event::Sound { slot: OPENED, at: None, delay: 0 });
         let level10 = c.level[10];
         let hr = &mut self.holes[hu];

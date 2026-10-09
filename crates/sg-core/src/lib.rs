@@ -44,6 +44,7 @@ pub mod staff;
 pub mod stories;
 pub mod terrain;
 pub mod thoughts;
+pub mod top10;
 pub mod tournament;
 pub mod tracts;
 pub mod vips;
