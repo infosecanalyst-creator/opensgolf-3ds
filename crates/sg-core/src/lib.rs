@@ -9,19 +9,24 @@
 
 pub mod assets;
 pub mod bink;
+pub mod course;
 pub mod economy;
 pub mod flc;
 pub mod flight;
 pub mod formats;
 pub mod fsutil;
+pub mod geom;
+pub mod golfer;
 pub mod holes;
 pub mod land;
 pub mod mixer;
 pub mod mood;
 pub mod objects;
+pub mod planner;
 pub mod png;
 pub mod properties;
 pub mod rng;
+pub mod roster;
 pub mod shot;
 pub mod sprites;
 pub mod staff;

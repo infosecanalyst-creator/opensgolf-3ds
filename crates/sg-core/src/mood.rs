@@ -95,13 +95,7 @@ pub fn delta(event: u32, difficulty: i32, arg: i32, counter_ok: bool) -> i32 {
         SNACK | DRINK | BENCH_REST => counter_ok as i32,
         WILDLIFE | FIRST_TIME_CLUB => (difficulty < 2) as i32,
         NEW_DRIVING_RANGE | NEW_PRO_SHOP | NEW_PUTTING_GREEN => (difficulty == 0) as i32,
-        BLIND_SHOT => {
-            if difficulty > 1 {
-                -2
-            } else {
-                0
-            }
-        }
+        BLIND_SHOT if difficulty > 1 => -2,
         _ => 0,
     }
 }
