@@ -73,6 +73,8 @@ impl App {
                     " Membership Roster",
                     " Professional Accomplishments",
                     " World Map",
+                    " Best Scores",
+                    " Top 10 Designers",
                 ],
                 if self.last_message.is_empty() { 1 } else { 0 },
                 200.0,

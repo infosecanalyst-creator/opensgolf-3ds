@@ -13,6 +13,7 @@ mod app;
 mod audio;
 mod champ_ui;
 mod gfx;
+mod info_ui;
 mod popup_ui;
 mod pro_ui;
 mod render;
@@ -22,6 +23,7 @@ mod thoughts_ui;
 mod tourney_ui;
 mod ui;
 mod wild_ui;
+mod world_ui;
 
 use app::*;
 use gfx::Gfx;
@@ -233,6 +235,7 @@ fn load_ui(app: &mut App, g: &mut Gfx) -> bool {
     app.ui_ok = ok;
     app.art = crate::screens_ui::Art::load(g, app);
     app.reports = crate::reports_ui::ReportArt::load(g, app);
+    app.info.art = crate::info_ui::InfoArt::load(g, app);
     ok
 }
 
@@ -253,6 +256,41 @@ fn open_screen(app: &mut App, screen: Option<&str>) {
         Some("routing") if app.ui_ok => app.screen = Screen::Routing,
         Some("shortcuts") if app.ui_ok => app.screen = Screen::Shortcuts,
         Some("golfers") if app.ui_ok => app.panel = 4,
+        Some("holestats") if app.ui_ok => {
+            app.info.stats_hole = (1..19).find(|&h| app.club.holes[h].par != 0).unwrap_or(1);
+            app.screen = Screen::HoleStats;
+        }
+        Some("sgaoffer") if app.ui_ok => {
+            // the offer over the report, whatever the course scores
+            app.club.game |= sg_core::tournament::OFFERED;
+            app.begin_tournament();
+            if let Some(s) = app.sga.as_mut() {
+                s.offer = true;
+                s.report.purse = s.report.purse.max(20 * s.report.holes);
+            }
+        }
+        Some("results") if app.ui_ok => {
+            // a tournament played out at once: every field golfer scores par give or take a stroke
+            app.club.game |= sg_core::tournament::OFFERED;
+            app.accept_tournament();
+            app.club.tourney_opts = 0;
+            let mut rng = app.exe_rng;
+            for s in 0..36 {
+                let g = &mut app.club.g[s];
+                g.hole = 0;
+                for h in 1..19 {
+                    let par = app.club.holes[h].par;
+                    g.card[h] = if par == 0 { 0 } else { (par + rng.below(3) - 1) as i8 };
+                }
+            }
+            if let Some(res) = app.club.tournament_tick(&mut rng, &app.course) {
+                app.results = Some(res);
+                app.screen = Screen::Results;
+            }
+        }
+        Some("bestscores") if app.ui_ok => app.screen = Screen::BestScores,
+        Some("top10") if app.ui_ok => app.open_top10(None),
+        Some("world") if app.ui_ok => app.open_world_map(),
         Some("sga") if app.ui_ok => {
             app.club.game |= sg_core::tournament::OFFERED;
             app.begin_tournament();
@@ -702,7 +740,9 @@ impl Stage {
                     self.app.screen = Screen::Board;
                     self.app.screen_jingle(0x7e, Screen::Board);
                 }
-                _ => self.app.open_world_map(),
+                9 => self.app.open_world_map(),
+                10 => self.app.screen = Screen::BestScores,
+                _ => self.app.open_top10(None),
             },
             PopupKind::System => match k {
                 0 => self.save_course(true),
@@ -875,14 +915,7 @@ impl Stage {
                 }
             }
         } else {
-            for p in 0..16 {
-                if property_card(p).has(vx, vy) {
-                    hit = p as i32;
-                }
-            }
-            if BACK_BUTTON.has(vx, vy) {
-                hit = 100;
-            }
+            hit = app.world_hit(vx, vy);
         }
         app.hover = hit;
         if !click || (hit < 0 && app.screen != Screen::Difficulty) {
@@ -930,13 +963,8 @@ impl Stage {
                 4 => app.open_championship(),
                 _ => window::order_quit(),
             }
-        } else if hit == 100 {
-            app.screen = if std::mem::take(&mut app.world_move) { Screen::Play } else { Screen::Menu };
-            app.hover = -1;
-        } else if app.world_move {
-            app.move_to_property(&mut self.g, hit as usize);
-        } else if app.can_afford(hit as usize) {
-            app.start_game(&mut self.g, hit as usize, app.sandbox_choice);
+        } else {
+            app.world_click(&mut self.g, hit);
         }
     }
 
@@ -1211,6 +1239,9 @@ impl Stage {
                 Screen::Finance => app.draw_finance(&mut self.g),
                 Screen::Routing => app.draw_routing(&mut self.g),
                 Screen::Shortcuts => app.draw_shortcuts(&mut self.g),
+                Screen::HoleStats => app.draw_hole_stats(&mut self.g),
+                Screen::BestScores => app.draw_best_scores(&mut self.g),
+                Screen::Top10 => app.draw_top10(&mut self.g),
                 _ => {}
             }
         }
@@ -1414,6 +1445,7 @@ impl EventHandler for Stage {
     fn mouse_motion_event(&mut self, x: f32, y: f32) {
         let (dx, dy) = (x - self.mouse.0, y - self.mouse.1);
         self.mouse = (x, y);
+        self.app.info.pointer = self.app.view.to_virtual(x, y);
         if self.app.screen == Screen::Land {
             let (vx, vy) = self.app.view.to_virtual(x, y);
             self.app.land_pointer(vx, vy);
@@ -1468,6 +1500,7 @@ impl EventHandler for Stage {
 
     fn mouse_button_down_event(&mut self, button: MouseButton, x: f32, y: f32) {
         self.mouse = (x, y);
+        self.app.info.pointer = self.app.view.to_virtual(x, y);
         if self.app.screen == Screen::Land {
             let (vx, vy) = self.app.view.to_virtual(x, y);
             self.app.land_pointer(vx, vy);
@@ -1483,8 +1516,10 @@ impl EventHandler for Stage {
         }
         if self.app.screen != Screen::Play && self.app.ui_ok {
             if self.app.screen == Screen::Report {
-                self.app.screen = Screen::Play;
-                self.app.hover = -1;
+                let (vx, vy) = self.app.view.to_virtual(x, y);
+                self.app.report_click(vx, vy);
+            } else if self.app.screen == Screen::HoleStats {
+                self.app.screen = Screen::Report;
             } else if self.app.screen == Screen::Champ {
                 let (vx, vy) = self.app.view.to_virtual(x, y);
                 self.app.champ_click(&mut self.g, vx, vy);
@@ -1503,8 +1538,10 @@ impl EventHandler for Stage {
                     | Screen::Histograph
                     | Screen::Finance
                     | Screen::Shortcuts
+                    | Screen::BestScores
+                    | Screen::Top10
             ) {
-                self.app.screen = Screen::Play;
+                self.app.close_info();
             } else if self.app.screen == Screen::Skills {
                 let (vx, vy) = self.app.view.to_virtual(x, y);
                 self.app.skills_click(vx, vy);
@@ -1577,6 +1614,8 @@ impl EventHandler for Stage {
                     app.screen = Screen::Play;
                     app.hover = -1;
                 }
+            } else if app.screen == Screen::HoleStats {
+                app.screen = Screen::Report;
             } else if app.screen == Screen::Champ {
                 if k == KeyCode::Escape {
                     app.screen = Screen::Menu;
@@ -1593,16 +1632,16 @@ impl EventHandler for Stage {
                     | Screen::Finance
                     | Screen::Routing
                     | Screen::Shortcuts
+                    | Screen::BestScores
+                    | Screen::Top10
             ) {
-                app.screen = Screen::Play;
+                app.close_info();
             } else if app.screen == Screen::Skills {
                 if k == KeyCode::Enter || k == KeyCode::Escape {
                     app.skills_click(-1.0, -1.0);
                 }
             } else if matches!(app.screen, Screen::Sga | Screen::Prep | Screen::Results) {
-                if k == KeyCode::Enter || k == KeyCode::Escape {
-                    app.tourney_click(-1.0, -1.0);
-                }
+                app.tourney_key(k);
             } else if k == KeyCode::Escape {
                 if app.screen == Screen::Menu {
                     window::order_quit();
