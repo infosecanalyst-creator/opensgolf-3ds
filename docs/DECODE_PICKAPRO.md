@@ -1,7 +1,7 @@
 # DECODE_PICKAPRO: Pick A Pro, Load Previous Game left panel, championship flow
 
 Tags: EXACT, DERIVED, UNKNOWN. Colours are 5-5-5 words (RGB = channel*8, bit 0x8000 flag).
-Text primitives: FUN_004049d0 left, FUN_00404b70 centred (2 px shadow); FUN_00404ad0 left, FUN_00404bc0 centred (no shadow). Font object choice is hidden in the decompile, so face and size are UNKNOWN unless stated.
+Text primitives: FUN_004049d0 left, FUN_00404b70 centred (shadow colour -1: no shadow); FUN_00404ad0 left, FUN_00404bc0 centred (shadow in palette colour 1 one pixel below; 0x4767a0 draws the shadow only when the colour is not -1). Font object choice is hidden in the decompile, so face and size are UNKNOWN unless stated.
 
 ## 1. Pick A Pro (FUN_0043a8c0), screen art Title_Pickapro.pcx (EXACT)
 

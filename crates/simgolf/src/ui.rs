@@ -132,6 +132,8 @@ pub enum Face {
     Klepto,
     Manual,
     Arial,
+    /// The info screens' pair (font objects 0x821020 and 0x821ee8): titles in Klepto 24, everything else in Manual SSi 14.
+    Info,
 }
 
 static FONTS: [std::sync::OnceLock<Font>; 3] = [std::sync::OnceLock::new(), std::sync::OnceLock::new(), std::sync::OnceLock::new()];
@@ -147,7 +149,23 @@ pub fn set_face(f: Option<Face>) {
 }
 
 fn face_for(size: f32) -> Face {
-    FACE.with(|c| c.get()).unwrap_or(if size < 12.0 { Face::Arial } else { Face::Manual })
+    match FACE.with(|c| c.get()) {
+        Some(Face::Info) => {
+            if size >= 20.0 {
+                Face::Klepto
+            } else {
+                Face::Manual
+            }
+        }
+        Some(f) => f,
+        None => {
+            if size < 12.0 {
+                Face::Arial
+            } else {
+                Face::Manual
+            }
+        }
+    }
 }
 
 /// Liberation Sans Bold 2.1.5 (SIL Open Font License 1.1, see fonts/LiberationSans-OFL.txt), standing in for Arial Bold.
@@ -353,6 +371,15 @@ impl Screen {
     }
     pub fn text_centered(&self, g: &mut Gfx, cx: f32, y: f32, s: &str, size: f32, c: [f32; 4]) {
         self.text(g, cx - text_width(s, size) * 0.5, y, s, size, c);
+    }
+
+    /// A straight line from (x0, y0) to (x1, y1), `w` pixels wide.
+    pub fn line(&self, g: &mut Gfx, x0: f32, y0: f32, x1: f32, y1: f32, w: f32, c: [f32; 4]) {
+        let (dx, dy) = (x1 - x0, y1 - y0);
+        let l = (dx * dx + dy * dy).sqrt().max(1e-6);
+        let (nx, ny) = (-dy / l * w * 0.5, dx / l * w * 0.5);
+        let v = |x: f32, y: f32| Vert::new(x, y, 0.0, 0.0, 0.0).col(c);
+        g.quad(Mode::Flat, None, &self.u, [v(x0 + nx, y0 + ny), v(x1 + nx, y1 + ny), v(x1 - nx, y1 - ny), v(x0 - nx, y0 - ny)]);
     }
 }
 

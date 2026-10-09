@@ -67,6 +67,7 @@ impl App {
             self.draw_cursor(g, &Uniforms::flat(&proj, &mv));
         }
         self.draw_aim(g, &Uniforms::flat(&proj, &mv));
+        self.draw_layout_path(g, &Uniforms::flat(&proj, &mv));
         g.flush();
     }
 
@@ -298,7 +299,7 @@ impl App {
     }
 
     /// A line through world points, `px` pixels either side, closed into a loop or not.
-    fn draw_lines(&self, g: &mut Gfx, u: &Uniforms, pts: &[[f32; 3]], closed: bool, px: f32, col: [f32; 4]) {
+    pub(crate) fn draw_lines(&self, g: &mut Gfx, u: &Uniforms, pts: &[[f32; 3]], closed: bool, px: f32, col: [f32; 4]) {
         let mv = self.mv;
         let (rx, ry, rz, ux, uy, uz) = (mv[0], mv[4], mv[8], mv[1], mv[5], mv[9]);
         let half = self.upp * px;
@@ -339,11 +340,6 @@ const INK: [f32; 4] = [0.12, 0.12, 0.38, 1.0];
 
 /// Select Difficulty (0x43a400, docs/DECODE_TITLE2.md 5): each item's lit cut in TitleSelDiffMO.pcx (x, y, w, h), where it
 /// goes, its hit centre (an ellipse twice as wide as tall, octagonal distance under 80) and its label position.
-/// The main screen's badge and rating pills on courseinfo.pcx (x, y, w, h), drawn where they sit on the sheet
-/// (docs/DECODE_MENUS.md, courseinfo family): course name and date, money, fun rating, skill rating.
-pub const HUD_CUTS: [(f32, f32, f32, f32); 4] =
-    [(48.0, 6.0, 183.0, 58.0), (647.0, 13.0, 138.0, 36.0), (675.0, 55.0, 110.0, 37.0), (697.0, 99.0, 88.0, 36.0)];
-
 pub const DIFF_CUTS: [(f32, f32, f32, f32, f32, f32); 4] = [
     (0.0, 0.0, 338.0, 146.0, 193.0, 32.0),
     (400.0, 0.0, 338.0, 146.0, 150.0, 161.0),
@@ -566,41 +562,30 @@ impl App {
         g.flush();
     }
 
-    /// Heads-up display over the course: club name and date, money, fun and skill, the dock, advisor and story. Layout is our own,
-    /// from the screenshots.
+    /// Heads-up display over the course: the exe's face strip, badge and rating pills (hud_ui), then the dock, advisor and
+    /// story.
     pub fn draw_hud(&mut self, g: &mut Gfx) {
         if !self.ui_ok {
             return;
         }
         let s = Ui::new(self.draw_w, self.draw_h);
         self.view = s.view;
-        // The exe's date stamp routine counts months in blocks of 1024 ticks and shows month numbers 3..10, so a year here is eight
-        // months, March to October (medium confidence; the start year 2001 is a placeholder). One economy day counts as one month.
-        let mi = self.econ.month_index();
-        let date = format!("{} {}", MONTHS[((2 + mi % 8) % 12) as usize], 2001 + mi / 8);
-        let panel_bg = rgba(0.12, 0.1, 0.3, 0.78);
-        let red = self.econ.cash < 0.0 && !self.econ.sandbox;
-        let cash = if self.econ.sandbox { "Sandbox".to_string() } else { money(self.econ.cash as i64) };
-        let rt = self.club.ratings;
-        let fun = format!("{}", rt.fun);
-        let skill = format!("{}.{:02}", rt.skill / 100, (rt.skill % 100).abs());
+        // the golfers' names and thoughts belong to the course, under the HUD
+        self.draw_names(g, &s);
+        self.draw_thoughts(g, &s);
         if self.hud_art.tex.is_some() {
-            // the exe's badge and pills, each cut from courseinfo.pcx and drawn at its own place on the sheet
-            for (x, y, w, h) in HUD_CUTS {
-                s.image_part(g, &self.hud_art, x, y, x, y, w, h);
-            }
-            // the pills are glass over the course: light text, the numbers left of each pill's icon
-            let ink = rgb(1.0, 1.0, 0.85);
-            let shadowed = |g: &mut Gfx, x: f32, y: f32, t: &str, size: f32, c: [f32; 4]| {
-                s.text_centered(g, x + 1.0, y + 1.0, t, size, rgba(0.0, 0.0, 0.1, 0.85));
-                s.text_centered(g, x, y, t, size, c);
-            };
-            shadowed(g, 139.0, 31.0, &self.course_name, 17.0, rgb(1.0, 1.0, 1.0));
-            shadowed(g, 139.0, 52.0, &date, 14.0, rgb(0.85, 0.88, 1.0));
-            shadowed(g, 700.0, 37.0, &cash, 17.0, if red { rgb(1.0, 0.45, 0.45) } else { ink });
-            shadowed(g, 717.0, 80.0, &fun, 17.0, ink);
-            shadowed(g, 733.0, 123.0, &skill, 17.0, ink);
+            // the exe's face strip, badge and rating pills (hud_ui)
+            self.draw_exe_hud(g, &s);
         } else {
+            // a plain stand-in without the art
+            let mi = self.econ.month_index();
+            let date = format!("{} {}", MONTHS[((2 + mi % 8) % 12) as usize], 2001 + mi / 8);
+            let panel_bg = rgba(0.12, 0.1, 0.3, 0.78);
+            let red = self.econ.cash < 0.0 && !self.econ.sandbox;
+            let cash = if self.econ.sandbox { "Sandbox".to_string() } else { money(self.econ.cash as i64) };
+            let rt = self.club.ratings;
+            let fun = format!("{}", rt.fun);
+            let skill = format!("{}.{:02}", rt.skill / 100, (rt.skill % 100).abs());
             s.fill(g, 8.0, 8.0, 230.0, 46.0, panel_bg);
             s.text(g, 18.0, 28.0, &self.course_name, 17.0, rgb(1.0, 1.0, 1.0));
             s.text(g, 18.0, 47.0, &date, 14.0, rgb(0.85, 0.85, 1.0));
