@@ -379,6 +379,8 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 println!("celebrity home at {},{}: {} residents", at(0), at(1), app.club.residents.len());
             }
             b'x' => app.save_championship_course(),
+            b'q' => app.save_championship_pro(),
+            b'A' => app.auto_aim = 1, // scripted runs: the pro aims every full shot at the pin
             b'm' if v.len() >= 2 => app.move_hole(at(0) as usize, at(1) as usize),
             b'a' if v.len() >= 3 => {
                 // test hook: an animal of kind v[2] and a follower at x,y

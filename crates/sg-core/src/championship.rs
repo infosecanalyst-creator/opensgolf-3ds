@@ -100,6 +100,8 @@ impl Club {
         self.gary = -1;
         self.purse = 0;
         self.challenge_pro = -1;
+        // nothing is earned in a championship, including an award the saved course still had waiting
+        self.award_pending = -1;
         let (da, db) = c.door;
         let pos = (da * crate::geom::UNIT + 0x600, db * crate::geom::UNIT + 0x600);
         self.start_tournament(c, rng, pos, self.holes[1].tee_facing, cash);

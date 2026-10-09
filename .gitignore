@@ -16,3 +16,8 @@ spec/
 .DS_Store
 target/
 web/dist/
+*.sgs
+*.sgch
+*.pro
+Championship/
+snapshots/

@@ -297,6 +297,10 @@ impl Club {
                 "There's nothing like a good snack on the course.".into()
             }
             0x13 | 0x17 => {
+                // the hole just finished: the golfer has moved on to the next one by the time the thought shows, so take it
+                // from the thought's stamp (hole * 11 + strokes, written when the event fired)
+                let gg = &self.g[g];
+                let hole = if gg.thought as u32 == id { (gg.thought_stamp / 11) as usize } else { hole }.min(18);
                 let par = self.holes[hole].par;
                 let d = self.g[g].card[hole] as i32 - par;
                 let word = match d {

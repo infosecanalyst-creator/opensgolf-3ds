@@ -213,6 +213,37 @@ pub enum Screen {
     Shortcuts,
 }
 
+/// Where saved games, championship courses and pros, and accomplishment snapshots go. The browser keeps them in its own storage
+/// under plain names; on the desktop they go in the user's data folder (SIMGOLF_SAVE_DIR overrides it), not wherever the game
+/// happened to be started from.
+pub fn save_dir() -> PathBuf {
+    #[cfg(target_arch = "wasm32")]
+    {
+        PathBuf::new()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let env = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty()).map(PathBuf::from);
+        if let Some(d) = env("SIMGOLF_SAVE_DIR") {
+            return d;
+        }
+        if cfg!(target_os = "windows") {
+            if let Some(d) = env("APPDATA") {
+                return d.join("SimGolf");
+            }
+        } else if cfg!(target_os = "macos") {
+            if let Some(h) = env("HOME") {
+                return h.join("Library/Application Support/SimGolf");
+            }
+        } else if let Some(d) = env("XDG_DATA_HOME") {
+            return d.join("simgolf");
+        } else if let Some(h) = env("HOME") {
+            return h.join(".local/share/simgolf");
+        }
+        PathBuf::new()
+    }
+}
+
 /// A whole game as saved: the land and terrain, the golfers and holes, the staff, the money and calendar, and the exe's random
 /// generator, so a loaded game goes on exactly as it would have. Stored as JSON compressed with zlib, after a magic line.
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -571,7 +602,7 @@ impl App {
             dirty: false,
             mv: [0.0; 16],
             upp: 1.0,
-            course_file: PathBuf::from("course.sgc"),
+            course_file: save_dir().join("course.sgc"),
             skills: GolferSkills::default(),
             mixer: None,
             audio: None,

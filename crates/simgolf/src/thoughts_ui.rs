@@ -25,7 +25,8 @@ impl App {
         if !self.show_thoughts || self.zoom < 0.45 {
             return;
         }
-        let mut shown: Vec<(f32, f32)> = Vec::new();
+        // bubbles already placed this frame (left, top, right, bottom), so later ones stack above instead of overlapping
+        let mut shown: Vec<(f32, f32, f32, f32)> = Vec::new();
         for gi in 0..SLOTS {
             let gg = &self.club.g[gi];
             if gg.hole <= 0 || !(1..=7).contains(&gg.timer) || gg.thought == 0 || gg.thought == 0x32 {
@@ -40,9 +41,15 @@ impl App {
             let Some((x, y)) = self.screen_of(sp.x, sp.y) else { continue };
             let size = if self.zoom > 1.2 { 14.0 } else { 12.0 };
             let mut up = 34.0 * self.zoom.clamp(0.6, 2.0);
-            // nudge apart from a bubble just shown close by (the partner's)
-            if shown.iter().any(|&(ox, oy)| (ox - x).abs() < 120.0 && (oy - (y - up)).abs() <= 12.0) {
-                up += if gi & 1 == 1 { 14.0 } else { -14.0 };
+            let w = text_width(&line.text, size) + 10.0;
+            let h = size + 7.0;
+            let rect = |up: f32| (x - w / 2.0, y - up - size - 2.0, x + w / 2.0, y - up - size - 2.0 + h);
+            for _ in 0..8 {
+                let r = rect(up);
+                if !shown.iter().any(|o| r.0 < o.2 && o.0 < r.2 && r.1 < o.3 && o.1 < r.3) {
+                    break;
+                }
+                up += h + 2.0;
             }
             let fresh = gg.timer >= 5;
             let c = match (line.tone, fresh) {
@@ -53,10 +60,9 @@ impl App {
                 (_, true) => rgb(1.0, 1.0, 1.0),
                 (_, false) => rgb(0.62, 0.62, 0.66),
             };
-            let w = text_width(&line.text, size) + 10.0;
-            s.fill(g, x - w / 2.0, y - up - size - 2.0, w, size + 7.0, rgba(0.0, 0.0, 0.0, 0.7));
+            s.fill(g, x - w / 2.0, y - up - size - 2.0, w, h, rgba(0.0, 0.0, 0.0, 0.7));
             s.text_centered(g, x, y - up, &line.text, size, c);
-            shown.push((x, y - up));
+            shown.push(rect(up));
         }
     }
 }

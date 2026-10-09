@@ -506,9 +506,11 @@ impl App {
             y += 15.0;
         }
         if has {
+            // the bottom piece carries the tick button
             s.image_part(g, e, 187.0, y, 187.0, 374.0, 429.0, 55.0);
+        } else {
+            s.text_centered(g, 404.0, y + 34.0, "OK", 16.0, black());
         }
-        s.text_centered(g, 404.0, y + 34.0, "OK", 16.0, black());
         g.flush();
     }
 

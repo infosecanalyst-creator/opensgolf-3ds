@@ -436,7 +436,8 @@ pub fn plan_shot(cl: &mut Club, c: &mut Course, rng: &mut ExeRng, g: usize, user
         cl.g[g].heading = cl.g[g].heading.wrapping_add((e5 * 3) as u32);
         cv -= e5 / 2;
         if mode == 0 && cl.g[g].vip() == 0x20 {
-            cv += ((dist - 100) * cv) / 256;
+            // 32-bit arithmetic as in the exe: a long shot's product wraps
+            cv = cv.wrapping_add((dist - 100).wrapping_mul(cv) / 256);
             let r = rng.below(0x71c6);
             cv += (r - 0x38e_38e3) / 0x32;
         }
