@@ -28,6 +28,7 @@ pub mod homes;
 pub mod land;
 pub mod mixer;
 pub mod mood;
+pub mod narration;
 pub mod objects;
 pub mod planner;
 pub mod png;

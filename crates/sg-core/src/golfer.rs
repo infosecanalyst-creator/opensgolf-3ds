@@ -265,7 +265,13 @@ pub enum Event {
     Thought { g: usize, id: u32, arg: i32 },
     /// A message for the ticker (0x40cb00): its text and who says it, as the exe's speaker code (-1 nobody, a golfer slot,
     /// -k a building kind k's picture, -2/-3/-20/-21/-22 a PopUpIcons piece, -4 the course site, -5 the bare ball).
-    Message { text: String, speaker: i32 },
+    /// `priority` as 0x40cb00 takes it: a negative one delays the message by that many frames.
+    Message {
+        text: String,
+        speaker: i32,
+        #[serde(default)]
+        priority: i32,
+    },
     /// A golfer finished a hole (employees serving them note it): the hole, strokes taken, mood and fee paid.
     HoleDone { g: usize, hole: i32, strokes: i32, mood: i32, fee: i32 },
 }
@@ -386,6 +392,13 @@ pub struct Club {
     pub first_post: Option<(i32, i32)>,
     /// What the drawing code shows for each golfer this tick: sprite id (clip + body) and frame.
     pub drawn: Vec<(i32, i32)>,
+    /// Reaction types already narrated this game (0x59c08c for types below 32, 0x571d38 for the rest; see `narration`).
+    pub narrated: [u32; 2],
+    /// Tick of the last first-time narration (0x55e5ac).
+    pub last_narration: u32,
+    /// The Preferences' "Advisor and first-time messages" option (bit 4 of 0x5a5a00), set by the game before each tick.
+    #[serde(skip)]
+    pub advisor: bool,
 }
 
 impl Default for Club {
@@ -480,6 +493,9 @@ impl Club {
             layout_land: Vec::new(),
             first_post: None,
             drawn: vec![(0, 0); SLOTS],
+            narrated: [0; 2],
+            last_narration: 0,
+            advisor: true,
         }
     }
 
@@ -552,7 +568,7 @@ impl Club {
             return false;
         }
         self.ticker_busy = true;
-        self.out.push(Event::Message { text, speaker });
+        self.out.push(Event::Message { text, speaker, priority });
         true
     }
 
@@ -941,6 +957,7 @@ impl Club {
                 c.unhappy[i] = c.unhappy[i].wrapping_add(1);
             }
         }
+        self.narrate(c, g, id, arg);
     }
 
     // ---- arrivals (main frame) and creation (0x421bc0) ----------------------------------------------------------------------

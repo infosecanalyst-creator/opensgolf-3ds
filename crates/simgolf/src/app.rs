@@ -1654,6 +1654,7 @@ impl App {
         self.club.course_theme = self.exe_theme();
         self.pro_round_tick();
         self.club.ticker_busy = self.ticker.busy() || self.card.is_some();
+        self.club.advisor = self.show_advisor;
         self.club.tick(&mut self.course, &mut self.exe_rng, tick);
         sg_core::ratings::pass(&mut self.club, self.difficulty);
         self.pro_after_tick();
@@ -1706,11 +1707,11 @@ impl App {
                         self.econ.earn_to(col, units as f64 * Economy::UNIT);
                     }
                 }
-                golf::Event::Message { text, speaker } => {
+                golf::Event::Message { text, speaker, priority } => {
                     if !text.is_empty() {
-                        // the club already refused what the busy ticker would refuse
+                        // the club already refused what the busy ticker would refuse; a negative priority still delays it
                         println!("[{:6.1}s] {text}", self.sim_time);
-                        self.post_message(&text, 1, speaker);
+                        self.post_message(&text, if priority < 0 { priority } else { 1 }, speaker);
                     }
                 }
                 golf::Event::HoleDone { hole, strokes, mood, fee, .. } => {
