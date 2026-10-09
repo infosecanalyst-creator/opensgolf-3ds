@@ -296,6 +296,7 @@ pub const K_LANDMARK: i32 = 4;
 pub const K_HOME_SITE: i32 = 5;
 pub const K_PUTTING_GREEN: i32 = 6;
 pub const K_DRIVING_RANGE: i32 = 10;
+pub const K_SNACK_BAR: i32 = 7;
 pub const K_MARINA: i32 = 12;
 pub const K_CLUBHOUSE: i32 = 15;
 
@@ -513,7 +514,13 @@ impl Land {
     /// Puts down an object: flattens its corners to the anchor's height, turns its tiles into building tiles (a putting green
     /// keeps green tiles, a driving range rough, a marina water) and records it. Returns the object's index.
     pub fn place(&mut self, rng: &mut ExeRng, a: i32, b: i32, kind: i32, fl: i32, theme: u8) -> usize {
-        let size = BUILDINGS[kind as usize].1 + if fl == -2 { 1 } else { 0 };
+        self.place_sized(rng, a, b, kind, fl, theme, (fl == -2) as i32)
+    }
+
+    /// Places an object `extra` tiles larger than its kind's edge (an upgraded building is one larger).
+    #[allow(clippy::too_many_arguments)]
+    pub fn place_sized(&mut self, rng: &mut ExeRng, a: i32, b: i32, kind: i32, fl: i32, theme: u8, extra: i32) -> usize {
+        let size = BUILDINGS[kind as usize].1 + extra;
         let anchor_h = self.h(a * 51 + b);
         for c in 0..size {
             for k in 0..size {
@@ -1415,9 +1422,16 @@ impl Land {
         }
     }
 
-    /// Edge of an object's footprint in tiles (with its upgrades for kinds above 5, as the exe counts it).
+    /// Edge of an object's footprint in tiles as the exe counts it for lookup and removal: an upgraded building (kinds 6 and
+    /// up) is one larger, except the Snack Bar, which is placed larger but looked up at its base size (its outer ring is then
+    /// neither found by clicks nor cleared on removal, as in the exe).
     pub fn footprint_size(&self, o: &Object) -> i32 {
-        BUILDINGS.get(o.kind as usize).map(|b| b.1).unwrap_or(1)
+        let edge = BUILDINGS.get(o.kind as usize).map(|b| b.1).unwrap_or(1);
+        if o.kind > 5 && o.kind != K_SNACK_BAR {
+            edge + o.sub.clamp(0, 1)
+        } else {
+            edge
+        }
     }
 
     /// Removes an object as the exe does: its record is freed and its tiles go back to rough (deep rough on the dearer slots;

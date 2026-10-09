@@ -2340,11 +2340,17 @@ impl App {
             return self.show_toast("Build more holes to unlock this building");
         }
         let Some(land) = self.land.as_mut() else { return };
-        let size = land::BUILDINGS[kind as usize].1;
         let existing = if kind >= 6 { land.objects.iter().position(|o| o.kind == kind) } else { None };
         if existing.is_some() && economy::rank(holes) < 2 {
+            self.ui_sound(24);
             return self.show_toast("Sorry, upgraded buildings are not available until you build beyond 9 holes.");
         }
+        if existing.is_some_and(|i| land.objects[i].sub >= 1) {
+            self.ui_sound(24);
+            return self.show_toast("You cannot upgrade this building any further.");
+        }
+        // an upgrade is placed one tile larger
+        let size = land::BUILDINGS[kind as usize].1 + existing.is_some() as i32;
         let Some(mut clear) = land.fits(tx, ty, size, kind, theme) else {
             return self.show_toast("There is no room for that building there");
         };
@@ -2384,8 +2390,11 @@ impl App {
             land.remove_object(i);
             land.write_area(&mut self.terrain, o.a, o.b, o.a + s - 1, o.b + s - 1);
         }
-        let n = land.place(&mut self.exe_rng, tx, ty, kind, 0, theme);
-        self.club.log_event(sg_core::records::log::BUILT, kind);
+        let n = land.place_sized(&mut self.exe_rng, tx, ty, kind, 0, theme, existing.is_some() as i32);
+        if kind >= 6 && existing.is_none() {
+            // the exe logs the first building of each kind
+            self.club.log_event(sg_core::records::log::BUILT, kind);
+        }
         land.objects[n].sub = level;
         if kind == land::K_LANDMARK {
             let t = landmark.unwrap_or(0);
