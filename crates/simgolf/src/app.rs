@@ -205,6 +205,12 @@ pub enum Screen {
     Board,
     YearEnd,
     Roster,
+    /// F2 Player Comments, F3 Histograph, F4 Financial Report, F5 Routing Map, F8 Keyboard Shortcuts.
+    Comments,
+    Histograph,
+    Finance,
+    Routing,
+    Shortcuts,
 }
 
 /// A whole game as saved: the land and terrain, the golfers and holes, the staff, the money and calendar, and the exe's random
@@ -330,6 +336,10 @@ pub struct App {
     /// The accomplishment snapshot still to take (id and map point), and the snapshots taken this session.
     pub snapshot_due: Option<(usize, (i32, i32))>,
     pub snapshots: HashMap<usize, crate::ui::Image>,
+    /// The report screens' art, the routing map's tab and selected hole.
+    pub reports: crate::reports_ui::ReportArt,
+    pub route_tab: usize,
+    pub route_hole: usize,
     /// Draw the course only (for snapshots).
     pub no_hud: bool,
     /// Option "show golfer thoughts" (option bit 0x10).
@@ -504,6 +514,9 @@ impl App {
             snapshot_due: None,
             snapshots: HashMap::new(),
             no_hud: false,
+            reports: Default::default(),
+            route_tab: 0,
+            route_hole: 1,
             water_depth: Vec::new(),
             moving_employee: None,
             staff_clips: [[(None, None); 3]; 9],

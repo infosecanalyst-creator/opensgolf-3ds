@@ -1392,6 +1392,9 @@ impl Club {
     /// One game tick for the golfers: arrivals, the animation pass of the drawing routine, then every golfer's update.
     pub fn tick(&mut self, c: &mut Course, rng: &mut ExeRng, tick: u32) {
         self.tick = tick;
+        if tick > 0 && tick & 0x3ff == 0 {
+            self.month_decay();
+        }
         self.arrivals(c, rng);
         for g in 0..SLOTS {
             self.animate(rng, g);

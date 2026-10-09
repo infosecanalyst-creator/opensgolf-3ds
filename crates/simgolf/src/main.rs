@@ -5,7 +5,7 @@
 //!           [--screen menu|property|play|report] [--course FILE] [--save FILE] [--edit SPEC] [--panel N] [--mute] [--sound-log]
 //!
 //! Keys: arrows/WASD pan, Q/E rotate, +/- or mouse wheel zoom, 1-4 theme, R new demo course, P toggle scenery, F follow the golfer,
-//! F2 screenshot, M music, N mute, H open the new hole, Shift+H advisor, Tab edit mode, Esc menu. Left-drag pans.
+//! F6 screenshot, F1-F10 reports, M music, N mute, H open the new hole, Shift+H advisor, Tab edit mode, Esc menu. Left-drag pans.
 // UI drawing takes source and destination rectangles as plain numbers; index loops mirror the original's tables.
 #![allow(clippy::too_many_arguments, clippy::needless_range_loop)]
 
@@ -15,6 +15,7 @@ mod champ_ui;
 mod gfx;
 mod pro_ui;
 mod render;
+mod reports_ui;
 mod screens_ui;
 mod thoughts_ui;
 mod tourney_ui;
@@ -221,6 +222,7 @@ fn load_ui(app: &mut App, g: &mut Gfx) -> bool {
     }
     app.ui_ok = ok;
     app.art = crate::screens_ui::Art::load(g, app);
+    app.reports = crate::reports_ui::ReportArt::load(g, app);
     ok
 }
 
@@ -470,6 +472,11 @@ impl Stage {
                 Some("board") if app.ui_ok => app.screen = Screen::Board,
                 Some("yearend") if app.ui_ok => app.screen = Screen::YearEnd,
                 Some("roster") if app.ui_ok => app.screen = Screen::Roster,
+                Some("comments") if app.ui_ok => app.screen = Screen::Comments,
+                Some("histograph") if app.ui_ok => app.screen = Screen::Histograph,
+                Some("finance") if app.ui_ok => app.screen = Screen::Finance,
+                Some("routing") if app.ui_ok => app.screen = Screen::Routing,
+                Some("shortcuts") if app.ui_ok => app.screen = Screen::Shortcuts,
                 Some("golfers") if app.ui_ok => app.panel = 4,
                 Some("sga") if app.ui_ok => {
                     app.club.game |= sg_core::tournament::OFFERED;
@@ -949,10 +956,11 @@ impl Stage {
             }
             KeyCode::Comma => app.brush = (app.brush - 1).max(0),
             KeyCode::Period => app.brush = (app.brush + 1).min(6),
-            KeyCode::F5 => {
-                self.save_course(false);
-                self.app.snd("Interface/Button1.wav", 1.0, false);
-            }
+            KeyCode::F2 => app.open_report_screen(Screen::Comments),
+            KeyCode::F3 => app.open_report_screen(Screen::Histograph),
+            KeyCode::F4 => app.open_report_screen(Screen::Finance),
+            KeyCode::F5 => app.open_report_screen(Screen::Routing),
+            KeyCode::F8 if !shift => app.open_report_screen(Screen::Shortcuts),
             // the original's report keys: F7 the SGA evaluation, F9 the Membership Roster, F10 the accomplishments board;
             // Shift+F7 / Shift+F8 save the course / the pro for championship play
             KeyCode::F7 if shift => app.save_championship_course(),
@@ -988,7 +996,7 @@ impl Stage {
                 }
             }
             KeyCode::F => app.follow = !app.follow,
-            KeyCode::F2 if self.screenshot(&PathBuf::from("simgolf-shot.png")) => {
+            KeyCode::F6 if self.screenshot(&PathBuf::from("simgolf-shot.png")) => {
                 println!("saved simgolf-shot.png");
             }
             _ => {}
@@ -1028,6 +1036,11 @@ impl Stage {
                 Screen::Board => app.draw_board(&mut self.g),
                 Screen::YearEnd => app.draw_year_end(&mut self.g),
                 Screen::Roster => app.draw_roster(&mut self.g),
+                Screen::Comments => app.draw_comments(&mut self.g),
+                Screen::Histograph => app.draw_histograph(&mut self.g),
+                Screen::Finance => app.draw_finance(&mut self.g),
+                Screen::Routing => app.draw_routing(&mut self.g),
+                Screen::Shortcuts => app.draw_shortcuts(&mut self.g),
                 _ => {}
             }
         }
@@ -1285,7 +1298,19 @@ impl EventHandler for Stage {
             } else if self.app.screen == Screen::Pair {
                 let (vx, vy) = self.app.view.to_virtual(x, y);
                 self.app.pair_click(vx, vy);
-            } else if matches!(self.app.screen, Screen::Board | Screen::YearEnd | Screen::Roster) {
+            } else if self.app.screen == Screen::Routing {
+                let (vx, vy) = self.app.view.to_virtual(x, y);
+                self.app.routing_click(vx, vy);
+            } else if matches!(
+                self.app.screen,
+                Screen::Board
+                    | Screen::YearEnd
+                    | Screen::Roster
+                    | Screen::Comments
+                    | Screen::Histograph
+                    | Screen::Finance
+                    | Screen::Shortcuts
+            ) {
                 self.app.screen = Screen::Play;
             } else if self.app.screen == Screen::Skills {
                 let (vx, vy) = self.app.view.to_virtual(x, y);
@@ -1356,7 +1381,17 @@ impl EventHandler for Stage {
                 }
             } else if app.screen == Screen::Pair {
                 app.close_pair_screen();
-            } else if matches!(app.screen, Screen::Board | Screen::YearEnd | Screen::Roster) {
+            } else if matches!(
+                app.screen,
+                Screen::Board
+                    | Screen::YearEnd
+                    | Screen::Roster
+                    | Screen::Comments
+                    | Screen::Histograph
+                    | Screen::Finance
+                    | Screen::Routing
+                    | Screen::Shortcuts
+            ) {
                 app.screen = Screen::Play;
             } else if app.screen == Screen::Skills {
                 if k == KeyCode::Enter || k == KeyCode::Escape {

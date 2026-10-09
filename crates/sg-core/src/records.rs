@@ -122,6 +122,19 @@ impl Club {
         self.history[i] = [cash, self.ratings.fun, self.ratings.skill, members];
     }
 
+    /// At each month's start every hole's statistics lose an eighth (main frame at the month start): plays, plans, mood sum,
+    /// play time, quits and the comment counters, so the reports weigh recent months more.
+    pub fn month_decay(&mut self) {
+        for h in self.holes.iter_mut().skip(1).take(18) {
+            for v in [&mut h.tee_shots, &mut h.plans, &mut h.mood_sum, &mut h.time, &mut h.quits] {
+                *v -= *v / 8;
+            }
+            for v in h.events.iter_mut().take(64) {
+                *v -= *v / 8;
+            }
+        }
+    }
+
     /// Members on the books (level Member or better, not resigned).
     pub fn member_count(&self) -> i32 {
         self.members.iter().filter(|m| m.gone != 0xff && m.level & 7 >= 2).count() as i32

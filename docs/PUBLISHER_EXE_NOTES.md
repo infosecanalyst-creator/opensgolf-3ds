@@ -682,3 +682,17 @@ Confidence: high unless marked.
 - Clicking the clubhouse (not in a tournament, once a hole is open) lists the golfers waiting, newest first. With two
   picked, they are swapped into the slots of the longest-waiting golfer's pair, marked as picked by hand (no visitor
   replaces them, a story is kept) and tee off at once.
+
+## Report screens (F2 0x4546b0, F3 0x455ed0, F4 0x44f6b0, F5 0x456be0, F8 0x44e770)
+
+- Comments: a hole counts an event when it changed a mood (and keeps its last argument); hole creation clears the
+  counters, and at each month start every hole loses an eighth of its plays, mood sum, play time, quits and counters.
+  The report lists up to twenty event ids below 50 by their total over the holes, with the hole where each is most
+  frequent, total * 100 / tee shots in percent, and colours by the line's tone.
+- Histograph: values squashed as v / 2 up to 500 and v / 10 + 200 above; the skill scale doubles above 25.00, the cash
+  scale (1 to 80) follows the current cash; one step of 1 to 4 pixels a month; event markers at offsets cycling 10..450.
+- Financial report: up to eight years of the ledger, zero cells blank, negatives in dark red (the exe draws a ninth
+  column off the screen from the ninth year).
+- Routing map: tile (a, b) at ((a + b) * 6 + 106, (b - a) * 3 + 441) coloured by terrain class; tabs for routing,
+  employees (work-area ellipses: 24 tiles, 48 for groundskeepers, half again when experienced), course aura and home
+  site value.
