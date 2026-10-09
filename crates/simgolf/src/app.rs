@@ -422,6 +422,8 @@ pub struct App {
     /// The popup menu shown, and the last ticker message (Repeat Last Message).
     pub popup: Option<crate::popup_ui::Popup>,
     pub last_message: String,
+    /// The main screen's message window (the exe's ticker).
+    pub ticker: crate::message_ui::Ticker,
     /// The course name being typed (Rename Course...), while the prompt is open.
     pub rename: Option<String>,
     pub water_depth: Vec<u8>,
@@ -606,6 +608,7 @@ impl App {
             show_thoughts: true,
             popup: None,
             last_message: String::new(),
+            ticker: Default::default(),
             rename: None,
             art: Default::default(),
             pair_picks: Vec::new(),
@@ -703,9 +706,12 @@ impl App {
         resolve(&self.game_dir, rel)
     }
 
+    /// A message for the player: on the course it goes to the ticker as the exe's messages do (priority 1, nobody
+    /// speaking); the title screens, which have no ticker, show it as a note at the bottom for 3 seconds.
     pub fn show_toast(&mut self, msg: &str) {
         self.toast = msg.to_string();
         self.toast_until = self.clock + 3.0;
+        self.post_message(msg, 1, crate::message_ui::NOBODY);
     }
 
     // ---- sound ------------------------------------------------------------------------------------------------------------
@@ -1476,7 +1482,7 @@ impl App {
             self.club.open_hole(&mut self.course);
         }
         // adopted holes open quietly
-        self.club.out.retain(|e| !matches!(e, golf::Event::Sound { .. } | golf::Event::Message(_)));
+        self.club.out.retain(|e| !matches!(e, golf::Event::Sound { .. } | golf::Event::Message { .. }));
     }
 
     /// The exe's open-hole command (key H, or a click on the new hole's cup green): the hole being built needs a tee and a
@@ -1618,6 +1624,7 @@ impl App {
         self.club.course_name = self.course_name.clone();
         self.club.course_theme = self.exe_theme();
         self.pro_round_tick();
+        self.club.ticker_busy = self.ticker.busy() || self.card.is_some();
         self.club.tick(&mut self.course, &mut self.exe_rng, tick);
         sg_core::ratings::pass(&mut self.club, self.difficulty);
         self.pro_after_tick();
@@ -1669,11 +1676,11 @@ impl App {
                         self.econ.earn_to(col, units as f64 * Economy::UNIT);
                     }
                 }
-                golf::Event::Message(m) => {
-                    if !m.is_empty() {
-                        println!("[{:6.1}s] {m}", self.sim_time);
-                        self.show_toast(&m);
-                        self.last_message = m.clone();
+                golf::Event::Message { text, speaker } => {
+                    if !text.is_empty() {
+                        // the club already refused what the busy ticker would refuse
+                        println!("[{:6.1}s] {text}", self.sim_time);
+                        self.post_message(&text, 1, speaker);
                     }
                 }
                 golf::Event::HoleDone { hole, strokes, mood, fee, .. } => {
@@ -1725,6 +1732,7 @@ impl App {
             if !self.econ.game_over {
                 self.club_tick();
             }
+            self.ticker.step();
             self.staff_tick();
             self.staff_animate();
             self.resident_tick();
@@ -1976,21 +1984,6 @@ impl App {
         let pros = read("progolfers.dta").map(|t| sg_core::vips::parse_pros(&t)).unwrap_or_default();
         self.club.celebrities = celebs;
         self.club.pros = pros;
-    }
-
-    /// Advisor text from what the club looks like now. These hints are our own words.
-    pub fn advisor_text(&self) -> &'static str {
-        if self.holes.is_empty() {
-            "Welcome to your new club. Open Build Course (the big round button at the bottom left), then paint a tee and a green a good distance apart to make your first hole."
-        } else if !self.land.as_ref().map(|l| l.objects.iter().any(|o| (6..=14).contains(&o.kind))).unwrap_or(false) {
-            "Golfers are on the course. Open Add Buildings and put up an amenity, then lay a path from it to the clubhouse: buildings only work once a path joins them to the clubhouse."
-        } else if self.holes.len() < 3 {
-            "More holes bring more golfers and more money. Build another tee and green, and make the holes different: long, narrow and tricky shots raise the club's skill rating."
-        } else if self.econ.staff_count() == 0 {
-            "Your course is growing. The People button lets you hire a club pro, ranger, groundskeeper or soda vendor, who cost wages but keep golfers happy."
-        } else {
-            "Watch the fun and skill numbers at the top right. Press the information button for the course report, and keep cash above zero so the board stays calm."
-        }
     }
 
     // ---- course editing ----------------------------------------------------------------------------------------------------

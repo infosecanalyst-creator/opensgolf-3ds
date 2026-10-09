@@ -69,7 +69,7 @@ impl Club {
                 } else {
                     go = false;
                 }
-                self.out.push(Event::Message(format!("Hole {h} already has its tee; open it before starting the next hole.")));
+                self.message(format!("Hole {h} already has its tee; open it before starting the next hole."));
             }
         } else if new == t::GREEN {
             if self.holes[hu].pin.0 == 0 && a != 0 && (!green_next || self.holes[hu].back.0 != 0) {
@@ -202,8 +202,11 @@ impl Club {
             self.next_hole += 1;
         }
         let mut msg = opening_text(h, par, len, eff, self.holes[hu].flags);
+        let unlocked = self.unlocked;
         msg += &self.unlock_text(h);
-        self.out.push(Event::Message(msg));
+        // a building unlocked with this hole speaks with its picture (minus its kind), otherwise nobody (0x40e720)
+        let speaker = if self.unlocked != unlocked { -unlocked } else { -1 };
+        self.message_by(msg, speaker, 1);
         self.log_event(crate::records::log::HOLE, h);
         let fl = self.holes[hu].flags;
         let pin = self.holes[hu].pin;

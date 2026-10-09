@@ -16,6 +16,7 @@ mod cust_ui;
 mod files_ui;
 mod gfx;
 mod info_ui;
+mod message_ui;
 mod panels_ui;
 mod popup_ui;
 mod pro_ui;
@@ -728,10 +729,7 @@ impl Stage {
         use popup_ui::PopupKind;
         match kind {
             PopupKind::Info => match k {
-                0 => {
-                    let m = self.app.last_message.clone();
-                    self.app.show_toast(&m);
-                }
+                0 => self.app.repeat_message(),
                 1 => self.open_report(),
                 2 => self.app.open_report_screen(Screen::Comments),
                 3 => self.app.open_report_screen(Screen::Routing),
