@@ -111,7 +111,7 @@ impl Club {
             log::CEO => "J.P. Bigdome joins the board.".into(),
             log::HAPPY => format!("Happy Ending: {}", self.stories.title(arg).trim()),
             log::LAND => "Additional land purchased.".into(),
-            log::HEIRESS => format!("Ivana donates a {}", crate::vips::landmark_name(arg)),
+            log::HEIRESS => format!("Ivana donates a {}", crate::vips::landmark_short_name(arg)),
             _ => String::new(),
         }
     }

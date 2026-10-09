@@ -440,7 +440,8 @@ impl Club {
         let t = landmark_for(c0, rng);
         self.free_landmarks |= 1 << t;
         self.landmarks_owned |= 1 << t;
-        self.message_by(format!("A {} is now available in your landmarks, free of charge.", crate::vips::landmark_name(t)), -1, 0);
+        // "A" (0x4e409c), the name with its article, " is now available in your landmarks menu." (0x4e4070)
+        self.message_by(format!("A{} is now available in your landmarks menu.", crate::vips::landmark_after_a(t)), -1, 0);
     }
 
     /// The story line a golfer is saying now (thought 0x32): the owner's opening line or the partner's reply.
