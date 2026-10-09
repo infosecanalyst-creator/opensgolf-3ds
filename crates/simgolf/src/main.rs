@@ -311,9 +311,10 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                         .collect();
                     println!("map {y:3} {row}");
                 }
-                for y in 9..20 {
-                    let row: Vec<String> = (9..22).map(|x| format!("{:2}", app.terrain.type_at(x, y))).collect();
-                    println!("types {y:3} {}", row.join(" "));
+                if let Some(l) = &app.land {
+                    for o in l.objects.iter().filter(|o| o.kind >= 0) {
+                        println!("object kind {} at {},{} on type {}", o.kind, o.a, o.b, app.terrain.type_at(o.a, o.b));
+                    }
                 }
             }
             b'b' if item.len() > 2 && v.len() == 3 => {

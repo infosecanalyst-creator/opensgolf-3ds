@@ -208,11 +208,10 @@ async function sgUse(entries) {
         sgAddFile(rel, bytes);
         keep.push([rel, bytes]);
     }
-    if (document.getElementById("remember").checked) {
-        sgStatus("Keeping your game files in this browser for next time...");
-        await sgStoreAll(keep);
-    }
+    // play at once; the copy kept for next time is written in the background (it can take minutes for a whole game folder)
+    const remember = document.getElementById("remember").checked;
     sgStart();
+    if (remember) sgStoreAll(keep);
 }
 
 async function sgLoadFolder(fileList) {

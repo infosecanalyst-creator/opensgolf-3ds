@@ -797,7 +797,7 @@ impl App {
             s.text(g, 16.0, 72.0, &st, 12.0, rgb(1.0, 0.95, 0.6));
         }
         if self.speed > 1 && !self.paused {
-            s.text(g, 8.0, 20.0, &format!("Speed x{}", self.speed), 14.0, rgb(1.0, 1.0, 0.8));
+            s.text(g, 170.0, 42.0, &format!("Speed x{}", self.speed), 14.0, rgb(1.0, 1.0, 0.8));
         }
         if self.paused {
             s.text_centered(g, 400.0, 120.0, "PAUSED", 24.0, rgb(1.0, 1.0, 0.8));

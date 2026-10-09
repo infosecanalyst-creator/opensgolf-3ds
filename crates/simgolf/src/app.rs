@@ -2789,6 +2789,11 @@ impl App {
         }
         let level = (self.holes.len() > 10) as u16;
         for (oi, o) in land.objects.iter().enumerate().filter(|(_, o)| o.kind >= 0) {
+            // land outside the property is not drawn, nor what stands on it (an obstacle placed before the border was
+            // taken away shows again when the tract is bought)
+            if self.terrain.type_at(o.a, o.b) == 20 {
+                continue;
+            }
             let size = land::BUILDINGS.get(o.kind as usize).map(|b| b.1).unwrap_or(1);
             let (cx, cz) = self.terrain.tile_centre(o.a, o.b);
             let off = (size - 1) as f32 * TILE_SIZE * 0.5;
