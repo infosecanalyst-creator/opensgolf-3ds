@@ -5,7 +5,6 @@ use crate::app::*;
 use crate::gfx::Gfx;
 use crate::ui::{rgb, rgba, text_width, Screen as Ui};
 use sg_core::golfer::SLOTS;
-use sg_core::thoughts::Tone;
 
 impl App {
     /// Screen point (virtual 800x600) of a map position, or None when it is off screen.
@@ -25,12 +24,18 @@ impl App {
         Some(self.view.to_virtual(sx, sy))
     }
 
+    /// The exe's floating thought text (0x416a15, specs thoughts.md 3.1): only at the closest zoom, `zoom * 10` pixels above
+    /// the golfer (the exe's zoom 4 is about our 0.9), white and grey once faded, tinted green or red only for the golfer's
+    /// newest thought by the sign of the mood change it made, on a black bar the text's width plus 8; partners standing
+    /// level are nudged 4 pixels apart. (The bar's tail sprite is not identified; the bar alone is drawn.)
     pub fn draw_thoughts(&self, g: &mut Gfx, s: &Ui) {
-        if !self.show_thoughts || self.zoom < 0.45 {
+        // the exe draws when its zoom is above 2 (our 0.45); its zoom 1, 2, 4 map to about 0.23, 0.45, 0.9
+        let exe_zoom = self.zoom * 4.0 / 0.905;
+        if !self.show_thoughts || exe_zoom <= 2.0 {
             return;
         }
-        // bubbles already placed this frame (left, top, right, bottom), so later ones stack above instead of overlapping
-        let mut shown: Vec<(f32, f32, f32, f32)> = Vec::new();
+        let c15 = |v: u16| rgb(((v >> 10) & 31) as f32 / 31.0, ((v >> 5) & 31) as f32 / 31.0, (v & 31) as f32 / 31.0);
+        let size = 12.0;
         for gi in 0..SLOTS {
             let gg = &self.club.g[gi];
             if gg.hole <= 0 || !(1..=7).contains(&gg.timer) || gg.thought == 0 || gg.thought == 0x32 {
@@ -43,30 +48,29 @@ impl App {
             let speaker = if line.partner { gi ^ 1 } else { gi };
             let sp = &self.club.g[speaker];
             let Some((x, y)) = self.screen_of(sp.x, sp.y) else { continue };
-            let size = if self.zoom > 1.2 { 14.0 } else { 12.0 };
-            let mut up = 34.0 * self.zoom.clamp(0.6, 2.0);
-            let w = text_width(&line.text, size) + 10.0;
-            let h = size + 7.0;
-            let rect = |up: f32| (x - w / 2.0, y - up - size - 2.0, x + w / 2.0, y - up - size - 2.0 + h);
-            for _ in 0..8 {
-                let r = rect(up);
-                if !shown.iter().any(|o| r.0 < o.2 && o.0 < r.2 && r.1 < o.3 && o.1 < r.3) {
-                    break;
+            let mut up = exe_zoom * 10.0;
+            let p = &self.club.g[gi ^ 1];
+            if p.timer != 0 && p.hole > 0 {
+                if let Some((_, py)) = self.screen_of(p.x, p.y) {
+                    if (y - py).abs() <= 12.0 {
+                        if y > py || (y == py && gi & 1 == 1) {
+                            up -= 4.0;
+                        } else {
+                            up += 4.0;
+                        }
+                    }
                 }
-                up += h + 2.0;
             }
-            let fresh = gg.timer >= 5;
-            let c = match (line.tone, fresh) {
-                (Tone::Good, true) => rgb(0.55, 1.0, 0.55),
-                (Tone::Good, false) => rgb(0.25, 0.6, 0.3),
-                (Tone::Bad, true) => rgb(1.0, 0.45, 0.4),
-                (Tone::Bad, false) => rgb(0.7, 0.2, 0.2),
-                (_, true) => rgb(1.0, 1.0, 1.0),
-                (_, false) => rgb(0.62, 0.62, 0.66),
+            let faded = gg.timer < 5;
+            let newest = gg.thought & 0x80 == 0 && gg.thought == gg.thoughts[0] & 0x7f;
+            let c = match (newest, gg.args[0] & 0xc000) {
+                (true, 0x4000) => c15(if faded { 0x2308 } else { 0x43f0 }),
+                (true, 0xc000) => c15(if faded { 0x6000 } else { 0x7d08 }),
+                _ => c15(if faded { 0x6318 } else { 0x7fff }),
             };
-            s.fill(g, x - w / 2.0, y - up - size - 2.0, w, h, rgba(0.0, 0.0, 0.0, 0.7));
+            let w = text_width(&line.text, size) + 8.0;
+            s.fill(g, x - w / 2.0, y - up - size + 1.0, w, size + 4.0, rgba(0.0, 0.0, 0.0, 1.0));
             s.text_centered(g, x, y - up, &line.text, size, c);
-            shown.push(rect(up));
         }
     }
 }
