@@ -325,6 +325,7 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 println!("celebrity home at {},{}: {} residents", at(0), at(1), app.club.residents.len());
             }
             b'x' => app.save_championship_course(),
+            b'm' if v.len() >= 2 => app.move_hole(at(0) as usize, at(1) as usize),
             b'a' if v.len() >= 3 => {
                 // test hook: an animal of kind v[2] and a follower at x,y
                 app.club.wildlife.spawn(&mut app.exe_rng, at(0), at(1), at(2));
@@ -788,8 +789,10 @@ impl Stage {
         } else if hit == 101 {
             app.difficulty = (app.difficulty + 1) % 4;
         } else if hit == 100 {
-            app.screen = Screen::Menu;
+            app.screen = if std::mem::take(&mut app.world_move) { Screen::Play } else { Screen::Menu };
             app.hover = -1;
+        } else if app.world_move {
+            app.move_to_property(&mut self.g, hit as usize);
         } else if app.can_afford(hit as usize) {
             app.start_game(&mut self.g, hit as usize, app.sandbox_choice);
         }
@@ -996,6 +999,7 @@ impl Stage {
                 }
             }
             KeyCode::F => app.follow = !app.follow,
+            KeyCode::F6 if !shift => app.open_world_map(),
             KeyCode::F6 if self.screenshot(&PathBuf::from("simgolf-shot.png")) => {
                 println!("saved simgolf-shot.png");
             }
@@ -1300,7 +1304,7 @@ impl EventHandler for Stage {
                 self.app.pair_click(vx, vy);
             } else if self.app.screen == Screen::Routing {
                 let (vx, vy) = self.app.view.to_virtual(x, y);
-                self.app.routing_click(vx, vy);
+                self.app.routing_click(vx, vy, button == MouseButton::Right);
             } else if matches!(
                 self.app.screen,
                 Screen::Board

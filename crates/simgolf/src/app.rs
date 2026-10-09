@@ -340,6 +340,8 @@ pub struct App {
     pub reports: crate::reports_ui::ReportArt,
     pub route_tab: usize,
     pub route_hole: usize,
+    /// The property chooser was opened from the course (F6) to move the club.
+    pub world_move: bool,
     /// Draw the course only (for snapshots).
     pub no_hud: bool,
     /// Option "show golfer thoughts" (option bit 0x10).
@@ -517,6 +519,7 @@ impl App {
             reports: Default::default(),
             route_tab: 0,
             route_hole: 1,
+            world_move: false,
             water_depth: Vec::new(),
             moving_employee: None,
             staff_clips: [[(None, None); 3]; 9],

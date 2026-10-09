@@ -8,6 +8,7 @@ use crate::render::Rect;
 use crate::ui::{load_pcx_alpha, money, rgb, rgba, text_width, wrap_text, Image, Screen as Ui};
 use sg_core::course::{idx, inside, N, TYPES};
 use sg_core::economy::LEDGER_LABELS;
+use sg_core::land;
 use sg_core::staff;
 
 /// The report art.
@@ -65,7 +66,7 @@ const SHORTCUTS: [(&str, &str); 16] = [
     ("F3", "Histograph"),
     ("F4", "Financial Report"),
     ("F5", "Course Overview Map"),
-    ("F6", "Take a screenshot"),
+    ("F6", "World map, change courses"),
     ("F7", "SGA Evaluation"),
     ("F8", "Handy keyboard commands screen"),
     ("F9", "Membership Roster"),
@@ -338,7 +339,7 @@ impl App {
         ((a + b) * 6.0 + 106.0, (b - a) * 3.0 + 441.0)
     }
 
-    pub fn routing_click(&mut self, vx: f32, vy: f32) {
+    pub fn routing_click(&mut self, vx: f32, vy: f32, right: bool) {
         let tabs = [
             (Rect::new(183.0, 254.0, 80.0, 80.0), 0),
             (Rect::new(62.0, 315.0, 80.0, 80.0), 1),
@@ -355,10 +356,15 @@ impl App {
             self.screen = Screen::Play;
             return;
         }
-        if self.route_tab == 0 && vy > 0x60 as f32 {
+        if vy > 0x60 as f32 && vy <= 0x118 as f32 {
             let row = ((vy - 0x68 as f32) / 17.0) as i32 + 1;
-            let h = (row.clamp(1, 9) + if vx > 399.0 { 9 } else { 0 }).clamp(1, 18);
-            self.route_hole = h as usize;
+            let h = (row.clamp(1, 9) + if vx > 399.0 { 9 } else { 0 }).clamp(1, 18) as usize;
+            if right {
+                let from = self.route_hole;
+                self.move_hole(from, h);
+            } else {
+                self.route_hole = h;
+            }
         }
     }
 
@@ -524,5 +530,95 @@ impl App {
             s.text(g, 0x1e3 as f32, y, d, 11.0, black());
         }
         g.flush();
+    }
+}
+
+impl App {
+    /// Routing map, right click (0x456be0): the selected hole moves to the clicked place in the order; the holes between
+    /// shift by one, the tee and green tiles are renumbered and golfers on the course follow their hole.
+    pub fn move_hole(&mut self, from: usize, to: usize) {
+        if !(1..=18).contains(&from) || !(1..=18).contains(&to) || from == to {
+            return;
+        }
+        // order[k] = the old hole that becomes hole k
+        let mut order: Vec<usize> = (1..=18).collect();
+        let h = order.remove(from - 1);
+        order.insert(to - 1, h);
+        let mut new_of = [0usize; 19];
+        for (k, &old) in order.iter().enumerate() {
+            new_of[old] = k + 1;
+        }
+        let old = self.club.holes.clone();
+        for (k, &o) in order.iter().enumerate() {
+            self.club.holes[k + 1] = old[o].clone();
+        }
+        if let Some(l) = self.land.as_mut() {
+            for i in 0..l.flags.len() {
+                let t = l.ty[i];
+                let n = (l.flags[i] & 0x1f) as usize;
+                if (t == land::T_TEE || t == land::T_GREEN) && (1..=18).contains(&n) {
+                    l.flags[i] = (l.flags[i] & !0x1f) | new_of[n] as u16;
+                }
+            }
+        }
+        for g in self.club.g.iter_mut().take(sg_core::golfer::SLOTS) {
+            if (1..=18).contains(&g.hole) {
+                g.hole = new_of[g.hole as usize] as i32;
+            }
+        }
+        self.club.next_hole = (1..=18).find(|&k| self.club.holes[k].par == 0).unwrap_or(19) as i32;
+        self.route_hole = to;
+        if let Some(l) = &self.land {
+            l.write_area(&mut self.terrain, 0, 0, land::N - 1, land::N - 1);
+        }
+        self.sync_course();
+        self.dirty = true;
+        println!("hole {from} moved to {to}");
+    }
+
+    /// F6, the world map: the property chooser, to move the club to another property. Cash, the calendar and the pro's
+    /// career go along; the course starts afresh (0x407d30).
+    pub fn open_world_map(&mut self) {
+        if self.club.game & sg_core::golfer::game::REPEAT != 0 {
+            return self.slot_sound(0x18, self.cam_x, self.cam_z);
+        }
+        self.world_move = true;
+        self.deal_offer(self.econ.sandbox);
+        self.screen = Screen::Property;
+        self.hover = -1;
+    }
+
+    pub fn move_to_property(&mut self, g: &mut Gfx, prop: usize) {
+        let price = self.offer_for(prop).1 as f64;
+        if !self.econ.sandbox && self.econ.cash < price {
+            return self.show_toast("You need more money before you can purchase this property.");
+        }
+        let cash = self.econ.cash - if self.econ.sandbox { 0.0 } else { price };
+        let tick = self.game_tick;
+        let ledger = self.econ.ledger.clone();
+        let c = self.club.clone();
+        self.world_move = false;
+        self.start_game(g, prop, self.econ.sandbox);
+        self.econ.cash = cash;
+        self.econ.tick = tick;
+        self.econ.ledger = ledger;
+        let y = self.econ.year_index();
+        if let Some(row) = self.econ.ledger.get_mut(y) {
+            row[sg_core::economy::LEDGER_OTHER] = cash;
+        }
+        self.game_tick = tick;
+        let k = &mut self.club;
+        k.tick = tick;
+        k.pro_skill = c.pro_skill;
+        k.pro_mask = c.pro_mask;
+        k.skill_points = c.skill_points;
+        k.awards = c.awards;
+        k.earned = c.earned;
+        k.trophies = c.trophies;
+        k.wager_level = c.wager_level;
+        k.event_log = c.event_log;
+        k.history = c.history;
+        k.roster[0] = c.roster[0].clone();
+        println!("moved to {}, cash {:.0}", self.course_name, self.econ.cash);
     }
 }
