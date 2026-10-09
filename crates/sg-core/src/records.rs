@@ -159,5 +159,9 @@ mod tests {
         assert!(!cl.award_at(1, (10, 10)), "earned once");
         assert_eq!(cl.award_title(1), "1st Dogleg Left Hole");
         assert_eq!(cl.earned[1].as_ref().map(|e| e.tick), Some(0xc00));
+        // two earned together: the board opens for the last, both get their snapshot
+        assert!(cl.award_at(0, (20, 20)));
+        assert_eq!(cl.award_pending, 0);
+        assert_eq!(cl.award_snaps, vec![(1, (10, 10)), (0, (20, 20))]);
     }
 }
