@@ -419,6 +419,8 @@ pub struct App {
     pub no_hud: bool,
     /// Option "show golfer thoughts" (option bit 0x10).
     pub show_thoughts: bool,
+    /// Option bit 0, "Display golfer names on screen" (Shift+N).
+    pub show_names: bool,
     /// The popup menu shown, and the last ticker message (Repeat Last Message).
     pub popup: Option<crate::popup_ui::Popup>,
     pub last_message: String,
@@ -486,6 +488,8 @@ pub struct App {
     pub path_kind: i32,
     /// Building kind the building tool places (an exe kind, see OFFERED_KINDS).
     pub build_idx: usize,
+    /// Tab's turn for the next building (the exe's 0x5a34f0; the object faces `turn & 3`).
+    pub turn: i32,
     /// = selects raising, - selects lowering (the original's hotkeys); shift flips it.
     pub raise_sign: i32,
     pub paused: bool,
@@ -604,6 +608,7 @@ impl App {
             title: Default::default(),
             retyped: Vec::new(),
             show_thoughts: true,
+            show_names: true,
             popup: None,
             last_message: String::new(),
             rename: None,
@@ -667,6 +672,7 @@ impl App {
             path_kind: 1,
             build_idx: 7,
             raise_sign: 1,
+            turn: 0,
             paused: false,
             speed: 1,
             paint_idx: 0,
@@ -2419,6 +2425,7 @@ impl App {
             self.club.log_event(sg_core::records::log::BUILT, kind);
         }
         land.objects[n].sub = level;
+        land.objects[n].dir = (self.turn & 3) as u8;
         if kind == land::K_LANDMARK {
             let t = landmark.unwrap_or(0);
             land.objects[n].sub = t;
@@ -2582,6 +2589,18 @@ impl App {
         Some((x as f32, z as f32))
     }
 
+    /// z / x and the dock's zoom buttons: the next of the exe's three levels (1, 2, 4) in or out.
+    pub fn zoom_step(&mut self, inward: bool) {
+        let level = (self.zoom / ZOOM_UNIT).log2().round().clamp(0.0, 2.0) as i32;
+        let level = if inward { (level + 1).min(2) } else { (level - 1).max(0) };
+        self.zoom = ZOOM_UNIT * (1 << level) as f32;
+    }
+
+    /// PageUp / Home and the Rotate Map buttons: a quarter turn of the view (the exe's rotation steps by 2 of 8).
+    pub fn rotate_view(&mut self, quarters: i32) {
+        self.rot = ((self.rot / 90.0).round() + quarters as f32).rem_euclid(4.0) * 90.0;
+    }
+
     pub fn pan(&mut self, right: f32, up: f32) {
         let yaw = (45.0 + self.rot) * std::f32::consts::PI / 180.0;
         self.cam_x += yaw.cos() * right + yaw.sin() * up;
@@ -2616,6 +2635,9 @@ impl App {
 }
 
 /// Original pitch angles, chosen per resolution in Terrain::initSystem (38.68, 40.54, 40.83 degrees).
+/// Our zoom at the exe's zoom level 1 (a tile 16 pixels wide on the 800 x 600 screen); its levels are 1, 2 and 4.
+pub const ZOOM_UNIT: f32 = 0.905 / 4.0;
+
 pub fn pitch_for(w: f32, h: f32) -> f64 {
     if w == 800.0 && h == 600.0 {
         38.682186

@@ -32,7 +32,6 @@ use app::*;
 use gfx::Gfx;
 use miniquad::*;
 use render::*;
-use sg_core::economy::{self, Economy};
 use sg_core::formats::{atoi, parse_pro_golfers};
 use sg_core::mixer::Mixer;
 use sg_core::properties::PROPERTIES;
@@ -96,7 +95,8 @@ fn parse_args() -> Options {
         seed: 7,
         win_w: 1280,
         win_h: 800,
-        zoom: 0.36,
+        // the exe starts at its closest zoom level, 4
+        zoom: app::ZOOM_UNIT * 4.0,
         rot: 0.0,
         png_out: None,
         time: 0.0,
@@ -145,7 +145,7 @@ fn parse_args() -> Options {
                     o.win_h = h.parse().unwrap_or(800);
                 }
             }
-            "--zoom" => o.zoom = next().parse().unwrap_or(0.36),
+            "--zoom" => o.zoom = next().parse().unwrap_or(app::ZOOM_UNIT * 4.0),
             "--rot" => o.rot = next().parse().unwrap_or(0.0),
             "--png" => o.png_out = Some(PathBuf::from(next())),
             "--time" => o.time = next().parse().unwrap_or(0.0),
@@ -812,10 +812,11 @@ impl Stage {
         if d >= 0 {
             match d {
                 0..=2 => app.open_panel(d + 1),
-                3 => app.zoom *= 1.12,
-                4 => app.zoom /= 1.12,
-                5 => app.rot += 15.0,
-                6 => app.rot -= 15.0,
+                3 => app.zoom_step(true),
+                4 => app.zoom_step(false),
+                // the Rotate Map buttons send Home and PageUp
+                5 => app.rotate_view(-1),
+                6 => app.rotate_view(1),
                 7 => app.open_popup(popup_ui::PopupKind::Info),
                 8 => self.pause_toggle = true,
                 _ => app.open_popup(popup_ui::PopupKind::System),
@@ -960,21 +961,25 @@ impl Stage {
         }
     }
 
+    /// The course screen's keys, as the exe's two key switches have them (character keys at 0x41c5b2, virtual keys at
+    /// 0x41de29): lower-case letters pick tools, shifted letters open screens, digits jump to holes, arrows scroll four tiles,
+    /// PageUp / Home turn the view a quarter, z / x zoom between the three levels.
     fn play_key(&mut self, k: KeyCode) {
         let app = &mut self.app;
-        let step = 60.0 / app.zoom;
         let shift = self.shift;
-        let pick = |app: &mut App, ty: u8, vb: i32| {
+        // a terrain key picks that brush on the Build Course panel (0x40d890 with the type itself)
+        let pick = |app: &mut App, ty: u8| {
+            if app.panel != 1 {
+                app.open_panel(1);
+            }
+            app.edit = true;
             app.tool = 0;
-            if let Some(i) = PAINT.iter().position(|p| p.ty == ty as i32 && p.vbyte == vb) {
+            if let Some(i) = PAINT.iter().position(|p| p.ty == ty as i32 && p.vbyte == 0) {
                 app.paint_idx = i;
             }
         };
-        // Hotkeys of the original (manual p. 3 and 4): Z / X zoom, Shift+S / Shift+L save and load, Shift+P pause, Shift+T trees;
-        // in edit mode F fairway, G green/tee, R rough, S sandtrap, W water, P pathway, - lower, = raise.
-        let edit = app.edit && !shift;
         if app.club.pro_aiming().is_some() && !shift {
-            // the shot keys of the aiming panel (key switch, L169087): s straight, f fade, d draw, h high, l low
+            // while the pro aims, s f d h l pick the shot shape instead
             let opt = match k {
                 KeyCode::S => Some(0),
                 KeyCode::F => Some(-1),
@@ -999,88 +1004,57 @@ impl Stage {
             }
             return;
         }
-        if k == KeyCode::J && !edit {
-            // the pro panel's first two buttons: J a practice round, Shift+J the match
-            app.pro_button(if shift { 1 } else { 0 });
+        let hole_key = [
+            KeyCode::Key1,
+            KeyCode::Key2,
+            KeyCode::Key3,
+            KeyCode::Key4,
+            KeyCode::Key5,
+            KeyCode::Key6,
+            KeyCode::Key7,
+            KeyCode::Key8,
+            KeyCode::Key9,
+        ]
+        .iter()
+        .position(|&c| c == k);
+        if let Some(n) = hole_key {
+            // 1..9 and their shifted symbols (! @ # $ % ^ & * () jump to holes 1..18
+            let h = n + 1 + if shift { 9 } else { 0 };
+            let hr = &app.club.holes[h.min(18)];
+            if hr.par != 0 {
+                let (tx, ty) = (hr.back.0 * 1024 + 512, hr.back.1 * 1024 + 512);
+                let (px, py) = (hr.pin.0 * 1024 + 512, hr.pin.1 * 1024 + 512);
+                let (x, z) = app.units_to_world((tx + px) / 2, (ty + py) / 2);
+                app.cam_x = x;
+                app.cam_z = z;
+            }
             return;
         }
-        if k == KeyCode::K && !edit {
-            app.pro_button(2);
+        if shift {
+            match k {
+                KeyCode::S => app.open_save(),
+                KeyCode::L => app.open_files(files_ui::ListKind::Load, true),
+                KeyCode::P => self.toggle_pause(),
+                KeyCode::T => app.show_props = !app.show_props,
+                KeyCode::R => app.open_report_screen(Screen::Routing),
+                KeyCode::W if app.club.championship() => app.ui_sound(24),
+                KeyCode::W => app.open_world_map(),
+                KeyCode::J => app.begin_tournament(),
+                KeyCode::C => app.save_championship_course(),
+                KeyCode::N => app.show_names = !app.show_names,
+                KeyCode::B => {
+                    // the Home Site tool, "Sell lot for cash"
+                    if app.panel != 2 {
+                        app.open_panel(2);
+                    }
+                    app.edit = true;
+                    app.tool = 4;
+                    app.build_idx = sg_core::land::K_HOME_SITE as usize;
+                }
+                KeyCode::F6 if self.screenshot(&PathBuf::from("simgolf-shot.png")) => println!("saved simgolf-shot.png"),
+                _ => {}
+            }
             return;
-        }
-        match k {
-            KeyCode::S if shift => return app.open_save(),
-            KeyCode::L if shift => return app.open_files(files_ui::ListKind::Load, true),
-            KeyCode::P if shift => return self.toggle_pause(),
-            KeyCode::Space if app.screen == Screen::Play => {
-                app.speed = match app.speed {
-                    1 => 2,
-                    2 => 4,
-                    _ => 1,
-                };
-                let name = match app.speed {
-                    1 => "Normal speed",
-                    2 => "Fast (x2)",
-                    _ => "Fastest (x4)",
-                };
-                return app.show_toast(name);
-            }
-            KeyCode::T if shift => {
-                app.show_props = !app.show_props;
-                return;
-            }
-            KeyCode::C | KeyCode::R | KeyCode::G | KeyCode::V if shift || self.ctrl => {
-                // Hire (Shift) or fire (Ctrl) a Club Pro, Ranger, Groundskeeper or Soda Vendor.
-                let kind = match k {
-                    KeyCode::C => economy::CLUB_PRO,
-                    KeyCode::R => economy::RANGER,
-                    KeyCode::G => economy::GROUNDSKEEPER,
-                    _ => economy::SODA_VENDOR,
-                };
-                let ok = if shift { app.hire_staff(kind) } else { app.fire_staff(kind) };
-                println!(
-                    "{} {}: {} (staff now {}, wage ${} a charge)",
-                    if shift { "hire" } else { "fire" },
-                    Economy::staff_name(kind),
-                    if ok { "done" } else { "not possible" },
-                    app.econ.staff_count(),
-                    economy::WAGE_UNITS[kind][0] * 100
-                );
-                app.snd("Interface/Button2.wav", 1.0, false);
-                return;
-            }
-            KeyCode::F1 => return self.open_report(),
-            KeyCode::Z => {
-                app.zoom *= 1.12;
-                return;
-            }
-            KeyCode::X => {
-                app.zoom /= 1.12;
-                return;
-            }
-            KeyCode::F if edit => return pick(app, TT_FAIRWAY, 0),
-            KeyCode::G if edit => {
-                let to = if PAINT[app.paint_idx].ty == TT_PUTTING_GREEN as i32 && app.tool == 0 { TT_TEE } else { TT_PUTTING_GREEN };
-                return pick(app, to, 0);
-            }
-            KeyCode::R if edit => return pick(app, TT_ROUGH, 0),
-            KeyCode::S if edit => return pick(app, TT_SAND, 0),
-            KeyCode::W if edit => return pick(app, TT_WATER_SHALLOW, 0),
-            KeyCode::P if edit => {
-                app.tool = 2;
-                return;
-            }
-            KeyCode::Minus if edit => {
-                app.tool = 1;
-                app.raise_sign = -1;
-                return;
-            }
-            KeyCode::Equal if edit => {
-                app.tool = 1;
-                app.raise_sign = 1;
-                return;
-            }
-            _ => {}
         }
         match k {
             KeyCode::Escape if app.pstate.hire_open => app.pstate.hire_open = false,
@@ -1093,91 +1067,107 @@ impl Stage {
                     window::order_quit();
                 }
             }
-            KeyCode::Left | KeyCode::A => app.pan(-step, 0.0),
-            KeyCode::Right | KeyCode::D => app.pan(step, 0.0),
-            KeyCode::Up | KeyCode::W => app.pan(0.0, step),
-            KeyCode::Down | KeyCode::S => app.pan(0.0, -step),
-            KeyCode::Q => app.rot -= 5.0,
-            KeyCode::E => app.rot += 5.0,
-            KeyCode::Equal | KeyCode::KpAdd => app.zoom *= 1.12,
-            KeyCode::Minus | KeyCode::KpSubtract => app.zoom /= 1.12,
-            KeyCode::Key1
-            | KeyCode::Key2
-            | KeyCode::Key3
-            | KeyCode::Key4
-            | KeyCode::Key5
-            | KeyCode::Key6
-            | KeyCode::Key7
-            | KeyCode::Key8
-            | KeyCode::Key9 => {
-                // the exe's number keys jump to holes 1..9, with Shift 10..18
-                let n = [
-                    KeyCode::Key1,
-                    KeyCode::Key2,
-                    KeyCode::Key3,
-                    KeyCode::Key4,
-                    KeyCode::Key5,
-                    KeyCode::Key6,
-                    KeyCode::Key7,
-                    KeyCode::Key8,
-                    KeyCode::Key9,
-                ]
-                .iter()
-                .position(|&c| c == k)
-                .unwrap_or(0)
-                    + 1;
-                let h = n + if shift { 9 } else { 0 };
-                let hr = &app.club.holes[h.min(18)];
-                if hr.par != 0 {
-                    let (tx, ty) = (hr.back.0 * 1024 + 512, hr.back.1 * 1024 + 512);
-                    let (px, py) = (hr.pin.0 * 1024 + 512, hr.pin.1 * 1024 + 512);
-                    let (x, z) = app.units_to_world((tx + px) / 2, (ty + py) / 2);
+            // Space drops the tool and the selected golfer
+            KeyCode::Space => {
+                app.edit = false;
+                app.card = None;
+            }
+            // the port's own game speed (the original has none): ] cycles normal, x2 and x4
+            KeyCode::RightBracket => {
+                app.speed = match app.speed {
+                    1 => 2,
+                    2 => 4,
+                    _ => 1,
+                };
+                let name = match app.speed {
+                    1 => "Normal speed",
+                    2 => "Fast (x2)",
+                    _ => "Fastest (x4)",
+                };
+                app.show_toast(name);
+            }
+            // Tab turns the next building; with the elevation tool it also steps the brush (one point, 2x2, area)
+            KeyCode::Tab => {
+                app.turn = (app.turn + 1) & 3;
+                if app.edit && app.tool == 1 {
+                    app.pstate.elev_tool = (app.pstate.elev_tool + 1) % 3;
+                }
+            }
+            KeyCode::Minus | KeyCode::Equal | KeyCode::KpSubtract | KeyCode::KpAdd if app.has_hit => {
+                let (a, b) = app.terrain.corner_of(app.hit_x, app.hit_z);
+                let up = matches!(k, KeyCode::Equal | KeyCode::KpAdd);
+                app.edit_elevation(a, b, if up { 1 } else { -1 });
+            }
+            KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right => {
+                // four tiles along the view's diagonal
+                let step = 4.0 * std::f32::consts::SQRT_2 * sg_core::terrain::TILE_SIZE;
+                match k {
+                    KeyCode::Up => app.pan(0.0, step),
+                    KeyCode::Down => app.pan(0.0, -step),
+                    KeyCode::Left => app.pan(-step, 0.0),
+                    _ => app.pan(step, 0.0),
+                }
+            }
+            KeyCode::PageUp => app.rotate_view(1),
+            KeyCode::Home => app.rotate_view(-1),
+            KeyCode::Key0 => {
+                // the view turned back; if it already was, centre on the clubhouse
+                if app.rot.rem_euclid(360.0) == 0.0 {
+                    let (a, b) = app.course.door;
+                    let (x, z) = app.units_to_world(a * 1024 + 512, b * 1024 + 512);
                     app.cam_x = x;
                     app.cam_z = z;
                 }
+                app.rot = 0.0;
             }
-            KeyCode::Key0 => {
-                // centre on the clubhouse
-                let (a, b) = app.course.door;
-                let (x, z) = app.units_to_world(a * 1024 + 512, b * 1024 + 512);
-                app.cam_x = x;
-                app.cam_z = z;
+            KeyCode::Z => app.zoom_step(true),
+            KeyCode::X => app.zoom_step(false),
+            KeyCode::F => pick(app, TT_FAIRWAY),
+            KeyCode::R => pick(app, if app.exe_theme() == 1 { sg_core::terrain::TT_DEEP_ROUGH } else { TT_ROUGH }),
+            KeyCode::G => {
+                // green first, then the tee on a second press
+                let on_green = app.edit && app.tool == 0 && PAINT[app.paint_idx].ty == TT_PUTTING_GREEN as i32;
+                pick(app, if on_green { TT_TEE } else { TT_PUTTING_GREEN });
+                app.turn = 0;
             }
-            // R is the Rough tool in the original (it used to regenerate a test course here, wiping the game)
-            KeyCode::R => {
-                app.panel = 1;
+            KeyCode::S => pick(app, TT_SAND),
+            KeyCode::T => pick(app, sg_core::terrain::TT_WOODS),
+            KeyCode::V => pick(app, sg_core::land::T_RAVINE),
+            KeyCode::W => pick(app, TT_WATER_SHALLOW),
+            KeyCode::P => {
+                pick(app, TT_FAIRWAY);
+                app.tool = 2;
+            }
+            KeyCode::B => {
+                if app.panel != 2 {
+                    app.open_panel(2);
+                }
                 app.edit = true;
-                return pick(app, TT_ROUGH, 0);
+                app.tool = 4;
+                app.build_idx = sg_core::land::K_BENCH as usize;
             }
-            KeyCode::Tab => app.edit = !app.edit,
-            KeyCode::T => app.tool = (app.tool + 1) % 5,
-            KeyCode::LeftBracket | KeyCode::RightBracket => {
-                let fwd = k == KeyCode::RightBracket;
-                if app.tool == 4 {
-                    let avail: Vec<usize> = OFFERED_KINDS.iter().map(|&k| k as usize).filter(|&k| app.build_available(k)).collect();
-                    if !avail.is_empty() {
-                        let at = avail.iter().position(|&k| k == app.build_idx).unwrap_or(0);
-                        let n = avail.len();
-                        app.build_idx = avail[if fwd { (at + 1) % n } else { (at + n - 1) % n }];
-                    }
-                } else if app.tool == 2 {
-                    app.path_kind = 3 - app.path_kind;
-                } else if app.tool != 3 {
-                    app.paint_idx = if fwd { (app.paint_idx + 1) % PAINT.len() } else { (app.paint_idx + PAINT.len() - 1) % PAINT.len() };
+            KeyCode::E => {
+                if app.panel != 2 {
+                    app.open_panel(2);
+                }
+                app.pstate.alt = true;
+                app.edit = true;
+                app.tool = 1;
+            }
+            KeyCode::H => {
+                if !app.open_hole() {
+                    app.show_toast("A new hole needs a tee and a green");
                 }
             }
-            KeyCode::Comma => app.brush = (app.brush - 1).max(0),
-            KeyCode::Period => app.brush = (app.brush + 1).min(6),
+            KeyCode::M => app.toggle_music(),
+            KeyCode::F1 => self.open_report(),
             KeyCode::F2 => app.open_report_screen(Screen::Comments),
             KeyCode::F3 => app.open_report_screen(Screen::Histograph),
             KeyCode::F4 => app.open_report_screen(Screen::Finance),
             KeyCode::F5 => app.open_report_screen(Screen::Routing),
-            KeyCode::F8 if !shift => app.open_report_screen(Screen::Shortcuts),
-            // the original's report keys: F7 the SGA evaluation, F9 the Membership Roster, F10 the accomplishments board;
-            // Shift+F7 / Shift+F8 save the course / the pro for championship play
-            KeyCode::F7 if shift => app.save_championship_course(),
-            KeyCode::F8 if shift => app.save_championship_pro(),
+            KeyCode::F6 => app.open_world_map(),
             KeyCode::F7 => app.sga_report(),
+            KeyCode::F8 => app.open_report_screen(Screen::Shortcuts),
             KeyCode::F9 => {
                 app.roster_offset = 0;
                 app.screen = Screen::Roster;
@@ -1185,36 +1175,6 @@ impl Stage {
             KeyCode::F10 => {
                 app.screen = Screen::Board;
                 app.screen_jingle(0x7e, Screen::Board);
-            }
-            KeyCode::M => app.toggle_music(),
-            KeyCode::N => {
-                app.mute = !app.mute;
-                if app.mute {
-                    if let Some(m) = &app.mixer {
-                        m.stop_all();
-                    }
-                    app.ambience = -1;
-                    app.music = -1;
-                } else {
-                    app.title_music = -1;
-                    app.music_screen = None; // the next frame restarts what the screen plays
-                    if app.music_on {
-                        app.music_on = false;
-                        app.toggle_music();
-                    }
-                }
-            }
-            KeyCode::P => app.show_props = !app.show_props,
-            KeyCode::H if shift => app.show_advisor = !app.show_advisor,
-            KeyCode::H => {
-                if !app.open_hole() {
-                    app.show_toast("A new hole needs a tee and a green");
-                }
-            }
-            KeyCode::F => app.follow = !app.follow,
-            KeyCode::F6 if !shift => app.open_world_map(),
-            KeyCode::F6 if self.screenshot(&PathBuf::from("simgolf-shot.png")) => {
-                println!("saved simgolf-shot.png");
             }
             _ => {}
         }
@@ -1519,21 +1479,15 @@ impl EventHandler for Stage {
             }
             self.app.apply_tool(self.shift, true);
         } else if self.dragging {
-            let k = 2.0 / (self.app.zoom * self.app.dpi); // drawable pixels -> world units
+            let k = self.app.upp; // drawable pixels -> world units
             let sin_p = (pitch_for(self.app.draw_w, self.app.draw_h).to_radians()).sin() as f32;
             self.app.pan(-dx * k, dy * k / sin_p);
         }
     }
 
     fn mouse_wheel_event(&mut self, _x: f32, y: f32) {
-        if self.app.screen == Screen::Play || !self.app.ui_ok {
-            self.app.zoom *= if y > 0.0 {
-                1.1
-            } else if y < 0.0 {
-                1.0 / 1.1
-            } else {
-                1.0
-            };
+        if (self.app.screen == Screen::Play || !self.app.ui_ok) && y != 0.0 {
+            self.app.zoom_step(y > 0.0);
         }
     }
 

@@ -30,7 +30,9 @@ impl Rect {
 impl App {
     /// Draws the course and everything on it. Camera as the original: ortho +-5000 depth, pitch about X, then yaw 45 degrees.
     pub fn render_world(&mut self, g: &mut Gfx) {
-        let upp = 2.0 / (self.zoom * self.dpi); // world units per drawable pixel
+        // world units per drawable pixel: the zoom is in the 800 x 600 screen's pixels, so a bigger window shows the same view
+        let vscale = (self.draw_w / 800.0).min(self.draw_h / 600.0);
+        let upp = 2.0 / (self.zoom * vscale);
         let (hw, hh) = (self.draw_w * upp * 0.5, self.draw_h * upp * 0.5);
         let proj = Mat4::ortho(-hw, hw, -hh, hh, -DEPTH_RANGE, DEPTH_RANGE);
         let mv = Mat4::rotate(pitch_for(self.draw_w, self.draw_h), 1.0, 0.0, 0.0)
