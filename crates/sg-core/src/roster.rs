@@ -36,6 +36,10 @@ pub struct Person {
     pub skin: u8,
     #[serde(default)]
     pub hair: u8,
+    /// Record byte +0x22: the head (0..18 the stock heads of the person's gender, 19 and up the custom portraits). None when
+    /// the record came from the port's own roster, whose people have no head byte (see `head_index`).
+    #[serde(default)]
+    pub head: Option<u8>,
 }
 
 fn cstr(b: &[u8]) -> String {
@@ -60,11 +64,23 @@ impl Person {
             alt_skin: r[0x26],
             skin: r[0x27],
             hair: r[0x28],
+            head: Some(r[0x22]),
         }
     }
 
     pub fn female(&self) -> bool {
         self.b21 & 0x80 != 0
+    }
+
+    /// The head drawn for this person, roster index `id`. The exe's per-person head table is not decoded; without a head byte
+    /// the people are spread over the 19 stock heads of their gender by roster index (PLACEHOLDER rule, docs/DECODE_FACES.md
+    /// section 4 item 7), and the player's pro gets head 8, the head of Gary Golf.pro.
+    pub fn head_index(&self, id: usize) -> u8 {
+        match self.head {
+            Some(h) => h,
+            None if id == 0 => 8,
+            None => ((id.saturating_sub(if self.female() { 57 } else { 1 })) % 19) as u8,
+        }
     }
 
     /// 1 for men, 0 for women (0x46c940); emotion sounds are offset by it.
@@ -204,5 +220,19 @@ mod tests {
                 assert!((1..76).any(|i| i % 3 == m && r[i].kind(i) == kind), "kind {kind} residue {m}");
             }
         }
+    }
+
+    #[test]
+    fn heads() {
+        let r = fallback();
+        // no head byte in the port's roster: Gary Golf's head for the pro, the stock heads in turn for the others
+        assert_eq!(r[0].head_index(0), 8);
+        assert_eq!(r[1].head_index(1), 0);
+        assert_eq!(r[20].head_index(20), 0);
+        assert_eq!(r[57].head_index(57), 0);
+        assert_eq!(r[75].head_index(75), 18);
+        let mut rec = vec![0u8; RECORD];
+        rec[0x22] = 21;
+        assert_eq!(Person::parse(&rec).head_index(5), 21);
     }
 }

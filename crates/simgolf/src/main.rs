@@ -12,6 +12,7 @@
 mod app;
 mod audio;
 mod champ_ui;
+mod cust_ui;
 mod gfx;
 mod popup_ui;
 mod pro_ui;
@@ -260,6 +261,24 @@ fn open_screen(app: &mut App, screen: Option<&str>) {
         Some("skills") if app.ui_ok => {
             let pts = app.club.first_skill_points();
             app.open_skills(pts, Some(false));
+        }
+        // the golfer card of the newest golfer on the course (card) or of the n-th listed (card:n); its story page
+        // (cardstory); Customise Golfer (customise), with its face picker open (customisefaces)
+        Some(s) if app.ui_ok && (s.starts_with("card") || s.starts_with("customise")) => {
+            let n = s.split(':').nth(1).and_then(|v| v.parse::<usize>().ok()).unwrap_or(0);
+            let mut list = app.listed_golfers();
+            if s.starts_with("cardstory") {
+                list.retain(|&g| app.club.g[g].story != -1);
+            }
+            if s.starts_with("customise") {
+                app.open_customise(app.club.gary.max(0) as usize);
+                if let Some(c) = app.cust.as_mut().filter(|_| s == "customisefaces") {
+                    c.picker = Some(0);
+                }
+            } else if let Some(&g) = list.get(n.min(list.len().saturating_sub(1))) {
+                app.card = Some(g);
+                app.card_ui.story = s.starts_with("cardstory");
+            }
         }
         _ => {}
     }
@@ -1211,6 +1230,7 @@ impl Stage {
                 Screen::Finance => app.draw_finance(&mut self.g),
                 Screen::Routing => app.draw_routing(&mut self.g),
                 Screen::Shortcuts => app.draw_shortcuts(&mut self.g),
+                Screen::Customise => app.draw_customise(&mut self.g),
                 _ => {}
             }
         }
@@ -1414,6 +1434,8 @@ impl EventHandler for Stage {
     fn mouse_motion_event(&mut self, x: f32, y: f32) {
         let (dx, dy) = (x - self.mouse.0, y - self.mouse.1);
         self.mouse = (x, y);
+        let (vx, vy) = self.app.view.to_virtual(x, y);
+        self.app.card_pointer(vx, vy);
         if self.app.screen == Screen::Land {
             let (vx, vy) = self.app.view.to_virtual(x, y);
             self.app.land_pointer(vx, vy);
@@ -1508,6 +1530,9 @@ impl EventHandler for Stage {
             } else if self.app.screen == Screen::Skills {
                 let (vx, vy) = self.app.view.to_virtual(x, y);
                 self.app.skills_click(vx, vy);
+            } else if self.app.screen == Screen::Customise {
+                let (vx, vy) = self.app.view.to_virtual(x, y);
+                self.app.cust_click(vx, vy, button == MouseButton::Right);
             } else if matches!(self.app.screen, Screen::Sga | Screen::Prep | Screen::Results) {
                 let (vx, vy) = self.app.view.to_virtual(x, y);
                 self.app.tourney_click(vx, vy);
@@ -1597,8 +1622,10 @@ impl EventHandler for Stage {
                 app.screen = Screen::Play;
             } else if app.screen == Screen::Skills {
                 if k == KeyCode::Enter || k == KeyCode::Escape {
-                    app.skills_click(-1.0, -1.0);
+                    app.skills_key(k == KeyCode::Enter);
                 }
+            } else if app.screen == Screen::Customise {
+                app.cust_key(k);
             } else if matches!(app.screen, Screen::Sga | Screen::Prep | Screen::Results) {
                 if k == KeyCode::Enter || k == KeyCode::Escape {
                     app.tourney_click(-1.0, -1.0);
@@ -1618,6 +1645,7 @@ impl EventHandler for Stage {
 
     fn char_event(&mut self, c: char, _mods: KeyMods, _repeat: bool) {
         self.app.rename_char(c);
+        self.app.cust_char(c);
     }
 
     fn key_up_event(&mut self, k: KeyCode, mods: KeyMods) {

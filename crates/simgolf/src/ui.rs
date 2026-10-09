@@ -236,6 +236,12 @@ impl Screen {
 
     /// Sub-rectangle (sx, sy, sw, sh) of an image at its own size, top-left at (dx, dy).
     pub fn image_part(&self, g: &mut Gfx, im: &Image, dx: f32, dy: f32, sx: f32, sy: f32, sw: f32, sh: f32) {
+        self.image_part_tint(g, im, dx, dy, sx, sy, sw, sh, [1.0, 1.0, 1.0, 1.0]);
+    }
+
+    /// `image_part` with its colours multiplied by `c` (a dimmed or faded copy).
+    #[allow(clippy::too_many_arguments)]
+    pub fn image_part_tint(&self, g: &mut Gfx, im: &Image, dx: f32, dy: f32, sx: f32, sy: f32, sw: f32, sh: f32, c: [f32; 4]) {
         let Some(tex) = im.tex else { return };
         let (u0, v0, u1, v1) = (sx / im.w, sy / im.h, (sx + sw) / im.w, (sy + sh) / im.h);
         g.quad(
@@ -243,10 +249,10 @@ impl Screen {
             Some(tex),
             &self.u,
             [
-                Vert::new(dx, dy, 0.0, u0, v0),
-                Vert::new(dx + sw, dy, 0.0, u1, v0),
-                Vert::new(dx + sw, dy + sh, 0.0, u1, v1),
-                Vert::new(dx, dy + sh, 0.0, u0, v1),
+                Vert::new(dx, dy, 0.0, u0, v0).col(c),
+                Vert::new(dx + sw, dy, 0.0, u1, v0).col(c),
+                Vert::new(dx + sw, dy + sh, 0.0, u1, v1).col(c),
+                Vert::new(dx, dy + sh, 0.0, u0, v1).col(c),
             ],
         );
     }

@@ -1,10 +1,12 @@
 //! The player's pro in the app: the pro panel's buttons, the skill dialog, aiming with the pointer, and the round's start.
-//! The rules live in sg_core::pro; the layout of the dialog and the panel text placement here are our own.
+//! The rules live in sg_core::pro. The skill dialog follows the exe's wide stats card (0x45f0f0 with x offset 200,
+//! docs/DECODE_GOLFERCARD.md 3, DECODE_CARDS2.md 1, DECODE_CARDS3.md 1); the panel text placement here is our own.
 
 use crate::app::*;
 use crate::gfx::Gfx;
 use crate::render::Rect;
-use crate::ui::{rgb, rgba, Screen as Ui};
+use crate::screens_ui::{c15, skill_value, top, BODY, LARGE};
+use crate::ui::{rgb, rgba, text_width, Screen as Ui};
 use sg_core::golfer::SLOTS;
 use sg_core::pro::{self, SKILL_NAMES};
 use sg_core::staff;
@@ -18,18 +20,49 @@ pub struct SkillDialog {
     pub title: String,
     /// The round to ask for when the dialog closes (practice false, match true).
     pub then: Option<bool>,
+    /// The confirm box over the dialog (OK with points left).
     pub confirm: bool,
+    /// Points were given on opening: the pads and the points line show, and OK closes it; otherwise any click does.
+    pub editable: bool,
 }
 
-const DLG: Rect = Rect::new(190.0, 50.0, 420.0, 400.0);
+/// The x offset the exe passes for the player's own card.
+const X0: f32 = 200.0;
 
-fn plus_rect(k: usize) -> Rect {
-    Rect::new(DLG.x + 260.0, DLG.y + 70.0 + 26.0 * k as f32, 30.0, 22.0)
+/// Row r's top.
+fn row_y(r: usize) -> f32 {
+    90.0 + 24.0 * r as f32
 }
-fn minus_rect(k: usize) -> Rect {
-    Rect::new(DLG.x + 296.0, DLG.y + 70.0 + 26.0 * k as f32, 30.0, 22.0)
+
+/// The pad under the pointer: (row, true for the top half that adds).
+fn pad_hit(vx: f32, vy: f32) -> Option<(usize, bool)> {
+    if !(X0 + 50.0..=X0 + 82.0).contains(&vx) {
+        return None;
+    }
+    (0..10).find_map(|r| {
+        let y = row_y(r);
+        if vy > y && vy <= y + 12.0 {
+            Some((r, true))
+        } else if vy > y + 12.0 && vy <= y + 24.0 {
+            Some((r, false))
+        } else {
+            None
+        }
+    })
 }
-const DONE: Rect = Rect::new(DLG.x + 160.0, DLG.y + 350.0, 100.0, 30.0);
+
+/// The OK ball: within 20 of (x0 + 350, 334) both ways.
+fn ok_hit(vx: f32, vy: f32) -> bool {
+    (vx - X0 - 350.0).abs() < 20.0 && (vy - 334.0).abs() < 20.0
+}
+
+/// The confirm box (0x46d6e0, 400 wide about x 400, from y 200): its heading and its one choice. Unspent points are kept.
+const CONFIRM: [&str; 2] = ["You haven't used all your skill points.", "Yea, I don't need no stinkin' skill points"];
+const CONFIRM_BOX: Rect = Rect::new(200.0, 200.0, 400.0, 100.0);
+
+fn confirm_choice() -> Rect {
+    Rect::new(CONFIRM_BOX.x + 10.0, CONFIRM_BOX.y + 48.0, CONFIRM_BOX.w - 20.0, 24.0)
+}
 
 impl App {
     /// The pro's name (roster person 0).
@@ -86,14 +119,10 @@ impl App {
             self.finish_skills(then);
             return;
         }
-        let title = if then.is_some() {
-            "Before you play your course you must choose your pro's skills.".to_string()
-        } else if points > 0 {
-            "Add skill points to your pro's skills.".to_string()
-        } else {
-            format!("{}'s skills", self.pro_name())
-        };
-        self.skill_dialog = Some(SkillDialog { floor: self.club.pro_skill, points, title, then, confirm: false });
+        // the card's title is the pro's name
+        let title = self.pro_name();
+        let editable = points > 0;
+        self.skill_dialog = Some(SkillDialog { floor: self.club.pro_skill, points, title, then, confirm: false, editable });
         self.screen = Screen::Skills;
     }
 
@@ -125,81 +154,124 @@ impl App {
             self.screen = Screen::Play;
             return;
         };
-        let interactive = d.points > 0 || d.then.is_some();
-        let mut handled = false;
-        if interactive {
-            for k in 0..10 {
-                let v = &mut self.club.pro_skill[k];
-                if plus_rect(k).has(vx, vy) {
-                    handled = true;
-                    if d.points > 0 && *v < 10 {
-                        *v += 1;
-                        d.points -= 1;
-                        d.confirm = false;
-                    } else {
-                        self.ui_sound(0x18);
-                    }
-                } else if minus_rect(k).has(vx, vy) {
-                    handled = true;
-                    if *v > d.floor[k] {
-                        *v -= 1;
-                        d.points += 1;
-                    } else {
-                        self.ui_sound(0x18);
-                    }
-                }
-            }
-        }
-        if DONE.has(vx, vy) || !interactive {
-            if d.points > 0 && !d.confirm {
-                d.confirm = true;
-                self.show_toast("You haven't used all your skill points. Click Done again to keep them for later.");
+        if d.confirm {
+            // the confirm box: its choice keeps the points for later, anything else goes back to the dialog
+            d.confirm = false;
+            if confirm_choice().has(vx, vy) {
+                self.close_skills(d);
+            } else {
                 self.skill_dialog = Some(d);
-                return;
             }
-            self.club.skill_points = d.points.max(0);
-            self.screen = Screen::Play;
-            self.finish_skills(d.then);
             return;
         }
-        if !handled {
-            self.ui_sound(0x18);
+        if !d.editable {
+            // read only: any click leaves
+            self.close_skills(d);
+            return;
+        }
+        if let Some((k, add)) = pad_hit(vx, vy) {
+            let v = &mut self.club.pro_skill[k];
+            if add && d.points > 0 && *v < 10 {
+                *v += 1;
+                d.points -= 1;
+            } else if !add && *v > 0 && *v > d.floor[k] {
+                *v -= 1;
+                d.points += 1;
+            } else {
+                self.ui_sound(0x18);
+            }
+        } else if ok_hit(vx, vy) {
+            if d.points > 0 {
+                d.confirm = true;
+            } else {
+                self.close_skills(d);
+                return;
+            }
         }
         self.skill_dialog = Some(d);
+    }
+
+    /// Keys in the skill dialog: Enter is OK (or the confirm box's choice), Esc leaves the confirm box (or a read-only card).
+    pub fn skills_key(&mut self, enter: bool) {
+        let Some(d) = self.skill_dialog.as_mut() else { return };
+        let (cx, cy) = if d.confirm {
+            if enter {
+                let r = confirm_choice();
+                (r.x + 1.0, r.y + 1.0)
+            } else {
+                (-1.0, -1.0)
+            }
+        } else if !d.editable || enter {
+            (X0 + 350.0, 334.0)
+        } else {
+            return;
+        };
+        self.skills_click(cx, cy);
+    }
+
+    fn close_skills(&mut self, d: SkillDialog) {
+        self.club.skill_points = d.points.max(0);
+        self.screen = Screen::Play;
+        self.finish_skills(d.then);
     }
 
     pub fn draw_skills(&mut self, g: &mut Gfx) {
         let Some(d) = self.skill_dialog.clone() else { return };
         let s = Ui::new(self.draw_w, self.draw_h);
         self.view = s.view;
-        s.fill(g, DLG.x, DLG.y, DLG.w, DLG.h, rgba(0.1, 0.12, 0.3, 0.94));
-        s.text(g, DLG.x + 14.0, DLG.y + 24.0, &d.title, 13.0, rgb(1.0, 1.0, 0.8));
-        let interactive = d.points > 0 || d.then.is_some();
-        if interactive {
-            let col = if d.points > 0 { rgb(1.0, 0.45, 0.4) } else { rgb(0.8, 1.0, 0.8) };
-            s.text(g, DLG.x + 14.0, DLG.y + 50.0, &format!("{} skill points", d.points), 15.0, col);
+        let (mx, my) = self.card_ui.mouse;
+        self.art.trans_frame(g, &s, X0 + 46.0, 50.0, 320.0, 316.0);
+        s.text_centered(g, X0 + 210.0, top(58.0, LARGE), &d.title, LARGE, rgb(1.0, 1.0, 1.0));
+        // the pro on the sky and grass window, head over body
+        s.image(g, &self.art.head_body, X0 + 247.0, 86.0);
+        let me = self.club.roster.first().cloned().unwrap_or_default();
+        let look = crate::cust_ui::person_look(&me);
+        let mut o = me.outfit(0);
+        o.alt_skin = 4; // the pro's hands are drawn pale
+        let swaps = std::mem::take(&mut self.swaps);
+        self.art.head_over_body(g, &s, &swaps, &me, o, 0, look, 1, X0 + 255.0, 102.0);
+        self.swaps = swaps;
+        if d.editable {
+            let c = if d.points > 0 { c15(0x7d08) } else { c15(0x7fff) };
+            s.text_centered(g, X0 + 210.0, top(80.0, BODY), &format!("{} skill points", d.points), BODY, c);
         }
-        for k in 0..10 {
-            let v = self.club.pro_skill[k];
-            let y = DLG.y + 86.0 + 26.0 * k as f32;
-            let c = if v == 0 { rgb(0.55, 0.55, 0.65) } else { rgb(1.0, 1.0, 1.0) };
-            s.text(g, DLG.x + 20.0, y, SKILL_NAMES[k], 15.0, c);
-            s.text(g, DLG.x + 190.0, y, &format!("{}%", v as i32 * 10), 15.0, c);
-            if interactive {
-                // plus and minus signs drawn as bars (the interface font has no plus)
-                let w = rgb(1.0, 1.0, 1.0);
-                for (r, plus) in [(plus_rect(k), true), (minus_rect(k), false)] {
-                    s.fill(g, r.x, r.y, r.w, r.h, rgba(0.4, 0.4, 0.8, 0.7));
-                    let (cx, cy) = (r.x + r.w / 2.0, r.y + r.h / 2.0);
-                    s.fill(g, cx - 7.0, cy - 1.5, 14.0, 3.0, w);
-                    if plus {
-                        s.fill(g, cx - 1.5, cy - 7.0, 3.0, 14.0, w);
-                    }
+        let hover = if d.editable && !d.confirm { pad_hit(mx, my) } else { None };
+        let t = &self.art.trans;
+        for r in 0..10 {
+            let y = row_y(r);
+            s.image_part(g, t, X0 + 82.0, y, 32.0, 100.0, 191.0, 24.0);
+            if d.editable {
+                s.image_part(g, t, X0 + 50.0, y, 0.0, 150.0, 40.0, 24.0);
+                match hover {
+                    Some((k, true)) if k == r => s.image_part(g, t, X0 + 50.0, y, 0.0, 200.0, 35.0, 12.0),
+                    Some((k, false)) if k == r => s.image_part(g, t, X0 + 50.0, y + 12.0, 0.0, 220.0, 35.0, 12.0),
+                    _ => {}
                 }
             }
+            let v = self.club.pro_skill[r];
+            if v != 0 {
+                s.text(g, X0 + 87.0, top(y + 7.0, BODY), &skill_value(v), BODY, rgb(0.0, 0.0, 0.0));
+            }
+            let c = if v != 0 { rgb(0.0, 0.0, 0.0) } else { c15(0x4210) };
+            s.text(g, X0 + 138.0, top(y + 7.0, BODY), SKILL_NAMES[r], BODY, c);
         }
-        s.fill(g, DONE.x, DONE.y, DONE.w, DONE.h, rgba(0.3, 0.6, 0.3, 0.85));
-        s.text_centered(g, DONE.x + DONE.w / 2.0, DONE.y + 21.0, "Done", 16.0, rgb(1.0, 1.0, 1.0));
+        if d.editable {
+            // the OK ball
+            s.image_part(g, t, X0 + 326.0, 318.0, 300.0, 140.0, 50.0, 50.0);
+        }
+        if d.confirm {
+            let r = CONFIRM_BOX;
+            s.fill(g, 0.0, 0.0, 800.0, 600.0, rgba(0.0, 0.0, 0.0, 0.25));
+            s.fill(g, r.x - 3.0, r.y - 3.0, r.w + 6.0, r.h + 6.0, rgba(0.55, 0.55, 0.85, 0.95));
+            s.fill(g, r.x, r.y, r.w, r.h, rgba(0.92, 0.92, 1.0, 0.97));
+            s.text_centered(g, r.x + r.w / 2.0, r.y + 30.0, CONFIRM[0], 17.0, rgb(0.15, 0.1, 0.4));
+            let o = confirm_choice();
+            if o.has(mx, my) {
+                s.fill(g, o.x, o.y, o.w, o.h, rgba(0.98, 0.85, 0.2, 0.9));
+            }
+            let w = text_width(CONFIRM[1], 15.0);
+            s.text(g, r.x + (r.w - w) / 2.0, o.y + 18.0, CONFIRM[1], 15.0, rgb(0.08, 0.08, 0.25));
+        }
         g.flush();
     }
 
@@ -343,5 +415,20 @@ impl App {
             }
         }
         v
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pads_and_ok() {
+        // row 0 spans y 90..114: the top half adds, the lower half removes
+        assert_eq!(pad_hit(260.0, 95.0), Some((0, true)));
+        assert_eq!(pad_hit(260.0, 110.0), Some((0, false)));
+        assert_eq!(pad_hit(260.0, 310.0), Some((9, true)));
+        assert_eq!(pad_hit(300.0, 95.0), None);
+        assert!(ok_hit(550.0, 334.0) && ok_hit(565.0, 350.0) && !ok_hit(575.0, 334.0));
     }
 }
