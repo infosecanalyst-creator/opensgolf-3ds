@@ -28,6 +28,7 @@ mod render;
 mod reports_ui;
 mod screens_ui;
 mod thoughts_ui;
+mod touch;
 mod tourney_ui;
 mod ui;
 mod wild_ui;
@@ -208,6 +209,7 @@ struct Stage {
     ctrl: bool,
     pause_toggle: bool,
     shown_version: u32,
+    touch: touch::Touch,
 }
 
 fn load_ui(app: &mut App, g: &mut Gfx) -> bool {
@@ -781,6 +783,7 @@ impl Stage {
             frames: 0,
             editing: false,
             dragging: false,
+            touch: Default::default(),
             paused_total: 0.0,
             pause_start: 0.0,
             last_tick: t,
@@ -1366,6 +1369,7 @@ impl Stage {
             }
             app.draw_analysis(&mut self.g);
         }
+        self.draw_touch_buttons();
         self.g.flush();
         self.g.ctx.end_render_pass();
     }
@@ -1473,6 +1477,7 @@ impl EventHandler for Stage {
     fn update(&mut self) {
         let t = now();
         self.app.clock = t;
+        self.touch_update();
         if self.pause_toggle {
             self.pause_toggle = false;
             self.toggle_pause();
@@ -1812,6 +1817,10 @@ impl EventHandler for Stage {
         self.app.rename_char(c);
         self.app.save_char(c);
         self.app.cust_char(c);
+    }
+
+    fn touch_event(&mut self, phase: TouchPhase, id: u64, x: f32, y: f32) {
+        self.touch(phase, id, x, y);
     }
 
     fn key_up_event(&mut self, k: KeyCode, mods: KeyMods) {

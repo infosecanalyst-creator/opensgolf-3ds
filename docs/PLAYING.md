@@ -61,3 +61,11 @@ In a game, Shift+F7 saves your course for championship play and Shift+F8 saves y
 ## Reports (F keys)
 
 As in the original: **F1** Course Report, **F2** Player Comments (the twenty most frequent comments over all holes, with the hole where each is heard most and how often per tee shot; recent months count more, as every hole's statistics lose an eighth each month), **F3** Histograph (skill, cash, fun and membership month by month, with the event log's highlights), **F4** Financial Report (the ledger by year: green fees, home sites, food and drink, course building, facilities, salaries, maintenance and interest, other, total), **F5** Routing Map (the course in miniature with each hole's tee-to-green line; tabs for course routing (par, yards, minutes), employees and their work areas, course aura (where golfers were happy or unhappy) and home site value), **F7** SGA Evaluation, **F8** Keyboard Shortcuts, **F9** Membership Roster, **F10** Professional Accomplishments. F6 takes a screenshot. `--screen comments|histograph|finance|routing|shortcuts` opens them for stills. On the routing map, left click selects a hole and right click moves it to another place in the order (the holes between shift, golfers follow; the exe allows this in every tab). **F6** opens the world map to move the club to another property: cash, the calendar and your pro's career go along and the new course starts afresh (Shift+F6 takes a screenshot).
+
+## Touch (phones and tablets, in the browser)
+
+Tap for a click; drag one finger to scroll the course (or to paint with the selected tool); hold a finger still for half a
+second for a right click (undo, remove, close a screen). With two fingers: drag to scroll, pinch to step through the three
+zoom levels, twist to turn the view a quarter. Once the screen has been touched, four buttons on the right stand in for keys
+that have no button in the game: Open hole (h), Turn (Tab), Speed (]) and Message (?). Naming a course or a save raises the
+phone's keyboard.

@@ -48,6 +48,7 @@ miniquad_add_plugin({
     version: 1,
     register_plugin: function (importObject) {
         const env = importObject.env;
+        env.sg_keyboard = function (show) { sgKeyboard(show !== 0); };
         env.sg_fs_size = function (ptr, len) {
             const f = sgfs.files.get(sgKey(sgStr(ptr, len)));
             return f ? f.length : -1;
@@ -304,3 +305,42 @@ window.addEventListener("mousedown", sgStartAudio);
 window.addEventListener("keydown", sgStartAudio);
 window.addEventListener("touchstart", sgStartAudio, { passive: true });
 window.addEventListener("pointerdown", sgStartAudio);
+
+// Typing on a phone: the game asks for the keyboard (sg_keyboard) while a name box is open. A hidden text box takes the
+// focus so the phone shows its keyboard, and what is typed goes to the game as key presses. The box keeps one space in it
+// so a backspace always has something to delete and can be seen.
+let sgKbd = null;
+function sgKeyTap(code) {
+    wasm_exports.key_down(code, 0, false);
+    wasm_exports.key_up(code, 0);
+}
+function sgKeyboard(show) {
+    if (!sgKbd) {
+        sgKbd = document.createElement("input");
+        sgKbd.type = "text";
+        sgKbd.autocomplete = "off";
+        sgKbd.setAttribute("autocapitalize", "off");
+        sgKbd.setAttribute("autocorrect", "off");
+        sgKbd.spellcheck = false;
+        // 16px stops iOS from zooming the page when the box takes the focus
+        sgKbd.style.cssText = "position:fixed;left:0;bottom:0;width:1px;height:1px;opacity:0;border:0;padding:0;font-size:16px";
+        document.body.appendChild(sgKbd);
+        sgKbd.addEventListener("input", () => {
+            const v = sgKbd.value;
+            if (v.length < 1) sgKeyTap(259); // backspace
+            else for (const ch of v.substring(1)) wasm_exports.key_press(ch.codePointAt(0));
+            sgKbd.value = " ";
+        });
+        sgKbd.addEventListener("keydown", e => {
+            if (e.key === "Enter") { sgKeyTap(257); e.preventDefault(); }
+            else if (e.key === "Escape") { sgKeyTap(256); e.preventDefault(); }
+        });
+    }
+    if (show) {
+        sgKbd.value = " ";
+        sgKbd.focus();
+    } else {
+        sgKbd.blur();
+        document.getElementById("glcanvas").focus();
+    }
+}
