@@ -880,7 +880,18 @@ pub fn build_tile_triangles(t: &Terrain, tx: i32, ty: i32, out: &mut Vec<TileTri
     let use_set = if ttype == TT_TEE as i32 { vbyte } else { set };
     for q in 0..4 {
         let (j, k) = (q / 2, q % 2);
-        let tris = [[vtx(j, k), vtx(j + 1, k), vtx(j + 1, k + 1)], [vtx(j, k), vtx(j + 1, k + 1), vtx(j, k + 1)]];
+        // The tile is a fan of eight triangles round its centre, each holding half of one tile edge (the edge its blend
+        // variation belongs to), so every quadrant is split along the diagonal from the tile corner to the centre: NW and SE
+        // along one diagonal, NE and SW along the other.
+        let tris = if j == k {
+            [[vtx(j, k), vtx(j + 1, k), vtx(j + 1, k + 1)], [vtx(j, k), vtx(j + 1, k + 1), vtx(j, k + 1)]]
+        } else if k == 1 {
+            // NE: corner (0,2); first the north half edge, then the east one
+            [[vtx(0, 1), vtx(1, 1), vtx(0, 2)], [vtx(1, 1), vtx(1, 2), vtx(0, 2)]]
+        } else {
+            // SW: corner (2,0); first the west half edge, then the south one
+            [[vtx(1, 0), vtx(2, 0), vtx(1, 1)], [vtx(2, 0), vtx(2, 1), vtx(1, 1)]]
+        };
         for (s, tri) in tris.iter().enumerate() {
             let (ux, uy, uz) = (tri[1].x - tri[0].x, tri[1].y - tri[0].y, tri[1].z - tri[0].z);
             let (vx, vy, vz) = (tri[2].x - tri[0].x, tri[2].y - tri[0].y, tri[2].z - tri[0].z);
