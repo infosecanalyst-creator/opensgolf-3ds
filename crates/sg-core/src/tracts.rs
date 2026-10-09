@@ -93,6 +93,7 @@ pub fn type_name(t: u8, theme: u8, plural: bool) -> String {
         (0, 18) | (2, 18) => Some(("wetlands", "wetlands")),
         (2, 13) => Some(("tropical bush", "tropical bushes")),
         (2, 14) => Some(("tropical tree", "tropical trees")),
+        (3, 10) => Some(("burn", "burn")),
         (3, 11) => Some(("gorse", "gorse")),
         (3, 13) => Some(("maple tree", "maple trees")),
         (3, 14) => Some(("pine", "pines")),
