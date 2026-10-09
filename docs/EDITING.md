@@ -1,6 +1,6 @@
 # Course editing
 
-Press Tab in sgview to toggle edit mode (the window title lists the active tool).
+Press Tab in the game to toggle edit mode (the active tool is shown under the club name).
 
 | Input | Action |
 |---|---|
@@ -28,7 +28,7 @@ relaxed so they never differ by more than one level. The limit of one is a PLACE
 
 Paths are an overlay on top of the terrain, one flag per tile (0 none, 1 gravel, 2 paved). This is OUR model: how the original
 stores and connects paths lives in golf.exe, which is not read. Terrain.dll only gives the artwork: `Path.tga`, `PathCurve.tga`,
-`PathCap.tga`, `PathInside.tga` and the paved `*X.tga` versions (64x64 with alpha). The viewer cuts a centre piece and an arm
+`PathCap.tga`, `PathInside.tga` and the paved `*X.tga` versions (64x64 with alpha). The game cuts a centre piece and an arm
 toward each neighbouring path tile out of the cross shaped `Path.tga`, and uses the round `PathCurve.tga` for path ends and bends.
 `PathCap` and `PathInside` are not used yet.
 

@@ -1,54 +1,80 @@
-# Game logic (started)
+# Game logic
 
-The rules of SimGolf live in `golf.exe`, which is SafeDisc protected. This project does not unpack,
-strip or read it, so rules cannot be copied from it. Game logic here is a clean-room reimplementation
-that is *driven by what the data files show*, and everything that is a guess is marked as a placeholder.
+The rules come from the publisher's golf.exe, read for facts only and restated in our own words (docs/PUBLISHER_EXE_NOTES.md).
+Nothing from the exe's code is copied, and no game data is part of this project.
 
-## What exists: `sg/shot.h`, `src/shot.cpp`
+## The golfers (`crates/sg-core/src/golfer.rs`)
 
-`ShotSim` plays one hole with one golfer along the demo course's route, as a state machine:
-walk to the ball, address, swing, ball flight, lie check, repeat; inside 230 units of the hole it putts,
-the ball rolls in, the golfer celebrates, then the round restarts at the tee.
+The exe keeps 152 golfer records and runs one update per game tick (87 ms) over all of them. The port does the same, field for
+field (`Golfer`), and `Club::tick` runs these steps in the exe's order:
 
-From the data (not guessed):
-* Animation lengths and the moment of impact come from the sprites: `Male*_PerfectSwing` is 20 frames at
-  83 ms and the club is level in front of the golfer at about frame 11; `NormalAddress` is 18 frames;
-  `Putt` is 33 frames (impact taken as frame 12, which is a guess).
-* Facing and views come from `SPRITES.md`.
-* Water, sand and out of bounds are detected from the tile type under the landing point.
+- **Arrivals.** Only invited people come: a new game invites twelve (three each of four skill classes), and every membership
+  upgrade invites one more. A golfer is created whenever fewer than two are waiting, or every 128 ticks, up to eight waiting;
+  waiting golfers stay in the clubhouse and go out in pairs as soon as the first tee is free.
+- **The animation pass.** The exe's drawing routine advances each golfer's clip and holds the swing until its frames have been
+  shown; reactions end their pause when the clip ends. The port runs this pass in the simulation, with the frame counts read from
+  the player's own sprite files.
+- **The golfer update.** Thoughts fade; golfers glance at nearby flower beds, landmarks, eyesores and weeds; hunger or thirst
+  grow every 160 ticks; a golfer with mood below zero quits and never comes back (a member resigns). Before teeing off golfers
+  detour to a snack bar, a bench, a ball washer, the putting green, the pro shop or the driving range when they need or like to,
+  and pay for it. They walk by the exe's path search, preferring paths and avoiding water, give way to golfers ahead, complain
+  about slow play, walking off the paths and steep slopes, and ride carts when a cart garage stands.
+- **The shot.** When it is a golfer's turn (the one farther from the pin plays first), the shot planner chooses the target, club
+  and launch; the golfer waits until the landing area is clear, addresses the ball and swings.
+- **The ball.** Flight with curve, trees and buildings in the way, bounces by ground type, roll with slopes and walls, the cup,
+  water drops and out of bounds penalties, and the golfer's reaction to where it stopped.
+- **Hole end.** The green fee (the golfer's mood plus the hole and membership bonuses), the scorecard, the mood drop after each
+  hole, and at the end of the round the membership points that can upgrade a member.
 
-Placeholders (explicitly not the original's behaviour):
-* carry 900 world units for a full swing with plus or minus 12 percent and a 14 degree dispersion;
-* walk speed 130 units per second; flight time and arc height;
-* penalty handling: replay from the same spot with one extra stroke;
-* putting: see the skills section below.
+Mood events go through one routine (`Club::event`) as in the exe: the thought shows, small upsets only count when they repeat,
+negative amounts are halved, an unhappy golfer can sour the partner's mood, and a negative event may start a weed where the
+golfer stands.
 
-## Golfer skills
+## Shot planning (`crates/sg-core/src/planner.rs`)
 
-`Themes/Standard/progolfers.dta` documents itself in its comment header: name, body type, skin, hat, shirt,
-pants, then ten skill levels as hex digits 0..F: power hitter, long driver, accurate driver, accurate irons,
-accurate putter, draw shot, fade shot, high backspin shot, recovery skills, luck (see docs/FORMATS.md).
-`sgview --golfer "Nick Jacklaus"` plays the demo hole with that golfer's skills (name match is a case-insensitive substring).
+- Maximum range from the golfer's skills, momentum and lie.
+- For a long shot the golfer tries landing tiles around the line to the pin with simplified trial flights, in rounds of more and
+  more samples, scoring how close each ends to the pin, the hazards around it and the risk of the next shot.
+- The shot: club from the distance, launch speed by bisection, the random hook or slice scaled by skills, draws, fades, high
+  backspin shots onto the green and low punches under trees, the spread of the launch speed by lie, and the golfer's thoughts
+  about the shot (views, the hole, hazards, the shot type, a new club).
 
-What the levels DO is a placeholder, since the real formulas are in golf.exe, which is not read:
-* carry = 900 x (0.8 + 0.2 x (power + long driver) / 15)
-* dispersion cone = 24 - 20 x accuracy / 15 degrees (accurate driver off the tee, accurate irons near the green),
-  widened up to 1.6x from sand and narrowed by recovery skills
-* chance to hole a putt = 0.40 + 0.55 x accurate putter / 15 + 0.05 x luck / 15; a miss stops 20 to 55 units from the hole
-* draw, fade and backspin are not modelled yet.
+## Building holes (`crates/sg-core/src/holetool.rs`)
 
-Typical result over many rounds of the demo hole: a top rated golfer needs 5 strokes, a 0 skill golfer 7.
+Painting a tee and a green records them for the hole being built. While it has both, a trial golfer plans it with real shots:
+the tee facing, the length, dogleg and slope marks and the yardage markers come from those shots. Opening the hole gives it a
+par from its length and clears its statistics.
 
-## From the manual
+## The course as golfers see it (`crates/sg-core/src/course.rs`)
 
-Firm fairway makes the ball roll farther (12 percent run on) and rocks deflect it (40 to 90 units, random direction); both amounts are
-placeholders. See docs/MANUAL_NOTES.md for everything the manual says about shots and skills.
+The tiles, flags, corner heights, building levels and walls in the exe's layout, rebuilt from the land after every change.
 
-## Money
+## The roster (`crates/sg-core/src/roster.rs`)
 
-See the club money section of docs/EDITING.md: what public sources say about the economy, and which parts are implemented or invented.
+The people who come to play are compiled into the exe. When the player's game folder holds a readable exe they are read from it;
+the retail exe is copy protected and is not touched, and a roster written for this port (own names, the exe's gender split and
+skill classes) stands in. The special visitors are read from the Standard theme's golfer files.
+
+## Stories, visitors, land and home sites
+
+`stories.rs`: the theme's story files, chosen per pair by their name code and played scene by scene as the pair walks
+together. `vips.rs`: the CEO, the County commissioner and the Wealthy heiress, their verdicts, and celebrity vacation homes.
+`tracts.rs` and `homes.rs`: buying land after the commissioner's approval, and home sites. `ratings.rs`: the exe's statistics
+pass and Course Report.
+
+`pro.rs`: the player's own pro, his rounds and aiming, famous-golfer challenges and the match money, his skills.
+`tournament.rs`: the SGA evaluation, the mid-year offer, the shotgun field of famous pros, the preparation checklist, the
+leaderboard, prizes and cleanup.
+
+`championship.rs`: Play a Championship and the pro files. `celebs.rs`: celebrity residents. `wildlife.rs`: animals,
+fly-overs, water depth and the splash. `thoughts.rs`: the text of every golfer thought. `records.rs`: accomplishments,
+the event log and the monthly history. `clubhouse.rs`: the clubhouse pair screen.
+
+## Not yet in
+
+Flower bed shapes (a data table in the exe that is not available), the board's photo snapshots, portraits on the pair
+screen and the golfer card.
 
 ## Viewer
 
-`sgview` prints each event (`stroke 3: in the sand`). `F` makes the camera follow the golfer;
-`--follow --time 5` renders a still of that moment.
+`F` makes the camera follow the first golfer on the course; `--follow --time S` renders a still after S seconds.

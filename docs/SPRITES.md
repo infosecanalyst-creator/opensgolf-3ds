@@ -40,9 +40,9 @@ about 256 px wide, matching the 229 to 243 px building sprites. `kSpriteUnitsPer
 
 Palette index 255 is the key colour (magenta or cyan depending on the file); it is not index 0.
 Shadow sprites use the same frame layout and anchor as their body and a 5 colour palette ramp
-(white, light green, mid green, green plus the key); the viewer draws it as translucent black whose
+(white, light green, mid green, green plus the key); the game draws it as translucent black whose
 density follows the ramp. The shadow does **not** rotate between views, only the body does: the
-light is fixed relative to the camera, so shadows always fall the same way on screen. (The viewer's
+light is fixed relative to the camera, so shadows always fall the same way on screen. (The game's
 terrain light is fixed in eye space for the same reason.)
 
 ## Views and camera rotation
@@ -50,11 +50,11 @@ terrain light is fixed in eye space for the same reason.)
 The game renders sprites for 4 camera yaws, 90 degrees apart (view 0 is the default camera). I fitted
 the screen position of a building's tower across the 4 hotel views: the object turns counter clockwise
 on screen as the view index grows, which is what `glRotatef(45 + 90*k, 0, 1, 0)` does to the world,
-so `view = round(rot / 90) mod 4` with the viewer's rotation. 8 view sprites (people, animals) add
+so `view = round(rot / 90) mod 4` with the game's rotation. 8 view sprites (people, animals) add
 45 degree steps for the facing direction. View 0 faces screen down-left at the default camera, which is
 world -X (heading `atan2(z, x)` = 180 degrees); each next view turns 45 degrees counter clockwise on
 screen (down-left, down, down-right, right, up-right, up, up-left, left), so heading `phi` at camera
-quarter `q` uses `view = (round((180 - phi) / 45) + 2 * q) mod 8`. Checked in the viewer with golfers walking
+quarter `q` uses `view = (round((180 - phi) / 45) + 2 * q) mod 8`. Checked in the game with golfers walking
 the fairway at 0 and 90 degrees of rotation: they face their direction of travel.
 
 ## Walk cycle
@@ -73,5 +73,5 @@ protected executable.
 
 * Animated sprites (`_ANIM`, people, water) and their timing.
 * Choosing a colour variant: the demo only applies the palettes it needs for the tropical palms.
-* Sorting. The viewer draws sprites far to near by eye depth (painter's order), which is how a 2D
+* Sorting. The game draws sprites far to near by eye depth (painter's order), which is how a 2D
   overlay behaves; it is not an exact replica of the original order.

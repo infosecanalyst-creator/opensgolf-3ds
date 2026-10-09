@@ -53,8 +53,8 @@ Helper for reproducing the analysis: `tools/re/x86dis.py`.
 
 Note: the meaning of the values behind `getElevation` is not settled. A separate routine writes
 heights to vertices through a similar looking index table, so these may be vertex indices rather
-than heights. Elevation scale in world units is therefore not recovered; the viewer uses 12 units
-per level as a placeholder (`kHeightStep`).
+than heights. Elevation scale: raising a corner sets it to (level x 15.0) world units; the 15.0 can only be changed through
+`setSplineHeight`, which golf.exe does not import, so the game uses 15 units per level (`HEIGHT_STEP`).
 
 ## Tile types (confirmed from the constructor)
 
@@ -135,12 +135,12 @@ midpoints where the neighbour is also type 7, corners where both edge neighbours
 Type 6 (`m1230`) raises 20 units. Vertices are not shared between tiles (the vertex array is 3W x 3H),
 so both tiles lower their coincident vertices.
 
-The "class" of a type comes from an array golf.exe hands to `Terrain.dll` at run time (an exported
-function that copies `count` ints into a global at 0x10106b48). That table lives in the protected
-executable, which this project does not read, so `typeClass()` in `terrain.cpp` is my own grouping
-(greens, fairways, rough, deep rough and brush, sand, water, rock, woods, building).
+The "class" of a type comes from an array golf.exe hands to `Terrain.dll` at run time (`passCollarInfo`,
+which copies `count` ints into a global at 0x10106b48). The publisher exe's table is now read (PUBLISHER_EXE_NOTES.md, "Terrain
+classes and the out-of-bounds land") and `type_class()` uses it. Tiles of type 20 (out of bounds) are skipped by the tile
+renderer.
 
-## What the sgview viewer does and does not reproduce
+## What the game's renderer does and does not reproduce
 
 Reproduces: orthographic camera and angles, world scale, 3x3 vertex patches with 0/0.5/1 UVs, 8 triangles
 per tile with per-triangle texture variation exactly as above, random sets, tee/pot bunker/water depth

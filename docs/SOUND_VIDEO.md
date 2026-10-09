@@ -3,11 +3,11 @@
 ## Sound
 
 All 241 sound effects, voices and music tracks under `Sounds/` are ordinary PCM `.wav` files (22.05 or 44.1 kHz, mono or stereo, 16 bit),
-so no decoder is needed. `sg/audio.h` has a small mixer (clips converted to 44.1 kHz stereo, up to 32 voices, looping, case
-insensitive lookup by path under `Sounds/`) and an SDL output device. The mixer can render to a buffer without a device, which is how
-`sgaudiotest GAME_DIR out.wav` checks it.
+so no decoder is needed. `crates/sg-core/src/mixer.rs` has a small mixer (clips converted to 44.1 kHz stereo, up to 32 voices, looping,
+case insensitive lookup by path under `Sounds/`); the game feeds the system's output device from it through cpal (CoreAudio, WASAPI, ALSA). The mixer can render to a buffer without a device, which is how
+the unit tests check it (`cargo test`).
 
-sgview plays:
+The game plays:
 
 | When | Sound |
 |---|---|
@@ -29,7 +29,7 @@ The volumes are guesses.
 `Flics/SMSG_IntroFinal.bik` and `SMSG_ClosingFinal.bik` are Bink 1 files (BIKi, 800x600, 15 fps, one audio track, 55 s and 39 s).
 Bink is RAD Game Tools' codec and the original plays it through `binkw32.dll`. `sgplay` parses the file header itself
 (`sgplay FILE --info`) and uses an installed `ffmpeg` for decoding, because ffmpeg has an open implementation of both the Bink video
-and Bink audio codecs: `brew install ffmpeg`. It runs ffmpeg twice (raw RGB frames, raw 44.1 kHz stereo audio); the audio clock drives
+and Bink audio codecs (macOS: `brew install ffmpeg`; Windows: put `ffmpeg.exe` on the PATH). Files that are not Bink are measured with `ffprobe`. It runs ffmpeg twice (raw RGB frames, raw 44.1 kHz stereo audio); the audio clock drives
 the picture. Esc or Space quits. `sgplay FILE --png out.png --at SECONDS` saves one frame (used for the headless test).
 
 A native Bink decoder (no ffmpeg) is possible but a project of its own; this keeps the dependency to one well known tool.
