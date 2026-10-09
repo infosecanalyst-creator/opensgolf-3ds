@@ -10,6 +10,7 @@
 pub mod assets;
 pub mod bink;
 pub mod course;
+pub mod decor;
 pub mod economy;
 pub mod flc;
 pub mod flight;

@@ -485,3 +485,22 @@ Confidence: high (layout pass read from the machine code, where the decompiler l
   statistics and the best rounds, sets the heading from the forward tee to the cup, and `next_hole` becomes the first hole
   without a par. Opening hole 1 moves the first employee's post a third of the way from the tee toward the clubhouse.
 
+## Tile decorations: trees and weeds (main frame tile loop 0x413da3)
+
+Confidence: high for the choice of sprite, palette and placement; screen offsets are converted to tiles at the default view.
+- Tree (13), pine (14) and palm (15) tiles draw their own trees; elms and scenic tiles are drawn elsewhere. For each of the
+  four axes through the tile the exe checks whether the two neighbours are both of the tile's scenery group or both not;
+  0 such axes give the small sprite, 1 or 2 the medium, 3 or 4 the large. A tile with a variant byte (painted trees: the
+  brush variant, 12..14) takes size `variant % 3` instead.
+- Broadleaf: sprites 0x19b..0x19d (maple, Joshua tree, tropical brush), palette 0x25 + ((noise(a*256, b*256) / 32) & 3).
+  A fully grown broadleaf with no broadleaf among its eight neighbours is drawn as the scenic elm in Parkland and Links.
+- Pine: sprites 0x192..0x194, or the second species 0x198..0x19a where (noise / 13) & 4 (the variant's (v / 3) & 1 for
+  painted ones); Desert and Tropical take the species' own palette, Parkland and Links one of four by the noise.
+- Palm: sprites 0x195..0x197, palette 0x32 + ((noise(a*128, b*128) / 32) & 3).
+- Small pines and palms are drawn as two trees on the tile; other trees once, nudged sideways by ((a + 3b) % 5 - 2) zoom
+  units. The view is (a - 2b) & 3.
+- A painted tile restarts its growth counter (flag 0x4000); a growing tree shows the counter as its frame, plays its sound
+  (0x93 broadleaf, 0x91 pine, 0x92 palm) when it starts and stops growing at its last frame.
+- Weeds: crabgrass (0x184) on types that are no hazard, the theme's weed (0x190: dandelion, oil slick in Desert, dry grass in
+  Tropical) elsewhere; frame = last frame - (b & 2) - (a & 1), never below (a + 2b) & 3, the growth counter while growing.
+

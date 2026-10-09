@@ -11,7 +11,6 @@ use sg_core::holes::*;
 use sg_core::land::{self, ExeRng, Land, Noise, Slot};
 use sg_core::mixer::Mixer;
 use sg_core::properties::{PROPERTIES, START_FUNDS};
-use sg_core::rng::Rng;
 use sg_core::shot::GolferSkills;
 use sg_core::sprites::{load_sprite, Sprite};
 use sg_core::staff::{self, Employee, StaffEvent, StaffGolfer, TileState};
@@ -96,6 +95,8 @@ pub struct Prop {
     pub hidden: bool,
     /// Scenery regenerated from the terrain after edits.
     pub tree: bool,
+    /// A tree on this tile (x, y) that shows its growth counter while the tile grows.
+    pub grow_tile: Option<(i32, i32)>,
 }
 
 impl Default for Prop {
@@ -116,6 +117,7 @@ impl Default for Prop {
             golfer: None,
             hidden: false,
             tree: false,
+            grow_tile: None,
         }
     }
 }
@@ -298,6 +300,8 @@ pub struct App {
     pub raise_sign: i32,
     pub paused: bool,
     pub paint_idx: usize,
+    /// The paint tool's variant (0x5a34f0, drawn when a terrain brush is picked) and the brush it was drawn for.
+    pub paint_variant: Option<(usize, i32)>,
     /// Radius in tiles.
     pub brush: i32,
     pub has_hit: bool,
@@ -425,6 +429,7 @@ impl App {
             raise_sign: 1,
             paused: false,
             paint_idx: 0,
+            paint_variant: None,
             brush: 0,
             has_hit: false,
             hit_x: 0.0,
@@ -768,78 +773,83 @@ impl App {
         r
     }
 
+    /// A decoration sprite of the exe (id and palette id) for the loaded theme, body and shadow.
+    fn decor_sprite(&mut self, id: u16, pal: u8) -> (Option<usize>, Option<usize>) {
+        let theme = self.exe_theme();
+        let Some(file) = sg_core::decor::sprite_file(id, theme) else { return (None, None) };
+        let pal = sg_core::decor::palette_file(pal, theme);
+        (self.sprite_for(&format!("{file}.flc"), false, pal), self.sprite_for(&format!("{file}Shadow.flc"), true, None))
+    }
+
+    /// The trees on the tree, pine and palm tiles, chosen and placed the way the exe's tile loop does (sg_core::decor).
     fn add_trees(&mut self) {
-        const TREES: [[&str; 6]; 4] = [
-            [
-                "Trees/TreeMapleLarge",
-                "Trees/TreeMapleMedium",
-                "Trees/TreePineLarge",
-                "Trees/TreePineMedium",
-                "Trees/TreePineFirLg",
-                "Trees/TreeMapleSmall",
-            ],
-            [
-                "Trees/Links/LinksPine_Tall",
-                "Trees/Links/LinksPine_Med",
-                "Trees/Links/LinksTree3_Tall",
-                "Trees/Links/LinksTree3_Med",
-                "Trees/Links/LinksTree4_Tall",
-                "Trees/Links/LinksTree4_Med",
-            ],
-            [
-                "Trees/Desert/JoshuaTree_Lg",
-                "Trees/Desert/JoshuaTree_Md",
-                "Trees/Desert/CactusA_Lg",
-                "Trees/Desert/CactusB_Md",
-                "Trees/Desert/TreeCactusLg",
-                "Trees/Desert/CactusC_Lg",
-            ],
-            [
-                "Trees/Tropic/TreePalm/TreePalmLg",
-                "Trees/Tropic/TreePalm/TreePalmMed",
-                "Trees/Tropic/Tree_Cerc/Cerc_Large",
-                "Trees/Tropic/Tree_Drac/Drac_Large",
-                "Trees/Tropic/Tree_Tall_Palm/TallPalm_Large",
-                "Trees/Tropic/Tree_Cerc/Cerc_Med",
-            ],
-        ];
-        for ty in 0..self.terrain.h {
-            for tx in 0..self.terrain.w {
-                // Tile types 13..16 (tree, pine, palm, elm) all draw the Woods texture and carry trees.
-                if !(TT_WOODS..=16).contains(&self.terrain.ty[self.terrain.tile_index(tx, ty)]) {
+        self.ensure_land();
+        let Some(land) = self.land.as_ref() else { return };
+        let (ty, var, flags) = (land.ty.clone(), land.var.clone(), land.flags.clone());
+        let theme = self.exe_theme();
+        let noise = &self.noise;
+        let field = |x: i32, y: i32| noise.field(x, y);
+        let mut draws = Vec::new();
+        for a in 0..land::N {
+            for b in 0..land::N {
+                let i = (a * land::N + b) as usize;
+                if !(13..=15).contains(&ty[i]) {
                     continue;
                 }
-                let mut rng = Rng::new(
-                    self.seed.wrapping_mul(2654435761).wrapping_add(((ty * 64 + tx) as u32).wrapping_mul(40503)).wrapping_add(12345),
-                );
-                rng.next();
-                rng.next();
-                let n = 1 + rng.range(2);
-                for _ in 0..n {
-                    let base = TREES[self.theme][rng.range(6) as usize];
-                    let (cx, cz) = self.terrain.tile_centre(tx, ty);
-                    let mut p = Prop { tree: true, x: cx, z: cz, ..Default::default() };
-                    p.x += (rng.unit() - 0.5) * 80.0;
-                    p.z += (rng.unit() - 0.5) * 80.0;
-                    // Colour variants live in separate palette files next to the sprites.
-                    let pal = if base.contains("Tropic/TreePalm/") {
-                        Some("Trees/Tropic/TreePalm/PalGreenPalm.pcx")
-                    } else if base.contains("Tree_Cerc") {
-                        Some("Trees/Tropic/Tree_Cerc/PalCerc.pcx")
-                    } else if base.contains("Tree_Drac") {
-                        Some("Trees/Tropic/Tree_Drac/PalDrac.pcx")
-                    } else if base.contains("Tree_Tall_Palm") {
-                        Some("Trees/Tropic/Tree_Tall_Palm/PalTallPalm.pcx")
-                    } else {
-                        None
-                    };
-                    p.body = self.sprite_for(&format!("{base}.flc"), false, pal);
-                    p.shadow = self.sprite_for(&format!("{base}Shadow.flc"), true, None);
-                    let Some(b) = p.body else { continue };
-                    p.frame = self.sprites[b].s.frames_per_view - 1; // fully grown
-                    self.props.push(p);
+                let grown = !self.tile_growing(a, b);
+                for d in sg_core::decor::trees(&ty, var[i], flags[i] & 0x100 != 0, a, b, theme, grown, &field) {
+                    draws.push((a, b, grown, d));
                 }
             }
+        }
+        for (a, b, grown, d) in draws {
+            let (body, shadow) = self.decor_sprite(d.sprite, d.pal);
+            let Some(bi) = body else { continue };
+            let (cx, cz) = self.terrain.tile_centre(a, b);
+            let n = self.sprites[bi].s.frames_per_view;
+            let frame = d.frame.unwrap_or(n - 1).min(n - 1);
+            self.props.push(Prop {
+                tree: true,
+                x: cx + d.da * TILE_SIZE,
+                z: cz + d.db * TILE_SIZE,
+                body,
+                shadow,
+                frame,
+                facing: d.view,
+                grow_tile: if grown { None } else { Some((a, b)) },
+                ..Default::default()
+            });
+        }
+    }
+
+    /// The tile's growth counter is running (flag 0x4000).
+    fn tile_growing(&self, a: i32, b: i32) -> bool {
+        let t = &self.staff_tiles;
+        a < t.w && b < t.h && t.flags.get((b * t.w + a) as usize).is_some_and(|f| f & staff::WORKED != 0)
+    }
+
+    /// Newly planted trees show their growth counter as the frame and stop growing at their last frame.
+    fn update_tree_growth(&mut self) {
+        let mut done = Vec::new();
+        for p in self.props.iter_mut().filter(|p| p.tree) {
+            let (Some((a, b)), Some(bi)) = (p.grow_tile, p.body) else { continue };
+            let t = &self.staff_tiles;
+            let i = (b * t.w + a) as usize;
+            let n = self.sprites[bi].s.frames_per_view;
+            if t.flags.get(i).is_some_and(|f| f & staff::WORKED != 0) {
+                let c = t.counter[i] as i32;
+                p.frame = c.min(n - 1);
+                if c >= n - 1 {
+                    done.push(i);
+                    p.grow_tile = None;
+                }
+            } else {
+                p.frame = n - 1;
+                p.grow_tile = None;
+            }
+        }
+        for i in done {
+            self.staff_tiles.flags[i] &= !staff::WORKED;
         }
     }
 
@@ -958,6 +968,9 @@ impl App {
     /// the clubhouse door, and one hole record per tee and green pair (back and forward tee on the tee, pin and cup on the green).
     pub fn sync_course(&mut self) {
         self.ensure_land();
+        if let Some(land) = self.land.as_mut() {
+            land.sync_from_terrain(&self.terrain);
+        }
         let Some(land) = &self.land else { return };
         self.course.sync(land);
         self.course.door = self.club_anchor();
@@ -1290,6 +1303,7 @@ impl App {
         }
         self.update_staff_props();
         self.update_weed_props();
+        self.update_tree_growth();
         for p in self.props.iter_mut() {
             if p.animated {
                 if let Some(b) = p.body {
@@ -1465,7 +1479,11 @@ impl App {
                 if self.terrain.ty[self.terrain.tile_index(x, y)] as i32 != pe.ty {
                     self.econ.spend_to(economy::LEDGER_BUILD_COURSE, Economy::terrain_cost_units(pe.ty) as f64 * Economy::UNIT);
                 }
+                let changed = self.terrain.ty[self.terrain.tile_index(x, y)] as i32 != pe.ty;
                 self.terrain.paint(x, y, pe.ty, vb);
+                if changed {
+                    self.painted_tile(x, y, pe.ty as u8);
+                }
                 if matches!(pe.ty, 0 | 1 | 17 | 22) {
                     self.terrain.flatten_tile(x, y);
                 }
@@ -1485,6 +1503,46 @@ impl App {
             _ => "Interface/Place Rough.wav",
         };
         self.snd(s, 0.7, false);
+    }
+
+    /// The exe's bookkeeping for a tile painted to a new type (0x420561..): weeds go, the tile starts its growth counter, and
+    /// its variant byte becomes the brush's variant (tees 0, greens 0 or 0xff), which sizes a planted tree.
+    fn painted_tile(&mut self, x: i32, y: i32, new: u8) {
+        let v = match self.paint_variant {
+            Some((k, v)) if k == self.paint_idx => v,
+            _ => {
+                let v = self.exe_rng.below(3);
+                self.paint_variant = Some((self.paint_idx, v));
+                v
+            }
+        };
+        self.ensure_land();
+        if let Some(land) = self.land.as_mut() {
+            if (0..land::N).contains(&x) && (0..land::N).contains(&y) {
+                let i = (x * land::N + y) as usize;
+                land.flags[i] &= 0xd6ff;
+                land.growth[i] = 0;
+                if land.flags[i] & 0x200 == 0 {
+                    land.var[i] = (v % 12 + 12) as u8;
+                }
+                if new == 0 {
+                    land.var[i] = 0;
+                } else if new == 1 {
+                    land.var[i] = if v & 1 != 0 { 0xff } else { 0 };
+                }
+            }
+        }
+        let t = &mut self.staff_tiles;
+        if x < t.w && y < t.h {
+            let i = (y * t.w + x) as usize;
+            if let Some(f) = t.flags.get_mut(i) {
+                *f = (*f & !staff::WEEDS) | staff::WORKED;
+                t.counter[i] = 0;
+            }
+        }
+        if let Some((slot, _)) = sg_core::decor::tree_sound(new) {
+            self.slot_sound(slot, 0.0, 0.0);
+        }
     }
 
     pub fn edit_path(&mut self, tx: i32, ty: i32, remove: bool) {
@@ -2165,8 +2223,6 @@ impl App {
     /// Weed sprites on the weed tiles: a growing weed shows the frame of its counter, a grown one the last frame.
     fn update_weed_props(&mut self) {
         self.props.retain(|p| !p.weed);
-        let Some(w) = self.weed_sprite else { return };
-        let n = self.sprites[w].s.frames_per_view.max(1);
         let t = &self.staff_tiles;
         let mut add = Vec::new();
         for b in 0..t.h {
@@ -2175,13 +2231,26 @@ impl App {
                 if t.flags[i] & staff::WEEDS == 0 {
                     continue;
                 }
-                let frame = if t.flags[i] & staff::WORKED != 0 { (t.counter[i] as i32).min(n - 1) } else { n - 1 };
-                add.push((a, b, frame));
+                let counter = if t.flags[i] & staff::WORKED != 0 { Some(t.counter[i] as i32) } else { None };
+                add.push((a, b, counter));
             }
         }
-        for (a, b, frame) in add {
+        for (a, b, counter) in add {
+            let ty = if sg_core::course::inside(a, b) { self.course.ty[sg_core::course::idx(a, b)] } else { 4 };
+            let probe = sg_core::decor::weed(ty, a, b, 1, None);
+            let (body, _) = self.decor_sprite(probe.sprite, probe.pal);
+            let Some(w) = body else { continue };
+            let n = self.sprites[w].s.frames_per_view.max(1);
+            let d = sg_core::decor::weed(ty, a, b, n, counter);
             let (x, z) = self.terrain.tile_centre(a, b);
-            self.props.push(Prop { x, z, body: Some(w), frame, weed: true, ..Default::default() });
+            self.props.push(Prop {
+                x,
+                z,
+                body: Some(w),
+                frame: d.frame.unwrap_or(n - 1).clamp(0, n - 1),
+                weed: true,
+                ..Default::default()
+            });
         }
     }
 }
