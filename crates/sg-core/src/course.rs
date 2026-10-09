@@ -163,7 +163,8 @@ impl Default for Course {
 
 impl Course {
     /// Takes tiles, flags, heights and objects from the land, keeping the per-tile counters, then rebuilds levels and walls.
-    pub fn sync(&mut self, land: &Land) {
+    /// `all_joined`: difficulty 0 and sandbox games treat every building as joined to the clubhouse.
+    pub fn sync(&mut self, land: &Land, all_joined: bool) {
         self.ty.copy_from_slice(&land.ty);
         // Weed bits belong to the staff routines; keep the ones already here.
         for i in 0..NN {
@@ -189,7 +190,7 @@ impl Course {
                 continue;
             }
             // Operational: joined to the clubhouse by path (kinds 0..5 and 17.. always count).
-            if o.kind <= 5 || o.kind >= 17 || joined.get(i).copied().unwrap_or(false) {
+            if all_joined || o.kind <= 5 || o.kind >= 17 || joined.get(i).copied().unwrap_or(false) {
                 o.flags |= 0x40;
             } else {
                 o.flags &= !0x40;

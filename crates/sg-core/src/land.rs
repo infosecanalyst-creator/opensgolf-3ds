@@ -1479,7 +1479,11 @@ impl Land {
                 for r in 0..s {
                     for c in 0..s {
                         let (a, b) = (o.a + r, o.b + c);
-                        if (0..N).contains(&a) && (0..N).contains(&b) && !seen[idx(a, b)] {
+                        if (0..N).contains(&a)
+                            && (0..N).contains(&b)
+                            && !seen[idx(a, b)]
+                            && self.flags[idx(a, b)] & (flag::PATH | flag::FOOTPRINT) != 0
+                        {
                             seen[idx(a, b)] = true;
                             stack.push((a, b));
                         }
@@ -1488,6 +1492,10 @@ impl Land {
             }
         }
         while let Some((a, b)) = stack.pop() {
+            // A marked tile passes the flood on only when its type isn't tee, green or fairway (types 0..3).
+            if self.ty[idx(a, b)] <= 3 {
+                continue;
+            }
             for k in [0usize, 2, 4, 6] {
                 let (na, nb) = (a + DX[k], b + DY[k]);
                 if !(0..N).contains(&na) || !(0..N).contains(&nb) {
@@ -1925,5 +1933,30 @@ mod tile_item_tests {
         assert_eq!(l.ty[idx(14, 14)], T_ROUGH);
         // Bridges only on water.
         assert!(l.place_tile_item(16, 16, K_BRIDGE, 0, 0).is_err());
+    }
+
+    #[test]
+    fn paths_join_buildings_but_stop_on_fairway() {
+        let mut l = rough_land();
+        l.objects.clear();
+        let mut put = |l: &mut Land, kind: i32, a: i32, b: i32| {
+            let o = Object { kind, a, b, dir: 0, flags: 0, sub: 0, val: 0 };
+            let s = l.footprint_size(&o);
+            for r in 0..s {
+                for c in 0..s {
+                    l.flags[idx(a + r, b + c)] |= flag::FOOTPRINT;
+                }
+            }
+            l.objects.push(o);
+        };
+        put(&mut l, K_CLUBHOUSE, 10, 10);
+        put(&mut l, K_SNACK_BAR, 20, 10);
+        for a in 14..20 {
+            l.flags[idx(a, 10)] |= flag::PATH;
+        }
+        assert_eq!(l.joined_objects(), vec![true, true]);
+        // A fairway tile on the path still gets marked but passes nothing on.
+        l.ty[idx(16, 10)] = 2;
+        assert_eq!(l.joined_objects(), vec![true, false]);
     }
 }

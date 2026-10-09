@@ -1358,7 +1358,7 @@ impl App {
             land.sync_from_terrain(&self.terrain);
         }
         let Some(land) = &self.land else { return };
-        self.course.sync(land);
+        self.course.sync(land, self.difficulty == 0 || self.econ.sandbox);
         self.water_depth = sg_core::wildlife::water_depth(&self.course);
         self.course.door = self.club_anchor();
         self.course.theme = self.exe_theme();
@@ -1603,6 +1603,22 @@ impl App {
         if tick.is_multiple_of(1024 / (self.difficulty.clamp(0, 3) as u32 + 2)) {
             let members = self.club.member_count();
             self.club.record_history(self.club.cash, members);
+        }
+        if tick & 0x3ff == 0 && self.difficulty != 0 && !self.econ.sandbox && !self.club.championship() {
+            // the monthly reminder for buildings with no path to the clubhouse
+            let cut: Vec<String> = self
+                .course
+                .objects
+                .iter()
+                .skip(1)
+                .filter(|o| (6..=14).contains(&o.kind) && o.flags & 0x40 == 0)
+                .map(|o| land::BUILDINGS[o.kind as usize].0.to_string())
+                .collect();
+            for name in cut {
+                self.show_toast(&format!(
+                    "WARNING: Your {name} will not be operational until you have a path connecting it to your clubhouse."
+                ));
+            }
         }
         if tick > 0 && tick & 0x1fff == 0 && !self.club.championship() {
             println!("[{:6.1}s] end of year {}", self.sim_time, 2000 + (tick >> 13));
