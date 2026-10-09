@@ -72,8 +72,7 @@ the event log and the monthly history. `clubhouse.rs`: the clubhouse pair screen
 
 ## Not yet in
 
-Flower bed shapes (a data table in the exe that is not available), the board's photo snapshots, portraits on the pair
-screen and the golfer card.
+The board's photo snapshots, portraits on the pair screen and the golfer card.
 
 ## Viewer
 

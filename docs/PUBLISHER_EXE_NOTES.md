@@ -518,8 +518,11 @@ Confidence: high for the choice of sprite, palette and placement; screen offsets
 
 ## Tile decorations: flags, tee markers, benches, ornamental trees (tile loops 0x410604 and 0x412354)
 
-Confidence: high for sprites, palettes and the rules; the flower bed shape table and the bridge pieces are not ported (the
-shape table is data this project could not read).
+Confidence: high for sprites, palettes and the rules. Flower beds (0x41266b, `sg_core::decor::flower_bed`): the design byte is
+shape var / 5 (pieces 0x1a2 + 6 * shape: single, 1, 2, 3, 4 sides, corner) and colour var % 5 (palette 0x2d + colour, 0xbb
+while weedy); the mask of the four orthogonal neighbours that are beds of the same shape on the same level (0x543018) picks
+piece and view from the 16-entry table at 0x4c2f28; a gazebo or topiary (0x1b4/0x1b5, palettes 0x96/0xbc) stands in some
+2 x 2 blocks. Beds and waterfalls are painted at once in the tile loop (0x4628d0), under the sorted sprite queue (0x462a30).
 - Cup tile: the theme's flag pops up (0x185 + theme) while the tile grows, then waves (0x189 + theme) in view
   clamp(mood sum * 100 / (tee shots + planned shots / 2 + 4) / 10, 0, 3); a hole not yet open shows view 1. Palette 0x63.
 - Tee of an open hole: two markers, red (par 3), white (par 4) or blue (par 5 and up), either side of the tee across its

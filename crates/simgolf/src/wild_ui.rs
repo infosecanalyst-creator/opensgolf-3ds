@@ -222,7 +222,8 @@ impl App {
                 add.push(Prop { x, z, body, frame: frame.rem_euclid(n.max(1)), facing, flat, ..Default::default() });
             }
             // waterfalls and their spray where water meets higher water, laid out at the exe zoom nearest the port's and
-            // scaled to it
+            // scaled to it; the exe draws them straight onto the frame in its tile loop (0x4628d0, not the sprite queue), so
+            // they go with the ground overlays, under every sorted sprite
             let rot = 2 * ((self.rot / 90.0).round() as i32).rem_euclid(4);
             let ez = self.exe_zoom();
             let z = if ez >= 3.0 {
@@ -247,6 +248,7 @@ impl App {
                             frame: (7 * a + tick).rem_euclid(n.max(1)),
                             view: Some(f.view),
                             shift: (f.dx as f32 * k, f.dy as f32 * k),
+                            flat: true,
                             ..Default::default()
                         });
                     }

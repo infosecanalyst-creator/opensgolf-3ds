@@ -343,6 +343,21 @@ impl Screen {
         );
     }
 
+    /// A filled diamond centred on (x, y), reaching `hw` pixels left and right and `hh` up and down.
+    pub fn diamond(&self, g: &mut Gfx, x: f32, y: f32, hw: f32, hh: f32, c: [f32; 4]) {
+        g.quad(
+            Mode::Flat,
+            None,
+            &self.u,
+            [
+                Vert::new(x - hw, y, 0.0, 0.0, 0.0).col(c),
+                Vert::new(x, y - hh, 0.0, 0.0, 0.0).col(c),
+                Vert::new(x + hw, y, 0.0, 0.0, 0.0).col(c),
+                Vert::new(x, y + hh, 0.0, 0.0, 0.0).col(c),
+            ],
+        );
+    }
+
     /// A straight line `w` pixels wide.
     #[allow(clippy::too_many_arguments)]
     pub fn line(&self, g: &mut Gfx, x0: f32, y0: f32, x1: f32, y1: f32, w: f32, c: [f32; 4]) {

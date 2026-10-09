@@ -790,7 +790,9 @@ impl App {
             };
             blit(g, s, &art, strip_button(i, state), (cx - 22) as f32, (cy - 20) as f32);
             let si = if kind == land::K_LANDMARK {
-                sg_core::objects::LANDMARKS.get(i as usize).and_then(|f| self.sprite_for(&format!("{f}.flc"), false, None))
+                // in the landmark's palette, 100 + type
+                let pal = sg_core::decor::palette_file(strip_sprite(kind, i).1, self.exe_theme());
+                sg_core::objects::LANDMARKS.get(i as usize).and_then(|f| self.sprite_for(&format!("{f}.flc"), false, pal))
             } else {
                 let (id, pal) = strip_sprite(kind, i);
                 self.decor_sprite(id, pal).0
@@ -1087,14 +1089,15 @@ impl App {
         }
     }
 
-    /// An employee's standing clip with its ground point at (ax, ay).
-    pub(crate) fn draw_standing(&mut self, g: &mut Gfx, s: &Ui, set: usize, ax: f32, ay: f32) {
-        let Some(si) = self.staff_clips.get(set).and_then(|c| c[1].0) else { return };
+    /// An employee's walking clip (sprite 0x20e + set, in the set's palette 0x82 + set) in a view, its ground point at
+    /// (ax, ay). The exe steps the frame once per redraw of its modal loop; APPROXIMATION: the port runs it at the clip's
+    /// own frame time.
+    pub(crate) fn draw_walking(&mut self, g: &mut Gfx, s: &Ui, set: usize, view: i32, ax: f32, ay: f32) {
+        let Some(si) = self.staff_clips.get(set).and_then(|c| c[0].0) else { return };
         let sp = &self.sprites[si].s;
         let n = sp.frames_per_view.max(1);
         let f = if sp.frame_ms > 0 { (self.clock * 1000.0 / sp.frame_ms as f64) as i64 % n as i64 } else { 0 } as i32;
-        // view 2 faces the viewer
-        let view = 2;
+        let view = view.rem_euclid(sp.views.max(1));
         let (w, h) = {
             let fr = &sp.frames[sp.frame_index(view, f)];
             (fr.w as f32, fr.h as f32)
@@ -1127,9 +1130,10 @@ impl App {
                 let c = if sk == 1 && !skilled_ok { rgb(0.5, 0.48, 0.55) } else { ink };
                 s.text(g, 246.0, ty + 15.0, &text, 14.0, c);
             }
-            // the portrait box shows the hovered version of the kind
+            // 0x459400: the box beside each kind shows it walking, the skilled version while its line is hovered, in view k,
+            // at (0x240, 0xc0 + 0x46 k)
             let skilled = hot.is_some_and(|c| c == 2 * k + 1);
-            self.draw_standing(g, s, k + 4 * skilled as usize, 566.0, y + 30.0);
+            self.draw_walking(g, s, k + 4 * skilled as usize, k as i32, 576.0, (0xc0 + 0x46 * k) as f32);
         }
     }
 
