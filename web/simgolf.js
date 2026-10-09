@@ -282,5 +282,8 @@ function sgStartAudio() {
     node.connect(ctx.destination);
     sgAudio = ctx;
 }
+// browsers only allow sound after the player's first gesture: a click, a key or a touch
 window.addEventListener("mousedown", sgStartAudio);
 window.addEventListener("keydown", sgStartAudio);
+window.addEventListener("touchstart", sgStartAudio, { passive: true });
+window.addEventListener("pointerdown", sgStartAudio);

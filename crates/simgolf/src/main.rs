@@ -222,6 +222,8 @@ fn load_ui(app: &mut App, g: &mut Gfx) -> bool {
     app.title_mo_parts = ui::split_overlay(g, &app.game_path("Interface/TitleMO.pcx"), &rects);
     app.world_base = world.unwrap_or_default();
     app.diff_base = diff_base.unwrap_or_default();
+    app.hud_art =
+        ui::load_pcx_alpha(g, &app.game_path("Interface/courseinfo.pcx"), &app.game_path("Interface/courseinfo_A.pcx")).unwrap_or_default();
     app.diff_mo = diff_mo.unwrap_or_default();
     app.report_art = report.unwrap_or_default();
     app.dock_art = dock.unwrap_or_default();

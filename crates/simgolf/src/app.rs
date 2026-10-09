@@ -409,6 +409,8 @@ pub struct App {
     pub outfit_pals: HashMap<sg_core::bodies::Outfit, [u8; 768]>,
     pub outfit_tex: HashMap<(usize, usize, sg_core::bodies::Outfit), miniquad::TextureId>,
     pub world_base: Image,
+    /// The main screen's course badge and rating pills (Interface/courseinfo.pcx with its alpha sheet).
+    pub hud_art: Image,
     /// The Select Difficulty art: the screen and the sheet of its lit items.
     pub diff_base: Image,
     pub diff_mo: Image,
@@ -597,6 +599,7 @@ impl App {
             outfit_pals: HashMap::new(),
             outfit_tex: HashMap::new(),
             world_base: Image::default(),
+            hud_art: Image::default(),
             diff_base: Image::default(),
             diff_mo: Image::default(),
             theme_icons: [Image::default(); 4],

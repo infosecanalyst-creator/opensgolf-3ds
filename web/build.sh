@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds the browser version into web/dist: the game compiled to WebAssembly (silent build for now), miniquad's gl.js loader
+# Builds the browser version into web/dist: the game compiled to WebAssembly (sound mixed in Rust and played through Web Audio), miniquad's gl.js loader
 # taken from the miniquad crate the game is built with, and this folder's page and file glue. Serve web/dist with any static
 # web server (for example: python3 -m http.server -d web/dist) and open it in a browser.
 set -e
