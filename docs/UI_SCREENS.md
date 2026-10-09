@@ -59,7 +59,8 @@ Confidence marks: **exact** = literal arguments read from the disassembly; **der
 
 ## 2. Membership Roster (exact for layout, derived for field meaning)
 
-* Opens: Information menu "Membership Roster". Routine `FUN_00454c50`. Modal; same close rule as section 0, except clicks on the scroll bar column.
+* Opens: Information menu "Membership Roster". Routine `FUN_00454c50`. Modal, but not section 0's close rule (exact, from the click code at 0x45597e):
+  a left click closes only on the OK tick, scrolls on an arrow and does nothing elsewhere; a right click or a key closes.
 * Art: `infoscreens/memberRoster.pcx` + `_alpha` (full 800x600 piece at 0,0), `memberRoster_buttons.pcx` (300x127), `memberRoster_scrollbar.pcx` (18x447).
   The body art already holds: the title pill, header pills, 22 name rows (20 px pitch), the fixed-width columns, an 18 column by 22 row grid of
   checker cells (21 px pitch) and the legend bar with six baked icons (navy ball, silver ball, gold ball, red ball, camera, heart).
@@ -74,7 +75,7 @@ Confidence marks: **exact** = literal arguments read from the disassembly; **der
   * Low (byte +0 of the 0x2c byte record at 0x5849e0): centred at x 170. Hcp (signed byte +1): left at x 209. Rnds (short +0x2a, shows "-" filler if 0): left at x 249.
   * Status text centred at x 320 from the status code `flags & 7` (record byte +2): 1 Visitor, 2 Member, 3 Silver Member, 4 Gold Member, 0 nothing;
     and **Resigned** when the record's byte +0x29 is 0xff. (Platinum has no text here; the exe has only four.)
-  * Hole grid, hole h (1..18): per hole flag byte at +2+h of the record. bit0 draws the camera icon (Photo Opp), bit1 the heart (Happy Ending),
+  * Hole grid, hole h (1..18): per hole flag byte at +3+h of the record (read as `0x5849e3 + h`). bit0 draws the camera icon (Photo Opp), bit1 the heart (Happy Ending),
     bit2 the red ball (Resigned at that hole), each at (381 + 21 (h-1), y - 4). Icon variants alternate by column parity to match the checker shade.
 * Legend labels at y 536, centred: Member 82, Silver Member 208, Gold Member 326, Resigned 450, Photo Opp 573, Happy Ending 693.
 * Buttons sheet cuts (all from `memberRoster_buttons.pcx`; loader at 0x44c48c, 19x18 unless noted): tier balls at (46,1) navy (Member), (66,1) silver, (86,1) gold, (106,1) red;
@@ -223,15 +224,16 @@ Two routines share `FUN_0045a090` and the results routine that follows it.
   groundskeeper (employees) idle (0,0,129,113) selected (0,114,129,113) at (60,313); dollar house (home site value) idle (130,0,130,113) selected (130,114,130,113) at (612,313);
   flag with path (routing) idle (261,0,134,117) selected (261,118,134,117) at (182,254); clover (aura) idle (396,0,139,117) selected (396,118,139,117) at (483,254).
   Draw the idle cut over the baked art only for the unselected buttons; the selected mode draws its yellow cut. Hover state not separate.
-* Other cuts: big OK tick (536,0,65,65) drawn at (71,533) (cut 8); scroll arrows up (713,1,18,37) and down (732,1,18,37); scroll track (751,0,18,178). Arrows at x 775: up (775,64), down (775,205) (hover cuts), track at (775,64).
+* Other cuts: yellow OK tick (536,0,65,65) (cut 8), drawn at (662,532) only while the pointer is on the baked tick (hit 662..741, 532..596); the call at
+  (71,533) draws the compass of the Buy Land buttons sheet (object 0x822b50: (259,127,72,61) of `buy_land_buttons.pcx`) into the round well; scroll arrows up (713,1,18,37) and down (732,1,18,37); scroll track (751,0,18,178). Arrows at x 775: up (775,64), down (775,205) (hover cuts), track at (775,64).
 * Titles (title face, centred x 400): ROUTING MAP (400,15); mode sub titles: "COURSE ROUTING" or "AURA" (400,85); "HOME SITE VALUE" or "COURSE AURA" (400,188) (the lower label).
   Instruction lines centred (400,108) "Left click to select hole." and (400,126) "Right click to swap holes." (routing mode).
 * Routing list heads at y 85: left list "Hole #" at 71, "PAR" 132, "YDS" 182, "Time" 239; right list "Hole #" 564, "PAR" 630, "YDS" 680, "Time" 737. Rows: 17 px stripes below, nine holes per list (derived).
 * Aura and Value modes: the explanatory texts exist ("Course AURA indicates where ...", "Things which INCREASE home value: Close to water and trees / a fun golf hole / a top 100 or top 18 hole",
   "Things which DECREASE home value: Close to another building / an unfun hole / too close to green, fairway or OB / far from the golf course") shown in the centre box; positions not traced (unknown).
   Employees mode lists the staff counters (Greeters, Players greeted, Players cheered, Players rushed, Slackers intimidated, Weeds destroyed, Weeds eradicated, Beverages served, Satisfied customers and "paid:" wage text).
-* Recipe: map renderer already in the port (draw the course top view into the diamond), then art + buttons; click on a button changes mode; a click on a hole row selects it; right click swaps two holes in the play order
-  (this is the exe's way of renumbering holes).
+* Recipe: map renderer already in the port (draw the course top view into the diamond), then art + buttons; click on a button changes mode; a click on a hole row selects it; right click moves the selected hole to the clicked place
+  (the exe's way of renumbering holes). Exact click rules and the decoded tab cuts, employee list and swap semantics: docs/UI_SCREENS2.md section 5.
 
 ## 10. Buy Land screen (layout exact for art, text fields derived)
 

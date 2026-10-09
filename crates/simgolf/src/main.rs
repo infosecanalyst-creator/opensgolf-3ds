@@ -263,13 +263,33 @@ fn open_screen(app: &mut App, screen: Option<&str>) {
         Some("land") => app.open_land_screen(),
         Some("report") if app.ui_ok => app.screen = Screen::Report,
         Some("pair") if app.ui_ok => app.screen = Screen::Pair,
-        Some("board") if app.ui_ok => app.screen = Screen::Board,
+        Some("board") if app.ui_ok => {
+            // SG_BOARD_AWARDS="id,id,..": accomplishments marked earned (a month apart, no snapshot) for a still
+            if let Ok(ids) = std::env::var("SG_BOARD_AWARDS") {
+                for (k, id) in ints(&ids).into_iter().enumerate() {
+                    if let Some(e) = app.club.earned.get_mut(id.max(0) as usize) {
+                        let tick = app.club.tick + 1024 * k as u32;
+                        *e = Some(sg_core::records::Earned { tick, course: app.club.course_name.clone() });
+                    }
+                }
+            }
+            app.screen = Screen::Board;
+        }
         Some("yearend") if app.ui_ok => app.screen = Screen::YearEnd,
-        Some("roster") if app.ui_ok => app.screen = Screen::Roster,
+        Some("roster") if app.ui_ok => {
+            roster_fill(app);
+            app.screen = Screen::Roster;
+        }
         Some("comments") if app.ui_ok => app.screen = Screen::Comments,
         Some("histograph") if app.ui_ok => app.screen = Screen::Histograph,
         Some("finance") if app.ui_ok => app.screen = Screen::Finance,
-        Some("routing") if app.ui_ok => app.screen = Screen::Routing,
+        Some("routing") if app.ui_ok => {
+            // SG_ROUTE_TAB picks the tab for a still: 0 routing, 1 employees, 2 aura, 3 home site value
+            if let Some(t) = std::env::var("SG_ROUTE_TAB").ok().and_then(|t| t.parse::<usize>().ok()) {
+                app.route_tab = t.min(3);
+            }
+            app.screen = Screen::Routing;
+        }
         Some("shortcuts") if app.ui_ok => app.screen = Screen::Shortcuts,
         Some("golfers") if app.ui_ok => app.panel = 4,
         Some("holestats") if app.ui_ok => {
@@ -362,6 +382,30 @@ fn panel_test_hooks(app: &mut App) {
         app.tool = 4;
         app.build_idx = k.min(19);
     }
+}
+
+/// Test hook for stills of the roster: SG_ROSTER_FILL="n[,scroll]" gives the first n golfer records a round, a level, scores
+/// and a few hole marks (made-up values, for the layout only) and scrolls the list by `scroll` rows.
+fn roster_fill(app: &mut App) {
+    let Some(v) = std::env::var("SG_ROSTER_FILL").ok().map(|s| ints(&s)) else { return };
+    let n = (v.first().copied().unwrap_or(0).max(0) as usize).min(app.club.members.len());
+    for (i, m) in app.club.members.iter_mut().take(n).enumerate() {
+        m.rounds = 1 + (i as i32 * 7) % 23;
+        m.best = (70 + (i * 5) % 30) as u8;
+        m.avg = ((i * 3) % 25) as i8;
+        m.level = [1, 2, 3, 4, 2, 0][i % 6];
+        m.gone = if i % 9 == 4 { 0xff } else { 0 };
+        for h in 1..19 {
+            m.holes[h] = match (i * 5 + h * 3) % 17 {
+                0 => 1,
+                1 => 2,
+                2 if m.gone == 0xff => 4,
+                3 => 5,
+                _ => 0,
+            };
+        }
+    }
+    app.roster_offset = v.get(1).copied().unwrap_or(0).max(0) as usize;
 }
 
 /// Test hook for stills of the tool under the pointer: SG_CURSOR_TILE="x,y" (in tiles, fractions allowed: "10.5,12.5" is a tile
@@ -775,11 +819,14 @@ impl Stage {
                 0 => self.app.repeat_message(),
                 1 => self.open_report(),
                 2 => self.app.open_report_screen(Screen::Comments),
-                3 => self.app.open_report_screen(Screen::Routing),
+                3 => self.app.open_routing(),
                 4 => self.app.open_report_screen(Screen::Histograph),
                 5 => self.app.sga_report(),
                 6 => self.app.open_report_screen(Screen::Finance),
-                7 => self.app.screen = Screen::Roster,
+                7 => {
+                    self.app.roster_offset = 0;
+                    self.app.screen = Screen::Roster;
+                }
                 8 => {
                     self.app.screen = Screen::Board;
                     self.app.screen_jingle(0x7e, Screen::Board);
@@ -1082,7 +1129,7 @@ impl Stage {
                 KeyCode::L => app.open_files(files_ui::ListKind::Load, true),
                 KeyCode::P => self.toggle_pause(),
                 KeyCode::T => app.show_props = !app.show_props,
-                KeyCode::R => app.open_report_screen(Screen::Routing),
+                KeyCode::R => app.open_routing(),
                 KeyCode::W if app.club.championship() => app.ui_sound(24),
                 KeyCode::W => app.open_world_map(),
                 KeyCode::J => app.begin_tournament(),
@@ -1220,7 +1267,7 @@ impl Stage {
             KeyCode::F2 => app.open_report_screen(Screen::Comments),
             KeyCode::F3 => app.open_report_screen(Screen::Histograph),
             KeyCode::F4 => app.open_report_screen(Screen::Finance),
-            KeyCode::F5 => app.open_report_screen(Screen::Routing),
+            KeyCode::F5 => app.open_routing(),
             KeyCode::F6 => app.open_world_map(),
             KeyCode::F7 => app.sga_report(),
             KeyCode::F8 => app.open_report_screen(Screen::Shortcuts),
@@ -1626,11 +1673,13 @@ impl EventHandler for Stage {
             } else if self.app.screen == Screen::Routing {
                 let (vx, vy) = self.app.view.to_virtual(x, y);
                 self.app.routing_click(vx, vy, button == MouseButton::Right);
+            } else if self.app.screen == Screen::Roster {
+                let (vx, vy) = self.app.view.to_virtual(x, y);
+                self.app.roster_click(vx, vy, button == MouseButton::Right);
             } else if matches!(
                 self.app.screen,
                 Screen::Board
                     | Screen::YearEnd
-                    | Screen::Roster
                     | Screen::Comments
                     | Screen::Histograph
                     | Screen::Finance
