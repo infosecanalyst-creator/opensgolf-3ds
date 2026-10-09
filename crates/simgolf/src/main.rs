@@ -1080,21 +1080,53 @@ impl Stage {
             KeyCode::E => app.rot += 5.0,
             KeyCode::Equal | KeyCode::KpAdd => app.zoom *= 1.12,
             KeyCode::Minus | KeyCode::KpSubtract => app.zoom /= 1.12,
-            KeyCode::Key1 | KeyCode::Key2 | KeyCode::Key3 | KeyCode::Key4 => {
-                let t = match k {
-                    KeyCode::Key1 => 0,
-                    KeyCode::Key2 => 1,
-                    KeyCode::Key3 => 2,
-                    _ => 3,
-                };
-                app.load_theme(&mut self.g, t);
+            KeyCode::Key1
+            | KeyCode::Key2
+            | KeyCode::Key3
+            | KeyCode::Key4
+            | KeyCode::Key5
+            | KeyCode::Key6
+            | KeyCode::Key7
+            | KeyCode::Key8
+            | KeyCode::Key9 => {
+                // the exe's number keys jump to holes 1..9, with Shift 10..18
+                let n = [
+                    KeyCode::Key1,
+                    KeyCode::Key2,
+                    KeyCode::Key3,
+                    KeyCode::Key4,
+                    KeyCode::Key5,
+                    KeyCode::Key6,
+                    KeyCode::Key7,
+                    KeyCode::Key8,
+                    KeyCode::Key9,
+                ]
+                .iter()
+                .position(|&c| c == k)
+                .unwrap_or(0)
+                    + 1;
+                let h = n + if shift { 9 } else { 0 };
+                let hr = &app.club.holes[h.min(18)];
+                if hr.par != 0 {
+                    let (tx, ty) = (hr.back.0 * 1024 + 512, hr.back.1 * 1024 + 512);
+                    let (px, py) = (hr.pin.0 * 1024 + 512, hr.pin.1 * 1024 + 512);
+                    let (x, z) = app.units_to_world((tx + px) / 2, (ty + py) / 2);
+                    app.cam_x = x;
+                    app.cam_z = z;
+                }
             }
+            KeyCode::Key0 => {
+                // centre on the clubhouse
+                let (a, b) = app.course.door;
+                let (x, z) = app.units_to_world(a * 1024 + 512, b * 1024 + 512);
+                app.cam_x = x;
+                app.cam_z = z;
+            }
+            // R is the Rough tool in the original (it used to regenerate a test course here, wiping the game)
             KeyCode::R => {
-                app.seed = app.seed.wrapping_mul(1664525).wrapping_add(1013904223);
-                app.terrain = Terrain::demo_course(40, 40, app.seed);
-                app.land = None;
-                app.rebuild_batches(&mut self.g);
-                app.populate_props();
+                app.panel = 1;
+                app.edit = true;
+                return pick(app, TT_ROUGH, 0);
             }
             KeyCode::Tab => app.edit = !app.edit,
             KeyCode::T => app.tool = (app.tool + 1) % 5,
