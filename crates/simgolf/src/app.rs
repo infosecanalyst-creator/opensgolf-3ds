@@ -314,6 +314,8 @@ pub struct App {
     pub champ: Option<crate::champ_ui::ChampScreen>,
     /// Tiles the player retyped since the last tick (each may draw wildlife), and the water depth of each tile.
     pub retyped: Vec<(i32, i32)>,
+    /// Option "show golfer thoughts" (option bit 0x10).
+    pub show_thoughts: bool,
     pub water_depth: Vec<u8>,
     /// An employee picked up to be moved: the next click on the course becomes their post (the exe's "Move this employee").
     pub moving_employee: Option<usize>,
@@ -474,6 +476,7 @@ impl App {
             results: None,
             champ: None,
             retyped: Vec::new(),
+            show_thoughts: true,
             water_depth: Vec::new(),
             moving_employee: None,
             staff_clips: [[(None, None); 3]; 9],

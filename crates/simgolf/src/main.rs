@@ -15,6 +15,7 @@ mod champ_ui;
 mod gfx;
 mod pro_ui;
 mod render;
+mod thoughts_ui;
 mod tourney_ui;
 mod ui;
 mod wild_ui;

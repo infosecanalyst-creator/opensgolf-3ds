@@ -40,6 +40,7 @@ pub mod sprites;
 pub mod staff;
 pub mod stories;
 pub mod terrain;
+pub mod thoughts;
 pub mod tournament;
 pub mod tracts;
 pub mod vips;
