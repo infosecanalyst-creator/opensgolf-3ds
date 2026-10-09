@@ -1587,9 +1587,13 @@ impl App {
         self.club.sandbox = self.econ.sandbox;
         self.club.island = self.land.as_ref().map(|l| l.slot.record().coast == 2).unwrap_or(false);
         if std::mem::take(&mut self.club.land_offer) {
-            // the commissioner approved an expansion: the exe asks whether to buy land, then shows the tracts
-            self.show_toast("Do you wish to purchase additional land to expand your course?");
-            self.open_land_screen();
+            // the commissioner approved an expansion: sound 56 and the question; yes shows the tracts
+            self.ui_sound(56);
+            if self.ui_ok {
+                self.open_popup(crate::popup_ui::PopupKind::LandOffer);
+            } else {
+                self.open_land_screen();
+            }
         }
         self.club.home_sites = sites;
         self.club.homesite_demand = self.club.ratings.waitlist;

@@ -480,7 +480,8 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
             b'M' => app.open_popup(match at(0) {
                 0 => popup_ui::PopupKind::Info,
                 1 => popup_ui::PopupKind::System,
-                _ => popup_ui::PopupKind::Prefs,
+                2 => popup_ui::PopupKind::Prefs,
+                _ => popup_ui::PopupKind::LandOffer,
             }),
             b'm' if v.len() >= 2 => app.move_hole(at(0) as usize, at(1) as usize),
             b'a' if v.len() >= 3 => {
@@ -752,6 +753,11 @@ impl Stage {
                 10 => self.app.screen = Screen::BestScores,
                 _ => self.app.open_top10(None),
             },
+            PopupKind::LandOffer => {
+                if k == 0 {
+                    self.app.open_land_screen();
+                }
+            }
             PopupKind::System => match k {
                 0 => self.app.open_save(),
                 1 => self.app.open_files(files_ui::ListKind::Load, true),
