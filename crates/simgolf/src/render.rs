@@ -4,6 +4,7 @@ use crate::app::*;
 use crate::gfx::{Gfx, Mat4, Mode, Uniforms, Vert};
 use crate::ui::{money, num, rgb, rgba, text_width, wrap_text, Screen as Ui};
 use sg_core::economy::{Economy, STAFF_KINDS};
+use sg_core::land;
 use sg_core::properties::{PROPERTIES, START_FUNDS};
 use sg_core::sprites::SPRITE_UNITS_PER_PIXEL;
 use sg_core::terrain::{DEPTH_RANGE, TILE_SIZE};
@@ -456,6 +457,83 @@ impl App {
                 s.text(g, 26.0, 586.0, "Not enough funds.", 12.0, rgb(0.55, 0.1, 0.1));
             }
         }
+        g.flush();
+    }
+
+    /// The exe's TRACTS FOR SALE screen: a minimap of the course with each tract's number, the nine tract descriptions and
+    /// prices in a 3 x 3 grid, the cash reserve and a cancel button (positions from the exe; the minimap is drawn as flat
+    /// tile diamonds coloured by type, not with the exe's minimap art).
+    pub fn draw_land(&mut self, g: &mut Gfx) {
+        let s = Ui::new(self.draw_w, self.draw_h);
+        self.view = s.view;
+        s.fill(g, 0.0, 0.0, 800.0, 600.0, rgb(0.13, 0.16, 0.12));
+        let theme = self.exe_theme();
+        if let Some(land) = self.land.as_ref() {
+            for a in 0..land::N {
+                for b in 0..land::N {
+                    let t = land.ty[(a * land::N + b) as usize];
+                    let c = match t {
+                        0 | 1 => rgb(0.45, 0.85, 0.4),
+                        2 | 3 => rgb(0.35, 0.72, 0.3),
+                        7..=9 => rgb(0.9, 0.85, 0.6),
+                        13..=16 => rgb(0.12, 0.38, 0.14),
+                        17 => rgb(0.25, 0.45, 0.8),
+                        20 => rgb(0.07, 0.08, 0.07),
+                        21 | 22 => rgb(0.6, 0.45, 0.35),
+                        _ => rgb(0.25, 0.55, 0.22),
+                    };
+                    let (x, y) = ((a + b) as f32 * 6.0 + 106.0, (b - a) as f32 * 3.0 + 439.0);
+                    s.fill(g, x - 6.0, y - 3.0, 12.0, 6.0, c);
+                }
+            }
+            for h in 1..19 {
+                let rec = &self.club.holes[h];
+                if rec.par == 0 {
+                    continue;
+                }
+                for (a, b) in [rec.back, rec.pin] {
+                    let (x, y) = ((a + b) as f32 * 6.0 + 106.0, (b - a) as f32 * 3.0 + 439.0);
+                    s.fill(g, x - 3.0, y - 3.0, 6.0, 6.0, rgb(1.0, 1.0, 1.0));
+                }
+            }
+            for i in 0..9 {
+                let (a0, b0) = sg_core::tracts::origin(i);
+                if land.ty[((a0 + 8) * land::N + b0 + 8) as usize] == land::T_OUT {
+                    let (x, y) = ((a0 + b0 + 16) as f32 * 6.0 + 106.0, (b0 - a0) as f32 * 3.0 + 439.0);
+                    s.text(g, x - 7.0, y + 4.0, &format!("{}", i + 1), 16.0, rgb(1.0, 0.95, 0.5));
+                }
+            }
+        }
+        s.text_centered(g, 400.0, 28.0, "TRACTS FOR SALE", 22.0, rgb(1.0, 0.95, 0.75));
+        for i in 0..9usize {
+            let (col, row) = ((i / 3) as f32, (i % 3) as f32);
+            let x = 88.0 + 256.0 * col - if i <= 5 { 10.0 } else { 0.0 };
+            let y = 62.0 + 68.0 * row;
+            let tr = self.tracts[i];
+            if self.land_hover == i as i32 || tr.oob == 0 {
+                let fx = [15.0, 272.0, 538.0][i / 3];
+                let fy = [54.0, 122.0, 190.0][i % 3];
+                s.fill(g, fx, fy, 236.0, 66.0, rgba(1.0, 1.0, 0.6, if tr.oob == 0 { 0.08 } else { 0.18 }));
+            }
+            let text = sg_core::tracts::describe(&tr, i, theme);
+            let lines = wrap_text(&text, 12.0, 165.0);
+            for (k, l) in lines.iter().enumerate() {
+                s.text(g, x, y + 12.0 + k as f32 * 13.0, l, 12.0, rgb(0.95, 0.95, 0.9));
+            }
+            if tr.oob != 0 {
+                let p = format!("Price: {}", money(tr.price as i64 * 100));
+                let w = text_width(&p, 12.0);
+                s.text(g, x + 165.0 - w, y + 12.0 + (lines.len() + 1) as f32 * 13.0, &p, 12.0, rgb(1.0, 0.9, 0.5));
+            }
+        }
+        s.text(g, 548.0, 275.0, "Cash Reserve", 14.0, rgb(0.95, 0.95, 0.9));
+        s.text_centered(g, 720.0, 276.0, &money(self.econ.cash as i64), 14.0, rgb(1.0, 0.9, 0.5));
+        if self.land_hover == 9 {
+            s.fill(g, 662.0, 533.0, 64.0, 64.0, rgba(1.0, 1.0, 0.6, 0.25));
+        }
+        s.fill(g, 668.0, 539.0, 52.0, 52.0, rgba(0.6, 0.15, 0.1, 0.8));
+        s.text_centered(g, 694.0, 570.0, "X", 20.0, rgb(1.0, 1.0, 1.0));
+        s.text(g, 71.0, 560.0, "I don't think I'll buy any land.", 14.0, rgb(0.95, 0.95, 0.9));
         g.flush();
     }
 

@@ -34,5 +34,6 @@ pub mod sounds;
 pub mod sprites;
 pub mod staff;
 pub mod terrain;
+pub mod tracts;
 
 pub use assets::{Indexed, Rgba};

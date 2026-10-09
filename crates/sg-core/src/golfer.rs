@@ -300,6 +300,8 @@ pub struct Club {
     pub clip_frames: Vec<i32>,
     /// Best rounds (0x56a524).
     pub top_rounds: [i32; 10],
+    /// Land purchases so far (0x53a450).
+    pub purchases: i32,
     /// Year number and the year's first fee flag, for the green fee tutorial.
     pub year: i32,
     pub fees_this_year: i32,
@@ -356,6 +358,7 @@ impl Club {
             kind_counts: [0; 32],
             clip_frames: vec![DEFAULT_CLIP; 0x100],
             top_rounds: [0; 10],
+            purchases: 0,
             year: 0,
             fees_this_year: 0,
             cash: 0,

@@ -273,6 +273,13 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 app.brush = r;
                 app.sync_course();
             }
+            b'l' if item.len() > 2 && !v.is_empty() => {
+                // buy tract n (1..9) through the land screen
+                app.open_land_screen();
+                let (col, row) = ((at(0) - 1) / 3, (at(0) - 1) % 3);
+                app.land_pointer(20.0 + 260.0 * col as f32, 60.0 + 68.0 * row as f32);
+                app.land_click(false);
+            }
             b'o' => {
                 let ok = app.open_hole();
                 println!("open hole: {ok}, next hole {}", app.club.next_hole);
@@ -380,6 +387,7 @@ impl Stage {
                     "report" => app.screen = Screen::Report,
                     "menu" => app.screen = Screen::Menu,
                     "property" => app.screen = Screen::Property,
+                    "land" => app.open_land_screen(),
                     _ => {}
                 }
             }
@@ -395,6 +403,9 @@ impl Stage {
             };
             app.deal_offer(o.sandbox);
             app.start_game(&mut g, k, o.sandbox);
+            if o.screen.as_deref() == Some("land") {
+                app.open_land_screen();
+            }
         }
         if let Some(f) = &o.course {
             match Terrain::load(f, &app.terrain) {
@@ -827,6 +838,9 @@ impl Stage {
             if app.screen == Screen::Report {
                 app.draw_report(&mut self.g);
             }
+            if app.screen == Screen::Land {
+                app.draw_land(&mut self.g);
+            }
         }
         self.g.flush();
         self.g.ctx.end_render_pass();
@@ -949,6 +963,11 @@ impl EventHandler for Stage {
     fn mouse_motion_event(&mut self, x: f32, y: f32) {
         let (dx, dy) = (x - self.mouse.0, y - self.mouse.1);
         self.mouse = (x, y);
+        if self.app.screen == Screen::Land {
+            let (vx, vy) = self.app.view.to_virtual(x, y);
+            self.app.land_pointer(vx, vy);
+            return;
+        }
         if self.app.screen != Screen::Play && self.app.ui_ok {
             if self.app.screen != Screen::Report {
                 self.menu_pointer(x, y, false);
@@ -988,6 +1007,12 @@ impl EventHandler for Stage {
 
     fn mouse_button_down_event(&mut self, button: MouseButton, x: f32, y: f32) {
         self.mouse = (x, y);
+        if self.app.screen == Screen::Land {
+            let (vx, vy) = self.app.view.to_virtual(x, y);
+            self.app.land_pointer(vx, vy);
+            self.app.land_click(button == MouseButton::Right);
+            return;
+        }
         if self.app.screen != Screen::Play && self.app.ui_ok {
             if self.app.screen == Screen::Report {
                 self.app.screen = Screen::Play;

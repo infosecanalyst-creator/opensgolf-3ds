@@ -178,6 +178,8 @@ pub enum Screen {
     Property,
     Play,
     Report,
+    /// The exe's TRACTS FOR SALE screen.
+    Land,
 }
 
 /// One texture-batched mesh of the course.
@@ -305,6 +307,9 @@ pub struct App {
     pub paint_idx: usize,
     /// The paint tool's variant (0x5a34f0, drawn when a terrain brush is picked) and the brush it was drawn for.
     pub paint_variant: Option<(usize, i32)>,
+    /// The land screen's tracts and the one under the pointer (9 = the cancel button).
+    pub tracts: [sg_core::tracts::Tract; 9],
+    pub land_hover: i32,
     /// Radius in tiles.
     pub brush: i32,
     pub has_hit: bool,
@@ -433,6 +438,8 @@ impl App {
             paused: false,
             paint_idx: 0,
             paint_variant: None,
+            tracts: Default::default(),
+            land_hover: -1,
             brush: 0,
             has_hit: false,
             hit_x: 0.0,
@@ -1567,6 +1574,93 @@ impl App {
             _ => "Interface/Place Rough.wav",
         };
         self.snd(s, 0.7, false);
+    }
+
+    /// Opens the land screen (after the County Commissioner approves an expansion and the player says yes).
+    pub fn open_land_screen(&mut self) {
+        self.ensure_land();
+        self.slot_sound(56, 0.0, 0.0);
+        let Some(land) = self.land.as_ref() else { return };
+        self.tracts = sg_core::tracts::roll(land, self.club.purchases, &mut self.exe_rng);
+        self.land_hover = -1;
+        self.screen = Screen::Land;
+    }
+
+    /// Pointer over the land screen (virtual 800 x 600 coordinates): which tract or the cancel button. The exe redraws on
+    /// every change and rolls the prices again each time (keeping the first ones), which draws from the generator.
+    pub fn land_pointer(&mut self, x: f32, y: f32) {
+        let mut hit = -1;
+        if (54.0..258.0).contains(&y) {
+            let row = ((y - 54.0) / 68.0) as i32;
+            let col = if (15.0..262.0).contains(&x) {
+                0
+            } else if (272.0..524.0).contains(&x) {
+                1
+            } else if (538.0..775.0).contains(&x) {
+                2
+            } else {
+                -1
+            };
+            if col >= 0 && row < 3 {
+                hit = row + 3 * col;
+            }
+        }
+        if (662.0..726.0).contains(&x) && (533.0..597.0).contains(&y) {
+            hit = 9;
+        }
+        if hit != self.land_hover {
+            self.land_hover = hit;
+            if let Some(land) = self.land.as_ref() {
+                let _ = sg_core::tracts::roll(land, self.club.purchases, &mut self.exe_rng);
+            }
+        }
+    }
+
+    /// A click on the land screen: buy the tract under the pointer, or leave on the cancel button or a right click.
+    pub fn land_click(&mut self, right: bool) {
+        if right || self.land_hover == 9 {
+            self.screen = Screen::Play;
+            return;
+        }
+        if !(0..9).contains(&self.land_hover) {
+            self.slot_sound(24, 0.0, 0.0);
+            return;
+        }
+        let i = self.land_hover as usize;
+        let price = self.tracts[i].price;
+        if price == 0 {
+            return;
+        }
+        let cost = price as f64 * Economy::UNIT;
+        if !self.econ.affordable(cost, self.holes.len()) {
+            self.show_toast(&format!(
+                "This change costs {}. You have only {}.",
+                crate::ui::money(cost as i64),
+                crate::ui::money(self.econ.cash as i64)
+            ));
+            return;
+        }
+        self.econ.spend_to(economy::LEDGER_OTHER, cost);
+        if let Some(land) = self.land.as_mut() {
+            sg_core::tracts::buy(land, i);
+            // the terrain the renderer and editor use follows
+            let (a0, b0) = sg_core::tracts::origin(i);
+            for a in a0..a0 + 16 {
+                for b in b0..b0 + 16 {
+                    let t = (a * land::N + b) as usize;
+                    let o = self.terrain.tile_index(a, b);
+                    if self.terrain.ty[o] == land::T_OUT {
+                        self.terrain.ty[o] = land.ty[t];
+                        self.terrain.variation[o] = if land.ty[t] == land::T_WATER { land.var[t] } else { 0 };
+                    }
+                }
+            }
+        }
+        self.club.purchases += 1;
+        println!("bought tract {} for {}", i + 1, crate::ui::money(cost as i64));
+        self.screen = Screen::Play;
+        self.dirty = true;
+        self.refresh_trees();
     }
 
     /// The exe's bookkeeping for a tile painted to a new type (0x420561..): weeds go, the tile starts its growth counter, and
