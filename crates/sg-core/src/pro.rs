@@ -131,7 +131,8 @@ impl Club {
     /// An accomplishment (0x46e7b0): each is earned once; once the pro has skills, each brings three skill points to hand
     /// out. Returns whether it was new.
     pub fn award(&mut self, id: u32) -> bool {
-        if id >= 32 || self.awards & (1 << id) != 0 {
+        // nothing is earned in a championship (0x46e7b0)
+        if id >= 32 || self.awards & (1 << id) != 0 || self.game & crate::championship::CHAMPIONSHIP != 0 {
             return false;
         }
         self.awards |= 1 << id;

@@ -88,7 +88,8 @@ impl App {
         self.club.tournament_offer(fac, &name);
         if self.club.game & game::TOURNAMENT != 0 && self.club.tourney_opts == -1 {
             let prep = self.club.tournament_prep();
-            if self.ui_ok && self.auto_aim == 0 {
+            // a championship takes every item without asking
+            if self.ui_ok && self.auto_aim == 0 && !self.club.championship() {
                 let n = prep.lines().len();
                 self.prep = Some((prep, (1 << n) - 1));
                 self.screen = Screen::Prep;
@@ -117,6 +118,8 @@ impl App {
             if self.ui_ok {
                 self.results = Some(res);
                 self.screen = Screen::Results;
+            } else if self.club.championship() {
+                self.club.game = 0;
             }
             self.panel = 0;
         }
@@ -202,6 +205,12 @@ impl App {
             _ => {
                 self.results = None;
                 self.screen = Screen::Play;
+                if self.club.championship() {
+                    // the championship is over: back to the title menu, nothing saved
+                    self.club.game = 0;
+                    self.screen = Screen::Menu;
+                    self.hover = -1;
+                }
             }
         }
     }
@@ -294,7 +303,12 @@ impl App {
         s.fill(g, x, y, 220.0, h, rgba(0.1, 0.1, 0.25, 0.85));
         let purse = if self.club.purse == 0 { 20 * (self.club.next_hole - 1) } else { self.club.purse };
         s.text(g, x + 8.0, y + 16.0, &format!("LEADER BOARD  ${purse},000"), 13.0, rgb(1.0, 1.0, 0.7));
-        s.text(g, x + 8.0, y + 32.0, &format!("{} {} Open", 2001 + self.econ.year_index(), self.course_name), 12.0, rgb(0.85, 0.85, 1.0));
+        let event = if self.club.championship() {
+            format!("{} at {}", sg_core::championship::EVENTS[self.difficulty.clamp(0, 3) as usize], self.course_name)
+        } else {
+            format!("{} {} Open", 2001 + self.econ.year_index(), self.course_name)
+        };
+        s.text(g, x + 8.0, y + 32.0, &event, 12.0, rgb(0.85, 0.85, 1.0));
         for (i, r) in rows.iter().take(n).enumerate() {
             let c = if r.gary { rgb(1.0, 0.85, 0.3) } else { rgb(1.0, 1.0, 1.0) };
             let yy = y + 48.0 + 15.0 * i as f32;

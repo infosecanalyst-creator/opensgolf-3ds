@@ -190,6 +190,8 @@ pub enum Screen {
     Sga,
     Prep,
     Results,
+    /// Play a Championship: the course and pro choosers.
+    Champ,
 }
 
 /// A whole game as saved: the land and terrain, the golfers and holes, the staff, the money and calendar, and the exe's random
@@ -301,6 +303,7 @@ pub struct App {
     pub sga: Option<crate::tourney_ui::SgaScreen>,
     pub prep: Option<(sg_core::tournament::Prep, i32)>,
     pub results: Option<sg_core::tournament::Results>,
+    pub champ: Option<crate::champ_ui::ChampScreen>,
     /// An employee picked up to be moved: the next click on the course becomes their post (the exe's "Move this employee").
     pub moving_employee: Option<usize>,
     /// Employee clips by sprite set (0 Greeter, 1 Ranger, 2 Groundskeeper, 3 Tray Girl, 4 Golf Celebrity, 5 Marshall,
@@ -458,6 +461,7 @@ impl App {
             sga: None,
             prep: None,
             results: None,
+            champ: None,
             moving_employee: None,
             staff_clips: [[(None, None); 3]; 9],
             weed_sprite: None,
@@ -2353,7 +2357,8 @@ impl App {
         let payroll: Vec<economy::Payroll> = self
             .employees
             .iter()
-            .filter(|e| e.active && e.job != staff::job::OWNER)
+            // no wages in a championship
+            .filter(|e| e.active && e.job != staff::job::OWNER && !self.club.championship())
             .map(|e| economy::Payroll { kind: (-2 - e.job as i32).clamp(0, 3) as usize, experienced: e.upgraded })
             .collect();
         let holes = self.holes.len();

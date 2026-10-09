@@ -253,6 +253,9 @@ impl Club {
                     if s == 0 {
                         w -= d * w / 6;
                     }
+                    if self.game & crate::championship::CHAMPIONSHIP != 0 {
+                        w = rng.below(w);
+                    }
                     if u < self.pros.len() && u != 0 {
                         count += 1;
                         if count >= 800 || !used[u] {

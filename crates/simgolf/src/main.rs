@@ -11,6 +11,7 @@
 
 mod app;
 mod audio;
+mod champ_ui;
 mod gfx;
 mod pro_ui;
 mod render;
@@ -51,6 +52,7 @@ struct Options {
     save: Option<PathBuf>,
     save_game: Option<PathBuf>,
     load_game: Option<PathBuf>,
+    champ: Option<(PathBuf, PathBuf)>,
     edit_spec: String,
     panel: Option<i32>,
     center: Option<(i32, i32)>,
@@ -100,6 +102,7 @@ fn parse_args() -> Options {
         save: None,
         save_game: None,
         load_game: None,
+        champ: None,
         edit_spec: String::new(),
         panel: None,
         center: None,
@@ -148,6 +151,10 @@ fn parse_args() -> Options {
             "--save" => o.save = Some(PathBuf::from(next())),
             "--save-game" => o.save_game = Some(PathBuf::from(next())),
             "--load-game" => o.load_game = Some(PathBuf::from(next())),
+            "--champ" => {
+                let c = PathBuf::from(next());
+                o.champ = Some((c, PathBuf::from(next())));
+            }
             "--edit" => o.edit_spec = next(),
             "--panel" => o.panel = Some(atoi(&next())),
             "--center" => {
@@ -311,6 +318,7 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 app.after_object_change();
                 println!("celebrity home at {},{}: {} residents", at(0), at(1), app.club.residents.len());
             }
+            b'x' => app.save_championship_course(),
             b'g' => {
                 // a tournament: g:0 as the SGA offers it (the evaluation must pass), g:1 straight away with the default purse
                 app.club.game |= sg_core::tournament::OFFERED;
@@ -471,6 +479,16 @@ impl Stage {
             }
             app.rebuild_batches(&mut g);
             app.refresh_trees();
+        }
+        if let Some((course, pro)) = &o.champ {
+            let p = std::fs::read(pro).ok().and_then(|b| sg_core::championship::parse_pro(&b)).unwrap_or_else(|| {
+                eprintln!("error: {} is not a pro file", pro.display());
+                std::process::exit(1)
+            });
+            if let Err(e) = app.start_championship(&mut g, course, &p) {
+                eprintln!("error: {e}");
+                std::process::exit(1);
+            }
         }
         if let Some(f) = &o.load_game {
             if let Err(e) = app.load_game(&mut g, f) {
@@ -732,7 +750,7 @@ impl Stage {
                     app.hover = -1;
                 }
                 3 => app.theme_pack = (app.theme_pack + 1) % THEME_PACKS.len(),
-                4 => app.show_toast("Championships are not available yet"),
+                4 => app.open_championship(),
                 _ => window::order_quit(),
             }
         } else if hit == 101 {
@@ -911,6 +929,8 @@ impl Stage {
                 self.app.snd("Interface/Button1.wav", 1.0, false);
             }
             KeyCode::F9 => self.load_course(),
+            KeyCode::F7 => app.save_championship_course(),
+            KeyCode::F8 => app.save_championship_pro(),
             KeyCode::M => app.toggle_music(),
             KeyCode::N => {
                 app.mute = !app.mute;
@@ -948,7 +968,9 @@ impl Stage {
         let menu_like = app.ui_ok && (app.screen == Screen::Menu || app.screen == Screen::Property);
         let clear = if menu_like { PassAction::clear_color(0.0, 0.0, 0.0, 1.0) } else { PassAction::clear_color(0.04, 0.06, 0.09, 1.0) };
         self.g.ctx.begin_pass(target, clear);
-        if app.screen == Screen::Menu && app.ui_ok {
+        if app.screen == Screen::Champ && app.ui_ok {
+            app.draw_champ(&mut self.g);
+        } else if app.screen == Screen::Menu && app.ui_ok {
             app.draw_menu(&mut self.g);
         } else if app.screen == Screen::Property && app.ui_ok {
             app.draw_property(&mut self.g);
@@ -1159,6 +1181,9 @@ impl EventHandler for Stage {
             if self.app.screen == Screen::Report {
                 self.app.screen = Screen::Play;
                 self.app.hover = -1;
+            } else if self.app.screen == Screen::Champ {
+                let (vx, vy) = self.app.view.to_virtual(x, y);
+                self.app.champ_click(&mut self.g, vx, vy);
             } else if self.app.screen == Screen::Skills {
                 let (vx, vy) = self.app.view.to_virtual(x, y);
                 self.app.skills_click(vx, vy);
@@ -1218,6 +1243,10 @@ impl EventHandler for Stage {
                 if k == KeyCode::Escape || k == KeyCode::F1 {
                     app.screen = Screen::Play;
                     app.hover = -1;
+                }
+            } else if app.screen == Screen::Champ {
+                if k == KeyCode::Escape {
+                    app.screen = Screen::Menu;
                 }
             } else if app.screen == Screen::Skills {
                 if k == KeyCode::Enter || k == KeyCode::Escape {
