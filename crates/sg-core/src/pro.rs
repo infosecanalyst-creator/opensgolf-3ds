@@ -563,10 +563,12 @@ impl Club {
                 self.message_by(format!("{name} acquires a new skill: {}!", SKILL_NAMES[k.min(9)]), g as i32, 1);
             } else {
                 self.pro_skill[k] += 1;
-                let mut t = format!("{name}'s {} skill improves to {}0%.", SKILL_NAMES[k.min(9)], self.pro_skill[k]);
+                // the exe's pieces (0x4c4ef0, the skill, 0x4c4ed8, the level, 0x4c4ed0; at the cap 0x4c4e88, the next rank and
+                // 0x4c4e7c, its slip included)
+                let mut t = format!("{name}'s '{}' skill improves to {}0%! ", SKILL_NAMES[k.min(9)], self.pro_skill[k]);
                 if self.pro_skill[k] as i32 == cap {
                     let next = crate::economy::RANK_NAMES[(rank as usize + 1).min(3)];
-                    t += &format!(" To further improve this skill you will need a {next} course.");
+                    t += &format!("To further improve this skill you will need expand your course to a {next} course. ");
                 }
                 self.message_by(t, g as i32, 1);
             }
