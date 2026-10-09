@@ -195,6 +195,8 @@ pub enum Screen {
     Report,
     /// The exe's TRACTS FOR SALE screen.
     Land,
+    /// Select Difficulty, between Start New Game (or Sandbox Mode) and the property chooser.
+    Difficulty,
     /// The pro's skill dialog.
     Skills,
     /// The SGA report or tournament offer, the preparation checklist, the tournament results.
@@ -400,6 +402,9 @@ pub struct App {
     pub outfit_pals: HashMap<sg_core::bodies::Outfit, [u8; 768]>,
     pub outfit_tex: HashMap<(usize, usize, sg_core::bodies::Outfit), miniquad::TextureId>,
     pub world_base: Image,
+    /// The Select Difficulty art: the screen and the sheet of its lit items.
+    pub diff_base: Image,
+    pub diff_mo: Image,
     pub theme_icons: [Image; 4],
     pub report_art: Image,
     pub dock_art: Image,
@@ -582,6 +587,8 @@ impl App {
             outfit_pals: HashMap::new(),
             outfit_tex: HashMap::new(),
             world_base: Image::default(),
+            diff_base: Image::default(),
+            diff_mo: Image::default(),
             theme_icons: [Image::default(); 4],
             report_art: Image::default(),
             dock_art: Image::default(),
@@ -711,7 +718,7 @@ impl App {
                 self.jingle = None;
             }
         }
-        let title = matches!(self.screen, Screen::Menu | Screen::Property | Screen::Champ);
+        let title = matches!(self.screen, Screen::Menu | Screen::Difficulty | Screen::Property | Screen::Champ);
         if self.music_screen == Some(title) {
             return;
         }

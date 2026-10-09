@@ -206,6 +206,8 @@ fn load_ui(app: &mut App, g: &mut Gfx) -> bool {
     let un = img("TitleUnSel.pcx", true, None);
     let mo = img("TitleMO.pcx", true, None);
     let world = img("WorldBase.pcx", false, None);
+    let diff_base = img("TitleSelDiffUnSel.pcx", false, None);
+    let diff_mo = img("TitleSelDiffMO.pcx", true, None);
     let report = img("infoscreens/coursereport.pcx", true, None); // optional
     let dock = img("3mainLowerLeft.pcx", false, Some(0xF800F8)); // optional: the lower left dock
     const ICON: [&str; 4] = ["ChooseParklandButtons.pcx", "ChooseLinksButtons.pcx", "ChooseDesertButtons.pcx", "ChooseTropicalButtons.pcx"];
@@ -218,6 +220,8 @@ fn load_ui(app: &mut App, g: &mut Gfx) -> bool {
     rects.push((170.0, 190.0, 480.0, 165.0)); // the logo
     app.title_mo_parts = ui::split_overlay(g, &app.game_path("Interface/TitleMO.pcx"), &rects);
     app.world_base = world.unwrap_or_default();
+    app.diff_base = diff_base.unwrap_or_default();
+    app.diff_mo = diff_mo.unwrap_or_default();
     app.report_art = report.unwrap_or_default();
     app.dock_art = dock.unwrap_or_default();
     for (t, i) in icons.into_iter().enumerate() {
@@ -512,6 +516,7 @@ impl Stage {
                     "report" => app.screen = Screen::Report,
                     "menu" => app.screen = Screen::Menu,
                     "property" => app.screen = Screen::Property,
+                    "difficulty" => app.screen = Screen::Difficulty,
                     "land" => app.open_land_screen(),
                     _ => {}
                 }
@@ -779,7 +784,9 @@ impl Stage {
         let (vx, vy) = self.app.view.to_virtual(x, y);
         let app = &mut self.app;
         let mut hit = -1;
-        if app.screen == Screen::Menu {
+        if app.screen == Screen::Difficulty {
+            hit = difficulty_hit(vx, vy);
+        } else if app.screen == Screen::Menu {
             for (b, r) in MENU_BTN.iter().enumerate() {
                 if r.has(vx, vy) {
                     hit = b as i32;
@@ -794,12 +801,20 @@ impl Stage {
             if BACK_BUTTON.has(vx, vy) {
                 hit = 100;
             }
-            if DIFFICULTY_BUTTON.has(vx, vy) {
-                hit = 101;
-            }
         }
         app.hover = hit;
         if !click || hit < 0 {
+            return;
+        }
+        if app.screen == Screen::Difficulty {
+            if hit == 100 {
+                app.screen = Screen::Menu;
+            } else {
+                app.difficulty = hit;
+                app.deal_offer(app.sandbox_choice);
+                app.screen = Screen::Property;
+            }
+            app.hover = -1;
             return;
         }
         if app.screen == Screen::Menu {
@@ -823,17 +838,15 @@ impl Stage {
                     Err(_) => app.show_toast("No saved game found (course.sgc)"),
                 },
                 1 | 2 => {
+                    // Start New Game and Sandbox Mode ask for the difficulty first (0x43a400)
                     app.sandbox_choice = hit == 2;
-                    app.deal_offer(app.sandbox_choice);
-                    app.screen = Screen::Property;
+                    app.screen = Screen::Difficulty;
                     app.hover = -1;
                 }
                 3 => app.theme_pack = (app.theme_pack + 1) % THEME_PACKS.len(),
                 4 => app.open_championship(),
                 _ => window::order_quit(),
             }
-        } else if hit == 101 {
-            app.difficulty = (app.difficulty + 1) % 4;
         } else if hit == 100 {
             app.screen = if std::mem::take(&mut app.world_move) { Screen::Play } else { Screen::Menu };
             app.hover = -1;
@@ -1072,7 +1085,7 @@ impl Stage {
 
     fn draw_frame(&mut self, target: Option<RenderPass>) {
         let app = &mut self.app;
-        let menu_like = app.ui_ok && (app.screen == Screen::Menu || app.screen == Screen::Property);
+        let menu_like = app.ui_ok && matches!(app.screen, Screen::Menu | Screen::Difficulty | Screen::Property);
         let clear = if menu_like { PassAction::clear_color(0.0, 0.0, 0.0, 1.0) } else { PassAction::clear_color(0.04, 0.06, 0.09, 1.0) };
         self.g.ctx.begin_pass(target, clear);
         if app.screen == Screen::Champ && app.ui_ok {
@@ -1081,6 +1094,8 @@ impl Stage {
             app.draw_menu(&mut self.g);
         } else if app.screen == Screen::Property && app.ui_ok {
             app.draw_property(&mut self.g);
+        } else if app.screen == Screen::Difficulty && app.ui_ok {
+            app.draw_difficulty(&mut self.g);
         } else {
             app.render_world(&mut self.g);
             if !app.no_hud {
@@ -1126,7 +1141,7 @@ impl Stage {
     fn take_snapshot(&mut self) {
         let Some(&(id, pt)) = self.app.snapshot_due.first() else { return };
         // any screen of a game in progress will do: the grab draws the course alone
-        if matches!(self.app.screen, Screen::Menu | Screen::Property | Screen::Champ) || !self.app.ui_ok {
+        if matches!(self.app.screen, Screen::Menu | Screen::Difficulty | Screen::Property | Screen::Champ) || !self.app.ui_ok {
             return;
         }
         // When the point is off screen the view looks there for the grab only (a followed golfer would pull a lasting camera
@@ -1277,7 +1292,7 @@ impl EventHandler for Stage {
         if !self.app.snapshot_due.is_empty() {
             while !self.app.snapshot_due.is_empty()
                 && self.app.ui_ok
-                && !matches!(self.app.screen, Screen::Menu | Screen::Property | Screen::Champ)
+                && !matches!(self.app.screen, Screen::Menu | Screen::Difficulty | Screen::Property | Screen::Champ)
             {
                 self.take_snapshot();
             }
@@ -1322,7 +1337,7 @@ impl EventHandler for Stage {
             return;
         }
         if self.app.screen != Screen::Play && self.app.ui_ok {
-            if matches!(self.app.screen, Screen::Menu | Screen::Property) {
+            if matches!(self.app.screen, Screen::Menu | Screen::Difficulty | Screen::Property) {
                 self.menu_pointer(x, y, false);
             }
             return;

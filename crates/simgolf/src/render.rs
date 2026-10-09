@@ -352,8 +352,30 @@ pub fn property_card(i: usize) -> Rect {
 }
 
 pub const BACK_BUTTON: Rect = Rect::new(748.0, 538.0, 46.0, 46.0);
-/// Our own control on the property chooser (the original picks the difficulty at the start of a game; its screen is not drawn yet).
-pub const DIFFICULTY_BUTTON: Rect = Rect::new(20.0, 46.0, 220.0, 22.0);
+/// Select Difficulty (0x43a400, docs/DECODE_TITLE2.md 5): each item's lit cut in TitleSelDiffMO.pcx (x, y, w, h), where it
+/// goes, its hit centre (an ellipse twice as wide as tall, octagonal distance under 80) and its label position.
+pub const DIFF_CUTS: [(f32, f32, f32, f32, f32, f32); 4] = [
+    (0.0, 0.0, 338.0, 146.0, 193.0, 32.0),
+    (400.0, 0.0, 338.0, 146.0, 150.0, 161.0),
+    (0.0, 300.0, 332.0, 114.0, 161.0, 320.0),
+    (400.0, 300.0, 332.0, 130.0, 200.0, 436.0),
+];
+pub const DIFF_CENTRES: [(f32, f32); 4] = [(348.0, 107.0), (319.0, 218.0), (320.0, 367.0), (363.0, 495.0)];
+pub const DIFF_LABELS: [(f32, f32); 4] = [(388.0, 113.0), (360.0, 227.0), (366.0, 346.0), (402.0, 464.0)];
+
+/// The octagonal distance the exe's hit tests use: max + min / 2.
+pub fn oct_dist(dx: f32, dy: f32) -> f32 {
+    let (a, b) = (dx.abs(), dy.abs());
+    a.max(b) + a.min(b) / 2.0
+}
+
+/// Which Select Difficulty item a point is on: 0..3, 100 the back button, -1 nothing.
+pub fn difficulty_hit(vx: f32, vy: f32) -> i32 {
+    if oct_dist(vx - 767.0, vy - 557.0) < 25.0 {
+        return 100;
+    }
+    DIFF_CENTRES.iter().position(|&(cx, cy)| oct_dist((vx - cx) / 2.0, vy - cy) < 80.0).map(|i| i as i32).unwrap_or(-1)
+}
 /// The four difficulties the manual names, in the exe's order (0 easiest).
 pub const DIFFICULTY_NAMES: [&str; 4] = ["Easy", "Moderate", "Difficult", "Impossible"];
 
@@ -522,6 +544,31 @@ impl App {
         g.flush();
     }
 
+    /// Select Difficulty: the screen, the hovered item lit from the sheet, the four names (black when hovered, grey a little
+    /// lower otherwise) and the title.
+    pub fn draw_difficulty(&mut self, g: &mut Gfx) {
+        let s = Ui::new(self.draw_w, self.draw_h);
+        self.view = s.view;
+        s.image(g, &self.diff_base, 0.0, 0.0);
+        if let Some(&(sx, sy, w, h, dx, dy)) = DIFF_CUTS.get(self.hover.max(0) as usize).filter(|_| (0..4).contains(&self.hover)) {
+            s.image_part(g, &self.diff_mo, dx, dy, sx, sy, w, h);
+        }
+        if self.hover == 100 {
+            s.image_part(g, &self.diff_mo, 732.0, 532.0, 732.0, 532.0, 68.0, 68.0);
+        }
+        // the exe's positions are the tops of the text; ours draws from the baseline
+        s.text_centered(g, 602.0, 42.0 + 17.0, "Select Difficulty", 24.0, INK);
+        for (i, &(x, y)) in DIFF_LABELS.iter().enumerate() {
+            let y = y + 17.0;
+            if self.hover == i as i32 {
+                s.text_centered(g, x, y, DIFFICULTY_NAMES[i], 22.0, rgb(0.0, 0.0, 0.0));
+            } else {
+                s.text_centered(g, x, y + 2.0, DIFFICULTY_NAMES[i], 22.0, rgb(0.5, 0.5, 0.5));
+            }
+        }
+        g.flush();
+    }
+
     pub fn can_afford(&self, i: usize) -> bool {
         self.sandbox_choice || self.offer_for(i).1 <= START_FUNDS
     }
@@ -531,10 +578,8 @@ impl App {
         self.view = s.view;
         s.image(g, &self.world_base, 0.0, 0.0);
         s.text(g, 24.0, 36.0, "Where will you build your golf course?", 14.0, rgb(0.1, 0.1, 0.35));
-        let d = DIFFICULTY_BUTTON;
-        s.fill(g, d.x, d.y, d.w, d.h, if self.hover == 101 { rgba(1.0, 1.0, 0.4, 0.35) } else { rgba(1.0, 1.0, 1.0, 0.25) });
-        let label = format!("Difficulty: {} (click to change)", DIFFICULTY_NAMES[self.difficulty.clamp(0, 3) as usize]);
-        s.text(g, d.x + 6.0, d.y + 16.0, &label, 13.0, rgb(0.1, 0.1, 0.35));
+        let label = format!("Difficulty: {}", DIFFICULTY_NAMES[self.difficulty.clamp(0, 3) as usize]);
+        s.text(g, 24.0, 62.0, &label, 13.0, rgb(0.1, 0.1, 0.35));
         let funds = if self.sandbox_choice { "Unlimited \u{a7}".to_string() } else { money(START_FUNDS as i64) };
         s.text_centered(g, 737.0, 32.0, &funds, 17.0, rgb(0.1, 0.1, 0.35));
         for (i, p) in PROPERTIES.iter().enumerate() {
