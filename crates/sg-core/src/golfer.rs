@@ -1292,7 +1292,9 @@ impl Club {
             };
             if let Some(w) = who {
                 let r = crate::vips::mood_remark(self.g[g].mood);
-                self.message_by(format!("{w} {} is playing the last hole on your course. \"{r}\"", self.vip_name(g)), g as i32, 1);
+                // the exe's 0x4c71c0 and the closing quote 0x4c4e54
+                let text = format!("{w} {} is playing the last hole on your course. He was last heard to mutter, '{r}'", self.vip_name(g));
+                self.message_by(text, g as i32, 1);
             }
         }
         let nhu = nh.clamp(0, 18) as usize;

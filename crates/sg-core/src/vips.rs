@@ -255,12 +255,21 @@ impl Club {
             _ => "Wealthy Heiress",
         };
         let name = self.vip_name(p2);
+        // the exe's sentences (0x4d3af0, 0x4d3a88, 0x4d3a14 after 0x4d3b78); the CEO's overwrites the rating lead
         let text = if ceo {
-            format!("{who} {name} is playing your course today. If he likes it, he may invest in your club.")
+            format!(
+                "{who} {name} is playing your course today. If he likes your course he may invest in a seat on your board of directors!"
+            )
         } else if comm {
-            format!("{lead} and your fame is spreading... {who} {name} is playing your course today. If he likes it, he may approve an expansion.")
+            format!(
+                "{lead} and your fame is spreading. {who} {name} is playing your course today. If he likes your course he may \
+                 approve a request to purchase more land!"
+            )
         } else {
-            format!("{lead} and your fame is spreading... {who} {name} is playing your course today. If she likes it, she may donate a landmark.")
+            format!(
+                "{lead} and your fame is spreading. {who} {name} is playing your course today. If she enjoys her round she may \
+                 donate a valuable scenic landmark to your course."
+            )
         };
         self.message_by(text, p2 as i32, 1);
         self.g[p2].class = class;
