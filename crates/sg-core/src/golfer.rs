@@ -341,6 +341,8 @@ pub struct Club {
     pub purse: i32,
     pub tourney_opts: i32,
     pub backup: Option<crate::tournament::Backup>,
+    /// Celebrity residents of the vacation homes (0x56d1b8).
+    pub residents: Vec<crate::celebs::Actor>,
     /// Accomplishments earned (bit per id, 0x4c15a0).
     pub awards: u32,
     /// Aiming: the hovered tile, whether the pointer was nearer its corner, and the frames a click is still refused.
@@ -426,6 +428,7 @@ impl Club {
             challenge_pro: -1,
             trophies: 0,
             awards: 0,
+            residents: Vec::new(),
             sga_score: 0,
             purse: 0,
             tourney_opts: 0,

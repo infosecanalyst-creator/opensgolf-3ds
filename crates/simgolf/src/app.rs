@@ -100,6 +100,8 @@ pub struct Prop {
     pub grow_tile: Option<(i32, i32)>,
     /// A flag or tee marker, rebuilt from the hole records every update.
     pub decor: bool,
+    /// A celebrity resident (index into Club::residents).
+    pub resident: Option<usize>,
 }
 
 impl Default for Prop {
@@ -122,6 +124,7 @@ impl Default for Prop {
             tree: false,
             grow_tile: None,
             decor: false,
+            resident: None,
         }
     }
 }
@@ -266,6 +269,9 @@ pub struct App {
     pub difficulty: i32,
     /// The exe's random number generator (land, offer) and the height noise it fills once at start-up.
     pub exe_rng: ExeRng,
+    /// A second generator for things only drawn (celebrity residents, wildlife steps, water sparkle), so the club's draws do
+    /// not depend on the camera or the frame rate.
+    pub deco_rng: ExeRng,
     pub noise: Noise,
     /// This game's deal of properties to offer slots, and the slot each property is in.
     pub offer: [Slot; 16],
@@ -432,6 +438,7 @@ impl App {
             golfer_clips: HashMap::new(),
             difficulty: 1,
             exe_rng,
+            deco_rng: ExeRng::from_clock(0x5167),
             noise,
             offer,
             slot_of,
@@ -1350,15 +1357,16 @@ impl App {
         if sites > 0 && tick.is_multiple_of(1024 / (self.difficulty.clamp(0, 3) as u32 + 2)) {
             let sizes = |l: &land::Land| l.objects.iter().map(|o| sg_core::homes::house_size(o.val)).collect::<Vec<_>>();
             if let Some(l) = self.land.as_mut() {
-                let before = sizes(l);
+                let before = (sizes(l), l.objects.iter().map(|o| o.sub).collect::<Vec<_>>());
                 let visited = sg_core::homes::revalue(&mut l.objects, &self.course, &self.club.holes, self.difficulty, tick);
                 for i in visited {
                     let (val, owner) = (l.objects[i].val, l.objects[i].sub);
-                    if let Some(o) = self.club.celebrity_home(&mut self.exe_rng, val, owner, &self.course) {
+                    let home = (l.objects[i].a, l.objects[i].b);
+                    if let Some(o) = self.club.celebrity_home(&mut self.exe_rng, val, owner, home) {
                         l.objects[i].sub = o;
                     }
                 }
-                if sizes(l) != before {
+                if (sizes(l), l.objects.iter().map(|o| o.sub).collect::<Vec<_>>()) != before {
                     self.props.retain(|p| !p.object);
                     self.add_land_objects();
                 }
@@ -1447,6 +1455,7 @@ impl App {
                 self.club_tick();
             }
             self.staff_tick();
+            self.resident_tick();
         }
     }
 
@@ -1496,6 +1505,7 @@ impl App {
             p.facing = -((d + 2 + (d & 1)) / 2);
         }
         self.update_staff_props();
+        self.update_resident_props();
         self.update_weed_props();
         self.update_tree_growth();
         self.update_decor_props();
@@ -1965,6 +1975,7 @@ impl App {
                 land.remove_object(i);
                 land.write_area(&mut self.terrain, o.a, o.b, o.a + size - 1, o.b + size - 1);
                 if o.kind == land::K_HOME_SITE {
+                    self.club.evict(o.a, o.b);
                     // buying the lot back (0x40e400): its smoothed value / 50 plus half its value now
                     let c = o.val / 50 + sg_core::homes::lot_value(&self.course, &self.club.holes, self.difficulty, o.a, o.b) / 2;
                     self.econ.spend_to(economy::LEDGER_HOME_SITES, c as f64 * Economy::UNIT);
@@ -2057,6 +2068,7 @@ impl App {
         if let Some(i) = existing {
             let o = land.objects[i];
             let s = land.footprint_size(&o);
+            self.club.evict(o.a, o.b);
             land.remove_object(i);
             land.write_area(&mut self.terrain, o.a, o.b, o.a + s - 1, o.b + s - 1);
         }
@@ -2530,6 +2542,63 @@ impl App {
 }
 
 impl App {
+    /// The celebrity residents walk about their lots, one step a game tick (the exe steps them every frame), with the
+    /// cosmetic generator so the club's own draws stay as they are.
+    fn resident_tick(&mut self) {
+        let tournament = self.club.game & golf::game::TOURNAMENT != 0;
+        for i in 0..self.club.residents.len() {
+            let r = self.club.residents[i];
+            let name = sg_core::celebs::TYPES[r.kind.clamp(0, 11) as usize];
+            let suffix = match r.state {
+                sg_core::celebs::WALK => "Walk",
+                sg_core::celebs::ACTION => "Char",
+                _ => "SQ",
+            };
+            let frames = self
+                .sprite_for(&format!("Celebs/{name}_{suffix}.flc"), false, None)
+                .map(|s| self.sprites[s].s.frames_per_view)
+                .unwrap_or(1);
+            let voice = self.club.residents[i].step(&mut self.deco_rng, frames, true, self.paused, tournament);
+            if let Some(slot) = voice {
+                let (wx, wz) = self.units_to_world(r.world().0, r.world().1);
+                self.slot_sound(slot, wx, wz);
+            }
+        }
+    }
+
+    fn update_resident_props(&mut self) {
+        let want = self.club.residents.len();
+        self.props.retain(|p| p.resident.is_none_or(|i| i < want));
+        let have = self.props.iter().filter(|p| p.resident.is_some()).count();
+        for i in have..want {
+            self.props.push(Prop { resident: Some(i), hidden: true, ..Default::default() });
+        }
+        const DX: [f32; 8] = [0.0, 1.0, 1.0, 1.0, 0.0, -1.0, -1.0, -1.0];
+        const DY: [f32; 8] = [-1.0, -1.0, 0.0, 1.0, 1.0, 1.0, 0.0, -1.0];
+        for pi in 0..self.props.len() {
+            let Some(ri) = self.props[pi].resident else { continue };
+            let r = self.club.residents[ri];
+            let name = sg_core::celebs::TYPES[r.kind.clamp(0, 11) as usize];
+            let suffix = match r.state {
+                sg_core::celebs::WALK => "Walk",
+                sg_core::celebs::ACTION => "Char",
+                _ => "SQ",
+            };
+            let body = self.sprite_for(&format!("Celebs/{name}_{suffix}.flc"), false, None);
+            let shadow = self.sprite_for(&format!("Celebs/{name}_{suffix}Shadow.flc"), true, None);
+            let (wx, wz) = self.units_to_world(r.world().0, r.world().1);
+            let k = (r.facing & 7) as usize;
+            let p = &mut self.props[pi];
+            p.hidden = body.is_none() || r.hold >= 128;
+            p.body = body;
+            p.shadow = shadow;
+            p.x = wx;
+            p.z = wz;
+            p.frame = r.frame;
+            p.heading = DY[k].atan2(DX[k]).to_degrees();
+        }
+    }
+
     /// The generated land's objects as the exe draws them: landmarks (sprite 0x168 + type, animated, facing one of four ways)
     /// and buildings (layers by kind, theme and level; level 2 once the course has more than 10 holes), each standing in the
     /// middle of its footprint.
@@ -2596,12 +2665,16 @@ impl App {
             self.push_decor(a, b, d, true, false);
         }
         let level = (self.holes.len() > 10) as u16;
-        for o in land.objects.iter().filter(|o| o.kind >= 0) {
+        for (oi, o) in land.objects.iter().enumerate().filter(|(_, o)| o.kind >= 0) {
             let size = land::BUILDINGS.get(o.kind as usize).map(|b| b.1).unwrap_or(1);
             let (cx, cz) = self.terrain.tile_centre(o.a, o.b);
             let off = (size - 1) as f32 * TILE_SIZE * 0.5;
             let (x, z) = (cx + off, cz + off);
-            let layers: Vec<(String, bool, bool)> = if o.kind == land::K_HOME_SITE {
+            let layers: Vec<(String, bool, bool)> = if o.kind == land::K_HOME_SITE && o.sub != 0 {
+                // a celebrity's vacation home: one of two houses by the object slot's parity (0x4012d0)
+                let (house, dirt) = sg_core::celebs::HOUSES[oi & 1];
+                vec![(dirt.to_string(), true, false), (house.to_string(), false, false)]
+            } else if o.kind == land::K_HOME_SITE {
                 let id = match sg_core::homes::house_size(o.val) {
                     0 => 0x1c8,
                     1 => 0x1c9,

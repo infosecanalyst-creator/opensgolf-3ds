@@ -5,7 +5,6 @@
 //!
 //! Facts are from the publisher's golf.exe (docs/PUBLISHER_EXE_NOTES.md, "Special visitors"), restated in our own words.
 
-use crate::course::Course;
 use crate::golfer::{Club, Column, Event};
 use crate::land::ExeRng;
 
@@ -352,7 +351,7 @@ impl Club {
 
     /// A home site's monthly celebrity draw (0x417a08): a celebrity is drawn for every re-valued site; an unowned site worth
     /// enough is bought by them. Returns the owner given, if any.
-    pub fn celebrity_home(&mut self, rng: &mut ExeRng, val: i32, owner: i32, _c: &Course) -> Option<i32> {
+    pub fn celebrity_home(&mut self, rng: &mut ExeRng, val: i32, owner: i32, home: (i32, i32)) -> Option<i32> {
         if !self.celebrities.iter().any(|c| c.kind != 0xff) {
             return None;
         }
@@ -370,6 +369,7 @@ impl Club {
         self.message(format!("International {kind} {} has purchased a vacation home at your golf course!", cel.name));
         self.sound(0x33, None);
         self.celeb_homes += 1;
+        self.spawn_resident(rng, c, home.0, home.1);
         Some(c + 1)
     }
 }

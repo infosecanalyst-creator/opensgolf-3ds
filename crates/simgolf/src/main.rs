@@ -297,6 +297,20 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 app.ui_ok = ui;
                 println!("pro round requested: game flags {:#x}, skills {:?}", app.club.game, &app.club.pro_skill[..10]);
             }
+            b'y' if v.len() >= 2 => {
+                // test hook: a home site at x,y bought at once by a celebrity
+                let theme = app.exe_theme();
+                if let Some(l) = app.land.as_mut() {
+                    let i = l.place(&mut app.exe_rng, at(0), at(1), sg_core::land::K_HOME_SITE, 0, theme);
+                    l.objects[i].val = 1_000_000;
+                    l.write_area(&mut app.terrain, at(0), at(1), at(0) + 1, at(1) + 1);
+                    if let Some(o) = app.club.celebrity_home(&mut app.exe_rng, 1_000_000, 0, (at(0), at(1))) {
+                        app.land.as_mut().unwrap().objects[i].sub = o;
+                    }
+                }
+                app.after_object_change();
+                println!("celebrity home at {},{}: {} residents", at(0), at(1), app.club.residents.len());
+            }
             b'g' => {
                 // a tournament: g:0 as the SGA offers it (the evaluation must pass), g:1 straight away with the default purse
                 app.club.game |= sg_core::tournament::OFFERED;
