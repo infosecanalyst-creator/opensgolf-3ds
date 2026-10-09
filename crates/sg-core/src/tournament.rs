@@ -219,15 +219,19 @@ impl Club {
             return false;
         }
         self.purse = 0;
-        let r = self.sga_evaluate(facilities);
+        self.sga_evaluate(facilities);
         if self.purse == 0 {
             self.game &= !OFFERED;
             return false;
         }
         let pro = self.roster.first().map(|p| p.name.clone()).unwrap_or_else(|| "Gary Golf".to_string());
+        // the exe's pieces (0x4c62cc, the course name, 0x4c627c, the purse, 0x4c6250, the pro's name, 0x4c6230); the event's
+        // name is not in it
         self.message(format!(
-            "The SGA is interested in holding the {} at {course_name}, with a first prize of \u{a7}{},000! Click the tournament button on the {pro} panel to begin the tournament.",
-            r.event, self.purse
+            "The SGA is interested in holding a tournament at your course. 'We'd like to schedule the {course_name} Open Golf \
+             Tournament here as soon as possible.' We can offer a top prize of \u{a7}{},000!  Click the tournament button in the \
+             {pro} panel to begin the tournament.",
+            self.purse
         ));
         self.sound(0x2f, None);
         self.game |= OFFERED;
