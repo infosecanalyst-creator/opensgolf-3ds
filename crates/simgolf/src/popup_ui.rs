@@ -140,7 +140,7 @@ impl App {
         let s = Ui::new(self.draw_w, self.draw_h);
         self.view = s.view;
         let r = p.rect();
-        s.fill(g, 0.0, 0.0, 800.0, 600.0, rgba(0.0, 0.0, 0.0, 0.25));
+        s.fill(g, -400.0, -400.0, 1600.0, 1400.0, rgba(0.0, 0.0, 0.0, 0.25));
         s.fill(g, r.x - 3.0, r.y - 3.0, r.w + 6.0, r.h + 6.0, rgba(0.55, 0.55, 0.85, 0.95));
         s.fill(g, r.x, r.y, r.w, r.h, rgba(0.92, 0.92, 1.0, 0.97));
         let opts = p.options();

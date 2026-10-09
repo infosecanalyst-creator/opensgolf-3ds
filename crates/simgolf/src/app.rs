@@ -1404,6 +1404,10 @@ impl App {
         self.club.new_game(&mut self.exe_rng);
         self.course = Course::default();
         self.staff_golfers.clear();
+        // what was showing of the old course: its floating money, a golfer's card, the shot analysis
+        self.floats = [(0, 0, 0, 0); 8];
+        self.card = None;
+        self.analysis = None;
         self.econ.init();
         self.sim_time = 0.0;
         self.sync_course();

@@ -1450,14 +1450,18 @@ impl Stage {
         let (w, h) = (self.app.draw_w as u32, self.app.draw_h as u32);
         let params = |format| TextureParams { width: w, height: h, format, ..Default::default() };
         let color = self.g.ctx.new_render_texture(params(TextureFormat::RGBA8));
-        let depth = self.g.ctx.new_render_texture(params(TextureFormat::Depth));
-        let pass = self.g.ctx.new_render_pass(color, Some(depth));
+        // WebGL 2 refuses miniquad's unsized depth texture (the pass would be incomplete and the grab black), so the browser
+        // grabs without a depth buffer (the course draws the same: tried natively, a few edge pixels differ)
+        let depth = (!cfg!(target_arch = "wasm32")).then(|| self.g.ctx.new_render_texture(params(TextureFormat::Depth)));
+        let pass = self.g.ctx.new_render_pass(color, depth);
         self.draw_frame(Some(pass));
         let mut raw = vec![0u8; (w * h * 4) as usize];
         self.g.ctx.texture_read_pixels(color, &mut raw);
         self.g.ctx.delete_render_pass(pass);
         self.g.ctx.delete_texture(color);
-        self.g.ctx.delete_texture(depth);
+        if let Some(d) = depth {
+            self.g.ctx.delete_texture(d);
+        }
         let mut img = sg_core::assets::Rgba::new(w, h);
         let stride = (w * 4) as usize;
         for y in 0..h as usize {

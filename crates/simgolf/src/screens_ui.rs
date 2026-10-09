@@ -1042,7 +1042,7 @@ impl App {
     pub fn draw_year_end(&mut self, g: &mut Gfx) {
         let s = Ui::new(self.draw_w, self.draw_h);
         self.view = s.view;
-        s.fill(g, 0.0, 0.0, 800.0, 600.0, rgba(0.0, 0.0, 0.0, 0.6));
+        s.fill(g, -400.0, -400.0, 1600.0, 1400.0, rgba(0.0, 0.0, 0.0, 0.6));
         let e = &self.art.endo;
         let has = e.tex.is_some();
         if has {
