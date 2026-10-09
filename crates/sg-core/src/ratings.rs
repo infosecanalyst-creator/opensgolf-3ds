@@ -269,9 +269,181 @@ pub fn report_row(h: usize, hole: &Hole, difficulty: i32, all_classes: bool) -> 
     }
 }
 
+/// Proper hole names by class, indexed by hole number (our own lists: the exe draws its names from three tables of 18 by
+/// par, women's names for par 3, shrubs and flowers for par 4, dark places for the rest).
+const NAMES_PAR3: [&str; 18] = [
+    "Abigail",
+    "Beatrice",
+    "Clara",
+    "Daphne",
+    "Eleanor",
+    "Fiona",
+    "Gwendolyn",
+    "Harriet",
+    "Ingrid",
+    "Josephine",
+    "Katherine",
+    "Lucinda",
+    "Margaret",
+    "Nadine",
+    "Ophelia",
+    "Penelope",
+    "Rosalind",
+    "Sylvia",
+];
+const NAMES_PAR4: [&str; 18] = [
+    "Azalea", "Juniper", "Laurel", "Magnolia", "Camellia", "Hawthorn", "Lilac", "Hibiscus", "Jasmine", "Primrose", "Rosemary", "Heather",
+    "Foxglove", "Bramble", "Wisteria", "Larkspur", "Myrtle", "Gardenia",
+];
+const NAMES_OTHER: [&str; 18] = [
+    "Gauntlet",
+    "Abyss",
+    "Torment",
+    "Bedlam",
+    "Perdition",
+    "Brimstone",
+    "Vortex",
+    "Nemesis",
+    "Despair",
+    "Calamity",
+    "Gallows",
+    "Maelstrom",
+    "Hades",
+    "Dungeon",
+    "Tempest",
+    "Wrath",
+    "Oblivion",
+    "Labyrinth",
+];
+
+/// A hole's name (0x407280): "Hole N", or a proper name once it is a Top 100 hole (or its naming is pending, flag 0x80).
+pub fn hole_name(h: usize, hole: &Hole) -> String {
+    if hole.flags & 0x81 == 0 || !(1..=18).contains(&h) {
+        return format!("Hole {h}");
+    }
+    match hole.par {
+        3 => NAMES_PAR3[h - 1],
+        4 => NAMES_PAR4[h - 1],
+        _ => NAMES_OTHER[h - 1],
+    }
+    .to_string()
+}
+
+/// The Hole Stats dialog's numbers (0x453330).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct HoleStats {
+    /// Fun percent, shown only when a shot was planned here.
+    pub fun: Option<i32>,
+    /// Length, Accuracy and Imagination differentials over the visible histogram columns, hundredths.
+    pub len: i32,
+    pub acc: i32,
+    pub img: i32,
+    /// The six columns: stroke value and finished rounds (the last column holds that many strokes and more, up to 9).
+    pub cols: [(i32, i32); 6],
+    /// Average strokes over the visible columns, hundredths (None without a round in them).
+    pub avg: Option<i32>,
+    /// The five most frequent remarks: event type, percent of rounds, the last stored argument.
+    pub comments: Vec<(u32, i32, i32)>,
+}
+
+/// The dialog's word for a fun percent.
+pub fn fun_word(v: i32) -> &'static str {
+    match v {
+        v if v < 0 => "poor",
+        0..=19 => "fair",
+        20..=39 => "good",
+        40..=59 => "very good",
+        _ => "outstanding",
+    }
+}
+
+/// The dialog's word for a differential in hundredths.
+pub fn demand_word(v: i32) -> &'static str {
+    match v {
+        v if v < 0 => "poor",
+        0..=24 => "fair",
+        25..=49 => "good",
+        50..=99 => "very good",
+        _ => "outstanding",
+    }
+}
+
+/// Computes the Hole Stats dialog: the histogram starts at max(par - 2, 1) and only its columns enter the differentials
+/// (with the 8 rounds at par of the report) and the stroke average.
+pub fn hole_stats(hole: &Hole) -> HoleStats {
+    let first = (hole.par - 2).max(1) as usize;
+    let bin = |cls: usize, k: usize| hole.hist.get(cls * 11 + k).copied().unwrap_or(0);
+    let mut n = [8i32; 8];
+    let mut s = [8 * hole.par; 8];
+    let (mut cnt, mut sum) = (0, 0);
+    for k in first..=9 {
+        for c in 0..8 {
+            let v = bin(c, k);
+            n[c] += v;
+            s[c] += v * k as i32;
+            cnt += v;
+            sum += v * k as i32;
+        }
+    }
+    let avg = |c: usize| s[c] * 100 / n[c];
+    let mut cols = [(0, 0); 6];
+    for (i, col) in cols.iter_mut().enumerate() {
+        let k = first + i;
+        let top = if i == 5 { 9 } else { k };
+        *col = (k as i32, (k..=top).map(|b| (0..8).map(|c| bin(c, b)).sum::<i32>()).sum());
+    }
+    let mut comments = Vec::new();
+    if hole.tee_shots > 0 {
+        let mut ev: Vec<i32> = (0..50).map(|e| hole.events.get(e).copied().unwrap_or(0)).collect();
+        for _ in 0..5 {
+            let (e, c) = ev.iter().enumerate().fold((0, 0), |b, (e, &c)| if c > b.1 { (e, c) } else { b });
+            if c <= 0 {
+                break;
+            }
+            ev[e] = 0;
+            let arg = hole.event_args.get(e).copied().unwrap_or(0) & 0x3fff;
+            comments.push((e as u32, c * 100 / hole.tee_shots, arg));
+        }
+    }
+    HoleStats {
+        fun: if hole.plans != 0 { Some(hole_fun(hole)) } else { None },
+        len: avg(6) - avg(7),
+        acc: avg(5) - avg(7),
+        img: avg(3) - avg(7),
+        cols,
+        avg: if cnt > 0 { Some(sum * 100 / cnt) } else { None },
+        comments,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hole_stats_columns() {
+        let mut h = Hole { par: 4, hist: vec![0; 88], events: vec![0; 64], event_args: vec![0; 64], ..Default::default() };
+        h.hist[7 * 11 + 4] = 10;
+        h.hist[6 * 11 + 5] = 10;
+        h.hist[7 * 11 + 1] = 3; // a hole in one: left of the first column (2), so it counts nowhere
+        h.hist[7 * 11 + 9] = 1;
+        h.tee_shots = 20;
+        h.events[11] = 4;
+        h.events[3] = 4;
+        h.events[55] = 9;
+        let st = hole_stats(&h);
+        assert_eq!(st.cols[0], (2, 0));
+        assert_eq!(st.cols[2], (4, 10));
+        assert_eq!(st.cols[5], (7, 1));
+        assert_eq!(st.avg, Some((40 + 50 + 9) * 100 / 21));
+        assert_eq!(st.fun, None);
+        // the lowest type wins a tie; types from 50 never show
+        assert_eq!(st.comments, vec![(3, 20, 0), (11, 20, 0)]);
+        assert_eq!(hole_name(3, &h), "Hole 3");
+        h.flags |= 1;
+        assert_eq!(hole_name(3, &h), "Laurel");
+        assert_eq!(demand_word(57), "very good");
+    }
 
     #[test]
     fn differentials_and_types() {

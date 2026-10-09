@@ -301,8 +301,9 @@ pub struct Club {
     pub kind_counts: [i32; 32],
     /// Frames per view of each golfer clip id + body (0x53f3e8), filled from the sprite files.
     pub clip_frames: Vec<i32>,
-    /// Best rounds (0x56a524).
+    /// Best rounds (0x56a524) and the golfers who played them (the Best Scores screen).
     pub top_rounds: [i32; 10],
+    pub top_names: [String; 10],
     /// Land purchases so far (0x53a450).
     pub purchases: i32,
     /// Hole types already announced (0x5685f8), the club ratings of the last statistics pass, and the home sites standing.
@@ -419,6 +420,7 @@ impl Club {
             kind_counts: [0; 32],
             clip_frames: vec![DEFAULT_CLIP; 0x100],
             top_rounds: [0; 10],
+            top_names: Default::default(),
             purchases: 0,
             types_announced: 0,
             ratings: Default::default(),
@@ -1298,8 +1300,10 @@ impl Club {
             if let Some(i) = (0..10).find(|&i| self.top_rounds[i] == 0 || total < self.top_rounds[i]) {
                 for j in (i + 1..10).rev() {
                     self.top_rounds[j] = self.top_rounds[j - 1];
+                    self.top_names[j] = std::mem::take(&mut self.top_names[j - 1]);
                 }
                 self.top_rounds[i] = total;
+                self.top_names[i] = self.name(g);
             }
             // The exe then announces a course record when the round beats the best one, but it compares with the table it
             // has just updated, so the announcement (and its membership point) never happens. Kept as the exe has it.
