@@ -460,7 +460,10 @@ impl App {
     fn lot_buildable(&self, i: usize) -> bool {
         let kind = 6 + i as i32;
         let level = self.lot_level(kind);
-        self.build_available(kind as usize) && level < 2 && (level == 0 || economy::rank(self.holes.len()) >= 2)
+        self.build_available(kind as usize)
+            && kind + level < self.unlocked()
+            && level < 2
+            && (level == 0 || economy::rank(self.holes.len()) >= 2)
     }
 
     /// The hired employees (indices into `employees`) in hiring order.

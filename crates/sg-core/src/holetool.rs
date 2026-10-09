@@ -201,7 +201,9 @@ impl Club {
         while (self.next_hole as usize) < 19 && self.holes[self.next_hole as usize].par != 0 {
             self.next_hole += 1;
         }
-        self.out.push(Event::Message(format!("Hole {h} is open: par {par}, length {len}.")));
+        let mut msg = opening_text(h, par, len, eff, self.holes[hu].flags);
+        msg += &self.unlock_text(h);
+        self.out.push(Event::Message(msg));
         self.log_event(crate::records::log::HOLE, h);
         let fl = self.holes[hu].flags;
         let pin = self.holes[hu].pin;
@@ -357,6 +359,92 @@ impl Club {
             }
             off = off.wrapping_sub(0x0aaa_aaaa);
         }
+    }
+}
+
+/// The announcement of a new hole (0x40e720): "Hole #3, a scenic 328 yard par 4, is now open for play." A par 3 under 125
+/// yards (par 4 under 350, par 5 under 500) is short, one over 200 (425, 575) long; the dogleg and slope come from the
+/// hole's flags.
+pub fn opening_text(h: i32, par: i32, len: i32, eff: i32, flags: u32) -> String {
+    let size = match par {
+        3 if eff < 125 => "short ",
+        3 if eff > 200 => "long ",
+        4 if eff < 350 => "short ",
+        4 if eff > 425 => "long ",
+        5 if eff < 500 => "short ",
+        5 if eff > 575 => "long ",
+        _ => "scenic ",
+    };
+    let mut s = format!("Hole #{h}, a {size}{len} yard ");
+    if flags & 0x1000 != 0 {
+        s += "uphill ";
+    }
+    if flags & 0x2000 != 0 {
+        s += "downhill ";
+    }
+    s += &format!("par {par}");
+    if flags & 0x20 != 0 {
+        s += " with a dogleg to the left";
+    }
+    if flags & 0x40 != 0 {
+        s += " with a dogleg to the right";
+    }
+    s + ", is now open for play."
+}
+
+/// What each building does, as the unlock message tells it (kinds 6..14).
+const UNLOCK_BLURB: [&str; 9] = [
+    " allows your golfers with imagination ability to improve their putting.",
+    " will feed golfers who get hungry and provide some extra revenue.",
+    " allows your accurate golfers to improve their equipment.",
+    " helps your players to begin play with a better attitude.",
+    " allows your long hitters to improve the length of their shots.",
+    " increases your players speed of play.",
+    " increases the value of all homes and lots at your course.",
+    " keeps your players from getting tired towards the end of their round.",
+    " allows you to charge higher greens fees at your course.",
+];
+
+/// The course rank upgrade (0x40e5f0) on reaching 6, 10 and 18 holes.
+fn rank_text(step: usize) -> String {
+    let names = crate::economy::RANK_NAMES;
+    let mut s = format!(
+        " Your course is now upgraded from a {} to a {} course. This will DOUBLE your tournament prize monies if your course passes the more stringent SGA evaluation. ",
+        names[step],
+        names[step + 1]
+    );
+    match step {
+        0 => s += "In addition you may now hire more experienced employees, for a slightly higher salary of course.",
+        1 => s += "In addition you may build upgraded buildings which are more effective.",
+        _ => {}
+    }
+    s
+}
+
+impl Club {
+    /// What opening hole `h` adds to its announcement: the rank upgrade at 6, 10 and 18 holes, otherwise the next building
+    /// kind while the course is growing (the counter only ever rises).
+    fn unlock_text(&mut self, h: i32) -> String {
+        let mut s = String::new();
+        if h == 6 {
+            s += &rank_text(0);
+        } else if h == 10 {
+            s += &rank_text(1);
+        } else if h > self.unlocked - 5 && self.unlocked <= 14 && !self.sandbox {
+            s += if h & 1 == 0 {
+                " As your course grows you can add new facilities. "
+            } else {
+                " New players are flocking to your golf course. "
+            };
+            let k = self.unlocked;
+            let name = crate::land::BUILDINGS[k as usize].0;
+            s += &format!("You may now build a {name}. A {name}{}", UNLOCK_BLURB[(k - 6) as usize]);
+            self.unlocked += 1;
+        }
+        if h == 18 {
+            s += &rank_text(2);
+        }
+        s
     }
 }
 

@@ -1232,6 +1232,15 @@ impl App {
     }
 
     /// Whether the building tool may place this kind now: unlocked by the course's holes (sandbox: all).
+    /// Building kinds unlocked: the club's counter, never below what the open holes have earned (saves from before the counter
+    /// was kept), all of them in sandbox.
+    pub fn unlocked(&self) -> i32 {
+        if self.econ.sandbox {
+            return 17;
+        }
+        self.club.unlocked.max(land::unlocked_kinds(self.holes.len(), false))
+    }
+
     pub fn build_available(&self, kind: usize) -> bool {
         // The garden page (kinds up to 5, the willow and the bridge) is always open; buildings unlock with holes.
         let k = kind as i32;
@@ -1243,8 +1252,7 @@ impl App {
         if k == land::K_HOME_SITE && self.club.homesite_demand < 1 && !self.econ.sandbox {
             return false;
         }
-        OFFERED_KINDS.contains(&k)
-            && (k <= 5 || k == land::K_WILLOW || k == land::K_BRIDGE || k < land::unlocked_kinds(self.holes.len(), self.econ.sandbox))
+        OFFERED_KINDS.contains(&k) && (k <= 5 || k == land::K_WILLOW || k == land::K_BRIDGE || k < self.unlocked())
     }
 
     /// Scenery: trees on Woods tiles, the placed buildings, a clubhouse, and the pool of golfers.

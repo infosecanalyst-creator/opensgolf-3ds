@@ -326,6 +326,8 @@ pub struct Club {
     /// The property is an island (no commissioner comes) and a sandbox game (no visitors come).
     pub island: bool,
     pub sandbox: bool,
+    /// Building kinds unlocked (0x5a6364): kinds below it may be built. Starts at 6, 17 in sandbox; only ever grows.
+    pub unlocked: i32,
     /// celebrities.dta and progolfers.dta of the theme.
     pub celebrities: Vec<crate::vips::Celebrity>,
     pub pros: Vec<crate::vips::Pro>,
@@ -436,6 +438,7 @@ impl Club {
             celeb_homes: 0,
             island: false,
             sandbox: false,
+            unlocked: 6,
             celebrities: Vec::new(),
             pro_skill: [0; 16],
             pro_mask: 0,
