@@ -252,8 +252,8 @@ pub enum Event {
     Thought { g: usize, id: u32, arg: i32 },
     /// A message for the ticker.
     Message(String),
-    /// A golfer finished a hole (employees serving them note it).
-    HoleDone { g: usize },
+    /// A golfer finished a hole (employees serving them note it): the hole, strokes taken, mood and fee paid.
+    HoleDone { g: usize, hole: i32, strokes: i32, mood: i32, fee: i32 },
 }
 
 /// The golfers and everything they share (the exe's globals near them).
@@ -897,7 +897,7 @@ impl Club {
                 return s as i32;
             }
         }
-        self.message("Your membership is declining.".into());
+        // The exe writes "Your membership is declining." to its message buffer here but never shows it.
         self.create_counter = (self.create_counter - 1).rem_euclid(SLOTS as i32);
         self.g[s] = Golfer::default();
         -1
@@ -1016,7 +1016,8 @@ impl Club {
         }
         let strokes = self.g[g].strokes;
         self.member_mut(g).card[hu.min(18)] = strokes as u8;
-        self.out.push(Event::HoleDone { g });
+        let mood = self.g[g].mood;
+        self.out.push(Event::HoleDone { g, hole: h, strokes, mood, fee });
         self.g[g].bx = 0;
         self.g[g].strokes = 0;
         if self.g[g].hole_tick < self.tick {
@@ -3266,7 +3267,7 @@ mod tests {
                         holed += 1;
                         fees += units;
                     }
-                    Event::HoleDone { g } => strokes.push(club.g[g].card[1]),
+                    Event::HoleDone { strokes: s, .. } => strokes.push(s as i8),
                     _ => {}
                 }
             }
@@ -3274,5 +3275,41 @@ mod tests {
         println!("holes finished {holed}, fees {fees}, cards {strokes:?}");
         assert!(holed >= 4, "golfers should finish the hole: {holed}");
         assert!(strokes.iter().all(|&s| (2..=10).contains(&s)), "{strokes:?}");
+    }
+}
+
+#[cfg(test)]
+mod soak {
+    use super::tests::test_course;
+    use super::*;
+
+    /// A long run on the test course at every difficulty: no panics, golfers keep coming and finishing.
+    #[test]
+    fn long_run() {
+        for diff in 0..4 {
+            let (mut c, mut club) = test_course();
+            club.difficulty = diff;
+            let mut rng = ExeRng { state: 777 + diff as u32 };
+            club.new_game(&mut rng);
+            let mut done = 0;
+            for tick in 1..50_000u32 {
+                for g in club.g.iter_mut() {
+                    g.sx = 400;
+                }
+                club.tick(&mut c, &mut rng, tick);
+                done += club.out.drain(..).filter(|e| matches!(e, Event::HoleDone { .. })).count();
+            }
+            let gone = club.members.iter().filter(|m| m.gone == 0xff).count();
+            let invited = club.members.iter().filter(|m| m.level & 7 != 0 && m.gone != 0xff).count();
+            let playing = club.g.iter().filter(|g| g.hole != 0).count();
+            println!("difficulty {diff}: {done} holes, {gone} quit for good, {invited} invited left, {playing} on course");
+            // On a bare course the harder settings drive the members away for good, as in the exe; the easier ones keep playing.
+            assert!(done > 5, "difficulty {diff}: {done} holes finished");
+            if diff < 2 {
+                assert!(done > 50, "difficulty {diff}: {done} holes finished");
+            } else {
+                assert!(invited + gone >= 12, "members are either still invited or gone");
+            }
+        }
     }
 }

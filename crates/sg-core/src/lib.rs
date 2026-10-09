@@ -28,6 +28,7 @@ pub mod properties;
 pub mod rng;
 pub mod roster;
 pub mod shot;
+pub mod sounds;
 pub mod sprites;
 pub mod staff;
 pub mod terrain;

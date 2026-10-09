@@ -85,9 +85,10 @@ impl App {
         }
         self.update_props();
         if self.follow {
-            if let Some(gl) = self.golfers.iter().find(|g| g.active) {
-                self.cam_x = gl.sim.golfer_x;
-                self.cam_z = gl.sim.golfer_z;
+            if let Some(gl) = self.club.g.iter().find(|g| g.hole > 0 && g.hole < 19) {
+                let (x, z) = self.units_to_world(gl.x, gl.y);
+                self.cam_x = x;
+                self.cam_z = z;
             }
         }
         let mv = self.mv;
@@ -152,12 +153,19 @@ impl App {
             }
         }
         // The ball: a small white disc with a dark disc on the ground below it.
-        for gl in &self.golfers {
-            if !gl.active || gl.sim.ball_h < 0.0 {
-                continue;
-            }
-            let sm = &gl.sim;
-            let gy = self.terrain.height_at(sm.ball_x, sm.ball_z);
+        // Height above the ground is in the exe's z units, 16 to a height step (15 world units here).
+        let balls: Vec<(f32, f32, f32)> = self
+            .club
+            .g
+            .iter()
+            .filter(|gl| gl.bx != 0 && gl.hole > 0 && gl.hole < 19 && gl.flags & sg_core::golfer::flag::PENALTY == 0)
+            .map(|gl| {
+                let (x, z) = self.units_to_world(gl.bx, gl.by);
+                (x, z, gl.bz as f32 * sg_core::terrain::HEIGHT_STEP / 16.0)
+            })
+            .collect();
+        for (bx, bz, bh) in balls {
+            let gy = self.terrain.height_at(bx, bz);
             let disc = |g: &mut Gfx, x: f32, y: f32, z: f32, rpx: f32, col: [f32; 4], upright: bool| {
                 let pt = |i: i32| {
                     let a = i as f32 * std::f32::consts::TAU / 12.0;
@@ -175,8 +183,8 @@ impl App {
                 }
                 g.tris(Mode::Flat, None, u, &v);
             };
-            disc(g, sm.ball_x, gy + 1.0, sm.ball_z, 4.5, [0.0, 0.0, 0.0, 0.45], false);
-            disc(g, sm.ball_x, gy + sm.ball_h + 4.0, sm.ball_z, 5.0, [1.0; 4], true);
+            disc(g, bx, gy + 1.0, bz, 4.5, [0.0, 0.0, 0.0, 0.45], false);
+            disc(g, bx, gy + bh + 4.0, bz, 5.0, [1.0; 4], true);
         }
     }
 

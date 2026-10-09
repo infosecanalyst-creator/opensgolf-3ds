@@ -3,15 +3,16 @@
 use crate::gfx::{Gfx, Mesh, Vert};
 use crate::ui::{money, Image};
 use miniquad::TextureId;
+use sg_core::course::Course;
 use sg_core::economy::{self, Economy};
 use sg_core::fsutil::resolve;
+use sg_core::golfer::{self as golf, Club};
 use sg_core::holes::*;
 use sg_core::land::{self, ExeRng, Land, Noise, Slot};
 use sg_core::mixer::Mixer;
-use sg_core::mood;
 use sg_core::properties::{PROPERTIES, START_FUNDS};
 use sg_core::rng::Rng;
-use sg_core::shot::{GolferAnim, GolferSkills, ShotSim};
+use sg_core::shot::GolferSkills;
 use sg_core::sprites::{load_sprite, Sprite};
 use sg_core::staff::{self, Employee, StaffEvent, StaffGolfer, TileState};
 use sg_core::terrain::*;
@@ -20,8 +21,45 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 pub const THEMES: [&str; 4] = ["Parkland", "Links", "Desert", "Tropical"];
-pub const MAX_GOLFERS: usize = 8;
-pub const LOOKS: usize = 4;
+/// Golfer bodies by the exe's body index (0..3 men, 5..8 women), and the clips by the exe's clip id; a sprite id is clip + body.
+pub const GOLFER_BODIES: [&str; 9] = [
+    "Male/MalePLS",
+    "Male/MaleKLS",
+    "Male/MalePSS",
+    "Male/MaleSSS",
+    "",
+    "Female/FemalePLS",
+    "Female/FemaleSSS",
+    "Female/FemalePSS",
+    "Female/FemaleSkTT",
+];
+pub const GOLFER_CLIPS: [(i32, &str); 25] = [
+    (0x00, "NormalWalk"),
+    (0x0a, "sq"),
+    (0x14, "Fidget"),
+    (0x1e, "Happy"),
+    (0x28, "PerfectSwing"),
+    (0x32, "NoAccSwing"),
+    (0x37, "NoimagSwing"),
+    (0x3c, "Sitting"),
+    (0x46, "SitSq"),
+    (0x50, "Pitch"),
+    (0x5a, "Putt"),
+    (0x64, "LineUpPutt"),
+    (0x6e, "PointAt"),
+    (0x78, "NormalAddress"),
+    (0x82, "PitchAddress"),
+    (0x8c, "PuttAddress"),
+    (0x96, "LeanRight"),
+    (0xa0, "LeanLeft"),
+    (0xaa, "LookUp"),
+    (0xb4, "SuccessA"),
+    (0xbe, "Sad"),
+    (0xc8, "FailureA"),
+    (0xd2, "TiredWalk"),
+    (0xdc, "HandShake"),
+    (0xe6, "Cart"),
+];
 
 /// A sprite plus its lazily created textures (one per view/frame).
 pub struct GlSprite {
@@ -80,26 +118,6 @@ impl Default for Prop {
             tree: false,
         }
     }
-}
-
-/// One golfer on the course. A fixed pool is allocated.
-#[derive(Clone, Debug, Default)]
-pub struct Golfer {
-    pub sim: ShotSim,
-    pub active: bool,
-    pub look: usize,
-    pub hole: usize,
-    pub strokes_round: i32,
-    pub last_stroke: i32,
-    pub last_event: &'static str,
-    pub hole_start: f64,
-    /// The golfer's mood value, which sets the green fee (the exe keeps it per golfer as a small integer).
-    pub mood: i32,
-    /// Hunger and thirst counters, as the exe keeps them per golfer (docs/PUBLISHER_EXE_NOTES.md, "Golfer needs").
-    pub hunger: i32,
-    pub thirst: i32,
-    /// Seconds until the next needs update.
-    pub needs_clock: f64,
 }
 
 /// Per hole statistics for the course report (reset when the course changes shape).
@@ -195,16 +213,14 @@ pub struct App {
     pub show_props: bool,
     /// Seconds, drives animation.
     pub time: f64,
-    pub golfers: Vec<Golfer>,
+    /// The golfers and the course as they see it (the exe's golfer table and tile arrays).
+    pub club: Club,
+    pub course: Course,
     /// Found from the painted tees and greens.
     pub holes: Vec<HoleRoute>,
     pub sim_time: f64,
-    pub spawn_timer: f64,
-    /// [look][GolferAnim]
-    pub look_body: [[Option<usize>; 6]; LOOKS],
-    pub look_shadow: [[Option<usize>; 6]; LOOKS],
-    pub look_ok: [bool; LOOKS],
-    pub rounds_started: u32,
+    /// Golfer clips by sprite id (clip + body): body and shadow sprites.
+    pub golfer_clips: HashMap<i32, (Option<usize>, Option<usize>)>,
     /// 0..3 as in the exe (the standard game's value is not known yet; 1 is a guess).
     pub difficulty: i32,
     /// The exe's random number generator (land, offer) and the height noise it fills once at start-up.
@@ -348,14 +364,11 @@ impl App {
             props: Vec::new(),
             show_props: true,
             time: 0.0,
-            golfers: Vec::new(),
+            club: Club::default(),
+            course: Course::default(),
             holes: Vec::new(),
             sim_time: 0.0,
-            spawn_timer: 1e9,
-            look_body: [[None; 6]; LOOKS],
-            look_shadow: [[None; 6]; LOOKS],
-            look_ok: [false; LOOKS],
-            rounds_started: 0,
+            golfer_clips: HashMap::new(),
             difficulty: 1,
             exe_rng,
             noise,
@@ -452,26 +465,12 @@ impl App {
         id
     }
 
-    /// Plays one of the exe's sound slots (the ones the staff use). The exe pans and scales these by screen position; here
-    /// they play centred.
+    /// Plays one of the exe's sound slots (the file each slot holds after the exe's loader, sg_core::sounds). The exe pans and
+    /// scales these by screen position; here they play centred.
     pub fn slot_sound(&mut self, slot: i32, _x: f32, _z: f32) {
-        let file = match slot {
-            34 => "effects/fly.wav",
-            92 => "simsfx/male/mgreeting.wav",
-            93 => "celebs/ranger.wav",
-            94 => "simsfx/male/mcrabgrass2.wav",
-            95 => "celebs/tray girl.wav",
-            // Slot 96 is loaded from "sound\Celebs\..." (no such folder), so the original plays nothing here.
-            97 => "celebs/marshal male.wav",
-            98 => "celebs/lawn technician.wav",
-            99 => "simsfx/female/fhaveadrink.wav",
-            100 => "celebs/mgreeting.wav",
-            101 => "celebs/politician dislike.wav",
-            102 => "celebs/action star dislike.wav",
-            103 => "celebs/politician like.wav",
-            _ => return,
-        };
-        self.snd(file, 0.7, false);
+        if let Some(file) = sg_core::sounds::slot_file(slot) {
+            self.snd(file, 0.7, false);
+        }
     }
 
     pub fn start_ambience(&mut self) {
@@ -893,35 +892,19 @@ impl App {
                 self.props.push(body);
             }
         }
-        // The pool of golfers (their sprites differ for variety). Golfers arrive over time, see step_game().
-        const LOOK: [&str; LOOKS] = ["Male/MaleKLS", "Male/MalePLS", "Female/FemalePLS", "Female/FemaleSSS"];
-        const ANIM: [&str; 6] = ["_NormalWalk", "_NormalAddress", "_PerfectSwing", "_PuttAddress", "_Putt", "_Happy"];
-        for l in 0..LOOKS {
-            self.look_ok[l] = true;
-            for i in 0..6 {
-                let anim = if i == 2 && l >= 2 { "_NormalSwing" } else { ANIM[i] }; // the women have no PerfectSwing clip
-                self.look_body[l][i] = self.sprite_for(&format!("{}{anim}.flc", LOOK[l]), false, None);
-                self.look_shadow[l][i] = self.sprite_for(&format!("{}{anim}Shadow.flc", LOOK[l]), true, None);
-                if self.look_body[l][i].is_none() {
-                    self.look_ok[l] = false;
-                }
-            }
-        }
         self.load_staff_sprites();
         self.holes = find_holes(&self.terrain);
-        self.golfers = vec![Golfer::default(); MAX_GOLFERS];
+        self.golfer_clips.clear();
+        let roster = std::mem::take(&mut self.club.roster);
+        self.club = Club::new(if roster.is_empty() { sg_core::roster::load(&self.game_dir) } else { roster });
+        self.club.new_game(&mut self.exe_rng);
+        self.course = Course::default();
         self.staff_golfers.clear();
         self.econ.init();
         self.sim_time = 0.0;
-        self.spawn_timer = 1e9;
-        for i in 0..MAX_GOLFERS {
-            self.props.push(Prop {
-                golfer: Some(i),
-                hidden: true,
-                body: self.look_body[0][0],
-                shadow: self.look_shadow[0][0],
-                ..Default::default()
-            });
+        self.sync_course();
+        for i in 0..golf::SLOTS {
+            self.props.push(Prop { golfer: Some(i), hidden: true, ..Default::default() });
         }
     }
 
@@ -957,94 +940,198 @@ impl App {
 
     // ---- golfers and the club -----------------------------------------------------------------------------------------------
 
+    /// Golfers playing or walking home (the waiting ones are inside the clubhouse).
     pub fn golfers_on_course(&self) -> usize {
-        self.golfers.iter().filter(|g| g.active).count()
+        self.club.g.iter().filter(|g| g.hole > 0).count()
     }
 
-    /// Starts a golfer on the first hole. Skills vary from golfer to golfer (PLACEHOLDER spread of 4 to 11 out of 15).
-    fn spawn_golfer(&mut self) {
-        if self.holes.is_empty() {
+    /// Brings the golfers' view of the course up to date: tiles, objects and levels from the land, weeds from the staff's tiles,
+    /// the clubhouse door, and one hole record per tee and green pair (back and forward tee on the tee, pin and cup on the green).
+    pub fn sync_course(&mut self) {
+        self.ensure_land();
+        let Some(land) = &self.land else { return };
+        self.course.sync(land);
+        self.course.door = self.club_anchor();
+        self.course.theme = self.exe_theme();
+        if self.course.objects.first().map(|o| o.kind) != Some(land::K_CLUBHOUSE) {
+            let (a, b) = self.course.door;
+            self.course.objects.insert(0, land::Object { kind: land::K_CLUBHOUSE, a, b, dir: 0, flags: 0x40, sub: 0 });
+        }
+        self.weeds_to_course();
+        for f in self.course.flags.iter_mut() {
+            *f &= !(sg_core::course::f::CUP | if *f & sg_core::course::f::FOOTPRINT == 0 { sg_core::course::f::LOW } else { 0 });
+        }
+        let n = self.holes.len().min(18);
+        for h in 1..golf::HOLE_RECORDS {
+            let rec = &mut self.club.holes[h];
+            rec.par = 0;
+        }
+        for (k, r) in self.holes.iter().take(n).enumerate() {
+            let h = k + 1;
+            let tee = self.terrain.tile_of(r.tee_x, r.tee_z);
+            let pin = self.terrain.tile_of(r.green_x, r.green_z);
+            let rec = &mut self.club.holes[h];
+            rec.par = r.par;
+            rec.back = tee;
+            rec.fwd = tee;
+            rec.pin = pin;
+            rec.tee_facing = sg_core::geom::dir8(sg_core::geom::angle(pin.0 - tee.0, pin.1 - tee.1));
+            if sg_core::course::inside(pin.0, pin.1) {
+                let i = sg_core::course::idx(pin.0, pin.1);
+                self.course.flags[i] = (self.course.flags[i] & !0x1f) | sg_core::course::f::CUP | h as u16;
+            }
+        }
+        let door = self.course.door;
+        let home = &mut self.club.holes[19];
+        home.par = 0;
+        home.back = door;
+        home.fwd = door;
+        home.pin = door;
+        self.club.next_hole = n as i32 + 1;
+    }
+
+    /// The staff's weed tiles into the golfers' tile flags (the exe keeps both in one array).
+    fn weeds_to_course(&mut self) {
+        let t = &self.staff_tiles;
+        if t.flags.len() != (t.w * t.h) as usize {
             return;
         }
-        let Some(i) = self.golfers.iter().position(|g| !g.active) else { return };
-        let mut r = self
-            .seed
-            .wrapping_mul(2654435761)
-            .wrapping_add((self.sim_time * 1000.0) as u32)
-            .wrapping_add((i as u32).wrapping_mul(97))
-            .wrapping_add(self.rounds_started.wrapping_mul(7919))
-            .wrapping_add(1);
-        let mut next = || {
-            r ^= r << 13;
-            r ^= r >> 17;
-            r ^= r << 5;
-            r
-        };
-        let mut g = Golfer { active: true, ..Default::default() };
-        g.look = (next() % LOOKS as u32) as usize;
-        if !self.look_ok[g.look] {
-            g.look = 0;
-        }
-        for k in 0..10 {
-            g.sim.skills.v[k] = 4 + (next() % 8) as i32;
-        }
-        if self.rounds_started == 0 {
-            g.sim.skills = self.skills; // the first golfer is the one picked with --golfer
-        }
-        g.sim.set_route(self.holes[0].route.clone());
-        g.hole_start = self.sim_time;
-        // The exe starts each golfer's mood at 3 plus a random 0 to 2, or at 4 on the easiest difficulty.
-        g.mood = if self.difficulty == 0 { 4 } else { 3 + (next() % 3) as i32 };
-        g.sim.looping = false;
-        g.last_stroke = -1;
-        let seed = next();
-        g.sim.init(&self.terrain, seed);
-        self.golfers[i] = g;
-        self.rounds_started += 1;
-    }
-
-    fn golfer_sounds(&mut self, gi: usize) {
-        let (ev, club) = (self.golfers[gi].sim.event, self.golfers[gi].sim.club);
-        match ev {
-            "drive" => {
-                self.snd(if club == "iron" { "Golf_Sfx/Iron.wav" } else { "Golf_Sfx/Drive With Ball.wav" }, 0.8, false);
+        for a in 0..t.w.min(50) {
+            for b in 0..t.h.min(50) {
+                let si = (b * t.w + a) as usize;
+                let ci = sg_core::course::idx(a, b);
+                let bits = t.flags[si] & (staff::WEEDS | staff::WORKED);
+                self.course.flags[ci] = (self.course.flags[ci] & !(staff::WEEDS | staff::WORKED)) | bits;
+                self.course.growth[ci] = t.counter[si];
             }
-            "putt" => {
-                self.snd("Golf_Sfx/Putt.wav", 0.8, false);
-            }
-            "on the course" => {
-                self.snd("Golf_Sfx/Ball Drop Fairway.wav", 0.5, false);
-            }
-            "in the sand" => {
-                self.snd("Golf_Sfx/Ball Drop Sand.wav", 0.6, false);
-            }
-            "holed" => {
-                // The exe's green fee routine plays no sound; applause belongs to the SGA rating announcements and the cash
-                // register to "Other" income (docs/PUBLISHER_EXE_NOTES.md, "Sounds").
-                self.snd("Golf_Sfx/Ball In Hole.wav", 0.8, false);
-            }
-            e if e.starts_with("splash") => {
-                self.snd("Golf_Sfx/Ball Water.wav", 0.8, false);
-            }
-            e if e.starts_with("out of bounds") => {
-                self.snd("Golf_Sfx/Ball Tree.wav", 0.8, false);
-            }
-            _ => {}
         }
     }
 
-    /// Advances the club by dt seconds: arrivals, every golfer's round, fees, wages and the board's messages.
+    /// New weeds the golfers started, back into the staff's tiles.
+    fn weeds_from_course(&mut self) {
+        let t = &mut self.staff_tiles;
+        if t.flags.len() != (t.w * t.h) as usize {
+            return;
+        }
+        for a in 0..t.w.min(50) {
+            for b in 0..t.h.min(50) {
+                let si = (b * t.w + a) as usize;
+                let ci = sg_core::course::idx(a, b);
+                let bits = self.course.flags[ci] & (staff::WEEDS | staff::WORKED);
+                t.flags[si] = (t.flags[si] & !(staff::WEEDS | staff::WORKED)) | bits;
+                t.counter[si] = self.course.growth[ci];
+            }
+        }
+    }
+
+    /// Sprite id (clip + body) of a golfer clip, loaded on first use: (body, shadow).
+    fn golfer_clip(&mut self, id: i32) -> (Option<usize>, Option<usize>) {
+        if let Some(c) = self.golfer_clips.get(&id) {
+            return *c;
+        }
+        let mut found = (None, None);
+        if let Some(&(base, name)) = GOLFER_CLIPS.iter().rev().find(|(b, _)| *b <= id && id - *b <= 8) {
+            let body = (id - base) as usize;
+            if let Some(prefix) = GOLFER_BODIES.get(body).filter(|p| !p.is_empty()) {
+                let name = if base == 0x28 && body >= 5 { "NormalSwing" } else { name };
+                found = (
+                    self.sprite_for(&format!("{prefix}_{name}.flc"), false, None),
+                    self.sprite_for(&format!("{prefix}_{name}Shadow.flc"), true, None),
+                );
+            }
+        }
+        if let Some(b) = found.0 {
+            if let Some(slot) = self.club.clip_frames.get_mut(id as usize) {
+                *slot = self.sprites[b].s.frames_per_view.max(1);
+            }
+        }
+        self.golfer_clips.insert(id, found);
+        found
+    }
+
+    /// Makes sure the clip lengths of every body on the course are known to the golfer animation.
+    fn load_golfer_bodies(&mut self) {
+        for g in 0..golf::SLOTS {
+            let h = self.club.g[g].hole;
+            if h == 0 || h == -1 {
+                continue;
+            }
+            let look = self.club.look(g);
+            if self.golfer_clips.contains_key(&(1000 + look)) {
+                continue;
+            }
+            self.golfer_clips.insert(1000 + look, (None, None));
+            for &(base, _) in GOLFER_CLIPS.iter() {
+                self.golfer_clip(base + look);
+            }
+        }
+    }
+
+    /// One game tick of the golfers (the exe updates them just before the staff).
+    fn club_tick(&mut self) {
+        if self.club.holes[1].par == 0 && !self.holes.is_empty() {
+            self.sync_course();
+        }
+        self.load_golfer_bodies();
+        self.weeds_to_course();
+        self.club.difficulty = self.difficulty;
+        self.club.cash = (self.econ.cash / Economy::UNIT) as i32;
+        self.club.year = self.econ.year_index() as i32;
+        let tick = self.game_tick;
+        self.club.tick(&mut self.course, &mut self.exe_rng, tick);
+        self.weeds_from_course();
+        let events: Vec<golf::Event> = self.club.out.drain(..).collect();
+        for e in events {
+            match e {
+                golf::Event::Sound { slot, at } => {
+                    let (wx, wz) = match at {
+                        Some((x, y)) => self.units_to_world(x, y),
+                        None => (self.cam_x, self.cam_z),
+                    };
+                    self.slot_sound(slot, wx, wz);
+                }
+                golf::Event::Earn { units, column, .. } => {
+                    let col = match column {
+                        golf::Column::GreensFees => economy::LEDGER_GREEN_FEES,
+                        golf::Column::FoodDrink => economy::LEDGER_FOOD_DRINK,
+                        golf::Column::Other => economy::LEDGER_OTHER,
+                    };
+                    if col == economy::LEDGER_GREEN_FEES {
+                        self.econ.hole_completed(units as f64);
+                    } else {
+                        self.econ.earn_to(col, units as f64 * Economy::UNIT);
+                    }
+                }
+                golf::Event::Message(m) => {
+                    if !m.is_empty() {
+                        println!("[{:6.1}s] {m}", self.sim_time);
+                        self.show_toast(&m);
+                    }
+                }
+                golf::Event::HoleDone { hole, strokes, mood, fee, .. } => {
+                    if self.hole_stats.len() != self.holes.len() {
+                        self.hole_stats = vec![HoleStat::default(); self.holes.len()];
+                    }
+                    let k = (hole - 1).max(0) as usize;
+                    let time = self.club.holes.get(hole as usize).map(|h| h.time).unwrap_or(0);
+                    let mood_sum = self.club.holes.get(hole as usize).map(|h| h.mood_sum).unwrap_or(0);
+                    if let Some(hs) = self.hole_stats.get_mut(k) {
+                        hs.plays += 1;
+                        hs.strokes += strokes as f64;
+                        hs.seconds = time as f64 * 2.0 * sg_core::flight::TICK_MS as f64 / 1000.0;
+                        hs.revenue += fee as f64 * Economy::UNIT;
+                        hs.mood += mood as f64 * 10.0;
+                        hs.hist[(strokes - 3).clamp(0, 5) as usize] += 1;
+                        hs.mood_sum = mood_sum;
+                    }
+                }
+                golf::Event::Thought { .. } => {}
+            }
+        }
+    }
+
+    /// Advances the club by dt seconds: one golfer and staff update per game tick (87 ms), fees, wages and the board's messages.
     pub fn step_game(&mut self, dt: f32) {
-        let open = !self.holes.is_empty() && !self.econ.game_over;
-        // Arrivals (PLACEHOLDER rates until the exe's arrival queue is in): one golfer every 25 s, at most two per hole, up to the
-        // size of the pool.
-        self.spawn_timer += dt as f64;
-        let every = 25.0;
-        let capacity = MAX_GOLFERS.min(2 * self.holes.len());
-        if open && self.spawn_timer >= every && self.golfers_on_course() < capacity {
-            self.spawn_golfer();
-            self.spawn_timer = 0.0;
-        }
         if !self.econ.notice.is_empty() {
             println!("[{:6.1}s] board: {}", self.sim_time, self.econ.notice);
             self.econ.notice.clear();
@@ -1053,233 +1140,11 @@ impl App {
         let tick_s = sg_core::flight::TICK_MS as f64 / 1000.0;
         while self.tick_acc >= tick_s {
             self.tick_acc -= tick_s;
+            if !self.econ.game_over {
+                self.club_tick();
+            }
             self.staff_tick();
         }
-        for gi in 0..self.golfers.len() {
-            if !self.golfers[gi].active {
-                continue;
-            }
-            {
-                let sg = self.staff_golfers.get(gi).copied().unwrap_or_default();
-                let pace = self.hurry_pace(gi, sg.hurried);
-                let g = &mut self.golfers[gi];
-                g.sim.pace_scale = pace;
-                // A golfer an employee is talking to stands still until the pause runs out.
-                if sg.pause >= 0 {
-                    g.sim.step(&self.terrain, dt);
-                }
-                g.needs_clock -= dt as f64;
-            }
-            if self.golfers[gi].needs_clock <= 0.0 {
-                // The exe updates a golfer's needs every 160 ticks (14 seconds at 87 ms a tick).
-                self.golfers[gi].needs_clock += 160.0 / sg_core::flight::TICKS_PER_SECOND as f64;
-                self.needs_tick(gi);
-                if !self.golfers[gi].active {
-                    continue;
-                }
-            }
-            let (ev, stroke) = (self.golfers[gi].sim.event, self.golfers[gi].sim.stroke);
-            if ev != self.golfers[gi].last_event || stroke != self.golfers[gi].last_stroke {
-                self.golfers[gi].last_event = ev;
-                self.golfers[gi].last_stroke = stroke;
-                self.golfer_sounds(gi);
-                self.shot_mood_event(gi, ev);
-                // The exe raises the weeds event (0x18) while a golfer plans a shot from a tile with a grown weed. Golfer shot
-                // planning here is not the exe's, so the test is made where the ball lies when a stroke begins.
-                if stroke != 0 && self.golfers[gi].active {
-                    let (bx, bz) = (self.golfers[gi].sim.ball_x, self.golfers[gi].sim.ball_z);
-                    let (tx, ty) = self.terrain.tile_of(bx, bz);
-                    if staff::grown_weed(&self.staff_tiles, tx, ty) {
-                        self.mood_event(gi, mood::ev::WEEDS, 0x14);
-                    }
-                }
-                if !self.golfers[gi].active {
-                    continue;
-                }
-                if ev == "holed" {
-                    self.hole_out(gi);
-                }
-            }
-            if self.golfers[gi].sim.finished {
-                let g = &mut self.golfers[gi];
-                g.hole += 1;
-                if g.hole < self.holes.len() {
-                    g.sim.set_route(self.holes[g.hole].route.clone());
-                    g.hole_start = self.sim_time;
-                    let seed = (g.sim.stroke as u32).wrapping_mul(7919).wrapping_add(g.hole as u32).wrapping_add(gi as u32);
-                    g.sim.init(&self.terrain, seed);
-                } else {
-                    println!("[{:6.1}s] golfer {gi} finished the round in {} strokes", self.sim_time, g.strokes_round);
-                    g.active = false;
-                }
-            }
-        }
-    }
-
-    /// Raises the exe's mood events for what just happened to a golfer's ball. Which shot outcome raises which event is our reading
-    /// of the event meanings; the putt distances that count as easy or tough are PLACEHOLDERS.
-    fn shot_mood_event(&mut self, gi: usize, ev: &'static str) {
-        const EASY_PUTT: f32 = 60.0;
-        const TOUGH_PUTT: f32 = 150.0;
-        let putt = self.golfers[gi].sim.last_putt_dist;
-        let event = match ev {
-            "holed" if putt > TOUGH_PUTT => mood::ev::TOUGH_PUTT_MADE,
-            "putt missed" if putt < EASY_PUTT => mood::ev::EASY_PUTT_MISSED,
-            e if e.starts_with("splash") => mood::ev::IN_HAZARD,
-            e if e.starts_with("out of bounds") => mood::ev::BAD_SHOT,
-            _ => return,
-        };
-        self.mood_event(gi, event, 0);
-    }
-
-    /// Applies one mood event to a golfer: the mood changes by the exe's amount, the change is tallied for the hole's fun rating,
-    /// and a golfer pushed below -10 leaves the course.
-    pub fn mood_event(&mut self, gi: usize, event: u32, arg: i32) {
-        let d = mood::delta(event, self.difficulty, arg, false);
-        if self.hole_stats.len() != self.holes.len() {
-            self.hole_stats = vec![HoleStat::default(); self.holes.len()];
-        }
-        self.mood_delta(gi, d);
-    }
-
-    /// One needs update, following the exe: one counter grows by one (hunger near some terrain kinds or, in the Tropical theme, half
-    /// the time; thirst otherwise), and once a counter is above 15 the golfer complains every fourth update. Drinks come from the
-    /// Soda Vendor walking to the golfer (staff_tick). The terrain test is a PLACEHOLDER.
-    fn needs_tick(&mut self, gi: usize) {
-        let seed = (self.sim_time * 1000.0) as u32 ^ (gi as u32).wrapping_mul(2654435761);
-        let mut rng = Rng::new(seed | 1);
-        let hungry_side = self.theme == 3 && rng.range(2) == 0 || rng.range(4) == 0;
-        let (event, value) = {
-            let g = &mut self.golfers[gi];
-            if hungry_side {
-                if rng.range(2) == 0 {
-                    g.hunger += 1;
-                }
-                (mood::ev::HUNGRY, g.hunger)
-            } else {
-                g.thirst += 1;
-                (mood::ev::THIRSTY, g.thirst)
-            }
-        };
-        if value > 15 && value % 4 == 0 {
-            self.mood_event(gi, event, 0x14);
-        }
-    }
-
-    fn mood_delta(&mut self, gi: usize, d: i32) {
-        // After a negative mood event the exe may start a weed on the golfer's tile: chance (difficulty + 1) / 6, not on water,
-        // not where a weed or footprint already is. (The exe also checks for nearby weed-proof landmarks, not decoded.)
-        if d < 0 && self.exe_rng.below(6) <= self.difficulty {
-            let s = &self.golfers[gi].sim;
-            let (tx, ty) = self.terrain.tile_of(s.golfer_x, s.golfer_z);
-            if self.terrain.inside(tx, ty)
-                && self.terrain.type_at(tx, ty) != 17
-                && self.staff_tiles.flags.len() == (self.terrain.w * self.terrain.h) as usize
-            {
-                let i = (ty * self.terrain.w + tx) as usize;
-                if self.staff_tiles.flags[i] & 0x0c00 == 0 {
-                    self.staff_tiles.flags[i] |= staff::WEEDS | staff::WORKED;
-                    self.staff_tiles.counter[i] = 1;
-                }
-            }
-        }
-        let hole = self.golfers[gi].hole;
-        if let Some(hs) = self.hole_stats.get_mut(hole) {
-            hs.mood_sum += d;
-        }
-        let (m, leaves) = mood::apply(self.golfers[gi].mood, d);
-        self.golfers[gi].mood = m;
-        if leaves {
-            println!("[{:6.1}s] golfer {gi} left the course unhappy", self.sim_time);
-            self.golfers[gi].active = false;
-        }
-    }
-
-    fn hole_out(&mut self, gi: usize) {
-        let (hole, stroke, mood, hole_start) = {
-            let g = &self.golfers[gi];
-            (g.hole, g.sim.stroke, g.mood, g.hole_start)
-        };
-        let par = self.holes.get(hole).map(|h| h.par).unwrap_or(4);
-        let before = self.econ.cash;
-        // Green fee, from the exe's fee routine, in units of 100: the golfer's mood, +2 for a Top 100 hole, +2 for a Top 18 hole,
-        // + the Airstrip's level, +2 from a Gold and +5 from a Platinum member. Top holes, the Airstrip and memberships are not
-        // in this game yet, so only the mood counts for now.
-        let fee_units = mood.max(0);
-        self.econ.hole_completed(fee_units as f64);
-        // A hungry or thirsty golfer who holes out within 6 tiles of a snack bar visits it (PLACEHOLDER reach rule; the exe walks the
-        // golfer there). As in the exe, the visit resets hunger and thirst and raises the snack event, worth +1 when hunger was above 7.
-        let needy = self.golfers[gi].hunger > 7 || self.golfers[gi].thirst > 7;
-        if let (Some(h), true) = (self.holes.get(hole), needy) {
-            let (gx, gz) = (h.green_x, h.green_z);
-            // Amenity income, in units (the exe's figures; the second is for an upgraded building): Snack Bar 5, Putting Green 4/8,
-            // Pro Shop 6/10, Driving Range 8/12. Only buildings joined to the clubhouse by path work.
-            let visit = self.land.as_ref().and_then(|l| {
-                let joined = l.joined_objects();
-                l.objects.iter().enumerate().find_map(|(i, o)| {
-                    let pay = match o.kind {
-                        7 => 5,
-                        6 => {
-                            if o.sub >= 1 {
-                                8
-                            } else {
-                                4
-                            }
-                        }
-                        8 => {
-                            if o.sub >= 1 {
-                                10
-                            } else {
-                                6
-                            }
-                        }
-                        10 => {
-                            if o.sub >= 1 {
-                                12
-                            } else {
-                                8
-                            }
-                        }
-                        _ => return None,
-                    };
-                    let (bx, bz) = self.terrain.tile_centre(o.a, o.b);
-                    (joined[i] && (bx - gx).hypot(bz - gz) < 6.0 * TILE_SIZE).then_some(pay)
-                })
-            });
-            if let Some(v) = visit {
-                self.econ.earn_to(economy::LEDGER_FOOD_DRINK, v as f64 * Economy::UNIT);
-                let counter_ok = self.golfers[gi].hunger > 7;
-                self.golfers[gi].hunger = 0;
-                self.golfers[gi].thirst = 0;
-                let d = mood::delta(mood::ev::SNACK, self.difficulty, 0x14, counter_ok);
-                self.mood_delta(gi, d);
-            }
-        }
-        // After the hole the exe lowers mood by (hole field + 6 + holes played) * (mood - 1 + difficulty) * (difficulty + 1) /
-        // ((course factor * 5 + 15) * 8), integer division. The hole field and the course factor are not decoded; both are taken as 0.
-        let d = self.difficulty;
-        let dec = ((6 + hole as i32) * (mood - 1 + d) * (d + 1)) / 120;
-        let g = &mut self.golfers[gi];
-        g.mood -= dec;
-        g.strokes_round += stroke;
-        if self.hole_stats.len() != self.holes.len() {
-            self.hole_stats = vec![HoleStat::default(); self.holes.len()];
-        }
-        if let Some(hs) = self.hole_stats.get_mut(hole) {
-            hs.plays += 1;
-            hs.strokes += stroke as f64;
-            hs.seconds += self.sim_time - hole_start;
-            hs.revenue += self.econ.cash - before;
-            hs.mood += mood as f64 * 10.0;
-            hs.hist[(stroke - 3).clamp(0, 5) as usize] += 1;
-        }
-        println!(
-            "[{:6.1}s] golfer {gi} holed hole {} in {stroke} (par {par}), fee ${:.0}, cash ${:.0}, mood {mood}",
-            self.sim_time,
-            hole + 1,
-            self.econ.cash - before,
-            self.econ.cash
-        );
     }
 
     /// Advances the simulation to the current time and points every golfer prop at its golfer.
@@ -1291,33 +1156,41 @@ impl App {
         if self.time < self.sim_time - 1.0 {
             // clock went backwards
             self.sim_time = 0.0;
-            self.golfers.iter_mut().for_each(|g| g.active = false);
-            self.spawn_timer = 1e9;
         }
+        const DX: [f32; 8] = [0.0, 1.0, 1.0, 1.0, 0.0, -1.0, -1.0, -1.0];
+        const DY: [f32; 8] = [-1.0, -1.0, 0.0, 1.0, 1.0, 1.0, 0.0, -1.0];
         for pi in 0..self.props.len() {
             let Some(gi) = self.props[pi].golfer else { continue };
-            let g = &self.golfers[gi];
-            self.props[pi].hidden = !g.active;
-            if !g.active {
+            let (h, x, y, facing, anim, clip) = {
+                let g = &self.club.g[gi];
+                (g.hole, g.x, g.y, g.facing, g.anim, g.clip as i32)
+            };
+            if h == 0 || h == -1 {
+                self.props[pi].hidden = true;
                 continue;
             }
-            let s = &g.sim;
-            let a = s.anim as usize;
-            let Some(body) = self.look_body[g.look][a] else {
+            let (id, frame) = self.club.drawn[gi];
+            let (body, shadow) = self.golfer_clip(id);
+            let Some(b) = body else {
                 self.props[pi].hidden = true;
                 continue;
             };
-            let sp = &self.sprites[body].s;
-            let fr = s.anim_time * 1000.0 / sp.frame_ms.max(1) as f32;
-            let looping = s.anim == GolferAnim::Walk || s.anim == GolferAnim::Happy;
-            let n = sp.frames_per_view;
+            // The exe draws the swing clips one view round from the golfer's facing (not the putt); the bench clips have four
+            // views and take half the eight-way view.
+            let mut d = facing & 7;
+            if anim < 7 && clip != 0x5a {
+                d = (d - 1) & 7;
+            }
+            let (wx, wz) = self.units_to_world(x, y);
             let p = &mut self.props[pi];
-            p.body = Some(body);
-            p.shadow = self.look_shadow[g.look][a];
-            p.x = s.golfer_x;
-            p.z = s.golfer_z;
-            p.heading = s.golfer_heading;
-            p.frame = if looping { (fr as i32) % n } else { (fr as i32).min(n - 1) };
+            p.hidden = false;
+            p.body = Some(b);
+            p.shadow = shadow;
+            p.x = wx;
+            p.z = wz;
+            p.frame = frame;
+            p.heading = DY[d as usize].atan2(DX[d as usize]).to_degrees();
+            p.facing = -((d + 2 + (d & 1)) / 2);
         }
         self.update_staff_props();
         self.update_weed_props();
@@ -1337,6 +1210,7 @@ impl App {
         if self.hole_stats.len() != self.holes.len() {
             self.hole_stats = vec![HoleStat::default(); self.holes.len()];
         }
+        self.sync_course();
         let conn = paths_connected_to_clubhouse(&self.terrain);
         let paths = self.terrain.path_kind.iter().filter(|&&k| k != 0).count();
         let joined = self.terrain.path_kind.iter().zip(&conn).filter(|(&k, &c)| k != 0 && c != 0).count();
@@ -1608,6 +1482,7 @@ impl App {
         self.dirty = true;
         self.props.retain(|p| !p.object);
         self.add_land_objects();
+        self.sync_course();
     }
 
     /// The exe's theme number (0 Parkland, 1 Desert, 2 Tropical, 3 Links) of the loaded theme.
@@ -1800,26 +1675,7 @@ fn slots_of(offer: &[Slot; 16]) -> [usize; 16] {
 }
 
 impl App {
-    /// The exe's golfer walking speed is 6 minus the ground's walking cost, kept in 3..5 (3 when tired); a golfer a Ranger has
-    /// hurried walks one step faster. Golfer walking here is not the exe's yet, so the extra step becomes a pace factor.
-    fn hurry_pace(&self, gi: usize, hurried: bool) -> f32 {
-        if !hurried {
-            return 1.0;
-        }
-        let s = &self.golfers[gi].sim;
-        let (tx, ty) = self.terrain.tile_of(s.golfer_x, s.golfer_z);
-        let t = self.terrain.type_at(tx, ty);
-        let cost = land::TYPES.get(t as usize).map(|i| i.layer as i32).unwrap_or(2);
-        let speed = (6 - cost).clamp(3, 5) as f32;
-        (speed + 1.0) / speed
-    }
-
-    fn to_units(&self, x: f32, z: f32) -> (i32, i32) {
-        let k = staff::UNIT as f32 / TILE_SIZE;
-        (((x + self.terrain.w as f32 * TILE_SIZE * 0.5) * k) as i32, ((z + self.terrain.h as f32 * TILE_SIZE * 0.5) * k) as i32)
-    }
-
-    fn units_to_world(&self, x: i32, y: i32) -> (f32, f32) {
+    pub fn units_to_world(&self, x: i32, y: i32) -> (f32, f32) {
         let k = TILE_SIZE / staff::UNIT as f32;
         (x as f32 * k - self.terrain.w as f32 * TILE_SIZE * 0.5, y as f32 * k - self.terrain.h as f32 * TILE_SIZE * 0.5)
     }
@@ -1893,23 +1749,26 @@ impl App {
         if self.staff_tiles.flags.len() != (self.terrain.w * self.terrain.h) as usize {
             self.staff_tiles = TileState::new(self.terrain.w, self.terrain.h);
         }
-        self.staff_golfers.resize(self.golfers.len(), StaffGolfer { face: -1, ..Default::default() });
-        for gi in 0..self.golfers.len() {
-            let g = &self.golfers[gi];
-            let (x, y) = self.to_units(g.sim.golfer_x, g.sim.golfer_z);
+        // What the staff see of each golfer: the exe's staff routines read the golfer records directly.
+        self.staff_golfers.resize(golf::SLOTS, StaffGolfer { face: -1, ..Default::default() });
+        for gi in 0..golf::SLOTS {
+            let g = &self.club.g[gi];
             let sg = &mut self.staff_golfers[gi];
-            if !g.active {
+            if g.hole <= 0 {
                 *sg = StaffGolfer { face: -1, ..Default::default() };
                 continue;
             }
             sg.present = true;
-            sg.x = x;
-            sg.y = y;
+            sg.x = g.x;
+            sg.y = g.y;
             sg.hunger = g.hunger;
             sg.thirst = g.thirst;
-            if sg.pause < 0 && self.game_tick & 1 != 0 {
-                sg.pause += 1;
-            }
+            sg.fatigue = g.fatigue;
+            sg.hurried = g.flags & golf::flag::HURRIED != 0;
+            sg.busy = g.sub != 0;
+            sg.last_pro_event = g.thoughts.iter().copied().find(|&t| t == 0x22 || t == 0x3a).unwrap_or(0) as u32;
+            sg.pause = g.pause;
+            sg.face = -1;
         }
         let mut out = Vec::new();
         {
@@ -1929,20 +1788,26 @@ impl App {
             staff::spread_weeds(&self.terrain, &mut self.staff_tiles, self.game_tick, self.difficulty, &mut self.exe_rng, &mut out);
             staff::grow_weeds(&mut self.staff_tiles, &mut self.exe_rng);
         }
-        for gi in 0..self.golfers.len() {
-            if self.golfers[gi].active {
-                self.golfers[gi].thirst = self.staff_golfers[gi].thirst;
+        for gi in 0..golf::SLOTS {
+            if self.club.g[gi].hole <= 0 {
+                continue;
+            }
+            let sg = self.staff_golfers[gi];
+            let g = &mut self.club.g[gi];
+            g.thirst = sg.thirst;
+            g.pause = sg.pause;
+            if sg.face >= 0 {
+                g.facing = sg.face as i32;
+            }
+            if sg.hurried {
+                g.flags |= golf::flag::HURRIED;
             }
         }
         for ev in out {
             match ev {
-                StaffEvent::Mood { golfer, event, arg, counter_ok } => {
-                    if self.golfers.get(golfer).map(|g| g.active).unwrap_or(false) {
-                        if event == 0x22 || event == 0x3a {
-                            println!("[{:6.1}s] club pro talked to golfer {golfer} (event {event:#x})", self.sim_time);
-                        }
-                        let d = mood::delta(event, self.difficulty, arg, counter_ok);
-                        self.mood_delta(golfer, d);
+                StaffEvent::Mood { golfer, event, arg, .. } => {
+                    if self.club.g.get(golfer).map(|g| g.hole > 0).unwrap_or(false) {
+                        self.club.event(&mut self.course, &mut self.exe_rng, golfer, event, arg);
                     }
                 }
                 StaffEvent::DrinkSold { golfer } => {
