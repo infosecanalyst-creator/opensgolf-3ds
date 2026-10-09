@@ -271,7 +271,8 @@ impl App {
                 }
             }
         }
-        if self.club.skill_points > 0 && self.club.pro_mask != 0 && self.ui_ok && self.screen == Screen::Play {
+        if self.club.skill_points > 0 && self.club.pro_mask != 0 && self.ui_ok && self.screen == Screen::Play && self.club.award_pending < 0
+        {
             let pts = self.club.skill_points;
             self.show_toast("Add three skill points to your pro's skills.");
             self.open_skills(pts, None);

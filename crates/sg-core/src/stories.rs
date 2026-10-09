@@ -152,7 +152,7 @@ impl Club {
     }
 
     /// Age (0x453260): from the roster index and the age band bits of the appearance byte.
-    fn age(&self, g: usize) -> i32 {
+    pub fn age(&self, g: usize) -> i32 {
         let b = self.g[g].looks & 0xff;
         self.g[g].roster.rem_euclid(10) + 20 * (b & 1 != 0) as i32 + 30 * (b & 2 != 0) as i32 + 45 * (b & 4 != 0) as i32
     }
@@ -415,6 +415,7 @@ impl Club {
         let story = self.g[owner].story;
         self.sound(jingle(c.theme, story & 1 != 0, true), None);
         self.happy_endings += 1;
+        self.log_event(crate::records::log::HAPPY, story);
         let hole = self.g[owner].hole.clamp(0, 18) as usize;
         let title = self.stories.title(story);
         self.message(format!("Happy Ending: {}", title.trim_start()));

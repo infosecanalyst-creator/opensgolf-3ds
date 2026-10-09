@@ -415,7 +415,10 @@ impl Club {
                 self.earn(a, Column::Other, at);
                 self.sound(0x23, None);
                 self.trophies += 1;
-                self.award(5);
+                let at = (self.g[o].x, self.g[o].y);
+                self.award_at(5, at);
+                let famous = self.g[e].famous;
+                self.log_event(crate::records::log::MATCH, famous);
             }
             let par: i32 = (1..=h).map(|k| self.par(k)).sum();
             let (no, ne) = (self.name(o), self.name(e));
@@ -560,7 +563,8 @@ impl Club {
                 self.message(t);
             }
             self.g[g].skills[k] = self.pro_skill[k];
-            self.award(2);
+            let at = (self.g[g].bx, self.g[g].by);
+            self.award_at(2, at);
             self.sound(0x2f, None);
         } else {
             if self.pro_skill[k] <= 2 {

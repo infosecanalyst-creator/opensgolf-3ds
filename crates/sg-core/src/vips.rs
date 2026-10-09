@@ -281,6 +281,7 @@ impl Club {
                             amount * 100
                         ));
                         self.out.push(Event::Earn { units: amount, column: Column::Other, at: (self.g[g].x, self.g[g].y) });
+                        self.log_event(crate::records::log::CEO, k);
                         self.sound(0x19, None);
                     } else {
                         self.message(format!("Corporate CEO {name} has decided not to invest in your club."));
@@ -343,6 +344,7 @@ impl Club {
                     self.sound(0x2f, None);
                     self.landmarks_owned |= 1 << id;
                     self.free_landmarks |= 1 << id;
+                    self.log_event(crate::records::log::HEIRESS, id);
                 }
             }
             _ => {}
@@ -369,6 +371,7 @@ impl Club {
         self.message(format!("International {kind} {} has purchased a vacation home at your golf course!", cel.name));
         self.sound(0x33, None);
         self.celeb_homes += 1;
+        self.log_event(crate::records::log::CELEB, c);
         self.spawn_resident(rng, c, home.0, home.1);
         Some(c + 1)
     }

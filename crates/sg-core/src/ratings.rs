@@ -149,6 +149,14 @@ pub fn pass(club: &mut Club, difficulty: i32) -> ClubRatings {
                 TYPE_NAMES[mask as usize].to_uppercase()
             )));
             club.out.push(Event::Sound { slot: 0x2a, at: None });
+            let green = (hole.pin.0 * 1024 + 512, hole.pin.1 * 1024 + 512);
+            match mask {
+                3 if difficulty >= 2 => club.award_at(0, green),
+                5 if difficulty >= 2 => club.award_at(1, green),
+                6 if difficulty >= 2 => club.award_at(4, green),
+                7 => club.award_at(9, green),
+                _ => false,
+            };
         }
         // variety: how much this hole repeats the one before it
         flags &= !0x10;
@@ -190,6 +198,8 @@ pub fn pass(club: &mut Club, difficulty: i32) -> ClubRatings {
                 "Hole #{h} has been rated as one of the Top 100 golf holes in the country by Golf Enquirer magazine!"
             )));
             club.out.push(Event::Sound { slot: 0x2e, at: None });
+            club.award_at(7, (hole.pin.0 * 1024 + 512, hole.pin.1 * 1024 + 512));
+            club.log_event(crate::records::log::TOP100, h as i32);
         }
         if hole.fees > 400 && score > 300 && flags & 0xe == 0 && !message {
             message = true;
@@ -198,6 +208,8 @@ pub fn pass(club: &mut Club, difficulty: i32) -> ClubRatings {
                 "Hole #{h} has been rated as one of the Top 18 golf holes in the country by Great Golf Holes magazine!"
             )));
             club.out.push(Event::Sound { slot: 0x2f, at: None });
+            club.award_at(10, (hole.pin.0 * 1024 + 512, hole.pin.1 * 1024 + 512));
+            club.log_event(crate::records::log::TOP18, h as i32);
         }
         let hr = &mut club.holes[h];
         hr.flags = flags;

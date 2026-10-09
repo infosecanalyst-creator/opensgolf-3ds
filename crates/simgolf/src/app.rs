@@ -200,6 +200,11 @@ pub enum Screen {
     Results,
     /// Play a Championship: the course and pro choosers.
     Champ,
+    /// SELECT THE NEXT PAIR OF GOLFERS, the accomplishments board, the year-end report, the Membership Roster.
+    Pair,
+    Board,
+    YearEnd,
+    Roster,
 }
 
 /// A whole game as saved: the land and terrain, the golfers and holes, the staff, the money and calendar, and the exe's random
@@ -314,6 +319,14 @@ pub struct App {
     pub champ: Option<crate::champ_ui::ChampScreen>,
     /// Tiles the player retyped since the last tick (each may draw wildlife), and the water depth of each tile.
     pub retyped: Vec<(i32, i32)>,
+    /// The clubhouse and record screens: their art, the pair screen's picks, the golfers list page, the golfer card open,
+    /// the board's notice for the year-end report, the roster's scroll.
+    pub art: crate::screens_ui::Art,
+    pub pair_picks: Vec<usize>,
+    pub golfer_page: usize,
+    pub card: Option<usize>,
+    pub year_notice: String,
+    pub roster_offset: usize,
     /// Option "show golfer thoughts" (option bit 0x10).
     pub show_thoughts: bool,
     pub water_depth: Vec<u8>,
@@ -477,6 +490,12 @@ impl App {
             champ: None,
             retyped: Vec::new(),
             show_thoughts: true,
+            art: Default::default(),
+            pair_picks: Vec::new(),
+            golfer_page: 0,
+            card: None,
+            year_notice: String::new(),
+            roster_offset: 0,
             water_depth: Vec::new(),
             moving_employee: None,
             staff_clips: [[(None, None); 3]; 9],
@@ -1393,10 +1412,21 @@ impl App {
                 }
             }
         }
+        self.club.course_name = self.course_name.clone();
+        self.club.course_theme = self.exe_theme();
         self.pro_round_tick();
         self.club.tick(&mut self.course, &mut self.exe_rng, tick);
         sg_core::ratings::pass(&mut self.club, self.difficulty);
         self.pro_after_tick();
+        self.board_tick();
+        if tick.is_multiple_of(1024 / (self.difficulty.clamp(0, 3) as u32 + 2)) {
+            let members = self.club.member_count();
+            self.club.record_history(self.club.cash, members);
+        }
+        if tick > 0 && tick & 0x1fff == 0 && !self.club.championship() {
+            println!("[{:6.1}s] end of year {}", self.sim_time, 2000 + (tick >> 13));
+            self.open_year_end();
+        }
         self.wildlife_tick();
         self.tourney_after_tick();
         self.weeds_from_course();
@@ -1467,6 +1497,7 @@ impl App {
     pub fn step_game(&mut self, dt: f32) {
         if !self.econ.notice.is_empty() {
             println!("[{:6.1}s] board: {}", self.sim_time, self.econ.notice);
+            self.year_notice = self.econ.notice.clone();
             self.econ.notice.clear();
         }
         self.tick_acc += dt as f64;
@@ -1587,6 +1618,8 @@ impl App {
         self.land = Some(land);
         self.course_name = format!("{} GC", p.name);
         self.load_theme(g, p.theme);
+        self.club.course_name = self.course_name.clone();
+        self.club.course_theme = self.exe_theme();
         self.screen = Screen::Play;
         self.hover = -1;
         self.edit = false;
@@ -1846,6 +1879,7 @@ impl App {
         self.econ.spend_to(economy::LEDGER_OTHER, cost);
         if let Some(land) = self.land.as_mut() {
             sg_core::tracts::buy(land, i);
+            self.club.log_event(sg_core::records::log::LAND, i as i32);
             // the terrain the renderer and editor use follows
             let (a0, b0) = sg_core::tracts::origin(i);
             for a in a0..a0 + 16 {
@@ -2097,6 +2131,7 @@ impl App {
             land.write_area(&mut self.terrain, o.a, o.b, o.a + s - 1, o.b + s - 1);
         }
         let n = land.place(&mut self.exe_rng, tx, ty, kind, 0, theme);
+        self.club.log_event(sg_core::records::log::BUILT, kind);
         land.objects[n].sub = level;
         if kind == land::K_LANDMARK {
             let t = landmark.unwrap_or(0);
@@ -2783,6 +2818,12 @@ impl App {
             let h = (fl & 0x1f) as usize;
             if fl & sg_core::course::f::CUP != 0 && h > 0 && h < 19 && self.club.holes[h].par == 0 {
                 self.open_hole();
+                return;
+            }
+        }
+        if self.moving_employee.is_none() && sg_core::course::inside(t.0, t.1) {
+            let o = self.course.object_at(t.0, t.1);
+            if o >= 0 && self.course.objects.get(o as usize).is_some_and(|ob| ob.kind == land::K_CLUBHOUSE) && self.open_pair_screen() {
                 return;
             }
         }

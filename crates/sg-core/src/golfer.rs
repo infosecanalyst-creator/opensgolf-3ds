@@ -345,8 +345,19 @@ pub struct Club {
     pub wildlife: crate::wildlife::Wildlife,
     /// Celebrity residents of the vacation homes (0x56d1b8).
     pub residents: Vec<crate::celebs::Actor>,
-    /// Accomplishments earned (bit per id, 0x4c15a0).
+    /// Accomplishments earned (bit per id, 0x4c15a0), each with its tick and course; the one waiting for the board, its
+    /// map point and the frames since; the monthly event log; the monthly history (cash, fun, skill, members); the course
+    /// name for the records.
     pub awards: u32,
+    pub earned: Vec<Option<crate::records::Earned>>,
+    pub award_pending: i32,
+    pub award_point: (i32, i32),
+    pub award_frames: i32,
+    pub event_log: Vec<u16>,
+    pub history: Vec<[i32; 4]>,
+    pub course_name: String,
+    /// The course's exe theme (0 Parkland, 1 Desert, 2 Tropical, 3 Links).
+    pub course_theme: u8,
     /// Aiming: the hovered tile, whether the pointer was nearer its corner, and the frames a click is still refused.
     pub aim_tile: (i32, i32),
     pub aim_corner: bool,
@@ -430,6 +441,14 @@ impl Club {
             challenge_pro: -1,
             trophies: 0,
             awards: 0,
+            earned: vec![None; 22],
+            award_pending: -1,
+            award_point: (-1, -1),
+            award_frames: 0,
+            event_log: vec![0; 500],
+            history: vec![[0; 4]; 500],
+            course_name: String::new(),
+            course_theme: 0,
             residents: Vec::new(),
             wildlife: Default::default(),
             sga_score: 0,
@@ -1011,7 +1030,7 @@ impl Club {
     }
 
     /// Sends a waiting pair to the first tee (0x45de80).
-    fn start_pair(&mut self, c: &mut Course, rng: &mut ExeRng, u: usize) {
+    pub(crate) fn start_pair(&mut self, c: &mut Course, rng: &mut ExeRng, u: usize) {
         let v = u ^ 1;
         for (a, b) in [(u, v), (v, u)] {
             let gg = &mut self.g[a];

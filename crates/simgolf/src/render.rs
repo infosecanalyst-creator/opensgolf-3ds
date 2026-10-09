@@ -456,6 +456,7 @@ impl App {
                 }
                 let pts = if self.club.skill_points > 0 { format!("  ({} points to add)", self.club.skill_points) } else { String::new() };
                 v.push(PanelItem { label: format!("{pro}'s skills{pts}"), kind: 6, arg: 2 });
+                v.push(PanelItem { label: "Golfers on the course".into(), kind: 9, arg: 0 });
                 for k in 0..STAFF_KINDS {
                     v.push(PanelItem {
                         label: format!("{}: {}  (click to hire, right click to fire)", Economy::staff_name(k), self.econ.staff[k]),
@@ -799,6 +800,7 @@ impl App {
             s.text_centered(g, 400.0, 120.0, "PAUSED", 24.0, rgb(1.0, 1.0, 0.8));
         }
         self.draw_thoughts(g, &s);
+        self.draw_card(g, &s);
         self.draw_dock(g, &s);
         self.draw_leaderboard(g, &s);
         let lines = self.aim_text();
@@ -827,7 +829,10 @@ impl App {
                 s.text(g, 228.0, 448.0, DOCK_HELP[self.dock_hover as usize], 14.0, rgb(1.0, 1.0, 0.7));
             }
         }
-        if self.panel != 0 {
+        if self.panel == 4 {
+            s.fill(g, 226.0, 452.0, 570.0, 144.0, rgba(0.16, 0.14, 0.34, 0.88));
+            self.draw_golfers_panel(g, s);
+        } else if self.panel != 0 {
             s.fill(g, 226.0, 452.0, 570.0, 144.0, rgba(0.16, 0.14, 0.34, 0.88));
             let cols = self.panel_cols();
             for (i, it) in self.panel_items().iter().enumerate() {

@@ -15,6 +15,7 @@ mod champ_ui;
 mod gfx;
 mod pro_ui;
 mod render;
+mod screens_ui;
 mod thoughts_ui;
 mod tourney_ui;
 mod ui;
@@ -219,6 +220,7 @@ fn load_ui(app: &mut App, g: &mut Gfx) -> bool {
         app.theme_icons[t] = i.unwrap_or_default();
     }
     app.ui_ok = ok;
+    app.art = crate::screens_ui::Art::load(g, app);
     ok
 }
 
@@ -464,6 +466,11 @@ impl Stage {
             match o.screen.as_deref() {
                 Some("land") => app.open_land_screen(),
                 Some("report") if app.ui_ok => app.screen = Screen::Report,
+                Some("pair") if app.ui_ok => app.screen = Screen::Pair,
+                Some("board") if app.ui_ok => app.screen = Screen::Board,
+                Some("yearend") if app.ui_ok => app.screen = Screen::YearEnd,
+                Some("roster") if app.ui_ok => app.screen = Screen::Roster,
+                Some("golfers") if app.ui_ok => app.panel = 4,
                 Some("sga") if app.ui_ok => {
                     app.club.game |= sg_core::tournament::OFFERED;
                     app.begin_tournament();
@@ -640,6 +647,14 @@ impl Stage {
             self.app.snd("Interface/Button1.wav", 1.0, false);
             return true;
         }
+        if app.panel == 4 {
+            if app.golfers_click(vx, vy) {
+                return true;
+            }
+            if Rect::new(226.0, 452.0, 570.0, 144.0).has(vx, vy) {
+                return true;
+            }
+        }
         if app.panel != 0 {
             let items = app.panel_items();
             let cols = app.panel_cols();
@@ -667,6 +682,10 @@ impl Stage {
                             app.edit = true;
                         }
                         6 => app.pro_button(it.arg),
+                        9 => {
+                            app.panel = 4;
+                            app.golfer_page = 0;
+                        }
                         7 => app.club.set_shot_option(SHOT_OPTS[it.arg]),
                         8 => {}
                         _ => {
@@ -934,9 +953,16 @@ impl Stage {
                 self.save_course(false);
                 self.app.snd("Interface/Button1.wav", 1.0, false);
             }
-            KeyCode::F9 => self.load_course(),
-            KeyCode::F7 => app.save_championship_course(),
-            KeyCode::F8 => app.save_championship_pro(),
+            // the original's report keys: F7 the SGA evaluation, F9 the Membership Roster, F10 the accomplishments board;
+            // Shift+F7 / Shift+F8 save the course / the pro for championship play
+            KeyCode::F7 if shift => app.save_championship_course(),
+            KeyCode::F8 if shift => app.save_championship_pro(),
+            KeyCode::F7 => app.sga_report(),
+            KeyCode::F9 => {
+                app.roster_offset = 0;
+                app.screen = Screen::Roster;
+            }
+            KeyCode::F10 => app.screen = Screen::Board,
             KeyCode::M => app.toggle_music(),
             KeyCode::N => {
                 app.mute = !app.mute;
@@ -994,6 +1020,13 @@ impl Stage {
             }
             if matches!(app.screen, Screen::Sga | Screen::Prep | Screen::Results) {
                 app.draw_tourney_screen(&mut self.g);
+            }
+            match app.screen {
+                Screen::Pair => app.draw_pair_screen(&mut self.g),
+                Screen::Board => app.draw_board(&mut self.g),
+                Screen::YearEnd => app.draw_year_end(&mut self.g),
+                Screen::Roster => app.draw_roster(&mut self.g),
+                _ => {}
             }
         }
         self.g.flush();
@@ -1138,6 +1171,11 @@ impl EventHandler for Stage {
             self.app.land_pointer(vx, vy);
             return;
         }
+        if self.app.screen == Screen::Pair {
+            let (vx, vy) = self.app.view.to_virtual(x, y);
+            self.app.pair_pointer(vx, vy);
+            return;
+        }
         if self.app.screen != Screen::Play && self.app.ui_ok {
             if matches!(self.app.screen, Screen::Menu | Screen::Property) {
                 self.menu_pointer(x, y, false);
@@ -1190,6 +1228,11 @@ impl EventHandler for Stage {
             } else if self.app.screen == Screen::Champ {
                 let (vx, vy) = self.app.view.to_virtual(x, y);
                 self.app.champ_click(&mut self.g, vx, vy);
+            } else if self.app.screen == Screen::Pair {
+                let (vx, vy) = self.app.view.to_virtual(x, y);
+                self.app.pair_click(vx, vy);
+            } else if matches!(self.app.screen, Screen::Board | Screen::YearEnd | Screen::Roster) {
+                self.app.screen = Screen::Play;
             } else if self.app.screen == Screen::Skills {
                 let (vx, vy) = self.app.view.to_virtual(x, y);
                 self.app.skills_click(vx, vy);
@@ -1205,6 +1248,9 @@ impl EventHandler for Stage {
             return;
         }
         let (vx, vy) = self.app.view.to_virtual(x, y);
+        if self.app.ui_ok && button == MouseButton::Left && self.app.card_click(vx, vy) {
+            return;
+        }
         if self.app.ui_ok && self.dock_click(vx, vy, button == MouseButton::Right) {
             return;
         }
@@ -1254,6 +1300,10 @@ impl EventHandler for Stage {
                 if k == KeyCode::Escape {
                     app.screen = Screen::Menu;
                 }
+            } else if app.screen == Screen::Pair {
+                app.close_pair_screen();
+            } else if matches!(app.screen, Screen::Board | Screen::YearEnd | Screen::Roster) {
+                app.screen = Screen::Play;
             } else if app.screen == Screen::Skills {
                 if k == KeyCode::Enter || k == KeyCode::Escape {
                     app.skills_click(-1.0, -1.0);

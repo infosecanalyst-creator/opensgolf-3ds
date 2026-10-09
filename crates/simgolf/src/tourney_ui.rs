@@ -62,6 +62,16 @@ impl App {
         self.screen = Screen::Sga;
     }
 
+    /// F7: the SGA evaluation as a report (a passing course is offered a tournament, as in the exe).
+    pub fn sga_report(&mut self) {
+        let fac = self.facilities();
+        let report = self.club.sga_evaluate(fac);
+        if self.ui_ok {
+            self.sga = Some(SgaScreen { report, offer: false });
+            self.screen = Screen::Sga;
+        }
+    }
+
     /// "Great, let the games begin!": the pro's skills first if he has none, then the field.
     pub fn accept_tournament(&mut self) {
         if self.club.pro_skill.iter().all(|&v| v == 0) {

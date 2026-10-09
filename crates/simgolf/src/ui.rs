@@ -32,6 +32,21 @@ pub fn load_pcx(g: &mut Gfx, path: &Path, magenta_key: bool, key_rgb: Option<u32
     Some(Image { tex: Some(tex), w: img.w as f32, h: img.h as f32 })
 }
 
+/// Loads a PCX with a separate alpha PCX of the same size (the interface's `_A` / `_alpha` files: white opaque, black clear).
+pub fn load_pcx_alpha(g: &mut Gfx, path: &Path, alpha: &Path) -> Option<Image> {
+    let d = sg_core::fsutil::read_file(path)?;
+    let mut img = decode_pcx(&d).ok()?;
+    if let Some(a) = sg_core::fsutil::read_file(alpha).and_then(|d| decode_pcx(&d).ok()) {
+        if a.w == img.w && a.h == img.h {
+            for (p, q) in img.px.as_chunks_mut::<4>().0.iter_mut().zip(a.px.as_chunks::<4>().0) {
+                p[3] = q[0].max(q[1]).max(q[2]);
+            }
+        }
+    }
+    let tex = g.texture(&img, false);
+    Some(Image { tex: Some(tex), w: img.w as f32, h: img.h as f32 })
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 struct Glyph {
     /// Atlas rectangle in pixels.

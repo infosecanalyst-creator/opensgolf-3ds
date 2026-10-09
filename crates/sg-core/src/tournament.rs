@@ -179,14 +179,16 @@ impl Club {
         let ideal = [ideal_len, ideal_holes, 235, 109, k, k, k, k, k, k / 2 + 1];
         let values = [len, n, time, fun, variety, scenic, lah[0], lah[1], lah[2], facilities];
         if score >= 90 {
+            let tee = |h: usize| (self.holes[h].back.0 * 1024 + 512, self.holes[h].back.1 * 1024 + 512);
+            let (t9, t18) = (tee(9), tee(18));
             if n >= 9 {
-                self.award(0xc);
+                self.award_at(0xc, t9);
             }
             if n == 18 {
-                self.award(0x10);
+                self.award_at(0x10, t18);
             }
             if score == 100 && n == 18 {
-                self.award(0x15);
+                self.award_at(0x15, t18);
             }
         }
         let mut r = SgaReport { class: c, holes: n, values, ideal, scores, score, ..Default::default() };
@@ -366,12 +368,13 @@ impl Club {
         self.tourney_opts = -1;
         self.game = (self.game | game::TOURNAMENT) & !crate::pro::START_ROUND;
         self.gary = if self.holes[1].par != 0 { 1 } else { -1 };
-        self.award(3);
+        let tee = (self.holes[1].back.0 * 1024 + 512, self.holes[1].back.1 * 1024 + 512);
+        self.award_at(3, tee);
         if self.purse >= 500 {
-            self.award(8);
+            self.award_at(8, tee);
         }
         if self.purse >= 1000 {
-            self.award(0xd);
+            self.award_at(0xd, tee);
         }
     }
 
@@ -523,12 +526,18 @@ impl Club {
                     let at = (self.g[1].x, self.g[1].y);
                     self.earn(purse * 10, Column::Other, at);
                     self.trophies += if r < 4 { 4 - r } else { 1 };
+                    self.log_event(crate::records::log::TOURNAMENT, r);
                     if r == 1 {
                         if n >= 9 {
-                            self.award(0xb);
+                            self.award_at(0xb, at);
                         }
                         if n == 18 {
-                            self.award(0xf);
+                            self.award_at(0xf, at);
+                        }
+                        // the Grand Slam victories ask for a purse over 100000 thousand, which the SGA never offers
+                        if n == 18 && self.purse > 100000 {
+                            let theme = self.course_theme as u32;
+                            self.award_at(17 + theme.min(3), at);
                         }
                     }
                 }

@@ -201,6 +201,27 @@ impl Club {
             self.next_hole += 1;
         }
         self.out.push(Event::Message(format!("Hole {h} is open: par {par}, length {len}.")));
+        self.log_event(crate::records::log::HOLE, h);
+        let fl = self.holes[hu].flags;
+        let pin = self.holes[hu].pin;
+        let green = (pin.0 * 1024 + 512, pin.1 * 1024 + 512);
+        if self.difficulty < 2 {
+            if fl & 0x40 != 0 {
+                self.award_at(0, green);
+            }
+            if fl & 0x20 != 0 {
+                self.award_at(1, green);
+            }
+            if par == 5 {
+                self.award_at(4, green);
+            }
+        }
+        if h == 9 {
+            self.award_at(6, green);
+        }
+        if h == 18 {
+            self.award_at(14, green);
+        }
         Some(hu)
     }
 
