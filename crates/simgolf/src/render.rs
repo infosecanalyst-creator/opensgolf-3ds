@@ -397,14 +397,15 @@ pub const DOCK: [DockBtn; 10] = [
     db(107.0, 568.0, 14.0, 598.0, 298.0, 34.0, 34.0, 50.0), // pause
     db(133.0, 583.0, 13.0, 598.0, 348.0, 34.0, 34.0, 50.0), // tools (save the course)
 ];
+/// The dock's tooltip captions (0x432ba0), in our button order.
 pub const DOCK_HELP: [&str; 10] = [
     "Build Course",
     "Add Buildings",
     "People",
-    "Zoom in",
-    "Zoom out",
-    "Rotate right",
-    "Rotate left",
+    "Zoom Map",
+    "Unzoom Map",
+    "Rotate Map",
+    "Rotate Map",
     "Information",
     "Pause or Unpause",
     "System Functions",
@@ -607,12 +608,6 @@ impl App {
             s.text(g, 572.0, 30.0, &cash, 19.0, if red { rgb(1.0, 0.5, 0.5) } else { rgb(1.0, 1.0, 0.7) });
             s.text(g, 572.0, 52.0, &format!("Fun {fun}  Skill {skill}"), 15.0, rgb(0.9, 0.9, 1.0));
         }
-        if self.edit {
-            let st = self.edit_status();
-            let w = (text_width(&st, 12.0) + 16.0).min(230.0);
-            s.fill(g, 48.0, 66.0, w, 20.0, panel_bg);
-            s.text(g, 56.0, 80.0, &st, 12.0, rgb(1.0, 0.95, 0.6));
-        }
         if self.speed > 1 && !self.paused {
             s.text(g, 240.0, 30.0, &format!("Speed x{}", self.speed), 14.0, rgb(1.0, 1.0, 0.8));
         }
@@ -648,7 +643,23 @@ impl App {
                 let b = &DOCK[self.dock_hover as usize];
                 let (dx, dy) = (b.cx - (b.sx + b.sw * 0.5), b.cy - (b.sy + b.sh * 0.5));
                 s.image_part(g, &self.dock_art, b.sx + dx, b.sy + dy, b.sx + b.hover_dx, b.sy, b.sw, b.sh);
-                s.text(g, 228.0, 448.0, DOCK_HELP[self.dock_hover as usize], 14.0, rgb(1.0, 1.0, 0.7));
+            }
+            // the tooltip bubble after 11 still frames (0x432620): a translucent black bar 6 pixels a letter wide at the
+            // pointer, the caption centred 5 pixels above it in white
+            if self.dock_hover >= 0 && self.dock_hover == self.dock_tip.0 {
+                self.dock_tip.1 += 1;
+            } else {
+                self.dock_tip = (self.dock_hover, 0);
+            }
+            if self.dock_hover >= 0 && self.dock_tip.1 > 11 {
+                let tip = DOCK_HELP[self.dock_hover as usize];
+                let n = tip.chars().count() as f32;
+                let (px, py) = self.info.pointer;
+                let x = px.clamp(3.0 * n, 800.0 - 3.0 * n);
+                let y = py - 5.0;
+                // APPROXIMATION: the bar is a 10 pixel line through y; its blend is not decoded
+                s.fill(g, x - 3.0 * n, y - 5.0, 6.0 * n, 10.0, rgba(0.0, 0.0, 0.0, 0.5));
+                s.text_centered(g, x, y + 4.0, tip, 11.0, rgb(1.0, 1.0, 1.0));
             }
         }
         if self.panel == 4 {

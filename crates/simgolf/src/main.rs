@@ -342,6 +342,8 @@ fn panel_test_hooks(app: &mut App) {
         app.pstate.mouse = (v[0] as f32, v[1] as f32);
         app.pstate.still = true;
         app.dock_hover = dock_hit(v[0] as f32, v[1] as f32);
+        app.info.pointer = (v[0] as f32, v[1] as f32);
+        app.dock_tip = (app.dock_hover, 12);
     }
 }
 
@@ -668,6 +670,8 @@ impl Stage {
                 app.panel = p;
             }
             app.dock_hover = if (1..=3).contains(&p) { p - 1 } else { -1 };
+            panel_test_hooks(&mut app);
+        } else if std::env::var("SG_PANEL_MOUSE").is_ok() {
             panel_test_hooks(&mut app);
         }
         if let Some(f) = &o.save {

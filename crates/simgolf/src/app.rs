@@ -421,6 +421,8 @@ pub struct App {
     pub show_thoughts: bool,
     /// Option bit 0, "Display golfer names on screen" (Shift+N).
     pub show_names: bool,
+    /// The dock button under the pointer and for how many frames (its tooltip waits for 11).
+    pub dock_tip: (i32, u32),
     /// The popup menu shown, and the last ticker message (Repeat Last Message).
     pub popup: Option<crate::popup_ui::Popup>,
     pub last_message: String,
@@ -609,6 +611,7 @@ impl App {
             retyped: Vec::new(),
             show_thoughts: true,
             show_names: true,
+            dock_tip: (-1, 0),
             popup: None,
             last_message: String::new(),
             rename: None,
@@ -1372,11 +1375,6 @@ impl App {
     }
 
     // ---- golfers and the club -----------------------------------------------------------------------------------------------
-
-    /// Golfers playing or walking home (the waiting ones are inside the clubhouse).
-    pub fn golfers_on_course(&self) -> usize {
-        self.club.g.iter().take(golf::SLOTS).filter(|g| g.hole > 0).count()
-    }
 
     /// Brings the golfers' view of the course up to date: tiles, objects and levels from the land, weeds from the staff's tiles,
     /// the clubhouse door, and one hole record per tee and green pair (back and forward tee on the tee, pin and cup on the green).
@@ -2605,32 +2603,6 @@ impl App {
         let yaw = (45.0 + self.rot) * std::f32::consts::PI / 180.0;
         self.cam_x += yaw.cos() * right + yaw.sin() * up;
         self.cam_z += yaw.sin() * right - yaw.cos() * up;
-    }
-
-    /// The edit tool line (the C++ port showed it in the window title; Tab exits, T tool, [ ] type, , . brush, shift lowers or removes).
-    pub fn edit_status(&self) -> String {
-        let tool = match self.tool {
-            0 => "Paint",
-            1 => "Raise/Lower",
-            2 => "Path",
-            3 => "Wall",
-            5 => return "Edit: Undo, click a tile to take back what was built there".into(),
-            _ => "Building",
-        };
-        let what = match self.tool {
-            0 => PAINT[self.paint_idx].name,
-            2 => {
-                if self.path_kind == 1 {
-                    "gravel"
-                } else {
-                    "paved"
-                }
-            }
-            3 => "edge",
-            4 => land::BUILDINGS.get(self.build_idx).map(|b| b.0).unwrap_or("?"),
-            _ => "terrain",
-        };
-        format!("Edit: {tool}, {what}, brush {}", self.brush * 2 + 1)
     }
 }
 
