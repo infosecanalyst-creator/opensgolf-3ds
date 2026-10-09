@@ -67,6 +67,11 @@ pub fn pro_bytes(p: &ProFile) -> Vec<u8> {
     out[0x20] = p.person.traits;
     out[0x21] = p.person.b21;
     out[0x23] = p.person.b23;
+    if let Some(h) = p.person.head {
+        out[0x22] = h;
+    }
+    let pp = &p.person;
+    out[0x24..0x29].copy_from_slice(&[pp.shirt, pp.pants, pp.alt_skin, pp.skin, pp.hair]);
     out[0x2c..0x30].copy_from_slice(&p.person.fixed.to_le_bytes());
     for i in 0..SAYINGS {
         let mut s = vec![0u8; SAYING];
@@ -124,10 +129,14 @@ mod tests {
         p.skills[0] = 7;
         p.skills[9] = 3;
         p.sayings = vec!["Fore!".into()];
+        p.person.head = Some(12);
+        p.person.shirt = 5;
+        p.person.hair = 3;
         let b = pro_bytes(&p);
         assert_eq!(b.len(), 0x722 + 8);
         let q = parse_pro(&b).unwrap();
         assert_eq!(q.person.name, "Test Pro");
+        assert_eq!((q.person.head, q.person.shirt, q.person.hair), (Some(12), 5, 3));
         assert_eq!(q.skills, p.skills);
         assert_eq!(q.sayings[0], "Fore!");
     }

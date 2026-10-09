@@ -225,6 +225,8 @@ pub enum Screen {
     Board,
     YearEnd,
     Roster,
+    /// Customise Golfer, the player's own character editor.
+    Customise,
     /// F2 Player Comments, F3 Histograph, F4 Financial Report, F5 Routing Map, F8 Keyboard Shortcuts.
     Comments,
     Histograph,
@@ -394,6 +396,9 @@ pub struct App {
     pub pair_picks: Vec<usize>,
     pub golfer_page: usize,
     pub card: Option<usize>,
+    pub card_ui: crate::screens_ui::CardUi,
+    /// Customise Golfer, while open.
+    pub cust: Option<crate::cust_ui::Customise>,
     pub year_notice: String,
     pub roster_offset: usize,
     /// The accomplishment snapshots still to take (id and map point), and the snapshots taken this session.
@@ -606,6 +611,8 @@ impl App {
             pair_picks: Vec::new(),
             golfer_page: 0,
             card: None,
+            card_ui: Default::default(),
+            cust: None,
             year_notice: String::new(),
             roster_offset: 0,
             snapshot_due: Vec::new(),
@@ -3180,7 +3187,9 @@ impl App {
         }
         if self.moving_employee.is_none() && sg_core::course::inside(t.0, t.1) {
             let o = self.course.object_at(t.0, t.1);
-            if o >= 0 && self.course.objects.get(o as usize).is_some_and(|ob| ob.kind == land::K_CLUBHOUSE) && self.open_pair_screen() {
+            let clubhouse = o >= 0 && self.course.objects.get(o as usize).is_some_and(|ob| ob.kind == land::K_CLUBHOUSE);
+            // a golfer under the click (or one held by the card's Move/Eject) comes before the clubhouse
+            if self.golfer_click(wx, wz, clubhouse) || clubhouse && self.open_pair_screen() {
                 return;
             }
         }

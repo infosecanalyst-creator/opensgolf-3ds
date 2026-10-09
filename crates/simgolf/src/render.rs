@@ -618,9 +618,10 @@ impl App {
             s.text_centered(g, 400.0, 120.0, "PAUSED", 24.0, rgb(1.0, 1.0, 0.8));
         }
         self.draw_thoughts(g, &s);
-        self.draw_card(g, &s);
         self.draw_dock(g, &s);
         self.draw_leaderboard(g, &s);
+        // the golfer card goes over the dock's advisor box
+        self.draw_card(g, &s);
         let lines = self.aim_text();
         if !lines.is_empty() {
             let h = 12.0 + 16.0 * lines.len() as f32;
