@@ -28,7 +28,7 @@ pub mod job {
 pub const ANIM_STAND: i16 = 11;
 pub const ANIM_ACTION: i16 = 12;
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Employee {
     pub active: bool,
     pub job: i8,
@@ -58,7 +58,7 @@ pub struct Employee {
 }
 
 /// What the staff code needs to know about, and may change on, a golfer.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct StaffGolfer {
     /// On the course and playing.
     pub present: bool,
@@ -95,7 +95,7 @@ pub enum StaffEvent {
 }
 
 /// Per-tile state the staff code reads and changes: weeds (0x800) and "being worked on" (0x4000), plus their counters.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct TileState {
     pub w: i32,
     pub h: i32,

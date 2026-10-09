@@ -8,7 +8,7 @@ use crate::golfer::{flag, game, Club};
 use crate::land::ExeRng;
 
 /// Planner globals the exe keeps between calls.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct State {
     /// Simulation mode (0x5a9cc4): 0 real shot, 1 planning, 2 deterministic trial.
     pub mode: i32,

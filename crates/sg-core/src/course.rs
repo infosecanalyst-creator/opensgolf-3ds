@@ -98,7 +98,7 @@ pub fn inside(a: i32, b: i32) -> bool {
     (0..N).contains(&a) && (0..N).contains(&b)
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Course {
     pub ty: Vec<u8>,
     pub flags: Vec<u16>,

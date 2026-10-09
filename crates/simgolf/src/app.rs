@@ -126,7 +126,7 @@ impl Default for Prop {
 }
 
 /// Per hole statistics for the course report (reset when the course changes shape).
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct HoleStat {
     pub plays: i32,
     pub strokes: f64,
@@ -181,6 +181,29 @@ pub enum Screen {
     /// The exe's TRACTS FOR SALE screen.
     Land,
 }
+
+/// A whole game as saved: the land and terrain, the golfers and holes, the staff, the money and calendar, and the exe's random
+/// generator, so a loaded game goes on exactly as it would have. Stored as JSON compressed with zlib, after a magic line.
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct SaveGame {
+    pub version: u32,
+    pub theme: usize,
+    pub course_name: String,
+    pub difficulty: i32,
+    pub terrain: Terrain,
+    pub land: Option<Land>,
+    pub club: Club,
+    pub course: Course,
+    pub econ: Economy,
+    pub exe_rng: ExeRng,
+    pub noise: Noise,
+    pub employees: Vec<Employee>,
+    pub staff_tiles: TileState,
+    pub game_tick: u32,
+    pub hole_stats: Vec<HoleStat>,
+}
+
+const SAVE_MAGIC: &[u8] = b"SIMGOLF-NATIVE-SAVE\n";
 
 /// One texture-batched mesh of the course.
 pub struct Batch {
@@ -1479,6 +1502,69 @@ impl App {
             self.econ.start_cash,
             if sandbox { " (sandbox)" } else { "" }
         );
+    }
+
+    /// The whole-game save file, next to the course file.
+    pub fn game_file(&self) -> PathBuf {
+        self.course_file.with_extension("sgs")
+    }
+
+    /// Saves the whole game.
+    pub fn save_game(&self, path: &Path) -> Result<(), String> {
+        let save = SaveGame {
+            version: 1,
+            theme: self.theme,
+            course_name: self.course_name.clone(),
+            difficulty: self.difficulty,
+            terrain: self.terrain.clone(),
+            land: self.land.clone(),
+            club: self.club.clone(),
+            course: self.course.clone(),
+            econ: self.econ.clone(),
+            exe_rng: self.exe_rng,
+            noise: self.noise.clone(),
+            employees: self.employees.clone(),
+            staff_tiles: self.staff_tiles.clone(),
+            game_tick: self.game_tick,
+            hole_stats: self.hole_stats.clone(),
+        };
+        let json = serde_json::to_vec(&save).map_err(|e| e.to_string())?;
+        let mut out = SAVE_MAGIC.to_vec();
+        out.extend(miniz_oxide::deflate::compress_to_vec_zlib(&json, 6));
+        std::fs::write(path, out).map_err(|e| format!("{}: {e}", path.display()))
+    }
+
+    /// Loads a whole game saved by `save_game` and goes on from where it was.
+    pub fn load_game(&mut self, g: &mut Gfx, path: &Path) -> Result<(), String> {
+        let data = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let body = data.strip_prefix(SAVE_MAGIC).ok_or_else(|| format!("{}: not a saved game", path.display()))?;
+        let json = miniz_oxide::inflate::decompress_to_vec_zlib(body).map_err(|e| format!("{}: {e:?}", path.display()))?;
+        let s: SaveGame = serde_json::from_slice(&json).map_err(|e| format!("{}: {e}", path.display()))?;
+        self.terrain = s.terrain;
+        self.land = s.land;
+        self.course_name = s.course_name;
+        self.difficulty = s.difficulty;
+        self.adopt_holes = false;
+        if !self.load_theme(g, s.theme) {
+            return Err("could not load the theme".into());
+        }
+        self.club = s.club;
+        self.course = s.course;
+        self.econ = s.econ;
+        self.exe_rng = s.exe_rng;
+        self.noise = s.noise;
+        self.employees = s.employees;
+        self.staff_tiles = s.staff_tiles;
+        self.game_tick = s.game_tick;
+        self.hole_numbers.clear();
+        self.sync_course();
+        self.hole_stats = s.hole_stats;
+        self.sim_time = 0.0;
+        self.tick_acc = 0.0;
+        self.reset_clock = true;
+        self.screen = Screen::Play;
+        self.dirty = true;
+        Ok(())
     }
 
     /// Loads one story script from the disc's Themes folder. Format (read from the files): a title line, then blocks separated by

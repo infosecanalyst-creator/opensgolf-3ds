@@ -47,6 +47,8 @@ struct Options {
     difficulty: Option<i32>,
     course: Option<PathBuf>,
     save: Option<PathBuf>,
+    save_game: Option<PathBuf>,
+    load_game: Option<PathBuf>,
     edit_spec: String,
     panel: Option<i32>,
     center: Option<(i32, i32)>,
@@ -94,6 +96,8 @@ fn parse_args() -> Options {
         difficulty: None,
         course: None,
         save: None,
+        save_game: None,
+        load_game: None,
         edit_spec: String::new(),
         panel: None,
         center: None,
@@ -140,6 +144,8 @@ fn parse_args() -> Options {
             "--difficulty" => o.difficulty = next().parse().ok().map(|d: i32| d.clamp(0, 3)),
             "--course" => o.course = Some(PathBuf::from(next())),
             "--save" => o.save = Some(PathBuf::from(next())),
+            "--save-game" => o.save_game = Some(PathBuf::from(next())),
+            "--load-game" => o.load_game = Some(PathBuf::from(next())),
             "--edit" => o.edit_spec = next(),
             "--panel" => o.panel = Some(atoi(&next())),
             "--center" => {
@@ -166,6 +172,7 @@ struct Stage {
     g: Gfx,
     app: App,
     png_out: Option<PathBuf>,
+    save_game_out: Option<PathBuf>,
     frames: u32,
     editing: bool,
     dragging: bool,
@@ -378,6 +385,7 @@ impl Stage {
                 || o.course.is_some()
                 || !o.edit_spec.is_empty()
                 || o.save.is_some()
+                || o.load_game.is_some()
                 || o.golfer.is_some()
                 || o.sandbox
                 || o.follow;
@@ -418,6 +426,13 @@ impl Stage {
             app.rebuild_batches(&mut g);
             app.refresh_trees();
         }
+        if let Some(f) = &o.load_game {
+            if let Err(e) = app.load_game(&mut g, f) {
+                eprintln!("error: {e}");
+                std::process::exit(1);
+            }
+            println!("loaded game {} at tick {}", f.display(), app.game_tick);
+        }
         apply_edit_spec(&mut app, &o.edit_spec);
         if !o.edit_spec.is_empty() {
             app.rebuild_batches(&mut g);
@@ -442,6 +457,7 @@ impl Stage {
             g,
             app,
             png_out: o.png_out,
+            save_game_out: o.save_game,
             frames: 0,
             editing: false,
             dragging: false,
@@ -467,6 +483,11 @@ impl Stage {
     }
 
     fn save_course(&mut self, toast: bool) {
+        let gf = self.app.game_file();
+        match self.app.save_game(&gf) {
+            Ok(()) => println!("saved game {}", gf.display()),
+            Err(e) => eprintln!("error: {e}"),
+        }
         let f = self.app.course_file.clone();
         match self.app.terrain.save(&f) {
             Ok(()) => {
@@ -485,6 +506,16 @@ impl Stage {
     }
 
     fn load_course(&mut self) {
+        let gf = self.app.game_file();
+        if gf.exists() {
+            match self.app.load_game(&mut self.g, &gf) {
+                Ok(()) => {
+                    println!("loaded game {}", gf.display());
+                    return;
+                }
+                Err(e) => eprintln!("error: {e}"),
+            }
+        }
         let f = self.app.course_file.clone();
         match Terrain::load(&f, &self.app.terrain) {
             Ok(t) => {
@@ -628,6 +659,12 @@ impl Stage {
         }
         if app.screen == Screen::Menu {
             match hit {
+                0 if app.game_file().exists() => {
+                    let gf = app.game_file();
+                    if let Err(e) = app.load_game(&mut self.g, &gf) {
+                        app.show_toast(&format!("Could not load the saved game: {e}"));
+                    }
+                }
                 0 => match Terrain::load(&app.course_file, &app.terrain) {
                     Ok(t) => {
                         app.terrain = t;
@@ -955,6 +992,12 @@ impl EventHandler for Stage {
                     std::process::exit(1);
                 }
                 println!("saved {} ({}x{})", out.display(), self.app.draw_w, self.app.draw_h);
+                if let Some(f) = &self.save_game_out {
+                    match self.app.save_game(f) {
+                        Ok(()) => println!("saved game {} at tick {}, cash {:.0}", f.display(), self.app.game_tick, self.app.econ.cash),
+                        Err(e) => eprintln!("error: {e}"),
+                    }
+                }
                 std::process::exit(0);
             }
         }

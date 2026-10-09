@@ -17,7 +17,7 @@ const HN: usize = 51 * 51;
 
 /// The exe's random number generator: a 32-bit LCG (x * 1103515245 + 12345), seeded with the Windows millisecond clock times 37.
 /// A draw takes bits 16..30 as a fraction of 1 and scales it by the (16-bit) range, truncating.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ExeRng {
     pub state: u32,
 }
@@ -35,7 +35,7 @@ impl ExeRng {
 
 /// Height noise: a 16 x 16 grid of random values 0..15 that wraps around, read with bilinear interpolation. The exe fills it once
 /// at start-up (drawing 18 x 18 values, of which the 16 x 16 corner is used).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Noise {
     g: [[i32; 17]; 17],
 }
@@ -131,7 +131,7 @@ pub const RECORDS: [PropertyRecord; 16] = [
 pub const SLOT_PRICE_UNITS: [i32; 16] = [500, 600, 700, 800, 1200, 1500, 2000, 2500, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000];
 
 /// One offer slot: which property it holds and the acreage the deal comes with.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Slot {
     pub property: usize,
     pub acres: i32,
@@ -318,7 +318,7 @@ pub mod flag {
 }
 
 /// An object on the map (the exe's 16-byte object record): a building, a landmark or an obstacle.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Object {
     pub kind: i32,
     pub a: i32,
@@ -333,7 +333,7 @@ pub struct Object {
 }
 
 /// Generated land in the exe's layout.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Land {
     pub slot_index: usize,
     pub slot: Slot,

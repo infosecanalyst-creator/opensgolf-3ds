@@ -13,7 +13,7 @@ pub const RECORD: usize = 0x230;
 /// Roster entries the game uses (membership records exist for 84).
 pub const PEOPLE: usize = 84;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Person {
     pub job: String,
     pub name: String,

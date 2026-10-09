@@ -78,7 +78,7 @@ pub mod anim {
 }
 
 /// One golfer record (0x100 bytes at 0x5794b8 in the exe); field comments give the record offset.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Golfer {
     /// +0x00, +0x04 position in map units
     pub x: i32,
@@ -186,7 +186,7 @@ impl Golfer {
 }
 
 /// One hole record (0x208 bytes at 0x575ab0 + h*0x208).
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Hole {
     /// +0x00 par (0: no hole), +0x01 tee facing (toward the planned tee shot), +0x02 heading from the forward tee to the pin
     pub par: i32,
@@ -229,7 +229,7 @@ pub struct Hole {
 }
 
 /// Membership record per roster person (0x2c bytes at 0x5849e0).
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Member {
     pub best: u8,
     pub avg: i8,
@@ -245,7 +245,7 @@ pub struct Member {
 }
 
 /// Ledger columns money is booked to.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Column {
     GreensFees,
     FoodDrink,
@@ -253,7 +253,7 @@ pub enum Column {
 }
 
 /// What the golfers did this tick that the game around them must show or book.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Event {
     /// A sound slot; with a map point it is positional.
     Sound { slot: i32, at: Option<(i32, i32)> },
@@ -268,7 +268,7 @@ pub enum Event {
 }
 
 /// The golfers and everything they share (the exe's globals near them).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Club {
     pub g: Vec<Golfer>,
     pub holes: Vec<Hole>,

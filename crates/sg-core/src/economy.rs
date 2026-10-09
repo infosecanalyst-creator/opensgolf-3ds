@@ -29,7 +29,7 @@ pub const LEDGER_LABELS: [&str; LEDGER_COLUMNS] =
 /// Months per year in the exe's calendar (March to October).
 pub const MONTHS_PER_YEAR: i32 = 8;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Economy {
     /// Starting amount: 1000 units in a normal game, 10000 in sandbox, less the property's price.
     pub start_cash: f64,

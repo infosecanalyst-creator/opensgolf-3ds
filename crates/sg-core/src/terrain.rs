@@ -221,7 +221,7 @@ pub fn parse_lighting(text: &str) -> Lighting {
     out
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Terrain {
     pub w: i32,
     pub h: i32,
