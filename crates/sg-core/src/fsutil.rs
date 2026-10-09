@@ -19,6 +19,9 @@ mod imp {
         }
         std::fs::write(p, data).is_ok()
     }
+    pub fn remove(p: &Path) -> bool {
+        std::fs::remove_file(p).is_ok()
+    }
     pub fn exists(p: &Path) -> bool {
         p.exists()
     }
@@ -38,6 +41,7 @@ mod imp {
         fn sg_fs_size(path: *const u8, len: usize) -> i32;
         fn sg_fs_read(path: *const u8, len: usize, dst: *mut u8);
         fn sg_fs_write(path: *const u8, len: usize, data: *const u8, data_len: usize);
+        fn sg_fs_remove(path: *const u8, len: usize) -> i32;
         fn sg_fs_kind(path: *const u8, len: usize) -> i32;
         fn sg_fs_list(path: *const u8, len: usize) -> i32;
         fn sg_fs_list_item(index: i32, dst: *mut u8, cap: usize) -> i32;
@@ -59,6 +63,10 @@ mod imp {
         let k = s(p);
         unsafe { sg_fs_write(k.as_ptr(), k.len(), data.as_ptr(), data.len()) };
         true
+    }
+    pub fn remove(p: &Path) -> bool {
+        let k = s(p);
+        unsafe { sg_fs_remove(k.as_ptr(), k.len()) != 0 }
     }
     /// 0 missing, 1 file, 2 directory.
     fn kind(p: &Path) -> i32 {
@@ -96,6 +104,11 @@ pub fn read_text(path: impl AsRef<Path>) -> Option<String> {
 
 pub fn write_file(path: impl AsRef<Path>, data: &[u8]) -> bool {
     imp::write(path.as_ref(), data)
+}
+
+/// Deletes a file (a saved game the player chose to delete). Returns false when nothing was removed.
+pub fn remove_file(path: impl AsRef<Path>) -> bool {
+    imp::remove(path.as_ref())
 }
 
 pub fn exists(path: impl AsRef<Path>) -> bool {

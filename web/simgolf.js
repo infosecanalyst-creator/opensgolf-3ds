@@ -68,6 +68,23 @@ miniquad_add_plugin({
                 console.warn("could not keep " + path + " in local storage", e);
             }
         };
+        env.sg_fs_remove = function (ptr, len) {
+            const path = sgStr(ptr, len);
+            const k = sgKey(path);
+            if (!sgfs.files.delete(k)) return 0;
+            const parts = path.replace(/\\/g, "/").split("/").filter(s => s.length > 0);
+            const kids = sgfs.dirs.get(sgKey(parts.slice(0, -1).join("/")));
+            if (kids) kids.delete(parts[parts.length - 1].toLowerCase());
+            try {
+                for (let i = localStorage.length - 1; i >= 0; i--) {
+                    const lk = localStorage.key(i);
+                    if (lk && lk.startsWith(SAVE_PREFIX) && sgKey(lk.substring(SAVE_PREFIX.length)) === k) localStorage.removeItem(lk);
+                }
+            } catch (e) {
+                console.warn("could not remove " + path + " from local storage", e);
+            }
+            return 1;
+        };
         env.sg_fs_kind = function (ptr, len) {
             const k = sgKey(sgStr(ptr, len));
             if (sgfs.files.has(k)) return 1;
