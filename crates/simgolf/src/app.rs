@@ -102,6 +102,11 @@ pub struct Prop {
     pub decor: bool,
     /// A celebrity resident (index into Club::residents).
     pub resident: Option<usize>,
+    /// Ambient life and water effects (animals, fly-overs, splash, ripples, rocks, dolphins), rebuilt every update.
+    pub ambient: bool,
+    /// Drawn size (1 = the sprite's own) and height of the body above the ground in world units (the shadow stays down).
+    pub scale: f32,
+    pub lift: f32,
 }
 
 impl Default for Prop {
@@ -125,6 +130,9 @@ impl Default for Prop {
             grow_tile: None,
             decor: false,
             resident: None,
+            ambient: false,
+            scale: 1.0,
+            lift: 0.0,
         }
     }
 }
@@ -304,6 +312,9 @@ pub struct App {
     pub prep: Option<(sg_core::tournament::Prep, i32)>,
     pub results: Option<sg_core::tournament::Results>,
     pub champ: Option<crate::champ_ui::ChampScreen>,
+    /// Tiles the player retyped since the last tick (each may draw wildlife), and the water depth of each tile.
+    pub retyped: Vec<(i32, i32)>,
+    pub water_depth: Vec<u8>,
     /// An employee picked up to be moved: the next click on the course becomes their post (the exe's "Move this employee").
     pub moving_employee: Option<usize>,
     /// Employee clips by sprite set (0 Greeter, 1 Ranger, 2 Groundskeeper, 3 Tray Girl, 4 Golf Celebrity, 5 Marshall,
@@ -462,6 +473,8 @@ impl App {
             prep: None,
             results: None,
             champ: None,
+            retyped: Vec::new(),
+            water_depth: Vec::new(),
             moving_employee: None,
             staff_clips: [[(None, None); 3]; 9],
             weed_sprite: None,
@@ -1127,6 +1140,7 @@ impl App {
         }
         let Some(land) = &self.land else { return };
         self.course.sync(land);
+        self.water_depth = sg_core::wildlife::water_depth(&self.course);
         self.course.door = self.club_anchor();
         self.course.theme = self.exe_theme();
         if self.course.objects.first().map(|o| o.kind) != Some(land::K_CLUBHOUSE) {
@@ -1380,6 +1394,7 @@ impl App {
         self.club.tick(&mut self.course, &mut self.exe_rng, tick);
         sg_core::ratings::pass(&mut self.club, self.difficulty);
         self.pro_after_tick();
+        self.wildlife_tick();
         self.tourney_after_tick();
         self.weeds_from_course();
         let events: Vec<golf::Event> = self.club.out.drain(..).collect();
@@ -1510,6 +1525,7 @@ impl App {
         }
         self.update_staff_props();
         self.update_resident_props();
+        self.update_ambient_props();
         self.update_weed_props();
         self.update_tree_growth();
         self.update_decor_props();
@@ -1859,6 +1875,7 @@ impl App {
             }
         };
         self.ensure_land();
+        self.retyped.push((x, y));
         if let Some(land) = self.land.as_mut() {
             if (0..land::N).contains(&x) && (0..land::N).contains(&y) {
                 let i = (x * land::N + y) as usize;

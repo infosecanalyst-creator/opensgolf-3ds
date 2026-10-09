@@ -43,5 +43,6 @@ pub mod terrain;
 pub mod tournament;
 pub mod tracts;
 pub mod vips;
+pub mod wildlife;
 
 pub use assets::{Indexed, Rgba};

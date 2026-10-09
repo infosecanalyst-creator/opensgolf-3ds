@@ -17,6 +17,7 @@ mod pro_ui;
 mod render;
 mod tourney_ui;
 mod ui;
+mod wild_ui;
 
 use app::*;
 use gfx::Gfx;
@@ -319,6 +320,10 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 println!("celebrity home at {},{}: {} residents", at(0), at(1), app.club.residents.len());
             }
             b'x' => app.save_championship_course(),
+            b'a' if v.len() >= 3 => {
+                // test hook: an animal of kind v[2] and a follower at x,y
+                app.club.wildlife.spawn(&mut app.exe_rng, at(0), at(1), at(2));
+            }
             b'g' => {
                 // a tournament: g:0 as the SGA offers it (the evaluation must pass), g:1 straight away with the default purse
                 app.club.game |= sg_core::tournament::OFFERED;

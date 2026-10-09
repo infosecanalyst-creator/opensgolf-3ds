@@ -142,7 +142,7 @@ impl App {
             items.push((mv[2] * p.x + mv[6] * y + mv[10] * p.z, i));
         }
         items.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-        let quad = |app: &mut App, g: &mut Gfx, si: Option<usize>, pi: usize| {
+        let quad = |app: &mut App, g: &mut Gfx, si: Option<usize>, pi: usize, shadow: bool| {
             let Some(si) = si else { return };
             let p = app.props[pi].clone();
             let sp = &app.sprites[si].s;
@@ -164,7 +164,8 @@ impl App {
             }
             let (w, h, ax, ay) = (sp.w as f32, sp.h as f32, sp.anchor_x as f32, sp.anchor_y as f32);
             let tex = app.sprite_texture(g, si, view, p.frame);
-            let y = app.terrain.height_at(p.x, p.z);
+            let y = app.terrain.height_at(p.x, p.z) + if shadow { 0.0 } else { p.lift };
+            let s = s * p.scale;
             let (l, r) = (-ax * s, (w - ax) * s);
             let (t, b) = (ay * s, -(h - ay) * s); // up is positive
             let c = |cx: f32, cy: f32, tu: f32, tv: f32| {
@@ -175,17 +176,17 @@ impl App {
         for &(_, i) in &items {
             if self.props[i].flat {
                 let b = self.props[i].body;
-                quad(self, g, b, i);
+                quad(self, g, b, i, false);
             }
         }
         for &(_, i) in &items {
             let sh = self.props[i].shadow;
-            quad(self, g, sh, i);
+            quad(self, g, sh, i, true);
         }
         for &(_, i) in &items {
             if !self.props[i].flat {
                 let b = self.props[i].body;
-                quad(self, g, b, i);
+                quad(self, g, b, i, false);
             }
         }
         // The ball: a small white disc with a dark disc on the ground below it.

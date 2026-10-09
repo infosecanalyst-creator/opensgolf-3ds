@@ -341,6 +341,8 @@ pub struct Club {
     pub purse: i32,
     pub tourney_opts: i32,
     pub backup: Option<crate::tournament::Backup>,
+    /// Animals, fly-overs and the ball splash.
+    pub wildlife: crate::wildlife::Wildlife,
     /// Celebrity residents of the vacation homes (0x56d1b8).
     pub residents: Vec<crate::celebs::Actor>,
     /// Accomplishments earned (bit per id, 0x4c15a0).
@@ -429,6 +431,7 @@ impl Club {
             trophies: 0,
             awards: 0,
             residents: Vec::new(),
+            wildlife: Default::default(),
             sga_score: 0,
             purse: 0,
             tourney_opts: 0,
@@ -3023,6 +3026,9 @@ impl Club {
                 penalty = true;
                 let at = (self.g[g].bx, self.g[g].y);
                 self.sound(5, Some(at));
+                if rt == t::WATER {
+                    self.wildlife.splash = Some((self.g[g].bx, self.g[g].by, 0));
+                }
                 self.event(c, rng, g, 0xd, rt as i32);
                 let gg = &mut self.g[g];
                 let hd = angle(gg.bx - gg.ox, gg.by - gg.oy);
