@@ -478,12 +478,14 @@ impl App {
         s.text_centered(g, 320.0, 40.0, "TOURNAMENT RESULTS", 22.0, ink);
         let holes = (1..19).filter(|&h| res.pars[h] != 0).collect::<Vec<_>>();
         let nh = holes.len();
-        s.text(g, 25.0, 73.0, "Ranking", 12.0, ink);
+        // the headings' tops are at y 50; ours draws from the baseline
+        let hy = 50.0 + 10.0;
+        s.text(g, 25.0, hy, "Ranking", 12.0, ink);
         for (k, h) in holes.iter().enumerate() {
-            s.text_centered(g, 176.0 + 27.0 * k as f32, 73.0, &h.to_string(), 11.0, ink);
+            s.text_centered(g, 176.0 + 27.0 * k as f32, hy, &h.to_string(), 11.0, ink);
         }
-        s.text_centered(g, 669.0, 73.0, "F", 12.0, ink);
-        s.text_centered(g, 740.0, 73.0, "Prize", 12.0, ink);
+        s.text_centered(g, 669.0, hy, "F", 12.0, ink);
+        s.text_centered(g, 740.0, hy, "Prize", 12.0, ink);
         let mut top = 70.0;
         let mut drawn = 0;
         for (i, r) in res.rows.iter().enumerate().take(18) {
