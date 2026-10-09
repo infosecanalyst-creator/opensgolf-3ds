@@ -7,7 +7,7 @@ use crate::gfx::Gfx;
 use crate::panels_ui::COUNTERS;
 use crate::screens_ui::top;
 use crate::ui::{load_pcx_alpha, rgb, rgba, text_width, wrap_text, Image, Screen as Ui};
-use sg_core::course::{idx, inside, N, TYPES};
+use sg_core::course::{idx, N, TYPES};
 use sg_core::economy::LEDGER_LABELS;
 use sg_core::land;
 use sg_core::staff;
@@ -43,6 +43,9 @@ impl ReportArt {
         }
     }
 }
+
+/// A sprite queued for the end of the frame: depth, sprite, view, frame, ground point x and y, scale.
+pub(crate) type Queued = (f32, usize, i32, i32, f32, f32, f32);
 
 fn black() -> [f32; 4] {
     rgb(0.0, 0.0, 0.0)
@@ -115,7 +118,7 @@ impl App {
         let mut best = [1usize; 64];
         let mut plays = 0;
         for h in 1..19 {
-            let hr = &self.club.holes[h];
+            let hr = self.club.holes[h].clone();
             plays += hr.tee_shots;
             for c in 0..64 {
                 let v = hr.events.get(c).copied().unwrap_or(0);
@@ -302,8 +305,13 @@ impl App {
 
     // ---- F5 ---------------------------------------------------------------------------------------------------------
 
-    fn tile_colour(&self, a: i32, b: i32) -> Option<[f32; 4]> {
-        let t = self.course.ty[idx(a, b)];
+    /// A tile's colour on the routing map (0x456be0); out of bounds tiles are not drawn. Aura: red from the unhappy map, green
+    /// from the happy one, blue from their byte sum over 16, water blue. Home site value: a quarter of the lot value (0x42ef40)
+    /// less the site work of a home site there (0x40db90, side 2), times 1.5, as green; dark red where none would fit. The
+    /// other tabs colour by the tile's class.
+    fn tile_colour(&self, a: i32, b: i32, aura: Option<&(Vec<u8>, Vec<u8>)>) -> Option<[f32; 4]> {
+        let i = idx(a, b);
+        let t = self.course.ty[i];
         if t == sg_core::course::t::OUT {
             return None;
         }
@@ -312,25 +320,20 @@ impl App {
                 if t == sg_core::course::t::WATER {
                     return Some(c15(0x0218));
                 }
-                // PLACEHOLDER: the exe colours each tile from two per tile maps it builds when the tab opens (0x4616f0, red
-                // from one, green from the other, blue from their sum); the port sums the happy and unhappy marks nearby
-                let (mut good, mut bad) = (0i32, 0i32);
-                for da in -2..=2 {
-                    for db in -2..=2 {
-                        if inside(a + da, b + db) {
-                            let i = idx(a + da, b + db);
-                            good += self.course.happy.get(i).copied().unwrap_or(0) as i32;
-                            bad += self.course.unhappy.get(i).copied().unwrap_or(0) as i32;
-                        }
-                    }
-                }
-                let (gr, rd) = ((good * 12).min(255) as f32 / 255.0, (bad * 12).min(255) as f32 / 255.0);
-                Some(rgb(rd, gr, ((gr + rd) / 2.0).min(1.0) * 0.5))
+                let (happy, unhappy) = aura.map(|m| (m.0[i], m.1[i])).unwrap_or((0, 0));
+                let blue = happy.wrapping_add(unhappy) >> 4;
+                Some(c15(((unhappy as u32 >> 3) << 10) | ((happy as u32 >> 3) << 5) | blue as u32))
             }
             3 => {
                 let v = sg_core::homes::lot_value(&self.course, &self.club.holes, self.difficulty, a, b);
-                let g = ((v / 4) * 3 / 2).clamp(0, 255) as f32 / 255.0;
-                Some(rgb(0.0, g, 0.0))
+                let site = self.land.as_ref().map(|l| l.fits(a, b, 2, land::K_HOME_SITE, self.exe_theme()));
+                match site {
+                    Some(None) => Some(c15(0x2000)),
+                    s => {
+                        let q = sg_core::geom::clamp((v / 4 - s.flatten().unwrap_or(0)) * 3 / 2, 0, 255);
+                        Some(c15(((q as u32) >> 3) << 5))
+                    }
+                }
             }
             _ => Some(c15(match TYPES[(t as usize).min(22)].class {
                 0 | 1 => 0x3394,
@@ -348,6 +351,34 @@ impl App {
 
     fn mini(a: f32, b: f32) -> (f32, f32) {
         ((a + b) * 6.0 + 106.0, (b - a) * 3.0 + 441.0)
+    }
+
+    /// An employee as the exe draws it off the course (the panel's portraits and the routing map's list): the clip of its
+    /// state (walk below 11, stand at 11, action at 12), its frame modulo the clip's length and the view (camera - facing - 2)
+    /// & 7, as (sprite, view, frame).
+    pub(crate) fn staff_figure(&self, e: &staff::Employee) -> Option<(usize, i32, i32)> {
+        let (set, state) = self.staff_clip_of(e);
+        let si = self.staff_clips[set][state].0?;
+        let n = self.sprites[si].s.frames_per_view.max(1);
+        let camera = 2 * (((self.rot / 90.0).round() as i32 % 4 + 4) % 4);
+        Some((si, (camera - e.dir as i32 - 2) & 7, e.frame as i32 % n))
+    }
+
+    /// Draws the sprites queued this frame (0x4628d0) in depth order, each with its ground point at (x, y). The scale is the
+    /// queue's zoom times the global zoom over 16, the global zoom taken as 4 (its value in play, derived), so zoom 4 draws at
+    /// full size and 2 at half.
+    pub(crate) fn draw_queued(&mut self, g: &mut Gfx, s: &Ui, queue: &mut Vec<Queued>) {
+        queue.sort_by(|a, b| a.0.total_cmp(&b.0));
+        for &(_, si, view, f, x, y, k) in queue.iter() {
+            let (w, h, ax, ay) = {
+                let sp = &self.sprites[si].s;
+                let fr = &sp.frames[sp.frame_index(view, f)];
+                (fr.w as f32, fr.h as f32, sp.anchor_x as f32, sp.anchor_y as f32)
+            };
+            let tex = self.sprite_texture(g, si, view, f);
+            s.image(g, &Image { tex: Some(tex), w: w * k, h: h * k }, x - ax * k, y - ay * k);
+        }
+        queue.clear();
     }
 
     /// Opens or closes the routing map; it opens on hole 1 with the employee list at its top, in the tab used last.
@@ -443,9 +474,10 @@ impl App {
             s.image_part(g, bottom, 0.0, 253.0, 0.0, 253.0, 800.0, 347.0);
         }
         // the minimap: one 12 x 6 diamond per tile
+        let aura = (tab == 2).then(|| self.course.aura());
         for a in 0..N {
             for b in 0..N {
-                let Some(c) = self.tile_colour(a, b) else { continue };
+                let Some(c) = self.tile_colour(a, b, aura.as_ref()) else { continue };
                 let (x, y) = Self::mini(a as f32, b as f32);
                 s.fill(g, x - 4.0, y - 2.0, 8.0, 4.0, c);
                 s.fill(g, x - 2.0, y - 3.0, 4.0, 6.0, c);
@@ -508,8 +540,9 @@ impl App {
             _ => {}
         }
         // the holes: rows of the routing list (routing tab), the tee to green line and the number on the map (every tab)
+        let mut queue = Vec::new();
         for h in 1..19 {
-            let hr = &self.club.holes[h];
+            let hr = self.club.holes[h].clone();
             if tab == 0 {
                 let shift = if h <= 9 { 0.0 } else { 498.0 };
                 let y = 104.0 + 17.0 * ((h - 1) % 9) as f32;
@@ -532,16 +565,45 @@ impl App {
             if hr.par == 0 {
                 continue;
             }
+            // the tee marker of the hole's par (its last pop frame) on the back tee; a white line two wide from there through
+            // the 250 yard marker (else the 200 one) to the pin, where the theme's flag stands at half size; the hole number in
+            // yellow, 4 pixels above the marker or, with neither marker, halfway along (not on the employees tab)
             let (tx, ty) = Self::mini(hr.back.0 as f32, hr.back.1 as f32);
+            let tee = 0x18d + (hr.par - 3).clamp(0, 2) as u16;
+            if let (Some(si), _) = self.decor_sprite(tee, 0x5e) {
+                let f = self.sprites[si].s.frames_per_view - 1;
+                queue.push((ty, si, 0, f, tx, ty, 1.0));
+            }
             let (gx, gy) = Self::mini(hr.pin.0 as f32, hr.pin.1 as f32);
-            s.line(g, tx, ty, gx, gy, 2.0, c15(0x7fff));
+            let mark = [hr.markers[2], hr.markers[1]].into_iter().find(|m| m.0 != -1);
+            let label = match mark {
+                Some((mx, my)) => {
+                    let (x, y) = Self::mini((mx >> 10) as f32, (my >> 10) as f32);
+                    s.line(g, tx, ty, x, y, 2.0, c15(0x7fff));
+                    s.line(g, x, y, gx, gy, 2.0, c15(0x7fff));
+                    (x, y)
+                }
+                None => {
+                    s.line(g, tx, ty, gx, gy, 2.0, c15(0x7fff));
+                    (((tx + gx) / 2.0).trunc(), ((ty + gy) / 2.0).trunc())
+                }
+            };
             if tab != 1 {
-                s.text_centered(g, (tx + gx) / 2.0, (ty + gy) / 2.0 - 4.0, &format!("{h}"), 14.0, c15(0x7ff0));
+                // centred, by its top, with the palette's black a pixel below (0x404bc0)
+                let (x, y) = (label.0, top(label.1 - 4.0, 14.0));
+                s.text_centered(g, x, y + 1.0, &format!("{h}"), 14.0, ink);
+                s.text_centered(g, x, y, &format!("{h}"), 14.0, c15(0x7ff0));
+            }
+            let flag = 0x189 + self.exe_theme().min(3) as u16;
+            // the exe's palette 0x60 + theme; the port's 0x63 entry is that same per-theme flag palette
+            if let (Some(si), _) = self.decor_sprite(flag, 0x63) {
+                queue.push((gy, si, 3, 0, gx, gy, 0.5));
             }
         }
         if tab == 1 {
-            self.draw_routing_staff(g, &s);
+            self.draw_routing_staff(g, &s, &mut queue);
         }
+        self.draw_queued(g, &s, &mut queue);
         // the tab under the pointer lights up (its pale cut), the open tab is yellow; the compass sits in the round well at
         // the lower left (buy_land_buttons cut 20); the tick lights up under the pointer
         let spot = self.routing_spot(self.info.pointer.0, self.info.pointer.1);
@@ -583,7 +645,7 @@ impl App {
     /// number and name, the month hired and the wages paid, and its work counter; the scroll track with more than eight; on
     /// the map every employee's work area (an ellipse 24 pixels across the diagonal, 48 for groundskeepers, half again when
     /// experienced) in the job's colour with the number and the name.
-    fn draw_routing_staff(&mut self, g: &mut Gfx, s: &Ui) {
+    fn draw_routing_staff(&mut self, g: &mut Gfx, s: &Ui, queue: &mut Vec<Queued>) {
         let list = self.routing_staff();
         let ink = c15(0);
         let n = list.len();
@@ -604,8 +666,10 @@ impl App {
             let x0 = if vis > 4 { 0.0 } else { -374.0 };
             let y0 = 45.0 * ((vis - 1) & 3) as f32;
             let kind = (-2 - e.job as i32).clamp(0, 3) as usize;
-            // the figure: the exe draws the employee's current clip; the port shows the standing clip facing the viewer
-            self.draw_standing(g, s, kind + 4 * e.upgraded as usize, x0 + 746.0, y0 + 103.0);
+            // the figure: the employee's current clip, frame and facing, queued at full size (depth 32 above its feet)
+            if let Some((si, view, f)) = self.staff_figure(&e) {
+                queue.push((y0 + 71.0, si, view, f, x0 + 746.0, y0 + 103.0, 1.0));
+            }
             s.text(g, x0 + 415.0, row(y0 + 71.0), &format!("{}. {}", k + 1, self.employee_name(&e)), 14.0, ink);
             let month = ["March", "April", "May", "June", "July", "August", "September", "October"][(e.hired & 7) as usize];
             let paid = crate::screens_ui::digits(e.paid as i64 * 100);

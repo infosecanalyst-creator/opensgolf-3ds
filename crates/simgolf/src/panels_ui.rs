@@ -885,24 +885,44 @@ impl App {
                 }
             }
         }
-        // each portrait shows the employee standing (their own clip set; skilled employees use the second four)
+        // each portrait shows the employee's current clip, frame and facing (0x436e50), queued at full size with its ground
+        // point at the slot's (30, 24)
+        let mut queue = Vec::new();
         for (p, &(x, y)) in PORTRAITS.iter().enumerate() {
             let Some(&ei) = rows.get(off + p) else { break };
             let e = self.employees[ei];
-            let set = (-2 - e.job as i32).clamp(0, 3) as usize + 4 * e.upgraded as usize;
-            self.draw_standing(g, s, set, x + 30.0, y + 24.0);
+            if let Some((si, view, f)) = self.staff_figure(&e) {
+                queue.push((y + 24.0, si, view, f, x + 30.0, y + 24.0, 1.0));
+            }
         }
+        self.draw_queued(g, s, &mut queue);
         if let Some(ei) = sel {
             let e = self.employees[ei];
             let kind = (-2 - e.job as i32).clamp(0, 3) as usize;
             let up = e.upgraded as usize;
-            let ink = rgb(0.1, 0.08, 0.3);
-            // the exe shows the name, the hire date and the total paid; the port keeps neither date nor total per employee,
-            // so it shows the job and the weekly wage instead (placeholder)
-            s.text_centered(g, 700.0, 544.0, STAFF_NAMES[kind][up], 13.0, ink);
-            s.text_centered(g, 700.0, 557.0, &format!("Wage: {} per week", money(WAGE_UNITS[kind][up] as i64 * 100)), 11.0, ink);
-            s.text_centered(g, 700.0, 579.0, COUNTERS[kind][up], 11.0, rgb(0.25, 0.2, 0.45));
-            s.text_centered(g, 700.0, 592.0, &format!("{}", e.served), 12.0, ink);
+            let ink = crate::screens_ui::c15(0);
+            // centred at x 700, black, placed by their tops: the name (in the face the frame last used, taken to be the body
+            // face 0x51b360, derived), "Hired: <Month> <Year>", "Paid: <dollars>" (grouped, no currency sign) and the counter
+            // label in Arial Bold 10 (0x519fd8), the count in the body face
+            let month = ["March", "April", "May", "June", "July", "August", "September", "October"][(e.hired & 7) as usize];
+            let paid = e.paid as i64 * 100;
+            let lines = [
+                (534.0, self.employee_name(&e), crate::ui::Face::Manual, 15.0),
+                (546.0, format!("Hired: {month} {}", 2001 + (e.hired >> 3)), crate::ui::Face::Arial, 10.0),
+                (
+                    558.0,
+                    format!("Paid: {}{}", if paid < 0 { "-" } else { "" }, crate::ui::group(paid.unsigned_abs())),
+                    crate::ui::Face::Arial,
+                    10.0,
+                ),
+                (572.0, COUNTERS[kind][up].to_string(), crate::ui::Face::Arial, 10.0),
+                (584.0, format!("{}", e.served), crate::ui::Face::Manual, 15.0),
+            ];
+            for (y, t, face, size) in lines {
+                crate::ui::set_face(Some(face));
+                s.text_centered(g, 700.0, crate::screens_ui::top(y, size), &t, size, ink);
+            }
+            crate::ui::set_face(None);
         }
         if tip {
             let (mx, my) = self.pstate.mouse;

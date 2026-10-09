@@ -195,6 +195,53 @@ impl Default for Course {
 }
 
 impl Course {
+    /// The routing map's aura (0x4616f0, rebuilt each frame the aura tab is open): a happy and an unhappy map, a byte per tile.
+    /// Nothing shows until the landing counters (0x53ea24) add up to 10; their sum, at most 1750, scales every tile's happy
+    /// count by 20000 and unhappy count by -40000. Each spreads two thirds of that over the 15 x 15 tiles round it (0x4615f0),
+    /// divided by the cheap distance of three times the tile offset plus 2, onto in-bounds tiles that are not out of bounds,
+    /// each byte clamped to 0..255. Returns (happy, unhappy).
+    pub fn aura(&self) -> (Vec<u8>, Vec<u8>) {
+        let mut happy = vec![0u8; NN];
+        let mut unhappy = vec![0u8; NN];
+        let total: i32 = self.landing.iter().take(NN).map(|&v| v as u8 as i32).sum();
+        if total <= 9 {
+            return (happy, unhappy);
+        }
+        let total = total.min(1750);
+        let mut spread = |a: i32, b: i32, v: i32| {
+            let v = v * 2 / 3;
+            for da in -7..=7 {
+                for db in -7..=7 {
+                    let (ta, tb) = (a + da, b + db);
+                    if self.oob(ta, tb) {
+                        continue;
+                    }
+                    let d = crate::staff::approx_dist(da * 3, db * 3);
+                    let i = idx(ta, tb);
+                    if v < 1 {
+                        unhappy[i] = (unhappy[i] as i32 - v / (d + 2)).clamp(0, 255) as u8;
+                    } else {
+                        happy[i] = (v / (d + 2) + happy[i] as i32).clamp(0, 255) as u8;
+                    }
+                }
+            }
+        };
+        for a in 0..N {
+            for b in 0..N {
+                let i = idx(a, b);
+                let h = self.happy.get(i).copied().unwrap_or(0) as i32;
+                if h != 0 {
+                    spread(a, b, h * 20000 / total);
+                }
+                let u = self.unhappy.get(i).copied().unwrap_or(0) as i32;
+                if u != 0 {
+                    spread(a, b, u * -40000 / total);
+                }
+            }
+        }
+        (happy, unhappy)
+    }
+
     /// Takes tiles, flags, heights and objects from the land, keeping the per-tile counters, then rebuilds levels and walls.
     /// `all_joined`: difficulty 0 and sandbox games treat every building as joined to the clubhouse.
     pub fn sync(&mut self, land: &Land, all_joined: bool) {
@@ -569,5 +616,30 @@ impl Course {
             }
         }
         bits
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn aura_spreads_and_scales_by_landings() {
+        let mut c = Course::default();
+        assert_eq!(c.aura().0.iter().map(|&v| v as u32).sum::<u32>(), 0);
+        c.landing[idx(0, 0)] = 9;
+        c.happy[idx(25, 25)] = 1;
+        // fewer than 10 landings: nothing
+        assert_eq!(c.aura().0[idx(25, 25)], 0);
+        c.landing[idx(0, 0)] = -1; // 255 landings, read as a byte
+        let (happy, unhappy) = c.aura();
+        // 1 * 20000 / 255 = 78, two thirds 52, over (0 + 2) at the tile itself, over (cheap distance 3 + 2) next to it
+        assert_eq!(happy[idx(25, 25)], 26);
+        assert_eq!(happy[idx(26, 25)], 10);
+        assert_eq!(happy[idx(25, 33)], 0);
+        assert!(unhappy.iter().all(|&v| v == 0));
+        c.unhappy[idx(10, 10)] = 2;
+        // 2 * -40000 / 255 = -313, two thirds -208, 104 at the tile
+        assert_eq!(c.aura().1[idx(10, 10)], 104);
     }
 }
