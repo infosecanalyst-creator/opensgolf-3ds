@@ -124,7 +124,34 @@ const COUNT: u32 = 224;
 const BAKE_PX: f32 = 32.0;
 const ATLAS: usize = 512;
 
-static FONT: std::sync::OnceLock<Font> = std::sync::OnceLock::new();
+/// The exe's typefaces (fonts made at start up, 0x45bd83): Klepto ITC (klepto__.ttf) only on the title screens, Manual SSi
+/// Bold (manu3_.ttf) for most text, and Windows' Arial Bold for the small print. Arial is not on the disc: the system's copy
+/// is used when there is one, else the bundled Liberation Sans Bold, which has Arial's metrics.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Face {
+    Klepto,
+    Manual,
+    Arial,
+}
+
+static FONTS: [std::sync::OnceLock<Font>; 3] = [std::sync::OnceLock::new(), std::sync::OnceLock::new(), std::sync::OnceLock::new()];
+
+thread_local! {
+    /// The face a screen asked for; None picks by size (Arial below 12 pixels, Manual SSi above).
+    static FACE: std::cell::Cell<Option<Face>> = const { std::cell::Cell::new(None) };
+}
+
+/// Draws the following text in `f` (None: the default by size), as the exe selects a font object before its text.
+pub fn set_face(f: Option<Face>) {
+    FACE.with(|c| c.set(f));
+}
+
+fn face_for(size: f32) -> Face {
+    FACE.with(|c| c.get()).unwrap_or(if size < 12.0 { Face::Arial } else { Face::Manual })
+}
+
+/// Liberation Sans Bold 2.1.5 (SIL Open Font License 1.1, see fonts/LiberationSans-OFL.txt), standing in for Arial Bold.
+const ARIAL_STANDIN: &[u8] = include_bytes!("../fonts/LiberationSans-Bold.ttf");
 
 #[derive(Default)]
 pub struct Font {
@@ -133,19 +160,30 @@ pub struct Font {
 }
 
 impl Font {
-    /// Bakes the Latin-1 glyphs at a fixed size into one texture. The game has one font, loaded once at start up.
-    pub fn load(g: &mut Gfx, ttf_path: &Path) -> bool {
-        match Self::load_inner(g, ttf_path) {
-            Some(f) => FONT.set(f).is_ok() || FONT.get().is_some(),
-            None => false,
+    /// Bakes the Latin-1 glyphs of the three faces at a fixed size, each into its own texture, once at start up: Klepto and
+    /// Manual SSi from the game folder, Arial Bold from the system or the bundled stand-in.
+    pub fn load(g: &mut Gfx, game_font: impl Fn(&str) -> std::path::PathBuf) -> bool {
+        let read = |p: &Path| sg_core::fsutil::read_file(p);
+        let klepto = read(&game_font("KLEPTO__.TTF"));
+        let manual = read(&game_font("manu3_.TTF"));
+        let arial = ["C:/Windows/Fonts/arialbd.ttf", "/Library/Fonts/Arial Bold.ttf", "/System/Library/Fonts/Supplementary/Arial Bold.ttf"]
+            .iter()
+            .find_map(|p| read(Path::new(p)))
+            .unwrap_or_else(|| ARIAL_STANDIN.to_vec());
+        for (i, ttf) in [klepto, manual, Some(arial)].into_iter().enumerate() {
+            if let Some(f) = ttf.and_then(|b| Self::load_inner(g, b)) {
+                let _ = FONTS[i].set(f);
+            }
         }
-    }
-    pub fn get() -> Option<&'static Font> {
-        FONT.get()
+        FONTS[0].get().is_some()
     }
 
-    fn load_inner(g: &mut Gfx, ttf_path: &Path) -> Option<Font> {
-        let ttf = sg_core::fsutil::read_file(ttf_path)?;
+    /// The face's font, or the first one loaded when it is missing.
+    fn get(face: Face) -> Option<&'static Font> {
+        FONTS[face as usize].get().or_else(|| FONTS.iter().find_map(|f| f.get()))
+    }
+
+    fn load_inner(g: &mut Gfx, ttf: Vec<u8>) -> Option<Font> {
         let font = fontdue::Font::from_bytes(ttf, fontdue::FontSettings::default()).ok()?;
         let mut atlas = vec![0u8; ATLAS * ATLAS * 4];
         let mut glyphs = Vec::with_capacity(COUNT as usize);
@@ -287,7 +325,7 @@ impl Screen {
 
     /// Text with the baseline at y. Sizes are in virtual pixels.
     pub fn text(&self, g: &mut Gfx, x: f32, y: f32, s: &str, size: f32, c: [f32; 4]) {
-        let Some(f) = Font::get() else { return };
+        let Some(f) = Font::get(face_for(size)) else { return };
         let Some(tex) = f.tex else { return };
         let k = size / BAKE_PX;
         let mut pen = x;
@@ -319,7 +357,7 @@ impl Screen {
 }
 
 pub fn text_width(s: &str, size: f32) -> f32 {
-    Font::get().map(|f| f.width(s, size)).unwrap_or(s.len() as f32 * size * 0.5)
+    Font::get(face_for(size)).map(|f| f.width(s, size)).unwrap_or(s.len() as f32 * size * 0.5)
 }
 
 pub fn rgb(r: f32, g: f32, b: f32) -> [f32; 4] {

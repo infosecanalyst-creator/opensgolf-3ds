@@ -207,7 +207,7 @@ struct Stage {
 }
 
 fn load_ui(app: &mut App, g: &mut Gfx) -> bool {
-    let font = ui::Font::load(g, &app.game_path("KLEPTO__.TTF"));
+    let font = ui::Font::load(g, |f| app.game_path(f));
     let mut img = |rel: &str, magenta: bool, key: Option<u32>| ui::load_pcx(g, &app.game_path(&format!("Interface/{rel}")), magenta, key);
     let base = img("TitleBASE.pcx", false, None);
     let un = img("TitleUnSel.pcx", true, None);
@@ -1190,6 +1190,10 @@ impl Stage {
         let menu_like = app.ui_ok && matches!(app.screen, Screen::Menu | Screen::Difficulty | Screen::Property);
         let clear = if menu_like { PassAction::clear_color(0.0, 0.0, 0.0, 1.0) } else { PassAction::clear_color(0.04, 0.06, 0.09, 1.0) };
         self.g.ctx.begin_pass(target, clear);
+        // the title screens set Klepto ITC (difficulty, the file lists and Pick A Pro, the theme packs); the rest of the game
+        // draws in Manual SSi and Arial
+        let title = app.ui_ok && matches!(app.screen, Screen::Menu | Screen::Difficulty | Screen::Files | Screen::Themes);
+        ui::set_face(title.then_some(ui::Face::Klepto));
         if matches!(app.screen, Screen::Files | Screen::Themes | Screen::Credits) && app.ui_ok {
             app.draw_title_screen(&mut self.g);
         } else if app.screen == Screen::Menu && app.ui_ok {
