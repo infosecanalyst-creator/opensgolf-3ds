@@ -331,6 +331,9 @@ impl App {
         if self.club.award_pending < 0 {
             return;
         }
+        if self.club.award_frames == 0 && self.club.award_point.0 >= 0 {
+            self.snapshot_due = Some((self.club.award_pending as usize, self.club.award_point));
+        }
         self.club.award_frames += 1;
         if self.club.award_frames > 19 {
             let id = self.club.award_pending as usize;
@@ -362,8 +365,12 @@ impl App {
             if self.art.tacs.tex.is_some() {
                 s.image_part(g, &self.art.tacs, x - 7.0, y - 173.0, 63.0, 251.0, 229.0, 209.0);
             }
-            s.fill(g, x, y - 166.0, 200.0, 150.0, rgba(0.25, 0.4, 0.25, 0.9));
-            s.text_centered(g, x + 100.0, y - 90.0, self.club.award_title(*id), 12.0, rgb(1.0, 1.0, 0.85));
+            if let Some(img) = self.snapshots.get(id) {
+                s.image_part(g, img, x, y - 166.0, 0.0, 0.0, 200.0, 160.0);
+            } else {
+                s.fill(g, x, y - 166.0, 200.0, 160.0, rgba(0.25, 0.4, 0.25, 0.9));
+                s.text_centered(g, x + 100.0, y - 90.0, self.club.award_title(*id), 12.0, rgb(1.0, 1.0, 0.85));
+            }
             let day = (e.tick & 0x3ff) * 30 / 1024 + 1;
             let month = MONTHS[((e.tick >> 10) & 7) as usize];
             let year = 2001 + (e.tick >> 13);

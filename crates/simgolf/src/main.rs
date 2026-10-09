@@ -1008,7 +1008,9 @@ impl Stage {
             app.draw_property(&mut self.g);
         } else {
             app.render_world(&mut self.g);
-            app.draw_hud(&mut self.g);
+            if !app.no_hud {
+                app.draw_hud(&mut self.g);
+            }
             if app.screen == Screen::Report {
                 app.draw_report(&mut self.g);
             }
@@ -1035,6 +1037,52 @@ impl Stage {
 
     /// Renders the current frame offscreen and writes it as a PNG.
     fn screenshot(&mut self, file: &PathBuf) -> bool {
+        let img = self.grab();
+        sg_core::png::write_png(file, &img)
+    }
+
+    /// An accomplishment's snapshot (0x46e810): 200 x 160 of the screen around the award's map point, kept for the board
+    /// and written to snapshots/accomp<id>.png. When the point is off screen the view moves there first.
+    fn take_snapshot(&mut self) {
+        let Some((id, pt)) = self.app.snapshot_due else { return };
+        if !matches!(self.app.screen, Screen::Play | Screen::Board) || !self.app.ui_ok {
+            return;
+        }
+        let Some((vx, vy)) = self.app.screen_of(pt.0, pt.1) else {
+            let (x, z) = self.app.units_to_world(pt.0, pt.1);
+            self.app.cam_x = x;
+            self.app.cam_z = z;
+            return;
+        };
+        self.app.snapshot_due = None;
+        // the snapshot is of the course, so a board that opened first is set aside for the grab
+        let shown = std::mem::replace(&mut self.app.screen, Screen::Play);
+        self.app.no_hud = true;
+        let img = self.grab();
+        self.app.no_hud = false;
+        self.app.screen = shown;
+        let v = self.app.view;
+        let (left, top) = ((vx - 100.0).clamp(0.0, 600.0), (vy - 100.0).clamp(0.0, 440.0));
+        let mut out = sg_core::assets::Rgba::new(200, 160);
+        for y in 0..160u32 {
+            for x in 0..200u32 {
+                let sx = ((left + x as f32) * v.scale + v.ox) as u32;
+                let sy = ((top + y as f32) * v.scale + v.oy) as u32;
+                if sx < img.w && sy < img.h {
+                    let si = ((sy * img.w + sx) * 4) as usize;
+                    let di = ((y * 200 + x) * 4) as usize;
+                    out.px[di..di + 4].copy_from_slice(&img.px[si..si + 4]);
+                }
+            }
+        }
+        let dir = self.app.course_file.parent().map(|p| p.to_path_buf()).unwrap_or_default().join("snapshots");
+        let _ = std::fs::create_dir_all(&dir);
+        sg_core::png::write_png(&dir.join(format!("accomp{id}.png")), &out);
+        let tex = self.g.texture(&out, false);
+        self.app.snapshots.insert(id, ui::Image { tex: Some(tex), w: 200.0, h: 160.0 });
+    }
+
+    fn grab(&mut self) -> sg_core::assets::Rgba {
         let (w, h) = (self.app.draw_w as u32, self.app.draw_h as u32);
         let params = |format| TextureParams { width: w, height: h, format, ..Default::default() };
         let color = self.g.ctx.new_render_texture(params(TextureFormat::RGBA8));
@@ -1053,7 +1101,7 @@ impl Stage {
             img.px[y * stride..(y + 1) * stride].copy_from_slice(&raw[(h as usize - 1 - y) * stride..(h as usize - y) * stride]);
         }
         img.px.as_chunks_mut::<4>().0.iter_mut().for_each(|p| p[3] = 255);
-        sg_core::png::write_png(file, &img)
+        img
     }
 
     fn pick_test(&mut self) {
@@ -1140,6 +1188,12 @@ impl EventHandler for Stage {
     fn draw(&mut self) {
         self.draw_frame(None);
         self.g.ctx.commit_frame();
+        if self.app.snapshot_due.is_some() {
+            self.take_snapshot();
+            if self.png_out.is_some() && self.app.snapshot_due.is_none() && self.app.screen == Screen::Board {
+                self.frames = 1; // a scripted still of the board waits one more frame for its photo
+            }
+        }
         self.frames += 1;
         if std::env::var_os("SG_PICKTEST").is_some() && self.frames == 2 {
             self.pick_test();

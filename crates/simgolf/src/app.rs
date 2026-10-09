@@ -327,6 +327,11 @@ pub struct App {
     pub card: Option<usize>,
     pub year_notice: String,
     pub roster_offset: usize,
+    /// The accomplishment snapshot still to take (id and map point), and the snapshots taken this session.
+    pub snapshot_due: Option<(usize, (i32, i32))>,
+    pub snapshots: HashMap<usize, crate::ui::Image>,
+    /// Draw the course only (for snapshots).
+    pub no_hud: bool,
     /// Option "show golfer thoughts" (option bit 0x10).
     pub show_thoughts: bool,
     pub water_depth: Vec<u8>,
@@ -496,6 +501,9 @@ impl App {
             card: None,
             year_notice: String::new(),
             roster_offset: 0,
+            snapshot_due: None,
+            snapshots: HashMap::new(),
+            no_hud: false,
             water_depth: Vec::new(),
             moving_employee: None,
             staff_clips: [[(None, None); 3]; 9],
