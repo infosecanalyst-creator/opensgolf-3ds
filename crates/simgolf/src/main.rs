@@ -378,11 +378,23 @@ fn panel_test_hooks(app: &mut App) {
         app.info.pointer = (v[0] as f32, v[1] as f32);
         app.dock_tip = (app.dock_hover, 12);
     }
-    // SG_BUILD=kind arms the building tool with that exe object kind (stills of the pointer's previews)
+    // SG_BUILD=kind arms the building tool with that exe object kind (stills of the pointer's previews), SG_DESIGN=n picks
+    // design n of a garden item as its strip would
     if let Some(k) = std::env::var("SG_BUILD").ok().and_then(|v| v.parse::<usize>().ok()) {
         app.edit = true;
         app.tool = 4;
         app.build_idx = k.min(19);
+        app.arm_design(app.build_idx as i32);
+        if let Some(d) = std::env::var("SG_DESIGN").ok().and_then(|v| v.parse::<i32>().ok()) {
+            app.design = Some((app.build_idx as i32, d));
+            app.design_hover = d;
+        }
+    }
+    // SG_PAINT=type arms the terrain brush that paints that tile type (0 the tee, 1 the green)
+    if let Some(k) = std::env::var("SG_PAINT").ok().and_then(|v| v.parse::<i32>().ok()).and_then(|t| PAINT.iter().position(|p| p.ty == t)) {
+        app.edit = true;
+        app.tool = 0;
+        app.paint_idx = k;
     }
 }
 
@@ -584,6 +596,11 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 );
             }
             b'F' if v.len() >= 2 => app.club.holes[at(0).clamp(0, 19) as usize].flags = at(1) as u32,
+            // test hook: the landmarks the club owns and those it may place free (bit masks by type)
+            b'K' if v.len() >= 2 => {
+                app.club.landmarks_owned = at(0) as u32;
+                app.club.free_landmarks = at(1) as u32;
+            }
             b'o' => {
                 let ok = app.open_hole();
                 println!("open hole: {ok}, next hole {}", app.club.next_hole);

@@ -207,6 +207,81 @@ fn shifted(c: Cut, dx: f32) -> Cut {
     (c.0 + dx, c.1, c.2, c.3)
 }
 
+/// The strip of designs the Amenities panel opens over itself for the item being placed (0x434cf0 calls 0x432200): the
+/// item's designs side by side, the even ones on a row of buttons and the odd ones on a row 27 pixels lower, each the last
+/// frame of view 0 of its sprite.
+#[derive(Clone, Copy)]
+struct Strip {
+    /// Where the strip sits: its left end is dx + 544 - count * 47 / 4.
+    dx: i32,
+    count: i32,
+    /// Size of the pictures (the queue's scale, with the panel's zoom 4: positive s draws s / 4, negative -s / 8).
+    scale: f32,
+}
+
+/// The strip of the building tool's kind: benches (sprites 0x208 + i, palettes 0xaa + i), landmarks (0x168 + type, only
+/// those the club owns), scenic bridges (0x226 + i, all in palette 0xa9), flower beds (three shapes, 0x1a3, 0x1a9 and 0x1af,
+/// in the five colours 0x2d..0x31) and scenic trees (0x12f + i, palettes 0xb4 + i).
+fn design_strip(kind: i32) -> Option<Strip> {
+    let (dx, count, scale) = match kind {
+        land::K_BENCH => (-84, 5, 1.0),
+        land::K_LANDMARK => (0, 14, 0.5),
+        land::K_BRIDGE => (-16, 8, 1.0),
+        land::K_FLOWERS => (13, 15, 0.75),
+        land::K_WILLOW => (100, 7, 0.5),
+        _ => return None,
+    };
+    Some(Strip { dx, count, scale })
+}
+
+/// The exe sprite and palette of design i of a strip.
+fn strip_sprite(kind: i32, i: i32) -> (u16, u8) {
+    let n = i as u16;
+    match kind {
+        land::K_BENCH => (0x208 + n, 0xaa + i as u8),
+        land::K_BRIDGE => (0x226 + n, 0xa9),
+        land::K_FLOWERS => ([0x1a3, 0x1a9, 0x1af][(i / 5) as usize], 0x2d + (i % 5) as u8),
+        land::K_WILLOW => (0x12f + n, 0xb4 + i as u8),
+        _ => (0x168 + n, 100 + i as u8),
+    }
+}
+
+impl Strip {
+    fn left(&self) -> i32 {
+        self.dx - self.count * 47 / 4 + 0x220
+    }
+
+    /// The anchor of design i.
+    fn at(&self, i: i32) -> (i32, i32) {
+        (self.left() + 0x2c + 47 * i / 2, 500 + if i & 1 != 0 { 27 } else { 0 })
+    }
+
+    /// The design under a point (the last one whose octagon, squashed to half height, is within 20), shown designs only.
+    fn hit(&self, mask: u32, px: f32, py: f32) -> i32 {
+        let mut found = -1;
+        for i in (0..self.count).filter(|&i| mask == 0 || mask & (1 << i) != 0) {
+            let (cx, cy) = self.at(i);
+            if (Hit { cx, cy, r: 20, xs: 1, ys: 2 }).has(px, py) {
+                found = i;
+            }
+        }
+        found
+    }
+}
+
+/// The strip's pieces on AmenitiesPanel (0x447461): the left end, the middle repeated, and the right end for an even or an
+/// odd count; drawn along y 477.
+const STRIP_LEFT: Cut = (380.0, 250.0, 68.0, 79.0);
+const STRIP_MID: Cut = (450.0, 250.0, 47.0, 79.0);
+const STRIP_END_EVEN: Cut = (600.0, 250.0, 67.0, 79.0);
+const STRIP_END_ODD: Cut = (500.0, 250.0, 67.0, 79.0);
+
+/// A design's button (0x44773d): x 300 when the design is under the pointer, 400 for the current design, 600 otherwise; the
+/// even designs' row at y 350 (40 tall), the odd ones' at y 400 (41 tall), 47 wide, drawn 22 left of and 20 above the anchor.
+fn strip_button(i: i32, state: i32) -> Cut {
+    (300.0 + 100.0 * state as f32, if i & 1 != 0 { 400.0 } else { 350.0 }, 47.0, if i & 1 != 0 { 41.0 } else { 40.0 })
+}
+
 // ---- Add Buildings: the lots ---------------------------------------------------------------------------------------------------
 
 /// Lot i places building kind 6 + i. The hover text (third line of the info box) is the exe's.
@@ -664,15 +739,88 @@ impl App {
         matches!(slot, 2 | 4) && !self.build_available(AMENITIES[slot].kind as usize)
     }
 
-    /// The landmark the next placement uses and its price in units (0: free), as edit_building charges it.
+    /// The landmark the next placement uses and its price in units (0: free), as edit_building charges it: the chosen one,
+    /// else (the port's, for the slot's tooltip before a choice) the first owned type still free to place, else the first
+    /// owned one.
     fn landmark_price(&self) -> Option<i32> {
-        let t = (0..14)
-            .find(|t| self.club.free_landmarks & (1 << t) != 0)
-            .or_else(|| (0..14).find(|t| self.club.landmarks_owned & (1 << t) != 0))?;
+        let t = self.chosen_landmark().or_else(|| {
+            (0..14)
+                .find(|t| self.club.free_landmarks & (1 << t) != 0)
+                .or_else(|| (0..14).find(|t| self.club.landmarks_owned & (1 << t) != 0))
+        })?;
         Some(if self.club.free_landmarks & (1 << t) != 0 { 0 } else { (t * 5 + 25) * 2 })
     }
 
-    fn draw_amenities_panel(&self, g: &mut Gfx, s: &Ui, h: i32, tip: bool) {
+    /// The strip of the armed garden item, if it has one: its kind, layout and the designs shown (a mask, 0 for all).
+    fn open_strip(&self) -> Option<(i32, Strip, u32)> {
+        if self.tool != 4 {
+            return None;
+        }
+        let kind = self.build_idx as i32;
+        let st = design_strip(kind)?;
+        let mask = if kind == land::K_LANDMARK { self.club.landmarks_owned & 0x3fff } else { 0 };
+        // the landmark strip only opens once the club owns one
+        (kind != land::K_LANDMARK || mask != 0).then_some((kind, st, mask))
+    }
+
+    /// The strip of designs (0x432200), drawn with the panel every frame; the design under the pointer becomes the one a
+    /// click in the panel picks. Over a landmark, two tooltip bars give its name with its price in dollars (or "FREE!") and
+    /// what it does (by type & 3: Happy Golfers, No Dandelions, Skill Upgrade, Happy Endings).
+    fn draw_design_strip(&mut self, g: &mut Gfx, s: &Ui) {
+        let Some((kind, st, mask)) = self.open_strip() else { return };
+        let art = self.panel_art.amenities;
+        let mut x = st.left() as f32;
+        for k in 0..st.count / 2 {
+            let c = if k == 0 { STRIP_LEFT } else { STRIP_MID };
+            blit(g, s, &art, c, x, 477.0);
+            x += c.2;
+        }
+        blit(g, s, &art, if st.count & 1 != 0 { STRIP_END_ODD } else { STRIP_END_EVEN }, x, 477.0);
+        let (mx, my) = self.pstate.mouse;
+        let hot = st.hit(mask, mx, my);
+        let current = self.design.filter(|d| d.0 == kind).map(|d| d.1).unwrap_or(-1);
+        for i in (0..st.count).filter(|&i| mask == 0 || mask & (1 << i) != 0) {
+            let (cx, cy) = st.at(i);
+            let state = if current == i {
+                1
+            } else if hot == i {
+                0
+            } else {
+                3
+            };
+            blit(g, s, &art, strip_button(i, state), (cx - 22) as f32, (cy - 20) as f32);
+            let si = if kind == land::K_LANDMARK {
+                sg_core::objects::LANDMARKS.get(i as usize).and_then(|f| self.sprite_for(&format!("{f}.flc"), false, None))
+            } else {
+                let (id, pal) = strip_sprite(kind, i);
+                self.decor_sprite(id, pal).0
+            };
+            let Some(si) = si else { continue };
+            let sp = &self.sprites[si].s;
+            let f = sp.frames_per_view - 1;
+            let (w, h, ax, ay) = (sp.w as f32, sp.h as f32, sp.anchor_x as f32, sp.anchor_y as f32);
+            let tex = self.sprite_texture(g, si, 0, f);
+            let k = st.scale;
+            let im = Image { tex: Some(tex), w, h };
+            s.image_scaled(g, &im, (cx as f32 - ax * k, cy as f32 - ay * k, w * k, h * k), (0.0, 0.0, w, h));
+        }
+        if hot == -1 {
+            return;
+        }
+        self.design_hover = hot;
+        if kind == land::K_LANDMARK {
+            let name = sg_core::vips::landmark_short_name(hot);
+            let mut ch = name.chars();
+            let name = ch.next().map(|f| f.to_uppercase().collect::<String>() + ch.as_str()).unwrap_or_default();
+            let price = if self.club.free_landmarks & (1 << hot) != 0 { "FREE!".to_string() } else { ((hot * 5 + 25) * 200).to_string() };
+            // the exe's bars at the pointer less 12 and less 2 (tip_bar's point is the exe's plus 5)
+            tip_bar(g, s, &format!("{name}, {price}"), mx, my - 7.0);
+            let effect = ["Happy Golfers", "No Dandelions", "Skill Upgrade", "Happy Endings"][(hot & 3) as usize];
+            tip_bar(g, s, effect, mx, my + 3.0);
+        }
+    }
+
+    fn draw_amenities_panel(&mut self, g: &mut Gfx, s: &Ui, h: i32, tip: bool) {
         let art = &self.panel_art;
         blit(g, s, &art.amenities, AMENITIES_BODY, AMENITIES_BODY.0, AMENITIES_BODY.1);
         if h == -2 {
@@ -687,8 +835,7 @@ impl App {
                 blit(g, s, &art.amenities, sl.hover, sl.x, sl.y);
             }
         }
-        // The exe opens a strip of designs above the panel for benches, landmarks, bridges, flower beds and trees; their
-        // pictures are not mapped yet, so the port places its own pick of design.
+        self.draw_design_strip(g, s);
         if !tip {
             return;
         }
@@ -1053,8 +1200,23 @@ impl App {
                 self.tool = 4;
                 self.build_idx = AMENITIES[slot].kind as usize;
                 self.edit = true;
+                self.arm_design(AMENITIES[slot].kind);
             }
-            _ => return false,
+            _ => {
+                // any other click in the panel picks the design last under the pointer on the strip (0x434ac0's default);
+                // the click itself is not a button press
+                if let Some((kind, st, mask)) = self.open_strip() {
+                    let (px, py) = self.pstate.mouse;
+                    let hot = st.hit(mask, px, py);
+                    if hot != -1 {
+                        self.design_hover = hot;
+                    }
+                    if self.design_hover != -1 || kind == land::K_LANDMARK {
+                        self.design = (self.design_hover != -1).then_some((kind, self.design_hover));
+                    }
+                }
+                return false;
+            }
         }
         true
     }
@@ -1236,6 +1398,23 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn design_strips() {
+        // benches: five designs from x 402, the odd ones a row lower
+        let st = design_strip(land::K_BENCH).unwrap();
+        assert_eq!(st.left(), 402);
+        assert_eq!((st.at(0), st.at(1)), ((446, 500), (469, 527)));
+        assert_eq!(st.hit(0, 469.0, 527.0), 1);
+        assert_eq!(st.hit(0, 469.0, 516.0), -1);
+        // landmarks show only the club's
+        let st = design_strip(land::K_LANDMARK).unwrap();
+        assert_eq!(st.hit(1 << 3, st.at(3).0 as f32, st.at(3).1 as f32), 3);
+        assert_eq!(st.hit(1 << 2, st.at(3).0 as f32, st.at(3).1 as f32), -1);
+        // flower beds: three shapes in five colours
+        assert_eq!(strip_sprite(land::K_FLOWERS, 7), (0x1a9, 0x2f));
+        assert_eq!(strip_sprite(land::K_BRIDGE, 5), (0x22b, 0xa9));
+    }
 
     #[test]
     fn octagon_hits() {

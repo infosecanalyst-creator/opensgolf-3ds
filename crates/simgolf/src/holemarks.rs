@@ -49,7 +49,11 @@ impl App {
                     let d = ((y * w + x) * 4) as usize;
                     let p = &sheet.px[s..s + 4];
                     let key = p[0] == 255 && p[1] == 0 && p[2] == 255;
-                    img.px[d..d + 4].copy_from_slice(&[p[0], p[1], p[2], if key { 0 } else { 255 }]);
+                    // the pure green parallelogram beside each post is its shadow; PLACEHOLDER: how the renderer draws
+                    // that colour is not decoded, so it is half-strength black here
+                    let shadow = p[0] == 0 && p[1] == 255 && p[2] == 0;
+                    let px = if shadow { [0, 0, 0, 128] } else { [p[0], p[1], p[2], if key { 0 } else { 255 }] };
+                    img.px[d..d + 4].copy_from_slice(&px);
                 }
             }
             let s = Sprite {
@@ -148,7 +152,7 @@ impl App {
     }
 
     /// Over the green of the hole being built (0x417277), when the green is on screen: "Hole N", "N yards" and "Par N" in
-    /// white body text, centred, their tops 26, 13 and 0 pixels above a point 5 pixels per zoom step over the green; and over
+    /// white body text over a black shadow a pixel lower (0x404bc0), centred, their tops 26, 13 and 0 pixels above a point 5 pixels per zoom step over the green; and over
     /// the back tee, blinking on the game tick's bits 2 and 3, "Press 'h' to open hole".
     pub fn draw_building_label(&mut self, g: &mut Gfx) {
         let h = self.club.next_hole;
@@ -166,14 +170,18 @@ impl App {
         let Some((h, yards, par)) = self.club.building_figures(&self.course) else { return };
         let s = Ui::new(self.draw_w, self.draw_h);
         let lift = 5.0 * (self.zoom / ZOOM_UNIT).round().max(1.0);
-        let white = c15(WHITE);
-        s.text_centered(g, x, top(y - lift - 26.0, BODY), &format!("Hole {h}"), BODY, white);
-        s.text_centered(g, x, top(y - lift - 13.0, BODY), &format!("{yards} yards"), BODY, white);
-        s.text_centered(g, x, top(y - lift, BODY), &format!("Par {par}"), BODY, white);
+        // 0x404bc0: white with the palette's black one pixel below
+        let label = |g: &mut Gfx, x: f32, y: f32, t: &str| {
+            s.text_centered(g, x, top(y + 1.0, BODY), t, BODY, rgb(0.0, 0.0, 0.0));
+            s.text_centered(g, x, top(y, BODY), t, BODY, c15(WHITE));
+        };
+        label(g, x, y - lift - 26.0, &format!("Hole {h}"));
+        label(g, x, y - lift - 13.0, &format!("{yards} yards"));
+        label(g, x, y - lift, &format!("Par {par}"));
         let (tx, ty) = centre(back);
         if let Some((x, y)) = self.screen_of(tx, ty) {
             if self.game_tick & 0xc != 0 {
-                s.text_centered(g, x, top(y - lift, BODY), "Press 'h' to open hole", BODY, white);
+                label(g, x, y - lift, "Press 'h' to open hole");
             }
         }
         g.flush();

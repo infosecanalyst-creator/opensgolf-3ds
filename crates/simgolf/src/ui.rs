@@ -98,7 +98,9 @@ pub fn load_pcx_alpha(g: &mut Gfx, path: &Path, alpha: &Path) -> Option<Image> {
     if let Some(a) = sg_core::fsutil::read_file(alpha).and_then(|d| decode_pcx(&d).ok()) {
         if a.w == img.w && a.h == img.h {
             for (p, q) in img.px.as_chunks_mut::<4>().0.iter_mut().zip(a.px.as_chunks::<4>().0) {
-                p[3] = q[0].max(q[1]).max(q[2]);
+                // the magenta key holds even where the alpha sheet is solid (the end of the Amenities design strip)
+                let key = p[0] >= 240 && p[2] >= 240 && p[1] <= 8;
+                p[3] = if key { 0 } else { q[0].max(q[1]).max(q[2]) };
             }
         }
     }

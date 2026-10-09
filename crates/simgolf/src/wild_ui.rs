@@ -1,5 +1,6 @@
 //! Ambient life and water in the app: animals, the fly-overs, the ball splash, and the water effects the exe draws on water
-//! tiles (shore ripples, rocks and coral, dolphins and fountains on scenic water). The rules are in sg_core::wildlife; the
+//! tiles (shore ripples, rocks and coral, dolphins and fountains on scenic water, waterfalls and their spray where water
+//! meets higher water: sg_core::decor::waterfalls). The rules are in sg_core::wildlife; the
 //! tile rules for the water effects follow the exe's main frame (docs/PUBLISHER_EXE_NOTES.md, "Wildlife and water").
 
 use crate::app::*;
@@ -219,6 +220,37 @@ impl App {
                 let n = self.frames_of(body);
                 let (x, z) = self.terrain.tile_centre(a, b);
                 add.push(Prop { x, z, body, frame: frame.rem_euclid(n.max(1)), facing, flat, ..Default::default() });
+            }
+            // waterfalls and their spray where water meets higher water, laid out at the exe zoom nearest the port's and
+            // scaled to it
+            let rot = 2 * ((self.rot / 90.0).round() as i32).rem_euclid(4);
+            let ez = self.exe_zoom();
+            let z = if ez >= 3.0 {
+                4
+            } else if ez >= 1.5 {
+                2
+            } else {
+                1
+            };
+            let k = ez / z as f32;
+            for a in 0..sg_core::course::N {
+                for b in 0..sg_core::course::N {
+                    for f in sg_core::decor::waterfalls(&self.course, a, b, rot, z) {
+                        let Some(file) = sg_core::decor::fall_file(f.sprite, theme as u8) else { continue };
+                        let body = self.sprite_for(&format!("{file}.flc"), false, Some(&wpal));
+                        let n = self.frames_of(body);
+                        let (x, z) = self.terrain.tile_centre(a, b);
+                        add.push(Prop {
+                            x,
+                            z,
+                            body,
+                            frame: (7 * a + tick).rem_euclid(n.max(1)),
+                            view: Some(f.view),
+                            shift: (f.dx as f32 * k, f.dy as f32 * k),
+                            ..Default::default()
+                        });
+                    }
+                }
             }
         }
         for mut p in add {

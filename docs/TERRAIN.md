@@ -151,8 +151,10 @@ Approximates (marked `APPROXIMATION` in code): elevation scale; the light direct
 type class grouping; the water-in-desert-theme variant (`m1096` swaps triangles next to land to
 WaterShallowDesert when a global theme flag is 1, not ported yet).
 
-The type 7 phase: golf.exe's brush picture for sand (0x41ab87) turns the same way with the view's quarter, so the port takes
-the phase to be the view's quarter turn (`Terrain::sand_phase`, DERIVED) and rebuilds the ground when the view turns.
+The type 7 phase: golf.exe hands the view to Terrain.dll as an angle (0x4498a0: view 0x5685f4 = 0, 2, 4, 6 gives 0, 90, 180
+and -90 degrees, through the import at 0x4a4f82), and the DLL's setter (0x1000adc0) stores the phase as 0 for 0 degrees, 1
+for 90, 2 for 180 and 3 otherwise. So the phase is the view's quarter turn (`Terrain::sand_phase`, EXACT); the exe's brush
+picture for sand (0x41ab87) turns the same way. The port rebuilds the ground when the view turns.
 
 Not decoded yet: path overlays, cliffs and retaining walls, water animation timing, type 6 geometry, and how `golf.exe` stores a course (that code is in the protected
 executable, which this project does not touch).

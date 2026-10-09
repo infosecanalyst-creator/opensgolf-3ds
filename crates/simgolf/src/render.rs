@@ -161,6 +161,7 @@ impl App {
                                                   // The sprites were rendered at 4 camera yaws, 90 degrees apart; 8 view sprites (people) face 45 degree steps.
         let quarter = ((self.rot / 90.0).round() as i32 % 4 + 4) % 4;
         let s = SPRITE_UNITS_PER_PIXEL;
+        let px = self.upp * (self.draw_w / 800.0).min(self.draw_h / 600.0); // world units per 800 x 600 pixel
         let mut items: Vec<(f32, usize)> = Vec::new();
         for (i, p) in self.props.iter().enumerate() {
             if p.hidden {
@@ -190,12 +191,19 @@ impl App {
                 let k = ((180.0 - p.heading) / 45.0).round() as i32;
                 view = ((k + 2 * quarter) % 8 + 8) % 8;
             }
+            if let Some(v) = p.view {
+                view = v.rem_euclid(views.max(1));
+            }
             let (w, h, ax, ay) = (sp.w as f32, sp.h as f32, sp.anchor_x as f32, sp.anchor_y as f32);
             let tex = match p.outfit.filter(|_| !shadow) {
                 Some(o) => app.outfit_texture(g, si, view, p.frame, o).unwrap_or_else(|| app.sprite_texture(g, si, view, p.frame)),
                 None => app.sprite_texture(g, si, view, p.frame),
             };
             let y = app.terrain.height_at(p.x, p.z) + if shadow { 0.0 } else { p.lift };
+            // the exe's screen offset, in world units along the eye's axes
+            let (ox, oy) = (p.shift.0 * px, -p.shift.1 * px);
+            let p = Prop { x: p.x + rx * ox + ux * oy, z: p.z + rz * ox + uz * oy, ..p };
+            let y = y + ry * ox + uy * oy;
             let s = s * p.scale;
             let (l, r) = (-ax * s, (w - ax) * s);
             let (t, b) = (ay * s, -(h - ay) * s); // up is positive

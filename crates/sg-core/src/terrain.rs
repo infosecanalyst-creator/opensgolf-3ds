@@ -776,8 +776,9 @@ fn texture_type_for(tile_type: i32, vbyte: i32, param: i32, desert: bool, phase:
             }
         }
         6 | 21 => TT_ROUGH as i32,
-        // DERIVED: Terrain.dll picks the sand picture as (variation & 3) - phase (TERRAIN.md); the exe's brush picture for
-        // sand (0x41ab87) turns the same way with the view's quarter (0x5685f4 / 2), so the phase is taken to be that quarter
+        // Terrain.dll picks the sand picture as (variation & 3) - phase, the phase being the view's quarter turn: the exe
+        // hands it the view as 0, 90, 180 or -90 degrees (0x4498a0) and the DLL's setter (0x1000adc0) maps those to 0..3
+        // (TERRAIN.md)
         7 => TT_SAND_BUNKER1 as i32 + ((vbyte & 3) - phase).rem_euclid(4),
         13..=16 => 13,
         17 => match vbyte {

@@ -109,6 +109,11 @@ pub struct Prop {
     pub lift: f32,
     /// A golfer's colours: the clip is drawn in the palette composed for this outfit.
     pub outfit: Option<sg_core::bodies::Outfit>,
+    /// The exe's view of the sprite whatever the camera (sprites the exe queues in a fixed view).
+    pub view: Option<i32>,
+    /// The sprite moved this many 800 x 600 pixels right and down on the screen from its ground point (the exe's screen
+    /// offsets); the prop still sorts by its ground point.
+    pub shift: (f32, f32),
 }
 
 impl Default for Prop {
@@ -136,6 +141,8 @@ impl Default for Prop {
             scale: 1.0,
             lift: 0.0,
             outfit: None,
+            view: None,
+            shift: (0.0, 0.0),
         }
     }
 }
@@ -526,9 +533,12 @@ pub struct App {
     pub paint_idx: usize,
     /// The paint tool's variant (0x5a34f0, drawn when a terrain brush is picked) and the brush it was drawn for.
     pub paint_variant: Option<(usize, i32)>,
-    /// The design the next bench, flower bed, willow or scenic bridge takes and the kind it was drawn for (the exe's 0x56a514,
-    /// picked from a strip of designs the port does not have, so the port draws one at random), shown by the pointer.
+    /// The design the next bench, flower bed, willow, scenic bridge or landmark takes and the kind it is for (the exe's
+    /// 0x56a514 and 0x5a9f60): set when the amenity is picked, then chosen from the strip of designs over the panel; it stays
+    /// after a placement. None for a landmark not chosen yet.
     pub design: Option<(i32, i32)>,
+    /// The design last under the pointer on that strip (0x5a9f50), which a click in the panel makes the design; -1 none.
+    pub design_hover: i32,
     /// Where each golfer slot's ball was drawn last frame (the exe keeps the screen point, 0x567b34 / 0x567d94), for the
     /// sweet shot's streak.
     pub ball_trail: Vec<Option<[f32; 3]>>,
@@ -726,6 +736,7 @@ impl App {
             paint_idx: 0,
             paint_variant: None,
             design: None,
+            design_hover: -1,
             ball_trail: Vec::new(),
             tracts: Default::default(),
             land_hover: -1,
@@ -2361,30 +2372,43 @@ impl App {
             land::K_BRIDGE => self.ui_sound(263),
             _ => {}
         }
-        if kind != land::K_PATH {
-            self.design = None;
-        }
         self.after_object_change();
         true
     }
 
-    /// The design of the next tile item of a kind (bench 0..4, flowers 0..3, willow 0..6, bridge 0..7), drawn once and kept
-    /// until an item is placed, so the pointer shows what a click puts down.
-    pub fn item_design(&mut self, kind: i32) -> i32 {
-        if let Some((k, v)) = self.design {
-            if k == kind {
-                return v;
-            }
-        }
+    /// Picking a garden amenity sets its design as the exe's amenity click does (0x434ac0): the first bench, a flower bed of
+    /// the first shape in one of its first four colours, one of the seven scenic trees or eight bridges at random (the
+    /// generator at 0x822d9c), and no landmark until one is chosen from the strip.
+    pub fn arm_design(&mut self, kind: i32) {
         let v = match kind {
-            land::K_BENCH => self.look_rng.below(5),
+            land::K_BENCH => 0,
             land::K_FLOWERS => self.look_rng.below(4),
             land::K_WILLOW => self.look_rng.below(7),
             land::K_BRIDGE => self.look_rng.below(8),
-            _ => return 0,
+            _ => -1,
         };
-        self.design = Some((kind, v));
-        v
+        self.design = (v >= 0).then_some((kind, v));
+        self.design_hover = v;
+    }
+
+    /// The design of the next tile item of a kind (bench 0..4, flowers 0..14, willow 0..6, bridge 0..7); the amenity's first
+    /// design when the tool was armed some other way.
+    pub fn item_design(&mut self, kind: i32) -> i32 {
+        match self.design {
+            Some((k, v)) if k == kind => v,
+            _ => {
+                self.arm_design(kind);
+                self.design.map(|d| d.1).unwrap_or(0)
+            }
+        }
+    }
+
+    /// The landmark the landmark tool places: the one chosen from the strip, while the club still owns it.
+    pub fn chosen_landmark(&self) -> Option<i32> {
+        match self.design {
+            Some((k, t)) if k == land::K_LANDMARK && self.club.landmarks_owned & (1 << t) != 0 => Some(t),
+            _ => None,
+        }
     }
 
     /// Undo on a tile, as the exe's second right-click does: an item comes off with exactly what it cost back (booked to Build
@@ -2447,6 +2471,11 @@ impl App {
             return self.undo_tile(tx, ty);
         }
         let kind = self.build_idx as i32;
+        if kind == land::K_LANDMARK && self.chosen_landmark().is_none() {
+            // a click on the course before a landmark is chosen puts the tool down (0x41fc7c)
+            self.edit = false;
+            return;
+        }
         if matches!(kind, land::K_PATH | land::K_BENCH | land::K_FLOWERS | land::K_WILLOW | land::K_BRIDGE) {
             self.place_tile_item(tx, ty, kind);
             return;
@@ -2476,9 +2505,9 @@ impl App {
         }
         let level = existing.map(|i| land.objects[i].sub + 1).unwrap_or(0);
         let mut cost = (land::BUILDINGS[kind as usize].2 * (level + 2) / 2 + clear) as f64 * Economy::UNIT;
-        // a landmark: the first owned type still free to place, else the first owned one; (type * 5 + 25) * 2, or nothing
-        // the first time a donated type is placed (clearing is not charged)
-        let landmark = self.next_landmark();
+        // a landmark: the one chosen from the strip; (type * 5 + 25) * 2, or nothing the first time a donated type is placed
+        // (clearing is not charged)
+        let landmark = self.chosen_landmark();
         if kind == land::K_LANDMARK {
             let Some(t) = landmark else { return };
             cost = if self.club.free_landmarks & (1 << t) != 0 { 0.0 } else { ((t * 5 + 25) * 2) as f64 * Economy::UNIT };
@@ -2525,11 +2554,6 @@ impl App {
         }
         self.after_object_change();
         self.snd("Interface/Building.wav", 0.7, false);
-    }
-
-    /// The landmark the landmark tool places: the first owned type still free to place, else the first owned one.
-    pub fn next_landmark(&self) -> Option<i32> {
-        (0..14).find(|t| self.club.free_landmarks & (1 << t) != 0).or_else(|| (0..14).find(|t| self.club.landmarks_owned & (1 << t) != 0))
     }
 
     /// After objects change: terrain meshes, trees and object sprites are rebuilt.

@@ -324,6 +324,15 @@ pub fn sprite_file(id: u16, theme: u8) -> Option<&'static str> {
         0x20c => Some("Flowers/backless bench"),
         0x20d => Some("Flowers/lovers bench"),
         0x184 => Some("Flowers/crabgrass"),
+        // the flower beds' one-sided pieces: plain, sinuous and walled (Links loads the Parkland set)
+        0x1a3 => pick(["Flowers/Flowers_1Side", "Flowers/DesFlowers_1Side", "Flowers/TropFlowers_1Side", "Flowers/Flowers_1Side"]),
+        0x1a9 => pick(["Flowers/SinFlowers_1Side", "Flowers/DesSin_1Side", "Flowers/SinTrop_1Side", "Flowers/SinFlowers_1Side"]),
+        0x1af => pick([
+            "Flowers/WalledFlowers_1Side",
+            "Flowers/DesFlowers_1Side_Wall",
+            "Flowers/TropFlowers_1Side_Wall",
+            "Flowers/WalledFlowers_1Side",
+        ]),
         0x190 => pick(["Flowers/dandelion_01", "Flowers/OilSlick", "Flowers/DryGrass", "Flowers/dandelion_01"]),
         0x192 => {
             pick(["Trees/TreePineSpruceSm", "Trees/Desert/CactusA_Sm", "Trees/Tropic/Tree_Cerc/Cerc_Small", "Trees/Links/LinksPine_Small"])
@@ -397,6 +406,33 @@ pub fn palette_file(pal: u8, theme: u8) -> Option<&'static str> {
                     ][k],
                 ),
             }
+        }
+        // the flower beds' five colours (0x440bc2: Desert and Tropical their own, the others the FlowerBedA set)
+        0x2d..=0x31 => {
+            let k = (pal - 0x2d) as usize;
+            Some(match t {
+                1 => [
+                    "Flowers/DesertFlowersRedPal.pcx",
+                    "Flowers/DesertFlowersOrgPal.pcx",
+                    "Flowers/DesertFlowersPurpPal.pcx",
+                    "Flowers/DesertFlowersBluePal.pcx",
+                    "Flowers/DesertFlowersPinkPal.pcx",
+                ][k],
+                2 => [
+                    "Flowers/TropicalFlowers_AquaPal.pcx",
+                    "Flowers/TropicalFlowers_OrgPal.pcx",
+                    "Flowers/TropicalFlowers_PurpPal.pcx",
+                    "Flowers/TropicalFlowers_BluePal.pcx",
+                    "Flowers/TropicalFlowers_RedPal.pcx",
+                ][k],
+                _ => [
+                    "Flowers/FlowerBedA_YelPal.pcx",
+                    "Flowers/FlowerBedA_OrgPal.pcx",
+                    "Flowers/FlowerBedA_PurpPal.pcx",
+                    "Flowers/FlowerBedA_WhitePal.pcx",
+                    "Flowers/FlowerBedA_RedPal.pcx",
+                ][k],
+            })
         }
         0x4e => {
             pick(["Bridges/PARKbridgepal.pcx", "Bridges/DESbridgepal.pcx", "Bridges/TROPbridgepal.pcx", "Bridges/LinksBridgePalette.pcx"])
@@ -474,6 +510,30 @@ mod tests {
         lone[(5 * N + 5) as usize] = 13;
         assert_eq!(trees(&lone, 0, false, 5, 5, 0, true, &flat)[0].sprite, 0x131);
         assert_eq!(trees(&lone, 0, false, 5, 5, 1, true, &flat)[0].sprite, 0x19d);
+    }
+
+    #[test]
+    fn waterfall_into_lower_pool() {
+        let mut c = crate::course::Course::default();
+        let (lo, hi) = (crate::course::idx(10, 10), crate::course::idx(10, 9));
+        c.ty[lo] = crate::course::t::WATER;
+        c.ty[hi] = crate::course::t::WATER;
+        // the -y neighbour stands three steps higher: its corners all at 6, this tile's near ones at sea level
+        for (x, y) in [(10, 9), (11, 9), (11, 8), (10, 8)] {
+            c.height[x * 51 + y] = 6;
+        }
+        // the wall bit says the neighbour that way stands higher: only the low tile has one, toward -y
+        c.walls[lo] = 1;
+        let falls = waterfalls(&c, 10, 10, 0, 4);
+        assert_eq!(falls, vec![Fall { sprite: 0x237, view: 1, dx: -16, dy: -15 }, Fall { sprite: 0x23b, view: 1, dx: -16, dy: -6 }]);
+        // seen from the opposite side the higher tile shows the fall going away down its far side
+        assert_eq!(waterfalls(&c, 10, 9, 4, 4), vec![Fall { sprite: 0x237, view: 3, dx: -16, dy: 6 }]);
+        assert!(waterfalls(&c, 10, 9, 0, 4).is_empty());
+        // a tall fall when the step is more than three
+        for (x, y) in [(10, 9), (11, 9), (11, 8), (10, 8)] {
+            c.height[x * 51 + y] = 10;
+        }
+        assert_eq!(waterfalls(&c, 10, 10, 0, 4)[0], Fall { sprite: 0x238, view: 1, dx: -16, dy: -10 - 2 });
     }
 
     #[test]
@@ -589,4 +649,77 @@ pub fn bank_rocks(c: &crate::course::Course, a: i32, b: i32, rot: i32, theme: u8
         }
     }
     out
+}
+
+/// A waterfall or its spray on a water tile (main frame 0x410ea4 to 0x4114e2): sprite 0x237 (short fall), 0x238 (tall fall),
+/// 0x23b (short spray) or 0x23c (tall spray) in the theme's water palette (0xb2), in a fixed view whatever the camera, its
+/// anchor (`dx`, `dy`) screen pixels from the tile's centre at the exe zoom it was laid out for. The exe runs every one's
+/// frames from (7 * a + tick) and sorts it by the tile centre's screen height.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Fall {
+    pub sprite: u16,
+    pub view: i32,
+    pub dx: i32,
+    pub dy: i32,
+}
+
+/// The falls and sprays of water tile (a, b) at the exe's view `rot` (0, 2, 4, 6) and zoom `zoom` (1, 2, 4), in the exe's
+/// order. Wall bits (0x5619a0: the neighbour that way stands higher) between two water tiles make them:
+/// * the neighbour at heading rot (rot + 2) is water and lower than this tile (its wall bit back to this tile is set): a
+///   short fall in view 3 (2), half a tile width left (right) of the centre and a third of the half height below it;
+/// * the neighbour at heading rot + 2 (rot) is water and higher (this tile's wall bit that way): with d its corner rot - 3
+///   (rot + 3) less this tile's corner rot + 1, a short fall lifted (d - 1) * 5 * zoom / 8 pixels when that is above 0 and a
+///   short spray, or for d above 3 a tall fall lifted (2d - 13) * 5 * zoom / 8 and a tall spray; view 0 (1), half a tile
+///   width right (left) of the centre. The 5 is the exe's height step (0x4c2e00, never written).
+pub fn waterfalls(c: &crate::course::Course, a: i32, b: i32, rot: i32, zoom: i32) -> Vec<Fall> {
+    use crate::course::{idx, inside, t};
+    let mut out = Vec::new();
+    if c.ty_at(a, b) != t::WATER {
+        return out;
+    }
+    let walls = |(a, b): (i32, i32)| if inside(a, b) { c.walls[idx(a, b)] as i32 } else { 0 };
+    let near = |d: i32| (a + DX[(d & 7) as usize], b + DY[(d & 7) as usize]);
+    let m = |j: i32| 1 << (2 * ((j + rot / 2) & 3));
+    let water = |(na, nb): (i32, i32)| c.ty_at(na, nb) == t::WATER;
+    // the tile's half width (0x4c2840) and half height (the tile loop's 20 * zoom / 4) in pixels
+    let (hw, hh) = (8 * zoom, 5 * zoom);
+    let fall = |sprite: u16, view: i32, dx: i32, dy: i32| Fall { sprite, view, dx, dy };
+    for (k, j, view, dx) in [(rot, 2, 3, -hw / 2), (rot + 2, 3, 2, hw / 2)] {
+        let n = near(k);
+        if walls(n) & m(j) != 0 && water(n) {
+            out.push(fall(0x237, view, dx, hh / 3));
+        }
+    }
+    let own = c.corner(a, b, (rot + 1) & 7);
+    for (k, j, side, view, dx) in [(rot + 2, 1, rot - 3, 0, hw / 2), (rot, 0, rot + 3, 1, -hw / 2)] {
+        let n = near(k);
+        if walls((a, b)) & m(j) == 0 || !water(n) {
+            continue;
+        }
+        let d = c.corner(n.0, n.1, side & 7) - own;
+        if d <= 3 {
+            let lift = (d - 1) * 5 * zoom / 8;
+            if lift > 0 {
+                out.push(fall(0x237, view, dx, -hh / 2 - lift));
+            }
+            out.push(fall(0x23b, view, dx, -hh / if lift != 0 { 3 } else { 2 }));
+        } else {
+            let lift = (2 * d - 13) * 5 * zoom / 8;
+            out.push(fall(0x238, view, dx, -hh / 2 - lift));
+            out.push(fall(0x23c, view, dx, -hh / 3));
+        }
+    }
+    out
+}
+
+/// The file (under Flics) the theme loads for a waterfall sprite id.
+pub fn fall_file(sprite: u16, theme: u8) -> Option<&'static str> {
+    let pick = |v: [&'static str; 4]| Some(v[theme.min(3) as usize]);
+    match sprite {
+        0x237 => pick(["Water/WaterfallShortA", "Water/DesWaterfallShortA", "Water/TropWaterfallShortA", "Water/LinksWaterfallShortA"]),
+        0x238 => pick(["Water/WaterfallTallA", "Water/DesWaterfallTallA", "Water/TropWaterfallTallA", "Water/LinksWaterfallTallA"]),
+        0x23b => pick(["Water/sprayShortA", "Water/DesSprayShortA", "Water/TropSprayShortA", "Water/LinksSprayShortA"]),
+        0x23c => pick(["Water/sprayTallA", "Water/DesSprayTallA", "Water/TropSprayTallA", "Water/LinksSprayTallA"]),
+        _ => None,
+    }
 }

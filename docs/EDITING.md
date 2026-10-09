@@ -55,9 +55,18 @@ see-through tree, the green's tricky variant the words "Tricky Green"; Undo name
 heights of the nearby vertices and a purple mark or square; the building tool outlines the footprint (white, red where it
 will not fit), draws the building see-through (red where refused), names amenities and shows a clearing charge as "-N"; a bench
 shows a seat on each side a golfer could sit facing, a willow and a scenic bridge their design; a landmark rings the area it
-cheers; a Home Site shows its sums (lot value share, clearing, site preparation, profit) in a box at the right. The port draws a
-garden item's design at random before the click, so the pointer shows what will be placed (the exe's strip of designs is not
-there). SG_BUILD=kind arms the building tool with an exe object kind for scripted stills.
+cheers; a Home Site shows its sums (lot value share, clearing, site preparation, profit) in a box at the right. While a hole
+is being built the green brush shows the see-through pin flag until the hole has its green, and a white line from the tee to
+the pointer with "N yards" on its middle (the tee brush the same from a green that waits for its tee).
+
+Garden items take their design from a strip the Amenities panel opens over itself (0x432200): five benches, the club's
+landmarks, eight bridges, fifteen flower beds (three shapes in five colours) or seven scenic trees, each on a button (blue for
+the current design, light under the pointer); a click in the panel picks the design last under the pointer. Picking the
+amenity starts at the first bench, a random flower bed of the first shape, a random tree or bridge, and no landmark (a click on
+the course with no landmark chosen puts the tool down). Over a landmark the strip names it with its price and its effect.
+
+SG_BUILD=kind arms the building tool with an exe object kind for scripted stills (SG_DESIGN=n picks design n), SG_PAINT=type
+the terrain brush of a tile type, and `--edit "K:owned,free"` sets the club's landmark masks.
 SG_CURSOR_TILE="x,y" (tiles, fractions allowed) holds the pointer on a tile for scripted stills.
 
 ## Water
@@ -66,6 +75,10 @@ Water tiles drift their texture by about a pixel, a shimmer that is my APPROXIMA
 At the closest zoom the frame plots single glinting pixels on water (0x411574, `draw_water_glints`): two tiles in three each
 frame, a 5 frame grey-white-grey twinkle once in 64 frames per tile, on the line through the tile's centre.
 In the Desert theme shallow water uses the `WaterShallowDesert` textures, which the original does by swapping type 17 for 25.
+Where two water tiles meet across a wall the frame draws waterfalls (0x410ea4, `sg_core::decor::waterfalls`): a fall pours
+into the lower tile over the side facing the camera, short or tall by the height between them, with a spray at its foot, and
+a short fall seen from behind goes down the far sides; all in the theme's water palette, in fixed views, frames running from
+7 * x plus the tick.
 
 ## Club money (mostly placeholder)
 

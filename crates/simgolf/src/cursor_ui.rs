@@ -2,7 +2,9 @@
 //!
 //! * Terrain brushes (0x41a990): the brush's tile picture from `Data/<theme>.pcx` at half strength over the tile under the
 //!   pointer (sand traps turn with Tab), a see-through tree on a tile the woods brushes would plant, and "Tricky Green" beside
-//!   the green brush's tricky variant. There is no outline and no brush size.
+//!   the green brush's tricky variant. There is no outline and no brush size. While a hole is being built the green brush
+//!   shows the see-through pin flag (until the hole has its green) and, once the tee is down, a line from the tee to the
+//!   pointer with the yards between them; the tee brush draws the same line from a green that waits for its tee.
 //! * Undo (the terrain type -2 at 0x41aa4b): what a right click would undo there, named beside the tile (0x40a160), green
 //!   when something would be undone.
 //! * The elevation tools (0x415ec2, and the tile loop at 0x41064e): a black grid over every tile, the heights of the
@@ -20,9 +22,6 @@
 //!   (0x407c60: 24 steps, broken where a point leaves the screen).
 //! * The Home Site (0x41a5d3): where the lot fits, a box at the right of the screen with the lot's share, the clearing, the
 //!   site preparation and the profit, and the profit again as "$N" under the footprint, green when above 0 and red otherwise.
-//!
-//! Not drawn yet: the pin flag over the green brush while a hole waits for its green, the tee-to-pointer yardage line (both
-//! belong to the hole tools).
 
 use crate::app::*;
 use crate::gfx::{Gfx, Mode, Uniforms, Vert};
@@ -135,6 +134,21 @@ impl App {
         }
         let quarter = ((self.rot / 90.0).round() as i32 % 4 + 4) % 4;
         match tool {
+            Tool::Paint(1) => {
+                // 0x41ab0b: while the hole being built has no green, the theme's waving flag (sprite 0x189 + theme, palette
+                // 0x63) see-through, view 1 whatever the camera, its frame from the game tick, anchored 4 pixels left of the
+                // tile's centre at every zoom
+                let h = self.club.next_hole;
+                if !(1..19).contains(&h) || self.club.holes[h as usize].pin.0 != 0 {
+                    return;
+                }
+                let (body, _) = self.decor_sprite(0x189 + self.exe_theme().min(3) as u16, 0x63);
+                let Some(body) = body else { return };
+                let n = self.sprites[body].s.frames_per_view.max(1);
+                let frame = (self.game_tick % n as u32) as i32;
+                let (x, z) = self.terrain.tile_centre(a, b);
+                self.preview_quad_shifted(g, u, body, quarter, 1 - quarter, frame, x, z, -4.0, Look::Ghost);
+            }
             Tool::Paint(ty) if (13..=16).contains(&ty) => {
                 // no tree over a tile that already has trees
                 if (13..=16).contains(&self.terrain.type_at(a, b)) {
@@ -198,7 +212,7 @@ impl App {
                 let (size, clear) = self.footprint_at(kind, a, b);
                 let look = if clear.is_some() { Look::Ghost } else { Look::Red };
                 let files: Vec<(String, bool)> = if kind == land::K_LANDMARK {
-                    let Some(t) = self.next_landmark() else { return };
+                    let Some(t) = self.chosen_landmark() else { return };
                     vec![(sg_core::objects::LANDMARKS[t as usize].to_string(), false)]
                 } else {
                     let level = self.lot_level(kind).min(1) as u16;
@@ -242,6 +256,24 @@ impl App {
     /// One sprite frame standing at a ground point, facing as draw_props turns an object.
     #[allow(clippy::too_many_arguments)]
     fn preview_quad(&mut self, g: &mut Gfx, u: &Uniforms, si: usize, quarter: i32, facing: i32, frame: i32, x: f32, z: f32, look: Look) {
+        self.preview_quad_shifted(g, u, si, quarter, facing, frame, x, z, 0.0, look);
+    }
+
+    /// `preview_quad` with the sprite moved `dx` 800 x 600 pixels right on the screen.
+    #[allow(clippy::too_many_arguments)]
+    fn preview_quad_shifted(
+        &mut self,
+        g: &mut Gfx,
+        u: &Uniforms,
+        si: usize,
+        quarter: i32,
+        facing: i32,
+        frame: i32,
+        x: f32,
+        z: f32,
+        dx: f32,
+        look: Look,
+    ) {
         let sp = &self.sprites[si].s;
         let view = match sp.views {
             v if v >= 8 => (quarter * 2 + facing * 2).rem_euclid(8),
@@ -274,6 +306,8 @@ impl App {
         let (rx, ry, rz, ux, uy, uz) = (mv[0], mv[4], mv[8], mv[1], mv[5], mv[9]);
         let s = sg_core::sprites::SPRITE_UNITS_PER_PIXEL;
         let y = self.terrain.height_at(x, z);
+        let px = dx * self.upp * (self.draw_w / 800.0).min(self.draw_h / 600.0);
+        let (x, y, z) = (x + rx * px, y + ry * px, z + rz * px);
         let (l, r, t, b) = (-ax * s, (w - ax) * s, ay * s, -(h - ay) * s);
         let col = [1.0, 1.0, 1.0, if look == Look::Ghost { 0.6 } else { 1.0 }];
         let c = |cx: f32, cy: f32, tu: f32, tv: f32| {
@@ -336,6 +370,32 @@ impl App {
         if ty == 1 && v & 1 != 0 {
             top_text(g, s, sx + 4.0, sy - 16.0, "Tricky Green", SMALL, c15(WHITE));
         }
+        self.draw_hole_reach(g, s, ty, a, b, (sx, sy));
+    }
+
+    /// The length of the hole being built (0x41aedd): with the green brush while the hole has its tee and no green, a white
+    /// line two pixels wide from the tee's tile to the tile under the pointer, and "N yards" (the tile distance times 25,
+    /// truncated: 0x40acd0) centred on its middle; the tee brush does the same from the green while the hole has a green and
+    /// no tee. Nothing is drawn while the far end is off the screen (0x42f940). PLACEHOLDER: the line call's last argument
+    /// (7 here, 5 for the translucent tooltip bar) is not decoded and the line is drawn opaque; the font is taken as the small
+    /// one the brush code selects just before (0x519fd8).
+    fn draw_hole_reach(&self, g: &mut Gfx, s: &Ui, ty: i32, a: i32, b: i32, (sx, sy): (f32, f32)) {
+        let h = self.club.next_hole;
+        if !(0..2).contains(&ty) || !(1..19).contains(&h) {
+            return;
+        }
+        let rec = &self.club.holes[h as usize];
+        let from = match ty {
+            1 if rec.pin.0 == 0 && rec.back.0 != 0 => rec.back,
+            0 if rec.back.0 == 0 && rec.pin.0 != 0 => rec.pin,
+            _ => return,
+        };
+        let Some((fx, fy)) = self.tile_on_screen(from.0, from.1) else { return };
+        s.line(g, fx, fy, sx, sy, 2.0, c15(WHITE));
+        let (dx, dy) = ((a - from.0) * 25, (b - from.1) * 25);
+        let yards = ((dx * dx + dy * dy) as f64).sqrt() as i32;
+        let (mx, my) = (((fx as i32 + sx as i32) / 2) as f32, ((fy as i32 + sy as i32) / 2) as f32);
+        top_text(g, s, mx, my, &format!("{yards} yards"), SMALL, c15(WHITE));
     }
 
     /// The elevation tools' grid, heights and marks.
@@ -395,7 +455,7 @@ impl App {
     /// The building tool's footprint, name and clearing charge.
     fn draw_footprint(&self, g: &mut Gfx, s: &Ui, kind: i32) {
         let (a, b) = self.cursor_tile();
-        if !self.cursor_tile_ok(a, b) || (kind == land::K_LANDMARK && self.next_landmark().is_none()) {
+        if !self.cursor_tile_ok(a, b) || (kind == land::K_LANDMARK && self.chosen_landmark().is_none()) {
             return;
         }
         let (size, clear) = self.footprint_at(kind, a, b);
@@ -414,13 +474,13 @@ impl App {
             col = c15(RED);
         }
         if kind == land::K_LANDMARK {
-            if let Some(t) = self.next_landmark() {
+            if let Some(t) = self.chosen_landmark() {
                 self.draw_reach_ring(g, s, a * 1024 + 512, b * 1024 + 512, (t * 5 + 40) * 5 / 4);
             }
         }
         if kind <= 6 {
             let name = if kind == land::K_LANDMARK {
-                let n = sg_core::vips::landmark_short_name(self.next_landmark().unwrap_or(-1));
+                let n = sg_core::vips::landmark_short_name(self.chosen_landmark().unwrap_or(-1));
                 let mut ch = n.chars();
                 ch.next().map(|f| f.to_uppercase().collect::<String>() + ch.as_str()).unwrap_or_default()
             } else {
