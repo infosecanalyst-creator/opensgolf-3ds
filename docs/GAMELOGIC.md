@@ -66,10 +66,14 @@ pass and Course Report.
 `tournament.rs`: the SGA evaluation, the mid-year offer, the shotgun field of famous pros, the preparation checklist, the
 leaderboard, prizes and cleanup.
 
+`championship.rs`: Play a Championship and the pro files. `celebs.rs`: celebrity residents. `wildlife.rs`: animals,
+fly-overs, water depth and the splash. `thoughts.rs`: the text of every golfer thought. `records.rs`: accomplishments,
+the event log and the monthly history. `clubhouse.rs`: the clubhouse pair screen.
+
 ## Not yet in
 
-Play a Championship from the main menu (a tournament on a saved course with a saved pro), the pros' tournament speech
-lines, flower bed shapes, water effects and wildlife.
+Flower bed shapes (a data table in the exe that is not available), the board's photo snapshots, portraits on the pair
+screen and the golfer card.
 
 ## Viewer
 

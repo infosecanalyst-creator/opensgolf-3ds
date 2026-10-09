@@ -627,3 +627,58 @@ Confidence: high unless marked.
   places (purse, then two thirds of the one before). The pro's prize is paid to the club; first place brings 3 trophies,
   second 2, others 1. The cleanup's par restore works on the record after the last hole, so tournament pars stay; the port
   leaves that record alone instead of writing it.
+
+## Play a Championship (title menu, 0x46ddd0; pro files 0x437910 / 0x437fa0)
+
+Confidence: high unless marked.
+- The title menu's Play a Championship asks the difficulty, then a course saved for championship play and a pro file
+  from the championship folder, then sets cash to 1000 units, the tick to 0x2c00 and the game flags to championship mode
+  only, and sets up the tournament field at once (no SGA evaluation; the purse defaults to 20 per hole). In this mode the
+  field's pros are drawn with a random share of their weight, the pro starts at the clubhouse with the file's skills,
+  every preparation item is taken without asking, the leaderboard names the event by difficulty, no accomplishments are
+  earned and no wages are charged; closing the results returns to the title menu.
+- A pro file is the 0x230-byte roster record, 25 custom sayings of 50 bytes, 16 skill bytes, the marker "*PCXFILE" and
+  a 140 x 420 picture of three portraits. Nothing writes one automatically.
+
+## Celebrity residents (0x4011e0, 0x4012d0, 0x4017d0)
+
+- A celebrity's home site is drawn as one of two houses chosen by the parity of the object's slot (the other four the
+  exe loads are never reached). One resident per home walks a 4 x 4 grid of half-tile cells (16 steps a cell), stands,
+  and at the lot's edge, one time in 24 (64 in a tournament), plays a voice line and a signature move. Off screen it may
+  go indoors for 500 frames. Demolishing the site removes it. No money or mood comes of it.
+
+## Wildlife and water (0x405e30, 0x430360, main frame 0x410d00..0x412abb)
+
+- 128 animal records. A retyped tile draws one in eight times; a random record must be free; up to ten random kinds
+  are tested against the habitat type and theme of a tile next to it (the kind table is data that is not available).
+  A leader and one young follower (the exe's group loop stops after one) drop in over 20 frames.
+- Each animation cycle a leader calms down one time in three, flees from golfers or low balls within two tiles (the
+  golfer gets event 0x27, +1 mood below Difficult), keeps to its habitat or rough, and walks, stands, goes down to eat
+  or drink and loops; elk walk twice as fast, fleeing animals four times. A blocked step turns right and removes the
+  animal one time in a hundred; out of bounds removes it.
+- Four fly-overs: a balloon (lands on open ground, burner sound), a sailboat steering along water, a bird of prey per
+  theme and a blimp; each appears one time in a hundred when idle (the balloon and blimp from the second year).
+- Water depth: shore 0, next to the shore 1, open 2. Ripples on the shore below a water tile (two tiles in three),
+  rocks and coral by fixed tile formulas in shallow flat water, dolphins every 64 frames on scenic open water, else a
+  fountain (a rock in the desert). One splash at a time, 13 frames.
+
+## Golfer thoughts (text routine 0x469b00, bubbles 0x416a15)
+
+- Each mood event's line is chosen by the pair's relationship, the person's roster number, gender, the hole and the
+  argument, with the golfer's name, the partner's name and an event noun (terrain, feature on a tile, animal) put in;
+  some remarks are said by the partner. The bubble shows while the thought timer is 1..7 (about 56 ticks), white then
+  grey below 5, tinted by the sign of the latest mood change.
+
+## Accomplishments, event log and year end (0x46e7b0, 0x46e810, 0x40c6f0, 0x44cff0)
+
+- 22 accomplishments, each earned once (tick and course kept); on Easy and Moderate the challenge, heroic and
+  strategic holes are replaced by the first dogleg right, dogleg left and par 5 holes. The board opens twenty frames
+  after an award; the pro's three skill points follow it.
+- One event log entry a month (type in the high bits, a five-bit argument), shown by the year-end report with this
+  year's and last year's cash, fun, skill and membership.
+
+## The clubhouse pair screen (0x459850)
+
+- Clicking the clubhouse (not in a tournament, once a hole is open) lists the golfers waiting, newest first. With two
+  picked, they are swapped into the slots of the longest-waiting golfer's pair, marked as picked by hand (no visitor
+  replaces them, a story is kept) and tee off at once.
