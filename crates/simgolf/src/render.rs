@@ -651,7 +651,7 @@ impl App {
         if self.panel == 4 {
             s.fill(g, 226.0, 452.0, 570.0, 144.0, rgba(0.16, 0.14, 0.34, 0.88));
             self.draw_golfers_panel(g, s);
-        } else if (1..=3).contains(&self.panel) && self.panel_art_ready() {
+        } else if self.art_panel_open() {
             self.draw_panel(g, s);
         } else if self.panel != 0 {
             s.fill(g, 226.0, 452.0, 570.0, 144.0, rgba(0.16, 0.14, 0.34, 0.88));
