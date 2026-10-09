@@ -257,7 +257,7 @@ fn load_ui(app: &mut App, g: &mut Gfx) -> bool {
     ok
 }
 
-/// Scripted edits for tests: "p:x,y,type[,vbyte,radius];w:x,y,kind[,radius];b:x,y,building;r:cx,cy,delta[,radius];
+/// Scripted edits for tests: "p:x,y,type[,vbyte,radius];w:x,y,kind[,radius];b:x,y,building[,design];r:cx,cy,delta[,radius];
 /// h:kind[,x,y];t:x,y,type;o" (t paints one tile through the hole tool, o opens the hole being built; h hires an employee: 0 Club Pro, 1 Ranger, 2 Groundskeeper, 3 Soda Vendor; x,y is the post tile).
 /// The --screen test hook: opens a screen of a game in progress.
 fn open_screen(app: &mut App, screen: Option<&str>) {
@@ -497,8 +497,11 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                     }
                 }
             }
-            b'b' if item.len() > 2 && v.len() == 3 => {
+            b'b' if item.len() > 2 && (3..=4).contains(&v.len()) => {
                 app.build_idx = at(2).clamp(0, 19) as usize;
+                if v.len() == 4 {
+                    app.design = Some((app.build_idx as i32, at(3)));
+                }
                 app.edit_building(at(0), at(1), false);
                 println!(
                     "building {} at {},{}: {} objects, toast '{}', cash {}",

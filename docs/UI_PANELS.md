@@ -148,7 +148,8 @@ panels, which sets the overlay flag and the "hire click pending" flag).
   at (240,494). Slots are tested first.
 * Hire dialog: title "HIRE AN EMPLOYEE" at (377,107); four bands, each two lines (regular above, skilled below), tested on pointer y
   only (bands in the header); the dialog returns `kind*3 + 1 + skilled`. Choice lines at x 246 read "Name: $N per week", with a
-  highlight bar (x 231, 291 wide, 16 high) behind the pointed line, and a 40x40 animated portrait per kind at x 576, y 192, 262, 332, 402.
+  highlight bar (x 231, 291 wide, 16 high) behind the pointed line, and a 40x40 animated portrait per kind at x 576, y 192, 262, 332, 402: the kind's walking clip (0x20e + set, the
+  skilled set while its line is pointed at) in view k, palette 0x82 + set, one frame per redraw.
   Wages, kinds and counters are in `kStaffKinds`.
 
 ## 7. Golfers panel and Player panel (exact for controls, unknown for contents)

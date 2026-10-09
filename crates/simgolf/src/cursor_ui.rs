@@ -137,7 +137,8 @@ impl App {
             Tool::Paint(1) => {
                 // 0x41ab0b: while the hole being built has no green, the theme's waving flag (sprite 0x189 + theme, palette
                 // 0x63) see-through, view 1 whatever the camera, its frame from the game tick, anchored 4 pixels left of the
-                // tile's centre at every zoom
+                // tile's centre at every zoom; painted at once (0x4628d0) after the sprite queue was drawn (0x463100), so over
+                // every sprite, as this pass is
                 let h = self.club.next_hole;
                 if !(1..19).contains(&h) || self.club.holes[h as usize].pin.0 != 0 {
                     return;
@@ -211,8 +212,11 @@ impl App {
             Tool::Building(kind) if kind == land::K_LANDMARK || (6..=15).contains(&kind) => {
                 let (size, clear) = self.footprint_at(kind, a, b);
                 let look = if clear.is_some() { Look::Ghost } else { Look::Red };
+                // a landmark in its palette, 100 + type (0x41a07a)
+                let mut pal = None;
                 let files: Vec<(String, bool)> = if kind == land::K_LANDMARK {
                     let Some(t) = self.chosen_landmark() else { return };
+                    pal = sg_core::decor::palette_file(100 + t as u8, self.exe_theme());
                     vec![(sg_core::objects::LANDMARKS[t as usize].to_string(), false)]
                 } else {
                     let level = self.lot_level(kind).min(1) as u16;
@@ -224,7 +228,7 @@ impl App {
                 let (x, z) = (cx + off, cz + off);
                 let mut layers = Vec::new();
                 for (file, flat) in files {
-                    let body = self.sprite_for(&format!("{file}.flc"), false, None);
+                    let body = self.sprite_for(&format!("{file}.flc"), false, pal);
                     let shadow = if flat { None } else { self.sprite_for(&format!("{file}Shadow.flc"), true, None) };
                     if let Some(body) = body {
                         layers.push((body, shadow, flat));

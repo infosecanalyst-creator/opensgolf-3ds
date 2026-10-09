@@ -473,14 +473,13 @@ impl App {
         if bottom.tex.is_some() {
             s.image_part(g, bottom, 0.0, 253.0, 0.0, 253.0, 800.0, 347.0);
         }
-        // the minimap: one 12 x 6 diamond per tile
+        // the minimap: one 12 x 6 diamond per tile, the polygon (x - 6, y), (x, y - 3), (x + 6, y), (x, y + 3) (0x475df0)
         let aura = (tab == 2).then(|| self.course.aura());
         for a in 0..N {
             for b in 0..N {
                 let Some(c) = self.tile_colour(a, b, aura.as_ref()) else { continue };
                 let (x, y) = Self::mini(a as f32, b as f32);
-                s.fill(g, x - 4.0, y - 2.0, 8.0, 4.0, c);
-                s.fill(g, x - 2.0, y - 3.0, 4.0, 6.0, c);
+                s.diamond(g, x, y, 6.0, 3.0, c);
             }
         }
         let ink = c15(0);

@@ -3184,13 +3184,7 @@ impl App {
     fn add_land_objects(&mut self) {
         let Some(land) = self.land.clone() else { return };
         let theme = land.slot.record().theme;
-        // Tile items: benches and ornamental trees as the exe draws them (sg_core::decor); flower beds INTERIM: the single-bed
-        // sprite of the theme (the exe picks the bed's shape from its neighbours through a table not decoded here).
-        let beds = match theme {
-            1 => "flowers/DesFlowers_Single",
-            2 => "flowers/TropFlowers_Single",
-            _ => "flowers/Flowers_Single",
-        };
+        // Tile items: benches, ornamental trees and flower beds as the exe draws them (sg_core::decor)
         let noise = self.noise.clone();
         let field = |x: i32, y: i32| noise.field(x, y);
         let mut draws: Vec<(i32, i32, sg_core::decor::Draw)> = Vec::new();
@@ -3231,17 +3225,28 @@ impl App {
                         draws.push((a, b, d));
                     }
                 } else if f & 0x1000 != 0 && land.ty[i] != land::T_OUT {
-                    let body = self.sprite_for(&format!("{beds}.flc"), false, None);
-                    if body.is_some() {
-                        let shadow = self.sprite_for(&format!("{beds}Shadow.flc"), true, None);
-                        let (x, z) = self.terrain.tile_centre(a, b);
-                        self.props.push(Prop { x, z, body, shadow, facing: (land.var[i] & 3) as i32, object: true, ..Default::default() });
+                    let course = &self.course;
+                    let bed = |a: i32, b: i32| {
+                        let j = (a * land::N + b) as usize;
+                        ((0..land::N).contains(&a) && (0..land::N).contains(&b) && land.flags[j] & 0x1000 != 0)
+                            .then(|| (land.var[j], course.level_table.get(j).copied().unwrap_or(0)))
+                    };
+                    let weedy = course.flags.get(i).is_some_and(|f| f & sg_core::course::f::WEED != 0);
+                    let t = &self.staff_tiles;
+                    let growth = self.tile_growing(a, b).then(|| t.counter[(b * t.w + a) as usize] as i32);
+                    for d in sg_core::decor::flower_bed(a, b, &bed, weedy, growth, &|a, b| course.raw_corner(a, b)) {
+                        draws.push((a, b, d));
                     }
                 }
             }
         }
         for (a, b, d) in draws {
+            let n = self.props.len();
             self.push_decor(a, b, d, true, false);
+            // the beds go straight onto the frame in the exe's tile loop, under the queued sprites
+            if (0x1a2..=0x1b3).contains(&d.sprite) && self.props.len() > n {
+                self.props[n].flat = true;
+            }
         }
         let level = (self.holes.len() > 10) as u16;
         for (oi, o) in land.objects.iter().enumerate().filter(|(_, o)| o.kind >= 0) {

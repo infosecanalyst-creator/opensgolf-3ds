@@ -229,6 +229,74 @@ pub fn ornamental(var: u8, a: i32, b: i32, grown: bool, field: &dyn Fn(i32, i32)
     ]
 }
 
+/// A flower bed tile (flag 0x1000) as the main frame draws it (0x41266b). The tile's design byte (`var`, 0..14) is shape
+/// var / 5 (plain, sinuous, walled: sprites 0x1a2, 0x1a8, 0x1ae on) and colour var % 5 (palettes 0x2d..0x31, or 0xbb while
+/// weeds grow in it). The bed joins the four neighbours that are beds of the same shape on the same building level
+/// (0x543018): bit k of the mask for the neighbour at heading 2k picks the piece and its view from the table at 0x4c2f28
+/// (single, one, two, three and four sides, corner); a one-sided piece turns two views, a three-sided one view, and the
+/// single and four-sided pieces take view (a - 2b) & 3. The bed shows its growth counter as the frame while it grows (flag
+/// 0x4000), else its last frame. Where the beds fill the 2 x 2 block with the tile up and left of this one, on level
+/// corners, and (b + 2a) % 5 == 0, a gazebo (a even, palette 0x96) or a topiary (palette 0xbc) stands at the block's
+/// middle in view b & 3. `bed(a, b)` is the design and level of a bed tile, None for other tiles; `corner` is 0x40c170.
+/// The bed is drawn straight onto the frame in the tile loop (0x4628d0), under every queued sprite; the gazebo is queued
+/// (0x462a30) by the tile centre's screen height.
+pub fn flower_bed(
+    a: i32,
+    b: i32,
+    bed: &dyn Fn(i32, i32) -> Option<(u8, i32)>,
+    weedy: bool,
+    growth: Option<i32>,
+    corner: &dyn Fn(i32, i32) -> i32,
+) -> Vec<Draw> {
+    const PIECES: [(u16, i32); 16] = [
+        (0x1a2, -1),
+        (0x1a3, 3),
+        (0x1a3, 2),
+        (0x1a7, 2),
+        (0x1a3, 1),
+        (0x1a4, 1),
+        (0x1a7, 1),
+        (0x1a5, 2),
+        (0x1a3, 0),
+        (0x1a7, 3),
+        (0x1a4, 0),
+        (0x1a5, 3),
+        (0x1a7, 0),
+        (0x1a5, 0),
+        (0x1a5, 1),
+        (0x1a6, -1),
+    ];
+    let Some((var, level)) = bed(a, b) else { return Vec::new() };
+    let mut mask = 0usize;
+    for k in 0..4 {
+        if let Some((v, l)) = bed(a + DX[2 * k], b + DY[2 * k]) {
+            if v / 5 == var / 5 && l == level {
+                mask |= 1 << k;
+            }
+        }
+    }
+    let (piece, mut view) = PIECES[mask];
+    if piece == 0x1a3 {
+        view ^= 2;
+    }
+    if piece == 0x1a5 {
+        view = (view + 1) & 3;
+    }
+    if view == -1 {
+        view = (a - 2 * b) & 3;
+    }
+    let sprite = piece + 6 * (var / 5).min(2) as u16;
+    let pal = if weedy { 0xbb } else { 0x2d + var % 5 };
+    let frame = if weedy { None } else { growth };
+    let mut out = vec![Draw { sprite, frame, view, pal, da: 0.0, db: 0.0 }];
+    if (b + 2 * a) % 5 == 0 && mask & 9 == 9 && bed(a - 1, b - 1).is_some() && corner(a - 1, b - 1) == corner(a, b) {
+        let (da, db) = screen(-8.0, 0.0);
+        let odd = a & 1;
+        out.push(Draw { sprite: 0x1b4 + odd as u16, frame, view: b & 3, pal: if odd != 0 { 0xbc } else { 0x96 }, da, db });
+    }
+    out
+}
+
 /// The bridge pieces of a path tile on water (0x41192c). `path` has bit k set when the neighbour at heading 2k carries a
 /// path, `land` the same for neighbours that are not water, `water_path` whether any path neighbour is on water; `scenic`
 /// and `style` are the scenic bridge flag and the tile's low flag bits (the bridge tool's look). Anim is the frame counter.
@@ -324,15 +392,75 @@ pub fn sprite_file(id: u16, theme: u8) -> Option<&'static str> {
         0x20c => Some("Flowers/backless bench"),
         0x20d => Some("Flowers/lovers bench"),
         0x184 => Some("Flowers/crabgrass"),
-        // the flower beds' one-sided pieces: plain, sinuous and walled (Links loads the Parkland set)
-        0x1a3 => pick(["Flowers/Flowers_1Side", "Flowers/DesFlowers_1Side", "Flowers/TropFlowers_1Side", "Flowers/Flowers_1Side"]),
-        0x1a9 => pick(["Flowers/SinFlowers_1Side", "Flowers/DesSin_1Side", "Flowers/SinTrop_1Side", "Flowers/SinFlowers_1Side"]),
-        0x1af => pick([
-            "Flowers/WalledFlowers_1Side",
-            "Flowers/DesFlowers_1Side_Wall",
-            "Flowers/TropFlowers_1Side_Wall",
-            "Flowers/WalledFlowers_1Side",
-        ]),
+        // the flower beds' pieces (single, one, two, three and four sides, corner) in the plain, sinuous and walled shapes
+        // (0x440bc2; Links loads the Parkland set, and the walled four-sided piece is the plain one)
+        0x1a2..=0x1b3 => {
+            const SETS: [[&str; 18]; 3] = [
+                [
+                    "Flowers/Flowers_Single",
+                    "Flowers/Flowers_1Side",
+                    "Flowers/Flowers_2Side",
+                    "Flowers/Flowers_3Side",
+                    "Flowers/Flowers_4Side",
+                    "Flowers/Flowers_Corner",
+                    "Flowers/SinFlowers_Single",
+                    "Flowers/SinFlowers_1Side",
+                    "Flowers/SinFlowers_2Side",
+                    "Flowers/SinFlowers_3Side",
+                    "Flowers/SinFlowers_4Side",
+                    "Flowers/SinFlowers_Corner",
+                    "Flowers/WalledFlowers_Single",
+                    "Flowers/WalledFlowers_1Side",
+                    "Flowers/WalledFlowers_2Side",
+                    "Flowers/WalledFlowers_3Side",
+                    "Flowers/Flowers_4Side",
+                    "Flowers/WalledFlowers_Corner",
+                ],
+                [
+                    "Flowers/DesFlowers_Single",
+                    "Flowers/DesFlowers_1Side",
+                    "Flowers/DesFlowers_2Side",
+                    "Flowers/DesFlowers_3Side",
+                    "Flowers/DesFlowers_4Side",
+                    "Flowers/DesFlowers_Corner",
+                    "Flowers/DesSin_Single",
+                    "Flowers/DesSin_1Side",
+                    "Flowers/DesSin_2Side",
+                    "Flowers/DesSin_3Side",
+                    "Flowers/DesSin_4Side",
+                    "Flowers/DesSin_Corner",
+                    "Flowers/DesFlowers_Single_Wall",
+                    "Flowers/DesFlowers_1Side_Wall",
+                    "Flowers/DesFlowers_2Side_Wall",
+                    "Flowers/DesFlowers_3Side_Wall",
+                    "Flowers/DesFlowers_4Side",
+                    "Flowers/DesFlowers_Corner_Wall",
+                ],
+                [
+                    "Flowers/TropFlowers_Single",
+                    "Flowers/TropFlowers_1Side",
+                    "Flowers/TropFlowers_2Side",
+                    "Flowers/TropFlowers_3Side",
+                    "Flowers/TropFlowers_4Side",
+                    "Flowers/TropFlowers_Corner",
+                    "Flowers/SinTrop_Single",
+                    "Flowers/SinTrop_1Side",
+                    "Flowers/SinTrop_2Side",
+                    "Flowers/SinTrop_3Side",
+                    "Flowers/SinTrop_4Side",
+                    "Flowers/SinTrop_Corner",
+                    "Flowers/TropFlowers_Single_Wall",
+                    "Flowers/TropFlowers_1Side_Wall",
+                    "Flowers/TropFlowers_2Side_Wall",
+                    "Flowers/TropFlowers_3Side_Wall",
+                    "Flowers/TropFlowers_4Side",
+                    "Flowers/TropFlowers_Corner_Wall",
+                ],
+            ];
+            Some(SETS[if t == 1 || t == 2 { t } else { 0 }][(id - 0x1a2) as usize])
+        }
+        0x1b4 => Some("Flowers/Gazebo"),
+        0x1b5 => Some("Flowers/Topiary"),
         0x190 => pick(["Flowers/dandelion_01", "Flowers/OilSlick", "Flowers/DryGrass", "Flowers/dandelion_01"]),
         0x192 => {
             pick(["Trees/TreePineSpruceSm", "Trees/Desert/CactusA_Sm", "Trees/Tropic/Tree_Cerc/Cerc_Small", "Trees/Links/LinksPine_Small"])
@@ -438,6 +566,40 @@ pub fn palette_file(pal: u8, theme: u8) -> Option<&'static str> {
             pick(["Bridges/PARKbridgepal.pcx", "Bridges/DESbridgepal.pcx", "Bridges/TROPbridgepal.pcx", "Bridges/LinksBridgePalette.pcx"])
         }
         0xa9 => Some("Bridges/SCENICgenpal.pcx"),
+        // a weedy flower bed: the exe names "bldgs\flowers\...IckyPal", a folder the game does not ship; PLACEHOLDER: the
+        // same files in Flowers
+        0xbb => pick([
+            "Flowers/FlowerbedA_IckyPal.pcx",
+            "Flowers/DesertFlowersIckyPal.pcx",
+            "Flowers/TropicalFlowers_IckyPal.pcx",
+            "Flowers/FlowerbedA_IckyPal.pcx",
+        ]),
+        // the landmarks' palettes, 100 + type (0x440bc2)
+        100..=118 => Some(
+            [
+                "Landmarks/SundialPal.pcx",
+                "Landmarks/BarnPal.pcx",
+                "Landmarks/CivilWarCannonPal.pcx",
+                "Landmarks/StonetwoPal.pcx",
+                "Landmarks/wmillAPal.pcx",
+                "Landmarks/ParklandRockPal.pcx",
+                "Landmarks/CivilWarStatuePal.pcx",
+                "Landmarks/LighthouseCPal.pcx",
+                "Landmarks/BuddhaPal.pcx",
+                "Landmarks/WindmillPal.pcx",
+                "Landmarks/equestrianPal.pcx",
+                "Landmarks/EasterPal.pcx",
+                "Landmarks/PagodaPal.pcx",
+                "Landmarks/LighthouseBPal.pcx",
+                "Landmarks/ChineseHousePal.pcx",
+                "Landmarks/TarpitPal.pcx",
+                "Landmarks/wtow2Pal.pcx",
+                "Landmarks/Radio TowerPal.pcx",
+                "Landmarks/Red Oil Pump Pal.pcx",
+            ][(pal - 100) as usize],
+        ),
+        0x96 => Some("Flowers/GazeboPal.pcx"),
+        0xbc => Some("Flowers/TopiaryPal.pcx"),
         0x4c => Some("Flowers/CrabgrassPal.pcx"),
         0x4d => pick(["Flowers/dandelionPal.pcx", "Flowers/OilSlickPal.pcx", "Flowers/DryGrassPal.pcx", "Flowers/dandelionPal.pcx"]),
         0xa6 | 0xb6 => Some("Scenic/ScenicElmPal.pcx"),
@@ -534,6 +696,30 @@ mod tests {
             c.height[x * 51 + y] = 10;
         }
         assert_eq!(waterfalls(&c, 10, 10, 0, 4)[0], Fall { sprite: 0x238, view: 1, dx: -16, dy: -10 - 2 });
+    }
+
+    #[test]
+    fn flower_beds_join_up() {
+        // a 2 x 2 block of sinuous red beds at (5..6, 10..11), a lone plain bed at (20, 20)
+        let bed = |a: i32, b: i32| match (a, b) {
+            (5..=6, 10..=11) => Some((9, 0)),
+            (20, 20) => Some((0, 0)),
+            _ => None,
+        };
+        let flat = |_: i32, _: i32| 3;
+        let lone = flower_bed(20, 20, &bed, false, None, &flat);
+        assert_eq!(lone, vec![Draw { sprite: 0x1a2, frame: None, view: (20 - 40) & 3, pal: 0x2d, da: 0.0, db: 0.0 }]);
+        // (6, 11) has beds at headings 0 (6, 10) and 6 (5, 11): a corner, and (11 + 12) % 5 != 0 so no gazebo
+        let c = flower_bed(6, 11, &bed, false, None, &flat);
+        assert_eq!((c.len(), c[0].sprite, c[0].view, c[0].pal), (1, 0x1a7 + 6, 3, 0x31));
+        // (5, 10) has beds at headings 2 and 4: a corner the other way, weedy
+        let w = flower_bed(5, 10, &bed, true, Some(2), &flat);
+        assert_eq!((w[0].sprite, w[0].view, w[0].pal, w[0].frame), (0x1ad, 1, 0xbb, None));
+        // a block at (12..13, 38..39): (13, 39) has (39 + 26) % 5 == 0, so a topiary (a odd) at the block's middle
+        let block = |a: i32, b: i32| ((12..=13).contains(&a) && (38..=39).contains(&b)).then_some((2u8, 0));
+        let t = flower_bed(13, 39, &block, false, Some(1), &flat);
+        assert_eq!(t.len(), 2);
+        assert_eq!((t[1].sprite, t[1].pal, t[1].view, t[1].frame, t[1].da, t[1].db), (0x1b5, 0xbc, 3, Some(1), -0.5, -0.5));
     }
 
     #[test]
@@ -654,7 +840,9 @@ pub fn bank_rocks(c: &crate::course::Course, a: i32, b: i32, rot: i32, theme: u8
 /// A waterfall or its spray on a water tile (main frame 0x410ea4 to 0x4114e2): sprite 0x237 (short fall), 0x238 (tall fall),
 /// 0x23b (short spray) or 0x23c (tall spray) in the theme's water palette (0xb2), in a fixed view whatever the camera, its
 /// anchor (`dx`, `dy`) screen pixels from the tile's centre at the exe zoom it was laid out for. The exe runs every one's
-/// frames from (7 * a + tick) and sorts it by the tile centre's screen height.
+/// frames from (7 * a + tick) and draws it straight onto the frame as the tile loop reaches the tile (0x4628d0, which
+/// paints at once; only 0x462a30 queues a sprite, keyed by the tile centre's screen height), so it lies under every queued
+/// sprite.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Fall {
     pub sprite: u16,
