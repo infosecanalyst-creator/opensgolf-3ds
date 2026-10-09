@@ -447,6 +447,10 @@ pub struct App {
     pub swaps: sg_core::bodies::Swaps,
     pub outfit_pals: HashMap<sg_core::bodies::Outfit, [u8; 768]>,
     pub outfit_tex: HashMap<(usize, usize, sg_core::bodies::Outfit), miniquad::TextureId>,
+    /// Red silhouettes of sprite frames (sprite, frame), for a building preview that will not fit.
+    pub red_tex: HashMap<(usize, usize), miniquad::TextureId>,
+    /// The terrain brushes' tile pictures under the pointer (Data/parkland.pcx, desert, tropical, links: the exe's theme order).
+    pub tool_tiles: [Image; 4],
     pub world_base: Image,
     /// The main screen's course badge and rating pills (Interface/courseinfo.pcx with its alpha sheet).
     pub hud_art: Image,
@@ -484,7 +488,8 @@ pub struct App {
     pub follow: bool,
     // Course editing
     pub edit: bool,
-    /// 0 paint, 1 raise (shift lowers), 2 path (shift removes), 3 wall, 4 building.
+    /// 0 paint, 1 raise (shift lowers), 2 path (shift removes), 4 building, 5 undo. (The original has no wall tool: walls
+    /// follow the ground, see build_walls.)
     pub tool: i32,
     /// 1 gravel, 2 paved.
     pub path_kind: i32,
@@ -646,6 +651,8 @@ impl App {
             swaps: Default::default(),
             outfit_pals: HashMap::new(),
             outfit_tex: HashMap::new(),
+            red_tex: HashMap::new(),
+            tool_tiles: [Image::default(); 4],
             world_base: Image::default(),
             hud_art: Image::default(),
             diff_base: Image::default(),
@@ -1002,19 +1009,34 @@ impl App {
         self.mud_batches = Self::upload(g, mud);
     }
 
-    /// Retaining walls: PLACEHOLDER look, a vertical strip standing on the tile edge, 30 units tall, plus a thin cap.
+    /// Retaining walls, built where the ground steps as the exe builds them (0x449540): a tile gets a wall on each edge whose
+    /// neighbour stands higher there (the course's wall bits, 0x42f530: the tile's two corners on that edge, flattened as its
+    /// type flattens them, against the neighbour's), in the style of its type (1 for water, 2 for any other ground; the
+    /// neighbour's style if the tile's is 0). Terrain.dll draws the face; the port's ground is one continuous surface, so
+    /// the look here is a PLACEHOLDER: a strip of `RetainingWallA.bmp` standing on the edge as tall as the step, with a thin cap.
+    /// Water banks get the same strip (the exe also stands cliff sprites from cliffs01.pcx on them, not drawn yet).
     fn build_walls(&mut self, g: &mut Gfx) {
-        if self.terrain.wall_mask.is_empty() {
+        self.terrain.wall_mask = vec![0; self.terrain.ty.len()];
+        if self.land.is_none() {
             return;
+        }
+        self.sync_course();
+        use sg_core::course;
+        for ty in 0..self.terrain.h {
+            for tx in 0..self.terrain.w {
+                if course::inside(tx, ty) {
+                    let w = self.course.walls[course::idx(tx, ty)];
+                    let i = self.terrain.tile_index(tx, ty);
+                    self.terrain.wall_mask[i] = (0..4).fold(0, |m, d| m | (((w >> (2 * d)) & 1) << d));
+                }
+            }
         }
         let Some(tex) = self.theme_texture(g, "RetainingWallA.bmp") else { return };
         let t = &self.terrain;
-        const WALL_HEIGHT: f32 = 30.0;
+        let c = &self.course;
         const CAP: f32 = 5.0;
         let (ox, oz) = (-t.w as f32 * TILE_SIZE * 0.5, -t.h as f32 * TILE_SIZE * 0.5);
         let mut batch = Vec::new();
-        const DX: [i32; 4] = [0, 1, 0, -1];
-        const DY: [i32; 4] = [-1, 0, 1, 0];
         let vn = |x: f32, y: f32, z: f32, u: f32, v: f32, n: [f32; 3]| {
             let mut q = Vert::new(x, y, z, u, v);
             q.normal = n;
@@ -1026,44 +1048,34 @@ impl App {
                     if !t.wall_at(tx, ty, dir) {
                         continue;
                     }
-                    // A shared edge is drawn by the north / west tile only, unless it lies on the map border.
-                    if (dir == 1 || dir == 2) && t.wall_at(tx + DX[dir as usize], ty + DY[dir as usize], (dir + 2) & 3) {
-                        continue;
-                    }
+                    // the step at each end of the edge: the neighbour's corner over this tile's (exe corners k = 2d - 1, 2d + 1)
+                    let d = 2 * dir;
+                    let (na, nb) = (tx + sg_core::geom::DX[d as usize], ty + sg_core::geom::DY[d as usize]);
+                    let k = d - 1;
+                    let step =
+                        |own: i32, theirs: i32| (c.corner(na, nb, theirs & 7) - c.corner(tx, ty, own & 7)).max(0) as f32 * HEIGHT_STEP;
+                    let (s0, s1) = (step(k, k + 6), step(k + 2, k + 4));
                     let (x, z) = (ox + tx as f32 * TILE_SIZE, oz + ty as f32 * TILE_SIZE);
+                    // ends in the order of corners k, k + 2 (7 = -x -y, 1 = +x -y, 3 = +x +y, 5 = -x +y)
                     let (x0, z0, x1, z1, ix, iz) = match dir {
                         0 => (x, z, x + TILE_SIZE, z, 0.0, CAP),
-                        2 => (x, z + TILE_SIZE, x + TILE_SIZE, z + TILE_SIZE, 0.0, -CAP),
-                        3 => (x, z, x, z + TILE_SIZE, CAP, 0.0),
-                        _ => (x + TILE_SIZE, z, x + TILE_SIZE, z + TILE_SIZE, -CAP, 0.0),
+                        1 => (x + TILE_SIZE, z, x + TILE_SIZE, z + TILE_SIZE, -CAP, 0.0),
+                        2 => (x + TILE_SIZE, z + TILE_SIZE, x, z + TILE_SIZE, 0.0, -CAP),
+                        _ => (x, z + TILE_SIZE, x, z, CAP, 0.0),
                     };
-                    let nx = if dir == 3 {
-                        -1.0
-                    } else if dir == 1 {
-                        1.0
-                    } else {
-                        0.0
-                    };
-                    let nz = if dir == 0 {
-                        -1.0
-                    } else if dir == 2 {
-                        1.0
-                    } else {
-                        0.0
-                    };
+                    let side = [[0.0, 0.0, -1.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [-1.0, 0.0, 0.0]][dir as usize];
                     const N: i32 = 4;
                     for i in 0..N {
                         let (a, b) = (i as f32 / N as f32, (i + 1) as f32 / N as f32);
                         let (xa, za, xb, zb) = (x0 + (x1 - x0) * a, z0 + (z1 - z0) * a, x0 + (x1 - x0) * b, z0 + (z1 - z0) * b);
+                        let (ha, hb) = (s0 + (s1 - s0) * a, s0 + (s1 - s0) * b);
                         let (ya, yb) = (t.height_at(xa, za), t.height_at(xb, zb));
-                        let side = [nx, 0.0, nz];
                         let (p0, p1) = (vn(xa, ya, za, a, 0.3, side), vn(xb, yb, zb, b, 0.3, side));
-                        let (p2, p3) = (vn(xb, yb + WALL_HEIGHT, zb, b, 0.0, side), vn(xa, ya + WALL_HEIGHT, za, a, 0.0, side));
+                        let (p2, p3) = (vn(xb, yb + hb, zb, b, 0.0, side), vn(xa, ya + ha, za, a, 0.0, side));
                         batch.extend_from_slice(&[p0, p1, p2, p0, p2, p3]);
                         let up = [0.0, 1.0, 0.0];
-                        let (c0, c1) = (vn(xa, ya + WALL_HEIGHT, za, a, 0.3, up), vn(xb, yb + WALL_HEIGHT, zb, b, 0.3, up));
-                        let (c2, c3) =
-                            (vn(xb + ix, yb + WALL_HEIGHT, zb + iz, b, 0.4, up), vn(xa + ix, ya + WALL_HEIGHT, za + iz, a, 0.4, up));
+                        let (c0, c1) = (vn(xa, ya + ha, za, a, 0.3, up), vn(xb, yb + hb, zb, b, 0.3, up));
+                        let (c2, c3) = (vn(xb + ix, yb + hb, zb + iz, b, 0.4, up), vn(xa + ix, ya + ha, za + iz, a, 0.4, up));
                         batch.extend_from_slice(&[c0, c1, c2, c0, c2, c3]);
                     }
                 }
@@ -1100,7 +1112,7 @@ impl App {
     }
 
     /// A decoration sprite of the exe (id and palette id) for the loaded theme, body and shadow.
-    fn decor_sprite(&mut self, id: u16, pal: u8) -> (Option<usize>, Option<usize>) {
+    pub(crate) fn decor_sprite(&mut self, id: u16, pal: u8) -> (Option<usize>, Option<usize>) {
         let theme = self.exe_theme();
         let Some(file) = sg_core::decor::sprite_file(id, theme) else { return (None, None) };
         let pal = sg_core::decor::palette_file(pal, theme);
@@ -1365,6 +1377,9 @@ impl App {
             }
         }
         self.sprite_index.clear();
+        for (_, t) in self.red_tex.drain() {
+            g.ctx.delete_texture(t);
+        }
         let lighting = sg_core::fsutil::read_file(self.game_path(&format!("{}Lighting.txt", THEMES[theme])))
             .map(|d| sg_core::terrain::parse_lighting(&sg_core::formats::latin1(&d)))
             .unwrap_or_default();
@@ -2388,9 +2403,7 @@ impl App {
         let mut cost = (land::BUILDINGS[kind as usize].2 * (level + 2) / 2 + clear) as f64 * Economy::UNIT;
         // a landmark: the first owned type still free to place, else the first owned one; (type * 5 + 25) * 2, or nothing
         // the first time a donated type is placed (clearing is not charged)
-        let landmark = (0..14)
-            .find(|t| self.club.free_landmarks & (1 << t) != 0)
-            .or_else(|| (0..14).find(|t| self.club.landmarks_owned & (1 << t) != 0));
+        let landmark = self.next_landmark();
         if kind == land::K_LANDMARK {
             let Some(t) = landmark else { return };
             cost = if self.club.free_landmarks & (1 << t) != 0 { 0.0 } else { ((t * 5 + 25) * 2) as f64 * Economy::UNIT };
@@ -2439,6 +2452,11 @@ impl App {
         self.snd("Interface/Building.wav", 0.7, false);
     }
 
+    /// The landmark the landmark tool places: the first owned type still free to place, else the first owned one.
+    pub fn next_landmark(&self) -> Option<i32> {
+        (0..14).find(|t| self.club.free_landmarks & (1 << t) != 0).or_else(|| (0..14).find(|t| self.club.landmarks_owned & (1 << t) != 0))
+    }
+
     /// After objects change: terrain meshes, trees and object sprites are rebuilt.
     pub(crate) fn after_object_change(&mut self) {
         self.dirty = true;
@@ -2477,18 +2495,6 @@ impl App {
         self.land = Some(land);
     }
 
-    pub fn edit_wall(&mut self, remove: bool) {
-        // Nearest tile edge to the picked point.
-        let (tx, ty) = self.terrain.tile_of(self.hit_x, self.hit_z);
-        let fx = (self.hit_x + self.terrain.w as f32 * TILE_SIZE * 0.5) / TILE_SIZE - tx as f32;
-        let fz = (self.hit_z + self.terrain.h as f32 * TILE_SIZE * 0.5) / TILE_SIZE - ty as f32;
-        let d = [fz, 1.0 - fx, 1.0 - fz, fx]; // distances to N, E, S, W edges
-        let dir = (0..4).fold(0, |best, i| if d[i] < d[best] { i } else { best });
-        self.terrain.set_wall(tx, ty, dir as i32, !remove);
-        self.dirty = true;
-        self.snd("Interface/Place Rocks Generic.wav", 0.7, false);
-    }
-
     pub fn edit_raise(&mut self, cx: i32, cy: i32, delta: i32) {
         let r = self.brush;
         for dy in -r..=r {
@@ -2517,7 +2523,6 @@ impl App {
         match self.tool {
             0 => self.edit_paint(a, b),
             2 => self.edit_path(a, b, lower),
-            3 => self.edit_wall(lower),
             4 => self.edit_building(a, b, lower),
             5 => self.undo_tile(a, b),
             _ => {

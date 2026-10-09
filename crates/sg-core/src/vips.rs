@@ -37,6 +37,32 @@ pub fn landmark_name(t: i32) -> &'static str {
     N.get(t as usize).copied().unwrap_or("landmark")
 }
 
+/// A landmark's short name (0x4074a0 with its second argument 0), as the landmark tool labels its preview.
+pub fn landmark_short_name(t: i32) -> &'static str {
+    const N: [&str; 19] = [
+        "sundial",
+        "barn",
+        "Civil War cannon",
+        "stonehenge",
+        "water mill",
+        "rock face",
+        "Civil War statue",
+        "lighthouse",
+        "Buddha",
+        "windmill",
+        "historic statue",
+        "Easter Island head",
+        "pagoda",
+        "historic lighthouse",
+        "oriental house",
+        "dinosaur tarpit",
+        "water tower",
+        "radio antenna",
+        "oil pump",
+    ];
+    N.get(t as usize).copied().unwrap_or("landmark")
+}
+
 /// What a visitor thinks of the course at mood m (0x469a20).
 pub fn mood_remark(m: i32) -> &'static str {
     match m {

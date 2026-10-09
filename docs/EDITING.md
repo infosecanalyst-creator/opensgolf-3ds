@@ -12,7 +12,6 @@ Press Tab in the game to toggle edit mode (the active tool is shown under the cl
 | = and - | edit mode: raise / lower terrain (the original's keys; shift flips) |
 | Shift+S / Shift+L | save / load (as in the original, alongside F5 and F9) |
 | Shift+P / Shift+T | pause / toggle trees and scenery |
-| T | switch tool: Paint, Raise/Lower, Path (shift removes; [ and ] switch gravel / paved), Wall (nearest tile edge; shift removes) |
 | [ and ] | previous / next tile type |
 | , and . | brush radius (1, 3, 5 ... tiles across) |
 | F5 / F9 | save / load `course.sgc` in the working directory |
@@ -38,10 +37,23 @@ ids, and no automatic cliffs on steep slopes are generated.
 
 ## Retaining walls
 
-Terrain.dll's `Tile` keeps one wall flag per direction (`Tile::getWall` / `setWall`, byte at +0x234 and a value per direction at +0x210),
-so walls are per tile edge, and the editor does the same: the Wall tool toggles the edge nearest the cursor. How the original draws
-and prices a wall is not in the DLL (it only stores the flags), so the look is a PLACEHOLDER: a 30 unit strip of `RetainingWallA.bmp`
-standing on the edge with a thin cap. Edges are shared, so the neighbouring tile's flag is kept in step.
+The original has no wall tool: it rebuilds the walls whenever the ground changes (0x449540). A tile gets a wall on each edge
+whose neighbour stands higher there: the tile's two corners on that edge, flattened as its type flattens them (tees at their
+highest corner, water at its lowest, buildings at their level), are compared with the neighbour's (0x42f530, the course's wall
+bits). The style handed to Terrain.dll is the terrain table's byte +0x28 of the tile's type (1 water, 2 any other ground; the
+neighbour's when it is 0). The port derives the walls the same way (`build_walls`); the look is a PLACEHOLDER (a strip of
+`RetainingWallA.bmp` as tall as the step), since the port's ground is one continuous surface rather than Terrain.dll's
+per-tile corners. The exe also stands rock sprites from `cliffs01.pcx` on water banks (not drawn yet).
+
+## The tool under the pointer
+
+Decoded from the main frame (0x40f5c0), see `crates/simgolf/src/cursor_ui.rs`: a terrain brush shows its tile picture from
+`Data/<theme>.pcx` at half strength on the tile (no outline, no brush size; sand traps turn with Tab), a woods brush a
+see-through tree, the green's tricky variant the words "Tricky Green"; Undo names what it would undo ("Reset to rough",
+"Remove Path", "Demolish Snack Bar", green when a right click would undo it); the elevation tools draw a black tile grid, the
+heights of the nearby vertices and a purple mark or square; the building tool outlines the footprint (white, red where it
+will not fit), draws the building see-through (red where refused), names amenities and shows a clearing charge as "-N".
+SG_CURSOR_TILE="x,y" (tiles, fractions allowed) holds the pointer on a tile for scripted stills.
 
 ## Water
 
@@ -77,7 +89,7 @@ The golfer route and clubhouse position belong to the demo and are not saved; th
 ## Command line
 
 `--course FILE` loads a course, `--save FILE` writes it after edits, and
-`--edit "p:x,y,type[,vbyte,radius];r:cx,cy,delta[,radius];w:x,y,kind[,radius];k:x,y,dir"` (k = wall on edge dir 0..3 = N, E, S, W) applies scripted paint and raise edits, which is how the headless tests run.
+`--edit "p:x,y,type[,vbyte,radius];r:cx,cy,delta[,radius];w:x,y,kind[,radius]"` applies scripted paint and raise edits, which is how the headless tests run.
 
 ## Clubhouse connection, hole report and staff
 
