@@ -338,6 +338,176 @@ Terrain Terrain::demoCourse(int w, int h, uint32_t seed) {
     return t;
 }
 
+Terrain Terrain::emptyPlot(int w, int h, uint32_t seed) {
+    Terrain t;
+    t.w = w; t.h = h;
+    t.type.assign((size_t)w * h, TT_Rough);
+    t.variation.assign((size_t)w * h, 0);
+    t.set.resize((size_t)w * h);
+    t.corner.assign((size_t)(w + 1) * (h + 1), 0);
+    t.pathKind.assign((size_t)w * h, 0);
+    t.wallMask.assign((size_t)w * h, 0);
+    Rng rng{seed ? seed : 1u};
+    auto at = [&](int x, int y) -> uint8_t& { return t.type[(size_t)y * w + x]; };
+    auto disc = [&](float cx, float cy, float rx, float ry, uint8_t ty, bool onlyRough) {
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++) {
+                float dx = (x + 0.5f - cx) / rx, dy = (y + 0.5f - cy) / ry;
+                if (dx * dx + dy * dy <= 1.f && (!onlyRough || at(x, y) == TT_Rough || at(x, y) == TT_DeepRough)) at(x, y) = ty;
+            }
+    };
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++)
+            if (std::min({x, y, w - 1 - x, h - 1 - y}) < 2) at(x, y) = TT_DeepRough;
+    for (int i = 0; i < w * h / 16; i++) {
+        float cx = (float)rng.range(w), cy = (float)rng.range(h), r = 1.0f + rng.unit() * 2.4f;
+        uint8_t ty = rng.range(3) == 0 ? TT_Brush : (rng.range(4) == 0 ? TT_Rock : TT_Woods);
+        disc(cx, cy, r, r, ty, true);
+    }
+    // Clubhouse lot near the bottom left; keep the ground around it clear so the first tee can go beside it.
+    t.clubhouseX = 8; t.clubhouseY = h - 8;
+    disc((float)t.clubhouseX + 0.5f, (float)t.clubhouseY + 0.5f, 7.0f, 7.0f, TT_Rough, false);
+    for (int y = t.clubhouseY - 2; y <= t.clubhouseY + 2; y++)
+        for (int x = t.clubhouseX - 2; x <= t.clubhouseX + 2; x++)
+            if (x >= 0 && y >= 0 && x < w && y < h) at(x, y) = TT_Building;
+    // A pond away from the clubhouse.
+    float pcx = w * (0.55f + 0.2f * rng.unit()), pcy = h * (0.25f + 0.2f * rng.unit());
+    disc(pcx, pcy, 5.0f, 3.8f, TT_WaterShallow, false);
+    disc(pcx, pcy, 3.6f, 2.6f, TT_WaterMiddle, false);
+    disc(pcx, pcy, 2.0f, 1.4f, TT_WaterDeep, false);
+    for (size_t i = 0; i < t.type.size(); i++) {
+        t.set[i] = (uint8_t)rng.range(5);
+        if (t.type[i] == TT_WaterMiddle) { t.type[i] = TT_WaterShallow; t.variation[i] = 1; }
+        else if (t.type[i] == TT_WaterDeep) { t.type[i] = TT_WaterShallow; t.variation[i] = 2; }
+    }
+    float p1 = rng.unit() * 6.28f, p2 = rng.unit() * 6.28f;
+    for (int y = 0; y <= h; y++)
+        for (int x = 0; x <= w; x++) {
+            float v = 2.6f * std::sin(x * 0.17f + p1) + 2.2f * std::cos(y * 0.13f + p2) + 1.6f * std::sin((x + y) * 0.09f);
+            t.corner[(size_t)y * (w + 1) + x] = (int8_t)std::clamp((int)std::lround(v + 5.0f), 0, 12);
+        }
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++) {
+            uint8_t ty = at(x, y);
+            bool flat = ty == TT_WaterShallow || ty == TT_Building;
+            if (!flat) continue;
+            int level = ty == TT_Building ? 5 : 1;
+            for (int dy = 0; dy <= 1; dy++)
+                for (int dx = 0; dx <= 1; dx++) t.corner[(size_t)(y + dy) * (w + 1) + (x + dx)] = (int8_t)level;
+        }
+    t.relax();
+    return t;
+}
+
+Terrain Terrain::generate(int w, int h, uint32_t seed, int theme, int lie, int hilliness, int slot, bool sandbox) {
+    Terrain t;
+    t.w = w; t.h = h;
+    t.type.assign((size_t)w * h, TT_Rough);
+    t.variation.assign((size_t)w * h, 0);
+    t.set.resize((size_t)w * h);
+    t.corner.assign((size_t)(w + 1) * (h + 1), 0);
+    t.pathKind.assign((size_t)w * h, 0);
+    t.wallMask.assign((size_t)w * h, 0);
+    Rng rng{seed ? seed : 1u};
+    for (int i = 0; i < 4; i++) rng.next();
+    auto at = [&](int x, int y) -> uint8_t& { return t.type[(size_t)y * w + x]; };
+    auto isWater = [&](int x, int y) { const uint8_t ty = at(x, y); return ty == TT_WaterShallow || ty == TT_WaterMiddle || ty == TT_WaterDeep; };
+    auto disc = [&](float cx, float cy, float rx, float ry, uint8_t ty, bool onlyRough) {
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++) {
+                float dx = (x + 0.5f - cx) / rx, dy = (y + 0.5f - cy) / ry;
+                if (dx * dx + dy * dy <= 1.f && (!onlyRough || at(x, y) == TT_Rough || at(x, y) == TT_DeepRough)) at(x, y) = ty;
+            }
+    };
+    slot = std::clamp(slot, 0, 15);
+    // Ground cover scatter: density grows with the price slot; the mix depends on the theme (PLACEHOLDER mixes, the exe's tile lists per theme are not decoded).
+    const int clusters = (int)(w * h / 16 * (0.65f + 0.9f * slot / 15.0f));
+    for (int i = 0; i < clusters; i++) {
+        const float cx = (float)rng.range(w), cy = (float)rng.range(h), r = 1.0f + rng.unit() * 2.4f;
+        const int d = rng.range(100);
+        uint8_t ty;
+        switch (theme) {
+            case 1:  ty = d < 38 ? TT_Brush : d < 72 ? TT_Rock : d < 92 ? TT_GrassySand : TT_Woods; break;
+            case 2:  ty = d < 62 ? TT_Woods : d < 88 ? TT_Brush : d < 96 ? TT_Marsh : TT_Rock; break;
+            case 3:  ty = d < 48 ? TT_Brush : d < 78 ? TT_GrassySand : d < 90 ? TT_Rock : TT_Woods; break;
+            default: ty = d < 60 ? TT_Woods : d < 88 ? TT_Brush : TT_Rock; break;
+        }
+        disc(cx, cy, r, r, ty, true);
+    }
+    // Water. Coastal land has one open shore, an island is ringed, inland land has ponds.
+    auto shore = [&](int side, float width) {   // side 0 north (y small), 1 east, 2 south, 3 west
+        const float p1 = rng.unit() * 6.28f, p2 = rng.unit() * 6.28f;
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++) {
+                const float along = (side == 0 || side == 2) ? (float)x : (float)y;
+                const float depth = side == 0 ? (float)y : side == 2 ? (float)(h - 1 - y) : side == 3 ? (float)x : (float)(w - 1 - x);
+                const float edge = width + 2.2f * std::sin(along * 0.23f + p1) + 1.3f * std::sin(along * 0.51f + p2);
+                if (depth < edge) {
+                    at(x, y) = TT_WaterShallow;
+                    t.variation[(size_t)y * w + x] = depth < edge - 3.5f ? 2 : depth < edge - 1.5f ? 1 : 0;
+                } else if (depth < edge + 1.4f && at(x, y) != TT_WaterShallow) at(x, y) = TT_Brush;   // shoreline strip
+            }
+    };
+    if (lie == 1) shore(rng.range(4), 6.0f + rng.unit() * 2.0f);
+    else if (lie == 2) for (int s = 0; s < 4; s++) shore(s, 4.5f + rng.unit() * 2.5f);
+    if (theme == 0 || lie == 0 || theme == 2) {   // inland ponds (every theme gets about one, tropical and links lie more)
+        const int ponds = lie == 0 ? 1 + (theme == 2 ? 2 : theme == 1 ? 0 : 1) + rng.range(2) : (rng.range(2) ? 1 : 0);
+        for (int i = 0; i < ponds; i++) {
+            const float pcx = 10.0f + rng.unit() * (w - 20), pcy = 10.0f + rng.unit() * (h - 20), r = 2.2f + rng.unit() * 2.8f;
+            disc(pcx, pcy, r * 1.3f, r, TT_WaterShallow, false);
+            for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
+                float dx = (x + 0.5f - pcx) / (r * 0.85f), dy = (y + 0.5f - pcy) / (r * 0.65f);
+                if (dx * dx + dy * dy <= 1.f && at(x, y) == TT_WaterShallow) t.variation[(size_t)y * w + x] = (dx * dx + dy * dy) < 0.35f ? 2 : 1;
+            }
+            if (theme == 2 || theme == 3) disc(pcx, pcy + r * 0.9f, r * 1.0f, r * 0.45f, TT_Marsh, true);
+        }
+    }
+    // The outermost ring is unplayable deep rough where it is not water.
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++)
+            if (std::min({x, y, w - 1 - x, h - 1 - y}) < 1 && !isWater(x, y)) at(x, y) = TT_DeepRough;
+    // Clubhouse: a random cell of a 17 x 17 window at the centre whose 13 x 13 surroundings hold no water; the lot is cleared to rough (exe: retries until the
+    // cell has the base fill tile and the footprint fits).
+    int cx = w / 2, cy = h / 2;
+    for (int tries = 0; tries < 400; tries++) {
+        const int x = w / 2 - 8 + rng.range(17), y = h / 2 - 8 + rng.range(17);
+        bool clear = true;
+        for (int yy = y - 6; yy <= y + 6 && clear; yy++) for (int xx = x - 6; xx <= x + 6; xx++) if (xx < 0 || yy < 0 || xx >= w || yy >= h || isWater(xx, yy)) { clear = false; break; }
+        if (clear) { cx = x; cy = y; break; }
+    }
+    disc((float)cx + 0.5f, (float)cy + 0.5f, 5.5f, 5.5f, TT_Rough, false);
+    for (int y = cy - 2; y <= cy + 2; y++) for (int x = cx - 2; x <= cx + 2; x++) at(x, y) = TT_Building;
+    t.clubhouseX = cx; t.clubhouseY = cy;
+    for (size_t i = 0; i < t.type.size(); i++) {
+        t.set[i] = (uint8_t)rng.range(5);
+        if (t.type[i] == TT_WaterMiddle) { t.type[i] = TT_WaterShallow; t.variation[i] = 1; }
+        else if (t.type[i] == TT_WaterDeep) { t.type[i] = TT_WaterShallow; t.variation[i] = 2; }
+    }
+    // Height. Exe: base height 0x30 flat, 0x20 rolling, 0x10 hilly, +50 percent for price slots 0..3, +25 percent for 4..7, -25 percent for 12..15, +0x10 in the sandbox;
+    // a bigger base means flatter land here (PLACEHOLDER reading: the relief amplitude in levels is 96 / base).
+    float base = hilliness == 0 ? 48.0f : hilliness == 1 ? 32.0f : 16.0f;
+    base *= (slot / 4 == 0) ? 1.5f : (slot / 4 == 1) ? 1.25f : (slot / 4 == 3) ? 0.75f : 1.0f;
+    if (sandbox) base += 16.0f;
+    const float amp = 96.0f / base;
+    const float f1 = 0.10f + rng.unit() * 0.08f, f2 = 0.07f + rng.unit() * 0.06f, p1 = rng.unit() * 6.28f, p2 = rng.unit() * 6.28f, p3 = rng.unit() * 6.28f;
+    const float mid = 6.0f + amp * 0.6f;
+    for (int y = 0; y <= h; y++)
+        for (int x = 0; x <= w; x++) {
+            float v = amp * (0.6f * std::sin(x * f1 + p1) * std::cos(y * f2 + p2) + 0.4f * std::sin((x + y) * 0.06f + p3)) + 0.25f * amp * std::sin(x * 0.31f + y * 0.27f);
+            t.corner[(size_t)y * (w + 1) + x] = (int8_t)std::clamp((int)std::lround(mid + v), 0, kMaxLevel);
+        }
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++) {
+            const uint8_t ty = at(x, y);
+            if (ty != TT_WaterShallow && ty != TT_Building) continue;
+            const int level = ty == TT_Building ? (int)std::lround(mid) : 1;
+            for (int dy = 0; dy <= 1; dy++)
+                for (int dx = 0; dx <= 1; dx++) t.corner[(size_t)(y + dy) * (w + 1) + (x + dx)] = (int8_t)level;
+        }
+    t.relax();
+    return t;
+}
+
 int typeClass(int type) {
     switch (type) {
         case TT_Tee: return 0;

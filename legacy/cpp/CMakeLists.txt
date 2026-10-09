@@ -3,7 +3,7 @@ project(simgolf_native CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_library(sgassets src/images.cpp src/sprites.cpp src/flc.cpp src/png.cpp src/formats.cpp src/terrain.cpp src/shot.cpp src/economy.cpp src/holes.cpp)
+add_library(sgassets src/images.cpp src/sprites.cpp src/flc.cpp src/png.cpp src/formats.cpp src/terrain.cpp src/shot.cpp src/economy.cpp src/holes.cpp src/sga.cpp src/holestats.cpp src/comments.cpp src/reactions.cpp src/tournament.cpp src/membership.cpp src/goals.cpp src/visitors.cpp src/costs.cpp src/buildings.cpp src/homes.cpp src/charrec.cpp src/top10.cpp)
 target_include_directories(sgassets PUBLIC include)
 # Compressed PNG output when zlib is available (it ships with macOS and most Linux).
 find_package(ZLIB QUIET)
@@ -14,6 +14,8 @@ endif()
 
 add_executable(sgtool tools/sgtool.cpp)
 target_link_libraries(sgtool sgassets)
+add_executable(sgsprites tools/spriteexport.cpp)
+target_link_libraries(sgsprites sgassets)
 
 # Native terrain viewer: needs SDL2 (brew install sdl2) and OpenGL.
 find_package(SDL2 QUIET)
@@ -47,3 +49,45 @@ if((SDL2_FOUND) AND (OpenGL_FOUND OR OPENGL_FOUND))
 else()
   message(STATUS "SDL2/OpenGL not found: sgview will not be built (brew install sdl2)")
 endif()
+
+# Unit test for the pure building logic (run with ctest or build/buildings_test).
+enable_testing()
+add_executable(buildings_test tests/buildings_test.cpp)
+target_link_libraries(buildings_test sgassets)
+add_test(NAME buildings COMMAND buildings_test)
+
+# Unit test for the home site logic (lot value, sale rule, counters).
+add_executable(homes_test tests/homes_test.cpp)
+target_link_libraries(homes_test sgassets)
+add_test(NAME homes COMMAND homes_test)
+
+add_executable(stats_test tests/stats_test.cpp)
+target_link_libraries(stats_test sgassets)
+add_test(NAME stats COMMAND stats_test)
+
+add_executable(reactions_test tests/reactions_test.cpp)
+target_link_libraries(reactions_test sgassets)
+add_test(NAME reactions COMMAND reactions_test)
+
+add_executable(best_test tests/best_test.cpp)
+target_link_libraries(best_test sgassets)
+add_test(NAME best COMMAND best_test)
+
+add_executable(charrec_test tests/charrec_test.cpp)
+target_link_libraries(charrec_test sgassets)
+add_test(NAME charrec COMMAND charrec_test)
+add_executable(top10_test tests/top10_test.cpp)
+target_link_libraries(top10_test sgassets)
+add_test(NAME top10 COMMAND top10_test)
+add_executable(ballphys_test tests/ballphys_test.cpp)
+target_link_libraries(ballphys_test sgassets)
+add_test(NAME ballphys COMMAND ballphys_test)
+add_executable(shot_test tests/shot_test.cpp)
+target_link_libraries(shot_test sgassets)
+add_test(NAME shot COMMAND shot_test)
+add_executable(visitors_test tests/visitors_test.cpp)
+target_link_libraries(visitors_test sgassets)
+add_test(NAME visitors COMMAND visitors_test)
+add_executable(terrain_gen_test tests/terrain_gen_test.cpp)
+target_link_libraries(terrain_gen_test sgassets)
+add_test(NAME terrain_gen COMMAND terrain_gen_test)

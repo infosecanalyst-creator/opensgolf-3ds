@@ -1,5 +1,7 @@
 #include "ui.h"
 #include <algorithm>
+#include <cmath>
+#include <cstdlib>
 #include <cstdio>
 #include <cstring>
 #include <vector>
@@ -13,21 +15,139 @@
 
 namespace ui {
 
-bool loadPcx(const std::string& path, Image& out, bool magentaKey, int keyRgb) {
+// Colour-keyed art keeps anti-aliased pixels that are a blend of the art and the key colour, which show as a pink ring once the texture is filtered.
+// Remove those pixels next to the transparent area, then copy the nearest opaque colour into the transparent pixels so filtering cannot pull the key colour in.
+static void cleanKeyFringe(sg::Rgba& img, bool pinkKey) {
+    const int w = (int)img.w, h = (int)img.h;
+    auto A = [&](int x, int y) -> unsigned char& { return img.px[((size_t)y * w + x) * 4 + 3]; };
+    auto R = [&](int x, int y) -> unsigned char* { return &img.px[((size_t)y * w + x) * 4]; };
+    auto nearClear = [&](int x, int y) { for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) { const int xx = x + dx, yy = y + dy; if (xx >= 0 && yy >= 0 && xx < w && yy < h && A(xx, yy) == 0) return true; } return false; };
+    if (pinkKey)
+        for (int pass = 0; pass < 2; pass++) {
+            std::vector<size_t> kill;
+            for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
+                if (A(x, y) == 0) continue;
+                const unsigned char* c = R(x, y);
+                const int r = c[0], g = c[1], b = c[2];
+                if (r > 150 && b > 110 && g + 55 < std::min(r, b) && nearClear(x, y)) kill.push_back((size_t)y * w + x);
+            }
+            for (size_t i : kill) img.px[i * 4 + 3] = 0;
+        }
+    std::vector<unsigned char> copy = img.px;
+    for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
+        if (A(x, y) != 0) continue;
+        int sr = 0, sg = 0, sb = 0, n = 0;
+        for (int dy = -2; dy <= 2; dy++) for (int dx = -2; dx <= 2; dx++) {
+            const int xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+            const unsigned char* c = &copy[((size_t)yy * w + xx) * 4]; if (c[3] == 0) continue;
+            sr += c[0]; sg += c[1]; sb += c[2]; n++;
+        }
+        unsigned char* d = R(x, y);
+        if (n) { d[0] = (unsigned char)(sr / n); d[1] = (unsigned char)(sg / n); d[2] = (unsigned char)(sb / n); }
+        else { d[0] = d[1] = d[2] = 0; }
+    }
+}
+
+bool loadPcx(const std::string& path, Image& out, bool magentaKey, int keyRgb, const std::string& alphaPath) {
     sg::Bytes d; sg::Rgba img; std::string err;
     if (!sg::readFile(path, d) || !sg::decodePcx(d, img, err)) return false;
+    if (!alphaPath.empty()) {   // a separate greyscale alpha sheet of the same size (the disc's _A / _alpha files)
+        sg::Bytes da; sg::Rgba al;
+        if (sg::readFile(alphaPath, da) && sg::decodePcx(da, al, err) && al.w == img.w && al.h == img.h)
+            for (size_t i = 0; i + 3 < img.px.size(); i += 4) img.px[i + 3] = al.px[i];
+    }
     if (magentaKey)
         for (size_t i = 0; i + 3 < img.px.size(); i += 4)
             if (img.px[i] == 255 && img.px[i + 1] == 0 && img.px[i + 2] == 255) img.px[i + 3] = 0;
     if (keyRgb >= 0)
         for (size_t i = 0; i + 3 < img.px.size(); i += 4)
             if (img.px[i] == ((keyRgb >> 16) & 255) && img.px[i + 1] == ((keyRgb >> 8) & 255) && img.px[i + 2] == (keyRgb & 255)) img.px[i + 3] = 0;
+    if (magentaKey || keyRgb >= 0) cleanKeyFringe(img, magentaKey || keyRgb == 0xff00ff);
     glGenTextures(1, &out.tex);
     glBindTexture(GL_TEXTURE_2D, out.tex);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)img.w, (GLsizei)img.h, 0, GL_RGBA, GL_UNSIGNED_BYTE, img.px.data());
+    out.w = (int)img.w; out.h = (int)img.h;
+    return true;
+}
+
+bool loadPcxHoverDiff(const std::string& path, Image& out, int keyRgb, const std::vector<std::array<int, 6>>& cuts) {
+    sg::Bytes d; sg::Rgba img; std::string err;
+    if (!sg::readFile(path, d) || !sg::decodePcx(d, img, err)) return false;
+    const std::vector<unsigned char> src = img.px;
+    for (size_t i = 3; i < img.px.size(); i += 4) img.px[i] = 0;
+    auto isKey = [&](const unsigned char* p) { return p[0] == ((keyRgb >> 16) & 255) && p[1] == ((keyRgb >> 8) & 255) && p[2] == (keyRgb & 255); };
+    for (const std::array<int, 6>& c : cuts) for (int y = 0; y < c[5]; y++) for (int x = 0; x < c[4]; x++) {
+        const size_t hi = ((size_t)(c[3] + y) * img.w + (size_t)(c[2] + x)) * 4, ni = c[0] < 0 ? hi : ((size_t)(c[1] + y) * img.w + (size_t)(c[0] + x)) * 4;
+        if (isKey(&src[hi])) continue;
+        if (c[0] < 0) { img.px[hi + 3] = 255; continue; }   // no exact baked match for this button: keep the whole sprite
+        const int diff = std::abs((int)src[hi] - (int)src[ni]) + std::abs((int)src[hi + 1] - (int)src[ni + 1]) + std::abs((int)src[hi + 2] - (int)src[ni + 2]);
+        if (!isKey(&src[ni]) && diff <= 18) continue;   // same as the normal sprite: already on the baked dock
+        img.px[hi + 3] = 255;
+    }
+    glGenTextures(1, &out.tex);
+    glBindTexture(GL_TEXTURE_2D, out.tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)img.w, (GLsizei)img.h, 0, GL_RGBA, GL_UNSIGNED_BYTE, img.px.data());
+    out.w = (int)img.w; out.h = (int)img.h;
+    return true;
+}
+
+bool loadPcxCircles(const std::string& path, Image& out, int cx0, int cy0, int pitch, int count, float r) {
+    sg::Bytes d; sg::Rgba img; std::string err;
+    if (!sg::readFile(path, d) || !sg::decodePcx(d, img, err)) return false;
+    for (int y = 0; y < (int)img.h; y++) for (int x = 0; x < (int)img.w; x++) {
+        float best = 1e9f;
+        for (int k = 0; k < count; k++) { const float dx = x + 0.5f - (cx0 + k * pitch), dy = y + 0.5f - cy0; best = std::min(best, std::sqrt(dx * dx + dy * dy)); }
+        unsigned char* p = &img.px[((size_t)y * img.w + x) * 4];
+        const float a = std::clamp(r + 0.5f - best, 0.0f, 1.0f);
+        p[3] = (unsigned char)(a * 255);
+    }
+    cleanKeyFringe(img, false);
+    glGenTextures(1, &out.tex);
+    glBindTexture(GL_TEXTURE_2D, out.tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)img.w, (GLsizei)img.h, 0, GL_RGBA, GL_UNSIGNED_BYTE, img.px.data());
+    out.w = (int)img.w; out.h = (int)img.h;
+    return true;
+}
+
+bool uploadRgba(const unsigned char* rgba, int w, int h, Image& out) {
+    glGenTextures(1, &out.tex);
+    glBindTexture(GL_TEXTURE_2D, out.tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+    out.w = w; out.h = h;
+    return true;
+}
+
+bool loadShade(const std::string& path, Image& out, float alpha) {
+    sg::Bytes d; sg::Rgba img; std::string err;
+    if (!sg::readFile(path, d) || !sg::decodePcx(d, img, err)) return false;
+    for (size_t i = 0; i + 3 < img.px.size(); i += 4) {
+        const bool green = img.px[i] == 0 && img.px[i + 1] == 255 && img.px[i + 2] == 0;
+        img.px[i] = img.px[i + 1] = img.px[i + 2] = 0; img.px[i + 3] = green ? (unsigned char)(alpha * 255) : 0;
+    }
+    glGenTextures(1, &out.tex);
+    glBindTexture(GL_TEXTURE_2D, out.tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, (GLsizei)img.w, (GLsizei)img.h, 0, GL_RGBA, GL_UNSIGNED_BYTE, img.px.data());
     out.w = (int)img.w; out.h = (int)img.h;
@@ -57,7 +177,7 @@ static std::vector<int> decode(const std::string& s) {
     std::vector<int> out;
     for (size_t i = 0; i < s.size(); i++) {
         unsigned char c = (unsigned char)s[i];
-        if (c < 0x80) out.push_back(c);
+        if (c < 0x80) out.push_back(c == 'I' ? 'l' : c);   // the face's capital I is drawn like a dotted i; its l is the plain stroke the game shows for I
         else if ((c & 0xE0) == 0xC0 && i + 1 < s.size()) { out.push_back(((c & 0x1F) << 6) | ((unsigned char)s[i + 1] & 0x3F)); i++; }
         else out.push_back('?');
     }
@@ -123,12 +243,30 @@ void drawImage(const Image& im, float dx, float dy, float sx, float sy, float sw
     glBindTexture(GL_TEXTURE_2D, im.tex);
     glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
     glColor4f(1, 1, 1, 1);
-    const float u0 = sx / im.w, v0 = sy / im.h, u1 = (sx + sw) / im.w, v1 = (sy + sh) / im.h;
+    // A sub-rectangle of a sheet is sampled half a texel inside its edges, so linear filtering at a scaled window does not pull in the neighbouring cut.
+    const bool sub = sx > 0 || sy > 0 || sw < (float)im.w || sh < (float)im.h;
+    const float in = sub ? 0.5f : 0.0f;
+    const float u0 = (sx + in) / im.w, v0 = (sy + in) / im.h, u1 = (sx + sw - in) / im.w, v1 = (sy + sh - in) / im.h;
     glBegin(GL_QUADS);
     glTexCoord2f(u0, v0); glVertex2f(dx, dy);
     glTexCoord2f(u1, v0); glVertex2f(dx + sw, dy);
     glTexCoord2f(u1, v1); glVertex2f(dx + sw, dy + sh);
     glTexCoord2f(u0, v1); glVertex2f(dx, dy + sh);
+    glEnd();
+}
+
+void drawImageScaled(const Image& im, float dx, float dy, float dw, float dh, float sx, float sy, float sw, float sh) {
+    if (!im.tex) return;
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, im.tex);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+    glColor4f(1, 1, 1, 1);
+    const float u0 = (sx + 0.5f) / im.w, v0 = (sy + 0.5f) / im.h, u1 = (sx + sw - 0.5f) / im.w, v1 = (sy + sh - 0.5f) / im.h;
+    glBegin(GL_QUADS);
+    glTexCoord2f(u0, v0); glVertex2f(dx, dy);
+    glTexCoord2f(u1, v0); glVertex2f(dx + dw, dy);
+    glTexCoord2f(u1, v1); glVertex2f(dx + dw, dy + dh);
+    glTexCoord2f(u0, v1); glVertex2f(dx, dy + dh);
     glEnd();
 }
 

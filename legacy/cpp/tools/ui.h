@@ -5,7 +5,9 @@
 #define GL_SILENCE_DEPRECATION
 #endif
 #include <SDL_opengl.h>
+#include <array>
 #include <string>
+#include <vector>
 
 namespace ui {
 
@@ -14,7 +16,14 @@ struct Image {
     int w = 0, h = 0;
 };
 // Loads a PCX from the disc. With magentaKey, pure magenta pixels become transparent (the original's colour key).
-bool loadPcx(const std::string& path, Image& out, bool magentaKey, int keyRgb = -1);   // keyRgb: another colour key as 0xRRGGBB
+// Loads a shadow sheet (the disc's s_*.pcx): green pixels become translucent black (alpha 0..1), everything else transparent. The exe blends these as drop shades behind panels.
+bool uploadRgba(const unsigned char* rgba, int w, int h, Image& out);   // makes a texture from raw RGBA
+bool loadShade(const std::string& path, Image& out, float alpha);
+bool loadPcxCircles(const std::string& path, Image& out, int cx0, int cy0, int pitch, int count, float r);   // keys everything outside a circle in each cell (round buttons drawn on a square backdrop)
+// Hover sheets: for each cut {normalX, normalY, hoverX, hoverY, w, h}, hover pixels that equal the normal sprite (its baked shadow and rim) or are the key colour become transparent,
+// so only what really changes is drawn over the already baked dock art. Everything outside the cuts is transparent.
+bool loadPcxHoverDiff(const std::string& path, Image& out, int keyRgb, const std::vector<std::array<int, 6>>& cuts);
+bool loadPcx(const std::string& path, Image& out, bool magentaKey, int keyRgb = -1, const std::string& alphaPath = "");   // keyRgb: another colour key as 0xRRGGBB
 
 class Font {
   public:
@@ -40,6 +49,7 @@ struct View {
 View beginScreen(int drawW, int drawH, bool clear = true);   // orthographic projection for 800x600 virtual units; clears to black unless told not to
 void endScreen();
 void drawImage(const Image& im, float dx, float dy, float sx, float sy, float sw, float sh);   // sub-rectangle at its own size
+void drawImageScaled(const Image& im, float dx, float dy, float dw, float dh, float sx, float sy, float sw, float sh);   // sub-rectangle stretched to dw x dh
 void drawImage(const Image& im, float dx, float dy);                                           // whole image
 void fillRect(float x, float y, float w, float h, float r, float g, float b, float a);
 

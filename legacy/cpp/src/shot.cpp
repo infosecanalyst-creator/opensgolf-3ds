@@ -1,5 +1,6 @@
 #include "sg/shot.h"
 #include "sg/flight.h"
+#include "sg/ballphys.h"
 #include <algorithm>
 #include <cmath>
 
@@ -21,7 +22,7 @@ void ShotSim::init(const Terrain& t, uint32_t seed) {
     if (!route_) route_ = &t.path;
     finished = false;
     rng_ = seed ? seed : 1u;
-    stroke = 0;
+    stroke = 0; washed = false;
     ballX = route_->size() >= 2 ? (*route_)[0] : 0; ballZ = route_->size() >= 2 ? (*route_)[1] : 0; ballH = 0;
     golferX = ballX; golferZ = ballZ;
     event = "on the tee";
@@ -48,6 +49,7 @@ void ShotSim::aimAtGreen() {
 
 void ShotSim::step(float dt) {
     if (!t_ || !route_ || route_->size() < 4) return;
+    if (hold > 0) { hold -= dt; return; }
     phaseTime_ += dt;
     animTime += dt;
     const float rad = kPi / 180.0f;
@@ -72,6 +74,8 @@ void ShotSim::step(float dt) {
             } else {
                 golferX = sx; golferZ = sz;
                 bool putt = distToHole() < kPuttRange;
+                if (stroke == 0 && washerAtTee && !washed) { washed = true; hold = (12.0f + 8.0f * rnd()) / flight::kTicksPerSecond; }   // stop of 12 to 19 ticks at the washer
+                ++planCount; planPutt = putt; planFromX = golferX; planFromZ = golferZ; planAim = aimHeading_; planDist = distToHole();
                 anim = putt ? GolferAnim::PuttAddress : GolferAnim::Address; animTime = 0;
                 setPhase(putt ? Phase::PuttAddress : Phase::Address);
             }
@@ -120,21 +124,53 @@ void ShotSim::step(float dt) {
                     const int maxR = flight::maxRange(1, 3 + skills.v[S::Power] * 6 / 15, lenDigit, accDigit, false, 0, onTee);
                     const float unitsPerRange = kTileSizeWorld / flight::kRangeUnitsPerTile;
                     float carry = maxR * unitsPerRange * 0.8f;
+                    if (!approach && skills.v[S::LongDriver] >= 8) carry += driveBonus;   // long hitters only (the exe's attribute bit 1, mapped from skill >= 8 as a PLACEHOLDER)
                     float acc = skills.v[approach ? S::AccIrons : S::AccDriver] / 15.0f;
                     float spread = 24.0f - 20.0f * acc;
+                    if (acc >= 8.0f / 15.0f) spread /= spreadDivisor;   // accurate golfers only (the exe's attribute bit 2, mapped from skill >= 8 as a PLACEHOLDER)
                     int here = t_->typeAtWorld(ballX, ballZ);
                     if (here == 7 || here == TT_PotSandBunker || here == TT_GrassySand || here >= TT_SandBunker1)
                         spread *= 1.6f - 0.8f * skills.v[S::Recovery] / 15.0f;
-                    float dist = std::min(carry, distToHole()) * (0.88f + 0.24f * rnd());
-                    float h = aimHeading_ + (rnd() - 0.5f) * spread;
-                    landX_ = ballX + std::cos(h * rad) * dist; landZ_ = ballZ + std::sin(h * rad) * dist;
+                    // The exe previews the flight along the aim, bounce and roll included, to pick the club (FUN_004226a0). The port does the same: it finds the launch range
+                    // whose resting point is the intended distance, then adds a PLACEHOLDER spread of 6 percent either way on the range.
+                    const float s = kTileSizeWorld / 1024.0f;
+                    const float ah = aimHeading_ * rad;
+                    auto tileAtRel = [&](float x, float z, float dx, float dz) { return t_->typeAtWorld(ballX + (dx * x - dz * z) * s, ballZ + (dz * x + dx * z) * s); };
+                    auto previewRest = [&](int range) {
+                        const flight::Launch l = flight::launchFor(range);
+                        const float dx = std::cos(ah), dz = std::sin(ah);
+                        auto r = ballphys::run(1, 0, l.speed, l.vertical, theme, false, [&](float x, float z) { return tileAtRel(x, z, dx, dz); }, [] { return 0.5f; });
+                        return r.restX * s;   // distance along the aim, world units
+                    };
+                    const int rMax = std::max(1, maxR);
+                    float want = distToHole();
+                    const float reach = previewRest(rMax) + (!approach && skills.v[S::LongDriver] >= 8 ? driveBonus : 0.0f);
+                    int range = rMax;
+                    if (want < reach) { int lo = 1, hi = rMax; while (lo < hi) { const int mid = (lo + hi) / 2; if (previewRest(mid) < want) lo = mid + 1; else hi = mid; } range = lo; }
+                    // Shot shapes (PLACEHOLDER numbers; the exe's effect is not decoded): a fade or draw bends the ball a few degrees and is only
+                    // reliable with the matching skill, backspin shortens the roll and is tighter, a punch keeps the ball low and short.
+                    float shapeBias = 0, rangeK = 1.0f;
+                    if (shape == 1 || shape == 2) { const float k = skills.v[shape == 1 ? S::Fade : S::Draw] / 15.0f; shapeBias = (shape == 1 ? 1.0f : -1.0f) * (3.0f + 5.0f * k); spread *= 1.5f - 0.7f * k; }
+                    else if (shape == 3) { const float k = skills.v[S::Backspin] / 15.0f; spread *= 1.3f - 0.5f * k; rangeK = 0.97f; }
+                    else if (shape == 4) { spread *= 0.85f; rangeK = 0.88f; }
+                    range = std::max(1, (int)std::lround(range * rangeK * (0.94f + 0.12f * rnd())));
+                    float dev = (rnd() - 0.5f) * spread + shapeBias; if (washed) dev -= dev / 3.0f;   // EXACT: the direction error loses one third
+                    float h = aimHeading_ + dev;
+                    landDev = h - aimHeading_;
                     {
-                        const flight::Arc arc = flight::simulate(std::max(1, (int)std::lround(dist / (unitsPerRange * 0.8f))));
-                        flightSec_ = std::max(0.5f, arc.ticks / flight::kTicksPerSecond);
-                        flightPeak_ = arc.peak / 1024.0f * kTileSizeWorld;
+                        const flight::Launch l = flight::launchFor(range);
+                        const float dx = std::cos(h * rad), dz = std::sin(h * rad);
+                        const float fx = ballX, fz = ballZ;
+                        auto rr = ballphys::run(dx, dz, l.speed, l.vertical, theme, true, [&](float x, float z) { return t_->typeAtWorld(fx + x * s, fz + z * s); }, [&] { return rnd(); });
+                        trajX_.clear(); trajZ_.clear(); trajH_.clear();
+                        for (const auto& p : rr.pts) { trajX_.push_back(fx + p.x * s); trajZ_.push_back(fz + p.z * s); trajH_.push_back(p.h * s); }
+                        trajHitTick_ = rr.hitTick; trajHitType_ = rr.hitType; trajLandTile_ = rr.landTile; trajRestTile_ = rr.restTile; trajWater_ = rr.water; trajOob_ = rr.oob;
+                        landX_ = trajX_.back(); landZ_ = trajZ_.back();
+                        flightSec_ = std::max(0.5f, (float)rr.pts.size() / flight::kTicksPerSecond); trajCounted_ = false;
                     }
                     club = approach ? "iron" : "drive";
                     event = "drive";
+                    flightFromX_ = ballX; flightFromZ_ = ballZ; fallFrom_ = 0; hitObstacle_ = false; tickAcc_ = 0;
                     setPhase(Phase::Flight); anim = GolferAnim::Swing;
                     animTime = kSwingImpactSec;
                 }
@@ -142,29 +178,23 @@ void ShotSim::step(float dt) {
             break;
         }
         case Phase::Flight: {
-            float u = std::min(1.0f, phaseTime_ / flightSec_);
-            ballX = shotFromX_ + (landX_ - shotFromX_) * u; ballZ = shotFromZ_ + (landZ_ - shotFromZ_) * u;
-            ballH = 4.0f * flightPeak_ * u * (1 - u);
+            const size_t n = trajX_.size();
+            const float pos = std::min((float)(n - 1), phaseTime_ * flight::kTicksPerSecond);
+            const size_t i0 = (size_t)pos, i1 = std::min(n - 1, i0 + 1); const float fr = pos - (float)i0;
+            ballX = trajX_[i0] + (trajX_[i1] - trajX_[i0]) * fr; ballZ = trajZ_[i0] + (trajZ_[i1] - trajZ_[i0]) * fr; ballH = trajH_[i0] + (trajH_[i1] - trajH_[i0]) * fr;
+            if (!trajCounted_ && trajHitTick_ >= 0 && pos >= (float)trajHitTick_) { trajCounted_ = true; ++obsCount; obsType = trajHitType_; }
             if (animTime > kSwingSec) animTime = kSwingSec - 0.001f;  // hold the follow through
-            if (u >= 1.0f) {
+            if (pos >= (float)(n - 1)) {
                 ballH = 0;
                 int ty = t_->typeAtWorld(ballX, ballZ);
-                // The manual: firm fairway makes balls bounce higher and roll farther, and rocks deflect the ball at random.
-                // The amounts are PLACEHOLDERS (a 12 percent run on, a 40 to 90 unit kick in a random direction).
-                if (ty == TT_FirmFairway) {
-                    float dx = landX_ - shotFromX_, dz = landZ_ - shotFromZ_;
-                    ballX += dx * 0.12f; ballZ += dz * 0.12f;
-                    ty = t_->typeAtWorld(ballX, ballZ);
-                } else if (ty == TT_Rock) {
-                    float a = rnd() * 2 * kPi, off = 40.0f + 50.0f * rnd();
-                    ballX += std::cos(a) * off; ballZ += std::sin(a) * off;
-                    ty = t_->typeAtWorld(ballX, ballZ);
-                }
-                bool water = ty == TT_WaterShallow || ty == TT_WaterMiddle || ty == TT_WaterDeep || ty == TT_WaterShallowDesert;
+                bool water = trajWater_ && isWater(ty >= 0 ? ty : (int)TT_WaterDeep);
+                ++landCount; landType = ty; landFromType = t_->typeAtWorld(shotFromX_, shotFromZ_); landWater = water; landOut = ty < 0;
+                landCloser = std::hypot(ballX - holeX(), ballZ - holeZ()) < std::hypot(shotFromX_ - holeX(), shotFromZ_ - holeZ());
                 if (ty < 0) { event = "out of bounds, replay"; stroke++; ballX = shotFromX_; ballZ = shotFromZ_; }
                 else if (water) { event = "splash, replay with a penalty"; stroke++; ballX = shotFromX_; ballZ = shotFromZ_; }
                 else if (ty == 7 || ty == TT_PotSandBunker || ty == TT_GrassySand || ty >= TT_SandBunker1) event = "in the sand";
                 else event = "on the course";
+                if (ty != 2) washed = false;   // EXACT: the flag clears when the ball stops, unless it rests on a fairway tile
                 setPhase(Phase::Settle);
             }
             break;

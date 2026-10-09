@@ -121,7 +121,7 @@ std::vector<HoleRoute> findHoles(const Terrain& t) {
                     if (!seen[j] && t.type[j] == type) { seen[j] = 1; stack.push_back((int)j); }
                 }
             }
-            if (n < 2) continue;   // ignore a single stray tile
+            // a single tile counts: the default brush paints one tile at a time
             Blob b; centreOf((float)(sx / n), (float)(sy / n), b.x, b.z); b.n = n; b.minY = y;
             res.push_back(b);
         }

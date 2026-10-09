@@ -78,6 +78,13 @@ struct Terrain {
     static bool load(const std::string& file, Terrain& out, std::string& err);
     // A made-up demonstration course (tee, winding fairway, green, bunkers, pond, woods).
     static Terrain demoCourse(int w, int h, uint32_t seed);
+    // A new property as the player first sees it: untouched land (rough, woods, brush, a pond) with a clubhouse lot and no tee, fairway,
+    // green or path. The layout is generated here and is not the original's land.
+    static Terrain emptyPlot(int w, int h, uint32_t seed);
+    // A new property from its site record (docs/DECODE_WORLD2.md 4.4): theme 0 parkland, 1 desert, 2 tropical, 3 links; lie 0 inland, 1 coastal, 2 island;
+    // hilliness 0 flat, 1 rolling, 2 hilly; slot is the price slot 0..15. Shoreline, scatter and hill shapes are generated, not the exe's exact land
+    // (the exe's stroke tables are not decoded); the clubhouse goes to a random cell of a 17 x 17 window at the centre as in the exe.
+    static Terrain generate(int w, int h, uint32_t seed, int theme, int lie, int hilliness, int slot, bool sandbox);
 };
 
 struct Vertex { float x, y, z, u, v, nx, ny, nz; };
