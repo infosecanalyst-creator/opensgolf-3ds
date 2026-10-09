@@ -455,6 +455,10 @@ pub struct App {
     pub world_base: Image,
     /// The main screen's course badge and rating pills (Interface/courseinfo.pcx with its alpha sheet).
     pub hud_art: Image,
+    /// The rest of the HUD's art and its face strip (hud_ui).
+    pub hud: crate::hud_ui::HudArt,
+    /// Shift is held (the face strip then shows the back nine only).
+    pub shift_held: bool,
     /// The Select Difficulty art: the screen and the sheet of its lit items.
     pub diff_base: Image,
     pub diff_mo: Image,
@@ -656,6 +660,8 @@ impl App {
             outfit_tex: HashMap::new(),
             world_base: Image::default(),
             hud_art: Image::default(),
+            hud: Default::default(),
+            shift_held: false,
             diff_base: Image::default(),
             diff_mo: Image::default(),
             theme_icons: [Image::default(); 4],

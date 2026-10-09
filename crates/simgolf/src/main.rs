@@ -15,6 +15,7 @@ mod champ_ui;
 mod cust_ui;
 mod files_ui;
 mod gfx;
+mod hud_ui;
 mod info_ui;
 mod message_ui;
 mod panels_ui;
@@ -242,6 +243,7 @@ fn load_ui(app: &mut App, g: &mut Gfx) -> bool {
     app.reports = crate::reports_ui::ReportArt::load(g, app);
     app.panel_art = crate::panels_ui::PanelArt::load(g, app);
     app.title.art = crate::files_ui::TitleArt::load(g, app);
+    app.hud = crate::hud_ui::HudArt::load(g, app);
     app.info.art = crate::info_ui::InfoArt::load(g, app);
     ok
 }
@@ -1598,6 +1600,9 @@ impl EventHandler for Stage {
         if self.app.ui_ok && self.dock_click(vx, vy, button == MouseButton::Right) {
             return;
         }
+        if self.app.ui_ok && button == MouseButton::Left && self.app.strip_click(vx, vy) {
+            return;
+        }
         if button == MouseButton::Left && self.app.club.pro_aiming().is_some() && !self.app.edit {
             if let Some((hx, hz)) = self.app.pick_ground(x, y) {
                 self.app.aim_pointer(hx, hz);
@@ -1632,6 +1637,7 @@ impl EventHandler for Stage {
 
     fn key_down_event(&mut self, k: KeyCode, mods: KeyMods, _repeat: bool) {
         self.shift = mods.shift || k == KeyCode::LeftShift || k == KeyCode::RightShift;
+        self.app.shift_held = self.shift;
         self.ctrl = mods.ctrl || k == KeyCode::LeftControl || k == KeyCode::RightControl;
         if self.app.rename_key(k) || self.app.save_key(k) {
             return;
@@ -1698,6 +1704,7 @@ impl EventHandler for Stage {
 
     fn key_up_event(&mut self, k: KeyCode, mods: KeyMods) {
         self.shift = mods.shift && k != KeyCode::LeftShift && k != KeyCode::RightShift;
+        self.app.shift_held = self.shift;
         self.ctrl = mods.ctrl && k != KeyCode::LeftControl && k != KeyCode::RightControl;
     }
 }
