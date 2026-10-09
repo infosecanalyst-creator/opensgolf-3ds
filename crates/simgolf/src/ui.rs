@@ -32,6 +32,65 @@ pub fn load_pcx(g: &mut Gfx, path: &Path, magenta_key: bool, key_rgb: Option<u32
     Some(Image { tex: Some(tex), w: img.w as f32, h: img.h as f32 })
 }
 
+/// Splits a colour-keyed overlay into the pieces touching each rectangle: every 8-connected run of opaque pixels with at
+/// least one pixel inside the rectangle is kept whole. The title menu's highlight art is one picture for every button; this
+/// gives each button exactly its own lit shapes instead of a rectangle cut out of the picture.
+pub fn split_overlay(g: &mut Gfx, path: &Path, rects: &[(f32, f32, f32, f32)]) -> Vec<Image> {
+    let Some(mut img) = sg_core::fsutil::read_file(path).and_then(|d| decode_pcx(&d).ok()) else { return Vec::new() };
+    for p in img.px.as_chunks_mut::<4>().0 {
+        if p[0] == 255 && p[1] == 0 && p[2] == 255 {
+            p[3] = 0;
+        }
+    }
+    let (w, h) = (img.w as usize, img.h as usize);
+    let mut label = vec![0u32; w * h];
+    let mut next = 0u32;
+    let mut stack = Vec::new();
+    for start in 0..w * h {
+        if img.px[start * 4 + 3] == 0 || label[start] != 0 {
+            continue;
+        }
+        next += 1;
+        label[start] = next;
+        stack.push(start);
+        while let Some(i) = stack.pop() {
+            let (x, y) = ((i % w) as i32, (i / w) as i32);
+            for dy in -1..=1 {
+                for dx in -1..=1 {
+                    let (nx, ny) = (x + dx, y + dy);
+                    if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 {
+                        continue;
+                    }
+                    let j = ny as usize * w + nx as usize;
+                    if label[j] == 0 && img.px[j * 4 + 3] != 0 {
+                        label[j] = next;
+                        stack.push(j);
+                    }
+                }
+            }
+        }
+    }
+    rects
+        .iter()
+        .map(|&(rx, ry, rw, rh)| {
+            let mut keep = vec![false; next as usize + 1];
+            for y in (ry.max(0.0) as usize)..((ry + rh) as usize).min(h) {
+                for x in (rx.max(0.0) as usize)..((rx + rw) as usize).min(w) {
+                    keep[label[y * w + x] as usize] = true;
+                }
+            }
+            keep[0] = false;
+            let mut part = img.clone();
+            for (p, &l) in part.px.as_chunks_mut::<4>().0.iter_mut().zip(&label) {
+                if !keep[l as usize] {
+                    p[3] = 0;
+                }
+            }
+            Image { tex: Some(g.texture(&part, false)), w: part.w as f32, h: part.h as f32 }
+        })
+        .collect()
+}
+
 /// Loads a PCX with a separate alpha PCX of the same size (the interface's `_A` / `_alpha` files: white opaque, black clear).
 pub fn load_pcx_alpha(g: &mut Gfx, path: &Path, alpha: &Path) -> Option<Image> {
     let d = sg_core::fsutil::read_file(path)?;

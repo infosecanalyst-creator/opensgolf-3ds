@@ -264,6 +264,14 @@ impl Gfx {
 
     /// A texture from RGBA pixels. `mipmaps` for terrain textures (trilinear like the original), clamped at the edges.
     pub fn texture(&mut self, img: &Rgba, mipmaps: bool) -> TextureId {
+        // transparent pixels still carry the art's key colour (magenta); smoothing would blend it into the edges
+        let bled;
+        let img = if img.px.chunks_exact(4).any(|p| p[3] == 0) {
+            bled = bleed_alpha(img);
+            &bled
+        } else {
+            img
+        };
         let params = TextureParams {
             kind: TextureKind::Texture2D,
             width: img.w,
@@ -374,5 +382,71 @@ mod tests {
         let m = Mat4::ortho(-2.0, 2.0, -1.0, 1.0, -5.0, 5.0).0;
         assert!((m[0] * 2.0 + m[12] - 1.0).abs() < 1e-6);
         assert!((-m[5] + m[13] + 1.0).abs() < 1e-6);
+    }
+}
+
+/// Gives every fully transparent pixel the average colour of its opaque neighbours (repeated outwards a few pixels), so linear
+/// filtering and mipmaps at a sprite's edge mix in the sprite's own colours instead of the transparent key colour.
+pub fn bleed_alpha(img: &Rgba) -> Rgba {
+    let (w, h) = (img.w as usize, img.h as usize);
+    let mut out = img.clone();
+    let mut known: Vec<bool> = img.px.chunks_exact(4).map(|p| p[3] != 0).collect();
+    for _ in 0..4 {
+        let mut next = known.clone();
+        let mut changed = false;
+        for y in 0..h {
+            for x in 0..w {
+                let i = y * w + x;
+                if known[i] {
+                    continue;
+                }
+                let (mut r, mut g, mut b, mut n) = (0u32, 0u32, 0u32, 0u32);
+                for (dx, dy) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1), (-1, -1), (1, -1), (-1, 1), (1, 1)] {
+                    let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+                    if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 {
+                        continue;
+                    }
+                    let j = ny as usize * w + nx as usize;
+                    if known[j] {
+                        r += out.px[j * 4] as u32;
+                        g += out.px[j * 4 + 1] as u32;
+                        b += out.px[j * 4 + 2] as u32;
+                        n += 1;
+                    }
+                }
+                if n > 0 {
+                    out.px[i * 4] = (r / n) as u8;
+                    out.px[i * 4 + 1] = (g / n) as u8;
+                    out.px[i * 4 + 2] = (b / n) as u8;
+                    next[i] = true;
+                    changed = true;
+                }
+            }
+        }
+        known = next;
+        if !changed {
+            break;
+        }
+    }
+    // whatever is still far from any opaque pixel goes black, so even the smallest mipmaps carry no key colour
+    for (p, k) in out.px.chunks_exact_mut(4).zip(&known) {
+        if !k {
+            p[0] = 0;
+            p[1] = 0;
+            p[2] = 0;
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod bleed_tests {
+    #[test]
+    fn transparent_pixels_take_their_neighbours_colour() {
+        let mut img = sg_core::assets::Rgba::new(3, 1);
+        img.px = vec![255, 0, 255, 0, 10, 20, 30, 255, 255, 0, 255, 0];
+        let out = super::bleed_alpha(&img);
+        assert_eq!(&out.px[0..4], &[10, 20, 30, 0]);
+        assert_eq!(&out.px[8..12], &[10, 20, 30, 0]);
     }
 }

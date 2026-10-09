@@ -474,11 +474,13 @@ impl App {
         let s = Ui::new(self.draw_w, self.draw_h);
         self.view = s.view;
         s.image(g, &self.title_base, 0.0, 0.0);
-        s.image_part(g, &self.title_mo, 170.0, 190.0, 170.0, 190.0, 480.0, 165.0); // the logo sits in the highlight layer
+        // the logo and the lit buttons live in the highlight picture, split into their own shapes at load time
+        if let Some(logo) = self.title_mo_parts.get(6) {
+            s.image(g, logo, 0.0, 0.0);
+        }
         s.image(g, &self.title_un, 0.0, 0.0);
-        if (0..6).contains(&self.hover) {
-            let r = MENU_BTN[self.hover as usize];
-            s.image_part(g, &self.title_mo, r.x, r.y, r.x, r.y, r.w, r.h);
+        if let Some(lit) = self.title_mo_parts.get(self.hover.max(0) as usize).filter(|_| (0..6).contains(&self.hover)) {
+            s.image(g, lit, 0.0, 0.0);
         }
         for b in 0..5 {
             s.text_centered(g, MENU_LABEL_X[b], MENU_LABEL_Y[b], MENU_LABEL[b], 19.0, INK);

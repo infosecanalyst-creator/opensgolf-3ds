@@ -214,6 +214,9 @@ fn load_ui(app: &mut App, g: &mut Gfx) -> bool {
     app.title_base = base.unwrap_or_default();
     app.title_un = un.unwrap_or_default();
     app.title_mo = mo.unwrap_or_default();
+    let mut rects: Vec<(f32, f32, f32, f32)> = render::MENU_BTN.iter().map(|r| (r.x, r.y, r.w, r.h)).collect();
+    rects.push((170.0, 190.0, 480.0, 165.0)); // the logo
+    app.title_mo_parts = ui::split_overlay(g, &app.game_path("Interface/TitleMO.pcx"), &rects);
     app.world_base = world.unwrap_or_default();
     app.report_art = report.unwrap_or_default();
     app.dock_art = dock.unwrap_or_default();
@@ -310,6 +313,9 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                         })
                         .collect();
                     println!("map {y:3} {row}");
+                }
+                for e in app.employees.iter().filter(|e| e.active) {
+                    println!("employee job {} at tile {},{}", e.job, e.x >> 10, e.y >> 10);
                 }
                 if let Some(l) = &app.land {
                     for o in l.objects.iter().filter(|o| o.kind >= 0) {
@@ -487,6 +493,9 @@ impl Stage {
             eprintln!("ui: could not load the Interface art or KLEPTO__.TTF, starting on the course");
         }
         app.load_story();
+        if let Some(h) = std::env::var("SG_HOVER").ok().and_then(|v| v.parse().ok()) {
+            app.hover = h; // test hook: a scripted still with the pointer over a menu item
+        }
         {
             let scripted = o.png_out.is_some()
                 || o.course.is_some()

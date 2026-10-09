@@ -389,6 +389,8 @@ pub struct App {
     pub title_base: Image,
     pub title_un: Image,
     pub title_mo: Image,
+    /// The highlight art split per title menu button (0..5) and for the logo (6).
+    pub title_mo_parts: Vec<crate::ui::Image>,
     pub world_base: Image,
     pub theme_icons: [Image; 4],
     pub report_art: Image,
@@ -567,6 +569,7 @@ impl App {
             title_base: Image::default(),
             title_un: Image::default(),
             title_mo: Image::default(),
+            title_mo_parts: Vec::new(),
             world_base: Image::default(),
             theme_icons: [Image::default(); 4],
             report_art: Image::default(),
