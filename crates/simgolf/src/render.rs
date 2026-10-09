@@ -128,7 +128,7 @@ impl App {
         Some(t)
     }
 
-    fn sprite_texture(&mut self, g: &mut Gfx, si: usize, view: i32, frame: i32) -> miniquad::TextureId {
+    pub(crate) fn sprite_texture(&mut self, g: &mut Gfx, si: usize, view: i32, frame: i32) -> miniquad::TextureId {
         let i = self.sprites[si].s.frame_index(view, frame);
         if let Some(t) = self.sprites[si].tex[i] {
             return t;
@@ -446,7 +446,7 @@ const MONTHS: [&str; 12] =
 
 impl App {
     pub fn panel_cols(&self) -> usize {
-        if self.panel == 3 {
+        if self.panel == 3 || self.panel == 5 {
             1
         } else {
             3
@@ -478,14 +478,15 @@ impl App {
                     }
                 }
             }
-            3 if self.club.pro_aiming().is_some() => {
+            // 3 People (this list only when the panel art is missing), 5 the player's pro
+            3 | 5 if self.club.pro_aiming().is_some() => {
                 // the pro waits for the aim: the five shot buttons (panel buttons 4..8)
                 for (i, name) in SHOT_NAMES.iter().enumerate() {
                     v.push(PanelItem { label: format!("{name}  ({})", SHOT_KEYS[i]), kind: 7, arg: i });
                 }
                 v.push(PanelItem { label: "Click the course to aim and swing.  N twice cancels the round.".into(), kind: 8, arg: 0 });
             }
-            3 => {
+            3 | 5 => {
                 let pro = self.pro_name();
                 if self.club.gary == -1 {
                     v.push(PanelItem { label: format!("{pro}: Practice Round"), kind: 6, arg: 0 });
@@ -507,6 +508,11 @@ impl App {
                 let pts = if self.club.skill_points > 0 { format!("  ({} points to add)", self.club.skill_points) } else { String::new() };
                 v.push(PanelItem { label: format!("{pro}'s skills{pts}"), kind: 6, arg: 2 });
                 v.push(PanelItem { label: "Golfers on the course".into(), kind: 9, arg: 0 });
+                if self.panel == 5 {
+                    // hiring and firing are on the Employee panel
+                    v.push(PanelItem { label: "Employees".into(), kind: 10, arg: 0 });
+                    return v;
+                }
                 for k in 0..STAFF_KINDS {
                     v.push(PanelItem {
                         label: format!("{}: {}  (click to hire, right click to fire)", Economy::staff_name(k), self.econ.staff[k]),
@@ -897,7 +903,7 @@ impl App {
         g.flush();
     }
 
-    fn draw_dock(&self, g: &mut Gfx, s: &Ui) {
+    fn draw_dock(&mut self, g: &mut Gfx, s: &Ui) {
         if self.dock_art.tex.is_some() {
             s.image_part(g, &self.dock_art, 0.0, 430.0, 0.0, 430.0, 215.0, 170.0);
             if self.dock_hover >= 0 {
@@ -910,6 +916,8 @@ impl App {
         if self.panel == 4 {
             s.fill(g, 226.0, 452.0, 570.0, 144.0, rgba(0.16, 0.14, 0.34, 0.88));
             self.draw_golfers_panel(g, s);
+        } else if (1..=3).contains(&self.panel) && self.panel_art_ready() {
+            self.draw_panel(g, s);
         } else if self.panel != 0 {
             s.fill(g, 226.0, 452.0, 570.0, 144.0, rgba(0.16, 0.14, 0.34, 0.88));
             let cols = self.panel_cols();
@@ -960,6 +968,9 @@ impl App {
             let w = text_width(&self.toast, 16.0) + 24.0;
             s.fill(g, 400.0 - w / 2.0, 410.0, w, 28.0, rgba(0.5, 0.1, 0.1, 0.88));
             s.text_centered(g, 400.0, 430.0, &self.toast, 16.0, rgb(1.0, 1.0, 1.0));
+        }
+        if self.pstate.hire_open && self.panel == 3 && self.panel_art_ready() {
+            self.draw_hire_dialog(g, s);
         }
     }
 }

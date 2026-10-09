@@ -219,7 +219,7 @@ impl App {
         self.club.start_pro_round(&self.course, &mut self.exe_rng, (e.x, e.y), e.dir as i32);
         if self.club.gary >= 0 {
             println!("[{:6.1}s] {} starts a round (golfer {})", self.sim_time, self.pro_name(), self.club.gary);
-            self.panel = 3;
+            self.panel = 5;
             self.edit = false;
         }
     }
@@ -303,7 +303,7 @@ impl App {
             }
         }
         self.aim = self.club.aim_frame(&self.course, tile, corner);
-        self.panel = 3;
+        self.panel = 5;
     }
 
     /// A click on the course while the pro waits: the aim is taken.

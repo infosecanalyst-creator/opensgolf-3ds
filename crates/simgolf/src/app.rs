@@ -159,7 +159,7 @@ pub struct PaintEntry {
     pub vbyte: i32,
 }
 
-pub const PAINT: [PaintEntry; 20] = [
+pub const PAINT: [PaintEntry; 24] = [
     PaintEntry { name: "Fairway", ty: 2, vbyte: 0 },
     PaintEntry { name: "Firm fairway", ty: 3, vbyte: 0 },
     PaintEntry { name: "Green", ty: 1, vbyte: 0 },
@@ -180,6 +180,11 @@ pub const PAINT: [PaintEntry; 20] = [
     PaintEntry { name: "Flower bed (editor id)", ty: 33, vbyte: 0 },
     PaintEntry { name: "Zen sand (editor id)", ty: 34, vbyte: 0 },
     PaintEntry { name: "Grass bunker (editor id)", ty: 35, vbyte: 0 },
+    // the rest of the Build Course panel's buttons, which paint these exe tile ids directly
+    PaintEntry { name: "Waste bunker", ty: 8, vbyte: 0 },
+    PaintEntry { name: "Stream", ty: 10, vbyte: 0 },
+    PaintEntry { name: "Pine tree", ty: 14, vbyte: 0 },
+    PaintEntry { name: "Palm tree", ty: 15, vbyte: 0 },
 ];
 
 /// Building kinds the Add Buildings panel offers, in the exe's order (kind numbers of `land::BUILDINGS`): benches, flower beds,
@@ -376,6 +381,9 @@ pub struct App {
     pub snapshots: HashMap<usize, crate::ui::Image>,
     /// The report screens' art, the routing map's tab and selected hole.
     pub reports: crate::reports_ui::ReportArt,
+    /// The dock panels' sheets and their state (panels_ui).
+    pub panel_art: crate::panels_ui::PanelArt,
+    pub pstate: crate::panels_ui::PanelState,
     pub route_tab: usize,
     pub route_hole: usize,
     /// The property chooser was opened from the course (F6) to move the club.
@@ -580,6 +588,8 @@ impl App {
             snapshots: HashMap::new(),
             no_hud: false,
             reports: Default::default(),
+            panel_art: Default::default(),
+            pstate: Default::default(),
             route_tab: 0,
             route_hole: 1,
             world_move: false,
@@ -2411,9 +2421,16 @@ impl App {
             2 => self.edit_path(a, b, lower),
             3 => self.edit_wall(lower),
             4 => self.edit_building(a, b, lower),
+            5 => self.undo_tile(a, b),
             _ => {
                 let down = lower != (self.raise_sign < 0);
-                self.edit_raise(a, b, if down { -1 } else { 1 })
+                let delta = if down { -1 } else { 1 };
+                // the Elevation panel's tools edit as the exe does; the keyboard's raise tool keeps the round brush
+                if self.panel == 2 && self.pstate.alt && self.panel_art.ready() {
+                    self.edit_elevation(a, b, delta)
+                } else {
+                    self.edit_raise(a, b, delta)
+                }
             }
         }
     }
@@ -2485,6 +2502,7 @@ impl App {
             1 => "Raise/Lower",
             2 => "Path",
             3 => "Wall",
+            5 => return "Edit: Undo, click a tile to take back what was built there".into(),
             _ => "Building",
         };
         let what = match self.tool {
@@ -2568,11 +2586,29 @@ impl App {
 
     /// Hires an employee of kind 0..3 (Club Pro, Ranger, Groundskeeper, Soda Vendor).
     pub fn hire_staff(&mut self, kind: usize) -> bool {
+        self.hire_employee(kind, false)
+    }
+
+    /// Hires an employee of kind 0..3, the experienced version (Celebrity, Marshall, Technician, Refresher) when `skilled`.
+    pub fn hire_employee(&mut self, kind: usize, skilled: bool) -> bool {
         if !self.econ.hire(kind) {
             return false;
         }
         let club = self.club_anchor();
-        staff::hire(&mut self.employees, kind, false, club, &mut self.exe_rng);
+        staff::hire(&mut self.employees, kind, skilled, club, &mut self.exe_rng);
+        true
+    }
+
+    /// Fires one employee (an index into `employees`), as the Employee panel's Fire button does: 25 units under Salaries.
+    pub fn fire_employee(&mut self, i: usize) -> bool {
+        let Some(e) = self.employees.get(i).filter(|e| e.active && (-5..=-2).contains(&e.job)) else { return false };
+        if !self.econ.fire((-2 - e.job as i32) as usize) {
+            return false;
+        }
+        self.employees[i].active = false;
+        if self.moving_employee == Some(i) {
+            self.moving_employee = None;
+        }
         true
     }
 
