@@ -770,10 +770,14 @@ impl App {
                 let t = self.club.stories.line(gg.story, scene, choice, opener).trim().to_string();
                 let t = t.replacen("PARTNER", &self.club.name(who ^ 1), 1).replacen("MYNAME", &self.club.name(who), 1);
                 let c = if who == gi { c15(0x7c1f) } else { c15(0x4210) };
-                if y < 290.0 {
-                    s.text(g, x, top(y, SMALL), &t, SMALL, c);
+                // a line that would run under the partner's portrait goes on to the next
+                for l in wrap_text(&t, SMALL, 548.0 - x) {
+                    if y < 290.0 {
+                        s.text(g, x, top(y, SMALL), &l, SMALL, c);
+                    }
+                    y += 9.0;
                 }
-                y += if opener { 9.0 } else { 10.0 };
+                y += if opener { 0.0 } else { 1.0 };
             }
         }
     }
@@ -923,6 +927,15 @@ impl App {
         }
         let mut earned: Vec<(usize, sg_core::records::Earned)> =
             self.club.earned.iter().enumerate().filter_map(|(i, e)| e.clone().map(|e| (i, e))).collect();
+        // the board reloads the snapshot files (taken in another session, or before a saved game was loaded); one that
+        // cannot be read is remembered as missing
+        for (id, _) in &earned {
+            if !self.snapshots.contains_key(id) {
+                let file = self.snapshot_dir().join(format!("accomp{id}.png"));
+                let tex = sg_core::fsutil::read_file(&file).and_then(|b| sg_core::png::decode_png(&b)).map(|img| g.texture(&img, false));
+                self.snapshots.insert(*id, crate::ui::Image { tex, w: 200.0, h: 160.0 });
+            }
+        }
         earned.sort_by_key(|(_, e)| e.tick);
         let n = earned.len() as f32;
         // the easy editions' plaques and labels for classes 0, 1 and 4 (first dogleg right, dogleg left, par 5 hole)
@@ -937,10 +950,11 @@ impl App {
             if has_tacs {
                 s.image_part(g, tacs, x - 7.0, y - 173.0, 63.0, 251.0, 229.0, 209.0);
             }
-            if let Some(img) = self.snapshots.get(id) {
+            if let Some(img) = self.snapshots.get(id).filter(|i| i.tex.is_some()) {
                 s.image_part(g, img, x, y - 166.0, 0.0, 0.0, 200.0, 160.0);
             } else {
-                s.fill(g, x, y - 166.0, 200.0, 160.0, rgba(0.25, 0.4, 0.25, 0.9));
+                // opaque, so the card under it does not show through
+                s.fill(g, x, y - 166.0, 200.0, 160.0, rgb(0.25, 0.4, 0.25));
                 s.text_centered(g, x + 100.0, y - 90.0, self.club.award_title(*id), 12.0, rgb(1.0, 1.0, 0.85));
             }
             // the pin: TacksandArrow cut 8 (100, 0, 20 x 24)

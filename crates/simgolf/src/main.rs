@@ -1441,8 +1441,7 @@ impl Stage {
                 }
             }
         }
-        let dir = self.app.course_file.parent().map(|p| p.to_path_buf()).unwrap_or_default().join("snapshots");
-        sg_core::png::write_png(dir.join(format!("accomp{id}.png")), &out);
+        sg_core::png::write_png(self.app.snapshot_dir().join(format!("accomp{id}.png")), &out);
         let tex = self.g.texture(&out, false);
         self.app.snapshots.insert(id, ui::Image { tex: Some(tex), w: 200.0, h: 160.0 });
     }

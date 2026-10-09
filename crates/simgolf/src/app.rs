@@ -1978,6 +1978,11 @@ impl App {
         self.course_file.with_extension("sgs")
     }
 
+    /// Where the accomplishment snapshots (accomp<id>.png) are written and the board reads them back.
+    pub fn snapshot_dir(&self) -> PathBuf {
+        self.course_file.parent().map(|p| p.to_path_buf()).unwrap_or_default().join("snapshots")
+    }
+
     /// Saves the whole game.
     pub fn save_game(&self, path: &Path) -> Result<(), String> {
         let save = SaveGame {
