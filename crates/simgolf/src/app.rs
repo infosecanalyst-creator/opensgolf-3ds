@@ -97,6 +97,8 @@ pub struct Prop {
     pub tree: bool,
     /// A tree on this tile (x, y) that shows its growth counter while the tile grows.
     pub grow_tile: Option<(i32, i32)>,
+    /// A flag or tee marker, rebuilt from the hole records every update.
+    pub decor: bool,
 }
 
 impl Default for Prop {
@@ -118,6 +120,7 @@ impl Default for Prop {
             hidden: false,
             tree: false,
             grow_tile: None,
+            decor: false,
         }
     }
 }
@@ -822,6 +825,66 @@ impl App {
         }
     }
 
+    /// Pushes a decoration sprite as a prop on tile (a, b).
+    fn push_decor(&mut self, a: i32, b: i32, d: sg_core::decor::Draw, object: bool, decor: bool) {
+        let (body, shadow) = self.decor_sprite(d.sprite, d.pal);
+        let Some(bi) = body else { return };
+        let n = self.sprites[bi].s.frames_per_view;
+        let (cx, cz) = self.terrain.tile_centre(a, b);
+        self.props.push(Prop {
+            x: cx + d.da * TILE_SIZE,
+            z: cz + d.db * TILE_SIZE,
+            body,
+            shadow,
+            frame: d.frame.unwrap_or(n - 1).clamp(0, (n - 1).max(0)),
+            facing: d.view,
+            object,
+            decor,
+            ..Default::default()
+        });
+    }
+
+    /// Flags on the cup tiles and tee markers on the open holes' tees, as the exe draws them every frame.
+    fn update_decor_props(&mut self) {
+        self.props.retain(|p| !p.decor);
+        let theme = self.exe_theme();
+        let mut draws = Vec::new();
+        for h in 1..19 {
+            let rec = &self.club.holes[h];
+            let (pa, pb) = rec.pin;
+            if pa != 0 && sg_core::course::inside(pa, pb) {
+                let growing = self.tile_growing(pa, pb).then(|| self.staff_tiles.counter[(pb * self.staff_tiles.w + pa) as usize] as i32);
+                draws.push((pa, pb, h, true, growing));
+            }
+            if rec.par != 0 && rec.back.0 != 0 {
+                draws.push((rec.back.0, rec.back.1, h, false, None));
+            }
+        }
+        for (a, b, h, cup, growing) in draws {
+            let rec = self.club.holes[h].clone();
+            if cup {
+                let pop = self.decor_sprite(0x185 + theme as u16, 0x63).0.map(|s| self.sprites[s].s.frames_per_view).unwrap_or(1);
+                let open = self.decor_sprite(0x189 + theme as u16, 0x63).0.map(|s| self.sprites[s].s.frames_per_view).unwrap_or(1);
+                let d = sg_core::decor::flag(
+                    theme,
+                    growing,
+                    pop,
+                    rec.par != 0,
+                    rec.mood_sum,
+                    rec.tee_shots,
+                    rec.plans,
+                    self.game_tick as i32,
+                    open,
+                );
+                self.push_decor(a, b, d, false, true);
+            } else {
+                for d in sg_core::decor::tee_markers(rec.par, rec.tee_facing, None) {
+                    self.push_decor(a, b, d, false, true);
+                }
+            }
+        }
+    }
+
     /// The tile's growth counter is running (flag 0x4000).
     fn tile_growing(&self, a: i32, b: i32) -> bool {
         let t = &self.staff_tiles;
@@ -1304,6 +1367,7 @@ impl App {
         self.update_staff_props();
         self.update_weed_props();
         self.update_tree_growth();
+        self.update_decor_props();
         for p in self.props.iter_mut() {
             if p.animated {
                 if let Some(b) = p.body {
@@ -2162,36 +2226,42 @@ impl App {
     fn add_land_objects(&mut self) {
         let Some(land) = self.land.clone() else { return };
         let theme = land.slot.record().theme;
-        // Tile items. INTERIM until the exe's tile decoration drawing is decoded: a bench shows its variant's sprite, a flower bed
-        // the single-bed sprite of the theme, a willow the willow sprite.
-        const BENCHES: [&str; 5] =
-            ["Flowers/box_bench", "Flowers/red_bench", "Flowers/round_wood_bench", "Flowers/backless_bench", "Flowers/lovers_bench"];
+        // Tile items: benches and ornamental trees as the exe draws them (sg_core::decor); flower beds INTERIM: the single-bed
+        // sprite of the theme (the exe picks the bed's shape from its neighbours through a table not decoded here).
         let beds = match theme {
             1 => "flowers/DesFlowers_Single",
             2 => "flowers/TropFlowers_Single",
             _ => "flowers/Flowers_Single",
         };
+        let noise = self.noise.clone();
+        let field = |x: i32, y: i32| noise.field(x, y);
+        let mut draws: Vec<(i32, i32, sg_core::decor::Draw)> = Vec::new();
         for a in 0..land::N {
             for b in 0..land::N {
                 let i = (a * land::N + b) as usize;
                 let f = land.flags[i];
-                let file = if f & 0x200 != 0 {
-                    BENCHES[(land.var[i] % 5) as usize].to_string()
+                if f & 0x200 != 0 {
+                    let course = &self.course;
+                    for d in sg_core::decor::benches(land.var[i], &|d| course.bench_ok(a, b, d as i32)) {
+                        draws.push((a, b, d));
+                    }
+                } else if land.ty[i] == land::T_ELM && f & 0x100 != 0 {
+                    let grown = !self.tile_growing(a, b);
+                    for d in sg_core::decor::ornamental(land.var[i], a, b, grown, &field) {
+                        draws.push((a, b, d));
+                    }
                 } else if f & 0x1000 != 0 && land.ty[i] != land::T_OUT {
-                    beds.to_string()
-                } else if land.ty[i] == land::T_ELM && land.var[i] != 0 {
-                    "trees/WillowTree".to_string()
-                } else {
-                    continue;
-                };
-                let body = self.sprite_for(&format!("{file}.flc"), false, None);
-                if body.is_none() {
-                    continue;
+                    let body = self.sprite_for(&format!("{beds}.flc"), false, None);
+                    if body.is_some() {
+                        let shadow = self.sprite_for(&format!("{beds}Shadow.flc"), true, None);
+                        let (x, z) = self.terrain.tile_centre(a, b);
+                        self.props.push(Prop { x, z, body, shadow, facing: (land.var[i] & 3) as i32, object: true, ..Default::default() });
+                    }
                 }
-                let shadow = self.sprite_for(&format!("{file}Shadow.flc"), true, None);
-                let (x, z) = self.terrain.tile_centre(a, b);
-                self.props.push(Prop { x, z, body, shadow, facing: (land.var[i] & 3) as i32, object: true, ..Default::default() });
             }
+        }
+        for (a, b, d) in draws {
+            self.push_decor(a, b, d, true, false);
         }
         let level = (self.holes.len() > 10) as u16;
         for o in land.objects.iter().filter(|o| o.kind >= 0) {

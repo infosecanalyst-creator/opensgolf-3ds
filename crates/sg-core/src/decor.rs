@@ -167,12 +167,95 @@ pub fn weed(t: u8, a: i32, b: i32, frames: i32, counter: Option<i32>) -> Draw {
     Draw { sprite, frame: Some(frame), view: 0, pal, da: 0.0, db: 0.0 }
 }
 
+/// The flag on a hole's cup tile (0x411f1c): it pops up while the tile grows, then waves in one of four views by how much
+/// golfers enjoy the hole (mood sum per tee shot and half planned shot), the second view for a hole not yet open.
+#[allow(clippy::too_many_arguments)]
+pub fn flag(
+    theme: u8,
+    counter: Option<i32>,
+    pop_frames: i32,
+    open: bool,
+    mood_sum: i32,
+    tee_shots: i32,
+    plans: i32,
+    anim: i32,
+    open_frames: i32,
+) -> Draw {
+    let t = theme.min(3) as u16;
+    if let Some(c) = counter {
+        return Draw { sprite: 0x185 + t, frame: Some(c.min(pop_frames - 1)), view: 0, pal: 0x63, da: 0.0, db: 0.0 };
+    }
+    let view = if open { crate::geom::clamp(mood_sum * 100 / (plans / 2 + tee_shots + 4) / 10, 0, 3) } else { 1 };
+    Draw { sprite: 0x189 + t, frame: Some(anim.rem_euclid(open_frames.max(1))), view, pal: 0x63, da: 0.0, db: 0.0 }
+}
+
+/// The two tee markers of an open hole's tee (0x4120ae): red for par 3, white for par 4, blue above, set either side of the
+/// tee across its facing.
+pub fn tee_markers(par: i32, facing: i32, frame: Option<i32>) -> [Draw; 2] {
+    let sprite = 0x18d + (par - 3).clamp(0, 2) as u16;
+    let e = ((facing + 1) & 7) as usize;
+    let (dx, dy) = (DX[e] as f32, DY[e] as f32);
+    let (sx, sy) = if e & 1 != 0 { (4.0, 2.0) } else { (5.0, 3.0) };
+    let (a1, b1) = screen(sx * dx, sy * dy);
+    let (a2, b2) = screen(-sx * dx, -sy * dy);
+    [Draw { sprite, frame, view: 0, pal: 0x5e, da: a1, db: b1 }, Draw { sprite, frame, view: 0, pal: 0x5e, da: a2, db: b2 }]
+}
+
+/// The bench seats of a bench tile (0x411e17): one per heading d (0, 2, 4, 6) a golfer can sit facing (`ok(d)`), pulled
+/// toward that side of the tile. Empty means the tile has lost its bench.
+pub fn benches(var: u8, ok: &dyn Fn(usize) -> bool) -> Vec<Draw> {
+    let v = (var % 7) as u16;
+    let mut out = Vec::new();
+    for d in [0usize, 2, 4, 6] {
+        if !ok(d) {
+            continue;
+        }
+        let e = (d + 3) & 7;
+        let (da, db) = screen(-4.0 * DX[e] as f32, -2.5 * DY[e] as f32);
+        out.push(Draw { sprite: 0x208 + v, frame: None, view: (-2 - (e as i32) / 2) & 3, pal: 0xaa + v as u8, da, db });
+    }
+    out
+}
+
+/// An ornamental tree on a scenic elm tile (0x412bf6), over a bed of scenic flowers: the variant's low bits pick plum,
+/// dogwood, elm, Japanese maple, cypress, scenic tree or peach; 0 is the willow, coloured by the noise.
+pub fn ornamental(var: u8, a: i32, b: i32, grown: bool, field: &dyn Fn(i32, i32) -> i32) -> [Draw; 2] {
+    let k = (var & 7) as u16;
+    let view = (b - a) & 3;
+    let (sprite, pal) = if k == 0 { (0xf9, 0x36 + ((field(a << 8, b << 8) >> 5) & 3) as u8) } else { (0x12e + k, 0xb3 + k as u8) };
+    [
+        Draw { sprite: 0xfc, frame: None, view, pal: 0x59, da: 0.0, db: 0.0 },
+        Draw { sprite, frame: if grown { None } else { Some(0) }, view, pal, da: 0.0, db: 0.0 },
+    ]
+}
+
 /// The file (under Flics, without extension) the theme loads for a decoration sprite id.
 pub fn sprite_file(id: u16, theme: u8) -> Option<&'static str> {
     let t = theme.min(3) as usize;
     let pick = |v: [&'static str; 4]| Some(v[t]);
     match id {
+        0x12f => Some("Scenic/Plum"),
+        0x130 => Some("Scenic/Dogwood"),
         0x131 => Some("Scenic/ScenicElm"),
+        0x132 => Some("Scenic/JapaneseMaple"),
+        0x133 => Some("Scenic/Cypress"),
+        0x134 => Some("Scenic/Scenic_Tree"),
+        0x135 => Some("Scenic/PeachTree"),
+        0xf9 => Some("Trees/WillowTree"),
+        0xfc => Some("Scenic/Scenic_Flowers"),
+        0x185 => pick(["Tees/FlagPARK_pop", "Tees/FlagDESERT_pop", "Tees/FlagTROP_pop", "Tees/FlagLINKS_pop"]),
+        0x189 => pick(["Tees/FlagPARK_open", "Tees/FlagDESERT_open", "Tees/FlagTROP_open", "Tees/FlagLINKS_open"]),
+        0x186..=0x188 => sprite_file(0x185, (id - 0x185) as u8),
+        0x18a..=0x18c => sprite_file(0x189, (id - 0x189) as u8),
+        0x18d => Some("Tees/TeeMarkerRed_Pop"),
+        0x18e => Some("Tees/TeeMarkerWhite_Pop"),
+        0x18f => Some("Tees/TeeMarkerBlue_Pop"),
+        0x208 => Some("Scenic/benW01"),
+        0x209 => Some("Flowers/box bench"),
+        0x20a => Some("Flowers/red bench"),
+        0x20b => Some("Flowers/round wood bench"),
+        0x20c => Some("Flowers/backless bench"),
+        0x20d => Some("Flowers/lovers bench"),
         0x184 => Some("Flowers/crabgrass"),
         0x190 => pick(["Flowers/dandelion_01", "Flowers/OilSlick", "Flowers/DryGrass", "Flowers/dandelion_01"]),
         0x192 => {
@@ -250,7 +333,26 @@ pub fn palette_file(pal: u8, theme: u8) -> Option<&'static str> {
         }
         0x4c => Some("Flowers/CrabgrassPal.pcx"),
         0x4d => pick(["Flowers/dandelionPal.pcx", "Flowers/OilSlickPal.pcx", "Flowers/DryGrassPal.pcx", "Flowers/dandelionPal.pcx"]),
-        0xa6 => Some("Scenic/ScenicElmPal.pcx"),
+        0xa6 | 0xb6 => Some("Scenic/ScenicElmPal.pcx"),
+        0x36 => Some("Trees/WillowWhite.pcx"),
+        0x37 => Some("Trees/WillowLemon.pcx"),
+        0x38 => Some("Trees/WillowPink.pcx"),
+        0x39 => Some("Trees/WillowGreen.pcx"),
+        0x59 => Some("Scenic/ScenicFlowersPal.pcx"),
+        0x5e => Some("Tees/TeeMarkerPal.pcx"),
+        0x63 => pick(["Tees/Flag_PARKpal.pcx", "Tees/Flag_DESERTpal.pcx", "Tees/Flag_TROPpal.pcx", "Tees/Flag_LINKSpal.pcx"]),
+        0xaa => Some("Scenic/benWPAL.pcx"),
+        0xab => Some("Flowers/box benchPal.pcx"),
+        0xac => Some("Flowers/redbenchPal.pcx"),
+        0xad => Some("Flowers/round wood benchPal.pcx"),
+        0xae => Some("Flowers/backless benchPal.pcx"),
+        0xaf => Some("Flowers/LoversBenchPal.pcx"),
+        0xb4 => Some("Scenic/PlumPal.pcx"),
+        0xb5 => Some("Scenic/DogwoodPal.pcx"),
+        0xb7 => Some("Scenic/JapaneseMaple_OrgPal.pcx"),
+        0xb8 => Some("Scenic/CypressPal.pcx"),
+        0xb9 => Some("Scenic/Scenic_TreePal.pcx"),
+        0xba => Some("Scenic/PeachTreePal.pcx"),
         _ => None,
     }
 }

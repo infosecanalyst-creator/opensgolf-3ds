@@ -504,3 +504,17 @@ Confidence: high for the choice of sprite, palette and placement; screen offsets
 - Weeds: crabgrass (0x184) on types that are no hazard, the theme's weed (0x190: dandelion, oil slick in Desert, dry grass in
   Tropical) elsewhere; frame = last frame - (b & 2) - (a & 1), never below (a + 2b) & 3, the growth counter while growing.
 
+## Tile decorations: flags, tee markers, benches, ornamental trees (tile loops 0x410604 and 0x412354)
+
+Confidence: high for sprites, palettes and the rules; the flower bed shape table and the bridge pieces are not ported (the
+shape table is data this project could not read).
+- Cup tile: the theme's flag pops up (0x185 + theme) while the tile grows, then waves (0x189 + theme) in view
+  clamp(mood sum * 100 / (tee shots + planned shots / 2 + 4) / 10, 0, 3); a hole not yet open shows view 1. Palette 0x63.
+- Tee of an open hole: two markers, red (par 3), white (par 4) or blue (par 5 and up), either side of the tee across its
+  facing: 4 and 2 zoom units out on a diagonal heading, 5 and 3 on a straight one. The exe also rewrites the tee tile's
+  variant from the facing and the dogleg flags, which picks the tee's ground texture.
+- Bench tile: one seat per heading a golfer can sit facing (0x407400), sprite 0x208 + variant % 7 with its own palette,
+  4 and 2.5 zoom units toward that side; a tile with no such heading loses its bench flag.
+- Scenic elm tile (the willow tool): a bed of scenic flowers and an ornamental tree, plum, dogwood, elm, Japanese maple,
+  cypress, scenic tree or peach by variant & 7, or the willow (coloured by the noise) for 0.
+
