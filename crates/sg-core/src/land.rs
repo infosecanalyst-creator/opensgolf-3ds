@@ -1671,7 +1671,8 @@ pub enum Undone {
 }
 
 impl Land {
-    fn in_play(&self, a: i32, b: i32) -> bool {
+    /// Whether a tile belongs to the property (not out of bounds).
+    pub fn in_play(&self, a: i32, b: i32) -> bool {
         (0..N).contains(&a) && (0..N).contains(&b) && self.ty[idx(a, b)] != T_OUT
     }
 
@@ -1787,6 +1788,27 @@ impl Land {
     }
 
     /// Takes back what was done on a tile (the exe's right-click undo, 0x40a4e0).
+    /// The object whose footprint covers a tile.
+    pub fn object_on(&self, a: i32, b: i32) -> Option<usize> {
+        if !(0..N).contains(&a) || !(0..N).contains(&b) || self.flags[idx(a, b)] & flag::FOOTPRINT == 0 {
+            return None;
+        }
+        self.objects.iter().position(|o| {
+            let s = self.footprint_size(o);
+            o.kind >= 0 && (o.a..o.a + s).contains(&a) && (o.b..o.b + s).contains(&b)
+        })
+    }
+
+    /// Records a terrain change for undo (0x41fee2): the tile's old type and the amount to give back. The exe keeps the
+    /// amount in a signed byte, so very dear changes wrap (marsh to water, 150, gives back -106).
+    pub fn record_paint(&mut self, a: i32, b: i32, old: u8, cost: i32) {
+        if (0..N).contains(&a) && (0..N).contains(&b) {
+            let i = idx(a, b);
+            self.undo[i] = old;
+            self.refund[i] = cost as i8;
+        }
+    }
+
     pub fn undo_tile(&mut self, a: i32, b: i32) -> Undone {
         if !self.in_play(a, b) {
             return Undone::Refused;

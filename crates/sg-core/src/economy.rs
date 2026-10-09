@@ -116,6 +116,18 @@ impl Economy {
 
     /// Cost per tile of laying a terrain type, in units of 100, from the exe's terrain table (the figure its build menu shows is this
     /// times 100). Indexed by the original tile id 0..19; ids without an entry (building lots, editor-only ids) cost nothing.
+    /// What it costs to clear a terrain type before painting over it (terrain table +0x24): rocks and trees 5, elm and
+    /// water 10, wetlands 50, marsh 100, everything else nothing.
+    pub fn terrain_clear_units(ty: i32) -> i32 {
+        match ty {
+            12..=15 => 5,
+            16 | 17 | 23..=25 => 10,
+            18 => 50,
+            19 => 100,
+            _ => 0,
+        }
+    }
+
     pub fn terrain_cost_units(ty: i32) -> i32 {
         const K: [i32; 20] = [5, 10, 3, 3, 1, 2, 4, 6, 4, 8, 10, 4, 4, 10, 10, 10, 25, 50, 2, 6];
         match ty {
