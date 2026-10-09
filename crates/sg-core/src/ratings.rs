@@ -141,13 +141,18 @@ pub fn pass(club: &mut Club, difficulty: i32) -> ClubRatings {
             }
         }
         let mask = type_mask(d, difficulty, if difficulty != 0 { 100 } else { 50 });
-        if mask != 0 && club.types_announced & (1 << mask) == 0 && !message {
+        // posted with priority 0 and the site picture (-4): refused while the ticker is busy, and then nothing is marked
+        if mask != 0
+            && club.types_announced & (1 << mask) == 0
+            && !message
+            && club.message_by(
+                format!("Hole #{h} has been recognized as your first \"{}\" type hole.", TYPE_NAMES[mask as usize].to_uppercase()),
+                -4,
+                0,
+            )
+        {
             message = true;
             club.types_announced |= 1 << mask;
-            club.out.push(Event::Message(format!(
-                "Hole #{h} has been recognized as your first \"{}\" type hole.",
-                TYPE_NAMES[mask as usize].to_uppercase()
-            )));
             club.out.push(Event::Sound { slot: 0x2a, at: None, delay: 0 });
             let green = (hole.pin.0 * 1024 + 512, hole.pin.1 * 1024 + 512);
             match mask {
@@ -191,22 +196,35 @@ pub fn pass(club: &mut Club, difficulty: i32) -> ClubRatings {
         if difficulty < 2 && score < f {
             score = f;
         }
-        if hole.fees > 200 && score > 200 && flags & 0xd == 0 && !message {
+        // the Top 100 and Top 18 notices: priority 0 with the laurel ball icon (-21), marked only when shown
+        if hole.fees > 200
+            && score > 200
+            && flags & 0xd == 0
+            && !message
+            && club.message_by(
+                format!("Hole #{h} has been rated as one of the Top 100 golf holes in the country by Golf Enquirer magazine!"),
+                -21,
+                0,
+            )
+        {
             message = true;
             flags |= 0x1;
-            club.out.push(Event::Message(format!(
-                "Hole #{h} has been rated as one of the Top 100 golf holes in the country by Golf Enquirer magazine!"
-            )));
             club.out.push(Event::Sound { slot: 0x2e, at: None, delay: 0 });
             club.award_at(7, (hole.pin.0 * 1024 + 512, hole.pin.1 * 1024 + 512));
             club.log_event(crate::records::log::TOP100, h as i32);
         }
-        if hole.fees > 400 && score > 300 && flags & 0xe == 0 && !message {
+        if hole.fees > 400
+            && score > 300
+            && flags & 0xe == 0
+            && !message
+            && club.message_by(
+                format!("Hole #{h} has been rated as one of the Top 18 golf holes in the country by Great Golf Holes magazine!"),
+                -21,
+                0,
+            )
+        {
             message = true;
             flags |= 0x2;
-            club.out.push(Event::Message(format!(
-                "Hole #{h} has been rated as one of the Top 18 golf holes in the country by Great Golf Holes magazine!"
-            )));
             club.out.push(Event::Sound { slot: 0x2f, at: None, delay: 0 });
             club.award_at(10, (hole.pin.0 * 1024 + 512, hole.pin.1 * 1024 + 512));
             club.log_event(crate::records::log::TOP18, h as i32);

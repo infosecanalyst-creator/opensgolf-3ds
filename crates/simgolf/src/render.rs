@@ -608,18 +608,15 @@ impl App {
             s.text(g, 572.0, 30.0, &cash, 19.0, if red { rgb(1.0, 0.5, 0.5) } else { rgb(1.0, 1.0, 0.7) });
             s.text(g, 572.0, 52.0, &format!("Fun {fun}  Skill {skill}"), 15.0, rgb(0.9, 0.9, 1.0));
         }
-        if self.speed > 1 && !self.paused {
-            s.text(g, 240.0, 30.0, &format!("Speed x{}", self.speed), 14.0, rgb(1.0, 1.0, 0.8));
-        }
-        if self.paused {
-            s.text_centered(g, 400.0, 120.0, "PAUSED", 24.0, rgb(1.0, 1.0, 0.8));
-        }
         self.draw_names(g, &s);
         self.draw_thoughts(g, &s);
+        self.draw_advisor(g, &s);
         self.draw_dock(g, &s);
         self.draw_leaderboard(g, &s);
-        // the golfer card goes over the dock's advisor box
         self.draw_card(g, &s);
+        self.draw_paused(g, &s);
+        // the ticker goes over the golfer card, as in the exe's frame
+        self.draw_ticker(g, &s);
         let lines = self.aim_text();
         if !lines.is_empty() {
             let h = 12.0 + 16.0 * lines.len() as f32;
@@ -689,15 +686,9 @@ impl App {
                 s.text(g, r.x + 4.0, r.y + 13.0, &it.label, 13.0, rgb(1.0, 1.0, 1.0));
             }
         }
-        // Advisor and story, top centre.
+        // Story lines (port-only, until the exe's portrait bubbles for story talk are drawn), below the ticker's place.
         if self.show_advisor {
-            let lines = wrap_text(self.advisor_text(), 14.0, 290.0);
-            let h = 10.0 + 17.0 * lines.len() as f32;
-            s.fill(g, 244.0, 8.0, 306.0, h, rgba(0.12, 0.1, 0.3, 0.82));
-            for (i, l) in lines.iter().enumerate() {
-                s.text(g, 252.0, 25.0 + 17.0 * i as f32, l, 14.0, rgb(1.0, 0.95, 0.7));
-            }
-            let y = 8.0 + h + 6.0;
+            let y = 124.0;
             if !self.story_lines.is_empty() && self.game_tick < self.story_until {
                 // the latest story lines (the exe shows them as thought bubbles over the two golfers)
                 let mut rows: Vec<String> = Vec::new();
@@ -712,11 +703,6 @@ impl App {
                     s.text(g, 252.0, y + 33.0 + 17.0 * i as f32, l, 14.0, rgb(1.0, 1.0, 1.0));
                 }
             }
-        }
-        if !self.toast.is_empty() && self.clock < self.toast_until {
-            let w = text_width(&self.toast, 16.0) + 24.0;
-            s.fill(g, 400.0 - w / 2.0, 410.0, w, 28.0, rgba(0.5, 0.1, 0.1, 0.88));
-            s.text_centered(g, 400.0, 430.0, &self.toast, 16.0, rgb(1.0, 1.0, 1.0));
         }
         if self.pstate.hire_open && self.panel == 3 && self.panel_art_ready() {
             self.draw_hire_dialog(g, s);

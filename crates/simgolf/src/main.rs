@@ -16,6 +16,7 @@ mod cust_ui;
 mod files_ui;
 mod gfx;
 mod info_ui;
+mod message_ui;
 mod panels_ui;
 mod player_panel;
 mod popup_ui;
@@ -734,10 +735,7 @@ impl Stage {
         use popup_ui::PopupKind;
         match kind {
             PopupKind::Info => match k {
-                0 => {
-                    let m = self.app.last_message.clone();
-                    self.app.show_toast(&m);
-                }
+                0 => self.app.repeat_message(),
                 1 => self.open_report(),
                 2 => self.app.open_report_screen(Screen::Comments),
                 3 => self.app.open_report_screen(Screen::Routing),
@@ -1053,6 +1051,8 @@ impl Stage {
                 KeyCode::J => app.begin_tournament(),
                 KeyCode::C => app.save_championship_course(),
                 KeyCode::N => app.show_names = !app.show_names,
+                // ? repeats the last message
+                KeyCode::Slash => app.repeat_message(),
                 KeyCode::B => {
                     // the Home Site tool, "Sell lot for cash"
                     if app.panel != 2 {

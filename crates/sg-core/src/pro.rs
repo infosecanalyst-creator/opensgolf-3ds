@@ -390,12 +390,12 @@ impl Club {
         let (so, se) = (self.g[o].card[hu] as i32, self.g[e].card[hu] as i32);
         let at = (self.g[o].x, self.g[o].y);
         if so < se {
-            self.message(format!("{} wins hole {h} by a score of {so} to {se}. ${}", self.name(o), a * 100));
+            self.message_by(format!("{} wins hole {h} by a score of {so} to {se}. ${}", self.name(o), a * 100), self.gary, 0);
             self.earn(a, Column::Other, at);
             self.sound(0x23, None);
         }
         if se < so {
-            self.message(format!("{} wins hole {h} by a score of {se} to {so}. -${}", self.name(e), a * 100));
+            self.message_by(format!("{} wins hole {h} by a score of {se} to {so}. -${}", self.name(e), a * 100), self.gary, 0);
             self.earn(-a, Column::Other, at);
             self.sound(0x24, None);
         }
@@ -429,11 +429,11 @@ impl Club {
                     d if d < 0 => format!("{} under par", -d),
                     d => format!("{d} over par"),
                 };
-                self.message(format!("{no} and {ne} are tied at {at}."));
+                self.message_by(format!("{no} and {ne} are tied at {at}."), self.gary, 1);
             } else {
                 let n = (to - te).abs();
                 let word = if to < te { "leads" } else { "trails" };
-                self.message(format!("{no} {word} {ne} by {n} shot{}.", if n == 1 { "" } else { "s" }));
+                self.message_by(format!("{no} {word} {ne} by {n} shot{}.", if n == 1 { "" } else { "s" }), self.gary, 1);
                 self.sound(if to < te { 0x2f } else { 0x30 }, None);
             }
             self.gary = -1;
@@ -552,7 +552,7 @@ impl Club {
                 self.pro_skill[k] = clamp(3 - self.difficulty, 1, 3) as u8;
                 self.pro_mask |= pick;
                 self.g[g].skill_mask |= pick;
-                self.message(format!("{name} acquires a new skill: {}!", SKILL_NAMES[k.min(9)]));
+                self.message_by(format!("{name} acquires a new skill: {}!", SKILL_NAMES[k.min(9)]), g as i32, 1);
             } else {
                 self.pro_skill[k] += 1;
                 let mut t = format!("{name}'s {} skill improves to {}0%.", SKILL_NAMES[k.min(9)], self.pro_skill[k]);
@@ -560,7 +560,7 @@ impl Club {
                     let next = crate::economy::RANK_NAMES[(rank as usize + 1).min(3)];
                     t += &format!(" To further improve this skill you will need a {next} course.");
                 }
-                self.message(t);
+                self.message_by(t, g as i32, 1);
             }
             self.g[g].skills[k] = self.pro_skill[k];
             let at = (self.g[g].bx, self.g[g].by);
@@ -573,7 +573,7 @@ impl Club {
             self.pro_skill[k] -= 1;
             self.g[g].skills[k] = self.pro_skill[k];
             let his = if self.male(g) != 0 { "his" } else { "her" };
-            self.message(format!("{name} loses 10% of {his} {} skill.", SKILL_NAMES[k.min(9)]));
+            self.message_by(format!("{name} loses 10% of {his} {} skill.", SKILL_NAMES[k.min(9)]), g as i32, 1);
             if self.g[g].momentum >= 0 {
                 self.g[g].momentum = -1;
             }

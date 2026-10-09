@@ -28,6 +28,8 @@ pub struct Art {
     pub stats: Image,
     /// TransPopups: the translucent dialog frame, the skill rows and pads, the balls (with its alpha sheet).
     pub trans: Image,
+    /// PopUpIcons: the five 90 x 80 message icons (trophy, star, book, exclamation, laurel ball).
+    pub popup_icons: Image,
     /// The stock heads by gender (0 women, 1 men, as `Person::male_bit`): the 140 x 140 ball portraits and the 90 x 120
     /// expression cells; then the custom portraits found in Heads/ (140 x 420 each), in file name order.
     pub halo: [Image; 2],
@@ -87,6 +89,7 @@ impl Art {
             roster: alpha(g, "infoscreens/memberRoster.pcx", "infoscreens/memberRoster_alpha.pcx"),
             stats: alpha(g, "GolferStats.pcx", "GolferStats_A.pcx"),
             trans: alpha(g, "TransPopups.pcx", "TransPopups_A.pcx"),
+            popup_icons: alpha(g, "PopUpIcons.pcx", "PopUpIcons_A.pcx"),
             halo: [keyed(g, "Heads/golfballhalopage_female.pcx"), keyed(g, "Heads/golfballhalopage_male .pcx")],
             expr: [keyed(g, "Heads/sim_FEMALE_all_expressionsflat.pcx"), keyed(g, "Heads/sim_MALE_all_expressionsflat.pcx")],
             heads,
