@@ -29,11 +29,8 @@ pub struct ChampScreen {
 }
 
 fn list(dir: &Path, ext: &str) -> Vec<PathBuf> {
-    let mut v: Vec<PathBuf> = std::fs::read_dir(dir)
-        .map(|r| {
-            r.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case(ext))).collect()
-        })
-        .unwrap_or_default();
+    let mut v: Vec<PathBuf> =
+        sg_core::fsutil::list_dir(dir).into_iter().filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case(ext))).collect();
     v.sort();
     v
 }
@@ -65,6 +62,7 @@ impl App {
             return self.show_toast("Cannot save course during a tournament.");
         }
         let dir = self.championship_dir();
+        #[cfg(not(target_arch = "wasm32"))]
         let _ = std::fs::create_dir_all(&dir);
         let path = dir.join(format!("{}.{COURSE_EXT}", self.course_name));
         match self.save_game(&path) {
@@ -76,12 +74,14 @@ impl App {
     /// Saves the player's pro for championship play.
     pub fn save_championship_pro(&mut self) {
         let dir = self.championship_dir();
+        #[cfg(not(target_arch = "wasm32"))]
         let _ = std::fs::create_dir_all(&dir);
         let p = self.club.pro_file();
         let path = dir.join(format!("{}.pro", p.person.name));
-        match std::fs::write(&path, championship::pro_bytes(&p)) {
-            Ok(()) => self.show_toast(&format!("{} saved for championship play.", p.person.name)),
-            Err(e) => self.show_toast(&format!("Could not save: {e}")),
+        if sg_core::fsutil::write_file(&path, &championship::pro_bytes(&p)) {
+            self.show_toast(&format!("{} saved for championship play.", p.person.name));
+        } else {
+            self.show_toast("Could not save the pro.");
         }
     }
 
@@ -120,7 +120,7 @@ impl App {
             if i < c.files.len() {
                 c.sel = Some(i);
                 if c.step == 1 {
-                    c.pro = std::fs::read(&c.files[i]).ok().and_then(|b| championship::parse_pro(&b));
+                    c.pro = sg_core::fsutil::read_file(&c.files[i]).and_then(|b| championship::parse_pro(&b));
                 }
             }
         } else if CANCEL.has(vx, vy) || vx < 0.0 {

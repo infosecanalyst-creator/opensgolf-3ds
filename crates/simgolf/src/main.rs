@@ -502,7 +502,7 @@ impl Stage {
             app.refresh_trees();
         }
         if let Some((course, pro)) = &o.champ {
-            let p = std::fs::read(pro).ok().and_then(|b| sg_core::championship::parse_pro(&b)).unwrap_or_else(|| {
+            let p = sg_core::fsutil::read_file(pro).and_then(|b| sg_core::championship::parse_pro(&b)).unwrap_or_else(|| {
                 eprintln!("error: {} is not a pro file", pro.display());
                 std::process::exit(1)
             });
@@ -592,7 +592,7 @@ impl Stage {
 
     fn load_course(&mut self) {
         let gf = self.app.game_file();
-        if gf.exists() {
+        if sg_core::fsutil::exists(&gf) {
             match self.app.load_game(&mut self.g, &gf) {
                 Ok(()) => {
                     println!("loaded game {}", gf.display());
@@ -758,7 +758,7 @@ impl Stage {
         }
         if app.screen == Screen::Menu {
             match hit {
-                0 if app.game_file().exists() => {
+                0 if sg_core::fsutil::exists(app.game_file()) => {
                     let gf = app.game_file();
                     if let Err(e) = app.load_game(&mut self.g, &gf) {
                         app.show_toast(&format!("Could not load the saved game: {e}"));
@@ -1093,6 +1093,8 @@ impl Stage {
             }
         }
         let dir = self.app.course_file.parent().map(|p| p.to_path_buf()).unwrap_or_default().join("snapshots");
+        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(not(target_arch = "wasm32"))]
         let _ = std::fs::create_dir_all(&dir);
         sg_core::png::write_png(dir.join(format!("accomp{id}.png")), &out);
         let tex = self.g.texture(&out, false);

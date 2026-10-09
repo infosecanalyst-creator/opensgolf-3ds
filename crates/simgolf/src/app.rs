@@ -1688,12 +1688,16 @@ impl App {
         let json = serde_json::to_vec(&save).map_err(|e| e.to_string())?;
         let mut out = SAVE_MAGIC.to_vec();
         out.extend(miniz_oxide::deflate::compress_to_vec_zlib(&json, 6));
-        std::fs::write(path, out).map_err(|e| format!("{}: {e}", path.display()))
+        if sg_core::fsutil::write_file(path, &out) {
+            Ok(())
+        } else {
+            Err(format!("{}: could not write", path.display()))
+        }
     }
 
     /// Loads a whole game saved by `save_game` and goes on from where it was.
     pub fn load_game(&mut self, g: &mut Gfx, path: &Path) -> Result<(), String> {
-        let data = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let data = sg_core::fsutil::read_file(path).ok_or_else(|| format!("{}: not found", path.display()))?;
         let body = data.strip_prefix(SAVE_MAGIC).ok_or_else(|| format!("{}: not a saved game", path.display()))?;
         let json = miniz_oxide::inflate::decompress_to_vec_zlib(body).map_err(|e| format!("{}: {e:?}", path.display()))?;
         let s: SaveGame = serde_json::from_slice(&json).map_err(|e| format!("{}: {e}", path.display()))?;
