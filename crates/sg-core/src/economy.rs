@@ -92,6 +92,20 @@ pub fn rank(holes: usize) -> i32 {
 
 pub const RANK_NAMES: [&str; 4] = ["Municipal", "Daily Fee", "Country Club", "Championship"];
 
+/// An amount of money as the exe's 0x42dc00 appends it to a message (after a "§" the message holds): a minus sign when
+/// negative, then the digits in groups of three with commas.
+pub fn money_digits(v: i64) -> String {
+    let d = v.unsigned_abs().to_string();
+    let mut out = String::from(if v < 0 { "-" } else { "" });
+    for (k, c) in d.chars().enumerate() {
+        if k > 0 && (d.len() - k) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
+
 /// One employee as the wage charge sees it: kind 0..3 and whether experienced.
 #[derive(Clone, Copy, Debug)]
 pub struct Payroll {
@@ -295,6 +309,14 @@ impl Economy {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn money_digits_group_by_thousands() {
+        assert_eq!(money_digits(0), "0");
+        assert_eq!(money_digits(800), "800");
+        assert_eq!(money_digits(2000), "2,000");
+        assert_eq!(money_digits(-1234567), "-1,234,567");
+    }
 
     #[test]
     fn three_negative_year_ends_end_the_game() {

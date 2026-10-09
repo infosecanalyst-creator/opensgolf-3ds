@@ -5,6 +5,7 @@
 //!
 //! Facts are from the publisher's golf.exe (docs/PUBLISHER_EXE_NOTES.md, "Special visitors"), restated in our own words.
 
+use crate::economy::money_digits;
 use crate::golfer::{Club, Column, Event};
 use crate::land::ExeRng;
 
@@ -303,7 +304,11 @@ impl Club {
                     if 2 * k < self.g[g].hole {
                         let amount = ((m > 4) as i32 + 1) * 50;
                         self.message_by(
-                            format!("Corporate CEO {name} has decided to invest ${} for a seat on the board, he says.", amount * 100),
+                            // the exe's pieces (0x4c71b0, 0x4c7124, 0x4c7100)
+                            format!(
+                                "Corporate CEO {name} has decided to invest in your course. 'I'll give you \u{a7}{} for a seat on the board' he says.",
+                                money_digits(amount as i64 * 100)
+                            ),
                             g as i32,
                             1,
                         );
@@ -371,7 +376,7 @@ impl Club {
                     };
                     let goal = self.rating_goal((self.donations + 2) * (self.donations + 2) * 25);
                     self.message_by(format!(
-                        "Wealthy Heiress {name} has decided to donate a {} to your course. In the area near it, {effect}. More can be added to your course for ${} each. \"I'll be back if your {goal},\" she says.",
+                        "Wealthy Heiress {name} has decided to donate a {} to your course. In the area near it, {effect}. More can be added to your course for \u{a7}{} each. \"I'll be back if your {goal},\" she says.",
                         landmark_name(id),
                         (id * 5 + 5) * 200
                     ), g as i32, 1);

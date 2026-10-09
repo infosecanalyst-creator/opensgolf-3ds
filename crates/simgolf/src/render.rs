@@ -470,7 +470,7 @@ impl App {
                     v.push(PanelItem { label: format!("{pro}: Practice Round"), kind: 6, arg: 0 });
                     let m = if self.club.game & sg_core::pro::CHALLENGE != 0 && self.club.challenge_pro >= 0 {
                         let who = self.club.pros.get(self.club.challenge_pro as usize).map(|p| p.name.clone()).unwrap_or_default();
-                        format!("{pro}: Match vs. {who}  (${}/hole)", self.club.wager_level * 2000)
+                        format!("{pro}: Match vs. {who}  (\u{a7}{}/hole)", self.club.wager_level * 2000)
                     } else {
                         format!("{pro}: Match vs. a pro  (waiting for a challenge)")
                     };

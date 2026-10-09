@@ -226,7 +226,7 @@ impl Club {
         }
         let pro = self.roster.first().map(|p| p.name.clone()).unwrap_or_else(|| "Gary Golf".to_string());
         self.message(format!(
-            "The SGA is interested in holding the {} at {course_name}, with a first prize of ${},000! Click the tournament button on the {pro} panel to begin the tournament.",
+            "The SGA is interested in holding the {} at {course_name}, with a first prize of \u{a7}{},000! Click the tournament button on the {pro} panel to begin the tournament.",
             r.event, self.purse
         ));
         self.sound(0x2f, None);

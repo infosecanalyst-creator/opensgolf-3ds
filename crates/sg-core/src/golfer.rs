@@ -1225,8 +1225,14 @@ impl Club {
         }
         if self.game & game::TOURNAMENT == 0 {
             if self.year == 0 && self.fees_this_year == 0 {
-                let text =
-                    format!("{} has paid ${} in greens fees. Happy golfers pay more, so keep your golfers happy!", self.name(g), fee * 100);
+                // the exe's first-fee lesson (0x4c7444, 0x4c7408, 0x4c73cc, 0x4c7374, 0x4c7334)
+                let text = format!(
+                    "{} has just paid you your first greens fee of {} simoleans!  Golfers pay a fee at the end of each hole - happy \
+                     golfers pay higher fees, unhappy golfers pay less. Greens fees are your main source of revenue, so it pays to \
+                     keep your golfers happy. Refer to your financial report for more detailed information.",
+                    self.name(g),
+                    fee * 100
+                );
                 self.message_by(text, g as i32, 1);
             }
             self.fees_this_year += fee;
