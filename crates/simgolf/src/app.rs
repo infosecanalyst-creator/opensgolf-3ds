@@ -107,6 +107,8 @@ pub struct Prop {
     /// Drawn size (1 = the sprite's own) and height of the body above the ground in world units (the shadow stays down).
     pub scale: f32,
     pub lift: f32,
+    /// A golfer's colours: the clip is drawn in the palette composed for this outfit.
+    pub outfit: Option<sg_core::bodies::Outfit>,
 }
 
 impl Default for Prop {
@@ -133,6 +135,7 @@ impl Default for Prop {
             ambient: false,
             scale: 1.0,
             lift: 0.0,
+            outfit: None,
         }
     }
 }
@@ -391,6 +394,11 @@ pub struct App {
     pub title_mo: Image,
     /// The highlight art split per title menu button (0..5) and for the logo (6).
     pub title_mo_parts: Vec<crate::ui::Image>,
+    /// The swap palettes golfers are recoloured from, the palettes composed so far and the recoloured frames (sprite, frame,
+    /// outfit), dropped wholesale when the cache grows large.
+    pub swaps: sg_core::bodies::Swaps,
+    pub outfit_pals: HashMap<sg_core::bodies::Outfit, [u8; 768]>,
+    pub outfit_tex: HashMap<(usize, usize, sg_core::bodies::Outfit), miniquad::TextureId>,
     pub world_base: Image,
     pub theme_icons: [Image; 4],
     pub report_art: Image,
@@ -570,6 +578,9 @@ impl App {
             title_un: Image::default(),
             title_mo: Image::default(),
             title_mo_parts: Vec::new(),
+            swaps: Default::default(),
+            outfit_pals: HashMap::new(),
+            outfit_tex: HashMap::new(),
             world_base: Image::default(),
             theme_icons: [Image::default(); 4],
             report_art: Image::default(),
@@ -1644,6 +1655,7 @@ impl App {
                 self.club_tick();
             }
             self.staff_tick();
+            self.staff_animate();
             self.resident_tick();
         }
     }
@@ -1694,6 +1706,7 @@ impl App {
                 d = (d - 1) & 7;
             }
             let (wx, wz) = self.units_to_world(x, y);
+            let outfit = self.club.outfit(gi);
             let p = &mut self.props[pi];
             p.hidden = false;
             p.body = Some(b);
@@ -1703,6 +1716,7 @@ impl App {
             p.frame = frame;
             p.heading = DY[d as usize].atan2(DX[d as usize]).to_degrees();
             p.facing = -((d + 2 + (d & 1)) / 2);
+            p.outfit = Some(outfit);
         }
         self.update_staff_props();
         self.update_resident_props();
@@ -2705,6 +2719,38 @@ impl App {
         self.weed_sprite = self.sprite_for(weed, false, None);
     }
 
+    /// The clip set and state of an employee: (set, state) into staff_clips (state 0 walking, 1 standing, 2 working).
+    fn staff_clip_of(&self, e: &staff::Employee) -> (usize, usize) {
+        let set =
+            if e.job == staff::job::OWNER { 8 } else { ((-(e.job as i32) - 2) + if e.upgraded { 4 } else { 0 }).clamp(0, 7) as usize };
+        let state = if e.anim < staff::ANIM_STAND {
+            0
+        } else if e.anim == staff::ANIM_STAND {
+            1
+        } else {
+            2
+        };
+        (set, state)
+    }
+
+    /// One game tick of the employees' animation, as the exe's: two frames a tick walking, one otherwise; a finished action
+    /// clip goes back to standing.
+    fn staff_animate(&mut self) {
+        for i in 0..self.employees.len() {
+            let e = self.employees[i];
+            if !e.active {
+                continue;
+            }
+            let (set, state) = self.staff_clip_of(&e);
+            let n = self.staff_clips[set][state].0.map(|b| self.sprites[b].s.frames_per_view.max(1)).unwrap_or(1);
+            let e = &mut self.employees[i];
+            e.frame = e.frame.wrapping_add(if state == 0 { 2 } else { 1 });
+            if e.frame as i32 % n == 0 && e.anim == staff::ANIM_ACTION {
+                e.anim = staff::ANIM_STAND;
+            }
+        }
+    }
+
     /// Points the employee props at the employees: clip by job and state, frame advanced like the exe's (two a frame when
     /// walking), facing from the employee's direction.
     pub fn update_staff_props(&mut self) {
@@ -2723,33 +2769,26 @@ impl App {
                 self.props[pi].hidden = true;
                 continue;
             }
-            let set =
-                if e.job == staff::job::OWNER { 8 } else { ((-(e.job as i32) - 2) + if e.upgraded { 4 } else { 0 }).clamp(0, 7) as usize };
-            let state = if e.anim < staff::ANIM_STAND {
-                0
-            } else if e.anim == staff::ANIM_STAND {
-                1
-            } else {
-                2
-            };
+            let (set, state) = self.staff_clip_of(&e);
             let (body, shadow) = self.staff_clips[set][state];
             let Some(b) = body else {
                 self.props[pi].hidden = true;
                 continue;
             };
+            // the frame steps with the game tick (staff_tick), not with the screen's refresh
             let n = self.sprites[b].s.frames_per_view.max(1);
-            let step = if state == 0 { 2 } else { 1 };
-            let e = &mut self.employees[ei];
-            e.frame = e.frame.wrapping_add(step);
             let f = e.frame as i32 % n;
-            if f == 0 && e.anim == staff::ANIM_ACTION {
-                e.anim = staff::ANIM_STAND;
-            }
+            let e = &self.employees[ei];
             const DX: [f32; 8] = [0.0, 1.0, 1.0, 1.0, 0.0, -1.0, -1.0, -1.0];
             const DY: [f32; 8] = [-1.0, -1.0, 0.0, 1.0, 1.0, 1.0, 0.0, -1.0];
             let k = (e.dir as i32 & 7) as usize;
             let (x, z) = (e.x, e.y);
             let (wx, wz) = self.units_to_world(x, z);
+            let outfit = (e.job == staff::job::OWNER).then(|| {
+                let mut o = self.club.roster.first().map(|p| p.outfit(0)).unwrap_or_default();
+                o.alt_skin = 4; // the pro's hands are drawn pale, as for every pro
+                o
+            });
             let p = &mut self.props[pi];
             p.hidden = false;
             p.body = Some(b);
@@ -2757,6 +2796,7 @@ impl App {
             p.x = wx;
             p.z = wz;
             p.frame = f;
+            p.outfit = outfit;
             p.heading = DY[k].atan2(DX[k]).to_degrees();
         }
     }

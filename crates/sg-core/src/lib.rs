@@ -9,6 +9,7 @@
 
 pub mod assets;
 pub mod bink;
+pub mod bodies;
 pub mod celebs;
 pub mod championship;
 pub mod clubhouse;

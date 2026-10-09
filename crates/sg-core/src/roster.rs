@@ -25,6 +25,17 @@ pub struct Person {
     pub b23: u8,
     /// Record int +0x2c: non-zero fixes the skill class (low 3 bits) and the body.
     pub fixed: i32,
+    /// Record bytes +0x24 shirt, +0x25 trousers, +0x26 hands, +0x27 skin, +0x28 hair: the colours once fixed.
+    #[serde(default)]
+    pub shirt: u8,
+    #[serde(default)]
+    pub pants: u8,
+    #[serde(default)]
+    pub alt_skin: u8,
+    #[serde(default)]
+    pub skin: u8,
+    #[serde(default)]
+    pub hair: u8,
 }
 
 fn cstr(b: &[u8]) -> String {
@@ -44,6 +55,11 @@ impl Person {
             b21: r[0x21],
             b23: r[0x23],
             fixed: i32::from_le_bytes([r[0x2c], r[0x2d], r[0x2e], r[0x2f]]),
+            shirt: r[0x24],
+            pants: r[0x25],
+            alt_skin: r[0x26],
+            skin: r[0x27],
+            hair: r[0x28],
         }
     }
 

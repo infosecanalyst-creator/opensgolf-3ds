@@ -493,6 +493,7 @@ impl Stage {
             eprintln!("ui: could not load the Interface art or KLEPTO__.TTF, starting on the course");
         }
         app.load_story();
+        app.swaps = sg_core::bodies::Swaps::load(&app.game_path("Bodies"));
         if let Some(h) = std::env::var("SG_HOVER").ok().and_then(|v| v.parse().ok()) {
             app.hover = h; // test hook: a scripted still with the pointer over a menu item
         }

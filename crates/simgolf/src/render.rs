@@ -103,6 +103,31 @@ impl App {
         self.draw_lines(g, u, &bx, true, 1.0, [1.0, 0.95, 0.3, 1.0]);
     }
 
+    /// A person's frame in the palette of an outfit, recoloured on first use and cached.
+    fn outfit_texture(&mut self, g: &mut Gfx, si: usize, view: i32, frame: i32, o: sg_core::bodies::Outfit) -> Option<miniquad::TextureId> {
+        let i = self.sprites[si].s.frame_index(view, frame);
+        if self.sprites[si].s.indexed.is_empty() {
+            return None;
+        }
+        if let Some(&t) = self.outfit_tex.get(&(si, i, o)) {
+            return Some(t);
+        }
+        if !self.outfit_pals.contains_key(&o) {
+            let pal = self.swaps.compose(&o)?;
+            self.outfit_pals.insert(o, pal);
+        }
+        let pal = self.outfit_pals[&o];
+        let img = sg_core::sprites::recolour(&self.sprites[si].s, i, &pal)?;
+        if self.outfit_tex.len() > 6000 {
+            for (_, t) in self.outfit_tex.drain() {
+                g.ctx.delete_texture(t);
+            }
+        }
+        let t = g.texture(&img, false);
+        self.outfit_tex.insert((si, i, o), t);
+        Some(t)
+    }
+
     fn sprite_texture(&mut self, g: &mut Gfx, si: usize, view: i32, frame: i32) -> miniquad::TextureId {
         let i = self.sprites[si].s.frame_index(view, frame);
         if let Some(t) = self.sprites[si].tex[i] {
@@ -163,7 +188,10 @@ impl App {
                 view = ((k + 2 * quarter) % 8 + 8) % 8;
             }
             let (w, h, ax, ay) = (sp.w as f32, sp.h as f32, sp.anchor_x as f32, sp.anchor_y as f32);
-            let tex = app.sprite_texture(g, si, view, p.frame);
+            let tex = match p.outfit.filter(|_| !shadow) {
+                Some(o) => app.outfit_texture(g, si, view, p.frame, o).unwrap_or_else(|| app.sprite_texture(g, si, view, p.frame)),
+                None => app.sprite_texture(g, si, view, p.frame),
+            };
             let y = app.terrain.height_at(p.x, p.z) + if shadow { 0.0 } else { p.lift };
             let s = s * p.scale;
             let (l, r) = (-ax * s, (w - ax) * s);

@@ -22,6 +22,9 @@ pub struct Sprite {
     pub shadow: bool,
     /// View-major, RGBA, transparent where the key colour was.
     pub frames: Vec<Rgba>,
+    /// The palette indices of each frame, kept for golfer and celebrity clips, which are recoloured per person
+    /// (sg_core::bodies); empty for everything else.
+    pub indexed: Vec<Vec<u8>>,
 }
 
 impl Sprite {
@@ -50,8 +53,14 @@ pub fn load_sprite(flc_path: &Path, shadow: bool, palette_pcx: Option<&Path>) ->
         anchor_x: if f.has_ext { (f.canvas_w / 2) as i32 - f.crop_x as i32 } else { f.w as i32 / 2 },
         anchor_y: if f.has_ext { (f.canvas_h / 2) as i32 - f.crop_y as i32 } else { f.h as i32 },
         frames: Vec::with_capacity(f.frames.len()),
+        indexed: Vec::new(),
     };
+    let lower = flc_path.to_string_lossy().to_lowercase().replace('\\', "/");
+    let people = !shadow && ["/male/", "/female/", "/celebs/"].iter().any(|d| lower.contains(d));
     for src in &f.frames {
+        if people {
+            out.indexed.push(src.idx.clone());
+        }
         let mut ix = src.clone();
         if let Some(p) = over {
             ix.pal = p;
@@ -104,4 +113,16 @@ pub fn load_sprite(flc_path: &Path, shadow: bool, palette_pcx: Option<&Path>) ->
         out.frames.push(img);
     }
     Ok(out)
+}
+
+/// One frame of a person clip in the given palette: index 255 is transparent.
+pub fn recolour(s: &Sprite, frame: usize, pal: &[u8; 768]) -> Option<Rgba> {
+    let idx = s.indexed.get(frame)?;
+    let mut img = Rgba::new(s.w, s.h);
+    for (i, &c) in idx.iter().enumerate() {
+        let c = c as usize;
+        img.px[i * 4..i * 4 + 3].copy_from_slice(&pal[c * 3..c * 3 + 3]);
+        img.px[i * 4 + 3] = if c == 255 { 0 } else { 255 };
+    }
+    Some(img)
 }
