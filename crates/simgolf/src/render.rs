@@ -619,6 +619,7 @@ impl App {
         if self.paused {
             s.text_centered(g, 400.0, 120.0, "PAUSED", 24.0, rgb(1.0, 1.0, 0.8));
         }
+        self.draw_names(g, &s);
         self.draw_thoughts(g, &s);
         self.draw_dock(g, &s);
         self.draw_leaderboard(g, &s);

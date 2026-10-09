@@ -73,4 +73,56 @@ impl App {
             s.text_centered(g, x, y - up, &line.text, size, c);
         }
     }
+
+    /// Golfer names (0x462be0), with the "Display golfer names on screen" option at the closest zoom: centred on the golfer
+    /// in the small font, white, or red for one leaving the course (shown on alternate frames), with "!" for a hurried one;
+    /// golfers showing a thought are skipped unless selected. With the golfers panel open each name gets a mood bar 9 pixels
+    /// below: black from -12 to +12, coloured to (mood - 4) * 3.
+    pub fn draw_names(&self, g: &mut Gfx, s: &Ui) {
+        use sg_core::golfer::flag;
+        let exe_zoom = self.zoom * 4.0 / 0.905;
+        if !self.show_names || exe_zoom <= 3.0 || self.club.pro_aiming().is_some() {
+            return;
+        }
+        let c15 = |v: u16| rgb(((v >> 10) & 31) as f32 / 31.0, ((v >> 5) & 31) as f32 / 31.0, (v & 31) as f32 / 31.0);
+        let picked = self.card;
+        for gi in 0..SLOTS {
+            let gg = &self.club.g[gi];
+            if gg.hole <= 0 || gg.anim <= 5 || gg.anim == 0x10 || gg.flags & 0x8000 != 0 {
+                continue;
+            }
+            let selected = picked.is_some_and(|p| p == gi || p == gi ^ 1);
+            if gg.timer != 0 && !selected {
+                continue;
+            }
+            let leaving = gg.flags & flag::LEAVING != 0;
+            if leaving && self.game_tick & 6 == 0 {
+                continue;
+            }
+            let Some((x, y)) = self.screen_of(gg.x, gg.y) else { continue };
+            let mut name = self.club.name(gi);
+            if gg.flags & flag::HURRIED != 0 {
+                name.push('!');
+            }
+            let c = c15(if leaving { 0x7d08 } else { 0x7fff });
+            // APPROXIMATION: the exe's small font has its own dark edge; ours gets a one pixel shadow
+            s.text_centered(g, x + 1.0, y + 5.0, &name, 11.0, rgba(0.0, 0.0, 0.0, 0.8));
+            s.text_centered(g, x, y + 4.0, &name, 11.0, c);
+            if self.panel == 4 && self.club.game & sg_core::golfer::game::TOURNAMENT == 0 {
+                let m = gg.mood;
+                let bar = match m {
+                    m if m < 0 => 0x0000,
+                    m if m > 6 => 0x23e8,
+                    m if m > 4 => 0x1304,
+                    m if m > 2 => 0x6300,
+                    _ => 0x7d08,
+                };
+                s.fill(g, x - 12.0, y + 9.0, 24.0, 1.0, rgb(0.0, 0.0, 0.0));
+                let w = ((m - 4) * 3 + 12) as f32;
+                if w > 0.0 {
+                    s.fill(g, x - 12.0, y + 9.0, w, 1.0, c15(bar));
+                }
+            }
+        }
+    }
 }
