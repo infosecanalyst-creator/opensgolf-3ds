@@ -1470,8 +1470,7 @@ impl Stage {
                 }
             }
         }
-        let dir = self.app.course_file.parent().map(|p| p.to_path_buf()).unwrap_or_default().join("snapshots");
-        sg_core::png::write_png(dir.join(format!("accomp{id}.png")), &out);
+        sg_core::png::write_png(self.app.snapshot_dir().join(format!("accomp{id}.png")), &out);
         let tex = self.g.texture(&out, false);
         self.app.snapshots.insert(id, ui::Image { tex: Some(tex), w: 200.0, h: 160.0 });
     }
@@ -1480,9 +1479,12 @@ impl Stage {
         let (w, h) = (self.app.draw_w as u32, self.app.draw_h as u32);
         let params = |format| TextureParams { width: w, height: h, format, ..Default::default() };
         let color = self.g.ctx.new_render_texture(params(TextureFormat::RGBA8));
-        let depth = self.g.ctx.new_render_texture(params(TextureFormat::Depth));
+        // WebGL 2 refuses miniquad's unsized depth texture (the pass would be incomplete and the grab black), so the browser
+        // grabs without a depth buffer (the course draws the same: tried natively, a few edge pixels differ)
+        let depth = (!cfg!(target_arch = "wasm32")).then(|| self.g.ctx.new_render_texture(params(TextureFormat::Depth)));
+        // HD only: an anti-aliased pass resolving into `color`
         let msaa = hd::msaa_pass(&mut self.g, color, w, h);
-        let pass = msaa.map(|m| m.0).unwrap_or_else(|| self.g.ctx.new_render_pass(color, Some(depth)));
+        let pass = msaa.map(|m| m.0).unwrap_or_else(|| self.g.ctx.new_render_pass(color, depth));
         self.draw_frame(Some(pass));
         for t in msaa.map(|m| m.1).into_iter().flatten() {
             self.g.ctx.delete_texture(t);
@@ -1491,7 +1493,9 @@ impl Stage {
         self.g.ctx.texture_read_pixels(color, &mut raw);
         self.g.ctx.delete_render_pass(pass);
         self.g.ctx.delete_texture(color);
-        self.g.ctx.delete_texture(depth);
+        if let Some(d) = depth {
+            self.g.ctx.delete_texture(d);
+        }
         let mut img = sg_core::assets::Rgba::new(w, h);
         let stride = (w * 4) as usize;
         for y in 0..h as usize {

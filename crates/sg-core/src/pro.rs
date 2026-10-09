@@ -5,6 +5,7 @@
 //! Facts are from the publisher's golf.exe (docs/PUBLISHER_EXE_NOTES.md, "The player's pro"), restated in our own words.
 
 use crate::course::{idx, inside, Course};
+use crate::economy::money_digits;
 use crate::geom::{angle, clamp, cosr, dir8, len, sinr, tdist};
 use crate::golfer::{flag, game, Club, Column, Golfer, SLOTS};
 use crate::land::ExeRng;
@@ -348,8 +349,10 @@ impl Club {
         let pro = self.pros[r as usize].clone();
         let best = pro.skills.iter().copied().max().unwrap_or(0);
         let female = pro.body >= 4;
+        // the exe's pieces (0x4c6ba4, 0x4c6b68, 0x4c6b58, 0x4c6b44, 0x4c6b2c / 0x4c6b18, 0x4c6afc, 0x4c6af4, 0x4c6ad0,
+        // 0x4c6aa0); the amounts are plain numbers after the section sign
         let mut text = format!(
-            "Famous golfer {} challenges you to a match at your course with a wager of ${} a hole, and ${} for the match.",
+            "Famous golfer {} challenges you to a match at your course with a wager of \u{a7}{} per hole and \u{a7}{} for the match! ",
             pro.name,
             (5 * l + 5) * 400,
             (5 * l + 5) * 800
@@ -357,7 +360,7 @@ impl Club {
         if best > 0 {
             let names: Vec<&str> = (0..10).filter(|&k| pro.skills[k] == best).map(|k| SKILL_NAMES[k]).collect();
             text += &format!(
-                " {} is proud of {} {}0 percent skill rating in {}.",
+                "{} is proud of {} {}0 percent skill rating in {}",
                 if female { "She" } else { "He" },
                 if female { "her" } else { "his" },
                 best,
@@ -365,7 +368,7 @@ impl Club {
             );
         }
         let pro_name = self.roster.first().map(|p| p.name.clone()).unwrap_or_else(|| "Gary Golf".to_string());
-        text += &format!(" Click on the match icon on the {pro_name} panel when you are ready to start.");
+        text += &format!(". Click on the match icon on the {pro_name} panel when you are ready to start the match.");
         self.message(text);
         self.game |= CHALLENGE;
         self.sound(0x26, None);
@@ -390,12 +393,16 @@ impl Club {
         let (so, se) = (self.g[o].card[hu] as i32, self.g[e].card[hu] as i32);
         let at = (self.g[o].x, self.g[o].y);
         if so < se {
-            self.message_by(format!("{} wins hole {h} by a score of {so} to {se}. ${}", self.name(o), a * 100), self.gary, 0);
+            // the exe's pieces (0x4c7324, 0x4c7314, 0x4c730c, 0x4c7300 or 0x4c72f8, 0x4c4944)
+            let text =
+                format!("{} wins hole #{h} by a score of {so} to {se}! Collect \u{a7}{}.", self.name(o), money_digits(a as i64 * 100));
+            self.message_by(text, self.gary, 0);
             self.earn(a, Column::Other, at);
             self.sound(0x23, None);
         }
         if se < so {
-            self.message_by(format!("{} wins hole {h} by a score of {se} to {so}. -${}", self.name(e), a * 100), self.gary, 0);
+            let text = format!("{} wins hole #{h} by a score of {se} to {so}. Pay \u{a7}{}.", self.name(e), money_digits(a as i64 * 100));
+            self.message_by(text, self.gary, 0);
             self.earn(-a, Column::Other, at);
             self.sound(0x24, None);
         }
@@ -403,7 +410,8 @@ impl Club {
             let total = |c: &Golfer| (1..=hu).map(|k| c.card[k] as i32).sum::<i32>();
             let (to, te) = (total(&self.g[o]), total(&self.g[e]));
             if te < to {
-                self.message(format!("At the end of the match, {} wins. -${}", self.name(e), a * 100));
+                // 0x4c72dc with 0x4c72d0, 0x4c72b4 or 0x4c72a8 (the exe goes on with the standings, not in the port)
+                self.message(format!("At the end of the match, you lose \u{a7}{}.", money_digits(a as i64 * 100)));
                 self.earn(-a, Column::Other, at);
                 self.sound(0x24, None);
                 self.wager_level -= 1;
@@ -411,7 +419,7 @@ impl Club {
                 self.message("At the end of the match, the score is tied.".to_string());
                 self.wager_level -= 1;
             } else {
-                self.message(format!("At the end of the match, {} wins! ${}", self.name(o), a * 100));
+                self.message(format!("At the end of the match, you win \u{a7}{}.", money_digits(a as i64 * 100)));
                 self.earn(a, Column::Other, at);
                 self.sound(0x23, None);
                 self.trophies += 1;
@@ -555,10 +563,12 @@ impl Club {
                 self.message_by(format!("{name} acquires a new skill: {}!", SKILL_NAMES[k.min(9)]), g as i32, 1);
             } else {
                 self.pro_skill[k] += 1;
-                let mut t = format!("{name}'s {} skill improves to {}0%.", SKILL_NAMES[k.min(9)], self.pro_skill[k]);
+                // the exe's pieces (0x4c4ef0, the skill, 0x4c4ed8, the level, 0x4c4ed0; at the cap 0x4c4e88, the next rank and
+                // 0x4c4e7c, its slip included)
+                let mut t = format!("{name}'s '{}' skill improves to {}0%! ", SKILL_NAMES[k.min(9)], self.pro_skill[k]);
                 if self.pro_skill[k] as i32 == cap {
                     let next = crate::economy::RANK_NAMES[(rank as usize + 1).min(3)];
-                    t += &format!(" To further improve this skill you will need a {next} course.");
+                    t += &format!("To further improve this skill you will need expand your course to a {next} course. ");
                 }
                 self.message_by(t, g as i32, 1);
             }
@@ -618,6 +628,8 @@ mod tests {
         cl.match_money(2);
         let earned: i32 = cl.out.iter().map(|e| if let crate::golfer::Event::Earn { units, .. } = e { *units } else { 0 }).sum();
         assert_eq!(earned, 40);
+        let said = |cl: &Club, t: &str| cl.out.iter().any(|e| matches!(e, crate::golfer::Event::Message { text, .. } if text.ends_with(t)));
+        assert!(said(&cl, " wins hole #1 by a score of 4 to 5! Collect \u{a7}4,000."));
         // last hole: a tie on the hole, the pro wins the match by a stroke
         cl.out.clear();
         cl.g[2].card[2] = 3;
@@ -627,6 +639,7 @@ mod tests {
         cl.match_money(2);
         let earned: i32 = cl.out.iter().map(|e| if let crate::golfer::Event::Earn { units, .. } = e { *units } else { 0 }).sum();
         assert_eq!(earned, 40);
+        assert!(said(&cl, "At the end of the match, you win \u{a7}4,000."));
         assert_eq!(cl.trophies, 1);
         assert_eq!(cl.gary, -1);
         assert!(cl.awards & (1 << 5) != 0);

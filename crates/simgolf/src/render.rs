@@ -477,7 +477,7 @@ impl App {
                     v.push(PanelItem { label: format!("{pro}: Practice Round"), kind: 6, arg: 0 });
                     let m = if self.club.game & sg_core::pro::CHALLENGE != 0 && self.club.challenge_pro >= 0 {
                         let who = self.club.pros.get(self.club.challenge_pro as usize).map(|p| p.name.clone()).unwrap_or_default();
-                        format!("{pro}: Match vs. {who}  (${}/hole)", self.club.wager_level * 2000)
+                        format!("{pro}: Match vs. {who}  (\u{a7}{}/hole)", self.club.wager_level * 2000)
                     } else {
                         format!("{pro}: Match vs. a pro  (waiting for a challenge)")
                     };
@@ -591,9 +591,7 @@ impl App {
             s.text(g, 572.0, 30.0, &cash, 19.0, if red { rgb(1.0, 0.5, 0.5) } else { rgb(1.0, 1.0, 0.7) });
             s.text(g, 572.0, 52.0, &format!("Fun {fun}  Skill {skill}"), 15.0, rgb(0.9, 0.9, 1.0));
         }
-        self.draw_names(g, &s);
         self.draw_floats(g, &s);
-        self.draw_thoughts(g, &s);
         self.draw_advisor(g, &s);
         self.draw_dock(g, &s);
         self.draw_leaderboard(g, &s);

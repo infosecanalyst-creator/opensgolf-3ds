@@ -5,6 +5,7 @@
 //!
 //! Facts are from the publisher's golf.exe (docs/PUBLISHER_EXE_NOTES.md, "Special visitors"), restated in our own words.
 
+use crate::economy::money_digits;
 use crate::golfer::{Club, Column, Event};
 use crate::land::ExeRng;
 
@@ -35,6 +36,17 @@ pub fn landmark_name(t: i32) -> &'static str {
         "dusty dinosaur tarpit",
     ];
     N.get(t as usize).copied().unwrap_or("landmark")
+}
+
+/// A landmark's long name as the exe writes it after "a" (0x4074a0 with its second argument 1): with the "n" of "an" where
+/// the exe has one (not on the ancient stonehenge rock), otherwise after a space.
+pub fn landmark_after_a(t: i32) -> String {
+    let n = landmark_name(t);
+    if [2, 4, 5, 6, 13, 14].contains(&t) {
+        format!("n {n}")
+    } else {
+        format!(" {n}")
+    }
 }
 
 /// A landmark's short name (0x4074a0 with its second argument 0), as the landmark tool labels its preview.
@@ -243,12 +255,21 @@ impl Club {
             _ => "Wealthy Heiress",
         };
         let name = self.vip_name(p2);
+        // the exe's sentences (0x4d3af0, 0x4d3a88, 0x4d3a14 after 0x4d3b78); the CEO's overwrites the rating lead
         let text = if ceo {
-            format!("{who} {name} is playing your course today. If he likes it, he may invest in your club.")
+            format!(
+                "{who} {name} is playing your course today. If he likes your course he may invest in a seat on your board of directors!"
+            )
         } else if comm {
-            format!("{lead} and your fame is spreading... {who} {name} is playing your course today. If he likes it, he may approve an expansion.")
+            format!(
+                "{lead} and your fame is spreading. {who} {name} is playing your course today. If he likes your course he may \
+                 approve a request to purchase more land!"
+            )
         } else {
-            format!("{lead} and your fame is spreading... {who} {name} is playing your course today. If she likes it, she may donate a landmark.")
+            format!(
+                "{lead} and your fame is spreading. {who} {name} is playing your course today. If she enjoys her round she may \
+                 donate a valuable scenic landmark to your course."
+            )
         };
         self.message_by(text, p2 as i32, 1);
         self.g[p2].class = class;
@@ -288,9 +309,10 @@ impl Club {
         let m = self.g[g].mood;
         let finished = self.par(self.g[g].hole) == 0;
         let name = self.vip_name(g);
+        // the exe's pieces: "My partner " (0x4c70c4), the name, " has quit, even though " (0x4c70ac), before the remark
         let partner_quit = |me: &Club| {
             if m > 2 {
-                format!(" My partner {} has quit, even though", me.name(g ^ 1))
+                format!("My partner {} has quit, even though ", me.name(g ^ 1))
             } else {
                 String::new()
             }
@@ -303,7 +325,11 @@ impl Club {
                     if 2 * k < self.g[g].hole {
                         let amount = ((m > 4) as i32 + 1) * 50;
                         self.message_by(
-                            format!("Corporate CEO {name} has decided to invest ${} for a seat on the board, he says.", amount * 100),
+                            // the exe's pieces (0x4c71b0, 0x4c7124, 0x4c7100)
+                            format!(
+                                "Corporate CEO {name} has decided to invest in your course. 'I'll give you \u{a7}{} for a seat on the board' he says.",
+                                money_digits(amount as i64 * 100)
+                            ),
                             g as i32,
                             1,
                         );
@@ -311,13 +337,19 @@ impl Club {
                         self.log_event(crate::records::log::CEO, k);
                         self.sound(0x19, None);
                     } else {
-                        self.message_by(format!("Corporate CEO {name} has decided not to invest in your club."), g as i32, 1);
+                        self.message_by(
+                            format!(
+                                "Corporate CEO {name} has decided not to invest in your course. 'Good course, needs more holes' he says."
+                            ),
+                            g as i32,
+                            1,
+                        );
                         self.ceo_count = k - 1;
                     }
                 } else {
                     let pq = partner_quit(self);
                     self.message_by(
-                        format!("Corporate CEO {name} has decided not to invest in you.{pq} \"{}\" he fumes.", mood_remark(m)),
+                        format!("Corporate CEO {name} has decided not to invest in your course. '{pq}{}' he fumes.", mood_remark(m)),
                         g as i32,
                         1,
                     );
@@ -327,7 +359,7 @@ impl Club {
                 if finished && m > 2 {
                     let goal = self.rating_goal((self.difficulty + 2) * (self.purchases + 3) * 50);
                     self.message_by(format!(
-                        "County commissioner {name} has decided to approve an expansion request! \"I'll be back again if your {goal},\" he says."
+                        "County commissioner {name} has decided to approve an expansion request! 'I'll be back again if your {goal}', he says."
                     ), g as i32, 1);
                     self.sound(0x2f, None);
                     self.land_offer = true;
@@ -335,7 +367,7 @@ impl Club {
                     let pq = partner_quit(self);
                     self.message_by(
                         format!(
-                            "County commissioner {name} has decided not to approve your expansion request.{pq} \"{}\" he comments.",
+                            "County commissioner {name} has decided not to approve your expansion request. '{pq}{}' he comments.",
                             mood_remark(m)
                         ),
                         g as i32,
@@ -347,7 +379,7 @@ impl Club {
                 if !finished || m < 3 {
                     let pq = partner_quit(self);
                     self.message_by(format!(
-                        "Wealthy Heiress {name} has decided not to donate a landmark.{pq} \"{}\" she comments. \"I'll be back in a while.\"",
+                        "Wealthy Heiress {name} has decided not to donate a landmark to your course. '{pq}{}' she comments. 'I'll be back in a few months.'",
                         mood_remark(m)
                     ), g as i32, 1);
                 } else {
@@ -364,17 +396,32 @@ impl Club {
                         }
                     }
                     let effect = match id & 3 {
-                        0 => "golfers will have happy thoughts".to_string(),
-                        1 => "no dandelions will appear".to_string(),
-                        2 => format!("{}'s skills will improve rapidly", self.roster.first().map(|p| p.name.clone()).unwrap_or_default()),
-                        _ => "golfer stories will proceed happily".to_string(),
+                        0 => "golfers will have happy thoughts.".to_string(),
+                        1 => "no dandelions will appear.".to_string(),
+                        2 => format!("{}'s skills will improve rapidly.", self.roster.first().map(|p| p.name.clone()).unwrap_or_default()),
+                        _ => "golfer stories will proceed happily.".to_string(),
                     };
-                    let goal = self.rating_goal((self.donations + 2) * (self.donations + 2) * 25);
-                    self.message_by(format!(
-                        "Wealthy Heiress {name} has decided to donate a {} to your course. In the area near it, {effect}. More can be added to your course for ${} each. \"I'll be back if your {goal},\" she says.",
-                        landmark_name(id),
-                        (id * 5 + 5) * 200
-                    ), g as i32, 1);
+                    // the heiress's goal reads "is up to", the commissioner's "is over"
+                    let v = (self.donations + 2) * (self.donations + 2) * 25;
+                    let goal = if self.difficulty < 2 {
+                        format!("fun rating is up to {v}")
+                    } else {
+                        format!("skill rating is up to {}.{:02}", v / 100, (v % 100).abs())
+                    };
+                    // the exe's pieces (0x4c6fa4, 0x4c6f88, 0x4074a0's name with its article, 0x4c6f54, the effect, 0x4c6e78, the
+                    // short name, 0x4c6e54, the price, 0x4c6e38, the goal, 0x4c6df8)
+                    self.message_by(
+                        format!(
+                        "Wealthy Heiress {name} has decided to donate a{} to your course! In the area near this landmark {effect} Go to \
+                         'Landmarks' under the Improvements menu to place your landmark. Additional {}s can be added to your course for \
+                         \u{a7}{}. 'I'll be back if your {goal}', she says.",
+                        landmark_after_a(id),
+                        landmark_short_name(id),
+                        money_digits(((id * 5 + 5) * 200) as i64)
+                    ),
+                        g as i32,
+                        1,
+                    );
                     self.donations += 1;
                     self.sound(0x2f, None);
                     self.landmarks_owned |= 1 << id;
@@ -426,5 +473,25 @@ mod tests {
         assert_eq!(p[0].skills[0], 3);
         assert_eq!(p[1].skills[2], 10);
         assert_eq!(mood_remark(5), "This course is quite nice.");
+    }
+
+    #[test]
+    fn verdicts_in_the_exe_words() {
+        assert_eq!(landmark_after_a(0), " garden sundial");
+        assert_eq!(landmark_after_a(2), "n authentic Civil War cannon");
+        let mut cl = Club::default();
+        let mut rng = ExeRng::from_clock(1);
+        cl.holes[1].par = 4;
+        cl.g[3].kind = 0x80;
+        cl.g[3].hole = 1;
+        cl.g[3].mood = 1;
+        cl.vip_verdict(&mut rng, 3);
+        let said: Vec<String> =
+            cl.out.iter().filter_map(|e| if let Event::Message { text, .. } = e { Some(text.clone()) } else { None }).collect();
+        assert_eq!(
+            said,
+            ["Wealthy Heiress Ivana Richman has decided not to donate a landmark to your course. 'I don't like this course much.' \
+              she comments. 'I'll be back in a few months.'"]
+        );
     }
 }

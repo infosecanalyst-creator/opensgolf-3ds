@@ -992,7 +992,9 @@ impl App {
         for ty in 0..t.h {
             for tx in 0..t.w {
                 let kind = t.path_at(tx, ty);
-                if kind == 0 {
+                // nothing is drawn out of bounds: a property's paths beyond the purchased land (round a landmark the
+                // land generator placed there) show once the tract is bought
+                if kind == 0 || t.type_at(tx, ty) == 20 {
                     continue;
                 }
                 let n = t.path_at(tx, ty - 1) != 0;
@@ -1418,6 +1420,13 @@ impl App {
         self.club.new_game(&mut self.exe_rng);
         self.course = Course::default();
         self.staff_golfers.clear();
+        // what was showing of the old course: its floating money, a golfer's card, the shot analysis
+        self.floats = [(0, 0, 0, 0); 8];
+        self.card = None;
+        self.analysis = None;
+        // and its messages: one showing would carry over, and Repeat Last Message would bring it back
+        self.ticker = Default::default();
+        self.last_message.clear();
         self.econ.init();
         self.sim_time = 0.0;
         self.sync_course();
@@ -1991,6 +2000,11 @@ impl App {
     /// The whole-game save file, next to the course file.
     pub fn game_file(&self) -> PathBuf {
         self.course_file.with_extension("sgs")
+    }
+
+    /// Where the accomplishment snapshots (accomp<id>.png) are written and the board reads them back.
+    pub fn snapshot_dir(&self) -> PathBuf {
+        self.course_file.parent().map(|p| p.to_path_buf()).unwrap_or_default().join("snapshots")
     }
 
     /// Saves the whole game.
@@ -3206,6 +3220,10 @@ impl App {
         for a in 0..land::N {
             for b in 0..land::N {
                 let i = (a * land::N + b) as usize;
+                // nothing stands on land outside the property (the generator's benches round a landmark beyond the border)
+                if land.ty[i] == land::T_OUT {
+                    continue;
+                }
                 let f = land.flags[i];
                 if f & 0x20 != 0 && land.ty[i] == land::T_WATER {
                     // bridge pieces on a path over water

@@ -54,6 +54,47 @@ pub fn write_png(path: impl AsRef<std::path::Path>, img: &Rgba) -> bool {
     crate::fsutil::write_file(path, &bytes)
 }
 
+/// Decodes a PNG as `encode_png` writes it (RGBA8, every row unfiltered), e.g. the accomplishment snapshots the board
+/// reloads; anything else gives None.
+pub fn decode_png(b: &[u8]) -> Option<Rgba> {
+    if b.len() < 8 || &b[1..4] != b"PNG" {
+        return None;
+    }
+    let (mut w, mut h, mut z) = (0u32, 0u32, Vec::new());
+    let mut p = 8;
+    while p + 8 <= b.len() {
+        let n = u32::from_be_bytes(b[p..p + 4].try_into().ok()?) as usize;
+        let body = b.get(p + 8..p + 8 + n)?;
+        match &b[p + 4..p + 8] {
+            b"IHDR" if n >= 13 => {
+                if body[8..13] != [8, 6, 0, 0, 0] {
+                    return None;
+                }
+                w = u32::from_be_bytes(body[0..4].try_into().ok()?);
+                h = u32::from_be_bytes(body[4..8].try_into().ok()?);
+            }
+            b"IDAT" => z.extend_from_slice(body),
+            b"IEND" => break,
+            _ => {}
+        }
+        p += n + 12;
+    }
+    let raw = miniz_oxide::inflate::decompress_to_vec_zlib(&z).ok()?;
+    let stride = w as usize * 4;
+    if w == 0 || h == 0 || raw.len() < (stride + 1) * h as usize {
+        return None;
+    }
+    let mut img = Rgba::new(w, h);
+    for y in 0..h as usize {
+        let row = &raw[y * (stride + 1)..(y + 1) * (stride + 1)];
+        if row[0] != 0 {
+            return None;
+        }
+        img.px[y * stride..(y + 1) * stride].copy_from_slice(&row[1..]);
+    }
+    Some(img)
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -64,5 +105,17 @@ mod tests {
         assert_eq!(&b[b.len() - 8..b.len() - 4], b"IEND");
         // CRC of an empty IEND chunk is fixed by the PNG spec.
         assert_eq!(&b[b.len() - 4..], &[0xAE, 0x42, 0x60, 0x82]);
+    }
+
+    #[test]
+    fn png_round_trips() {
+        let mut img = crate::assets::Rgba::new(3, 2);
+        for (i, v) in img.px.iter_mut().enumerate() {
+            *v = (i * 7) as u8;
+        }
+        let back = super::decode_png(&super::encode_png(&img).unwrap()).unwrap();
+        assert_eq!((back.w, back.h), (3, 2));
+        assert_eq!(back.px, img.px);
+        assert!(super::decode_png(b"not a png").is_none());
     }
 }

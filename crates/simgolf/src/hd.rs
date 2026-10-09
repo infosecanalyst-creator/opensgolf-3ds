@@ -248,7 +248,8 @@ pub struct MsaaTarget {
 /// when the renderer cannot resolve.
 pub fn msaa_pass(g: &mut Gfx, resolve: TextureId, w: u32, h: u32) -> Option<(miniquad::RenderPass, [TextureId; 2])> {
     use miniquad::{TextureFormat, TextureParams};
-    if !active() || !g.ctx.info().features.resolve_attachments {
+    // not in the browser: WebGL 2 refuses miniquad's depth render textures (see Stage::grab)
+    if !active() || cfg!(target_arch = "wasm32") || !g.ctx.info().features.resolve_attachments {
         return None;
     }
     let p = |format| TextureParams { width: w, height: h, format, sample_count: SAMPLES, ..Default::default() };

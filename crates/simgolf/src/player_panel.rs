@@ -226,7 +226,7 @@ impl App {
         let (a, b, x) = if !vs_pro {
             (" Practice".to_string(), "  Round".to_string(), 334.0)
         } else if c.game & game::TOURNAMENT == 0 {
-            ("Exhibition".to_string(), format!("${}/hole", group(c.wager_level.max(0) as u64 * 2000)), 334.0)
+            ("Exhibition".to_string(), format!("\u{a7}{}/hole", group(c.wager_level.max(0) as u64 * 2000)), 334.0)
         } else {
             ("Professional".to_string(), "Tournament".to_string(), 325.0)
         };

@@ -56,9 +56,11 @@ fn c15(v: u32) -> [f32; 4] {
     rgb(((v >> 10) & 31) as f32 / 31.0, ((v >> 5) & 31) as f32 / 31.0, (v & 31) as f32 / 31.0)
 }
 
+/// The histograph's height of a sample (docs/UI_SCREENS2.md): linear to 500, then ten to one; a sample below 501 counts by
+/// its absolute value, so a negative fun rating or balance is drawn mirrored above the baseline.
 fn squash(v: i32) -> i32 {
-    if v <= 500 {
-        v / 2
+    if v < 501 {
+        v.abs() / 2
     } else {
         v / 10 + 200
     }
@@ -237,13 +239,14 @@ impl App {
             let r = h.get(i).copied().unwrap_or([0; 4]);
             let ys = [
                 base - squash(r[2] / skill_s) as f32,
-                base - squash((r[0] / cdiv).abs()) as f32,
+                base - squash(r[0] / cdiv) as f32,
                 base - squash(r[1]) as f32,
                 base - 4.0 * r[3] as f32,
             ];
             let cols = [c15(0x4010), if r[0] < 0 { c15(0x7d08) } else { black() }, c15(0x03e0), c15(0x0210)];
             for k in 0..4 {
-                let (a, b) = (prev[k].max(72.0), ys[k].max(72.0));
+                // the plot's clip rectangle (106, 72, 598, 450)
+                let (a, b) = (prev[k].clamp(72.0, 522.0), ys[k].clamp(72.0, 522.0));
                 s.fill(g, x0, a.min(b), (x1 - x0).max(1.0), (a - b).abs().max(1.0), cols[k]);
                 prev[k] = ys[k];
             }
@@ -830,5 +833,20 @@ impl App {
         k.history = c.history;
         k.roster[0] = c.roster[0].clone();
         println!("moved to {}, cash {:.0}", self.course_name, self.econ.cash);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::squash;
+
+    #[test]
+    fn histograph_heights_mirror_negative_samples() {
+        assert_eq!(squash(300), 150);
+        assert_eq!(squash(-300), 150);
+        assert_eq!(squash(500), 250);
+        assert_eq!(squash(501), 250);
+        assert_eq!(squash(2500), 450);
+        assert_eq!(squash(-2000), 1000);
     }
 }

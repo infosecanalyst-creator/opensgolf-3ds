@@ -364,6 +364,10 @@ pub struct Club {
     pub award_pending: i32,
     pub award_point: (i32, i32),
     pub award_frames: i32,
+    /// Each accomplishment queues its own snapshot when it is recorded (0x46e7b0), though only the last of several earned
+    /// together opens the board: the ids and map points not yet taken.
+    #[serde(skip)]
+    pub award_snaps: Vec<(usize, (i32, i32))>,
     pub event_log: Vec<u16>,
     pub history: Vec<[i32; 4]>,
     pub course_name: String,
@@ -469,6 +473,7 @@ impl Club {
             award_pending: -1,
             award_point: (-1, -1),
             award_frames: 0,
+            award_snaps: Vec::new(),
             event_log: vec![0; 500],
             history: vec![[0; 4]; 500],
             course_name: String::new(),
@@ -1225,8 +1230,14 @@ impl Club {
         }
         if self.game & game::TOURNAMENT == 0 {
             if self.year == 0 && self.fees_this_year == 0 {
-                let text =
-                    format!("{} has paid ${} in greens fees. Happy golfers pay more, so keep your golfers happy!", self.name(g), fee * 100);
+                // the exe's first-fee lesson (0x4c7444, 0x4c7408, 0x4c73cc, 0x4c7374, 0x4c7334)
+                let text = format!(
+                    "{} has just paid you your first greens fee of {} simoleans!  Golfers pay a fee at the end of each hole - happy \
+                     golfers pay higher fees, unhappy golfers pay less. Greens fees are your main source of revenue, so it pays to \
+                     keep your golfers happy. Refer to your financial report for more detailed information.",
+                    self.name(g),
+                    fee * 100
+                );
                 self.message_by(text, g as i32, 1);
             }
             self.fees_this_year += fee;
@@ -1281,7 +1292,9 @@ impl Club {
             };
             if let Some(w) = who {
                 let r = crate::vips::mood_remark(self.g[g].mood);
-                self.message_by(format!("{w} {} is playing the last hole on your course. \"{r}\"", self.vip_name(g)), g as i32, 1);
+                // the exe's 0x4c71c0 and the closing quote 0x4c4e54
+                let text = format!("{w} {} is playing the last hole on your course. He was last heard to mutter, '{r}'", self.vip_name(g));
+                self.message_by(text, g as i32, 1);
             }
         }
         let nhu = nh.clamp(0, 18) as usize;
@@ -1381,11 +1394,23 @@ impl Club {
         m.level = (m.level & !7) | ((m.level + 1) & 7);
         let lvl = m.level & 7;
         let name = self.name(g);
+        // the exe's pieces (0x4c48e8 or 0x4c4924 and its adjective, the level's name from 0x4c2a88, 0x4c48cc, then what the
+        // level brings: 0x4c4884, or 0x4c483c with 2 or 5 and 0x4c481c); the message window's wrap folds the exe's double
+        // space after the level name
         let text = match lvl {
-            0..=2 => format!("{name} applies for membership."),
-            3 => format!("{name} has decided to upgrade to a prestigious Silver membership."),
-            4 => format!("{name} has decided to upgrade to a coveted Gold membership."),
-            _ => format!("{name} has decided to upgrade to an exclusive Platinum membership."),
+            0..=2 => format!("{name} applies for membership at your club! "),
+            3 => format!(
+                "{name} has decided to upgrade to a prestigious Silver membership at your club! Silver members will pay big bucks \
+                 for an attractive home site on your course."
+            ),
+            4 => format!(
+                "{name} has decided to upgrade to a coveted Gold membership at your club! Gold members like to drive around in \
+                 shiny customized golf carts and pay \u{a7}200 extra greens fees per hole."
+            ),
+            _ => format!(
+                "{name} has decided to upgrade to an exclusive Platinum membership at your club! Platinum members like to drive \
+                 around in shiny customized golf carts and pay \u{a7}500 extra greens fees per hole."
+            ),
         };
         // the exe posts this with priority 0 and upgrades only when it shows (0x406670); here it always shows
         self.message_by(text, g as i32, 1);
@@ -1615,20 +1640,21 @@ impl Club {
 
     /// A golfer whose mood fell below zero quits: the club hears why, a member resigns, and the golfer storms off.
     fn quit(&mut self, g: usize) {
-        let reason = match self.g[g].thought & 0x7f {
-            4 => "will be looking for a tougher course".to_string(),
-            8 | 0x17 | 0x1e => "thinks your course needs improvement".to_string(),
-            9 => "has punched out another golfer".to_string(),
-            0xc => format!("has wrapped {} club around a tree", self.his_her(g)),
-            0xd => format!("has thrown {} clubs into the lake", self.his_her(g)),
-            0xe => "is too thirsty to play any more".to_string(),
-            0xf => "is too hungry to keep playing".to_string(),
-            0x15 => "has insulted another golfer".to_string(),
-            0x1a => "is too tired to continue".to_string(),
-            _ => "is leaving the course in disgust".to_string(),
+        // the exe's reasons end in "after", "on" (the club thrown or wrapped) or "at" (the golfer hit or insulted)
+        let (reason, word) = match self.g[g].thought & 0x7f {
+            4 => ("will be looking for a tougher course".to_string(), "after"),
+            8 | 0x17 | 0x1e => ("thinks your course needs improvement".to_string(), "after"),
+            9 => ("has punched out another golfer".to_string(), "at"),
+            0xc => (format!("has wrapped {} club around a tree", self.his_her(g)), "on"),
+            0xd => (format!("has thrown {} clubs into the lake", self.his_her(g)), "on"),
+            0xe => ("is too thirsty to play any more".to_string(), "after"),
+            0xf => ("is too hungry to keep playing".to_string(), "after"),
+            0x15 => ("has insulted another golfer".to_string(), "at"),
+            0x1a => ("is too tired to continue".to_string(), "after"),
+            _ => ("is leaving the course in disgust".to_string(), "after"),
         };
         let h = self.g[g].hole;
-        let at = if h < 19 { format!("after hole {h}") } else { "after today's round".to_string() };
+        let at = if h < 19 { format!("{word} hole {h}") } else { format!("{word} today's round") };
         let name = self.name(g);
         // one ticker message, the resignation appended, said by the golfer; the exe frees the ticker first (0x40cb00 with
         // priority 0 right after clearing its busy flag), so it always shows
@@ -2280,8 +2306,11 @@ impl Club {
         self.g[g].anim = anim::STAND;
         if self.g[g].mood < 0 && self.g[g].vip() != 0x20 {
             let h = self.g[g].hole;
-            let text =
-                format!("{} and {} are leaving the course at hole {h}. 'Arghh, I am so tired of waiting...'", self.name(g), self.name(p));
+            let text = format!(
+                "{} and {} are leaving the course at hole {h}, 'Arghh, I am so tired of waiting for these idiots!'",
+                self.name(g),
+                self.name(p)
+            );
             self.message_by(text, g as i32, 1);
             self.sound(0x29, None);
             self.g[g].pause = 0;
@@ -3477,6 +3506,32 @@ mod tests {
         club.holes[19].pin = (3, 22);
         club.next_hole = 2;
         (c, club)
+    }
+
+    #[test]
+    fn quit_messages_in_the_exe_words() {
+        let (_, mut club) = test_course();
+        let said = |cl: &mut Club| {
+            let t = cl.out.iter().rev().find_map(|e| if let Event::Message { text, .. } = e { Some(text.clone()) } else { None });
+            cl.out.clear();
+            t.unwrap_or_default()
+        };
+        club.g[4].roster = 1;
+        club.g[4].hole = 3;
+        club.g[4].thought = 0xd;
+        club.quit(4);
+        let t = said(&mut club);
+        assert!(t.ends_with(" clubs into the lake on hole 3."), "{t}");
+        club.g[4].thought = 0x15;
+        club.g[4].hole = 3;
+        club.quit(4);
+        let t = said(&mut club);
+        assert!(t.ends_with(" has insulted another golfer at hole 3."), "{t}");
+        club.g[4].thought = 0xe;
+        club.g[4].hole = 19;
+        club.quit(4);
+        let t = said(&mut club);
+        assert!(t.ends_with(" is too thirsty to play any more after today's round."), "{t}");
     }
 
     #[test]

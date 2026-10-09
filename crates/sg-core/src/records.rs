@@ -78,6 +78,9 @@ impl Club {
         }
         self.award_pending = id as i32;
         self.award_point = at;
+        if at.0 >= 0 {
+            self.award_snaps.push((id as usize, at));
+        }
         self.award_frames = 0;
         true
     }
@@ -108,7 +111,7 @@ impl Club {
             log::CEO => "J.P. Bigdome joins the board.".into(),
             log::HAPPY => format!("Happy Ending: {}", self.stories.title(arg).trim()),
             log::LAND => "Additional land purchased.".into(),
-            log::HEIRESS => format!("Ivana donates a {}", crate::vips::landmark_name(arg)),
+            log::HEIRESS => format!("Ivana donates a {}", crate::vips::landmark_short_name(arg)),
             _ => String::new(),
         }
     }
@@ -156,5 +159,9 @@ mod tests {
         assert!(!cl.award_at(1, (10, 10)), "earned once");
         assert_eq!(cl.award_title(1), "1st Dogleg Left Hole");
         assert_eq!(cl.earned[1].as_ref().map(|e| e.tick), Some(0xc00));
+        // two earned together: the board opens for the last, both get their snapshot
+        assert!(cl.award_at(0, (20, 20)));
+        assert_eq!(cl.award_pending, 0);
+        assert_eq!(cl.award_snaps, vec![(1, (10, 10)), (0, (20, 20))]);
     }
 }
