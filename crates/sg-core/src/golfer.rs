@@ -364,6 +364,10 @@ pub struct Club {
     pub award_pending: i32,
     pub award_point: (i32, i32),
     pub award_frames: i32,
+    /// Each accomplishment queues its own snapshot when it is recorded (0x46e7b0), though only the last of several earned
+    /// together opens the board: the ids and map points not yet taken.
+    #[serde(skip)]
+    pub award_snaps: Vec<(usize, (i32, i32))>,
     pub event_log: Vec<u16>,
     pub history: Vec<[i32; 4]>,
     pub course_name: String,
@@ -469,6 +473,7 @@ impl Club {
             award_pending: -1,
             award_point: (-1, -1),
             award_frames: 0,
+            award_snaps: Vec::new(),
             event_log: vec![0; 500],
             history: vec![[0; 4]; 500],
             course_name: String::new(),

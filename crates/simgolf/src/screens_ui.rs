@@ -898,11 +898,10 @@ impl App {
 
     /// After the club's tick: the board opens twenty frames after an accomplishment (0x46e810).
     pub fn board_tick(&mut self) {
+        // every accomplishment recorded has its snapshot taken, also those earned together with another
+        self.snapshot_due.append(&mut self.club.award_snaps);
         if self.club.award_pending < 0 {
             return;
-        }
-        if self.club.award_frames == 0 && self.club.award_point.0 >= 0 {
-            self.snapshot_due.push((self.club.award_pending as usize, self.club.award_point));
         }
         self.club.award_frames += 1;
         // the board waits until the course view is showing (another screen open would otherwise lose it)

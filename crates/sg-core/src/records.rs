@@ -78,6 +78,9 @@ impl Club {
         }
         self.award_pending = id as i32;
         self.award_point = at;
+        if at.0 >= 0 {
+            self.award_snaps.push((id as usize, at));
+        }
         self.award_frames = 0;
         true
     }
