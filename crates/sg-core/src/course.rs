@@ -8,6 +8,11 @@ use crate::land::{Land, Object, BUILDINGS};
 pub const N: i32 = 50;
 pub const NN: usize = 2500;
 
+/// The exe's height step (the int at 0x4c2e00): screen pixels per corner level per zoom step, used as `level * step * zoom
+/// / 4` for the ground and in the ball, balloon and waterfall lifts. Nothing writes it, so its value is the one in the
+/// publisher exe's initialised data: 5.
+pub const HEIGHT_STEP_PX: i32 = 5;
+
 /// Tile types the golfer code tests by number.
 pub mod t {
     pub const TEE: u8 = 0;

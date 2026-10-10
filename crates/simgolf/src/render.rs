@@ -38,19 +38,21 @@ impl App {
         let mv = Mat4::rotate(pitch_for(self.draw_w, self.draw_h), 1.0, 0.0, 0.0)
             .mul(&Mat4::rotate((45.0 + self.rot) as f64, 0.0, 1.0, 0.0))
             .mul(&Mat4::translate(-self.cam_x, 0.0, -self.cam_z));
-        // Directional light fixed in eye space. APPROXIMATION: the original's light setup is not decoded.
+        // Terrain.dll's light 0: the theme's Lighting.txt colours, a direction fixed in eye space, OpenGL's default material
+        // with a white specular of shininess 13 (sg_core::terrain::Lighting). The water's texture is not animated (the
+        // renderer has no clock); the exe animates water with its ripple, rock and waterfall sprites (wild_ui).
         let mut lit = Uniforms::flat(&proj, &mv);
         lit.lit = 1.0;
-        lit.light_amb = self.light.ambient.map(|v| v * 0.6);
-        lit.light_dif = self.light.diffuse.map(|v| v * 0.55);
-        for i in 0..self.batches.len() {
-            let mut u = lit;
-            if self.batches[i].water {
-                // APPROXIMATION: water shimmers by drifting its texture a pixel or so; the original's water animation is not decoded.
-                u.uv_offset = [0.014 * (self.time as f32 * 1.3).sin(), 0.014 * (self.time as f32 * 0.9).cos()];
-            }
-            let b = &self.batches[i];
-            g.draw_mesh(Mode::Solid, &b.mesh, b.tex, &u);
+        // CALIBRATED: the decoded light leaves flat ground at about 58% of its texture, but the game's own rendered terrain
+        // icons (Data/<theme>.pcx, e.g. desert sand 223,161,96 against its texture's 234,171,110) show about 95%, so
+        // something in the original's setup brightens it further (not yet found). Ambient and diffuse are scaled to match.
+        const BRIGHTNESS: f32 = 1.74;
+        lit.light_amb = self.light.ambient.map(|v| v * BRIGHTNESS);
+        lit.light_dif = self.light.diffuse.map(|v| v * BRIGHTNESS);
+        lit.light_spec = self.light.specular;
+        lit.light_dir = sg_core::terrain::light_direction();
+        for b in &self.batches {
+            g.draw_mesh(Mode::Solid, &b.mesh, b.tex, &lit);
         }
         for b in &self.wall_batches {
             g.draw_mesh(Mode::Solid, &b.mesh, b.tex, &lit);
@@ -80,25 +82,27 @@ impl App {
         let ball = (gg.bx, gg.by);
         let opt = self.club.planner.option;
         let line = sg_core::pro::aim_line(ball, &p, opt);
-        let n = line.len().max(2) as f32 - 1.0;
-        let lift = match opt {
-            3 => 3.0,
-            4 => 0.0,
-            _ => 2.0,
-        } * p.distance as f32
-            / 24.0;
-        let pts: Vec<[f32; 3]> = line
+        let zoom = self.exe_zoom();
+        let lifts = sg_core::pro::aim_lifts(p.distance, opt, zoom);
+        let mv = self.mv;
+        let (ux, uy, uz) = (mv[1], mv[5], mv[9]);
+        let vscale = (self.draw_w / 800.0).min(self.draw_h / 600.0);
+        let px = self.upp * vscale; // world units per 800 x 600 pixel
+                                    // a ground point moved `up` pixels up the screen
+        let lifted = |p: [f32; 3], up: f32| [p[0] + ux * up * px, p[1] + uy * up * px, p[2] + uz * up * px];
+        let ground: Vec<[f32; 3]> = line
             .iter()
-            .enumerate()
-            .map(|(i, &(x, y))| {
+            .map(|&(x, y)| {
                 let (wx, wz) = self.units_to_world(x, y);
-                let t = i as f32 / n;
-                // the arc's height: zero at both ends (an approximation of the exe's per-point screen lift)
-                [wx, self.terrain.height_at(wx, wz) + 4.0 + lift * 4.0 * t * (1.0 - t) * TILE_SIZE / 8.0, wz]
+                [wx, self.terrain.height_at(wx, wz), wz]
             })
             .collect();
-        self.draw_lines(g, u, &pts, false, 2.5, [0.0, 0.0, 0.0, 0.6]);
-        self.draw_lines(g, u, &pts, false, 1.2, [1.0, 1.0, 1.0, 1.0]);
+        let shadow: Vec<[f32; 3]> = ground.iter().map(|&q| lifted(q, -1.0)).collect();
+        let arc: Vec<[f32; 3]> = ground.iter().zip(&lifts).map(|(&q, &l)| lifted(q, l)).collect();
+        // line width 2 pixels at the nearest zoom, 1 below it
+        let half = if zoom >= 4.0 { 1.0 } else { 0.5 } * vscale;
+        self.draw_lines(g, u, &shadow, false, half, [0.0, 0.0, 0.0, 1.0]);
+        self.draw_lines(g, u, &arc, false, half, [1.0, 1.0, 1.0, 1.0]);
         let (wx, wz) = self.units_to_world(p.x, p.y);
         let r = TILE_SIZE * 0.5;
         let corners = [(wx - r, wz - r), (wx + r, wz - r), (wx + r, wz + r), (wx - r, wz + r)];
@@ -249,8 +253,8 @@ impl App {
     /// cut under it (192, 2) as its shadow, a pixel below the ground point; a ball resting on ground whose hazard byte is
     /// above 0 (rough, sand and the like) is a white dash two pixels long instead, without a shadow. Both cuts are queued at
     /// scale 4, so they are 2 pixels at the closest zoom and shrink with it. A sweet shot (golfer flag 0x400000) leaves a
-    /// yellow streak 2 pixels wide from where the ball was drawn last frame. The ball's height above the ground is the
-    /// port's (the exe lifts it by bz * 0x4c2e00 * zoom / 80 pixels; 0x4c2e00 is data not read).
+    /// yellow streak 2 pixels wide from where the ball was drawn last frame. A ball in the air is drawn `ball_lift` pixels
+    /// straight up the screen from its ground point.
     fn draw_balls(&mut self, g: &mut Gfx, u: &Uniforms) {
         use sg_core::golfer::flag;
         let mv = self.mv;
@@ -292,7 +296,8 @@ impl App {
             }
             let half = side / 2.0;
             quad(g, ground, -half, 1.0 - half, side, side, black);
-            let ball = [bx, gy + gl.bz as f32 * sg_core::terrain::HEIGHT_STEP / 16.0, bz];
+            let lift = sg_core::flight::ball_lift(gl.bz, self.exe_zoom()) * px;
+            let ball = [bx + ux * lift, gy + uy * lift, bz + uz * lift];
             quad(g, ball, -half, -half, side, side, white);
             if gl.flags & flag::SWEET != 0 {
                 if let Some(prev) = self.ball_trail[i] {
@@ -615,10 +620,6 @@ impl App {
                 let c = if *on { rgb(1.0, 1.0, 1.0) } else { rgb(0.55, 0.55, 0.65) };
                 s.text(g, 608.0, 440.0 - h + 20.0 + 16.0 * i as f32, l, 13.0, c);
             }
-        }
-        if self.econ.game_over {
-            s.fill(g, 200.0, 250.0, 400.0, 80.0, rgba(0.5, 0.05, 0.05, 0.9));
-            s.text_centered(g, 400.0, 300.0, "GAME OVER", 40.0, rgb(1.0, 1.0, 1.0));
         }
         g.flush();
     }

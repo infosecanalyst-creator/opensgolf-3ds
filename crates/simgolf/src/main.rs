@@ -632,6 +632,11 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 app.club.landmarks_owned = at(0) as u32;
                 app.club.free_landmarks = at(1) as u32;
             }
+            // test hook: the board's debt counter and the cash in units
+            b'D' if item.len() > 2 && v.len() >= 2 => {
+                app.econ.debt_stage = at(0);
+                app.econ.cash = at(1) as f64 * sg_core::economy::Economy::UNIT;
+            }
             b'o' => {
                 let ok = app.open_hole();
                 println!("open hole: {ok}, next hole {}", app.club.next_hole);
@@ -687,7 +692,10 @@ impl Stage {
                 eprintln!("no golfer matching '{name}'");
                 std::process::exit(1)
             };
-            app.skills.v = hit.skill;
+            // the player's pro takes the famous golfer's ten skills (the shot planner reads them from the pro's record)
+            for (k, &v) in hit.skill.iter().enumerate() {
+                app.club.pro_skill[k] = v.clamp(0, 15) as u8;
+            }
             println!("golfer: {}, skills {}", hit.name, hit.skill.iter().map(|s| format!("{s:X}")).collect::<Vec<_>>().join(" "));
         }
         let info = g.ctx.info();
@@ -864,6 +872,8 @@ impl Stage {
     /// What a popup menu's choice does (docs/DECODE_MENUS.md 3, 4, 5).
     fn popup_done(&mut self, r: popup_ui::PopupResult) {
         let Some(kind) = self.app.popup.as_ref().map(|p| p.kind) else { return };
+        // the career's end takes any answer but the first (Esc too) as the main menu
+        let r = if kind == popup_ui::PopupKind::CareerOver { Some(r.unwrap_or(1)) } else { r };
         let Some(k) = r else {
             self.app.close_popup();
             return;
@@ -897,6 +907,13 @@ impl Stage {
             PopupKind::LandOffer => {
                 if k == 0 {
                     self.app.open_land_screen();
+                }
+            }
+            PopupKind::CareerOver => {
+                if k == 0 {
+                    self.app.econ.continue_in_sandbox();
+                } else {
+                    self.app.end_career();
                 }
             }
             PopupKind::System => match k {
@@ -1586,6 +1603,10 @@ impl EventHandler for Stage {
             self.toggle_pause();
         }
         let app = &mut self.app;
+        // the board terminated the contract: the main loop asks what next as soon as the game is back on the course
+        if app.econ.game_over && app.screen == Screen::Play && app.popup.is_none() {
+            app.open_popup(popup_ui::PopupKind::CareerOver);
+        }
         app.screen_audio();
         if app.screen == Screen::Play {
             let hit = app.pick_ground(self.mouse.0, self.mouse.1);

@@ -15,7 +15,6 @@ use crate::render::Rect;
 use crate::ui::{load_pcx, load_pcx_alpha, money, rgb, rgba, text_width, Image, Screen as Ui};
 use sg_core::economy::{self, Economy, WAGE_UNITS};
 use sg_core::land;
-use sg_core::terrain::Terrain;
 
 /// A hit region of the exe (0x467170): with a = |dx * xs| and b = |dy * ys| the distance is (b + 2a) / 2 when b < a, else
 /// (a + 2b) / 2 (an octagon), and the point is inside when that is below r.
@@ -340,8 +339,6 @@ const ELEVATION_TOOLS: [(&str, Hit, f32, f32, Cut, Cut); 4] = [
 /// "Buildings": back to the Buildings panel.
 const ELEVATION_BACK: (Hit, Cut, f32, f32) = (hit(270, 499, 16), (0.0, 400.0, 41.0, 44.0), 254.0, 483.0);
 const ELEVATION_UNDO: (Hit, Cut, Cut, f32, f32) = (hit(267, 561, 12), (0.0, 450.0, 34.0, 40.0), (50.0, 450.0, 34.0, 40.0), 253.0, 546.0);
-/// The area tool's smoothing kernel over the 5 x 5 vertices around the edited one (the odd 3 in row 3 is the exe's).
-const AREA_KERNEL: [[i32; 5]; 5] = [[6, 4, 3, 4, 6], [4, 2, 1, 2, 4], [3, 1, 0, 1, 3], [4, 2, 1, 2, 3], [6, 4, 3, 4, 6]];
 
 // ---- People: the employee panel ------------------------------------------------------------------------------------------------
 
@@ -550,7 +547,7 @@ impl App {
         self.build_available(kind as usize)
             && kind + level < self.unlocked()
             && level < 2
-            && (level == 0 || economy::rank(self.holes.len()) >= 2)
+            && (level == 0 || economy::rank(self.hole_numbers.len()) >= 2)
     }
 
     /// The hired employees (indices into `employees`) in hiring order.
@@ -1116,7 +1113,7 @@ impl App {
         s.text_centered(g, 377.0, 123.0, "HIRE AN EMPLOYEE", 17.0, ink);
         let (mx, my) = self.pstate.mouse;
         let hot = hire_choice_at(mx, my);
-        let skilled_ok = economy::rank(self.holes.len()) >= 1;
+        let skilled_ok = economy::rank(self.hole_numbers.len()) >= 1;
         for k in 0..4 {
             let y = HIRE_BAND_Y[k];
             s.text(g, 232.0, y - 9.0, HIRE_BLURB[k], 12.0, ink);
@@ -1257,7 +1254,7 @@ impl App {
                 // refused in the exe's order, with the error sound
                 let kind = 6 + i;
                 let level = self.lot_level(kind);
-                let refusal = if (level != 0 && economy::rank(self.holes.len()) < 2) || level > 1 {
+                let refusal = if (level != 0 && economy::rank(self.hole_numbers.len()) < 2) || level > 1 {
                     Some(if level < 2 { MSG_UPGRADE_EARLY } else { MSG_MAX_LEVEL })
                 } else if !self.build_available(kind as usize) {
                     Some(MSG_LOCKED)
@@ -1361,7 +1358,7 @@ impl App {
     fn hire_click(&mut self, px: f32, py: f32) {
         if let Some(c) = hire_choice_at(px, py) {
             let (kind, skilled) = (c / 2, c % 2 == 1);
-            if skilled && economy::rank(self.holes.len()) < 1 {
+            if skilled && economy::rank(self.hole_numbers.len()) < 1 {
                 self.ui_sound(0x18);
                 self.show_toast(SKILLED_REFUSAL);
                 return;
@@ -1378,42 +1375,12 @@ impl App {
         }
     }
 
-    /// The Elevation panel's edits at vertex (cx, cy), as the exe does them: the vertex tool moves one vertex; the square tool
-    /// raises the lowest (or lowers the highest) corners of the 2 x 2 block x..x+1, y-1..y; the area tool moves the vertex and
-    /// then pulls the 5 x 5 vertices around it along by the smoothing kernel. The exe's heights run 3..13; the port's own
-    /// range is kept. No money is charged (none is in the exe's edit routines).
+    /// The Elevation panel's edits at vertex (cx, cy), as the exe does them (sg_core::terrain::Terrain::edit_elevation: the
+    /// vertex, the 2 x 2 square or the area, heights 3..13 with the lowering cap off hilly land, nothing spreading). No money
+    /// is charged (none is in the exe's edit routines).
     pub fn edit_elevation(&mut self, cx: i32, cy: i32, delta: i32) {
-        let t = &mut self.terrain;
-        let at = |t: &Terrain, x: i32, y: i32| -> Option<i32> {
-            (x >= 0 && y >= 0 && x <= t.w && y <= t.h).then(|| t.corner[(y * (t.w + 1) + x) as usize] as i32)
-        };
-        match self.pstate.elev_tool {
-            1 => {
-                let block = [(cx, cy - 1), (cx + 1, cy - 1), (cx, cy), (cx + 1, cy)];
-                let hs: Vec<(i32, i32, i32)> = block.iter().filter_map(|&(x, y)| at(t, x, y).map(|v| (x, y, v))).collect();
-                let pick = if delta > 0 { hs.iter().map(|v| v.2).min() } else { hs.iter().map(|v| v.2).max() };
-                if let Some(m) = pick {
-                    for &(x, y, _) in hs.iter().filter(|v| v.2 == m) {
-                        t.raise_corner(x, y, delta);
-                    }
-                }
-            }
-            2 => {
-                t.raise_corner(cx, cy, delta);
-                if let Some(c) = at(t, cx, cy) {
-                    for (i, row) in AREA_KERNEL.iter().enumerate() {
-                        for (j, &k) in row.iter().enumerate() {
-                            let (x, y) = (cx + i as i32 - 2, cy + j as i32 - 2);
-                            let Some(v) = at(t, x, y) else { continue };
-                            if (delta > 0 && v < c - k) || (delta < 0 && v > c + k) {
-                                t.raise_corner(x, y, delta);
-                            }
-                        }
-                    }
-                }
-            }
-            _ => t.raise_corner(cx, cy, delta),
-        }
+        let hilly = self.land.as_ref().is_some_and(|l| l.slot.record().relief == 2);
+        self.terrain.edit_elevation(self.pstate.elev_tool as i32, cx, cy, delta > 0, hilly);
         self.dirty = true;
         self.snd(if delta > 0 { "Interface/Bass Up 2.wav" } else { "Interface/Bass Down 2.wav" }, 0.6, false);
     }

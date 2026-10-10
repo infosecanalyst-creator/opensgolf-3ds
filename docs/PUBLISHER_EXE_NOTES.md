@@ -12,7 +12,7 @@ Method: only facts are written down here (rules, names, thresholds), in our own 
 - Happy golfers pay higher fees, unhappy golfers pay less. Fees are paid at the end of each hole. Fee levels can be raised (the SGA rating raises them).
 - Hole classes and their meaning: Freeway = length; Precise = accuracy; Heroic = length plus imagination; Strategic = accuracy plus imagination; Classic = all three; Breather = easy hole.
 - Two ratings per course: skill rating and fun rating. Golfers have an attitude. Top 18 and Top 100 hole listings exist, plus a 100 star rating achievement.
-- Debt ladder: a warning that gives two years to return to positive cash, then the board is concerned, then very worried, then your contract is terminated. (Our 30 day grace is a placeholder to replace.)
+- Debt ladder: at each year end in the red the board is concerned (two years to return to positive cash), then very worried (one more year), then the contract is terminated and the player picks Sandbox Mode or the main menu (docs/DECODE_WORLD2.md 6.5).
 - Membership: member tiers Member, Silver, Gold, Platinum. Members buy home lots, golf carts, and the roster can decline.
 - Tournaments: prizes can be doubled for passing the stricter SGA evaluation; named prize levels of $500,000 and $1,000,000 appear as achievements.
 - Lots can be sold for cash. Four difficulties are chosen at start.
@@ -753,3 +753,29 @@ Confidence: that the system exists and what it offers, high; the details of each
 * Tournament by total: under 45 Jr. Qualifying School, then every 5 points: SGA Qualifying School, Jr. Tour Event, Jr. Tour Championship, SGA Amateur Championship, Senior SGA Tour Event, Senior SGA Championship, SGA Tour Event, SGA Players Championship, SGA Championship, and from 90 the Mini Slam (Grand Slam for an 18 hole Championship grade course). A total of 0 or less prints "Improvement Required" and no tournament.
 * First prize in thousands = (((total - 50)/5) + 5) * (grade + 1) * (H + 1) * 2. Each lower place gets two thirds of the place above. A prize of 0 is replaced by H*20 - 20. When the winner is the player slot (slot 1), the club's cash rises by the prize and a "fame" counter (0x5787cc) rises by 4 - place (at least 1).
 * The offer: when ticks % 8192 == 4096 (the start of July), no tournament is pending (0x5a59f8 is -1) and the flags 0x1200000 are clear, the evaluation runs silently and, if it yields a prize, the SGA offers: "The SGA is interested in holding a tournament at your course. 'We'd like to schedule the <name> at your course with a first prize of <n>,000. Open Golf Tournament here as soon as possible.'" Playing the tournament, the field, scoring and leaderboard are not decoded.
+
+## Heights on the screen, elevation edits, the end of a career, tournament pace (decoded)
+* The height step at 0x4c2e00 is an int that nothing writes; its initialised value in the publisher exe's .data is 5. The
+  ground lifts a corner of height h by (h - 3) * 5 * zoom / 4 pixels (zoom 0x4c2844, 1..4); a balloon climbs while it is
+  below corner(x, y) * 5 + 60 (or + 40) (0x40c170 gives 3 off the map).
+* The ball in the air (0x415652..0x4157b5) is drawn (5 * zoom * height) / 5 / 16 pixels above its ground point (height +0xdc,
+  each division toward zero), so height * zoom / 16; its shadow stays on the ground (sg_core::flight::ball_lift).
+* The aim line (0x41bb13..0x41c0bd): the points of sg_core::pro::aim_line are drawn twice, in black one pixel below their
+  ground points (the shadow) and in white lifted by 0, A/3/8, A/2/8, A/2/8, A/3/8, 0 (and 0) pixels, A = zoom x distance x
+  (3 for the high shot, 0 for option 4, else 2); line width 2 at zoom 4, 1 below (3 with the flag at 0x5a9cbc).
+* Elevation (0x41d997 lower, 0x41db46 raise, sounds 0xc8 / 0xc7): heights are the bytes at 0x5a4998 + 51a + b. Vertex: +1
+  clamped to 3..13; -1 clamped to 3..13 when the relief byte (0x571ff6 + 46 * site) is 2 (hilly), else to 3..10. Square: the
+  lowest corners of the block (a..a+1, b-1..b) +1 while below 13, or the highest -1 while above 3, without touching the
+  vertex first. Area: the vertex edit, then 0x406f20 / 0x406f90 over the 5 x 5 vertices with the kernel at 0x4c2f68 (no
+  bounds or range checks). Nothing else changes: the refresh 0x42f7a0 only rebuilds the derived levels and wall bits, and
+  the terrain wrapper 0x449fa0 walks each DLL tile corner to the exe's height with elevateCorner / lowerCorner.
+* The end of a career: see docs/DECODE_WORLD2.md 6.5.
+* Tournament pace: the tick advances once per frame (0x41762f) whatever the game mode (only the pause flag 4 stops it), the
+  golfers' routine 0x4289e0 runs once per tick, and the year end is skipped only in championship play (0x4182e6, flag
+  0x4000000), not in a tournament. In a tournament (flag 0x200000) every golfer walks one speed step faster (the walking
+  step in 0x4289e0), the
+  cup is smaller and the putting test stricter; nothing skips walking or waiting and time is not compressed. The "fast"
+  flag 0x59b04c, which would double walking and skip the frame wait, is never written. A round of four to five hours of
+  game time (the SGA's "Time to Play": a hole adds half its ticks and the sum is divided by 40, so 80 ticks a minute) is
+  about 18,800 ticks, so an 18 hole tournament runs over two
+  game years in the exe too.

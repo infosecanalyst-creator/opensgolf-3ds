@@ -18,6 +18,8 @@ pub enum PopupKind {
     Prefs,
     /// The County Commissioner's offer to buy land.
     LandOffer,
+    /// The end of a career: the board terminated the contract (main loop 0x420ae2).
+    CareerOver,
 }
 
 #[derive(Clone, Debug)]
@@ -121,6 +123,18 @@ impl App {
                 0,
                 160.0,
                 450.0,
+            ),
+            // the debt counter past 2 (three year ends in the red): the box at (250, 150), text 0x4c5ad0
+            PopupKind::CareerOver => (
+                vec![
+                    "Your career as a golf course designer",
+                    "has ended.  Will you...",
+                    " Continue this game in Sandbox Mode.",
+                    " Return to Main Menu.",
+                ],
+                0,
+                250.0,
+                150.0,
             ),
         };
         let checks = if kind == PopupKind::Prefs {

@@ -491,10 +491,78 @@ impl Club {
     }
 }
 
+/// The port's own tooling, not a rule of the game: terrain painted outside the hole tool (a course file, the demo course, a
+/// scripted edit) has tees and greens but no hole records. Each 8-connected cluster of tee tiles, in reading order of its
+/// first tile (b, then a), is paired with the nearest unused cluster of two or more green tiles whose centre lies at least
+/// 2.5 tiles away; the pair is (tee tile, green tile), each the cluster's mean tile.
+pub fn painted_pairs(c: &Course) -> Vec<((i32, i32), (i32, i32))> {
+    use crate::course::N;
+    let clusters = |ty: u8| {
+        let mut out: Vec<(f32, f32, usize)> = Vec::new();
+        let mut seen = vec![false; crate::course::NN];
+        for b in 0..N {
+            for a in 0..N {
+                if seen[idx(a, b)] || c.ty[idx(a, b)] != ty {
+                    continue;
+                }
+                seen[idx(a, b)] = true;
+                let mut stack = vec![(a, b)];
+                let (mut sa, mut sb, mut n) = (0.0f32, 0.0f32, 0usize);
+                while let Some((x, y)) = stack.pop() {
+                    sa += x as f32;
+                    sb += y as f32;
+                    n += 1;
+                    for dy in -1..=1 {
+                        for dx in -1..=1 {
+                            let (nx, ny) = (x + dx, y + dy);
+                            if inside(nx, ny) && !seen[idx(nx, ny)] && c.ty[idx(nx, ny)] == ty {
+                                seen[idx(nx, ny)] = true;
+                                stack.push((nx, ny));
+                            }
+                        }
+                    }
+                }
+                out.push((sa / n as f32, sb / n as f32, n));
+            }
+        }
+        out
+    };
+    let tees = clusters(t::TEE);
+    let mut greens: Vec<(f32, f32, bool)> = clusters(t::GREEN).into_iter().filter(|g| g.2 >= 2).map(|g| (g.0, g.1, false)).collect();
+    let mut out = Vec::new();
+    for &(ta, tb, _) in &tees {
+        let best = greens
+            .iter()
+            .enumerate()
+            .filter(|(_, g)| !g.2)
+            .map(|(i, g)| (i, (g.0 - ta).hypot(g.1 - tb)))
+            .min_by(|x, y| x.1.total_cmp(&y.1));
+        let Some((i, d)) = best else { continue };
+        if d < 2.5 {
+            continue;
+        }
+        greens[i].2 = true;
+        out.push(((ta as i32, tb as i32), (greens[i].0 as i32, greens[i].1 as i32)));
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::course::Course;
+
+    #[test]
+    fn painted_tee_and_green_pair_up() {
+        let mut c = course();
+        c.ty[idx(5, 5)] = t::TEE;
+        for (a, b) in [(5, 20), (6, 20), (5, 21), (6, 21)] {
+            c.ty[idx(a, b)] = t::GREEN;
+        }
+        // a lone green tile is not a green
+        c.ty[idx(30, 6)] = t::GREEN;
+        assert_eq!(painted_pairs(&c), vec![((5, 5), (5, 20))]);
+    }
 
     fn course() -> Course {
         let mut c = Course::default();

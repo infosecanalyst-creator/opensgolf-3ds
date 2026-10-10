@@ -8,11 +8,9 @@ use sg_core::course::Course;
 use sg_core::economy::{self, Economy};
 use sg_core::fsutil::resolve;
 use sg_core::golfer::{self as golf, Club};
-use sg_core::holes::*;
 use sg_core::land::{self, ExeRng, Land, Noise, Slot};
 use sg_core::mixer::Mixer;
 use sg_core::properties::{PROPERTIES, START_FUNDS};
-use sg_core::shot::GolferSkills;
 use sg_core::sprites::{load_sprite, Sprite};
 use sg_core::staff::{self, Employee, StaffEvent, StaffGolfer, TileState};
 use sg_core::terrain::*;
@@ -317,7 +315,6 @@ pub fn read_save(path: &Path) -> Result<SaveGame, String> {
 pub struct Batch {
     pub tex: TextureId,
     pub mesh: Mesh,
-    pub water: bool,
 }
 
 pub struct App {
@@ -336,7 +333,6 @@ pub struct App {
     /// Paths not joined to the clubhouse, drawn as mud tracks (manual p. 18).
     pub mud_batches: Vec<Batch>,
     pub wall_batches: Vec<Batch>,
-    pub hole: HoleInfo,
     pub last_report: String,
     pub econ: Economy,
     pub cam_x: f32,
@@ -356,8 +352,7 @@ pub struct App {
     /// The golfers and the course as they see it (the exe's golfer table and tile arrays).
     pub club: Club,
     pub course: Course,
-    /// The open holes (par set), drawn and reported from the golfers' hole records, and their hole numbers.
-    pub holes: Vec<HoleRoute>,
+    /// The numbers of the open holes (par set), from the golfers' hole records.
     pub hole_numbers: Vec<i32>,
     /// The terrain came from outside the hole tool (demo course, saved terrain, scripted edits): its painted tee and green
     /// pairs become holes at the next course sync.
@@ -576,7 +571,6 @@ pub struct App {
     /// World units per drawable pixel (last render).
     pub upp: f32,
     pub course_file: PathBuf,
-    pub skills: GolferSkills,
     // Sound
     pub mixer: Option<Arc<Mixer>>,
     pub audio: Option<crate::audio::AudioOut>,
@@ -623,7 +617,6 @@ impl App {
             path_batches: Vec::new(),
             mud_batches: Vec::new(),
             wall_batches: Vec::new(),
-            hole: HoleInfo::default(),
             last_report: String::new(),
             econ: Economy::default(),
             cam_x: 0.0,
@@ -640,7 +633,6 @@ impl App {
             time: 0.0,
             club: Club::default(),
             course: Course::default(),
-            holes: Vec::new(),
             hole_numbers: Vec::new(),
             adopt_holes: true,
             sim_time: 0.0,
@@ -771,7 +763,6 @@ impl App {
             mv: [0.0; 16],
             upp: 1.0,
             course_file: save_dir().join("course.sgc"),
-            skills: GolferSkills::default(),
             mixer: None,
             audio: None,
             mute: false,
@@ -949,8 +940,8 @@ impl App {
         Vert { pos: [v.x, v.y, v.z], uv: [v.u, v.v], normal: [v.nx, v.ny, v.nz], color: [1.0; 4] }
     }
 
-    fn upload(g: &mut Gfx, map: BTreeMap<usize, (TextureId, Vec<Vert>, bool)>) -> Vec<Batch> {
-        map.into_values().map(|(tex, v, water)| Batch { tex, mesh: g.mesh(&v), water }).collect()
+    fn upload(g: &mut Gfx, map: BTreeMap<usize, (TextureId, Vec<Vert>)>) -> Vec<Batch> {
+        map.into_values().map(|(tex, v)| Batch { tex, mesh: g.mesh(&v) }).collect()
     }
 
     fn clear_batches(&mut self, g: &mut Gfx) {
@@ -965,7 +956,7 @@ impl App {
         self.clear_batches(g);
         self.terrain.desert = self.theme == 2; // the original swaps shallow water for its desert variant in this theme
         self.terrain.sand_phase = ((self.rot / 90.0).round() as i32).rem_euclid(4);
-        let mut map: BTreeMap<usize, (TextureId, Vec<Vert>, bool)> = BTreeMap::new();
+        let mut map: BTreeMap<usize, (TextureId, Vec<Vert>)> = BTreeMap::new();
         let mut tris = Vec::new();
         let mut order: HashMap<Option<TextureId>, usize> = HashMap::new();
         for y in 0..self.terrain.h {
@@ -979,12 +970,9 @@ impl App {
                 for t in &tris {
                     let path = self.catalog.pick(t.tex_type, t.set, t.variation).cloned();
                     let tex = path.and_then(|p| self.texture_for(g, &p));
-                    let water =
-                        tex.is_some() && (t.tex_type == TT_WATER_SHALLOW as i32 || t.tex_type == TT_MARSH as i32 || is_water(t.tex_type));
                     let next = order.len();
                     let key = *order.entry(tex).or_insert(next);
-                    let e = map.entry(key).or_insert_with(|| (tex.unwrap_or(g.white), Vec::new(), water));
-                    e.2 |= water;
+                    let e = map.entry(key).or_insert_with(|| (tex.unwrap_or(g.white), Vec::new()));
                     e.1.extend(t.v.iter().map(Self::to_vert));
                 }
             }
@@ -1001,7 +989,15 @@ impl App {
         if t.path_kind.is_empty() {
             return;
         }
-        let connected = paths_connected_to_clubhouse(t);
+        // joined to the clubhouse: the exe's tile flag 0x40 from the clubhouse flood, which the terrain renderer gets with
+        // each path (no land yet: every path counts as joined)
+        let connected: Option<Vec<bool>> = self.land.as_ref().map(|l| {
+            let mut l = l.clone();
+            l.sync_from_terrain(t);
+            l.joined_tiles()
+        });
+        let joined_at =
+            |tx: i32, ty: i32| connected.as_ref().is_none_or(|j| !sg_core::course::inside(tx, ty) || j[sg_core::course::idx(tx, ty)]);
         let (ox, oz) = (-t.w as f32 * TILE_SIZE * 0.5, -t.h as f32 * TILE_SIZE * 0.5);
         struct Piece {
             r: [f32; 4],
@@ -1043,7 +1039,7 @@ impl App {
                 if e {
                     pieces.push(Piece { r: [b, a, 1.0, b], disc: false });
                 }
-                let joined = connected[t.tile_index(tx, ty)] != 0;
+                let joined = joined_at(tx, ty);
                 let vert = |wx: f32, wz: f32, u: f32, v: f32| {
                     let y = t.height_at(wx, wz) + 1.5;
                     let e = 12.0;
@@ -1080,15 +1076,15 @@ impl App {
                 }
             }
         }
-        let mut paths: BTreeMap<usize, (TextureId, Vec<Vert>, bool)> = BTreeMap::new();
-        let mut mud: BTreeMap<usize, (TextureId, Vec<Vert>, bool)> = BTreeMap::new();
+        let mut paths: BTreeMap<usize, (TextureId, Vec<Vert>)> = BTreeMap::new();
+        let mut mud: BTreeMap<usize, (TextureId, Vec<Vert>)> = BTreeMap::new();
         let mut order: HashMap<&'static str, usize> = HashMap::new();
         for (joined, file, v) in jobs {
             let Some(tex) = self.theme_texture(g, file) else { continue };
             let next = order.len();
             let key = *order.entry(file).or_insert(next);
             let m = if joined { &mut paths } else { &mut mud };
-            m.entry(key).or_insert_with(|| (tex, Vec::new(), false)).1.extend(v);
+            m.entry(key).or_insert_with(|| (tex, Vec::new())).1.extend(v);
         }
         self.path_batches = Self::upload(g, paths);
         self.mud_batches = Self::upload(g, mud);
@@ -1167,7 +1163,7 @@ impl App {
             }
         }
         if !batch.is_empty() {
-            self.wall_batches.push(Batch { tex, mesh: g.mesh(&batch), water: false });
+            self.wall_batches.push(Batch { tex, mesh: g.mesh(&batch) });
         }
     }
 
@@ -1357,7 +1353,7 @@ impl App {
         if self.econ.sandbox {
             return 17;
         }
-        self.club.unlocked.max(land::unlocked_kinds(self.holes.len(), false))
+        self.club.unlocked.max(land::unlocked_kinds(self.hole_numbers.len(), false))
     }
 
     pub fn build_available(&self, kind: usize) -> bool {
@@ -1538,41 +1534,24 @@ impl App {
         self.rebuild_hole_routes();
     }
 
-    /// The open holes as routes for drawing and the course report.
+    /// The numbers of the open holes, from the golfers' hole records.
     fn rebuild_hole_routes(&mut self) {
         let numbers: Vec<i32> = (1..19).filter(|&h| self.club.holes[h as usize].par != 0).collect();
-        let p = &self.terrain.path;
-        self.holes = numbers
-            .iter()
-            .map(|&h| {
-                let rec = &self.club.holes[h as usize];
-                let (tx, tz) = self.terrain.tile_centre(rec.back.0, rec.back.1);
-                let (gx, gz) = self.terrain.tile_centre(rec.pin.0, rec.pin.1);
-                let near = |x: f32, z: f32, px: f32, pz: f32| (x - px).hypot(z - pz) < 300.0;
-                let route = if p.len() >= 4 && near(p[0], p[1], tx, tz) && near(p[p.len() - 2], p[p.len() - 1], gx, gz) {
-                    p.clone()
-                } else {
-                    vec![tx, tz, gx, gz]
-                };
-                HoleRoute { tee_x: tx, tee_z: tz, green_x: gx, green_z: gz, length: (gx - tx).hypot(gz - tz), par: rec.par, route }
-            })
-            .collect();
         if numbers != self.hole_numbers {
             self.hole_numbers = numbers;
-            self.hole_stats = vec![HoleStat::default(); self.holes.len()];
+            self.hole_stats = vec![HoleStat::default(); self.hole_numbers.len()];
         }
     }
 
     /// Terrain from outside the hole tool: each painted tee and green pair not yet a hole is built and opened, in the order
-    /// the pairs are found (tees top row first), as if made with the tool.
+    /// the pairs are found (tees top row first), as if made with the tool (sg_core::holetool::painted_pairs, the port's own
+    /// tooling).
     fn adopt_painted_holes(&mut self) {
-        for r in find_holes(&self.terrain) {
+        for (tee, pin) in sg_core::holetool::painted_pairs(&self.course) {
             let h = self.club.next_hole;
             if !(1..19).contains(&h) {
                 break;
             }
-            let tee = self.terrain.tile_of(r.tee_x, r.tee_z);
-            let pin = self.terrain.tile_of(r.green_x, r.green_z);
             let numbered =
                 |c: &Course, (a, b): (i32, i32)| sg_core::course::inside(a, b) && c.flags[sg_core::course::idx(a, b)] & 0x1f != 0;
             if numbered(&self.course, tee) || numbered(&self.course, pin) {
@@ -1820,8 +1799,8 @@ impl App {
                     }
                 }
                 golf::Event::HoleDone { hole, strokes, mood, fee, .. } => {
-                    if self.hole_stats.len() != self.holes.len() {
-                        self.hole_stats = vec![HoleStat::default(); self.holes.len()];
+                    if self.hole_stats.len() != self.hole_numbers.len() {
+                        self.hole_stats = vec![HoleStat::default(); self.hole_numbers.len()];
                     }
                     let k = self.hole_numbers.iter().position(|&n| n == hole).unwrap_or(usize::MAX);
                     let time = self.club.holes.get(hole as usize).map(|h| h.time).unwrap_or(0);
@@ -1856,11 +1835,6 @@ impl App {
 
     /// Advances the club by dt seconds: one golfer and staff update per game tick (87 ms), fees, wages and the board's messages.
     pub fn step_game(&mut self, dt: f32) {
-        if !self.econ.notice.is_empty() {
-            println!("[{:6.1}s] board: {}", self.sim_time, self.econ.notice);
-            self.year_notice = self.econ.notice.clone();
-            self.econ.notice.clear();
-        }
         self.tick_acc += dt as f64;
         let tick_s = sg_core::flight::TICK_MS as f64 / 1000.0;
         while self.tick_acc >= tick_s {
@@ -1948,18 +1922,35 @@ impl App {
         }
     }
 
-    /// Course Status Report (the original's F1): the hole's class and length, and how many paths are joined to the clubhouse.
+    /// The console's course summary (scripted runs): each open hole's par and yards from the golfers' hole records, and how
+    /// many path tiles the clubhouse flood reaches (the exe's tile flag 0x40; the others are drawn as unjoined paths).
     pub fn report_course(&mut self, force: bool) {
-        self.hole = analyze_hole(&self.terrain);
         self.sync_course();
-        let conn = paths_connected_to_clubhouse(&self.terrain);
-        let paths = self.terrain.path_kind.iter().filter(|&&k| k != 0).count();
-        let joined = self.terrain.path_kind.iter().zip(&conn).filter(|(&k, &c)| k != 0 && c != 0).count();
+        let holes: Vec<String> = self
+            .hole_numbers
+            .iter()
+            .map(|&h| {
+                let r = &self.club.holes[h as usize];
+                format!("{h}: par {} {} yd", r.par, r.length)
+            })
+            .collect();
+        let joined = self.land.as_ref().map(|l| l.joined_tiles()).unwrap_or_default();
+        let (mut paths, mut on) = (0, 0);
+        for (i, &k) in self.terrain.path_kind.iter().enumerate() {
+            if k == 0 {
+                continue;
+            }
+            paths += 1;
+            let (x, y) = (i as i32 % self.terrain.w, i as i32 / self.terrain.w);
+            if !sg_core::course::inside(x, y) || joined.get(sg_core::course::idx(x, y)).copied().unwrap_or(true) {
+                on += 1;
+            }
+        }
         let r = format!(
-            "{}; {} holes (tee to green pairs); paths: {paths} tiles, {joined} joined to the clubhouse, {} shown as mud",
-            self.hole.report(),
-            self.holes.len(),
-            paths - joined
+            "{} holes [{}]; paths: {paths} tiles, {on} joined to the clubhouse, {} not joined",
+            self.hole_numbers.len(),
+            holes.join(", "),
+            paths - on
         );
         if force || r != self.last_report {
             println!("course: {r}");
@@ -2022,6 +2013,19 @@ impl App {
             self.econ.start_cash,
             if sandbox { " (sandbox)" } else { "" }
         );
+    }
+
+    /// "Return to Main Menu." at the end of a career, the way the exe leaves a game (0x420e0f): the game is saved as
+    /// "&QuitSave" (an autosave in the Load list), the course ambience fades (slot 0x2d over a second) and the title comes
+    /// back. Loading that save brings the same question back, as its debt counter is still past 2.
+    pub fn end_career(&mut self) {
+        let path = crate::files_ui::saved_games_dir().join("&QuitSave.sgs");
+        match self.save_game(&path) {
+            Ok(()) => println!("saved game {}", path.display()),
+            Err(e) => eprintln!("could not save {}: {e}", path.display()),
+        }
+        self.screen = Screen::Menu;
+        self.hover = -1;
     }
 
     /// The whole-game save file, next to the course file.
@@ -2210,7 +2214,7 @@ impl App {
                     refused = true;
                     continue;
                 }
-                if !self.econ.affordable(cost as f64 * Economy::UNIT, self.holes.len()) {
+                if !self.econ.affordable(cost as f64 * Economy::UNIT, self.hole_numbers.len()) {
                     broke = true;
                     continue;
                 }
@@ -2315,7 +2319,7 @@ impl App {
             return;
         }
         let cost = price as f64 * Economy::UNIT;
-        if !self.econ.affordable(cost, self.holes.len()) {
+        if !self.econ.affordable(cost, self.hole_numbers.len()) {
             self.show_toast(&format!(
                 "This change costs {}. You have only {}.",
                 crate::ui::money(cost as i64),
@@ -2415,7 +2419,7 @@ impl App {
     pub fn place_tile_item(&mut self, x: i32, y: i32, kind: i32) -> bool {
         self.ensure_land();
         let theme = self.exe_theme();
-        let holes = self.holes.len();
+        let holes = self.hole_numbers.len();
         let variant = self.item_design(kind);
         let Some(land) = self.land.as_mut() else { return false };
         land.sync_from_terrain(&self.terrain);
@@ -2547,7 +2551,7 @@ impl App {
         }
         self.ensure_land();
         let theme = self.exe_theme();
-        let holes = self.holes.len();
+        let holes = self.hole_numbers.len();
         if remove {
             return self.undo_tile(tx, ty);
         }
@@ -2966,8 +2970,15 @@ impl App {
                 economy::Payroll { kind: (-2 - e.job as i32).clamp(0, 3) as usize, experienced: e.upgraded }
             })
             .collect();
-        let holes = self.holes.len();
+        let holes = self.hole_numbers.len();
         let paid = self.econ.on_tick(self.game_tick, self.difficulty, holes, &payroll, &mut self.exe_rng);
+        if self.game_tick > 0 && self.game_tick & 0x1fff == 0 {
+            // the year's debt lines for the year-end report (none when the cash is not negative)
+            self.year_notice = std::mem::take(&mut self.econ.notice);
+            if !self.year_notice.is_empty() {
+                println!("[{:6.1}s] board: {}", self.sim_time, self.year_notice.replace('\n', " "));
+            }
+        }
         for (&i, units) in staffed.iter().zip(paid) {
             self.employees[i].paid = (self.employees[i].paid + units).min(0x7fff);
         }
@@ -3333,7 +3344,7 @@ impl App {
                 self.props[n].flat = true;
             }
         }
-        let level = (self.holes.len() > 10) as u16;
+        let level = (self.hole_numbers.len() > 10) as u16;
         for (oi, o) in land.objects.iter().enumerate().filter(|(_, o)| o.kind >= 0) {
             // land outside the property is not drawn, nor what stands on it (an obstacle placed before the border was
             // taken away shows again when the tract is bought)
