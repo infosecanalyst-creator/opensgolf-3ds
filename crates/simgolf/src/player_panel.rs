@@ -320,6 +320,7 @@ impl App {
             }
             10 => {
                 self.pstate.emp_flag = true;
+                self.pstate.emp_base = 5;
                 self.panel = 3;
             }
             _ => return false,

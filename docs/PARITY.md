@@ -222,3 +222,14 @@ Tool (update 80): `sgsprites <game dir> <output dir>` exports every Flics sprite
 | Recommendations list | EXACT (exe over footage) | 0x46d200: the TV towers' line is the first option (bit 0) and the towers and booths are placed only when it stays ticked; the footage's build shows no such line. Booth direction coin fixed (+2 on a non-zero coin) |
 | Professional Tournament scorecard | EXACT | 0x461110 as before; a long name's smaller font no longer applies to its numbers. Test hook `--edit "g:2"` |
 | Great-shot SimFoto | not ported | 0x407e00 decoded (DECODE_TOURNAMENTS.md 9), including the message box over the photo at (150, top - 192) seen in footage p1 3000 |
+
+## Dock panels and maps (October 2026)
+
+| Item | Status | Notes |
+|---|---|---|
+| Green button flag | EXACT | The loader (0x43d740, shadow argument 1) plays the Shadow.flc and then the body into one canvas, so the flag carries its shadow; the port draws the shadow sprite first at the same anchor. Position checked: canvas centre (240, 240) of the 80 x 60 cut at (200, 200) lands on (slot x + 31, slot y + 24), the port's anchor; footage p1 1600-1760 agrees within a pixel, so no y offset |
+| People button | EXACT | 0x432720: mode 2 unless already 2 (then closed, 5); the Employee overlay flag 0x561254 is left alone. The port keeps the overlay's underlying mode (Golfers or Player): from the Employee panel over the Player panel People moves to mode 2 and the Employee panel stays; mode 3 (the pro's shot, 0x4289e0) clears the flag. Dock hover compares the raw mode, so People lights over the Player panel |
+| Golfers list click | EXACT | 0x435680: the camera always goes to the golfer; the card (0x53df54) opens only when his screen x (+0x08, -1 off screen) is set or a card is open |
+| Routing map flags | EXACT | Palette 0x60 + theme (the Parkland house palette, unloaded 0x61/0x62, the Links flag palette), not 0x63; marker, line, number, line, flag drawn at once in that order (0x4628d0 draws straight away); shadows drawn. Tile colours were already exact. The G4 clip shows no yellow numbers and dark flags; the exe draws the numbers unconditionally and footage of the land map (p1 3120) shows them |
+| Land map | EXACT | 0x4587a0 draws the routing map's tiles (tab used last, 2 px higher) and the same hole marks; tract numbers in 0x821f28 centred at (x - 7, y - 4) of tile (8, 8)'s routing point, only while the tract has land for sale; if that tile is not for sale the position is the previous tract's text origin (stale variables), its price line when that tract was for sale (two lines of 17, PLACEHOLDER pitch). Footage p1 3120 matches within a pixel |
+| Face strip under panels | EXACT, unchanged | The strip (0x418d09 in 0x40f5c0) is drawn before the dock and panel calls (0x432ba0 and the panel draws), hidden only in a tournament; panels cover it, as the port already did |

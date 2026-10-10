@@ -1,0 +1,84 @@
+name: release
+
+# Pushing a tag such as v0.1.0 builds OpenSGolf for every platform and publishes a GitHub release with the packages.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  BIN: simgolf
+
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-gnu, name: linux-x86_64, ext: "" }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc, name: windows-x86_64, ext: ".exe" }
+          - { os: macos-latest, target: aarch64-apple-darwin, name: macos-arm64, ext: "" }
+          - { os: macos-13, target: x86_64-apple-darwin, name: macos-x86_64, ext: "" }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Linux packages
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }} -p simgolf -p sgtool
+      - name: Package
+        shell: bash
+        run: |
+          out="opensgolf-${GITHUB_REF_NAME}-${{ matrix.name }}"
+          mkdir -p "$out"
+          cp "target/${{ matrix.target }}/release/${BIN}${{ matrix.ext }}" "$out/"
+          cp "target/${{ matrix.target }}/release/sgtool${{ matrix.ext }}" "$out/"
+          cp LICENSE README.md docs/PLAYING.md docs/MODDING.md "$out/"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            7z a "$out.zip" "$out" > /dev/null
+          else
+            tar czf "$out.tar.gz" "$out"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: opensgolf-*.*
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Build the browser version
+        run: ./web/build.sh
+      - name: Package
+        run: |
+          cp LICENSE web/dist/
+          (cd web/dist && zip -qr "../../opensgolf-${GITHUB_REF_NAME}-web.zip" .)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web
+          path: opensgolf-*-web.zip
+
+  publish:
+    needs: [desktop, web]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
