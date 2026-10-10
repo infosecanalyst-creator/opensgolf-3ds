@@ -203,3 +203,18 @@ Rect cheat sheet (all EXACT unless noted):
 9. Rows per column of the compact dock list: the loop wraps when `local_24 == 6` before the increment (6 entries), while `docs/DECODE_BUILDINGS.md` section 6 says 7. Card mode (`== 4`) agrees with the docs. Recheck against a screenshot.
 10. Body sheet choice per profile and the meaning of profile byte +0x2c bit 8 (accessory sprite behind the body).
 11. Theme folder used by the four special `.glf` loads at startup (their path string is only partly visible).
+
+## 6. Resolved with the complete decompile and the exe's data tables
+
+* Unknown 1: the 84 compiled profile records (0x4d6088) carry head bytes (+0x22); the port restates profession, name,
+  traits, flag byte and head per record in `sg_core::roster::PEOPLE_TABLE`. Men 1..19 use each stock head once (the
+  "id mod 19" arrival rule spreads them); women 57..75 likewise.
+* Unknown 2 (in part): the expression array base is 0x59e7c0 and the halo base 0x5628e8 (the loaders cut the first cell
+  of each head to the object before the register they keep), so object = base + 0x2c * (3 * head + row): row 0 happy,
+  1 neutral, 2 angry as derived.
+* Unknown 4: the pair screen draws a picked golfer's head at full strength in one expression for all picks: neutral, or
+  with two picked happy when their trait bytes share more than three of the five bits and angry when fewer than two;
+  every other head is the neutral cell at 70 %.
+* Unknown 11: 0x4659a0 loads Joe Pro.glf into record 0x4c from the current theme pack and the three visitors into
+  0x4d..0x4f from `Themes\Standard\` (0x437fa0 takes Standard for records 0x4d and up). 0x4658b0 lists the theme
+  pack's `*.chr` and loads the i-th file into record i (from 1), flagging its membership record.
