@@ -104,9 +104,9 @@ Save dialog FUN_00405b10: heading "SAVE GAME, edit name then press Enter", confi
 
 ## 5. Preferences (FUN_00432560) (EXACT bits, labels mostly UNKNOWN)
 
-Checkbox popup (400,200), mask in DAT_005a5a00, title "Preferences...", six entries. Only first label readable: "Display golfer names on screen".
+Checkbox popup (400,200), mask in DAT_005a5a00, title "Preferences...", six entries. Labels (pointer table 0x4c2ca8 in the publisher's exe): "Display golfer names on screen.", "Show snapshots of great shots.", "Full explanation of golfer comments.", "Display message for new members.", "Display golfer thoughts on screen.", "Include animals and habitats." (The port's own Preferences list differs; it keeps bit 2 on, `App::show_snapshots`.)
 - 1 golfer names (name labels).
-- 2 tied to member/pair logic (UNKNOWN meaning).
+- 2 snapshots of great shots: the great-shot SimFoto's message box and wait for golfers other than the pro (0x407e00, DECODE_TOURNAMENTS.md 9).
 - 4 advisor and first-time messages.
 - 8 a message with sound 0x38 (UNKNOWN meaning).
 - 0x10 no reader found.

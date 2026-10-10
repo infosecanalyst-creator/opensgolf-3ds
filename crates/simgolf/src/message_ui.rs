@@ -12,13 +12,13 @@
 use crate::app::*;
 use crate::gfx::Gfx;
 use crate::screens_ui::{top, BODY};
-use crate::ui::{rgb, wrap_text, Screen as Ui};
+use crate::ui::{rgb, text_width, Screen as Ui};
 use sg_core::staff;
 
 /// Where the ticker is drawn (0x40d6a0 passes (0xf0, -8) to 0x40d320).
 const X: f32 = 240.0;
 const Y: f32 = -8.0;
-/// Text width of the box (0x1a0 = 416) and the line pitch of its height sum (15 per line plus 0x20).
+/// Text width of the box (0x1a0 = 416) and the line pitch of its height sum (15 per line break plus 0x20).
 const BOX_W: f32 = 416.0;
 const LINE: f32 = 15.0;
 /// The ticker font (0x51b360): Manual SSi Bold 15.
@@ -132,18 +132,41 @@ impl Ticker {
     }
 }
 
-/// The text broken into lines the way 0x45af30 does: at '\n' and '^', and before a word that would pass `width` pixels.
+/// The text broken into lines the way 0x45af30 does, character by character: '\n' starts a line, '^' becomes a space
+/// with a line break on the character after it, '_' a space; whenever the line so far, from its start up to (not
+/// including) the character reached, is wider than `width` and a space has been seen, the last space becomes the break
+/// and the scan goes on after it. Spaces are kept as they are (the great-shot message's "!  " shows both in footage of
+/// the original, p1 5161), and the last space is not forgotten at an explicit break.
 fn lines(text: &str, width: f32) -> Vec<String> {
-    let mut out = Vec::new();
-    for para in text.replace('_', " ").split(['\n', '^']) {
-        let w = wrap_text(para, FONT, width);
-        if w.is_empty() {
-            out.push(String::new());
-        } else {
-            out.extend(w);
+    let mut b: Vec<char> = text.chars().collect();
+    let (mut start, mut space, mut i) = (0usize, None::<usize>, 0usize);
+    while i < b.len() {
+        if b[i] == '^' {
+            b[i] = ' ';
+            if i + 1 < b.len() {
+                b[i + 1] = '\n';
+            }
+            start = i + 2;
         }
+        if b[i] == '\n' {
+            start = i + 1;
+        }
+        if start < i && text_width(&b[start..i].iter().collect::<String>(), FONT) > width {
+            if let Some(s) = space.take() {
+                b[s] = '\n';
+                start = s + 1;
+                i = s;
+            }
+        }
+        if b[i] == '_' {
+            b[i] = ' ';
+        }
+        if b[i] == ' ' {
+            space = Some(i);
+        }
+        i += 1;
     }
-    out
+    b.iter().collect::<String>().split('\n').map(str::to_string).collect()
 }
 
 /// 0x40cef0 and 0x40cdd0 round a size that is not a multiple of 16 up to the next 15 mod 16 and move the box back by half
@@ -189,7 +212,7 @@ impl App {
         }
     }
 
-    /// The ticker box (0x40d320) for this frame.
+    /// The ticker box (0x40d6a0 passes (0xf0, -8) to 0x40d320) for this frame.
     pub fn draw_ticker(&mut self, g: &mut Gfx, s: &Ui) {
         if self.paused {
             self.ticker.step_wall(self.clock);
@@ -197,17 +220,25 @@ impl App {
             self.ticker.wall = self.clock;
         }
         let Some(arg) = self.ticker.frame else { return };
-        let t = &self.ticker;
-        let speaker = t.speaker;
+        let (text, speaker) = (self.ticker.text.clone(), self.ticker.speaker);
+        self.message_box(g, s, X, Y, arg, &text, speaker);
+    }
+
+    /// The message box (0x40d320) at (x, y): `text` said by `speaker` (NOBODY, a golfer slot or a picture code); `arg` -1
+    /// draws the whole strip, 1..3 the strip opened that many quarters (no text), -2 the dialog frame. The text is wrapped to
+    /// 0x2c * 8 pixels, 0x25 * 8 beside a speaker, and its height is 15 per line break plus 0x20: the line counter 0x45af30
+    /// returns the breaks it counts (explicit and wrapped), one less than the lines. Beside a speaker the box moves by
+    /// (0x1c, 0x2c), takes the dialog frame and is at least 0x60 high, and a shorter text is centred on it. The frame is
+    /// (x - 8, y - 8), 0x1a0 wide and the height plus 0x10 (rounded by `round16`). Footage of the original agrees: the
+    /// no-speaker strips of two and three lines (p2 1120, 1880) have their rails on rows 41 and 57, this draws them on
+    /// 42-43 and 58-59 (15 per line instead of per break put them 15 lower); and the great-shot box of four lines beside the
+    /// pro's face (p1 3001) has its text rows 25 to 79 below the frame's top, as here (16 per line would put them 1 lower).
+    #[allow(clippy::too_many_arguments)]
+    pub fn message_box(&self, g: &mut Gfx, s: &Ui, x: f32, y: f32, arg: i32, text: &str, speaker: i32) {
         let talk = speaker != NOBODY;
-        // the text is wrapped to 0x25 * 8 pixels beside a speaker, 0x2c * 8 without
-        let rows = lines(&t.text, if talk { 0x25 as f32 * 8.0 } else { 0x2c as f32 * 8.0 });
-        // Footage of the original (golfer and laurel messages of 4, 5, 7 and 8 lines: frames 27..137, 27..137, 25..167 and
-        // 24..182 at 800 x 600, the text from y + 16 but 2 pixels lower with 4 lines and 7 higher with 5) fits a text
-        // height of 15 per line plus 0x10 beside a speaker, not plus 0x20: then the box (h + 0x10, at least 0x60 + 0x10,
-        // rounded) and the centring of a short text below agree with every case to a pixel.
-        let h0 = rows.len() as f32 * LINE + if talk { 16.0 } else { 32.0 };
-        let (mut x, mut y, mut h, mut arg) = (X, Y, h0, arg);
+        let rows = lines(text, if talk { 0x25 as f32 * 8.0 } else { 0x2c as f32 * 8.0 });
+        let h0 = rows.len().saturating_sub(1) as f32 * LINE + 32.0;
+        let (mut x, mut y, mut h, mut arg) = (x, y, h0, arg);
         if talk {
             h = h.max(96.0);
             x += 28.0;
@@ -234,13 +265,13 @@ impl App {
         self.speaker_picture(g, s, speaker, x, y);
         let mut ty = y + 16.0;
         if h0 < 96.0 {
-            ty += ((96.0 - h0 - 16.0) / 2.0).trunc();
+            // C division: toward zero
+            ty += ((96 - h0 as i32 - 16) / 2) as f32;
         }
         for (i, l) in rows.iter().enumerate() {
             s.text(g, x + 100.0, top(ty + LINE * i as f32, FONT), l, FONT, white);
         }
     }
-
     /// 0x40d320 called with nobody speaking and mode -2 (the dialog frame instead of the strip), as 0x4065c0 does for the
     /// skill card's first opening at (200, 0x172): the text wrapped to 0x2c * 8 pixels, the frame (x - 8, y - 8) 0x1a0
     /// wide and 15 per line break + 0x20 + 0x10 high (0x45af30 counts the breaks it puts in, one less than the lines;

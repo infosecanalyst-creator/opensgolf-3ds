@@ -424,6 +424,12 @@ pub struct App {
     pub card_ui: crate::screens_ui::CardUi,
     /// Take Snapshot's photo while it is being taken or held on screen.
     pub simfoto: Option<crate::screens_ui::SimFoto>,
+    /// The great-shot SimFoto while it is on screen (0x407e00).
+    pub great_shot: Option<crate::screens_ui::GreatShot>,
+    /// The Preferences' "Show snapshots of great shots." (bit 2 of 0x5a5a00, on by default).
+    pub show_snapshots: bool,
+    /// The --screen greatshot test hook is waiting for the golfers' screen points.
+    pub test_great_shot: bool,
     /// A character file was loaded whose portrait still has to be registered (needs the graphics context).
     pub portraits_due: bool,
     /// Customise Golfer, while open.
@@ -691,6 +697,9 @@ impl App {
             card: None,
             card_ui: Default::default(),
             simfoto: None,
+            great_shot: None,
+            show_snapshots: true,
+            test_great_shot: false,
             portraits_due: false,
             cust: None,
             year_notice: String::new(),
@@ -1749,6 +1758,8 @@ impl App {
         self.pro_round_tick();
         self.club.ticker_busy = self.ticker.busy() || self.card.is_some();
         self.club.advisor = self.show_advisor;
+        self.club.view_close = self.exe_zoom() > 3.0;
+        self.club.show_snapshots = self.show_snapshots;
         self.club.tick(&mut self.course, &mut self.exe_rng, tick);
         sg_core::ratings::pass(&mut self.club, self.difficulty);
         self.pro_after_tick();
@@ -1839,6 +1850,7 @@ impl App {
                     }
                 }
                 golf::Event::Thought { .. } => {}
+                golf::Event::GreatShot { g, partner, text, bad, pts } => self.great_shot_event(g, partner, text, bad, &pts),
             }
         }
     }
@@ -1847,7 +1859,8 @@ impl App {
     pub fn step_game(&mut self, dt: f32) {
         self.tick_acc += dt as f64;
         let tick_s = sg_core::flight::TICK_MS as f64 / 1000.0;
-        while self.tick_acc >= tick_s {
+        // the great-shot SimFoto holds the game where it is (0x407e00 waits for a click inside the golfers' tick)
+        while self.tick_acc >= tick_s && self.great_shot.is_none() {
             self.tick_acc -= tick_s;
             if !self.econ.game_over {
                 self.club_tick();
@@ -1861,7 +1874,7 @@ impl App {
 
     /// Advances the simulation to the current time and points every golfer prop at its golfer.
     pub fn update_props(&mut self) {
-        while self.sim_time < self.time {
+        while self.sim_time < self.time && self.great_shot.is_none() {
             self.step_game(1.0 / 60.0);
             self.sim_time += 1.0 / 60.0;
         }
@@ -1879,6 +1892,9 @@ impl App {
             let (sx, sy) = self.screen_of(x, y).map(|(a, b)| (a as i32, b as i32)).unwrap_or((-1, -1));
             self.club.g[gi].sx = sx;
             self.club.g[gi].sy = sy;
+        }
+        if std::mem::take(&mut self.test_great_shot) {
+            self.test_great_shot_now();
         }
         const DX: [f32; 8] = [0.0, 1.0, 1.0, 1.0, 0.0, -1.0, -1.0, -1.0];
         const DY: [f32; 8] = [-1.0, -1.0, 0.0, 1.0, 1.0, 1.0, 0.0, -1.0];

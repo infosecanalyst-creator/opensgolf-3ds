@@ -221,7 +221,8 @@ Tool (update 80): `sgsprites <game dir> <output dir>` exports every Flics sprite
 | Tournament results | EXACT | 0x45a090: row steps 26 / 18, names at x 25, hole columns by hole number, "F" = total strokes, prize "§n,000" in 0x1284, bands 2 pixels left and the header 10 up (trimmed sprite cuts). Footage p2 86-92 agrees |
 | Recommendations list | EXACT (exe over footage) | 0x46d200: the TV towers' line is the first option (bit 0) and the towers and booths are placed only when it stays ticked; the footage's build shows no such line. Booth direction coin fixed (+2 on a non-zero coin) |
 | Professional Tournament scorecard | EXACT | 0x461110 as before; a long name's smaller font no longer applies to its numbers. Test hook `--edit "g:2"` |
-| Great-shot SimFoto | not ported | 0x407e00 decoded (DECODE_TOURNAMENTS.md 9), including the message box over the photo at (150, top - 192) seen in footage p1 3000 |
+| Great-shot SimFoto | EXACT | 0x409620 / 0x407e00 (DECODE_TOURNAMENTS.md 9): the zoom and replay-record gate, the composed message, the photo's bounds, track and flight, border, caption and date, the message box at (150, top - 192) or below the photo, the click wait (F10 saves), the ticker fallback and the after-effects; footage p1 3001, 5161, 6158 agree (box frame at top - 156, the wrap word for word, the HUD hidden). Not ported: the pro's partner slot's skill table 0x5a5a14 |
+| Message box height | EXACT | 0x40d320 takes 15 per line break (0x45af30 counts breaks) plus 0x20, with or without a speaker; footage strips p2 1120 / 1880 and the p1 3001 box agree |
 
 ## Dock panels and maps (October 2026)
 
