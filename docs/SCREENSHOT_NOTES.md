@@ -83,3 +83,16 @@ Tees, Green, Sand trap, Desert, Pot bunker, Brush, Water, Fairway, Firm fairway,
 - Course report hole rows carry names (Alexandria, Dorothy, Elizabeth...) as well as numbers, show types such as Breather, Heroic, Freeway and Challenge, and mark Top 100, Top 18 and Scenic holes.
 - Events seen as popups: the SGA offers to hold a named tournament at your course with a top prize (here §110,000) and a button in a panel to begin it; a celebrity buys a vacation home on the course and golfers enjoy seeing celebrities. The badge top left can also show star and heart counts (for example x20, x17, x14, x17).
 - Staff walk the course with name labels (for example "Joe Groundskeeper"), and an airship flies over the course in one shot.
+
+## Footage of the original (YouTube thumbnails, October 2026)
+
+Frames from public gameplay videos (thumbnails only; the videos themselves could not be fetched from the build server).
+Nothing from them is stored in the repository.
+
+- Badge: the course name, not the state: "Ocean Grove MC" (Florida), "Flamingo Shores MC" (Hawaii), "Dolphin Coast MC",
+  "Jurassic Springs MC", "County Kincaide GC" with the month and year under it. Fixed in `hud_course_name`.
+- Hills are shaded smoothly; no hard triangle facets. Matches TERRAIN.md (vertex normals are the normalised sums of the
+  face normals); the port had used face normals. Fixed in `terrain::build_tile_triangles`.
+- Golfer names: small white text with a dark outline under the golfer. Thought lines: grey text on a translucent dark bar.
+- Money popups float as red "-300" at the build cursor.
+- A new hole shows "Hole 2 / 420 yards / Par 4" in white, centred over the tee.

@@ -967,43 +967,61 @@ pub fn build_tile_triangles(t: &Terrain, tx: i32, ty: i32, out: &mut Vec<TileTri
         texture_type_for(ttype, vbyte, ttype, t.desert, t.sand_phase)
     };
     let use_set = if ttype == TT_TEE as i32 { vbyte } else { set };
+    // Terrain.dll keeps a 3 x 3 vertex patch per tile (the global vertex array is 3W x 3H, so tiles share no vertices) with
+    // one normal per vertex: the sum of the unit face normals of the tile's triangles that use it, normalised. So a slope is
+    // shaded smoothly inside a tile rather than per triangle.
+    type Tri = ([Vertex; 3], [(usize, usize); 3], usize);
+    let mut tris_all: Vec<Tri> = Vec::with_capacity(8);
     for q in 0..4 {
         let (j, k) = (q / 2, q % 2);
         // The tile is a fan of eight triangles round its centre, each holding half of one tile edge (the edge its blend
         // variation belongs to), so every quadrant is split along the diagonal from the tile corner to the centre: NW and SE
         // along one diagonal, NE and SW along the other.
-        let tris = if j == k {
-            [[vtx(j, k), vtx(j + 1, k), vtx(j + 1, k + 1)], [vtx(j, k), vtx(j + 1, k + 1), vtx(j, k + 1)]]
+        let idx: [[(usize, usize); 3]; 2] = if j == k {
+            [[(j, k), (j + 1, k), (j + 1, k + 1)], [(j, k), (j + 1, k + 1), (j, k + 1)]]
         } else if k == 1 {
             // NE: corner (0,2); first the north half edge, then the east one
-            [[vtx(0, 1), vtx(1, 1), vtx(0, 2)], [vtx(1, 1), vtx(1, 2), vtx(0, 2)]]
+            [[(0, 1), (1, 1), (0, 2)], [(1, 1), (1, 2), (0, 2)]]
         } else {
             // SW: corner (2,0); first the west half edge, then the south one
-            [[vtx(1, 0), vtx(2, 0), vtx(1, 1)], [vtx(2, 0), vtx(2, 1), vtx(1, 1)]]
+            [[(1, 0), (2, 0), (1, 1)], [(2, 0), (2, 1), (1, 1)]]
         };
-        for (s, tri) in tris.iter().enumerate() {
-            let (ux, uy, uz) = (tri[1].x - tri[0].x, tri[1].y - tri[0].y, tri[1].z - tri[0].z);
-            let (vx, vy, vz) = (tri[2].x - tri[0].x, tri[2].y - tri[0].y, tri[2].z - tri[0].z);
-            let (mut nx, mut ny, mut nz) = (uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx);
-            let len = (nx * nx + ny * ny + nz * nz).sqrt();
-            if len > 0.0 {
-                nx /= len;
-                ny /= len;
-                nz /= len;
-            }
-            if ny < 0.0 {
-                nx = -nx;
-                ny = -ny;
-                nz = -nz;
-            }
-            let mut tt = TileTri { tex_type, set: use_set, variation: var[q * 2 + s], v: *tri };
-            for v in tt.v.iter_mut() {
-                v.nx = nx;
-                v.ny = ny;
-                v.nz = nz;
-            }
-            out.push(tt);
+        for (s, ix) in idx.iter().enumerate() {
+            tris_all.push(([vtx(ix[0].0, ix[0].1), vtx(ix[1].0, ix[1].1), vtx(ix[2].0, ix[2].1)], *ix, q * 2 + s));
         }
+    }
+    let mut sum = [[[0f32; 3]; 3]; 3];
+    for (tri, ix, _) in &tris_all {
+        let (ux, uy, uz) = (tri[1].x - tri[0].x, tri[1].y - tri[0].y, tri[1].z - tri[0].z);
+        let (vx, vy, vz) = (tri[2].x - tri[0].x, tri[2].y - tri[0].y, tri[2].z - tri[0].z);
+        let (mut nx, mut ny, mut nz) = (uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx);
+        let len = (nx * nx + ny * ny + nz * nz).sqrt();
+        if len > 0.0 {
+            nx /= len;
+            ny /= len;
+            nz /= len;
+        }
+        if ny < 0.0 {
+            nx = -nx;
+            ny = -ny;
+            nz = -nz;
+        }
+        for &(j, k) in ix {
+            sum[j][k][0] += nx;
+            sum[j][k][1] += ny;
+            sum[j][k][2] += nz;
+        }
+    }
+    for (tri, ix, r) in tris_all {
+        let mut tt = TileTri { tex_type, set: use_set, variation: var[r], v: tri };
+        for (v, &(j, k)) in tt.v.iter_mut().zip(&ix) {
+            let n = sum[j][k];
+            let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+            if len > 0.0 {
+                (v.nx, v.ny, v.nz) = (n[0] / len, n[1] / len, n[2] / len);
+            }
+        }
+        out.push(tt);
     }
 }
 

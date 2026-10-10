@@ -101,13 +101,14 @@ impl App {
         s.image_part(g, &self.hud.icons, x, y, 16.0 * i as f32, 324.0, 16.0, 16.0);
     }
 
-    /// The course name as the badge shows it (0x40daa0 with argument 0): the club's name and the short rank suffix. The
-    /// port keeps "<property> GC" as the default name; the exe adds the suffix of the current rank to any name.
+    /// The course name as the badge shows it (0x40daa0 with argument 0): the club's name and the short rank suffix, e.g.
+    /// "Ocean Grove MC" on the Florida property (as in footage of the original). The exe adds the suffix of the current
+    /// rank to any name.
     pub fn hud_course_name(&self) -> String {
         let site = self.land.as_ref().and_then(|l| sg_core::properties::PROPERTIES.get(l.slot.property));
         let base = match site {
-            // not renamed: the default course name (or an old save's "<property> GC")
-            Some(p) if self.course_name == p.course || self.course_name == format!("{} GC", p.name) => p.name,
+            // an old save's default "<property> GC": the property's course name
+            Some(p) if self.course_name == format!("{} GC", p.name) => p.course,
             _ => self.course_name.as_str(),
         };
         format!("{base}{}", RANK_SUFFIX[economy::rank(self.hole_numbers.len()) as usize])
