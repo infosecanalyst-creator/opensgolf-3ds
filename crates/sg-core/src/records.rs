@@ -99,7 +99,7 @@ impl Club {
         let (ty, arg) = (v & 0xffe0, (v & 0x1f) as i32);
         match ty {
             log::HOLE if self.par(arg) != 0 => format!("Hole {arg} opened."),
-            log::BUILT => format!("{} built.", crate::land::BUILDINGS.get(arg as usize).map(|b| b.0).unwrap_or("Building")),
+            log::BUILT => format!("{} built.", crate::data::buildings().get(arg as usize).map(|b| b.0).unwrap_or("Building")),
             log::MATCH => format!("Won match vs. {}", self.pros.get(arg as usize).map(|p| p.name.as_str()).unwrap_or("a pro")),
             log::TOP100 => format!("Hole {arg} rated top 100."),
             log::TOP18 => format!("Hole {arg} rated top 18."),

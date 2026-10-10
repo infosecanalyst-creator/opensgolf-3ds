@@ -4,7 +4,7 @@
 //!
 //! Facts are from the publisher's golf.exe (docs/PUBLISHER_EXE_NOTES.md, "Wildlife and water"), restated in our own words.
 
-use crate::course::{idx, inside, Course, TYPES};
+use crate::course::{idx, inside, Course};
 use crate::geom::{cdir, len, DX, DY};
 use crate::golfer::{Club, SLOTS};
 use crate::land::ExeRng;
@@ -222,7 +222,7 @@ fn tile_ty(c: &Course, a: i32, b: i32) -> u8 {
 /// The water depth of each tile (0x42f1c0): 0 at the shore, 1 next to it, 2 in open water; 255 off the water.
 pub fn water_depth(c: &Course) -> Vec<u8> {
     let n = crate::course::N;
-    let water = |a: i32, b: i32| inside(a, b) && TYPES[c.ty[idx(a, b)] as usize].class == 17;
+    let water = |a: i32, b: i32| inside(a, b) && crate::data::row(c.ty[idx(a, b)]).class == 17;
     let mut d = vec![255u8; (n * n) as usize];
     for a in 0..n {
         for b in 0..n {
@@ -459,7 +459,7 @@ impl Club {
     /// The four fly-overs (second half of 0x430360). `sail_frames` is the sailboat clip's frame count.
     pub fn flyers_tick(&mut self, c: &Course, rng: &mut ExeRng, tick: u32) {
         let max = 0xcc00;
-        let water = |a: i32, b: i32| inside(a, b) && TYPES[c.ty[idx(a, b)] as usize].class == 17;
+        let water = |a: i32, b: i32| inside(a, b) && crate::data::row(c.ty[idx(a, b)]).class == 17;
         for i in 0..4 {
             let mut f = self.wildlife.flyers[i];
             match f.kind {
@@ -493,7 +493,7 @@ impl Club {
                                     }
                                 }
                                 _ => {
-                                    let cls = |a: i32, b: i32| if inside(a, b) { TYPES[c.ty[idx(a, b)] as usize].class } else { 18 };
+                                    let cls = |a: i32, b: i32| if inside(a, b) { crate::data::row(c.ty[idx(a, b)]).class } else { 18 };
                                     let blocked = matches!(cls(a, b), 13 | 18 | 17)
                                         || matches!(cls(a + 1, b), 13 | 18)
                                         || (inside(a, b) && c.h(c.ty[idx(a, b)]) <= 0);

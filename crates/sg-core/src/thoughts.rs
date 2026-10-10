@@ -5,7 +5,7 @@
 //! is not available beyond the first words its labels show; the lines here start with those words where they are known and
 //! are otherwise written for this port.
 
-use crate::course::{f, idx, inside, Course, TYPES};
+use crate::course::{f, idx, inside, Course};
 use crate::golfer::Club;
 
 /// The tone of a line: neutral, pleased, upset.
@@ -72,7 +72,7 @@ pub const CLUBS: [&str; 14] = [
 const PETS: [&str; 4] = [", honey", ", sugar", ", dear", ", sweetie"];
 
 fn is_tree(t: u8) -> bool {
-    TYPES[(t as usize).min(22)].class == 13
+    crate::data::row(t).class == 13
 }
 
 /// The name of the scenery on a tile (0x407700, simplified to what this port tracks): landmarks, flower beds, scenic trees,
@@ -108,7 +108,7 @@ pub fn feature(c: &Course, a: i32, b: i32, theme: u8) -> String {
         }
         .into();
     }
-    match TYPES[(t as usize).min(22)].class {
+    match crate::data::row(t).class {
         4 if t == 4 => if theme == 1 { "mysterious bones" } else { "ornamental grass" }.into(),
         4 if t == 10 => if theme == 1 { "rock formation" } else { "scenic tree" }.into(),
         4 if t == 12 => if theme == 1 { "natural bridge" } else { "rock formation" }.into(),

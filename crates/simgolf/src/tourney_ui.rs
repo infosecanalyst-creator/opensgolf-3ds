@@ -417,7 +417,7 @@ impl App {
         let place = self
             .land
             .as_ref()
-            .and_then(|l| sg_core::properties::PROPERTIES.get(l.slot.property))
+            .and_then(|l| sg_core::data::properties().get(l.slot.property))
             .map(|p| p.name.to_string())
             .unwrap_or_else(|| self.course_name.clone());
         format!("{} {place} Open", 2001 + self.econ.year_index())

@@ -7,7 +7,7 @@ use crate::gfx::Gfx;
 use crate::panels_ui::COUNTERS;
 use crate::screens_ui::top;
 use crate::ui::{load_pcx_alpha, rgb, rgba, wrap_text, Image, Screen as Ui};
-use sg_core::course::{idx, N, TYPES};
+use sg_core::course::{idx, N};
 use sg_core::economy::LEDGER_LABELS;
 use sg_core::land;
 use sg_core::staff;
@@ -370,7 +370,7 @@ impl App {
                     }
                 }
             }
-            _ => Some(c15(match TYPES[(t as usize).min(22)].class {
+            _ => Some(c15(match sg_core::data::row(t).class {
                 0 | 1 => 0x3394,
                 2 => 0x1310,
                 4 => 0x0204,

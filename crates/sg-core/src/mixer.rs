@@ -1,7 +1,8 @@
 //! Sound mixer. All of the game's sounds are plain PCM .wav files under Sounds/, so there is nothing to decode beyond the WAV
-//! reader; clips are converted to 44.1 kHz stereo and mixed in a handful of voices with looping. The mixer has no device
-//! dependency, so it can render to a buffer for tests; the game feeds an output device from [`Mixer::mix`].
-use crate::assets::decode_wav;
+//! reader (a content pack may replace a .wav with an OGG Vorbis file, which `assets::decode_sound` decodes); clips are
+//! converted to 44.1 kHz stereo and mixed in a handful of voices with looping. The mixer has no device dependency, so it
+//! can render to a buffer for tests; the game feeds an output device from [`Mixer::mix`].
+use crate::assets::decode_sound;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -138,7 +139,7 @@ impl Mixer {
         };
         let clip = crate::fsutil::read_file(path)
             .ok_or_else(|| "cannot read".to_string())
-            .and_then(|d| decode_wav(&d))
+            .and_then(|d| decode_sound(&d))
             .and_then(|w| to_stereo_44k(w.channels, w.bits, w.sample_rate, &w.pcm).ok_or_else(|| "unsupported PCM layout".to_string()));
         match clip {
             Ok(pcm) => {

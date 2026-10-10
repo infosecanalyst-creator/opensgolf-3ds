@@ -5,8 +5,7 @@ use crate::app::*;
 use crate::gfx::Gfx;
 use crate::info_ui::c15;
 use crate::ui::{money, rgb, rgba, text_width, wrap_text, Screen as Ui};
-use sg_core::land::{self, RECORDS, SLOT_PRICE_UNITS};
-use sg_core::properties::{PROPERTIES, START_FUNDS};
+use sg_core::land;
 
 /// Card origins on WorldBase.pcx, one per offer slot (cheapest first, down the left arc and then the right).
 pub const CARD_POS: [(f32, f32); 16] = [
@@ -37,14 +36,14 @@ impl App {
     /// The property shown on card k (offer slot k), its acres and price in money.
     fn card(&self, k: usize) -> (usize, i32, i32) {
         let s = self.offer[k];
-        (s.property, s.acres, SLOT_PRICE_UNITS[k] * 100)
+        (s.property, s.acres, sg_core::data::economy().offer_units[k] * 100)
     }
 
     fn world_cash(&self) -> f64 {
         if self.world_move {
             self.econ.cash
         } else {
-            START_FUNDS as f64
+            sg_core::data::economy().start_funds as f64
         }
     }
 
@@ -64,8 +63,8 @@ impl App {
 
     /// Notes that the club's land is the property's from this year on.
     pub fn mark_bought(&mut self, prop: usize) {
-        if self.bought.len() < PROPERTIES.len() {
-            self.bought.resize(PROPERTIES.len(), -1);
+        if self.bought.len() < sg_core::data::properties().len() {
+            self.bought.resize(sg_core::data::properties().len(), -1);
         }
         let year = self.econ.year_index() as i32;
         if let Some(b) = self.bought.get_mut(prop) {
@@ -97,7 +96,7 @@ impl App {
         let mut best = (-1, 30.0f32);
         for (k, &(cx, cy)) in CARD_POS.iter().enumerate() {
             let p = self.offer[k].property;
-            let r = &RECORDS[p];
+            let r = &sg_core::data::records()[p];
             for d in [(x - cx - 25.0).hypot(y - cy - 25.0), (x - r.map_x as f32).hypot(y - r.map_y as f32)] {
                 if d < best.1 {
                     best = (p as i32, d);
@@ -150,7 +149,7 @@ impl App {
                 } else {
                     // "We're off to ...!" shows for a moment before the new course is built
                     self.info.world_go = Some((p, 0));
-                    let sound = match RECORDS[p].theme {
+                    let sound = match sg_core::data::records()[p].theme {
                         0 => 0x33,
                         1 => 0x78 + self.deco_rng.below(3),
                         2 => 0x6e + self.deco_rng.below(3),
@@ -209,7 +208,7 @@ impl App {
             let owned = self.world_owned(p);
             let ok = self.can_afford(p);
             let sel = self.hover == p as i32;
-            let theme = PROPERTIES[p].theme;
+            let theme = sg_core::data::properties()[p].theme;
             let icon = &self.theme_icons[theme];
             if icon.tex.is_some() {
                 let (sx, w, h) = match (sel, ok && !owned) {
@@ -222,9 +221,9 @@ impl App {
                 s.image_part(g, icon, cx, cy - 2.0, sx, 0.0, w, h);
             }
             let black = rgb(0.0, 0.0, 0.0);
-            s.text_centered(g, cx + 96.0, cy + 15.0, RECORDS[p].name, 13.0, black);
-            s.text_centered(g, cx + 104.0, cy + 26.0, RECORDS[p].bonus, 10.0, black);
-            let rec = &RECORDS[p];
+            s.text_centered(g, cx + 96.0, cy + 15.0, sg_core::data::records()[p].name, 13.0, black);
+            s.text_centered(g, cx + 104.0, cy + 26.0, sg_core::data::records()[p].bonus, 10.0, black);
+            let rec = &sg_core::data::records()[p];
             if sel && ok && !owned {
                 let relief = ["flat", "rolling", "hilly"][rec.relief.min(2) as usize];
                 let lie = ["inland", "coastal", "island"][rec.coast.min(2) as usize];
@@ -298,7 +297,7 @@ impl App {
         }
         if let Some((p, _)) = self.info.world_go {
             s.fill(g, 204.0, 276.0, 192.0, 48.0, rgba(0.05, 0.06, 0.2, 0.75));
-            let t = format!("We're off to {}!", RECORDS[p].name);
+            let t = format!("We're off to {}!", sg_core::data::records()[p].name);
             let size = if text_width(&t, 13.0) > 186.0 { 13.0 * 186.0 / text_width(&t, 13.0) } else { 13.0 };
             s.text_centered(g, 300.0, 296.0, &t, size, rgb(1.0, 1.0, 1.0));
             s.text_centered(g, 300.0, 312.0, "... one moment please ...", 11.0, rgb(1.0, 1.0, 1.0));

@@ -13,6 +13,7 @@
 mod app;
 mod audio;
 mod champ_ui;
+mod content;
 mod cursor_ui;
 mod cust_ui;
 mod files_ui;
@@ -43,7 +44,6 @@ use miniquad::*;
 use render::*;
 use sg_core::formats::{atoi, parse_pro_golfers};
 use sg_core::mixer::Mixer;
-use sg_core::properties::PROPERTIES;
 use sg_core::terrain::{Terrain, TT_FAIRWAY, TT_PUTTING_GREEN, TT_ROUGH, TT_SAND, TT_TEE, TT_WATER_SHALLOW};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -315,6 +315,7 @@ fn open_screen(app: &mut App, screen: Option<&str>) {
             app.screen = Screen::Routing;
         }
         Some("shortcuts") if app.ui_ok => app.screen = Screen::Shortcuts,
+        Some("content") if app.ui_ok => app.open_content(),
         Some("golfers") if app.ui_ok => app.panel = 4,
         Some("holestats") if app.ui_ok => {
             app.info.stats_hole = (1..19).find(|&h| app.club.holes[h].par != 0).unwrap_or(1);
@@ -558,7 +559,7 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 app.edit_building(at(0), at(1), false);
                 println!(
                     "building {} at {},{}: {} objects, toast '{}', cash {}",
-                    sg_core::land::BUILDINGS[app.build_idx].0,
+                    sg_core::data::buildings()[app.build_idx].0,
                     at(0),
                     at(1),
                     app.land.as_ref().map(|l| l.objects.iter().filter(|o| o.kind >= 0).count()).unwrap_or(0),
@@ -694,10 +695,14 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
 impl Stage {
     fn new(o: Options) -> Stage {
         let mut g = Gfx::new();
+        // the content packs first: their art, sounds and data replace the game's before anything is read (an App deals
+        // its first property offer from the data when it is made)
+        let content = content::startup(&o.game_dir);
         let mut app = match o.clock {
             Some(c) => App::with_clock(o.game_dir.clone(), c),
             None => App::new(o.game_dir.clone()),
         };
+        app.content = content;
         app.theme = o.theme;
         app.seed = o.seed;
         app.zoom = o.zoom;
@@ -794,7 +799,7 @@ impl Stage {
         if let Some(name) = &o.property {
             let k = name.parse::<usize>().ok().filter(|&k| k < 16).or_else(|| {
                 let n = name.to_lowercase();
-                PROPERTIES.iter().position(|p| p.name.to_lowercase().starts_with(&n))
+                sg_core::data::properties().iter().position(|p| p.name.to_lowercase().starts_with(&n))
             });
             let Some(k) = k else {
                 eprintln!("error: unknown property {name}");
@@ -995,6 +1000,9 @@ impl Stage {
             },
             PopupKind::Prefs => {
                 let m = k as u32;
+                if m & 1 << popup_ui::PREFS_CONTENT != 0 {
+                    self.app.open_content();
+                }
                 self.app.show_thoughts = m & 1 != 0;
                 self.app.show_advisor = m & 2 != 0;
                 self.app.club.wildlife.enabled = m & 4 != 0;
@@ -1495,6 +1503,7 @@ impl Stage {
                 Screen::Finance => app.draw_finance(&mut self.g),
                 Screen::Routing => app.draw_routing(&mut self.g),
                 Screen::Shortcuts => app.draw_shortcuts(&mut self.g),
+                Screen::Content => app.draw_content(&mut self.g),
                 Screen::HoleStats => app.draw_hole_stats(&mut self.g),
                 Screen::BestScores => app.draw_best_scores(&mut self.g),
                 Screen::Top10 => app.draw_top10(&mut self.g),
@@ -1870,6 +1879,11 @@ impl EventHandler for Stage {
             } else if self.app.screen == Screen::Routing {
                 let (vx, vy) = self.app.view.to_virtual(x, y);
                 self.app.routing_click(vx, vy, button == MouseButton::Right);
+            } else if self.app.screen == Screen::Content {
+                let (vx, vy) = self.app.view.to_virtual(x, y);
+                if button == MouseButton::Left {
+                    self.app.content_click(vx, vy);
+                }
             } else if self.app.screen == Screen::Roster {
                 let (vx, vy) = self.app.view.to_virtual(x, y);
                 self.app.roster_click(vx, vy, button == MouseButton::Right);
@@ -1988,6 +2002,8 @@ impl EventHandler for Stage {
                     | Screen::Top10
             ) {
                 app.close_info();
+            } else if app.screen == Screen::Content {
+                app.content_key(k);
             } else if app.screen == Screen::Skills {
                 if k == KeyCode::Enter || k == KeyCode::Escape {
                     app.skills_key(k == KeyCode::Enter);

@@ -81,13 +81,9 @@ impl Default for Economy {
 pub const WAGE_UNITS: [[i32; 2]; STAFF_KINDS] = [[3, 7], [2, 3], [2, 4], [2, 5]];
 
 /// Course rank by number of holes: 0 Municipal (under 6), 1 Daily Fee (6..9), 2 Country Club (10..17), 3 Championship (18).
+/// The thresholds are data/economy.toml's `rank_holes` (built in: 6, 10, 18).
 pub fn rank(holes: usize) -> i32 {
-    match holes {
-        0..=5 => 0,
-        6..=9 => 1,
-        10..=17 => 2,
-        _ => 3,
-    }
+    crate::data::economy().rank_holes.iter().filter(|&&n| holes >= n).count() as i32
 }
 
 pub const RANK_NAMES: [&str; 4] = ["Municipal", "Daily Fee", "Country Club", "Championship"];
@@ -121,18 +117,28 @@ impl Economy {
     /// Firing an employee costs 25 units (booked under Salaries).
     pub const FIRING_UNITS: f64 = 25.0;
 
+    /// An employee kind's name (data/staff.toml).
     pub fn staff_name(k: usize) -> &'static str {
-        ["Club Pro", "Ranger", "Groundskeeper", "Soda Vendor"].get(k).copied().unwrap_or("?")
+        crate::data::get().staff_names.get(k).copied().unwrap_or("?")
     }
     pub fn staff_count(&self) -> i32 {
         self.staff.iter().sum()
     }
 
-    /// Cost per tile of laying a terrain type, in units of 100, from the exe's terrain table (the figure its build menu shows is this
-    /// times 100). Indexed by the original tile id 0..19; ids without an entry (building lots, editor-only ids) cost nothing.
-    /// What it costs to clear a terrain type before painting over it (terrain table +0x24): rocks and trees 5, elm and
-    /// water 10, wetlands 50, marsh 100, everything else nothing.
+    /// What it costs to clear a terrain type before painting over it, in units (data/terrain.toml; built in:
+    /// [`Self::builtin_terrain_clear_units`]).
     pub fn terrain_clear_units(ty: i32) -> i32 {
+        crate::data::clear_units(ty)
+    }
+
+    /// Cost per tile of laying a terrain type, in units (data/terrain.toml; built in: [`Self::builtin_terrain_cost_units`]).
+    pub fn terrain_cost_units(ty: i32) -> i32 {
+        crate::data::paint_units(ty)
+    }
+
+    /// The built-in clearing cost (terrain table +0x24): rocks and trees 5, elm and water 10, wetlands 50, marsh 100,
+    /// everything else nothing.
+    pub fn builtin_terrain_clear_units(ty: i32) -> i32 {
         match ty {
             12..=15 => 5,
             16 | 17 | 23..=25 => 10,
@@ -142,7 +148,10 @@ impl Economy {
         }
     }
 
-    pub fn terrain_cost_units(ty: i32) -> i32 {
+    /// The built-in cost per tile of laying a terrain type, in units of 100, from the exe's terrain table (the figure its
+    /// build menu shows is this times 100). Indexed by the original tile id 0..19; ids without an entry (building lots,
+    /// editor-only ids) cost nothing.
+    pub fn builtin_terrain_cost_units(ty: i32) -> i32 {
         const K: [i32; 20] = [5, 10, 3, 3, 1, 2, 4, 6, 4, 8, 10, 4, 4, 10, 10, 10, 25, 50, 2, 6];
         match ty {
             0..=19 => K[ty as usize],
@@ -204,7 +213,7 @@ impl Economy {
             return false;
         }
         self.staff[kind] -= 1;
-        self.spend_to(LEDGER_SALARIES, Self::FIRING_UNITS * Self::UNIT);
+        self.spend_to(LEDGER_SALARIES, crate::data::economy().firing_units as f64 * Self::UNIT);
         true
     }
 
@@ -257,14 +266,15 @@ impl Economy {
         }
         let interval = 1024 / (difficulty.clamp(0, 3) as u32 + 2);
         if tick.is_multiple_of(interval) {
+            let upkeep = crate::data::economy().maintenance_units as f64 * Self::UNIT;
             for _ in 0..active_holes {
-                self.spend_to(LEDGER_MAINTENANCE, Self::UNIT);
-                self.upkeep_paid += Self::UNIT;
+                self.spend_to(LEDGER_MAINTENANCE, upkeep);
+                self.upkeep_paid += upkeep;
             }
             let r = rank(active_holes);
             for (p, paid) in staff.iter().zip(paid.iter_mut()) {
                 if rng.below(4 - difficulty.clamp(0, 3)) <= r {
-                    let units = WAGE_UNITS[p.kind.min(3)][p.experienced as usize];
+                    let units = crate::data::wages()[p.kind.min(3)][p.experienced as usize];
                     let w = units as f64 * Self::UNIT;
                     self.spend_to(LEDGER_SALARIES, w);
                     self.wages_paid += w;
@@ -273,9 +283,10 @@ impl Economy {
             }
         }
         if tick & 0x3ff == 0 && self.cash < 0.0 {
-            // 2% a month on debt, in whole units, truncated toward zero.
+            // 2% a month on debt (data/economy.toml), in whole units, truncated toward zero: units x 2 / 100 is the
+            // exe's units / 50 exactly
             let units = (self.cash / Self::UNIT).trunc() as i64;
-            let interest = (units / 50) as f64 * Self::UNIT;
+            let interest = (units * crate::data::economy().interest_percent as i64 / 100) as f64 * Self::UNIT;
             self.earn(interest);
             self.book(LEDGER_MAINTENANCE, interest);
         }

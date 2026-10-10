@@ -480,7 +480,7 @@ impl Club {
                 " New players are flocking to your golf course. "
             };
             let k = self.unlocked;
-            let name = crate::land::BUILDINGS[k as usize].0;
+            let name = crate::data::buildings()[k as usize].0;
             s += &format!("You may now build a {name}. A {name}{}", UNLOCK_BLURB[(k - 6) as usize]);
             self.unlocked += 1;
         }

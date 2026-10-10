@@ -89,7 +89,7 @@ fn clamp_exe(v: i32, lo: i32, hi: i32) -> i32 {
 }
 
 /// One of the exe's sixteen property records.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PropertyRecord {
     pub name: &'static str,
     /// The course's own name (record +0x19), used in the date caption and the messages.
@@ -151,7 +151,7 @@ pub struct Slot {
 
 impl Slot {
     pub fn record(&self) -> &'static PropertyRecord {
-        &RECORDS[self.property]
+        &crate::data::records()[self.property]
     }
 }
 
@@ -163,7 +163,7 @@ pub fn slot_acres(i: i32, p: usize, sandbox: bool) -> i32 {
     }
     let bonus = if i > 3 { 20 } else { 10 };
     let base = (i + 4) * 10;
-    match RECORDS[p].coast {
+    match crate::data::records()[p].coast {
         0 => base + bonus,
         2 => base - bonus,
         _ => base,
@@ -181,7 +181,7 @@ pub fn deal_offer(rng: &mut ExeRng, sandbox: bool) -> [Slot; 16] {
     let mut i = 12;
     while i < 16 {
         let p = rng.below(16) as usize;
-        if (12..i).any(|j| RECORDS[slot[j].unwrap()].theme == RECORDS[p].theme) {
+        if (12..i).any(|j| crate::data::records()[slot[j].unwrap()].theme == crate::data::records()[p].theme) {
             continue;
         }
         slot[i] = Some(p);
@@ -193,7 +193,7 @@ pub fn deal_offer(rng: &mut ExeRng, sandbox: bool) -> [Slot; 16] {
     while i < 12 {
         let p = rng.below(16) as usize;
         let taken = slot.contains(&Some(p));
-        if taken || (i == 0 && RECORDS[p].theme != 0) {
+        if taken || (i == 0 && crate::data::records()[p].theme != 0) {
             continue;
         }
         slot[i] = Some(p);
@@ -204,7 +204,7 @@ pub fn deal_offer(rng: &mut ExeRng, sandbox: bool) -> [Slot; 16] {
 }
 
 /// Per-type table the exe keeps for its 23 tile types (copied at start-up from a static table in the exe).
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TypeInfo {
     pub name: &'static str,
     /// Byte +0x22: types with a positive value collapse into class 4 for border drawing in the Desert theme (types 5 and 7 excepted).
@@ -268,7 +268,7 @@ pub const T_BUILDING: u8 = 22;
 
 /// Border class of a tile type as the exe hands it to Terrain.dll, with the Desert override.
 pub fn border_class(ty: u8, desert: bool) -> u8 {
-    let Some(t) = TYPES.get(ty as usize) else { return ty };
+    let Some(t) = crate::data::get().land_types.get(ty as usize) else { return ty };
     if desert && t.desert_group > 0 && ty != 5 && ty != 7 {
         4
     } else {
@@ -408,7 +408,7 @@ impl Land {
     fn set_ty(&mut self, i: i32, t: u8) {
         if (0..NN as i32).contains(&i) {
             self.ty[i as usize] = t;
-            self.layer[i as usize] = TYPES[t as usize].layer;
+            self.layer[i as usize] = crate::data::land_type(t).layer;
         }
     }
 
@@ -504,13 +504,13 @@ impl Land {
                             return None;
                         }
                     }
-                    if TYPES[t as usize].class == 13
+                    if crate::data::land_type(t).class == 13
                         || t == T_ROCKS
                         || (t == T_WATER && kind != K_MARINA)
                         || t == T_WETLANDS
                         || t == T_MARSH
                     {
-                        cost += TYPES[t as usize].clear_cost as i32;
+                        cost += crate::data::land_type(t).clear_cost as i32;
                     }
                     if f & 0x8000 != 0 {
                         return None;
@@ -536,7 +536,7 @@ impl Land {
     /// Places an object `extra` tiles larger than its kind's edge (an upgraded building is one larger).
     #[allow(clippy::too_many_arguments)]
     pub fn place_sized(&mut self, rng: &mut ExeRng, a: i32, b: i32, kind: i32, fl: i32, theme: u8, extra: i32) -> usize {
-        let size = BUILDINGS[kind as usize].1 + extra;
+        let size = crate::data::buildings()[kind as usize].1 + extra;
         let anchor_h = self.h(a * 51 + b);
         for c in 0..size {
             for k in 0..size {
@@ -555,7 +555,7 @@ impl Land {
                 }
                 if (0..NN as i32).contains(&i) {
                     self.ty[i as usize] = t;
-                    self.layer[i as usize] = TYPES[T_BUILDING as usize].layer;
+                    self.layer[i as usize] = crate::data::land_type(T_BUILDING).layer;
                     let f = self.flags[i as usize] & 0xecff;
                     self.flags[i as usize] = if fl > 0 { f | fl as u16 } else { f };
                     self.var[i as usize] = 0xff;
@@ -590,7 +590,7 @@ impl Land {
                 self.objects.len() - 1
             }
         };
-        let size = BUILDINGS[kind as usize].1;
+        let size = crate::data::buildings()[kind as usize].1;
         for r in 0..size {
             for c in 0..size {
                 let i = (a + r) * N + b + c;
@@ -606,7 +606,7 @@ impl Land {
     /// Water depth: every water tile starts deep (2); next to land it is shallow (0); next to shallow water it is middling (1).
     fn water_depth(&mut self) {
         for i in 0..NN {
-            if TYPES[self.ty[i] as usize].class == 17 {
+            if crate::data::land_type(self.ty[i]).class == 17 {
                 self.var[i] = 2;
             }
         }
@@ -615,7 +615,7 @@ impl Land {
             for a in 0..N {
                 for b in 0..N {
                     let i = idx(a, b);
-                    if TYPES[self.ty[i] as usize].class != 17 {
+                    if crate::data::land_type(self.ty[i]).class != 17 {
                         continue;
                     }
                     let mut v = self.var[i];
@@ -625,7 +625,7 @@ impl Land {
                             continue;
                         }
                         let j = idx(na, nb);
-                        if TYPES[self.ty[j] as usize].class != 17 {
+                        if crate::data::land_type(self.ty[j]).class != 17 {
                             v = 0;
                         }
                         if self.var[j] == 0 && v != 0 {
@@ -694,7 +694,7 @@ pub fn generate(slot_index: usize, slot: Slot, difficulty: i32, sandbox: bool, r
         difficulty,
         ty: vec![base; NN],
         flags: vec![0; NN],
-        layer: vec![TYPES[base as usize].layer; NN],
+        layer: vec![crate::data::land_type(base).layer; NN],
         var: vec![0; NN],
         height: vec![0; HN],
         original: Vec::new(),
@@ -760,7 +760,7 @@ pub fn generate(slot_index: usize, slot: Slot, difficulty: i32, sandbox: bool, r
             if len == 48 {
                 land.flags[i] |= flag::STREAK_48;
             }
-            land.layer[i] = TYPES[t as usize].layer;
+            land.layer[i] = crate::data::land_type(t).layer;
             if rng.below(64) == 0 {
                 land.flags[i] |= flag::SPOT;
             } else {
@@ -842,7 +842,7 @@ pub fn generate(slot_index: usize, slot: Slot, difficulty: i32, sandbox: bool, r
                 if land.ty[i] != T_WATER {
                     let t = if theme == 4 { T_ROCKS } else { T_WATER };
                     land.ty[i] = t;
-                    land.layer[i] = TYPES[t as usize].layer;
+                    land.layer[i] = crate::data::land_type(t).layer;
                     land.flags[i] &= !flag::SPOT;
                     if b == w - 1 && rng.below(16) == 0 {
                         land.flags[i] |= flag::SPOT;
@@ -925,7 +925,7 @@ pub fn generate(slot_index: usize, slot: Slot, difficulty: i32, sandbox: bool, r
                     land.flags_or(i, flag::SPOT);
                 }
                 if (0..NN as i32).contains(&i) {
-                    land.layer[i as usize] = TYPES[land.ty[i as usize] as usize].layer;
+                    land.layer[i as usize] = crate::data::land_type(land.ty[i as usize]).layer;
                 }
                 if t == T_WATER {
                     land.set_h(b + a * 51, 3);
@@ -1013,7 +1013,7 @@ pub fn generate(slot_index: usize, slot: Slot, difficulty: i32, sandbox: bool, r
     }
 
     // The clubhouse: a random spot in the middle of the map on plain ground where its 4 x 4 footprint fits.
-    let csize = BUILDINGS[K_CLUBHOUSE as usize].1;
+    let csize = crate::data::buildings()[K_CLUBHOUSE as usize].1;
     let (mut ca, mut cb, mut ra, mut rb);
     let mut tries = 0;
     loop {
@@ -1304,7 +1304,7 @@ fn landmark(land: &mut Land, rng: &mut ExeRng, prop: i32, n: i32, a: i32, b: i32
         land.objects[o].dir = rng.below(4) as u8;
         for k in 0..8 {
             let t = land.ty_at(b + DY[k] + (DX[k] + a) * N);
-            if t != 0xff && TYPES[t as usize].class == 13 {
+            if t != 0xff && crate::data::land_type(t).class == 13 {
                 land.objects[o].sub = 10;
             }
             if t == T_WATER {
@@ -1354,14 +1354,14 @@ impl Land {
     /// Land for a course that was not generated (the demo course, a loaded course file): the terrain's tiles, paths and heights,
     /// no objects. Slot 0 of a Parkland property stands in for the deal.
     pub fn from_terrain(t: &Terrain, theme: u8) -> Land {
-        let property = RECORDS.iter().position(|r| r.theme == theme).unwrap_or(0);
+        let property = crate::data::records().iter().position(|r| r.theme == theme).unwrap_or(0);
         let mut land = Land {
             slot_index: 0,
             slot: Slot { property, acres: 250 },
             difficulty: 1,
             ty: vec![T_ROUGH; NN],
             flags: vec![0; NN],
-            layer: vec![TYPES[T_ROUGH as usize].layer; NN],
+            layer: vec![crate::data::land_type(T_ROUGH).layer; NN],
             var: vec![0; NN],
             height: vec![3; HN],
             original: Vec::new(),
@@ -1398,7 +1398,7 @@ impl Land {
                 let footprint = self.flags[i] & flag::FOOTPRINT != 0;
                 if !footprint {
                     self.ty[i] = ty;
-                    self.layer[i] = TYPES[ty as usize].layer;
+                    self.layer[i] = crate::data::land_type(ty).layer;
                 }
                 if t.path_kind.get(o).copied().unwrap_or(0) != 0 {
                     self.flags[i] |= flag::PATH;
@@ -1442,7 +1442,7 @@ impl Land {
     /// up) is one larger, except the Snack Bar, which is placed larger but looked up at its base size (its outer ring is then
     /// neither found by clicks nor cleared on removal, as in the exe).
     pub fn footprint_size(&self, o: &Object) -> i32 {
-        let edge = BUILDINGS.get(o.kind as usize).map(|b| b.1).unwrap_or(1);
+        let edge = crate::data::buildings().get(o.kind as usize).map(|b| b.1).unwrap_or(1);
         if o.kind > 5 && o.kind != K_SNACK_BAR {
             edge + o.sub.clamp(0, 1)
         } else {
@@ -1478,7 +1478,7 @@ impl Land {
                 let tu = t as usize;
                 self.flags[tu] &= 0xfbdf;
                 self.ty[tu] = ty;
-                self.layer[tu] = TYPES[ty as usize].layer;
+                self.layer[tu] = crate::data::land_type(ty).layer;
                 self.var[tu] = 0;
             }
         }
@@ -1612,7 +1612,7 @@ impl Land {
         // The clubhouse sprite stands in the middle of its 4 x 4 footprint.
         t.clubhouse_x = self.clubhouse.0 + 2;
         t.clubhouse_y = self.clubhouse.1 + 2;
-        t.clubhouse_size = BUILDINGS[K_CLUBHOUSE as usize].1;
+        t.clubhouse_size = crate::data::buildings()[K_CLUBHOUSE as usize].1;
         t
     }
 }
@@ -1743,7 +1743,7 @@ impl Land {
             K_WILLOW => 25,
             K_BRIDGE if self.ty[i] != T_WATER => return Err("Can't build bridge there."),
             K_BRIDGE => 100,
-            _ => BUILDINGS[kind as usize].2 + clear,
+            _ => crate::data::buildings()[kind as usize].2 + clear,
         })
     }
 
@@ -1754,7 +1754,7 @@ impl Land {
             return false;
         }
         let ty = self.ty[idx(a, b)];
-        if TYPES[ty as usize].desert_group <= 0 || ty == T_BUILDING || ty == T_HOME_SITE {
+        if crate::data::land_type(ty).desert_group <= 0 || ty == T_BUILDING || ty == T_HOME_SITE {
             return false;
         }
         let (na, nb) = (a + DX[d as usize & 7], b + DY[d as usize & 7]);
@@ -1762,7 +1762,7 @@ impl Land {
             return false;
         }
         let j = idx(na, nb);
-        self.flags[j] & 0x120 == 0 && TYPES[self.ty[j] as usize].desert_group > 0
+        self.flags[j] & 0x120 == 0 && crate::data::land_type(self.ty[j]).desert_group > 0
     }
 
     /// Puts an item on one tile as the exe's building tool does (paths, benches, flower beds, willows, scenic bridges), recording
@@ -1810,14 +1810,14 @@ impl Land {
                     self.flags[i] &= !(0x0100 | 0x0200 | 0x0800);
                     self.var[i] = variant as u8;
                     self.ty[i] = T_ROUGH;
-                    self.layer[i] = TYPES[T_ROUGH as usize].layer;
+                    self.layer[i] = crate::data::land_type(T_ROUGH).layer;
                     self.undo[i] = 0x82;
                     self.refund[i] = cost as i8;
                 }
             }
             K_WILLOW => {
                 self.ty[i] = T_ELM;
-                self.layer[i] = TYPES[T_ELM as usize].layer;
+                self.layer[i] = crate::data::land_type(T_ELM).layer;
                 self.growth[i] = 0;
                 self.var[i] = (variant + 1) as u8;
                 self.flags[i] = (self.flags[i] & !0x1800) | 0x4100;
@@ -1869,7 +1869,7 @@ impl Land {
             return ("Permanent".into(), false);
         }
         if let Some(o) = self.object_on(a, b) {
-            let name = BUILDINGS.get(self.objects[o].kind as usize).map(|b| b.0).unwrap_or("");
+            let name = crate::data::buildings().get(self.objects[o].kind as usize).map(|b| b.0).unwrap_or("");
             return (format!("Demolish {name}"), true);
         }
         let code = self.undo[i];
@@ -1910,7 +1910,7 @@ impl Land {
         let on_object = self.flags[i] & flag::FOOTPRINT != 0;
         if on_object {
             if let Some(o) = self.objects.iter().position(|o| {
-                let s = BUILDINGS.get(o.kind as usize).map(|b| b.1).unwrap_or(1);
+                let s = crate::data::buildings().get(o.kind as usize).map(|b| b.1).unwrap_or(1);
                 o.kind >= 0 && (o.a..o.a + s).contains(&a) && (o.b..o.b + s).contains(&b)
             }) {
                 return Undone::Building(o);
@@ -1930,12 +1930,12 @@ impl Land {
         }
         if code < 0x7d {
             self.ty[i] = code;
-            self.layer[i] = TYPES[(code as usize).min(22)].layer;
+            self.layer[i] = crate::data::land_type(code).layer;
         } else {
             match code & 0x7f {
                 0x10 => {
                     self.ty[i] = T_ROUGH;
-                    self.layer[i] = TYPES[T_ROUGH as usize].layer;
+                    self.layer[i] = crate::data::land_type(T_ROUGH).layer;
                 }
                 0x13 | 0 => self.flags[i] &= !flag::PATH,
                 1 => self.flags[i] &= !0x200,

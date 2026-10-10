@@ -5,7 +5,7 @@
 
 use crate::land::{port_theme, RECORDS};
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Property {
     pub name: &'static str,
     pub course: &'static str,

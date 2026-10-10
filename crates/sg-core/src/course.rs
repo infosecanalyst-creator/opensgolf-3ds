@@ -3,7 +3,7 @@
 //! and the objects. Built from `land::Land` whenever the course changes (the exe's refresh routine 0x42f7a0).
 
 use crate::geom::{len, DX, DY, UNIT};
-use crate::land::{Land, Object, BUILDINGS};
+use crate::land::{Land, Object};
 
 pub const N: i32 = 50;
 pub const NN: usize = 2500;
@@ -80,7 +80,7 @@ pub fn type_name(ty: i32) -> &'static str {
 }
 
 /// One row of the runtime terrain table (0x578350, 0x30 bytes per type).
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TypeRow {
     /// +0x20 bounce
     pub bounce: i32,
@@ -184,7 +184,7 @@ impl Default for Course {
             level_table: vec![0; NN],
             walls: vec![0; NN],
             objects: Vec::new(),
-            hazard: std::array::from_fn(|i| TYPES[i].hazard),
+            hazard: std::array::from_fn(|i| crate::data::get().rows[i].hazard),
             theme: 0,
             door: (0, 0),
             slot_index: 0,
@@ -306,7 +306,7 @@ impl Course {
     }
 
     pub fn row(&self, ty: u8) -> &TypeRow {
-        &TYPES[(ty as usize).min(22)]
+        crate::data::row(ty)
     }
 
     /// Hazard byte of a type, as the table holds it right now.
@@ -531,7 +531,7 @@ impl Course {
 
     /// Footprint edge of an object as lookups count it (0x40df80): upgraded buildings grow, except the snack bar.
     pub fn object_edge(&self, kind: i32) -> i32 {
-        let e = BUILDINGS.get(kind as usize).map(|b| b.1).unwrap_or(1);
+        let e = crate::data::buildings().get(kind as usize).map(|b| b.1).unwrap_or(1);
         if kind > 5 && kind != 7 {
             e - 1 + self.level.get(kind as usize).copied().unwrap_or(0)
         } else {
@@ -558,7 +558,7 @@ impl Course {
     pub fn nearest(&self, kind: i32, x: i32, y: i32) -> (i32, i32) {
         let mut best = -1;
         let mut bd = 0xffff;
-        let half = BUILDINGS.get(kind as usize).map(|b| b.1).unwrap_or(1) / 2;
+        let half = crate::data::buildings().get(kind as usize).map(|b| b.1).unwrap_or(1) / 2;
         for (i, o) in self.objects.iter().enumerate() {
             if o.kind != kind {
                 continue;

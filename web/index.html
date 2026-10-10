@@ -49,6 +49,16 @@
     <a href="#" onclick="sgForgetHd(); return false;" style="margin-left:12px">Forget my HD pack</a>
     <div id="hdstatus"></div>
   </details>
+  <details class="note">
+    <summary>Optional: content packs (mods)</summary>
+    <p>Content packs change the game's data, art or sounds (see docs/MODDING.md in the source). Pick a pack's folder (the one
+      with <code>pack.toml</code>) or a .zip of it. Added packs start switched off: switch them on in the game under System
+      Functions, Preferences, Content packs, and reload the page.</p>
+    <label>Add a content pack folder<input id="packfolder" type="file" webkitdirectory directory multiple></label>
+    <label>Or a .zip of it<input id="packzip" type="file" accept=".zip"></label>
+    <a href="#" onclick="sgForgetPacks(); return false;" style="margin-left:12px">Forget my content packs</a>
+    <div id="packstatus"></div>
+  </details>
   <p class="note">The game's art, sounds and data belong to Electronic Arts and are not included here, which is why the page
   needs your copy. Works in desktop Chrome, Edge and Firefox, and on phones and tablets by touch: tap to click, drag to scroll, hold
   for a right click, pinch to zoom, twist two fingers to turn the view. Sound starts after your first click or tap. Saved courses stay in this
@@ -62,6 +72,8 @@
   document.getElementById("zip").addEventListener("change", e => sgLoadZip(e.target.files[0]));
   document.getElementById("hdfolder").addEventListener("change", e => sgLoadHdFolder(e.target.files));
   document.getElementById("hdzip").addEventListener("change", e => sgLoadHdZip(e.target.files[0]));
+  document.getElementById("packfolder").addEventListener("change", e => sgLoadPackFolder(e.target.files));
+  document.getElementById("packzip").addEventListener("change", e => sgLoadPackZip(e.target.files[0]));
   sgInit();
 </script>
 </body>

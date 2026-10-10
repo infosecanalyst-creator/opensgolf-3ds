@@ -116,7 +116,7 @@ impl App {
     /// "Ocean Grove MC" on the Florida property (as in footage of the original). The exe adds the suffix of the current
     /// rank to any name.
     pub fn hud_course_name(&self) -> String {
-        let site = self.land.as_ref().and_then(|l| sg_core::properties::PROPERTIES.get(l.slot.property));
+        let site = self.land.as_ref().and_then(|l| sg_core::data::properties().get(l.slot.property));
         let base = match site {
             // an old save's default "<property> GC": the property's course name
             Some(p) if self.course_name == format!("{} GC", p.name) => p.course,

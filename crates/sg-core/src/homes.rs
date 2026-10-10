@@ -7,8 +7,9 @@ use crate::course::{inside, Course};
 use crate::golfer::Hole;
 use crate::land::{K_HOME_SITE, T_HOME_SITE, T_OUT, T_ROUGH, T_WATER};
 
-/// The price byte of each type (+0x23).
-const PRICE: [i32; 23] = [5, 10, 3, 3, 1, 2, 4, 6, 4, 8, 10, 4, 4, 10, 10, 10, 25, 50, 2, 6, 10, 0, 0];
+/// The price byte of each type (+0x23): what a tile adds to the view of a home site next to it. Built in; the game reads
+/// data/terrain.toml's `view` (crate::data).
+pub const BUILTIN_VIEW: [i32; 23] = [5, 10, 3, 3, 1, 2, 4, 6, 4, 8, 10, 4, 4, 10, 10, 10, 25, 50, 2, 6, 10, 0, 0];
 
 /// What one tile around a lot adds to its view (0x42ee80).
 fn view(c: &Course, a: i32, b: i32) -> i32 {
@@ -16,7 +17,8 @@ fn view(c: &Course, a: i32, b: i32) -> i32 {
         return 0;
     }
     let t = c.ty[crate::course::idx(a, b)];
-    let row = crate::course::TYPES[(t as usize).min(22)];
+    let row = crate::data::row(t);
+    let weight = &crate::data::get().views;
     if t == T_OUT {
         0
     } else if t == T_ROUGH {
@@ -30,9 +32,9 @@ fn view(c: &Course, a: i32, b: i32) -> i32 {
     } else if t == 18 && c.theme == 1 {
         16
     } else if row.class == 13 {
-        PRICE[t as usize] * 5 / 2
+        weight[t as usize] * 5 / 2
     } else {
-        PRICE[t as usize] * row.hazard as i32 / 2
+        weight[t as usize] * row.hazard as i32 / 2
     }
 }
 

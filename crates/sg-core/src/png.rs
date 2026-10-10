@@ -54,45 +54,104 @@ pub fn write_png(path: impl AsRef<std::path::Path>, img: &Rgba) -> bool {
     crate::fsutil::write_file(path, &bytes)
 }
 
-/// Decodes a PNG as `encode_png` writes it (RGBA8, every row unfiltered), e.g. the accomplishment snapshots the board
-/// reloads; anything else gives None.
-pub fn decode_png(b: &[u8]) -> Option<Rgba> {
-    if b.len() < 8 || &b[1..4] != b"PNG" {
+/// Decodes a PNG: 8 bits per channel, not interlaced, greyscale, RGB, palette (with tRNS), grey + alpha or RGBA, any row
+/// filter. Covers the accomplishment snapshots `encode_png` writes, the HD packs' pictures (docs/HD.md) and the PNG art of
+/// content packs (docs/MODDING.md). Anything else gives None.
+pub fn decode_png(d: &[u8]) -> Option<Rgba> {
+    if d.len() < 8 || d[..8] != [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A] {
         return None;
     }
-    let (mut w, mut h, mut z) = (0u32, 0u32, Vec::new());
+    let be = |o: usize| u32::from_be_bytes([d[o], d[o + 1], d[o + 2], d[o + 3]]);
+    let (mut w, mut h, mut ct) = (0usize, 0usize, 0u8);
+    let mut pal: Vec<u8> = Vec::new();
+    let mut trns: Vec<u8> = Vec::new();
+    let mut idat = Vec::new();
     let mut p = 8;
-    while p + 8 <= b.len() {
-        let n = u32::from_be_bytes(b[p..p + 4].try_into().ok()?) as usize;
-        let body = b.get(p + 8..p + 8 + n)?;
-        match &b[p + 4..p + 8] {
-            b"IHDR" if n >= 13 => {
-                if body[8..13] != [8, 6, 0, 0, 0] {
-                    return None;
+    while p + 8 <= d.len() {
+        let len = be(p) as usize;
+        let ty = &d[p + 4..p + 8];
+        let body = d.get(p + 8..p + 8 + len)?;
+        match ty {
+            b"IHDR" => {
+                if len < 13 || body[8] != 8 || body[12] != 0 {
+                    return None; // only 8 bits per channel, not interlaced
                 }
-                w = u32::from_be_bytes(body[0..4].try_into().ok()?);
-                h = u32::from_be_bytes(body[4..8].try_into().ok()?);
+                w = u32::from_be_bytes(body[0..4].try_into().ok()?) as usize;
+                h = u32::from_be_bytes(body[4..8].try_into().ok()?) as usize;
+                ct = body[9];
             }
-            b"IDAT" => z.extend_from_slice(body),
+            b"PLTE" => pal = body.to_vec(),
+            b"tRNS" => trns = body.to_vec(),
+            b"IDAT" => idat.extend_from_slice(body),
             b"IEND" => break,
             _ => {}
         }
-        p += n + 12;
+        p += 12 + len;
     }
-    let raw = miniz_oxide::inflate::decompress_to_vec_zlib(&z).ok()?;
-    let stride = w as usize * 4;
-    if w == 0 || h == 0 || raw.len() < (stride + 1) * h as usize {
+    let ch = match ct {
+        0 | 3 => 1,
+        2 => 3,
+        4 => 2,
+        6 => 4,
+        _ => return None,
+    };
+    if w == 0 || h == 0 || w > 16384 || h > 16384 {
         return None;
     }
-    let mut img = Rgba::new(w, h);
-    for y in 0..h as usize {
-        let row = &raw[y * (stride + 1)..(y + 1) * (stride + 1)];
-        if row[0] != 0 {
-            return None;
-        }
-        img.px[y * stride..(y + 1) * stride].copy_from_slice(&row[1..]);
+    let raw = miniz_oxide::inflate::decompress_to_vec_zlib(&idat).ok()?;
+    let stride = w * ch;
+    if raw.len() < (stride + 1) * h {
+        return None;
     }
-    Some(img)
+    let mut cur = vec![0u8; stride];
+    let mut prev = vec![0u8; stride];
+    let mut out = Rgba::new(w as u32, h as u32);
+    for y in 0..h {
+        let line = &raw[y * (stride + 1)..(y + 1) * (stride + 1)];
+        let f = line[0];
+        for i in 0..stride {
+            let x = line[i + 1];
+            let a = if i >= ch { cur[i - ch] } else { 0 };
+            let b = prev[i];
+            let c = if i >= ch { prev[i - ch] } else { 0 };
+            cur[i] = match f {
+                0 => x,
+                1 => x.wrapping_add(a),
+                2 => x.wrapping_add(b),
+                3 => x.wrapping_add(((a as u16 + b as u16) / 2) as u8),
+                4 => {
+                    let pp = a as i16 + b as i16 - c as i16;
+                    let (pa, pb, pc) = ((pp - a as i16).abs(), (pp - b as i16).abs(), (pp - c as i16).abs());
+                    x.wrapping_add(if pa <= pb && pa <= pc {
+                        a
+                    } else if pb <= pc {
+                        b
+                    } else {
+                        c
+                    })
+                }
+                _ => return None,
+            };
+        }
+        let row = &mut out.px[y * w * 4..(y + 1) * w * 4];
+        for (x, o) in row.chunks_exact_mut(4).enumerate() {
+            let s = &cur[x * ch..x * ch + ch];
+            let px = match ct {
+                0 => [s[0], s[0], s[0], 255],
+                2 => [s[0], s[1], s[2], 255],
+                3 => {
+                    let i = s[0] as usize;
+                    let c = pal.get(i * 3..i * 3 + 3)?;
+                    [c[0], c[1], c[2], trns.get(i).copied().unwrap_or(255)]
+                }
+                4 => [s[0], s[0], s[0], s[1]],
+                _ => [s[0], s[1], s[2], s[3]],
+            };
+            o.copy_from_slice(&px);
+        }
+        std::mem::swap(&mut cur, &mut prev);
+    }
+    Some(out)
 }
 
 #[cfg(test)]
@@ -117,5 +176,26 @@ mod tests {
         assert_eq!((back.w, back.h), (3, 2));
         assert_eq!(back.px, img.px);
         assert!(super::decode_png(b"not a png").is_none());
+    }
+
+    #[test]
+    fn png_filters() {
+        // a 2x2 RGB image, row 0 with the Sub filter, row 1 with Paeth
+        let raw = [1u8, 10, 20, 30, 5, 5, 5, 4, 1, 2, 3, 4, 5, 6];
+        let z = miniz_oxide::deflate::compress_to_vec_zlib(&raw, 6);
+        let mut png = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+        let mut chunk = |ty: &[u8], body: &[u8]| {
+            png.extend_from_slice(&(body.len() as u32).to_be_bytes());
+            png.extend_from_slice(ty);
+            png.extend_from_slice(body);
+            png.extend_from_slice(&[0; 4]); // the decoder does not check CRCs
+        };
+        chunk(b"IHDR", &[0, 0, 0, 2, 0, 0, 0, 2, 8, 2, 0, 0, 0]);
+        chunk(b"IDAT", &z);
+        chunk(b"IEND", &[]);
+        let img = super::decode_png(&png).unwrap();
+        assert_eq!(&img.px[0..8], &[10, 20, 30, 255, 15, 25, 35, 255]);
+        // Paeth: first pixel predicts from above (b), second from the left/above/upper-left
+        assert_eq!(&img.px[8..11], &[11, 22, 33]);
     }
 }

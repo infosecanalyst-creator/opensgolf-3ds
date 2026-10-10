@@ -7,6 +7,7 @@
 //!   sgtool dta   <file.dta>            dump a .dta table
 //!   sgtool story <file.txt>            dump a conversation script
 //!   sgtool fixture <dir> [font.ttf]    write a stand-in game folder with placeholder art (for tests)
+//!   sgtool dump-data <dir>             write the built-in data tables as data/*.toml (a template for content packs)
 mod fixture;
 
 use sg_core::assets::{decode_bmp, decode_pcx, decode_tga, decode_wav, to_rgba, Rgba};
@@ -142,12 +143,24 @@ fn main() {
                 }
             }
         }
+        ("dump-data", n) if n >= 3 => {
+            // the engine's built-in tables (the `original` base set's data), one file per table, under <dir>/data
+            let dir = Path::new(&a[2]).join("data");
+            for (file, text) in sg_core::data::Tables::builtin().to_toml() {
+                let path = dir.join(format!("{file}.toml"));
+                let body = format!("{}\n{text}", sg_core::data::file_header(file));
+                if !sg_core::fsutil::write_file(&path, body.as_bytes()) {
+                    fail(format!("cannot write {}", path.display()));
+                }
+                println!("wrote {}", path.display());
+            }
+        }
         ("fixture", n) if n >= 3 => {
             fixture::write_fixture(Path::new(&a[2]), a.get(3).map(Path::new));
             println!("wrote a placeholder game folder to {}", a[2]);
         }
         _ => {
-            eprintln!("usage: sgtool check|png|sheet|chr|top10|dta|story|fixture ...");
+            eprintln!("usage: sgtool check|png|sheet|chr|top10|dta|story|fixture|dump-data ...");
             exit(2);
         }
     }

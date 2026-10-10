@@ -115,7 +115,7 @@ impl App {
     /// larger) and the clearing charge in $100 units, None where it will not fit (0x40db90; the Pathway pays half).
     fn footprint_at(&self, kind: i32, a: i32, b: i32) -> (i32, Option<i32>) {
         let level = if kind >= 6 { self.lot_level(kind) } else { 0 };
-        let size = land::BUILDINGS.get(kind as usize).map(|b| b.1).unwrap_or(1) + level;
+        let size = sg_core::data::buildings().get(kind as usize).map(|b| b.1).unwrap_or(1) + level;
         let clear = self.land.as_ref().and_then(|l| l.fits(a, b, size, kind, self.exe_theme()));
         (size, clear.map(|c| if kind == 0 { c / 2 } else { c }))
     }
@@ -486,7 +486,7 @@ impl App {
                 let mut ch = n.chars();
                 ch.next().map(|f| f.to_uppercase().collect::<String>() + ch.as_str()).unwrap_or_default()
             } else {
-                land::BUILDINGS[kind as usize].0.to_string()
+                sg_core::data::buildings()[kind as usize].0.to_string()
             };
             label(g, s, sx, sy - 8.0, &name, BODY, col);
         }
@@ -519,7 +519,7 @@ impl App {
     /// and the profit; then the profit as "$N" under the footprint, green above 0 and red otherwise. Money in dollars.
     fn draw_lot_box(&self, g: &mut Gfx, s: &Ui, a: i32, b: i32, clear: i32, sx: f32, sy: f32) {
         let share = sg_core::homes::lot_value(&self.course, &self.club.holes, self.difficulty, a, b) / 4;
-        let prep = land::BUILDINGS[land::K_HOME_SITE as usize].2;
+        let prep = sg_core::data::buildings()[land::K_HOME_SITE as usize].2;
         let profit = share - prep - clear;
         self.art.trans_frame(g, s, 673.0, 380.0, 127.0, 112.0);
         label(g, s, 736.0, 405.0, &format!("Lot value: {}", share * 100), BODY, c15(GREEN));

@@ -1,5 +1,10 @@
 //! Loaders for the original game's image and sound formats: PCX, TGA, BMP and WAV. FLC animations are in [`crate::flc`].
 //! Each decoder returns `Err(message)` on failure.
+//!
+//! Content packs (docs/MODDING.md) may replace a PCX, TGA or BMP picture with a PNG and a WAV sound with an OGG Vorbis file
+//! of the same name; the virtual file system (crate::vfs) then hands the PNG or OGG bytes to the loader that asked for the
+//! original, so every picture decoder here takes a PNG as well (recognised by its signature) and [`decode_sound`] takes WAV
+//! or OGG.
 
 /// RGBA8, row-major, top-left origin.
 #[derive(Clone, Debug, Default)]
@@ -52,7 +57,19 @@ pub fn to_rgba(inp: &Indexed, transparent: Option<u8>) -> Rgba {
 }
 
 // ---------------------------------------------------------------- PCX (v5, RLE)
+/// True when the bytes are a PNG (a content pack's replacement for a PCX, TGA or BMP).
+pub fn is_png(d: &[u8]) -> bool {
+    d.len() >= 8 && d[..8] == [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]
+}
+
+fn png_or_err(d: &[u8]) -> Result<Rgba, String> {
+    crate::png::decode_png(d).ok_or_else(|| "unsupported PNG (8 bits per channel, not interlaced)".to_string())
+}
+
 pub fn decode_pcx(d: &[u8]) -> Result<Rgba, String> {
+    if is_png(d) {
+        return png_or_err(d);
+    }
     if d.len() < 128 || d[0] != 10 || d[2] != 1 {
         return Err("not an RLE PCX".into());
     }
@@ -120,7 +137,12 @@ pub fn decode_pcx(d: &[u8]) -> Result<Rgba, String> {
 }
 
 /// An 8-bit single-plane PCX as indices and palette.
+///
+/// A PNG (a content pack's replacement) is turned into indices by [`index_colours`].
 pub fn decode_pcx_indexed(d: &[u8]) -> Option<Indexed> {
+    if is_png(d) {
+        return Some(index_colours(&crate::png::decode_png(d)?));
+    }
     if d.len() < 128 + 769 || d[0] != 10 || d[2] != 1 || d[3] != 8 || d[65] != 1 {
         return None;
     }
@@ -154,6 +176,36 @@ pub fn decode_pcx_indexed(d: &[u8]) -> Option<Indexed> {
     }
     let pal = read_pcx_palette(d)?;
     Some(Indexed { w: w as u32, h: h as u32, idx, pal })
+}
+
+/// An RGBA picture as a palette image: its first 256 distinct colours, in the order they appear, make the palette; any
+/// further colour takes the nearest of those. Alpha is dropped (palette art keys its transparency by colour).
+pub fn index_colours(img: &Rgba) -> Indexed {
+    let mut colours: Vec<[u8; 3]> = Vec::new();
+    let mut seen = std::collections::HashMap::new();
+    let mut idx = Vec::with_capacity(img.px.len() / 4);
+    for p in img.px.chunks_exact(4) {
+        let c = [p[0], p[1], p[2]];
+        let i = match seen.get(&c) {
+            Some(&i) => i,
+            None if colours.len() < 256 => {
+                let i = colours.len() as u8;
+                colours.push(c);
+                seen.insert(c, i);
+                i
+            }
+            None => {
+                let d = |a: &[u8; 3]| (0..3).map(|k| (a[k] as i32 - c[k] as i32).pow(2)).sum::<i32>();
+                (0..colours.len()).min_by_key(|&k| d(&colours[k])).unwrap_or(0) as u8
+            }
+        };
+        idx.push(i);
+    }
+    let mut pal = [0u8; 768];
+    for (k, c) in colours.iter().enumerate() {
+        pal[k * 3..k * 3 + 3].copy_from_slice(c);
+    }
+    Indexed { w: img.w, h: img.h, idx, pal }
 }
 
 /// Writes an 8-bit, run-length coded PCX (version 5) with its 256-colour palette.
@@ -205,6 +257,9 @@ pub fn read_pcx_palette(d: &[u8]) -> Option<[u8; 768]> {
 
 // ---------------------------------------------------------------- TGA
 pub fn decode_tga(d: &[u8]) -> Result<Rgba, String> {
+    if is_png(d) {
+        return png_or_err(d);
+    }
     if d.len() < 18 {
         return Err("short TGA".into());
     }
@@ -274,6 +329,9 @@ pub fn decode_tga(d: &[u8]) -> Result<Rgba, String> {
 
 // ---------------------------------------------------------------- BMP (uncompressed 8/24 bit)
 pub fn decode_bmp(d: &[u8]) -> Result<Rgba, String> {
+    if is_png(d) {
+        return png_or_err(d);
+    }
     if d.len() < 54 || d[0] != b'B' || d[1] != b'M' {
         return Err("not a BMP".into());
     }
@@ -360,9 +418,54 @@ pub fn decode_wav(d: &[u8]) -> Result<Wav, String> {
     Err("no data chunk".into())
 }
 
+/// A sound: a PCM WAV, or an OGG Vorbis file (a content pack's replacement for a WAV) decoded to 16-bit PCM.
+pub fn decode_sound(d: &[u8]) -> Result<Wav, String> {
+    if d.len() >= 4 && &d[0..4] == b"OggS" {
+        return decode_ogg(d);
+    }
+    decode_wav(d)
+}
+
+/// An OGG Vorbis file decoded to interleaved 16-bit PCM (mono or stereo).
+pub fn decode_ogg(d: &[u8]) -> Result<Wav, String> {
+    use lewton::inside_ogg::OggStreamReader;
+    let mut r = OggStreamReader::new(std::io::Cursor::new(d)).map_err(|e| format!("OGG: {e}"))?;
+    let channels = r.ident_hdr.audio_channels as u16;
+    if channels == 0 || channels > 2 {
+        return Err(format!("OGG: {channels} channels (only mono and stereo are played)"));
+    }
+    let mut out = Wav { channels, bits: 16, sample_rate: r.ident_hdr.audio_sample_rate, pcm: Vec::new() };
+    while let Some(pck) = r.read_dec_packet_itl().map_err(|e| format!("OGG: {e}"))? {
+        for v in pck {
+            out.pcm.extend_from_slice(&v.to_le_bytes());
+        }
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pack_replacements_png_for_pictures_ogg_for_sounds() {
+        // a 0.1 s 440 Hz tone at 22050 Hz, mono (made with ffmpeg's sine source; tests/data/tone.ogg)
+        let w = decode_sound(include_bytes!("../tests/data/tone.ogg")).unwrap();
+        assert_eq!((w.channels, w.bits, w.sample_rate), (1, 16, 22050));
+        assert!((2000..2600).contains(&(w.pcm.len() / 2)), "{} samples", w.pcm.len() / 2);
+        assert!(w.pcm.chunks_exact(2).map(|s| i16::from_le_bytes([s[0], s[1]]).unsigned_abs()).max().unwrap() > 1000);
+        assert!(decode_sound(b"OggS not really").is_err());
+        // a PNG where a PCX, TGA or BMP was asked for
+        let mut img = Rgba::new(3, 1);
+        img.px.copy_from_slice(&[255, 0, 0, 255, 0, 255, 0, 255, 255, 0, 0, 255]);
+        let png = crate::png::encode_png(&img).unwrap();
+        for d in [decode_pcx(&png), decode_tga(&png), decode_bmp(&png)] {
+            assert_eq!(d.unwrap().px, img.px);
+        }
+        let ix = decode_pcx_indexed(&png).unwrap();
+        assert_eq!(ix.idx, [0, 1, 0]);
+        assert_eq!(&ix.pal[..6], &[255, 0, 0, 0, 255, 0]);
+    }
 
     #[test]
     fn pcx_rle_8bit_roundtrip() {
