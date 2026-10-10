@@ -373,6 +373,14 @@ fn open_screen(app: &mut App, screen: Option<&str>) {
             } else if let Some(&g) = list.get(n.min(list.len().saturating_sub(1))) {
                 app.card = Some(g);
                 app.card_ui.story = s.starts_with("cardstory");
+                if s.starts_with("cardsnap") {
+                    // the card's Take Snapshot: the SimFoto of that golfer
+                    app.card = None;
+                    let (x, z) = app.units_to_world(app.club.g[g].x, app.club.g[g].y);
+                    app.cam_x = x;
+                    app.cam_z = z;
+                    app.simfoto = Some(screens_ui::SimFoto { slot: g, frames: 0, saved: false });
+                }
             }
         }
         Some(s) if app.ui_ok => {
@@ -1819,6 +1827,10 @@ impl EventHandler for Stage {
             return;
         }
         let (vx, vy) = self.app.view.to_virtual(x, y);
+        // a right click lets go of a golfer held by the card's Move/Eject (the main loop's right click clears 0x4c2e10)
+        if button == MouseButton::Right && self.app.card_ui.held.take().is_some() {
+            return;
+        }
         if self.app.ui_ok && button == MouseButton::Left && self.app.card_click(vx, vy) {
             return;
         }

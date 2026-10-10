@@ -473,6 +473,19 @@ impl App {
         }
         s.text_centered(g, 338.0, top(14.0, 22.0), "SELECT THE NEXT PAIR OF GOLFERS", 22.0, black());
         let list = self.club.waiting();
+        // the picked golfers' faces (0x459850): neutral, or with two picked happy when they share more than three of the
+        // five traits and angry when they share fewer than two
+        let mut expr = 1;
+        if let [a, b] = self.pair_picks[..] {
+            let t = |s: usize| self.club.roster.get(self.club.g[s].roster.max(0) as usize).map(|p| p.traits).unwrap_or(0);
+            let same = 5 - ((t(a) ^ t(b)) & 0x1f).count_ones();
+            if same < 2 {
+                expr = 2;
+            }
+            if same > 3 {
+                expr = 0;
+            }
+        }
         for (k, &slot) in list.iter().enumerate() {
             let bx = if k & 1 == 1 { 329.0 } else { 0.0 };
             let y = 50.0 + 136.0 * (k / 2) as f32;
@@ -485,24 +498,25 @@ impl App {
             } else {
                 0.0
             };
-            let fy = if hovered && !picked { y - 1.0 } else { y };
             if self.art.pair_buttons.tex.is_some() {
-                s.image_part(g, &self.art.pair_buttons, bx + 6.0, fy, 0.0, src, 329.0, 136.0);
+                s.image_part(g, &self.art.pair_buttons, bx + 6.0, y, 0.0, src, 329.0, 136.0);
             } else {
-                s.fill(g, bx + 6.0, fy, 325.0, 132.0, if picked { rgba(0.8, 0.7, 0.2, 0.6) } else { rgba(0.2, 0.2, 0.5, 0.8) });
+                s.fill(g, bx + 6.0, y, 325.0, 132.0, if picked { rgba(0.8, 0.7, 0.2, 0.6) } else { rgba(0.2, 0.2, 0.5, 0.8) });
             }
+            // a hovered card's head and words sit a pixel higher than its plate
+            let y = if hovered && !picked { y - 1.0 } else { y };
             let id = self.club.g[slot].roster.max(0) as usize;
             let p = self.club.roster.get(id).cloned().unwrap_or_default();
-            // the head on the card's ball: full strength when hovered or picked, else at 70 % (expression row not decoded: the
-            // first)
-            let k = if hovered || picked { 1.0 } else { 0.7 };
+            // the head on the card's ball: a picked golfer's at full strength in the pair's expression, the others neutral at
+            // 70 %
+            let (k, row) = if picked { (1.0, expr) } else { (0.7, 1) };
             let gi = p.male_bit() as usize;
             let head = p.head_index(id);
             if head < 19 {
-                let (sx, sy) = ((head / 2) as f32 * 140.0, (head & 1) as f32 * 420.0);
+                let (sx, sy) = ((head / 2) as f32 * 140.0, (head & 1) as f32 * 420.0 + 140.0 * row as f32);
                 s.image_part_tint(g, &self.art.halo[gi], bx, y + 4.0, sx, sy, 140.0, 140.0, rgb(k, k, k));
             } else if let Some(img) = self.art.heads[gi].get(head as usize - 19) {
-                s.image_part_tint(g, img, bx, y + 4.0, 0.0, 0.0, 140.0, 140.0, rgb(k, k, k));
+                s.image_part_tint(g, img, bx, y + 4.0, 0.0, 140.0 * row as f32, 140.0, 140.0, rgb(k, k, k));
             }
             s.text_centered(g, bx + 214.0, top(y + 9.0, 17.0), &self.club.name(slot), 17.0, black());
             s.text_centered(g, bx + 262.0, top(y + 40.0, BODY), &p.job, BODY, black());
