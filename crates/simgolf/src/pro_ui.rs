@@ -405,9 +405,11 @@ impl App {
         true
     }
 
-    /// The panel text while aiming (3.2): club, attitude, distance, lie and the skills that count for this shot.
-    pub fn aim_text(&self) -> Vec<(String, bool)> {
-        let Some(g) = self.club.pro_aiming() else { return Vec::new() };
+    /// The panel text while aiming (0x41b62f..0x41baf4): the lines "Attitude: <word>", "Club: <club>", "Distance: <n> yds" and
+    /// "Lie: <terrain name>" (the name from the terrain table 0x578350, lower case: "Lie: tees", "Lie: sand trap" in footage of
+    /// the original), then each skill the pro has as "<skill> +<10 x points>%" and whether it counts for this shot.
+    pub fn aim_text(&self) -> Option<AimText> {
+        let g = self.club.pro_aiming()?;
         let gg = &self.club.g[g];
         let (bx, by) = (gg.bx, gg.by);
         let lie = if sg_core::course::inside(bx >> 10, by >> 10) {
@@ -418,21 +420,29 @@ impl App {
         let hazard = self.course.h(lie) > 0;
         let p = self.aim.unwrap_or_default();
         let opt = self.club.planner.option;
-        let mut v = vec![
-            (format!("Club: {}", pro::CLUB_NAMES[p.club.clamp(0, 11) as usize]), true),
-            (format!("Attitude: {}", pro::attitude(gg.momentum)), true),
-            (format!("Distance: {} yards", p.distance), true),
-            (format!("Lie: {}", pro::lie_name(lie)), true),
+        let lie_word = match crate::panels_ui::terrain_name(lie as i32) {
+            Some(n) => n,
+            None => pro::lie_name(lie).to_lowercase(),
+        };
+        let lines = [
+            format!("Attitude: {}", pro::attitude(gg.momentum)),
+            format!("Club: {}", pro::CLUB_NAMES[p.club.clamp(0, 11) as usize]),
+            format!("Distance: {} yds", p.distance),
+            format!("Lie: {lie_word}"),
         ];
-        for k in 0..10 {
-            let s = self.club.pro_skill[k];
-            if s != 0 {
-                v.push((format!("{}  {}%", SKILL_NAMES[k], s as i32 * 10), pro::skill_applies(k, p.club, gg.strokes, opt, hazard)));
-            }
-        }
-        v
+        let skills = (0..10)
+            .filter(|&k| self.club.pro_skill[k] != 0)
+            .map(|k| {
+                let v = self.club.pro_skill[k] as i32 * 10;
+                (format!("{} +{v}%", SKILL_NAMES[k]), pro::skill_applies(k, p.club, gg.strokes, opt, hazard))
+            })
+            .collect();
+        Some((lines, skills))
     }
 }
+
+/// The aim's four lines and its skill lines with whether each counts for the shot.
+pub type AimText = ([String; 4], Vec<(String, bool)>);
 
 #[cfg(test)]
 mod tests {

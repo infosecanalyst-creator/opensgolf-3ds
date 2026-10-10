@@ -8,7 +8,7 @@ use crate::gfx::Gfx;
 use crate::info_ui::{black, c15, dim, text_right};
 use crate::popup_ui::ChoiceBox;
 use crate::render::Rect;
-use crate::ui::{rgb, rgba, text_width, Screen as Ui};
+use crate::ui::{rgb, text_width, Screen as Ui};
 use sg_core::golfer::game;
 use sg_core::land;
 use sg_core::staff;
@@ -190,12 +190,11 @@ impl App {
 
     /// The offer box over the SGA report (the generic popup 0x46d6e0 at (400, 360), main loop 0x41ce8b): its lines (the
     /// year's Open, the first prize, the two answers in quotes) and its rectangle.
-    /// (Footage of the original: "2004 San Diego Open tournament", the property's place before "Open".)
+    /// (Footage of the original: "2004 San Diego Open tournament".)
     fn offer_box(&self, sg: &SgaScreen) -> ChoiceBox {
-        let place = self.land.as_ref().map(|l| l.slot.record().name.to_string()).unwrap_or_else(|| self.course_name.clone());
         let lines = vec![
             "The SGA offers to hold the".to_string(),
-            format!("{} {place} Open tournament", 2001 + self.econ.year_index()),
+            format!("{} tournament", self.open_name()),
             "at your course with a".to_string(),
             format!("first prize of \u{a7}{},000.", crate::ui::group(sg.report.purse.max(0) as u64)),
             " 'Great, let the games begin.'".to_string(),
@@ -410,29 +409,41 @@ impl App {
         self.ok_tick(g, s, 701.0, 398.0, false);
     }
 
-    /// The leaderboard box over the course while the tournament runs (0x45a090): three title lines, then a row per golfer in
-    /// pale yellow, the pro's own row in white.
+    /// The year's tournament as the SGA names it: "2004 San Diego Open" in footage of the original (the offer box and the
+    /// leader board), the year and the property's name, not the course's ("Dolphin Coast MC" there).
+    pub fn open_name(&self) -> String {
+        let place = self
+            .land
+            .as_ref()
+            .and_then(|l| sg_core::properties::PROPERTIES.get(l.slot.property))
+            .map(|p| p.name.to_string())
+            .unwrap_or_else(|| self.course_name.clone());
+        format!("{} {place} Open", 2001 + self.econ.year_index())
+    }
+
+    /// The leaderboard box over the course while the tournament runs (0x45a090), as footage of the original shows it: the
+    /// translucent dialog frame from the top left corner (its right line at x 141, its bottom line at 158 with ten rows), the
+    /// title "LEADER BOARD of" / "the §120,000" / "2004 San Diego Open" in pale yellow, then "N. Name (E)" per golfer,
+    /// white, the pro's own row in green. All in Arial Bold 10 (0x519fd8).
     pub fn draw_leaderboard(&self, g: &mut Gfx, s: &Ui) {
         if self.club.game & game::TOURNAMENT == 0 {
             return;
         }
         let (rows, _) = self.club.leaderboard();
         let holes = (self.club.next_hole - 1).max(0);
-        let (x, y, w) = (0.0, 8.0, 144.0);
-        let h = 22.0 * (holes + 1) as f32 + 16.0;
-        s.fill(g, x, y, w, h, rgba(0.05, 0.06, 0.2, 0.55));
-        let edge = rgba(1.0, 1.0, 1.0, 0.6);
-        s.fill(g, x, y, w, 1.0, edge);
-        s.fill(g, x, y + h - 1.0, w, 1.0, edge);
-        s.fill(g, x + w - 1.0, y, 1.0, h, edge);
+        let shown = rows.len().min(36);
+        // DERIVED from the footage: 143 wide and 11 pixels a row plus 49 (159 with ten rows), rounded by the frame
+        let w = 143.0;
+        self.art.trans_frame(g, s, 0.0, 0.0, w, 11.0 * shown as f32 + 49.0);
         let pale = c15(0x7ff0);
         let purse = if self.club.purse == 0 { 20 * holes } else { self.club.purse };
-        let (l1, l2) = if self.club.championship() {
-            ("LEADER BOARD of the".to_string(), sg_core::championship::EVENTS[self.difficulty.clamp(0, 3) as usize].to_string())
+        let money = format!("\u{a7}{},000", crate::ui::group(purse.max(0) as u64));
+        let lines = if self.club.championship() {
+            // (no footage of a championship's board: the event's name in place of the year's Open)
+            ["LEADER BOARD of the".to_string(), sg_core::championship::EVENTS[self.difficulty.clamp(0, 3) as usize].to_string(), money]
         } else {
-            ("LEADER BOARD of".to_string(), format!("{} {} Open", 2001 + self.econ.year_index(), self.course_name))
+            ["LEADER BOARD of".to_string(), format!("the {money}"), self.open_name()]
         };
-        // the box's text is in Arial Bold 10 (0x519fd8), the three title lines centred on 72 with their tops at 9, 21 and 33;
         // PLACEHOLDER: a line wider than the box is drawn smaller (the exe's handling is not decoded)
         let fit = |t: &str, room: f32| {
             let tw = text_width(t, 10.0);
@@ -443,18 +454,21 @@ impl App {
             }
         };
         crate::ui::set_face(Some(crate::ui::Face::Arial));
-        for (t, top) in [(&l1, 9.0), (&l2, 21.0)] {
-            let size = fit(t, w - 6.0);
+        // the title lines centred on 72 with their tops at 7, 19 and 31, an 11 pixel row per golfer from 44, all over a black
+        // shadow one pixel below (footage)
+        let shadow = rgb(0.0, 0.0, 0.0);
+        for (t, top) in lines.iter().zip([7.0, 19.0, 31.0]) {
+            let size = fit(t, w - 10.0);
+            s.text_centered(g, 72.0, crate::ui::top(top, size) + 1.0, t, size, shadow);
             s.text_centered(g, 72.0, crate::ui::top(top, size), t, size, pale);
         }
-        s.put_centered(g, crate::ui::F_ARIAL10, 72.0, 33.0, &format!("\u{a7}{},000", crate::ui::group(purse.max(0) as u64)), pale);
-        // an 11 px row per golfer, the whole field (the box is sized for two golfers a hole)
-        for (i, r) in rows.iter().take(36).enumerate() {
-            let c = if r.gary { c15(0x7fff) } else { pale };
-            let yy = 45.0 + 11.0 * i as f32 + 9.0;
-            let name = format!("{}. {}", i + 1, r.name);
-            s.text(g, 5.0, yy, &name, fit(&name, 106.0).min(10.0), c);
-            text_right(s, g, 139.0, yy, &score_text(r.score), 10.0, c);
+        for (i, r) in rows.iter().take(shown).enumerate() {
+            let c = c15(if r.gary { 0x43f0 } else { 0x7fff });
+            let line = format!("{}. {} ({})", i + 1, r.name, score_text(r.score));
+            let size = fit(&line, w - 10.0).min(10.0);
+            let y = crate::ui::top(44.0 + 11.0 * i as f32, size);
+            s.text(g, 5.0, y + 1.0, &line, size, shadow);
+            s.text(g, 5.0, y, &line, size, c);
         }
         crate::ui::set_face(None);
     }

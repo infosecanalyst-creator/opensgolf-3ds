@@ -377,34 +377,46 @@ pub fn difficulty_hit(vx: f32, vy: f32) -> i32 {
 /// The four difficulties the manual names, in the exe's order (0 easiest).
 pub const DIFFICULTY_NAMES: [&str; 4] = ["Easy", "Moderate", "Difficult", "Impossible"];
 
-/// The lower left dock: centre and radius of each button; its normal sprite on the sheet; the offset to the highlighted one.
+/// The lower left dock: centre and radius of each button's hit disc.
 pub struct DockBtn {
     pub cx: f32,
     pub cy: f32,
     pub r: f32,
-    pub sx: f32,
-    pub sy: f32,
-    pub sw: f32,
-    pub sh: f32,
-    pub hover_dx: f32,
 }
-const fn db(cx: f32, cy: f32, r: f32, sx: f32, sy: f32, sw: f32, sh: f32, hover_dx: f32) -> DockBtn {
-    DockBtn { cx, cy, r, sx, sy, sw, sh, hover_dx }
+const fn db(cx: f32, cy: f32, r: f32) -> DockBtn {
+    DockBtn { cx, cy, r }
 }
-/// Measured from Interface/3mainLowerLeft.pcx (the assembled dock sits in the bottom left of the sheet, with the highlighted
-/// versions of each button elsewhere on it). The panels, advisor text and layout are our own.
+/// Measured from Interface/3mainLowerLeft.pcx (the assembled dock sits in the bottom left of the sheet).
 pub const DOCK: [DockBtn; 10] = [
-    db(43.0, 473.0, 33.0, 0.0, 0.0, 76.0, 80.0, 100.0),     // Build Course
-    db(117.0, 497.0, 30.0, 0.0, 100.0, 70.0, 78.0, 100.0),  // Add Buildings
-    db(177.0, 536.0, 26.0, 0.0, 200.0, 64.0, 76.0, 100.0),  // People
-    db(32.0, 543.0, 11.0, 598.0, 48.0, 30.0, 30.0, 50.0),   // zoom in
-    db(31.0, 585.0, 11.0, 598.0, 98.0, 30.0, 30.0, 50.0),   // zoom out
-    db(17.0, 565.0, 11.0, 598.0, 148.0, 30.0, 30.0, 50.0),  // rotate right
-    db(47.0, 565.0, 11.0, 598.0, 198.0, 30.0, 30.0, 50.0),  // rotate left
-    db(75.0, 552.0, 14.0, 598.0, 248.0, 34.0, 34.0, 50.0),  // information (course report)
-    db(107.0, 568.0, 14.0, 598.0, 298.0, 34.0, 34.0, 50.0), // pause
-    db(133.0, 583.0, 13.0, 598.0, 348.0, 34.0, 34.0, 50.0), // tools (save the course)
+    db(43.0, 473.0, 33.0),  // Build Course
+    db(117.0, 497.0, 30.0), // Add Buildings
+    db(177.0, 536.0, 26.0), // People
+    db(32.0, 543.0, 11.0),  // zoom in
+    db(31.0, 585.0, 11.0),  // zoom out
+    db(17.0, 565.0, 11.0),  // rotate right
+    db(47.0, 565.0, 11.0),  // rotate left
+    db(75.0, 552.0, 14.0),  // information (course report)
+    db(107.0, 568.0, 14.0), // pause
+    db(133.0, 583.0, 13.0), // tools (save the course)
 ];
+/// The dock's lit looks (0x432ba0, cuts at 0x5873a8 from the loader 0x447000): sheet cut (x, y, w, h) of the bright blue
+/// hover look and where it is drawn (the exe's table at 0x4c7960, picked through 0x4c7994), in our button order. The big
+/// buttons' gold look is the same cut 100 to the right, the small ones' 50 to the right.
+pub const DOCK_LIT: [(f32, f32, f32, f32, f32, f32); 10] = [
+    (0.0, 0.0, 78.0, 81.0, 7.0, 436.0),
+    (0.0, 100.0, 78.0, 81.0, 84.0, 463.0),
+    (0.0, 200.0, 78.0, 81.0, 146.0, 503.0),
+    (600.0, 50.0, 36.0, 38.0, 19.0, 530.0),
+    (600.0, 100.0, 36.0, 38.0, 19.0, 573.0),
+    (600.0, 150.0, 36.0, 38.0, 4.0, 551.0),
+    (600.0, 200.0, 36.0, 38.0, 33.0, 552.0),
+    (600.0, 250.0, 36.0, 38.0, 59.0, 535.0),
+    (600.0, 300.0, 36.0, 38.0, 94.0, 553.0),
+    (600.0, 350.0, 36.0, 38.0, 121.0, 570.0),
+];
+/// Where the gold trail of dock mode 0, 1 and 2 (cut (300, 100 * mode, 214, 91)) is drawn (0x432d01..0x432db7).
+const DOCK_TRAIL: [(f32, f32); 3] = [(34.0, 509.0), (95.0, 525.0), (142.0, 555.0)];
+
 /// The dock's tooltip captions (0x432ba0), in our button order.
 pub const DOCK_HELP: [&str; 10] = [
     "Build Course",
@@ -623,25 +635,57 @@ impl App {
         self.draw_paused(g, &s);
         // the ticker goes over the golfer card, as in the exe's frame
         self.draw_ticker(g, &s);
-        let lines = self.aim_text();
-        if !lines.is_empty() {
-            let h = 12.0 + 16.0 * lines.len() as f32;
-            s.fill(g, 600.0, 440.0 - h, 192.0, h, rgba(0.12, 0.1, 0.3, 0.85));
-            for (i, (l, on)) in lines.iter().enumerate() {
-                let c = if *on { rgb(1.0, 1.0, 1.0) } else { rgb(0.55, 0.55, 0.65) };
-                s.text(g, 608.0, 440.0 - h + 20.0 + 16.0 * i as f32, l, 13.0, c);
+        // without the Player panel's art the aim's lines go in a box of their own (with it they are in the panel)
+        if !self.player_panel_ready() || self.panel != 5 {
+            if let Some((lines, skills)) = self.aim_text() {
+                let rows: Vec<(String, bool)> = lines.into_iter().map(|l| (l, true)).chain(skills).collect();
+                let h = 12.0 + 16.0 * rows.len() as f32;
+                s.fill(g, 600.0, 440.0 - h, 192.0, h, rgba(0.12, 0.1, 0.3, 0.85));
+                for (i, (l, on)) in rows.iter().enumerate() {
+                    let c = if *on { rgb(1.0, 1.0, 1.0) } else { rgb(0.55, 0.55, 0.65) };
+                    s.text(g, 608.0, 440.0 - h + 20.0 + 16.0 * i as f32, l, 13.0, c);
+                }
             }
         }
         g.flush();
     }
 
+    /// The exe's dock mode (0x567afc) for the open panel: 0 Build Course, 1 Add Buildings, 2 People (golfers, player and the
+    /// employee overlay), -1 none.
+    pub fn dock_mode(&self) -> i32 {
+        match self.panel {
+            1 => 0,
+            2 => 1,
+            3..=5 => 2,
+            _ => -1,
+        }
+    }
+
     fn draw_dock(&mut self, g: &mut Gfx, s: &Ui) {
         if self.dock_art.tex.is_some() {
             s.image_part(g, &self.dock_art, 0.0, 430.0, 0.0, 430.0, 215.0, 170.0);
-            if self.dock_hover >= 0 {
-                let b = &DOCK[self.dock_hover as usize];
-                let (dx, dy) = (b.cx - (b.sx + b.sw * 0.5), b.cy - (b.sy + b.sh * 0.5));
-                s.image_part(g, &self.dock_art, b.sx + dx, b.sy + dy, b.sx + b.hover_dx, b.sy, b.sw, b.sh);
+            // 0x432ba0: the hovered button in its bright blue look (column 0 of the sheet), unless it is the open mode's
+            let mode = self.dock_mode();
+            if self.dock_hover >= 0 && self.dock_hover != mode {
+                let (sx, sy, w, h, dx, dy) = DOCK_LIT[self.dock_hover as usize];
+                s.image_part(g, &self.dock_art, dx, dy, sx, sy, w, h);
+            }
+            // while paused the Pause button blinks gold (0x5a9f5c counts the paused frames, lit while bit 2 is set)
+            if self.paused {
+                self.dock_blink = self.dock_blink.wrapping_add(1);
+                if self.dock_blink & 4 != 0 {
+                    let (sx, sy, w, h, dx, dy) = DOCK_LIT[8];
+                    s.image_part(g, &self.dock_art, dx, dy, sx + 50.0, sy, w, h);
+                }
+            }
+            // the open mode's button in gold (column 100) and its gold trail along the dock towards the panel (0x587534 +
+            // mode), as footage of the original shows: Build Course gold with the trail while the terrain panel is open
+            if (0..3).contains(&mode) {
+                let m = mode as usize;
+                let (sx, sy, w, h, dx, dy) = DOCK_LIT[m];
+                s.image_part(g, &self.dock_art, dx, dy + if m == 2 { 1.0 } else { 0.0 }, sx + 100.0, sy, w, h);
+                let (tx, ty) = DOCK_TRAIL[m];
+                s.image_part(g, &self.dock_art, tx, ty, 300.0, 100.0 * m as f32, 214.0, 91.0);
             }
             // the tooltip bubble after 11 still frames (0x432620): a translucent black bar 6 pixels a letter wide at the
             // pointer, the caption centred 5 pixels above it in white
@@ -661,11 +705,11 @@ impl App {
                 s.text_centered(g, x, y + 4.0, tip, 11.0, rgb(1.0, 1.0, 1.0));
             }
         }
-        if self.panel == 4 {
+        if self.art_panel_open() {
+            self.draw_panel(g, s);
+        } else if self.panel == 4 {
             s.fill(g, 226.0, 452.0, 570.0, 144.0, rgba(0.16, 0.14, 0.34, 0.88));
             self.draw_golfers_panel(g, s);
-        } else if self.art_panel_open() {
-            self.draw_panel(g, s);
         } else if self.panel != 0 {
             s.fill(g, 226.0, 452.0, 570.0, 144.0, rgba(0.16, 0.14, 0.34, 0.88));
             let cols = self.panel_cols();

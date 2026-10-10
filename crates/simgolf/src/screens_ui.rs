@@ -1069,7 +1069,10 @@ impl App {
             s.text_centered(g, (l + r) / 2.0, top(t + 4.0, LARGE), "Happy Ending!", LARGE, c15(0x7ff0));
         }
         s.text_centered(g, (l + r) / 2.0, top(b + 4.0, BODY), "SimFoto", BODY, c15(0x6318));
-        s.text(g, r - 80.0, top(b - 16.0, BODY), &self.simfoto_date(), BODY, c15(0x7ff0));
+        // footage of the original shows the date stamp with the shadowed call's dark red one pixel below (ui::SHADOW_1)
+        let date = self.simfoto_date();
+        s.text(g, r - 80.0, top(b - 16.0, BODY) + 1.0, &date, BODY, crate::ui::SHADOW_1);
+        s.text(g, r - 80.0, top(b - 16.0, BODY), &date, BODY, c15(0x7ff0));
     }
 
     /// A click or a key while the SimFoto is held lets it go.

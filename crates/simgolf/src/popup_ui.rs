@@ -150,7 +150,8 @@ impl App {
         s.fill(g, r.x + 2.0, r.y + r.h - 5.0, r.w - 2.0, 5.0, rgb(0.5, 0.5, 0.68));
         s.fill(g, r.x + 3.0, r.y + r.h - 3.0, r.w - 3.0, 3.0, rgb(0.3, 0.3, 0.45));
         let white = rgb(1.0, 1.0, 1.0);
-        let red_shadow = rgb(0.42, 0.04, 0.12);
+        // the shadowed calls' palette colour 1, a pixel below (see `ui::SHADOW_1`)
+        let red_shadow = crate::ui::SHADOW_1;
         let dark_shadow = rgb(0.16, 0.16, 0.24);
         // APPROXIMATION: the teal and pale yellow as footage shows them, corrected for the video's colour shift
         let teal = rgb(0.09, 0.58, 0.51);
@@ -158,7 +159,7 @@ impl App {
         let grey = crate::info_ui::c15(0x4210);
         let shadowed = |g: &mut Gfx, x: f32, y: f32, t: &str, c: [f32; 4], sh: [f32; 4], centred: bool| {
             let x = if centred { x - (text_width(t, CHOICE_SIZE) / 2.0).floor() } else { x };
-            s.text(g, x + 1.0, y + 1.0, t, CHOICE_SIZE, sh);
+            s.text(g, x, y + 1.0, t, CHOICE_SIZE, sh);
             s.text(g, x, y, t, CHOICE_SIZE, c);
         };
         let tops = b.line_tops();

@@ -93,7 +93,7 @@ bed, ball washer, landmark and home site are on the Amenities panel; the Clubhou
   (grey, colour, grey upgraded, colour upgraded). Picture destination `((lot/5) + (lot%5)*2)*40 + 344` by `453 + (lot/5)*40`, one pixel
   higher while the lot is hovered and buildable.
 * Info box: after the hover delay a framed box 160x100 at y 460, x = `clamp((lot%5)*80 + (lot>4 ? 431 : 391), 80, 720) - 80`, with
-  centred lines at y 462 (`Upgraded ` + name when upgraded, except the Snack Bar), 472 (`Cost: $N`) and 482 (tip text). N is
+  centred lines at y 462 (`Upgraded ` + name when upgraded, except the Snack Bar), 472 (`Cost: N`, N grouped with commas and no money sign: "Cost: 10,000" in footage; the frame grows to 160 x 111 from y 455 and is drawn before the panel body, which covers its lower part) and 482 (tip text). N is
   cost * 100 at level 0 and cost * 300 / 2 when upgraded. The frame art is the pop-up frame set (`Pop_UpOk`), found by the previous
   decode.
 * Elevation round button: hit (236,526) r16, hover cut (150,480,34,34) at (220,510), tooltip "Elevation". Undo: hit (277,567) r12,
@@ -160,11 +160,25 @@ Both are reached from dock button 2 (and a click on a golfer on the map selects 
   tab (hit 256,510 r20, hover cut (0,400,33,33) at (240,494), mode 4), the people button (hit 232,538 r20, hover cut (0,450,33,33)
   at (217,522), opens the Employee overlay). Scroll arrows left and right (hit centres (332,592) and (772,592), ys scale 3) with
   hover cuts (0,150,36,13) at (309,587) and (0,250,36,13) at (756,587); each moves the list by 16 entries. The scroll thumb is a
-  filled bar at y 590, height 6, x `351 + offset*400/total`, width proportional to 16 or 32 entries over the total.
-  Roster grid: 4 columns of 121 px by 4 rows of 21 px from (310,498); the exe lists one card per member/golfer; clicking a card
-  makes the camera follow that golfer. Hover tooltips: "Golfers", the player name (default "Gary Golf"), "Hire Employees".
-  Card content (name, mood faces from the 16x16 pieces at y 100, hearts from the 7x7 pieces, meter bars) is drawn by code I
-  read only in outline: unknown.
+  filled bar (colour 0x739f) at y 590, height 6, from x `351 + clamp(offset*400/total, 0, 399)` to
+  `351 + clamp((offset + 16)*400/total, 1, 400) - 1` (48 instead of 16 in the compact layout); while the list is shorter than
+  the offset the draw takes 16 off it. Exact (0x435760, disassembly):
+  - The list: slots from the newest golfer down, those on a hole or partnered with one on a hole, from the offset on.
+  - Large layout (map zoom 4): 4 rows of 21 px per column from y 498, columns 121 px apart from x 310 while the name column
+    (x + 15) stays at or left of 695. At an odd slot (the first of a pair) the card cut (0,0,121,44) at (x, y), covering two
+    rows: two name bars and the badge with the hole number in Arial Bold 10 at (x + 8, y + 15) (x + 5 from hole 10), "x"
+    while going home (hole 19), the partner's hole while waiting; in a story (+0xb0 not -1) four empty hearts (450,230,7,7)
+    then one full heart (450,220,7,7) per story step (+0xb2) at (x + 32 + 10 i, y + 17). A golfer on a hole gets the name in
+    Manual SSi Bold 15 at (x + 16, y + 5) and the mood face cut (594 - 16 (k - 1), 100, 16, 16), k = clamp(mood + 2, 1, 10),
+    at (x + 102, y + 2). Name colour: black, 0x4210 when fatigue > 160, 0x0018 when thirst > 16, 0x6000 when hunger > 16,
+    0x7d08 with flag 0x20000000 (later wins).
+  - Compact layout (zoom below 4): 6 rows of 14 px, columns 60 px apart while x + 15 <= 755; the face at (x, y) and the name
+    in Arial Bold 10 at (x + 15, y + 1), for every listed golfer.
+  - Hit: the cell row clamp((y - 498) / 21, 0, 3) + 4 * clamp((x - 310) / 121, 0, 3) right of 309 and below 497 indexes the
+    golfers in drawing order; a click centres the map on the golfer (and opens the card when one is open or the golfer's
+    +8 field is set). Hover tooltips after 10 frames: "Golfers", the player name (default "Gary Golf"), "Hire Employees".
+  - The People dock button sets mode 2 unless it is 2 already (then closes); the Employee overlay flag (0x561254) stays set
+    until a tab on the Employee panel clears it, so People reopens the Employee panel while it is set.
 * **Player (JoeCoolPanel)**, body (214,474,586,126). Controls in `kPlayerButtons`: the round stats button, three lower left buttons
   (Practice Round, Play, Begin Tournament; drawn disabled while a golfer is selected or when their condition fails), five shot
   shape ovals (only in mode 3: Straight, Fade L to R, Draw R to L, High backspin, Low punch, setting the shot value 0, -1, 1, 3, 4)
@@ -212,7 +226,7 @@ Employee overlay
 * Landmark and bridge strip: which diamond pad cut is used in which state; theme dependence of the 40 px or 100 px picture size rule (the
   exe computes the size from the sprite loader flag, `-1` in the call means "240 or 140").
 * TransPopups header strip: only its alpha is cut; how it is composed with the box fill (colour 0x80007fdc for the buildings frame) is not decoded.
-* Golfers panel card layout and fields; Player panel: the screen opened by the round stats button, the overlay blend of the shot ovals and the exact
+* Player panel: the screen opened by the round stats button, the overlay blend of the shot ovals and the exact
   conditions (flags 0x2000, 0x400000, 0x4200000) that enable Play and Tournament.
 * Elevation: money cost of terrain edits (none found), the mouse button mapping of raise and lower, and what the analyze tool does on the map.
 * Hire fee (none found), wage payment cadence (see DECODE_PANELS.md).
