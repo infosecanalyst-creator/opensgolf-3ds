@@ -1,27 +1,29 @@
 //! SGA tournaments in the app: the Begin Tournament button with the SGA report or offer, the preparation checklist and its TV
 //! towers, the leaderboard over the course, and the results with the prizes. The rules live in sg_core::tournament; the SGA
-//! report, the leaderboard and the results follow the exe's layouts (docs/UI_SCREENS.md 4 and 6, docs/DECODE_TOURNAMENTS.md 6)
-//! on the disc's art; the preparation checklist's layout is our own.
+//! report, the leaderboard, the results and the recommendations list follow the exe's layouts (docs/UI_SCREENS.md 4 and 6,
+//! docs/DECODE_TOURNAMENTS.md 6 and 9) on the disc's art.
 
 use crate::app::*;
 use crate::gfx::Gfx;
-use crate::info_ui::{black, c15, dim, text_right};
+use crate::info_ui::{black, c15, dim};
 use crate::popup_ui::ChoiceBox;
 use crate::render::Rect;
-use crate::ui::{rgb, text_width, Screen as Ui};
+use crate::ui::{rgb, Screen as Ui};
 use sg_core::golfer::game;
 use sg_core::land;
 use sg_core::staff;
 use sg_core::tournament::{Prep, Results, SgaReport};
 
-/// The recommendations list (0x46d200: the generic popup at (400, 100) in its checkbox mode). Footage of the original lists
-/// only the greens, the rough and the par changes, ticked, under a two-line heading, and the TV towers stand during the
-/// tournament all the same: the towers' bit 0 is not a line of the list and stays set.
+/// The recommendations list (0x46d200: the generic popup at (400, 100) in its checkbox mode, every box ticked to begin
+/// with): the two-line heading, then one option a line, the TV towers (bit 0), the greens (bit 1), the rough (bit 2) and
+/// each par change (bit 3 on). The exe builds the text with the TV towers' line always in it and places the towers only
+/// when that box stays ticked. (Footage of the original, p1 4626-4646, shows a list without the towers' line and a tower
+/// already standing while it is open: a different build of the game from the publisher's exe, which the port follows.)
 fn prep_box(prep: &Prep, mask: i32) -> ChoiceBox {
     let mut lines = vec!["In preparation for the tournament the".to_string(), "following changes have been recommended:".to_string()];
-    lines.extend(prep.lines().into_iter().skip(1).map(|l| format!(" {l}")));
+    lines.extend(prep.lines().into_iter().map(|l| format!(" {l}")));
     let mut b = ChoiceBox::new(lines, 400.0, 100.0);
-    b.checks = Some((mask >> 1) as u32);
+    b.checks = Some(mask as u32);
     b
 }
 
@@ -261,7 +263,7 @@ impl App {
                 let Some((prep, mut mask)) = self.prep.take() else { return };
                 let b = prep_box(&prep, mask);
                 if let Some(k) = b.option_at(vx, vy) {
-                    mask ^= 2 << k;
+                    mask ^= 1 << k;
                 }
                 if b.ok_tick().has(vx, vy) || vx < 0.0 {
                     // bits 0..2 are the three options, the par changes follow from bit 3
@@ -421,92 +423,93 @@ impl App {
         format!("{} {place} Open", 2001 + self.econ.year_index())
     }
 
-    /// The leaderboard box over the course while the tournament runs (0x45a090), as footage of the original shows it: the
-    /// translucent dialog frame from the top left corner (its right line at x 141, its bottom line at 158 with ten rows), the
-    /// title "LEADER BOARD of" / "the §120,000" / "2004 San Diego Open" in pale yellow, then "N. Name (E)" per golfer,
-    /// white, the pro's own row in green. All in Arial Bold 10 (0x519fd8).
+    /// The leaderboard box over the course while the tournament runs (0x45a090 while a golfer is still out), as the exe
+    /// draws it: the translucent dialog frame at (0, 8), 144 wide and 22 (H + 1) + 16 high (rounded by the frame, so from y 3
+    /// with five holes), the title "LEADER BOARD of" / "the §120,000" / "2004 San Diego Open" centred on x 72 with tops at 9,
+    /// 21 and 33 in 0x7ff0, then from 45, 11 apart, "N. Name (E)" per golfer in white, the pro's own row (slot 1) in 0x23e8;
+    /// places 1 to 9 start at x 7 and two-digit places at x 1 (footage: "10. Gary Golf" starts at the frame's edge). All in
+    /// Arial Bold 10 (0x519fd8) at full size: the exe never shrinks a line, a long one runs over the frame. The black shadow
+    /// one pixel below is from footage of the original. Footage (p1 4700-6200) shows these positions 2 pixels higher, the
+    /// registration's error at the top of the screen (the cash pill is 2 pixels high there too).
     pub fn draw_leaderboard(&self, g: &mut Gfx, s: &Ui) {
         if self.club.game & game::TOURNAMENT == 0 {
             return;
         }
         let (rows, _) = self.club.leaderboard();
-        let holes = (self.club.next_hole - 1).max(0);
-        let shown = rows.len().min(36);
-        // DERIVED from the footage: 143 wide and 11 pixels a row plus 49 (159 with ten rows), rounded by the frame
-        let w = 143.0;
-        self.art.trans_frame(g, s, 0.0, 0.0, w, 11.0 * shown as f32 + 49.0);
+        let next = self.club.next_hole.max(1);
+        self.art.trans_frame(g, s, 0.0, 8.0, 144.0, (22 * next + 16) as f32);
+        let f = crate::ui::F_ARIAL10;
         let pale = c15(0x7ff0);
-        let purse = if self.club.purse == 0 { 20 * holes } else { self.club.purse };
-        let money = format!("\u{a7}{},000", crate::ui::group(purse.max(0) as u64));
+        // the exe writes the default first prize (H x 20) after this frame's title, so a zero purse shows for one frame
+        let purse = if self.club.purse == 0 { 20 * (next - 1) } else { self.club.purse };
         let lines = if self.club.championship() {
-            // (no footage of a championship's board: the event's name in place of the year's Open)
-            ["LEADER BOARD of the".to_string(), sg_core::championship::EVENTS[self.difficulty.clamp(0, 3) as usize].to_string(), money]
+            // championship play: the event by the difficulty (0x822c88), then "at " and the course's name without its class
+            [
+                "LEADER BOARD of the".to_string(),
+                sg_core::championship::EVENTS[self.difficulty.clamp(0, 3) as usize].to_string(),
+                format!("at {}", self.base_course_name()),
+            ]
         } else {
-            ["LEADER BOARD of".to_string(), format!("the {money}"), self.open_name()]
+            // the prize in thousands as a plain number (itoa) then ",000": no grouping
+            ["LEADER BOARD of".to_string(), format!("the \u{a7}{purse},000"), self.open_name()]
         };
-        // PLACEHOLDER: a line wider than the box is drawn smaller (the exe's handling is not decoded)
-        let fit = |t: &str, room: f32| {
-            let tw = text_width(t, 10.0);
-            if tw > room {
-                10.0 * room / tw
-            } else {
-                10.0
-            }
-        };
-        crate::ui::set_face(Some(crate::ui::Face::Arial));
-        // the title lines centred on 72 with their tops at 7, 19 and 31, an 11 pixel row per golfer from 44, all over a black
-        // shadow one pixel below (footage)
         let shadow = rgb(0.0, 0.0, 0.0);
-        for (t, top) in lines.iter().zip([7.0, 19.0, 31.0]) {
-            let size = fit(t, w - 10.0);
-            s.text_centered(g, 72.0, crate::ui::top(top, size) + 1.0, t, size, shadow);
-            s.text_centered(g, 72.0, crate::ui::top(top, size), t, size, pale);
+        for (t, y) in lines.iter().zip([9.0, 21.0, 33.0]) {
+            s.put_centered(g, f, 72.0, y + 1.0, t, shadow);
+            s.put_centered(g, f, 72.0, y, t, pale);
         }
-        for (i, r) in rows.iter().take(shown).enumerate() {
-            let c = c15(if r.gary { 0x43f0 } else { 0x7fff });
-            let line = format!("{}. {} ({})", i + 1, r.name, score_text(r.score));
-            let size = fit(&line, w - 10.0).min(10.0);
-            let y = crate::ui::top(44.0 + 11.0 * i as f32, size);
-            s.text(g, 5.0, y + 1.0, &line, size, shadow);
-            s.text(g, 5.0, y, &line, size, c);
+        let mut y = 45.0;
+        for (i, r) in rows.iter().take(36).enumerate() {
+            let place = i + 1;
+            let c = c15(if r.gary { 0x23e8 } else { 0x7fff });
+            let line = format!("{place}. {} ({})", r.name, score_text(r.score));
+            let x = if place < 10 { 7.0 } else { 1.0 };
+            s.put(g, f, x, y + 1.0, &line, shadow);
+            s.put(g, f, x, y, &line, c);
+            y += 11.0;
+            if y > 548.0 {
+                break;
+            }
         }
-        crate::ui::set_face(None);
     }
 
-    /// TOURNAMENT RESULTS: the header band, a band per row (paid places, the cut line row, the rest), the strokes per hole
-    /// coloured against par, the score to par and the prize, then the closing band with the OK tick.
+    /// TOURNAMENT RESULTS (0x45a090 once nobody is out): the header band, a band per row (paid places, the cut line row, the
+    /// rest), the strokes per hole coloured against par, the total strokes and the prize, then the closing band with the OK
+    /// tick. The bands are the loader's cuts of the sheet (0x44c2f0: (0, 0, 800, 106), (0, 180, 800, 26), (0, 125, 800,
+    /// 22), (0, 224, 800, 18), (0, 357, 800, 51), (0, 274, 800, 51)), cut with the transparent edges trimmed and drawn
+    /// without the trim: every band lands 2 pixels left of its place on the sheet (its first 2 columns are transparent)
+    /// and the header 10 pixels higher too (its first 10 rows). Footage of the original (p2 86-92) matches this to a pixel.
     fn draw_results(&self, g: &mut Gfx, s: &Ui, res: &Results) {
         let a = &self.info.art.result;
         dim(g, s);
         let has = a.tex.is_some();
         if has {
-            s.image_part(g, a, 0.0, 0.0, 0.0, 0.0, 800.0, 106.0);
+            s.image_part(g, a, -TRIM_X, 0.0, 0.0, HEADER_TRIM_Y, 800.0, 106.0 - HEADER_TRIM_Y);
         }
         let ink = black();
-        // fonts (0x45a090): the title in 0x821020 (Klepto 24) centred at (320, 16), the rest in 0x821ee8 (Manual SSi 14)
+        // fonts (0x45a090): the title in 0x821020 (Klepto 24) centred at (320, 16), the rest in 0x821ee8 (Manual SSi 14),
+        // every y below the text's top
+        use crate::ui::F_INFO14 as F;
         s.put_centered(g, crate::ui::F_INFO_TITLE, 320.0, 16.0, "TOURNAMENT RESULTS", ink);
-        let holes = (1..19).filter(|&h| res.pars[h] != 0).collect::<Vec<_>>();
-        let nh = holes.len();
-        // the headings' tops are at y 50; ours draws from the baseline
-        let hy = 50.0 + 10.0;
-        s.text(g, 25.0, hy, "Ranking", 14.0, ink);
-        for (k, h) in holes.iter().enumerate() {
-            s.text_centered(g, 176.0 + 27.0 * k as f32, hy, &h.to_string(), 14.0, ink);
+        let nh = (1..19).filter(|&h| res.pars[h] != 0).count();
+        // the headings at y 50: "Ranking" from x 25, each open hole's number centred on its column (175 + 27 (h - 1), by
+        // hole number), "F" on 667 and "Prize" from 700
+        s.put(g, F, 25.0, 50.0, "Ranking", ink);
+        for h in (1..19).filter(|&h| res.pars[h] != 0) {
+            s.put_centered(g, F, hole_x(h), 50.0, &h.to_string(), ink);
         }
-        s.text_centered(g, 667.0, hy, "F", 14.0, ink);
-        s.text(g, 700.0, hy, "Prize", 14.0, ink);
-        let mut top = 70.0;
-        let mut drawn = 0;
-        for (i, r) in res.rows.iter().enumerate().take(18) {
+        s.put_centered(g, F, 667.0, 50.0, "F", ink);
+        s.put(g, F, 700.0, 50.0, "Prize", ink);
+        let (ys, end) = result_rows(res);
+        for ((i, r), &y) in res.rows.iter().enumerate().zip(&ys) {
             let place = i + 1;
-            let (sy, sh) = band(place, nh);
-            if top + sh > 548.0 {
-                break;
-            }
+            // the band under the row: a paid place's at y - 7, the first unpaid place's (the cut line) at y - 8, the rest's
+            // at y - 4
+            let (sy, sh, dy) = band(place, nh);
             if has {
-                s.image_part(g, a, 0.0, top, 0.0, sy, 800.0, sh);
+                s.image_part(g, a, -TRIM_X, y - dy, 0.0, sy, 800.0, sh);
             }
-            let ty = top + sh / 2.0 + 4.0;
+            // the place and name from x 25, never shrunk: the pro's own row in 0x1284, a paid place in black, the rest grey
             let row_c = if r.gary {
                 c15(0x1284)
             } else if place <= nh {
@@ -514,38 +517,46 @@ impl App {
             } else {
                 c15(0x4210)
             };
-            let name = format!("{place}. {}", r.name);
-            let tw = text_width(&name, 14.0);
-            s.text(g, 18.0, ty, &name, if tw > 136.0 { 14.0 * 136.0 / tw } else { 14.0 }, row_c);
-            let by_par = |d: i32| match d {
-                0 => row_c,
-                d if d > 0 => c15(0x6000),
-                _ => c15(0x0018),
-            };
-            for (k, &h) in holes.iter().enumerate() {
+            s.put(g, F, 25.0, y, &format!("{place}. {}", r.name), row_c);
+            // the strokes per hole in black at par, 0x6000 (red) under par and 0x0018 (blue) over it (footage of the
+            // original shows a birdie red and a bogey blue)
+            for h in 1..19 {
                 let v = r.card[h] as i32;
-                if v > 0 {
-                    s.text_centered(g, 176.0 + 27.0 * k as f32, ty, &v.to_string(), 14.0, by_par(v - res.pars[h]));
+                if v != 0 {
+                    let c = match v.cmp(&res.pars[h]) {
+                        std::cmp::Ordering::Less => c15(0x6000),
+                        std::cmp::Ordering::Greater => c15(0x0018),
+                        std::cmp::Ordering::Equal => ink,
+                    };
+                    s.put_centered(g, F, hole_x(h), y, &v.to_string(), c);
                 }
             }
-            s.text_centered(g, 669.0, ty, &score_text(r.score), 14.0, by_par(r.score));
+            // "F" is the round's total strokes, centred on 669, coloured by the score against par the other way round:
+            // 0x6000 over par, 0x0018 under (footage: every total over par in red)
+            let fc = match r.score.cmp(&0) {
+                std::cmp::Ordering::Greater => c15(0x6000),
+                std::cmp::Ordering::Less => c15(0x0018),
+                std::cmp::Ordering::Equal => ink,
+            };
+            s.put_centered(g, F, 669.0, y, &r.total.to_string(), fc);
+            // a paid place's prize, "§108,000", right aligned at 780 in 0x1284 whoever won it
             if place <= nh && r.prize > 0 {
-                text_right(s, g, 780.0, ty, &format!("{},000", crate::ui::group(r.prize as u64)), 14.0, row_c);
+                s.put_right(g, F, 780.0, y, &format!("\u{a7}{},000", crate::ui::group(r.prize as u64)), c15(0x1284));
             }
-            top += sh;
-            drawn += 1;
         }
-        let banner_a = drawn == 18 && nh + 1 == 19;
+        let (sy, dy) = if ys.len() == 18 && nh + 1 == 19 { (357.0, 7.0) } else { (274.0, 4.0) };
         if has {
-            s.image_part(g, a, 0.0, top, 0.0, if banner_a { 357.0 } else { 274.0 }, 800.0, 51.0);
+            s.image_part(g, a, -TRIM_X, end - dy, 0.0, sy, 800.0, 51.0);
         }
-        // the tick sits 4 below the closing band's top (0x452ec0: band at y - 7 or y - 4, tick at y - 54 or y - 51 plus
-        // the band's 51 height)
-        self.ok_tick(g, s, OK_X, top + 4.0, false);
+        self.ok_tick(g, s, OK_X, results_ok_y(res), false);
     }
 }
 
 const OK_X: f32 = 732.0;
+/// The transparent columns at the left of every results band and rows at the top of the header, which the exe's sprite
+/// cutter trims (0x492000) and its draw does not put back.
+const TRIM_X: f32 = 2.0;
+const HEADER_TRIM_Y: f32 = 10.0;
 
 const SGA_ROWS: [&str; 10] = [
     "Length of Course",
@@ -560,29 +571,50 @@ const SGA_ROWS: [&str; 10] = [
     "Facilities on Site",
 ];
 
-/// The band a results row is drawn on (its y on the sheet and height): the paid places, the row after them, the rest.
-fn band(place: usize, holes: usize) -> (f32, f32) {
+/// The band a results row is drawn on (its y on the sheet, its height, and how far above the row's text it starts): the
+/// paid places, the first place after them (the cut line), the rest.
+fn band(place: usize, holes: usize) -> (f32, f32, f32) {
     if place <= holes {
-        (180.0, 26.0)
+        (180.0, 26.0, 7.0)
     } else if place == holes + 1 {
-        (125.0, 22.0)
+        (125.0, 22.0, 8.0)
     } else {
-        (224.0, 18.0)
+        (224.0, 18.0, 4.0)
     }
 }
 
-/// Where the results' OK tick sits: on the closing band under the last row.
-fn results_ok_y(res: &Results) -> f32 {
+/// The x a hole's column is centred on in the results (0x45a090: 175 for hole 1, 27 apart, by hole number).
+fn hole_x(h: usize) -> f32 {
+    175.0 + 27.0 * (h as f32 - 1.0)
+}
+
+/// The text tops of the results' rows and the y after the last one (0x45a090): from 77, a paid place steps by the paid
+/// band's 26 and every other place by the unpaid band's 18 (the cut line's band is 22 high but the step is 18); the rows
+/// stop after the 18th or once the next row would start below 548.
+fn result_rows(res: &Results) -> (Vec<f32>, f32) {
     let nh = (1..19).filter(|&h| res.pars[h] != 0).count();
-    let mut top = 70.0;
-    for i in 0..res.rows.len().min(18) {
-        let sh = band(i + 1, nh).1;
-        if top + sh > 548.0 {
+    let mut y = 77.0;
+    let mut ys = Vec::new();
+    for i in 0..res.rows.len() {
+        ys.push(y);
+        y += if i < nh { 26.0 } else { 18.0 };
+        if y > 548.0 || ys.len() >= 18 {
             break;
         }
-        top += sh;
     }
-    top + 4.0
+    (ys, y)
+}
+
+/// Where the results' OK tick sits (x 732): 4 below the closing band's top, which is 7 above the next row's y for the long
+/// banner (18 rows on 18 holes) and 4 above it otherwise.
+fn results_ok_y(res: &Results) -> f32 {
+    let nh = (1..19).filter(|&h| res.pars[h] != 0).count();
+    let (ys, end) = result_rows(res);
+    if ys.len() == 18 && nh + 1 == 19 {
+        end - 3.0
+    } else {
+        end
+    }
 }
 
 fn score_text(v: i32) -> String {

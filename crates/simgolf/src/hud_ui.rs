@@ -128,10 +128,14 @@ impl App {
     /// The course name with the long class word (0x40daa0 with argument 1): "Dolphin Coast Municipal" on the routing map in
     /// footage of the original.
     pub fn long_course_name(&self) -> String {
+        format!("{} {}", self.base_course_name(), RANK_LONG[economy::rank(self.hole_numbers.len()) as usize])
+    }
+
+    /// The course name with no class at all (0x40daa0 with argument -1): the championship leader board's "at <name>".
+    pub fn base_course_name(&self) -> String {
         let short = self.hud_course_name();
         let rank = economy::rank(self.hole_numbers.len()) as usize;
-        let base = short.strip_suffix(RANK_SUFFIX[rank]).unwrap_or(&short);
-        format!("{base} {}", RANK_LONG[rank])
+        short.strip_suffix(RANK_SUFFIX[rank]).unwrap_or(&short).to_string()
     }
 
     /// The face strip (0x418d09): every golfer on a hole (1 to 18, or 19 going home), newest first, a mood face 16 pixels

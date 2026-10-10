@@ -212,3 +212,13 @@ Not found in the decompile: the info card click handlers, the story screen, the 
 Checked headless on all dock buttons; the panel tab and player panel hovers were not changed and not re-verified with real mouse input.
 
 Tool (update 80): `sgsprites <game dir> <output dir>` exports every Flics sprite to a PNG sheet (row per view, column per frame, shadows as _shadow). Palette variants are not applied.
+
+## Tournament screens, second pass
+
+| Item | Status | Notes |
+|---|---|---|
+| Live leader board | EXACT | 0x45a090: frame (0, 8, 144, 22 (H + 1) + 16), title tops 9 / 21 / 33, rows from 45 every 11, x 7 (x 1 from place 10), pro 0x23e8, prize not grouped, no shrinking; championship "at <course>". Footage p1 4700-6200 agrees (2 pixel registration error at the top of the screen) |
+| Tournament results | EXACT | 0x45a090: row steps 26 / 18, names at x 25, hole columns by hole number, "F" = total strokes, prize "§n,000" in 0x1284, bands 2 pixels left and the header 10 up (trimmed sprite cuts). Footage p2 86-92 agrees |
+| Recommendations list | EXACT (exe over footage) | 0x46d200: the TV towers' line is the first option (bit 0) and the towers and booths are placed only when it stays ticked; the footage's build shows no such line. Booth direction coin fixed (+2 on a non-zero coin) |
+| Professional Tournament scorecard | EXACT | 0x461110 as before; a long name's smaller font no longer applies to its numbers. Test hook `--edit "g:2"` |
+| Great-shot SimFoto | not ported | 0x407e00 decoded (DECODE_TOURNAMENTS.md 9), including the message box over the photo at (150, top - 192) seen in footage p1 3000 |
