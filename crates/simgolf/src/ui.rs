@@ -188,6 +188,12 @@ impl Fnt {
 pub const F_ARIAL10: Fnt = Fnt { face: Face::Arial, px: 10.0 };
 /// 0x51b360: Manual SSi Bold 15, the body text.
 pub const F_MANUAL15: Fnt = Fnt { face: Face::Manual, px: 15.0 };
+
+/// Palette colour 1, the shadow of the exe's shadowed text calls (0x404ad0, 0x404bc0): the Windows system palette's dark red
+/// (0x800000), not black. Footage of the original shows it plainly under the cash pill's green digits, the "Hole 2 / 256
+/// yards / Par 4" label and "Press 'h' to open hole" (a red fringe under white and green text, which the video's chroma
+/// cannot make from black). The course badge's name and date have a black shadow instead (hud_ui).
+pub const SHADOW_1: [f32; 4] = [128.0 / 255.0, 0.0, 0.0, 1.0];
 /// 0x519928: Manual SSi Bold 20, the headings and the default font (0x83ad44).
 pub const F_MANUAL20: Fnt = Fnt { face: Face::Manual, px: 20.0 };
 /// 0x51a028: Klepto ITC 18.
@@ -535,10 +541,11 @@ impl Screen {
         self.put(g, f, x - f.width(s), y, s, c);
     }
 
-    /// The exe's shadowed calls (0x404ad0 left, 0x404bc0 centred): palette black one pixel below, then the text.
+    /// The exe's shadowed calls (0x404ad0 left, 0x404bc0 centred): palette colour 1 (`SHADOW_1`) one pixel below, then the
+    /// text.
     pub fn put_shadowed(&self, g: &mut Gfx, f: Fnt, x: f32, y: f32, s: &str, c: [f32; 4], centred: bool) {
         let x = if centred { x - (f.width(s) / 2.0).floor() } else { x };
-        self.put(g, f, x, y + 1.0, s, [0.0, 0.0, 0.0, c[3]]);
+        self.put(g, f, x, y + 1.0, s, [SHADOW_1[0], SHADOW_1[1], SHADOW_1[2], c[3]]);
         self.put(g, f, x, y, s, c);
     }
 

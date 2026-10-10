@@ -152,7 +152,7 @@ impl App {
     }
 
     /// Over the green of the hole being built (0x417277), when the green is on screen: "Hole N", "N yards" and "Par N" in
-    /// white body text over a black shadow a pixel lower (0x404bc0), centred, their tops 26, 13 and 0 pixels above a point 5 pixels per zoom step over the green; and over
+    /// white body text over a dark red shadow a pixel lower (0x404bc0), centred, their tops 26, 13 and 0 pixels above a point 5 pixels per zoom step over the green; and over
     /// the back tee, blinking on the game tick's bits 2 and 3, "Press 'h' to open hole".
     pub fn draw_building_label(&mut self, g: &mut Gfx) {
         let h = self.club.next_hole;
@@ -170,9 +170,9 @@ impl App {
         let Some((h, yards, par)) = self.club.building_figures(&self.course) else { return };
         let s = Ui::new(self.draw_w, self.draw_h);
         let lift = 5.0 * (self.zoom / ZOOM_UNIT).round().max(1.0);
-        // 0x404bc0: white with the palette's black one pixel below
+        // 0x404bc0: white with palette colour 1 (dark red, as footage of the original shows) one pixel below
         let label = |g: &mut Gfx, x: f32, y: f32, t: &str| {
-            s.text_centered(g, x, top(y + 1.0, BODY), t, BODY, rgb(0.0, 0.0, 0.0));
+            s.text_centered(g, x, top(y + 1.0, BODY), t, BODY, crate::ui::SHADOW_1);
             s.text_centered(g, x, top(y, BODY), t, BODY, c15(WHITE));
         };
         label(g, x, y - lift - 26.0, &format!("Hole {h}"));

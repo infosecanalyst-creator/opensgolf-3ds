@@ -97,6 +97,38 @@ Nothing from them is stored in the repository.
 - Money popups float as red "-300" at the build cursor.
 - A new hole shows "Hole 2 / 420 yards / Par 4" in white, centred over the tee.
 
+## Main screen overlays against the Giant Bomb footage (2012, two parts)
+
+Measured on frames scaled to the game's 800 x 600 (nothing from the video is stored here). Webcam cut-outs over the
+picture's edges were ignored.
+
+- Badge: the course name is in the pills' font (Manual SSi Bold 15), not Arial, white over a black shadow one pixel
+  below, capitals from y 11; the date is Arial Bold 10, also white over black, capitals from y 26 (three frames from
+  2001 to 2007 agree). Fixed in `hud_ui::draw_badge`. The plate's darkening (half) and the pills' places match.
+- The shadowed text calls (0x404bc0 / 0x404ad0, "palette colour 1") draw a dark red shadow, not black: a red fringe is
+  plain under the cash pill's green digits, "Hole 2 / 256 yards / Par 4", "Press 'h' to open hole", the SimFoto date and
+  "Paused" (over black too, so it is not the video's chroma). Now `ui::SHADOW_1` (0x800000) in the pills, the hole
+  label, the floating money, the SimFoto date (which had no shadow) and "Paused" (which had none).
+- Message box beside a speaker: 4, 5, 7 and 8 line messages have frames 27..137, 27..137, 25..167 and 24..182, i.e. 16
+  pixels shorter than the port drew, and short texts are centred: the text height beside a speaker is 15 a line plus
+  0x10 (not 0x20). Fixed in `message_ui::draw_ticker`; the speaker ball, the text's left edge and the wrap match.
+- Tournament leader board: the translucent dialog frame from the top left corner (right line x 141, bottom 158 with ten
+  rows), the title "LEADER BOARD of" / "the §120,000" / "2004 San Diego Open" (the property's name, not the club's),
+  rows "N. Name (E)" in white with the pro in green, black shadows. The port had a plain box, the purse last, a score
+  column and the rows in yellow. Rewritten in `tourney_ui::draw_leaderboard`; the SGA offer box now names the same
+  "2004 San Diego Open".
+- Dock: the open panel's big button stays gold and a gold wire (cuts of 3mainLowerLeft.pcx) runs from it along the
+  rim to the panel. Now drawn from the exe's decoded dock draw, see the dock panels section below.
+- Matching already: golfer names (Arial Bold 10, white, no shadow, top at the golfer's feet), thought bars (Arial
+  Bold 10 on a half black 10 pixel bar, green for a pleased newest thought), hole label size and spacing, the SimFoto's
+  border, frame line and "SimFoto" caption, pill text, "Paused" place.
+- Not changed: one 5 line message during a shot (p1 3000) sits lower (box from y 137), maybe placed for the shot camera;
+  the aim line's dark edge looks softer than the port's black line but the video cannot settle it; "Paused" is a pixel
+  taller in the port (font rasterising).
+
+Test hooks added for these stills: `SG_MESSAGE="speaker;text"` posts a ticker message (a golfer slot, -1 for nobody, or
+a picture code such as -21 for the laurel ball, -4 for the club emblem), `SG_PAUSED=1` pauses.
+
 ## Dock panels in footage of the original (Giant Bomb "On The Green With Sim Golf", part 1)
 
 Measured on frames scaled to the game's 800 x 600 and compared with port stills; nothing from the video is stored here.

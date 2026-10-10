@@ -4,7 +4,7 @@
 //! positions are the tops of the text (ours are baselines, see `top`).
 //!
 //! Text styles (0x476310 sets colour, shadow colour, shadow dx, dy): the centred and left calls 0x404b70 / 0x4049d0 pass a
-//! shadow colour of -1, i.e. no shadow; 0x404bc0 / 0x404ad0 pass shadow colour 1 (palette black) one pixel below.
+//! shadow colour of -1, i.e. no shadow; 0x404bc0 / 0x404ad0 pass shadow colour 1 (`ui::SHADOW_1`, dark red) one pixel below.
 
 use crate::app::*;
 use crate::gfx::Gfx;
@@ -53,6 +53,9 @@ const STRIP_Y: f32 = 575.0;
 
 const ARIAL: f32 = 10.0; // font object 0x519fd8, Arial Bold 10
 const MANUAL: f32 = 15.0; // font object 0x51b360, Manual SSi Bold 15
+/// Text tops of the badge's name and date (footage of the original, see `draw_badge`).
+const BADGE_NAME_Y: f32 = 11.0;
+const BADGE_DATE_Y: f32 = 25.0;
 
 /// The art the HUD needs besides courseinfo.pcx (App::hud_art), and the golfer of each face drawn this frame.
 #[derive(Default)]
@@ -85,9 +88,15 @@ fn count(s: &Ui, g: &mut Gfx, x: f32, y: f32, n: i32) {
     s.text(g, x, top(y, ARIAL), &format!("x{n}"), ARIAL, c15(0x7fff));
 }
 
-/// Centred text with the exe's pill shadow: palette black one pixel below.
+/// Centred text with the exe's pill shadow (0x404bc0): palette colour 1 one pixel below (`ui::SHADOW_1`, dark red in
+/// footage of the original).
 fn shadowed(s: &Ui, g: &mut Gfx, x: f32, y: f32, t: &str, c: [f32; 4]) {
-    s.text_centered(g, x, top(y, MANUAL) + 1.0, t, MANUAL, rgba(0.0, 0.0, 0.0, 1.0));
+    shadowed_in(s, g, x, y, t, c, ui::SHADOW_1);
+}
+
+/// Centred Manual SSi 15 text over a shadow of the given colour one pixel below.
+fn shadowed_in(s: &Ui, g: &mut Gfx, x: f32, y: f32, t: &str, c: [f32; 4], shadow: [f32; 4]) {
+    s.text_centered(g, x, top(y, MANUAL) + 1.0, t, MANUAL, shadow);
     s.text_centered(g, x, top(y, MANUAL), t, MANUAL, c);
 }
 
@@ -198,12 +207,19 @@ impl App {
             let (sheet, cx, cy) = if e < 8 { (1, e, if e < 4 { 481.0 } else { 480.0 }) } else { (0, e - 8, 395.0) };
             s.image_part(g, &self.title.art.emblems[sheet], 3.0, 3.0, 3.0 + 88.0 * cx as f32, cy, 80.0, 80.0);
         }
-        ui::set_face(Some(Face::Arial));
+        // Footage of the original (Dolphin Coast at May 2001, June 2003 and July 2007) shows the name in the pills' font,
+        // Manual SSi Bold 15, and the date in Arial Bold 10, both white with the black shadow one pixel below; the name's
+        // capitals span y 11 to 20 and the date's y 26 to 32, centred on x 143. (The decode had both in Arial without a
+        // shadow at 13 and 27.)
         let white = c15(0x7fff);
-        s.text_centered(g, 144.0, top(13.0, ARIAL), &self.hud_course_name(), ARIAL, white);
+        ui::set_face(Some(Face::Manual));
+        let black = rgba(0.0, 0.0, 0.0, 1.0);
+        shadowed_in(s, g, 143.0, BADGE_NAME_Y, &self.hud_course_name(), white, black);
+        ui::set_face(Some(Face::Arial));
         let t = self.econ.tick;
         let date = format!("{} {}", MONTHS[((t >> 10) & 7) as usize], 2001 + (t >> 13));
-        s.text_centered(g, 144.0, top(27.0, ARIAL), &date, ARIAL, white);
+        s.text_centered(g, 143.0, top(BADGE_DATE_Y, ARIAL) + 1.0, &date, ARIAL, black);
+        s.text_centered(g, 143.0, top(BADGE_DATE_Y, ARIAL), &date, ARIAL, white);
         // holes named Top 100 and Top 18, homes sold to celebrities, tournament fame, Happy Endings (0x418bc7)
         let ranked = self.club.holes.iter().skip(1).take(18).map(|h| (h.flags & 1 != 0) as i32 + (h.flags & 2 != 0) as i32).sum();
         let sold =

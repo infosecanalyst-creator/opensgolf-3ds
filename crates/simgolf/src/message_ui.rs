@@ -202,7 +202,11 @@ impl App {
         let talk = speaker != NOBODY;
         // the text is wrapped to 0x25 * 8 pixels beside a speaker, 0x2c * 8 without
         let rows = lines(&t.text, if talk { 0x25 as f32 * 8.0 } else { 0x2c as f32 * 8.0 });
-        let h0 = rows.len() as f32 * LINE + 32.0;
+        // Footage of the original (golfer and laurel messages of 4, 5, 7 and 8 lines: frames 27..137, 27..137, 25..167 and
+        // 24..182 at 800 x 600, the text from y + 16 but 2 pixels lower with 4 lines and 7 higher with 5) fits a text
+        // height of 15 per line plus 0x10 beside a speaker, not plus 0x20: then the box (h + 0x10, at least 0x60 + 0x10,
+        // rounded) and the centring of a short text below agree with every case to a pixel.
+        let h0 = rows.len() as f32 * LINE + if talk { 16.0 } else { 32.0 };
         let (mut x, mut y, mut h, mut arg) = (X, Y, h0, arg);
         if talk {
             h = h.max(96.0);
@@ -404,7 +408,7 @@ impl App {
         crate::thoughts_ui::bubble(g, s, exe_zoom, x, y0, &text, rgb(1.0, 1.0, 1.0));
     }
 
-    /// "Paused" centred at (400, 10) in white (font 0x519948, Manual SSi Bold 24), with " Fast"
+    /// "Paused" centred at (400, 10) in white with the shadow one pixel below (font 0x519948, Manual SSi Bold 24), with " Fast"
     /// after it while the exe's fast flag (0x59b04c) is on, here while the game runs above normal speed.
     pub fn draw_paused(&self, g: &mut Gfx, s: &Ui) {
         let mut t = String::new();
@@ -415,7 +419,8 @@ impl App {
             t += " Fast";
         }
         if !t.is_empty() {
-            s.put_centered(g, crate::ui::F_MANUAL24, 400.0, 10.0, &t, rgb(1.0, 1.0, 1.0));
+            // footage of the original shows it over the shadowed call's dark red shadow (0x404bc0, ui::SHADOW_1)
+            s.put_shadowed(g, crate::ui::F_MANUAL24, 400.0, 10.0, &t, rgb(1.0, 1.0, 1.0), true);
         }
     }
 }
