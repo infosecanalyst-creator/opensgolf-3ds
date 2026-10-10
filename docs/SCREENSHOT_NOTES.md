@@ -116,13 +116,27 @@ picture's edges were ignored.
   rows), the title "LEADER BOARD of" / "the §120,000" / "2004 San Diego Open" (the property's name, not the club's),
   rows "N. Name (E)" in white with the pro in green, black shadows. The port had a plain box, the purse last, a score
   column and the rows in yellow. Rewritten in `tourney_ui::draw_leaderboard`; the SGA offer box now names the same
-  "2004 San Diego Open".
+  "2004 San Diego Open". Then settled from the exe (0x45a090): the frame at (0, 8), 144 by 22 (H + 1) + 16, the title
+  tops at 9, 21 and 33, rows from 45 every 11, the pro's row 0x23e8, places 1 to 9 from x 7 and "10." on from x 1
+  (footage p1 5000: "10. Gary Golf" starts at the frame's edge), the prize as a plain number ("the §1140,000", no
+  grouping), and no shrinking of a long line (the old PLACEHOLDER). The footage sits 2 pixels higher than the exe's
+  numbers at the top of the screen (the cash pill shows the same), which is where the earlier footage-derived 7 / 19 /
+  31 / 44 came from. Championship play: "LEADER BOARD of the" / the event by difficulty / "at <course name>".
+- Professional Tournament scorecard (p1 4700-6200): matches the exe's 0x461110 as ported (the tournament's partner is
+  "<pro> vs." / partner, strokes coloured 0x6000 under par, 0x7d08 two under, 0x0018 over, 0x4010 two over, the hole
+  being played grey). Fixed: a name over 115 pixels drops to Arial Bold 10 but the numbers stay in Manual SSi Bold 15.
+  Test hook: `--edit "g:2"` starts a tournament at once with no skill points card or trophy room in the way.
+- Tournament results (p2 86-92): matches the exe's 0x45a090 now: rows from y 77 stepping 26 per paid place and 18 for
+  every other one (the cut line row too), names from x 25, hole columns 175 + 27 (h - 1), "F" is the total strokes
+  (red over par, blue under), prizes "§108,000" in 0x1284, every band 2 pixels left of the sheet and the header 10
+  pixels up (the exe's sprite cutter trims the transparent edges and its draw does not put them back).
 - Dock: the open panel's big button stays gold and a gold wire (cuts of 3mainLowerLeft.pcx) runs from it along the
   rim to the panel. Now drawn from the exe's decoded dock draw, see the dock panels section below.
 - Matching already: golfer names (Arial Bold 10, white, no shadow, top at the golfer's feet), thought bars (Arial
   Bold 10 on a half black 10 pixel bar, green for a pleased newest thought), hole label size and spacing, the SimFoto's
   border, frame line and "SimFoto" caption, pill text, "Paused" place.
-- Not changed: one 5 line message during a shot (p1 3000) sits lower (box from y 137), maybe placed for the shot camera;
+- Not changed: one 5 line message during a shot (p1 3000) sits lower (box from y 137). SETTLED, not ported: it is not
+  the ticker but the great-shot SimFoto (0x407e00, see docs/DECODE_TOURNAMENTS.md 9), a feature the port lacks;
   the aim line's dark edge looks softer than the port's black line but the video cannot settle it; "Paused" is a pixel
   taller in the port (font rasterising).
 
@@ -171,36 +185,63 @@ Nothing from the footage is stored in the repository.
 - **Hire an Employee**: wages read "Club Pro: 300 per week" (no dollar sign); the pointed line sits on a solid yellow bar
   231..521 by 16; the lines' capitals start 1 below the band (5 higher than before); a Municipal course lists the skilled
   lines in black; the figures carry their soft shadows; the blue OK tick stands at (553, 422) and closes the dialog;
-  the screen under it is dimmed by about 0.3. Fixed in `draw_hire_dialog`, `draw_walking` and `hire_click`. Left: the
-  figures stand about 3 pixels left of the port's (the exe's 576 is kept).
-- **Generic popup (0x46d6e0)**: an opaque box in the lavender of its option balls (148, 150, 198) with a light top and left
-  and a shaded bottom and right edge, no dim; headings centred 18 apart in white over the dark red shadow a pixel below, the first
-  capital 14 below the call's top; options 24 apart from 23 below the last heading, teal, with the dark ball of
-  general_selectionBOX 11 into the box and the text 42 in; the option under the pointer white with the shadow and the lit
-  ball; height (lines * 3 + 3) * 8 from 4 above the call's top; width the longest heading + 0x31 or the longest option +
-  75. Checkbox lists (the tournament recommendations at (400, 100)) draw pale yellow headings, white options over dark
-  shadows, cream boxes ticked in green and the yellow OK tick. No OK ball in the radio boxes. The Information menu's
-  heading is "Information...". All built on `popup_ui::ChoiceBox`; the SGA offer, the skill points waiver and the
-  recommendations now use it.
+  the screen under it is dimmed by about 0.3. Fixed in `draw_hire_dialog`, `draw_walking` and `hire_click`. Settled
+  later from the code (0x459400): the figures are queued at 0x240 with a 0x28 box where the employee panel queues the
+  same clips with a 0x1e box, so they stand 10 left of 576 (566); the figures' centroids in the footage (p1 2700 to 2740,
+  4540, 4560) agree to a pixel. The bar is 0x7f40 (255, 214, 0) from 2 above the line, the lines' tops at the heading's
+  + 20 and + 40, the wage through the number formatter.
+- **Generic popup (0x46d6e0)**: settled from the code (docs/DECODE_MENUS.md 1): the InfoButtons 3 x 3 frame (0x40cc00)
+  over a 0x4e79 fill, the box from the call's y (the retirement question's frame stands at 99..243 in the footage, the
+  1.5 pixel registration allowing), width (widest line with its leading space, rounded up to 15 mod 16) + 0x31; headings
+  centred from y + 12 in the shadowed call, 18 apart, then 24 apart from the first option; options 36 into the box, teal
+  0x0210 at y + 8, the lit one white and shadowed at y + 7; the radio balls are TransPopups' lit (300, 300) and dim
+  (400, 300) cuts through the lit cut's mask (footage: dim olive balls with a soft shadow when the pointer is off the
+  options), the checkboxes InfoButtons' ticked (350, 0) and crossed (400, 0) boxes. The commissioner's land offer is at
+  (450, 160) on two heading lines.
 - **Retirement question** (System Functions, Quit), at (400, 100): "After a short career / Gary Golf plans his
-  retirement." with " Wait, I don't want to quit yet!", " I'd like to save this game first.", " So long for now." Ported
-  as `PopupKind::Retire`; the last answer leaves like the career's end. PLACEHOLDER: when it says "lengthy" (10 years
-  on here) and whether the save answer quits afterwards.
+  retirement." with " Wait, I don't want to quit yet!", " I'd like to save this game first.", " So long for now." Settled
+  from the code (main loop 0x420b4e): "lengthy" once the year index passes 9 (2011 on), "her" for a woman, "After an
+  exciting championship / <pro> returns home." in championship play; "save first" runs the Save prompt and then quits
+  whether or not it saved; "Wait" and Esc go back.
 - **SGA offer**: "The SGA offers to hold the / 2004 San Diego Open tournament / at your course with a / first prize of
   §120,000.": the property's place names the Open. The report's tick is the blue cut, the offer up or not.
 - **Tournament recommendations**: "In preparation for the tournament the / following changes have been recommended:"
   then "Roll your greens extra smooth and fast.", "Increase the depth of rough and deep rough grass.", "Change hole 1
-  from a par 4 to a par 3." ... all ticked. The TV towers are not a line of the list (they stand during the tournament
-  anyway), so their bit stays set.
+  from a par 4 to a par 3." ... all ticked. The TV towers are not a line of the list, and a tower already stands while
+  the list is open (p1 4626-4646). SETTLED from the publisher's exe (0x46d200), which the port follows: the exe always
+  puts " Install TV towers and booths for live broadcast." first in the list (bit 0, ticked to begin with) and places
+  the towers (kind 0x11, every open hole) and booths (kind 0x12, the last two holes) after the list closes, only when
+  that box stays ticked. The footage's game is a different build from the publisher's exe on this point.
 - **Skill points card**: the card is solid black inside (0x40cef0 called with 1); "Add 16 skill points." in white;
   "Draw Shot (R to L)" and "Fade Shot (L to R)"; the OK ball is the yellow cut. For an accomplishment's three points the
   card stands over the trophy room under a thin light frame (200..529 from y 11) with "Add three skill points to your
   player..." in cyan. The waiver reads "You haven't used all your skill points! / Do you really want to exit?" with "
-  Yea, I don't need no stinkin' skill points." and " Whoops, my bad.". Left: the explanation box under the card on its
-  first opening ("Before you play your course you may customize your character ...") is not placed yet.
+  Yea, I don't need no stinkin' skill points." and " Whoops, my bad.". The explanation box under the card on its first
+  opening is 0x4065c0's message box at (200, 0x172) (frame 192..608, 362..456 with four lines, text from (212, 386)),
+  placed in `draw_note_box`; the award heading is the list box 0x46de70 at (0x50, 5) in its 320 x 240 space: a white
+  outline from (200, 13) to y 56 with the text in cyan 0x3ff at (213, 25), over the trophy room dimmed by 0.4.
 - **Tracts for Sale**: one sentence, "Buy tract #1, 22 acres of / rough, trees, and water", wrapped to 165 with 17
   between lines from 1 above the card's text origin, then the price; the map's tract numbers are black. Fixed in
   `draw_land`.
 - **Edge of the property** (p1 1700): a stone cliff runs along the front edges of the owned land down into the black. It is Terrain.dll's strata face (0x1000ea30), now built by `build_edge_walls`; at the default zoom the port's face matches the footage's height and shading.
-- Unchanged, matching: Top Ten Designers layout, Shot Analysis box (282..537), the trophy room's layout. Left: the board's
-  tack colours vary (yellow, red, grey seen) and are not decoded; the port keeps the grey tack.
+- Unchanged, matching: Top Ten Designers layout, Shot Analysis box (282..537), the trophy room's layout. The board's
+  tack colours are settled from the code (0x46ed33): photo k (oldest first) takes TacksandArrow's cut at (100, 50 * ((k
+  + 1) mod 3)): yellow, red, grey in turn, as p1 2320, 3020 and 4660 show.
+- **End of Year** title year: the report reads the year index of the tick it opens at (2000 + ticks >> 13), which at the
+  real year end is the season just finished (2004 at p1 4820). The `--screen yearend` hook now shows the coming year end's
+  report (the season in progress) instead of the year before the game started.
+
+## Dock panels and maps, settled from the exe (October 2026)
+
+- **Green button flag** (p1 1600-1760): the footage's shadow up and to the right is the flag's Shadow.flc, which the
+  loader plays into the same canvas as the body (0x43d740); now drawn. Pole and cloth sit within a pixel of the footage
+  at the exe's anchor, so no y change.
+- **Routing map** (G4 21-60 s): tile colours match the exe's class table. The flags take palette 0x60 + theme (dark house
+  colours on Parkland), not the red flag palette; they and the tee markers carry shadows; marks are drawn hole by hole in
+  call order. The G4 clip shows no yellow hole numbers, but the exe draws them unconditionally and the land map at p1 3120
+  shows them ("2", "3" on Dolphin Coast), so they stay.
+- **Tracts for Sale** (p1 3120): the course on the map is the routing map's tiles and hole marks (lines, yellow numbers,
+  dark flags all visible in the footage); the tract numbers measured at the exe's (x - 7, y - 4) of the centre tile's
+  point, within a pixel of the footage for 1, 3, 4, 6 to 9.
+- **Face strip**: the exe draws it before the dock and panels (0x40f5c0), so an open panel covers it; the port already
+  did this. The footage never shows it because a panel is always open.

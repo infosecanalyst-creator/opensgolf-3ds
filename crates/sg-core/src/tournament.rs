@@ -70,9 +70,9 @@ pub struct Prep {
 
 impl Prep {
     pub fn lines(&self) -> Vec<String> {
+        // the exe's strings (0x4e3d20 on), each an option line of the list
         let mut v = vec![
-            "Install TV towers and booths for the broadcast".to_string(),
-            // the wording as footage of the original shows it
+            "Install TV towers and booths for live broadcast.".to_string(),
             "Roll your greens extra smooth and fast.".to_string(),
             "Increase the depth of rough and deep rough grass.".to_string(),
         ];
@@ -431,7 +431,8 @@ impl Club {
             let d = self.holes[h].tee_facing.rem_euclid(8);
             let mut kinds = vec![(17, d)];
             if h as i32 >= n - 1 {
-                let bd = if rng.below(2) == 0 { (d + 2) & 7 } else { (d - 2) & 7 };
+                // the booth turns two steps one way or the other: +2 when the coin (0x45c1e0(2)) is not zero, else -2
+                let bd = if rng.below(2) != 0 { (d + 2) & 7 } else { (d - 2) & 7 };
                 kinds.push((18, bd));
             }
             for (kind, dir) in kinds {

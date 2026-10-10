@@ -632,6 +632,14 @@ pub fn palette_file(pal: u8, theme: u8) -> Option<&'static str> {
         0x39 => Some("Trees/WillowGreen.pcx"),
         0x59 => Some("Scenic/ScenicFlowersPal.pcx"),
         0x5e => Some("Tees/TeeMarkerPal.pcx"),
+        // the theme loader (0x43dbe0) keeps its regular house palette in 0x60 (flics\homes\regular\parkland\A\
+        // ParkHouseA_palette and so on); 0x61 and 0x62 are never loaded
+        0x60 => pick([
+            "Homes/Regular/Parkland/A/ParkHouseA_palette.pcx",
+            "Homes/Regular/Desert/A/DesHouseA_palette.pcx",
+            "Homes/Regular/Tropical/B/TropHouseB_palette.pcx",
+            "Homes/Regular/Links/B/LinksHouseB_palette.pcx",
+        ]),
         0x63 => pick(["Tees/Flag_PARKpal.pcx", "Tees/Flag_DESERTpal.pcx", "Tees/Flag_TROPpal.pcx", "Tees/Flag_LINKSpal.pcx"]),
         0xaa => Some("Scenic/benWPAL.pcx"),
         0xab => Some("Flowers/box benchPal.pcx"),

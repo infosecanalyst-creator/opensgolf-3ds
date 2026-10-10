@@ -294,7 +294,12 @@ fn open_screen(app: &mut App, screen: Option<&str>) {
             }
             app.screen = Screen::Board;
         }
-        Some("yearend") if app.ui_ok => app.screen = Screen::YearEnd,
+        // the report as the coming year end will show it (the season in progress), whatever the date: the real report opens
+        // only on the tick that ends a season
+        Some("yearend") if app.ui_ok => {
+            app.year_end_tick = (app.club.tick | 0x1fff) + 1;
+            app.screen = Screen::YearEnd;
+        }
         Some("roster") if app.ui_ok => {
             roster_fill(app);
             app.screen = Screen::Roster;
@@ -362,6 +367,9 @@ fn open_screen(app: &mut App, screen: Option<&str>) {
         Some("skills") if app.ui_ok => {
             let pts = app.club.first_skill_points();
             app.open_skills(pts, Some(false));
+            if let Some(d) = app.skill_dialog.as_mut() {
+                d.intro = true;
+            }
         }
         // an accomplishment's three points: the card over the trophy room
         Some("skillsaward") if app.ui_ok => {
@@ -624,7 +632,16 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 // a tournament: g:0 as the SGA offers it (the evaluation must pass), g:1 straight away with the default purse
                 app.club.game |= sg_core::tournament::OFFERED;
                 app.auto_aim = 1;
-                if at(0) == 1 {
+                if at(0) >= 1 {
+                    // g:2 is for stills of the leader board and the Professional Tournament scorecard: a pro with no
+                    // skills gets one point of Accurate Driver and every accomplishment counts as earned already, so no
+                    // skill points card or trophy room covers the course
+                    if at(0) == 2 {
+                        if app.club.pro_skill.iter().all(|&v| v == 0) {
+                            app.club.pro_skill[2] = 1;
+                        }
+                        app.club.awards = u32::MAX;
+                    }
                     app.accept_tournament();
                 } else {
                     let ui = std::mem::replace(&mut app.ui_ok, false);
@@ -965,10 +982,14 @@ impl Stage {
                 7 => self.app.open_popup(PopupKind::Retire),
                 _ => {}
             },
-            // the ordinary quit leaves the way the career's end does (DECODE_WORLD2 6.5); PLACEHOLDER: whether the save
-            // choice quits after saving is not decoded, so it saves and stays
+            // the ordinary quit leaves the way the career's end does (DECODE_WORLD2 6.5); EXACT (main loop after
+            // 0x420b4e): "save first" runs the Save dialog (0x405b10) and then quits whether or not a game was saved,
+            // "So long" quits, "Wait" and Esc go back to the game
             PopupKind::Retire => match k {
-                1 => self.app.open_save(),
+                1 => {
+                    self.app.open_save();
+                    self.app.title.quit_after_save = true;
+                }
                 2 => self.app.end_career(),
                 _ => {}
             },

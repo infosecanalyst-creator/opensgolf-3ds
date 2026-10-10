@@ -14,6 +14,35 @@ Signature: (centreX, topY, initialMask, mode, disabledMask). One text blob, spli
 - Disabled options are greyed; choosing one plays error sound 0x18.
 - Return is the option index counted from the first option line.
 
+Drawing (EXACT, 0x46d6e0 with its asm for the sprite pointers the decompile drops):
+- Font 0x519928 (Manual SSi Bold 20). Width w = ((widest line - 1) | 15) + 0x31, the widths taken with the options'
+  leading space; height h = (lines * 3 + 3) * 8, lines being the newlines of the blob. The box is (cx - w / 2, y, w, h).
+- An even y draws 0x40cc00: the size grown to 15 mod 16 about its centre, the inside filled 0x4e79 from 4 in, then the
+  3 x 3 pieces of InfoButtons (colour cuts 0x561810.., masks 0x58d1e0.. from InfoButtons_A, both at (200 + 17 col,
+  17 row), 16 x 16). An odd y draws a 0x6318 rectangle with an inside of the screen colour sampled at (cx, y) (no
+  caller uses it).
+- Lines from y + 12: a heading advances 18, and from the first option on every line advances 24. Headings: the
+  shadowed centred call 0x404bc0 at (cx, line y), 0x7fff in mode 1, 0x7ff0 in mode 0. Options (text with its leading
+  space at box x + 36): the one under the pointer or the keys in the shadowed call 0x404ad0 at line y + 7, the others in
+  the plain call 0x4049d0 at line y + 8; white when chosen (mode 1: the option under the pointer; mode 0: ticked),
+  teal 0x0210 otherwise; greyed options 0x6318 at y + 8.
+- Mode 1 ball at (box x + 12, line y + 4): colour cut 0x5678b8[0] (TransPopups (300, 300), lit) when chosen, [2] ((400,
+  300), dim) otherwise, always through mask 0x56a7b8[0] (TransPopups_A (300, 300), which carries a soft shadow). Mode 0
+  box at (box x + 8, line y), 0x473cb0 at scale 1: 0x561260[1] (InfoButtons (350, 0), green tick) when ticked, [2]
+  ((400, 0), red cross) otherwise. Mode 0 also draws the OK tick 0x567994 / 0x56a894 (TransPopups (350, 140), 50 x 50) at
+  (cx + w / 2 - 40, y + h - 40); a click within 20 of (cx + w / 2 - 20, y + h - 20) returns the mask.
+- Hit: x strictly between box x and cx + w / 2 - 48, row = (y - first option's line y) / 24. The keys work in mode 1
+  only; the selection starts at -1 (nothing lit), Up stops at 0, Down at the last; Enter returns the selection as it
+  is (-1 when none), without the greyed test that a click makes.
+
+The list box 0x46de70 (x0, y0 in a 320 x 240 space, scaled by 0x404970 = (800 v + 160) / 320): lines 7 apart from
+y0 + 5, text at x0 + 5; the box to x0 + 8 + widest * 2 / 5 and y0 + 6 + 7 lines. An odd y0 draws a white one pixel
+outline (0x46e710, 4 lower) with headings 0x3ff, options 0x6318 and the lit option white; an even y0 draws the theme's
+pop-up frame 0x40d0b0 (x0 - 8, y0 - 6, + 16, + 12) with headings 0x18, options 0x4210 and the lit option black. Users:
+the accomplishment's "Add three skill points to your player..." heading (0x50, 5, drawn once), the Customise Load list
+"Pick one..." (100, 0x14), "Invalid file name." / "Invalid file path." (0x1e, 0x1e), "Too many flics" (100, 100), the
+celebrity and pro file errors (100, 0x32).
+
 Users: Information menu, System menu, Preferences, demolish confirm (FUN_0040a4e0, yes/no, 400x100), overwrite confirm (FUN_00437910, 200,0x1e), delete confirm in Load/Pick (400,100), tournament prep list FUN_0046d200 (400,100, 20 checkboxes, mask 0xfffff, skipped when flag 0x4000000), skill waiver confirm in the stats card (400,200).
 
 ## 2. Toolbar (bottom left) (EXACT unless noted)

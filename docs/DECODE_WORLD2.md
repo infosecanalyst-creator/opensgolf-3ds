@@ -405,7 +405,10 @@ Message text is paraphrased; ids below are the unlock counter DAT_005a6364 value
   " Return to Main Menu.". The first clears the counter and sets the sandbox flag 0x1000000; any other answer clears flag
   0x4000000, saves the game as "&QuitSave", fades sound slot 0x2d (the course ambience) over 1000 ms and returns to the
   title (0x420e35: flags = 0x40000000, ticks 0, TitleBase.pcx). The ordinary quit takes the same exit after its own
-  "After a short/lengthy career ... plans his/her retirement." question (EXACT).
+  "After a short/lengthy career ... plans his/her retirement." question (EXACT): the popup at (400, 100); "lengthy"
+  when the year index 0x5a6d3c is above 9; the name is golfer record 0's and "her" follows its byte 0x4d60a9 bit 0x80;
+  in championship play (0x4000000) it reads "After an exciting championship\n<name> returns home.". Answer 0 ("Wait")
+  and -1 (Esc) go back to the game; 1 runs the Save prompt 0x405b10 and then takes the quit exit; 2 takes it at once.
 * Interest on negative cash: cash/50 monthly (EXACT per EXE_COSTS).
 
 ## 7. Corrections to earlier docs

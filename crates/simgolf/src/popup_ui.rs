@@ -8,7 +8,7 @@
 use crate::app::*;
 use crate::gfx::Gfx;
 use crate::render::Rect;
-use crate::ui::{rgb, rgba, text_width, Screen as Ui};
+use crate::ui::{rgb, rgba, Screen as Ui};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PopupKind {
@@ -36,24 +36,30 @@ pub struct Popup {
     pub disabled: u32,
     /// Checkbox bits (Prefs).
     pub checks: u32,
-    pub sel: usize,
+    /// The option lit by the pointer or the keys: none at first (0x46d6e0 starts at -1), the one under the pointer, or the
+    /// last one the Up and Down keys reached (kept while the pointer is off the options).
+    pub sel: Option<usize>,
+    pub keyed: bool,
     pub cx: f32,
     pub top: f32,
     /// The screen the popup came from.
     pub back: Screen,
 }
 
-/// The generic popup (0x46d6e0) as footage of the original shows it: an opaque box in the lavender of its option balls'
-/// cut (148, 150, 198), lit along the top and left and shaded along the bottom and right; heading lines centred, 18 apart,
-/// the first capital 14 below the call's top; the options 24 apart from 23 below the last heading, their text 42 into the
-/// box with the option ball 11 into it. The box is (lines * 3 + 3) * 8 high from 4 above the call's top (EXACT height, the 4
-/// from footage) and as wide as its longest heading plus 0x31, or its longest option plus 75 (footage of the retirement
-/// question and the SGA offer: 324 and 336 wide).
+/// The generic popup (0x46d6e0, EXACT from the code): one text blob split into lines, those starting with a space being
+/// options. Its box is as wide as the widest line (options measured with their leading space) rounded up to 15 mod 16,
+/// plus 0x31, centred on the call's x; it is (lines * 3 + 3) * 8 high from the call's y. An even y (every call in the
+/// exe) draws the InfoButtons frame (0x40cc00: the box grown to 15 mod 16 about its centre, the inside filled with
+/// 0x4e79 four pixels in, the 3 x 3 border of 16 x 16 pieces); an odd y would draw a flat box instead (not used).
 ///
-/// Radio boxes (mode 1) draw their headings white over a dark red shadow, the options in teal by a dark ball and the
-/// option under the pointer in white with the shadow by a lit ball; checkbox lists (mode 0, the tournament
-/// recommendations) draw their headings pale yellow and the options white, each over a dark shadow, with a box ticked in
-/// green beside each and the yellow OK tick at the lower right.
+/// The lines start 12 below the call's y, 18 apart until the first option and 24 apart from it on. Headings are centred
+/// on the call's x in the shadowed call (0x404bc0): white in a radio box (mode 1), 0x7ff0 pale yellow in a checkbox list
+/// (mode 0). Options are drawn 36 into the box (the leading space included): the chosen one (a radio box's option under
+/// the pointer or picked by the keys, a checkbox list's ticked ones) white, the others teal 0x0210, the one under the
+/// pointer in the shadowed call a pixel higher (y + 7, the others y + 8), greyed ones 0x6318. A radio box puts the
+/// TransPopups ball at (box x + 12, line y + 4): the lit ball for the chosen option, the dim ball otherwise; a checkbox
+/// list puts the InfoButtons box at (box x + 8, line y), green-ticked when ticked and red-crossed when not, and its OK
+/// tick (TransPopups (350, 140)) 40 in from the box's right and bottom.
 #[derive(Clone, Debug)]
 pub struct ChoiceBox {
     pub lines: Vec<String>,
@@ -65,9 +71,8 @@ pub struct ChoiceBox {
     pub disabled: u32,
 }
 
-/// The popup's text size (Manual SSi; footage: "2004 San Diego Open tournament" is 287 pixels wide).
-pub const CHOICE_SIZE: f32 = 20.0;
-const LAVENDER: [f32; 4] = [148.0 / 255.0, 150.0 / 255.0, 198.0 / 255.0, 1.0];
+/// The popup's font: the default font object 0x519928, Manual SSi Bold 20 (0x46d6e0 selects it first).
+pub const CHOICE_FONT: crate::ui::Fnt = crate::ui::F_MANUAL20;
 
 impl ChoiceBox {
     pub fn new(lines: Vec<String>, cx: f32, top: f32) -> ChoiceBox {
@@ -79,141 +84,260 @@ impl ChoiceBox {
         self.lines.iter().enumerate().filter(|(_, l)| l.starts_with(' ')).map(|(i, _)| i).collect()
     }
 
+    /// The box as 0x46d6e0 computes it (before the frame's rounding): x = cx - w / 2, y = the call's y.
     pub fn rect(&self) -> Rect {
-        let w = self
-            .lines
-            .iter()
-            .map(|l| match l.strip_prefix(' ') {
-                Some(o) => text_width(o.trim(), CHOICE_SIZE) + 75.0,
-                None => text_width(l, CHOICE_SIZE) + 49.0,
-            })
-            .fold(0.0, f32::max);
+        let widest = self.lines.iter().map(|l| CHOICE_FONT.width(l).round() as i32).max().unwrap_or(0);
+        let w = (((widest - 1) | 15) + 0x31) as f32;
         let h = (self.lines.len() as f32 * 3.0 + 3.0) * 8.0;
-        // kept on the 800 x 600 screen (the exe's boxes near the edges, like the land offer at x 160, would leave it)
-        let x = (self.cx - w / 2.0).clamp(4.0, (800.0 - w - 4.0).max(4.0));
-        let y = (self.top - 4.0).clamp(4.0, (600.0 - h - 4.0).max(4.0));
+        Rect::new(self.cx - (w / 2.0).trunc(), self.top, w, h)
+    }
+
+    /// The frame as drawn (0x40cc00 grows a size that is not a multiple of 16 to 15 mod 16 and moves back by half of what
+    /// it added).
+    pub fn frame(&self) -> Rect {
+        let r = self.rect();
+        let (x, w) = crate::message_ui::round16(r.x, r.w);
+        let (y, h) = crate::message_ui::round16(r.y, r.h);
         Rect::new(x, y, w, h)
     }
 
-    /// The top of each line's capitals.
+    /// The y of each line (the top the text calls are given; options draw their text 8 below it, 7 when under the
+    /// pointer).
     pub fn line_tops(&self) -> Vec<f32> {
-        let r = self.rect();
-        let mut y = r.y + 18.0;
-        let mut after_heading = false;
+        let mut y = self.top + 12.0;
+        let mut seen_option = false;
         let mut v = Vec::with_capacity(self.lines.len());
         for l in &self.lines {
-            if l.starts_with(' ') {
-                if after_heading {
-                    y += 5.0;
-                }
-                v.push(y);
-                y += 24.0;
-                after_heading = false;
-            } else {
-                v.push(y);
-                y += 18.0;
-                after_heading = true;
-            }
+            v.push(y);
+            seen_option |= l.starts_with(' ');
+            y += if seen_option { 24.0 } else { 18.0 };
         }
         v
     }
 
-    /// The option (counted from the first option line) under (x, y).
+    /// The option (counted from the first option line) under (x, y): x strictly between the box's left and 48 short of its
+    /// right, y in the 24 pixel rows from the first option's line.
     pub fn option_at(&self, x: f32, y: f32) -> Option<usize> {
         let r = self.rect();
-        if x < r.x || x >= r.x + r.w {
+        let opts = self.options();
+        let first = *opts.first()?;
+        let y0 = self.line_tops()[first];
+        let right = self.cx + (r.w / 2.0).trunc() - 48.0;
+        if x <= r.x || x >= right || y < y0 {
             return None;
         }
-        let tops = self.line_tops();
-        self.options().iter().position(|&i| y >= tops[i] - 5.0 && y < tops[i] + 19.0)
+        let k = ((y - y0) / 24.0) as usize;
+        (k < opts.len()).then_some(k)
     }
 
-    /// The yellow OK tick of a checkbox list (footage of the tournament recommendations: 47 in from the right, 46 up from
-    /// the bottom).
+    /// The OK tick of a checkbox list: the 50 x 50 cut at (cx + w / 2 - 40, top + h - 40); a click within 20 of its
+    /// centre (both ways) accepts.
     pub fn ok_tick(&self) -> Rect {
         let r = self.rect();
-        Rect::new(r.x + r.w - 47.0, r.y + r.h - 46.0, 50.0, 50.0)
+        let (x, y) = (self.cx + (r.w / 2.0).trunc() - 40.0, self.top + r.h - 40.0);
+        Rect::new(x + 1.0, y + 1.0, 39.0, 39.0)
     }
 }
 
 impl App {
     /// Draws a choice box with `hover` the option under the pointer (or picked by the keys).
     pub fn draw_choice_box(&self, g: &mut Gfx, s: &Ui, b: &ChoiceBox, hover: Option<usize>) {
+        use crate::info_ui::c15;
         let r = b.rect();
-        // APPROXIMATION: the bevel's shades and widths are measured by eye on footage of the original
-        s.fill(g, r.x, r.y, r.w, r.h, LAVENDER);
-        s.fill(g, r.x, r.y, r.w, 2.0, rgb(0.78, 0.78, 0.9));
-        s.fill(g, r.x, r.y, 2.0, r.h, rgb(0.72, 0.72, 0.86));
-        s.fill(g, r.x + 2.0, r.y + 2.0, r.w - 4.0, 1.0, rgb(0.66, 0.66, 0.82));
-        s.fill(g, r.x + r.w - 5.0, r.y + 2.0, 5.0, r.h - 2.0, rgb(0.5, 0.5, 0.68));
-        s.fill(g, r.x + r.w - 3.0, r.y + 3.0, 3.0, r.h - 3.0, rgb(0.3, 0.3, 0.45));
-        s.fill(g, r.x + 2.0, r.y + r.h - 5.0, r.w - 2.0, 5.0, rgb(0.5, 0.5, 0.68));
-        s.fill(g, r.x + 3.0, r.y + r.h - 3.0, r.w - 3.0, 3.0, rgb(0.3, 0.3, 0.45));
-        let white = rgb(1.0, 1.0, 1.0);
-        // the shadowed calls' palette colour 1, a pixel below (see `ui::SHADOW_1`)
-        let red_shadow = crate::ui::SHADOW_1;
-        let dark_shadow = rgb(0.16, 0.16, 0.24);
-        // APPROXIMATION: the teal and pale yellow as footage shows them, corrected for the video's colour shift
-        let teal = rgb(0.09, 0.58, 0.51);
-        let yellow = rgb(0.98, 0.93, 0.45);
-        let grey = crate::info_ui::c15(0x4210);
-        let shadowed = |g: &mut Gfx, x: f32, y: f32, t: &str, c: [f32; 4], sh: [f32; 4], centred: bool| {
-            let x = if centred { x - (text_width(t, CHOICE_SIZE) / 2.0).floor() } else { x };
-            s.text(g, x, y + 1.0, t, CHOICE_SIZE, sh);
-            s.text(g, x, y, t, CHOICE_SIZE, c);
-        };
+        self.draw_info_frame(g, s, r.x, r.y, r.w, r.h);
+        let f = CHOICE_FONT;
+        let white = c15(0x7fff);
+        let teal = c15(0x0210);
         let tops = b.line_tops();
         let opts = b.options();
-        let balls = &self.info.art.select;
         for (i, l) in b.lines.iter().enumerate() {
-            // the capitals of Manual SSi stand 12 above the baseline at this size
-            let base = tops[i] + 12.0;
+            let y = tops[i];
             let Some(k) = opts.iter().position(|&o| o == i) else {
-                let c = if b.checks.is_some() { yellow } else { white };
-                let sh = if b.checks.is_some() { dark_shadow } else { red_shadow };
-                shadowed(g, r.x + r.w / 2.0, base, l, c, sh, true);
+                let c = if b.checks.is_some() { c15(0x7ff0) } else { white };
+                s.put_shadowed(g, f, b.cx, y, l, c, true);
                 continue;
             };
-            let text = l.trim();
+            let x = r.x + 36.0;
+            if b.disabled & (1 << k) != 0 {
+                s.put(g, f, x, y + 8.0, l, c15(0x6318));
+                continue;
+            }
             let lit = hover == Some(k);
-            let off = b.disabled & (1 << k) != 0;
-            let (bx, by) = (r.x + 11.0, tops[i] - 5.0);
+            let chosen = match b.checks {
+                Some(m) => m & (1 << k) != 0,
+                None => lit,
+            };
+            let c = if chosen { white } else { teal };
+            if lit {
+                s.put_shadowed(g, f, x, y + 7.0, l, c, false);
+            } else {
+                s.put(g, f, x, y + 8.0, l, c);
+            }
             match b.checks {
-                Some(m) => {
-                    // PLACEHOLDER: the checkbox art is not located; a cream box with a green tick as footage shows it
-                    s.fill(g, bx + 1.0, by + 1.0, 20.0, 20.0, rgb(0.15, 0.15, 0.25));
-                    s.fill(g, bx + 3.0, by + 3.0, 16.0, 16.0, rgb(0.93, 0.9, 0.72));
-                    if m & (1 << k) != 0 {
-                        let green = rgb(0.1, 0.75, 0.2);
-                        for t in 0..5 {
-                            s.fill(g, bx + 5.0 + t as f32, by + 9.0 + t as f32, 3.0, 3.0, green);
-                        }
-                        for t in 0..9 {
-                            s.fill(g, bx + 10.0 + t as f32, by + 12.0 - 1.4 * t as f32, 3.0, 3.0, green);
-                        }
+                Some(_) => {
+                    // the InfoButtons boxes 0x561260[1] (ticked) and [2] (crossed), 26 x 26 at (300 + 50 k, 0)
+                    let cut = if chosen { 350.0 } else { 400.0 };
+                    if self.art.info_buttons.tex.is_some() {
+                        s.image_part(g, &self.art.info_buttons, r.x + 8.0, y, cut, 0.0, 26.0, 26.0);
                     }
                 }
-                None if balls.tex.is_some() => {
-                    s.image_part(g, balls, bx, by, 243.0, if lit { 324.0 } else { 303.0 }, 22.0, 20.0);
+                None if chosen => {
+                    if self.art.trans.tex.is_some() {
+                        s.image_part(g, &self.art.trans, r.x + 12.0, y + 4.0, 300.0, 300.0, 30.0, 30.0);
+                    }
                 }
-                None => {}
-            }
-            let x = r.x + 42.0;
-            if off {
-                s.text(g, x, base, text, CHOICE_SIZE, grey);
-            } else if lit {
-                shadowed(g, x, base, text, white, red_shadow, false);
-            } else if b.checks.is_some() {
-                shadowed(g, x, base, text, white, dark_shadow, false);
-            } else {
-                s.text(g, x, base, text, CHOICE_SIZE, teal);
+                None => {
+                    if self.art.radio_dim.tex.is_some() {
+                        s.image(g, &self.art.radio_dim, r.x + 12.0, y + 4.0);
+                    }
+                }
             }
         }
-        if b.checks.is_some() {
-            let t = b.ok_tick();
-            if self.art.trans.tex.is_some() {
-                s.image_part(g, &self.art.trans, t.x, t.y, 350.0, 140.0, 50.0, 50.0);
+        if b.checks.is_some() && self.art.trans.tex.is_some() {
+            let (x, y) = (b.cx + (r.w / 2.0).trunc() - 40.0, b.top + r.h - 40.0);
+            s.image_part(g, &self.art.trans, x, y, 350.0, 140.0, 50.0, 50.0);
+        }
+    }
+
+    /// The opaque InfoButtons frame (0x40cc00): sizes grown to 15 mod 16 about the centre, the inside filled with 0x4e79
+    /// from four pixels in, then the 16 x 16 pieces cut at (200 + 17 col, 17 row): a corner at each end, (w - 17) / 16 top
+    /// and bottom pieces from x + 16 when w passes 32, as many side pieces down from y + 16 when h does.
+    pub fn draw_info_frame(&self, g: &mut Gfx, s: &Ui, x: f32, y: f32, w: f32, h: f32) {
+        let (x, w) = crate::message_ui::round16(x, w);
+        let (y, h) = crate::message_ui::round16(y, h);
+        // 0x4e79 as the 16-bit screen shows it next to the frame art (whose inside is the same (152, 152, 200)): each
+        // channel shifted up by 3
+        let fill =
+            |v: u32| [((v >> 10) & 31) as f32 * 8.0 / 255.0, ((v >> 5) & 31) as f32 * 8.0 / 255.0, (v & 31) as f32 * 8.0 / 255.0, 1.0];
+        s.fill(g, x + 4.0, y + 4.0, w - 8.0, h - 8.0, fill(0x4e79));
+        let t = &self.art.info_buttons;
+        if t.tex.is_none() {
+            return;
+        }
+        let piece = |g: &mut Gfx, col: usize, row: usize, dx: f32, dy: f32| {
+            s.image_part(g, t, dx, dy, 200.0 + 17.0 * col as f32, 17.0 * row as f32, 16.0, 16.0);
+        };
+        let (r, bt) = (x + w - 16.0, y + h - 16.0);
+        piece(g, 0, 0, x, y);
+        if w - 16.0 > 16.0 {
+            for k in 1..=((w as i32 - 17) >> 4) {
+                piece(g, 1, 0, x + 16.0 * k as f32, y);
+                piece(g, 1, 2, x + 16.0 * k as f32, bt);
             }
+        }
+        if h - 16.0 > 16.0 {
+            for k in 1..=((h as i32 - 17) >> 4) {
+                piece(g, 0, 1, x, y + 16.0 * k as f32);
+                piece(g, 2, 1, r, y + 16.0 * k as f32);
+            }
+        }
+        piece(g, 2, 0, r, y);
+        piece(g, 2, 2, r, bt);
+        piece(g, 0, 2, x, bt);
+    }
+}
+
+/// The exe's list box (0x46de70 / 0x46dea0, drawn by 0x46e260; EXACT from the code). It works in a 320 x 240 space that
+/// 0x404970 scales to the screen ((800 v + 160) / 320 at 800 x 600): the box's corner (x0, y0) is given in that space, each
+/// line is 7 below the last, the text starting at (x0 + 5, y0 + 5 + 7 i), and the box reaches x0 + 8 + the widest line's
+/// pixel width * 2 / 5 and y0 + 6 + 7 lines. An odd y0 draws the box as a one pixel white outline (0x46e710, 4 higher
+/// than the lines reach) with the headings in cyan 0x3ff, the options in grey 0x6318 and the option under the pointer
+/// white; an even y0 draws the theme's pop-up frame (0x40d0b0, 8 and 6 out, 16 and 12 bigger) with the headings in 0x18
+/// navy, the options in grey 0x4210 and the one under the pointer black. Text is Manual SSi Bold 20 (0x519928) without a
+/// shadow. Lines starting with a space are the options, counted from 0.
+#[derive(Clone, Debug)]
+pub struct ListBox {
+    pub lines: Vec<String>,
+    pub x0: i32,
+    pub y0: i32,
+}
+
+/// 0x404970: a 320 x 240 coordinate to the 800 x 600 screen.
+pub fn scale320(v: i32) -> i32 {
+    (800 * v + 160).div_euclid(320)
+}
+
+impl ListBox {
+    pub fn new(lines: Vec<String>, x0: i32, y0: i32) -> ListBox {
+        ListBox { lines, x0, y0 }
+    }
+
+    /// The lines shown: as many as fit above y 0xe8 of the 320 x 240 space.
+    fn shown(&self) -> usize {
+        self.lines.len().min(((0xe8 - self.y0) / 7).max(0) as usize)
+    }
+
+    /// The far corner (x1, y1) in the 320 x 240 space.
+    fn corner(&self) -> (i32, i32) {
+        let widest = self.lines.iter().map(|l| CHOICE_FONT.width(l).round() as i32).max().unwrap_or(0);
+        (widest * 2 / scale320(2) + 8 + self.x0, 7 * self.shown() as i32 + 6 + self.y0)
+    }
+
+    /// The index of the first option line (0x83927c).
+    fn first_option(&self) -> Option<usize> {
+        self.lines.iter().position(|l| l.starts_with(' ') || l.starts_with('_'))
+    }
+
+    /// The option under the screen point (x, y), as 0x46dea0 tests it: the point taken back to the 320 x 240 space
+    /// (times 4 over 0x404970(4)), inside the box, row (y - y0 - 4) / 7 counted from the first option line.
+    pub fn option_at(&self, x: f32, y: f32) -> Option<usize> {
+        let first = self.first_option()? as i32;
+        let (lx, ly) = ((x as i32) * 4 / scale320(4), (y as i32) * 4 / scale320(4));
+        let (x1, y1) = self.corner();
+        if lx < self.x0 || lx > x1 || ly < self.y0 || ly > y1 {
+            return None;
+        }
+        let row = (ly - self.y0 - 4) / 7 - first;
+        let n = self.lines.iter().filter(|l| l.starts_with(' ') || l.starts_with('_')).count() as i32;
+        (row >= 0 && row < n).then_some(row as usize)
+    }
+
+    /// The screen rectangle of the drawn box.
+    pub fn rect(&self) -> Rect {
+        let (x1, y1) = self.corner();
+        if self.y0 & 1 != 0 {
+            let (x, y) = (scale320(self.x0), scale320(self.y0));
+            Rect::new(x as f32, y as f32, scale320(x1 - self.x0) as f32, scale320(y1 - self.y0 + 4) as f32)
+        } else {
+            Rect::new(
+                scale320(self.x0 - 8) as f32,
+                scale320(self.y0 - 6) as f32,
+                scale320(x1 - self.x0 + 16) as f32,
+                scale320(y1 - self.y0 + 12) as f32,
+            )
+        }
+    }
+}
+
+impl App {
+    /// Draws a list box with `hover` the option under the pointer.
+    pub fn draw_list_box(&self, g: &mut Gfx, s: &Ui, b: &ListBox, hover: Option<usize>) {
+        use crate::info_ui::c15;
+        let r = b.rect();
+        let odd = b.y0 & 1 != 0;
+        if odd {
+            let white = c15(0x7fff);
+            s.fill(g, r.x, r.y, r.w + 1.0, 1.0, white);
+            s.fill(g, r.x, r.y + r.h, r.w + 1.0, 1.0, white);
+            s.fill(g, r.x, r.y, 1.0, r.h + 1.0, white);
+            s.fill(g, r.x + r.w, r.y, 1.0, r.h + 1.0, white);
+        } else {
+            self.popup_frame(g, s, r.x, r.y, r.w, r.h);
+        }
+        let (heading, option, lit) = if odd { (0x03ff, 0x6318, 0x7fff) } else { (0x0018, 0x4210, 0x0000) };
+        let mut k: Option<usize> = None;
+        for (i, l) in b.lines.iter().take(b.shown()).enumerate() {
+            let is_option = l.starts_with(' ') || l.starts_with('_');
+            if is_option {
+                k = Some(k.map_or(0, |k| k + 1));
+            }
+            let c = match (is_option, k == hover && hover.is_some()) {
+                (false, _) => heading,
+                (true, true) => lit,
+                (true, false) => option,
+            };
+            let (x, y) = (scale320(b.x0 + 5), scale320(7 * i as i32 + 5 + b.y0));
+            s.put(g, CHOICE_FONT, x as f32, y as f32, l, c15(c));
         }
     }
 }
@@ -243,10 +367,15 @@ impl App {
         let retire = {
             let me = self.club.roster.first();
             let his = if me.map(|p| p.male_bit()).unwrap_or(1) != 0 { "his" } else { "her" };
-            // PLACEHOLDER: the exe's test between "short" and "lengthy" is not decoded; footage shows "short" in the fourth
-            // year
-            let span = if self.econ.year_index() < 10 { "short" } else { "lengthy" };
-            [format!("After a {span} career"), format!("{} plans {his} retirement.", self.pro_name())]
+            // EXACT (main loop 0x420b4e): "lengthy" once the year index (ticks >> 13, 0 for 2001) is above 9, so from
+            // 2011 on; in championship play (flag 0x4000000) the heading is "After an exciting championship" /
+            // "<pro> returns home." instead. The name is the first roster golfer's and "her" follows its female bit.
+            if self.club.game & sg_core::championship::CHAMPIONSHIP != 0 {
+                ["After an exciting championship".to_string(), format!("{} returns home.", self.pro_name())]
+            } else {
+                let span = if self.econ.year_index() > 9 { "lengthy" } else { "short" };
+                [format!("After a {span} career"), format!("{} plans {his} retirement.", self.pro_name())]
+            }
         };
         let (lines, disabled, cx, top): (Vec<&str>, u32, f32, f32) = match kind {
             PopupKind::Retire => (
@@ -312,12 +441,13 @@ impl App {
                 400.0,
                 200.0,
             ),
-            // the commissioner's approval (main routine 0x41e2a0): the two-choice box at (0xa0, 0x1c2)
+            // the commissioner's approval (main routine 0x41e2a0): the two-choice box centred on x 0x1c2 from y 0xa0 (EXACT,
+            // the call's pushes at 0x41e2ee and 0x41e303), texts 0x4c5d74 and 0x4c5d48
             PopupKind::LandOffer => (
-                vec!["Do you wish to purchase additional land to expand your course?", " Yup, I've got big plans.", " No, I'm fine."],
+                vec!["Do you wish to purchase additional", "land to expand your course?", " Yup, I've got big plans.", " No, I'm fine."],
                 0,
-                160.0,
                 450.0,
+                160.0,
             ),
             // the debt counter past 2 (three year ends in the red): the box at (250, 150), text 0x4c5ad0
             PopupKind::CareerOver => (
@@ -342,7 +472,17 @@ impl App {
             0
         };
         let back = if self.screen == Screen::Popup { self.popup.as_ref().map(|p| p.back).unwrap_or(Screen::Play) } else { self.screen };
-        self.popup = Some(Popup { kind, lines: lines.iter().map(|s| s.to_string()).collect(), disabled, checks, sel: 0, cx, top, back });
+        self.popup = Some(Popup {
+            kind,
+            lines: lines.iter().map(|s| s.to_string()).collect(),
+            disabled,
+            checks,
+            sel: None,
+            keyed: false,
+            cx,
+            top,
+            back,
+        });
         self.screen = Screen::Popup;
     }
 
@@ -357,19 +497,37 @@ impl App {
         let s = Ui::new(self.draw_w, self.draw_h);
         self.view = s.view;
         // footage of the original: the screen under the box is not dimmed
-        self.draw_choice_box(g, &s, &p.choice_box(), Some(p.sel));
+        self.draw_choice_box(g, &s, &p.choice_box(), p.sel);
         g.flush();
     }
 
-    /// Keyboard: Up/Down move, Enter or Space accept, Esc cancels. Returns Some when the popup is done.
+    /// Keyboard (0x46d6e0, EXACT): Up and Down move without wrapping (Down from none lights the first option), Enter or
+    /// Space accept the lit option (none lit: cancelled), Esc cancels. Returns Some when the popup is done.
     pub fn popup_key(&mut self, k: miniquad::KeyCode) -> Option<PopupResult> {
         use miniquad::KeyCode;
         let p = self.popup.as_mut()?;
         let n = p.options().len();
         match k {
-            KeyCode::Up => p.sel = (p.sel + n - 1) % n.max(1),
-            KeyCode::Down => p.sel = (p.sel + 1) % n.max(1),
-            KeyCode::Enter | KeyCode::KpEnter | KeyCode::Space => return Some(self.popup_accept(None)),
+            KeyCode::Up => {
+                p.keyed = true;
+                if let Some(s) = p.sel.filter(|&s| s > 0) {
+                    p.sel = Some(s - 1);
+                }
+            }
+            KeyCode::Down => {
+                p.keyed = true;
+                match p.sel {
+                    None if n > 0 => p.sel = Some(0),
+                    Some(s) if s + 1 < n => p.sel = Some(s + 1),
+                    _ => {}
+                }
+            }
+            KeyCode::Enter | KeyCode::KpEnter | KeyCode::Space => {
+                if p.sel.is_none() && p.kind != PopupKind::Prefs {
+                    return Some(None);
+                }
+                return Some(self.popup_accept(None));
+            }
             KeyCode::Escape => return Some(None),
             _ => {}
         }
@@ -381,10 +539,13 @@ impl App {
     pub fn popup_pointer(&mut self, vx: f32, vy: f32, click: bool) -> Option<PopupResult> {
         let p = self.popup.as_mut()?;
         let b = p.choice_box();
-        let r = b.rect();
+        let r = b.frame();
         let hit = b.option_at(vx, vy);
-        if let Some(k) = hit {
-            p.sel = k;
+        if hit.is_some() {
+            p.sel = hit;
+            p.keyed = false;
+        } else if !p.keyed {
+            p.sel = None;
         }
         if !click {
             return None;
@@ -405,7 +566,7 @@ impl App {
     /// returned then; the caller sees the same popup); a checkbox list toggles until OK.
     fn popup_accept(&mut self, pick: Option<usize>) -> PopupResult {
         let p = self.popup.as_mut()?;
-        let k = pick.unwrap_or(p.sel);
+        let k = pick.or(p.sel).unwrap_or(0);
         if p.kind == PopupKind::Prefs {
             if pick.is_some() {
                 p.checks ^= 1 << k;

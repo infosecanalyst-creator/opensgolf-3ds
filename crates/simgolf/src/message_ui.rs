@@ -241,7 +241,21 @@ impl App {
         }
     }
 
-    /// The ticker strip (0x40cdd0): the translucent fill one pixel up (0x40ca10 through the strip's square mask, see
+    /// 0x40d320 called with nobody speaking and mode -2 (the dialog frame instead of the strip), as 0x4065c0 does for the
+    /// skill card's first opening at (200, 0x172): the text wrapped to 0x2c * 8 pixels, the frame (x - 8, y - 8) 0x1a0
+    /// wide and 15 per line break + 0x20 + 0x10 high (0x45af30 counts the breaks it puts in, one less than the lines;
+    /// footage of the original's four-line box agrees, 362..456), the lines white in Manual SSi 15 from (x + 12, y + 16),
+    /// 15 apart.
+    pub fn draw_note_box(&self, g: &mut Gfx, s: &Ui, x: f32, y: f32, text: &str) {
+        let rows = lines(text, 0x2c as f32 * 8.0);
+        let h = rows.len().saturating_sub(1) as f32 * LINE + 32.0;
+        self.art.trans_frame(g, s, x - 8.0, y - 8.0, BOX_W, h + 16.0);
+        for (i, l) in rows.iter().enumerate() {
+            s.text(g, x + 12.0, top(y + 16.0 + LINE * i as f32, FONT), l, FONT, rgb(1.0, 1.0, 1.0));
+        }
+    }
+
+    /// The ticker strip (0x40cdd0):the translucent fill one pixel up (0x40ca10 through the strip's square mask, see
     /// `Art::trans_fill`) and the rail along the bottom: its left end at x - 4, the middle piece every 16 pixels from x + 12,
     /// the right end at x + w - 12. The rail pieces are elements 12 to 14 of the TransPopups group (0x58b890, 0x58b8bc,
     /// 0x58b8e8), cut by the loader 0x4466b1 at (300 + 17k, 34), 16 x 16: a left curl, a bar and a right curl.

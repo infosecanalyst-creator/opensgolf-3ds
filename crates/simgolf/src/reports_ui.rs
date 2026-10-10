@@ -495,6 +495,81 @@ impl App {
         }
     }
 
+    /// The minimap of 0x456be0: one 12 x 6 diamond per tile, the polygon (x - 6, y), (x, y - 3), (x + 6, y), (x, y + 3)
+    /// (0x475df0), coloured for the open tab. The land map (0x4587a0) draws it too, in the tab used last, 2 pixels higher
+    /// (`dy` -2: 0x456b70 takes 3 off instead of adding 1 while 0x822b80 is set).
+    pub(crate) fn draw_route_tiles(&mut self, g: &mut Gfx, s: &Ui, dy: f32) {
+        let aura = (self.route_tab == 2).then(|| self.course.aura());
+        for a in 0..N {
+            for b in 0..N {
+                let Some(c) = self.tile_colour(a, b, aura.as_ref()) else { continue };
+                let (x, y) = Self::mini(a as f32, b as f32);
+                s.diamond(g, x, y + dy, 6.0, 3.0, c);
+            }
+        }
+    }
+
+    /// Draws one sprite at once, as 0x4628d0 does (it stores the entry and calls the draw 0x462be0 straight away).
+    #[allow(clippy::too_many_arguments)]
+    fn draw_sprite_now(&mut self, g: &mut Gfx, s: &Ui, si: usize, view: i32, f: i32, x: f32, y: f32, k: f32) {
+        let mut one = vec![(y, si, view, f, x, y, k)];
+        self.draw_queued(g, s, &mut one);
+    }
+
+    /// The holes on the minimap, in the exe's drawing order (0x456be0, and the same code in the land map 0x4587a0, both
+    /// at the routing map's points): the tee marker of the hole's par (its last pop frame) on the back tee; a white line
+    /// two wide from there through the 250 yard marker (else the 200 one) to the pin; the hole number in yellow, 4 pixels
+    /// above the marker or, with neither marker, halfway along (not on the employees tab), drawn before the line on to the
+    /// pin; then the theme's flag at half size on the pin. The markers and flags were loaded with their shadows played
+    /// into the same canvas (0x43d740 with argument 1), so each shadow goes down first.
+    pub(crate) fn draw_route_marks(&mut self, g: &mut Gfx, s: &Ui) {
+        let ink = c15(0);
+        let tab = self.route_tab.min(3);
+        let theme = self.exe_theme().min(3);
+        for h in 1..19 {
+            let hr = self.club.holes[h].clone();
+            if hr.par == 0 {
+                continue;
+            }
+            let (tx, ty) = Self::mini(hr.back.0 as f32, hr.back.1 as f32);
+            let tee = 0x18d + (hr.par - 3).clamp(0, 2) as u16;
+            if let (Some(si), shadow) = self.decor_sprite(tee, 0x5e) {
+                let f = self.sprites[si].s.frames_per_view - 1;
+                if let Some(sh) = shadow {
+                    let fs = f.min(self.sprites[sh].s.frames_per_view - 1);
+                    self.draw_sprite_now(g, s, sh, 0, fs, tx, ty, 1.0);
+                }
+                self.draw_sprite_now(g, s, si, 0, f, tx, ty, 1.0);
+            }
+            let (gx, gy) = Self::mini(hr.pin.0 as f32, hr.pin.1 as f32);
+            let mark = [hr.markers[2], hr.markers[1]].into_iter().find(|m| m.0 != -1);
+            let (label, from) = match mark {
+                Some((mx, my)) => {
+                    let (x, y) = Self::mini((mx >> 10) as f32, (my >> 10) as f32);
+                    s.line(g, tx, ty, x, y, 2.0, c15(0x7fff));
+                    ((x, y), (x, y))
+                }
+                None => ((((tx + gx) / 2.0).trunc(), ((ty + gy) / 2.0).trunc()), (tx, ty)),
+            };
+            if tab != 1 {
+                // centred, by its top, with the palette's black a pixel below (0x404bc0)
+                let (x, y) = (label.0, top(label.1 - 4.0, 14.0));
+                s.text_centered(g, x, y + 1.0, &format!("{h}"), 14.0, ink);
+                s.text_centered(g, x, y, &format!("{h}"), 14.0, c15(0x7ff0));
+            }
+            s.line(g, from.0, from.1, gx, gy, 2.0, c15(0x7fff));
+            // the exe passes palette 0x60 + theme here, not the flag palette 0x63 of the course and the terrain panel: on
+            // Parkland that is the house palette the theme loader keeps in 0x60, on Links the flag palette; 0x61 and 0x62
+            // are never loaded, so Desert and Tropical flags keep the file's own colours
+            if let (Some(si), shadow) = self.decor_sprite(0x189 + theme as u16, 0x60 + theme) {
+                if let Some(sh) = shadow {
+                    self.draw_sprite_now(g, s, sh, 3, 0, gx, gy, 0.5);
+                }
+                self.draw_sprite_now(g, s, si, 3, 0, gx, gy, 0.5);
+            }
+        }
+    }
+
     pub fn draw_routing(&mut self, g: &mut Gfx) {
         let s = Ui::new(self.draw_w, self.draw_h);
         self.view = s.view;
@@ -508,15 +583,7 @@ impl App {
         if bottom.tex.is_some() {
             s.image_part(g, bottom, 0.0, 253.0, 0.0, 253.0, 800.0, 347.0);
         }
-        // the minimap: one 12 x 6 diamond per tile, the polygon (x - 6, y), (x, y - 3), (x + 6, y), (x, y + 3) (0x475df0)
-        let aura = (tab == 2).then(|| self.course.aura());
-        for a in 0..N {
-            for b in 0..N {
-                let Some(c) = self.tile_colour(a, b, aura.as_ref()) else { continue };
-                let (x, y) = Self::mini(a as f32, b as f32);
-                s.diamond(g, x, y, 6.0, 3.0, c);
-            }
-        }
+        self.draw_route_tiles(g, &s, 0.0);
         let ink = c15(0);
         // the course name with its long class word in the 16 point face (0x821f28), 10 pixels higher with " Employees" on the employees tab
         let long = self.long_course_name();
@@ -597,44 +664,8 @@ impl App {
                     }
                 }
             }
-            if hr.par == 0 {
-                continue;
-            }
-            // the tee marker of the hole's par (its last pop frame) on the back tee; a white line two wide from there through
-            // the 250 yard marker (else the 200 one) to the pin, where the theme's flag stands at half size; the hole number in
-            // yellow, 4 pixels above the marker or, with neither marker, halfway along (not on the employees tab)
-            let (tx, ty) = Self::mini(hr.back.0 as f32, hr.back.1 as f32);
-            let tee = 0x18d + (hr.par - 3).clamp(0, 2) as u16;
-            if let (Some(si), _) = self.decor_sprite(tee, 0x5e) {
-                let f = self.sprites[si].s.frames_per_view - 1;
-                queue.push((ty, si, 0, f, tx, ty, 1.0));
-            }
-            let (gx, gy) = Self::mini(hr.pin.0 as f32, hr.pin.1 as f32);
-            let mark = [hr.markers[2], hr.markers[1]].into_iter().find(|m| m.0 != -1);
-            let label = match mark {
-                Some((mx, my)) => {
-                    let (x, y) = Self::mini((mx >> 10) as f32, (my >> 10) as f32);
-                    s.line(g, tx, ty, x, y, 2.0, c15(0x7fff));
-                    s.line(g, x, y, gx, gy, 2.0, c15(0x7fff));
-                    (x, y)
-                }
-                None => {
-                    s.line(g, tx, ty, gx, gy, 2.0, c15(0x7fff));
-                    (((tx + gx) / 2.0).trunc(), ((ty + gy) / 2.0).trunc())
-                }
-            };
-            if tab != 1 {
-                // centred, by its top, with the palette's black a pixel below (0x404bc0)
-                let (x, y) = (label.0, top(label.1 - 4.0, 14.0));
-                s.text_centered(g, x, y + 1.0, &format!("{h}"), 14.0, ink);
-                s.text_centered(g, x, y, &format!("{h}"), 14.0, c15(0x7ff0));
-            }
-            let flag = 0x189 + self.exe_theme().min(3) as u16;
-            // the exe's palette 0x60 + theme; the port's 0x63 entry is that same per-theme flag palette
-            if let (Some(si), _) = self.decor_sprite(flag, 0x63) {
-                queue.push((gy, si, 3, 0, gx, gy, 0.5));
-            }
         }
+        self.draw_route_marks(g, &s);
         if tab == 1 {
             self.draw_routing_staff(g, &s, &mut queue);
         }

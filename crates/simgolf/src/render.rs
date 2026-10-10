@@ -686,11 +686,23 @@ impl App {
         }
     }
 
+    /// The exe's raw dock mode: the Golfers panel is mode 2, the Player panel mode 4 (the port has no separate mode 3), and
+    /// the Employee overlay keeps the mode it was opened from.
+    pub fn exe_dock_mode(&self) -> i32 {
+        let p = if self.panel == 3 { self.pstate.emp_base } else { self.panel };
+        match p {
+            4 => 2,
+            5 => 4,
+            _ => self.dock_mode(),
+        }
+    }
+
     fn draw_dock(&mut self, g: &mut Gfx, s: &Ui) {
         if self.dock_art.tex.is_some() {
             s.image_part(g, &self.dock_art, 0.0, 430.0, 0.0, 430.0, 215.0, 170.0);
-            // 0x432ba0: the hovered button in its bright blue look (column 0 of the sheet), unless it is the open mode's
-            let mode = self.dock_mode();
+            // 0x432ba0: the hovered button in its bright blue look (column 0 of the sheet), unless it is the open mode's (the
+            // raw mode, so People lights over the Player panel, mode 4)
+            let mode = self.exe_dock_mode();
             if self.dock_hover >= 0 && self.dock_hover != mode {
                 let (sx, sy, w, h, dx, dy) = DOCK_LIT[self.dock_hover as usize];
                 s.image_part(g, &self.dock_art, dx, dy, sx, sy, w, h);

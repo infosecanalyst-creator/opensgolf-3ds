@@ -145,6 +145,9 @@ pub struct TitleScreens {
     pub credits: Option<Credits>,
     /// The name being typed in the Save dialog, while it is open.
     pub save_name: Option<String>,
+    /// The Save dialog was opened by the retirement question's "I'd like to save this game first.": whether it saves or
+    /// is cancelled, the game then quits (the main loop's quit exit runs straight after 0x405b10 returns).
+    pub quit_after_save: bool,
     /// Play a Championship was chosen: the difficulty box leads to the course chooser instead of the property chooser.
     pub champ_pending: bool,
     pub art: TitleArt,
@@ -863,7 +866,12 @@ impl App {
     pub fn save_key(&mut self, k: KeyCode) -> bool {
         let Some(name) = self.title.save_name.as_mut() else { return false };
         match k {
-            KeyCode::Escape => self.title.save_name = None,
+            KeyCode::Escape => {
+                self.title.save_name = None;
+                if std::mem::take(&mut self.title.quit_after_save) {
+                    self.end_career();
+                }
+            }
             KeyCode::Backspace => {
                 name.pop();
             }
@@ -881,6 +889,9 @@ impl App {
                         self.post_message("Game Saved.", 1, -4); // the exe says it with the club emblem
                     }
                     Err(e) => self.show_toast(&format!("Could not save: {e}")),
+                }
+                if std::mem::take(&mut self.title.quit_after_save) {
+                    self.end_career();
                 }
             }
             _ => {}

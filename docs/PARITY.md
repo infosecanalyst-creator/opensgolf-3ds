@@ -48,7 +48,7 @@ The pre-game character page the port used to show does not exist in the original
 |---|---|
 | HUD | Top bar uses the original courseinfo art and shade sheet |
 | Best Scores | Module, test, recording, persistence and screen done; trigger keys F12 (Best), F11 (Top 10), Shift+K are PLACEHOLDERS until menus fully replace them |
-| Popup menus | Information (12 items) and System Functions (8 items) on the InfoButtons 9-slice frame, plus Preferences and rename prompt. PLACEHOLDER: radio ball sprite, text colours, Preferences labels beyond three. Load Game saves a While Browsing file but Cancel does not yet restore it |
+| Popup menus | Information (12 items) and System Functions (8 items) on the InfoButtons 9-slice frame, plus Preferences and rename prompt. EXACT: the frame, fill, text colours and offsets, radio balls, checkboxes and OK tick (0x46d6e0, DECODE_MENUS 1), the list box 0x46de70, the retirement question's rules. PLACEHOLDER: Preferences labels beyond three. Load Game saves a While Browsing file but Cancel does not yet restore it |
 | Open | Load screen emblem and tooltips, pair selection trigger, stats card, golfer bodies and palettes, play-core constants from DECODE_PLAYCORE.md, world facts from DECODE_WORLD2.md |
 Audit count: 982 gaps (down from 987).
 
@@ -218,3 +218,24 @@ Not found in the decompile: the info card click handlers, the story screen, the 
 Checked headless on all dock buttons; the panel tab and player panel hovers were not changed and not re-verified with real mouse input.
 
 Tool (update 80): `sgsprites <game dir> <output dir>` exports every Flics sprite to a PNG sheet (row per view, column per frame, shadows as _shadow). Palette variants are not applied.
+
+## Tournament screens, second pass
+
+| Item | Status | Notes |
+|---|---|---|
+| Live leader board | EXACT | 0x45a090: frame (0, 8, 144, 22 (H + 1) + 16), title tops 9 / 21 / 33, rows from 45 every 11, x 7 (x 1 from place 10), pro 0x23e8, prize not grouped, no shrinking; championship "at <course>". Footage p1 4700-6200 agrees (2 pixel registration error at the top of the screen) |
+| Tournament results | EXACT | 0x45a090: row steps 26 / 18, names at x 25, hole columns by hole number, "F" = total strokes, prize "§n,000" in 0x1284, bands 2 pixels left and the header 10 up (trimmed sprite cuts). Footage p2 86-92 agrees |
+| Recommendations list | EXACT (exe over footage) | 0x46d200: the TV towers' line is the first option (bit 0) and the towers and booths are placed only when it stays ticked; the footage's build shows no such line. Booth direction coin fixed (+2 on a non-zero coin) |
+| Professional Tournament scorecard | EXACT | 0x461110 as before; a long name's smaller font no longer applies to its numbers. Test hook `--edit "g:2"` |
+| Great-shot SimFoto | not ported | 0x407e00 decoded (DECODE_TOURNAMENTS.md 9), including the message box over the photo at (150, top - 192) seen in footage p1 3000 |
+
+## Dock panels and maps (October 2026)
+
+| Item | Status | Notes |
+|---|---|---|
+| Green button flag | EXACT | The loader (0x43d740, shadow argument 1) plays the Shadow.flc and then the body into one canvas, so the flag carries its shadow; the port draws the shadow sprite first at the same anchor. Position checked: canvas centre (240, 240) of the 80 x 60 cut at (200, 200) lands on (slot x + 31, slot y + 24), the port's anchor; footage p1 1600-1760 agrees within a pixel, so no y offset |
+| People button | EXACT | 0x432720: mode 2 unless already 2 (then closed, 5); the Employee overlay flag 0x561254 is left alone. The port keeps the overlay's underlying mode (Golfers or Player): from the Employee panel over the Player panel People moves to mode 2 and the Employee panel stays; mode 3 (the pro's shot, 0x4289e0) clears the flag. Dock hover compares the raw mode, so People lights over the Player panel |
+| Golfers list click | EXACT | 0x435680: the camera always goes to the golfer; the card (0x53df54) opens only when his screen x (+0x08, -1 off screen) is set or a card is open |
+| Routing map flags | EXACT | Palette 0x60 + theme (the Parkland house palette, unloaded 0x61/0x62, the Links flag palette), not 0x63; marker, line, number, line, flag drawn at once in that order (0x4628d0 draws straight away); shadows drawn. Tile colours were already exact. The G4 clip shows no yellow numbers and dark flags; the exe draws the numbers unconditionally and footage of the land map (p1 3120) shows them |
+| Land map | EXACT | 0x4587a0 draws the routing map's tiles (tab used last, 2 px higher) and the same hole marks; tract numbers in 0x821f28 centred at (x - 7, y - 4) of tile (8, 8)'s routing point, only while the tract has land for sale; if that tile is not for sale the position is the previous tract's text origin (stale variables), its price line when that tract was for sale (two lines of 17, PLACEHOLDER pitch). Footage p1 3120 matches within a pixel |
+| Face strip under panels | EXACT, unchanged | The strip (0x418d09 in 0x40f5c0) is drawn before the dock and panel calls (0x432ba0 and the panel draws), hidden only in a tournament; panels cover it, as the port already did |

@@ -75,3 +75,7 @@ celebrity and staff clips (`Flics/Male`, `Female`, `Celebs`, `Employee`) and the
 shadows (translucent black) are not packed either. In HD the game draws all of these from the classic art, smoothly filtered.
 Sprites drawn in another palette than their file's (tree and building colour variants) use the pack's frames with the
 palette change applied at load time.
+
+`--no-resume` redoes every picture; by default a run continues an interrupted one made with the same method and scale.
+
+Without a GPU, Real-ESRGAN runs on the CPU through Mesa's lavapipe Vulkan driver (`VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json` on Linux). The `realesr-animevideov3` model is about six times faster than `realesrgan-x4plus-anime` there (a full x4 pack takes several hours on four cores).

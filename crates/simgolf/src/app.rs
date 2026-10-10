@@ -433,6 +433,9 @@ pub struct App {
     /// Customise Golfer, while open.
     pub cust: Option<crate::cust_ui::Customise>,
     pub year_notice: String,
+    /// The tick the End of Year report reads (0x44cff0 reads the date of the moment it opens: the year index of the tick
+    /// that ends the year, so 2000 + n after the n-th season, the year just finished).
+    pub year_end_tick: u32,
     pub roster_offset: usize,
     /// The accomplishment snapshots still to take (id and map point), and the snapshots taken this session.
     pub snapshot_due: Vec<(usize, (i32, i32))>,
@@ -702,6 +705,7 @@ impl App {
             portraits_due: false,
             cust: None,
             year_notice: String::new(),
+            year_end_tick: 0,
             roster_offset: 0,
             snapshot_due: Vec::new(),
             snapshots: HashMap::new(),
