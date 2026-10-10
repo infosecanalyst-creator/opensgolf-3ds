@@ -24,9 +24,6 @@ pub struct InfoArt {
     pub land_buttons: Image,
     pub world_buttons: Image,
     pub tacks: Image,
-    /// general_selectionBOX: the generic popup's option balls (dark (243, 303, 22, 20), lit (243, 324, 22, 20)) on the
-    /// popup's own lavender.
-    pub select: Image,
 }
 
 impl InfoArt {
@@ -47,9 +44,7 @@ impl InfoArt {
             buy_land: plain(g, "infoscreens/buy_land.pcx"),
             land_buttons: keyed(g, "infoscreens/buy_land_buttons.pcx"),
             world_buttons: keyed(g, "WorldButton.pcx"),
-            tacks: alpha(g, "TacksandArrow.pcx", "TacksandArrow_A.pcx"),
-            select: keyed(g, "infoscreens/general_selectionBOX.pcx"),
-        }
+            tacks: alpha(g, "TacksandArrow.pcx", "TacksandArrow_A.pcx"),        }
     }
 }
 

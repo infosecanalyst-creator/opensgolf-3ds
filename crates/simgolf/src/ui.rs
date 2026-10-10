@@ -104,6 +104,32 @@ pub fn split_overlay(g: &mut Gfx, path: &Path, rects: &[(f32, f32, f32, f32)]) -
         .collect()
 }
 
+/// One cell of a PCX drawn through the alpha of another cell of its alpha sheet, as the exe's masked blit (0x473f60) does
+/// when it pairs a colour sprite with a mask sprite cut elsewhere: the `w` x `h` colour cell at `c` with the alpha cell at
+/// `a`. Built from the classic files in either mode (the cell is a small sprite).
+pub fn load_pcx_cell(g: &mut Gfx, path: &Path, alpha: &Path, c: (usize, usize), a: (usize, usize), w: usize, h: usize) -> Option<Image> {
+    let img = decode_pcx(&sg_core::fsutil::read_file(path)?).ok()?;
+    let m = decode_pcx(&sg_core::fsutil::read_file(alpha)?).ok()?;
+    let (iw, mw) = (img.w as usize, m.w as usize);
+    if c.0 + w > iw || c.1 + h > img.h as usize || a.0 + w > mw || a.1 + h > m.h as usize {
+        return None;
+    }
+    let mut px = vec![0u8; w * h * 4];
+    for y in 0..h {
+        for x in 0..w {
+            let s = ((c.1 + y) * iw + c.0 + x) * 4;
+            let q = ((a.1 + y) * mw + a.0 + x) * 4;
+            let d = (y * w + x) * 4;
+            px[d..d + 3].copy_from_slice(&img.px[s..s + 3]);
+            px[d + 3] = m.px[q].max(m.px[q + 1]).max(m.px[q + 2]);
+        }
+    }
+    let cell = sg_core::assets::Rgba { w: w as u32, h: h as u32, px };
+    let tex = g.texture(&cell, false);
+    crate::hd::track(tex);
+    Some(Image { tex: Some(tex), w: w as f32, h: h as f32 })
+}
+
 /// Loads a PCX with a separate alpha PCX of the same size (the interface's `_A` / `_alpha` files: white opaque, black clear).
 pub fn load_pcx_alpha(g: &mut Gfx, path: &Path, alpha: &Path) -> Option<Image> {
     if crate::hd::active() {

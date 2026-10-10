@@ -48,6 +48,12 @@ pub struct Art {
     pub cg: Image,
     pub head_select: Image,
     pub head_body: Image,
+    /// InfoButtons (with its alpha sheet): the generic popup's 3 x 3 frame (cuts 0x561810 at (200 + 17 col, 17 row)) and
+    /// its checkboxes (cuts 0x561260 at (300 + 50 k, 0), 26 x 26).
+    pub info_buttons: Image,
+    /// The generic popup's unchosen radio ball: TransPopups' dim ball (400, 300) through the alpha of the lit ball's cell
+    /// (300, 300), as 0x46d6e0 pairs colour sprite 0x5678b8[2] with mask 0x56a7b8[0].
+    pub radio_dim: Image,
     /// The 60 x 120 body stills (Bodies/*.pcx) by body index 0..8, then their small (child) twins; recoloured on use.
     body_pcx: Vec<Option<Vec<u8>>>,
     bodies: HashMap<(usize, Outfit), Image>,
@@ -111,6 +117,9 @@ impl Art {
             cg: keyed(g, "Interface/CGButtons.pcx"),
             head_select: keyed(g, "Interface/HeadSelect.pcx"),
             head_body: keyed(g, "Interface/HeadBodyBck.pcx"),
+            info_buttons: alpha(g, "InfoButtons.pcx", "InfoButtons_A.pcx"),
+            radio_dim: crate::ui::load_pcx_cell(g, &p("TransPopups.pcx"), &p("TransPopups_A.pcx"), (400, 300), (300, 300), 30, 30)
+                .unwrap_or_default(),
             body_pcx,
             bodies: HashMap::new(),
         }

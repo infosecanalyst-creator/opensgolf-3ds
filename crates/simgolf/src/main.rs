@@ -965,10 +965,14 @@ impl Stage {
                 7 => self.app.open_popup(PopupKind::Retire),
                 _ => {}
             },
-            // the ordinary quit leaves the way the career's end does (DECODE_WORLD2 6.5); PLACEHOLDER: whether the save
-            // choice quits after saving is not decoded, so it saves and stays
+            // the ordinary quit leaves the way the career's end does (DECODE_WORLD2 6.5); EXACT (main loop after
+            // 0x420b4e): "save first" runs the Save dialog (0x405b10) and then quits whether or not a game was saved,
+            // "So long" quits, "Wait" and Esc go back to the game
             PopupKind::Retire => match k {
-                1 => self.app.open_save(),
+                1 => {
+                    self.app.open_save();
+                    self.app.title.quit_after_save = true;
+                }
                 2 => self.app.end_career(),
                 _ => {}
             },
