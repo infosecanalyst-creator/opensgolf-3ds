@@ -1,20 +1,42 @@
-# simgolf-native
+# OpenSGolf
 
-## ▶ [Play SimGolf in your browser](https://crspytopgn.github.io/simgolf-native/)
+**OpenSGolf** is a free, open-source golf course management game engine, written in Rust. It plays like Sid Meier's
+SimGolf (Firaxis, 2002) and aims to match it 1:1, the way OpenTTD does for Transport Tycoon Deluxe: you can play it with
+the data files of your own copy of the original game, it runs on Windows, macOS, Linux and in the browser (touch included),
+and it is built to be modded.
 
-Open the link above in a desktop browser (Chrome, Edge or Firefox), click **Choose your SimGolf game folder** and pick the
-folder of your own installed copy of SimGolf (the folder that contains `Flics`, `Sounds` and `Data`). The game starts right away.
+## ▶ [Play in your browser](https://crspytopgn.github.io/simgolf-native/)
 
-**You need your own copy of SimGolf.** The game's art, sounds and data belong to Electronic Arts and cannot be put on GitHub, so the
-page uses the files from your copy. They are read inside your browser tab only; nothing is uploaded anywhere. Saved courses stay in
-your browser. Sound starts after your first click.
+Open the link above in a browser (Chrome, Edge or Firefox), click **Choose your SimGolf game folder** and pick the folder of
+your own installed copy of SimGolf (the folder that contains `Flics`, `Sounds` and `Data`). The game starts right away.
+
+**For now you need your own copy of SimGolf.** The original game's art, sounds, music and text belong to Electronic Arts and
+are not part of this project; the game reads them from your copy at runtime, inside your browser tab or on your computer,
+and never uploads or redistributes them. A free base set that lets OpenSGolf run without the original files is being made
+(see [Modding and content](#modding-and-content)).
+
+OpenSGolf is not affiliated with or endorsed by Electronic Arts or Firaxis Games. SimGolf and Sid Meier's are trademarks of
+their owners and are named here only to say which game's files OpenSGolf can use.
+
+## Licence
+
+OpenSGolf is free software under the **GNU General Public License, version 2 or (at your option) any later version**
+(GPL-2.0-or-later), the same licence as OpenTTD: see [LICENSE](LICENSE). Anyone may use, change and share it, and changed
+versions must stay open under the same terms. The bundled Liberation Sans font is under the SIL Open Font License. Content
+packs (mods) choose their own licence; the free base set will be GPL-2.0-or-later too.
+
+## Modding and content
+
+The plan, as in OpenTTD: game content lives in data packs (terrain types, buildings, prices, golfers, properties, text),
+loaded in order on top of a base set; mods add or override data, art and sounds; scenarios and courses are shareable files;
+an in-game content list downloads community packs; translations are plain text files. See [docs/MODDING.md](docs/MODDING.md)
+for the design and its progress, and [CONTRIBUTING.md](CONTRIBUTING.md) to help.
 
 ---
 
-Clean-room native port of Sid Meier's SimGolf (Firaxis, 2002), written in Rust, for macOS (Apple silicon and Intel), Windows and Linux.
-It reads the data files from your own legitimately owned copy of the game. No game assets or code from the original are included here,
-and nothing here removes or bypasses copy protection. The goal is a game that plays like the original in every respect; the rules are
-being decoded from the publisher-supplied golf.exe (facts only, written down in docs/PUBLISHER_EXE_NOTES.md, no code copied).
+The engine is a clean-room reimplementation. No code from the original is included; its rules are written from facts read
+out of the publisher-supplied golf.exe (docs/PUBLISHER_EXE_NOTES.md), the original manual and footage of the game, and
+nothing here removes or bypasses copy protection.
 
 ## Status
 
