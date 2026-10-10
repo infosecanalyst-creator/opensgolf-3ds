@@ -44,7 +44,8 @@ impl InfoArt {
             buy_land: plain(g, "infoscreens/buy_land.pcx"),
             land_buttons: keyed(g, "infoscreens/buy_land_buttons.pcx"),
             world_buttons: keyed(g, "WorldButton.pcx"),
-            tacks: alpha(g, "TacksandArrow.pcx", "TacksandArrow_A.pcx"),        }
+            tacks: alpha(g, "TacksandArrow.pcx", "TacksandArrow_A.pcx"),
+        }
     }
 }
 

@@ -10,14 +10,13 @@
 //! defaults 0x4d55e8); the art is the disc's.
 //!
 //! PLACEHOLDERS (not decoded): which CGButtons piece each hover position shows (the yellow twin of the piece under it is
-//! drawn), the sprite drawn at (352, 116) for a child, the box of the "Pick one..." list (0x46de70, drawn as the generic
-//! popup with its left edge at x 100), the multi-line biography editor (a one-box editor here) and the last argument of
+//! drawn), the sprite drawn at (352, 116) for a child, the multi-line biography editor (a one-box editor here) and the last argument of
 //! each event the dialogue table's stock lines are built with (0 here; the exe keeps one per event at 0x838da8).
 
 use crate::app::*;
 use crate::gfx::Gfx;
 use crate::screens_ui::{c15, dist, tooltip, top, CLASS_WORDS, SMALL, TRAIT_WORDS};
-use crate::ui::{rgb, rgba, text_width, wrap_text, Image, Screen as Ui};
+use crate::ui::{rgb, wrap_text, Image, Screen as Ui};
 use sg_core::pro::SKILL_NAMES;
 use sg_core::roster::{Person, SAYINGS, SAYING_CODES, SAYING_LABELS};
 use std::path::PathBuf;
@@ -147,10 +146,6 @@ const BALL_SLOTS: [(f32, f32); 10] = [
     (641.0, 425.0),
 ];
 
-/// The generic popup's look (popup_ui): option pitch and text size.
-const PITCH: f32 = 24.0;
-const SIZE: f32 = 15.0;
-
 /// The body index (0..3 men, 5..8 women) a person record draws with (the customise preview's rule, DECODE_CUSTOMISE 3.3).
 pub fn person_look(p: &Person) -> usize {
     let nibble = ((p.b23 >> 4) & 3) as usize;
@@ -222,12 +217,19 @@ fn valid_file_name(name: &str) -> bool {
     !name.trim().is_empty() && !name.chars().any(|c| "\\/:*?\"<>|".contains(c) || c.is_control())
 }
 
-/// The rectangle of a popup-style box: `x` its centre (or its left edge when `left`), `top` its top.
-fn box_rect(lines: &[String], x: f32, top: f32, left: bool) -> (f32, f32, f32, f32) {
-    let w = lines.iter().map(|l| text_width(l.trim(), SIZE)).fold(0.0, f32::max) + 49.0 + 30.0;
-    let h = (lines.len() as f32 * 3.0 + 3.0) * 8.0 + 20.0;
-    let x = if left { x } else { x - w / 2.0 };
-    (x.clamp(4.0, (800.0 - w - 4.0).max(4.0)), top.clamp(4.0, (600.0 - h - 4.0).max(4.0)), w, h)
+/// How a box over the editor is drawn: the exe's list box or its generic popup.
+enum DialogBox {
+    List(crate::popup_ui::ListBox),
+    Choice(crate::popup_ui::ChoiceBox),
+}
+
+impl DialogBox {
+    fn option_at(&self, x: f32, y: f32) -> Option<usize> {
+        match self {
+            DialogBox::List(b) => b.option_at(x, y),
+            DialogBox::Choice(b) => b.option_at(x, y),
+        }
+    }
 }
 
 impl App {
@@ -544,30 +546,33 @@ impl App {
         set(self, Dialog::Notice(vec!["Character saved as".into(), format!("Themes\\{pack}\\{}{ext}", p.name)]));
     }
 
-    fn cust_dialog_lines(d: &Dialog) -> (Vec<String>, f32, f32, bool) {
+    /// The box each dialog is drawn as (EXACT positions from the calls): the Load list "Pick one..." and the file names is
+    /// the list box at (100, 0x14) (0x4385d0 through 0x46de70); "Invalid file name." and "Invalid file path." the list box at
+    /// (0x1e, 0x1e), each after an empty line (0x437910); the overwrite question the generic popup at (200, 0x1e); "Character
+    /// saved as / Themes\<pack>\<name>" the generic popup at (300, 100) with no options.
+    fn cust_dialog_box(d: &Dialog) -> DialogBox {
+        use crate::popup_ui::{ChoiceBox, ListBox};
         match d {
             Dialog::Load(files, _) => {
                 let mut v = vec!["Pick one...".to_string()];
                 v.extend(files.iter().map(|f| format!(" {}", f.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default())));
-                (v, 100.0, 20.0, true)
+                DialogBox::List(ListBox::new(v, 100, 0x14))
             }
             Dialog::Overwrite(path, _) => {
                 let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                (vec![name, "already exists!".into(), " Overwrite the old version.".into(), " Cancel".into()], 200.0, 30.0, false)
+                let lines = vec![name, "already exists!".into(), " Overwrite the old version.".into(), " Cancel".into()];
+                DialogBox::Choice(ChoiceBox::new(lines, 200.0, 30.0))
             }
-            Dialog::Notice(lines) => (lines.clone(), 300.0, 100.0, false),
+            Dialog::Notice(lines) if lines.first().is_some_and(|l| l.is_empty()) => {
+                DialogBox::List(ListBox::new(lines.clone(), 0x1e, 0x1e))
+            }
+            Dialog::Notice(lines) => DialogBox::Choice(ChoiceBox::new(lines.clone(), 300.0, 100.0)),
         }
     }
 
     /// The option of a box under the pointer.
     fn cust_dialog_option(d: &Dialog, vx: f32, vy: f32) -> Option<usize> {
-        let (lines, x, y, left) = Self::cust_dialog_lines(d);
-        let (bx, by, bw, _) = box_rect(&lines, x, y, left);
-        let opts: Vec<usize> = lines.iter().enumerate().filter(|(_, l)| l.starts_with(' ')).map(|(i, _)| i).collect();
-        opts.iter().position(|&i| {
-            let ly = by + 26.0 + PITCH * i as f32;
-            vx >= bx && vx < bx + bw && vy >= ly - SIZE - 2.0 && vy < ly - SIZE - 2.0 + PITCH
-        })
+        Self::cust_dialog_box(d).option_at(vx, vy)
     }
 
     fn cust_dialog_click(&mut self, d: Dialog, vx: f32, vy: f32, right: bool) {
@@ -871,7 +876,7 @@ impl App {
                     *s = k;
                 }
             }
-            Self::draw_cust_dialog(g, &s, d);
+            self.draw_cust_dialog(g, &s, d);
         }
         if hit >= 0 && c.frames > 10 && (hit != 20 || !c.pro_mode) {
             tooltip(g, &s, mx, my, TIPS[hit as usize]);
@@ -922,28 +927,15 @@ impl App {
         }
     }
 
-    /// A box over the editor in the generic popup's look: headings centred, options with the one under the pointer lit.
-    fn draw_cust_dialog(g: &mut Gfx, s: &Ui, d: &Dialog) {
-        let (lines, x, y, left) = Self::cust_dialog_lines(d);
-        let (bx, by, bw, bh) = box_rect(&lines, x, y, left);
-        s.fill(g, bx - 3.0, by - 3.0, bw + 6.0, bh + 6.0, rgba(0.55, 0.55, 0.85, 0.95));
-        s.fill(g, bx, by, bw, bh, rgba(0.92, 0.92, 1.0, 0.97));
+    /// A box over the editor (see `cust_dialog_box`), the option under the pointer (or picked by the keys) lit.
+    fn draw_cust_dialog(&self, g: &mut Gfx, s: &Ui, d: &Dialog) {
         let sel = match d {
             Dialog::Load(_, k) | Dialog::Overwrite(_, k) => Some(*k),
             Dialog::Notice(_) => None,
         };
-        let mut opt = 0;
-        for (i, l) in lines.iter().enumerate() {
-            let ly = by + 26.0 + PITCH * i as f32;
-            if let Some(t) = l.strip_prefix(' ') {
-                if sel == Some(opt) {
-                    s.fill(g, bx + 8.0, ly - SIZE - 2.0, bw - 16.0, PITCH - 2.0, rgba(0.98, 0.85, 0.2, 0.9));
-                }
-                s.text(g, bx + 36.0, ly, t, SIZE, rgb(0.08, 0.08, 0.25));
-                opt += 1;
-            } else {
-                s.text_centered(g, bx + bw / 2.0, ly, l, SIZE + 2.0, rgb(0.15, 0.1, 0.4));
-            }
+        match Self::cust_dialog_box(d) {
+            DialogBox::List(b) => self.draw_list_box(g, s, &b, sel),
+            DialogBox::Choice(b) => self.draw_choice_box(g, s, &b, sel),
         }
     }
 

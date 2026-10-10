@@ -1157,8 +1157,8 @@ impl App {
             }
             // the pin (EXACT, 0x46ed33): colour cut 8 + (k + 1) mod 3 of TacksandArrow (cuts 0x53c830, column x 100 and
             // the colour rows y 0 grey, 50 yellow, 100 red), so the oldest photo's pin is yellow, then red, then grey, as
-            // footage of the original shows; its mask is TacksandArrow_A cut 8 (100, 0) whatever the colour, the same
-            // shape as the cell's own
+            // footage of the original shows; its mask is TacksandArrow_A cut 8 (100, 0) whatever the colour, within
+            // 14 / 255 of each cell's own mask, so each cell is drawn with its own
             let tk = &self.info.art.tacks;
             if tk.tex.is_some() {
                 let row = ((k + 1) % 3) as f32;

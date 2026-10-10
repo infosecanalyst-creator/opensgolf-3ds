@@ -48,7 +48,7 @@ The pre-game character page the port used to show does not exist in the original
 |---|---|
 | HUD | Top bar uses the original courseinfo art and shade sheet |
 | Best Scores | Module, test, recording, persistence and screen done; trigger keys F12 (Best), F11 (Top 10), Shift+K are PLACEHOLDERS until menus fully replace them |
-| Popup menus | Information (12 items) and System Functions (8 items) on the InfoButtons 9-slice frame, plus Preferences and rename prompt. PLACEHOLDER: radio ball sprite, text colours, Preferences labels beyond three. Load Game saves a While Browsing file but Cancel does not yet restore it |
+| Popup menus | Information (12 items) and System Functions (8 items) on the InfoButtons 9-slice frame, plus Preferences and rename prompt. EXACT: the frame, fill, text colours and offsets, radio balls, checkboxes and OK tick (0x46d6e0, DECODE_MENUS 1), the list box 0x46de70, the retirement question's rules. PLACEHOLDER: Preferences labels beyond three. Load Game saves a While Browsing file but Cancel does not yet restore it |
 | Open | Load screen emblem and tooltips, pair selection trigger, stats card, golfer bodies and palettes, play-core constants from DECODE_PLAYCORE.md, world facts from DECODE_WORLD2.md |
 Audit count: 982 gaps (down from 987).
 

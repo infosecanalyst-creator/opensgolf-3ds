@@ -118,7 +118,12 @@ is Arial Bold 10 (0x519fd8). The to-do strips are the handwritten lines of tacs&
 easy editions' dogleg right, dogleg left and par five lines used for classes 0, 1 and 4). After the strips: TrophyParts_A (510,13,132,162) at (519,395) and
 (649,13,130,163) at (177,395) (the two golf clubs), tacs&tees_A (51,482,184,80) at (51,482) (tee and ball) and (732,511,53,52) at (732,511) (the tick), then the tower.
 
-Unknown: what writes the site index at +0x2c; the pin sheet piece used for the polaroid pin (position exact, identity derived); sound 0x38 meaning; the exact edition meaning of `0x822c88`.
+The pin's colour (EXACT, 0x46ed33): colour sprite 0x53c990 + 0x2c * ((k + 1) mod 3), i.e. TacksandArrow cuts 8, 9, 10
+at (100, 0), (100, 50), (100, 100): grey, yellow and red, so the oldest photo is yellow, the next red, the third grey;
+the mask is always TacksandArrow_A cut 8. (TacksandArrow: 16 cuts 20 x 24 at (50 (i / 4), 50 (i mod 4)), rows grey,
+yellow, red, white.)
+
+Unknown: what writes the site index at +0x2c; sound 0x38 meaning; the exact edition meaning of `0x822c88`.
 
 ## 3. World map / property chooser (F6, shift+w), routine `0x46f550`
 

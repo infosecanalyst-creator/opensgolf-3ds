@@ -1094,7 +1094,7 @@ impl App {
     /// pixels with one pixel gutters; the right column and bottom row are 26 wide or tall (they carry the shadow). The exe
     /// repeats each edge piece every 16 pixels; the edge pieces are uniform along their length, so here each edge is one
     /// stretched piece, and every piece is sampled half a pixel inside its gutters so the scaled screen shows no seams.
-    fn popup_frame(&self, g: &mut Gfx, s: &Ui, x: f32, y: f32, w: f32, h: f32) {
+    pub(crate) fn popup_frame(&self, g: &mut Gfx, s: &Ui, x: f32, y: f32, w: f32, h: f32) {
         let grow = |p: f32, n: f32| {
             let r = (n as i32) & 15;
             if r == 0 {

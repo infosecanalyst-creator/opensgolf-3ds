@@ -207,7 +207,8 @@ impl App {
         let (y, h) = crate::message_ui::round16(y, h);
         // 0x4e79 as the 16-bit screen shows it next to the frame art (whose inside is the same (152, 152, 200)): each
         // channel shifted up by 3
-        let fill = |v: u32| [((v >> 10) & 31) as f32 * 8.0 / 255.0, ((v >> 5) & 31) as f32 * 8.0 / 255.0, (v & 31) as f32 * 8.0 / 255.0, 1.0];
+        let fill =
+            |v: u32| [((v >> 10) & 31) as f32 * 8.0 / 255.0, ((v >> 5) & 31) as f32 * 8.0 / 255.0, (v & 31) as f32 * 8.0 / 255.0, 1.0];
         s.fill(g, x + 4.0, y + 4.0, w - 8.0, h - 8.0, fill(0x4e79));
         let t = &self.art.info_buttons;
         if t.tex.is_none() {
@@ -233,6 +234,111 @@ impl App {
         piece(g, 2, 0, r, y);
         piece(g, 2, 2, r, bt);
         piece(g, 0, 2, x, bt);
+    }
+}
+
+/// The exe's list box (0x46de70 / 0x46dea0, drawn by 0x46e260; EXACT from the code). It works in a 320 x 240 space that
+/// 0x404970 scales to the screen ((800 v + 160) / 320 at 800 x 600): the box's corner (x0, y0) is given in that space, each
+/// line is 7 below the last, the text starting at (x0 + 5, y0 + 5 + 7 i), and the box reaches x0 + 8 + the widest line's
+/// pixel width * 2 / 5 and y0 + 6 + 7 lines. An odd y0 draws the box as a one pixel white outline (0x46e710, 4 higher
+/// than the lines reach) with the headings in cyan 0x3ff, the options in grey 0x6318 and the option under the pointer
+/// white; an even y0 draws the theme's pop-up frame (0x40d0b0, 8 and 6 out, 16 and 12 bigger) with the headings in 0x18
+/// navy, the options in grey 0x4210 and the one under the pointer black. Text is Manual SSi Bold 20 (0x519928) without a
+/// shadow. Lines starting with a space are the options, counted from 0.
+#[derive(Clone, Debug)]
+pub struct ListBox {
+    pub lines: Vec<String>,
+    pub x0: i32,
+    pub y0: i32,
+}
+
+/// 0x404970: a 320 x 240 coordinate to the 800 x 600 screen.
+pub fn scale320(v: i32) -> i32 {
+    (800 * v + 160).div_euclid(320)
+}
+
+impl ListBox {
+    pub fn new(lines: Vec<String>, x0: i32, y0: i32) -> ListBox {
+        ListBox { lines, x0, y0 }
+    }
+
+    /// The lines shown: as many as fit above y 0xe8 of the 320 x 240 space.
+    fn shown(&self) -> usize {
+        self.lines.len().min(((0xe8 - self.y0) / 7).max(0) as usize)
+    }
+
+    /// The far corner (x1, y1) in the 320 x 240 space.
+    fn corner(&self) -> (i32, i32) {
+        let widest = self.lines.iter().map(|l| CHOICE_FONT.width(l).round() as i32).max().unwrap_or(0);
+        (widest * 2 / scale320(2) + 8 + self.x0, 7 * self.shown() as i32 + 6 + self.y0)
+    }
+
+    /// The index of the first option line (0x83927c).
+    fn first_option(&self) -> Option<usize> {
+        self.lines.iter().position(|l| l.starts_with(' ') || l.starts_with('_'))
+    }
+
+    /// The option under the screen point (x, y), as 0x46dea0 tests it: the point taken back to the 320 x 240 space
+    /// (times 4 over 0x404970(4)), inside the box, row (y - y0 - 4) / 7 counted from the first option line.
+    pub fn option_at(&self, x: f32, y: f32) -> Option<usize> {
+        let first = self.first_option()? as i32;
+        let (lx, ly) = ((x as i32) * 4 / scale320(4), (y as i32) * 4 / scale320(4));
+        let (x1, y1) = self.corner();
+        if lx < self.x0 || lx > x1 || ly < self.y0 || ly > y1 {
+            return None;
+        }
+        let row = (ly - self.y0 - 4) / 7 - first;
+        let n = self.lines.iter().filter(|l| l.starts_with(' ') || l.starts_with('_')).count() as i32;
+        (row >= 0 && row < n).then_some(row as usize)
+    }
+
+    /// The screen rectangle of the drawn box.
+    pub fn rect(&self) -> Rect {
+        let (x1, y1) = self.corner();
+        if self.y0 & 1 != 0 {
+            let (x, y) = (scale320(self.x0), scale320(self.y0));
+            Rect::new(x as f32, y as f32, scale320(x1 - self.x0) as f32, scale320(y1 - self.y0 + 4) as f32)
+        } else {
+            Rect::new(
+                scale320(self.x0 - 8) as f32,
+                scale320(self.y0 - 6) as f32,
+                scale320(x1 - self.x0 + 16) as f32,
+                scale320(y1 - self.y0 + 12) as f32,
+            )
+        }
+    }
+}
+
+impl App {
+    /// Draws a list box with `hover` the option under the pointer.
+    pub fn draw_list_box(&self, g: &mut Gfx, s: &Ui, b: &ListBox, hover: Option<usize>) {
+        use crate::info_ui::c15;
+        let r = b.rect();
+        let odd = b.y0 & 1 != 0;
+        if odd {
+            let white = c15(0x7fff);
+            s.fill(g, r.x, r.y, r.w + 1.0, 1.0, white);
+            s.fill(g, r.x, r.y + r.h, r.w + 1.0, 1.0, white);
+            s.fill(g, r.x, r.y, 1.0, r.h + 1.0, white);
+            s.fill(g, r.x + r.w, r.y, 1.0, r.h + 1.0, white);
+        } else {
+            self.popup_frame(g, s, r.x, r.y, r.w, r.h);
+        }
+        let (heading, option, lit) = if odd { (0x03ff, 0x6318, 0x7fff) } else { (0x0018, 0x4210, 0x0000) };
+        let mut k: Option<usize> = None;
+        for (i, l) in b.lines.iter().take(b.shown()).enumerate() {
+            let is_option = l.starts_with(' ') || l.starts_with('_');
+            if is_option {
+                k = Some(k.map_or(0, |k| k + 1));
+            }
+            let c = match (is_option, k == hover && hover.is_some()) {
+                (false, _) => heading,
+                (true, true) => lit,
+                (true, false) => option,
+            };
+            let (x, y) = (scale320(b.x0 + 5), scale320(7 * i as i32 + 5 + b.y0));
+            s.put(g, CHOICE_FONT, x as f32, y as f32, l, c15(c));
+        }
     }
 }
 
@@ -338,12 +444,7 @@ impl App {
             // the commissioner's approval (main routine 0x41e2a0): the two-choice box centred on x 0x1c2 from y 0xa0 (EXACT,
             // the call's pushes at 0x41e2ee and 0x41e303), texts 0x4c5d74 and 0x4c5d48
             PopupKind::LandOffer => (
-                vec![
-                    "Do you wish to purchase additional",
-                    "land to expand your course?",
-                    " Yup, I've got big plans.",
-                    " No, I'm fine.",
-                ],
+                vec!["Do you wish to purchase additional", "land to expand your course?", " Yup, I've got big plans.", " No, I'm fine."],
                 0,
                 450.0,
                 160.0,
@@ -371,7 +472,17 @@ impl App {
             0
         };
         let back = if self.screen == Screen::Popup { self.popup.as_ref().map(|p| p.back).unwrap_or(Screen::Play) } else { self.screen };
-        self.popup = Some(Popup { kind, lines: lines.iter().map(|s| s.to_string()).collect(), disabled, checks, sel: None, keyed: false, cx, top, back });
+        self.popup = Some(Popup {
+            kind,
+            lines: lines.iter().map(|s| s.to_string()).collect(),
+            disabled,
+            checks,
+            sel: None,
+            keyed: false,
+            cx,
+            top,
+            back,
+        });
         self.screen = Screen::Popup;
     }
 
