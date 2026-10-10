@@ -1483,6 +1483,22 @@ impl Land {
     /// Objects joined to the clubhouse: a flood from the clubhouse footprint over path and footprint tiles (the exe's flag 0x40,
     /// which makes a building operational).
     pub fn joined_objects(&self) -> Vec<bool> {
+        let seen = self.joined_tiles();
+        self.objects
+            .iter()
+            .map(|o| {
+                let s = self.footprint_size(o);
+                o.kind >= 0
+                    && (0..s)
+                        .any(|r| (0..s).any(|c| (0..N).contains(&(o.a + r)) && (0..N).contains(&(o.b + c)) && seen[idx(o.a + r, o.b + c)]))
+            })
+            .collect()
+    }
+
+    /// The tiles the clubhouse flood reaches (the exe's tile flag 0x40): path and footprint tiles joined to the clubhouse's
+    /// footprint, 4-adjacent, a tee, green or fairway tile passing nothing on. The terrain renderer lays each path with this
+    /// flag (layPath's third argument, wrapper 0x44a410), so a path off the flood is drawn as an unjoined one.
+    pub fn joined_tiles(&self) -> Vec<bool> {
         let mut seen = vec![false; NN];
         let mut stack = Vec::new();
         for o in &self.objects {
@@ -1520,15 +1536,7 @@ impl Land {
                 }
             }
         }
-        self.objects
-            .iter()
-            .map(|o| {
-                let s = self.footprint_size(o);
-                o.kind >= 0
-                    && (0..s)
-                        .any(|r| (0..s).any(|c| (0..N).contains(&(o.a + r)) && (0..N).contains(&(o.b + c)) && seen[idx(o.a + r, o.b + c)]))
-            })
-            .collect()
+        seen
     }
 }
 

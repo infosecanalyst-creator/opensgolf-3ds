@@ -110,7 +110,7 @@ impl App {
             Some(p) if self.course_name == p.course || self.course_name == format!("{} GC", p.name) => p.name,
             _ => self.course_name.as_str(),
         };
-        format!("{base}{}", RANK_SUFFIX[economy::rank(self.holes.len()) as usize])
+        format!("{base}{}", RANK_SUFFIX[economy::rank(self.hole_numbers.len()) as usize])
     }
 
     /// The face strip (0x418d09): every golfer on a hole (1 to 18, or 19 going home), newest first, a mood face 16 pixels
@@ -118,7 +118,7 @@ impl App {
     /// colour the golfer's worst need. With ten or more holes open, holding Shift shows only the golfers on the back nine.
     fn draw_face_strip(&mut self, g: &mut Gfx, s: &Ui) {
         self.hud.strip.clear();
-        let back_nine = self.shift_held && self.holes.len() >= 10;
+        let back_nine = self.shift_held && self.hole_numbers.len() >= 10;
         let mut x = STRIP_X;
         ui::set_face(Some(Face::Arial));
         for i in 0..STRIP_SLOTS {

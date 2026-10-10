@@ -285,15 +285,20 @@ impl Economy {
         paid
     }
 
-    /// The board at year end: three year ends in a row with negative cash end the game; a positive one clears the record.
+    /// The board at year end, as the year-end report runs it (0x44cff0): with cash below zero outside a sandbox the debt
+    /// counter steps 0 -> 1 -> 2 -> 3, and the report adds two lines in red for the step (the board is concerned, two years
+    /// to recover; very worried, one more year; no profit, the contract is terminated); cash of zero or more resets the
+    /// counter. Once the counter is past 2 the game is over (`game_over`): the main loop asks the player to go on in
+    /// Sandbox Mode or return to the main menu (`continue_in_sandbox`).
     fn year_end(&mut self) {
         if self.cash < 0.0 && !self.sandbox {
             let stage = self.debt_stage;
             self.debt_stage += 1;
             self.notice = match stage {
-                0 => "The board is concerned about our negative cash situation. You have two years to return to positive cash.",
-                1 => "The board is very worried about our lingering debt. You have one more year to get out of debt.",
-                _ => "You have been unable to make a profit on this course. Regrettably, the board has terminated your contract.",
+                0 => "The board is concerned about our negative cash situation.\nYou have two years to return to positive cash.",
+                1 => "The board is very worried about our lingering debt.\nYou have one more year to get out of debt.",
+                2 => "You have been unable to make a profit on this course.\nRegrettably, the board has terminated your contract.",
+                _ => "",
             }
             .to_string();
             if self.debt_stage > 2 {
@@ -302,6 +307,15 @@ impl Economy {
         } else {
             self.debt_stage = 0;
         }
+        self.version = self.version.wrapping_add(1);
+    }
+
+    /// "Continue this game in Sandbox Mode." after the contract is terminated (main loop 0x420b27): the debt counter goes
+    /// back to 0 and the game carries on as a sandbox game (flag 0x1000000).
+    pub fn continue_in_sandbox(&mut self) {
+        self.debt_stage = 0;
+        self.game_over = false;
+        self.sandbox = true;
         self.version = self.version.wrapping_add(1);
     }
 }
@@ -331,6 +345,26 @@ mod tests {
             }
         }
         assert!(e.game_over);
+        assert_eq!(e.notice.lines().last(), Some("Regrettably, the board has terminated your contract."));
+        e.continue_in_sandbox();
+        assert!(!e.game_over && e.sandbox && e.debt_stage == 0);
+    }
+
+    #[test]
+    fn a_positive_year_end_clears_the_debt_counter() {
+        let mut e = Economy { start_cash: -100.0, ..Default::default() };
+        e.init();
+        let mut rng = ExeRng::from_clock(1);
+        for t in 1..=0x2000u32 {
+            e.on_tick(t, 1, 0, &[], &mut rng);
+        }
+        assert_eq!(e.debt_stage, 1);
+        assert_eq!(e.notice, "The board is concerned about our negative cash situation.\nYou have two years to return to positive cash.");
+        e.cash = 0.0;
+        for t in 0x2001..=0x4000u32 {
+            e.on_tick(t, 1, 0, &[], &mut rng);
+        }
+        assert_eq!(e.debt_stage, 0);
     }
 
     #[test]

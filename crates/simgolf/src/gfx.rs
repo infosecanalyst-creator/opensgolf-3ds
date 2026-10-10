@@ -1,9 +1,9 @@
 //! Rendering on top of miniquad (OpenGL on Windows, Linux and macOS): a column-major matrix type, one shader that covers every
 //! draw the game makes (lit terrain, overlays, sprites, 2D interface), static meshes and an immediate-mode batcher.
 //!
-//! The original renders with fixed-function OpenGL. The shader reproduces what the C++ port used of it: per-vertex lighting from one
-//! directional light fixed in eye space (ambient + diffuse, white material), texture modulation, an alpha test and a texture
-//! offset for the water shimmer.
+//! The original renders its terrain with fixed-function OpenGL (Terrain.dll). The shader reproduces what it uses: per-vertex
+//! lighting from one directional light fixed in eye space with OpenGL's default material and a white specular of shininess
+//! 13 (sg_core::terrain::Lighting::shade), texture modulation, and an alpha test.
 use miniquad::*;
 use sg_core::assets::Rgba;
 
@@ -93,16 +93,27 @@ impl Vert {
 pub struct Uniforms {
     pub mvp: [f32; 16],
     pub mv: [f32; 16],
-    pub uv_offset: [f32; 2],
     pub lit: f32,
     pub alpha_ref: f32,
     pub light_amb: [f32; 3],
     pub light_dif: [f32; 3],
+    pub light_spec: [f32; 3],
+    /// Toward the light, in eye space.
+    pub light_dir: [f32; 3],
 }
 
 impl Uniforms {
     pub fn flat(proj: &Mat4, mv: &Mat4) -> Uniforms {
-        Uniforms { mvp: proj.mul(mv).0, mv: mv.0, uv_offset: [0.0; 2], lit: 0.0, alpha_ref: -1.0, light_amb: [1.0; 3], light_dif: [0.0; 3] }
+        Uniforms {
+            mvp: proj.mul(mv).0,
+            mv: mv.0,
+            lit: 0.0,
+            alpha_ref: -1.0,
+            light_amb: [1.0; 3],
+            light_dif: [0.0; 3],
+            light_spec: [0.0; 3],
+            light_dir: [0.0, 1.0, 0.0],
+        }
     }
 }
 
@@ -113,21 +124,29 @@ attribute vec3 in_normal;
 attribute vec4 in_color;
 uniform mat4 mvp;
 uniform mat4 mv;
-uniform vec2 uv_offset;
 uniform float lit;
 uniform float alpha_ref;
 uniform vec3 light_amb;
 uniform vec3 light_dif;
+uniform vec3 light_spec;
+uniform vec3 light_dir;
 varying lowp vec4 color;
 varying highp vec2 uv;
 void main() {
     gl_Position = mvp * vec4(in_pos, 1.0);
-    uv = in_uv + uv_offset;
+    uv = in_uv;
     vec4 c = in_color;
     if (lit > 0.5) {
+        // OpenGL's lighting of the default material: global ambient 0.2 and the light's ambient times 0.2, the light's
+        // diffuse times 0.8, and the specular (shininess 13, viewer at infinity) where the face is lit
         vec3 n = normalize((mv * vec4(in_normal, 0.0)).xyz);
-        vec3 l = normalize(vec3(-0.45, 0.85, 0.45));
-        c.rgb = c.rgb * min(light_amb + light_dif * max(dot(n, l), 0.0), vec3(1.0));
+        float d = dot(n, light_dir);
+        vec3 s = vec3(0.04) + 0.2 * light_amb;
+        if (d > 0.0) {
+            vec3 h = normalize(light_dir + vec3(0.0, 0.0, 1.0));
+            s += 0.8 * light_dif * d + light_spec * pow(max(dot(n, h), 0.0), 13.0);
+        }
+        c.rgb = c.rgb * min(s, vec3(1.0));
     }
     color = c;
 }
@@ -195,11 +214,12 @@ impl Gfx {
                         uniforms: vec![
                             UniformDesc::new("mvp", UniformType::Mat4),
                             UniformDesc::new("mv", UniformType::Mat4),
-                            UniformDesc::new("uv_offset", UniformType::Float2),
                             UniformDesc::new("lit", UniformType::Float1),
                             UniformDesc::new("alpha_ref", UniformType::Float1),
                             UniformDesc::new("light_amb", UniformType::Float3),
                             UniformDesc::new("light_dif", UniformType::Float3),
+                            UniformDesc::new("light_spec", UniformType::Float3),
+                            UniformDesc::new("light_dir", UniformType::Float3),
                         ],
                     },
                 },
@@ -338,10 +358,7 @@ impl Gfx {
         let tex = tex.unwrap_or(self.white);
         let same = self.batch_tex == Some(tex)
             && self.batch_mode == mode
-            && self
-                .batch_uniforms
-                .map(|b| b.mvp == u.mvp && b.uv_offset == u.uv_offset && b.lit == u.lit && b.alpha_ref == u.alpha_ref)
-                .unwrap_or(false);
+            && self.batch_uniforms.map(|b| b.mvp == u.mvp && b.lit == u.lit && b.alpha_ref == u.alpha_ref).unwrap_or(false);
         if !same {
             self.flush();
             self.batch_tex = Some(tex);

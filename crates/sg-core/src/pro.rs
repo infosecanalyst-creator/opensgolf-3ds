@@ -84,6 +84,26 @@ pub fn aim_line(ball: (i32, i32), p: &AimPreview, opt: i32) -> Vec<(i32, i32)> {
     out
 }
 
+/// How far up the screen each point of `aim_line` is drawn, in 800 x 600 pixels (0x41bbe1..0x41c0bd). With A = zoom x k x
+/// distance (k = 3 for the high shot, 0 for option 4, else 2), the ball and the last two points stay on the ground, points 1
+/// and 4 go up A / 3 / 8 and points 2 and 3 A / 2 / 8, each division toward zero; a black copy of the line runs one pixel
+/// under the ground points (the shadow) and the white line joins the lifted points. `zoom` is the exe's zoom step (1..4).
+pub fn aim_lifts(distance: i32, opt: i32, zoom: f32) -> Vec<f32> {
+    let k = match opt {
+        3 => 3.0,
+        4 => 0.0,
+        _ => 2.0,
+    };
+    let a = zoom * k * distance as f32;
+    let d1 = ((a / 3.0).trunc() / 8.0).trunc();
+    let d2 = ((a / 2.0).trunc() / 8.0).trunc();
+    let mut v = vec![0.0, d1, d2, d2, d1, 0.0];
+    if opt != 3 {
+        v.push(0.0);
+    }
+    v
+}
+
 /// What the aiming frame shows: the shot as the planner would take it.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct AimPreview {
@@ -594,6 +614,18 @@ impl Club {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn aim_line_lifts() {
+        // 100 range units at zoom 4: A = 800, A/3/8 = 33, A/2/8 = 50
+        assert_eq!(aim_lifts(100, 0, 4.0), vec![0.0, 33.0, 50.0, 50.0, 33.0, 0.0, 0.0]);
+        // the high shot: A = 1200 and one point fewer
+        assert_eq!(aim_lifts(100, 3, 4.0), vec![0.0, 50.0, 75.0, 75.0, 50.0, 0.0]);
+        assert!(aim_lifts(100, 4, 4.0).iter().all(|&v| v == 0.0));
+        let p = AimPreview { x: 0, y: -40960, distance: 100, club: 1, max_range: 200 };
+        assert_eq!(aim_lifts(100, 1, 2.0).len(), aim_line((0, 0), &p, 1).len());
+        assert_eq!(aim_lifts(100, 3, 2.0).len(), aim_line((0, 0), &p, 3).len());
+    }
 
     #[test]
     fn requests() {

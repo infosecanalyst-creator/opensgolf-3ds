@@ -20,8 +20,10 @@ Paint types: fairway, firm fairway, green, tee, rough, deep rough, woods, sand b
 pot bunker, water shallow/middle/deep (type 17 plus depth byte), rock, brush, building lot.
 Edge blending and trees are rebuilt after every edit. Painting tee, green, water or building flattens that tile's corners to their average level.
 
-Height edits move one corner (plus the brush area) by one level, clamped to 0..24. Neighbouring corners are
-relaxed so they never differ by more than one level. The limit of one is a PLACEHOLDER: the original slope rule is not decoded.
+Height edits on the Elevation panel are the exe's (`Terrain::edit_elevation`, raise 0x41db46, lower 0x41d997): one corner, the
+2 x 2 square or the area (the corner and then the 5 x 5 kernel pass), heights 3..13 in the exe's numbers (ours plus 3), a
+lowered corner capped at 10 on land that is not hilly. Nothing spreads to neighbouring corners: a step between two corners is
+drawn as a wall. The keyboard's round brush (no panel art) moves each corner of the brush by one within the same 3..13.
 
 ## Paths and extra tile types
 
@@ -71,7 +73,9 @@ SG_CURSOR_TILE="x,y" (tiles, fractions allowed) holds the pointer on a tile for 
 
 ## Water
 
-Water tiles drift their texture by about a pixel, a shimmer that is my APPROXIMATION (the original's water animation is not decoded).
+Water textures do not move: Terrain.dll has no clock and no texture matrix, and its texture sets (`WaterShallowA0001` ..) are
+looks and edge shapes, not frames. The water's motion is the exe's sprites: shore ripples (sprites 0x233..0x235), underwater
+rocks, the glints below and the waterfalls.
 At the closest zoom the frame plots single glinting pixels on water (0x411574, `draw_water_glints`): two tiles in three each
 frame, a 5 frame grey-white-grey twinkle once in 64 frames per tile, on the line through the tile's centre.
 In the Desert theme shallow water uses the `WaterShallowDesert` textures, which the original does by swapping type 17 for 25.
@@ -113,7 +117,8 @@ The golfer route and clubhouse position belong to the demo and are not saved; th
 
 ## Clubhouse connection, hole report and staff
 
-- A path only counts if it joins the Clubhouse lot through 4-adjacent path tiles (manual: buildings need an unbroken pathway to the Clubhouse). Detached paths are drawn as brown mud tracks, as the manual describes.
-- F1 prints the hole report (length, par, SGA class from length/accuracy/imagination). It also prints after every edit. The thresholds are placeholders; the manual gives the class names only.
+- A path is joined when the exe's clubhouse flood reaches it (tile flag 0x40, `Land::joined_tiles`); the terrain renderer gets
+  that flag with each path (layPath, wrapper 0x44a410). Unjoined paths are drawn in a muddy brown (the look is the port's own).
+- The console's course summary (after every edit) lists each open hole's par and yards and how many path tiles are joined.
 - Shift+C, Shift+R, Shift+G, Shift+V hire a Club Pro, Ranger, Groundskeeper or Soda Vendor. Ctrl with the same key fires one. The title bar shows fun, attitude (red/yellow/green) and staff count.
 - Effects, wages and fun deltas are placeholders. A Ranger speeds play by 20%, a Club Pro and Soda Vendor raise fun. Wages are 30, 25, 20 and 15 a day.

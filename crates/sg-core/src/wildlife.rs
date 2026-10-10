@@ -487,15 +487,15 @@ impl Club {
                         if tick.is_multiple_of(4) {
                             let phase = (tick / (((f.y >> 10) * 4 + 256) as u32)) % 5;
                             let (a, b) = (f.x >> 10, f.y >> 10);
-                            // the height scale (0x4c2e00) is data that is not available; 8 per corner step is taken
-                            let ground = if inside(a, b) { c.raw_corner(a, b).max(0) } else { 0 };
+                            // the stored corner height (0x40c170, 3 off the map) times the height step
+                            let ground = c.raw_corner(a, b) * crate::course::HEIGHT_STEP_PX;
                             match phase {
                                 0 | 1 | 4 => {
                                     if f.h == 0 {
                                         self.wildlife.sounds.push((57, (f.x, f.y)));
                                     }
                                     let lift = if phase == 0 { 60 } else { 40 };
-                                    if f.h < ground * 8 + lift {
+                                    if f.h < ground + lift {
                                         f.h += 1;
                                     }
                                 }
