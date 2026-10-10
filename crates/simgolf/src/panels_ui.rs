@@ -484,9 +484,107 @@ pub(crate) fn tip_bar(g: &mut Gfx, s: &Ui, text: &str, px: f32, py: f32) {
     s.put_centered(g, crate::ui::F_ARIAL10, x, y - 5.0, text, rgb(1.0, 1.0, 1.0));
 }
 
-/// The terrain and amenity tooltip: a box 160 wide over the slot at y 402 with the name and the price. The exe's box is 112
-/// tall with a strip of translucent pieces along its top; here it is a plain translucent box sized to its two lines
-/// (placeholder look).
+thread_local! {
+    /// Interface/<theme>.txt by exe theme, read once: the terrain tooltip's descriptions.
+    static TERRAIN_TEXT: std::cell::RefCell<[Option<Vec<String>>; 4]> = const { std::cell::RefCell::new([None, None, None, None]) };
+}
+
+/// The description of a tile in the theme's Interface text file (0x45b660): the line after the one that reads "*" and the
+/// tile's name (compared without case). The file is Windows-1252; its typographic quotes and dots become plain ones.
+fn terrain_text(app: &App, theme: usize, name: &str) -> String {
+    const FILES: [&str; 4] = ["parkland", "desert", "tropical", "links"];
+    let t = theme.min(3);
+    TERRAIN_TEXT.with(|c| {
+        let mut c = c.borrow_mut();
+        let lines = c[t].get_or_insert_with(|| {
+            let d = sg_core::fsutil::read_file(app.game_path(&format!("Interface/{}.txt", FILES[t]))).unwrap_or_default();
+            let text: String = d
+                .iter()
+                .map(|&b| match b {
+                    0x91 | 0x92 => "'".to_string(),
+                    0x93 | 0x94 => "\"".to_string(),
+                    0x85 => "...".to_string(),
+                    0x96 | 0x97 => "-".to_string(),
+                    b => (b as char).to_string(),
+                })
+                .collect();
+            text.lines().map(|l| l.trim_end_matches('\r').to_string()).collect()
+        });
+        let key = format!("*{name}");
+        lines.iter().position(|l| l.eq_ignore_ascii_case(&key)).and_then(|k| lines.get(k + 1)).cloned().unwrap_or_default()
+    })
+}
+
+impl App {
+    /// The terrain button's tooltip (0x433190, after 10 frames on a button): the translucent dialog frame (x - 80, 402,
+    /// 160 x 112) with its tab strip of TransPopups cuts (0, 60), (17, 60), (34, 60) at y 389 from x - 92; the tile's name
+    /// (first letter capitalised), " $" and its cost centred at (x - 12, 394) in Manual SSi 15, black; in Arial Bold 10 the
+    /// mood face for its lie (MemberPanel face clamp((4 - hazard) * 2, 1, 10)) at (x - 90, 391) and the description from the
+    /// theme's text file in white, wrapped at 128 pixels, from (x - 70, 410) 10 apart; then the bounce meter (a grey line at
+    /// x + 64 from 425 to 466, dark up to 6 per point, a green tick at its foot and the GBUBBLES ball at its level) and the
+    /// roll line along 490 from x - 72, 6 << roll long, with the ball at its end. The "Lie: ..." words the exe builds after
+    /// the description are never drawn.
+    fn terrain_tip(&self, g: &mut Gfx, s: &Ui, slot_x: f32, id: i32, theme: usize) {
+        use crate::info_ui::c15;
+        use crate::ui::{F_ARIAL10, F_MANUAL15};
+        let x = slot_x.clamp(80.0, 720.0).floor();
+        self.art.trans_frame(g, s, x - 80.0, 402.0, 160.0, 112.0);
+        let t = &self.art.trans;
+        if t.tex.is_some() {
+            s.image_part(g, t, x - 92.0, 389.0, 0.0, 60.0, 16.0, 19.0);
+            for k in 0..8 {
+                let sx = if k == 7 { 34.0 } else { 17.0 };
+                s.image_part(g, t, x - 76.0 + 16.0 * k as f32, 389.0, sx, 60.0, 16.0, 19.0);
+            }
+        }
+        let name = tile_name(id, theme);
+        let mut title: String = name.to_string();
+        if let Some(f) = title.get(..1) {
+            title = f.to_uppercase() + &title[1..];
+        }
+        title += &format!(" ${}", Economy::terrain_cost_units(id) * 100);
+        s.put_centered(g, F_MANUAL15, x - 12.0, 394.0, &title, rgb(0.0, 0.0, 0.0));
+        let row = sg_core::course::TYPES.get(id as usize).copied().unwrap_or(sg_core::course::TYPES[4]);
+        let k = ((4 - row.hazard as i32) * 2).clamp(1, 10);
+        s.image_part(g, &self.hud.faces, x - 90.0, 391.0, 594.0 - 16.0 * (k - 1) as f32, 100.0, 16.0, 16.0);
+        // 0x45b0d0: greedy lines of at most 16 * 8 pixels, the line height less 4 (at least 10) apart, while above y 584
+        let text = terrain_text(self, theme, name);
+        let pitch = (F_ARIAL10.line() - 4.0).max(10.0);
+        let mut y = 410.0;
+        let mut line = String::new();
+        let white = c15(0x7fff);
+        for word in text.split(' ').filter(|w| !w.is_empty()) {
+            let t = if line.is_empty() { word.to_string() } else { format!("{line} {word}") };
+            if F_ARIAL10.width(&t) > 128.0 && !line.is_empty() {
+                if y <= 584.0 {
+                    s.put(g, F_ARIAL10, x - 70.0, y, &line, white);
+                }
+                y += pitch;
+                line = word.to_string();
+            } else {
+                line = t;
+            }
+        }
+        if !line.is_empty() && y <= 584.0 {
+            s.put(g, F_ARIAL10, x - 70.0, y, &line, white);
+        }
+        // the meters: 0x478b80 lines one pixel wide
+        let ball = |g: &mut Gfx, bx: f32, by: f32| s.image_part(g, &self.hud.icons, bx, by, 16.0 * 13.0, 324.0, 16.0, 16.0);
+        let bounce = row.bounce as f32;
+        s.fill(g, x + 64.0, 425.0, 1.0, 42.0, c15(0x6318));
+        s.fill(g, x + 64.0, 466.0 - 6.0 * bounce, 1.0, 6.0 * bounce + 1.0, c15(0x4210));
+        s.fill(g, x + 60.0, 466.0, 9.0, 1.0, c15(0x1284));
+        ball(g, x + 60.0, 461.0 - 6.0 * bounce);
+        let roll = (6 << row.roll.clamp(0, 6)) as f32;
+        if row.roll != 0 {
+            s.fill(g, x - 72.0, 490.0, roll + 1.0, 1.0, c15(0x4210));
+        }
+        ball(g, x - 74.0 + roll, 482.0);
+    }
+}
+
+/// The amenity strip's tooltip: a box 160 wide over the slot at y 402 with the name and the price. PLACEHOLDER look: a plain
+/// translucent box sized to its two lines.
 fn tip_box(g: &mut Gfx, s: &Ui, slot_x: f32, name: &str, price: &str) {
     let x = slot_x.clamp(80.0, 720.0) - 80.0;
     s.fill(g, x, 402.0, 160.0, 42.0, rgba(0.0, 0.0, 0.0, 0.55));
@@ -716,8 +814,7 @@ impl App {
             i if i >= 0 => {
                 let id = tile_id(i as usize);
                 let r = terrain_slot_rect(i as usize, theme);
-                let price = format!("Cost per tile: {}", money(Economy::terrain_cost_units(id) as i64 * 100));
-                tip_box(g, s, r.x + 32.0, tile_name(id, theme), &price);
+                self.terrain_tip(g, s, r.x + 32.0, id, theme);
             }
             _ => {}
         }
