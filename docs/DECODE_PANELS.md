@@ -149,7 +149,7 @@ enough money" popup. The info box shows `table_cost * 100` dollars for level 0 a
 `level != 0` (the Snack Bar, id 7, always shows level 0 and never says "Upgraded").
 
 Info box (exact): after 10 frames of hover on a lot, a framed 160x100 box at x = `clamp((lot%5)*80 + (lot > 4 ? 431 : 391),
-80, 720) - 80`, y = 460 with centred lines at y 462 (`Upgraded ` + name), 472 (`Cost: $N`), 482 (the hover text). The
+80, 720) - 80`, y = 460 with centred lines at y 462 (`Upgraded ` + name), 472 (`Cost: N`, grouped, no money sign), 482 (the hover text). The
 frame is `FUN_0040d0b0`, which draws 16x16 corner and edge tiles from the per-theme pop-up frame sheet `Pop_UpOk` (`frame` in
 the header: row offset Parkland 0, Links 0, Tropical 100, Desert 200; eight pieces; alpha `Pop_UpOk_A`) over a translucent
 fill (colour 0x80007fdc). I located this art through the title-screen loader (`FUN_0043cd70`).
@@ -201,7 +201,7 @@ object sprites of the per-theme building art, with ids base 0x208 benches, 0x168
 
 Costs (building table, units): Pathway 1 per tile, Benches 2, Flower Bed 5, Ball Washer 50, Home Site 10, Scenic Bridge 100,
 Willow Tree (scenic trees) 25. Landmarks cost `250 + 50 * design` units, 0 ("FREE!") when that design's bit is already set in
-`DAT_00822c70`. Tooltip: heading, `Cost: $N` under it (landmark tooltips also show the design name uppercased and the effect
+`DAT_00822c70`. Slot tooltip: two bars at (slot x + 20, slot y + 10 and + 20), the name and the cost in dollars as a plain number ("Scenic Bridge" / "10000" in footage), "5000-20,000" for Landmarks, both as wide as the name. The strip (landmark tooltips also show the design name uppercased and the effect
 name from `design & 3`: 0 Happy Golfers, 1 No Dandelions, 2 Skill Upgrade, 3 Happy Endings). No gravel/paved distinction exists
 in these routines (placeholder: the port's path kinds are its own).
 

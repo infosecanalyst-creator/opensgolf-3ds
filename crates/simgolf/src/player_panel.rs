@@ -177,6 +177,14 @@ impl App {
                 };
                 blit(g, s, &im, cut(id, state), POS[id].0, POS[id].1);
             }
+            // the aim's own lines (0x41b62f): Manual SSi Bold 15 (0x51b360) in dark blue 0x0018, centred on x 406 with tops
+            // at 542, 556, 570 and 584; then the skills as in the idle panel, white where they count for this shot, else grey
+            if let Some((lines, skills)) = self.aim_text() {
+                for (i, l) in lines.iter().enumerate() {
+                    s.put_centered(g, crate::ui::F_MANUAL15, 406.0, 542.0 + 14.0 * i as f32, l, c15(0x0018));
+                }
+                self.draw_skill_lines(g, s, &skills);
+            }
         } else {
             blit(g, s, &im, COVER, COVER_AT.0, COVER_AT.1);
             self.draw_round_card(g, s, self.club.gary as usize);
@@ -198,13 +206,21 @@ impl App {
 
     /// The pro's skills that have points, as "name +N%", white small text in columns of five from (494, 540), 12 apart.
     fn draw_pro_skills(&self, g: &mut Gfx, s: &Ui) {
+        let rows: Vec<(String, bool)> = SKILL_NAMES
+            .iter()
+            .enumerate()
+            .filter(|&(k, _)| self.club.pro_skill[k] != 0)
+            .map(|(k, name)| (format!("{name} +{}%", self.club.pro_skill[k] as i32 * 10), true))
+            .collect();
+        self.draw_skill_lines(g, s, &rows);
+    }
+
+    /// Skill lines from (494, 540) 12 apart, a new column at x 641 once past y 599; lit ones white (0x7fff), the others grey
+    /// (0x4210).
+    fn draw_skill_lines(&self, g: &mut Gfx, s: &Ui, rows: &[(String, bool)]) {
         let (mut x, mut y) = (494.0, 540.0);
-        for (k, name) in SKILL_NAMES.iter().enumerate() {
-            let v = self.club.pro_skill[k] as i32;
-            if v == 0 {
-                continue;
-            }
-            s.text(g, x, top(y, SMALL), &format!("{name} +{}%", v * 10), SMALL, c15(0x7fff));
+        for (t, lit) in rows {
+            s.text(g, x, top(y, SMALL), t, SMALL, c15(if *lit { 0x7fff } else { 0x4210 }));
             y += 12.0;
             if y > 599.0 {
                 x = 641.0;
@@ -302,7 +318,10 @@ impl App {
                 self.panel = 4;
                 self.golfer_page = 0;
             }
-            10 => self.panel = 3,
+            10 => {
+                self.pstate.emp_flag = true;
+                self.panel = 3;
+            }
             _ => return false,
         }
         true

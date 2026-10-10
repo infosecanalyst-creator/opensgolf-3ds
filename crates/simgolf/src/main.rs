@@ -21,6 +21,7 @@ mod hd;
 mod holemarks;
 mod hud_ui;
 mod info_ui;
+mod member_panel;
 mod message_ui;
 mod panels_ui;
 mod player_panel;
@@ -1001,7 +1002,7 @@ impl Stage {
             self.app.snd("Interface/Button1.wav", 1.0, false);
             return true;
         }
-        if app.panel == 4 {
+        if app.panel == 4 && !art_panel {
             if app.golfers_click(vx, vy) {
                 return true;
             }

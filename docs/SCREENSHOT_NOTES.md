@@ -96,3 +96,31 @@ Nothing from them is stored in the repository.
 - Golfer names: small white text with a dark outline under the golfer. Thought lines: grey text on a translucent dark bar.
 - Money popups float as red "-300" at the build cursor.
 - A new hole shows "Hole 2 / 420 yards / Par 4" in white, centred over the tee.
+
+## Dock panels in footage of the original (Giant Bomb "On The Green With Sim Golf", part 1)
+
+Measured on frames scaled to the game's 800 x 600 and compared with port stills; nothing from the video is stored here.
+
+- Dock buttons (p1 1600, 1750-1775, 4440): the open mode's big button is gold and a gold trail runs from it along the
+  dock to the panel; hovering a big button gives its bright blue look, not gold. Confirmed by the exe's dock draw
+  (0x432ba0): hover cut column 0 at the table 0x4c7960, mode cut column 100 and trail cut (300, 100 * mode) at (34,509),
+  (95,525), (142,555); the paused Pause button blinks gold. Fixed in `render.rs` (`DOCK_LIT`, `DOCK_TRAIL`); the port had
+  drawn the gold look on hover and nothing for the open mode.
+- A game starts with the Build Course panel open (dock mode 0, as the exe's load and new game leave 0x567afc), with no
+  tool armed, and the Green button carries the theme's waving flag while the hole has no green (0x433190: sprite 0x189 +
+  theme at slot + (31, 24), still unless the Green tool is armed). Fixed in `app.rs` (new game, load) and the terrain panel.
+- Add Buildings info box (p1 4440, 4460): "Putting Green / Cost: 10,000 / Helps imaginative golfers": no money sign, an
+  opaque cream box from y 455 (the pop-up frame grows 160 x 100 to 160 x 111 and moves up, 0x40d0b0) whose lower part is
+  covered by the panel (the box is drawn before the body). Fixed in `panels_ui.rs` (`lot_info`, `popup_frame`).
+- Amenity slot tooltip (p1 2171, 2172): two tooltip bars at the slot, "Scenic Bridge" and "10000" (the cost in dollars as
+  a plain number), both as wide as the name; "Course Terrain" sits 20 right of the pointer. Decoded from 0x432f.. (slot
+  table 0x4c7a98, Landmarks "5000-20,000", Undo without cost) and replaces the placeholder box.
+- Flower strip (p1 4300-4345), Elevation panel and grid (p1 4040-4080), Employee panel with Joe Groundskeeper / Sally Soda
+  Vendor (p1 3860-4000, 5180): match the port; no change.
+- Golfers panel (p1 1760): pill cards per pair with a badge (hole number, "x" going home), italic names, mood faces and
+  four story hearts; the port had a text list. Now drawn from MemberPanel as the exe does (0x435760, `member_panel.rs`).
+  The People button opens it unless the Employee overlay flag is set (0x561254).
+- Player panel while the pro aims (p1 2860, 2940, 3220): "Attitude: calm / Club: 4 Iron / Distance: 142 yds / Lie: tees"
+  in dark blue Manual 15 centred on x 406 and the skills, white where they count for the shot and grey otherwise; the port
+  had shown them in a box over the map. Now in the panel (0x41b62f, `player_panel.rs`). The scorecard ("Exhibition",
+  "§2,000/hole" from x 320) matches.

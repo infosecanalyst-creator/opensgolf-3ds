@@ -418,6 +418,8 @@ pub struct App {
     pub art: crate::screens_ui::Art,
     pub pair_picks: Vec<usize>,
     pub golfer_page: usize,
+    /// The golfers drawn in the Golfers panel's cells this frame, in cell order (the exe's 0x5a9cf0).
+    pub member_cells: Vec<usize>,
     pub card: Option<usize>,
     pub card_ui: crate::screens_ui::CardUi,
     /// Take Snapshot's photo while it is being taken or held on screen.
@@ -452,6 +454,8 @@ pub struct App {
     pub show_names: bool,
     /// The dock button under the pointer and for how many frames (its tooltip waits for 11).
     pub dock_tip: (i32, u32),
+    /// Frames drawn while paused (0x5a9f5c): the dock's Pause button blinks gold every fourth frame.
+    pub dock_blink: u32,
     /// Floating money (0x40c890): an 8-entry ring of (amount in $100 units, map x, map y, ticks left).
     pub floats: [(i32, i32, i32, u8); 8],
     pub float_next: usize,
@@ -502,7 +506,7 @@ pub struct App {
     pub dock_art: Image,
     /// H toggles the advisor and story banners.
     pub show_advisor: bool,
-    /// Open dock panel: 0 none, 1 terrain, 2 buildings, 3 people.
+    /// Open dock panel: 0 none, 1 terrain (and Amenities), 2 buildings (and Elevation), 3 employees, 4 golfers, 5 player.
     pub panel: i32,
     /// Dock button under the mouse, -1 none.
     pub dock_hover: i32,
@@ -670,6 +674,7 @@ impl App {
             show_thoughts: true,
             show_names: true,
             dock_tip: (-1, 0),
+            dock_blink: 0,
             floats: [(0, 0, 0, 0); 8],
             float_next: 0,
             popup: None,
@@ -679,6 +684,7 @@ impl App {
             art: Default::default(),
             pair_picks: Vec::new(),
             golfer_page: 0,
+            member_cells: Vec::new(),
             card: None,
             card_ui: Default::default(),
             simfoto: None,
@@ -2010,7 +2016,10 @@ impl App {
         self.screen = Screen::Play;
         self.hover = -1;
         self.edit = false;
-        self.panel = 0;
+        // a new game starts in dock mode 0 (0x567afc is 0): the Build Course panel is open, as in footage of the original,
+        // with no tool armed
+        self.panel = 1;
+        self.pstate.alt = false;
         self.reset_staff();
         self.load_story();
         self.reset_clock = true;
@@ -2128,6 +2137,10 @@ impl App {
         self.tick_acc = 0.0;
         self.reset_clock = true;
         self.screen = Screen::Play;
+        // the exe's load (0x40b9b0) sets the dock mode to 0: the Build Course panel opens, no tool armed
+        self.panel = 1;
+        self.pstate.alt = false;
+        self.edit = false;
         self.dirty = true;
         Ok(())
     }

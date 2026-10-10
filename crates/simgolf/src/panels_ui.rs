@@ -31,6 +31,11 @@ pub(crate) const fn hit(cx: i32, cy: i32, r: i32) -> Hit {
     Hit { cx, cy, r, xs: 1, ys: 1 }
 }
 
+/// A hit region with a scale per axis.
+pub(crate) const fn hit_scaled(cx: i32, cy: i32, r: i32, xs: i32, ys: i32) -> Hit {
+    Hit { cx, cy, r, xs, ys }
+}
+
 impl Hit {
     pub fn has(&self, px: f32, py: f32) -> bool {
         let a = ((px.floor() as i32 - self.cx) * self.xs).abs();
@@ -136,6 +141,16 @@ fn tile_name(id: i32, theme: usize) -> &'static str {
         .copied()
         .unwrap_or("?"),
     }
+}
+
+/// A terrain type's name as the exe's terrain table holds it (lower case first letter: "tees", "fairway", "sand trap"), for
+/// types with a tile button.
+pub(crate) fn terrain_name(id: i32) -> Option<String> {
+    let n = tile_name(id, 0);
+    (n != "?").then(|| {
+        let mut c = n.chars();
+        c.next().map(|f| f.to_lowercase().collect::<String>() + c.as_str()).unwrap_or_default()
+    })
 }
 
 /// Top left and size of terrain slot i.
@@ -398,6 +413,8 @@ pub struct PanelArt {
     pub employees: Image,
     /// The Player panel (crate::player_panel).
     pub player: Image,
+    /// The Golfers panel (crate::member_panel).
+    pub member: Image,
     pub hire: Image,
     pub frame: Image,
 }
@@ -427,6 +444,7 @@ impl PanelArt {
             elevation: alpha(g, "ElevationPanel"),
             employees: alpha(g, "EmployeePanel"),
             player: alpha(g, "JoeCoolPanel"),
+            member: alpha(g, "MemberPanel"),
             hire: load_pcx_alpha(g, &p("infoscreens/hire.pcx"), &p("infoscreens/hire_alpha.pcx")).unwrap_or_default(),
             frame: alpha(g, "Pop_UpOk"),
         }
@@ -448,6 +466,9 @@ pub struct PanelState {
     pub emp_sel: Option<usize>,
     pub emp_off: usize,
     pub hire_open: bool,
+    /// The exe's employee overlay flag (0x561254): set by the Employee tabs of the Golfers and Player panels, cleared by
+    /// the Employee panel's own tabs. While it is set the People button opens the Employee panel, else the Golfers panel.
+    pub emp_flag: bool,
     /// Pointer in 800 x 600 units, the hit under it and for how many frames it has been there.
     pub mouse: (f32, f32),
     pub hot: i32,
@@ -464,6 +485,7 @@ impl Default for PanelState {
             emp_sel: None,
             emp_off: 0,
             hire_open: false,
+            emp_flag: false,
             mouse: (-1.0, -1.0),
             hot: -1,
             hot_frames: 0,
@@ -477,8 +499,13 @@ impl Default for PanelState {
 /// line 10 pixels thick at half opacity along y (Terrain::drawLine's last argument is the alpha in tenths, colour 0x80000000
 /// black), and the text white in Arial Bold 10 (0x519fd8) centred on x with its top at y - 5.
 pub(crate) fn tip_bar(g: &mut Gfx, s: &Ui, text: &str, px: f32, py: f32) {
+    tip_bar_sized(g, s, text, text.len(), px, py);
+}
+
+/// The tooltip bar sized for `chars` characters whatever the text (the amenity slots' cost bar keeps the name's width).
+pub(crate) fn tip_bar_sized(g: &mut Gfx, s: &Ui, text: &str, chars: usize, px: f32, py: f32) {
     let (px, y) = (px.floor(), py.floor() - 5.0);
-    let half = 3.0 * text.len() as f32;
+    let half = 3.0 * chars as f32;
     let x = px.max(half).min(800.0 - half);
     s.fill(g, x - half, y - 5.0, 2.0 * half, 10.0, rgba(0.0, 0.0, 0.0, 0.5));
     s.put_centered(g, crate::ui::F_ARIAL10, x, y - 5.0, text, rgb(1.0, 1.0, 1.0));
@@ -592,15 +619,6 @@ fn capitalised(name: &str) -> String {
     c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
 }
 
-/// The amenity strip's tooltip: a box 160 wide over the slot at y 402 with the name and the price. PLACEHOLDER look: a plain
-/// translucent box sized to its two lines.
-fn tip_box(g: &mut Gfx, s: &Ui, slot_x: f32, name: &str, price: &str) {
-    let x = slot_x.clamp(80.0, 720.0) - 80.0;
-    s.fill(g, x, 402.0, 160.0, 42.0, rgba(0.0, 0.0, 0.0, 0.55));
-    s.text_centered(g, x + 80.0, 419.0, name, 14.0, rgb(1.0, 1.0, 1.0));
-    s.text_centered(g, x + 80.0, 437.0, price, 13.0, rgb(1.0, 0.95, 0.6));
-}
-
 impl App {
     pub fn panel_art_ready(&self) -> bool {
         self.panel_art.ready()
@@ -608,8 +626,14 @@ impl App {
 
     /// The open dock panel is drawn from its art (1..3 and the Player panel, 5); otherwise the dock shows its text list.
     pub fn art_panel_open(&self) -> bool {
-        match self.panel {
+        self.art_panel_ready_for(self.panel)
+    }
+
+    /// Whether dock panel `p` would be drawn from its art.
+    fn art_panel_ready_for(&self, p: i32) -> bool {
+        match p {
             1..=3 => self.panel_art_ready(),
+            4 => self.panel_art_ready() && self.member_panel_ready(),
             5 => self.player_panel_ready(),
             _ => false,
         }
@@ -618,9 +642,21 @@ impl App {
     /// Opens a dock panel from its dock button (1 Build Course, 2 Add Buildings, 3 People); pressing the button of the open one
     /// closes it (the golfers and pro panels count as People).
     pub fn open_panel(&mut self, want: i32) {
-        let family = if self.panel >= 3 { 3 } else { self.panel };
         self.pstate.hire_open = false;
         self.pstate.alt = false;
+        if want == 3 && self.art_panel_ready_for(4) {
+            // 0x432d..: People sets mode 2 unless it is mode 2 already (then the dock closes): from the Player panel it goes
+            // to the Golfers panel, or to the Employee panel while the overlay flag is set
+            if matches!(self.panel, 3 | 4) {
+                self.panel = 0;
+            } else {
+                self.panel = if self.pstate.emp_flag { 3 } else { 4 };
+                self.golfer_page = 0;
+            }
+            self.edit = false;
+            return;
+        }
+        let family = if self.panel >= 3 { 3 } else { self.panel };
         if family == want {
             self.panel = 0;
             self.edit = false;
@@ -752,6 +788,7 @@ impl App {
                 }
                 -1
             }
+            (4, _) => self.member_hit(px, py),
             (5, _) => self.player_hit(px, py),
             _ => -1,
         }
@@ -774,23 +811,24 @@ impl App {
             (2, false) => self.draw_buildings_panel(g, s, h, tip),
             (2, true) => self.draw_elevation_panel(g, s, h, tip),
             (3, _) => self.draw_employee_panel(g, s, h, tip),
+            (4, _) => self.draw_member_panel(g, s, h, tip),
             (5, _) => self.draw_player_panel(g, s, h, tip),
             _ => {}
         }
     }
 
-    fn draw_terrain_panel(&self, g: &mut Gfx, s: &Ui, h: i32, tip: bool) {
-        let art = &self.panel_art;
+    fn draw_terrain_panel(&mut self, g: &mut Gfx, s: &Ui, h: i32, tip: bool) {
         let theme = self.exe_theme() as usize;
-        let buttons = &art.terrain_buttons[theme];
+        let (body_art, buttons) = (self.panel_art.terrain, self.panel_art.terrain_buttons[theme]);
         // the tooltip goes under the panel: in footage of the original the panel body and its buttons cover the box's foot
         if tip && h >= 0 {
             let id = tile_id(h as usize);
             let r = terrain_slot_rect(h as usize, theme);
             self.terrain_tip(g, s, r.x + 32.0, id, theme);
         }
-        blit(g, s, &art.terrain, TERRAIN_BODY, TERRAIN_BODY.0, TERRAIN_BODY.1);
-        let current = (self.tool == 0).then(|| PAINT[self.paint_idx].ty);
+        blit(g, s, &body_art, TERRAIN_BODY, TERRAIN_BODY.0, TERRAIN_BODY.1);
+        // no button is lit while no tool is armed (a new game opens the panel with none, 0x4c2848 = -1)
+        let current = (self.tool == 0 && self.edit).then(|| PAINT[self.paint_idx].ty);
         for i in 0..16 {
             let r = terrain_slot_rect(i, theme);
             let id = tile_id(i);
@@ -805,18 +843,33 @@ impl App {
             };
             if i < 13 {
                 let sx = if i > 6 { 248.0 } else { 0.0 } + state as f32 * 62.0;
-                blit(g, s, buttons, (sx, (i % 7) as f32 * 54.0, 62.0, 54.0), r.x, r.y);
+                blit(g, s, &buttons, (sx, (i % 7) as f32 * 54.0, 62.0, 54.0), r.x, r.y);
             } else {
                 // trees have no disabled look
                 let state = state.min(2) as f32;
-                blit(g, s, buttons, (520.0 + state * 80.0, [0.0, 150.0, 300.0][i - 13], r.w, r.h), r.x, r.y);
+                blit(g, s, &buttons, (520.0 + state * 80.0, [0.0, 150.0, 300.0][i - 13], r.w, r.h), r.x, r.y);
             }
         }
-        // The exe also animates a hint over the Green button while the hole has no green yet (sprite 0x189 + theme); its file is
-        // not mapped, so it is left out.
+        // 0x433190: while the hole being built has no green (and is under 19) the theme's waving flag (sprite 0x189 + theme,
+        // palette 0x63, view 3) stands on the Green button at (slot x + 31, slot y + 24), still on frame 0 unless the Green
+        // tool is armed; footage of the original shows it on the button in a new game
+        let h1 = self.club.next_hole;
+        if (0..19).contains(&h1) && self.club.holes.get(h1 as usize).is_some_and(|r| r.pin.0 == 0) {
+            if let (Some(si), _) = self.decor_sprite(0x189 + theme.min(3) as u16, 0x63) {
+                let n = self.sprites[si].s.frames_per_view.max(1);
+                let armed = current == Some(1);
+                let frame = if armed { (self.game_tick % n as u32) as i32 } else { 0 };
+                let sp = &self.sprites[si].s;
+                let (w, hh, ax, ay) = (sp.w as f32, sp.h as f32, sp.anchor_x as f32, sp.anchor_y as f32);
+                let tex = self.sprite_texture(g, si, 3, frame);
+                let r = terrain_slot_rect(1, theme);
+                let im = Image { tex: Some(tex), w, h: hh };
+                s.image_scaled(g, &im, (r.x + 31.0 - ax, r.y + 24.0 - ay, w, hh), (0.0, 0.0, w, hh));
+            }
+        }
         for (code, (_, cut, x, y)) in [(-2, TERRAIN_TO_AMENITIES), (-3, TERRAIN_UNDO)] {
             if h == code {
-                blit(g, s, &art.terrain, cut, x, y);
+                blit(g, s, &body_art, cut, x, y);
             }
         }
         // the current tool's name over its button, white on a shadow, in every frame of the footage (not decoded)
@@ -852,18 +905,6 @@ impl App {
     /// the Home Site; greying the Landmark when there is none to place is the port's).
     fn amenity_disabled(&self, slot: usize) -> bool {
         matches!(slot, 2 | 4) && !self.build_available(AMENITIES[slot].kind as usize)
-    }
-
-    /// The landmark the next placement uses and its price in units (0: free), as edit_building charges it: the chosen one,
-    /// else (the port's, for the slot's tooltip before a choice) the first owned type still free to place, else the first
-    /// owned one.
-    fn landmark_price(&self) -> Option<i32> {
-        let t = self.chosen_landmark().or_else(|| {
-            (0..14)
-                .find(|t| self.club.free_landmarks & (1 << t) != 0)
-                .or_else(|| (0..14).find(|t| self.club.landmarks_owned & (1 << t) != 0))
-        })?;
-        Some(if self.club.free_landmarks & (1 << t) != 0 { 0 } else { (t * 5 + 25) * 2 })
     }
 
     /// The strip of the armed garden item, if it has one: its kind, layout and the designs shown (a mask, 0 for all).
@@ -958,23 +999,24 @@ impl App {
         }
         let (mx, my) = self.pstate.mouse;
         match h {
-            -2 => tip_bar(g, s, "Course Terrain", mx, my),
-            7 => tip_bar(g, s, "Undo", mx, my),
+            // 0x432f..: the bars sit 20 right of the pointer and 10 below it for the back button
+            -2 => tip_bar(g, s, "Course Terrain", mx + 20.0, my + 15.0),
             i if i >= 0 => {
+                // a slot's bars hang from its picture's corner (the exe's table 0x4c7a98): the name on a bar centred at
+                // (x + 20, y + 10), the cost in dollars as a plain number on a second bar 10 lower ("Scenic Bridge / 10000"
+                // in footage of the original); the Landmarks show the range "5000-20,000", Undo has no cost
                 let sl = &AMENITIES[i as usize];
-                let units = |k: i32| land::BUILDINGS[k as usize].2 as i64 * 100;
-                let price = match sl.kind {
-                    // the exe has one Pathway; gravel and paved are the port's (clicking Pathway again switches)
-                    0 => format!("{}: {} per tile", if self.path_kind == 2 { "Paved" } else { "Gravel" }, money(units(0))),
-                    4 => match self.landmark_price() {
-                        Some(0) => "FREE!".to_string(),
-                        Some(p) => format!("Cost: {}", money(p as i64 * 100)),
-                        None => "None to place yet".to_string(),
-                    },
-                    5 if self.amenity_disabled(2) => "No free lots".to_string(),
-                    k => format!("Cost: {}", money(units(k))),
+                let (x, y) = (sl.x + 20.0, sl.y);
+                tip_bar(g, s, sl.tip, x, y + 15.0);
+                let cost = match sl.kind {
+                    -1 => None,
+                    4 => Some("5000-20,000".to_string()),
+                    k => Some((land::BUILDINGS[k as usize].2 as i64 * 100).to_string()),
                 };
-                tip_box(g, s, sl.hit.cx as f32, sl.tip, &price);
+                if let Some(c) = cost {
+                    // the cost's bar has the name's width (0x4493d0 with the same ends)
+                    tip_bar_sized(g, s, &c, sl.tip.len(), x, y + 25.0);
+                }
             }
             _ => {}
         }
@@ -983,6 +1025,11 @@ impl App {
     fn draw_buildings_panel(&self, g: &mut Gfx, s: &Ui, h: i32, tip: bool) {
         let art = &self.panel_art;
         let theme = self.exe_theme() as usize;
+        // the info box comes first (0x434350 draws it before the body), so the panel covers its lower part: footage of the
+        // original shows only its top 38 pixels above the lots
+        if tip && h >= 0 {
+            self.lot_info(g, s, h as usize);
+        }
         blit(g, s, &art.buildings, BUILDINGS_BODY, BUILDINGS_BODY.0, BUILDINGS_BODY.1);
         if h == -2 {
             blit(g, s, &art.buildings, BUILDINGS_TO_ELEVATION.1, BUILDINGS_TO_ELEVATION.2, BUILDINGS_TO_ELEVATION.3);
@@ -1014,43 +1061,56 @@ impl App {
         match h {
             -2 => tip_bar(g, s, "Elevation", mx, my),
             -3 => tip_bar(g, s, "Undo", mx, my),
-            i if i >= 0 => {
-                // the info box (0x434350): the frame from Pop_UpOk over a translucent fill, three lines in Arial Bold 10
-                // (0x519fd8), black, centred on the box with their tops at 462, 472 and 482
-                let i = i as usize;
-                let level = self.lot_level(6 + i as i32);
-                let cx = ((i % 5) as f32 * 80.0 + if i > 4 { 431.0 } else { 391.0 }).clamp(80.0, 720.0);
-                self.popup_frame(g, s, cx - 80.0, 460.0, 160.0, 100.0);
-                // the Snack Bar never says "Upgraded" nor shows the upgrade price
-                let up = level != 0 && i != 1;
-                let name = land::BUILDINGS[6 + i].0;
-                let units = land::BUILDINGS[6 + i].2 as i64;
-                let dollars = if up { units * 300 / 2 } else { units * 100 };
-                let ink = rgb(0.0, 0.0, 0.0);
-                let title = if up { format!("Upgraded {name}") } else { name.to_string() };
-                let f = crate::ui::F_ARIAL10;
-                s.put_centered(g, f, cx, 462.0, &title, ink);
-                s.put_centered(g, f, cx, 472.0, &format!("Cost: {}", money(dollars)), ink);
-                s.put_centered(g, f, cx, 482.0, LOT_EFFECT[i], ink);
-            }
             _ => {}
         }
     }
 
-    /// The exe's pop-up frame (0x40d0b0): corner and edge pieces from the theme's row of Pop_UpOk around a translucent cream
-    /// fill. The pieces are 16 pixels with one pixel gutters; the right column and bottom row are 26 wide or tall (they carry
-    /// the shadow). The exe repeats each edge piece every 16 pixels; the edge pieces are uniform along their length, so here
-    /// each edge is one stretched piece, and every piece is sampled half a pixel inside its gutters so the scaled screen shows
-    /// no seams. The fill is more opaque than the exe's half (0x80) so the larger text here stays readable over the lots.
+    /// A lot's info box (0x434350): the pop-up frame (x, 460, 160, 100), three lines in Arial Bold 10 (0x519fd8), black,
+    /// centred on the box with their tops at 462, 472 and 482. The cost is a plain grouped number ("Cost: 10,000" and
+    /// "Cost: 15,000" in footage of the original: 0x42dc00 adds no money sign).
+    fn lot_info(&self, g: &mut Gfx, s: &Ui, i: usize) {
+        let level = self.lot_level(6 + i as i32);
+        let cx = ((i % 5) as f32 * 80.0 + if i > 4 { 431.0 } else { 391.0 }).clamp(80.0, 720.0);
+        self.popup_frame(g, s, cx - 80.0, 460.0, 160.0, 100.0);
+        // the Snack Bar never says "Upgraded" nor shows the upgrade price
+        let up = level != 0 && i != 1;
+        let name = land::BUILDINGS[6 + i].0;
+        let units = land::BUILDINGS[6 + i].2 as i64;
+        let dollars = if up { units * 300 / 2 } else { units * 100 };
+        let ink = rgb(0.0, 0.0, 0.0);
+        let title = if up { format!("Upgraded {name}") } else { name.to_string() };
+        let f = crate::ui::F_ARIAL10;
+        s.put_centered(g, f, cx, 462.0, &title, ink);
+        s.put_centered(g, f, cx, 472.0, &format!("Cost: {}", crate::ui::group(dollars.max(0) as u64)), ink);
+        s.put_centered(g, f, cx, 482.0, LOT_EFFECT[i], ink);
+    }
+
+    /// The exe's pop-up frame (0x40d0b0): a size that is not a multiple of 16 grows to the next 16 - 1 (a remainder r adds
+    /// 15 - r) and the box moves up and left by half the growth, so the lot box (160 x 100) is drawn 160 x 111 from y 455,
+    /// as footage of the original shows. Corner and edge pieces from the theme's row of Pop_UpOk go around a cream fill
+    /// (0x7fdc; the 0x80000000 bit marks a 15-bit colour, it is not an alpha: footage shows the box opaque). The pieces are 16
+    /// pixels with one pixel gutters; the right column and bottom row are 26 wide or tall (they carry the shadow). The exe
+    /// repeats each edge piece every 16 pixels; the edge pieces are uniform along their length, so here each edge is one
+    /// stretched piece, and every piece is sampled half a pixel inside its gutters so the scaled screen shows no seams.
     fn popup_frame(&self, g: &mut Gfx, s: &Ui, x: f32, y: f32, w: f32, h: f32) {
+        let grow = |p: f32, n: f32| {
+            let r = (n as i32) & 15;
+            if r == 0 {
+                (p, n)
+            } else {
+                (p - ((15 - r) / 2) as f32, n + (15 - r) as f32)
+            }
+        };
+        let ((x, w), (y, h)) = (grow(x, w), grow(y, h));
         let im = &self.panel_art.frame;
-        s.fill(g, x + 6.0, y + 6.0, w - 18.0, h - 18.0, rgba(1.0, 0.97, 0.9, 0.8));
+        s.fill(g, x + 2.0, y + 2.0, w - 4.0, h - 4.0, crate::info_ui::c15(0x7fdc));
         let oy = match self.exe_theme() {
             1 => 200.0,
             2 => 100.0,
             _ => 0.0,
         };
-        let (r, b) = (x + w - 26.0, y + h - 26.0);
+        // the right and bottom pieces start 16 in from the box edge (0x40d0b0), so their shadow reaches 10 past it
+        let (r, b) = (x + w - 16.0, y + h - 16.0);
         // (source x, width) of the three columns and (source y, height) of the three rows, inset from the gutters
         let cols = [(0.0, 15.5), (17.5, 15.0), (34.5, 25.5)];
         let rows = [(oy, 15.5), (oy + 17.5, 15.0), (oy + 34.5, 25.5)];
@@ -1269,6 +1329,7 @@ impl App {
             (2, false) => self.buildings_click(h),
             (2, true) => self.elevation_click(h),
             (3, _) => self.employee_click(h),
+            (4, _) => self.member_click(h),
             (5, _) => self.player_click(h),
             _ => false,
         };
@@ -1279,6 +1340,7 @@ impl App {
         // the panel's own area swallows the rest
         let body = match self.panel {
             3 => EMPLOYEE_BODY,
+            4 => crate::member_panel::MEMBER_BODY,
             5 => crate::player_panel::PLAYER_BODY,
             _ => AMENITIES_BODY,
         };
@@ -1466,10 +1528,14 @@ impl App {
                 self.pstate.emp_sel = Some(i);
             }
             -2 => {
+                self.pstate.emp_flag = false;
                 self.panel = 4;
                 self.golfer_page = 0;
             }
-            -3 => self.panel = 5,
+            -3 => {
+                self.pstate.emp_flag = false;
+                self.panel = 5;
+            }
             _ => return false,
         }
         true
