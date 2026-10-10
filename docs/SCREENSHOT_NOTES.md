@@ -201,5 +201,6 @@ Nothing from the footage is stored in the repository.
 - **Tracts for Sale**: one sentence, "Buy tract #1, 22 acres of / rough, trees, and water", wrapped to 165 with 17
   between lines from 1 above the card's text origin, then the price; the map's tract numbers are black. Fixed in
   `draw_land`.
+- **Edge of the property** (p1 1700): a stone cliff runs along the front edges of the owned land down into the black. It is Terrain.dll's strata face (0x1000ea30), now built by `build_edge_walls`; at the default zoom the port's face matches the footage's height and shading.
 - Unchanged, matching: Top Ten Designers layout, Shot Analysis box (282..537), the trophy room's layout. Left: the board's
   tack colours vary (yellow, red, grey seen) and are not decoded; the port keeps the grey tack.

@@ -209,11 +209,11 @@ Two routines share `FUN_0045a090` and the results routine that follows it.
 
 * Opens: F2 / Information menu "Player Comments". Routine `FUN_004546b0`. Art `PlayComt.pcx` + `_alpha`: top (148,45,505,102), row strip (148,224,505,17), bottom (148,321,505,61), the panel is 505 px wide, centred.
 * Title "PLAYER COMMENTS REPORT" large face centred at (389,61). Heads at y 96: "Comments" left at 182, "Hole" centred at 504, "Frequency" centred at 598.
-* Rows: up to 20, strip piece at (148, 124 + 15 r), text y = 126 + 15 r. The comment text left at x 182, the hole name or number centred at x 504, the frequency (percent) centred at x 598. Rows are the 20 most
+* Rows: up to 20, strip piece at (148, 124 + 15 r) (the header piece's height 102 plus 22, so it overlaps the header's foot), text top y = 126 + 15 r. The comment text left at x 182, the hole name or number centred at x 504, the frequency (percent) centred at x 598. Rows are the 20 most
   frequent comment event types across all holes (sum over holes of the per hole event counts at 0x575d90, 0x82 ints stride), highest first; the hole shown is the hole with the most of that type; the text comes from
   `FUN_00469b00(eventType, location, ...)`. Row text colour: red for bad comments (`0x80007d08`), dark green `0x80001284` for good ones (a bright green word is replaced by the dark one), otherwise black.
   Stops when the count is 0 or nothing was recorded.
-* Bottom strip at the y after the last row; OK tick at (591, that y), cut from OkStates; any click closes.
+* Bottom strip at the y after the last row (right under the header when no row was recorded: the exe draws no text in their place); OK tick at (591, that y + 14), cut from OkStates, hit 591..634 by 44; any click closes.
 
 ## 9. Course overview screens (F5 / shift+r: Routing, Value, Aura, Employees)
 
@@ -255,7 +255,7 @@ art `infoscreens/hire.pcx` + `_alpha` as a full 800x600 piece at (0,0); OK tick 
 
 ## 12. Other pieces seen (not needed first)
 
-* Histograph (`histograph.pcx`, full 800x600 piece, F3): title "HISTOGRAPH", texts "Satisfied customers" etc. use the Employees counters. Layout not traced.
+* Histograph (`histograph.pcx`, full 800x600 piece, F3, routine 0x455ed0): title "HISTOGRAPH" centred (375, 20); legend Skill, Cash, Fun, Event centred at x 177, 332, 488, 644, y 542; ten scale rows from y 514 up by 50: skill on the left (x 77, colour 0x4010) in the hundredths format, cash on the right (x 727) as "\u00a7Nk"; lines per month from x 107 in steps of clamp(600 / (months + 1), 1, 4), clipped to (106, 72, 598 x 450); event marks and words in Arial Bold 10 (see PARITY.md). OK tick at (704, 551).
 * `general_selectionBOX`: a generic choice box, unknown use (Information menu choice dialog).
 * Pair selection (`PairBase`, `PairButtons` cuts (0,0,329,136), (0,136,329,136), (0,272,329,136) and a 75x75 piece at (693,502)): match play opponent choice.
 

@@ -953,6 +953,10 @@ impl App {
                 sg_core::objects::LANDMARKS.get(i as usize).and_then(|f| self.sprite_for(&format!("{f}.flc"), false, pal))
             } else {
                 let (id, pal) = strip_sprite(kind, i);
+                if kind == land::K_FLOWERS {
+                    // the strip's bed icons go through the same sprite objects as the beds (see App::bed_palette)
+                    self.bed_palette[(id - 0x1a2) as usize] = pal;
+                }
                 self.decor_sprite(id, pal).0
             };
             let Some(si) = si else { continue };

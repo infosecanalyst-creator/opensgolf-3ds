@@ -6,10 +6,10 @@ game, decomp = sys.argv[1], sys.argv[2]
 out_md = sys.argv[3] if len(sys.argv) > 3 else "docs/PARITY_AUDIT.md"
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 src = ""
-for d in ("tools", "src", "include"):
+for d in ("tools", "src", "include", "crates"):
     for r, _, fs in os.walk(os.path.join(root, d)):
         for f in fs:
-            if f.endswith((".cpp", ".h")): src += open(os.path.join(r, f), errors="ignore").read().lower() + "\n"
+            if f.endswith((".cpp", ".h", ".rs")): src += open(os.path.join(r, f), errors="ignore").read().lower() + "\n"
 dec = open(decomp, errors="ignore").read().lower()
 rows = collections.defaultdict(list)
 for r, _, fs in os.walk(game):

@@ -56,13 +56,29 @@ fn c15(v: u32) -> [f32; 4] {
     rgb(((v >> 10) & 31) as f32 / 31.0, ((v >> 5) & 31) as f32 / 31.0, (v & 31) as f32 / 31.0)
 }
 
-/// The histograph's height of a sample (docs/UI_SCREENS2.md): linear to 500, then ten to one; a sample below 501 counts by
-/// its absolute value, so a negative fun rating or balance is drawn mirrored above the baseline.
-fn squash(v: i32) -> i32 {
-    if v < 501 {
+/// The histograph's height of a sample (0x455ed0): linear at half scale below 501, above it ten to one plus 200. Only the cash
+/// line takes the absolute value of a small sample, so a negative balance is drawn mirrored above the baseline; a negative
+/// skill or fun sample falls below the baseline and is clipped away.
+fn squash(v: i32, mirror: bool) -> i32 {
+    if v >= 501 {
+        v / 10 + 200
+    } else if mirror {
         v.abs() / 2
     } else {
-        v / 10 + 200
+        v / 2
+    }
+}
+
+/// A one pixel line from (x0, y0) to (x1, y1), both ends drawn, inside the clip rectangle `clip` (left, top, right, bottom).
+#[allow(clippy::too_many_arguments)]
+fn pixel_line(s: &Ui, g: &mut Gfx, x0: i32, y0: i32, x1: i32, y1: i32, c: [f32; 4], clip: (i32, i32, i32, i32)) {
+    let n = (x1 - x0).abs().max((y1 - y0).abs()).max(1);
+    for i in 0..=n {
+        let x = x0 + ((x1 - x0) * i * 2 + n * (x1 - x0).signum()) / (2 * n);
+        let y = y0 + ((y1 - y0) * i * 2 + n * (y1 - y0).signum()) / (2 * n);
+        if x >= clip.0 && x < clip.2 && y >= clip.1 && y < clip.3 {
+            s.fill(g, x as f32, y as f32, 1.0, 1.0, c);
+        }
     }
 }
 
@@ -179,22 +195,18 @@ impl App {
                 sg_core::thoughts::Tone::Bad => c15(0x7d08),
                 _ => black(),
             };
-            // PLACEHOLDER: the rows' first top (the exe's header piece height plus 24) is not decoded; 3 below the row piece
-            s.put(g, F_INFO14, 182.0, y + 3.0, &line.text, c);
-            s.put_centered(g, F_INFO14, 504.0, y + 3.0, &format!("{hole}"), c);
-            s.put_centered(g, F_INFO14, 598.0, y + 3.0, &format!("{freq}%"), c);
+            // 0x4546b0: the row piece's top is the header piece's height (102) plus 22 and the text's top that plus 24, so the
+            // words sit 2 below the piece; the exe draws nothing in place of the rows when none was recorded
+            s.put(g, F_INFO14, 182.0, y + 2.0, &line.text, c);
+            s.put_centered(g, F_INFO14, 504.0, y + 2.0, &format!("{hole}"), c);
+            s.put_centered(g, F_INFO14, 598.0, y + 2.0, &format!("{freq}%"), c);
         }
-        if rows.is_empty() {
-            s.put_centered(g, F_INFO14, 400.0, y0 + 3.0, "No comments yet.", black());
-        }
-        let fy = y0 + 15.0 * rows.len().max(1) as f32;
+        let fy = y0 + 15.0 * rows.len() as f32;
         if has {
             s.image_part(g, im, 148.0, fy, 148.0, 321.0, 505.0, 61.0);
-            // the art's own lit tick over its baked one
-            if self.over_ok(593.0, fy + 14.0) {
-                s.image_part(g, im, 593.0, fy + 14.0, 593.0, 434.0, 44.0, 44.0);
-            }
         }
+        // the OkStates tick at (591, bottom piece + 14), hit 591..634 by 44 (0x4546b0)
+        self.ok_tick(g, &s, 591.0, fy + 14.0, false);
         g.flush();
     }
 
@@ -229,44 +241,52 @@ impl App {
         };
         for k in 0..10 {
             let y = 0x202 as f32 - 50.0 * k as f32;
+            // the skill scale in the exe's hundredths format (0x42dd50): 0.00 to 5.00, then 10.00 to 25.00 (doubled over 25.00)
             let lv = if k <= 5 { 100 * skill_s * k } else { skill_s * (500 * k - 2000) };
-            s.put_centered(g, F_INFO14, 77.0, y, &format!("{lv}"), c15(0x4010));
+            s.put_centered(g, F_INFO14, 77.0, y, &crate::info_ui::hundredths(lv), c15(0x4010));
             let n = if k <= 5 { 10 * cdiv * k } else { cdiv * (50 * k - 200) };
             s.put_centered(g, F_INFO14, 727.0, y, &format!("\u{a7}{n}k"), black());
         }
         let months = (self.club.tick >> 10) as usize;
-        let step = (600 / (months as i32 + 1)).clamp(1, 4) as f32;
+        let step = (600 / (months as i32 + 1)).clamp(1, 4);
         let h = &self.club.history;
-        let base = 0x209 as f32;
-        let mut prev = [base; 4];
+        // each plot line runs from last month's height to this month's (0x478b80 lines), inside the clip rectangle the exe
+        // sets before the plot (0x475b20: 106, 72, 598 x 450), which also holds the event marks
+        let base = 0x209;
+        let clip = (0x6a, 0x48, 0x6a + 0x256, 0x48 + 0x1c2);
+        let mut prev = [0i32; 4];
         let mut offset = 0;
         for i in 1..=months.min(499) {
-            let x0 = 0x6b as f32 + (i - 1) as f32 * step;
+            let x0 = 0x6b + (i as i32 - 1) * step;
             let x1 = x0 + step;
             let r = h.get(i).copied().unwrap_or([0; 4]);
-            let ys = [
-                base - squash(r[2] / skill_s) as f32,
-                base - squash(r[0] / cdiv) as f32,
-                base - squash(r[1]) as f32,
-                base - 4.0 * r[3] as f32,
-            ];
+            let hs = [squash(r[2] / skill_s, false), squash(r[0] / cdiv, true), squash(r[1], false), 4 * r[3]];
             let cols = [c15(0x4010), if r[0] < 0 { c15(0x7d08) } else { black() }, c15(0x03e0), c15(0x0210)];
             for k in 0..4 {
-                // the plot's clip rectangle (106, 72, 598, 450)
-                let (a, b) = (prev[k].clamp(72.0, 522.0), ys[k].clamp(72.0, 522.0));
-                s.fill(g, x0, a.min(b), (x1 - x0).max(1.0), (a - b).abs().max(1.0), cols[k]);
-                prev[k] = ys[k];
+                pixel_line(&s, g, x0, base - prev[k], x1, base - hs[k], cols[k], clip);
+                prev[k] = hs[k];
             }
             let v = self.club.event_log.get(i).copied().unwrap_or(0);
             if v != 0 {
                 let t = self.club.event_text(v);
                 if !t.is_empty() {
+                    // the mark (0x455ed0): a 2 x 2 dot on the skill line at x + 10, a cyan stalk at x + 11 up to a height
+                    // that climbs 10 a mark (wrapping under 450), a 2 x 2 dot on its top, and the words in Arial Bold 10
+                    // (0x519fd8) left aligned with their top at (x + 14, stalk top - 3)
                     offset = offset % 450 + 10;
-                    let top = base - offset as f32;
-                    s.fill(g, x1 + 10.0, ys[0].min(top), 1.0, (ys[0] - top).abs(), c15(0x03ff));
-                    s.fill(g, x1 + 9.0, top - 1.0, 3.0, 3.0, c15(0x0210));
-                    // the events in Arial Bold 10 (0x519fd8); PLACEHOLDER: their offset from the mark
-                    s.put(g, crate::ui::F_ARIAL10, x1 + 14.0, top - 5.0, &t, c15(0x0210));
+                    let top = base - offset;
+                    let sy = base - hs[0];
+                    let dot = |g: &mut Gfx, x: i32, y: i32| {
+                        for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+                            pixel_line(&s, g, x + dx, y + dy, x + dx, y + dy, c15(0x0210), clip);
+                        }
+                    };
+                    dot(g, x1 + 10, sy);
+                    pixel_line(&s, g, x1 + 11, sy, x1 + 11, top, c15(0x03ff), clip);
+                    dot(g, x1 + 11, top);
+                    if x1 + 14 < clip.2 {
+                        s.put(g, crate::ui::F_ARIAL10, (x1 + 14) as f32, (top - 3) as f32, &t, c15(0x0210));
+                    }
                 }
             }
         }
@@ -862,11 +882,12 @@ mod tests {
 
     #[test]
     fn histograph_heights_mirror_negative_samples() {
-        assert_eq!(squash(300), 150);
-        assert_eq!(squash(-300), 150);
-        assert_eq!(squash(500), 250);
-        assert_eq!(squash(501), 250);
-        assert_eq!(squash(2500), 450);
-        assert_eq!(squash(-2000), 1000);
+        assert_eq!(squash(300, true), 150);
+        assert_eq!(squash(-300, true), 150);
+        assert_eq!(squash(-300, false), -150);
+        assert_eq!(squash(500, false), 250);
+        assert_eq!(squash(501, true), 250);
+        assert_eq!(squash(2500, false), 450);
+        assert_eq!(squash(-2000, true), 1000);
     }
 }

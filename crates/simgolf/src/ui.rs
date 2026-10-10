@@ -599,6 +599,14 @@ pub fn rgba(r: f32, g: f32, b: f32, a: f32) -> [f32; 4] {
     [r, g, b, a]
 }
 
+/// The colour of a Terrain::drawLine call (Terrain.dll 0x100048a0) for a 15-bit exe colour: each channel's five bits moved
+/// up three over 255 (so a full channel is 248 / 255), the alpha the call's last argument in tenths (glColor4f, blended
+/// SRC_ALPHA / ONE_MINUS_SRC_ALPHA). The exe's world overlay lines pass 7, the tooltip bar 5, the routing map 10.
+pub fn line_rgba(c: u32, tenths: u32) -> [f32; 4] {
+    let ch = |s: u32| ((c >> s) & 31) as f32 * 8.0 / 255.0;
+    [ch(10), ch(5), ch(0), tenths as f32 / 10.0]
+}
+
 /// Word wrap to a width in virtual pixels.
 pub fn wrap_text(s: &str, size: f32, max_w: f32) -> Vec<String> {
     let mut out = Vec::new();

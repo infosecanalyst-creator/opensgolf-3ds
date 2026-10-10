@@ -229,6 +229,10 @@ pub fn ornamental(var: u8, a: i32, b: i32, grown: bool, field: &dyn Fn(i32, i32)
     ]
 }
 
+/// The palette id of a weedy flower bed (0x41266b). Its palette object is never loaded (see `palette_file`), so the bed is
+/// drawn in whatever palette its piece sprite was last drawn in.
+pub const WEEDY_BED: u8 = 0xbb;
+
 /// A flower bed tile (flag 0x1000) as the main frame draws it (0x41266b). The tile's design byte (`var`, 0..14) is shape
 /// var / 5 (plain, sinuous, walled: sprites 0x1a2, 0x1a8, 0x1ae on) and colour var % 5 (palettes 0x2d..0x31, or 0xbb while
 /// weeds grow in it). The bed joins the four neighbours that are beds of the same shape on the same building level
@@ -294,7 +298,7 @@ pub fn flower_bed(
     }
     let view = (view - rot) & 3;
     let sprite = piece + 6 * (var / 5).min(2) as u16;
-    let pal = if weedy { 0xbb } else { 0x2d + var % 5 };
+    let pal = if weedy { WEEDY_BED } else { 0x2d + var % 5 };
     let frame = if weedy { None } else { growth };
     let mut out = vec![Draw { sprite, frame, view, pal, da: 0.0, db: 0.0 }];
     if (b + 2 * a) % 5 == 0 && mask & 9 == 9 && bed(a - 1, b - 1).is_some() && corner(a - 1, b - 1) == corner(a, b) {
@@ -308,10 +312,22 @@ pub fn flower_bed(
 /// The bridge pieces of a path tile on water (0x41192c). `path` has bit k set when the neighbour at heading 2k carries a
 /// path, `land` the same for neighbours that are not water, `water_path` whether any path neighbour is on water; `scenic`
 /// and `style` are the scenic bridge flag and the tile's low flag bits (the bridge tool's look). Anim is the frame counter.
-pub fn bridge(path: u8, land: u8, water_path: bool, scenic: bool, style: u8, anim: i32, reflect_frames: i32) -> Vec<Draw> {
+/// The exe reads the four neighbours by screen heading, (0x5685f4 + 2k) & 7 for bit k, so under a view turned `rot` quarter
+/// turns the masks are turned right `rot` places first; the piece, its view and the caps' screen offsets then follow the
+/// screen. The returned views are less `rot` and the offsets are turned back onto the map, as the renderer adds the
+/// camera's quarter turns to every four-view sprite and places by map point.
+#[allow(clippy::too_many_arguments)]
+pub fn bridge(path: u8, land: u8, water_path: bool, scenic: bool, style: u8, anim: i32, reflect_frames: i32, rot: i32) -> Vec<Draw> {
+    let q = rot.rem_euclid(4) as u32;
+    let turn = |m: u8| (((m & 15) >> q) | ((m & 15) << (4 - q))) & 15;
+    let (path, land) = (turn(path), turn(land));
     let d = |sprite: u16, view: i32, dx: f32, dy: f32, frame: Option<i32>, pal: u8| {
-        let (da, db) = screen(dx, dy);
-        Draw { sprite, frame, view, pal, da, db }
+        // a screen offset is the map step of the same heading turned with the view: (x, y) -> (-y, x) per quarter
+        let (mut da, mut db) = screen(dx, dy);
+        for _ in 0..q {
+            (da, db) = (-db, da);
+        }
+        Draw { sprite, frame, view: (view - q as i32) & 3, pal, da, db }
     };
     if !water_path {
         // a bridge on its own: the scenic bridge, or a deck with a cap at each end
@@ -576,15 +592,11 @@ pub fn palette_file(pal: u8, theme: u8) -> Option<&'static str> {
         0xa9 => Some("Bridges/SCENICgenpal.pcx"),
         // a weedy flower bed: palette object 0xbb (0x81ca10 + 0xbb * 0x58 = 0x820a58) is loaded only from
         // "flics\bldgs\flowers\<name>IckyPal" (0x4cc0f4, 0x4cc500, 0x4ccd1c by theme, in the theme loader 0x43dbe0), a
-        // folder the disc does not have, so the exe's load (0x475840) fails before it touches the palette and the bed is
-        // drawn with a never-loaded palette, whose look is decided inside jgl.dll (not decoded). The files themselves ship
-        // under Flics/Flowers with the same names; PLACEHOLDER: the port uses those
-        0xbb => pick([
-            "Flowers/FlowerbedA_IckyPal.pcx",
-            "Flowers/DesertFlowersIckyPal.pcx",
-            "Flowers/TropicalFlowers_IckyPal.pcx",
-            "Flowers/FlowerbedA_IckyPal.pcx",
-        ]),
+        // folder the disc does not have (the IckyPal files ship under Flics/Flowers), so the exe's load (0x475840) fails
+        // at CreateFileA and the object's inner palette stays null. The blit (0x4741b0, jgl sprite vtable +0x78) then gets
+        // no palette and draws in the one the sprite object kept from its last paletted draw (EXACT, jgl.dll 0x100098c0):
+        // no file here, the FLC's own palette as the start, and the renderer substitutes the kept one (App::bed_palette)
+        WEEDY_BED => None,
         // the landmarks' palettes, 100 + type (0x440bc2)
         100..=118 => Some(
             [

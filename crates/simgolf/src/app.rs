@@ -112,6 +112,9 @@ pub struct Prop {
     /// The sprite moved this many 800 x 600 pixels right and down on the screen from its ground point (the exe's screen
     /// offsets); the prop still sorts by its ground point.
     pub shift: (f32, f32),
+    /// A flower bed piece: its sprite id, palette id (0xbb while weedy, drawn in the piece's last palette, see
+    /// `App::bed_palette`) and tile.
+    pub bed: Option<(u16, u8, i32, i32)>,
 }
 
 impl Default for Prop {
@@ -141,6 +144,7 @@ impl Default for Prop {
             outfit: None,
             view: None,
             shift: (0.0, 0.0),
+            bed: None,
         }
     }
 }
@@ -473,6 +477,13 @@ pub struct App {
     /// 6 Lawn Technician, 7 Soda Vendor; 8 the player's pro) and state (walk, stand, action): body and shadow.
     pub staff_clips: [[(Option<usize>, Option<usize>); 3]; 9],
     pub weed_sprite: Option<usize>,
+    /// The palette id each flower bed piece sprite (0x1a2..0x1b3) was last drawn in, 0 for none yet. The exe draws a bed
+    /// through jgl's paletted blit (sprite vtable +0x78, 0x100098c0 in jgl.dll), which keeps the palette it is given in the
+    /// sprite object and, given none, draws in the one it kept. A weedy bed's palette object (0xbb) is never loaded (its
+    /// "flics\bldgs\flowers\...IckyPal" files are not on the disc), so the exe hands the blit no palette and the bed shows in
+    /// the colour the same piece sprite was last drawn in: the previous bed of that piece in the tile loop, or the design
+    /// strip's last icon of that shape, or before any of those the FLC's own palette.
+    pub bed_palette: [u8; 18],
     pub course_name: String,
     pub screen: Screen,
     pub title_base: Image,
@@ -707,6 +718,7 @@ impl App {
             moving_employee: None,
             staff_clips: [[(None, None); 3]; 9],
             weed_sprite: None,
+            bed_palette: [0; 18],
             course_name: "Demo Course".into(),
             screen: Screen::Play,
             title_base: Image::default(),
@@ -986,6 +998,7 @@ impl App {
         self.batches = Self::upload(g, map);
         self.build_paths(g);
         self.build_walls(g);
+        self.build_edge_walls(g);
     }
 
     /// Path overlay (our own model): every path tile gets a centre piece, plus an arm toward each path neighbour, cut out of the
@@ -1165,6 +1178,67 @@ impl App {
                         let (c2, c3) = (vn(xb + ix, yb + hb, zb + iz, b, 0.4, up), vn(xa + ix, ya + ha, za + iz, a, 0.4, up));
                         batch.extend_from_slice(&[c0, c1, c2, c0, c2, c3]);
                     }
+                }
+            }
+        }
+        if !batch.is_empty() {
+            self.wall_batches.push(Batch { tex, mesh: g.mesh(&batch) });
+        }
+    }
+
+    /// The cliff round the property (Terrain.dll 0x1000ea30, every frame for every tile that is not out of bounds): on each
+    /// side whose neighbour tile exists and is out of bounds (type 20), a face from the side's two end vertices straight down
+    /// to height -75, two triangles textured once with the theme's `strata.bmp` (u 0 to 1 along the side, its grass cap at
+    /// the top). Only the sides facing the camera are drawn: the -y side ("N" in the DLL) in views 1 and 2, +y in views 0
+    /// and 3, -x in views 0 and 1, +x in views 2 and 3, the view being the camera's quarter turns. Each side's normal comes
+    /// from a table at 0x10063c40, one of two by the view's parity, and is not unit length (OpenGL does not normalise it).
+    /// The map's own border has no neighbour, so no cliff. Built for the current view: a quarter turn rebuilds the batches.
+    fn build_edge_walls(&mut self, g: &mut Gfx) {
+        let Some(tex) = self.theme_texture(g, "strata.bmp") else { return };
+        let t = &self.terrain;
+        let view = ((self.rot / 90.0).round() as i32).rem_euclid(4);
+        let odd = (view & 1) as usize;
+        // (neighbour step, the views that draw it, the normals for even and odd views)
+        type Side = ((i32, i32), [i32; 2], [[f32; 3]; 2]);
+        const SIDES: [Side; 4] = [
+            ((0, -1), [1, 2], [[0.707, 0.0, 0.707], [1.0, 1.0, 0.0]]),
+            ((0, 1), [0, 3], [[-0.707, 0.0, -0.707], [-1.0, 1.0, 0.0]]),
+            ((-1, 0), [0, 1], [[-1.0, 1.0, 0.0], [1.0, 0.0, 0.0]]),
+            ((1, 0), [2, 3], [[1.0, 1.0, 0.0], [-1.0, 0.0, 0.0]]),
+        ];
+        const BOTTOM: f32 = -75.0;
+        let (ox, oz) = (-t.w as f32 * TILE_SIZE * 0.5, -t.h as f32 * TILE_SIZE * 0.5);
+        let mut batch = Vec::new();
+        for ((dx, dy), views, normals) in SIDES {
+            if !views.contains(&view) {
+                continue;
+            }
+            let n = normals[odd];
+            let vn = |x: f32, y: f32, z: f32, u: f32, v: f32| {
+                let mut q = Vert::new(x, y, z, u, v);
+                q.normal = n;
+                q
+            };
+            for ty in 0..t.h {
+                for tx in 0..t.w {
+                    let (nx, ny) = (tx + dx, ty + dy);
+                    if t.type_at(tx, ty) == 20 || !(0..t.w).contains(&nx) || !(0..t.h).contains(&ny) || t.type_at(nx, ny) != 20 {
+                        continue;
+                    }
+                    let (x, z) = (ox + tx as f32 * TILE_SIZE, oz + ty as f32 * TILE_SIZE);
+                    let ((x0, z0), (x1, z1)) = match (dx, dy) {
+                        (0, -1) => ((x, z), (x + TILE_SIZE, z)),
+                        (0, _) => ((x, z + TILE_SIZE), (x + TILE_SIZE, z + TILE_SIZE)),
+                        (-1, _) => ((x, z), (x, z + TILE_SIZE)),
+                        _ => ((x + TILE_SIZE, z), (x + TILE_SIZE, z + TILE_SIZE)),
+                    };
+                    let (y0, y1) = (t.height_at(x0, z0), t.height_at(x1, z1));
+                    // the bitmaps are bottom-up in OpenGL, so v 1 is the picture's top row (the port's images are top-down)
+                    let top0 = vn(x0, y0, z0, 0.0, 0.0);
+                    let bot0 = vn(x0, BOTTOM, z0, 0.0, 1.0);
+                    let bot1 = vn(x1, BOTTOM, z1, 1.0, 1.0);
+                    let top1 = vn(x1, y1, z1, 1.0, 0.0);
+                    batch.extend_from_slice(&[top0, bot0, bot1, top0, bot1, top1]);
                 }
             }
         }
@@ -2815,6 +2889,8 @@ impl App {
         self.rot = ((self.rot / 90.0).round() + quarters as f32).rem_euclid(4.0) * 90.0;
         // the sand traps' pictures turn with the view (Terrain.dll's phase)
         self.dirty |= self.terrain.ty.contains(&7);
+        // so does the cliff round the property (only the sides facing the camera are built)
+        self.dirty |= self.terrain.ty.contains(&20);
         // the flower beds pick their pieces by how their neighbours lie on the screen (decor::flower_bed), and landmark 3
         // turns twice as fast as the view
         if self.land.is_some() {
@@ -3340,7 +3416,8 @@ impl App {
                             }
                         }
                     }
-                    for d in sg_core::decor::bridge(path, dry, water_path, f & 0x100 != 0, (f & 0x1f) as u8, 0, 1) {
+                    let rot = ((self.rot / 90.0).round() as i32).rem_euclid(4);
+                    for d in sg_core::decor::bridge(path, dry, water_path, f & 0x100 != 0, (f & 0x1f) as u8, 0, 1, rot) {
                         draws.push((a, b, d));
                     }
                 }
@@ -3377,6 +3454,7 @@ impl App {
             // the beds go straight onto the frame in the exe's tile loop, under the queued sprites
             if (0x1a2..=0x1b3).contains(&d.sprite) && self.props.len() > n {
                 self.props[n].flat = true;
+                self.props[n].bed = Some((d.sprite, d.pal, a, b));
             }
         }
         let level = (self.hole_numbers.len() > 10) as u16;

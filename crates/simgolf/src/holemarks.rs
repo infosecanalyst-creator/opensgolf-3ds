@@ -7,7 +7,7 @@
 use crate::app::*;
 use crate::gfx::{Gfx, Uniforms};
 use crate::screens_ui::{c15, top, BODY, LARGE};
-use crate::ui::{rgb, Screen as Ui};
+use crate::ui::{line_rgba, rgb, Screen as Ui};
 use sg_core::analysis::KINDS;
 use sg_core::assets::decode_pcx;
 use sg_core::sprites::Sprite;
@@ -111,7 +111,7 @@ impl App {
 
     /// The trial golfer's shots over the hole being built (0x41370e, every frame once it has a tee and a green): the golfer
     /// with all three skills from the back tee, a segment per shot to the tile it lands on, up to five, stopping at a landing on
-    /// a hazard (not drawn) or the pin. Each is a white line 2 pixels wide over a black one a pixel lower, both 6 pixels right
+    /// a hazard (not drawn) or the pin. Each is a white line 2 pixels wide at alpha 9 tenths over a black one at 7 a pixel lower (0x41382f, 0x4137fe), both 6 pixels right
     /// of the true line (3 per trial golfer, this being the second). The first golfer's tee shot only sets the tee facing.
     pub(crate) fn draw_layout_path(&mut self, g: &mut Gfx, u: &Uniforms) {
         let h = self.club.next_hole;
@@ -142,8 +142,8 @@ impl App {
                 break;
             }
             let end = at(self, l);
-            self.draw_lines(g, u, &[shift(start, 6.0, 1.0), shift(end, 6.0, 1.0)], false, vs, [0.0, 0.0, 0.0, 1.0]);
-            self.draw_lines(g, u, &[shift(start, 6.0, 0.0), shift(end, 6.0, 0.0)], false, vs, c15(WHITE));
+            self.draw_lines(g, u, &[shift(start, 6.0, 1.0), shift(end, 6.0, 1.0)], false, vs, line_rgba(0, 7));
+            self.draw_lines(g, u, &[shift(start, 6.0, 0.0), shift(end, 6.0, 0.0)], false, vs, line_rgba(WHITE, 9));
             if n + 1 >= 5 || l == pin {
                 break;
             }
@@ -227,7 +227,6 @@ impl App {
         let Some(an) = self.analysis.clone() else { return };
         self.analysis_shown = (self.analysis_shown + 1).min(an.shots.len());
         let s = Ui::new(self.draw_w, self.draw_h);
-        let black = rgb(0.0, 0.0, 0.0);
         let circle = |app: &App, g: &mut Gfx, (x, y): (i32, i32), yards: i32, c: [f32; 4]| {
             // 0x407c60: 24 steps round, a line 2 pixels wide, broken where it leaves the screen
             let r = ((yards << 10) / 25) as f32;
@@ -242,7 +241,7 @@ impl App {
             }
         };
         let (fa, fb) = an.from;
-        circle(self, g, (fa * 0x400 + 0x200, fb * 0x400 + 0x200), 10, black);
+        circle(self, g, (fa * 0x400 + 0x200, fb * 0x400 + 0x200), 10, line_rgba(0, 7));
         self.art.trans_frame(g, &s, 282.0, 21.0, 256.0, 159.0);
         s.line(g, 282.0, 64.5, 538.0, 64.5, 1.0, c15(RULE));
         for (k, &(_, label, col)) in KINDS.iter().enumerate().take(self.analysis_shown.min(4)) {
@@ -250,9 +249,10 @@ impl App {
         }
         for shot in an.shots.iter().take(self.analysis_shown) {
             let k = shot.kind;
-            let col = c15(KINDS[k].2);
+            // the circles and tracks are Terrain::drawLine calls at alpha 7 tenths (0x407c60, 0x41d5f0)
+            let lc = line_rgba(KINDS[k].2, 7);
             let end = shot.end();
-            circle(self, g, end, k as i32 + 5, col);
+            circle(self, g, end, k as i32 + 5, lc);
             if let Some((x, y)) = self.screen_of(end.0, end.1) {
                 if shot.hazard <= 0 {
                     s.fill(g, x - 2.0, y - 1.0, 4.0, 2.0, rgb(0.1, 0.1, 0.1));
@@ -266,7 +266,7 @@ impl App {
                 if let Some((sx, sy)) = self.screen_of(x, y) {
                     let p = (sx, sy + 1.0 - k as f32);
                     if let Some(p0) = last {
-                        s.line(g, p0.0, p0.1, p.0, p.1, 1.0, col);
+                        s.line(g, p0.0, p0.1, p.0, p.1, 1.0, lc);
                     }
                     last = Some(p);
                 }

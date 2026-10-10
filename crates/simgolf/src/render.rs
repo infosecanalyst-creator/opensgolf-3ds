@@ -4,6 +4,7 @@
 use crate::app::*;
 use crate::gfx::{Gfx, Mat4, Mode, Uniforms, Vert};
 use crate::ui::{money, rgb, rgba, text_width, wrap_text, Screen as Ui};
+use sg_core::decor::WEEDY_BED;
 use sg_core::economy::{Economy, STAFF_KINDS};
 use sg_core::sprites::SPRITE_UNITS_PER_PIXEL;
 use sg_core::terrain::{DEPTH_RANGE, TILE_SIZE};
@@ -101,8 +102,9 @@ impl App {
         let arc: Vec<[f32; 3]> = ground.iter().zip(&lifts).map(|(&q, &l)| lifted(q, l)).collect();
         // line width 2 pixels at the nearest zoom, 1 below it
         let half = if zoom >= 4.0 { 1.0 } else { 0.5 } * vscale;
-        self.draw_lines(g, u, &shadow, false, half, [0.0, 0.0, 0.0, 1.0]);
-        self.draw_lines(g, u, &arc, false, half, [1.0, 1.0, 1.0, 1.0]);
+        // both Terrain::drawLine calls at alpha 7 tenths (0x41bbdc, 0x41bc47)
+        self.draw_lines(g, u, &shadow, false, half, crate::ui::line_rgba(0, 7));
+        self.draw_lines(g, u, &arc, false, half, crate::ui::line_rgba(0x7fff, 7));
         let (wx, wz) = self.units_to_world(p.x, p.y);
         let r = TILE_SIZE * 0.5;
         let corners = [(wx - r, wz - r), (wx + r, wz - r), (wx + r, wz + r), (wx - r, wz + r)];
@@ -230,9 +232,32 @@ impl App {
             };
             g.quad(Mode::Flat, Some(tex), u, [c(l, t, 0.0, 0.0), c(r, t, 1.0, 0.0), c(r, b, 1.0, 1.0), c(l, b, 0.0, 1.0)]);
         };
+        // a flower bed piece sprite keeps the palette it is drawn in and a weedy bed is drawn in the one kept (App::bed_palette),
+        // so the beds are walked in the exe's tile loop order (0x410604: b outer, a inner, both rising, tiles on the screen
+        // only) to find each weedy bed's colour
+        let mut beds: Vec<(i32, i32, usize)> = Vec::new();
+        for &(_, i) in &items {
+            if let Some((_, _, a, b)) = self.props[i].bed {
+                if self.tile_on_screen(a, b).is_some() {
+                    beds.push((b, a, i));
+                }
+            }
+        }
+        beds.sort_unstable();
+        let mut weedy: Vec<(usize, Option<usize>)> = Vec::new();
+        for &(_, _, i) in &beds {
+            let Some((id, pal, _, _)) = self.props[i].bed else { continue };
+            let k = (id - 0x1a2) as usize;
+            if pal != WEEDY_BED {
+                self.bed_palette[k] = pal;
+            } else if self.bed_palette[k] != 0 {
+                let kept = self.decor_sprite(id, self.bed_palette[k]).0;
+                weedy.push((i, kept));
+            }
+        }
         for &(_, i) in &items {
             if self.props[i].flat {
-                let b = self.props[i].body;
+                let b = weedy.iter().find(|w| w.0 == i).and_then(|w| w.1).or(self.props[i].body);
                 quad(self, g, b, i, false);
             }
         }
@@ -269,8 +294,8 @@ impl App {
         }
         let white = [1.0; 4];
         let black = [0.0, 0.0, 0.0, 1.0];
-        let yellow = crate::info_ui::c15(0x7f9c);
-        // a w x h pixel box, its top left (dx, dy) pixels from a world point (screen y down)
+        let yellow = crate::ui::line_rgba(0x7f9c, 7); // a Terrain::drawLine at alpha 7 tenths (0x415809)
+                                                      // a w x h pixel box, its top left (dx, dy) pixels from a world point (screen y down)
         let quad = |g: &mut Gfx, p: [f32; 3], dx: f32, dy: f32, w: f32, h: f32, col: [f32; 4]| {
             let c = |cx: f32, cy: f32| {
                 let (cx, cy) = (cx * px, -cy * px);
@@ -695,14 +720,11 @@ impl App {
                 self.dock_tip = (self.dock_hover, 0);
             }
             if self.dock_hover >= 0 && self.dock_tip.1 > 11 {
+                // the shared bar: a 10 pixel black line at half opacity (Terrain::drawLine's alpha in tenths, 5), the words in
+                // Arial Bold 10 with their top 5 above the line
                 let tip = DOCK_HELP[self.dock_hover as usize];
-                let n = tip.chars().count() as f32;
                 let (px, py) = self.info.pointer;
-                let x = px.clamp(3.0 * n, 800.0 - 3.0 * n);
-                let y = py - 5.0;
-                // APPROXIMATION: the bar is a 10 pixel line through y; its blend is not decoded
-                s.fill(g, x - 3.0 * n, y - 5.0, 6.0 * n, 10.0, rgba(0.0, 0.0, 0.0, 0.5));
-                s.text_centered(g, x, y + 4.0, tip, 11.0, rgb(1.0, 1.0, 1.0));
+                crate::panels_ui::tip_bar(g, s, tip, px, py);
             }
         }
         if self.art_panel_open() {
