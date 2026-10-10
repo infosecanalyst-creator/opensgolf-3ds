@@ -294,7 +294,12 @@ fn open_screen(app: &mut App, screen: Option<&str>) {
             }
             app.screen = Screen::Board;
         }
-        Some("yearend") if app.ui_ok => app.screen = Screen::YearEnd,
+        // the report as the coming year end will show it (the season in progress), whatever the date: the real report opens
+        // only on the tick that ends a season
+        Some("yearend") if app.ui_ok => {
+            app.year_end_tick = (app.club.tick | 0x1fff) + 1;
+            app.screen = Screen::YearEnd;
+        }
         Some("roster") if app.ui_ok => {
             roster_fill(app);
             app.screen = Screen::Roster;
@@ -362,6 +367,9 @@ fn open_screen(app: &mut App, screen: Option<&str>) {
         Some("skills") if app.ui_ok => {
             let pts = app.club.first_skill_points();
             app.open_skills(pts, Some(false));
+            if let Some(d) = app.skill_dialog.as_mut() {
+                d.intro = true;
+            }
         }
         // an accomplishment's three points: the card over the trophy room
         Some("skillsaward") if app.ui_ok => {

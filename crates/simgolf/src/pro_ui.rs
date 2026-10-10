@@ -27,7 +27,12 @@ pub struct SkillDialog {
     /// Opened for an accomplishment's three points: footage of the original shows the card over the trophy room under a
     /// heading "Add three skill points to your player...".
     pub award: bool,
+    /// The first allocation, before the pro's first round (0x4065c0): the explanation box under the card.
+    pub intro: bool,
 }
+
+/// The explanation 0x4065c0 shows under the card on the first allocation (texts 0x4c4714 and 0x4c46bc).
+const INTRO: &str = "Before you play your course you may customize your character by improving his or her golf skills. You can also win additional skill points for each accomplishment added to your trophy.";
 
 /// The x offset the exe passes for the player's own card.
 const X0: f32 = 200.0;
@@ -92,6 +97,9 @@ impl App {
                     // the first allocation comes before the first round (0x4065c0)
                     let pts = self.club.first_skill_points();
                     self.open_skills(pts, Some(m));
+                    if let Some(d) = self.skill_dialog.as_mut() {
+                        d.intro = true;
+                    }
                 } else if !self.club.request_pro_round(m) {
                     self.show_toast("The round can't start now");
                 }
@@ -129,7 +137,7 @@ impl App {
         // the card's title is the pro's name
         let title = self.pro_name();
         let editable = points > 0;
-        self.skill_dialog = Some(SkillDialog { floor: self.club.pro_skill, points, title, then, confirm: false, editable, award: false });
+        self.skill_dialog = Some(SkillDialog { floor: self.club.pro_skill, points, title, then, confirm: false, editable, award: false, intro: false });
         self.screen = Screen::Skills;
     }
 
@@ -240,6 +248,10 @@ impl App {
             s.fill(g, 200.0, 11.0, 1.0, 40.0, edge);
             s.fill(g, 529.0, 11.0, 1.0, 40.0, edge);
             s.text(g, 212.0, 23.0 + 15.0, "Add three skill points to your player...", 20.0, c15(0x03fc));
+        }
+        if d.intro {
+            // EXACT (0x4065c0): drawn before the card, at (200, 0x172) through 0x40d320 with nobody speaking, mode -2
+            self.draw_note_box(g, &s, 200.0, 370.0, INTRO);
         }
         let (mx, my) = self.card_ui.mouse;
         self.art.solid_frame(g, &s, X0 + 46.0, 50.0, 320.0, 316.0);

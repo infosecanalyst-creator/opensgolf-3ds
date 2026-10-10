@@ -1299,9 +1299,8 @@ impl App {
         s.image(g, &im, 0.0, 0.0);
         let ink = rgb(0.0, 0.0, 0.0);
         // fonts (0x459400): the title in 0x821020 (Klepto 24) centred at (377, 107), the rest in 0x821ee8 (Manual SSi 14),
-        // all black: each kind's blurb left at 231 with its top 20 above its band, the wage lines left at 246 (footage of the
-        // original: the capitals' tops 1 below the line's band, the pointed line on a solid yellow bar 231..521 by 16 from 3
-        // above the band, the wage without a dollar sign: "Club Pro: 300 per week")
+        // all black: each kind's blurb left at 231 with its top at 0x97 + 0x47 k, 20 above its first line, the wage lines
+        // left at 246
         s.put_centered(g, crate::ui::F_INFO_TITLE, 377.0, 107.0, "HIRE AN EMPLOYEE", ink);
         let (mx, my) = self.pstate.mouse;
         let hot = hire_choice_at(mx, my);
@@ -1312,18 +1311,26 @@ impl App {
                 let c = 2 * k + sk;
                 let ty = y + sk as f32 * 20.0;
                 if hot == Some(c) {
-                    // APPROXIMATION: the yellow as footage shows it, corrected for the video's colour shift
-                    s.fill(g, 231.0, ty - 3.0, 291.0, 16.0, rgb(0.98, 0.86, 0.03));
+                    // EXACT (0x459400): the bar (0xe7, line - 2, 0x123 x 0x10) in 0x7f40 (0xfea0 on a 565 screen), the
+                    // yellow (255, 214, 0)
+                    s.fill(g, 231.0, ty - 2.0, 291.0, 16.0, crate::info_ui::c15(0x7f40));
                 }
-                let text = format!("{}: {} per week", STAFF_NAMES[k][sk], WAGE_UNITS[k][sk] * 100);
-                // footage of the original: a Municipal course lists the skilled lines in black like the rest (the refusal
-                // comes on the click)
-                s.text(g, 246.0, ty + 10.0, &text, 14.0, ink);
+                // EXACT (0x459400): the job's name, ": ", the wage table 0x4c2e2c times 100 through the number formatter
+                // 0x42dc00 and " per week", left at 0xf6 with its top at the line's y (the heading's + 20, + 40), black;
+                // footage of the original: a Municipal course lists the skilled lines in black like the rest (the
+                // refusal comes on the click)
+                let text = format!("{}: {} per week", STAFF_NAMES[k][sk], crate::ui::group((WAGE_UNITS[k][sk] * 100) as u64));
+                s.put(g, crate::ui::F_INFO14, 246.0, ty, &text, ink);
             }
             // 0x459400: the box beside each kind shows it walking, the skilled version while its line is hovered, in view k,
-            // at (0x240, 0xc0 + 0x46 k)
+            // queued (0x4628d0) at (0x240, 0xc0 + 0x46 k) with a 0x28 x 0x28 box at zoom 4. The queue blits from the point
+            // less zoom * box * 4 / 16, and the employee panel queues the same clips with a 0x1e wide box at its figure's
+            // ground point (`draw_employee_panel`), so with the 0x28 box the figure stands 10 to the left of 0x240: EXACT
+            // arithmetic, and footage of the original agrees (the figures' centroids 9 to 10 left of the port's at 576,
+            // the same height)
             let skilled = hot.is_some_and(|c| c == 2 * k + 1);
-            self.draw_walking(g, s, k + 4 * skilled as usize, k as i32, 576.0, (0xc0 + 0x46 * k) as f32);
+            let x = (0x240 - (0x28 - 0x1e)) as f32;
+            self.draw_walking(g, s, k + 4 * skilled as usize, k as i32, x, (0xc0 + 0x46 * k) as f32);
         }
         // the OK tick (OkStates) at (553, 422), blue, lit under the pointer (the art has only its well)
         self.ok_tick(g, s, HIRE_OK.0, HIRE_OK.1, false);

@@ -1155,10 +1155,14 @@ impl App {
                 s.fill(g, x, y - 166.0, 200.0, 160.0, rgb(0.25, 0.4, 0.25));
                 s.text_centered(g, x + 100.0, y - 90.0, self.club.award_title(*id), 12.0, rgb(1.0, 1.0, 0.85));
             }
-            // the pin: TacksandArrow cut 8 (100, 0, 20 x 24)
+            // the pin (EXACT, 0x46ed33): colour cut 8 + (k + 1) mod 3 of TacksandArrow (cuts 0x53c830, column x 100 and
+            // the colour rows y 0 grey, 50 yellow, 100 red), so the oldest photo's pin is yellow, then red, then grey, as
+            // footage of the original shows; its mask is TacksandArrow_A cut 8 (100, 0) whatever the colour, the same
+            // shape as the cell's own
             let tk = &self.info.art.tacks;
             if tk.tex.is_some() {
-                s.image_part(g, tk, x + 100.0, y - 179.0, 100.0, 0.0, 20.0, 24.0);
+                let row = ((k + 1) % 3) as f32;
+                s.image_part(g, tk, x + 100.0, y - 179.0, 100.0, 50.0 * row, 20.0, 24.0);
             }
             let day = (e.tick & 0x3ff) * 30 / 1024 + 1;
             let month = MONTHS[((e.tick >> 10) & 7) as usize];
@@ -1231,6 +1235,7 @@ impl App {
     // ---- the year-end report ------------------------------------------------------------------------------------------
 
     pub fn open_year_end(&mut self) {
+        self.year_end_tick = self.club.tick;
         if self.ui_ok && self.screen == Screen::Play {
             self.screen = Screen::YearEnd;
             self.screen_jingle(0x7f, Screen::YearEnd);
@@ -1250,7 +1255,8 @@ impl App {
         } else {
             s.fill(g, 187.0, 40.0, 429.0, 176.0, rgb(0.9, 0.88, 0.8));
         }
-        let tick = self.club.tick;
+        // EXACT (0x44cff0): 2000 + the year index (0x5a6d3c, ticks >> 13) of the tick the report opened at
+        let tick = self.year_end_tick;
         let year = 2000 + (tick >> 13);
         // fonts (0x44cff0): the title in 0x821020 (Klepto 24) centred at (406, 55), the rest in
         // 0x821ee8 (Manual SSi 14): the column heads centred at 465 and 566 with tops at 93, the rows' sentences centred on
