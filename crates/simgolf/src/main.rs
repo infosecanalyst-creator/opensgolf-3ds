@@ -282,6 +282,8 @@ fn open_screen(app: &mut App, screen: Option<&str>) {
         Some("land") => app.open_land_screen(),
         Some("report") if app.ui_ok => app.screen = Screen::Report,
         Some("pair") if app.ui_ok => app.screen = Screen::Pair,
+        // the great-shot SimFoto (0x407e00) of the player's pro, or of the first golfer on screen with the partner
+        Some("greatshot") => app.test_great_shot = true,
         Some("board") if app.ui_ok => {
             // SG_BOARD_AWARDS="id,id,..": accomplishments marked earned (a month apart, no snapshot) for a still
             if let Ok(ids) = std::env::var("SG_BOARD_AWARDS") {
@@ -1470,7 +1472,9 @@ impl Stage {
             app.render_world(&mut self.g);
             app.draw_water_glints(&mut self.g);
             app.draw_building_label(&mut self.g);
-            app.draw_cursor_overlay(&mut self.g);
+            if app.great_shot.is_none() {
+                app.draw_cursor_overlay(&mut self.g);
+            }
             if !app.no_hud {
                 app.draw_hud(&mut self.g);
             }
@@ -1580,9 +1584,21 @@ impl Stage {
             return;
         }
         let Some((l, t, r, b)) = self.app.simfoto_rect(&f) else { return };
+        let out = self.grab_rect(l - 2, t - 2, (r - l + 6).max(1) as u32, (b - t + 6).max(1) as u32);
+        let name = format!("{}-{}.png", self.app.club.name(f.slot), self.app.simfoto_date());
+        let name: String = name.chars().map(|c| if "/\\:*?\"<>|".contains(c) { '_' } else { c }).collect();
+        let dir = self.app.snapshot_dir();
+        sg_core::png::write_png(dir.join(name), &out);
+        self.app.ui_sound(0x95);
+        if let Some(s) = self.app.simfoto.as_mut() {
+            s.saved = true;
+        }
+    }
+
+    /// The screen's (x0, y0) w x h (800 x 600 pixels) as it is drawn now.
+    fn grab_rect(&mut self, x0: i32, y0: i32, w: u32, h: u32) -> sg_core::assets::Rgba {
         let img = self.grab();
         let v = self.app.view;
-        let (x0, y0, w, h) = (l - 2, t - 2, (r - l + 6).max(1) as u32, (b - t + 6).max(1) as u32);
         let mut out = sg_core::assets::Rgba::new(w, h);
         for y in 0..h {
             for x in 0..w {
@@ -1595,14 +1611,18 @@ impl Stage {
                 }
             }
         }
-        let name = format!("{}-{}.png", self.app.club.name(f.slot), self.app.simfoto_date());
+        out
+    }
+
+    /// F10 while the great-shot SimFoto waits (0x407e00): the photo's inside and 2 pixels round it to
+    /// snapshots/<golfer><tick>.png (the exe writes snapshots\<name><tick>.bmp through 0x475580).
+    fn save_great_shot(&mut self) {
+        let Some(gs) = self.app.great_shot.clone().filter(|gs| gs.held && gs.shown) else { return };
+        let (l, t, r, b) = gs.rect;
+        let out = self.grab_rect(l - 42, t - 42, (r - l + 84) as u32, (b - t + 84) as u32);
+        let name = format!("{}{}.png", self.app.club.vip_name(gs.g), self.app.game_tick);
         let name: String = name.chars().map(|c| if "/\\:*?\"<>|".contains(c) { '_' } else { c }).collect();
-        let dir = self.app.snapshot_dir();
-        sg_core::png::write_png(dir.join(name), &out);
-        self.app.ui_sound(0x95);
-        if let Some(s) = self.app.simfoto.as_mut() {
-            s.saved = true;
-        }
+        sg_core::png::write_png(self.app.snapshot_dir().join(name), &out);
     }
 
     fn grab(&mut self) -> sg_core::assets::Rgba {
@@ -1726,6 +1746,7 @@ impl EventHandler for Stage {
             && app.title.save_name.is_none()
             && app.analysis.is_none()
             && app.simfoto.is_none_or(|f| f.frames < 2)
+            && app.great_shot.is_none()
         {
             app.time += dt * app.speed.max(1) as f64;
         }
@@ -1745,6 +1766,7 @@ impl EventHandler for Stage {
             None => self.draw_frame(None),
         }
         self.g.ctx.commit_frame();
+        self.app.great_shot_frame();
         if self.app.simfoto.is_some_and(|f| !f.saved && f.frames >= 2) {
             self.save_simfoto();
         }
@@ -1835,14 +1857,14 @@ impl EventHandler for Stage {
     }
 
     fn mouse_wheel_event(&mut self, _x: f32, y: f32) {
-        if (self.app.screen == Screen::Play || !self.app.ui_ok) && y != 0.0 {
+        if (self.app.screen == Screen::Play || !self.app.ui_ok) && y != 0.0 && self.app.great_shot.is_none() {
             self.app.zoom_step(y > 0.0);
         }
     }
 
     fn mouse_button_down_event(&mut self, button: MouseButton, x: f32, y: f32) {
         self.mouse = (x, y);
-        if self.app.simfoto_dismiss() {
+        if self.app.great_shot_dismiss() || self.app.simfoto_dismiss() {
             return;
         }
         if self.app.analysis_input() {
@@ -1966,6 +1988,14 @@ impl EventHandler for Stage {
         self.shift = mods.shift || k == KeyCode::LeftShift || k == KeyCode::RightShift;
         self.app.shift_held = self.shift;
         self.ctrl = mods.ctrl || k == KeyCode::LeftControl || k == KeyCode::RightControl;
+        if self.app.great_shot.is_some() {
+            // the photo's wait (0x45c0c0) ends on any key; F10 first saves it
+            if k == KeyCode::F10 {
+                self.save_great_shot();
+            }
+            self.app.great_shot_dismiss();
+            return;
+        }
         if self.app.simfoto_dismiss() || self.app.rename_key(k) || self.app.save_key(k) || self.app.analysis_input() {
             return;
         }

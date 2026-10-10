@@ -236,7 +236,7 @@ pub struct Member {
     pub avg: i8,
     /// bits 0..2 level: 0 not invited, 1 visitor, 2 member, 3 silver, 4 gold, 5 platinum
     pub level: u8,
-    /// +3 + h: 1 story scene, 2 happy ending, 4 quit on hole h
+    /// +3 + h: 1 a great-shot SimFoto taken on hole h (0x407e00), 2 happy ending, 4 quit on hole h
     pub holes: [u8; 19],
     /// +0x16 + h: strokes on hole h in the last round
     pub card: [u8; 19],
@@ -274,7 +274,23 @@ pub enum Event {
     },
     /// A golfer finished a hole (employees serving them note it): the hole, strokes taken, mood and fee paid.
     HoleDone { g: usize, hole: i32, strokes: i32, mood: i32, fee: i32 },
+    /// A remarkable shot (0x407e00, see `pro::Club::great_shot`): the golfer, the partner, the composed message, whether it
+    /// was a bad one and the shot's replay points (map units and height). The game shows the great-shot SimFoto when the
+    /// shot is on screen, else (for the player's pro only) posts the text to the ticker.
+    GreatShot { g: usize, partner: usize, text: String, bad: bool, pts: Vec<(i32, i32, i32)> },
 }
+
+/// A shot's replay record (0x388 bytes each at 0x59fc60, 16 of them): the golfer and the ball's points, taken when the
+/// shot is struck on screen (0x4099f0: the origin at height 0) and in flight (0x409950: every 8 game ticks and at the top
+/// of each arc); the record keeps 31 points. It is let go when the golfer's ball no longer moves.
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct ShotRec {
+    pub g: usize,
+    pub pts: Vec<(i32, i32, i32)>,
+}
+
+/// Replay records the exe has room for.
+pub const SHOT_RECS: usize = 16;
 
 /// The golfers and everything they share (the exe's globals near them).
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -403,6 +419,15 @@ pub struct Club {
     /// The Preferences' "Advisor and first-time messages" option (bit 4 of 0x5a5a00), set by the game before each tick.
     #[serde(skip)]
     pub advisor: bool,
+    /// The shots in the air with a replay record (see `ShotRec`).
+    pub shot_recs: Vec<ShotRec>,
+    /// The view is at the exe's closest zoom (0x4c2844 above 3), which the great-shot review needs (0x409620); set by the
+    /// game before each tick.
+    #[serde(skip)]
+    pub view_close: bool,
+    /// The Preferences' "Show snapshots of great shots." option (bit 2 of 0x5a5a00), set by the game before each tick.
+    #[serde(skip)]
+    pub show_snapshots: bool,
 }
 
 impl Default for Club {
@@ -501,6 +526,9 @@ impl Club {
             narrated: [0; 2],
             last_narration: 0,
             advisor: true,
+            shot_recs: Vec::new(),
+            view_close: true,
+            show_snapshots: true,
         }
     }
 
@@ -1524,6 +1552,10 @@ impl Club {
         let gt = flat(ga, gb).map(|i| c.ty[i]).unwrap_or(t::OUT);
         if self.g[g].speed == 0 {
             self.g[g].flags &= !flag::BALL_MOVING;
+        }
+        // the shot's replay record is let go once the ball no longer moves (0x4289e0)
+        if self.g[g].flags & flag::BALL_MOVING == 0 {
+            self.shot_recs.retain(|r| r.g != g);
         }
         let mut l = Locals { ba, bb, bt, ga, gb, gt, old_flags: 0, wait_tee: false, closer: false };
         if self.g[g].pause < 0 {
@@ -2753,6 +2785,11 @@ impl Club {
                         self.sound(snd, Some(at));
                     }
                     self.g[g].flags |= flag::BALL_MOVING;
+                    // a shot struck on screen gets a replay record (0x4099f0), its first point the origin
+                    if self.g[g].sx != -1 && self.shot_recs.len() < SHOT_RECS {
+                        let gg = &self.g[g];
+                        self.shot_recs.push(ShotRec { g, pts: vec![(gg.ox, gg.oy, 0)] });
+                    }
                     if self.g[g].class & 0xf0 != 0 && l.bt != t::GREEN && g as i32 == self.gary {
                         self.sound_after(0x2e, Some(at), 1000);
                     }
@@ -2838,9 +2875,19 @@ impl Club {
         gg.bx += dx;
         gg.by -= dy;
         gg.bz += gg.vz / 32;
+        // the replay record takes a point at the top of each arc and every 8 game ticks (0x409950)
+        let mut point = false;
         if gg.bz != 0 || gg.vz != 0 {
+            point = 0 < gg.vz && gg.vz < 0x40;
             gg.vz -= 0x40;
         }
+        let pt = (gg.bx, gg.by, gg.bz);
+        for take in [point, tick & 7 == 0] {
+            if let Some(r) = self.shot_recs.iter_mut().find(|r| r.g == g).filter(|r| take && r.pts.len() < 31) {
+                r.pts.push(pt);
+            }
+        }
+        let gg = &mut self.g[g];
         let ux = (gg.bx >> 6) & 0xf;
         let uy = (gg.by >> 6) & 0xf;
         let mut edge = 0;
@@ -2921,6 +2968,9 @@ impl Club {
                 let at = (gg.bx, gg.by);
                 gg.bx = a * 0x400 + 0x200;
                 gg.by = b * 0x400 + 0x200;
+                // the exe reviews a holed shot too (0x409620 before the stroke is counted)
+                self.shot_review(c, rng, g);
+                let gg = &mut self.g[g];
                 gg.strokes += 1;
                 self.sound(4, Some(at));
                 self.hole_end(c, rng, g);

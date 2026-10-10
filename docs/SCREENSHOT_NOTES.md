@@ -112,6 +112,13 @@ picture's edges were ignored.
 - Message box beside a speaker: 4, 5, 7 and 8 line messages have frames 27..137, 27..137, 25..167 and 24..182, i.e. 16
   pixels shorter than the port drew, and short texts are centred: the text height beside a speaker is 15 a line plus
   0x10 (not 0x20). Fixed in `message_ui::draw_ticker`; the speaker ball, the text's left edge and the wrap match.
+  Settled from the exe (October 2026): the line counter 0x45af30 returns the line breaks, not the lines, and 0x40d320
+  takes 15 per break plus 0x20 for every box, beside a speaker or not (`message_ui::message_box`). Beside a speaker that
+  is 1 pixel more than 15 a line plus 0x10 (the four-line great-shot box, p1 3001, has its text rows 25..79 below the
+  frame's top in footage and in the port, the old sum put them a pixel lower); without one it is 15 pixels less than the
+  port drew: the strips of two and three lines (p2 1120 "WARNING: Your Snack Bar...", p2 1880 "You've already built a
+  tee for hole 7...") have their rails on rows 41 and 57, the port now on 42-43 and 58-59 (they were 15 lower). The wrap
+  now follows 0x45af30 character by character and keeps double spaces ("Hole 4!  Long Jim", p1 5161).
 - Tournament leader board: the translucent dialog frame from the top left corner (right line x 141, bottom 158 with ten
   rows), the title "LEADER BOARD of" / "the §120,000" / "2004 San Diego Open" (the property's name, not the club's),
   rows "N. Name (E)" in white with the pro in green, black shadows. The port had a plain box, the purse last, a score
@@ -135,9 +142,17 @@ picture's edges were ignored.
 - Matching already: golfer names (Arial Bold 10, white, no shadow, top at the golfer's feet), thought bars (Arial
   Bold 10 on a half black 10 pixel bar, green for a pleased newest thought), hole label size and spacing, the SimFoto's
   border, frame line and "SimFoto" caption, pill text, "Paused" place.
-- Not changed: one 5 line message during a shot (p1 3000) sits lower (box from y 137). SETTLED, not ported: it is not
-  the ticker but the great-shot SimFoto (0x407e00, see docs/DECODE_TOURNAMENTS.md 9), a feature the port lacks;
-  the aim line's dark edge looks softer than the port's black line but the video cannot settle it; "Paused" is a pixel
+- The message during a shot (p1 3000) is not the ticker but the great-shot SimFoto (0x407e00, docs/DECODE_TOURNAMENTS.md
+  9), now ported (`screens_ui::great_shot_event` / `draw_great_shot`). Footage p1 2998-3006, 5160-5164 and 6154-6161
+  (frames a second apart): the frozen frame shows the course with the golfers' names and words but none of the HUD
+  (dock, name plate, pills, leader board, ticker) and black past the map's edge; the white photo border 16 wide (p1 3001,
+  bright from x 142..156, y 238..251, x 512..525 and y 502..515 in the scaled video), the shot's ground track in black and its flight in
+  white, "SimFoto" under it in grey, the date ("10'6'2002", "6'16'2005", "8'18'2006") inside the lower right corner, and
+  the pro's ball face box with the message whose frame is at (170, top - 156) (p1 3001 137, p1 5161 108, p1 6158 48).
+  The four-line wrap of p1 3001 comes out word for word the same. The photo stays until a click (5 to 8 seconds in the
+  footage). Test hook: `--screen greatshot` (the pro, else the first golfer on screen with the partner, with a made-up
+  4 Wood shot toward the pin), `SG_GREATSHOT_TEXT` replaces its message.
+- Not changed: the aim line's dark edge looks softer than the port's black line but the video cannot settle it; "Paused" is a pixel
   taller in the port (font rasterising).
 
 Test hooks added for these stills: `SG_MESSAGE="speaker;text"` posts a ticker message (a golfer slot, -1 for nobody, or

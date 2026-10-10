@@ -334,6 +334,22 @@ pub struct SimFoto {
     pub saved: bool,
 }
 
+/// The great-shot SimFoto (0x407e00) while it is up: the golfer, a bad shot (red border), the message, the framed points'
+/// bounds (left, top, right, bottom, before the 40 pixel margin), the shot's ground track and flight on screen, whether it
+/// waits for a click (with the message box) or goes after one frame, its date stamp and whether it has been drawn.
+#[derive(Clone, Debug)]
+pub struct GreatShot {
+    pub g: usize,
+    pub bad: bool,
+    pub text: String,
+    pub rect: (i32, i32, i32, i32),
+    pub ground: Vec<(i32, i32)>,
+    pub air: Vec<(i32, i32)>,
+    pub held: bool,
+    pub date: String,
+    pub shown: bool,
+}
+
 const MONTHS: [&str; 8] = ["March", "April", "May", "June", "July", "August", "September", "October"];
 
 /// The board's handwritten to-do strips on tacs&tees, one per accomplishment class (cut table 0x4c2d38, x y w h).
@@ -1091,6 +1107,155 @@ impl App {
             return true;
         }
         false
+    }
+
+    // ---- the great-shot SimFoto (0x407e00) -------------------------------------------------------------------------
+
+    /// A remarkable shot from the club (`Event::GreatShot`), as 0x407e00 shows it. The photo frames the golfer, the partner
+    /// and the shot's points as they stand on screen (the golfers' recorded screen points, the ball's points lifted by
+    /// height * 5 * zoom / 4 / 16), 40 pixels round them; it needs the golfers on screen, the box's left and top at least
+    /// 56 (a point above or left of the screen's edge spoils it), its right at most 760 and its bottom at most 560. Without
+    /// it the player's pro's message goes to the ticker with the shutter sound (0x95), and an ordinary golfer's is not told
+    /// (one off screen still has the photo noted on the hole). With it the photo is taken (sound 0x95), with the message
+    /// box for the player's pro, or for anyone while the pro is not out, the Preferences' "Show snapshots of great shots."
+    /// is on and nobody has had one on this hole; that photo waits for a click or a key, another is gone after one frame.
+    pub fn great_shot_event(&mut self, g: usize, partner: usize, text: String, bad: bool, pts: &[(i32, i32, i32)]) {
+        let pro = g as i32 == self.club.gary;
+        let (gs, ps) = ((self.club.g[g].sx, self.club.g[g].sy), (self.club.g[partner].sx, self.club.g[partner].sy));
+        if gs.0 < 1 || gs.1 < 1 || ps.0 < 1 || ps.1 < 1 || self.great_shot.is_some() {
+            if pro {
+                self.post_message(&text, 1, g as i32);
+                self.ui_sound(0x95);
+            } else {
+                self.club.great_shot_noted(g);
+            }
+            return;
+        }
+        let (mut l, mut r) = (gs.0.min(ps.0), gs.0.max(ps.0));
+        let (mut t, mut b) = (gs.1.min(ps.1), gs.1.max(ps.1));
+        let zoom = self.exe_zoom().round() as i32;
+        let (mut ground, mut air) = (Vec::new(), Vec::new());
+        for &(x, y, z) in pts {
+            let Some((sx, sy)) = self.screen_of(x, y) else { continue };
+            let (sx, sy) = (sx as i32, sy as i32);
+            ground.push((sx, sy + 1));
+            let lift = (z * sg_core::course::HEIGHT_STEP_PX * zoom / 4) / 16;
+            let ay = sy - lift;
+            air.push((sx, ay));
+            l = l.min(sx);
+            r = r.max(sx);
+            t = t.min(ay);
+            b = b.max(ay);
+        }
+        let mut ok = true;
+        for v in [&mut l, &mut t] {
+            if *v < 0x38 {
+                if *v < 0 {
+                    ok = false;
+                } else {
+                    *v = 0x38;
+                }
+            }
+        }
+        if r > 0x2f8 || b > 0x230 {
+            ok = false;
+        }
+        if !ok {
+            if pro {
+                self.post_message(&text, 1, g as i32);
+                self.ui_sound(0x95);
+            }
+            return;
+        }
+        let first = self.show_snapshots && self.club.first_great_shot(self.club.g[g].hole);
+        let held = pro || (first && self.club.gary == -1);
+        self.ui_sound(0x95);
+        println!("[{:6.1}s] great shot (photo {l},{t} to {r},{b}): {text}", self.sim_time);
+        self.great_shot = Some(GreatShot { g, bad, text, rect: (l, t, r, b), ground, air, held, date: self.simfoto_date(), shown: false });
+    }
+
+    /// The great-shot SimFoto over the course (drawn in place of the HUD, as footage of the original shows: the frozen frame
+    /// has the course, the golfers' names and words, and none of the panels). In the exe's order: the shot's ground track
+    /// in black one pixel down and its flight in white (Terrain::drawLine, 2 wide, alpha 7 tenths), the message box at
+    /// (150, top - 192) (its frame at (170, top - 156)), or below the photo at y = clamp(bottom + 40, 0, 450) when the top
+    /// is above 192; then the border 16 wide (white, or 0x7d08 red for a bad shot) round the inner box (left - 40, top - 40)
+    /// to (right + 40, bottom + 40), the black line on that box, "SimFoto" centred under it at bottom + 44 in 0x6318 and
+    /// the date month'day'year from (right - 40, bottom + 24) in 0x7ff0 with the shadowed call's dark red below.
+    pub fn draw_great_shot(&mut self, g: &mut Gfx, s: &Ui) {
+        let Some(gs) = self.great_shot.as_mut() else { return };
+        gs.shown = true;
+        let gs = gs.clone();
+        let (l, t, r, b) = gs.rect;
+        let a = 0.7;
+        for (pts, col) in [(&gs.ground, [0.0, 0.0, 0.0, a]), (&gs.air, [1.0, 1.0, 1.0, a])] {
+            for w in pts.windows(2) {
+                s.line(g, w[0].0 as f32, w[0].1 as f32, w[1].0 as f32, w[1].1 as f32, 2.0, col);
+            }
+        }
+        if gs.held {
+            let y = if t < 0xc0 { (b + 0x28).clamp(0, 0x1c2) } else { t - 0xc0 };
+            self.message_box(g, s, 150.0, y as f32, -2, &gs.text, gs.g as i32);
+        }
+        let (il, it, ir, ib) = ((l - 40) as f32, (t - 40) as f32, (r + 40) as f32, (b + 40) as f32);
+        let frame = if gs.bad { c15(0x7d08) } else { c15(0x7fff) };
+        let w = ir - il + 32.0;
+        s.fill(g, il - 16.0, it - 16.0, w, 16.0, frame);
+        s.fill(g, il - 16.0, it, 16.0, ib - it, frame);
+        s.fill(g, ir, it, 16.0, ib - it, frame);
+        s.fill(g, il - 16.0, ib, w, 16.0, frame);
+        let ink = rgb(0.0, 0.0, 0.0);
+        s.fill(g, il, it, ir - il + 1.0, 1.0, ink);
+        s.fill(g, il, it, 1.0, ib - it + 1.0, ink);
+        s.fill(g, il, ib, ir - il + 1.0, 1.0, ink);
+        s.fill(g, ir, it, 1.0, ib - it + 1.0, ink);
+        s.text_centered(g, ((ir + il) / 2.0).trunc(), top(ib + 4.0, BODY), "SimFoto", BODY, c15(0x6318));
+        s.text(g, ir - 80.0, top(ib - 16.0, BODY) + 1.0, &gs.date, BODY, crate::ui::SHADOW_1);
+        s.text(g, ir - 80.0, top(ib - 16.0, BODY), &gs.date, BODY, c15(0x7ff0));
+    }
+
+    /// The --screen greatshot test hook, once the golfers' screen points are known: the player's pro (or the first golfer
+    /// on screen with the partner) is given a great shot and its SimFoto (sg_core's `great_shot_test`).
+    pub fn test_great_shot_now(&mut self) {
+        let on = |a: &App, g: usize| a.club.g[g].sx > 0 && a.club.g[g].sy > 0 && (1..=18).contains(&a.club.g[g].hole);
+        let pick = (0..SLOTS)
+            .filter(|&g| on(self, g) && on(self, self.club.g[g].partner.clamp(0, SLOTS as i32 - 1) as usize))
+            .min_by_key(|&g| (g as i32 != self.club.gary) as i32);
+        let Some(g) = pick else {
+            println!("greatshot: no golfer pair on screen");
+            return;
+        };
+        self.club.great_shot_test(&self.course, &mut self.exe_rng, g);
+        let events: Vec<_> = self.club.out.drain(..).collect();
+        for e in events {
+            if let sg_core::golfer::Event::GreatShot { g, partner, text, bad, pts } = e {
+                // SG_GREATSHOT_TEXT replaces the message (to set a footage frame's words beside the port's)
+                let text = std::env::var("SG_GREATSHOT_TEXT").unwrap_or(text);
+                self.great_shot_event(g, partner, text, bad, &pts);
+            } else {
+                self.club.out.push(e);
+            }
+        }
+    }
+
+    /// After a frame: a photo that does not wait is let go once drawn.
+    pub fn great_shot_frame(&mut self) {
+        if self.great_shot.as_ref().is_some_and(|gs| gs.shown && !gs.held) {
+            self.great_shot_release();
+        }
+    }
+
+    /// A click or a key lets the held photo go (0x45c0c0).
+    pub fn great_shot_dismiss(&mut self) -> bool {
+        if self.great_shot.as_ref().is_some_and(|gs| gs.held && gs.shown) {
+            self.great_shot_release();
+            return true;
+        }
+        self.great_shot.is_some()
+    }
+
+    fn great_shot_release(&mut self) {
+        let Some(gs) = self.great_shot.take() else { return };
+        self.club.great_shot_after(&mut self.course, &mut self.exe_rng, gs.g, gs.bad);
     }
 
     // ---- the accomplishments board ------------------------------------------------------------------------------------
