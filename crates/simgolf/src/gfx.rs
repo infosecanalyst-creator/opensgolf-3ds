@@ -139,7 +139,8 @@ void main() {
     if (lit > 0.5) {
         // OpenGL's lighting of the default material: global ambient 0.2 and the light's ambient times 0.2, the light's
         // diffuse times 0.8, and the specular (shininess 13, viewer at infinity) where the face is lit
-        vec3 n = normalize((mv * vec4(in_normal, 0.0)).xyz);
+        // not normalised, as OpenGL without GL_NORMALIZE: the terrain's normals are unit, the cliff's are not
+        vec3 n = (mv * vec4(in_normal, 0.0)).xyz;
         float d = dot(n, light_dir);
         vec3 s = vec3(0.04) + 0.2 * light_amb;
         if (d > 0.0) {

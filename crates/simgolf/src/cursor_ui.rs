@@ -25,7 +25,7 @@
 
 use crate::app::*;
 use crate::gfx::{Gfx, Mode, Uniforms, Vert};
-use crate::ui::{rgb, Screen as Ui};
+use crate::ui::{line_rgba, rgb, Screen as Ui};
 use sg_core::land;
 
 /// The exe's 15-bit colours.
@@ -377,9 +377,8 @@ impl App {
     /// The length of the hole being built (0x41aedd): with the green brush while the hole has its tee and no green, a white
     /// line two pixels wide from the tee's tile to the tile under the pointer, and "N yards" (the tile distance times 25,
     /// truncated: 0x40acd0) centred on its middle; the tee brush does the same from the green while the hole has a green and
-    /// no tee. Nothing is drawn while the far end is off the screen (0x42f940). PLACEHOLDER: the line call's last argument
-    /// (7 here, 5 for the translucent tooltip bar) is not decoded and the line is drawn opaque; the font is taken as the small
-    /// one the brush code selects just before (0x519fd8).
+    /// no tee. Nothing is drawn while the far end is off the screen (0x42f940). The line call's last argument, 7, is its alpha
+    /// in tenths (Terrain.dll's drawLine); the font is taken as the small one the brush code selects just before (0x519fd8).
     fn draw_hole_reach(&self, g: &mut Gfx, s: &Ui, ty: i32, a: i32, b: i32, (sx, sy): (f32, f32)) {
         let h = self.club.next_hole;
         if !(0..2).contains(&ty) || !(1..19).contains(&h) {
@@ -392,7 +391,7 @@ impl App {
             _ => return,
         };
         let Some((fx, fy)) = self.tile_on_screen(from.0, from.1) else { return };
-        s.line(g, fx, fy, sx, sy, 2.0, c15(WHITE));
+        s.line(g, fx, fy, sx, sy, 2.0, line_rgba(WHITE as u32, 7));
         let (dx, dy) = ((a - from.0) * 25, (b - from.1) * 25);
         let yards = ((dx * dx + dy * dy) as f64).sqrt() as i32;
         let (mx, my) = (((fx as i32 + sx as i32) / 2) as f32, ((fy as i32 + sy as i32) / 2) as f32);
@@ -444,11 +443,11 @@ impl App {
             }
         }
         if square {
-            // the block's outline (Terrain::drawLine, width 3)
+            // the block's outline (Terrain::drawLine, width 3, alpha 7 tenths: 0x41617f)
             let c = [pt(cx, cy - 1), pt(cx + 1, cy - 1), pt(cx + 1, cy), pt(cx, cy)];
             for i in 0..4 {
                 let (p, q) = (c[i], c[(i + 1) % 4]);
-                s.line(g, p.0, p.1, q.0, q.1, 3.0, c15(PURPLE));
+                s.line(g, p.0, p.1, q.0, q.1, 3.0, line_rgba(PURPLE as u32, 7));
             }
         }
     }
@@ -463,9 +462,11 @@ impl App {
         let mut col = c15(if clear.is_some() { WHITE } else { RED });
         let (x0, y0, x1, y1) = (a * 1024, b * 1024, (a + size) * 1024 - 1, (b + size) * 1024 - 1);
         let c = [self.screen_units(x0, y0), self.screen_units(x1, y0), self.screen_units(x1, y1), self.screen_units(x0, y1)];
+        // Terrain::drawLine one pixel wide at alpha 7 tenths (0x419e6a)
+        let edge = line_rgba(if clear.is_some() { WHITE } else { RED } as u32, 7);
         for i in 0..4 {
             let (p, q) = (c[i], c[(i + 1) % 4]);
-            s.line(g, p.0, p.1, q.0, q.1, 1.0, col);
+            s.line(g, p.0, p.1, q.0, q.1, 1.0, edge);
         }
         let (sx, sy) = self.screen_units(a * 1024 + size * 512, b * 1024 + size * 512);
         if kind == land::K_BRIDGE && self.terrain.type_at(a, b) != land::T_WATER as i32 {
@@ -498,7 +499,7 @@ impl App {
         }
     }
 
-    /// The landmark's reach (0x407c60): a white ring 2 pixels wide, `yards` round a map point, in 24 steps; a step with an end
+    /// The landmark's reach (0x407c60): a white ring 2 pixels wide at alpha 7 tenths, `yards` round a map point, in 24 steps; a step with an end
     /// off the screen is left out.
     fn draw_reach_ring(&self, g: &mut Gfx, s: &Ui, x: i32, y: i32, yards: i32) {
         let r = ((yards << 10) / 25) as f32;
@@ -507,7 +508,7 @@ impl App {
             let t = k as f32 * std::f32::consts::TAU / 24.0;
             let p = self.screen_of(x + (t.sin() * r) as i32, y - (t.cos() * r) as i32);
             if let (Some(p0), Some(p1)) = (last, p) {
-                s.line(g, p0.0, p0.1, p1.0, p1.1, 2.0, c15(WHITE));
+                s.line(g, p0.0, p0.1, p1.0, p1.1, 2.0, line_rgba(WHITE as u32, 7));
             }
             last = p;
         }

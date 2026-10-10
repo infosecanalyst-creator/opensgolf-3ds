@@ -22,28 +22,28 @@ pub struct Kind {
     pub clips: [&'static str; 4],
     pub dirs: i32,
     pub call: Option<i32>,
-    /// Habitat tile type and theme mask (bit per exe theme). APPROXIMATION: the exe's kind table (0x4c1998) is in data that
-    /// is not available; these are chosen to suit each animal and its art.
+    /// Habitat tile type and theme mask (bit per exe theme), with the name, from the exe's kind table (0x4c1998, records of
+    /// 18 bytes: the name in 16, the habitat type, the theme mask; EXACT, read from the publisher exe's data).
     pub habitat: u8,
     pub themes: u8,
 }
 
 pub const KINDS: [Kind; 9] = [
-    Kind { name: "Elk", clips: ["ELK_Run", "ELK_Sq", "ELK_EatDown", "ELK_EatLoop"], dirs: 4, call: Some(59), habitat: 13, themes: 0b1001 },
+    Kind { name: "Elk", clips: ["ELK_Run", "ELK_Sq", "ELK_EatDown", "ELK_EatLoop"], dirs: 4, call: Some(59), habitat: 14, themes: 0b1001 },
     Kind {
         name: "Crane",
         clips: ["Crane_Walk", "Crane_Sq", "Crane_DrinkDown", "Crane_DrinkLoop"],
         dirs: 4,
         call: Some(58),
-        habitat: 19,
-        themes: 0b1001,
+        habitat: 4,
+        themes: 0b0001,
     },
     Kind {
         name: "Flamingo",
         clips: ["Flamingo_Walk", "Flamingo_Sq", "Flamingo_DrinkDown", "Flamingo_DrinkLoop"],
         dirs: 4,
         call: None,
-        habitat: 18,
+        habitat: 15,
         themes: 0b0100,
     },
     Kind {
@@ -51,7 +51,7 @@ pub const KINDS: [Kind; 9] = [
         clips: ["Sheep_Walk", "Sheep_SQ", "Sheep_EatDown", "Sheep_EatLoop"],
         dirs: 4,
         call: Some(195),
-        habitat: 5,
+        habitat: 4,
         themes: 0b1000,
     },
     Kind {
@@ -59,7 +59,7 @@ pub const KINDS: [Kind; 9] = [
         clips: ["Croc_Walk", "Croc_SQ", "Croc_Turnover", "Croc_BackScratch"],
         dirs: 8,
         call: Some(196),
-        habitat: 19,
+        habitat: 4,
         themes: 0b0100,
     },
     Kind {
@@ -67,23 +67,16 @@ pub const KINDS: [Kind; 9] = [
         clips: ["Snake_Walk", "Snake_SQ", "Snake_SQ", "Snake_Fidget"],
         dirs: 4,
         call: Some(198),
-        habitat: 11,
-        themes: 0b0010,
+        habitat: 12,
+        themes: 0b0110,
     },
+    Kind { name: "Gila", clips: ["Gila_Walk", "Gila_SQ", "Gila_SQ", "Gila_Fidget"], dirs: 4, call: Some(197), habitat: 4, themes: 0b0010 },
     Kind {
-        name: "Gila monster",
-        clips: ["Gila_Walk", "Gila_SQ", "Gila_SQ", "Gila_Fidget"],
-        dirs: 4,
-        call: Some(197),
-        habitat: 8,
-        themes: 0b0010,
-    },
-    Kind {
-        name: "Roadrunner",
+        name: "Road runner",
         clips: ["RR_Walk", "RR_SQ", "RR_DrinkDown", "RR_DrinkLoop"],
         dirs: 4,
         call: None,
-        habitat: 5,
+        habitat: 4,
         themes: 0b0010,
     },
     Kind {
@@ -91,8 +84,8 @@ pub const KINDS: [Kind; 9] = [
         clips: ["Duck_Walk", "Duck_SQ", "Duck_DrinkDown", "Duck_DrinkLoop"],
         dirs: 4,
         call: None,
-        habitat: 18,
-        themes: 0b0001,
+        habitat: 4,
+        themes: 0b1100,
     },
 ];
 
@@ -608,19 +601,19 @@ mod tests {
         assert_eq!(d[idx(11, 11)], 1);
         assert_eq!(d[idx(12, 12)], 2);
         assert_eq!(d[idx(5, 5)], 255);
-        // a habitat: ducks on wetlands in parkland eventually move in when the land is retyped
+        // a habitat (the exe table at 0x4c1998): cranes on rough in parkland eventually move in when the land is retyped
         let mut w = Wildlife::default();
         for a in 20..30 {
             for b in 20..30 {
-                c.ty[idx(a, b)] = 18;
+                c.ty[idx(a, b)] = crate::course::t::ROUGH;
             }
         }
         let mut rng = ExeRng::from_clock(3);
         for _ in 0..2000 {
             w.retyped(&c, &mut rng, 25, 25, 0);
         }
-        let n = w.animals.iter().filter(|a| a.kind == 8).count();
-        assert!(n >= 2, "ducks moved in: {n}");
-        assert!(w.animals.iter().all(|a| a.kind == -1 || a.kind == 8));
+        let n = w.animals.iter().filter(|a| a.kind == 1).count();
+        assert!(n >= 2, "cranes moved in: {n}");
+        assert!(w.animals.iter().all(|a| a.kind == -1 || a.kind == 1));
     }
 }

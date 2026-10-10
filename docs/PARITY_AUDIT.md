@@ -2,19 +2,12 @@
 
 Files the exe uses that the port never names are likely gaps. Pattern loaded sets (terrain tiles, FLC animations) need a manual look.
 
-## (root): 28 files, 11 named in the port, 11 used by the exe but never named in the port
+## (root): 28 files, 18 named in the port, 4 used by the exe but never named in the port
 
-- GBUBBLES.pcx
 - JPEG.lib
 - Jackal.pcx
-- cliffs01.pcx
-- course1.pcx
-- descript.ion
-- jgl.dll
 - jgld.dll
 - logfile.txt
-- manu3_.TTF
-- manu3_.fot
 
 ## Bodies: 42 files, 10 named in the port, 27 used by the exe but never named in the port
 
@@ -46,52 +39,18 @@ Files the exe uses that the port never names are likely gaps. Pattern loaded set
 - Bodies/MaleSwap09.pcx
 - Bodies/MaleSwap10.pcx
 
-## Data: 2675 files, 27 named in the port, 0 used by the exe but never named in the port
+## Data: 2675 files, 31 named in the port, 0 used by the exe but never named in the port
 
 
-## Flics: 2345 files, 212 named in the port, 809 used by the exe but never named in the port
+## Flics: 2345 files, 694 named in the port, 357 used by the exe but never named in the port
 
 - Flics/Animals/CranePal.pcx
-- Flics/Animals/Crane_DrinkDown.flc
-- Flics/Animals/Crane_DrinkLoop.flc
-- Flics/Animals/Crane_Sq.flc
-- Flics/Animals/Crane_Walk.flc
-- Flics/Animals/Croc_BackScratch.flc
-- Flics/Animals/Croc_SQ.flc
-- Flics/Animals/Croc_Turnover.flc
-- Flics/Animals/Croc_Walk.flc
 - Flics/Animals/Croc_palette.pcx
-- Flics/Animals/Duck_SQ.flc
-- Flics/Animals/Duck_drinkdown.flc
-- Flics/Animals/Duck_drinkloop.flc
 - Flics/Animals/Duck_palette.pcx
-- Flics/Animals/Duck_walk.flc
-- Flics/Animals/ELK_EatDown.flc
-- Flics/Animals/ELK_EatLoop.flc
-- Flics/Animals/ELK_Run.flc
-- Flics/Animals/ELK_Sq.flc
 - Flics/Animals/Elk_palette.pcx
 - Flics/Animals/FlamingoPal.pcx
-- Flics/Animals/Flamingo_DrinkDown.flc
-- Flics/Animals/Flamingo_DrinkLoop.flc
-- Flics/Animals/Flamingo_Sq.flc
-- Flics/Animals/Flamingo_Walk.flc
-- Flics/Animals/Gila_Fidget.flc
 - Flics/Animals/Gila_Palette.pcx
-- Flics/Animals/Gila_SQ.flc
-- Flics/Animals/Gila_Walk.flc
-- Flics/Animals/RR_DrinkDown.flc
-- Flics/Animals/RR_DrinkLoop.flc
-- Flics/Animals/RR_SQ.flc
-- Flics/Animals/RR_Walk.flc
 - Flics/Animals/RR_palette.pcx
-- Flics/Animals/Sheep_EatDown.flc
-- Flics/Animals/Sheep_EatLoop.flc
-- Flics/Animals/Sheep_SQ.flc
-- Flics/Animals/Sheep_Walk.flc
-- Flics/Animals/Snake_Fidget.flc
-- Flics/Animals/Snake_SQ.flc
-- Flics/Animals/Snake_Walk.flc
 - Flics/Animals/Snake_palette.pcx
 - Flics/Animals/sheep_palette.pcx
 - Flics/Bldgs/1Drive.flc
@@ -100,140 +59,87 @@ Files the exe uses that the port never names are likely gaps. Pattern loaded set
 - Flics/Bldgs/2Putt.flc
 - Flics/Bldgs/Desert/CasL2pal.pcx
 - Flics/Bldgs/Desert/DES_DRpal.pcx
-- Flics/Bldgs/Desert/DEScartL1base.flc
-- Flics/Bldgs/Desert/DEScartL2anim.flc
-- Flics/Bldgs/Desert/DEScartL2base.flc
 - Flics/Bldgs/Desert/DEScartL2pal.pcx
 - Flics/Bldgs/Desert/DEScartpal.pcx
-- Flics/Bldgs/Desert/DEScasL2.flc
 - Flics/Bldgs/Desert/DEScasL2Pal.pcx
-- Flics/Bldgs/Desert/DEScasL2base.flc
-- Flics/Bldgs/Desert/DEScasL2status.flc
-- Flics/Bldgs/Desert/DEScasL2wheel.flc
 - Flics/Bldgs/Desert/DEScasPal.pcx
-- ... 749 more
+- Flics/Bldgs/Desert/DESclubL2pal.pcx
+- Flics/Bldgs/Desert/DEShoL2pal.pcx
+- Flics/Bldgs/Desert/DESproL2pal.pcx
+- Flics/Bldgs/Desert/DESsignPal.pcx
+- Flics/Bldgs/Desert/DESsnackL2pal.pcx
+- Flics/Bldgs/Desert/DESsnackpal.pcx
+- Flics/Bldgs/Desert/DesClubpal.pcx
+- Flics/Bldgs/Desert/DesHotelPal.pcx
+- Flics/Bldgs/Desert/HelL2pal.pcx
+- Flics/Bldgs/Desert/dhouseconpal.pcx
+- Flics/Bldgs/Desert/dproPal.pcx
+- Flics/Bldgs/Desert/dputt_whiteflag.flc
+- Flics/Bldgs/Desert/dputtpal.pcx
+- Flics/Bldgs/Desert/heliPal.pcx
+- Flics/Bldgs/Desert/spaL2pal.pcx
+- Flics/Bldgs/Desert/spaPal.pcx
+- Flics/Bldgs/DrivPuttPal.pcx
+- Flics/Bldgs/Park/House_A.flc
+- Flics/Bldgs/Park/House_APal.pcx
+- Flics/Bldgs/Park/houseconpal.pcx
+- Flics/Bldgs/Park/putt_whiteflag.flc
+- Flics/Bldgs/Park/signpal.pcx
+- Flics/Bldgs/links/Cart_garagePal.pcx
+- Flics/Bldgs/links/CastlePal.pcx
+- Flics/Bldgs/links/ChurchPal.pcx
+- Flics/Bldgs/links/DRL2_palette.pcx
+- Flics/Bldgs/links/HotelL1_palette.pcx
+- Flics/Bldgs/links/HotelL2_palette.pcx
+- Flics/Bldgs/links/HotelPal.pcx
+- Flics/Bldgs/links/House_A_links.flc
+- Flics/Bldgs/links/PG_whiteflag.flc
+- Flics/Bldgs/links/Pro_shopPal.pcx
+- Flics/Bldgs/links/PubL2_palette.pcx
+- Flics/Bldgs/links/PubPal.pcx
+- Flics/Bldgs/links/clubL1_palette.pcx
+- Flics/Bldgs/links/clubL2_palette.pcx
+- Flics/Bldgs/links/clubpal.pcx
+- Flics/Bldgs/links/logfile.txt
+- Flics/Bridges/DESbridgeSCENIC.flc
+- Flics/Bridges/DESscenicbridgepal.pcx
+- Flics/Celebs/ActionStar_Char.flc
+- ... 297 more
 
 ## Heads: 12 files, 4 named in the port, 0 used by the exe but never named in the port
 
 
-## Interface: 141 files, 107 named in the port, 12 used by the exe but never named in the port
+## Interface: 141 files, 106 named in the port, 15 used by the exe but never named in the port
 
 - Interface/3mainLowerLeft_A.pcx
+- Interface/AmenitiesPanel_A.pcx
 - Interface/Barrel.pcx
 - Interface/BaseTerrainPanel_A.pcx
+- Interface/BuildingPanel_A.pcx
 - Interface/ChooseAlphaButtons_A.pcx
+- Interface/ElevationPanel_A.pcx
+- Interface/EmployeePanel_A.pcx
+- Interface/InfoButtons.pcx
+- Interface/InfoButtons_A.pcx
 - Interface/JoeCoolPanel_A.pcx
 - Interface/MemberPanel_A.pcx
-- Interface/PopUpIcons.pcx
-- Interface/PopUpIcons_A.pcx
+- Interface/Pop_UpOk_A.pcx
 - Interface/parklink_A.pcx
-- Interface/s_GolferStats.pcx
-- Interface/s_TransPopups.pcx
 - Interface/tropdesert_A.pcx
 
-## SimsFX: 76 files, 8 named in the port, 58 used by the exe but never named in the port
+## SimsFX: 76 files, 65 named in the port, 1 used by the exe but never named in the port
 
-- SimsFX/Female/fBAD0.wav
-- SimsFX/Female/fBADHOLE.wav
-- SimsFX/Female/fBENCH0.wav
-- SimsFX/Female/fCELEB0.wav
-- SimsFX/Female/fCOKE0.wav
-- SimsFX/Female/fCRAB0.wav
-- SimsFX/Female/fHAPPY0.wav
-- SimsFX/Female/fHAPPY1.wav
-- SimsFX/Female/fHAVEADRINK.wav
-- SimsFX/Female/fHUNGRY.wav
-- SimsFX/Female/fLOVELY0.wav
-- SimsFX/Female/fMAD0.wav
-- SimsFX/Female/fOOPS0.wav
-- SimsFX/Female/fOPTIONS.wav
-- SimsFX/Female/fSAD2.wav
-- SimsFX/Female/fSAME.wav
-- SimsFX/Female/fSENIC0.wav
-- SimsFX/Female/fSTORY0.wav
-- SimsFX/Female/fSTORYNO.wav
-- SimsFX/Female/fSTORYOK.wav
-- SimsFX/Female/fSTORYYES.wav
-- SimsFX/Female/fTHIRSTY.wav
-- SimsFX/Female/fTIRED.wav
-- SimsFX/Female/fTRICKY0.wav
-- SimsFX/Female/fUGLY0.wav
-- SimsFX/Female/fVARIETY.wav
-- SimsFX/Female/fWAITING0.wav
 - SimsFX/Female/fWATER0.wav
-- SimsFX/Female/fWET0.wav
-- SimsFX/Male/mBAD0.wav
-- SimsFX/Male/mBADHOLE.wav
-- SimsFX/Male/mBENCH0.wav
-- SimsFX/Male/mCELEB0.wav
-- SimsFX/Male/mCOKE0.wav
-- SimsFX/Male/mCRAB0.wav
-- SimsFX/Male/mCRABGRASS.wav
-- SimsFX/Male/mCRABGRASS2.wav
-- SimsFX/Male/mGREETING.wav
-- SimsFX/Male/mHAPPY0.wav
-- SimsFX/Male/mHAPPY1.wav
-- SimsFX/Male/mHUNGRY.wav
-- SimsFX/Male/mLOVELY0.wav
-- SimsFX/Male/mMAD0.wav
-- SimsFX/Male/mOOPS0.wav
-- SimsFX/Male/mOPTIONS.wav
-- SimsFX/Male/mSAD2.wav
-- SimsFX/Male/mSAME.wav
-- SimsFX/Male/mSENIC0.wav
-- SimsFX/Male/mSTORY0.wav
-- SimsFX/Male/mSTORYNO.wav
-- SimsFX/Male/mSTORYOK.wav
-- SimsFX/Male/mSTORYYES.wav
-- SimsFX/Male/mTHIRSTY.wav
-- SimsFX/Male/mTIRED.wav
-- SimsFX/Male/mUGLY0.wav
-- SimsFX/Male/mVARIETY.wav
-- SimsFX/Male/mWAITING0.wav
-- SimsFX/Male/mWET0.wav
 
-## Sounds: 245 files, 55 named in the port, 39 used by the exe but never named in the port
+## Sounds: 245 files, 155 named in the port, 7 used by the exe but never named in the port
 
-- Sounds/Buy3Short.wav
-- Sounds/Buy4Short.wav
-- Sounds/Effects/Alligator .wav
-- Sounds/Effects/Belch.wav
-- Sounds/Effects/Fly.wav
-- Sounds/Effects/TAUNT009.wav
-- Sounds/Effects/TimeTunnelClip2.wav
-- Sounds/Effects/desert3.wav
-- Sounds/Effects/grass3.wav
-- Sounds/Effects/winter.wav
 - Sounds/Emotion/FemalePLSFailure.wav
-- Sounds/Emotion/FemalePLSHappy.wav
-- Sounds/Emotion/FemalePLSSad.wav
-- Sounds/Emotion/FemalePLSSuccess.wav
 - Sounds/Emotion/FemalePSSFailure.wav
-- Sounds/Emotion/FemalePSSHappy.wav
-- Sounds/Emotion/FemalePSSSad.wav
-- Sounds/Emotion/FemalePSSSuccess.wav
 - Sounds/Emotion/FemaleSKTTFailure.wav
-- Sounds/Emotion/FemaleSKTTHappy.wav
-- Sounds/Emotion/FemaleSKTTSad.wav
-- Sounds/Emotion/FemaleSKTTSuccess.wav
 - Sounds/Emotion/FemaleSSSFailure.wav
-- Sounds/Emotion/FemaleSSSHappy.wav
-- Sounds/Emotion/FemaleSSSSad.wav
-- Sounds/Emotion/FemaleSSSSuccess.wav
 - Sounds/Emotion/MalePLSFailure.wav
-- Sounds/Emotion/MalePLSHappy.wav
-- Sounds/Emotion/MalePLSSad.wav
-- Sounds/Emotion/MalePLSSuccess.wav
 - Sounds/Emotion/MalePSSFailure.wav
-- Sounds/Emotion/MalePSSHappy.wav
-- Sounds/Emotion/MalePSSSad.wav
-- Sounds/Emotion/MalePSSSuccess.wav
 - Sounds/Emotion/MaleSSSFailure.wav
-- Sounds/Emotion/MaleSSSHappy.wav
-- Sounds/Emotion/MaleSSSSad.wav
-- Sounds/Emotion/MaleSSSSuccess.wav
-- Sounds/Interface/Button3.wav
 
-## Themes: 74 files, 14 named in the port, 1 used by the exe but never named in the port
+## Themes: 73 files, 23 named in the port, 0 used by the exe but never named in the port
 
-- Themes/Firaxis/Buck.chr

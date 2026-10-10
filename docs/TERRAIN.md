@@ -81,7 +81,13 @@ second "Overgrowth" (probably a copy-paste slip in the original).
   `tex[37 types][25 sets][9 variations]`. Type 0 (Tee) uses a slightly different loop.
 * Textures are 64x64 24-bit BMPs, built with `gluBuild2DMipmaps`, linear filtering, repeat wrap.
 * Overlays loaded per theme: `Path.tga`, `PathCap.tga`, `PathInside.tga`, `PathCurve.tga`, the same
-  four with an `X` suffix, `CliffTest.bmp`, `RetainWallA.bmp`, `strata.bmp`.
+  four with an `X` suffix, `CliffTest.bmp`, `RetainWallA.bmp`, `strata.bmp` (texture ids 35, 34 and 36; the table is at
+  0x100687f8 + id * 0x384).
+* The property's cliff (0x1000ea30): for a tile that is not type 20, each side whose neighbour exists and is type 20 gets a
+  face of two triangles from the side's end vertices down to y = -75, textured once with strata (u 0..1 along the side,
+  t 1 at the top), drawn only for the views that face it (N, the y - 1 side: views 1, 2; S: 0, 3; W: 0, 1; E: 2, 3), its
+  normal one of two per side by the view's parity from 0x10063c40 (S: (-0.707, 0, -0.707) / (-1, 1, 0); N: (0.707, 0,
+  0.707) / (1, 1, 0); E: (1, 1, 0) / (-1, 0, 0); W: (-1, 1, 0) / (1, 0, 0)).
 * File names differ in case between themes (`overgrowth` vs `Overgrowth`): look them up
   case-insensitively.
 * Lighting (0x10006dd0, file by theme at 0x10003980: 0 Parkland, 1 Desert, 2 Tropical, 3 Links, else `lighting.txt`): the
