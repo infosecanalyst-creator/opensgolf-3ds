@@ -11,8 +11,8 @@
 
 use crate::app::*;
 use crate::gfx::Gfx;
-use crate::screens_ui::{top, BODY, LARGE, SMALL};
-use crate::ui::{rgb, rgba, text_width, wrap_text, Screen as Ui};
+use crate::screens_ui::{top, BODY};
+use crate::ui::{rgb, wrap_text, Screen as Ui};
 use sg_core::staff;
 
 /// Where the ticker is drawn (0x40d6a0 passes (0xf0, -8) to 0x40d320).
@@ -21,7 +21,7 @@ const Y: f32 = -8.0;
 /// Text width of the box (0x1a0 = 416) and the line pitch of its height sum (15 per line plus 0x20).
 const BOX_W: f32 = 416.0;
 const LINE: f32 = 15.0;
-/// The ticker font (0x51b360): the body face. Its pixel size is not in the decompile (PLACEHOLDER: the port's body size).
+/// The ticker font (0x51b360): Manual SSi Bold 15.
 const FONT: f32 = BODY;
 /// Speaker codes (0x4c2e08).
 pub const NOBODY: i32 = -1;
@@ -148,7 +148,7 @@ fn lines(text: &str, width: f32) -> Vec<String> {
 
 /// 0x40cef0 and 0x40cdd0 round a size that is not a multiple of 16 up to the next 15 mod 16 and move the box back by half
 /// of what they added.
-fn round16(pos: f32, size: f32) -> (f32, f32) {
+pub fn round16(pos: f32, size: f32) -> (f32, f32) {
     let r = size as i32 & 15;
     if r == 0 {
         (pos, size)
@@ -216,9 +216,7 @@ impl App {
             return;
         }
         if arg == -2 {
-            let (bx, bw) = round16(x - 8.0, BOX_W);
-            let (by, bh) = round16(y - 8.0, h + 16.0);
-            self.art.trans_frame(g, s, bx, by, bw, bh);
+            self.art.trans_frame(g, s, x - 8.0, y - 8.0, BOX_W, h + 16.0);
         } else {
             self.strip(g, s, x - 8.0, y - 8.0, BOX_W, h + 16.0);
         }
@@ -239,14 +237,14 @@ impl App {
         }
     }
 
-    /// The ticker strip (0x40cdd0): the translucent fill (0x40ca10, its 16 x 16 shading tile darkens by half, DERIVED as for
-    /// the dialog frame) and the rail along the bottom: its left end at x - 4, the middle piece every 16 pixels from x + 12,
-    /// the right end at x + w - 12. The rail pieces are elements 12 to 14 of the TransPopups group, DERIVED to be the three
-    /// 16 x 16 cuts at (300 + 17k, 34), whose shapes are a left curl, a bar and a right curl.
+    /// The ticker strip (0x40cdd0): the translucent fill one pixel up (0x40ca10 through the strip's square mask, see
+    /// `Art::trans_fill`) and the rail along the bottom: its left end at x - 4, the middle piece every 16 pixels from x + 12,
+    /// the right end at x + w - 12. The rail pieces are elements 12 to 14 of the TransPopups group (0x58b890, 0x58b8bc,
+    /// 0x58b8e8), cut by the loader 0x4466b1 at (300 + 17k, 34), 16 x 16: a left curl, a bar and a right curl.
     fn strip(&self, g: &mut Gfx, s: &Ui, x: f32, y: f32, w: f32, h: f32) {
         let (x, w) = round16(x, w);
         let (y, h) = round16(y, h);
-        s.fill(g, x, y - 1.0, w, h, rgba(0.0, 0.0, 0.0, 0.5));
+        self.art.trans_fill(g, s, x, y - 1.0, w, h, false);
         let im = &self.art.trans;
         if im.tex.is_none() {
             return;
@@ -396,21 +394,17 @@ impl App {
         Some((t, pro.x, pro.y))
     }
 
-    /// The advisor's line over the pro: `zoom * 10` pixels above him, white, centred on a black line 10 pixels thick and
-    /// the text's width plus 8 long (Terrain::drawLine); the body font above the exe's zoom 4, the small one otherwise.
-    /// The sprite the exe adds at (x + 4, y + 10) (object 0x5a4100) is not identified and is left out.
+    /// The advisor's line over the pro: `zoom * 10` pixels above him, white, in a speech bubble (main frame 0x41676d, drawn as
+    /// `thoughts_ui::bubble`).
     pub fn draw_advisor(&self, g: &mut Gfx, s: &Ui) {
         let Some((text, mx, my)) = self.advisor_line() else { return };
         let Some((x, y)) = self.screen_of(mx, my) else { return };
         let exe_zoom = self.zoom * 4.0 / 0.905;
-        let size = if exe_zoom > 4.0 { BODY } else { SMALL };
-        let y0 = (y - exe_zoom.round() * 10.0).round();
-        let half = ((text_width(&text, size) + 8.0) / 2.0).floor();
-        s.fill(g, x - half, y0, 2.0 * half, 10.0, rgba(0.0, 0.0, 0.0, 1.0));
-        s.text_centered(g, x, top(y0, size), &text, size, rgb(1.0, 1.0, 1.0));
+        let y0 = (y.floor() - exe_zoom.round() * 10.0).round();
+        crate::thoughts_ui::bubble(g, s, exe_zoom, x, y0, &text, rgb(1.0, 1.0, 1.0));
     }
 
-    /// "Paused" centred at (400, 10) in white (font 0x519948, its size a PLACEHOLDER: the port's large face), with " Fast"
+    /// "Paused" centred at (400, 10) in white (font 0x519948, Manual SSi Bold 24), with " Fast"
     /// after it while the exe's fast flag (0x59b04c) is on, here while the game runs above normal speed.
     pub fn draw_paused(&self, g: &mut Gfx, s: &Ui) {
         let mut t = String::new();
@@ -421,7 +415,7 @@ impl App {
             t += " Fast";
         }
         if !t.is_empty() {
-            s.text_centered(g, 400.0, top(10.0, LARGE), &t, LARGE, rgb(1.0, 1.0, 1.0));
+            s.put_centered(g, crate::ui::F_MANUAL24, 400.0, 10.0, &t, rgb(1.0, 1.0, 1.0));
         }
     }
 }

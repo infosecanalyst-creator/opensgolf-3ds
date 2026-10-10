@@ -6,7 +6,7 @@ use crate::app::*;
 use crate::gfx::Gfx;
 use crate::panels_ui::COUNTERS;
 use crate::screens_ui::top;
-use crate::ui::{load_pcx_alpha, rgb, rgba, text_width, wrap_text, Image, Screen as Ui};
+use crate::ui::{load_pcx_alpha, rgb, rgba, wrap_text, Image, Screen as Ui};
 use sg_core::course::{idx, N, TYPES};
 use sg_core::economy::LEDGER_LABELS;
 use sg_core::land;
@@ -158,10 +158,13 @@ impl App {
         } else {
             s.fill(g, 148.0, 45.0, 505.0, 102.0, rgb(0.9, 0.88, 0.8));
         }
-        s.text_centered(g, 389.0, 72.0, "PLAYER COMMENTS REPORT", 20.0, black());
-        s.text(g, 182.0, 104.0, "Comments", 12.0, black());
-        s.text_centered(g, 504.0, 104.0, "Hole", 12.0, black());
-        s.text_centered(g, 598.0, 104.0, "Frequency", 12.0, black());
+        // fonts (0x4546b0): the title in 0x821020 (Klepto 24) centred at (389, 61), the rest in 0x821ee8 (Manual SSi 14): the
+        // headings with their tops at 96, "Comments" left at 182, the hole and frequency centred on 504 and 598
+        use crate::ui::{F_INFO14, F_INFO_TITLE};
+        s.put_centered(g, F_INFO_TITLE, 389.0, 61.0, "PLAYER COMMENTS REPORT", black());
+        s.put(g, F_INFO14, 182.0, 96.0, "Comments", black());
+        s.put_centered(g, F_INFO14, 504.0, 96.0, "Hole", black());
+        s.put_centered(g, F_INFO14, 598.0, 96.0, "Frequency", black());
         let rows = self.comment_rows();
         let y0 = 124.0;
         for (n, (_, line, hole, freq)) in rows.iter().enumerate() {
@@ -176,12 +179,13 @@ impl App {
                 sg_core::thoughts::Tone::Bad => c15(0x7d08),
                 _ => black(),
             };
-            s.text(g, 182.0, y + 13.0, &line.text, 11.0, c);
-            s.text_centered(g, 504.0, y + 13.0, &format!("{hole}"), 11.0, c);
-            s.text_centered(g, 598.0, y + 13.0, &format!("{freq}%"), 11.0, c);
+            // PLACEHOLDER: the rows' first top (the exe's header piece height plus 24) is not decoded; 3 below the row piece
+            s.put(g, F_INFO14, 182.0, y + 3.0, &line.text, c);
+            s.put_centered(g, F_INFO14, 504.0, y + 3.0, &format!("{hole}"), c);
+            s.put_centered(g, F_INFO14, 598.0, y + 3.0, &format!("{freq}%"), c);
         }
         if rows.is_empty() {
-            s.text_centered(g, 400.0, y0 + 13.0, "No comments yet.", 12.0, black());
+            s.put_centered(g, F_INFO14, 400.0, y0 + 3.0, "No comments yet.", black());
         }
         let fy = y0 + 15.0 * rows.len().max(1) as f32;
         if has {
@@ -205,9 +209,12 @@ impl App {
         } else {
             s.fill(g, 100.0, 50.0, 620.0, 490.0, rgb(0.95, 0.95, 0.9));
         }
-        s.text(g, 375.0, 34.0, "HISTOGRAPH", 22.0, black()); // the exe's x is the title's left edge
+        // fonts (0x455ed0): the title in 0x821020 (Klepto 24) centred at (375, 20); the legend and the scales in 0x821ee8
+        // (Manual SSi 14), the legend centred with its top at 542
+        use crate::ui::{F_INFO14, F_INFO_TITLE};
+        s.put_centered(g, F_INFO_TITLE, 375.0, 20.0, "HISTOGRAPH", black());
         for (x, t) in [(177.0, "Skill"), (332.0, "Cash"), (488.0, "Fun"), (644.0, "Event")] {
-            s.text_centered(g, x, 551.0, t, 12.0, black());
+            s.put_centered(g, F_INFO14, x, 542.0, t, black());
         }
         let skill_s = if self.club.ratings.skill > 2500 { 2 } else { 1 };
         let cash = self.club.cash;
@@ -221,11 +228,11 @@ impl App {
             _ => 1,
         };
         for k in 0..10 {
-            let y = 0x202 as f32 - 50.0 * k as f32 + 4.0;
+            let y = 0x202 as f32 - 50.0 * k as f32;
             let lv = if k <= 5 { 100 * skill_s * k } else { skill_s * (500 * k - 2000) };
-            s.text_centered(g, 77.0, y, &format!("{lv}"), 11.0, c15(0x4010));
+            s.put_centered(g, F_INFO14, 77.0, y, &format!("{lv}"), c15(0x4010));
             let n = if k <= 5 { 10 * cdiv * k } else { cdiv * (50 * k - 200) };
-            s.text_centered(g, 727.0, y, &format!("\u{a7}{n}k"), 11.0, black());
+            s.put_centered(g, F_INFO14, 727.0, y, &format!("\u{a7}{n}k"), black());
         }
         let months = (self.club.tick >> 10) as usize;
         let step = (600 / (months as i32 + 1)).clamp(1, 4) as f32;
@@ -258,7 +265,8 @@ impl App {
                     let top = base - offset as f32;
                     s.fill(g, x1 + 10.0, ys[0].min(top), 1.0, (ys[0] - top).abs(), c15(0x03ff));
                     s.fill(g, x1 + 9.0, top - 1.0, 3.0, 3.0, c15(0x0210));
-                    s.text(g, x1 + 14.0, top + 3.0, &t, 10.0, c15(0x0210));
+                    // the events in Arial Bold 10 (0x519fd8); PLACEHOLDER: their offset from the mark
+                    s.put(g, crate::ui::F_ARIAL10, x1 + 14.0, top - 5.0, &t, c15(0x0210));
                 }
             }
         }
@@ -277,17 +285,21 @@ impl App {
         } else {
             s.fill(g, 8.0, 7.0, 784.0, 289.0, rgb(0.9, 0.88, 0.8));
         }
-        s.text(g, 218.0, 40.0, "FINANCIAL REPORT", 22.0, black());
+        // fonts (0x44f6b0): the title in 0x821020 (Klepto 24) left at (218, 21), the rest in 0x821ee8 (Manual SSi 14): the
+        // labels centred on 98 with tops 87 + 17 i (7 more for the total), the years centred on 222 + 75 j at 60, the
+        // figures right aligned on 256 + 75 j with tops 86 + 17 i and the total 24 below the last
+        use crate::ui::{F_INFO14, F_INFO_TITLE};
+        s.put(g, F_INFO_TITLE, 218.0, 21.0, "FINANCIAL REPORT", black());
         for (i, l) in LEDGER_LABELS.iter().enumerate() {
-            s.text_centered(g, 98.0, 99.0 + 17.0 * i as f32, l, 11.0, black());
+            s.put_centered(g, F_INFO14, 98.0, 87.0 + 17.0 * i as f32, l, black());
         }
-        s.text_centered(g, 98.0, 99.0 + 136.0 + 7.0, "Total (\u{a7})", 11.0, black());
+        s.put_centered(g, F_INFO14, 98.0, 87.0 + 136.0 + 7.0, "Total (\u{a7})", black());
         let last = self.econ.year_index().min(99);
         // eight columns fit the art (the exe draws a ninth off the screen)
         let first = last.saturating_sub(7);
         for (j, y) in (first..=last).enumerate() {
             let x = 75.0 * j as f32;
-            s.text_centered(g, x + 222.0, 66.0, &format!("{}", 2001 + y), 12.0, black());
+            s.put_centered(g, F_INFO14, x + 222.0, 60.0, &format!("{}", 2001 + y), black());
             let row = self.econ.ledger.get(y).copied().unwrap_or_default();
             let mut total = 0.0;
             for (i, v) in row.iter().enumerate() {
@@ -295,12 +307,12 @@ impl App {
                 if *v != 0.0 {
                     let t = crate::screens_ui::digits(*v as i64);
                     let c = if *v < 0.0 { c15(0x6000) } else { black() };
-                    s.text(g, x + 256.0 - text_width(&t, 11.0), 98.0 + 17.0 * i as f32, &t, 11.0, c);
+                    s.put_right(g, F_INFO14, x + 256.0, 86.0 + 17.0 * i as f32, &t, c);
                 }
             }
             let t = crate::screens_ui::digits(total as i64);
             let c = if total < 0.0 { c15(0x6000) } else { black() };
-            s.text(g, x + 256.0 - text_width(&t, 11.0), 98.0 + 17.0 * 7.0 + 24.0, &t, 11.0, c);
+            s.put_right(g, F_INFO14, x + 256.0, 86.0 + 17.0 * 7.0 + 24.0, &t, c);
         }
         self.ok_tick(g, &s, 726.0, 249.0, false);
         g.flush();
@@ -728,18 +740,21 @@ impl App {
         } else {
             s.fill(g, 0.0, 0.0, 800.0, 409.0, rgb(0.9, 0.88, 0.8));
         }
-        s.text_centered(g, 287.0, 40.0, "KEYBOARD SHORTCUTS", 22.0, black());
+        // fonts (0x44e770): the title in 0x821020 (Klepto 24) centred at (287, 28); the keys centred and the descriptions
+        // left, in 0x821ee8 (Manual SSi 14), tops as listed
+        use crate::ui::{F_INFO14, F_INFO_TITLE};
+        s.put_centered(g, F_INFO_TITLE, 287.0, 28.0, "KEYBOARD SHORTCUTS", black());
         let ys = [0x51, 0x62, 0x73, 0x84, 0x95, 0xa6, 0xb7, 200, 0xd9, 0xea, 0xfb, 0x10c, 0x11d, 0x12e, 0x13f, 0x157];
         for (i, (k, d)) in SHORTCUTS.iter().enumerate() {
-            let y = ys[i] as f32 + 10.0;
+            let y = ys[i] as f32;
             let c = if i == 7 { c15(0x0200) } else { black() };
-            s.text_centered(g, 0x44 as f32, y, k, 11.0, c);
-            s.text(g, 0x6c as f32, y, d, 11.0, c);
+            s.put_centered(g, F_INFO14, 0x44 as f32, y, k, c);
+            s.put(g, F_INFO14, 0x6c as f32, y, d, c);
         }
         for (i, (k, d)) in SHORTCUTS_RIGHT.iter().enumerate() {
-            let y = ys[i] as f32 + 10.0;
-            s.text_centered(g, 0x1bc as f32, y, k, 11.0, black());
-            s.text(g, 0x1e3 as f32, y, d, 11.0, black());
+            let y = ys[i] as f32;
+            s.put_centered(g, F_INFO14, 0x1bc as f32, y, k, black());
+            s.put(g, F_INFO14, 0x1e3 as f32, y, d, black());
         }
         self.ok_tick(g, &s, 710.0, 362.0, false);
         g.flush();

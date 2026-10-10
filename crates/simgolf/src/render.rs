@@ -331,10 +331,11 @@ pub const MENU_BTN: [Rect; 6] = [
 ];
 /// The folders under Themes/ offered as theme packs (the exe leaves out Championship, which holds the championship files).
 pub const THEME_PACKS: [&str; 4] = ["Standard", "Firaxis", "More Stories", "The Sims"];
-const MENU_LABEL: [&str; 5] = ["Continue Saved Game", "Start New Game (Standard)", "Sandbox Mode", "Select A Theme", "Play a Championship"];
-const MENU_LABEL_X: [f32; 5] = [180.0, 595.0, 150.0, 650.0, 418.0];
-const MENU_LABEL_Y: [f32; 5] = [83.0, 112.0, 450.0, 427.0, 543.0];
-const INK: [f32; 4] = [0.12, 0.12, 0.38, 1.0];
+/// The title menu's labels (0x420e.. and the menu's opening 0x40f5c0): Klepto ITC 18 (0x51a028) in 0x6318, centred on the
+/// label's point with the text's top 8 below it; "Start New Game" has the theme pack's name in brackets 24 further down.
+const MENU_LABEL: [&str; 5] = ["Continue Saved Game", "Start New Game", "Sandbox Mode", "Select A Theme", "Play a Championship"];
+const MENU_LABEL_X: [f32; 5] = [182.0, 573.0, 141.0, 631.0, 415.0];
+const MENU_LABEL_Y: [f32; 5] = [66.0, 88.0, 431.0, 409.0, 525.0];
 
 /// Select Difficulty (0x43a400, docs/DECODE_TITLE2.md 5): each item's lit cut in TitleSelDiffMO.pcx (x, y, w, h), where it
 /// goes, its hit centre (an ellipse twice as wide as tall, octagonal distance under 80) and its label position.
@@ -523,10 +524,12 @@ impl App {
         if let Some(lit) = self.title_mo_parts.get(self.hover.max(0) as usize).filter(|_| (0..6).contains(&self.hover)) {
             s.image(g, lit, 0.0, 0.0);
         }
+        let grey = crate::info_ui::c15(0x6318);
         for b in 0..5 {
-            s.text_centered(g, MENU_LABEL_X[b], MENU_LABEL_Y[b], MENU_LABEL[b], 19.0, INK);
+            s.put_centered(g, crate::ui::F_KLEPTO18, MENU_LABEL_X[b], MENU_LABEL_Y[b] + 8.0, MENU_LABEL[b], grey);
         }
-        s.text_centered(g, MENU_LABEL_X[3], MENU_LABEL_Y[3] + 17.0, &format!("Theme: {}", THEME_PACKS[self.theme_pack]), 13.0, INK);
+        let theme = format!("({})", THEME_PACKS.get(self.theme_pack).copied().unwrap_or("Standard"));
+        s.put_centered(g, crate::ui::F_KLEPTO18, MENU_LABEL_X[1], MENU_LABEL_Y[1] + 24.0, &theme, grey);
         if !self.toast.is_empty() && self.clock < self.toast_until {
             let w = text_width(&self.toast, 18.0) + 24.0;
             s.fill(g, 400.0 - w / 2.0, 560.0, w, 30.0, rgba(0.1, 0.1, 0.3, 0.9));
@@ -547,14 +550,15 @@ impl App {
         if self.hover == 100 {
             s.image_part(g, &self.diff_mo, 732.0, 532.0, 732.0, 532.0, 68.0, 68.0);
         }
-        // the exe's positions are the tops of the text; ours draws from the baseline
-        s.text_centered(g, 602.0, 42.0 + 17.0, "Select Difficulty", 24.0, INK);
+        // 0x43a400: all in Klepto ITC 24 (0x519a40), centred with the given tops; the hovered name black, the others in
+        // 0x4210, two pixels lower
+        let k24 = crate::ui::F_KLEPTO24;
+        s.put_centered(g, k24, 602.0, 42.0, "Select Difficulty", rgb(0.0, 0.0, 0.0));
         for (i, &(x, y)) in DIFF_LABELS.iter().enumerate() {
-            let y = y + 17.0;
             if self.hover == i as i32 {
-                s.text_centered(g, x, y, DIFFICULTY_NAMES[i], 22.0, rgb(0.0, 0.0, 0.0));
+                s.put_centered(g, k24, x, y, DIFFICULTY_NAMES[i], rgb(0.0, 0.0, 0.0));
             } else {
-                s.text_centered(g, x, y + 2.0, DIFFICULTY_NAMES[i], 22.0, rgb(0.5, 0.5, 0.5));
+                s.put_centered(g, k24, x, y + 2.0, DIFFICULTY_NAMES[i], crate::info_ui::c15(0x4210));
             }
         }
         g.flush();

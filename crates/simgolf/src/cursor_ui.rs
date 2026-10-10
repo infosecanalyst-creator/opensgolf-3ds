@@ -44,11 +44,8 @@ const ICON_TYPES: [i32; 16] = [0, 1, 7, 4, 9, 10, 17, 13, 2, 3, 5, 8, 11, 12, 14
 const ICON_W: f32 = 57.0;
 const ICON_H: f32 = 40.0;
 
-/// Font sizes standing in for the exe's small (0x519fd8), body (0x51b360) and large (0x519928) font objects. PLACEHOLDER: the
-/// objects' sizes are not decoded.
-const SMALL: f32 = 11.0;
-const BODY: f32 = 13.0;
-const LARGE: f32 = 16.0;
+/// The exe's small (0x519fd8), body (0x51b360) and large (0x519928) font objects.
+use crate::screens_ui::{BODY, LARGE, SMALL};
 
 /// How a preview sprite is drawn: see-through (queue flag 0x200, the exe's alpha 0.6) or as the refused red silhouette
 /// (flag 0x800: tint 0x7c00 at strength 0xf8).
@@ -533,11 +530,10 @@ impl App {
     }
 }
 
-/// Centred text placed by its top, as the exe's text calls place it (ours draw from the baseline). APPROXIMATION: the
-/// baseline is taken four fifths of the size below the top.
+/// Centred text placed by its top, as the exe's text calls place it (ours draw from the baseline).
 fn top_text(g: &mut Gfx, s: &Ui, cx: f32, top: f32, text: &str, size: f32, c: [f32; 4]) {
     if !text.is_empty() {
-        s.text_centered(g, cx, top + size * 0.8, text, size, c);
+        s.text(g, cx - (crate::ui::text_width(text, size) / 2.0).floor(), crate::ui::top(top, size), text, size, c);
     }
 }
 

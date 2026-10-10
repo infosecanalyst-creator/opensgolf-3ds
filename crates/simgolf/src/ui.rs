@@ -157,6 +157,58 @@ pub enum Face {
     Info,
 }
 
+/// One of the exe's font objects: a typeface at a size. The size is what the exe hands its graphics library (jgl.dll, font
+/// create at 0x1003be80): it goes into a LOGFONT as lfHeight = -size with lfWeight 0, so it is GDI's character height, the em
+/// square, in pixels; fontdue's pixel size is the same em measure. The exe passes the top of the text: its draw (0x4767a0)
+/// adds the font's tmAscent - tmInternalLeading (kept at object +0x10) to y and TextOut runs with TA_BASELINE, so the
+/// baseline sits `base()` pixels below the y the exe gives. A line is tmHeight + tmExternalLeading (0x477580).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Fnt {
+    pub face: Face,
+    pub px: f32,
+}
+
+impl Fnt {
+    /// Pixels from the exe's text y (the top) down to the baseline.
+    pub fn base(self) -> f32 {
+        Font::get(self.face).map(|f| f.base(self.px)).unwrap_or(self.px * 0.8)
+    }
+    /// The exe's line height (0x477580).
+    pub fn line(self) -> f32 {
+        Font::get(self.face).map(|f| f.line(self.px)).unwrap_or(self.px * 1.25)
+    }
+    pub fn width(self, s: &str) -> f32 {
+        Font::get(self.face).map(|f| f.width(s, self.px)).unwrap_or(s.len() as f32 * self.px * 0.5)
+    }
+}
+
+// The start up set (0x45bd83), by font object.
+// 0x51b320: Arial Bold 9, made but never selected.
+/// 0x519fd8: Arial Bold 10, the small print (card meters, face strip, badge).
+pub const F_ARIAL10: Fnt = Fnt { face: Face::Arial, px: 10.0 };
+/// 0x51b360: Manual SSi Bold 15, the body text.
+pub const F_MANUAL15: Fnt = Fnt { face: Face::Manual, px: 15.0 };
+/// 0x519928: Manual SSi Bold 20, the headings and the default font (0x83ad44).
+pub const F_MANUAL20: Fnt = Fnt { face: Face::Manual, px: 20.0 };
+/// 0x51a028: Klepto ITC 18.
+pub const F_KLEPTO18: Fnt = Fnt { face: Face::Klepto, px: 18.0 };
+/// 0x519a40: Klepto ITC 24.
+pub const F_KLEPTO24: Fnt = Fnt { face: Face::Klepto, px: 24.0 };
+/// 0x519948: Manual SSi Bold 24.
+pub const F_MANUAL24: Fnt = Fnt { face: Face::Manual, px: 24.0 };
+// 0x51b340 Comic Sans MS Bold italic at 40 * width / 320 and 0x519968 Times New Roman Bold at 7 * width / 320 are made too;
+// neither face is on the disc and the port draws nothing in them.
+// The info screens' set (0x44be1f).
+/// 0x821020: Klepto ITC 24, the info screens' titles.
+pub const F_INFO_TITLE: Fnt = Fnt { face: Face::Klepto, px: 24.0 };
+/// 0x821f08: Manual SSi Bold 20.
+pub const F_INFO20: Fnt = Fnt { face: Face::Manual, px: 20.0 };
+// 0x821ec8: Manual SSi Bold 18, made but never selected.
+/// 0x821f28: Manual SSi Bold 16.
+pub const F_INFO16: Fnt = Fnt { face: Face::Manual, px: 16.0 };
+/// 0x821ee8: Manual SSi Bold 14, the info screens' body.
+pub const F_INFO14: Fnt = Fnt { face: Face::Manual, px: 14.0 };
+
 static FONTS: [std::sync::OnceLock<Font>; 3] = [std::sync::OnceLock::new(), std::sync::OnceLock::new(), std::sync::OnceLock::new()];
 
 thread_local! {
@@ -171,8 +223,9 @@ pub fn set_face(f: Option<Face>) {
 
 fn face_for(size: f32) -> Face {
     match FACE.with(|c| c.get()) {
+        // the info set holds Klepto only at 24 (0x821020); its 20, 18, 16 and 14 are Manual SSi
         Some(Face::Info) => {
-            if size >= 20.0 {
+            if size >= 24.0 {
                 Face::Klepto
             } else {
                 Face::Manual
@@ -196,6 +249,50 @@ const ARIAL_STANDIN: &[u8] = include_bytes!("../fonts/LiberationSans-Bold.ttf");
 pub struct Font {
     tex: Option<TextureId>,
     glyphs: Vec<Glyph>,
+    vm: VMetrics,
+}
+
+/// The vertical metrics GDI builds its TEXTMETRIC from, in font units: units per em, the OS/2 table's usWinAscent and
+/// usWinDescent, and the hhea table's ascender, descender and line gap (for tmExternalLeading).
+#[derive(Clone, Copy, Debug, Default)]
+struct VMetrics {
+    upem: f32,
+    win_asc: f32,
+    win_desc: f32,
+    hhea_asc: f32,
+    hhea_desc: f32,
+    hhea_gap: f32,
+}
+
+impl VMetrics {
+    /// Reads the head, hhea and OS/2 tables of a TrueType file.
+    fn parse(d: &[u8]) -> Option<VMetrics> {
+        let u16_at = |o: usize| d.get(o..o + 2).map(|b| u16::from_be_bytes([b[0], b[1]]));
+        let i16_at = |o: usize| u16_at(o).map(|v| v as i16 as f32);
+        let n = u16_at(4)? as usize;
+        let table = |tag: &[u8; 4]| {
+            (0..n).find_map(|i| {
+                let r = 12 + 16 * i;
+                (d.get(r..r + 4)? == tag).then(|| d.get(r + 8..r + 12).map(|b| u32::from_be_bytes([b[0], b[1], b[2], b[3]]) as usize))?
+            })
+        };
+        let (head, hhea, os2) = (table(b"head")?, table(b"hhea")?, table(b"OS/2")?);
+        Some(VMetrics {
+            upem: u16_at(head + 18)? as f32,
+            hhea_asc: i16_at(hhea + 4)?,
+            hhea_desc: i16_at(hhea + 6)?,
+            hhea_gap: i16_at(hhea + 8)?,
+            win_asc: u16_at(os2 + 74)? as f32,
+            win_desc: u16_at(os2 + 76)? as f32,
+        })
+    }
+
+    /// GDI's tmAscent, tmDescent and tmExternalLeading for an em of `px` pixels.
+    fn tm(&self, px: f32) -> (f32, f32, f32) {
+        let k = px / self.upem.max(1.0);
+        let ext = (self.hhea_gap - ((self.win_asc + self.win_desc) - (self.hhea_asc - self.hhea_desc))).max(0.0);
+        ((self.win_asc * k).round(), (self.win_desc * k).round(), (ext * k).round())
+    }
 }
 
 impl Font {
@@ -223,7 +320,13 @@ impl Font {
     }
 
     fn load_inner(g: &mut Gfx, ttf: Vec<u8>) -> Option<Font> {
+        let vm = VMetrics::parse(&ttf);
         let font = fontdue::Font::from_bytes(ttf, fontdue::FontSettings::default()).ok()?;
+        let vm = vm.unwrap_or_else(|| {
+            let lm = font.horizontal_line_metrics(1000.0);
+            let (a, d, gap) = lm.map(|m| (m.ascent, -m.descent, m.line_gap)).unwrap_or((800.0, 200.0, 0.0));
+            VMetrics { upem: 1000.0, win_asc: a, win_desc: d, hhea_asc: a, hhea_desc: -d, hhea_gap: gap }
+        });
         let mut atlas = vec![0u8; ATLAS * ATLAS * 4];
         let mut glyphs = Vec::with_capacity(COUNT as usize);
         let (mut x, mut y, mut row_h) = (1usize, 1usize, 0usize);
@@ -258,7 +361,24 @@ impl Font {
             row_h = row_h.max(m.height);
         }
         let img = sg_core::assets::Rgba { w: ATLAS as u32, h: ATLAS as u32, px: atlas };
-        Some(Font { tex: Some(g.texture(&img, false)), glyphs })
+        Some(Font { tex: Some(g.texture(&img, false)), glyphs, vm })
+    }
+
+    /// Top of the exe's text to its baseline: tmAscent - tmInternalLeading, which is the em less tmDescent.
+    fn base(&self, px: f32) -> f32 {
+        let (_, d, _) = self.vm.tm(px);
+        px.round() - d
+    }
+
+    /// tmHeight + tmExternalLeading.
+    fn line(&self, px: f32) -> f32 {
+        let (a, d, e) = self.vm.tm(px);
+        a + d + e
+    }
+
+    /// A glyph's advance at `px`: GDI steps the pen by whole pixels.
+    fn advance(gl: &Glyph, px: f32) -> f32 {
+        (gl.advance * px / BAKE_PX).round()
     }
 
     fn glyph(&self, c: char) -> Option<&Glyph> {
@@ -271,8 +391,7 @@ impl Font {
     }
 
     pub fn width(&self, s: &str, size: f32) -> f32 {
-        let k = size / BAKE_PX;
-        s.chars().filter_map(|c| self.glyph(c)).map(|g| g.advance).sum::<f32>() * k
+        s.chars().filter_map(|c| self.glyph(c)).map(|g| Self::advance(g, size)).sum::<f32>()
     }
 }
 
@@ -398,7 +517,34 @@ impl Screen {
 
     /// Text with the baseline at y. Sizes are in virtual pixels.
     pub fn text(&self, g: &mut Gfx, x: f32, y: f32, s: &str, size: f32, c: [f32; 4]) {
-        let Some(f) = Font::get(face_for(size)) else { return };
+        self.text_in(g, face_for(size), x, y, s, size, c);
+    }
+
+    /// Text in an exe font object as the exe's left aligned call (0x4049d0) puts it: `y` is the top.
+    pub fn put(&self, g: &mut Gfx, f: Fnt, x: f32, y: f32, s: &str, c: [f32; 4]) {
+        self.text_in(g, f.face, x, y + f.base(), s, f.px, c);
+    }
+
+    /// The exe's centred call (0x404b70, 0x477da0): starts at x - width / 2, rounded down to a pixel; `y` is the top.
+    pub fn put_centered(&self, g: &mut Gfx, f: Fnt, cx: f32, y: f32, s: &str, c: [f32; 4]) {
+        self.put(g, f, cx - (f.width(s) / 2.0).floor(), y, s, c);
+    }
+
+    /// The exe's right aligned call (0x478140): ends at x; `y` is the top.
+    pub fn put_right(&self, g: &mut Gfx, f: Fnt, x: f32, y: f32, s: &str, c: [f32; 4]) {
+        self.put(g, f, x - f.width(s), y, s, c);
+    }
+
+    /// The exe's shadowed calls (0x404ad0 left, 0x404bc0 centred): palette black one pixel below, then the text.
+    pub fn put_shadowed(&self, g: &mut Gfx, f: Fnt, x: f32, y: f32, s: &str, c: [f32; 4], centred: bool) {
+        let x = if centred { x - (f.width(s) / 2.0).floor() } else { x };
+        self.put(g, f, x, y + 1.0, s, [0.0, 0.0, 0.0, c[3]]);
+        self.put(g, f, x, y, s, c);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn text_in(&self, g: &mut Gfx, face: Face, x: f32, y: f32, s: &str, size: f32, c: [f32; 4]) {
+        let Some(f) = Font::get(face) else { return };
         let Some(tex) = f.tex else { return };
         let k = size / BAKE_PX;
         let mut pen = x;
@@ -421,16 +567,22 @@ impl Screen {
                     ],
                 );
             }
-            pen += gl.advance * k;
+            pen += Font::advance(gl, size);
         }
     }
     pub fn text_centered(&self, g: &mut Gfx, cx: f32, y: f32, s: &str, size: f32, c: [f32; 4]) {
-        self.text(g, cx - text_width(s, size) * 0.5, y, s, size, c);
+        // as the exe's centred call: half the width rounded down
+        self.text(g, cx - (text_width(s, size) / 2.0).floor(), y, s, size, c);
     }
 }
 
 pub fn text_width(s: &str, size: f32) -> f32 {
     Font::get(face_for(size)).map(|f| f.width(s, size)).unwrap_or(s.len() as f32 * size * 0.5)
+}
+
+/// The baseline of text whose top the exe puts at `y`, in the face `text` would pick for `size` (see `Fnt`).
+pub fn top(y: f32, size: f32) -> f32 {
+    y + Fnt { face: face_for(size), px: size }.base()
 }
 
 pub fn rgb(r: f32, g: f32, b: f32) -> [f32; 4] {

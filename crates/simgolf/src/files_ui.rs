@@ -170,12 +170,25 @@ fn c15(v: u32) -> [f32; 4] {
 const BLACK: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
 const WHITE: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
 
-/// The exe's text calls take the top of the text; ours draw from the baseline.
+/// The title screens' fonts by the size asked: the screens' titles in Klepto ITC 24 (0x519a40: Load Previous Game, Pick A
+/// Pro, the championship chooser; 0x821020 for the credits), the theme screen's in Klepto 18 (0x51a028), and every other
+/// line in Manual SSi 15 (0x51b360, selected after each title).
+fn font(size: f32) -> crate::ui::Fnt {
+    if size >= 20.0 {
+        crate::ui::F_KLEPTO24
+    } else if size >= 18.0 {
+        crate::ui::F_KLEPTO18
+    } else {
+        crate::ui::F_MANUAL15
+    }
+}
+
+/// Text placed by its top, as the exe's calls place it.
 fn top(s: &Ui, g: &mut Gfx, x: f32, y: f32, t: &str, size: f32, c: [f32; 4]) {
-    s.text(g, x, y + size * 0.82, t, size, c);
+    s.put(g, font(size), x, y, t, c);
 }
 fn top_c(s: &Ui, g: &mut Gfx, x: f32, y: f32, t: &str, size: f32, c: [f32; 4]) {
-    s.text_centered(g, x, y + size * 0.82, t, size, c);
+    s.put_centered(g, font(size), x, y, t, c);
 }
 
 /// A row's name: the file name without its extension; names starting with '&' are autosaves.
@@ -625,7 +638,7 @@ impl App {
             ListKind::Course => "Select Championship Course",
             ListKind::Pro => "Pick A Pro",
         };
-        top_c(s, g, 504.0, 42.0, title, 20.0, BLACK);
+        top_c(s, g, 504.0, 42.0, title, 24.0, BLACK);
         let n = f.files.len();
         for r in 0..ROWS.min(n.saturating_sub(f.scroll)) {
             let i = f.scroll + r;
@@ -758,12 +771,8 @@ impl App {
         for (k, name) in PRO_SKILLS.iter().enumerate() {
             let y = 279.0 + 24.0 * k as f32;
             top(s, g, 94.0, y, name, 12.0, teal);
-            // "+" then skill*10 then "%"; the interface font has no plus, so it is drawn as two bars
-            let t = format!("{}%", p.skills[k] as i32 * 10);
-            let x0 = 59.0 - (text_width(&t, 12.0) + 9.0) / 2.0;
-            s.fill(g, x0, y + 5.0, 7.0, 2.0, teal);
-            s.fill(g, x0 + 2.5, y + 2.5, 2.0, 7.0, teal);
-            top(s, g, x0 + 9.0, y, &t, 12.0, teal);
+            // "+" then skill*10 then "%", centred on 59
+            top_c(s, g, 59.0, y, &format!("+{}%", p.skills[k] as i32 * 10), 12.0, teal);
         }
         top(s, g, 56.0, 544.0, "Signature saying:", 13.0, BLACK);
         let male = p.person.b21 & 0x80 == 0;
@@ -814,11 +823,12 @@ impl App {
             c.start = clock - c.preroll;
         }
         s.image(g, &art.credits, 0.0, 0.0);
-        const SIZE: f32 = 20.0;
-        const PITCH: f32 = 24.0;
+        // 0x44b9c0: white Klepto ITC 24 (0x821020) with no shadow, one font line (0x477580) apart, left at 50
+        const SIZE: f32 = 24.0;
+        let pitch = crate::ui::F_INFO_TITLE.line();
         let y0 = 600.0 - ((clock - c.start) * 1000.0 / 30.0) as f32;
         for (i, l) in c.lines.iter().enumerate() {
-            let y = y0 + PITCH * i as f32;
+            let y = y0 + pitch * i as f32;
             if !(-70.0..610.0).contains(&y) {
                 continue;
             }
@@ -827,10 +837,9 @@ impl App {
                 s.image(g, &art.bink, 368.0, y);
                 continue;
             }
-            top(s, g, 52.0, y + 2.0, l, SIZE, BLACK);
             top(s, g, 50.0, y, l, SIZE, WHITE);
         }
-        if y0 <= -(PITCH * c.lines.len() as f32 + 150.0) {
+        if y0 <= -(pitch * c.lines.len() as f32 + 150.0) {
             self.close_credits();
         }
     }

@@ -167,9 +167,11 @@ impl App {
         dim(g, &s);
         let ink = black();
         s.image_part(g, art, 0.0, 0.0, 0.0, 0.0, 800.0, REPORT_TOP);
-        s.text_centered(g, 316.0, 50.0, "COURSE REPORT", 24.0, ink);
+        // fonts (0x44fb30): the title in 0x821020 (Klepto 24) centred at (316, 35); every other line
+        // in 0x821ee8 (Manual SSi 14), the rows' tops 2 below their pieces, the totals' 11 below theirs
+        s.put_centered(g, crate::ui::F_INFO_TITLE, 316.0, 35.0, "COURSE REPORT", ink);
         for c in 0..12 {
-            s.text_centered(g, CX[c] + CW[c] / 2.0, 86.0, HEAD[c], 12.0, ink);
+            s.text_centered(g, CX[c] + CW[c] / 2.0, 86.0, HEAD[c], 14.0, ink);
         }
         let all = self.club.game & sg_core::golfer::game::TWO_TEES != 0;
         let holes = self.report_holes();
@@ -246,7 +248,7 @@ impl App {
             mark(g, 11, (r.profit < 0).then_some(0));
             let ty = y + 12.0;
             let hole = &self.club.holes[r.hole];
-            s.text(g, 15.0, ty, &ratings::hole_name(r.hole, hole), 11.0, ink);
+            s.text(g, 15.0, ty, &ratings::hole_name(r.hole, hole), 14.0, ink);
             // Top 100 / Top 18 / scenic marker (index 3..7 on the sheet's icon row), and the dogleg arrow in the type cell
             let tops = if r.flags & 1 != 0 { 1 + (r.flags >> 1 & 1) as usize } else { 0 };
             let m = 2 + tops + if r.scenic { 3 } else { 0 };
@@ -255,31 +257,31 @@ impl App {
             }
             let dog = if r.flags & 0x60 == 0 { 1 } else { (r.flags >> 4 & 2) as usize };
             s.image_part(g, art, 555.0, y + 1.0, 547.0, 549.0 + 14.0 * dog as f32, 12.0, 13.0);
-            text_right(&s, g, 151.0, ty, &r.yards.to_string(), 11.0, ink);
-            s.text_centered(g, 172.0, ty, &r.par.to_string(), 11.0, ink);
-            text_right(&s, g, 227.0, ty, &hundredths(r.avg), 11.0, ink);
-            text_right(&s, g, 278.0, ty, &format!("{}m", r.minutes), 11.0, ink);
-            text_right(&s, g, 324.0, ty, &format!("{}%", r.fun), 11.0, ink);
-            text_right(&s, g, 369.0, ty, &hundredths(r.len), 11.0, ink);
-            text_right(&s, g, 415.0, ty, &hundredths(r.acc), 11.0, ink);
-            text_right(&s, g, 462.0, ty, &hundredths(r.img), 11.0, ink);
-            s.text(g, 471.0, ty, r.type_name, 11.0, ink);
-            text_right(&s, g, 635.0, ty, &digits(r.avg_fee), 11.0, ink);
-            text_right(&s, g, 709.0, ty, &digits(r.revenue), 11.0, ink);
-            text_right(&s, g, 786.0, ty, &digits(r.profit), 11.0, ink);
+            text_right(&s, g, 151.0, ty, &r.yards.to_string(), 14.0, ink);
+            s.text_centered(g, 172.0, ty, &r.par.to_string(), 14.0, ink);
+            text_right(&s, g, 227.0, ty, &hundredths(r.avg), 14.0, ink);
+            text_right(&s, g, 278.0, ty, &format!("{}m", r.minutes), 14.0, ink);
+            text_right(&s, g, 324.0, ty, &format!("{}%", r.fun), 14.0, ink);
+            text_right(&s, g, 369.0, ty, &hundredths(r.len), 14.0, ink);
+            text_right(&s, g, 415.0, ty, &hundredths(r.acc), 14.0, ink);
+            text_right(&s, g, 462.0, ty, &hundredths(r.img), 14.0, ink);
+            s.text(g, 471.0, ty, r.type_name, 14.0, ink);
+            text_right(&s, g, 635.0, ty, &digits(r.avg_fee), 14.0, ink);
+            text_right(&s, g, 709.0, ty, &digits(r.revenue), 14.0, ink);
+            text_right(&s, g, 786.0, ty, &digits(r.profit), 14.0, ink);
         }
         let total_y = REPORT_TOP + REPORT_PITCH * rows.len() as f32;
         s.image_part(g, art, 0.0, total_y, 0.0, 420.0, 800.0, 29.0);
         let ty = total_y + 21.0;
         if open > 0 {
-            s.text(g, 15.0, ty, "Total", 11.0, ink);
-            text_right(&s, g, 151.0, ty, &digits(t_yds), 11.0, ink);
-            s.text_centered(g, 172.0, ty, &t_par.to_string(), 11.0, ink);
-            text_right(&s, g, 227.0, ty, &hundredths(t_avg), 11.0, ink);
+            s.text(g, 15.0, ty, "Total", 14.0, ink);
+            text_right(&s, g, 151.0, ty, &digits(t_yds), 14.0, ink);
+            s.text_centered(g, 172.0, ty, &t_par.to_string(), 14.0, ink);
+            text_right(&s, g, 227.0, ty, &hundredths(t_avg), 14.0, ink);
             // the exe shows the last hole's minutes past the hour, not the total's
             let time = if t_min >= 60 { format!("{}h {}m", t_min / 60, m_last % 60) } else { format!("{}m", m_last % 60) };
-            text_right(&s, g, 278.0, ty, &time, 11.0, ink);
-            text_right(&s, g, 324.0, ty, &format!("{}%", t_fun / open), 11.0, ink);
+            text_right(&s, g, 278.0, ty, &time, 14.0, ink);
+            text_right(&s, g, 324.0, ty, &format!("{}%", t_fun / open), 14.0, ink);
             for (c, (x, v)) in [(369.0, t_len / open), (415.0, t_acc / open), (462.0, t_img / open)].into_iter().enumerate() {
                 // the totals light up only from 50 (the +Img total never does: the exe's own slip)
                 let k = match v {
@@ -290,19 +292,19 @@ impl App {
                 if let (Some(k), true) = (k, c < 2) {
                     s.image_part(g, art, CX[5 + c], total_y + 9.0, CX[5 + c], [205.0, 241.0, 275.0][k as usize], CW[5 + c], 15.0);
                 }
-                text_right(&s, g, x, ty, &hundredths(v), 11.0, ink);
+                text_right(&s, g, x, ty, &hundredths(v), 14.0, ink);
             }
-            text_right(&s, g, 635.0, ty, &format!("\u{a7}{}", digits(t_fee / open)), 11.0, ink);
-            text_right(&s, g, 709.0, ty, &format!("\u{a7}{}", digits(t_rev)), 11.0, ink);
+            text_right(&s, g, 635.0, ty, &format!("\u{a7}{}", digits(t_fee / open)), 14.0, ink);
+            text_right(&s, g, 709.0, ty, &format!("\u{a7}{}", digits(t_rev)), 14.0, ink);
             if t_prof < 0 {
                 s.image_part(g, art, CX[11], total_y + 9.0, CX[11], 205.0, CW[11], 15.0);
             }
-            text_right(&s, g, 786.0, ty, &format!("\u{a7}{}", digits(t_prof)), 11.0, ink);
+            text_right(&s, g, 786.0, ty, &format!("\u{a7}{}", digits(t_prof)), 14.0, ink);
         }
         let by = total_y + 29.0;
         s.image_part(g, art, 0.0, by, 0.0, 468.0, 800.0, 72.0);
         for (x, t) in [(178.0, "Top 100 Hole"), (335.0, "Top 18 Hole"), (487.0, "Scenic Hole")] {
-            s.text_centered(g, x, by + 21.0, t, 11.0, ink);
+            s.text_centered(g, x, by + 21.0, t, 14.0, ink);
         }
         self.ok_tick(g, &s, 734.0, by + 26.0, false);
         g.flush();
@@ -328,22 +330,23 @@ impl App {
         if hole.flags & 0x81 != 0 {
             title += &format!(" ({h})");
         }
-        s.text_centered(g, 385.0, 64.0, &title, 18.0, ink);
+        // fonts (0x453330): the title in 0x821020 (Klepto 24) centred at (385, 48), the rest in 0x821ee8 (Manual SSi 14)
+        s.put_centered(g, crate::ui::F_INFO_TITLE, 385.0, 48.0, &title, ink);
         // left column: label at 190, value centred at 356
         let rows = [(83.0, "Fun Factor"), (104.0, "Length"), (125.0, "Accuracy"), (146.0, "Imagination")];
         for (y, l) in rows {
-            s.text(g, 190.0, y + 10.0, l, 12.0, ink);
+            s.text(g, 190.0, y + 10.0, l, 14.0, ink);
         }
         if let Some(f) = st.fun {
-            s.text_centered(g, 356.0, 93.0, &format!("{f}%-({})", ratings::fun_word(f)), 12.0, ink);
+            s.text_centered(g, 356.0, 93.0, &format!("{f}%-({})", ratings::fun_word(f)), 14.0, ink);
         }
         for (k, v) in [st.len, st.acc, st.img].into_iter().enumerate() {
             let t = format!("{}{} ({})", if v >= 0 { "+" } else { "" }, hundredths(v), ratings::demand_word(v));
-            s.text_centered(g, 356.0, rows[k + 1].0 + 10.0, &t, 12.0, ink);
+            s.text_centered(g, 356.0, rows[k + 1].0 + 10.0, &t, 14.0, ink);
         }
         // right column: label at 441, values centred at 536 or 591
-        s.text(g, 441.0, 93.0, "Yards", 12.0, ink);
-        s.text_centered(g, 536.0, 93.0, &hole.length.to_string(), 12.0, ink);
+        s.text(g, 441.0, 93.0, "Yards", 14.0, ink);
+        s.text_centered(g, 536.0, 93.0, &hole.length.to_string(), 14.0, ink);
         let rounds = hole.tee_shots;
         if rounds > 0 {
             // the exe's clock picks one of five figures, a new one every 1.024 seconds
@@ -357,30 +360,30 @@ impl App {
                 3 => ("Greens in Reg", format!("{}%", hole.gir * 100 / r)),
                 _ => ("Average Putts", hundredths(hole.putts * 100 / r)),
             };
-            s.text(g, 441.0, 114.0, label, 12.0, ink);
-            s.text_centered(g, 591.0, 114.0, &value, 12.0, ink);
+            s.text(g, 441.0, 114.0, label, 14.0, ink);
+            s.text_centered(g, 591.0, 114.0, &value, 14.0, ink);
         }
-        s.text(g, 441.0, 135.0, "Par ", 12.0, ink);
-        s.text_centered(g, 536.0, 135.0, &hole.par.to_string(), 12.0, ink);
-        s.text(g, 441.0, 156.0, "Stroke average", 12.0, ink);
+        s.text(g, 441.0, 135.0, "Par ", 14.0, ink);
+        s.text_centered(g, 536.0, 135.0, &hole.par.to_string(), 14.0, ink);
+        s.text(g, 441.0, 156.0, "Stroke average", 14.0, ink);
         if let Some(a) = st.avg {
-            s.text_centered(g, 591.0, 156.0, &hundredths(a), 12.0, ink);
+            s.text_centered(g, 591.0, 156.0, &hundredths(a), 14.0, ink);
         }
-        s.text(g, 190.0, 188.0, "Average shots on this hole", 12.0, ink);
+        s.text(g, 190.0, 188.0, "Average shots on this hole", 14.0, ink);
         for (k, &(v, n)) in st.cols.iter().enumerate() {
             let x = 445.0 + 34.0 * k as f32;
             let label = if k == 5 { format!("{v}+") } else { v.to_string() };
-            s.text_centered(g, x, 178.0, &label, 11.0, ink);
+            s.text_centered(g, x, 178.0, &label, 14.0, ink);
             if n != 0 {
-                s.text_centered(g, x, 197.0, &n.to_string(), 11.0, ink);
+                s.text_centered(g, x, 197.0, &n.to_string(), 14.0, ink);
             }
         }
-        s.text(g, 190.0, 213.0, "Comments", 12.0, ink);
+        s.text(g, 190.0, 213.0, "Comments", 14.0, ink);
         let mut y = 220.0;
         if hole.par == 0 {
             s.image_part(g, art, 0.0, y, 0.0, 282.0, 800.0, 16.0);
             if (self.clock * 1000.0) as u64 & 0x200 != 0 {
-                s.text_centered(g, 400.0, y + 12.0, "Under Construction!", 12.0, c15(0x7d08));
+                s.text_centered(g, 400.0, y + 12.0, "Under Construction!", 14.0, c15(0x7d08));
             }
             y += 16.0;
         }
@@ -392,7 +395,7 @@ impl App {
                 sg_core::thoughts::Tone::Bad => c15(0x7d08),
                 _ => ink,
             };
-            s.text_centered(g, 400.0, y + 12.0, &format!("{pct}%   '{}'", line.text), 11.0, c);
+            s.text_centered(g, 400.0, y + 12.0, &format!("{pct}%   '{}'", line.text), 14.0, c);
             y += 16.0;
         }
         s.image_part(g, art, 0.0, y, 0.0, 347.0, 800.0, 55.0);
@@ -411,14 +414,15 @@ impl App {
         let ink = black();
         s.image_part(g, art, 195.0, 45.0, 195.0, 45.0, 411.0, 79.0);
         let n = (1..19).filter(|&h| self.club.holes[h].par != 0).count();
-        s.text_centered(g, 413.0, 76.0, &format!("Best {n} Hole Scores"), 20.0, ink);
-        s.text(g, 236.0, 106.0, "Golfer", 12.0, ink);
-        s.text_centered(g, 551.0, 106.0, "Score", 12.0, ink);
+        // fonts (0x455a30): the title in 0x821020 (Klepto 24) centred at (413, 59), the rest in 0x821ee8 (Manual SSi 14)
+        s.put_centered(g, crate::ui::F_INFO_TITLE, 413.0, 59.0, &format!("Best {n} Hole Scores"), ink);
+        s.text(g, 236.0, 106.0, "Golfer", 14.0, ink);
+        s.text_centered(g, 551.0, 106.0, "Score", 14.0, ink);
         let mut y = 124.0;
         for (score, name) in self.club.top_rounds.iter().zip(&self.club.top_names).take_while(|(v, _)| **v != 0) {
             s.image_part(g, art, 195.0, y, 195.0, 224.0, 411.0, 17.0);
-            s.text(g, 246.0, y + 12.0, name, 12.0, ink);
-            s.text_centered(g, 551.0, y + 12.0, &score.to_string(), 12.0, ink);
+            s.text(g, 246.0, y + 12.0, name, 14.0, ink);
+            s.text_centered(g, 551.0, y + 12.0, &score.to_string(), 14.0, ink);
             y += 17.0;
         }
         s.image_part(g, art, 195.0, y, 195.0, 321.0, 411.0, 61.0);
@@ -477,7 +481,10 @@ impl App {
     }
 
     /// Top 10 Designers (0x473470): the shelf, a trophy for each rank held, the designer's name on its plate and the
-    /// numbers on the cup.
+    /// numbers on the cup. Text, all centred on the cup with tops as given: the name in Manual SSi 15 (0x51b360); on the top
+    /// shelf the three figures in Manual SSi 15 and the total in Manual SSi 20 (0x519928), on the bottom shelf the figures in
+    /// Arial Bold 10 (0x519fd8) and the total in Manual SSi 15; "Total Score (xN)" and the leader's course name in Arial
+    /// Bold 10. The cash figure is the record's cash over 10 as a plain number (thousands of simoleons, no sign or commas).
     pub fn draw_top10(&mut self, g: &mut Gfx) {
         let s = Ui::new(self.draw_w, self.draw_h);
         self.view = s.view;
@@ -491,31 +498,33 @@ impl App {
             s.image_part(g, &a.top10_cups, col * 160.0, cy, col * 160.0, cy, 160.0, ch);
             let x0 = col * 160.0 + 80.0;
             // the name plate: drawn dark, light and then in its colour, white for the new entry, which is underlined
-            let ny = if row == 0 { 321.0 } else { 574.0 } + 11.0;
+            use crate::ui::{F_ARIAL10, F_MANUAL15, F_MANUAL20};
+            let ny = if row == 0 { 321.0 } else { 574.0 };
             let new = self.info.top10_new == Some(rank);
-            s.text_centered(g, x0, ny, &e.name, 12.0, black());
-            s.text_centered(g, x0, ny + 2.0, &e.name, 12.0, c15(0x7ff0));
-            s.text_centered(g, x0, ny + 1.0, &e.name, 12.0, c15(if new { 0x7fff } else { 0x4206 }));
+            s.put_centered(g, F_MANUAL15, x0, ny, &e.name, black());
+            s.put_centered(g, F_MANUAL15, x0, ny + 2.0, &e.name, c15(0x7ff0));
+            s.put_centered(g, F_MANUAL15, x0, ny + 1.0, &e.name, c15(if new { 0x7fff } else { 0x4206 }));
             if new {
-                let w = text_width(&e.name, 12.0) + 4.0;
-                s.fill(g, x0 - w / 2.0, ny + 3.0, w, 1.0, c15(0x4200));
-                s.fill(g, x0 - w / 2.0, ny + 4.0, w, 1.0, c15(0x7ff0));
+                let half = ((F_MANUAL15.width(&e.name) + 4.0) / 2.0).trunc();
+                s.fill(g, x0 - half, ny + 13.0, 2.0 * half, 1.0, c15(0x4206));
+                s.fill(g, x0 - half, ny + 14.0, 2.0 * half, 1.0, c15(0x7ff0));
             }
             let r = rank as f32;
             let (cash_y, p) = if row == 0 { (164.0 + 10.0 * r, 12.0) } else { (443.0 + 4.0 * r, 10.0) };
+            let (fig, big) = if row == 0 { (F_MANUAL15, F_MANUAL20) } else { (F_ARIAL10, F_MANUAL15) };
             let ink = c15(0x4206);
             let fun_y = cash_y - 2.0 * p;
-            s.text_centered(g, x0, cash_y + 9.0, &format!("Cash: {}", crate::ui::money(e.cash as i64 * 100)), 10.0, ink);
-            s.text_centered(g, x0, cash_y - p + 9.0, &format!("Skill: {}", hundredths(e.skill)), 10.0, ink);
-            s.text_centered(g, x0, fun_y + 9.0, &format!("Fun: {}", e.fun), 10.0, ink);
-            let total_y = fun_y - if row == 0 { 8.0 + p } else { 2.0 + p } + 6.0;
+            s.put_centered(g, fig, x0, cash_y, &format!("Cash: {}", e.cash / 10), ink);
+            s.put_centered(g, fig, x0, cash_y - p, &format!("Skill: {}", hundredths(e.skill)), ink);
+            s.put_centered(g, fig, x0, fun_y, &format!("Fun: {}", e.fun), ink);
+            let total_y = fun_y - if row == 0 { 8.0 + p } else { 2.0 + p };
             let total = e.score().to_string();
-            s.text_centered(g, x0, total_y - 1.0, &total, 16.0, black());
-            s.text_centered(g, x0, total_y + 1.0, &total, 16.0, c15(0x7ff0));
-            s.text_centered(g, x0, total_y, &total, 16.0, c15(0x5288));
-            s.text_centered(g, x0, total_y - 16.0, &format!("Total Score (x{})", e.difficulty + 1), 10.0, ink);
+            s.put_centered(g, big, x0, total_y - 1.0, &total, black());
+            s.put_centered(g, big, x0, total_y + 1.0, &total, c15(0x7ff0));
+            s.put_centered(g, big, x0, total_y, &total, c15(0x5288));
+            s.put_centered(g, F_ARIAL10, x0, total_y - 13.0, &format!("Total Score (x{})", e.difficulty + 1), ink);
             if rank == 0 {
-                s.text_centered(g, x0, total_y - 30.0, &e.course, 10.0, ink);
+                s.put_centered(g, F_ARIAL10, x0, total_y - 27.0, &e.course, ink);
             }
         }
         g.flush();

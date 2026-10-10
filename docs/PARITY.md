@@ -158,7 +158,8 @@ Tested headless only (a hooked match run to a win, the tutorial page render); no
 | Refusal, chip, TaDa, Twinkle, bagpipe, end-of-year, tournament place sounds | DERIVED | Wired to the shipped wav files; trigger points are my reading |
 | Emotion voice clips | weak reading | Bank-to-reaction mapping guessed from file names |
 | Bottom golfer mood strip | PLACEHOLDER position | Round faces from MemberPanel.pcx with number cells; click opens the golfer card |
-| Name tags over golfers and staff | PLACEHOLDER | Seen in real screenshots; font, offset and Shift+N toggle are mine |
+| Name tags over golfers and staff | EXACT font and place, PLACEHOLDER toggle | 0x462be0: Arial Bold 10 at zoom 4 (Manual SSi 15 above), centred with the text's top at the golfer's point, no shadow; the Shift+N toggle is mine |
+| Text sizes and placement | EXACT | The exe's font size is GDI's em height in pixels (jgl.dll builds a LOGFONT with lfHeight = -size); a text call's y is the top, the baseline sitting tmAscent - tmInternalLeading below it (TA_BASELINE TextOut), widths in whole pixels per glyph. ui::Fnt carries face and size for each font object (F_ARIAL10, F_MANUAL15, F_MANUAL20, F_KLEPTO18/24, F_MANUAL24, the info set F_INFO_TITLE/F_INFO20/16/14) and Screen::put* place text by its top. Converted: HUD, ticker, thoughts and advisor bubbles, names, floating money, tooltip bars, the Amenities info box, golfer card, pair screen, top 10, the info screens' titles and bodies (report, hole stats, best scores, comments, histograph, finance, shortcuts, SGA, results, leaderboard, year end, land, hire), the title menu, difficulty, load and theme screens and the credits |
 
 Tested headless only; not run on the Mac.
 

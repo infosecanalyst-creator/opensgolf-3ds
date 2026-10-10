@@ -31,6 +31,8 @@ pub struct Art {
     pub stats: Image,
     /// TransPopups: the translucent dialog frame, the skill rows and pads, the balls (with its alpha sheet).
     pub trans: Image,
+    /// s_TransPopups: the masks the translucent fills darken through (the dialog frame's 3 x 3 cuts, the strip's square).
+    pub trans_shadow: Image,
     /// PopUpIcons: the five 90 x 80 message icons (trophy, star, book, exclamation, laurel ball).
     pub popup_icons: Image,
     /// The stock heads by gender (0 women, 1 men, as `Person::male_bit`): the 140 x 140 ball portraits and the 90 x 120
@@ -94,6 +96,7 @@ impl Art {
             roster_scroll: load_pcx(g, &p("infoscreens/memberRoster_scrollbar.pcx"), true, None).unwrap_or_default(),
             stats: alpha(g, "GolferStats.pcx", "GolferStats_A.pcx"),
             trans: alpha(g, "TransPopups.pcx", "TransPopups_A.pcx"),
+            trans_shadow: load_pcx(g, &p("s_TransPopups.pcx"), true, None).unwrap_or_default(),
             popup_icons: alpha(g, "PopUpIcons.pcx", "PopUpIcons_A.pcx"),
             halo: [keyed(g, "Heads/golfballhalopage_female.pcx"), keyed(g, "Heads/golfballhalopage_male .pcx")],
             expr: [keyed(g, "Heads/sim_FEMALE_all_expressionsflat.pcx"), keyed(g, "Heads/sim_MALE_all_expressionsflat.pcx")],
@@ -188,39 +191,70 @@ impl Art {
         }
     }
 
-    /// The translucent dialog frame (0x40cef0 with TransPopups): the inside darkened by half, as the shadow sheet does, and the
-    /// 3 x 3 border of 16 x 16 pieces around it, its sides repeated.
-    pub fn trans_frame(&self, g: &mut Gfx, s: &Ui, x: f32, y: f32, w: f32, h: f32) {
+    /// The translucent fill (0x40ca10): 16 x 16 tiles from (x, y) over w x h, each darkening the screen through a mask cut of
+    /// s_TransPopups (0x4740f0 with the colour table 0x824148's first part, which halves every channel). The dialog frame
+    /// (`frame`) takes the 3 x 3 cuts at (17 col, 17 row) by the tile's place (first, middle, last column and row: the rounded
+    /// corners); the ticker strip takes the square at (317, 0) for every tile (object 0x5a5554).
+    pub fn trans_fill(&self, g: &mut Gfx, s: &Ui, x: f32, y: f32, w: f32, h: f32, frame: bool) {
         let dark = rgba(0.0, 0.0, 0.0, 0.5);
-        s.fill(g, x + 3.0, y, w - 6.0, h, dark);
-        s.fill(g, x, y + 3.0, 3.0, h - 6.0, dark);
-        s.fill(g, x + w - 3.0, y + 3.0, 3.0, h - 6.0, dark);
+        if self.trans_shadow.tex.is_none() {
+            s.fill(g, x, y, w, h, dark);
+            return;
+        }
+        // (a tile that is both first and last takes the last cut, as the exe tests the end second)
+        let place = |v: f32, start: f32, end: f32| {
+            if v + 16.0 >= end {
+                2.0
+            } else if v == start {
+                0.0
+            } else {
+                1.0
+            }
+        };
+        let mut tx = x;
+        while tx < x + w {
+            let mut ty = y;
+            while ty < y + h {
+                let (sx, sy) = if frame { (17.0 * place(tx, x, x + w), 17.0 * place(ty, y, y + h)) } else { (317.0, 0.0) };
+                s.image_part_tint(g, &self.trans_shadow, tx, ty, sx, sy, 16.0, 16.0, dark);
+                ty += 16.0;
+            }
+            tx += 16.0;
+        }
+    }
+
+    /// The translucent dialog frame (0x40cef0 with TransPopups): a width or height that is not a multiple of 16 grows to the
+    /// next 15 mod 16 and the frame moves back by half of what was added; then the fill and the
+    /// 3 x 3 border of 16 x 16 pieces (cuts at (17 col, 17 row)): a corner at each end, (w - 17) / 16 top and bottom pieces
+    /// from x + 16 when w passes 32, as many side pieces down from y + 16 when h does.
+    pub fn trans_frame(&self, g: &mut Gfx, s: &Ui, x: f32, y: f32, w: f32, h: f32) {
+        let (x, w) = crate::message_ui::round16(x, w);
+        let (y, h) = crate::message_ui::round16(y, h);
+        self.trans_fill(g, s, x, y, w, h, true);
         if self.trans.tex.is_none() {
             return;
         }
         let t = &self.trans;
-        let piece = |g: &mut Gfx, col: usize, row: usize, dx: f32, dy: f32, pw: f32, ph: f32| {
-            s.image_part(g, t, dx, dy, 17.0 * col as f32, 17.0 * row as f32, pw, ph);
+        let piece = |g: &mut Gfx, col: usize, row: usize, dx: f32, dy: f32| {
+            s.image_part(g, t, dx, dy, 17.0 * col as f32, 17.0 * row as f32, 16.0, 16.0);
         };
         let (r, b) = (x + w - 16.0, y + h - 16.0);
-        let mut cx = x + 16.0;
-        while cx < r {
-            let pw = (r - cx).min(16.0);
-            piece(g, 1, 0, cx, y, pw, 16.0);
-            piece(g, 1, 2, cx, b, pw, 16.0);
-            cx += 16.0;
+        piece(g, 0, 0, x, y);
+        if w - 16.0 > 16.0 {
+            for k in 1..=((w as i32 - 17) >> 4) {
+                piece(g, 1, 0, x + 16.0 * k as f32, y);
+                piece(g, 1, 2, x + 16.0 * k as f32, b);
+            }
         }
-        let mut cy = y + 16.0;
-        while cy < b {
-            let ph = (b - cy).min(16.0);
-            piece(g, 0, 1, x, cy, 16.0, ph);
-            piece(g, 2, 1, r, cy, 16.0, ph);
-            cy += 16.0;
+        if h - 16.0 > 16.0 {
+            for k in 1..=((h as i32 - 17) >> 4) {
+                piece(g, 0, 1, x, y + 16.0 * k as f32);
+                piece(g, 2, 1, r, y + 16.0 * k as f32);
+            }
         }
-        piece(g, 0, 0, x, y, 16.0, 16.0);
-        piece(g, 2, 0, r, y, 16.0, 16.0);
-        piece(g, 0, 2, x, b, 16.0, 16.0);
-        piece(g, 2, 2, r, b, 16.0, 16.0);
+        piece(g, 2, 0, r, y);
+        piece(g, 2, 2, r, b);
+        piece(g, 0, 2, x, b);
     }
 }
 
@@ -273,10 +307,11 @@ pub const TRAIT_WORDS: [&str; 5] = ["Talkative", "Outgoing", "Athletic", "Playfu
 /// The three skill class words (table 0x4c2858, "length" first).
 pub const CLASS_WORDS: [&str; 3] = ["length", "accuracy", "imagination"];
 
-/// The fonts of the card and the dialogs: heading, body and small.
-pub const LARGE: f32 = 16.0;
-pub const BODY: f32 = 13.0;
-pub const SMALL: f32 = 11.0;
+/// The fonts of the card and the dialogs: heading 0x519928 (Manual SSi Bold 20), body 0x51b360 (Manual SSi Bold 15) and
+/// small 0x519fd8 (Arial Bold 10); the sizes pick the faces (see `ui::Fnt`).
+pub const LARGE: f32 = crate::ui::F_MANUAL20.px;
+pub const BODY: f32 = crate::ui::F_MANUAL15.px;
+pub const SMALL: f32 = crate::ui::F_ARIAL10.px;
 
 fn black() -> [f32; 4] {
     rgb(0.05, 0.05, 0.1)
@@ -287,9 +322,9 @@ pub fn c15(v: u32) -> [f32; 4] {
     rgb(((v >> 10) & 31) as f32 / 31.0, ((v >> 5) & 31) as f32 / 31.0, (v & 31) as f32 / 31.0)
 }
 
-/// The exe places text by its top; ours draws from the baseline.
+/// The exe places text by its top; ours draws from the baseline (exact metrics, see `ui::Fnt`).
 pub fn top(y: f32, size: f32) -> f32 {
-    y + size * 0.78
+    crate::ui::top(y, size)
 }
 
 /// The exe's distance metric (0x467170).
@@ -430,7 +465,9 @@ impl App {
         } else {
             s.fill(g, 0.0, 0.0, 800.0, 600.0, rgba(0.1, 0.1, 0.2, 0.95));
         }
-        s.text_centered(g, 338.0, top(14.0, 22.0), "SELECT THE NEXT PAIR OF GOLFERS", 22.0, black());
+        // fonts (0x459850): the title in 0x821020, the name in 0x821f08, the rest in 0x821ee8
+        use crate::ui::{F_INFO14, F_INFO20, F_INFO_TITLE};
+        s.put_centered(g, F_INFO_TITLE, 338.0, 14.0, "SELECT THE NEXT PAIR OF GOLFERS", black());
         let list = self.club.waiting();
         for (k, &slot) in list.iter().enumerate() {
             let bx = if k & 1 == 1 { 329.0 } else { 0.0 };
@@ -463,15 +500,15 @@ impl App {
             } else if let Some(img) = self.art.heads[gi].get(head as usize - 19) {
                 s.image_part_tint(g, img, bx, y + 4.0, 0.0, 0.0, 140.0, 140.0, rgb(k, k, k));
             }
-            s.text_centered(g, bx + 214.0, top(y + 9.0, 17.0), &self.club.name(slot), 17.0, black());
-            s.text_centered(g, bx + 262.0, top(y + 40.0, BODY), &p.job, BODY, black());
-            s.text_centered(g, bx + 262.0, top(y + 72.0, BODY), &format!("{} years old", self.club.age(slot)), BODY, black());
-            s.text_centered(g, bx + 262.0, top(y + 104.0, BODY), self.club.marital(slot), BODY, black());
+            s.put_centered(g, F_INFO20, bx + 214.0, y + 9.0, &self.club.name(slot), black());
+            s.put_centered(g, F_INFO14, bx + 262.0, y + 40.0, &p.job, black());
+            s.put_centered(g, F_INFO14, bx + 262.0, y + 72.0, &format!("{} years old", self.club.age(slot)), black());
+            s.put_centered(g, F_INFO14, bx + 262.0, y + 104.0, self.club.marital(slot), black());
             // the person's traits, one a line, centred on the card's height
             let words = trait_words(p.traits);
             let y0 = y + 36.0 + 9.0 * (5 - words.len()) as f32;
             for (i, w) in words.iter().enumerate() {
-                s.text(g, bx + 146.0, top(y0 + 18.0 * i as f32, BODY), w, BODY, black());
+                s.put(g, F_INFO14, bx + 146.0, y0 + 18.0 * i as f32, w, black());
             }
         }
         g.flush();
@@ -1051,9 +1088,14 @@ impl App {
         }
         let tick = self.club.tick;
         let year = 2000 + (tick >> 13);
-        s.text_centered(g, 406.0, 66.0, &format!("END of YEAR {year}"), 22.0, black());
-        s.text_centered(g, 465.0, 99.0, "This Year", 12.0, black());
-        s.text_centered(g, 566.0, 99.0, "Last Year", 12.0, black());
+        // fonts (0x44cff0): the title in 0x821020 (Klepto 24) centred at (406, 55), the rest in
+        // 0x821ee8 (Manual SSi 14): the column heads centred at 465 and 566 with tops at 93, the rows' sentences centred on
+        // 301 and their figures right aligned on 500 and 601, tops 115 + 20 k, "Highlights" centred at (404, 200) and each
+        // highlight 2 below its strip
+        use crate::ui::{F_INFO14, F_INFO_TITLE};
+        s.put_centered(g, F_INFO_TITLE, 406.0, 55.0, &format!("END of YEAR {year}"), black());
+        s.put_centered(g, F_INFO14, 465.0, 93.0, "This Year", black());
+        s.put_centered(g, F_INFO14, 566.0, 93.0, "Last Year", black());
         let m = ((tick >> 10) % 500) as usize;
         let p = (m + 500 - 8) % 500;
         let h = &self.club.history;
@@ -1072,17 +1114,17 @@ impl App {
                 2 => format!("{}.{:02}", v / 100, (v % 100).abs()),
                 _ => format!("{v}"),
             };
-            s.text_centered(g, 301.0, y, &format!("{subject}{word}"), 12.0, black());
+            s.text_centered(g, 301.0, y, &format!("{subject}{word}"), 14.0, black());
             let c = match b.cmp(&a) {
                 std::cmp::Ordering::Greater => rgb(0.1, 0.55, 0.2),
                 std::cmp::Ordering::Less => rgb(0.8, 0.15, 0.1),
                 _ => black(),
             };
             let (la, lb) = (fmt(a), fmt(b));
-            s.text(g, 500.0 - text_width(&lb, 12.0), y, &lb, 12.0, c);
-            s.text(g, 601.0 - text_width(&la, 12.0), y, &la, 12.0, black());
+            s.text(g, 500.0 - text_width(&lb, 14.0), y, &lb, 14.0, c);
+            s.text(g, 601.0 - text_width(&la, 14.0), y, &la, 14.0, black());
         }
-        s.text_centered(g, 404.0, 210.0, "Highlights", 13.0, black());
+        s.put_centered(g, F_INFO14, 404.0, 200.0, "Highlights", black());
         let mut y = 216.0;
         for k in 0..9 {
             let i = (p + k) % 500;
@@ -1099,14 +1141,14 @@ impl App {
             } else {
                 s.fill(g, 187.0, y, 429.0, 15.0, rgb(0.9, 0.88, 0.8));
             }
-            s.text_centered(g, 404.0, y + 12.0, &format!("{}: {t}", MONTHS[k.min(7)]), 11.0, black());
+            s.text_centered(g, 404.0, y + 12.0, &format!("{}: {t}", MONTHS[k.min(7)]), 14.0, black());
             y += 15.0;
         }
         for l in self.year_notice.lines() {
             if has {
                 s.image_part(g, e, 187.0, y, 187.0, 291.0, 429.0, 15.0);
             }
-            s.text_centered(g, 404.0, y + 12.0, l, 11.0, rgb(0.8, 0.1, 0.1));
+            s.text_centered(g, 404.0, y + 12.0, l, 14.0, rgb(0.8, 0.1, 0.1));
             y += 15.0;
         }
         if has {
@@ -1269,16 +1311,13 @@ pub fn skill_value(v: u8) -> String {
     format!("{}{}%", if v < 10 { "+" } else { "" }, v as i32 * 10)
 }
 
-/// The generic hover label (0x432620): a small box beside the pointer. Our own drawing.
+/// The generic hover label (0x432620) at the pointer itself (the card reads the pointer with 0x47ab50 and passes it as
+/// is): see `panels_ui::tip_bar`.
 pub fn tooltip(g: &mut Gfx, s: &Ui, mx: f32, my: f32, t: &str) {
     if t.is_empty() {
         return;
     }
-    let w = text_width(t, SMALL) + 10.0;
-    let (x, y) = ((mx + 12.0).min(800.0 - w), (my + 16.0).min(580.0));
-    s.fill(g, x - 1.0, y - 1.0, w + 2.0, 18.0, rgb(0.1, 0.1, 0.2));
-    s.fill(g, x, y, w, 16.0, rgb(1.0, 1.0, 0.86));
-    s.text(g, x + 5.0, y + 12.0, t, SMALL, black());
+    crate::panels_ui::tip_bar(g, s, t, mx, my + 5.0);
 }
 
 /// Money as the info screens print it: digits with thousands commas, no currency sign.

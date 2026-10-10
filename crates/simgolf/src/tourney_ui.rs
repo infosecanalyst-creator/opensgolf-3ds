@@ -355,17 +355,22 @@ impl App {
         }
         let ink = black();
         let red = c15(0x7d08);
-        s.text(g, 190.0, 58.0, "REPORT of the SIM GOLF ASSOCIATION", 20.0, ink);
+        // fonts (0x44fb30 in its SGA modes): the title in 0x821020 (Klepto 24) left at (190, 42); the lines in 0x821ee8
+        // (Manual SSi 14): the headings' tops at 77 ("0/100" at 80), the rows' at 104 + 17 i, the recommendation's label at
+        // (174, 288); then centred on 400 at 310 the verdict in 0x821f28 (Manual SSi 16) or the event in 0x821020, and the
+        // purse in 0x821f28 at 338
+        use crate::ui::{F_INFO14, F_INFO16, F_INFO_TITLE};
+        s.put(g, F_INFO_TITLE, 190.0, 42.0, "REPORT of the SIM GOLF ASSOCIATION", ink);
         let c = r.class.clamp(0, 3);
         let class = sg_core::economy::RANK_NAMES[c as usize];
-        s.text(g, 75.0, 89.0, &format!("Selection Criteria: {class}"), 12.0, ink);
-        s.text(g, 306.0, 89.0, "Grade:", 12.0, ink);
+        s.put(g, F_INFO14, 75.0, 77.0, &format!("Selection Criteria: {class}"), ink);
+        s.put(g, F_INFO14, 306.0, 77.0, "Grade:", ink);
         if r.score <= 0 {
-            s.text(g, 370.0, 89.0, "0/100", 12.0, ink);
+            s.put(g, F_INFO14, 370.0, 80.0, "0/100", ink);
         } else {
-            text_right(s, g, 396.0, 89.0, &r.score.to_string(), 12.0, ink);
+            s.put_right(g, F_INFO14, 396.0, 77.0, &r.score.to_string(), ink);
         }
-        s.text(g, 497.0, 89.0, "Ideal  (Minimum)", 12.0, ink);
+        s.put(g, F_INFO14, 497.0, 77.0, "Ideal  (Minimum)", ink);
         let k = r.ideal[4];
         let ideal_len = r.ideal[0];
         let min_len = if r.ideal[1] == 18 { ideal_len - 1000 } else { ideal_len - ideal_len * 10 / (c * 5 + 20) };
@@ -385,7 +390,7 @@ impl App {
         for (i, label) in SGA_ROWS.iter().enumerate() {
             let y = 104.0 + 17.0 * i as f32;
             let ty = y + 10.0;
-            s.text_centered(g, 119.0, ty, label, 11.0, ink);
+            s.text_centered(g, 119.0, ty, label, 14.0, ink);
             let v = r.values[i];
             let value = match i {
                 0 => format!("{v} yds"),
@@ -393,9 +398,9 @@ impl App {
                 3 => format!("{v}%"),
                 _ => v.to_string(),
             };
-            s.text_centered(g, 238.0, ty, &value, 11.0, ink);
+            s.text_centered(g, 238.0, ty, &value, 14.0, ink);
             if r.scores[i] == 0 {
-                s.text_centered(g, 386.0, ty, "- not acceptable -", 11.0, red);
+                s.text_centered(g, 386.0, ty, "- not acceptable -", 14.0, red);
             } else {
                 for j in 0..r.scores[i] {
                     // the exe's pip sprite is not decoded: the golf ball of StarsHeartsETC.pcx stands in
@@ -407,14 +412,14 @@ impl App {
                     }
                 }
             }
-            s.text(g, 490.0, ty, &ideals[i], 11.0, ink);
+            s.text(g, 490.0, ty, &ideals[i], 14.0, ink);
         }
-        s.text(g, 174.0, 299.0, "Committee recommendation", 12.0, ink);
+        s.put(g, F_INFO14, 174.0, 288.0, "Committee recommendation", ink);
         if r.score <= 0 {
-            s.text_centered(g, 400.0, 330.0, "Improvement Required.", 18.0, red);
+            s.put_centered(g, F_INFO16, 400.0, 310.0, "Improvement Required.", red);
         } else {
-            s.text_centered(g, 400.0, 330.0, r.event, 22.0, ink);
-            s.text_centered(g, 400.0, 358.0, &format!("{},000 first prize.", crate::ui::group(r.purse.max(0) as u64)), 16.0, ink);
+            s.put_centered(g, F_INFO_TITLE, 400.0, 310.0, r.event, ink);
+            s.put_centered(g, F_INFO16, 400.0, 338.0, &format!("{},000 first prize.", crate::ui::group(r.purse.max(0) as u64)), ink);
         }
         if ok {
             self.ok_tick(g, s, 701.0, 398.0, true);
@@ -443,18 +448,22 @@ impl App {
         } else {
             ("LEADER BOARD of".to_string(), format!("{} {} Open", 2001 + self.econ.year_index(), self.course_name))
         };
-        // a line wider than the box is drawn smaller
+        // the box's text is in Arial Bold 10 (0x519fd8), the three title lines centred on 72 with their tops at 9, 21 and 33;
+        // PLACEHOLDER: a line wider than the box is drawn smaller (the exe's handling is not decoded)
         let fit = |t: &str, room: f32| {
-            let tw = text_width(t, 11.0);
+            let tw = text_width(t, 10.0);
             if tw > room {
-                11.0 * room / tw
+                10.0 * room / tw
             } else {
-                11.0
+                10.0
             }
         };
-        s.text_centered(g, 72.0, 19.0, &l1, fit(&l1, w - 6.0), pale);
-        s.text_centered(g, 72.0, 31.0, &l2, fit(&l2, w - 6.0), pale);
-        s.text_centered(g, 72.0, 43.0, &format!("\u{a7}{},000", crate::ui::group(purse.max(0) as u64)), 11.0, pale);
+        crate::ui::set_face(Some(crate::ui::Face::Arial));
+        for (t, top) in [(&l1, 9.0), (&l2, 21.0)] {
+            let size = fit(t, w - 6.0);
+            s.text_centered(g, 72.0, crate::ui::top(top, size), t, size, pale);
+        }
+        s.put_centered(g, crate::ui::F_ARIAL10, 72.0, 33.0, &format!("\u{a7}{},000", crate::ui::group(purse.max(0) as u64)), pale);
         // an 11 px row per golfer, the whole field (the box is sized for two golfers a hole)
         for (i, r) in rows.iter().take(36).enumerate() {
             let c = if r.gary { c15(0x7fff) } else { pale };
@@ -463,6 +472,7 @@ impl App {
             s.text(g, 5.0, yy, &name, fit(&name, 106.0).min(10.0), c);
             text_right(s, g, 139.0, yy, &score_text(r.score), 10.0, c);
         }
+        crate::ui::set_face(None);
     }
 
     /// TOURNAMENT RESULTS: the header band, a band per row (paid places, the cut line row, the rest), the strokes per hole
@@ -475,17 +485,18 @@ impl App {
             s.image_part(g, a, 0.0, 0.0, 0.0, 0.0, 800.0, 106.0);
         }
         let ink = black();
-        s.text_centered(g, 320.0, 40.0, "TOURNAMENT RESULTS", 22.0, ink);
+        // fonts (0x45a090): the title in 0x821020 (Klepto 24) centred at (320, 16), the rest in 0x821ee8 (Manual SSi 14)
+        s.put_centered(g, crate::ui::F_INFO_TITLE, 320.0, 16.0, "TOURNAMENT RESULTS", ink);
         let holes = (1..19).filter(|&h| res.pars[h] != 0).collect::<Vec<_>>();
         let nh = holes.len();
         // the headings' tops are at y 50; ours draws from the baseline
         let hy = 50.0 + 10.0;
-        s.text(g, 25.0, hy, "Ranking", 12.0, ink);
+        s.text(g, 25.0, hy, "Ranking", 14.0, ink);
         for (k, h) in holes.iter().enumerate() {
-            s.text_centered(g, 176.0 + 27.0 * k as f32, hy, &h.to_string(), 11.0, ink);
+            s.text_centered(g, 176.0 + 27.0 * k as f32, hy, &h.to_string(), 14.0, ink);
         }
-        s.text_centered(g, 669.0, hy, "F", 12.0, ink);
-        s.text_centered(g, 740.0, hy, "Prize", 12.0, ink);
+        s.text_centered(g, 667.0, hy, "F", 14.0, ink);
+        s.text(g, 700.0, hy, "Prize", 14.0, ink);
         let mut top = 70.0;
         let mut drawn = 0;
         for (i, r) in res.rows.iter().enumerate().take(18) {
@@ -506,8 +517,8 @@ impl App {
                 c15(0x4210)
             };
             let name = format!("{place}. {}", r.name);
-            let tw = text_width(&name, 11.0);
-            s.text(g, 18.0, ty, &name, if tw > 136.0 { 11.0 * 136.0 / tw } else { 11.0 }, row_c);
+            let tw = text_width(&name, 14.0);
+            s.text(g, 18.0, ty, &name, if tw > 136.0 { 14.0 * 136.0 / tw } else { 14.0 }, row_c);
             let by_par = |d: i32| match d {
                 0 => row_c,
                 d if d > 0 => c15(0x6000),
@@ -516,12 +527,12 @@ impl App {
             for (k, &h) in holes.iter().enumerate() {
                 let v = r.card[h] as i32;
                 if v > 0 {
-                    s.text_centered(g, 176.0 + 27.0 * k as f32, ty, &v.to_string(), 11.0, by_par(v - res.pars[h]));
+                    s.text_centered(g, 176.0 + 27.0 * k as f32, ty, &v.to_string(), 14.0, by_par(v - res.pars[h]));
                 }
             }
-            s.text_centered(g, 669.0, ty, &score_text(r.score), 11.0, by_par(r.score));
+            s.text_centered(g, 669.0, ty, &score_text(r.score), 14.0, by_par(r.score));
             if place <= nh && r.prize > 0 {
-                text_right(s, g, 780.0, ty, &format!("{},000", crate::ui::group(r.prize as u64)), 11.0, row_c);
+                text_right(s, g, 780.0, ty, &format!("{},000", crate::ui::group(r.prize as u64)), 14.0, row_c);
             }
             top += sh;
             drawn += 1;

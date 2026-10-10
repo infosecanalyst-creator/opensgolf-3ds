@@ -12,7 +12,7 @@
 use crate::app::*;
 use crate::gfx::Gfx;
 use crate::render::Rect;
-use crate::ui::{load_pcx, load_pcx_alpha, money, rgb, rgba, text_width, Image, Screen as Ui};
+use crate::ui::{load_pcx, load_pcx_alpha, money, rgb, rgba, Image, Screen as Ui};
 use sg_core::economy::{self, Economy, WAGE_UNITS};
 use sg_core::land;
 use sg_core::terrain::Terrain;
@@ -475,13 +475,16 @@ impl Default for PanelState {
     }
 }
 
-/// The exe's tooltip bar (0x432620): half transparent black behind white text, centred on the pointer a few pixels up and
-/// kept on the screen.
+/// The exe's tooltip bar (0x432620) at the point (x, y), passed here as (x, y + 5) since most callers hand it the pointer
+/// less 5: the bar reaches three pixels per character either side of x (x kept between that and 800 less it), a black
+/// line 10 pixels thick at half opacity along y (Terrain::drawLine's last argument is the alpha in tenths, colour 0x80000000
+/// black), and the text white in Arial Bold 10 (0x519fd8) centred on x with its top at y - 5.
 pub(crate) fn tip_bar(g: &mut Gfx, s: &Ui, text: &str, px: f32, py: f32) {
-    let w = text_width(text, 13.0) + 12.0;
-    let cx = px.clamp(w * 0.5, 800.0 - w * 0.5);
-    s.fill(g, cx - w * 0.5, py - 22.0, w, 17.0, rgba(0.0, 0.0, 0.0, 0.5));
-    s.text_centered(g, cx, py - 9.0, text, 13.0, rgb(1.0, 1.0, 1.0));
+    let (px, y) = (px.floor(), py.floor() - 5.0);
+    let half = 3.0 * text.len() as f32;
+    let x = px.max(half).min(800.0 - half);
+    s.fill(g, x - half, y - 5.0, 2.0 * half, 10.0, rgba(0.0, 0.0, 0.0, 0.5));
+    s.put_centered(g, crate::ui::F_ARIAL10, x, y - 5.0, text, rgb(1.0, 1.0, 1.0));
 }
 
 /// The terrain and amenity tooltip: a box 160 wide over the slot at y 402 with the name and the price. The exe's box is 112
@@ -900,7 +903,8 @@ impl App {
             -2 => tip_bar(g, s, "Elevation", mx, my),
             -3 => tip_bar(g, s, "Undo", mx, my),
             i if i >= 0 => {
-                // the info box: the frame from Pop_UpOk over a translucent fill, three centred lines
+                // the info box (0x434350): the frame from Pop_UpOk over a translucent fill, three lines in Arial Bold 10
+                // (0x519fd8), black, centred on the box with their tops at 462, 472 and 482
                 let i = i as usize;
                 let level = self.lot_level(6 + i as i32);
                 let cx = ((i % 5) as f32 * 80.0 + if i > 4 { 431.0 } else { 391.0 }).clamp(80.0, 720.0);
@@ -910,12 +914,12 @@ impl App {
                 let name = land::BUILDINGS[6 + i].0;
                 let units = land::BUILDINGS[6 + i].2 as i64;
                 let dollars = if up { units * 300 / 2 } else { units * 100 };
-                let ink = rgb(0.12, 0.1, 0.3);
+                let ink = rgb(0.0, 0.0, 0.0);
                 let title = if up { format!("Upgraded {name}") } else { name.to_string() };
-                // the exe's y positions are the tops of the lines; ours are baselines
-                s.text_centered(g, cx - 5.0, 474.0, &title, 12.0, ink);
-                s.text_centered(g, cx - 5.0, 487.0, &format!("Cost: {}", money(dollars)), 12.0, ink);
-                s.text_centered(g, cx - 5.0, 500.0, LOT_EFFECT[i], 11.0, rgb(0.3, 0.15, 0.45));
+                let f = crate::ui::F_ARIAL10;
+                s.put_centered(g, f, cx, 462.0, &title, ink);
+                s.put_centered(g, f, cx, 472.0, &format!("Cost: {}", money(dollars)), ink);
+                s.put_centered(g, f, cx, 482.0, LOT_EFFECT[i], ink);
             }
             _ => {}
         }
@@ -1112,14 +1116,17 @@ impl App {
         s.fill(g, 0.0, 0.0, 800.0, 600.0, rgba(0.0, 0.0, 0.0, 0.35));
         let im = self.panel_art.hire;
         s.image(g, &im, 0.0, 0.0);
-        let ink = rgb(0.15, 0.12, 0.35);
-        s.text_centered(g, 377.0, 123.0, "HIRE AN EMPLOYEE", 17.0, ink);
+        let ink = rgb(0.0, 0.0, 0.0);
+        // fonts (0x459400): the title in 0x821020 (Klepto 24) centred at (377, 107), the rest in 0x821ee8 (Manual SSi 14),
+        // all black: each kind's blurb left at 231 with its top 20 above its band, the wage lines left at 246 (PLACEHOLDER:
+        // their tops, 5 below the line's band)
+        s.put_centered(g, crate::ui::F_INFO_TITLE, 377.0, 107.0, "HIRE AN EMPLOYEE", ink);
         let (mx, my) = self.pstate.mouse;
         let hot = hire_choice_at(mx, my);
         let skilled_ok = economy::rank(self.holes.len()) >= 1;
         for k in 0..4 {
             let y = HIRE_BAND_Y[k];
-            s.text(g, 232.0, y - 9.0, HIRE_BLURB[k], 12.0, ink);
+            s.put(g, crate::ui::F_INFO14, 231.0, y - 20.0, HIRE_BLURB[k], ink);
             for sk in 0..2 {
                 let c = 2 * k + sk;
                 let ty = y + sk as f32 * 20.0;

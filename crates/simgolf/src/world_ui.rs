@@ -359,7 +359,11 @@ impl App {
             }
         }
         let navy = c15(0x2108);
-        s.text_centered(g, 400.0, 35.0, "TRACTS FOR SALE", 20.0, navy);
+        // fonts (0x4587a0): the title in 0x821020 (Klepto 24) centred at (400, 16) in black, the
+        // tract numbers in 0x821f28 (Manual SSi 16), the rest in 0x821ee8 (Manual SSi 14): the tract texts left at the box
+        // plus (4, 2), "Cash Reserve" left at (548, 263) and the cash centred at (720, 264), both black
+        use crate::ui::{F_INFO14, F_INFO16, F_INFO_TITLE};
+        s.put_centered(g, F_INFO_TITLE, 400.0, 16.0, "TRACTS FOR SALE", black_ink());
         for i in 0..9usize {
             let tr = self.tracts[i];
             let (col, row) = (i / 3, i % 3);
@@ -367,8 +371,10 @@ impl App {
             if tr.oob > 0 {
                 let (a0, b0) = sg_core::tracts::origin(i);
                 let (x, y) = land_xy(a0 + 8, b0 + 8);
-                s.text_centered(g, x + 1.0, y + 9.0, &format!("{}", i + 1), 24.0, rgba(0.0, 0.0, 0.0, 0.6));
-                s.text_centered(g, x, y + 8.0, &format!("{}", i + 1), 24.0, c15(0x7ff0));
+                // PLACEHOLDER: the number's place and colours on the map (the exe centres it 7 left and 4 above a point not
+                // identified here)
+                s.put_centered(g, F_INFO16, x + 1.0, y - 7.0, &format!("{}", i + 1), rgba(0.0, 0.0, 0.0, 0.6));
+                s.put_centered(g, F_INFO16, x, y - 8.0, &format!("{}", i + 1), c15(0x7ff0));
             }
             // the bar's ball: lit for the tract under the pointer, silver once the tract is bought
             let (bx, by) = ([15.0, 272.0, 538.0][col], [54.0, 122.0, 190.0][row]);
@@ -380,26 +386,31 @@ impl App {
             let (x0, y0) = ([78.0, 334.0, 600.0][col], 62.0 + 68.0 * row as f32);
             let (tx, ty) = (x0 + 4.0, y0 + 2.0 + 10.0);
             if tr.oob == 0 {
-                s.text(g, tx, ty, "Already purchased.", 12.0, navy);
+                s.text(g, tx, ty, "Already purchased.", 14.0, navy);
                 continue;
             }
-            s.text(g, tx, ty, &format!("Buy tract #{}", i + 1), 12.0, navy);
+            s.text(g, tx, ty, &format!("Buy tract #{}", i + 1), 14.0, navy);
             let name = |t: u8| sg_core::tracts::type_name(t, theme, land::TYPES[(t as usize).min(22)].class == 13);
             let what = format!("{} acres of {}, {}, and {}", tr.oob / 10, name(tr.top[0]), name(tr.top[1]), name(tr.top[2]));
-            let lines = wrap_text(&what, 11.0, 165.0);
+            let lines = wrap_text(&what, 14.0, 165.0);
             for (k, l) in lines.iter().enumerate() {
-                s.text(g, tx, ty + 13.0 * (k + 1) as f32, l, 11.0, navy);
+                s.text(g, tx, ty + 13.0 * (k + 1) as f32, l, 14.0, navy);
             }
             let price = format!("Price: {}", money(tr.price as i64 * 100));
-            text_right(&s, g, x0 + 165.0, ty + 13.0 * (lines.len() + 1) as f32, &price, 11.0, navy);
+            text_right(&s, g, x0 + 165.0, ty + 13.0 * (lines.len() + 1) as f32, &price, 14.0, navy);
         }
-        s.text_centered(g, 567.0, 274.0, "Cash Reserve", 12.0, navy);
-        s.text_centered(g, 720.0, 274.0, &money(self.econ.cash as i64), 12.0, navy);
+        s.put(g, F_INFO14, 548.0, 263.0, "Cash Reserve", black_ink());
+        s.put_centered(g, F_INFO14, 720.0, 264.0, &money(self.econ.cash as i64), black_ink());
         s.image_part(g, &a.land_buttons, 71.0, 533.0, 259.0, 127.0, 72.0, 61.0);
         if hover == 9 {
             s.image_part(g, &a.land_buttons, 662.0, 533.0, 194.0, 127.0, 64.0, 64.0);
-            text_right(&s, g, 656.0, 570.0, "I don't think I'll buy any land.", 12.0, rgb(1.0, 1.0, 1.0));
+            text_right(&s, g, 656.0, 570.0, "I don't think I'll buy any land.", 14.0, rgb(1.0, 1.0, 1.0));
         }
         g.flush();
     }
+}
+
+/// The exe's black text colour (0x80000000).
+fn black_ink() -> [f32; 4] {
+    crate::ui::rgb(0.0, 0.0, 0.0)
 }
