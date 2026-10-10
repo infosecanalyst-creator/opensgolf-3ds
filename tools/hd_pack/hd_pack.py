@@ -596,6 +596,8 @@ def main():
     ap.add_argument("--kinds", default="images,textures,sprites", help="what to pack: any of images, textures, sprites")
     ap.add_argument("--only", help="regular expression: only source files whose path matches (for trying things out)")
     ap.add_argument("--batch", type=int, default=64, help="pictures per upscaler run")
+    ap.add_argument("--no-resume", dest="resume", action="store_false",
+                    help="redo every picture (by default a run continues an interrupted one made with the same method and scale)")
     args = ap.parse_args()
 
     game = os.path.abspath(args.game)
@@ -621,12 +623,14 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
     man_path = os.path.join(out_dir, "manifest.json")
     files = {}
+    done_method = None
     if os.path.isfile(man_path):
         try:
             with open(man_path) as f:
                 old = json.load(f)
             if old.get("scale") == args.scale:
                 files = old.get("files", {})
+                done_method = old.get("method")
         except (OSError, ValueError):
             pass
 
@@ -642,7 +646,12 @@ def main():
             pending, pending_entries = [], []
             write_manifest(man_path, args.scale, up.name, files)
 
+    skipped = 0
     for key, entry, jobs in collect(game, kinds, args.only):
+        # an interrupted run picks up where it stopped: pictures already in the manifest from the same method are kept
+        if args.resume and done_method == up.name and key in files:
+            skipped += 1
+            continue
         pending.extend(jobs)
         pending_entries.append((key, entry))
         count += len(jobs)
@@ -651,6 +660,8 @@ def main():
             log("  %d pictures, %.0f s" % (count, time.time() - t0))
     flush()
     write_manifest(man_path, args.scale, up.name, files)
+    if skipped:
+        log("kept %d pictures from the earlier run" % skipped)
     log("done: %d pictures upscaled %dx with %s into %s (%.0f s)" % (count, args.scale, up.name, out_dir, time.time() - t0))
     log("This pack is made from your own copy of the game's art: keep it to yourself, do not share or upload it.")
 
