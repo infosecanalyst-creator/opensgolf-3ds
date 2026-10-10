@@ -405,6 +405,12 @@ pub const DOCK: [DockBtn; 10] = [
     db(107.0, 568.0, 14.0, 598.0, 298.0, 34.0, 34.0, 50.0), // pause
     db(133.0, 583.0, 13.0, 598.0, 348.0, 34.0, 34.0, 50.0), // tools (save the course)
 ];
+/// The gold wires of 3mainLowerLeft.pcx that join an open panel's button to the panel (Build Course, Add Buildings,
+/// People): sheet x, y, w, h (the cuts' bounds on the sheet) and where they sit on screen, matched to footage of the
+/// original (DERIVED: the best fit of each cut against frames with that panel open, to a pixel).
+pub const DOCK_WIRES: [[f32; 6]; 3] =
+    [[300.0, 0.0, 214.0, 91.0, 34.0, 509.0], [300.0, 100.0, 153.0, 75.0, 95.0, 525.0], [300.0, 200.0, 107.0, 45.0, 141.0, 555.0]];
+
 /// The dock's tooltip captions (0x432ba0), in our button order.
 pub const DOCK_HELP: [&str; 10] = [
     "Build Course",
@@ -632,10 +638,21 @@ impl App {
     fn draw_dock(&mut self, g: &mut Gfx, s: &Ui) {
         if self.dock_art.tex.is_some() {
             s.image_part(g, &self.dock_art, 0.0, 430.0, 0.0, 430.0, 215.0, 170.0);
-            if self.dock_hover >= 0 {
-                let b = &DOCK[self.dock_hover as usize];
+            let lit = |g: &mut Gfx, i: usize| {
+                let b = &DOCK[i];
                 let (dx, dy) = (b.cx - (b.sx + b.sw * 0.5), b.cy - (b.sy + b.sh * 0.5));
                 s.image_part(g, &self.dock_art, b.sx + dx, b.sy + dy, b.sx + b.hover_dx, b.sy, b.sw, b.sh);
+            };
+            // Footage of the original: the open panel's big button stays gold, with its gold wire from under the button
+            // along the dock's rim to the panel (the three wire cuts of the sheet; screen places matched to the footage).
+            if (1..=3).contains(&self.panel) {
+                let k = (self.panel - 1) as usize;
+                let [sx, sy, w, h, x, y] = DOCK_WIRES[k];
+                s.image_part(g, &self.dock_art, x, y, sx, sy, w, h);
+                lit(g, k);
+            }
+            if self.dock_hover >= 0 {
+                lit(g, self.dock_hover as usize);
             }
             // the tooltip bubble after 11 still frames (0x432620): a translucent black bar 6 pixels a letter wide at the
             // pointer, the caption centred 5 pixels above it in white

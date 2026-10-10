@@ -826,6 +826,13 @@ impl Stage {
         } else if std::env::var("SG_PANEL_MOUSE").is_ok() {
             panel_test_hooks(&mut app);
         }
+        // SG_MESSAGE="speaker;text" posts a ticker message (speaker -1 nobody, a golfer slot, or a picture code), for stills
+        if let Some((who, text)) = std::env::var("SG_MESSAGE").ok().as_deref().and_then(|v| v.split_once(';')) {
+            app.post_message(text, 1, who.trim().parse().unwrap_or(message_ui::NOBODY));
+        }
+        if std::env::var_os("SG_PAUSED").is_some() {
+            app.paused = true;
+        }
         if let Some(f) = &o.save {
             if let Err(e) = app.terrain.save(f) {
                 eprintln!("error: {e}");
