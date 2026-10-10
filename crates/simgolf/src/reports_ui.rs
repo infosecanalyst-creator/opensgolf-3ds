@@ -498,8 +498,9 @@ impl App {
             }
         }
         let ink = c15(0);
-        // the course name in the 16 point face (0x821f28), 10 pixels higher with " Employees" on the employees tab
-        let name = if tab == 1 { format!("{} Employees", self.course_name) } else { self.course_name.clone() };
+        // the course name with its long class word in the 16 point face (0x821f28), 10 pixels higher with " Employees" on the employees tab
+        let long = self.long_course_name();
+        let name = if tab == 1 { format!("{long} Employees") } else { long };
         s.text_centered(g, 400.0, top(if tab == 1 { 48.0 } else { 58.0 }, 16.0), &name, 16.0, ink);
         s.text_centered(g, 400.0, top(15.0, 24.0), "ROUTING MAP", 24.0, ink);
         let row = |y: f32| top(y, 14.0);

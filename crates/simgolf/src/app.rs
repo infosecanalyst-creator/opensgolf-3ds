@@ -1966,6 +1966,20 @@ impl App {
         self.slot_of = slots_of(&self.offer);
     }
 
+    /// Swaps property `k` with the one in the cheapest slot it may hold (0 for Parkland, else 1).
+    pub fn cheap_slot(&mut self, k: usize) {
+        let to = if PROPERTIES[k].theme == 0 { 0 } else { 1 };
+        let from = self.slot_of[k];
+        if from == to {
+            return;
+        }
+        let other = self.offer[to].property;
+        let sandbox = self.econ.sandbox;
+        self.offer[to] = Slot { property: k, acres: land::slot_acres(to as i32, k, sandbox) };
+        self.offer[from] = Slot { property: other, acres: land::slot_acres(from as i32, other, sandbox) };
+        self.slot_of = slots_of(&self.offer);
+    }
+
     /// Acres and price (in money) of a property in this game's offer.
     pub fn offer_for(&self, prop_idx: usize) -> (i32, i32) {
         let slot = self.slot_of[prop_idx];

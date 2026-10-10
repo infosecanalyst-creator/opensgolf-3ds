@@ -766,6 +766,11 @@ impl Stage {
                 std::process::exit(1)
             };
             app.deal_offer(o.sandbox);
+            if !o.sandbox {
+                // the chooser only sells what the starting money covers: move the property into a cheap slot (slot 0 is
+                // kept for Parkland) so a scripted start looks like a real one
+                app.cheap_slot(k);
+            }
             app.start_game(&mut g, k, o.sandbox);
             if let Some(c) = o.cash {
                 // the property's price came out of the default funds; the test hook sets the cash after it

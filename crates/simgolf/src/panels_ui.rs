@@ -518,7 +518,7 @@ fn terrain_text(app: &App, theme: usize, name: &str) -> String {
 impl App {
     /// The terrain button's tooltip (0x433190, after 10 frames on a button): the translucent dialog frame (x - 80, 402,
     /// 160 x 112) with its tab strip of TransPopups cuts (0, 60), (17, 60), (34, 60) at y 389 from x - 92; the tile's name
-    /// (first letter capitalised), " $" and its cost centred at (x - 12, 394) in Manual SSi 15, black; in Arial Bold 10 the
+    /// (first letter capitalised), a space and its cost centred at (x - 12, 394) in Manual SSi 15, black; in Arial Bold 10 the
     /// mood face for its lie (MemberPanel face clamp((4 - hazard) * 2, 1, 10)) at (x - 90, 391) and the description from the
     /// theme's text file in white, wrapped at 128 pixels, from (x - 70, 410) 10 apart; then the bounce meter (a grey line at
     /// x + 64 from 425 to 466, dark up to 6 per point, a green tick at its foot and the GBUBBLES ball at its level) and the
@@ -538,11 +538,8 @@ impl App {
             }
         }
         let name = tile_name(id, theme);
-        let mut title: String = name.to_string();
-        if let Some(f) = title.get(..1) {
-            title = f.to_uppercase() + &title[1..];
-        }
-        title += &format!(" ${}", Economy::terrain_cost_units(id) * 100);
+        // footage of the original shows "Fairway 300", "Pot bunker 800": no money sign
+        let title = format!("{} {}", capitalised(name), Economy::terrain_cost_units(id) * 100);
         s.put_centered(g, F_MANUAL15, x - 12.0, 394.0, &title, rgb(0.0, 0.0, 0.0));
         let row = sg_core::course::TYPES.get(id as usize).copied().unwrap_or(sg_core::course::TYPES[4]);
         let k = ((4 - row.hazard as i32) * 2).clamp(1, 10);
@@ -553,7 +550,11 @@ impl App {
         let mut y = 410.0;
         let mut line = String::new();
         let white = c15(0x7fff);
-        for word in text.split(' ').filter(|w| !w.is_empty()) {
+        // runs of spaces are kept ("shots.  Drives" in the footage wraps a word earlier than one space would)
+        for word in text.split(' ') {
+            if line.is_empty() && word.is_empty() {
+                continue;
+            }
             let t = if line.is_empty() { word.to_string() } else { format!("{line} {word}") };
             if F_ARIAL10.width(&t) > 128.0 && !line.is_empty() {
                 if y <= 584.0 {
@@ -581,6 +582,14 @@ impl App {
         }
         ball(g, x - 74.0 + roll, 482.0);
     }
+}
+
+/// Where the current tool's name sits on its terrain button, below the button's top.
+const LABEL_DY: f32 = 4.0;
+
+fn capitalised(name: &str) -> String {
+    let mut c = name.chars();
+    c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
 }
 
 /// The amenity strip's tooltip: a box 160 wide over the slot at y 402 with the name and the price. PLACEHOLDER look: a plain
@@ -774,6 +783,12 @@ impl App {
         let art = &self.panel_art;
         let theme = self.exe_theme() as usize;
         let buttons = &art.terrain_buttons[theme];
+        // the tooltip goes under the panel: in footage of the original the panel body and its buttons cover the box's foot
+        if tip && h >= 0 {
+            let id = tile_id(h as usize);
+            let r = terrain_slot_rect(h as usize, theme);
+            self.terrain_tip(g, s, r.x + 32.0, id, theme);
+        }
         blit(g, s, &art.terrain, TERRAIN_BODY, TERRAIN_BODY.0, TERRAIN_BODY.1);
         let current = (self.tool == 0).then(|| PAINT[self.paint_idx].ty);
         for i in 0..16 {
@@ -804,6 +819,14 @@ impl App {
                 blit(g, s, &art.terrain, cut, x, y);
             }
         }
+        // the current tool's name over its button, white on a shadow, in every frame of the footage (not decoded)
+        if let Some(i) = (0..16).find(|&i| current == Some(tile_id(i))) {
+            let r = terrain_slot_rect(i, theme);
+            let name = capitalised(tile_name(tile_id(i), theme));
+            let (cx, y) = (r.x + r.w * 0.5, r.y + LABEL_DY);
+            s.put_centered(g, crate::ui::F_ARIAL10, cx + 1.0, y + 1.0, &name, rgb(0.0, 0.0, 0.0));
+            s.put_centered(g, crate::ui::F_ARIAL10, cx, y, &name, rgb(1.0, 1.0, 1.0));
+        }
         if !tip {
             return;
         }
@@ -811,11 +834,6 @@ impl App {
         match h {
             -2 => tip_bar(g, s, "Amenities", mx, my),
             -3 => tip_bar(g, s, "Undo", mx, my),
-            i if i >= 0 => {
-                let id = tile_id(i as usize);
-                let r = terrain_slot_rect(i as usize, theme);
-                self.terrain_tip(g, s, r.x + 32.0, id, theme);
-            }
             _ => {}
         }
     }

@@ -155,23 +155,27 @@ impl Slot {
     }
 }
 
+/// The acreage property `p` comes with in offer slot `i`: (slot + 4) x 10, plus 10 (slots 0..3) or 20 (later slots) for an
+/// inland property, minus the same for an island; 250 in a sandbox game.
+pub fn slot_acres(i: i32, p: usize, sandbox: bool) -> i32 {
+    if sandbox {
+        return 250;
+    }
+    let bonus = if i > 3 { 20 } else { 10 };
+    let base = (i + 4) * 10;
+    match RECORDS[p].coast {
+        0 => base + bonus,
+        2 => base - bonus,
+        _ => base,
+    }
+}
+
 /// Deals the properties out to the sixteen slots. Slots 12..15 (the dearest) get four different themes; slot 0 (the cheapest)
 /// always gets a Parkland property; the rest are random. Acres are (slot + 4) x 10, plus 10 (slots 0..3) or 20 (later slots)
 /// for an inland property, minus the same for an island; sandbox games get 250 acres everywhere.
 pub fn deal_offer(rng: &mut ExeRng, sandbox: bool) -> [Slot; 16] {
     let mut slot: [Option<usize>; 16] = [None; 16];
-    let acres_for = |i: i32, p: usize| -> i32 {
-        if sandbox {
-            return 250;
-        }
-        let bonus = if i > 3 { 20 } else { 10 };
-        let base = (i + 4) * 10;
-        match RECORDS[p].coast {
-            0 => base + bonus,
-            2 => base - bonus,
-            _ => base,
-        }
-    };
+    let acres_for = |i: i32, p: usize| slot_acres(i, p, sandbox);
     let mut out = [Slot { property: 0, acres: 0 }; 16];
     // Slots 12..15: one property per theme.
     let mut i = 12;

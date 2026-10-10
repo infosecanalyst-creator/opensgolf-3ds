@@ -34,6 +34,8 @@ const MONTHS: [&str; 8] = ["March", "April", "May", "June", "July", "August", "S
 /// The short course rank suffix the badge appends (0x40daa0 with argument 0), by 0x44faf0's rank of the open holes:
 /// Municipal, Golf Club, Country Club, Championship. The Championship one points into zeroed data, so it is empty.
 const RANK_SUFFIX: [&str; 4] = [" MC", " GC", " CC", ""];
+/// The long class words (0x40daa0 with argument 1).
+const RANK_LONG: [&str; 4] = ["Municipal", "Golf Club", "Country Club", "Championship"];
 
 /// GBUBBLES.pcx icons used by the badge: 16 x 16 cuts at (16 * i, 324) (array 0x59b050).
 const ICON_BALL: usize = 13;
@@ -112,6 +114,15 @@ impl App {
             _ => self.course_name.as_str(),
         };
         format!("{base}{}", RANK_SUFFIX[economy::rank(self.hole_numbers.len()) as usize])
+    }
+
+    /// The course name with the long class word (0x40daa0 with argument 1): "Dolphin Coast Municipal" on the routing map in
+    /// footage of the original.
+    pub fn long_course_name(&self) -> String {
+        let short = self.hud_course_name();
+        let rank = economy::rank(self.hole_numbers.len()) as usize;
+        let base = short.strip_suffix(RANK_SUFFIX[rank]).unwrap_or(&short);
+        format!("{base} {}", RANK_LONG[rank])
     }
 
     /// The face strip (0x418d09): every golfer on a hole (1 to 18, or 19 going home), newest first, a mood face 16 pixels
