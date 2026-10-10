@@ -107,7 +107,14 @@ impl App {
     }
 
     /// A person's frame in the palette of an outfit, recoloured on first use and cached.
-    fn outfit_texture(&mut self, g: &mut Gfx, si: usize, view: i32, frame: i32, o: sg_core::bodies::Outfit) -> Option<miniquad::TextureId> {
+    pub(crate) fn outfit_texture(
+        &mut self,
+        g: &mut Gfx,
+        si: usize,
+        view: i32,
+        frame: i32,
+        o: sg_core::bodies::Outfit,
+    ) -> Option<miniquad::TextureId> {
         let i = self.sprites[si].s.frame_index(view, frame);
         if self.sprites[si].s.indexed.is_empty() {
             return None;
@@ -596,6 +603,7 @@ impl App {
         self.draw_dock(g, &s);
         self.draw_leaderboard(g, &s);
         self.draw_card(g, &s);
+        self.draw_simfoto(g, &s);
         self.draw_paused(g, &s);
         // the ticker goes over the golfer card, as in the exe's frame
         self.draw_ticker(g, &s);

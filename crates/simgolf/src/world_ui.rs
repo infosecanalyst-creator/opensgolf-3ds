@@ -61,9 +61,25 @@ impl App {
         }
     }
 
-    /// The property the club stands on (only known while moving it).
+    /// The year (0 = 2001) a property was bought in this game, if it was (the land record's byte +6, written when the
+    /// property's land is generated, 0x470a60).
+    pub fn bought_year(&self, prop: usize) -> Option<i32> {
+        self.bought.get(prop).copied().filter(|&y| y >= 0)
+    }
+
+    /// Notes that the club's land is the property's from this year on.
+    pub fn mark_bought(&mut self, prop: usize) {
+        if self.bought.len() < PROPERTIES.len() {
+            self.bought.resize(PROPERTIES.len(), -1);
+        }
+        let year = self.econ.year_index() as i32;
+        if let Some(b) = self.bought.get_mut(prop) {
+            *b = year;
+        }
+    }
+
     fn world_owned(&self, prop: usize) -> bool {
-        self.world_move && self.land.as_ref().map(|l| l.slot.property == prop).unwrap_or(false)
+        self.bought_year(prop).is_some()
     }
 
     /// Whether a property's price is within the starting funds (or the club's cash when it moves).
@@ -71,7 +87,8 @@ impl App {
         self.world_unlimited() || self.offer_for(prop).1 as f64 <= self.world_cash()
     }
 
-    /// What is under the pointer: a property (its card's ball or its map pin, the nearest within 30 px), or a button.
+    /// What is under the pointer (0x46f550): a button (Cancel, Reset World or Save Game, Load Game while moving the club), or
+    /// the property whose card ball or map pin is nearest, within 30.
     pub fn world_hit(&self, x: f32, y: f32) -> i32 {
         if (x - 768.0).hypot(y - 557.0) < 25.0 {
             return WORLD_CANCEL;
@@ -90,12 +107,6 @@ impl App {
                 if d < best.1 {
                     best = (p as i32, d);
                 }
-            }
-        }
-        // the card's text part picks it too
-        if best.0 < 0 {
-            if let Some(k) = CARD_POS.iter().position(|&(cx, cy)| x >= cx && x < cx + 175.0 && y >= cy && y < cy + 44.0) {
-                best.0 = self.offer[k].property as i32;
             }
         }
         best.0
@@ -137,8 +148,7 @@ impl App {
             p if (0..16).contains(&p) => {
                 let p = p as usize;
                 if self.world_owned(p) {
-                    self.screen = Screen::Play;
-                    self.world_move = false;
+                    // a property already bought takes no click
                 } else if !self.can_afford(p) {
                     self.info.world_msg = Some("You need more money before you can purchase this property.".into());
                     self.ui_sound(0x18);
@@ -181,9 +191,19 @@ impl App {
         s.text_centered(g, 740.0, 30.0, &funds, 14.0, navy);
         let a = &self.info.art;
         let blink = (self.clock * 4.0) as i64 % 2 == 0;
-        let pin = |g: &mut Gfx, x: f32, y: f32, state: i32| {
-            let variant = (x >= 200.0) as i32 + 2 * (y >= 300.0) as i32;
-            s.image_part(g, &a.tacks, x - 6.0, y - 18.0, 50.0 * variant as f32, 50.0 * state as f32, 20.0, 24.0);
+        // the pins lean away from the globe's middle: TacksandArrow column by the map point's quarter (left of x 200 and
+        // above y 300: column 0 at (x - 12, y - 14); left and below: 1 at (x - 15, y); right and above: 2 at (x, y - 14);
+        // right and below: 3 at (x, y)), row by state; the card's pin is the same piece at the card's (160, 10)
+        let pin_piece = |rx: f32, ry: f32| -> (i32, f32, f32) {
+            match (rx >= 200.0, ry >= 300.0) {
+                (false, false) => (0, -12.0, -14.0),
+                (false, true) => (1, -15.0, 0.0),
+                (true, false) => (2, 0.0, -14.0),
+                (true, true) => (3, 0.0, 0.0),
+            }
+        };
+        let pin = |g: &mut Gfx, x: f32, y: f32, variant: i32, state: i32| {
+            s.image_part(g, &a.tacks, x, y, 50.0 * variant as f32, 50.0 * state as f32, 20.0, 24.0);
         };
         // the selected card goes last: its box reaches over the card below
         let sel_card = CARD_POS.iter().enumerate().position(|(k, _)| self.offer[k].property as i32 == self.hover);
@@ -206,8 +226,9 @@ impl App {
                 };
                 s.image_part(g, icon, cx, cy - 2.0, sx, 0.0, w, h);
             }
-            s.text_centered(g, cx + 96.0, cy + 15.0, RECORDS[p].name, 13.0, navy);
-            s.text_centered(g, cx + 104.0, cy + 26.0, RECORDS[p].bonus, 10.0, navy);
+            let black = rgb(0.0, 0.0, 0.0);
+            s.text_centered(g, cx + 96.0, cy + 15.0, RECORDS[p].name, 13.0, black);
+            s.text_centered(g, cx + 104.0, cy + 26.0, RECORDS[p].bonus, 10.0, black);
             let rec = &RECORDS[p];
             if sel && ok && !owned {
                 let relief = ["flat", "rolling", "hilly"][rec.relief.min(2) as usize];
@@ -216,13 +237,16 @@ impl App {
                 s.text_centered(g, cx + 112.0, cy + 37.0, &format!("Buy {acres} acres of {relief}"), 10.0, navy);
                 s.text_centered(g, cx + 106.0, cy + 47.0, &format!("{lie} {kind} property"), 10.0, navy);
                 s.text_centered(g, cx + 104.0, cy + 57.0, &format!("for only {}.", money(price as i64)), 10.0, navy);
-            } else if self.world_unlimited() {
-                s.text_centered(g, cx + 112.0, cy + 40.0, &format!("{acres} acres"), 11.0, navy);
-            } else {
-                s.text_centered(g, cx + 112.0, cy + 40.0, &format!("{acres} acres: {}", money(price as i64)), 11.0, navy);
+            } else if !self.world_unlimited() {
+                // a bought property shows the year it was bought and the year it was left (never kept: "????")
+                let t = match self.bought_year(p) {
+                    Some(y) => format!("{} - ????", 2001 + y),
+                    None => format!("{acres} acres: {}", money(price as i64)),
+                };
+                s.text_centered(g, cx + 112.0, cy + 40.0, &t, 11.0, navy);
             }
             if sel && owned {
-                s.text_centered(g, cx + 112.0, cy + 54.0, "Already Purchased.", 10.0, navy);
+                s.text_centered(g, cx + 112.0, cy + 53.0, "Already Purchased.", 10.0, navy);
             }
             let state = if sel && blink {
                 3
@@ -233,8 +257,9 @@ impl App {
             } else {
                 0
             };
-            pin(g, rec.map_x as f32, rec.map_y as f32, state);
-            pin(g, cx + 166.0, cy + 28.0, state);
+            let (variant, dx, dy) = pin_piece(rec.map_x as f32, rec.map_y as f32);
+            pin(g, rec.map_x as f32 + dx, rec.map_y as f32 + dy, variant, state);
+            pin(g, cx + 160.0, cy + 10.0, variant, state);
         }
         // legend
         for (x, st, t) in [(24.0, 1, "Available"), (124.0, 0, "Insufficient funds"), (244.0, 2, "Already purchased")] {
@@ -255,15 +280,18 @@ impl App {
         if self.hover == WORLD_CANCEL {
             s.image_part(g, wb, 732.0, 532.0, 732.0, 532.0, 68.0, 68.0);
         }
+        // the buttons' names show as the hover label beside the button once the pointer has stayed more than 20 frames
+        let frames = if self.info.world_tip.0 == self.hover { self.info.world_tip.1 + 1 } else { 0 };
+        self.info.world_tip = (self.hover, frames);
         let tip = match self.hover {
-            WORLD_CANCEL => Some((557.0, "Cancel")),
-            WORLD_RESET_SAVE if self.world_move => Some((480.0, "Save Game")),
-            WORLD_RESET_SAVE => Some((480.0, "Reset World")),
-            WORLD_LOAD => Some((429.0, "Load Game")),
+            WORLD_CANCEL => Some((768.0, 557.0, "Cancel")),
+            WORLD_RESET_SAVE if self.world_move => Some((760.0, 476.0, "Save Game")),
+            WORLD_RESET_SAVE => Some((760.0, 476.0, "Reset World")),
+            WORLD_LOAD => Some((774.0, 425.0, "Load Game")),
             _ => None,
         };
-        if let Some((y, t)) = tip {
-            text_right(&s, g, 720.0, y, t, 13.0, navy);
+        if let (Some((x, y, t)), true) = (tip, frames > 20) {
+            crate::screens_ui::tooltip(g, &s, x, y, t);
         }
         if let Some(m) = &self.info.world_msg {
             let lines = wrap_text(m, 15.0, 360.0);
@@ -285,23 +313,18 @@ impl App {
 
     // ---- TRACTS FOR SALE ------------------------------------------------------------------------------------------------
 
-    /// The tract under the pointer, from its bar or from its square on the map (9: the OK tick, -1 nothing).
+    /// The tract under the pointer, from its bar only (9: the OK tick, -1 nothing): bars in x 15..262, 272..523 and
+    /// 538..774, rows of 68 from y 54 to 257 (0x4591e9); the map takes no pointer.
     pub fn land_hit(&self, x: f32, y: f32) -> i32 {
         if (662.0..726.0).contains(&x) && (533.0..597.0).contains(&y) {
             return 9;
         }
         if (54.0..258.0).contains(&y) {
             let row = ((y - 54.0) / 68.0) as i32;
-            let col = [(15.0, 262.0), (272.0, 524.0), (538.0, 783.0)].iter().position(|&(l, r)| (l..r).contains(&x));
+            let col = [(15.0, 262.0), (272.0, 524.0), (538.0, 775.0)].iter().position(|&(l, r)| (l..r).contains(&x));
             if let (Some(col), true) = (col, row < 3) {
                 return row + 3 * col as i32;
             }
-        }
-        // the map: invert the minimap's diamond
-        let (u, v) = ((x - 106.0) / 6.0, (y - 439.0) / 3.0);
-        let (a, b) = (((u - v) / 2.0 + 0.5).floor() as i32, ((u + v) / 2.0 + 0.5).floor() as i32);
-        if (1..49).contains(&a) && (1..49).contains(&b) {
-            return (a - 1) / 16 + 3 * ((b - 1) / 16);
         }
         -1
     }
@@ -320,11 +343,21 @@ impl App {
         }
         let theme = self.exe_theme();
         let hover = self.land_hover;
+        // the hovered tract's diamond lit on the map, at the tract's place (tables 0x4ba7a0 / 0x4ba7c4)
         if (0..9).contains(&hover) {
-            let (a0, b0) = sg_core::tracts::origin(hover as usize);
-            let (x, _) = land_xy(a0, b0);
-            let (_, y) = land_xy(a0 + 16, b0);
-            s.image_part(g, &a.land_buttons, x - 6.0, y - 3.0, 1.0, 127.0, 192.0, 95.0);
+            const AT: [(f32, f32); 9] = [
+                (112.0, 392.0),
+                (208.0, 344.0),
+                (304.0, 296.0),
+                (208.0, 440.0),
+                (304.0, 392.0),
+                (400.0, 344.0),
+                (304.0, 488.0),
+                (400.0, 440.0),
+                (496.0, 392.0),
+            ];
+            let (x, y) = AT[hover as usize];
+            s.image_part(g, &a.land_buttons, x, y, 1.0, 127.0, 192.0, 95.0);
         }
         if let Some(land) = self.land.as_ref() {
             for ta in 0..land::N {
@@ -370,7 +403,8 @@ impl App {
                 s.text_centered(g, x + 1.0, y + 9.0, &format!("{}", i + 1), 24.0, rgba(0.0, 0.0, 0.0, 0.6));
                 s.text_centered(g, x, y + 8.0, &format!("{}", i + 1), 24.0, c15(0x7ff0));
             }
-            // the bar's ball: lit for the tract under the pointer, silver once the tract is bought
+            // the bar's ball (0x4587a0): the yellow ball of the tract under the pointer while it is for sale, the silver ball
+            // of a tract with no land left for sale (bought), which also reads "Already purchased."
             let (bx, by) = ([15.0, 272.0, 538.0][col], [54.0, 122.0, 190.0][row]);
             if hover == i as i32 && tr.oob > 0 {
                 s.image_part(g, &a.land_buttons, bx, by, 1.0 + 60.0 * i as f32, 1.0, 59.0, 61.0);
@@ -396,9 +430,10 @@ impl App {
         s.text_centered(g, 567.0, 274.0, "Cash Reserve", 12.0, navy);
         s.text_centered(g, 720.0, 274.0, &money(self.econ.cash as i64), 12.0, navy);
         s.image_part(g, &a.land_buttons, 71.0, 533.0, 259.0, 127.0, 72.0, 61.0);
+        // the OK tick lit under the pointer (the exe copies " I don't think I'll buy any land." into its text buffer here
+        // but never draws it)
         if hover == 9 {
             s.image_part(g, &a.land_buttons, 662.0, 533.0, 194.0, 127.0, 64.0, 64.0);
-            text_right(&s, g, 656.0, 570.0, "I don't think I'll buy any land.", 12.0, rgb(1.0, 1.0, 1.0));
         }
         g.flush();
     }

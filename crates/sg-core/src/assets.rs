@@ -119,6 +119,80 @@ pub fn decode_pcx(d: &[u8]) -> Result<Rgba, String> {
     Ok(to_rgba(&ix, None))
 }
 
+/// An 8-bit single-plane PCX as indices and palette.
+pub fn decode_pcx_indexed(d: &[u8]) -> Option<Indexed> {
+    if d.len() < 128 + 769 || d[0] != 10 || d[2] != 1 || d[3] != 8 || d[65] != 1 {
+        return None;
+    }
+    let w = (u16le(d, 8) as i32 - u16le(d, 4) as i32 + 1) as usize;
+    let h = (u16le(d, 10) as i32 - u16le(d, 6) as i32 + 1) as usize;
+    let bpl = u16le(d, 66) as usize;
+    if w == 0 || h == 0 || w > 16384 || h > 16384 || bpl < w {
+        return None;
+    }
+    let mut idx = vec![0u8; w * h];
+    let mut scan = vec![0u8; bpl];
+    let mut pos = 128;
+    for y in 0..h {
+        let mut n = 0;
+        while n < bpl {
+            let mut b = *d.get(pos)?;
+            pos += 1;
+            let mut run = 1;
+            if b & 0xC0 == 0xC0 {
+                run = (b & 0x3F) as usize;
+                b = *d.get(pos)?;
+                pos += 1;
+            }
+            while run > 0 && n < bpl {
+                scan[n] = b;
+                n += 1;
+                run -= 1;
+            }
+        }
+        idx[y * w..y * w + w].copy_from_slice(&scan[..w]);
+    }
+    let pal = read_pcx_palette(d)?;
+    Some(Indexed { w: w as u32, h: h as u32, idx, pal })
+}
+
+/// Writes an 8-bit, run-length coded PCX (version 5) with its 256-colour palette.
+pub fn encode_pcx(img: &Indexed) -> Vec<u8> {
+    let (w, h) = (img.w as usize, img.h as usize);
+    let bpl = w + (w & 1);
+    let mut out = vec![0u8; 128];
+    out[0] = 10;
+    out[1] = 5;
+    out[2] = 1;
+    out[3] = 8;
+    out[8..10].copy_from_slice(&((w - 1) as u16).to_le_bytes());
+    out[10..12].copy_from_slice(&((h - 1) as u16).to_le_bytes());
+    out[12..14].copy_from_slice(&72u16.to_le_bytes());
+    out[14..16].copy_from_slice(&72u16.to_le_bytes());
+    out[65] = 1;
+    out[66..68].copy_from_slice(&(bpl as u16).to_le_bytes());
+    out[68] = 1;
+    for y in 0..h {
+        let row: Vec<u8> = (0..bpl).map(|x| if x < w { img.idx[y * w + x] } else { 0 }).collect();
+        let mut x = 0;
+        while x < bpl {
+            let b = row[x];
+            let mut run = 1;
+            while x + run < bpl && run < 63 && row[x + run] == b {
+                run += 1;
+            }
+            if run > 1 || b & 0xC0 == 0xC0 {
+                out.push(0xC0 | run as u8);
+            }
+            out.push(b);
+            x += run;
+        }
+    }
+    out.push(0x0C);
+    out.extend_from_slice(&img.pal);
+    out
+}
+
 /// Palette of an 8-bit PCX (the 768 bytes after the 0x0C marker at the end of the file).
 pub fn read_pcx_palette(d: &[u8]) -> Option<[u8; 768]> {
     if d.len() < 769 || d[d.len() - 769] != 0x0C {
@@ -358,5 +432,20 @@ mod tests {
         d.extend_from_slice(&[1, 2, 3, 4]);
         let w = decode_wav(&d).unwrap();
         assert_eq!((w.channels, w.bits, w.sample_rate, w.pcm.len()), (2, 16, 22050, 4));
+    }
+
+    #[test]
+    fn pcx_encode_round_trip() {
+        let mut pal = [0u8; 768];
+        pal[765..].copy_from_slice(&[255, 0, 255]);
+        pal[3..6].copy_from_slice(&[10, 20, 30]);
+        let idx: Vec<u8> = (0..5 * 3).map(|i| if i % 4 == 0 { 255 } else { (i % 2) as u8 }).collect();
+        let img = Indexed { w: 5, h: 3, idx: idx.clone(), pal };
+        let d = encode_pcx(&img);
+        let back = decode_pcx_indexed(&d).unwrap();
+        assert_eq!((back.w, back.h), (5, 3));
+        assert_eq!(back.idx, idx);
+        assert_eq!(back.pal[3..6], [10, 20, 30]);
+        assert_eq!(decode_pcx(&d).unwrap().px[4..8], [10, 20, 30, 255]);
     }
 }

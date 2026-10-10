@@ -134,9 +134,22 @@ impl Club {
 
     /// The text of mood event `id` with argument `arg` for golfer g (0x469b00).
     pub fn thought(&self, c: &Course, id: u32, arg: i32, g: usize) -> Line {
+        self.thought_as(c, id, arg, g, None, true)
+    }
+
+    /// The stock text of an event as golfer g would say it if g were person `record` (the Customise screen asks this for
+    /// its preview slot 0x99, which is past the golfer slots and so never takes a person's own dialogue slot).
+    pub fn stock_thought(&self, c: &Course, id: u32, arg: i32, g: usize, record: usize) -> Line {
+        self.thought_as(c, id, arg, g, Some(record as i32), false)
+    }
+
+    fn thought_as(&self, c: &Course, id: u32, arg: i32, g: usize, record: Option<i32>, own: bool) -> Line {
         let rel = self.rel(g);
-        let r = self.g[g].roster.max(0);
-        let male = self.male(g) != 0;
+        let r = record.unwrap_or(self.g[g].roster.max(0));
+        let male = match record {
+            Some(k) => self.roster.get(k as usize).map(|p| p.male_bit()).unwrap_or(1) != 0,
+            None => self.male(g) != 0,
+        };
         let p = g ^ 1;
         let me = self.name(g);
         let partner = self.name(p);
@@ -148,6 +161,15 @@ impl Club {
         let place = if is_tree(ty) { format!("under the {t1}") } else { format!("in the {t1}") };
         let noun = if is_tree(ty) { t2 } else { t1 };
         let hole = self.g[g].hole.clamp(0, 18) as usize;
+        // a person's own dialogue slot for this event comes first (0x469b00 for golfer slots below 0x98)
+        if own && g < crate::golfer::SLOTS {
+            let own = crate::roster::SAYING_CODES.iter().position(|&c| c == id).and_then(|row| {
+                self.roster.get(r as usize).and_then(|p| p.saying(row)).map(|s| s.replace("PARTNER", &partner).replace("MYNAME", &me))
+            });
+            if let Some(text) = own {
+                return Line { text: text.replace("DATA", t1), tone, partner: false };
+            }
+        }
         let text: String = match id {
             0x01 => {
                 tone = Tone::Good;
@@ -584,7 +606,10 @@ impl Club {
                     _ => "I don't care.".into(),
                 }
             }
-            0x3e => signature(r, male).into(),
+            0x3e => {
+                let p = self.roster.get(r as usize).cloned().unwrap_or_default();
+                signature_saying(p.head_index(r as usize), !male).replace("PARTNER", &partner)
+            }
             0x3f => {
                 let pro = self.g[g].vip() == 0x20;
                 match (pro, g & 3) {
@@ -629,38 +654,9 @@ pub fn course_opinion(mood: i32, d: i32) -> &'static str {
     }
 }
 
-/// The stock signature saying (event 0x3e) of roster entry r, for screens that show it without a golfer (Pick A Pro).
-pub fn signature_saying(r: i32, male: bool) -> &'static str {
-    signature(r, male)
-}
-
-/// Signature sayings by face and sex (0x4d55ec): the exe's forty lines are data that is not available; these are our own.
-fn signature(r: i32, male: bool) -> &'static str {
-    const MEN: [&str; 8] = [
-        "Praise the Lord for this fabulous day!",
-        "Grip it and rip it.",
-        "Keep your head down and your hopes up.",
-        "A bad day on the course beats a good day at work.",
-        "Drive for show, putt for dough.",
-        "Never up, never in.",
-        "The ball doesn't know how old you are.",
-        "Golf is a good walk, unspoiled.",
-    ];
-    const WOMEN: [&str; 8] = [
-        "What a glorious day for a round!",
-        "Smooth tempo wins every time.",
-        "I play my own game.",
-        "Fairways and greens, that's the secret.",
-        "Every putt is a straight putt if you read it right.",
-        "Swing easy, hit hard.",
-        "The best is yet to come.",
-        "Let's see what this course has got.",
-    ];
-    if male {
-        MEN[(r & 7) as usize]
-    } else {
-        WOMEN[(r & 7) as usize]
-    }
+/// The stock signature saying (event 0x3e, table 0x4d55ec) of a stock head of a gender; custom heads have none.
+pub fn signature_saying(head: u8, female: bool) -> &'static str {
+    crate::roster::head_defaults(head, female).map(|d| d.2).unwrap_or("")
 }
 
 #[cfg(test)]
