@@ -5,9 +5,10 @@ be modded. Code, art, sound, text, translations, courses, testing and bug report
 
 ## Ground rules
 
-* **No material from the original game in the repository.** No art, sounds, music, videos, text, fonts or code from SimGolf,
-  not even small pieces, and nothing traced or upscaled from it. The engine reads those files from each player's own copy at
-  runtime. The free base set and all packs here must be made by their authors.
+* **No art, sound, music, video, fonts or code from the original game in the repository**, not even small pieces, and
+  nothing traced or upscaled from it. The engine reads those files from each player's own copy at runtime. The one exception
+  is the original's English message text in `lang/en.txt`, kept so the game reads word for word like the original. The free
+  base set and all packs here must be made by their authors and contain nothing from the original.
 * **No decompiled code.** Rules taken from the original are written down as facts (what happens, the numbers) in `docs/`,
   and the engine's code is written from those notes.
 * By contributing you agree that your work is published under the project's licence: GPL-2.0-or-later for code and the free

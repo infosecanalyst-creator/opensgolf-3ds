@@ -84,8 +84,9 @@ STR_MSG_FIRST_GREENS_FEE   :{GOLFER} has just paid you your first greens fee of 
 Parameters in braces are filled by the engine. A missing key falls back to English, then to the key itself.
 
 The `original` base set takes text from the player's copy where the copy has it (the Interface, story and character files).
-Text that only exists inside the original program is not part of this project: the free base set rewrites it in its own
-words, so the repository holds no EA text. Translations are made in the open (planned: Weblate).
+Text that only exists inside the original program is kept in this repository's `lang/en.txt`, word for word, so the game
+reads like the original; that text remains Electronic Arts'. The free base set will carry its own rewritten text so it can
+be shared without any of EA's material. Translations are made in the open (planned: Weblate).
 
 ## 5. Scenarios and courses
 
@@ -109,7 +110,7 @@ pack with a pull request to the index; packs must have a free licence and must n
 | Step | Status |
 |------|--------|
 | Licence (GPL-2.0-or-later) and name | done |
-| Text keys and `lang/en.txt`; no EA text in the repository | planned |
+| Text keys and `lang/en.txt` (original English text kept) | planned |
 | Pack loader, load order, file overrides | planned |
 | Data files for terrain, buildings, amenities, staff, properties, economy | planned |
 | Free base set (placeholder art) | planned |

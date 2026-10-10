@@ -10,9 +10,11 @@ and it is built to be modded.
 Open the link above in a browser (Chrome, Edge or Firefox), click **Choose your SimGolf game folder** and pick the folder of
 your own installed copy of SimGolf (the folder that contains `Flics`, `Sounds` and `Data`). The game starts right away.
 
-**For now you need your own copy of SimGolf.** The original game's art, sounds, music and text belong to Electronic Arts and
-are not part of this project; the game reads them from your copy at runtime, inside your browser tab or on your computer,
-and never uploads or redistributes them. A free base set that lets OpenSGolf run without the original files is being made
+**For now you need your own copy of SimGolf.** The original game's art, sounds, music and videos belong to Electronic Arts
+and are not part of this project; the game reads them from your copy at runtime, inside your browser tab or on your computer,
+and never uploads or redistributes them. The English text of the original's in-game messages, which exists only inside the
+original program, is included in `lang/en.txt` so the game can read word for word like the original; it remains Electronic
+Arts' text. A free base set that lets OpenSGolf run without the original files is being made
 (see [Modding and content](#modding-and-content)).
 
 OpenSGolf is not affiliated with or endorsed by Electronic Arts or Firaxis Games. SimGolf and Sid Meier's are trademarks of
@@ -34,7 +36,7 @@ for the design and its progress, and [CONTRIBUTING.md](CONTRIBUTING.md) to help.
 
 ---
 
-The engine is a clean-room reimplementation. No code from the original is included; its rules are written from facts read
+The engine is a clean-room reimplementation. No code from the original is included (its message text is, see above); its rules are written from facts read
 out of the publisher-supplied golf.exe (docs/PUBLISHER_EXE_NOTES.md), the original manual and footage of the game, and
 nothing here removes or bypasses copy protection.
 
