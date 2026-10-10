@@ -183,25 +183,27 @@ impl App {
         }
     }
 
-    /// The offer box over the SGA report (the generic popup 0x46d6e0): its lines and its rectangle.
+    /// The offer box over the SGA report (the generic popup 0x46d6e0 at (400, 360), main loop 0x41ce8b): its lines (the
+    /// year's Open, the first prize, the two answers in quotes) and its rectangle.
     fn offer_box(&self, sg: &SgaScreen) -> (Vec<String>, Rect) {
         let lines = vec![
             "The SGA offers to hold the".to_string(),
-            format!("{} at {}", sg.report.event, self.course_name),
-            format!("with a first prize of \u{a7}{},000!", crate::ui::group(sg.report.purse.max(0) as u64)),
-            " Great, let the games begin!".to_string(),
-            " I think I need more practice.".to_string(),
+            format!("{} Open tournament", 2001 + self.econ.year_index()),
+            "at your course with a".to_string(),
+            format!("first prize of \u{a7}{},000.", crate::ui::group(sg.report.purse.max(0) as u64)),
+            " 'Great, let the games begin.'".to_string(),
+            " 'I think I need more practice.'".to_string(),
         ];
         let w = lines.iter().map(|l| text_width(l.trim(), OFFER_SIZE)).fold(0.0, f32::max) + 49.0 + 30.0;
         let h = (lines.len() as f32 * 3.0 + 3.0) * 8.0 + 20.0;
-        (lines, Rect::new(400.0 - w / 2.0, 170.0, w, h))
+        (lines, Rect::new(400.0 - w / 2.0, 360.0f32.min(600.0 - h - 4.0), w, h))
     }
 
     /// The offer's answer under (x, y): 0 yes, 1 no.
     fn offer_option_at(&self, sg: &SgaScreen, x: f32, y: f32) -> Option<usize> {
         let (_, r) = self.offer_box(sg);
         (0..2).find(|&k| {
-            let ly = r.y + 26.0 + OFFER_PITCH * (3 + k) as f32;
+            let ly = r.y + 26.0 + OFFER_PITCH * (4 + k) as f32;
             x >= r.x && x < r.x + r.w && y >= ly - OFFER_SIZE - 2.0 && y < ly - OFFER_SIZE - 2.0 + OFFER_PITCH
         })
     }
@@ -309,7 +311,7 @@ impl App {
                     for (i, l) in lines.iter().enumerate() {
                         let y = r.y + 26.0 + OFFER_PITCH * i as f32;
                         if let Some(text) = l.strip_prefix(' ') {
-                            if i - 3 == sg.sel {
+                            if i - 4 == sg.sel {
                                 s.fill(g, r.x + 8.0, y - OFFER_SIZE - 2.0, r.w - 16.0, OFFER_PITCH - 2.0, rgba(0.98, 0.85, 0.2, 0.9));
                             }
                             s.text(g, r.x + 36.0, y, text, OFFER_SIZE, rgb(0.08, 0.08, 0.25));
@@ -364,28 +366,31 @@ impl App {
         let c = r.class.clamp(0, 3);
         let class = sg_core::economy::RANK_NAMES[c as usize];
         s.put(g, F_INFO14, 75.0, 77.0, &format!("Selection Criteria: {class}"), ink);
+        // "Grade:" at (306, 77); the score out of 100 right-aligned at 396, or a failed course's red "0/100" at (370, 80)
         s.put(g, F_INFO14, 306.0, 77.0, "Grade:", ink);
         if r.score <= 0 {
-            s.put(g, F_INFO14, 370.0, 80.0, "0/100", ink);
+            s.put(g, F_INFO14, 370.0, 80.0, "0/100", red);
         } else {
-            s.put_right(g, F_INFO14, 396.0, 77.0, &r.score.to_string(), ink);
+            s.put_right(g, F_INFO14, 396.0, 77.0, &format!("{}/100", r.score), ink);
         }
         s.put(g, F_INFO14, 497.0, 77.0, "Ideal  (Minimum)", ink);
+        // the ideal, then the minimum in brackets (0x44fb30): the length grouped by thousands with a "+"
         let k = r.ideal[4];
         let ideal_len = r.ideal[0];
         let min_len = if r.ideal[1] == 18 { ideal_len - 1000 } else { ideal_len - ideal_len * 10 / (c * 5 + 20) };
         let min_k = (k - 9).clamp(0, 99);
+        let num = |v: i32| if v < 0 { format!("-{}", crate::ui::group(v.unsigned_abs() as u64)) } else { crate::ui::group(v as u64) };
         let ideals = [
-            format!("{ideal_len} yds  (min: {min_len})"),
-            format!("{}  (min: {})", r.ideal[1], r.ideal[1] - 9 / (4 - c)),
+            format!("{}+  ({})", num(ideal_len), num(min_len)),
+            format!("{}  ({})", r.ideal[1], r.ideal[1] - 9 / (4 - c)),
             "4 hours or less  (max: 5 hrs)".to_string(),
             "100%+".to_string(),
-            format!("{k}  (min: {min_k})"),
-            format!("{k}  (min: {min_k})"),
-            format!("{k}  (min: {min_k})"),
-            format!("{k}  (min: {min_k})"),
-            format!("{k}  (min: {min_k})"),
-            format!("{}  (min: {})", k / 2 + 1, (k / 2 - 3).clamp(0, 99)),
+            format!("{k}  ({min_k})"),
+            format!("{k}  ({min_k})"),
+            format!("{k}  ({min_k})"),
+            format!("{k}  ({min_k})"),
+            format!("{k}  ({min_k})"),
+            format!("{}  ({})", k / 2 + 1, (k / 2 - 3).clamp(0, 99)),
         ];
         for (i, label) in SGA_ROWS.iter().enumerate() {
             let y = 104.0 + 17.0 * i as f32;
@@ -393,8 +398,9 @@ impl App {
             s.text_centered(g, 119.0, ty, label, 14.0, ink);
             let v = r.values[i];
             let value = match i {
-                0 => format!("{v} yds"),
-                2 => format!("{}h {}m", v / 60, v % 60),
+                0 => format!("{} yds.", num(v)),
+                2 if v > 59 => format!("{} h {} m", v / 60, v % 60),
+                2 => format!("{v} m"),
                 3 => format!("{v}%"),
                 _ => v.to_string(),
             };
@@ -403,10 +409,10 @@ impl App {
                 s.text_centered(g, 386.0, ty, "- not acceptable -", 14.0, red);
             } else {
                 for j in 0..r.scores[i] {
-                    // the exe's pip sprite is not decoded: the golf ball of StarsHeartsETC.pcx stands in
+                    // the pip is GBUBBLES cut 17 (object 0x59b33c), the small gold star, at (303 + 14 j, row top)
                     let x = 303.0 + 14.0 * j as f32;
-                    if a.stars.tex.is_some() {
-                        s.image_part(g, &a.stars, x, y + 2.0, 49.0, 4.0, 11.0, 11.0);
+                    if self.hud.icons.tex.is_some() {
+                        s.image_part(g, &self.hud.icons, x, y, 272.0, 324.0, 16.0, 16.0);
                     } else {
                         s.fill(g, x + 2.0, y + 4.0, 7.0, 7.0, c15(0x1284));
                     }
@@ -419,7 +425,7 @@ impl App {
             s.put_centered(g, F_INFO16, 400.0, 310.0, "Improvement Required.", red);
         } else {
             s.put_centered(g, F_INFO_TITLE, 400.0, 310.0, r.event, ink);
-            s.put_centered(g, F_INFO16, 400.0, 338.0, &format!("{},000 first prize.", crate::ui::group(r.purse.max(0) as u64)), ink);
+            s.put_centered(g, F_INFO16, 400.0, 338.0, &format!("\u{a7}{},000 first prize.", crate::ui::group(r.purse.max(0) as u64)), ink);
         }
         if ok {
             self.ok_tick(g, s, 701.0, 398.0, true);
@@ -541,7 +547,9 @@ impl App {
         if has {
             s.image_part(g, a, 0.0, top, 0.0, if banner_a { 357.0 } else { 274.0 }, 800.0, 51.0);
         }
-        self.ok_tick(g, s, OK_X, top + 5.0, false);
+        // the tick sits 4 below the closing band's top (0x452ec0: band at y - 7 or y - 4, tick at y - 54 or y - 51 plus
+        // the band's 51 height)
+        self.ok_tick(g, s, OK_X, top + 4.0, false);
     }
 }
 
@@ -584,7 +592,7 @@ fn results_ok_y(res: &Results) -> f32 {
         }
         top += sh;
     }
-    top + 5.0
+    top + 4.0
 }
 
 fn score_text(v: i32) -> String {

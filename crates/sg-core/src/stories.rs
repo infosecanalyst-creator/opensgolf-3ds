@@ -295,6 +295,51 @@ impl Club {
         self.g[p].flags |= flag::STORY_BEAT;
     }
 
+    /// The golfer card's Next Chapter for golfer `gi` (the card's click handler, 0x41e81c). Only a story pair answers. The
+    /// replier (the one of the two without the story flag) gets a random reply for the hole the clicked golfer is on:
+    /// rand(chapter * 8), drawn again as rand(32) unless the replier's newest reaction was bad, and made the best reply (99)
+    /// when that reaction was good and the replier's attitude + 4 reaches chapter + rand(4) + difficulty. Then the beat is
+    /// forced for the owner (the clicked golfer when it has the story flag, else its pair slot); a failed beat costs both a
+    /// point of mood, and both are flagged as having had their beat. Returns false when the pair has no story.
+    pub fn next_chapter(&mut self, c: &mut Course, rng: &mut ExeRng, gi: usize) -> bool {
+        let p = self.g[gi].partner.clamp(0, crate::golfer::SLOTS as i32 - 1) as usize;
+        let own = self.g[gi].flags & flag::STORY != 0;
+        if !own && self.g[p].flags & flag::STORY == 0 {
+            return false;
+        }
+        let replier = if own { p } else { gi };
+        let step = self.g[gi].story_step;
+        let hole = self.g[gi].hole.clamp(0, 18) as usize;
+        let newest = self.g[replier].args[0];
+        let mut v = rng.below(step * 8);
+        if newest & 0x8000 == 0 {
+            v = rng.below(0x20);
+            if newest & 0x4000 != 0 {
+                let r = rng.below(4);
+                let attitude: i32 = self.g[replier].args[..5]
+                    .iter()
+                    .map(|&a| match a & 0xc000 {
+                        0x4000 => 1,
+                        0xc000 => -1,
+                        _ => 0,
+                    })
+                    .sum();
+                if step + r + self.difficulty <= attitude + 4 {
+                    v = 99;
+                }
+            }
+        }
+        self.g[replier].hole_mood[hole] = v as u8;
+        let owner = if own { gi } else { gi ^ 1 };
+        if !self.story_beat(c, rng, owner, true) {
+            self.g[gi].mood -= 1;
+            self.g[p].mood -= 1;
+        }
+        self.g[gi].flags |= flag::STORY_BEAT;
+        self.g[p].flags |= flag::STORY_BEAT;
+        true
+    }
+
     /// The partner's reply quality for the scene (0x4669f0): worked out from mood on the first beat of a hole, nudged by the
     /// newest thought and a story landmark, and read back afterwards.
     fn story_choice(&mut self, c: &Course, step: i32, hole: usize, owner: usize) -> i32 {

@@ -264,6 +264,7 @@ fn load_art(app: &mut App, g: &mut Gfx) -> bool {
     app.cliffs = ui::load_pcx(g, &app.game_path("cliffs01.pcx"), true, None).unwrap_or_default();
     app.ui_ok = ok;
     app.art = crate::screens_ui::Art::load(g, app);
+    app.register_portraits(g);
     app.reports = crate::reports_ui::ReportArt::load(g, app);
     app.panel_art = crate::panels_ui::PanelArt::load(g, app);
     app.title.art = crate::files_ui::TitleArt::load(g, app);
@@ -361,13 +362,25 @@ fn open_screen(app: &mut App, screen: Option<&str>) {
                 list.retain(|&g| app.club.g[g].story != -1);
             }
             if s.starts_with("customise") {
-                app.open_customise(app.club.gary.max(0) as usize);
+                // customise:n opens it from the n-th listed golfer's card instead of the Player panel
+                match list.get(n).filter(|_| s.contains(':')) {
+                    Some(&g) => app.open_customise(g),
+                    None => app.open_customise_player(),
+                }
                 if let Some(c) = app.cust.as_mut().filter(|_| s == "customisefaces") {
                     c.picker = Some(0);
                 }
             } else if let Some(&g) = list.get(n.min(list.len().saturating_sub(1))) {
                 app.card = Some(g);
                 app.card_ui.story = s.starts_with("cardstory");
+                if s.starts_with("cardsnap") {
+                    // the card's Take Snapshot: the SimFoto of that golfer
+                    app.card = None;
+                    let (x, z) = app.units_to_world(app.club.g[g].x, app.club.g[g].y);
+                    app.cam_x = x;
+                    app.cam_z = z;
+                    app.simfoto = Some(screens_ui::SimFoto { slot: g, frames: 0, saved: false });
+                }
             }
         }
         Some(s) if app.ui_ok => {
@@ -1092,9 +1105,12 @@ impl Stage {
                 app.screen = Screen::Menu;
             } else if std::mem::take(&mut app.title.champ_pending) {
                 app.difficulty = hit;
+                // the new game's Top 10 id is drawn right after the difficulty (0x421518)
+                app.course_id = Some(app.exe_rng.below(0xffff));
                 app.open_championship();
             } else {
                 app.difficulty = hit;
+                app.course_id = Some(app.exe_rng.below(0xffff));
                 app.deal_offer(app.sandbox_choice);
                 app.screen = Screen::Property;
             }
@@ -1492,6 +1508,39 @@ impl Stage {
         self.app.snapshots.insert(id, ui::Image { tex: Some(tex), w: 200.0, h: 160.0 });
     }
 
+    /// Writes the SimFoto once it is on screen: the photo's inside and a little of its frame ((left - 2, top - 2) and 6 more
+    /// than the inside each way, as 0x431d20 is passed) to snapshots/<golfer>-<date>.png, with the shutter sound (0x95).
+    fn save_simfoto(&mut self) {
+        let Some(f) = self.app.simfoto else { return };
+        if f.saved || f.frames < 2 {
+            return;
+        }
+        let Some((l, t, r, b)) = self.app.simfoto_rect(&f) else { return };
+        let img = self.grab();
+        let v = self.app.view;
+        let (x0, y0, w, h) = (l - 2, t - 2, (r - l + 6).max(1) as u32, (b - t + 6).max(1) as u32);
+        let mut out = sg_core::assets::Rgba::new(w, h);
+        for y in 0..h {
+            for x in 0..w {
+                let sx = ((x0 as f32 + x as f32) * v.scale + v.ox) as u32;
+                let sy = ((y0 as f32 + y as f32) * v.scale + v.oy) as u32;
+                if sx < img.w && sy < img.h {
+                    let si = ((sy * img.w + sx) * 4) as usize;
+                    let di = ((y * w + x) * 4) as usize;
+                    out.px[di..di + 4].copy_from_slice(&img.px[si..si + 4]);
+                }
+            }
+        }
+        let name = format!("{}-{}.png", self.app.club.name(f.slot), self.app.simfoto_date());
+        let name: String = name.chars().map(|c| if "/\\:*?\"<>|".contains(c) { '_' } else { c }).collect();
+        let dir = self.app.snapshot_dir();
+        sg_core::png::write_png(dir.join(name), &out);
+        self.app.ui_sound(0x95);
+        if let Some(s) = self.app.simfoto.as_mut() {
+            s.saved = true;
+        }
+    }
+
     fn grab(&mut self) -> sg_core::assets::Rgba {
         let (w, h) = (self.app.draw_w as u32, self.app.draw_h as u32);
         let params = |format| TextureParams { width: w, height: h, format, ..Default::default() };
@@ -1612,6 +1661,7 @@ impl EventHandler for Stage {
             && app.rename.is_none()
             && app.title.save_name.is_none()
             && app.analysis.is_none()
+            && app.simfoto.is_none_or(|f| f.frames < 2)
         {
             app.time += dt * app.speed.max(1) as f64;
         }
@@ -1631,6 +1681,9 @@ impl EventHandler for Stage {
             None => self.draw_frame(None),
         }
         self.g.ctx.commit_frame();
+        if self.app.simfoto.is_some_and(|f| !f.saved && f.frames >= 2) {
+            self.save_simfoto();
+        }
         if !self.app.snapshot_due.is_empty() {
             while !self.app.snapshot_due.is_empty()
                 && self.app.ui_ok
@@ -1725,6 +1778,9 @@ impl EventHandler for Stage {
 
     fn mouse_button_down_event(&mut self, button: MouseButton, x: f32, y: f32) {
         self.mouse = (x, y);
+        if self.app.simfoto_dismiss() {
+            return;
+        }
         if self.app.analysis_input() {
             return;
         }
@@ -1792,6 +1848,10 @@ impl EventHandler for Stage {
             return;
         }
         let (vx, vy) = self.app.view.to_virtual(x, y);
+        // a right click lets go of a golfer held by the card's Move/Eject (the main loop's right click clears 0x4c2e10)
+        if button == MouseButton::Right && self.app.card_ui.held.take().is_some() {
+            return;
+        }
         if self.app.ui_ok && button == MouseButton::Left && self.app.card_click(vx, vy) {
             return;
         }
@@ -1837,7 +1897,7 @@ impl EventHandler for Stage {
         self.shift = mods.shift || k == KeyCode::LeftShift || k == KeyCode::RightShift;
         self.app.shift_held = self.shift;
         self.ctrl = mods.ctrl || k == KeyCode::LeftControl || k == KeyCode::RightControl;
-        if self.app.rename_key(k) || self.app.save_key(k) || self.app.analysis_input() {
+        if self.app.simfoto_dismiss() || self.app.rename_key(k) || self.app.save_key(k) || self.app.analysis_input() {
             return;
         }
         if self.app.screen == Screen::Popup {

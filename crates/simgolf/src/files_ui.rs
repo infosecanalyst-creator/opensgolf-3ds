@@ -398,6 +398,11 @@ impl App {
             ListKind::Pro => {
                 let bytes = sg_core::fsutil::read_file(&path);
                 f.pro = bytes.as_deref().and_then(sg_core::championship::parse_pro);
+                // a head byte of 20 or more is the file's own portrait (0x437fa0)
+                let rel = path.strip_prefix(&self.game_dir).unwrap_or(&path).to_string_lossy().replace('\\', "/");
+                if let Some(p) = f.pro.as_mut().filter(|p| p.person.head_index(0) > 0x13) {
+                    p.person.portrait = Some(rel);
+                }
                 f.portrait_px = bytes.and_then(|b| sg_core::formats::parse_character(&b).ok()).and_then(|c| c.portraits.into_iter().next());
                 // the portraits' background is the art's magenta key
                 if let Some(px) = f.portrait_px.as_mut() {
@@ -775,9 +780,13 @@ impl App {
             top_c(s, g, 59.0, y, &format!("+{}%", p.skills[k] as i32 * 10), 12.0, teal);
         }
         top(s, g, 56.0, 544.0, "Signature saying:", 13.0, BLACK);
-        let male = p.person.b21 & 0x80 == 0;
-        let say =
-            p.sayings.first().filter(|t| !t.is_empty()).cloned().unwrap_or_else(|| sg_core::thoughts::signature_saying(0, male).into());
+        // the file's own line, else its head's stock line (0x469b00 with event 0x3e)
+        let say = p
+            .sayings
+            .first()
+            .filter(|t| !t.is_empty())
+            .cloned()
+            .unwrap_or_else(|| sg_core::thoughts::signature_saying(p.person.head_index(0), p.person.female()).into());
         top(s, g, 36.0, 562.0, &format!("\"{say}\""), 13.0, WHITE);
     }
 

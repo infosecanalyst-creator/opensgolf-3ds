@@ -293,6 +293,12 @@ pub struct SaveGame {
     /// The theme pack folder the game was played with (older saves: Standard).
     #[serde(default)]
     pub theme_pack: String,
+    /// The Top 10 course id (older saves: none).
+    #[serde(default)]
+    pub course_id: Option<i32>,
+    /// The year each property was bought (older saves: none recorded).
+    #[serde(default)]
+    pub bought: Vec<i32>,
 }
 
 const SAVE_MAGIC: &[u8] = b"SIMGOLF-NATIVE-SAVE\n";
@@ -356,6 +362,11 @@ pub struct App {
     pub golfer_clips: HashMap<i32, (Option<usize>, Option<usize>)>,
     /// 0..3 as in the exe (the standard game's value is not known yet; 1 is a guess).
     pub difficulty: i32,
+    /// The course's id in the Top 10 table (0x822c78): rand(0xffff) drawn when the difficulty is picked for a new game.
+    /// None for a game saved before it was kept.
+    pub course_id: Option<i32>,
+    /// The year (0 = 2001) each property was bought in this game, -1 for one not bought (the land records' byte +6).
+    pub bought: Vec<i32>,
     /// The exe's random number generator (land, offer) and the height noise it fills once at start-up.
     pub exe_rng: ExeRng,
     /// A second generator for things only drawn (celebrity residents, wildlife steps, water sparkle), so the club's draws do
@@ -409,6 +420,10 @@ pub struct App {
     pub golfer_page: usize,
     pub card: Option<usize>,
     pub card_ui: crate::screens_ui::CardUi,
+    /// Take Snapshot's photo while it is being taken or held on screen.
+    pub simfoto: Option<crate::screens_ui::SimFoto>,
+    /// A character file was loaded whose portrait still has to be registered (needs the graphics context).
+    pub portraits_due: bool,
     /// Customise Golfer, while open.
     pub cust: Option<crate::cust_ui::Customise>,
     pub year_notice: String,
@@ -623,6 +638,8 @@ impl App {
             sim_time: 0.0,
             golfer_clips: HashMap::new(),
             difficulty: 1,
+            course_id: None,
+            bought: Vec::new(),
             exe_rng,
             deco_rng: ExeRng::from_clock(0x5167),
             look_rng: ExeRng::from_clock(0x6c1),
@@ -664,6 +681,8 @@ impl App {
             golfer_page: 0,
             card: None,
             card_ui: Default::default(),
+            simfoto: None,
+            portraits_due: false,
             cust: None,
             year_notice: String::new(),
             roster_offset: 0,
@@ -1400,7 +1419,8 @@ impl App {
         let stories = std::mem::take(&mut self.club.stories);
         let celebrities = std::mem::take(&mut self.club.celebrities);
         let pros = std::mem::take(&mut self.club.pros);
-        self.club = Club::new(if roster.is_empty() { sg_core::roster::load(&self.game_dir) } else { roster });
+        let pack = THEME_PACKS.get(self.theme_pack).copied().unwrap_or("Standard").replace(' ', "_");
+        self.club = Club::new(if roster.is_empty() { sg_core::roster::load(&self.game_dir, &pack) } else { roster });
         self.club.stories = stories;
         self.club.celebrities = celebrities;
         self.club.pros = pros;
@@ -1462,6 +1482,7 @@ impl App {
         self.light = lighting;
         self.rebuild_batches(g);
         self.populate_props();
+        self.register_portraits(g);
         true
     }
 
@@ -1607,7 +1628,7 @@ impl App {
     }
 
     /// Sprite id (clip + body) of a golfer clip, loaded on first use: (body, shadow).
-    fn golfer_clip(&mut self, id: i32) -> (Option<usize>, Option<usize>) {
+    pub(crate) fn golfer_clip(&mut self, id: i32) -> (Option<usize>, Option<usize>) {
         if let Some(c) = self.golfer_clips.get(&id) {
             return *c;
         }
@@ -1953,6 +1974,10 @@ impl App {
 
     pub fn start_game(&mut self, g: &mut Gfx, prop_idx: usize, sandbox: bool) {
         let p = PROPERTIES[prop_idx];
+        // a game started without the difficulty screen (scripted runs) still gets its Top 10 id
+        if self.course_id.is_none() {
+            self.course_id = Some(self.exe_rng.below(0xffff));
+        }
         let (acres, price) = self.offer_for(prop_idx);
         self.econ.sandbox = sandbox;
         // The property is paid for out of the starting funds.
@@ -1966,6 +1991,8 @@ impl App {
         self.load_theme(g, p.theme);
         self.club.course_name = self.course_name.clone();
         self.club.course_theme = self.exe_theme();
+        self.bought.clear();
+        self.mark_bought(prop_idx);
         self.screen = Screen::Play;
         self.hover = -1;
         self.edit = false;
@@ -2030,6 +2057,8 @@ impl App {
             game_tick: self.game_tick,
             hole_stats: self.hole_stats.clone(),
             theme_pack: THEME_PACKS.get(self.theme_pack).copied().unwrap_or("Standard").replace(' ', "_"),
+            course_id: self.course_id,
+            bought: self.bought.clone(),
         };
         let json = serde_json::to_vec(&save).map_err(|e| e.to_string())?;
         let mut out = SAVE_MAGIC.to_vec();
@@ -2051,11 +2080,23 @@ impl App {
         self.land = s.land;
         self.course_name = s.course_name;
         self.difficulty = s.difficulty;
+        self.course_id = s.course_id;
+        self.bought = s.bought;
+        if self.bought.iter().all(|&y| y < 0) {
+            // a game saved before the purchases were kept: its own property, bought in a year not recorded (shown as 2001)
+            if let Some(p) = self.land.as_ref().map(|l| l.slot.property) {
+                self.bought = vec![-1; PROPERTIES.len()];
+                if let Some(b) = self.bought.get_mut(p) {
+                    *b = 0;
+                }
+            }
+        }
         self.adopt_holes = false;
         if !self.load_theme(g, s.theme) {
             return Err("could not load the theme".into());
         }
         self.club = s.club;
+        self.register_portraits(g);
         let tutorial = self.club.stories.tutorial;
         self.load_story();
         self.club.stories.tutorial = tutorial;
@@ -2075,6 +2116,17 @@ impl App {
         self.screen = Screen::Play;
         self.dirty = true;
         Ok(())
+    }
+
+    /// Gives every person whose head is a character file's own portrait the custom head that portrait takes this session.
+    pub fn register_portraits(&mut self, g: &mut Gfx) {
+        for i in 0..self.club.roster.len() {
+            let Some(rel) = self.club.roster[i].portrait.clone() else { continue };
+            let female = self.club.roster[i].female();
+            if let Some(h) = self.art.portrait_head(g, &self.game_path(&rel), female) {
+                self.club.roster[i].head = Some(h);
+            }
+        }
     }
 
     /// Loads the theme pack's stories (every *.txt in its Themes folder, or the Standard folder's when it has none, listed in

@@ -293,7 +293,7 @@ impl App {
         let tournament = free && c.game & OFFERED != 0;
         match h {
             // the exe edits the player's own record for its waiting golfer slot; the port opens it on the pro's slot
-            0 => self.open_customise(self.club.gary.max(0) as usize),
+            0 => self.open_customise_player(),
             1 if practice => self.pro_button(0),
             2 if play => self.pro_button(1),
             3 if tournament => self.begin_tournament(),

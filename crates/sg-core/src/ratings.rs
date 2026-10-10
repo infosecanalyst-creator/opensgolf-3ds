@@ -202,7 +202,12 @@ pub fn pass(club: &mut Club, difficulty: i32) -> ClubRatings {
             && flags & 0xd == 0
             && !message
             && club.message_by(
-                format!("Hole #{h} has been rated as one of the Top 100 golf holes in the country by Golf Enquirer magazine!"),
+                // the hole takes its proper name now (0x80 set first, 0x416f5a)
+                format!(
+                    "Hole #{h} (henceforth known as '{}'), has been rated as one of the best 100 holes in the country by Golf \
+                     Enquirer magazine! Increase greens fees by \u{a7}100.",
+                    name_of(h, hole.par, flags | 0x80)
+                ),
                 -21,
                 0,
             )
@@ -218,7 +223,11 @@ pub fn pass(club: &mut Club, difficulty: i32) -> ClubRatings {
             && flags & 0xe == 0
             && !message
             && club.message_by(
-                format!("Hole #{h} has been rated as one of the Top 18 golf holes in the country by Great Golf Holes magazine!"),
+                format!(
+                    "{} has been rated as one of the Top 18 holes in the country by Great Golf Holes magazine! Increase \
+                     greens fees by \u{a7}100.",
+                    name_of(h, hole.par, flags)
+                ),
                 -21,
                 0,
             )
@@ -287,59 +296,81 @@ pub fn report_row(h: usize, hole: &Hole, difficulty: i32, all_classes: bool) -> 
     }
 }
 
-/// Proper hole names by class, indexed by hole number (our own lists: the exe draws its names from three tables of 18 by
-/// par, women's names for par 3, shrubs and flowers for par 4, dark places for the rest).
+/// Proper hole names, indexed by hole number, one table per par (0x407280 picks the table by the hole's par byte): women's
+/// names for par 3 (pointer table 0x4c2e88), trees and shrubs for par 4 (0x4c2e38), dark places for the rest (0x4c2ed8).
 const NAMES_PAR3: [&str; 18] = [
-    "Abigail",
-    "Beatrice",
-    "Clara",
-    "Daphne",
-    "Eleanor",
-    "Fiona",
-    "Gwendolyn",
-    "Harriet",
+    "Alexandra",
+    "Belinda",
+    "Carmen",
+    "Dorothy",
+    "Elizabeth",
+    "Faith",
+    "Gisele",
+    "Hope",
     "Ingrid",
-    "Josephine",
-    "Katherine",
-    "Lucinda",
-    "Margaret",
-    "Nadine",
-    "Ophelia",
-    "Penelope",
-    "Rosalind",
-    "Sylvia",
+    "Jacqueline",
+    "Lara",
+    "Melinda",
+    "Naomi",
+    "Priscilla",
+    "Roxanne",
+    "Sarah",
+    "Valerie",
+    "Zelda",
 ];
 const NAMES_PAR4: [&str; 18] = [
-    "Azalea", "Juniper", "Laurel", "Magnolia", "Camellia", "Hawthorn", "Lilac", "Hibiscus", "Jasmine", "Primrose", "Rosemary", "Heather",
-    "Foxglove", "Bramble", "Wisteria", "Larkspur", "Myrtle", "Gardenia",
+    "Olive",
+    "Dogwood",
+    "Peach",
+    "Crab Apple",
+    "Magnolia",
+    "Juniper",
+    "Pampas",
+    "Jasmime",
+    "Cherry",
+    "Camellia",
+    "Daisy",
+    "Golden Bell",
+    "Azalea",
+    "Chinese Fir",
+    "Firethorn",
+    "Redbud",
+    "Nandina",
+    "Holly",
 ];
 const NAMES_OTHER: [&str; 18] = [
-    "Gauntlet",
-    "Abyss",
+    "Pride",
+    "Inferno",
+    "Fortress",
+    "The Siren",
+    "Centaur",
+    "Styx",
+    "Flame",
+    "Serpent",
+    "Paradise",
+    "Eden",
+    "Valley",
     "Torment",
-    "Bedlam",
-    "Perdition",
-    "Brimstone",
-    "Vortex",
-    "Nemesis",
-    "Despair",
-    "Calamity",
-    "Gallows",
-    "Maelstrom",
-    "Hades",
-    "Dungeon",
-    "Tempest",
-    "Wrath",
-    "Oblivion",
-    "Labyrinth",
+    "Misery",
+    "Archangel",
+    "Smoke",
+    "Gryphon",
+    "Beast",
+    "Purgatory",
 ];
 
-/// A hole's name (0x407280): "Hole N", or a proper name once it is a Top 100 hole (or its naming is pending, flag 0x80).
+/// A hole's name (0x407280): "Hole N" ("Hole " and the number), or once it is a Top 100 hole (or its naming is pending,
+/// flag 0x80) the name the player gave it, else the proper name of its number in the table of its par. (The port keeps no
+/// player-given hole names.)
 pub fn hole_name(h: usize, hole: &Hole) -> String {
-    if hole.flags & 0x81 == 0 || !(1..=18).contains(&h) {
+    name_of(h, hole.par, hole.flags)
+}
+
+fn name_of(h: usize, par: i32, flags: u32) -> String {
+    if flags & 0x81 == 0 || !(1..=18).contains(&h) {
         return format!("Hole {h}");
     }
-    match hole.par {
+    match par {
         3 => NAMES_PAR3[h - 1],
         4 => NAMES_PAR4[h - 1],
         _ => NAMES_OTHER[h - 1],
@@ -459,7 +490,11 @@ mod tests {
         assert_eq!(st.comments, vec![(3, 20, 0), (11, 20, 0)]);
         assert_eq!(hole_name(3, &h), "Hole 3");
         h.flags |= 1;
-        assert_eq!(hole_name(3, &h), "Laurel");
+        assert_eq!(hole_name(3, &h), "Peach");
+        h.par = 3;
+        assert_eq!(hole_name(18, &h), "Zelda");
+        h.par = 5;
+        assert_eq!(hole_name(1, &h), "Pride");
         assert_eq!(demand_word(57), "very good");
     }
 

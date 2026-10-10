@@ -40,6 +40,9 @@ pub struct Art {
     pub halo: [Image; 2],
     pub expr: [Image; 2],
     pub heads: [Vec<Image>; 2],
+    /// Where each custom head's 140 x 420 picture comes from: its file and the picture's offset in it (0 for Heads/*.pcx,
+    /// after the *PCXFILE marker in a character file). Saving a character copies it (0x437910).
+    pub head_src: [Vec<(std::path::PathBuf, usize)>; 2],
     /// Customise Golfer: the backgrounds (women, men), its buttons, the face picker and the preview window.
     pub cust_bg: [Image; 2],
     pub cg: Image,
@@ -60,6 +63,7 @@ impl Art {
         let keyed = |g: &mut Gfx, rel: &str| load_pcx(g, &app.game_path(rel), true, Some(0xf800f8)).unwrap_or_default();
         let alpha = |g: &mut Gfx, rel: &str, a: &str| load_pcx_alpha(g, &p(rel), &p(a)).unwrap_or_default();
         let mut heads: [Vec<Image>; 2] = [Vec::new(), Vec::new()];
+        let mut head_src: [Vec<(std::path::PathBuf, usize)>; 2] = [Vec::new(), Vec::new()];
         let mut files = sg_core::fsutil::list_dir(app.game_path("Heads"));
         files.sort();
         for f in files {
@@ -75,6 +79,7 @@ impl Art {
             }
             if let Some(img) = load_pcx(g, &f, true, None).filter(|i| i.w == 140.0 && i.h == 420.0) {
                 heads[gender].push(img);
+                head_src[gender].push((f.clone(), 0));
             }
         }
         let mut body_pcx = Vec::new();
@@ -101,6 +106,7 @@ impl Art {
             halo: [keyed(g, "Heads/golfballhalopage_female.pcx"), keyed(g, "Heads/golfballhalopage_male .pcx")],
             expr: [keyed(g, "Heads/sim_FEMALE_all_expressionsflat.pcx"), keyed(g, "Heads/sim_MALE_all_expressionsflat.pcx")],
             heads,
+            head_src,
             cust_bg: [plain(g, "CustGolfBckgrnd.pcx"), plain(g, "CustGlfBckMale.pcx")],
             cg: keyed(g, "Interface/CGButtons.pcx"),
             head_select: keyed(g, "Interface/HeadSelect.pcx"),
@@ -108,6 +114,30 @@ impl Art {
             body_pcx,
             bodies: HashMap::new(),
         }
+    }
+
+    /// The custom head of a character file's embedded portrait (0x437fa0: a head byte of 20 or more takes the next custom
+    /// slot of the gender, while there is room below 0x48): its head index, registering the picture on first use.
+    pub fn portrait_head(&mut self, g: &mut Gfx, file: &std::path::Path, female: bool) -> Option<u8> {
+        let gi = (!female) as usize;
+        if let Some(k) = self.head_src[gi].iter().position(|(f, off)| f == file && *off > 0) {
+            return Some(19 + k as u8);
+        }
+        if self.heads[gi].len() >= 0x48 - 19 {
+            return None;
+        }
+        let b = sg_core::fsutil::read_file(file)?;
+        let off = b.windows(8).position(|w| w == b"*PCXFILE")? + 8;
+        let mut img = sg_core::assets::decode_pcx(&b[off..]).ok().filter(|i| i.w == 140 && i.h == 420)?;
+        for p in img.px.as_chunks_mut::<4>().0 {
+            if p[0] == 255 && p[1] == 0 && p[2] == 255 {
+                p[3] = 0;
+            }
+        }
+        let im = Image { tex: Some(g.texture(&img, false)), w: 140.0, h: 420.0 };
+        self.heads[gi].push(im);
+        self.head_src[gi].push((file.to_path_buf(), off));
+        Some(18 + self.heads[gi].len() as u8)
     }
 
     /// Stock heads plus the custom portraits of a gender (0 women, 1 men): the face picker's count.
@@ -269,6 +299,17 @@ pub struct CardUi {
     pub held: Option<usize>,
 }
 
+/// Take Snapshot's SimFoto (the main frame at 0x4185bb, saved by 0x431d20): a white-bordered photo framed around the golfer
+/// and his pair slot, captioned, written to the snapshots folder and held on screen until a click or a key.
+#[derive(Clone, Copy, Debug)]
+pub struct SimFoto {
+    pub slot: usize,
+    /// Frames drawn so far (the photo is taken after the golfers' next tick, so their remarks show) and whether the file
+    /// has been written.
+    pub frames: u32,
+    pub saved: bool,
+}
+
 const MONTHS: [&str; 8] = ["March", "April", "May", "June", "July", "August", "September", "October"];
 
 /// The board's handwritten to-do strips on tacs&tees, one per accomplishment class (cut table 0x4c2d38, x y w h).
@@ -301,9 +342,8 @@ const TODO_ALT: [(f32, f32, f32, f32); 3] = [(610.0, 381.0, 132.0, 20.0), (610.0
 // the exe shows no status text for Platinum
 const LEVELS: [&str; 6] = ["", "Visitor", "Member", "Silver Member", "Gold Member", ""];
 
-/// The five trait words of the person record's byte +0x20 (pointer table 0x4c2864, not in the decode). PLACEHOLDER: the
-/// words are guessed from the letters the story files use for the set bits (T, O, A, P, N).
-pub const TRAIT_WORDS: [&str; 5] = ["Talkative", "Outgoing", "Athletic", "Playful", "Nice"];
+/// The five trait words of the person record's byte +0x20 (pointer table 0x4c2864).
+pub const TRAIT_WORDS: [&str; 5] = ["Neat", "Outgoing", "Active", "Playful", "Nice"];
 /// The three skill class words (table 0x4c2858, "length" first).
 pub const CLASS_WORDS: [&str; 3] = ["length", "accuracy", "imagination"];
 
@@ -363,7 +403,8 @@ pub fn trend(gg: &sg_core::golfer::Golfer) -> i32 {
         .sum()
 }
 
-/// The golfer card's five bars: the label and the dark (unfilled) width; a long dark part is bad in every row.
+/// The golfer card's five bars: the label (the first is the string at 0x4d2120, "Fun") and the dark (unfilled) width; a long
+/// dark part is bad in every row.
 fn bars(gg: &sg_core::golfer::Golfer) -> [(&'static str, i32); 5] {
     [
         ("Fun", ((8 - gg.mood) * 10).clamp(0, 80)),
@@ -469,6 +510,19 @@ impl App {
         use crate::ui::{F_INFO14, F_INFO20, F_INFO_TITLE};
         s.put_centered(g, F_INFO_TITLE, 338.0, 14.0, "SELECT THE NEXT PAIR OF GOLFERS", black());
         let list = self.club.waiting();
+        // the picked golfers' faces (0x459850): neutral, or with two picked happy when they share more than three of the
+        // five traits and angry when they share fewer than two
+        let mut expr = 1;
+        if let [a, b] = self.pair_picks[..] {
+            let t = |s: usize| self.club.roster.get(self.club.g[s].roster.max(0) as usize).map(|p| p.traits).unwrap_or(0);
+            let same = 5 - ((t(a) ^ t(b)) & 0x1f).count_ones();
+            if same < 2 {
+                expr = 2;
+            }
+            if same > 3 {
+                expr = 0;
+            }
+        }
         for (k, &slot) in list.iter().enumerate() {
             let bx = if k & 1 == 1 { 329.0 } else { 0.0 };
             let y = 50.0 + 136.0 * (k / 2) as f32;
@@ -481,24 +535,25 @@ impl App {
             } else {
                 0.0
             };
-            let fy = if hovered && !picked { y - 1.0 } else { y };
             if self.art.pair_buttons.tex.is_some() {
-                s.image_part(g, &self.art.pair_buttons, bx + 6.0, fy, 0.0, src, 329.0, 136.0);
+                s.image_part(g, &self.art.pair_buttons, bx + 6.0, y, 0.0, src, 329.0, 136.0);
             } else {
-                s.fill(g, bx + 6.0, fy, 325.0, 132.0, if picked { rgba(0.8, 0.7, 0.2, 0.6) } else { rgba(0.2, 0.2, 0.5, 0.8) });
+                s.fill(g, bx + 6.0, y, 325.0, 132.0, if picked { rgba(0.8, 0.7, 0.2, 0.6) } else { rgba(0.2, 0.2, 0.5, 0.8) });
             }
+            // a hovered card's head and words sit a pixel higher than its plate
+            let y = if hovered && !picked { y - 1.0 } else { y };
             let id = self.club.g[slot].roster.max(0) as usize;
             let p = self.club.roster.get(id).cloned().unwrap_or_default();
-            // the head on the card's ball: full strength when hovered or picked, else at 70 % (expression row not decoded: the
-            // first)
-            let k = if hovered || picked { 1.0 } else { 0.7 };
+            // the head on the card's ball: a picked golfer's at full strength in the pair's expression, the others neutral at
+            // 70 %
+            let (k, row) = if picked { (1.0, expr) } else { (0.7, 1) };
             let gi = p.male_bit() as usize;
             let head = p.head_index(id);
             if head < 19 {
-                let (sx, sy) = ((head / 2) as f32 * 140.0, (head & 1) as f32 * 420.0);
+                let (sx, sy) = ((head / 2) as f32 * 140.0, (head & 1) as f32 * 420.0 + 140.0 * row as f32);
                 s.image_part_tint(g, &self.art.halo[gi], bx, y + 4.0, sx, sy, 140.0, 140.0, rgb(k, k, k));
             } else if let Some(img) = self.art.heads[gi].get(head as usize - 19) {
-                s.image_part_tint(g, img, bx, y + 4.0, 0.0, 0.0, 140.0, 140.0, rgb(k, k, k));
+                s.image_part_tint(g, img, bx, y + 4.0, 0.0, 140.0 * row as f32, 140.0, 140.0, rgb(k, k, k));
             }
             s.put_centered(g, F_INFO20, bx + 214.0, y + 9.0, &self.club.name(slot), black());
             s.put_centered(g, F_INFO14, bx + 262.0, y + 40.0, &p.job, black());
@@ -592,11 +647,6 @@ impl App {
         }
     }
 
-    /// Is golfer g the player's own pro (the only golfer the card's Customize button works for, docs/DECODE_CARDS3.md 2.2)?
-    pub fn is_own_golfer(&self, g: usize) -> bool {
-        g < SLOTS && (self.club.g[g].flags & flag::GARY != 0 || g as i32 == self.club.gary)
-    }
-
     /// The card's buttons as drawn now: (id, row, icon x, icon y, hit x, hit y), without the hidden ones.
     fn card_buttons(&self, gi: usize) -> Vec<CardButton> {
         let gg = &self.club.g[gi];
@@ -607,7 +657,6 @@ impl App {
             .iter()
             .copied()
             .filter(|b| match b.0 {
-                0 => self.is_own_golfer(gi),
                 3 => story,
                 5 => !(gg.story_step == 4 && self.club.g[p].story_step == 4),
                 _ => true,
@@ -847,38 +896,37 @@ impl App {
         let hit = self.card_hit(gi, vx, vy);
         let p = (self.club.g[gi].partner.clamp(0, SLOTS as i32 - 1)) as usize;
         match hit {
+            // Customize (0x41ea4f): the editor on the golfer's own person record, for any golfer; afterwards the golfer
+            // takes the record's age and marital byte
             0 => self.open_customise(gi),
             1 => {
-                // pick the golfer up: the next click on the course puts him down (on the clubhouse: sends him home)
+                // Move/Eject Golfer (0x41ea32): the golfer is held; the next left click on the course puts him down on that
+                // tile, on the clubhouse sends him home (see `golfer_click`), any other click lets go
                 self.card = None;
                 self.card_ui.held = Some(gi);
-                self.show_toast(&format!("Click where {} should go", self.club.vip_name(gi)));
             }
             2 => {
+                // Take Snapshot (0x41e722): the SimFoto of the golfer and the pair slot; the view goes to the golfer when he
+                // is off screen, and both say something now (thought timer 1)
                 self.card = None;
-                let (x, z) = self.units_to_world(self.club.g[gi].x, self.club.g[gi].y);
-                self.cam_x = x;
-                self.cam_z = z;
+                if self.screen_of(self.club.g[gi].x, self.club.g[gi].y).is_none() {
+                    let (x, z) = self.units_to_world(self.club.g[gi].x, self.club.g[gi].y);
+                    self.cam_x = x;
+                    self.cam_z = z;
+                }
                 for gg in [gi, gi ^ 1] {
                     if self.club.g[gg].timer == 0 {
                         self.club.g[gg].timer = 1;
                     }
                 }
-                self.ui_sound(0x95);
+                self.simfoto = Some(SimFoto { slot: gi, frames: 0, saved: false });
             }
             3 => self.card_ui.story = !self.card_ui.story,
             4 => self.card = None,
             5 => {
-                // Next Chapter: a forced story beat; a failed one costs both a point of mood, and the card closes
-                let owner = if self.club.g[gi].flags & flag::STORY != 0 { gi } else { p };
-                if self.club.g[gi].flags & flag::STORY != 0 || self.club.g[p].flags & flag::STORY != 0 {
-                    if !self.club.story_beat(&mut self.course, &mut self.exe_rng, owner, true) {
-                        self.club.g[gi].mood -= 1;
-                        self.club.g[p].mood -= 1;
-                    }
-                    self.club.g[gi].flags |= flag::STORY_BEAT;
-                    self.club.g[p].flags |= flag::STORY_BEAT;
-                }
+                // Next Chapter: the replier's random reply, then a forced story beat (sg_core::stories::next_chapter)
+                let _ = p;
+                self.club.next_chapter(&mut self.course, &mut self.exe_rng, gi);
                 self.card = None;
             }
             _ => {
@@ -894,16 +942,30 @@ impl App {
     /// nearest golfer within reach opens the card, or the pair screen when he is waiting in the clubhouse.
     pub fn golfer_click(&mut self, wx: f32, wz: f32, clubhouse: bool) -> bool {
         if let Some(gi) = self.card_ui.held.take() {
+            // the exe puts the golfer on the centre of the clicked tile (+0x9e cleared); dropped on the clubhouse he goes
+            // home: hole 19, no strokes, mood 0, and an ordinary golfer's membership record marks the hole quit and the
+            // member gone for good (outside sandbox play)
+            let k = sg_core::terrain::TILE_SIZE / sg_core::staff::UNIT as f32;
+            let ux = ((wx + self.terrain.w as f32 * sg_core::terrain::TILE_SIZE * 0.5) / k) as i32;
+            let uy = ((wz + self.terrain.h as f32 * sg_core::terrain::TILE_SIZE * 0.5) / k) as i32;
+            let unit = sg_core::staff::UNIT;
+            let sandbox = self.econ.sandbox;
             let gg = &mut self.club.g[gi];
-            if gg.hole > 0 && gg.hole < 19 {
-                if clubhouse {
-                    gg.hole = 19;
-                    gg.bx = 0;
-                    gg.flags = (gg.flags & !flag::MAY_CART) | flag::LEAVING;
-                } else {
-                    let k = sg_core::terrain::TILE_SIZE / sg_core::staff::UNIT as f32;
-                    gg.x = ((wx + self.terrain.w as f32 * sg_core::terrain::TILE_SIZE * 0.5) / k) as i32;
-                    gg.y = ((wz + self.terrain.h as f32 * sg_core::terrain::TILE_SIZE * 0.5) / k) as i32;
+            gg.x = ux.div_euclid(unit) * unit + unit / 2;
+            gg.y = uy.div_euclid(unit) * unit + unit / 2;
+            if clubhouse {
+                let (id, hole) = (gg.roster.max(0) as usize, gg.hole.clamp(0, 18) as usize);
+                let ordinary = gg.kind == 0;
+                gg.hole = 19;
+                gg.bx = 0;
+                gg.strokes = 0;
+                gg.mood = 0;
+                gg.flags = (gg.flags & !flag::MAY_CART) | flag::LEAVING;
+                if !sandbox && ordinary {
+                    if let Some(m) = self.club.members.get_mut(id) {
+                        m.holes[hole] |= 4;
+                        m.gone = 0xff;
+                    }
                 }
             }
             return true;
@@ -929,6 +991,79 @@ impl App {
         }
         self.card = Some(gi);
         true
+    }
+
+    // ---- SimFoto -------------------------------------------------------------------------------------------------------
+
+    /// The SimFoto's inner rectangle (left, top, right, bottom): the screen points of the golfer and his pair slot, widened
+    /// to at least 240 x 200 about their middle, grown by 16 and kept within (16..700, 16..500) for the top left and
+    /// (100..784, 100..584) for the bottom right. None while the golfer is off screen.
+    pub fn simfoto_rect(&self, f: &SimFoto) -> Option<(i32, i32, i32, i32)> {
+        let gg = &self.club.g[f.slot];
+        let a = self.screen_of(gg.x, gg.y)?;
+        let pg = &self.club.g[f.slot ^ 1];
+        let b = self.screen_of(pg.x, pg.y).unwrap_or(a);
+        let (mut l, mut r) = (a.0.min(b.0) as i32, a.0.max(b.0) as i32);
+        let (mut t, mut bt) = (a.1.min(b.1) as i32, a.1.max(b.1) as i32);
+        if r - l < 240 {
+            let d = (240 - (r - l)) / 2;
+            l -= d;
+            r += d;
+        }
+        if bt - t < 200 {
+            let d = (200 - (bt - t)) / 2;
+            t -= d;
+            bt += d;
+        }
+        Some(((l - 16).clamp(16, 700), (t - 16).clamp(16, 500), (r + 16).clamp(100, 784), (bt + 16).clamp(100, 584)))
+    }
+
+    /// The SimFoto's date stamp: month, day and year joined by apostrophes (month (tick >> 10 & 7) + 3, day as the board's).
+    pub fn simfoto_date(&self) -> String {
+        let t = self.game_tick;
+        format!("{}'{}'{}", ((t & 0x1fff) >> 10) + 3, (((t & 0x3ff) * 30) >> 10) + 1, 2001 + self.econ.year_index())
+    }
+
+    /// The SimFoto over the course: the white border, the black frame line, "Happy Ending!" over a story pair whose last
+    /// chapter is being told, "SimFoto" in the bottom border and the date stamp inside the lower right corner.
+    pub fn draw_simfoto(&mut self, g: &mut Gfx, s: &Ui) {
+        let Some(mut f) = self.simfoto else { return };
+        f.frames += 1;
+        self.simfoto = Some(f);
+        if f.frames < 2 {
+            return;
+        }
+        let Some((l, t, r, b)) = self.simfoto_rect(&f) else {
+            // the golfer never came on screen: nothing to take
+            self.simfoto = None;
+            return;
+        };
+        let (l, t, r, b) = (l as f32, t as f32, r as f32, b as f32);
+        let white = c15(0x7fff);
+        s.fill(g, l - 16.0, t - 16.0, r - l + 32.0, 16.0, white);
+        s.fill(g, l - 16.0, t - 16.0, 16.0, b - t + 32.0, white);
+        s.fill(g, l - 16.0, b, r - l + 32.0, 16.0, white);
+        s.fill(g, r, t - 16.0, 16.0, b - t + 32.0, white);
+        let ink = rgb(0.0, 0.0, 0.0);
+        s.fill(g, l, t, r - l, 1.0, ink);
+        s.fill(g, l, b, r - l, 1.0, ink);
+        s.fill(g, l, t, 1.0, b - t, ink);
+        s.fill(g, r, t, 1.0, b - t + 1.0, ink);
+        let gg = &self.club.g[f.slot];
+        if gg.story_step == 4 && gg.thought == 0x32 {
+            s.text_centered(g, (l + r) / 2.0, top(t + 4.0, LARGE), "Happy Ending!", LARGE, c15(0x7ff0));
+        }
+        s.text_centered(g, (l + r) / 2.0, top(b + 4.0, BODY), "SimFoto", BODY, c15(0x6318));
+        s.text(g, r - 80.0, top(b - 16.0, BODY), &self.simfoto_date(), BODY, c15(0x7ff0));
+    }
+
+    /// A click or a key while the SimFoto is held lets it go.
+    pub fn simfoto_dismiss(&mut self) -> bool {
+        if self.simfoto.is_some_and(|f| f.saved) {
+            self.simfoto = None;
+            return true;
+        }
+        false
     }
 
     // ---- the accomplishments board ------------------------------------------------------------------------------------
@@ -1333,7 +1468,7 @@ mod tests {
     fn card_words_and_values() {
         assert_eq!(and_list(&["a"]), "a");
         assert_eq!(and_list(&["a", "b", "c"]), "a, b and c");
-        assert_eq!(trait_words(0x15), vec!["Talkative", "Athletic", "Nice"]);
+        assert_eq!(trait_words(0x15), vec!["Neat", "Active", "Nice"]);
         assert_eq!(skill_value(5), "+50%");
         assert_eq!(skill_value(10), "100%");
         assert_eq!(dist(10.0, 4.0), 12.0);

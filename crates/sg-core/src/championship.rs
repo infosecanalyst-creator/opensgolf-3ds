@@ -27,6 +27,8 @@ pub struct ProFile {
     pub record: Vec<u8>,
     pub sayings: Vec<String>,
     pub skills: [u8; 16],
+    /// The 140 x 420 8-bit PCX written after the marker (the three faces of the head, 0x437910); None writes none.
+    pub portrait: Option<Vec<u8>>,
 }
 
 fn cstr(b: &[u8]) -> String {
@@ -43,15 +45,16 @@ pub fn parse_pro(b: &[u8]) -> Option<ProFile> {
     let mut skills = [0u8; 16];
     skills.copy_from_slice(&b[skills_at..skills_at + 16]);
     Some(ProFile {
-        person: Person::parse(&b[..RECORD]),
+        person: Person::parse_file(b),
         record: b[..RECORD].to_vec(),
         sayings: (0..SAYINGS).map(|i| cstr(&b[RECORD + i * SAYING..RECORD + (i + 1) * SAYING])).collect(),
         skills,
+        portrait: None,
     })
 }
 
-/// Writes a pro file in the same layout. The portraits the exe renders after the marker are left out; the exe's reader
-/// stops at the marker when no picture follows.
+/// Writes a pro file in the same layout, with the portrait after the marker when there is one (the exe's reader stops at
+/// the marker when no picture follows).
 pub fn pro_bytes(p: &ProFile) -> Vec<u8> {
     let mut out = vec![0u8; RECORD];
     let n = p.record.len().min(RECORD);
@@ -73,6 +76,7 @@ pub fn pro_bytes(p: &ProFile) -> Vec<u8> {
     let pp = &p.person;
     out[0x24..0x29].copy_from_slice(&[pp.shirt, pp.pants, pp.alt_skin, pp.skin, pp.hair]);
     out[0x2c..0x30].copy_from_slice(&p.person.fixed.to_le_bytes());
+    put(&mut out, 0x30, RECORD - 0x30, &p.person.bio);
     for i in 0..SAYINGS {
         let mut s = vec![0u8; SAYING];
         if let Some(t) = p.sayings.get(i) {
@@ -84,6 +88,9 @@ pub fn pro_bytes(p: &ProFile) -> Vec<u8> {
     }
     out.extend_from_slice(&p.skills);
     out.extend_from_slice(MARKER);
+    if let Some(pcx) = &p.portrait {
+        out.extend_from_slice(pcx);
+    }
     out
 }
 
@@ -91,7 +98,9 @@ impl Club {
     /// The player's pro as a pro file ("Save <pro> for Championship").
     pub fn pro_file(&self) -> ProFile {
         let person = self.roster.first().cloned().unwrap_or_default();
-        ProFile { person, record: Vec::new(), sayings: vec![String::new(); SAYINGS], skills: self.pro_skill }
+        let mut sayings = person.sayings.clone();
+        sayings.resize(SAYINGS, String::new());
+        ProFile { person, record: Vec::new(), sayings, skills: self.pro_skill, portrait: None }
     }
 
     /// Starts a championship on the loaded course (0x46ddd0): the chosen pro replaces the player's, the flags are only

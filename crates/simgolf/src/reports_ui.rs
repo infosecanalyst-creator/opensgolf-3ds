@@ -825,10 +825,14 @@ impl App {
         let tick = self.game_tick;
         let ledger = self.econ.ledger.clone();
         let c = self.club.clone();
+        let bought = std::mem::take(&mut self.bought);
         self.world_move = false;
         self.start_game(g, prop, self.econ.sandbox);
         self.econ.cash = cash;
         self.econ.tick = tick;
+        // the properties bought before stay bought; the new one is bought this year
+        self.bought = bought;
+        self.mark_bought(prop);
         self.econ.ledger = ledger;
         let y = self.econ.year_index();
         if let Some(row) = self.econ.ledger.get_mut(y) {

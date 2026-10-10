@@ -24,7 +24,6 @@ pub struct InfoArt {
     pub land_buttons: Image,
     pub world_buttons: Image,
     pub tacks: Image,
-    pub stars: Image,
 }
 
 impl InfoArt {
@@ -46,7 +45,6 @@ impl InfoArt {
             land_buttons: keyed(g, "infoscreens/buy_land_buttons.pcx"),
             world_buttons: keyed(g, "WorldButton.pcx"),
             tacks: alpha(g, "TacksandArrow.pcx", "TacksandArrow_A.pcx"),
-            stars: load_pcx(g, &p("StarsHeartsETC.pcx"), false, Some(0x00ff00)).unwrap_or_default(),
         }
     }
 }
@@ -68,6 +66,8 @@ pub struct Info {
     /// it has been shown, and the button under the pointer.
     pub world_msg: Option<String>,
     pub world_go: Option<(usize, u32)>,
+    /// The world map's button under the pointer and for how many frames (its label shows after 20).
+    pub world_tip: (i32, u32),
 }
 
 /// 15-bit exe colour (5-5-5) to RGBA.
@@ -303,10 +303,11 @@ impl App {
         }
         let by = total_y + 29.0;
         s.image_part(g, art, 0.0, by, 0.0, 468.0, 800.0, 72.0);
+        // the legend's tops at the bottom piece's y - 63 + its height (72), the tick 15 below them (0x4520f0)
         for (x, t) in [(178.0, "Top 100 Hole"), (335.0, "Top 18 Hole"), (487.0, "Scenic Hole")] {
-            s.text_centered(g, x, by + 21.0, t, 14.0, ink);
+            s.put_centered(g, crate::ui::F_INFO14, x, by + 9.0, t, ink);
         }
-        self.ok_tick(g, &s, 734.0, by + 26.0, false);
+        self.ok_tick(g, &s, 734.0, by + 24.0, false);
         g.flush();
     }
 
@@ -462,8 +463,11 @@ impl App {
             return;
         }
         let mut t = self.load_top10();
-        // the course id only has to tell this course from the others in the table
-        let id = self.course_name.bytes().fold(0x811c_9dc5u32, |h, b| (h ^ b as u32).wrapping_mul(0x0100_0193)) as i32 & 0x7fff_ffff;
+        // the course's id (0x822c78, drawn when the game began); a game saved before the id was kept falls back on a hash of
+        // its name, which only has to tell this course from the others in the table
+        let id = self.course_id.unwrap_or_else(|| {
+            self.course_name.bytes().fold(0x811c_9dc5u32, |h, b| (h ^ b as u32).wrapping_mul(0x0100_0193)) as i32 & 0x7fff_ffff
+        });
         let e = top10::Entry {
             name: self.pro_name(),
             course: self.course_name.clone(),
