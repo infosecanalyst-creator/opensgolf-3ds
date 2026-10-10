@@ -149,7 +149,7 @@ impl App {
     }
 
     /// Props as camera-facing quads. Sprites are pre-rendered, so they ignore lighting and depth: ground overlays first, then
-    /// shadows, then bodies far to near (painter's order).
+    /// each sprite's shadow and body together, far to near (painter's order).
     fn draw_props(&mut self, g: &mut Gfx, u: &Uniforms) {
         if !self.show_props || self.props.is_empty() {
             return;
@@ -225,11 +225,12 @@ impl App {
                 quad(self, g, b, i, false);
             }
         }
+        // the exe composites each sprite's shadow under its body when it loads them (0x43d740 draws NameShadow.flc, then
+        // Name.flc over it, into the same frames), so a sprite's shadow is drawn with it in the depth order: a nearer
+        // sprite's shadow falls over a farther sprite
         for &(_, i) in &items {
             let sh = self.props[i].shadow;
             quad(self, g, sh, i, true);
-        }
-        for &(_, i) in &items {
             if !self.props[i].flat {
                 let b = self.props[i].body;
                 quad(self, g, b, i, false);

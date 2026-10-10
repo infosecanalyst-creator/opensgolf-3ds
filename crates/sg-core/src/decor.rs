@@ -232,9 +232,12 @@ pub fn ornamental(var: u8, a: i32, b: i32, grown: bool, field: &dyn Fn(i32, i32)
 /// A flower bed tile (flag 0x1000) as the main frame draws it (0x41266b). The tile's design byte (`var`, 0..14) is shape
 /// var / 5 (plain, sinuous, walled: sprites 0x1a2, 0x1a8, 0x1ae on) and colour var % 5 (palettes 0x2d..0x31, or 0xbb while
 /// weeds grow in it). The bed joins the four neighbours that are beds of the same shape on the same building level
-/// (0x543018): bit k of the mask for the neighbour at heading 2k picks the piece and its view from the table at 0x4c2f28
-/// (single, one, two, three and four sides, corner); a one-sided piece turns two views, a three-sided one view, and the
-/// single and four-sided pieces take view (a - 2b) & 3. The bed shows its growth counter as the frame while it grows (flag
+/// (0x543018): bit k of the mask for the neighbour at heading 2k, turned with the view (the mask rotated right one place
+/// per quarter turn of the camera, `rot` = 0x5685f4 / 2, so it describes the neighbours as they lie on the screen), picks
+/// the piece and its screen view from the table at 0x4c2f28 (single, one, two, three and four sides, corner); a one-sided
+/// piece turns two views, a three-sided one view, and the single and four-sided pieces take view (a - 2b) & 3 whatever the
+/// camera. The returned view is that screen view less `rot`, as the renderer adds the camera's quarter turns to every
+/// four-view sprite. The bed shows its growth counter as the frame while it grows (flag
 /// 0x4000), else its last frame. Where the beds fill the 2 x 2 block with the tile up and left of this one, on level
 /// corners, and (b + 2a) % 5 == 0, a gazebo (a even, palette 0x96) or a topiary (palette 0xbc) stands at the block's
 /// middle in view b & 3. `bed(a, b)` is the design and level of a bed tile, None for other tiles; `corner` is 0x40c170.
@@ -247,6 +250,7 @@ pub fn flower_bed(
     weedy: bool,
     growth: Option<i32>,
     corner: &dyn Fn(i32, i32) -> i32,
+    rot: i32,
 ) -> Vec<Draw> {
     const PIECES: [(u16, i32); 16] = [
         (0x1a2, -1),
@@ -275,6 +279,9 @@ pub fn flower_bed(
             }
         }
     }
+    for _ in 0..rot.rem_euclid(4) {
+        mask = (mask >> 1) | ((mask & 1) << 3);
+    }
     let (piece, mut view) = PIECES[mask];
     if piece == 0x1a3 {
         view ^= 2;
@@ -285,6 +292,7 @@ pub fn flower_bed(
     if view == -1 {
         view = (a - 2 * b) & 3;
     }
+    let view = (view - rot) & 3;
     let sprite = piece + 6 * (var / 5).min(2) as u16;
     let pal = if weedy { 0xbb } else { 0x2d + var % 5 };
     let frame = if weedy { None } else { growth };
@@ -566,8 +574,11 @@ pub fn palette_file(pal: u8, theme: u8) -> Option<&'static str> {
             pick(["Bridges/PARKbridgepal.pcx", "Bridges/DESbridgepal.pcx", "Bridges/TROPbridgepal.pcx", "Bridges/LinksBridgePalette.pcx"])
         }
         0xa9 => Some("Bridges/SCENICgenpal.pcx"),
-        // a weedy flower bed: the exe names "bldgs\flowers\...IckyPal", a folder the game does not ship; PLACEHOLDER: the
-        // same files in Flowers
+        // a weedy flower bed: palette object 0xbb (0x81ca10 + 0xbb * 0x58 = 0x820a58) is loaded only from
+        // "flics\bldgs\flowers\<name>IckyPal" (0x4cc0f4, 0x4cc500, 0x4ccd1c by theme, in the theme loader 0x43dbe0), a
+        // folder the disc does not have, so the exe's load (0x475840) fails before it touches the palette and the bed is
+        // drawn with a never-loaded palette, whose look is decided inside jgl.dll (not decoded). The files themselves ship
+        // under Flics/Flowers with the same names; PLACEHOLDER: the port uses those
         0xbb => pick([
             "Flowers/FlowerbedA_IckyPal.pcx",
             "Flowers/DesertFlowersIckyPal.pcx",
@@ -707,19 +718,41 @@ mod tests {
             _ => None,
         };
         let flat = |_: i32, _: i32| 3;
-        let lone = flower_bed(20, 20, &bed, false, None, &flat);
+        let lone = flower_bed(20, 20, &bed, false, None, &flat, 0);
         assert_eq!(lone, vec![Draw { sprite: 0x1a2, frame: None, view: (20 - 40) & 3, pal: 0x2d, da: 0.0, db: 0.0 }]);
         // (6, 11) has beds at headings 0 (6, 10) and 6 (5, 11): a corner, and (11 + 12) % 5 != 0 so no gazebo
-        let c = flower_bed(6, 11, &bed, false, None, &flat);
+        let c = flower_bed(6, 11, &bed, false, None, &flat, 0);
         assert_eq!((c.len(), c[0].sprite, c[0].view, c[0].pal), (1, 0x1a7 + 6, 3, 0x31));
         // (5, 10) has beds at headings 2 and 4: a corner the other way, weedy
-        let w = flower_bed(5, 10, &bed, true, Some(2), &flat);
+        let w = flower_bed(5, 10, &bed, true, Some(2), &flat, 0);
         assert_eq!((w[0].sprite, w[0].view, w[0].pal, w[0].frame), (0x1ad, 1, 0xbb, None));
         // a block at (12..13, 38..39): (13, 39) has (39 + 26) % 5 == 0, so a topiary (a odd) at the block's middle
         let block = |a: i32, b: i32| ((12..=13).contains(&a) && (38..=39).contains(&b)).then_some((2u8, 0));
-        let t = flower_bed(13, 39, &block, false, Some(1), &flat);
+        let t = flower_bed(13, 39, &block, false, Some(1), &flat, 0);
         assert_eq!(t.len(), 2);
         assert_eq!((t[1].sprite, t[1].pal, t[1].view, t[1].frame, t[1].da, t[1].db), (0x1b5, 0xbc, 3, Some(1), -0.5, -0.5));
+    }
+
+    #[test]
+    fn flower_beds_turn_with_the_view() {
+        let bed = |a: i32, b: i32| match (a, b) {
+            (5..=6, 10..=11) => Some((9, 0)),
+            (20, 20) => Some((0, 0)),
+            _ => None,
+        };
+        let flat = |_: i32, _: i32| 3;
+        // the corner at (6, 11) (headings 0 and 6, mask 9): a quarter turn makes it mask 12, the corner piece in screen view
+        // 0, which with the renderer's added quarter is view 3 here
+        let c = flower_bed(6, 11, &bed, false, None, &flat, 1);
+        assert_eq!((c[0].sprite, c[0].view), (0x1a7 + 6, (0 - 1) & 3));
+        // after a full turn of four quarters the piece is the unturned one again
+        let c4 = flower_bed(6, 11, &bed, false, None, &flat, 4);
+        assert_eq!(c4, flower_bed(6, 11, &bed, false, None, &flat, 0));
+        // a lone bed keeps its screen view (a - 2b) & 3 whatever the camera
+        for rot in 0..4 {
+            let lone = flower_bed(20, 20, &bed, false, None, &flat, rot);
+            assert_eq!((lone[0].view + rot) & 3, (20 - 40) & 3);
+        }
     }
 
     #[test]

@@ -2732,6 +2732,12 @@ impl App {
         self.rot = ((self.rot / 90.0).round() + quarters as f32).rem_euclid(4.0) * 90.0;
         // the sand traps' pictures turn with the view (Terrain.dll's phase)
         self.dirty |= self.terrain.ty.contains(&7);
+        // the flower beds pick their pieces by how their neighbours lie on the screen (decor::flower_bed), and landmark 3
+        // turns twice as fast as the view
+        if self.land.is_some() {
+            self.props.retain(|p| !p.object);
+            self.add_land_objects();
+        }
     }
 
     /// The welcome for the course's theme (0x45fd80 at tick 0x20), with the course name and the starting cash in thousands,
@@ -3213,6 +3219,7 @@ impl App {
     fn add_land_objects(&mut self) {
         let Some(land) = self.land.clone() else { return };
         let theme = land.slot.record().theme;
+        let exe_theme = self.exe_theme();
         // Tile items: benches, ornamental trees and flower beds as the exe draws them (sg_core::decor)
         let noise = self.noise.clone();
         let field = |x: i32, y: i32| noise.field(x, y);
@@ -3267,7 +3274,8 @@ impl App {
                     let weedy = course.flags.get(i).is_some_and(|f| f & sg_core::course::f::WEED != 0);
                     let t = &self.staff_tiles;
                     let growth = self.tile_growing(a, b).then(|| t.counter[(b * t.w + a) as usize] as i32);
-                    for d in sg_core::decor::flower_bed(a, b, &bed, weedy, growth, &|a, b| course.raw_corner(a, b)) {
+                    let rot = ((self.rot / 90.0).round() as i32).rem_euclid(4);
+                    for d in sg_core::decor::flower_bed(a, b, &bed, weedy, growth, &|a, b| course.raw_corner(a, b), rot) {
                         draws.push((a, b, d));
                     }
                 }
@@ -3292,6 +3300,15 @@ impl App {
             let (cx, cz) = self.terrain.tile_centre(o.a, o.b);
             let off = (size - 1) as f32 * TILE_SIZE * 0.5;
             let (x, z) = (cx + off, cz + off);
+            // a landmark in its own palette, 100 + type, facing its way plus the view's quarter turns (one more for type 3,
+            // whose view the exe turns by the full eighth count, 0x463180 case 4)
+            let (mut pal, mut facing) = (None, o.dir as i32);
+            if o.kind == land::K_LANDMARK {
+                pal = sg_core::decor::palette_file(100 + o.sub.clamp(0, 18) as u8, exe_theme);
+                if o.sub == 3 {
+                    facing += ((self.rot / 90.0).round() as i32).rem_euclid(4);
+                }
+            }
             let layers: Vec<(String, bool, bool)> = if o.kind == land::K_HOME_SITE && o.sub != 0 {
                 // a celebrity's vacation home: one of two houses by the object slot's parity (0x4012d0)
                 let (house, dirt) = sg_core::celebs::HOUSES[oi & 1];
@@ -3315,12 +3332,12 @@ impl App {
                 sg_core::objects::building_layers(o.kind, level, theme).iter().map(|l| (l.file.to_string(), l.flat, l.animated)).collect()
             };
             for (file, flat, animated) in layers {
-                let body = self.sprite_for(&format!("{file}.flc"), false, None);
+                let body = self.sprite_for(&format!("{file}.flc"), false, pal);
                 if body.is_none() {
                     continue;
                 }
                 let shadow = if flat { None } else { self.sprite_for(&format!("{file}Shadow.flc"), true, None) };
-                self.props.push(Prop { x, z, body, shadow, flat, facing: o.dir as i32, animated, object: true, ..Default::default() });
+                self.props.push(Prop { x, z, body, shadow, flat, facing, animated, object: true, ..Default::default() });
             }
         }
     }
