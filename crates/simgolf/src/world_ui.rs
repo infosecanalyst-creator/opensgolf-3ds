@@ -3,7 +3,7 @@
 
 use crate::app::*;
 use crate::gfx::Gfx;
-use crate::info_ui::{c15, text_right};
+use crate::info_ui::c15;
 use crate::ui::{money, rgb, rgba, text_width, wrap_text, Screen as Ui};
 use sg_core::land::{self, RECORDS, SLOT_PRICE_UNITS};
 use sg_core::properties::{PROPERTIES, START_FUNDS};
@@ -404,10 +404,9 @@ impl App {
             if tr.oob > 0 {
                 let (a0, b0) = sg_core::tracts::origin(i);
                 let (x, y) = land_xy(a0 + 8, b0 + 8);
-                // PLACEHOLDER: the number's place and colours on the map (the exe centres it 7 left and 4 above a point not
-                // identified here)
-                s.put_centered(g, F_INFO16, x + 1.0, y - 7.0, &format!("{}", i + 1), rgba(0.0, 0.0, 0.0, 0.6));
-                s.put_centered(g, F_INFO16, x, y - 8.0, &format!("{}", i + 1), c15(0x7ff0));
+                // footage of the original: the number in black at the tract's centre, on land for sale as on land owned;
+                // PLACEHOLDER: its exact place (the exe centres it 7 left and 4 above a point not identified here)
+                s.put_centered(g, F_INFO16, x, y - 8.0, &format!("{}", i + 1), black_ink());
             }
             // the bar's ball (0x4587a0): the yellow ball of the tract under the pointer while it is for sale, the silver ball
             // of a tract with no land left for sale (bought), which also reads "Already purchased."
@@ -418,20 +417,21 @@ impl App {
                 s.image_part(g, &a.land_buttons, bx, by, 1.0 + 60.0 * i as f32, 64.0, 59.0, 61.0);
             }
             let (x0, y0) = ([78.0, 334.0, 600.0][col], 62.0 + 68.0 * row as f32);
-            let (tx, ty) = (x0 + 4.0, y0 + 2.0 + 10.0);
+            let tx = x0 + 4.0;
+            // footage of the original: one sentence, "Buy tract #1, 22 acres of" / "rough, trees, and water", wrapped to 165
+            // with 17 between the lines from 1 above the card's text origin (3 above "Already purchased."), the price on the
+            // line after it
+            let text = sg_core::tracts::describe(&tr, i, theme);
             if tr.oob == 0 {
-                s.text(g, tx, ty, "Already purchased.", 14.0, navy);
+                s.put(g, F_INFO14, tx, y0 + 2.0, &text, navy);
                 continue;
             }
-            s.text(g, tx, ty, &format!("Buy tract #{}", i + 1), 14.0, navy);
-            let name = |t: u8| sg_core::tracts::type_name(t, theme, land::TYPES[(t as usize).min(22)].class == 13);
-            let what = format!("{} acres of {}, {}, and {}", tr.oob / 10, name(tr.top[0]), name(tr.top[1]), name(tr.top[2]));
-            let lines = wrap_text(&what, 14.0, 165.0);
+            let lines = wrap_text(&text, 14.0, 165.0);
             for (k, l) in lines.iter().enumerate() {
-                s.text(g, tx, ty + 13.0 * (k + 1) as f32, l, 14.0, navy);
+                s.put(g, F_INFO14, tx, y0 - 1.0 + 17.0 * k as f32, l, navy);
             }
             let price = format!("Price: {}", money(tr.price as i64 * 100));
-            text_right(&s, g, x0 + 165.0, ty + 13.0 * (lines.len() + 1) as f32, &price, 14.0, navy);
+            s.put_right(g, F_INFO14, x0 + 165.0, y0 - 1.0 + 17.0 * lines.len() as f32, &price, navy);
         }
         s.put(g, F_INFO14, 548.0, 263.0, "Cash Reserve", black_ink());
         s.put_centered(g, F_INFO14, 720.0, 264.0, &money(self.econ.cash as i64), black_ink());

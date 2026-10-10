@@ -588,6 +588,12 @@ impl App {
         // the golfers' names and thoughts belong to the course, under the HUD
         self.draw_names(g, &s);
         self.draw_thoughts(g, &s);
+        // footage of the original: the End of Year report hides the HUD (dock, name plate, rating pills, leader board) and
+        // leaves the golfers' names and words on the course
+        if self.screen == Screen::YearEnd {
+            g.flush();
+            return;
+        }
         if self.hud_art.tex.is_some() {
             // the exe's face strip, badge and rating pills (hud_ui)
             self.draw_exe_hud(g, &s);

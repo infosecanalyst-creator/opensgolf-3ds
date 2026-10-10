@@ -96,3 +96,50 @@ Nothing from them is stored in the repository.
 - Golfer names: small white text with a dark outline under the golfer. Thought lines: grey text on a translucent dark bar.
 - Money popups float as red "-300" at the build cursor.
 - A new hole shows "Hole 2 / 420 yards / Par 4" in white, centred over the tee.
+
+## Giant Bomb and G4 footage: dialogs and full screens (October 2026)
+
+Measured on frames of the Giant Bomb "On The Green With Sim Golf" videos (part 1 at 2200, 2320, 2700, 3000 to 3060,
+3120, 3160, 3580, 3800, 4540 to 4660, 4820 s) cropped to the game's 800 x 600, and the G4 review clip (Information menu,
+Routing Map tabs). Near the top of the screen the crops sit about 1.5 pixels high, which was taken as registration error.
+Nothing from the footage is stored in the repository.
+
+- **End of Year**: the title reads "END of YEAR: 2001" (colon, wide gaps, as UI_SCREENS 7 says); the course keeps about
+  0.72 of its brightness (the info screens' 0.25 dim, not 0.6); the dock, the name plate, the rating pills and the
+  leader board are hidden while golfers' names and words stay; the tick is the blue OkStates cut at (550, y + 8) over the
+  art's gold one; a rise is in the dark green 0x1284. Fixed in `draw_year_end` and `draw_hud`.
+- **Hire an Employee**: wages read "Club Pro: 300 per week" (no dollar sign); the pointed line sits on a solid yellow bar
+  231..521 by 16; the lines' capitals start 1 below the band (5 higher than before); a Municipal course lists the skilled
+  lines in black; the figures carry their soft shadows; the blue OK tick stands at (553, 422) and closes the dialog;
+  the screen under it is dimmed by about 0.3. Fixed in `draw_hire_dialog`, `draw_walking` and `hire_click`. Left: the
+  figures stand about 3 pixels left of the port's (the exe's 576 is kept).
+- **Generic popup (0x46d6e0)**: an opaque box in the lavender of its option balls (148, 150, 198) with a light top and left
+  and a shaded bottom and right edge, no dim; headings centred 18 apart in white over a dark red shadow, the first
+  capital 14 below the call's top; options 24 apart from 23 below the last heading, teal, with the dark ball of
+  general_selectionBOX 11 into the box and the text 42 in; the option under the pointer white with the shadow and the lit
+  ball; height (lines * 3 + 3) * 8 from 4 above the call's top; width the longest heading + 0x31 or the longest option +
+  75. Checkbox lists (the tournament recommendations at (400, 100)) draw pale yellow headings, white options over dark
+  shadows, cream boxes ticked in green and the yellow OK tick. No OK ball in the radio boxes. The Information menu's
+  heading is "Information...". All built on `popup_ui::ChoiceBox`; the SGA offer, the skill points waiver and the
+  recommendations now use it.
+- **Retirement question** (System Functions, Quit), at (400, 100): "After a short career / Gary Golf plans his
+  retirement." with " Wait, I don't want to quit yet!", " I'd like to save this game first.", " So long for now." Ported
+  as `PopupKind::Retire`; the last answer leaves like the career's end. PLACEHOLDER: when it says "lengthy" (10 years
+  on here) and whether the save answer quits afterwards.
+- **SGA offer**: "The SGA offers to hold the / 2004 San Diego Open tournament / at your course with a / first prize of
+  §120,000.": the property's place names the Open. The report's tick is the blue cut, the offer up or not.
+- **Tournament recommendations**: "In preparation for the tournament the / following changes have been recommended:"
+  then "Roll your greens extra smooth and fast.", "Increase the depth of rough and deep rough grass.", "Change hole 1
+  from a par 4 to a par 3." ... all ticked. The TV towers are not a line of the list (they stand during the tournament
+  anyway), so their bit stays set.
+- **Skill points card**: the card is solid black inside (0x40cef0 called with 1); "Add 16 skill points." in white;
+  "Draw Shot (R to L)" and "Fade Shot (L to R)"; the OK ball is the yellow cut. For an accomplishment's three points the
+  card stands over the trophy room under a thin light frame (200..529 from y 11) with "Add three skill points to your
+  player..." in cyan. The waiver reads "You haven't used all your skill points! / Do you really want to exit?" with "
+  Yea, I don't need no stinkin' skill points." and " Whoops, my bad.". Left: the explanation box under the card on its
+  first opening ("Before you play your course you may customize your character ...") is not placed yet.
+- **Tracts for Sale**: one sentence, "Buy tract #1, 22 acres of / rough, trees, and water", wrapped to 165 with 17
+  between lines from 1 above the card's text origin, then the price; the map's tract numbers are black. Fixed in
+  `draw_land`.
+- Unchanged, matching: Top Ten Designers layout, Shot Analysis box (282..537), the trophy room's layout. Left: the board's
+  tack colours vary (yellow, red, grey seen) and are not decoded; the port keeps the grey tack.

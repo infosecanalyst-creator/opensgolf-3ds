@@ -4,11 +4,11 @@
 
 use crate::app::*;
 use crate::gfx::Gfx;
-use crate::render::Rect;
+use crate::popup_ui::ChoiceBox;
 use crate::screens_ui::{c15, skill_value, top, BODY, LARGE};
-use crate::ui::{rgb, rgba, text_width, Screen as Ui};
+use crate::ui::{rgb, Screen as Ui};
 use sg_core::golfer::SLOTS;
-use sg_core::pro::{self, SKILL_NAMES};
+use sg_core::pro::{self, SKILL_LABELS, SKILL_NAMES};
 use sg_core::staff;
 use sg_core::terrain::TILE_SIZE;
 
@@ -24,6 +24,9 @@ pub struct SkillDialog {
     pub confirm: bool,
     /// Points were given on opening: the pads and the points line show, and OK closes it; otherwise any click does.
     pub editable: bool,
+    /// Opened for an accomplishment's three points: footage of the original shows the card over the trophy room under a
+    /// heading "Add three skill points to your player...".
+    pub award: bool,
 }
 
 /// The x offset the exe passes for the player's own card.
@@ -56,12 +59,16 @@ fn ok_hit(vx: f32, vy: f32) -> bool {
     (vx - X0 - 350.0).abs() < 20.0 && (vy - 334.0).abs() < 20.0
 }
 
-/// The confirm box (0x46d6e0, 400 wide about x 400, from y 200): its heading and its one choice. Unspent points are kept.
-const CONFIRM: [&str; 2] = ["You haven't used all your skill points.", "Yea, I don't need no stinkin' skill points"];
-const CONFIRM_BOX: Rect = Rect::new(200.0, 200.0, 400.0, 100.0);
-
-fn confirm_choice() -> Rect {
-    Rect::new(CONFIRM_BOX.x + 10.0, CONFIRM_BOX.y + 48.0, CONFIRM_BOX.w - 20.0, 24.0)
+/// The confirm box (the generic popup 0x46d6e0 at (400, 200)), worded as footage of the original shows it: the first
+/// answer leaves with the points kept, the second goes back to the card.
+fn confirm_box() -> ChoiceBox {
+    let lines = [
+        "You haven't used all your skill points!",
+        "Do you really want to exit?",
+        " Yea, I don't need no stinkin' skill points.",
+        " Whoops, my bad.",
+    ];
+    ChoiceBox::new(lines.iter().map(|l| l.to_string()).collect(), 400.0, 200.0)
 }
 
 impl App {
@@ -122,7 +129,7 @@ impl App {
         // the card's title is the pro's name
         let title = self.pro_name();
         let editable = points > 0;
-        self.skill_dialog = Some(SkillDialog { floor: self.club.pro_skill, points, title, then, confirm: false, editable });
+        self.skill_dialog = Some(SkillDialog { floor: self.club.pro_skill, points, title, then, confirm: false, editable, award: false });
         self.screen = Screen::Skills;
     }
 
@@ -155,9 +162,9 @@ impl App {
             return;
         };
         if d.confirm {
-            // the confirm box: its choice keeps the points for later, anything else goes back to the dialog
+            // the confirm box: its first answer keeps the points for later, anything else goes back to the dialog
             d.confirm = false;
-            if confirm_choice().has(vx, vy) {
+            if confirm_box().option_at(vx, vy) == Some(0) {
                 self.close_skills(d);
             } else {
                 self.skill_dialog = Some(d);
@@ -196,8 +203,9 @@ impl App {
         let Some(d) = self.skill_dialog.as_mut() else { return };
         let (cx, cy) = if d.confirm {
             if enter {
-                let r = confirm_choice();
-                (r.x + 1.0, r.y + 1.0)
+                let b = confirm_box();
+                let r = b.rect();
+                (r.x + 50.0, b.line_tops()[2] + 5.0)
             } else {
                 (-1.0, -1.0)
             }
@@ -217,10 +225,24 @@ impl App {
 
     pub fn draw_skills(&mut self, g: &mut Gfx) {
         let Some(d) = self.skill_dialog.clone() else { return };
+        if d.award {
+            // the trophy room behind, and the heading in a thin light frame: cyan, left at 212 with its capitals' top at 23
+            // (footage of the original; the frame's foot is under the card)
+            crate::ui::set_face(Some(crate::ui::Face::Info));
+            self.draw_board(g);
+            crate::ui::set_face(None);
+        }
         let s = Ui::new(self.draw_w, self.draw_h);
         self.view = s.view;
+        if d.award {
+            let edge = rgb(0.78, 0.76, 0.74);
+            s.fill(g, 200.0, 11.0, 330.0, 1.0, edge);
+            s.fill(g, 200.0, 11.0, 1.0, 40.0, edge);
+            s.fill(g, 529.0, 11.0, 1.0, 40.0, edge);
+            s.text(g, 212.0, 23.0 + 15.0, "Add three skill points to your player...", 20.0, c15(0x03fc));
+        }
         let (mx, my) = self.card_ui.mouse;
-        self.art.trans_frame(g, &s, X0 + 46.0, 50.0, 320.0, 316.0);
+        self.art.solid_frame(g, &s, X0 + 46.0, 50.0, 320.0, 316.0);
         s.text_centered(g, X0 + 210.0, top(58.0, LARGE), &d.title, LARGE, rgb(1.0, 1.0, 1.0));
         // the pro on the sky and grass window, head over body
         s.image(g, &self.art.head_body, X0 + 247.0, 86.0);
@@ -232,8 +254,9 @@ impl App {
         self.art.head_over_body(g, &s, &swaps, &me, o, 0, look, 1, X0 + 255.0, 102.0);
         self.swaps = swaps;
         if d.editable {
-            let c = if d.points > 0 { c15(0x7d08) } else { c15(0x7fff) };
-            s.text_centered(g, X0 + 210.0, top(80.0, BODY), &format!("{} skill points", d.points), BODY, c);
+            // footage of the original: "Add 16 skill points." in white with points left (the decoded red test is not
+            // borne out)
+            s.text_centered(g, X0 + 210.0, top(80.0, BODY), &format!("Add {} skill points.", d.points), BODY, c15(0x7fff));
         }
         let hover = if d.editable && !d.confirm { pad_hit(mx, my) } else { None };
         let t = &self.art.trans;
@@ -253,24 +276,15 @@ impl App {
                 s.text(g, X0 + 87.0, top(y + 7.0, BODY), &skill_value(v), BODY, rgb(0.0, 0.0, 0.0));
             }
             let c = if v != 0 { rgb(0.0, 0.0, 0.0) } else { c15(0x4210) };
-            s.text(g, X0 + 138.0, top(y + 7.0, BODY), SKILL_NAMES[r], BODY, c);
+            s.text(g, X0 + 138.0, top(y + 7.0, BODY), SKILL_LABELS[r], BODY, c);
         }
         if d.editable {
-            // the OK ball
-            s.image_part(g, t, X0 + 326.0, 318.0, 300.0, 140.0, 50.0, 50.0);
+            // the OK ball: footage of the original shows the yellow cut with the pointer away from it
+            s.image_part(g, t, X0 + 326.0, 318.0, 350.0, 140.0, 50.0, 50.0);
         }
         if d.confirm {
-            let r = CONFIRM_BOX;
-            s.fill(g, -400.0, -400.0, 1600.0, 1400.0, rgba(0.0, 0.0, 0.0, 0.25));
-            s.fill(g, r.x - 3.0, r.y - 3.0, r.w + 6.0, r.h + 6.0, rgba(0.55, 0.55, 0.85, 0.95));
-            s.fill(g, r.x, r.y, r.w, r.h, rgba(0.92, 0.92, 1.0, 0.97));
-            s.text_centered(g, r.x + r.w / 2.0, r.y + 30.0, CONFIRM[0], 17.0, rgb(0.15, 0.1, 0.4));
-            let o = confirm_choice();
-            if o.has(mx, my) {
-                s.fill(g, o.x, o.y, o.w, o.h, rgba(0.98, 0.85, 0.2, 0.9));
-            }
-            let w = text_width(CONFIRM[1], 15.0);
-            s.text(g, r.x + (r.w - w) / 2.0, o.y + 18.0, CONFIRM[1], 15.0, rgb(0.08, 0.08, 0.25));
+            let b = confirm_box();
+            self.draw_choice_box(g, &s, &b, b.option_at(mx, my));
         }
         g.flush();
     }
@@ -346,8 +360,10 @@ impl App {
         if self.club.skill_points > 0 && self.club.pro_mask != 0 && self.ui_ok && self.screen == Screen::Play && self.club.award_pending < 0
         {
             let pts = self.club.skill_points;
-            self.show_toast("Add three skill points to your pro's skills.");
             self.open_skills(pts, None);
+            if let Some(d) = self.skill_dialog.as_mut() {
+                d.award = true;
+            }
         }
     }
 

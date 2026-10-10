@@ -72,11 +72,12 @@ impl Prep {
     pub fn lines(&self) -> Vec<String> {
         let mut v = vec![
             "Install TV towers and booths for the broadcast".to_string(),
-            "Roll your greens extra smooth and fast".to_string(),
-            "Increase the depth of rough and difficulty of lies".to_string(),
+            // the wording as footage of the original shows it
+            "Roll your greens extra smooth and fast.".to_string(),
+            "Increase the depth of rough and deep rough grass.".to_string(),
         ];
         for &(h, old, new) in &self.par_changes {
-            v.push(format!("Change hole {h} from a par {old} to a par {new}"));
+            v.push(format!("Change hole {h} from a par {old} to a par {new}."));
         }
         v
     }

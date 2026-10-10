@@ -10,7 +10,7 @@ use crate::render::Rect;
 use crate::ui::{load_pcx, load_pcx_alpha, rgb, rgba, text_width, wrap_text, Image, Screen as Ui};
 use sg_core::bodies::{Outfit, Swaps};
 use sg_core::golfer::{flag, SLOTS};
-use sg_core::pro::SKILL_NAMES;
+use sg_core::pro::SKILL_LABELS;
 use sg_core::records::TITLES;
 use std::collections::HashMap;
 
@@ -226,7 +226,12 @@ impl Art {
     /// (`frame`) takes the 3 x 3 cuts at (17 col, 17 row) by the tile's place (first, middle, last column and row: the rounded
     /// corners); the ticker strip takes the square at (317, 0) for every tile (object 0x5a5554).
     pub fn trans_fill(&self, g: &mut Gfx, s: &Ui, x: f32, y: f32, w: f32, h: f32, frame: bool) {
-        let dark = rgba(0.0, 0.0, 0.0, 0.5);
+        self.shade_fill(g, s, x, y, w, h, frame, 0.5);
+    }
+
+    /// `trans_fill` darkening by `a` (1 for the solid black of a frame called with its last argument 1).
+    fn shade_fill(&self, g: &mut Gfx, s: &Ui, x: f32, y: f32, w: f32, h: f32, frame: bool, a: f32) {
+        let dark = rgba(0.0, 0.0, 0.0, a);
         if self.trans_shadow.tex.is_none() {
             s.fill(g, x, y, w, h, dark);
             return;
@@ -258,9 +263,19 @@ impl Art {
     /// 3 x 3 border of 16 x 16 pieces (cuts at (17 col, 17 row)): a corner at each end, (w - 17) / 16 top and bottom pieces
     /// from x + 16 when w passes 32, as many side pieces down from y + 16 when h does.
     pub fn trans_frame(&self, g: &mut Gfx, s: &Ui, x: f32, y: f32, w: f32, h: f32) {
+        self.frame_box(g, s, x, y, w, h, 0.5);
+    }
+
+    /// The same frame filled solid black: the stats cards call 0x40cef0 with a last argument of 1, and footage of the
+    /// original shows their inside black over the course and the trophy room alike.
+    pub fn solid_frame(&self, g: &mut Gfx, s: &Ui, x: f32, y: f32, w: f32, h: f32) {
+        self.frame_box(g, s, x, y, w, h, 1.0);
+    }
+
+    fn frame_box(&self, g: &mut Gfx, s: &Ui, x: f32, y: f32, w: f32, h: f32, a: f32) {
         let (x, w) = crate::message_ui::round16(x, w);
         let (y, h) = crate::message_ui::round16(y, h);
-        self.trans_fill(g, s, x, y, w, h, true);
+        self.shade_fill(g, s, x, y, w, h, true, a);
         if self.trans.tex.is_none() {
             return;
         }
@@ -872,7 +887,7 @@ impl App {
     /// name, and the ten skill rows, value on the row's oval and name on its bar, grey when the skill is not had.
     fn draw_skill_card(&self, g: &mut Gfx, s: &Ui, gi: usize) {
         let gg = &self.club.g[gi];
-        self.art.trans_frame(g, s, 28.0, 50.0, 208.0, 316.0);
+        self.art.solid_frame(g, s, 28.0, 50.0, 208.0, 316.0);
         s.text_centered(g, 160.0, top(58.0, LARGE), &self.club.vip_name(gi), LARGE, rgb(1.0, 1.0, 1.0));
         for r in 0..10 {
             let y = 90.0 + 24.0 * r as f32;
@@ -881,7 +896,7 @@ impl App {
             if v != 0 {
                 s.text(g, 37.0, top(y + 7.0, BODY), &skill_value(v), BODY, black());
             }
-            s.text(g, 88.0, top(y + 7.0, BODY), SKILL_NAMES[r], BODY, if v != 0 { black() } else { c15(0x4210) });
+            s.text(g, 88.0, top(y + 7.0, BODY), SKILL_LABELS[r], BODY, if v != 0 { black() } else { c15(0x4210) });
         }
     }
 
@@ -1213,7 +1228,9 @@ impl App {
     pub fn draw_year_end(&mut self, g: &mut Gfx) {
         let s = Ui::new(self.draw_w, self.draw_h);
         self.view = s.view;
-        s.fill(g, -400.0, -400.0, 1600.0, 1400.0, rgba(0.0, 0.0, 0.0, 0.6));
+        // footage of the original: the course under the report keeps about 0.72 of its brightness (the exe's 0.25 dim of the
+        // info screens), and the dock, the name plate and the rating pills are gone while the report is up (draw_hud)
+        crate::info_ui::dim(g, &s);
         let e = &self.art.endo;
         let has = e.tex.is_some();
         if has {
@@ -1228,7 +1245,8 @@ impl App {
         // 301 and their figures right aligned on 500 and 601, tops 115 + 20 k, "Highlights" centred at (404, 200) and each
         // highlight 2 below its strip
         use crate::ui::{F_INFO14, F_INFO_TITLE};
-        s.put_centered(g, F_INFO_TITLE, 406.0, 55.0, &format!("END of YEAR {year}"), black());
+        // "END of  YEAR: " + year (footage of the original shows the colon and the wide gaps)
+        s.put_centered(g, F_INFO_TITLE, 406.0, 55.0, &format!("END of  YEAR:  {year}"), black());
         s.put_centered(g, F_INFO14, 465.0, 93.0, "This Year", black());
         s.put_centered(g, F_INFO14, 566.0, 93.0, "Last Year", black());
         let m = ((tick >> 10) % 500) as usize;
@@ -1251,7 +1269,8 @@ impl App {
             };
             s.text_centered(g, 301.0, y, &format!("{subject}{word}"), 14.0, black());
             let c = match b.cmp(&a) {
-                std::cmp::Ordering::Greater => rgb(0.1, 0.55, 0.2),
+                // the exe's dark green 0x1284 (footage of the original: about (50, 156, 18) on the strokes)
+                std::cmp::Ordering::Greater => crate::info_ui::c15(0x1284),
                 std::cmp::Ordering::Less => rgb(0.8, 0.15, 0.1),
                 _ => black(),
             };
@@ -1287,8 +1306,10 @@ impl App {
             y += 15.0;
         }
         if has {
-            // the bottom piece carries the tick button
+            // the bottom piece carries a dark gold tick, which the exe covers with the OkStates cut: blue, lit under the
+            // pointer (footage of the original: blue at (550, y + 8) with the pointer away from it)
             s.image_part(g, e, 187.0, y, 187.0, 374.0, 429.0, 55.0);
+            self.ok_tick(g, &s, 550.0, y + 8.0, false);
         } else {
             s.text_centered(g, 404.0, y + 34.0, "OK", 16.0, black());
         }

@@ -342,6 +342,15 @@ fn open_screen(app: &mut App, screen: Option<&str>) {
                 app.screen = Screen::Results;
             }
         }
+        Some("prep") if app.ui_ok => {
+            // the tournament recommendations: a tournament begun at once and its checklist shown
+            app.club.game |= sg_core::tournament::OFFERED;
+            app.accept_tournament();
+            let prep = app.club.tournament_prep();
+            let n = prep.lines().len();
+            app.prep = Some((prep, (1 << n) - 1));
+            app.screen = Screen::Prep;
+        }
         Some("bestscores") if app.ui_ok => app.screen = Screen::BestScores,
         Some("top10") if app.ui_ok => app.open_top10(None),
         Some("world") if app.ui_ok => app.open_world_map(),
@@ -352,6 +361,13 @@ fn open_screen(app: &mut App, screen: Option<&str>) {
         Some("skills") if app.ui_ok => {
             let pts = app.club.first_skill_points();
             app.open_skills(pts, Some(false));
+        }
+        // an accomplishment's three points: the card over the trophy room
+        Some("skillsaward") if app.ui_ok => {
+            app.open_skills(3, None);
+            if let Some(d) = app.skill_dialog.as_mut() {
+                d.award = true;
+            }
         }
         // the golfer card of the newest golfer on the course (card) or of the n-th listed (card:n); its story page
         // (cardstory); Customise Golfer (customise), with its face picker open (customisefaces)
@@ -595,6 +611,7 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 0 => popup_ui::PopupKind::Info,
                 1 => popup_ui::PopupKind::System,
                 2 => popup_ui::PopupKind::Prefs,
+                4 => popup_ui::PopupKind::Retire,
                 _ => popup_ui::PopupKind::LandOffer,
             }),
             b'm' if v.len() >= 2 => app.move_hole(at(0) as usize, at(1) as usize),
@@ -937,10 +954,14 @@ impl Stage {
                 4 => self.app.open_rename(),
                 5 => self.app.open_popup(PopupKind::Prefs),
                 6 => self.app.save_championship_course(),
-                7 => {
-                    self.app.screen = Screen::Menu;
-                    self.app.hover = -1;
-                }
+                7 => self.app.open_popup(PopupKind::Retire),
+                _ => {}
+            },
+            // the ordinary quit leaves the way the career's end does (DECODE_WORLD2 6.5); PLACEHOLDER: whether the save
+            // choice quits after saving is not decoded, so it saves and stays
+            PopupKind::Retire => match k {
+                1 => self.app.open_save(),
+                2 => self.app.end_career(),
                 _ => {}
             },
             PopupKind::Prefs => {

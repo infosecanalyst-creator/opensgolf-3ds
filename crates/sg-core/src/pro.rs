@@ -28,6 +28,21 @@ pub const SKILL_NAMES: [&str; 10] = [
     "Luck",
 ];
 
+/// The skill names as the stats cards print them (footage of the original: the skill points card and a pro's card read
+/// "Draw Shot (R to L)" and "Fade Shot (L to R)", as Pick A Pro does).
+pub const SKILL_LABELS: [&str; 10] = [
+    "Power Hitter",
+    "Long Driver",
+    "Accurate Driver",
+    "Accurate Irons",
+    "Accurate Putter",
+    "Draw Shot (R to L)",
+    "Fade Shot (L to R)",
+    "High Backspin Shot",
+    "Recovery Skills",
+    "Luck",
+];
+
 /// Club names for the panel. APPROXIMATION: the exe's club name routine (0x40a9a0) was not decoded; these follow the
 /// club numbers 0 (longest) to 11 (shortest) the planner uses.
 pub const CLUB_NAMES: [&str; 12] =

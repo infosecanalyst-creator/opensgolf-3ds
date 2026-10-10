@@ -6,6 +6,7 @@
 use crate::app::*;
 use crate::gfx::Gfx;
 use crate::info_ui::{black, c15, dim, text_right};
+use crate::popup_ui::ChoiceBox;
 use crate::render::Rect;
 use crate::ui::{rgb, rgba, text_width, Screen as Ui};
 use sg_core::golfer::game;
@@ -13,11 +14,15 @@ use sg_core::land;
 use sg_core::staff;
 use sg_core::tournament::{Prep, Results, SgaReport};
 
-const BOX: Rect = Rect::new(110.0, 40.0, 580.0, 470.0);
-const YES: Rect = Rect::new(BOX.x + 40.0, BOX.y + 420.0, 260.0, 32.0);
-
-fn check_rect(i: usize) -> Rect {
-    Rect::new(BOX.x + 24.0, BOX.y + 60.0 + 26.0 * i as f32, 20.0, 20.0)
+/// The recommendations list (0x46d200: the generic popup at (400, 100) in its checkbox mode). Footage of the original lists
+/// only the greens, the rough and the par changes, ticked, under a two-line heading, and the TV towers stand during the
+/// tournament all the same: the towers' bit 0 is not a line of the list and stays set.
+fn prep_box(prep: &Prep, mask: i32) -> ChoiceBox {
+    let mut lines = vec!["In preparation for the tournament the".to_string(), "following changes have been recommended:".to_string()];
+    lines.extend(prep.lines().into_iter().skip(1).map(|l| format!(" {l}")));
+    let mut b = ChoiceBox::new(lines, 400.0, 100.0);
+    b.checks = Some((mask >> 1) as u32);
+    b
 }
 
 /// What the SGA screen shows: the report on its own, or the offer to accept.
@@ -185,27 +190,23 @@ impl App {
 
     /// The offer box over the SGA report (the generic popup 0x46d6e0 at (400, 360), main loop 0x41ce8b): its lines (the
     /// year's Open, the first prize, the two answers in quotes) and its rectangle.
-    fn offer_box(&self, sg: &SgaScreen) -> (Vec<String>, Rect) {
+    /// (Footage of the original: "2004 San Diego Open tournament", the property's place before "Open".)
+    fn offer_box(&self, sg: &SgaScreen) -> ChoiceBox {
+        let place = self.land.as_ref().map(|l| l.slot.record().name.to_string()).unwrap_or_else(|| self.course_name.clone());
         let lines = vec![
             "The SGA offers to hold the".to_string(),
-            format!("{} Open tournament", 2001 + self.econ.year_index()),
+            format!("{} {place} Open tournament", 2001 + self.econ.year_index()),
             "at your course with a".to_string(),
             format!("first prize of \u{a7}{},000.", crate::ui::group(sg.report.purse.max(0) as u64)),
             " 'Great, let the games begin.'".to_string(),
             " 'I think I need more practice.'".to_string(),
         ];
-        let w = lines.iter().map(|l| text_width(l.trim(), OFFER_SIZE)).fold(0.0, f32::max) + 49.0 + 30.0;
-        let h = (lines.len() as f32 * 3.0 + 3.0) * 8.0 + 20.0;
-        (lines, Rect::new(400.0 - w / 2.0, 360.0f32.min(600.0 - h - 4.0), w, h))
+        ChoiceBox::new(lines, 400.0, 360.0)
     }
 
     /// The offer's answer under (x, y): 0 yes, 1 no.
     fn offer_option_at(&self, sg: &SgaScreen, x: f32, y: f32) -> Option<usize> {
-        let (_, r) = self.offer_box(sg);
-        (0..2).find(|&k| {
-            let ly = r.y + 26.0 + OFFER_PITCH * (4 + k) as f32;
-            x >= r.x && x < r.x + r.w && y >= ly - OFFER_SIZE - 2.0 && y < ly - OFFER_SIZE - 2.0 + OFFER_PITCH
-        })
+        self.offer_box(sg).option_at(x, y)
     }
 
     /// Keys on the tournament screens: Up and Down pick an answer to the offer, Enter takes it, Esc says no.
@@ -259,12 +260,11 @@ impl App {
             }
             Screen::Prep => {
                 let Some((prep, mut mask)) = self.prep.take() else { return };
-                for i in 0..prep.lines().len() {
-                    if check_rect(i).has(vx, vy) {
-                        mask ^= 1 << i;
-                    }
+                let b = prep_box(&prep, mask);
+                if let Some(k) = b.option_at(vx, vy) {
+                    mask ^= 2 << k;
                 }
-                if YES.has(vx, vy) || vx < 0.0 {
+                if b.ok_tick().has(vx, vy) || vx < 0.0 {
                     // bits 0..2 are the three options, the par changes follow from bit 3
                     self.screen = Screen::Play;
                     self.finish_prep(prep, mask);
@@ -305,37 +305,15 @@ impl App {
                             o.sel = k;
                         }
                     }
-                    let (lines, r) = self.offer_box(&sg);
-                    s.fill(g, r.x - 3.0, r.y - 3.0, r.w + 6.0, r.h + 6.0, rgba(0.55, 0.55, 0.85, 0.95));
-                    s.fill(g, r.x, r.y, r.w, r.h, rgba(0.92, 0.92, 1.0, 0.97));
-                    for (i, l) in lines.iter().enumerate() {
-                        let y = r.y + 26.0 + OFFER_PITCH * i as f32;
-                        if let Some(text) = l.strip_prefix(' ') {
-                            if i - 4 == sg.sel {
-                                s.fill(g, r.x + 8.0, y - OFFER_SIZE - 2.0, r.w - 16.0, OFFER_PITCH - 2.0, rgba(0.98, 0.85, 0.2, 0.9));
-                            }
-                            s.text(g, r.x + 36.0, y, text, OFFER_SIZE, rgb(0.08, 0.08, 0.25));
-                        } else {
-                            s.text_centered(g, r.x + r.w / 2.0, y, l, OFFER_SIZE, rgb(0.15, 0.1, 0.4));
-                        }
-                    }
+                    let b = self.offer_box(&sg);
+                    self.draw_choice_box(g, &s, &b, Some(sg.sel));
                 }
             }
             Screen::Prep => {
                 let Some((prep, mask)) = self.prep.clone() else { return };
-                let white = rgb(1.0, 1.0, 1.0);
-                s.fill(g, BOX.x, BOX.y, BOX.w, BOX.h, rgba(0.08, 0.1, 0.28, 0.95));
-                s.text(g, BOX.x + 20.0, BOX.y + 28.0, "In preparation for the tournament, the SGA asks you to:", 15.0, rgb(1.0, 1.0, 0.8));
-                for (i, l) in prep.lines().iter().enumerate() {
-                    let r = check_rect(i);
-                    s.fill(g, r.x, r.y, r.w, r.h, rgba(0.9, 0.9, 1.0, 0.9));
-                    if mask & (1 << i) != 0 {
-                        s.fill(g, r.x + 4.0, r.y + 4.0, r.w - 8.0, r.h - 8.0, rgba(0.1, 0.4, 0.1, 1.0));
-                    }
-                    s.text(g, r.x + 32.0, r.y + 16.0, l, 14.0, white);
-                }
-                s.fill(g, YES.x, YES.y, YES.w, YES.h, rgba(0.3, 0.55, 0.3, 0.9));
-                s.text_centered(g, YES.x + YES.w / 2.0, YES.y + 22.0, "OK", 15.0, white);
+                let b = prep_box(&prep, mask);
+                let (px, py) = self.info.pointer;
+                self.draw_choice_box(g, &s, &b, b.option_at(px, py));
             }
             _ => {
                 let Some(res) = self.results.clone() else { return };
@@ -427,9 +405,9 @@ impl App {
             s.put_centered(g, F_INFO_TITLE, 400.0, 310.0, r.event, ink);
             s.put_centered(g, F_INFO16, 400.0, 338.0, &format!("\u{a7}{},000 first prize.", crate::ui::group(r.purse.max(0) as u64)), ink);
         }
-        if ok {
-            self.ok_tick(g, s, 701.0, 398.0, true);
-        }
+        // footage of the original: the art's gold tick is covered by the blue idle cut, the offer's box up or not
+        let _ = ok;
+        self.ok_tick(g, s, 701.0, 398.0, false);
     }
 
     /// The leaderboard box over the course while the tournament runs (0x45a090): three title lines, then a row per golfer in
@@ -553,8 +531,6 @@ impl App {
     }
 }
 
-const OFFER_SIZE: f32 = 15.0;
-const OFFER_PITCH: f32 = 24.0;
 const OK_X: f32 = 732.0;
 
 const SGA_ROWS: [&str; 10] = [

@@ -374,6 +374,8 @@ pub(crate) const COUNTERS: [[&str; 2]; 4] = [
 /// The hire dialog: four kinds in bands 40 pixels tall, the upper half the regular hire, the lower the skilled one (the exe
 /// tests only the pointer's y).
 const HIRE_BAND_Y: [f32; 4] = [171.0, 242.0, 313.0, 384.0];
+/// The hire dialog's OK tick (docs/UI_SCREENS.md section 11).
+const HIRE_OK: (f32, f32) = (553.0, 422.0);
 const HIRE_BLURB: [&str; 4] = ["Greeters...", "Speed up play...", "Weed Killers...", "Thirst quenchers..."];
 const SKILLED_REFUSAL: &str = "You need to build up to a Daily Fee course (6 or more holes) before you can hire skilled employees.";
 
@@ -1209,33 +1211,40 @@ impl App {
     /// (ax, ay). The exe steps the frame once per redraw of its modal loop; APPROXIMATION: the port runs it at the clip's
     /// own frame time.
     pub(crate) fn draw_walking(&mut self, g: &mut Gfx, s: &Ui, set: usize, view: i32, ax: f32, ay: f32) {
-        let Some(si) = self.staff_clips.get(set).and_then(|c| c[0].0) else { return };
+        let Some((si, shadow)) = self.staff_clips.get(set).and_then(|c| Some((c[0].0?, c[0].1))) else { return };
         let sp = &self.sprites[si].s;
         let n = sp.frames_per_view.max(1);
         let f = if sp.frame_ms > 0 { (self.clock * 1000.0 / sp.frame_ms as f64) as i64 % n as i64 } else { 0 } as i32;
         let view = view.rem_euclid(sp.views.max(1));
-        let (w, h) = {
-            let fr = &sp.frames[sp.frame_index(view, f)];
-            (fr.w as f32, fr.h as f32)
-        };
-        let (axx, ayy) = (sp.anchor_x as f32, sp.anchor_y as f32);
-        let tex = self.sprite_texture(g, si, view, f);
-        s.image(g, &Image { tex: Some(tex), w, h }, ax - axx, ay - ayy);
+        // the exe composites the shadow clip under the body when it loads the sprites (0x43d740), so the figure carries its
+        // shadow here as on the course (footage of the original: the hire dialog's figures have their soft shadows)
+        for k in [shadow, Some(si)].into_iter().flatten() {
+            let sp = &self.sprites[k].s;
+            if sp.frames.is_empty() {
+                continue;
+            }
+            let fi = sp.frame_index(view.rem_euclid(sp.views.max(1)), f % sp.frames_per_view.max(1));
+            let (w, h) = (sp.frames[fi].w as f32, sp.frames[fi].h as f32);
+            let (axx, ayy) = (sp.anchor_x as f32, sp.anchor_y as f32);
+            let tex = self.sprite_texture(g, k, view.rem_euclid(sp.views.max(1)), f % sp.frames_per_view.max(1));
+            s.image(g, &Image { tex: Some(tex), w, h }, ax - axx, ay - ayy);
+        }
     }
 
     /// The modal hire dialog (sheet infoscreens/hire), drawn over everything.
     pub fn draw_hire_dialog(&mut self, g: &mut Gfx, s: &Ui) {
-        s.fill(g, 0.0, 0.0, 800.0, 600.0, rgba(0.0, 0.0, 0.0, 0.35));
+        // footage of the original: the course and the HUD under the dialog keep about 0.7 of their brightness
+        crate::info_ui::dim(g, s);
         let im = self.panel_art.hire;
         s.image(g, &im, 0.0, 0.0);
         let ink = rgb(0.0, 0.0, 0.0);
         // fonts (0x459400): the title in 0x821020 (Klepto 24) centred at (377, 107), the rest in 0x821ee8 (Manual SSi 14),
-        // all black: each kind's blurb left at 231 with its top 20 above its band, the wage lines left at 246 (PLACEHOLDER:
-        // their tops, 5 below the line's band)
+        // all black: each kind's blurb left at 231 with its top 20 above its band, the wage lines left at 246 (footage of the
+        // original: the capitals' tops 1 below the line's band, the pointed line on a solid yellow bar 231..521 by 16 from 3
+        // above the band, the wage without a dollar sign: "Club Pro: 300 per week")
         s.put_centered(g, crate::ui::F_INFO_TITLE, 377.0, 107.0, "HIRE AN EMPLOYEE", ink);
         let (mx, my) = self.pstate.mouse;
         let hot = hire_choice_at(mx, my);
-        let skilled_ok = economy::rank(self.hole_numbers.len()) >= 1;
         for k in 0..4 {
             let y = HIRE_BAND_Y[k];
             s.put(g, crate::ui::F_INFO14, 231.0, y - 20.0, HIRE_BLURB[k], ink);
@@ -1243,17 +1252,21 @@ impl App {
                 let c = 2 * k + sk;
                 let ty = y + sk as f32 * 20.0;
                 if hot == Some(c) {
-                    s.fill(g, 226.0, ty + 1.0, 296.0, 18.0, rgba(1.0, 0.85, 0.4, 0.55));
+                    // APPROXIMATION: the yellow as footage shows it, corrected for the video's colour shift
+                    s.fill(g, 231.0, ty - 3.0, 291.0, 16.0, rgb(0.98, 0.86, 0.03));
                 }
-                let text = format!("{}: {} per week", STAFF_NAMES[k][sk], money(WAGE_UNITS[k][sk] as i64 * 100));
-                let c = if sk == 1 && !skilled_ok { rgb(0.5, 0.48, 0.55) } else { ink };
-                s.text(g, 246.0, ty + 15.0, &text, 14.0, c);
+                let text = format!("{}: {} per week", STAFF_NAMES[k][sk], WAGE_UNITS[k][sk] * 100);
+                // footage of the original: a Municipal course lists the skilled lines in black like the rest (the refusal
+                // comes on the click)
+                s.text(g, 246.0, ty + 10.0, &text, 14.0, ink);
             }
             // 0x459400: the box beside each kind shows it walking, the skilled version while its line is hovered, in view k,
             // at (0x240, 0xc0 + 0x46 k)
             let skilled = hot.is_some_and(|c| c == 2 * k + 1);
             self.draw_walking(g, s, k + 4 * skilled as usize, k as i32, 576.0, (0xc0 + 0x46 * k) as f32);
         }
+        // the OK tick (OkStates) at (553, 422), blue, lit under the pointer (the art has only its well)
+        self.ok_tick(g, s, HIRE_OK.0, HIRE_OK.1, false);
     }
 
     /// A click on the open panel (1..3, 5). Returns true when the panel took it.
@@ -1492,7 +1505,7 @@ impl App {
                 self.snd("Interface/Button2.wav", 1.0, false);
             }
             self.pstate.hire_open = false;
-        } else if !Rect::new(185.0, 95.0, 432.0, 375.0).has(px, py) {
+        } else if !Rect::new(185.0, 95.0, 432.0, 375.0).has(px, py) || Rect::new(HIRE_OK.0, HIRE_OK.1, 44.0, 44.0).has(px, py) {
             self.pstate.hire_open = false;
         }
     }
