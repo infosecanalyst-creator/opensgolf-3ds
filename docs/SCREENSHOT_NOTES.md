@@ -203,3 +203,18 @@ Nothing from the footage is stored in the repository.
   `draw_land`.
 - Unchanged, matching: Top Ten Designers layout, Shot Analysis box (282..537), the trophy room's layout. Left: the board's
   tack colours vary (yellow, red, grey seen) and are not decoded; the port keeps the grey tack.
+
+## Dock panels and maps, settled from the exe (October 2026)
+
+- **Green button flag** (p1 1600-1760): the footage's shadow up and to the right is the flag's Shadow.flc, which the
+  loader plays into the same canvas as the body (0x43d740); now drawn. Pole and cloth sit within a pixel of the footage
+  at the exe's anchor, so no y change.
+- **Routing map** (G4 21-60 s): tile colours match the exe's class table. The flags take palette 0x60 + theme (dark house
+  colours on Parkland), not the red flag palette; they and the tee markers carry shadows; marks are drawn hole by hole in
+  call order. The G4 clip shows no yellow hole numbers, but the exe draws them unconditionally and the land map at p1 3120
+  shows them ("2", "3" on Dolphin Coast), so they stay.
+- **Tracts for Sale** (p1 3120): the course on the map is the routing map's tiles and hole marks (lines, yellow numbers,
+  dark flags all visible in the footage); the tract numbers measured at the exe's (x - 7, y - 4) of the centre tile's
+  point, within a pixel of the footage for 1, 3, 4, 6 to 9.
+- **Face strip**: the exe draws it before the dock and panels (0x40f5c0), so an open panel covers it; the port already
+  did this. The footage never shows it because a panel is always open.

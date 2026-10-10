@@ -176,7 +176,7 @@ impl App {
         }
     }
 
-    /// 0x435680: a cell follows its golfer (the camera goes to him and his card opens); the tabs and the arrows (16 entries a
+    /// 0x435680: a cell follows its golfer (the camera goes to him; his card opens when he is on screen or a card is open); the tabs and the arrows (16 entries a
     /// step; the right arrow always adds and the draw takes it back while the list is shorter).
     pub fn member_click(&mut self, h: i32) -> bool {
         match h {
@@ -185,11 +185,16 @@ impl App {
                 let (x, z) = self.units_to_world(self.club.g[gi].x, self.club.g[gi].y);
                 self.cam_x = x;
                 self.cam_z = z;
-                self.card = Some(gi);
+                // 0x435680: the card (0x53df54) opens only when the golfer's screen x (+0x08, set by the map draw, -1
+                // while he is not on screen) is known or a card is open already; the camera moves either way
+                if self.club.g[gi].sx != -1 || self.card.is_some() {
+                    self.card = Some(gi);
+                }
             }
             -3 => self.panel = 5,
             -4 => {
                 self.pstate.emp_flag = true;
+                self.pstate.emp_base = 4;
                 self.panel = 3;
             }
             -5 if self.golfer_page != 0 => self.golfer_page = self.golfer_page.saturating_sub(16),

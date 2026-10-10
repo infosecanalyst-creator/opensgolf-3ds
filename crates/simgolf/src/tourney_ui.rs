@@ -89,7 +89,7 @@ impl App {
         let Some(e) = self.employees.iter().find(|e| e.job == staff::job::OWNER).copied() else { return };
         let cash = (self.econ.cash / sg_core::economy::Economy::UNIT) as i32;
         self.club.start_tournament(&self.course, &mut self.exe_rng, (e.x, e.y), e.dir as i32, cash);
-        self.panel = 5;
+        self.show_player_panel();
         self.edit = false;
         // a tournament started without the SGA's offer has no purse yet; the prize money is set when it ends
         let purse = if self.club.purse > 0 { format!("purse ${},000", self.club.purse) } else { "purse set at the end".into() };

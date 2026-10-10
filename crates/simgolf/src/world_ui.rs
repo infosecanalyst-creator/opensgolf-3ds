@@ -33,11 +33,6 @@ pub const WORLD_CANCEL: i32 = 100;
 pub const WORLD_RESET_SAVE: i32 = 101;
 pub const WORLD_LOAD: i32 = 102;
 
-/// A tile's minimap point on the land screen (its diamond's centre).
-fn land_xy(a: i32, b: i32) -> (f32, f32) {
-    ((a + b) as f32 * 6.0 + 106.0, (b - a) as f32 * 3.0 + 439.0)
-}
-
 impl App {
     /// The property shown on card k (offer slot k), its acres and price in money.
     fn card(&self, k: usize) -> (usize, i32, i32) {
@@ -359,38 +354,11 @@ impl App {
             let (x, y) = AT[hover as usize];
             s.image_part(g, &a.land_buttons, x, y, 1.0, 127.0, 192.0, 95.0);
         }
-        if let Some(land) = self.land.as_ref() {
-            for ta in 0..land::N {
-                for tb in 0..land::N {
-                    let t = land.ty[(ta * land::N + tb) as usize];
-                    if t == land::T_OUT {
-                        continue;
-                    }
-                    let c = match t {
-                        0 | 1 => rgb(0.45, 0.85, 0.4),
-                        2 | 3 => rgb(0.35, 0.72, 0.3),
-                        7..=9 => rgb(0.9, 0.85, 0.6),
-                        13..=16 => rgb(0.12, 0.38, 0.14),
-                        17 => rgb(0.25, 0.45, 0.8),
-                        21 | 22 => rgb(0.6, 0.45, 0.35),
-                        _ => rgb(0.25, 0.55, 0.22),
-                    };
-                    let (x, y) = land_xy(ta, tb);
-                    s.fill(g, x - 6.0, y - 1.5, 12.0, 3.0, c);
-                    s.fill(g, x - 3.0, y - 3.0, 6.0, 6.0, c);
-                }
-            }
-            for h in 1..19 {
-                let rec = &self.club.holes[h];
-                if rec.par == 0 {
-                    continue;
-                }
-                for (ta, tb) in [rec.back, rec.pin] {
-                    let (x, y) = land_xy(ta, tb);
-                    s.fill(g, x - 2.0, y - 2.0, 4.0, 4.0, rgb(1.0, 1.0, 1.0));
-                }
-            }
-        }
+        // the course (0x4587a0 sets 0x822b80 and calls the routing map's routine 0x456be0, which then draws only its tiles,
+        // in the routing tab used last, 2 pixels higher), then the holes as on the routing map, at its own points
+        self.draw_route_tiles(g, &s, -2.0);
+        self.draw_route_marks(g, &s);
+        let a = &self.info.art;
         let navy = c15(0x2108);
         // fonts (0x4587a0): the title in 0x821020 (Klepto 24) centred at (400, 16) in black, the
         // tract numbers in 0x821f28 (Manual SSi 16), the rest in 0x821ee8 (Manual SSi 14): the tract texts left at the box
@@ -400,13 +368,28 @@ impl App {
         for i in 0..9usize {
             let tr = self.tracts[i];
             let (col, row) = (i / 3, i % 3);
-            // the tract's number on the map
+            // the tract's number on the map (0x4587a0): while any of its tiles is for sale, in black 0x821f28 centred on x
+            // 7 left of and 4 above the routing map's point (0x456b70, baseline 441: 0x822b80 is clear again by then) of its
+            // tile (8, 8); that point is only taken while that tile is for sale, else the variables still hold the
+            // previous tract's text origin (nothing defined for tract 1, which the port leaves unnumbered then)
             if tr.oob > 0 {
                 let (a0, b0) = sg_core::tracts::origin(i);
-                let (x, y) = land_xy(a0 + 8, b0 + 8);
-                // footage of the original: the number in black at the tract's centre, on land for sale as on land owned;
-                // PLACEHOLDER: its exact place (the exe centres it 7 left and 4 above a point not identified here)
-                s.put_centered(g, F_INFO16, x, y - 8.0, &format!("{}", i + 1), black_ink());
+                let (a, b) = (a0 + 8, b0 + 8);
+                let centre_for_sale = self.land.as_ref().is_some_and(|l| l.ty[(a * land::N + b) as usize] == land::T_OUT);
+                let at = if centre_for_sale {
+                    Some(((a + b) as f32 * 6.0 + 106.0, (b - a) as f32 * 3.0 + 441.0))
+                } else if i > 0 {
+                    // after a tract for sale the y has moved on two text lines to its price line (the exe adds twice the
+                    // face's line height; the port's 17 pitch of the tract texts stands in for it)
+                    let p = i - 1;
+                    let down = if self.tracts[p].oob > 0 { 34.0 } else { 0.0 };
+                    Some(([78.0, 334.0, 600.0][p / 3], 62.0 + 68.0 * (p % 3) as f32 + down))
+                } else {
+                    None
+                };
+                if let Some((x, y)) = at {
+                    s.put_centered(g, F_INFO16, x - 7.0, y - 4.0, &format!("{}", i + 1), black_ink());
+                }
             }
             // the bar's ball (0x4587a0): the yellow ball of the tract under the pointer while it is for sale, the silver ball
             // of a tract with no land left for sale (bought), which also reads "Already purchased."
