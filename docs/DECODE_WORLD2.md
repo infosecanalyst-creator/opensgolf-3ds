@@ -396,9 +396,16 @@ Message text is paraphrased; ids below are the unlock counter DAT_005a6364 value
 * At the end, if cash DAT_00571fd4 is below zero and the sandbox flag 0x1000000 is clear, counter DAT_005a6374 steps:
   0 to 1 (board concerned, two years to recover), 1 to 2 (very worried, one more year), 2 to 3 (board terminates the
   contract). If cash is zero or more, the counter resets to 0 (EXACT). Year end occurs every 8192 ticks (EXACT).
-* Game over action after counter 3 (end screen, forced load): UNKNOWN (caller failed to decompile). The port's economy
-  already uses a three-stage ladder; the 30 day grace in docs/EDITING.md is a placeholder and should be replaced by this
-  year-end ladder (DERIVED recommendation).
+* Each step prints its two lines in the report's red (0x7d08): "The board is concerned about our negative cash situation." /
+  "You have two years to return to positive cash.", "The board is very worried about our lingering debt." / "You have one
+  more year to get out of debt.", "You have been unable to make a profit on this course." / "Regrettably, the board has
+  terminated your contract." (EXACT, 0x44e0xx).
+* Game over (main loop 0x420ac6): once the counter is past 2 (and not in sandbox) the next pass shows the popup at (250,
+  150) "Your career as a golf course designer / has ended.  Will you..." with " Continue this game in Sandbox Mode." and
+  " Return to Main Menu.". The first clears the counter and sets the sandbox flag 0x1000000; any other answer clears flag
+  0x4000000, saves the game as "&QuitSave", fades sound slot 0x2d (the course ambience) over 1000 ms and returns to the
+  title (0x420e35: flags = 0x40000000, ticks 0, TitleBase.pcx). The ordinary quit takes the same exit after its own
+  "After a short/lengthy career ... plans his/her retirement." question (EXACT).
 * Interest on negative cash: cash/50 monthly (EXACT per EXE_COSTS).
 
 ## 7. Corrections to earlier docs

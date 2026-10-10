@@ -84,8 +84,15 @@ second "Overgrowth" (probably a copy-paste slip in the original).
   four with an `X` suffix, `CliffTest.bmp`, `RetainWallA.bmp`, `strata.bmp`.
 * File names differ in case between themes (`overgrowth` vs `Overgrowth`): look them up
   case-insensitively.
-* Lighting: `<Theme>Lighting.txt` with `#AMBIENT`, `#DIFFUSE`, `#SPECULAR` (r g b, 0..255) and an
-  undecoded `#HIGHLIGHT` hex block. `changeLighting` steps values by 0.1 and clamps at 1.0.
+* Lighting (0x10006dd0, file by theme at 0x10003980: 0 Parkland, 1 Desert, 2 Tropical, 3 Links, else `lighting.txt`): the
+  line after `#AMBIENT`, then after `#DIFFUSE`, then after `#SPECULAR`, three numbers each divided by 255, become light 0's
+  ambient, diffuse and specular. The `#HIGHLIGHT` block is never read (by the DLL or the exe). Light 0 is directional:
+  (-0.5, 0.1, -1) turned 40 degrees about x, 45 about y and normalised, (-0.757, 0.641, -0.127), given while the modelview
+  is the identity, so fixed in eye space. Material: glMaterialfv(GL_FRONT, GL_SPECULAR, 1 1 1 1), shininess 13; ambient and
+  diffuse keep OpenGL's defaults (0.2, 0.8); no colour material, no GL_NORMALIZE (the normals are unit: face normals and
+  their vertex sums are normalised), global ambient default 0.2. The glTexEnvi call passes the texture target (0xde1) where
+  GL_TEXTURE_ENV belongs, so it fails and textures stay in GL_MODULATE. `changeLighting` (+-0.1 on the ambient, diffuse
+  0.9, specular 1 1 0.9) is not imported by the exe. Port: `sg_core::terrain::Lighting::shade`, the shader in gfx.rs.
 
 ## Edge blending (per-triangle texture variation)
 
@@ -156,5 +163,6 @@ and -90 degrees, through the import at 0x4a4f82), and the DLL's setter (0x1000ad
 for 90, 2 for 180 and 3 otherwise. So the phase is the view's quarter turn (`Terrain::sand_phase`, EXACT); the exe's brush
 picture for sand (0x41ab87) turns the same way. The port rebuilds the ground when the view turns.
 
-Not decoded yet: path overlays, cliffs and retaining walls, water animation timing, type 6 geometry, and how `golf.exe` stores a course (that code is in the protected
+Water has no texture animation in the DLL (no clock, no texture matrix). Not decoded yet: path overlays, cliffs and
+retaining walls, type 6 geometry, and how `golf.exe` stores a course (that code is in the protected
 executable, which this project does not touch).
