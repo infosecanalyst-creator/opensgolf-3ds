@@ -258,7 +258,7 @@ impl App {
             if gi == gary {
                 name.push_str(" vs.");
             }
-            // a long name drops to the small font, and so do this row's numbers
+            // a long name (over 115 pixels) is drawn in Arial Bold 10; the exe selects Manual SSi Bold 15 again for the numbers
             let size = if text_width(&name, BODY) > 115.0 { SMALL } else { BODY };
             s.text(g, 320.0, top(y, size), &name, size, black);
             for (i, hole) in c.holes.iter().enumerate().take(19) {
@@ -268,8 +268,8 @@ impl App {
                 let cx = CARD_X0 + CARD_DX * i as f32;
                 if gi == gary {
                     let grey = c15(0x6318);
-                    s.text_centered(g, cx, top(y - 34.0, size), &i.to_string(), size, grey);
-                    s.text_centered(g, cx, top(y - 19.0, size), &hole.par.to_string(), size, grey);
+                    s.text_centered(g, cx, top(y - 34.0, BODY), &i.to_string(), BODY, grey);
+                    s.text_centered(g, cx, top(y - 19.0, BODY), &hole.par.to_string(), BODY, grey);
                 }
                 if (i as i32) > gg.hole {
                     continue;
@@ -292,7 +292,7 @@ impl App {
                     };
                     (n, col)
                 };
-                s.text_centered(g, cx, top(y, size), &n.to_string(), size, c15(col));
+                s.text_centered(g, cx, top(y, BODY), &n.to_string(), BODY, c15(col));
             }
             y += CARD_DY;
             who = if gi == gary { partner } else { -1 };
@@ -320,6 +320,7 @@ impl App {
             }
             10 => {
                 self.pstate.emp_flag = true;
+                self.pstate.emp_base = 5;
                 self.panel = 3;
             }
             _ => return false,

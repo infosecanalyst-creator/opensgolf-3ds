@@ -1,0 +1,14 @@
+name: Idea or modding request
+description: A new feature, or something mods should be able to change
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: The idea
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it helps players or modders

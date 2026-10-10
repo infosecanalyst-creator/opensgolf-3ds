@@ -44,6 +44,13 @@ Golfers (mode 2) and Player (mode 4)
   Employee panel -2 tab (286,492) -> mode 2, -3 tab (256,510) -> mode 4, overlay flag cleared
 ```
 
+The People dock button (0x432720) sets mode 2 unless the mode is 2 already, which closes the dock (mode 5); it never
+touches the overlay flag. So the Employee panel opened from the Player panel (mode 4) stays up when People is pressed (the
+mode under it becomes 2), a second press closes the dock, and the next People press opens the Employee panel again until
+one of its tabs clears the flag. Mode 3 (set in the golfer update 0x4289e0 when the pro waits at his ball) clears the flag.
+The Employee overlay draws over modes 2 and 4 only (0x4362f0 tests mode != 3). The dock's hover light compares the button
+with the raw mode, so People lights over the Player panel (0x432ba0). exact.
+
 So the Elevation panel is only reachable through Buildings, and the Employee panel is an overlay of the Golfers and Player
 panels (it is "People" in the port's wording). The big round dock buttons choose the mode; they are not part of these panels.
 exact.

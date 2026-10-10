@@ -471,6 +471,9 @@ pub struct PanelState {
     /// The exe's employee overlay flag (0x561254): set by the Employee tabs of the Golfers and Player panels, cleared by
     /// the Employee panel's own tabs. While it is set the People button opens the Employee panel, else the Golfers panel.
     pub emp_flag: bool,
+    /// The dock mode under the Employee overlay (0x567afc while the flag is set): the port's panel 4 (Golfers, mode 2) or 5
+    /// (Player, mode 4).
+    pub emp_base: i32,
     /// Pointer in 800 x 600 units, the hit under it and for how many frames it has been there.
     pub mouse: (f32, f32),
     pub hot: i32,
@@ -488,6 +491,7 @@ impl Default for PanelState {
             emp_off: 0,
             hire_open: false,
             emp_flag: false,
+            emp_base: 4,
             mouse: (-1.0, -1.0),
             hot: -1,
             hot_frames: 0,
@@ -641,18 +645,28 @@ impl App {
         }
     }
 
+    /// The Player panel comes up for the pro's shot: the exe's dock mode 3 (set by the golfer update when the pro waits at
+    /// his ball, in 0x4289e0), which also clears the Employee overlay flag.
+    pub fn show_player_panel(&mut self) {
+        self.panel = 5;
+        self.pstate.emp_flag = false;
+    }
+
     /// Opens a dock panel from its dock button (1 Build Course, 2 Add Buildings, 3 People); pressing the button of the open one
     /// closes it (the golfers and pro panels count as People).
     pub fn open_panel(&mut self, want: i32) {
         self.pstate.hire_open = false;
         self.pstate.alt = false;
         if want == 3 && self.art_panel_ready_for(4) {
-            // 0x432d..: People sets mode 2 unless it is mode 2 already (then the dock closes): from the Player panel it goes
-            // to the Golfers panel, or to the Employee panel while the overlay flag is set
-            if matches!(self.panel, 3 | 4) {
+            // 0x432720: People sets mode 2 unless the mode is 2 already (then the dock closes, mode 5); the overlay flag
+            // (0x561254) is left alone, so the Employee panel opened from the Player panel (mode 4) stays up over mode 2, and
+            // a closed dock reopens on the Employee panel while the flag is set
+            let under = if self.panel == 3 { self.pstate.emp_base } else { self.panel };
+            if under == 4 {
                 self.panel = 0;
             } else {
                 self.panel = if self.pstate.emp_flag { 3 } else { 4 };
+                self.pstate.emp_base = 4;
                 self.golfer_page = 0;
             }
             self.edit = false;
@@ -857,16 +871,22 @@ impl App {
         // tool is armed; footage of the original shows it on the button in a new game
         let h1 = self.club.next_hole;
         if (0..19).contains(&h1) && self.club.holes.get(h1 as usize).is_some_and(|r| r.pin.0 == 0) {
-            if let (Some(si), _) = self.decor_sprite(0x189 + theme.min(3) as u16, 0x63) {
+            // The loader (0x43d740, called with its shadow argument 1 for these flags) plays "<name>Shadow.flc" and then the
+            // body into one canvas, so the flag carries its shadow (up and to the right, as in the footage at p1 1600-1700):
+            // the port draws the shadow sprite first at the same anchor.
+            if let (Some(si), shadow) = self.decor_sprite(0x189 + theme.min(3) as u16, 0x63) {
                 let n = self.sprites[si].s.frames_per_view.max(1);
                 let armed = current == Some(1);
                 let frame = if armed { (self.game_tick % n as u32) as i32 } else { 0 };
-                let sp = &self.sprites[si].s;
-                let (w, hh, ax, ay) = (sp.w as f32, sp.h as f32, sp.anchor_x as f32, sp.anchor_y as f32);
-                let tex = self.sprite_texture(g, si, 3, frame);
                 let r = terrain_slot_rect(1, theme);
-                let im = Image { tex: Some(tex), w, h: hh };
-                s.image_scaled(g, &im, (r.x + 31.0 - ax, r.y + 24.0 - ay, w, hh), (0.0, 0.0, w, hh));
+                for k in shadow.into_iter().chain([si]) {
+                    let sp = &self.sprites[k].s;
+                    let (w, hh, ax, ay) = (sp.w as f32, sp.h as f32, sp.anchor_x as f32, sp.anchor_y as f32);
+                    let f = frame.min(sp.frames_per_view.max(1) - 1);
+                    let tex = self.sprite_texture(g, k, 3, f);
+                    let im = Image { tex: Some(tex), w, h: hh };
+                    s.image_scaled(g, &im, (r.x + 31.0 - ax, r.y + 24.0 - ay, w, hh), (0.0, 0.0, w, hh));
+                }
             }
         }
         for (code, (_, cut, x, y)) in [(-2, TERRAIN_TO_AMENITIES), (-3, TERRAIN_UNDO)] {

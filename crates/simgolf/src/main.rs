@@ -632,7 +632,16 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 // a tournament: g:0 as the SGA offers it (the evaluation must pass), g:1 straight away with the default purse
                 app.club.game |= sg_core::tournament::OFFERED;
                 app.auto_aim = 1;
-                if at(0) == 1 {
+                if at(0) >= 1 {
+                    // g:2 is for stills of the leader board and the Professional Tournament scorecard: a pro with no
+                    // skills gets one point of Accurate Driver and every accomplishment counts as earned already, so no
+                    // skill points card or trophy room covers the course
+                    if at(0) == 2 {
+                        if app.club.pro_skill.iter().all(|&v| v == 0) {
+                            app.club.pro_skill[2] = 1;
+                        }
+                        app.club.awards = u32::MAX;
+                    }
                     app.accept_tournament();
                 } else {
                     let ui = std::mem::replace(&mut app.ui_ok, false);
