@@ -36,7 +36,15 @@ include source files (e.g. `.kra`, `.blend`) where you can.
 
 ## Translations
 
-Copy `lang/en.txt` to `lang/<language code>.txt` and translate the text after the colon. Keep the `{PARAMETERS}`.
+Copy `lang/en.txt` to `lang/<language code>.txt`, set the `##language` and `##name` lines at the top, and translate the
+text after the colon. Keep the `{PARAMETERS}` (in any order your language needs), the spaces at the start or end of a text
+where the English has them, and the leading space of pop-up options. Texts you leave out stay English. Try it with
+`--lang-file lang/<code>.txt`, or put it in a `lang` folder and pick it in Preferences. The details are in
+[docs/TRANSLATING.md](docs/TRANSLATING.md).
+
+New text in the code goes into `lang/en.txt` with a key (`STR_<AREA>_<WHAT>`), never as a literal in the code: use
+`sg_core::lang::tr("STR_...")` or `trf("STR_...", &[("NAME", &value)])`. `cargo test -p sg-core lang` checks that every key
+the code uses is in `lang/en.txt` once and that none there is unused.
 
 ## Reporting bugs and differences from the original
 

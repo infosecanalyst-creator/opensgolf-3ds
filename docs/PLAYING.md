@@ -69,3 +69,10 @@ second for a right click (undo, remove, close a screen). With two fingers: drag 
 zoom levels, twist to turn the view a quarter. Once the screen has been touched, four buttons on the right stand in for keys
 that have no button in the game: Open hole (h), Turn (Tab), Speed (]) and Message (?). Naming a course or a save raises the
 phone's keyboard.
+
+## Language
+
+The game is in English unless a translation is installed (docs/TRANSLATING.md): then System Functions > Preferences has a
+`Language:` line that switches to the next language and remembers it (`"language"` in `settings.json`). Test hooks:
+`--lang CODE` uses a language for one run, `--lang-file FILE` lays a translation file over the English, and the
+environment variable `SG_TEXTLOG=FILE` writes every text drawn or posted to the message window to FILE, each once.
