@@ -79,11 +79,13 @@ struct Options {
     /// --hd / --classic: the graphics mode for this run (else the saved choice).
     hd: Option<bool>,
     hd_pack: Option<PathBuf>,
+    /// --base ID: the base set for this run (original, opensgolf-free or a base pack), not saved.
+    base: Option<String>,
 }
 
 const USAGE: &str = "usage: simgolf --game DIR [--theme T] [--seed N] [--size WxH] [--zoom Z] [--rot DEG] [--center TX,TY] [--png FILE] \
 [--time S] [--follow] [--golfer NAME] [--sandbox] [--cash N] [--difficulty 0-3] [--screen menu|property|play|report] [--course FILE] [--save FILE] \
-[--edit SPEC] [--panel N] [--mute] [--sound-log] [--clock MS] [--property N|NAME] [--hd | --classic] [--hd-pack DIR]";
+[--edit SPEC] [--panel N] [--mute] [--sound-log] [--clock MS] [--property N|NAME] [--hd | --classic] [--hd-pack DIR] [--base original|opensgolf-free|ID]";
 
 /// Leading comma separated integers, like sscanf("%d,%d,...") (stops at the first one that does not parse).
 fn ints(s: &str) -> Vec<i32> {
@@ -132,6 +134,7 @@ fn parse_args() -> Options {
         property: None,
         hd: None,
         hd_pack: None,
+        base: None,
     };
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -183,6 +186,7 @@ fn parse_args() -> Options {
             "--hd" => o.hd = Some(true),
             "--classic" => o.hd = Some(false),
             "--hd-pack" => o.hd_pack = Some(PathBuf::from(next())),
+            "--base" => o.base = Some(next()),
             "--panel" => o.panel = Some(atoi(&next())),
             "--center" => {
                 let v = ints(&next());
@@ -699,7 +703,7 @@ impl Stage {
         let mut g = Gfx::new();
         // the content packs first: their art, sounds and data replace the game's before anything is read (an App deals
         // its first property offer from the data when it is made)
-        let content = content::startup(&o.game_dir);
+        let content = content::startup(&o.game_dir, o.base.as_deref());
         let mut app = match o.clock {
             Some(c) => App::with_clock(o.game_dir.clone(), c),
             None => App::new(o.game_dir.clone()),
@@ -891,6 +895,9 @@ impl Stage {
         let t = now();
         app.clock = t;
         if let Some(msg) = hd_msg {
+            app.show_toast(&msg);
+        }
+        if let Some(msg) = app.content.notice.take() {
             app.show_toast(&msg);
         }
         Stage {

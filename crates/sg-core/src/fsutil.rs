@@ -121,17 +121,43 @@ pub fn remove_file(path: impl AsRef<Path>) -> bool {
     imp::remove(path.as_ref())
 }
 
+/// True when the file or folder exists, on disk or in an enabled content pack's files over the game folder (crate::vfs).
 pub fn exists(path: impl AsRef<Path>) -> bool {
-    imp::exists(path.as_ref())
+    let p = path.as_ref();
+    imp::exists(p) || crate::vfs::virtual_kind(p) != 0
 }
 
+/// True for a folder on disk or one that an enabled content pack's files make inside the game folder.
 pub fn is_dir(path: impl AsRef<Path>) -> bool {
-    imp::is_dir(path.as_ref())
+    let p = path.as_ref();
+    imp::is_dir(p) || crate::vfs::virtual_kind(p) == 2
 }
 
-/// The entries of a directory (files and folders), unsorted.
+/// The entries of a directory (files and folders), unsorted: those on disk, then those the enabled content packs add inside
+/// the game folder. A pack's replacement of a file on disk (a PNG for a PCX, TGA or BMP, an OGG for a WAV) is not listed
+/// again: the file on disk stands for it.
 pub fn list_dir(path: impl AsRef<Path>) -> Vec<PathBuf> {
-    imp::list(path.as_ref())
+    let p = path.as_ref();
+    let mut out = imp::list(p);
+    let extra = crate::vfs::virtual_entries(p);
+    if extra.is_empty() {
+        return out;
+    }
+    let have: std::collections::HashSet<String> =
+        out.iter().filter_map(|q| q.file_name()).map(|n| n.to_string_lossy().to_lowercase()).collect();
+    for (name, _) in extra {
+        let low = name.to_lowercase();
+        let shadowed = have.contains(&low)
+            || low.rsplit_once('.').is_some_and(|(stem, ext)| match ext {
+                "png" => ["pcx", "tga", "bmp"].iter().any(|e| have.contains(&format!("{stem}.{e}"))),
+                "ogg" => have.contains(&format!("{stem}.wav")),
+                _ => false,
+            });
+        if !shadowed {
+            out.push(p.join(name));
+        }
+    }
+    out
 }
 
 /// `base` joined with a relative path written with forward slashes, matched case-insensitively component by component when

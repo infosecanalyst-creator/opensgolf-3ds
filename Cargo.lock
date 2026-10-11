@@ -774,6 +774,7 @@ dependencies = [
 name = "sg-core"
 version = "0.1.0"
 dependencies = [
+ "fontdue",
  "lewton",
  "miniz_oxide",
  "serde",

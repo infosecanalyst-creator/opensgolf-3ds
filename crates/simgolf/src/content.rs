@@ -37,6 +37,11 @@ pub struct ContentState {
     /// First row shown, and the row picked (its description is shown).
     pub scroll: usize,
     pub picked: Option<usize>,
+    /// Why the base set differs from the player's choice (no original files found), shown once at start up.
+    pub notice: Option<String>,
+    /// The base set used whatever the saved choice says (--base, or the free set when the game folder has no original
+    /// files): the Content screen shows the order the next start will really load.
+    pub forced_base: Option<String>,
 }
 
 /// Where packs are looked for: the save folder's `packs`, then `packs` next to the program.
@@ -80,9 +85,28 @@ fn save_settings(s: &Settings) {
 
 /// Finds the packs, loads the enabled ones over the game folder at `game_dir`, and installs their data. Runs once, before
 /// anything else of the game is read. With no packs enabled nothing is mounted and the built-in tables stay.
-pub fn startup(game_dir: &Path) -> ContentState {
+///
+/// `base` (the --base option) picks the base set for this run without saving it. With no base set chosen and no SimGolf
+/// files in `game_dir`, the free base set (`opensgolf-free`) is used instead of the original, with a message.
+pub fn startup(game_dir: &Path, base: Option<&str>) -> ContentState {
     let found = packs::discover(&pack_dirs());
-    let settings = saved_settings().complete(&found);
+    let saved = saved_settings().complete(&found);
+    // the choices for this run: the saved ones, unless --base or a missing game folder overrides the base set (not saved)
+    let mut settings = saved.clone();
+    let mut notice = None;
+    let mut forced_base = None;
+    if let Some(b) = base {
+        settings.base = (b != packs::ORIGINAL).then(|| b.to_string());
+    } else if settings.base.is_none() && !has_original(game_dir) {
+        settings.base = Some(packs::FREE.to_string());
+        forced_base = settings.base.clone();
+        let msg = format!(
+            "No SimGolf files found in {}: playing with the free OpenSGolf graphics (use --game DIR for your own copy).",
+            game_dir.display()
+        );
+        println!("{msg}");
+        notice = Some(msg);
+    }
     let mut plan = packs::resolve(&found, &settings);
     let loaded = packs::load(&found, &plan);
     let warnings = loaded.warnings.clone();
@@ -100,7 +124,12 @@ pub fn startup(game_dir: &Path) -> ContentState {
         eprintln!("content pack {}: {w}", if id.is_empty() { "data" } else { id });
     }
     packs::apply(game_dir, loaded);
-    ContentState { found, loaded: ids, settings, plan: Some(plan), warnings, scroll: 0, picked: None }
+    ContentState { found, loaded: ids, settings: saved, plan: Some(plan), warnings, scroll: 0, picked: None, notice, forced_base }
+}
+
+/// True when `game_dir` holds the original game's files (its Interface and Flics folders), read before any pack is mounted.
+pub fn has_original(game_dir: &Path) -> bool {
+    ["Interface", "Flics"].iter().all(|d| sg_core::fsutil::is_dir(sg_core::fsutil::resolve(game_dir, d)))
 }
 
 /// What the screen does with a click.
@@ -124,7 +153,11 @@ impl App {
     /// The plan the saved choices give, keeping the data warnings of the loaded packs on their rows.
     fn replan_content(&mut self) {
         let c = &mut self.content;
-        let mut plan = packs::resolve(&c.found, &c.settings);
+        let mut s = c.settings.clone();
+        if s.base.is_none() {
+            s.base = c.forced_base.clone();
+        }
+        let mut plan = packs::resolve(&c.found, &s);
         packs::attach_warnings(&mut plan, &c.warnings);
         c.plan = Some(plan);
     }

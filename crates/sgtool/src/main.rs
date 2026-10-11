@@ -8,6 +8,7 @@
 //!   sgtool story <file.txt>            dump a conversation script
 //!   sgtool fixture <dir> [font.ttf]    write a stand-in game folder with placeholder art (for tests)
 //!   sgtool dump-data <dir>             write the built-in data tables as data/*.toml (a template for content packs)
+//!   sgtool freeset <dir>               write the free base set (opensgolf-free) as a pack folder, every file drawn anew
 mod fixture;
 
 use sg_core::assets::{decode_bmp, decode_pcx, decode_tga, decode_wav, to_rgba, Rgba};
@@ -155,12 +156,19 @@ fn main() {
                 println!("wrote {}", path.display());
             }
         }
+        ("freeset", n) if n >= 3 => {
+            let dir = Path::new(&a[2]);
+            match sg_core::freeset::write_all(dir) {
+                Ok((files, bytes)) => println!("wrote the free base set to {}: {files} files, {:.1} MB", a[2], bytes as f64 / 1e6),
+                Err(e) => fail(e),
+            }
+        }
         ("fixture", n) if n >= 3 => {
             fixture::write_fixture(Path::new(&a[2]), a.get(3).map(Path::new));
             println!("wrote a placeholder game folder to {}", a[2]);
         }
         _ => {
-            eprintln!("usage: sgtool check|png|sheet|chr|top10|dta|story|fixture|dump-data ...");
+            eprintln!("usage: sgtool check|png|sheet|chr|top10|dta|story|fixture|freeset|dump-data ...");
             exit(2);
         }
     }

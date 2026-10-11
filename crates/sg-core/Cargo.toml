@@ -6,6 +6,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+fontdue = "0.9"
 lewton = "0.10"
 miniz_oxide = "0.8"
 serde = { version = "1", features = ["derive"] }

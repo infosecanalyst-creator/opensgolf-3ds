@@ -16,6 +16,10 @@ use std::sync::Arc;
 /// The id of the built-in base set: the player's own installed copy of SimGolf.
 pub const ORIGINAL: &str = "original";
 
+/// The id of the free base set (crate::freeset). The engine draws it itself; a pack folder with this id (the repository's
+/// packs/opensgolf-free) is loaded over the drawn files, so artists can replace them one by one.
+pub const FREE: &str = "opensgolf-free";
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
@@ -217,6 +221,11 @@ impl Manifest {
         self.conflicts.iter().filter_map(|r| Requirement::parse(r).ok()).collect()
     }
 
+    /// The free base set (crate::freeset), built into the engine: art, sounds and text made for OpenSGolf.
+    pub fn free() -> Manifest {
+        Manifest::parse(crate::freeset::PACK_TOML).expect("the free set's pack.toml")
+    }
+
     /// The built-in base set: the art, sounds and data of the player's own copy of the game.
     pub fn original() -> Manifest {
         Manifest {
@@ -309,6 +318,10 @@ pub fn discover(dirs: &[PathBuf]) -> Found {
                 Err(e) => found.broken.push((loc, e)),
             }
         }
+    }
+    // the free base set is always there: drawn by the engine when no folder or zip with its id was found
+    if !found.packs.iter().any(|p| p.manifest.id == FREE) {
+        found.packs.push(Pack { manifest: Manifest::free(), source: Arc::new(Source::Generated), location: "built in".into() });
     }
     found
 }
@@ -576,6 +589,10 @@ pub fn load(found: &Found, plan: &Plan) -> Loaded {
                 }
             }
         }
+        // a folder or zip of the free base set holds only the pieces artists have replaced: the drawn set goes under it
+        if id == FREE && !matches!(*p.source, Source::Generated) {
+            layers.push(Layer::new(id, Arc::new(Source::Generated)));
+        }
         layers.push(Layer::new(id, p.source.clone()));
     }
     let (data, w) = crate::data::Data::from_tables(&tables);
@@ -724,6 +741,7 @@ mod tests {
 
     #[test]
     fn discovery_reads_folders_and_zips_and_reports_bad_ones() {
+        let _lock = crate::vfs::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!("sg-packs-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let (one, two) = (dir.join("one"), dir.join("two"));
@@ -744,7 +762,9 @@ mod tests {
 
         let f = discover(&[one.clone(), two.clone(), dir.join("missing")]);
         let ids: Vec<&str> = f.packs.iter().map(|p| p.manifest.id.as_str()).collect();
-        assert_eq!(ids, ["folder-pack", "zipped"]);
+        // the free base set is always found, built in, after the packs on disk
+        assert_eq!(ids, ["folder-pack", "zipped", FREE]);
+        assert_eq!(f.packs[2].location, "built in");
         assert_eq!(f.broken.len(), 3, "{:?}", f.broken); // bad toml, no pack.toml, duplicate id
         assert!(f.broken.iter().any(|(_, e)| e.contains("already used")));
 
@@ -783,5 +803,39 @@ mod tests {
         let (d, w) = crate::data::Data::from_tables(&t);
         assert!(w.is_empty(), "{w:?}");
         assert!(d.paint_units[2] < crate::economy::Economy::builtin_terrain_cost_units(2));
+    }
+
+    #[test]
+    fn the_free_base_set_stands_in_for_a_missing_game_folder() {
+        let _lock = crate::vfs::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let game = std::env::temp_dir().join(format!("sg-no-game-{}", std::process::id()));
+        let f = discover(&[]);
+        let mut s = Settings::default();
+        s.base = Some(FREE.into());
+        let plan = resolve(&f, &s);
+        assert_eq!(plan.active_ids(), [FREE]);
+        let loaded = load(&f, &plan);
+        crate::vfs::mount(&game, loaded.layers);
+        // the folders the engine lists, and the files it reads by name
+        assert!(crate::fsutil::is_dir(&game) && crate::fsutil::is_dir(game.join("Interface")));
+        for theme in ["Parkland", "Desert", "Tropical", "Links"] {
+            let dir = crate::fsutil::resolve(&game, &format!("Data/Textures/{theme}"));
+            assert!(crate::terrain::TextureCatalog::load(&dir).is_ok(), "{theme}");
+        }
+        let swaps = crate::bodies::Swaps::load(&game.join("Bodies"));
+        assert_eq!((swaps.male.len(), swaps.female.len()), (10, 10));
+        let mixer = crate::mixer::Mixer::new(&game.join("Sounds"));
+        assert!(!mixer.is_empty() && mixer.known("golf_sfx/putt.wav"));
+        let people = crate::roster::load(&game, "Standard");
+        assert!(people.iter().any(|p| p.name == "Ada Birdie"));
+        let stories = crate::fsutil::list_dir(game.join("Themes/Standard"));
+        assert!(stories.iter().any(|p| p.to_string_lossy().ends_with("GxxxxxxxOpeningDay.txt")));
+        assert!(crate::fsutil::read_file(game.join("KLEPTO__.TTF")).is_some());
+        let title = crate::fsutil::resolve(&game, "Interface/TitleBASE.pcx");
+        assert_eq!(crate::assets::decode_pcx(&crate::fsutil::read_file(&title).unwrap()).map(|i| (i.w, i.h)), Ok((800, 600)));
+        let tree = crate::sprites::load_sprite(&game.join("Flics/Trees/TreeMapleLarge.flc"), false, None).unwrap();
+        assert_eq!(tree.views, 4);
+        crate::vfs::unmount();
+        assert!(!crate::fsutil::is_dir(&game));
     }
 }

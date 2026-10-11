@@ -28,17 +28,17 @@ jobs:
         run: cargo test --release
       - name: Build
         run: cargo build --release
-      # The game against a placeholder data folder (no game data in CI): start it on a virtual display and save a frame.
-      - name: Headless smoke test
+      # No game data in CI: the game plays on its free base set (opensgolf-free, drawn by the engine itself). The play test
+      # decodes every file of the set, starts a new game, builds a hole, plays about three months, saves, loads and opens
+      # every report on a virtual display, and fails on a crash or any missing-file or decode error (tools/freeset_playtest.sh).
+      - name: Headless play test on the free base set
         if: runner.os == 'Linux'
         env:
           LIBGL_ALWAYS_SOFTWARE: "1"
         run: |
-          target/release/sgtool fixture fixture /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
-          target/release/sgtool check fixture
-          xvfb-run -a target/release/simgolf --game fixture --mute --size 1024x700 --time 30 --png play.png
-          xvfb-run -a target/release/simgolf --game fixture --mute --size 800x600 --screen menu --png menu.png
-          test -s play.png && test -s menu.png
+          tools/freeset_playtest.sh freeset-test
+          cp freeset-test/newgame.png play.png
+          cp freeset-test/title-menu.png menu.png
       - uses: actions/upload-artifact@v4
         with:
           name: simgolf-${{ matrix.os }}

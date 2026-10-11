@@ -21,6 +21,7 @@ pub mod economy;
 pub mod flc;
 pub mod flight;
 pub mod formats;
+pub mod freeset;
 pub mod fsutil;
 pub mod geom;
 pub mod golfer;

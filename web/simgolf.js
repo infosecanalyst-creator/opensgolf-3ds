@@ -232,6 +232,13 @@ function sgStart() {
     load("simgolf.wasm");
 }
 
+// No game folder: the game finds no original files under game/ and plays on the free base set (opensgolf-free), which it
+// draws itself.
+function sgPlayFree() {
+    sgStatus("Starting with the free OpenSGolf graphics...");
+    sgStart();
+}
+
 async function sgUse(entries) {
     const root = sgRootOf(entries.map(e => e[0]));
     if (root === null) {
