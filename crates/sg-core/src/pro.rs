@@ -9,76 +9,109 @@ use crate::economy::money_digits;
 use crate::geom::{angle, clamp, cosr, dir8, len, sinr, tdist};
 use crate::golfer::{flag, game, Club, Column, Event, Golfer, SLOTS};
 use crate::land::ExeRng;
+use crate::lang::{tr, trf};
 
 /// A famous golfer's challenge is waiting to be played (game flag 0x2000); the pro's round starts next tick (0x4000).
 pub const CHALLENGE: u32 = 0x2000;
 pub const START_ROUND: u32 = 0x4000;
 
 /// Skill names in the order of the skill bytes.
-pub const SKILL_NAMES: [&str; 10] = [
-    "Power Hitter",
-    "Long Driver",
-    "Accurate Driver",
-    "Accurate Irons",
-    "Accurate Putter",
-    "Draw Shot",
-    "Fade Shot",
-    "High Backspin Shot",
-    "Recovery Skills",
-    "Luck",
+pub const SKILL_NAME_KEYS: [&str; 10] = [
+    "STR_SKILL_POWER_HITTER",
+    "STR_SKILL_LONG_DRIVER",
+    "STR_SKILL_ACCURATE_DRIVER",
+    "STR_SKILL_ACCURATE_IRONS",
+    "STR_SKILL_ACCURATE_PUTTER",
+    "STR_SKILL_DRAW_SHOT",
+    "STR_SKILL_FADE_SHOT",
+    "STR_SKILL_HIGH_BACKSPIN",
+    "STR_SKILL_RECOVERY",
+    "STR_SKILL_LUCK",
 ];
 
 /// The exe's skill names (pointer table 0x4c2c3c), all twelve, as the great-shot message prints them.
-pub const EXE_SKILLS: [&str; 12] = [
-    "Power Hitter",
-    "Long Driver",
-    "Accurate Driver",
-    "Accurate Irons",
-    "Accurate Putter",
-    "Draw Shot (R to L)",
-    "Fade Shot (L to R)",
-    "High Backspin Shot",
-    "Recovery Skills",
-    "Luck",
-    "Positive Attitude",
-    "Mental Toughness",
+pub const EXE_SKILL_KEYS: [&str; 12] = [
+    "STR_SKILL_POWER_HITTER",
+    "STR_SKILL_LONG_DRIVER",
+    "STR_SKILL_ACCURATE_DRIVER",
+    "STR_SKILL_ACCURATE_IRONS",
+    "STR_SKILL_ACCURATE_PUTTER",
+    "STR_SKILL_DRAW_SHOT_R_TO_L",
+    "STR_SKILL_FADE_SHOT_L_TO_R",
+    "STR_SKILL_HIGH_BACKSPIN",
+    "STR_SKILL_RECOVERY",
+    "STR_SKILL_LUCK",
+    "STR_SKILL_POSITIVE_ATTITUDE",
+    "STR_SKILL_MENTAL_TOUGHNESS",
 ];
 
 /// The skill names as the stats cards print them (footage of the original: the skill points card and a pro's card read
 /// "Draw Shot (R to L)" and "Fade Shot (L to R)", as Pick A Pro does).
-pub const SKILL_LABELS: [&str; 10] = [
-    "Power Hitter",
-    "Long Driver",
-    "Accurate Driver",
-    "Accurate Irons",
-    "Accurate Putter",
-    "Draw Shot (R to L)",
-    "Fade Shot (L to R)",
-    "High Backspin Shot",
-    "Recovery Skills",
-    "Luck",
+pub const SKILL_LABEL_KEYS: [&str; 10] = [
+    "STR_SKILL_POWER_HITTER",
+    "STR_SKILL_LONG_DRIVER",
+    "STR_SKILL_ACCURATE_DRIVER",
+    "STR_SKILL_ACCURATE_IRONS",
+    "STR_SKILL_ACCURATE_PUTTER",
+    "STR_SKILL_DRAW_SHOT_R_TO_L",
+    "STR_SKILL_FADE_SHOT_L_TO_R",
+    "STR_SKILL_HIGH_BACKSPIN",
+    "STR_SKILL_RECOVERY",
+    "STR_SKILL_LUCK",
 ];
 
 /// Club names for the panel. APPROXIMATION: the exe's club name routine (0x40a9a0) was not decoded; these follow the
 /// club numbers 0 (longest) to 11 (shortest) the planner uses.
-pub const CLUB_NAMES: [&str; 12] =
-    ["Driver", "3 Wood", "5 Wood", "2 Iron", "3 Iron", "4 Iron", "5 Iron", "6 Iron", "7 Iron", "8 Iron", "9 Iron", "Wedge"];
+pub const CLUB_NAME_KEYS: [&str; 12] = [
+    "STR_CLUB_DRIVER",
+    "STR_CLUB_3_WOOD",
+    "STR_CLUB_5_WOOD",
+    "STR_CLUB_2_IRON",
+    "STR_CLUB_3_IRON",
+    "STR_CLUB_4_IRON",
+    "STR_CLUB_5_IRON",
+    "STR_CLUB_6_IRON",
+    "STR_CLUB_7_IRON",
+    "STR_CLUB_8_IRON",
+    "STR_CLUB_9_IRON",
+    "STR_CLUB_WEDGE",
+];
+
+/// Skill k's name (`SKILL_NAME_KEYS`).
+pub fn skill_name(k: usize) -> &'static str {
+    tr(SKILL_NAME_KEYS[k])
+}
+
+/// Skill k's name as the exe prints it (`EXE_SKILL_KEYS`).
+pub fn exe_skill(k: usize) -> &'static str {
+    tr(EXE_SKILL_KEYS[k])
+}
+
+/// Skill k's name as the stats cards print it (`SKILL_LABEL_KEYS`).
+pub fn skill_label(k: usize) -> &'static str {
+    tr(SKILL_LABEL_KEYS[k])
+}
+
+/// Club k's name for the panel (`CLUB_NAME_KEYS`).
+pub fn club_label(k: usize) -> &'static str {
+    tr(CLUB_NAME_KEYS[k])
+}
 
 /// The lie under the ball, for the panel. APPROXIMATION: the names in the exe's terrain records are not available.
 pub fn lie_name(ty: u8) -> &'static str {
     use crate::course::t;
     match ty {
-        t::TEE => "Tee",
-        t::GREEN => "Green",
-        t::FAIRWAY | 3 => "Fairway",
-        t::SAND | 8 => "Sand Trap",
-        t::POT => "Pot Bunker",
-        t::RAVINE => "Ravine",
-        t::ROCKS => "Rocks",
-        t::WATER => "Water",
-        t::MARSH => "Marsh",
-        t::OUT => "Out of Bounds",
-        _ => "Rough",
+        t::TEE => tr("STR_LIE_TEE"),
+        t::GREEN => tr("STR_LIE_GREEN"),
+        t::FAIRWAY | 3 => tr("STR_LIE_FAIRWAY"),
+        t::SAND | 8 => tr("STR_LIE_SAND_TRAP"),
+        t::POT => tr("STR_LIE_POT_BUNKER"),
+        t::RAVINE => tr("STR_LIE_RAVINE"),
+        t::ROCKS => tr("STR_LIE_ROCKS"),
+        t::WATER => tr("STR_LIE_WATER"),
+        t::MARSH => tr("STR_LIE_MARSH"),
+        t::OUT => tr("STR_LIE_OUT_OF_BOUNDS"),
+        _ => tr("STR_LIE_ROUGH"),
     }
 }
 
@@ -150,14 +183,14 @@ pub struct AimPreview {
 /// The "Attitude" word for the pro's momentum.
 pub fn attitude(m: i32) -> &'static str {
     match clamp(m, -4, 4) {
-        -4 => "furious",
-        -3 => "mad",
-        -2 => "upset",
-        -1 => "worried",
-        0 => "calm",
-        1 => "determined",
-        2 => "pumped",
-        _ => "invincible",
+        -4 => tr("STR_ATTITUDE_FURIOUS"),
+        -3 => tr("STR_ATTITUDE_MAD"),
+        -2 => tr("STR_ATTITUDE_UPSET"),
+        -1 => tr("STR_ATTITUDE_WORRIED"),
+        0 => tr("STR_ATTITUDE_CALM"),
+        1 => tr("STR_ATTITUDE_DETERMINED"),
+        2 => tr("STR_ATTITUDE_PUMPED"),
+        _ => tr("STR_ATTITUDE_INVINCIBLE"),
     }
 }
 
@@ -260,7 +293,7 @@ impl Club {
             }
             if let Some(r) = self.roster.get_mut(crate::vips::ROSTER_CHALLENGER as usize) {
                 r.name = pro.name.clone();
-                r.job = "Golf Pro".to_string();
+                r.job = tr("STR_JOB_GOLF_PRO").to_string();
             }
             self.challenge_pro = -1;
         }
@@ -362,7 +395,7 @@ impl Club {
                 self.g[g].flags &= !flag::GARY;
                 let k = rng.below(3);
                 self.g[g].class = (self.g[g].class & 7).wrapping_add(0xffu8.wrapping_shl(k as u32));
-                self.message("Match canceled.".to_string());
+                self.message(tr("STR_MSG_MATCH_CANCELED").to_string());
                 self.round_end(rng, g);
                 self.g[g].strokes = 0;
                 self.g[g].anim = 0;
@@ -402,24 +435,22 @@ impl Club {
         let female = pro.body >= 4;
         // the exe's pieces (0x4c6ba4, 0x4c6b68, 0x4c6b58, 0x4c6b44, 0x4c6b2c / 0x4c6b18, 0x4c6afc, 0x4c6af4, 0x4c6ad0,
         // 0x4c6aa0); the amounts are plain numbers after the section sign
-        let mut text = format!(
-            "Famous golfer {} challenges you to a match at your course with a wager of \u{a7}{} per hole and \u{a7}{} for the match! ",
-            pro.name,
-            (5 * l + 5) * 400,
-            (5 * l + 5) * 800
-        );
+        let mut text =
+            trf("STR_CHALLENGE_WAGER", &[("PRO", &pro.name), ("HOLE_MONEY", &((5 * l + 5) * 400)), ("MATCH_MONEY", &((5 * l + 5) * 800))]);
         if best > 0 {
-            let names: Vec<&str> = (0..10).filter(|&k| pro.skills[k] == best).map(|k| SKILL_NAMES[k]).collect();
-            text += &format!(
-                "{} is proud of {} {}0 percent skill rating in {}",
-                if female { "She" } else { "He" },
-                if female { "her" } else { "his" },
-                best,
-                names.join(" and ")
+            let names: Vec<&str> = (0..10).filter(|&k| pro.skills[k] == best).map(skill_name).collect();
+            text += &trf(
+                "STR_CHALLENGE_PROUD",
+                &[
+                    ("HE", &(if female { tr("STR_CHALLENGE_SHE") } else { tr("STR_CHALLENGE_HE") })),
+                    ("HIS", &(if female { tr("STR_CHALLENGE_HER") } else { tr("STR_CHALLENGE_HIS") })),
+                    ("PERCENT", &best),
+                    ("SKILLS", &names.join(tr("STR_CHALLENGE_AND"))),
+                ],
             );
         }
-        let pro_name = self.roster.first().map(|p| p.name.clone()).unwrap_or_else(|| "Gary Golf".to_string());
-        text += &format!(". Click on the match icon on the {pro_name} panel when you are ready to start the match.");
+        let pro_name = self.roster.first().map(|p| p.name.clone()).unwrap_or_else(|| tr("STR_LOG_GARY_GOLF").to_string());
+        text += &trf("STR_CHALLENGE_CLICK", &[("PRO", &pro_name)]);
         self.message(text);
         self.game |= CHALLENGE;
         self.sound(0x26, None);
@@ -445,14 +476,19 @@ impl Club {
         let at = (self.g[o].x, self.g[o].y);
         if so < se {
             // the exe's pieces (0x4c7324, 0x4c7314, 0x4c730c, 0x4c7300 or 0x4c72f8, 0x4c4944)
-            let text =
-                format!("{} wins hole #{h} by a score of {so} to {se}! Collect \u{a7}{}.", self.name(o), money_digits(a as i64 * 100));
+            let text = trf(
+                "STR_MATCH_WIN_HOLE",
+                &[("GOLFER", &self.name(o)), ("HOLE", &h), ("SCORE", &so), ("OTHER_SCORE", &se), ("MONEY", &money_digits(a as i64 * 100))],
+            );
             self.message_by(text, self.gary, 0);
             self.earn(a, Column::Other, at);
             self.sound(0x23, None);
         }
         if se < so {
-            let text = format!("{} wins hole #{h} by a score of {se} to {so}. Pay \u{a7}{}.", self.name(e), money_digits(a as i64 * 100));
+            let text = trf(
+                "STR_MATCH_LOSE_HOLE",
+                &[("GOLFER", &self.name(e)), ("HOLE", &h), ("SCORE", &se), ("OTHER_SCORE", &so), ("MONEY", &money_digits(a as i64 * 100))],
+            );
             self.message_by(text, self.gary, 0);
             self.earn(-a, Column::Other, at);
             self.sound(0x24, None);
@@ -462,15 +498,15 @@ impl Club {
             let (to, te) = (total(&self.g[o]), total(&self.g[e]));
             if te < to {
                 // 0x4c72dc with 0x4c72d0, 0x4c72b4 or 0x4c72a8 (the exe goes on with the standings, not in the port)
-                self.message(format!("At the end of the match, you lose \u{a7}{}.", money_digits(a as i64 * 100)));
+                self.message(trf("STR_MATCH_END_LOSE", &[("MONEY", &money_digits(a as i64 * 100))]));
                 self.earn(-a, Column::Other, at);
                 self.sound(0x24, None);
                 self.wager_level -= 1;
             } else if te == to {
-                self.message("At the end of the match, the score is tied.".to_string());
+                self.message(tr("STR_MATCH_END_TIED").to_string());
                 self.wager_level -= 1;
             } else {
-                self.message(format!("At the end of the match, you win \u{a7}{}.", money_digits(a as i64 * 100)));
+                self.message(trf("STR_MATCH_END_WIN", &[("MONEY", &money_digits(a as i64 * 100))]));
                 self.earn(a, Column::Other, at);
                 self.sound(0x23, None);
                 self.trophies += 1;
@@ -484,15 +520,19 @@ impl Club {
             if to == te {
                 let d = to - par;
                 let at = match d {
-                    0 => "even par".to_string(),
-                    d if d < 0 => format!("{} under par", -d),
-                    d => format!("{d} over par"),
+                    0 => tr("STR_MATCH_EVEN_PAR").to_string(),
+                    d if d < 0 => trf("STR_MATCH_UNDER_PAR", &[("STROKES", &(-d))]),
+                    d => trf("STR_MATCH_OVER_PAR", &[("STROKES", &d)]),
                 };
-                self.message_by(format!("{no} and {ne} are tied at {at}."), self.gary, 1);
+                self.message_by(trf("STR_MATCH_TIED_AT", &[("GOLFER", &no), ("OTHER", &ne), ("SCORE", &at)]), self.gary, 1);
             } else {
                 let n = (to - te).abs();
-                let word = if to < te { "leads" } else { "trails" };
-                self.message_by(format!("{no} {word} {ne} by {n} shot{}.", if n == 1 { "" } else { "s" }), self.gary, 1);
+                let key = if to < te {
+                    crate::lang::plural(n as i64, "STR_MATCH_LEADS_BY_ONE", "STR_MATCH_LEADS_BY")
+                } else {
+                    crate::lang::plural(n as i64, "STR_MATCH_TRAILS_BY_ONE", "STR_MATCH_TRAILS_BY")
+                };
+                self.message_by(trf(key, &[("GOLFER", &no), ("OTHER", &ne), ("SHOTS", &n)]), self.gary, 1);
                 self.sound(if to < te { 0x2f } else { 0x30 }, None);
             }
             self.gary = -1;
@@ -578,58 +618,67 @@ impl Club {
         let mut t = name.clone();
         if !bad {
             t += match club {
-                0 => " launches a ",
-                13 => " snakes a ",
-                1..=6 => " knocks a ",
-                _ => " lofts a ",
+                0 => tr("STR_SHOT_LAUNCHES"),
+                13 => tr("STR_SHOT_SNAKES"),
+                1..=6 => tr("STR_SHOT_KNOCKS"),
+                _ => tr("STR_SHOT_LOFTS"),
             };
             if gg.rating > 10 {
-                t += "tricky ";
+                t += tr("STR_SHOT_TRICKY");
             } else if gg.rating == 10 {
-                t += "tough ";
+                t += tr("STR_SHOT_TOUGH");
             }
             match club {
-                0 => t += "drive ",
-                13 => t += "putt ",
-                k => t += &format!("{} shot ", crate::thoughts::CLUBS[k as usize]),
+                0 => t += tr("STR_SHOT_DRIVE"),
+                13 => t += tr("STR_SHOT_PUTT"),
+                k => t += &trf("STR_SHOT_CLUB", &[("CLUB", &crate::thoughts::club_name(k as usize))]),
             }
-            t += &format!("{l} yards ");
+            t += &trf("STR_SHOT_YARDS", &[("YARDS", &l)]);
             let pin = self.holes[gg.hole.clamp(0, 18) as usize].pin;
             if d == 0 {
                 let cup = gg.bx == pin.0 * 0x400 + 0x200 && gg.by == pin.1 * 0x400 + 0x200;
-                t += if cup { "into the hole" } else { "inches from the hole" };
+                t += if cup { tr("STR_SHOT_INTO_THE_HOLE") } else { tr("STR_SHOT_INCHES") };
             } else if rest == crate::course::t::GREEN {
-                t += &if d < 8 { format!("to within {} feet of the pin", d * 2) } else { format!("to within {d} yards of the pin") };
+                t += &if d < 8 {
+                    trf("STR_SHOT_WITHIN_FEET", &[("FEET", &(d * 2))])
+                } else {
+                    trf("STR_SHOT_WITHIN_YARDS", &[("YARDS", &d)])
+                };
             } else {
-                t += "safely onto the fairway";
+                t += tr("STR_SHOT_FAIRWAY");
             }
         } else {
             let odd = gg.hole & 1 != 0;
             t += match (club < 5, odd) {
-                (true, false) => " yanks a ",
-                (true, true) => " flubs a ",
-                (false, false) => " scuffs a ",
-                (false, true) => " fluffs a ",
+                (true, false) => tr("STR_SHOT_YANKS"),
+                (true, true) => tr("STR_SHOT_FLUBS"),
+                (false, false) => tr("STR_SHOT_SCUFFS"),
+                (false, true) => tr("STR_SHOT_FLUFFS"),
             };
-            t += crate::thoughts::CLUBS[club as usize];
-            t += " into the ";
+            t += crate::thoughts::club_name(club as usize);
+            t += tr("STR_SHOT_INTO_THE");
             t += &crate::tracts::type_name(rest.min(22), c.theme, false);
         }
         // 0x4c4fc8, the hole's name (0x407280), 0x4c4fc4
         let h = gg.hole.clamp(0, 18) as usize;
-        t += &format!(" at {}!  ", crate::ratings::hole_name(h, &self.holes[h]));
+        t += &trf("STR_SHOT_AT_HOLE", &[("HOLE", &crate::ratings::hole_name(h, &self.holes[h]))]);
         if !bad && self.g[p].hole > 0 {
             // the partner's reaction by the golfer's +0xae: 0x4c4fac, 0x4c4f54, 0x4c4f48 with 0x4c4f38 and 0x4c4f30 /
             // 0x4c4f28, 0x4c4f78 with 0x4c4f94 / 0x4c4f90 and 0x4c4f6c, 0x4c4f98 with his / her and 0x4c4f88
             let pn = self.vip_name(p);
             let male = self.male(p) != 0;
-            let his = if male { "his" } else { "her" };
+            let his = if male { tr("STR_SHOT_HIS") } else { tr("STR_SHOT_HER") };
             match gg.field_ae {
-                0 => t += &format!("{pn} looks on in amazement."),
-                1 => t += &format!("{pn} is equally delighted."),
-                2 => t += &format!("'Rats', {pn} mutters to {}.", if male { "himself" } else { "herself" }),
-                3 | 5 => t += &format!("{pn} congratulates {his} partner."),
-                4 => t += &format!("{pn} can not believe {his} eyes."),
+                0 => t += &trf("STR_SHOT_PARTNER_AMAZED", &[("PARTNER", &pn)]),
+                1 => t += &trf("STR_SHOT_PARTNER_DELIGHTED", &[("PARTNER", &pn)]),
+                2 => {
+                    t += &trf(
+                        "STR_SHOT_PARTNER_RATS",
+                        &[("PARTNER", &pn), ("HIMSELF", &(if male { tr("STR_SHOT_HIMSELF") } else { tr("STR_SHOT_HERSELF") }))],
+                    )
+                }
+                3 | 5 => t += &trf("STR_SHOT_PARTNER_CONGRATULATES", &[("PARTNER", &pn), ("HIS", &his)]),
+                4 => t += &trf("STR_SHOT_PARTNER_EYES", &[("PARTNER", &pn), ("HIS", &his)]),
                 _ => {}
             }
         }
@@ -688,7 +737,7 @@ impl Club {
             }
             if pick != 0 && gg.kind != 0 {
                 let k = pick.trailing_zeros() as usize;
-                let skill = EXE_SKILLS[k.min(11)];
+                let skill = exe_skill(k.min(11));
                 if !bad {
                     if self.pro_skill[k] < 10 {
                         if self.pro_skill[k] == 0 {
@@ -696,15 +745,15 @@ impl Club {
                             self.pro_skill[k] = clamp(3 - self.difficulty, 1, 3) as u8;
                             self.pro_mask |= pick;
                             self.g[g].skill_mask |= pick;
-                            t += &format!(" {name} acquires a new skill: {skill}!");
+                            t += &trf("STR_SHOT_NEW_SKILL", &[("GOLFER", &name), ("SKILL", &skill)]);
                         } else {
                             // 0x4c3f70, the name, 0x4c4ef0, the skill, 0x4c4ed8, the level, 0x4c4ed0; at the cap
                             // 0x4c4e88, the next class (0x4c2a1c by the class) and 0x4c4e7c
                             self.pro_skill[k] += 1;
-                            t += &format!(" {name}'s '{skill}' skill improves to {}0%! ", self.pro_skill[k]);
+                            t += &trf("STR_SHOT_SKILL_IMPROVES", &[("GOLFER", &name), ("SKILL", &skill), ("LEVEL", &(self.pro_skill[k]))]);
                             if self.pro_skill[k] as i32 == cap {
-                                let next = crate::economy::RANK_NAMES[(rank as usize + 1).min(3)];
-                                t += &format!("To further improve this skill you will need expand your course to a {next} course. ");
+                                let next = crate::economy::rank_name((rank as usize + 1).min(3));
+                                t += &trf("STR_SHOT_SKILL_CAP", &[("RANK", &next)]);
                             }
                         }
                         self.g[g].skills[k] = self.pro_skill[k];
@@ -718,8 +767,8 @@ impl Club {
                     // 0x4c3f70, the name, 0x4c4f14 / 0x4c4f00, the skill, 0x4c4ef8
                     self.pro_skill[k] -= 1;
                     self.g[g].skills[k] = self.pro_skill[k];
-                    let his = if self.male(g) != 0 { "his" } else { "her" };
-                    t += &format!(" {name} loses 10% of {his} {skill} skill.");
+                    let his = if self.male(g) != 0 { tr("STR_SHOT_HIS") } else { tr("STR_SHOT_HER") };
+                    t += &trf("STR_SHOT_SKILL_LOSS", &[("GOLFER", &name), ("HIS", &his), ("SKILL", &skill)]);
                 }
             }
         }

@@ -1,12 +1,13 @@
-//! simgolf: the SimGolf native port. Reads the data of your own copy of the game at run time.
+//! opensgolf: the OpenSGolf game. Runs on the free base set, or reads the data of your own copy of SimGolf at run time.
 //!
-//!   simgolf --game "<dir>/Program_Files_(ENGLISH)" [--theme parkland|links|desert|tropical] [--seed N] [--size WxH] [--zoom Z]
+//!   opensgolf --game "<dir>/Program_Files_(ENGLISH)" [--theme parkland|links|desert|tropical] [--seed N] [--size WxH] [--zoom Z]
 //!           [--rot DEG] [--center TX,TY] [--time SECONDS] [--follow] [--png out.png] [--golfer NAME] [--sandbox] [--cash N]
 //!           [--screen menu|property|play|report] [--course FILE] [--save FILE] [--edit SPEC] [--panel N] [--mute] [--sound-log]
 //!           [--hd | --classic] [--hd-pack DIR]
 //!
 //! Keys: arrows/WASD pan, Q/E rotate, +/- or mouse wheel zoom, 1-4 theme, R new demo course, P toggle scenery, F follow the golfer,
 //! F6 screenshot, F1-F10 reports, M music, N mute, H open the new hole, Shift+H advisor, Tab edit mode, Esc menu. Left-drag pans.
+
 // UI drawing takes source and destination rectangles as plain numbers; index loops mirror the original's tables.
 #![allow(clippy::too_many_arguments, clippy::needless_range_loop)]
 
@@ -22,6 +23,7 @@ mod hd;
 mod holemarks;
 mod hud_ui;
 mod info_ui;
+mod language;
 mod member_panel;
 mod message_ui;
 mod panels_ui;
@@ -43,6 +45,7 @@ use gfx::Gfx;
 use miniquad::*;
 use render::*;
 use sg_core::formats::{atoi, parse_pro_golfers};
+use sg_core::lang::tr;
 use sg_core::mixer::Mixer;
 use sg_core::terrain::{Terrain, TT_FAIRWAY, TT_PUTTING_GREEN, TT_ROUGH, TT_SAND, TT_TEE, TT_WATER_SHALLOW};
 use std::path::PathBuf;
@@ -79,11 +82,17 @@ struct Options {
     /// --hd / --classic: the graphics mode for this run (else the saved choice).
     hd: Option<bool>,
     hd_pack: Option<PathBuf>,
+    /// --base ID: the base set for this run (original, opensgolf-free or a base pack), not saved.
+    base: Option<String>,
+    /// --lang CODE: the language for this run (else the saved setting); --lang-file FILE: a translation file to try out.
+    lang: Option<String>,
+    lang_file: Option<PathBuf>,
 }
 
-const USAGE: &str = "usage: simgolf --game DIR [--theme T] [--seed N] [--size WxH] [--zoom Z] [--rot DEG] [--center TX,TY] [--png FILE] \
+const USAGE: &str = "usage: opensgolf [--game DIR] [--theme T] [--seed N] [--size WxH] [--zoom Z] [--rot DEG] [--center TX,TY] [--png FILE] \
 [--time S] [--follow] [--golfer NAME] [--sandbox] [--cash N] [--difficulty 0-3] [--screen menu|property|play|report] [--course FILE] [--save FILE] \
-[--edit SPEC] [--panel N] [--mute] [--sound-log] [--clock MS] [--property N|NAME] [--hd | --classic] [--hd-pack DIR]";
+[--edit SPEC] [--panel N] [--mute] [--sound-log] [--clock MS] [--property N|NAME] [--hd | --classic] [--hd-pack DIR] \
+[--lang CODE] [--lang-file FILE] [--base original|opensgolf-free|ID]";
 
 /// Leading comma separated integers, like sscanf("%d,%d,...") (stops at the first one that does not parse).
 fn ints(s: &str) -> Vec<i32> {
@@ -101,7 +110,7 @@ fn ints(s: &str) -> Vec<i32> {
 
 fn parse_args() -> Options {
     let mut o = Options {
-        // In a browser the page puts the player's game folder at "game" (web/simgolf.js).
+        // In a browser the page puts the player's game folder at "game" (web/opensgolf.js).
         game_dir: PathBuf::from(if cfg!(target_arch = "wasm32") { "game" } else { "game/Program_Files_(ENGLISH)" }),
         theme: 0,
         seed: 7,
@@ -132,6 +141,9 @@ fn parse_args() -> Options {
         property: None,
         hd: None,
         hd_pack: None,
+        base: None,
+        lang: None,
+        lang_file: None,
     };
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -183,6 +195,9 @@ fn parse_args() -> Options {
             "--hd" => o.hd = Some(true),
             "--classic" => o.hd = Some(false),
             "--hd-pack" => o.hd_pack = Some(PathBuf::from(next())),
+            "--base" => o.base = Some(next()),
+            "--lang" => o.lang = Some(next()),
+            "--lang-file" => o.lang_file = Some(PathBuf::from(next())),
             "--panel" => o.panel = Some(atoi(&next())),
             "--center" => {
                 let v = ints(&next());
@@ -561,7 +576,7 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 app.edit_building(at(0), at(1), false);
                 println!(
                     "building {} at {},{}: {} objects, toast '{}', cash {}",
-                    sg_core::data::buildings()[app.build_idx].0,
+                    sg_core::land::building_name(app.build_idx as i32),
                     at(0),
                     at(1),
                     app.land.as_ref().map(|l| l.objects.iter().filter(|o| o.kind >= 0).count()).unwrap_or(0),
@@ -699,7 +714,7 @@ impl Stage {
         let mut g = Gfx::new();
         // the content packs first: their art, sounds and data replace the game's before anything is read (an App deals
         // its first property offer from the data when it is made)
-        let content = content::startup(&o.game_dir);
+        let content = content::startup(&o.game_dir, o.base.as_deref());
         let mut app = match o.clock {
             Some(c) => App::with_clock(o.game_dir.clone(), c),
             None => App::new(o.game_dir.clone()),
@@ -801,7 +816,9 @@ impl Stage {
         if let Some(name) = &o.property {
             let k = name.parse::<usize>().ok().filter(|&k| k < 16).or_else(|| {
                 let n = name.to_lowercase();
-                sg_core::data::properties().iter().position(|p| p.name.to_lowercase().starts_with(&n))
+                sg_core::data::properties()
+                    .iter()
+                    .position(|p| [sg_core::lang::en(p.name_key), p.name()].iter().any(|s| s.to_lowercase().starts_with(&n)))
             });
             let Some(k) = k else {
                 eprintln!("error: unknown property {name}");
@@ -891,6 +908,9 @@ impl Stage {
         let t = now();
         app.clock = t;
         if let Some(msg) = hd_msg {
+            app.show_toast(&msg);
+        }
+        if let Some(msg) = app.content.notice.take() {
             app.show_toast(&msg);
         }
         Stage {
@@ -1240,7 +1260,7 @@ impl Stage {
                 app.cancel_until = 0;
             } else {
                 app.cancel_until = app.game_tick + 40;
-                app.show_toast("Are you sure you want to cancel this round? Press N again to cancel.");
+                app.show_toast(tr("STR_TOAST_CANCEL_ROUND"));
             }
             return;
         }
@@ -1293,7 +1313,7 @@ impl Stage {
                     app.tool = 4;
                     app.build_idx = sg_core::land::K_HOME_SITE as usize;
                 }
-                KeyCode::F6 if self.screenshot(&PathBuf::from("simgolf-shot.png")) => println!("saved simgolf-shot.png"),
+                KeyCode::F6 if self.screenshot(&PathBuf::from("opensgolf-shot.png")) => println!("saved opensgolf-shot.png"),
                 _ => {}
             }
             return;
@@ -1322,9 +1342,9 @@ impl Stage {
                     _ => 1,
                 };
                 let name = match app.speed {
-                    1 => "Normal speed",
-                    2 => "Fast (x2)",
-                    _ => "Fastest (x4)",
+                    1 => tr("STR_TOAST_SPEED_NORMAL"),
+                    2 => tr("STR_TOAST_SPEED_FAST"),
+                    _ => tr("STR_TOAST_SPEED_FASTEST"),
                 };
                 app.show_toast(name);
             }
@@ -1406,7 +1426,7 @@ impl Stage {
             }
             KeyCode::H => {
                 if !app.open_hole() {
-                    app.show_toast("A new hole needs a tee and a green");
+                    app.show_toast(tr("STR_TOAST_HOLE_NEEDS_TEE_GREEN"));
                 }
             }
             KeyCode::M => app.toggle_music(),
@@ -2074,8 +2094,13 @@ impl EventHandler for Stage {
 
 fn main() {
     let o = parse_args();
+    // the text's language first: the window's title is already text
+    match &o.lang_file {
+        Some(f) => _ = language::apply_file(f),
+        None => _ = language::apply(&o.lang.clone().unwrap_or_else(language::saved)),
+    }
     let conf = conf::Conf {
-        window_title: "SimGolf native".to_string(),
+        window_title: tr("STR_WINDOW_TITLE").to_string(),
         window_width: o.win_w,
         window_height: o.win_h,
         high_dpi: true,

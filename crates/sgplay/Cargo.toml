@@ -1,6 +1,6 @@
 [package]
 name = "sgplay"
-description = "SimGolf native port: plays the game's Bink videos through an installed ffmpeg"
+description = "OpenSGolf: plays the game's Bink videos through an installed ffmpeg"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

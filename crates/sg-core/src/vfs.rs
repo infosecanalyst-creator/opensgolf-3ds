@@ -15,19 +15,28 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 
-/// The folders of a pack that override game files, and the file types each accepts (lower case, with the dot).
-pub const OVERRIDE_DIRS: [(&str, &[&str]); 4] = [
+/// The folders of a pack that override game files, and the file types each accepts (lower case, with the dot). `text` holds
+/// the game folder's text and character files (stories, golfer lists, terrain descriptions, credits), `fonts` its TrueType
+/// fonts; a base set needs both, a mod may replace single files.
+pub const OVERRIDE_DIRS: [(&str, &[&str]); 6] = [
     ("gfx", &[".png", ".pcx", ".tga", ".bmp", ".flc"]),
     ("sfx", &[".wav", ".ogg"]),
     ("music", &[".wav", ".ogg"]),
     ("video", &[".bik", ".flc"]),
+    ("text", &[".txt", ".dta", ".chr", ".glf", ".pro", ".sve"]),
+    ("fonts", &[".ttf"]),
 ];
 
 /// Where a pack's files are: a folder, or a folder inside a .zip (`prefix` is that folder's path in the archive, with a
 /// trailing slash, or empty when pack.toml is at the archive's root).
 pub enum Source {
     Dir(PathBuf),
-    Zip { zip: Arc<Zip>, prefix: String },
+    Zip {
+        zip: Arc<Zip>,
+        prefix: String,
+    },
+    /// The free base set drawn by the engine itself (crate::freeset): its files are made when they are read.
+    Generated,
 }
 
 impl Source {
@@ -40,6 +49,7 @@ impl Source {
                 let name = zip.names().find(|n| n.to_lowercase() == want)?.to_string();
                 zip.read(&name)
             }
+            Source::Generated => crate::freeset::read(rel),
         }
     }
 
@@ -50,6 +60,7 @@ impl Source {
             Source::Zip { zip, prefix } => {
                 zip.names().filter_map(|n| n.strip_prefix(prefix.as_str()).map(str::to_string)).filter(|n| !n.is_empty()).collect()
             }
+            Source::Generated => crate::freeset::files(),
         }
     }
 
@@ -58,6 +69,7 @@ impl Source {
         match self {
             Source::Dir(d) => d.display().to_string(),
             Source::Zip { .. } => "(zip)".into(),
+            Source::Generated => "built in".into(),
         }
     }
 }
@@ -94,16 +106,46 @@ impl Layer {
 struct Vfs {
     game_dir: PathBuf,
     layers: Vec<Layer>,
+    /// The folders the layers' files make inside the game folder: lower-case folder path ("" for the game folder itself) ->
+    /// lower-case entry name -> (the entry's name as the pack spells it, whether it is a folder).
+    dirs: HashMap<String, HashMap<String, (String, bool)>>,
+}
+
+/// The folder index of the layers' files, so that a game folder made (partly or wholly) of pack files can be listed.
+fn dir_index(layers: &[Layer]) -> HashMap<String, HashMap<String, (String, bool)>> {
+    let mut dirs: HashMap<String, HashMap<String, (String, bool)>> = HashMap::new();
+    dirs.entry(String::new()).or_default();
+    for l in layers {
+        for file in l.index.values() {
+            // the path under the override folder, with the pack's spelling
+            let Some((_, rest)) = file.split_once('/') else { continue };
+            let parts: Vec<&str> = rest.split('/').filter(|c| !c.is_empty()).collect();
+            let mut dir = String::new();
+            for (k, part) in parts.iter().enumerate() {
+                let last = k + 1 == parts.len();
+                dirs.entry(dir.clone()).or_default().entry(part.to_lowercase()).or_insert_with(|| (part.to_string(), !last));
+                if !dir.is_empty() {
+                    dir.push('/');
+                }
+                dir.push_str(&part.to_lowercase());
+            }
+        }
+    }
+    dirs
 }
 
 static MOUNTED: AtomicBool = AtomicBool::new(false);
+
+/// Tests that mount layers take this first: the mount is global.
+#[cfg(test)]
+pub(crate) static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 static VFS: RwLock<Option<Vfs>> = RwLock::new(None);
 
 /// Puts `layers` (in load order: later ones win) over the game folder. Replaces whatever was mounted.
 pub fn mount(game_dir: &Path, layers: Vec<Layer>) {
     let any = layers.iter().any(|l| !l.index.is_empty());
     if let Ok(mut v) = VFS.write() {
-        *v = any.then(|| Vfs { game_dir: game_dir.to_path_buf(), layers });
+        *v = any.then(|| Vfs { game_dir: game_dir.to_path_buf(), dirs: dir_index(&layers), layers });
     }
     MOUNTED.store(any, Ordering::Release);
 }
@@ -166,6 +208,39 @@ pub fn overridden_by(p: &Path) -> Option<String> {
     find(&v.layers, &rel).map(|(l, _)| l.id.clone())
 }
 
+/// What the layers put at `p` inside the game folder: 0 nothing, 1 a file, 2 a folder.
+pub fn virtual_kind(p: &Path) -> u8 {
+    if !MOUNTED.load(Ordering::Acquire) {
+        return 0;
+    }
+    let Ok(v) = VFS.read() else { return 0 };
+    let Some(v) = v.as_ref() else { return 0 };
+    if p == v.game_dir {
+        return 2;
+    }
+    let Some(rel) = game_rel(v, p) else { return 0 };
+    if v.dirs.contains_key(&rel) {
+        return 2;
+    }
+    if find(&v.layers, &rel).is_some() {
+        return 1;
+    }
+    0
+}
+
+/// The names (as the packs spell them) of the files and folders the layers put directly inside the folder `p` of the game
+/// folder, with whether each is a folder.
+pub fn virtual_entries(p: &Path) -> Vec<(String, bool)> {
+    if !MOUNTED.load(Ordering::Acquire) {
+        return Vec::new();
+    }
+    let Ok(v) = VFS.read() else { return Vec::new() };
+    let Some(v) = v.as_ref() else { return Vec::new() };
+    let rel = if p == v.game_dir { Some(String::new()) } else { game_rel(v, p) };
+    let Some(rel) = rel else { return Vec::new() };
+    v.dirs.get(&rel).map(|m| m.values().cloned().collect()).unwrap_or_default()
+}
+
 /// True when an enabled pack replaces the game file at `p`.
 pub fn overridden(p: &Path) -> bool {
     overridden_by(p).is_some()
@@ -198,6 +273,16 @@ mod tests {
         // an unlisted type in an override folder is ignored
         let c = layer("c", &[("gfx/readme.txt", b"")]);
         assert!(c.index.is_empty());
+    }
+
+    #[test]
+    fn folders_of_the_layers() {
+        let a = layer("a", &[("gfx/Interface/BuildPanel.png", b"A"), ("text/Themes/Standard/Story.txt", b"t"), ("fonts/Font.TTF", b"f")]);
+        let d = dir_index(&[a]);
+        assert_eq!(d[""]["interface"], ("Interface".to_string(), true));
+        assert_eq!(d[""]["font.ttf"], ("Font.TTF".to_string(), false));
+        assert_eq!(d["themes/standard"]["story.txt"], ("Story.txt".to_string(), false));
+        assert_eq!(d["interface"]["buildpanel.png"], ("BuildPanel.png".to_string(), false));
     }
 
     #[test]

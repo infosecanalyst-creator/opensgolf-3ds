@@ -747,6 +747,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "opensgolf"
+version = "0.1.0"
+dependencies = [
+ "cpal",
+ "fontdue",
+ "miniquad",
+ "miniz_oxide",
+ "serde",
+ "serde_json",
+ "sg-core",
+ "ureq",
+]
+
+[[package]]
 name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -987,6 +1001,7 @@ dependencies = [
 name = "sg-core"
 version = "0.1.0"
 dependencies = [
+ "fontdue",
  "lewton",
  "miniz_oxide",
  "rhai",
@@ -1034,20 +1049,6 @@ name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
-
-[[package]]
-name = "simgolf"
-version = "0.1.0"
-dependencies = [
- "cpal",
- "fontdue",
- "miniquad",
- "miniz_oxide",
- "serde",
- "serde_json",
- "sg-core",
- "ureq",
-]
 
 [[package]]
 name = "slab"

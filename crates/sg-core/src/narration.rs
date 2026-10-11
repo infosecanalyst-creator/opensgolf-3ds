@@ -1,10 +1,12 @@
 //! First-time narration (the tail of the reaction routine 0x467a00): the first time each reaction type fires in a game, the
-//! message window explains it once: `'` + the golfer's thought + `' ` + the golfer's name + a sentence for the type.
+//! message window explains it once: `'` + the golfer's thought + `' ` + the golfer's name + a sentence for the type
+//! (STR_NARR_* in lang/en.txt).
 //!
 //! Every rule and string here is from the publisher's golf.exe (the English text is the game's own).
 
 use crate::course::Course;
 use crate::golfer::Club;
+use crate::lang::{tr, trf};
 use crate::thoughts::feature;
 use crate::tracts::type_name;
 
@@ -24,93 +26,75 @@ pub fn bit(id: u32) -> (usize, u32) {
 }
 
 impl Club {
-    /// The narration sentence that follows the golfer's name for reaction type `id` with argument `arg` (the switch at the
-    /// end of 0x467a00), or None for the types that have none (those are never narrated).
+    /// The narration sentence about the golfer for reaction type `id` with argument `arg` (the switch at the end of
+    /// 0x467a00, which writes the golfer's name and then the sentence), or None for the types that have none (those are
+    /// never narrated).
     pub fn narration_verdict(&self, c: &Course, id: u32, arg: i32, g: usize) -> Option<String> {
-        let he = if self.male(g) != 0 { "he" } else { "she" };
+        let he = if self.male(g) != 0 { tr("STR_NARR_HE") } else { tr("STR_NARR_SHE") };
         let name = self.vip_name(g);
-        // the terrain table's singular name (0x578350 + 0x30 * arg), as the theme renames it
-        let ground = || type_name(arg.clamp(0, 22) as u8, c.theme, false);
-        // the scenery name of a tile (0x407700)
-        let thing = || feature(c, arg / 50, arg % 50, c.theme);
-        const HIRE: &str = " Click the employees button on the People menu to hire course employees.";
+        let key = match id {
+            1 => "STR_NARR_01_TOUGH_SHOT",
+            2 => "STR_NARR_02_EASY_SHOT_IN",
+            3 => "STR_NARR_03_WORSE_LOCATION",
+            4 => "STR_NARR_04_NO_DANGERS",
+            5 | 0x25 | 0x26 => "STR_NARR_05_CHALLENGING",
+            6 => "STR_NARR_06_SLOPE",
+            8 => "STR_NARR_08_NO_SAFE_PLACE",
+            9 => "STR_NARR_09_ALMOST_HIT",
+            10 => "STR_NARR_0A_NO_PATH",
+            11 => "STR_NARR_0B_SCENIC",
+            12 => "STR_NARR_0C_BOUNCED_OFF_TREE",
+            13 => "STR_NARR_0D_ENDED_UP_IN",
+            14 => "STR_NARR_0E_SODA",
+            15 => "STR_NARR_0F_SNACK",
+            16 => "STR_NARR_10_CURVED_LEFT",
+            17 => "STR_NARR_11_FADED_RIGHT",
+            18 => "STR_NARR_12_TASTY_SNACK",
+            0x14 => "STR_NARR_14_EYESORE",
+            0x15 => "STR_NARR_15_WAITING",
+            0x16 => "STR_NARR_16_VACATION_HOME",
+            0x18 => "STR_NARR_18_DANDELIONS",
+            0x19 => "STR_NARR_19_BEVERAGE",
+            0x1a => "STR_NARR_1A_BENCH_NEEDED",
+            0x1b => "STR_NARR_1B_BENCH",
+            0x1c => "STR_NARR_1C_LOVELY",
+            0x1d => "STR_NARR_1D_DIFFERENT",
+            0x1e => "STR_NARR_1E_SIMILAR",
+            0x1f => "STR_NARR_1F_DIFFICULT",
+            0x20 | 0x21 => "STR_NARR_20_DECISION",
+            0x23 => "STR_NARR_23_QUIT",
+            0x24 => "STR_NARR_24_ANGRY_GOLFER",
+            0x27 => "STR_NARR_27_WILDLIFE",
+            0x33 => "STR_NARR_33_DRIVING_RANGE",
+            0x34 => "STR_NARR_34_PRO_SHOP",
+            0x35 => "STR_NARR_35_PUTTING_GREEN",
+            0x36 => "STR_NARR_36_NEW_CLUB",
+            0x37 => "STR_NARR_37_DRAW",
+            0x38 => "STR_NARR_38_FADE",
+            0x39 => "STR_NARR_39_HIGH",
+            0x3c => "STR_NARR_3C_LOW",
+            0x41 => "STR_NARR_41_CANNOT_SEE",
+            _ => return None,
+        };
         let s = match id {
-            1 => " has successfully made a tough-looking shot and is enjoying your course.".to_string(),
-            2 => format!(
-                " is disappointed that an easy looking shot ended up in the {}. If it happens again {he} will become discouraged.",
-                ground()
-            ),
-            3 => format!(" is disappointed that the shot has ended up in a worse location, the {}.", ground()),
-            4 => {
-                "'s next shot does not involve many dangers or hazards. Too many shots like this may tend to bore your players.".to_string()
-            }
-            5 | 0x25 | 0x26 => format!("'s next shot looks challenging - {he} will be happy if lands on the green or fairway."),
-            6 => " plans to use the slope of the hill to run the ball towards the hole.".to_string(),
-            8 => " cannot find a safe place to aim the next shot.  This can be frustrating. Perhaps you should add more fairway to \
-                  this hole."
-                .to_string(),
-            9 => " was almost hit by a shot from another hole. This is very scary.  Try to keep your holes seperated, sometimes \
-                  trees can be useful."
-                .to_string(),
-            10 => format!(
-                " is unhappy because no path has been provided to walk through the {}. Press 'p' to select the path tool.",
-                ground()
-            ),
-            11 => format!(" is pleased to have a scenic {} in view for the next shot.", thing()),
-            12 => format!("'s ball just bounced off a tree. {name} will be more careful next time."),
-            13 => format!("'s ball somehow ended up in the {}. {name} will be more careful next time.", ground()),
-            14 => format!(" needs to find a soda vendor soon or {he} will be unhappy."),
-            15 => format!(" needs to find a snack bar soon or {he} will be unhappy."),
-            16 => " is amazed that the last shot curved off to the left.".to_string(),
-            17 => " is amazed that the last shot faded off to the right.".to_string(),
-            18 => " is enjoying a tasty snack at your conveniently located snack bar.".to_string(),
-            0x14 => format!(" is disappointed to see a {} in the middle of your otherwise lovely golf course.", thing()),
-            0x15 => format!(
-                " is frustrated that a lot of golfers are waiting at this hole. Placing a Ranger/Marshall near the tee will speed \
-                 up play on this hole.{HIRE}"
-            ),
+            // the terrain table's singular name (0x578350 + 0x30 * arg), as the theme renames it
+            2 | 3 | 10 | 13 => trf(key, &[("GOLFER", &name), ("TERRAIN", &type_name(arg.clamp(0, 22) as u8, c.theme, false)), ("HE", &he)]),
+            // the scenery name of a tile (0x407700)
+            11 | 0x14 | 0x1c => trf(key, &[("GOLFER", &name), ("WHAT", &feature(c, arg / 50, arg % 50, c.theme))]),
             0x16 => {
                 let who = self.celebrities.get(arg.max(0) as usize).map(|p| p.name.as_str()).unwrap_or("");
-                format!(" is excited to see {who}'s vacation home on your golf course.")
+                trf(key, &[("GOLFER", &name), ("CELEBRITY", &who)])
             }
-            0x18 => format!(
-                " is disappointed to see dandelions growing in the middle of your otherwise lovely golf course. Hire a \
-                 groundskeeper to eradicate these weeds.{HIRE}"
-            ),
-            0x19 => " is enjoying a cool refreshing beverage from your friendly soda vendor.".to_string(),
-            0x1a => format!(" needs to find a bench to rest on soon or {he} will start to slow down."),
-            0x1b => " is relaxing on your comfy bench and will soon resume play with renewed energy.".to_string(),
-            0x1c => format!(" is enjoying the lovely {} you have included in your course.", thing()),
-            0x1d => " likes the fact that this hole is very different from the last hole.".to_string(),
-            0x1e => " dislikes the fact that this hole is very similar to the last hole. Try to vary the par and direction of \
-                     your holes."
-                .to_string(),
-            0x1f => format!("'s next shot looks extremely difficult. {name} will be thrilled if it finds the green or fairway."),
-            0x20 | 0x21 => {
-                " has an interesting decision to make on this next shot. This is a characteristic of a well designed hole.".to_string()
-            }
-            0x23 => " has quit playing in frustration. Security may be required.".to_string(),
-            0x24 => " does not enjoy seeing an angry golfer on your course.".to_string(),
-            0x27 => " is intrigued by the wildlife on your course.".to_string(),
-            0x33 => " appreciates the new driving range you added to your course.".to_string(),
-            0x34 => " appreciates the new pro shop you added to your course.".to_string(),
-            0x35 => " appreciates the new putting green you added to your course.".to_string(),
-            0x36 => " is using this club for the first time today. A good course will use every club in the bag.".to_string(),
-            0x37 => " is setting up to hit a draw shot which curves from right to left.".to_string(),
-            0x38 => " is setting up to hit a fade shot which curves from left to right.".to_string(),
-            0x39 => " is setting up to hit a high shot which will spin back once it hits the green.".to_string(),
-            0x3c => " is setting up to hit a low shot which will run under the trees.".to_string(),
-            0x41 => " hit a good shot but cannot see exactly where it landed because of trees or elevation. ".to_string(),
-            _ => return None,
+            _ => trf(key, &[("GOLFER", &name), ("HE", &he)]),
         };
         Some(s)
     }
 
-    /// The whole narration message for reaction `id`: the thought in quotes, the golfer's name and the verdict.
+    /// The whole narration message for reaction `id`: the thought in quotes, then the narration sentence.
     pub fn narration_text(&self, c: &Course, id: u32, arg: i32, g: usize) -> Option<String> {
         let verdict = self.narration_verdict(c, id, arg, g)?;
         let thought = self.thought(c, id, arg, g).text;
-        Some(format!("'{thought}' {}{verdict}", self.vip_name(g)))
+        Some(trf("STR_NARR_MESSAGE", &[("THOUGHT", &thought), ("NARRATION", &verdict)]))
     }
 
     /// Whether reaction `id` of golfer g may be narrated now (0x467a00): not type 0x32, more than `GAP` ticks since the last
@@ -168,16 +152,16 @@ mod tests {
         assert_eq!(
             cl.narration_verdict(&c, 2, 7, 2).unwrap(),
             format!(
-                " is disappointed that an easy looking shot ended up in the sand trap. If it happens again {he} will become discouraged."
+                "{name} is disappointed that an easy looking shot ended up in the sand trap. If it happens again {he} will become discouraged."
             )
         );
         assert_eq!(
             cl.narration_verdict(&c, 10, 17, 2).unwrap(),
-            " is unhappy because no path has been provided to walk through the water. Press 'p' to select the path tool."
+            format!("{name} is unhappy because no path has been provided to walk through the water. Press 'p' to select the path tool.")
         );
         assert_eq!(
             cl.narration_verdict(&c, 13, 13, 2).unwrap(),
-            format!("'s ball somehow ended up in the tree. {name} will be more careful next time.")
+            format!("{name}'s ball somehow ended up in the tree. {name} will be more careful next time.")
         );
         assert_eq!(cl.narration_verdict(&c, 0x26, 0, 2), cl.narration_verdict(&c, 5, 0, 2));
         assert!(cl.narration_verdict(&c, 7, 0, 2).is_none());

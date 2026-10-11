@@ -12,6 +12,7 @@ use crate::gfx::Gfx;
 use crate::info_ui::c15;
 use crate::panels_ui::{blit, hit, hit_scaled, tip_bar, Cut, Hit};
 use crate::ui::{Screen as Ui, F_ARIAL10, F_MANUAL15};
+use sg_core::lang::tr;
 
 /// The body, cut from the sheet and drawn at the same place.
 pub const MEMBER_BODY: Cut = (215.0, 474.0, 585.0, 126.0);
@@ -166,9 +167,9 @@ impl App {
         }
         if tip {
             let t = match h {
-                -2 => "Golfers".to_string(),
+                -2 => tr("STR_TIP_GOLFERS").to_string(),
                 -3 => self.pro_name(),
-                -4 => "Hire Employees".to_string(),
+                -4 => tr("STR_TIP_HIRE_EMPLOYEES").to_string(),
                 _ => return,
             };
             let (mx, my) = self.pstate.mouse;

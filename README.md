@@ -10,12 +10,13 @@ and it is built to be modded.
 Open the link above in a browser (Chrome, Edge or Firefox), click **Choose your SimGolf game folder** and pick the folder of
 your own installed copy of SimGolf (the folder that contains `Flics`, `Sounds` and `Data`). The game starts right away.
 
-**For now you need your own copy of SimGolf.** The original game's art, sounds, music and videos belong to Electronic Arts
-and are not part of this project; the game reads them from your copy at runtime, inside your browser tab or on your computer,
-and never uploads or redistributes them. The English text of the original's in-game messages, which exists only inside the
-original program, is included in `lang/en.txt` so the game can read word for word like the original; it remains Electronic
-Arts' text. A free base set that lets OpenSGolf run without the original files is being made
-(see [Modding and content](#modding-and-content)).
+**No copy of SimGolf? Click _Play with the free OpenSGolf graphics_.** OpenSGolf has its own free base set (see
+[Free base set](#free-base-set-opensgolf-free)): simple art, synthesised sounds and new text, so it is playable from start to
+finish without any file of the original. With your own copy you get the original's look and sound: the original game's art,
+sounds, music and videos belong to Electronic Arts and are not part of this project; the game reads them from your copy at
+runtime, inside your browser tab or on your computer, and never uploads or redistributes them. The English text of the
+original's in-game messages, which exists only inside the original program, is included in `lang/en.txt` so the game can read
+word for word like the original; it remains Electronic Arts' text.
 
 OpenSGolf is not affiliated with or endorsed by Electronic Arts or Firaxis Games. SimGolf and Sid Meier's are trademarks of
 their owners and are named here only to say which game's files OpenSGolf can use.
@@ -25,7 +26,24 @@ their owners and are named here only to say which game's files OpenSGolf can use
 OpenSGolf is free software under the **GNU General Public License, version 2 or (at your option) any later version**
 (GPL-2.0-or-later), the same licence as OpenTTD: see [LICENSE](LICENSE). Anyone may use, change and share it, and changed
 versions must stay open under the same terms. The bundled Liberation Sans font is under the SIL Open Font License. Content
-packs (mods) choose their own licence; the free base set will be GPL-2.0-or-later too.
+packs (mods) choose their own licence; the free base set is GPL-2.0-or-later too.
+
+## Free base set (opensgolf-free)
+
+Like OpenGFX for OpenTTD, `opensgolf-free` is a complete set of art, sounds and text that contains nothing from the original:
+panels and buttons, terrain textures for the four themes, golfers, staff, celebrities and animals with all their views and
+animation frames, buildings, trees, flowers and landmarks, synthesised sound effects and voices, our own stories, characters,
+famous golfers and terrain descriptions, and Liberation Sans (OFL) as the fonts. It is drawn by the engine itself
+(`crates/sg-core/src/freeset/`) when the game reads a file, in exactly the sizes and layouts the engine expects, so nothing has
+to be downloaded. It is simple placeholder art meant to grow through contributions: artists replace files one at a time in
+[packs/opensgolf-free](packs/opensgolf-free/README.md) (see [CONTRIBUTING.md](CONTRIBUTING.md)).
+
+* The game uses it by itself when it finds no SimGolf files (no `--game` folder, or one without them), and says so.
+* `--base opensgolf-free` picks it for a run even with your copy present (`--base original` the reverse); Preferences >
+  Content packs picks it for good.
+* In the browser: **Play with the free OpenSGolf graphics** on the start page.
+* `sgtool freeset DIR` writes all 5,465 files to a folder (about 82 MB, which is why they are made at run time rather than
+  committed).
 
 ## Modding and content
 
@@ -60,32 +78,35 @@ See docs/FORMATS.md (data formats), docs/TERRAIN.md (terrain engine) and docs/PL
 Install Rust (https://rustup.rs), then from this folder:
 
     cargo build --release
-    target/release/simgolf --game "/path/to/game/Program_Files_(ENGLISH)"
+    target/release/opensgolf --game "/path/to/game/Program_Files_(ENGLISH)"
+    target/release/opensgolf            # no copy of the game: the free base set
 
-On Windows the programs are `target\release\simgolf.exe` and so on. Nothing else needs installing on macOS or Windows. On Linux the
+On Windows the programs are `target\release\opensgolf.exe` and so on. Nothing else needs installing on macOS or Windows. On Linux the
 sound needs the ALSA headers to build (`sudo apt install libasound2-dev`), or build without sound with
-`cargo build --release -p simgolf --no-default-features`.
+`cargo build --release -p opensgolf --no-default-features`.
 
 | Program | What it does |
 |---------|--------------|
-| `simgolf` | The game. |
-| `sgtool` | Inspect and convert the original assets: `check DIR` decodes everything and reports failures; `png file.pcx out.png` (also tga, bmp, flc [frame]); `sheet anim.flc sheet.png`; `chr Gack.chr gack`; `top10 top10.sve`; `dta file.dta`; `story file.txt`; `fixture DIR [font.ttf]` writes a stand-in game folder with placeholder art for tests. |
+| `opensgolf` | The game. |
+| `sgtool` | Inspect and convert the original assets: `check DIR` decodes everything and reports failures; `png file.pcx out.png` (also tga, bmp, flc [frame]); `sheet anim.flc sheet.png`; `chr Gack.chr gack`; `top10 top10.sve`; `dta file.dta`; `story file.txt`; `freeset DIR` writes the free base set as a pack folder; `fixture DIR [font.ttf]` writes a small stand-in game folder for tests. |
 | `sgplay` | Plays the Bink intro and closing videos through an installed ffmpeg (docs/SOUND_VIDEO.md). |
 
 Code layout: `crates/sg-core` holds the decoders and the game rules (no window, no audio device, unit tested, including golden values
 captured from the earlier C++ port); `crates/simgolf` is the game (miniquad for the window and OpenGL, cpal for sound, fontdue for the
 game's font); `crates/sgtool` and `crates/sgplay` are the tools. The earlier C++ port is kept in `legacy/cpp` for reference.
 
-`cargo test` runs the unit tests. CI builds and tests on macOS, Windows and Linux, and on Linux also starts the game on a virtual
-display against a placeholder data folder and saves a screenshot.
+`cargo test` runs the unit tests. CI builds and tests on macOS, Windows and Linux, and on Linux also plays the game headless on
+the free base set (`tools/freeset_playtest.sh`: a new game, a hole built, about three months of play, save, load, every report
+and title screen) and keeps the stills.
 
 ## In a browser
 
 `web/build.sh` builds the browser version into `web/dist` (needs `rustup target add wasm32-unknown-unknown`). Serve that folder
 with any static web server, for example `python3 -m http.server -d web/dist`, and open it. The page asks for the folder of your
 own SimGolf copy (the one containing Flics, Sounds and Data); its files are read into the browser tab only, nothing is uploaded.
+Without one, *Play with the free OpenSGolf graphics* starts on the free base set.
 Sound starts after the first click (a browser rule). Saved courses are kept in the browser's local storage. CI builds it too
-(artifact `simgolf-web`).
+(artifact `opensgolf-web`).
 
 ## HD graphics (optional)
 

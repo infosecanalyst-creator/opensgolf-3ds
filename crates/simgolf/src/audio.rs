@@ -96,7 +96,7 @@ mod device {
     }
 }
 
-/// In a browser the page pulls sound through Web Audio (web/simgolf.js): it calls `sg_audio_fill` with its output rate and a
+/// In a browser the page pulls sound through Web Audio (web/opensgolf.js): it calls `sg_audio_fill` with its output rate and a
 /// frame count and gets back interleaved stereo f32 samples.
 #[cfg(target_arch = "wasm32")]
 mod device {

@@ -11,6 +11,7 @@ use crate::render::Rect;
 use crate::ui::{rgb, Screen as Ui};
 use sg_core::golfer::game;
 use sg_core::land;
+use sg_core::lang::{tr, trf};
 use sg_core::staff;
 use sg_core::tournament::{Prep, Results, SgaReport};
 
@@ -20,7 +21,7 @@ use sg_core::tournament::{Prep, Results, SgaReport};
 /// when that box stays ticked. (Footage of the original, p1 4626-4646, shows a list without the towers' line and a tower
 /// already standing while it is open: a different build of the game from the publisher's exe, which the port follows.)
 fn prep_box(prep: &Prep, mask: i32) -> ChoiceBox {
-    let mut lines = vec!["In preparation for the tournament the".to_string(), "following changes have been recommended:".to_string()];
+    let mut lines = vec![tr("STR_PREP_HEADING_1").to_string(), tr("STR_PREP_HEADING_2").to_string()];
     lines.extend(prep.lines().into_iter().map(|l| format!(" {l}")));
     let mut b = ChoiceBox::new(lines, 400.0, 100.0);
     b.checks = Some(mask as u32);
@@ -54,7 +55,7 @@ impl App {
     /// the report, a passing one the offer.
     pub fn begin_tournament(&mut self) {
         if !self.club.can_begin_tournament() {
-            self.show_toast("The SGA has not offered you a tournament yet");
+            self.show_toast(tr("STR_TOAST_NO_TOURNAMENT_OFFER"));
             return;
         }
         self.club.purse = 0;
@@ -185,7 +186,7 @@ impl App {
     pub fn cancel_tournament(&mut self) {
         if self.club.cancel_tournament(&mut self.exe_rng, &self.course) {
             self.remove_tv();
-            self.show_toast("The tournament has been canceled.");
+            self.show_toast(tr("STR_TOAST_TOURNAMENT_CANCELED"));
             self.panel = 0;
         }
     }
@@ -195,12 +196,12 @@ impl App {
     /// (Footage of the original: "2004 San Diego Open tournament".)
     fn offer_box(&self, sg: &SgaScreen) -> ChoiceBox {
         let lines = vec![
-            "The SGA offers to hold the".to_string(),
-            format!("{} tournament", self.open_name()),
-            "at your course with a".to_string(),
-            format!("first prize of \u{a7}{},000.", crate::ui::group(sg.report.purse.max(0) as u64)),
-            " 'Great, let the games begin.'".to_string(),
-            " 'I think I need more practice.'".to_string(),
+            tr("STR_OFFER_LINE_1").to_string(),
+            trf("STR_OFFER_LINE_2", &[("EVENT", &self.open_name())]),
+            tr("STR_OFFER_LINE_3").to_string(),
+            trf("STR_OFFER_LINE_4", &[("PURSE", &crate::ui::group(sg.report.purse.max(0) as u64))]),
+            tr("STR_OFFER_YES").to_string(),
+            tr("STR_OFFER_NO").to_string(),
         ];
         ChoiceBox::new(lines, 400.0, 360.0)
     }
@@ -341,18 +342,18 @@ impl App {
         // (174, 288); then centred on 400 at 310 the verdict in 0x821f28 (Manual SSi 16) or the event in 0x821020, and the
         // purse in 0x821f28 at 338
         use crate::ui::{F_INFO14, F_INFO16, F_INFO_TITLE};
-        s.put(g, F_INFO_TITLE, 190.0, 42.0, "REPORT of the SIM GOLF ASSOCIATION", ink);
+        s.put(g, F_INFO_TITLE, 190.0, 42.0, tr("STR_SGA_TITLE"), ink);
         let c = r.class.clamp(0, 3);
-        let class = sg_core::economy::RANK_NAMES[c as usize];
-        s.put(g, F_INFO14, 75.0, 77.0, &format!("Selection Criteria: {class}"), ink);
+        let class = sg_core::economy::rank_name(c as usize);
+        s.put(g, F_INFO14, 75.0, 77.0, &trf("STR_SGA_SELECTION", &[("CLASS", &class)]), ink);
         // "Grade:" at (306, 77); the score out of 100 right-aligned at 396, or a failed course's red "0/100" at (370, 80)
-        s.put(g, F_INFO14, 306.0, 77.0, "Grade:", ink);
+        s.put(g, F_INFO14, 306.0, 77.0, tr("STR_SGA_GRADE"), ink);
         if r.score <= 0 {
             s.put(g, F_INFO14, 370.0, 80.0, "0/100", red);
         } else {
             s.put_right(g, F_INFO14, 396.0, 77.0, &format!("{}/100", r.score), ink);
         }
-        s.put(g, F_INFO14, 497.0, 77.0, "Ideal  (Minimum)", ink);
+        s.put(g, F_INFO14, 497.0, 77.0, tr("STR_SGA_IDEAL_MINIMUM"), ink);
         // the ideal, then the minimum in brackets (0x44fb30): the length grouped by thousands with a "+"
         let k = r.ideal[4];
         let ideal_len = r.ideal[0];
@@ -362,7 +363,7 @@ impl App {
         let ideals = [
             format!("{}+  ({})", num(ideal_len), num(min_len)),
             format!("{}  ({})", r.ideal[1], r.ideal[1] - 9 / (4 - c)),
-            "4 hours or less  (max: 5 hrs)".to_string(),
+            tr("STR_SGA_IDEAL_TIME").to_string(),
             "100%+".to_string(),
             format!("{k}  ({min_k})"),
             format!("{k}  ({min_k})"),
@@ -374,18 +375,18 @@ impl App {
         for (i, label) in SGA_ROWS.iter().enumerate() {
             let y = 104.0 + 17.0 * i as f32;
             let ty = y + 10.0;
-            s.text_centered(g, 119.0, ty, label, 14.0, ink);
+            s.text_centered(g, 119.0, ty, tr(label), 14.0, ink);
             let v = r.values[i];
             let value = match i {
-                0 => format!("{} yds.", num(v)),
-                2 if v > 59 => format!("{} h {} m", v / 60, v % 60),
-                2 => format!("{v} m"),
+                0 => trf("STR_SGA_VALUE_YARDS", &[("YARDS", &num(v))]),
+                2 if v > 59 => trf("STR_SGA_VALUE_HOURS", &[("HOURS", &(v / 60)), ("MINUTES", &(v % 60))]),
+                2 => trf("STR_SGA_VALUE_MINUTES", &[("MINUTES", &v)]),
                 3 => format!("{v}%"),
                 _ => v.to_string(),
             };
             s.text_centered(g, 238.0, ty, &value, 14.0, ink);
             if r.scores[i] == 0 {
-                s.text_centered(g, 386.0, ty, "- not acceptable -", 14.0, red);
+                s.text_centered(g, 386.0, ty, tr("STR_SGA_NOT_ACCEPTABLE"), 14.0, red);
             } else {
                 for j in 0..r.scores[i] {
                     // the pip is GBUBBLES cut 17 (object 0x59b33c), the small gold star, at (303 + 14 j, row top)
@@ -399,12 +400,19 @@ impl App {
             }
             s.text(g, 490.0, ty, &ideals[i], 14.0, ink);
         }
-        s.put(g, F_INFO14, 174.0, 288.0, "Committee recommendation", ink);
+        s.put(g, F_INFO14, 174.0, 288.0, tr("STR_SGA_RECOMMENDATION"), ink);
         if r.score <= 0 {
-            s.put_centered(g, F_INFO16, 400.0, 310.0, "Improvement Required.", red);
+            s.put_centered(g, F_INFO16, 400.0, 310.0, tr("STR_SGA_IMPROVEMENT_REQUIRED"), red);
         } else {
             s.put_centered(g, F_INFO_TITLE, 400.0, 310.0, r.event, ink);
-            s.put_centered(g, F_INFO16, 400.0, 338.0, &format!("\u{a7}{},000 first prize.", crate::ui::group(r.purse.max(0) as u64)), ink);
+            s.put_centered(
+                g,
+                F_INFO16,
+                400.0,
+                338.0,
+                &trf("STR_SGA_FIRST_PRIZE", &[("PURSE", &crate::ui::group(r.purse.max(0) as u64))]),
+                ink,
+            );
         }
         // footage of the original: the art's gold tick is covered by the blue idle cut, the offer's box up or not
         let _ = ok;
@@ -418,9 +426,9 @@ impl App {
             .land
             .as_ref()
             .and_then(|l| sg_core::data::properties().get(l.slot.property))
-            .map(|p| p.name.to_string())
+            .map(|p| p.name().to_string())
             .unwrap_or_else(|| self.course_name.clone());
-        format!("{} {place} Open", 2001 + self.econ.year_index())
+        trf("STR_TOURNAMENT_OPEN_NAME", &[("YEAR", &(2001 + self.econ.year_index())), ("PLACE", &place)])
     }
 
     /// The leaderboard box over the course while the tournament runs (0x45a090 while a golfer is still out), as the exe
@@ -445,13 +453,13 @@ impl App {
         let lines = if self.club.championship() {
             // championship play: the event by the difficulty (0x822c88), then "at " and the course's name without its class
             [
-                "LEADER BOARD of the".to_string(),
-                sg_core::championship::EVENTS[self.difficulty.clamp(0, 3) as usize].to_string(),
-                format!("at {}", self.base_course_name()),
+                tr("STR_LEADERBOARD_OF_THE").to_string(),
+                sg_core::championship::event_name(self.difficulty).to_string(),
+                trf("STR_LEADERBOARD_AT", &[("COURSE", &self.base_course_name())]),
             ]
         } else {
             // the prize in thousands as a plain number (itoa) then ",000": no grouping
-            ["LEADER BOARD of".to_string(), format!("the \u{a7}{purse},000"), self.open_name()]
+            [tr("STR_LEADERBOARD_OF").to_string(), trf("STR_LEADERBOARD_PURSE", &[("PURSE", &purse)]), self.open_name()]
         };
         let shadow = rgb(0.0, 0.0, 0.0);
         for (t, y) in lines.iter().zip([9.0, 21.0, 33.0]) {
@@ -490,16 +498,16 @@ impl App {
         // fonts (0x45a090): the title in 0x821020 (Klepto 24) centred at (320, 16), the rest in 0x821ee8 (Manual SSi 14),
         // every y below the text's top
         use crate::ui::F_INFO14 as F;
-        s.put_centered(g, crate::ui::F_INFO_TITLE, 320.0, 16.0, "TOURNAMENT RESULTS", ink);
+        s.put_centered(g, crate::ui::F_INFO_TITLE, 320.0, 16.0, tr("STR_RESULTS_TITLE"), ink);
         let nh = (1..19).filter(|&h| res.pars[h] != 0).count();
         // the headings at y 50: "Ranking" from x 25, each open hole's number centred on its column (175 + 27 (h - 1), by
         // hole number), "F" on 667 and "Prize" from 700
-        s.put(g, F, 25.0, 50.0, "Ranking", ink);
+        s.put(g, F, 25.0, 50.0, tr("STR_RESULTS_RANKING"), ink);
         for h in (1..19).filter(|&h| res.pars[h] != 0) {
             s.put_centered(g, F, hole_x(h), 50.0, &h.to_string(), ink);
         }
-        s.put_centered(g, F, 667.0, 50.0, "F", ink);
-        s.put(g, F, 700.0, 50.0, "Prize", ink);
+        s.put_centered(g, F, 667.0, 50.0, tr("STR_RESULTS_FINAL"), ink);
+        s.put(g, F, 700.0, 50.0, tr("STR_RESULTS_PRIZE"), ink);
         let (ys, end) = result_rows(res);
         for ((i, r), &y) in res.rows.iter().enumerate().zip(&ys) {
             let place = i + 1;
@@ -559,16 +567,16 @@ const TRIM_X: f32 = 2.0;
 const HEADER_TRIM_Y: f32 = 10.0;
 
 const SGA_ROWS: [&str; 10] = [
-    "Length of Course",
-    "Number of Holes",
-    "Time to Play",
-    "Fun Factor",
-    "Holes with Variety",
-    "Scenic Holes",
-    "Length Holes",
-    "Accuracy Holes",
-    "Imagination Holes",
-    "Facilities on Site",
+    "STR_SGA_ROW_LENGTH",
+    "STR_SGA_ROW_HOLES",
+    "STR_SGA_ROW_TIME",
+    "STR_SGA_ROW_FUN",
+    "STR_SGA_ROW_VARIETY",
+    "STR_SGA_ROW_SCENIC",
+    "STR_SGA_ROW_LENGTH_HOLES",
+    "STR_SGA_ROW_ACCURACY_HOLES",
+    "STR_SGA_ROW_IMAGINATION_HOLES",
+    "STR_SGA_ROW_FACILITIES",
 ];
 
 /// The band a results row is drawn on (its y on the sheet, its height, and how far above the row's text it starts): the
@@ -619,7 +627,7 @@ fn results_ok_y(res: &Results) -> f32 {
 
 fn score_text(v: i32) -> String {
     match v {
-        0 => "E".to_string(),
+        0 => tr("STR_SCORE_EVEN").to_string(),
         v if v > 0 => format!("+{v}"),
         v => format!("{v}"),
     }

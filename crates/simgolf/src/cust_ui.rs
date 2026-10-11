@@ -17,8 +17,8 @@ use crate::app::*;
 use crate::gfx::Gfx;
 use crate::screens_ui::{c15, dist, tooltip, top, CLASS_WORDS, SMALL, TRAIT_WORDS};
 use crate::ui::{rgb, wrap_text, Image, Screen as Ui};
-use sg_core::pro::SKILL_NAMES;
-use sg_core::roster::{Person, SAYINGS, SAYING_CODES, SAYING_LABELS};
+use sg_core::lang::{tr, trf};
+use sg_core::roster::{Person, SAYINGS, SAYING_CODES, SAYING_LABEL_KEYS};
 use std::path::PathBuf;
 
 /// What is being typed: the name, the profession, a dialogue line or the biography.
@@ -114,23 +114,24 @@ const TIPS: [&str; 21] = [
     "",
     "",
     "",
-    "Load character",
-    "Save character",
-    "Body type",
-    "Adult/child",
-    "Select face",
-    "Shirt Color",
-    "Pants Color",
-    "Hair Color",
-    "Skin Tone",
-    "Gender",
-    "Cancel",
-    "Exit",
-    "Update Bio",
+    "STR_CUST_LOAD",
+    "STR_CUST_SAVE",
+    "STR_CUST_BODY_TYPE",
+    "STR_CUST_ADULT_CHILD",
+    "STR_CUST_SELECT_FACE",
+    "STR_CUST_SHIRT_COLOR",
+    "STR_CUST_PANTS_COLOR",
+    "STR_CUST_HAIR_COLOR",
+    "STR_CUST_SKIN_TONE",
+    "STR_CUST_GENDER",
+    "STR_CUST_CANCEL",
+    "STR_CUST_EXIT",
+    "STR_CUST_UPDATE_BIO",
 ];
 
-const MARITAL: [(u8, &str); 4] = [(0x08, "Single"), (0x10, "Married"), (0x20, "Divorced"), (0x40, "Widowed")];
-const AGES: [(u8, &str); 3] = [(0x01, "Young"), (0x02, "Middle Aged"), (0x04, "Mature")];
+const MARITAL: [(u8, &str); 4] =
+    [(0x08, "STR_MARITAL_SINGLE"), (0x10, "STR_MARITAL_MARRIED"), (0x20, "STR_MARITAL_DIVORCED"), (0x40, "STR_MARITAL_WIDOWED")];
+const AGES: [(u8, &str); 3] = [(0x01, "STR_AGE_YOUNG"), (0x02, "STR_AGE_MIDDLE_AGED"), (0x04, "STR_AGE_MATURE")];
 
 /// The face picker's ten ball slots, top left (table 0x4c7be0): a zigzag of two rows.
 const BALL_SLOTS: [(f32, f32); 10] = [
@@ -519,7 +520,7 @@ impl App {
             }
         };
         if !valid_file_name(&p.name) {
-            return set(self, Dialog::Notice(vec![String::new(), "Invalid file name.".into()]));
+            return set(self, Dialog::Notice(vec![String::new(), tr("STR_CUST_INVALID_FILE_NAME").into()]));
         }
         let path = dir.join(format!("{}{ext}", p.name));
         if !overwrite && path.exists() {
@@ -541,9 +542,9 @@ impl App {
         let portrait = self.cust_portrait(&p, c.record);
         let file = sg_core::championship::ProFile { person: p.clone(), record: Vec::new(), sayings, skills, portrait };
         if !sg_core::fsutil::write_file(&path, &sg_core::championship::pro_bytes(&file)) {
-            return set(self, Dialog::Notice(vec![String::new(), "Invalid file path.".into()]));
+            return set(self, Dialog::Notice(vec![String::new(), tr("STR_CUST_INVALID_FILE_PATH").into()]));
         }
-        set(self, Dialog::Notice(vec!["Character saved as".into(), format!("Themes\\{pack}\\{}{ext}", p.name)]));
+        set(self, Dialog::Notice(vec![tr("STR_CUST_SAVED_AS").into(), format!("Themes\\{pack}\\{}{ext}", p.name)]));
     }
 
     /// The box each dialog is drawn as (EXACT positions from the calls): the Load list "Pick one..." and the file names is
@@ -554,13 +555,18 @@ impl App {
         use crate::popup_ui::{ChoiceBox, ListBox};
         match d {
             Dialog::Load(files, _) => {
-                let mut v = vec!["Pick one...".to_string()];
+                let mut v = vec![tr("STR_CUST_PICK_ONE").to_string()];
                 v.extend(files.iter().map(|f| format!(" {}", f.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default())));
                 DialogBox::List(ListBox::new(v, 100, 0x14))
             }
             Dialog::Overwrite(path, _) => {
                 let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                let lines = vec![name, "already exists!".into(), " Overwrite the old version.".into(), " Cancel".into()];
+                let lines = vec![
+                    name,
+                    tr("STR_CUST_ALREADY_EXISTS").into(),
+                    tr("STR_CUST_OVERWRITE").into(),
+                    tr("STR_CUST_OVERWRITE_CANCEL").into(),
+                ];
                 DialogBox::Choice(ChoiceBox::new(lines, 200.0, 30.0))
             }
             Dialog::Notice(lines) if lines.first().is_some_and(|l| l.is_empty()) => {
@@ -776,9 +782,9 @@ impl App {
         // lit (the name orange, the others white)
         let navy = c15(0x0848);
         let row = if hit < 0 && !busy { Self::cust_name_row(mx, my) } else { None };
-        let marital = MARITAL.iter().rev().find(|m| p.b21 & m.0 != 0).map(|m| m.1).unwrap_or("");
-        let age = AGES.iter().rev().find(|m| p.b21 & m.0 != 0).map(|m| m.1).unwrap_or("");
-        let name = if p.fixed & 8 != 0 { format!("{} Jr.", p.name) } else { p.name.clone() };
+        let marital = MARITAL.iter().rev().find(|m| p.b21 & m.0 != 0).map(|m| tr(m.1)).unwrap_or("");
+        let age = AGES.iter().rev().find(|m| p.b21 & m.0 != 0).map(|m| tr(m.1)).unwrap_or("");
+        let name = if p.fixed & 8 != 0 { trf("STR_CUST_JUNIOR", &[("NAME", &p.name)]) } else { p.name.clone() };
         let job = format!("({})", p.job);
         for (r, (y, t, size)) in
             [(24.0, name.as_str(), 16.0), (48.0, job.as_str(), 16.0), (69.0, marital, 13.0), (90.0, age, 13.0)].iter().enumerate()
@@ -793,16 +799,18 @@ impl App {
         // the trait and class labels
         for (i, w) in TRAIT_WORDS.iter().enumerate() {
             let col = if p.traits & (1 << i) != 0 { navy } else { c15(0x4210) };
-            s.text_centered(g, 93.0, top(122.0 + 28.0 * i as f32, 13.0), w, 13.0, col);
+            s.text_centered(g, 93.0, top(122.0 + 28.0 * i as f32, 13.0), tr(w), 13.0, col);
         }
         for (i, w) in CLASS_WORDS.iter().enumerate() {
             let col = if c.toggles & (1 << i) != 0 { navy } else { c15(0x4210) };
-            let w = format!("{}{}", w[..1].to_ascii_uppercase(), &w[1..]);
+            let w = tr(w);
+            let mut ch = w.chars();
+            let w = ch.next().map(|f| f.to_uppercase().collect::<String>() + ch.as_str()).unwrap_or_default();
             s.text_centered(g, 212.0, top(142.0 + 35.0 * i as f32, 16.0), &w, 16.0, col);
         }
         if c.pro_mode {
             // the skills, read only for the player's own record
-            s.text_centered(g, 585.0, top(30.0, 16.0), "Golf Skill Levels", 16.0, rgb(0.0, 0.0, 0.0));
+            s.text_centered(g, 585.0, top(30.0, 16.0), tr("STR_CUST_SKILL_LEVELS"), 16.0, rgb(0.0, 0.0, 0.0));
             for i in 0..10 {
                 let y = 61.0 + 16.0 * i as f32;
                 let v = if c.record == 0 {
@@ -815,7 +823,7 @@ impl App {
                 if v != 0 {
                     s.text(g, 501.0, top(y, SMALL), &format!("+{}%", v as i32 * 10), SMALL, rgb(0.0, 0.0, 0.0));
                 }
-                s.text(g, 546.0, top(y, SMALL), SKILL_NAMES[i], SMALL, if v != 0 { rgb(0.0, 0.0, 0.0) } else { c15(0x4210) });
+                s.text(g, 546.0, top(y, SMALL), sg_core::pro::skill_name(i), SMALL, if v != 0 { rgb(0.0, 0.0, 0.0) } else { c15(0x4210) });
             }
         } else {
             self.draw_cust_member(g, &s, &p, c.record, hit);
@@ -823,7 +831,7 @@ impl App {
         // the dialogue table: each row's label in the colour of its stock line, then the person's own line in navy or
         // the stock line in grey
         let gs = c.slot.unwrap_or(0).min(sg_core::golfer::SLOTS - 1);
-        for (r, label) in SAYING_LABELS.iter().enumerate() {
+        for (r, label) in SAYING_LABEL_KEYS.iter().map(|k| tr(k)).enumerate() {
             let y = 271.0 + 16.0 * r as f32;
             let stock = self.club.stock_thought(&self.course, SAYING_CODES[r], 0, gs, c.record);
             let tone = match stock.tone {
@@ -856,9 +864,9 @@ impl App {
                 // the one-line box (0x45b2c0): the name and profession at (200, 32), 16 long; a line at (300, (row + 15) * 16),
                 // 48 long
                 let (x, y, n, prompt) = match f {
-                    Field::Name => (200.0, 32.0, 16.0, "New name..."),
-                    Field::Job => (200.0, 32.0, 16.0, "Profession..."),
-                    Field::Saying(r) => (300.0, (*r as f32 + 15.0) * 16.0, 48.0, "New text..."),
+                    Field::Name => (200.0, 32.0, 16.0, tr("STR_CUST_NEW_NAME")),
+                    Field::Job => (200.0, 32.0, 16.0, tr("STR_CUST_PROFESSION")),
+                    Field::Saying(r) => (300.0, (*r as f32 + 15.0) * 16.0, 48.0, tr("STR_CUST_NEW_TEXT")),
                     Field::Bio => (0.0, 0.0, 0.0, ""),
                 };
                 let w = n * 12.0 + 32.0;
@@ -879,7 +887,7 @@ impl App {
             self.draw_cust_dialog(g, &s, d);
         }
         if hit >= 0 && c.frames > 10 && (hit != 20 || !c.pro_mode) {
-            tooltip(g, &s, mx, my, TIPS[hit as usize]);
+            tooltip(g, &s, mx, my, tr(TIPS[hit as usize]));
         }
         if let Some(cc) = self.cust.as_mut() {
             cc.hover = c.hover;
@@ -900,14 +908,14 @@ impl App {
             s.fill(g, 500.0, 28.0, 160.0, 17.0, c15(0x0210));
         }
         let rank = if m.gone == 0xff {
-            Some(("Resigned", 0x6000))
+            Some((tr("STR_MEMBER_RESIGNED"), 0x6000))
         } else {
             match level {
-                1 => Some(("Visitor", 0x6318)),
-                2 => Some(("Member", 0x4210)),
-                3 => Some(("Silver Member", 0x2108)),
-                4 => Some(("Gold Member", 0x7ff0)),
-                5 => Some(("Platinum Member", 0x7fff)),
+                1 => Some((tr("STR_MEMBER_VISITOR"), 0x6318)),
+                2 => Some((tr("STR_MEMBER_MEMBER"), 0x4210)),
+                3 => Some((tr("STR_MEMBER_SILVER"), 0x2108)),
+                4 => Some((tr("STR_MEMBER_GOLD"), 0x7ff0)),
+                5 => Some((tr("STR_MEMBER_PLATINUM"), 0x7fff)),
                 _ => None,
             }
         };
@@ -917,11 +925,11 @@ impl App {
         let ink = c15(0x2108);
         let low = if m.best == 0 { "-".to_string() } else { m.best.to_string() };
         let hcp = if m.avg < 1 { "-".to_string() } else { m.avg.to_string() };
-        let rounds = if m.rounds == 0 { "none".to_string() } else { m.rounds.to_string() };
-        s.text_centered(g, 580.0, top(50.0, 13.0), &format!("Low round: {low}"), 13.0, ink);
-        s.text_centered(g, 580.0, top(64.0, 13.0), &format!("Handicap: {hcp}"), 13.0, ink);
-        s.text_centered(g, 580.0, top(78.0, 13.0), &format!("Rounds played: {rounds}"), 13.0, ink);
-        s.text_centered(g, 580.0, top(98.0, 13.0), "Bio", 13.0, c15(if hit == 20 { 0x7b20 } else { 0x211f }));
+        let rounds = if m.rounds == 0 { tr("STR_MEMBER_ROUNDS_NONE").to_string() } else { m.rounds.to_string() };
+        s.text_centered(g, 580.0, top(50.0, 13.0), &trf("STR_MEMBER_LOW_ROUND", &[("SCORE", &low)]), 13.0, ink);
+        s.text_centered(g, 580.0, top(64.0, 13.0), &trf("STR_MEMBER_HANDICAP", &[("HANDICAP", &hcp)]), 13.0, ink);
+        s.text_centered(g, 580.0, top(78.0, 13.0), &trf("STR_MEMBER_ROUNDS_PLAYED", &[("ROUNDS", &rounds)]), 13.0, ink);
+        s.text_centered(g, 580.0, top(98.0, 13.0), tr("STR_MEMBER_BIO"), 13.0, c15(if hit == 20 { 0x7b20 } else { 0x211f }));
         for (k, l) in wrap_text(&p.bio, 13.0, 236.0).iter().enumerate().take(9) {
             s.text(g, 484.0, top(114.0 + 14.0 * k as f32, 13.0), l, 13.0, c15(0x0018));
         }

@@ -229,7 +229,14 @@ function sgStart() {
     const canvas = document.getElementById("glcanvas");
     canvas.style.display = "block";
     canvas.focus();
-    load("simgolf.wasm");
+    load("opensgolf.wasm");
+}
+
+// No game folder: the game finds no original files under game/ and plays on the free base set (opensgolf-free), which it
+// draws itself.
+function sgPlayFree() {
+    sgStatus("Starting with the free OpenSGolf graphics...");
+    sgStart();
 }
 
 async function sgUse(entries) {

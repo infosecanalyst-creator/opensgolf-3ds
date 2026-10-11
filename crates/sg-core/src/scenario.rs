@@ -142,7 +142,7 @@ impl Conditions {
         }
         if let Some(r) = &self.rank {
             let k = RANK_IDS.iter().position(|&x| x == r).unwrap_or(0);
-            v.push(format!("{} rank", crate::economy::RANK_NAMES[k]));
+            v.push(format!("{} rank", crate::economy::rank_name(k)));
         }
         v.join(", ")
     }

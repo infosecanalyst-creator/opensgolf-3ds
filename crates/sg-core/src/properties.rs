@@ -7,9 +7,10 @@ use crate::land::{port_theme, RECORDS};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Property {
-    pub name: &'static str,
-    pub course: &'static str,
-    pub bonus: &'static str,
+    /// Text keys of the place, the course and the bonus (see `name`, `course`, `bonus`).
+    pub name_key: &'static str,
+    pub course_key: &'static str,
+    pub bonus_key: &'static str,
     /// The port's theme order: 0 Parkland, 1 Links, 2 Desert, 3 Tropical.
     pub theme: usize,
     /// 0 left, 1 right in the chooser.
@@ -21,7 +22,30 @@ pub const START_FUNDS: i32 = 100_000;
 
 const fn p(i: usize) -> Property {
     let r = &RECORDS[i];
-    Property { name: r.name, course: r.course, bonus: r.bonus, theme: port_theme(r.theme), column: if i < 10 { 0 } else { 1 } }
+    Property {
+        name_key: r.name_key,
+        course_key: r.course_key,
+        bonus_key: r.bonus_key,
+        theme: port_theme(r.theme),
+        column: if i < 10 { 0 } else { 1 },
+    }
+}
+
+impl Property {
+    /// The place's name.
+    pub fn name(&self) -> &'static str {
+        crate::lang::text(self.name_key)
+    }
+
+    /// The course's own name.
+    pub fn course(&self) -> &'static str {
+        crate::lang::text(self.course_key)
+    }
+
+    /// The property's bonus.
+    pub fn bonus(&self) -> &'static str {
+        crate::lang::text(self.bonus_key)
+    }
 }
 
 pub const PROPERTIES: [Property; 16] =

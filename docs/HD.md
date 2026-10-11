@@ -33,8 +33,8 @@ python3 tools/hd_pack/hd_pack.py --game <your SimGolf folder> --out <save folder
 python3 tools/hd_pack/hd_pack.py --game <your SimGolf folder> --out <save folder>/HD --method lanczos
 ```
 
-The save folder is `%APPDATA%\SimGolf` on Windows, `~/Library/Application Support/SimGolf` on macOS and
-`~/.local/share/simgolf` (or `$XDG_DATA_HOME/simgolf`) on Linux, or `SIMGOLF_SAVE_DIR` when set.
+The save folder is `%APPDATA%\OpenSGolf` on Windows, `~/Library/Application Support/OpenSGolf` on macOS and
+`~/.local/share/opensgolf` (or `$XDG_DATA_HOME/opensgolf`) on Linux, or `OPENSGOLF_SAVE_DIR` when set.
 
 ## Turning it on
 

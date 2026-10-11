@@ -10,8 +10,7 @@ use crate::render::Rect;
 use crate::ui::{load_pcx, load_pcx_alpha, rgb, rgba, text_width, wrap_text, Image, Screen as Ui};
 use sg_core::bodies::{Outfit, Swaps};
 use sg_core::golfer::{flag, SLOTS};
-use sg_core::pro::SKILL_LABELS;
-use sg_core::records::TITLES;
+use sg_core::lang::{tr, trf};
 use std::collections::HashMap;
 
 /// The interface art these screens use.
@@ -350,7 +349,7 @@ pub struct GreatShot {
     pub shown: bool,
 }
 
-const MONTHS: [&str; 8] = ["March", "April", "May", "June", "July", "August", "September", "October"];
+use crate::hud_ui::MONTH_KEYS as MONTHS;
 
 /// The board's handwritten to-do strips on tacs&tees, one per accomplishment class (cut table 0x4c2d38, x y w h).
 const TODO_LABELS: [(f32, f32, f32, f32); 22] = [
@@ -380,12 +379,12 @@ const TODO_LABELS: [(f32, f32, f32, f32); 22] = [
 /// The easy editions' strips for classes 0, 1 and 4: first dogleg right, dogleg left and par five hole (entries 22..24).
 const TODO_ALT: [(f32, f32, f32, f32); 3] = [(610.0, 381.0, 132.0, 20.0), (610.0, 415.0, 126.0, 20.0), (610.0, 450.0, 109.0, 21.0)];
 // the exe shows no status text for Platinum
-const LEVELS: [&str; 6] = ["", "Visitor", "Member", "Silver Member", "Gold Member", ""];
+const LEVELS: [&str; 6] = ["", "STR_MEMBER_VISITOR", "STR_MEMBER_MEMBER", "STR_MEMBER_SILVER", "STR_MEMBER_GOLD", ""];
 
 /// The five trait words of the person record's byte +0x20 (pointer table 0x4c2864).
-pub const TRAIT_WORDS: [&str; 5] = ["Neat", "Outgoing", "Active", "Playful", "Nice"];
+pub const TRAIT_WORDS: [&str; 5] = ["STR_TRAIT_NEAT", "STR_TRAIT_OUTGOING", "STR_TRAIT_ACTIVE", "STR_TRAIT_PLAYFUL", "STR_TRAIT_NICE"];
 /// The three skill class words (table 0x4c2858, "length" first).
-pub const CLASS_WORDS: [&str; 3] = ["length", "accuracy", "imagination"];
+pub const CLASS_WORDS: [&str; 3] = ["STR_CLASS_LENGTH", "STR_CLASS_ACCURACY", "STR_CLASS_IMAGINATION"];
 
 /// The fonts of the card and the dialogs: heading 0x519928 (Manual SSi Bold 20), body 0x51b360 (Manual SSi Bold 15) and
 /// small 0x519fd8 (Arial Bold 10); the sizes pick the faces (see `ui::Fnt`).
@@ -422,13 +421,13 @@ pub fn and_list(words: &[&str]) -> String {
     match words {
         [] => String::new(),
         [a] => a.to_string(),
-        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+        [rest @ .., last] => trf("STR_LIST_AND", &[("LIST", &rest.join(tr("STR_LIST_SEPARATOR"))), ("LAST", &last)]),
     }
 }
 
 /// The trait words of a person's trait byte.
 pub fn trait_words(traits: u8) -> Vec<&'static str> {
-    (0..5).filter(|b| traits & (1 << b) != 0).map(|b| TRAIT_WORDS[b]).collect()
+    (0..5).filter(|b| traits & (1 << b) != 0).map(|b| tr(TRAIT_WORDS[b])).collect()
 }
 
 /// Good minus bad among a golfer's five newest reactions (0x45c420).
@@ -447,11 +446,11 @@ pub fn trend(gg: &sg_core::golfer::Golfer) -> i32 {
 /// dark part is bad in every row.
 fn bars(gg: &sg_core::golfer::Golfer) -> [(&'static str, i32); 5] {
     [
-        ("Fun", ((8 - gg.mood) * 10).clamp(0, 80)),
-        ("Attitude", ((4 - trend(gg)) * 10).clamp(0, 80)),
-        ("Energy", (gg.fatigue / 4).clamp(0, 80)),
-        ("Hunger", (gg.hunger * 5 / 2).clamp(0, 80)),
-        ("Thirst", (gg.thirst * 5 / 2).clamp(0, 80)),
+        (tr("STR_CARD_FUN"), ((8 - gg.mood) * 10).clamp(0, 80)),
+        (tr("STR_CARD_ATTITUDE"), ((4 - trend(gg)) * 10).clamp(0, 80)),
+        (tr("STR_CARD_ENERGY"), (gg.fatigue / 4).clamp(0, 80)),
+        (tr("STR_CARD_HUNGER"), (gg.hunger * 5 / 2).clamp(0, 80)),
+        (tr("STR_CARD_THIRST"), (gg.thirst * 5 / 2).clamp(0, 80)),
     ]
 }
 
@@ -548,7 +547,7 @@ impl App {
         }
         // fonts (0x459850): the title in 0x821020, the name in 0x821f08, the rest in 0x821ee8
         use crate::ui::{F_INFO14, F_INFO20, F_INFO_TITLE};
-        s.put_centered(g, F_INFO_TITLE, 338.0, 14.0, "SELECT THE NEXT PAIR OF GOLFERS", black());
+        s.put_centered(g, F_INFO_TITLE, 338.0, 14.0, tr("STR_PAIR_TITLE"), black());
         let list = self.club.waiting();
         // the picked golfers' faces (0x459850): neutral, or with two picked happy when they share more than three of the
         // five traits and angry when they share fewer than two
@@ -597,7 +596,7 @@ impl App {
             }
             s.put_centered(g, F_INFO20, bx + 214.0, y + 9.0, &self.club.name(slot), black());
             s.put_centered(g, F_INFO14, bx + 262.0, y + 40.0, &p.job, black());
-            s.put_centered(g, F_INFO14, bx + 262.0, y + 72.0, &format!("{} years old", self.club.age(slot)), black());
+            s.put_centered(g, F_INFO14, bx + 262.0, y + 72.0, &trf("STR_PAIR_AGE", &[("AGE", &self.club.age(slot))]), black());
             s.put_centered(g, F_INFO14, bx + 262.0, y + 104.0, self.club.marital(slot), black());
             // the person's traits, one a line, centred on the card's height
             let words = trait_words(p.traits);
@@ -651,7 +650,7 @@ impl App {
 
     pub fn draw_golfers_panel(&self, g: &mut Gfx, s: &Ui) {
         let list = self.listed_golfers();
-        s.text(g, 236.0, 466.0, &format!("Golfers on the course: {}", list.len()), 13.0, rgb(1.0, 1.0, 0.7));
+        s.text(g, 236.0, 466.0, &trf("STR_PLAIN_GOLFERS_ON_COURSE", &[("COUNT", &list.len())]), 13.0, rgb(1.0, 1.0, 0.7));
         for (k, &gi) in list.iter().skip(self.golfer_page).take(16).enumerate() {
             let x = 236.0 + 140.0 * (k / 4) as f32;
             let y = 470.0 + 26.0 * (k % 4) as f32;
@@ -683,7 +682,7 @@ impl App {
             }
         }
         if list.len() > 16 {
-            s.text(g, 700.0, 586.0, "next page >", 12.0, rgb(1.0, 1.0, 0.7));
+            s.text(g, 700.0, 586.0, tr("STR_PLAIN_NEXT_PAGE"), 12.0, rgb(1.0, 1.0, 0.7));
         }
     }
 
@@ -751,14 +750,25 @@ impl App {
         art.ball_head(g, s, p.female(), p.head_index(id), self.club.attitude(gi) as usize, 172.0, -2.0);
         // the identity lines, centred on x 420
         let teal = c15(0x0210);
-        let name = if p.job.is_empty() { self.club.vip_name(gi) } else { format!("{} ({})", self.club.vip_name(gi), p.job) };
+        let name = if p.job.is_empty() {
+            self.club.vip_name(gi)
+        } else {
+            trf("STR_CARD_NAME_JOB", &[("GOLFER", &self.club.vip_name(gi)), ("JOB", &p.job)])
+        };
         s.text_centered(g, 420.0, top(40.0, LARGE), &name, LARGE, teal);
-        s.text_centered(g, 420.0, top(62.0, BODY), &format!("{}, age {}", self.club.marital(gi), self.club.age(gi)), BODY, teal);
+        s.text_centered(
+            g,
+            420.0,
+            top(62.0, BODY),
+            &trf("STR_CARD_MARITAL_AGE", &[("MARITAL", &self.club.marital(gi)), ("AGE", &self.club.age(gi))]),
+            BODY,
+            teal,
+        );
         s.text_centered(g, 420.0, top(75.0, BODY), &and_list(&trait_words(p.traits)), BODY, teal);
         let opinion = sg_core::thoughts::course_opinion(gg.mood, 0);
-        s.text_centered(g, 420.0, top(91.0, BODY), &format!("\"{opinion}\""), BODY, c15(0x4210));
-        let likes: Vec<&str> = (0..3).filter(|b| gg.class & (1 << b) != 0).map(|b| CLASS_WORDS[b]).collect();
-        s.text_centered(g, 420.0, top(105.0, BODY), &likes.join(", "), BODY, teal);
+        s.text_centered(g, 420.0, top(91.0, BODY), &trf("STR_CARD_OPINION", &[("OPINION", &opinion)]), BODY, c15(0x4210));
+        let likes: Vec<&str> = (0..3).filter(|b| gg.class & (1 << b) != 0).map(|b| tr(CLASS_WORDS[b])).collect();
+        s.text_centered(g, 420.0, top(105.0, BODY), &likes.join(tr("STR_LIST_SEPARATOR")), BODY, teal);
         // the five bars: the bright full length, then the dark part from the right end
         for (i, (label, w)) in bars(&gg).iter().enumerate() {
             let y = 44.0 + 16.0 * i as f32;
@@ -811,12 +821,12 @@ impl App {
         }
         if hover >= 0 && self.card_ui.frames >= 7 {
             let tip = match hover {
-                0 => "Customize",
-                1 => "Move/Eject Golfer",
-                2 => "Take Snapshot",
-                3 if page => "Golfer Comments",
-                3 => "View Story",
-                5 => "Next Chapter",
+                0 => tr("STR_CARD_CUSTOMIZE"),
+                1 => tr("STR_CARD_MOVE_EJECT"),
+                2 => tr("STR_CARD_SNAPSHOT"),
+                3 if page => tr("STR_CARD_COMMENTS"),
+                3 => tr("STR_CARD_VIEW_STORY"),
+                5 => tr("STR_CARD_NEXT_CHAPTER"),
                 _ => "",
             };
             tooltip(g, s, mx, my, tip);
@@ -851,7 +861,7 @@ impl App {
                 (t.replacen("PARTNER", &self.club.name(gi ^ 1), 1).replacen("MYNAME", &self.club.name(gi), 1), SMALL, c15(0x7c1f))
             } else {
                 let line = self.club.thought(&self.course, id as u32, (gg.args[i] & 0x3fff) as i32, gi);
-                let t = if line.partner { format!("\"{}\"", line.text) } else { line.text };
+                let t = if line.partner { trf("STR_CARD_OPINION", &[("OPINION", &line.text)]) } else { line.text };
                 (t, BODY, c)
             };
             if text.is_empty() {
@@ -878,7 +888,7 @@ impl App {
         self.art.ball_head(g, s, pp.female(), pp.head_index(pid), self.club.attitude(p) as usize, 552.0, 176.0);
         let title = self.club.stories.title(gg.story);
         let title = title.strip_prefix(' ').unwrap_or(&title);
-        let head = format!("'{title}' with {} and {}", self.club.name(gi), self.club.name(p));
+        let head = trf("STR_CARD_STORY_HEAD", &[("STORY", &title), ("GOLFER", &self.club.name(gi)), ("PARTNER", &self.club.name(p))]);
         s.text_centered(g, 428.0, top(167.0, SMALL), &head, SMALL, c15(0x03ff));
         s.fill(g, 328.0, 175.0, 200.0, 1.0, c15(0x0210));
         let owner = if gg.flags & flag::STORY != 0 { gi } else { p };
@@ -921,7 +931,7 @@ impl App {
             if v != 0 {
                 s.text(g, 37.0, top(y + 7.0, BODY), &skill_value(v), BODY, black());
             }
-            s.text(g, 88.0, top(y + 7.0, BODY), SKILL_LABELS[r], BODY, if v != 0 { black() } else { c15(0x4210) });
+            s.text(g, 88.0, top(y + 7.0, BODY), sg_core::pro::skill_label(r), BODY, if v != 0 { black() } else { c15(0x4210) });
         }
     }
 
@@ -1091,9 +1101,9 @@ impl App {
         s.fill(g, r, t, 1.0, b - t + 1.0, ink);
         let gg = &self.club.g[f.slot];
         if gg.story_step == 4 && gg.thought == 0x32 {
-            s.text_centered(g, (l + r) / 2.0, top(t + 4.0, LARGE), "Happy Ending!", LARGE, c15(0x7ff0));
+            s.text_centered(g, (l + r) / 2.0, top(t + 4.0, LARGE), tr("STR_SIMFOTO_HAPPY_ENDING"), LARGE, c15(0x7ff0));
         }
-        s.text_centered(g, (l + r) / 2.0, top(b + 4.0, BODY), "SimFoto", BODY, c15(0x6318));
+        s.text_centered(g, (l + r) / 2.0, top(b + 4.0, BODY), tr("STR_SIMFOTO"), BODY, c15(0x6318));
         // footage of the original shows the date stamp with the shadowed call's dark red one pixel below (ui::SHADOW_1)
         let date = self.simfoto_date();
         s.text(g, r - 80.0, top(b - 16.0, BODY) + 1.0, &date, BODY, crate::ui::SHADOW_1);
@@ -1208,7 +1218,7 @@ impl App {
         s.fill(g, il, it, 1.0, ib - it + 1.0, ink);
         s.fill(g, il, ib, ir - il + 1.0, 1.0, ink);
         s.fill(g, ir, it, 1.0, ib - it + 1.0, ink);
-        s.text_centered(g, ((ir + il) / 2.0).trunc(), top(ib + 4.0, BODY), "SimFoto", BODY, c15(0x6318));
+        s.text_centered(g, ((ir + il) / 2.0).trunc(), top(ib + 4.0, BODY), tr("STR_SIMFOTO"), BODY, c15(0x6318));
         s.text(g, ir - 80.0, top(ib - 16.0, BODY) + 1.0, &gs.date, BODY, crate::ui::SHADOW_1);
         s.text(g, ir - 80.0, top(ib - 16.0, BODY), &gs.date, BODY, c15(0x7ff0));
     }
@@ -1330,11 +1340,18 @@ impl App {
                 s.image_part(g, tk, x + 100.0, y - 179.0, 100.0, 50.0 * row, 20.0, 24.0);
             }
             let day = (e.tick & 0x3ff) * 30 / 1024 + 1;
-            let month = MONTHS[((e.tick >> 10) & 7) as usize];
+            let month = tr(MONTHS[((e.tick >> 10) & 7) as usize]);
             let year = 2001 + (e.tick >> 13);
             // the exe's caption: course, two spaces, day month year
             crate::ui::set_face(Some(crate::ui::Face::Arial));
-            s.text(g, x, top(y, 10.0), &format!("{}  {day} {month} {year}", e.course), 10.0, c15(0x2108));
+            s.text(
+                g,
+                x,
+                top(y, 10.0),
+                &trf("STR_BOARD_CAPTION", &[("COURSE", &e.course), ("DAY", &day), ("MONTH", &month), ("YEAR", &year)]),
+                10.0,
+                c15(0x2108),
+            );
             crate::ui::set_face(Some(crate::ui::Face::Info));
         }
         // the Clubhouse Notes pad and on it the first three accomplishments still to do, each its handwritten strip from
@@ -1393,7 +1410,6 @@ impl App {
                 s.text_centered(g, 400.0, 340.0 - 16.0 * k as f32, self.club.award_title(*id), 13.0, rgb(1.0, 0.9, 0.4));
             }
         }
-        let _ = TITLES;
         g.flush();
     }
 
@@ -1429,28 +1445,28 @@ impl App {
         // highlight 2 below its strip
         use crate::ui::{F_INFO14, F_INFO_TITLE};
         // "END of  YEAR: " + year (footage of the original shows the colon and the wide gaps)
-        s.put_centered(g, F_INFO_TITLE, 406.0, 55.0, &format!("END of  YEAR:  {year}"), black());
-        s.put_centered(g, F_INFO14, 465.0, 93.0, "This Year", black());
-        s.put_centered(g, F_INFO14, 566.0, 93.0, "Last Year", black());
+        s.put_centered(g, F_INFO_TITLE, 406.0, 55.0, &trf("STR_YEAREND_TITLE", &[("YEAR", &year)]), black());
+        s.put_centered(g, F_INFO14, 465.0, 93.0, tr("STR_YEAREND_THIS_YEAR"), black());
+        s.put_centered(g, F_INFO14, 566.0, 93.0, tr("STR_YEAREND_LAST_YEAR"), black());
         let m = ((tick >> 10) % 500) as usize;
         let p = (m + 500 - 8) % 500;
         let h = &self.club.history;
         let get = |i: usize, k: usize| h.get(i).map(|r| r[k]).unwrap_or(0);
-        let rows = ["Cash reserves have ", "Your fun rating has ", "Your skill rating has ", "Your membership has "];
+        let rows = ["STR_YEAREND_CASH", "STR_YEAREND_FUN", "STR_YEAREND_SKILL", "STR_YEAREND_MEMBERSHIP"];
         for (k, subject) in rows.iter().enumerate() {
             let y = 125.0 + 20.0 * k as f32;
             let (a, b) = (get(p, k), get(m, k));
             let word = match b.cmp(&a) {
-                std::cmp::Ordering::Greater => "increased",
-                std::cmp::Ordering::Less => "decreased",
-                _ => "not changed",
+                std::cmp::Ordering::Greater => tr("STR_YEAREND_INCREASED"),
+                std::cmp::Ordering::Less => tr("STR_YEAREND_DECREASED"),
+                _ => tr("STR_YEAREND_NOT_CHANGED"),
             };
             let fmt = |v: i32| match k {
                 0 => digits(v as i64 * 100),
                 2 => format!("{}.{:02}", v / 100, (v % 100).abs()),
                 _ => format!("{v}"),
             };
-            s.text_centered(g, 301.0, y, &format!("{subject}{word}"), 14.0, black());
+            s.text_centered(g, 301.0, y, &trf(subject, &[("CHANGE", &word)]), 14.0, black());
             let c = match b.cmp(&a) {
                 // the exe's dark green 0x1284 (footage of the original: about (50, 156, 18) on the strokes)
                 std::cmp::Ordering::Greater => crate::info_ui::c15(0x1284),
@@ -1461,7 +1477,7 @@ impl App {
             s.text(g, 500.0 - text_width(&lb, 14.0), y, &lb, 14.0, c);
             s.text(g, 601.0 - text_width(&la, 14.0), y, &la, 14.0, black());
         }
-        s.put_centered(g, F_INFO14, 404.0, 200.0, "Highlights", black());
+        s.put_centered(g, F_INFO14, 404.0, 200.0, tr("STR_YEAREND_HIGHLIGHTS"), black());
         let mut y = 216.0;
         for k in 0..9 {
             let i = (p + k) % 500;
@@ -1478,7 +1494,14 @@ impl App {
             } else {
                 s.fill(g, 187.0, y, 429.0, 15.0, rgb(0.9, 0.88, 0.8));
             }
-            s.text_centered(g, 404.0, y + 12.0, &format!("{}: {t}", MONTHS[k.min(7)]), 14.0, black());
+            s.text_centered(
+                g,
+                404.0,
+                y + 12.0,
+                &trf("STR_YEAREND_HIGHLIGHT", &[("MONTH", &tr(MONTHS[k.min(7)])), ("EVENT", &t)]),
+                14.0,
+                black(),
+            );
             y += 15.0;
         }
         for l in self.year_notice.lines() {
@@ -1494,7 +1517,7 @@ impl App {
             s.image_part(g, e, 187.0, y, 187.0, 374.0, 429.0, 55.0);
             self.ok_tick(g, &s, 550.0, y + 8.0, false);
         } else {
-            s.text_centered(g, 404.0, y + 34.0, "OK", 16.0, black());
+            s.text_centered(g, 404.0, y + 34.0, tr("STR_OK"), 16.0, black());
         }
         g.flush();
     }
@@ -1552,10 +1575,12 @@ impl App {
         }
         // the title in the large face (0x821020), the rest in the body face (0x821ee8); all text black; the exe's y are tops
         let ink = c15(0);
-        s.text(g, 212.0, top(19.0, 24.0), "Membership Roster", 24.0, ink);
+        s.text(g, 212.0, top(19.0, 24.0), tr("STR_ROSTER_TITLE"), 24.0, ink);
         let row = |y: f32| top(y, 14.0);
-        s.text(g, 33.0, row(60.0), "Member", 14.0, ink);
-        for (x, t) in [(170.0, "Low"), (209.0, "Hcp"), (249.0, "Rnds"), (320.0, "Status")] {
+        s.text(g, 33.0, row(60.0), tr("STR_ROSTER_MEMBER"), 14.0, ink);
+        for (x, t) in
+            [(170.0, tr("STR_ROSTER_LOW")), (209.0, tr("STR_ROSTER_HCP")), (249.0, tr("STR_ROSTER_RNDS")), (320.0, tr("STR_ROSTER_STATUS"))]
+        {
             s.text_centered(g, x, row(60.0), t, 14.0, ink);
         }
         // the hole numbers centred in 19 pixel cells, 21 apart
@@ -1613,8 +1638,8 @@ impl App {
                 }
             }
             let text = match status {
-                -1 => "Resigned",
-                1..=4 => LEVELS[status as usize],
+                -1 => tr("STR_MEMBER_RESIGNED"),
+                1..=4 => tr(LEVELS[status as usize]),
                 _ => "",
             };
             if !text.is_empty() {
@@ -1622,12 +1647,12 @@ impl App {
             }
         }
         for (x, t) in [
-            (82.0, "Member"),
-            (208.0, "Silver Member"),
-            (326.0, "Gold Member"),
-            (450.0, "Resigned"),
-            (573.0, "Photo Opp"),
-            (693.0, "Happy Ending"),
+            (82.0, tr("STR_MEMBER_MEMBER")),
+            (208.0, tr("STR_MEMBER_SILVER")),
+            (326.0, tr("STR_MEMBER_GOLD")),
+            (450.0, tr("STR_MEMBER_RESIGNED")),
+            (573.0, tr("STR_ROSTER_PHOTO_OPP")),
+            (693.0, tr("STR_ROSTER_HAPPY_ENDING")),
         ] {
             s.text_centered(g, x, row(536.0), t, 14.0, ink);
         }

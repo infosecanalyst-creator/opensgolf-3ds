@@ -21,6 +21,7 @@ use crate::ui::{load_pcx, load_pcx_alpha, money, rgb, rgba, text_width, Image, S
 use miniquad::KeyCode;
 use sg_core::assets::Rgba;
 use sg_core::championship::ProFile;
+use sg_core::lang::{tr, trf};
 use std::path::{Path, PathBuf};
 
 /// What the list screen lists.
@@ -198,7 +199,7 @@ fn top_c(s: &Ui, g: &mut Gfx, x: f32, y: f32, t: &str, size: f32, c: [f32; 4]) {
 pub fn row_name(p: &Path) -> String {
     let n = p.file_stem().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     match n.strip_prefix('&') {
-        Some(rest) => format!("autosave ({rest})"),
+        Some(rest) => trf("STR_FILES_AUTOSAVE", &[("NAME", &rest)]),
         None => n,
     }
 }
@@ -222,15 +223,16 @@ const BUTTONS: [(f32, f32, f32, f32, f32, f32, f32); 5] = [
     (784.0, 400.0, 20.0, 778.0, 380.0, 22.0, 40.0),
     (704.0, 555.0, 23.0, 670.0, 520.0, 70.0, 70.0),
 ];
-const OK_TIP: &str = "Load";
-const TIPS: [&str; 5] = [OK_TIP, "Cancel", "", "", "Delete"];
+const OK_TIP: &str = "STR_FILES_LOAD";
+const TIPS: [&str; 5] = [OK_TIP, "STR_FILES_CANCEL", "", "", "STR_FILES_DELETE"];
 const ROWS: usize = 16;
 
 fn list_hit(vx: f32, vy: f32) -> i32 {
     BUTTONS.iter().position(|b| oct_dist(vx - b.0, vy - b.1) < b.2).map(|i| i as i32).unwrap_or(-1)
 }
 
-const THEME_HEADS: [&str; 5] = ["Stories", "Characters", "Celebrities", "Pro Golfers", "Courses"];
+const THEME_HEADS: [&str; 5] =
+    ["STR_THEMES_STORIES", "STR_THEMES_CHARACTERS", "STR_THEMES_CELEBRITIES", "STR_THEMES_PRO_GOLFERS", "STR_THEMES_COURSES"];
 fn theme_hit(vx: f32, vy: f32) -> i32 {
     if oct_dist(vx - 615.0, vy - 555.0) < 26.0 {
         0
@@ -243,16 +245,16 @@ fn theme_hit(vx: f32, vy: f32) -> i32 {
 
 /// Pick A Pro's ten skill rows (docs/DECODE_PICKAPRO.md 1).
 const PRO_SKILLS: [&str; 10] = [
-    "Power Hitter",
-    "Long Driver",
-    "Accurate Driver",
-    "Accurate Irons",
-    "Accurate Putter",
-    "Draw Shot (R to L)",
-    "Fade Shot (L to R)",
-    "High Backspin Shot",
-    "Recovery Skills",
-    "Luck",
+    "STR_SKILL_POWER_HITTER",
+    "STR_SKILL_LONG_DRIVER",
+    "STR_SKILL_ACCURATE_DRIVER",
+    "STR_SKILL_ACCURATE_IRONS",
+    "STR_SKILL_ACCURATE_PUTTER",
+    "STR_SKILL_DRAW_SHOT_R_TO_L",
+    "STR_SKILL_FADE_SHOT_L_TO_R",
+    "STR_SKILL_HIGH_BACKSPIN",
+    "STR_SKILL_RECOVERY",
+    "STR_SKILL_LUCK",
 ];
 
 /// Club emblem of each property: (sheet 0 parklink / 1 tropdesert, cut). DERIVED from the art and real screenshots.
@@ -264,7 +266,7 @@ const CONFIRM_PITCH: f32 = 24.0;
 
 /// The delete box (the generic yes/no popup at (400, 100)): its lines and rectangle.
 fn confirm_box(name: &str) -> ([String; 3], (f32, f32, f32, f32)) {
-    let lines = [format!("Are you sure you want to delete {name}?"), " Yes, delete this file.".into(), " No, never mind.".into()];
+    let lines = [trf("STR_FILES_DELETE_QUESTION", &[("NAME", &name)]), tr("STR_FILES_DELETE_YES").into(), tr("STR_FILES_DELETE_NO").into()];
     let w = lines.iter().map(|l| text_width(l.trim(), 15.0)).fold(0.0, f32::max) + 49.0 + 30.0;
     let h = (lines.len() as f32 * 3.0 + 3.0) * 8.0;
     (lines, (400.0 - w / 2.0, CONFIRM_TOP, w, h))
@@ -442,7 +444,7 @@ impl App {
                     if let Some(f) = self.title.files.as_mut() {
                         f.loading = 0;
                     }
-                    self.show_toast(&format!("Could not load the saved game: {e}"));
+                    self.show_toast(&trf("STR_TOAST_COULD_NOT_LOAD_GAME", &[("ERROR", &e)]));
                 }
             },
             ListKind::Course => {
@@ -456,7 +458,7 @@ impl App {
                 self.screen = Screen::Menu;
                 if let (Some(course), Some(pro)) = (course, pro) {
                     if let Err(e) = self.start_championship(g, &course, &pro) {
-                        self.show_toast(&format!("Could not load the course: {e}"));
+                        self.show_toast(&trf("STR_TOAST_COULD_NOT_LOAD_COURSE", &[("ERROR", &e)]));
                         self.screen = Screen::Menu;
                     }
                 }
@@ -642,9 +644,9 @@ impl App {
             }
         }
         let title = match f.kind {
-            ListKind::Load => "Load Previous Game",
-            ListKind::Course => "Select Championship Course",
-            ListKind::Pro => "Pick A Pro",
+            ListKind::Load => tr("STR_FILES_LOAD_TITLE"),
+            ListKind::Course => tr("STR_FILES_CHAMP_TITLE"),
+            ListKind::Pro => tr("STR_FILES_PRO_TITLE"),
         };
         top_c(s, g, 504.0, 42.0, title, 24.0, BLACK);
         let n = f.files.len();
@@ -658,11 +660,11 @@ impl App {
             top(s, g, 320.0, y, &row_name(&f.files[i]), 13.0, if on && pro { WHITE } else { BLACK });
         }
         if n > f.scroll + ROWS {
-            top(s, g, 320.0, 372.0, "(more...)", 13.0, BLACK);
+            top(s, g, 320.0, 372.0, tr("STR_FILES_MORE"), 13.0, BLACK);
         }
         if n == 0 && f.kind == ListKind::Course {
             // the port's hint: no course ships with the game
-            top(s, g, 320.0, 116.0, "No course saved for championship play yet (System Functions in a game).", 13.0, c15(0x4210));
+            top(s, g, 320.0, 116.0, tr("STR_FILES_NO_CHAMP_COURSE"), 13.0, c15(0x4210));
         }
         if n > 0 {
             let h = (16.0 * 228.0 / n as f32).clamp(4.0, 228.0);
@@ -678,7 +680,7 @@ impl App {
         // a button's word after the pointer rests on it for 30 frames
         if self.title.hover_frames >= 30 && f.confirm.is_none() {
             if let (Some(b), Some(tip)) = (BUTTONS.get(self.hover.max(0) as usize), TIPS.get(self.hover.max(0) as usize)) {
-                let tip = if pro && self.hover == 0 { "OK" } else { tip };
+                let tip = if pro && self.hover == 0 { tr("STR_OK") } else { tr(tip) };
                 if self.hover >= 0 && !tip.is_empty() && (sel.is_some() || !matches!(self.hover, 0 | 4)) {
                     s.fill(g, b.3 + 6.0, b.4 + 14.0, 48.0, 16.0, rgba(0.08, 0.08, 0.12, 0.9));
                     top_c(s, g, b.3 + 30.0, b.4 + 16.0, tip, 11.0, WHITE);
@@ -687,9 +689,9 @@ impl App {
         }
         if f.loading != 0 {
             if pro {
-                top(s, g, 388.0, 472.0, "Loading...", 14.0, WHITE);
+                top(s, g, 388.0, 472.0, tr("STR_FILES_LOADING"), 14.0, WHITE);
             } else {
-                top(s, g, 550.0, 456.0, "Loading...", 14.0, c15(0x7b20));
+                top(s, g, 550.0, 456.0, tr("STR_FILES_LOADING"), 14.0, c15(0x7b20));
             }
         }
         if let (Some(o), Some(i)) = (f.confirm, sel) {
@@ -727,27 +729,27 @@ impl App {
         }
         let (grey, label, fun, skill) = (c15(0x4210), c15(0x2108), c15(0x1284), c15(0x0210));
         const X: [f32; 3] = [66.0, 125.0, 184.0];
-        let head = ["Holes", "Par", "Yards"];
+        let head = [tr("STR_FILES_HOLES"), tr("STR_FILES_PAR"), tr("STR_FILES_YARDS")];
         let vals = [i.holes.len().to_string(), i.par.to_string(), i.yards.to_string()];
         for k in 0..3 {
             top_c(s, g, X[k], 124.0, head[k], 12.0, grey);
             top_c(s, g, X[k], 146.0, &vals[k], 13.0, BLACK);
         }
-        top_c(s, g, 75.0, 169.0, "Cash", 12.0, label);
+        top_c(s, g, 75.0, 169.0, tr("STR_FILES_CASH"), 12.0, label);
         top_c(s, g, 161.0, 169.0, &money(i.cash), 13.0, BLACK);
         let hund = |v: i32| format!("{}{}.{:02}", if v < 0 { "-" } else { "" }, v.abs() / 100, v.abs() % 100);
         let rows = [
-            ("Fun Rating", i.fun.to_string(), fun),
-            ("Length Skill", hund(i.len), skill),
-            ("Accuracy Skill", hund(i.acc), skill),
-            ("Imagination", hund(i.img), skill),
+            (tr("STR_FILES_FUN_RATING"), i.fun.to_string(), fun),
+            (tr("STR_FILES_LENGTH_SKILL"), hund(i.len), skill),
+            (tr("STR_FILES_ACCURACY_SKILL"), hund(i.acc), skill),
+            (tr("STR_FILES_IMAGINATION"), hund(i.img), skill),
         ];
         for (k, (l, v, c)) in rows.iter().enumerate() {
             let y = 192.0 + 18.0 * k as f32;
             top(s, g, 48.0, y, l, 12.0, label);
             top_c(s, g, 184.0, y, v, 13.0, *c);
         }
-        for (k, h) in ["Hole", "Par", "Yards"].iter().enumerate() {
+        for (k, h) in [tr("STR_FILES_HOLE"), tr("STR_FILES_PAR"), tr("STR_FILES_YARDS")].iter().enumerate() {
             top_c(s, g, X[k], 270.0, h, 12.0, grey);
         }
         for (r, &(h, par, yards)) in i.holes.iter().enumerate() {
@@ -756,11 +758,11 @@ impl App {
                 top_c(s, g, X[k], y, &v.to_string(), 13.0, BLACK);
             }
         }
-        top(s, g, 388.0, 442.0, &format!(" (Theme: {})", i.theme), 13.0, WHITE);
-        top(s, g, 388.0, 458.0, &format!("Designed by {}", i.designer), 13.0, WHITE);
+        top(s, g, 388.0, 442.0, &trf("STR_FILES_THEME", &[("THEME", &i.theme)]), 13.0, WHITE);
+        top(s, g, 388.0, 458.0, &trf("STR_FILES_DESIGNED_BY", &[("DESIGNER", &i.designer)]), 13.0, WHITE);
         if i.record > 0 {
             // the port keeps the best rounds but not who played them
-            top(s, g, 388.0, 474.0, &format!("Course Record: {}", i.record), 13.0, WHITE);
+            top(s, g, 388.0, 474.0, &trf("STR_FILES_COURSE_RECORD", &[("SCORE", &i.record)]), 13.0, WHITE);
         }
     }
 
@@ -774,15 +776,15 @@ impl App {
                 top_c(s, g, 139.0, 124.0, &p.person.name, 14.0, c15(0x4210));
             }
         }
-        top(s, g, 56.0, 255.0, &format!("{}'s skills", p.person.name), 13.0, BLACK);
+        top(s, g, 56.0, 255.0, &trf("STR_FILES_PRO_SKILLS", &[("PRO", &p.person.name)]), 13.0, BLACK);
         let teal = c15(0x0210);
         for (k, name) in PRO_SKILLS.iter().enumerate() {
             let y = 279.0 + 24.0 * k as f32;
-            top(s, g, 94.0, y, name, 12.0, teal);
+            top(s, g, 94.0, y, tr(name), 12.0, teal);
             // "+" then skill*10 then "%", centred on 59
             top_c(s, g, 59.0, y, &format!("+{}%", p.skills[k] as i32 * 10), 12.0, teal);
         }
-        top(s, g, 56.0, 544.0, "Signature saying:", 13.0, BLACK);
+        top(s, g, 56.0, 544.0, tr("STR_FILES_SIGNATURE_SAYING"), 13.0, BLACK);
         // the file's own line, else its head's stock line (0x469b00 with event 0x3e)
         let say = p
             .sayings
@@ -790,16 +792,16 @@ impl App {
             .filter(|t| !t.is_empty())
             .cloned()
             .unwrap_or_else(|| sg_core::thoughts::signature_saying(p.person.head_index(0), p.person.female()).into());
-        top(s, g, 36.0, 562.0, &format!("\"{say}\""), 13.0, WHITE);
+        top(s, g, 36.0, 562.0, &trf("STR_CARD_OPINION", &[("OPINION", &say)]), 13.0, WHITE);
     }
 
     /// Select a Theme Pack (docs/DECODE_TITLE2.md 4).
     fn draw_themes(&mut self, g: &mut Gfx, s: &Ui) {
         let art = self.title.art;
         s.image(g, &art.themes, 0.0, 0.0);
-        top(s, g, 78.0, 34.0, "Select a Theme Pack", 18.0, BLACK);
+        top(s, g, 78.0, 34.0, tr("STR_THEMES_TITLE"), 18.0, BLACK);
         for (k, h) in THEME_HEADS.iter().enumerate() {
-            top_c(s, g, 346.0 + 90.0 * k as f32, if k % 2 == 1 { 37.0 } else { 62.0 }, h, 12.0, BLACK);
+            top_c(s, g, 346.0 + 90.0 * k as f32, if k % 2 == 1 { 37.0 } else { 62.0 }, tr(h), 12.0, BLACK);
         }
         let current = crate::render::THEME_PACKS.get(self.theme_pack).copied().unwrap_or("Standard");
         for (i, (folder, has)) in self.title.themes.iter().take(13).enumerate() {
@@ -886,9 +888,9 @@ impl App {
                 match self.save_game(&path) {
                     Ok(()) => {
                         println!("saved game {}", path.display());
-                        self.post_message("Game Saved.", 1, -4); // the exe says it with the club emblem
+                        self.post_message(tr("STR_MSG_GAME_SAVED"), 1, -4); // the exe says it with the club emblem
                     }
-                    Err(e) => self.show_toast(&format!("Could not save: {e}")),
+                    Err(e) => self.show_toast(&trf("STR_TOAST_COULD_NOT_SAVE", &[("ERROR", &e)])),
                 }
                 if std::mem::take(&mut self.title.quit_after_save) {
                     self.end_career();
@@ -910,7 +912,7 @@ impl App {
     pub fn draw_save_dialog(&self, g: &mut Gfx) {
         let Some(name) = &self.title.save_name else { return };
         let s = Ui::new(self.draw_w, self.draw_h);
-        let head = "SAVE GAME, edit name then press Enter";
+        let head = tr("STR_SAVE_PROMPT");
         let w = (text_width(head, 17.0) + 60.0).max(360.0);
         let (x, y, h) = (400.0 - w / 2.0, 240.0, 90.0);
         s.fill(g, x - 3.0, y - 3.0, w + 6.0, h + 6.0, rgba(0.55, 0.55, 0.85, 0.95));

@@ -14,6 +14,7 @@ use crate::ui::{self, group, load_pcx, rgba, Face, Image, Screen as Ui};
 use sg_core::economy::{self, Economy};
 use sg_core::golfer::{flag, game};
 use sg_core::land;
+use sg_core::lang::{tr, trf};
 
 /// courseinfo.pcx: the badge plate and the three pills, sheet x, y, w, h as cut by the loader 0x446943, then where the
 /// main frame draws each one (the pills two pixels right of their place on the sheet, the plate one pixel up).
@@ -29,13 +30,24 @@ const PLATES: [[f32; 6]; 4] = [
 const SITE_EMBLEM: [usize; 16] = [9, 4, 11, 3, 0, 7, 6, 8, 15, 10, 14, 12, 13, 2, 5, 1];
 
 /// The date's months (0x4c2908): a year is eight months of 1024 ticks.
-const MONTHS: [&str; 8] = ["March", "April", "May", "June", "July", "August", "September", "October"];
+pub const MONTH_KEYS: [&str; 8] = [
+    "STR_MONTH_MARCH",
+    "STR_MONTH_APRIL",
+    "STR_MONTH_MAY",
+    "STR_MONTH_JUNE",
+    "STR_MONTH_JULY",
+    "STR_MONTH_AUGUST",
+    "STR_MONTH_SEPTEMBER",
+    "STR_MONTH_OCTOBER",
+];
 
-/// The short course rank suffix the badge appends (0x40daa0 with argument 0), by 0x44faf0's rank of the open holes:
-/// Municipal, Golf Club, Country Club, Championship. The Championship one points into zeroed data, so it is empty.
-const RANK_SUFFIX: [&str; 4] = [" MC", " GC", " CC", ""];
-/// The long class words (0x40daa0 with argument 1).
-const RANK_LONG: [&str; 4] = ["Municipal", "Golf Club", "Country Club", "Championship"];
+/// The course name with the short course rank suffix the badge appends (0x40daa0 with argument 0), by 0x44faf0's rank of the
+/// open holes: Municipal, Golf Club, Country Club, Championship. The Championship one points into zeroed data, so it is
+/// empty.
+const RANK_SUFFIX: [&str; 4] = ["STR_COURSE_NAME_MC", "STR_COURSE_NAME_GC", "STR_COURSE_NAME_CC", "STR_COURSE_NAME_CHAMPIONSHIP"];
+/// The course name with the long class words (0x40daa0 with argument 1).
+const RANK_LONG: [&str; 4] =
+    ["STR_COURSE_NAME_MUNICIPAL", "STR_COURSE_NAME_GOLF_CLUB", "STR_COURSE_NAME_COUNTRY_CLUB", "STR_COURSE_NAME_LONG_CHAMPIONSHIP"];
 
 /// GBUBBLES.pcx icons used by the badge: 16 x 16 cuts at (16 * i, 324) (array 0x59b050).
 const ICON_BALL: usize = 13;
@@ -116,26 +128,23 @@ impl App {
     /// "Ocean Grove MC" on the Florida property (as in footage of the original). The exe adds the suffix of the current
     /// rank to any name.
     pub fn hud_course_name(&self) -> String {
-        let site = self.land.as_ref().and_then(|l| sg_core::data::properties().get(l.slot.property));
-        let base = match site {
-            // an old save's default "<property> GC": the property's course name
-            Some(p) if self.course_name == format!("{} GC", p.name) => p.course,
-            _ => self.course_name.as_str(),
-        };
-        format!("{base}{}", RANK_SUFFIX[economy::rank(self.hole_numbers.len()) as usize])
+        trf(RANK_SUFFIX[economy::rank(self.hole_numbers.len()) as usize], &[("COURSE", &self.base_course_name())])
     }
 
     /// The course name with the long class word (0x40daa0 with argument 1): "Dolphin Coast Municipal" on the routing map in
     /// footage of the original.
     pub fn long_course_name(&self) -> String {
-        format!("{} {}", self.base_course_name(), RANK_LONG[economy::rank(self.hole_numbers.len()) as usize])
+        trf(RANK_LONG[economy::rank(self.hole_numbers.len()) as usize], &[("COURSE", &self.base_course_name())])
     }
 
     /// The course name with no class at all (0x40daa0 with argument -1): the championship leader board's "at <name>".
     pub fn base_course_name(&self) -> String {
-        let short = self.hud_course_name();
-        let rank = economy::rank(self.hole_numbers.len()) as usize;
-        short.strip_suffix(RANK_SUFFIX[rank]).unwrap_or(&short).to_string()
+        let site = self.land.as_ref().and_then(|l| sg_core::data::properties().get(l.slot.property));
+        match site {
+            // an old save's default "<property> GC" (always English): the property's course name
+            Some(p) if self.course_name == format!("{} GC", sg_core::lang::en(p.name_key)) => p.course().to_string(),
+            _ => self.course_name.clone(),
+        }
     }
 
     /// The face strip (0x418d09): every golfer on a hole (1 to 18, or 19 going home), newest first, a mood face 16 pixels
@@ -221,7 +230,7 @@ impl App {
         shadowed_in(s, g, 143.0, BADGE_NAME_Y, &self.hud_course_name(), white, black);
         ui::set_face(Some(Face::Arial));
         let t = self.econ.tick;
-        let date = format!("{} {}", MONTHS[((t >> 10) & 7) as usize], 2001 + (t >> 13));
+        let date = trf("STR_DATE", &[("MONTH", &tr(MONTH_KEYS[((t >> 10) & 7) as usize])), ("YEAR", &(2001 + (t >> 13)))]);
         s.text_centered(g, 143.0, top(BADGE_DATE_Y, ARIAL) + 1.0, &date, ARIAL, black);
         s.text_centered(g, 143.0, top(BADGE_DATE_Y, ARIAL), &date, ARIAL, white);
         // holes named Top 100 and Top 18, homes sold to celebrities, tournament fame, Happy Endings (0x418bc7)

@@ -34,20 +34,21 @@ Two base sets are planned:
 
 * **`original`**: built into the engine. It reads the art, sounds, music, videos and text of the player's own installed copy
   of SimGolf at runtime and never copies them anywhere. This is the 1:1 game.
-* **`opensgolf-free`**: a free base set (GPL-2.0-or-later) in this repository, with art, sounds and text made for OpenSGolf,
-  so the game runs without the original files. It starts as simple placeholder art and is meant to grow through
-  contributions, like OpenGFX did for OpenTTD.
+* **`opensgolf-free`**: the free base set (GPL-2.0-or-later), with art, sounds and text made for OpenSGolf, so the game runs
+  without the original files. It starts as simple placeholder art and is meant to grow through contributions, like OpenGFX
+  did for OpenTTD. **done** (first version): see section 10.
 
-Where packs live (**done**): `packs/` in the save folder (`~/.local/share/simgolf/packs` on Linux,
-`~/Library/Application Support/SimGolf/packs` on macOS, `%APPDATA%\SimGolf\packs` on Windows, or `$SIMGOLF_SAVE_DIR/packs`),
+Where packs live (**done**): `packs/` in the save folder (`~/.local/share/opensgolf/packs` on Linux,
+`~/Library/Application Support/OpenSGolf/packs` on macOS, `%APPDATA%\OpenSGolf\packs` on Windows, or `$OPENSGOLF_SAVE_DIR/packs`),
 plus `packs/` next to the program. Each pack is a folder, or a `.zip` with `pack.toml` at its root or in its one top
 folder. The browser version keeps the packs the player adds on the start page (*Optional: content packs*) in the browser's
 storage. A pack whose id was already found earlier (the save folder is searched first) is listed as a duplicate and not
 loaded.
 
-Status: `original` is built in (crates/sg-core/src/packs.rs, `ORIGINAL`). Another `base` pack can be chosen in Preferences >
-Content; for now it is one more layer over the player's game folder (the engine still needs the game folder until the free
-base set exists). `translation` packs are loaded last, one at a time, but their `lang/` text is not read yet (section 4).
+Status: `original` and `opensgolf-free` are built in (crates/sg-core/src/packs.rs, `ORIGINAL` and `FREE`). A `base` pack is
+chosen in Preferences > Content or for one run with `--base ID`; it is a layer over the player's game folder, and since a
+base set's files stand in for missing ones (folders included, section 2) the game folder may be missing altogether. With no
+base set chosen and no original files in the game folder, the game uses `opensgolf-free` and says so. `translation` packs are loaded last, one at a time, but their `lang/` text is not read yet (section 4).
 `scenario` packs are listed and not loaded yet (section 5).
 
 ## 2. Load order and overrides
@@ -55,10 +56,13 @@ base set exists). `translation` packs are loaded last, one at a time, but their 
 The base set loads first, then mods in the order the player chooses in **Preferences > Content**, then the translation.
 Later packs win. Every pack can:
 
-* **Override files** (**done**): any file under `gfx/`, `sfx/`, `music/` or `video/` replaces the game folder's file with
-  the same relative path (case insensitive), e.g. `gfx/Interface/BuildPanel.png` replaces `Interface/BuildPanel.pcx` and
-  `sfx/Sounds/Applause.ogg` replaces `Sounds/Applause.wav`. PNG, PCX, TGA, BMP and FLC are accepted for art; WAV and OGG for
-  sound.
+* **Override files** (**done**): any file under `gfx/`, `sfx/`, `music/`, `video/`, `text/` or `fonts/` replaces the game
+  folder's file with the same relative path (case insensitive), e.g. `gfx/Interface/BuildPanel.png` replaces
+  `Interface/BuildPanel.pcx` and `sfx/Sounds/Applause.ogg` replaces `Sounds/Applause.wav`. PNG, PCX, TGA, BMP and FLC are
+  accepted for art; WAV and OGG for sound; `text/` takes the game folder's text and character files (TXT, DTA, CHR, GLF, PRO,
+  SVE) and `fonts/` its TrueType fonts. A pack's file that the game folder does not have is added to it: folder listings show
+  it (stories, characters, heads and textures are found by listing folders), so a base set can stand in for a whole game
+  folder.
 * **Change data** (**done** for six files, section 3): `data/*.toml` files are merged entry by entry (an entry with the same
   `id` replaces fields of the earlier one; `remove = true` deletes it).
 * **Change text** (planned, section 4): `lang/<code>.txt` lines replace strings with the same key.
@@ -77,8 +81,9 @@ The HD graphics mode (docs/HD.md) is the first override layer: an enabled pack's
 replaces (which is then loaded the classic way); everything else of HD is unchanged. It stays a local thing that is never
 shared, because it is made from the original art.
 
-How it works: every read of a game file goes through `sg_core::fsutil::read_file`, which asks `sg_core::vfs` first. With no
-packs enabled nothing is mounted and the reads are exactly what they were.
+How it works: every read of a game file goes through `sg_core::fsutil::read_file`, which asks `sg_core::vfs` first, and
+`fsutil::exists`, `is_dir` and `list_dir` add the folders and files the packs make inside the game folder. With no packs
+enabled nothing is mounted and the reads are exactly what they were.
 
 ## 3. Data files
 
@@ -102,11 +107,15 @@ text comes from the code, crates/sg-core/src/data.rs). The reference is in secti
 All text the engine shows has a key. `lang/en.txt` is plain UTF-8, one string per line, in the OpenTTD style:
 
 ```
-STR_TOOLTIP_COST           :Cost: {MONEY}
-STR_MSG_FIRST_GREENS_FEE   :{GOLFER} has just paid you your first greens fee of {MONEY}!
+STR_TIP_COST               :Cost: {COST}
+STR_MSG_FIRST_GREENS_FEE   :{GOLFER} has just paid you your first greens fee of {FEE} simoleans!  Golfers pay ...
 ```
 
-Parameters in braces are filled by the engine. A missing key falls back to English, then to the key itself.
+Parameters in braces are filled by the engine. A missing key falls back to English, then to the key itself. The English
+file is built into the program (`sg_core::lang`); a translation or a pack's `lang/<code>.txt` is laid over it with
+`sg_core::lang::load_overlay`, later overlays winning. The player's language is the `language` setting in `settings.json`
+(default `en`, a `Language:` line in Preferences once a translation is installed). docs/TRANSLATING.md has the file
+format, the parameters and how to try a translation out.
 
 The `original` base set takes text from the player's copy where the copy has it (the Interface, story and character files).
 Text that only exists inside the original program is kept in this repository's `lang/en.txt`, word for word, so the game
@@ -135,7 +144,7 @@ pack with a pull request to the index; packs must have a free licence and must n
 | Step | Status |
 |------|--------|
 | Licence (GPL-2.0-or-later) and name | done |
-| Text keys and `lang/en.txt` (original English text kept) | planned |
+| Text keys and `lang/en.txt` (original English text kept) | done: about 1,600 keys, translations by setting or `--lang` (docs/TRANSLATING.md) |
 | Pack loader, load order, file overrides (folders and .zip, desktop and browser) | done |
 | PNG for PCX/TGA/BMP art, OGG for WAV sound | done |
 | Data files for terrain, buildings, amenities, staff, properties, economy | done |
@@ -144,7 +153,11 @@ pack with a pull request to the index; packs must have a free licence and must n
 | Preferences > Content screen | done |
 | Data files for golfers and tournaments; the planned fields of section 3 | planned |
 | Overrides for the intro videos (sgplay does not read packs yet) | planned |
-| Free base set (placeholder art) | planned |
+| Free base set `opensgolf-free`: drawn art, synthesised sounds, own text, OFL fonts (section 10) | done (first version) |
+| `text/` and `fonts/` override folders; pack files listed in the game folder | done |
+| `--base ID`; falling back to the free set without original files; browser *Play with the free graphics* | done |
+| Headless play test on the free set in CI (`tools/freeset_playtest.sh`) | done |
+| Free set: hand-made art replacing the drawn pieces, music, more stories | planned |
 | Scenario packs | planned |
 | Rhai scripts | planned |
 | Content index and in-game downloader | planned |
@@ -183,12 +196,15 @@ my-pack/
   gfx/Flics/...                 sprites and animations (FLC only)
   sfx/Sounds/Applause.ogg       replaces Sounds/Applause.wav
   music/Sounds/...              music lives under Sounds/ in the game folder too
+  text/Themes/Standard/...      stories (TXT), characters (CHR, GLF), golfer lists (DTA), terrain descriptions
+  fonts/manu3_.TTF              the game's fonts (KLEPTO__.TTF for titles, manu3_.TTF for most text)
   video/Flics/...               the intro videos (planned: not read yet)
   README.md                     anything else is ignored
 ```
 
-The path under `gfx/`, `sfx/`, `music/` and `video/` is the path in the game folder, matched without regard to case. The
-four folders take these types: `gfx/` PNG, PCX, TGA, BMP, FLC; `sfx/` and `music/` WAV, OGG; `video/` BIK, FLC. A file of
+The path under `gfx/`, `sfx/`, `music/`, `video/`, `text/` and `fonts/` is the path in the game folder, matched without
+regard to case. The folders take these types: `gfx/` PNG, PCX, TGA, BMP, FLC; `sfx/` and `music/` WAV, OGG; `video/` BIK,
+FLC; `text/` TXT, DTA, CHR, GLF, PRO, SVE; `fonts/` TTF. A file of
 another type is ignored. A PNG replaces the PCX, TGA or BMP of the same name and an OGG the WAV of the same name; a file
 with the original's own name and type wins over a replacement of another type in the same pack.
 
@@ -307,3 +323,30 @@ The loaders and their tests are in crates/sg-core/src: `packs.rs` (pack.toml, di
 accessors), with the game side in crates/simgolf/src/content.rs (start up, settings, the Content screen). A table the engine
 reads moves into `data.rs` by giving it an entry type, a built-in conversion in `Tables::builtin`, a slot in `Data`, and a
 test that the merged defaults equal the built-in table (`merged_defaults_equal_the_builtin_tables`).
+
+## 10. The free base set (`opensgolf-free`)
+
+**Done (first version).** The set is drawn, synthesised and written by the engine itself (crates/sg-core/src/freeset/) when a
+file is read, so nothing has to be shipped: written out it is about 5,500 files and 82 MB, too much to commit, and drawing a
+file takes milliseconds. `sgtool freeset DIR` writes it all as a pack folder; packs/opensgolf-free/ in the repository holds
+its pack.toml and README and is where hand-made replacements go (a folder or zip with the id `opensgolf-free` is loaded over
+the drawn files).
+
+* Every file has the name, size and layout the engine expects of the original's: picture sizes and the boxes of the pieces the
+  engine cuts from each sheet, sprite frame sizes, views, frames per view and anchors, sound lengths. Those numbers are in
+  `freeset/manifest.txt`, measured from an installed copy by `tools/freeset_layout.py`; nothing else is taken from the
+  original (no pixels, palettes, samples or text).
+* Pictures are PNG under the original's names (the engine takes a PNG for a PCX, TGA or BMP), except what the engine lists by
+  type or reads as palette art: terrain textures are BMP, heads, bodies and palettes PCX.
+* Sprites use one palette that keeps the engine's slots: golfer clothes, skin, hat and hair ramps (recoloured by the swap
+  palettes in Bodies/), 255 the transparent key; shadow sprites use the shadow ramp.
+* Sounds: synthesised effects, voices as vowel babble, jingles as short tunes; no music (the game plays nothing where a file
+  is missing).
+* Text: own stories, characters, famous golfers, celebrities, terrain descriptions, credits and high scores. Text that lives
+  inside the engine (the message lines of lang/en.txt, the built-in roster and tables) is not part of a base set yet.
+* Fonts: Liberation Sans Bold (OFL) as both game fonts.
+
+Testing: `tools/freeset_playtest.sh` (CI, Linux) decodes every file with `sgtool check`, starts a new game with no game
+folder, builds a hole, plays about three months, saves, loads and opens every report and title screen, failing on any crash
+or missing-file or decode message; `packs::tests::the_free_base_set_stands_in_for_a_missing_game_folder` checks the loaders
+(textures, swap palettes, sounds, roster, stories, fonts, sprites) against it.

@@ -6,6 +6,7 @@
 
 use crate::geom::angle;
 use crate::golfer::{Club, Event, Hole};
+use crate::lang::{tr, trf};
 
 /// The club ratings the status bar shows (all recomputed on each pass).
 #[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -26,7 +27,16 @@ pub struct ClubRatings {
 }
 
 /// Hole type names by skill mask (0x4c2a28).
-pub const TYPE_NAMES: [&str; 8] = ["Breather", "Freeway", "Precise", "Challenge", "Creative", "Heroic", "Strategic", "Classic"];
+pub const TYPE_NAME_KEYS: [&str; 8] = [
+    "STR_HOLE_TYPE_BREATHER",
+    "STR_HOLE_TYPE_FREEWAY",
+    "STR_HOLE_TYPE_PRECISE",
+    "STR_HOLE_TYPE_CHALLENGE",
+    "STR_HOLE_TYPE_CREATIVE",
+    "STR_HOLE_TYPE_HEROIC",
+    "STR_HOLE_TYPE_STRATEGIC",
+    "STR_HOLE_TYPE_CLASSIC",
+];
 
 /// The per-class numbers of a hole: rounds and strokes with a prior of 8 rounds at par, and the finished rounds alone.
 struct Classes {
@@ -146,7 +156,7 @@ pub fn pass(club: &mut Club, difficulty: i32) -> ClubRatings {
             && club.types_announced & (1 << mask) == 0
             && !message
             && club.message_by(
-                format!("Hole #{h} has been recognized as your first \"{}\" type hole.", TYPE_NAMES[mask as usize].to_uppercase()),
+                trf("STR_MSG_FIRST_HOLE_TYPE", &[("HOLE", &h), ("TYPE", &(tr(TYPE_NAME_KEYS[mask as usize]).to_uppercase()))]),
                 -4,
                 0,
             )
@@ -203,11 +213,7 @@ pub fn pass(club: &mut Club, difficulty: i32) -> ClubRatings {
             && !message
             && club.message_by(
                 // the hole takes its proper name now (0x80 set first, 0x416f5a)
-                format!(
-                    "Hole #{h} (henceforth known as '{}'), has been rated as one of the best 100 holes in the country by Golf \
-                     Enquirer magazine! Increase greens fees by \u{a7}100.",
-                    name_of(h, hole.par, flags | 0x80)
-                ),
+                trf("STR_MSG_TOP_100_HOLE", &[("HOLE", &h), ("NAME", &name_of(h, hole.par, flags | 0x80))]),
                 -21,
                 0,
             )
@@ -222,15 +228,7 @@ pub fn pass(club: &mut Club, difficulty: i32) -> ClubRatings {
             && score > 300
             && flags & 0xe == 0
             && !message
-            && club.message_by(
-                format!(
-                    "{} has been rated as one of the Top 18 holes in the country by Great Golf Holes magazine! Increase \
-                     greens fees by \u{a7}100.",
-                    name_of(h, hole.par, flags)
-                ),
-                -21,
-                0,
-            )
+            && club.message_by(trf("STR_MSG_TOP_18_HOLE", &[("NAME", &name_of(h, hole.par, flags))]), -21, 0)
         {
             message = true;
             flags |= 0x2;
@@ -286,7 +284,7 @@ pub fn report_row(h: usize, hole: &Hole, difficulty: i32, all_classes: bool) -> 
         len: d.0,
         acc: d.1,
         img: d.2,
-        type_name: TYPE_NAMES[type_mask(d, difficulty, 100) as usize],
+        type_name: tr(TYPE_NAME_KEYS[type_mask(d, difficulty, 100) as usize]),
         scenic: ev(22) / 2 + ev(28) + ev(11) >= 8,
         variety: hole.monotony,
         avg_fee: if c.ntot != 0 { hole.fees * 100 / c.ntot } else { 0 },
@@ -299,64 +297,64 @@ pub fn report_row(h: usize, hole: &Hole, difficulty: i32, all_classes: bool) -> 
 /// Proper hole names, indexed by hole number, one table per par (0x407280 picks the table by the hole's par byte): women's
 /// names for par 3 (pointer table 0x4c2e88), trees and shrubs for par 4 (0x4c2e38), dark places for the rest (0x4c2ed8).
 const NAMES_PAR3: [&str; 18] = [
-    "Alexandra",
-    "Belinda",
-    "Carmen",
-    "Dorothy",
-    "Elizabeth",
-    "Faith",
-    "Gisele",
-    "Hope",
-    "Ingrid",
-    "Jacqueline",
-    "Lara",
-    "Melinda",
-    "Naomi",
-    "Priscilla",
-    "Roxanne",
-    "Sarah",
-    "Valerie",
-    "Zelda",
+    "STR_HOLE_NAME_PAR3_1",
+    "STR_HOLE_NAME_PAR3_2",
+    "STR_HOLE_NAME_PAR3_3",
+    "STR_HOLE_NAME_PAR3_4",
+    "STR_HOLE_NAME_PAR3_5",
+    "STR_HOLE_NAME_PAR3_6",
+    "STR_HOLE_NAME_PAR3_7",
+    "STR_HOLE_NAME_PAR3_8",
+    "STR_HOLE_NAME_PAR3_9",
+    "STR_HOLE_NAME_PAR3_10",
+    "STR_HOLE_NAME_PAR3_11",
+    "STR_HOLE_NAME_PAR3_12",
+    "STR_HOLE_NAME_PAR3_13",
+    "STR_HOLE_NAME_PAR3_14",
+    "STR_HOLE_NAME_PAR3_15",
+    "STR_HOLE_NAME_PAR3_16",
+    "STR_HOLE_NAME_PAR3_17",
+    "STR_HOLE_NAME_PAR3_18",
 ];
 const NAMES_PAR4: [&str; 18] = [
-    "Olive",
-    "Dogwood",
-    "Peach",
-    "Crab Apple",
-    "Magnolia",
-    "Juniper",
-    "Pampas",
-    "Jasmime",
-    "Cherry",
-    "Camellia",
-    "Daisy",
-    "Golden Bell",
-    "Azalea",
-    "Chinese Fir",
-    "Firethorn",
-    "Redbud",
-    "Nandina",
-    "Holly",
+    "STR_HOLE_NAME_PAR4_1",
+    "STR_HOLE_NAME_PAR4_2",
+    "STR_HOLE_NAME_PAR4_3",
+    "STR_HOLE_NAME_PAR4_4",
+    "STR_HOLE_NAME_PAR4_5",
+    "STR_HOLE_NAME_PAR4_6",
+    "STR_HOLE_NAME_PAR4_7",
+    "STR_HOLE_NAME_PAR4_8",
+    "STR_HOLE_NAME_PAR4_9",
+    "STR_HOLE_NAME_PAR4_10",
+    "STR_HOLE_NAME_PAR4_11",
+    "STR_HOLE_NAME_PAR4_12",
+    "STR_HOLE_NAME_PAR4_13",
+    "STR_HOLE_NAME_PAR4_14",
+    "STR_HOLE_NAME_PAR4_15",
+    "STR_HOLE_NAME_PAR4_16",
+    "STR_HOLE_NAME_PAR4_17",
+    "STR_HOLE_NAME_PAR4_18",
 ];
 const NAMES_OTHER: [&str; 18] = [
-    "Pride",
-    "Inferno",
-    "Fortress",
-    "The Siren",
-    "Centaur",
-    "Styx",
-    "Flame",
-    "Serpent",
-    "Paradise",
-    "Eden",
-    "Valley",
-    "Torment",
-    "Misery",
-    "Archangel",
-    "Smoke",
-    "Gryphon",
-    "Beast",
-    "Purgatory",
+    "STR_HOLE_NAME_PAR5_1",
+    "STR_HOLE_NAME_PAR5_2",
+    "STR_HOLE_NAME_PAR5_3",
+    "STR_HOLE_NAME_PAR5_4",
+    "STR_HOLE_NAME_PAR5_5",
+    "STR_HOLE_NAME_PAR5_6",
+    "STR_HOLE_NAME_PAR5_7",
+    "STR_HOLE_NAME_PAR5_8",
+    "STR_HOLE_NAME_PAR5_9",
+    "STR_HOLE_NAME_PAR5_10",
+    "STR_HOLE_NAME_PAR5_11",
+    "STR_HOLE_NAME_PAR5_12",
+    "STR_HOLE_NAME_PAR5_13",
+    "STR_HOLE_NAME_PAR5_14",
+    "STR_HOLE_NAME_PAR5_15",
+    "STR_HOLE_NAME_PAR5_16",
+    "STR_HOLE_NAME_PAR5_17",
+    "STR_HOLE_NAME_PAR5_18",
 ];
 
 /// A hole's name (0x407280): "Hole N" ("Hole " and the number), or once it is a Top 100 hole (or its naming is pending,
@@ -368,12 +366,12 @@ pub fn hole_name(h: usize, hole: &Hole) -> String {
 
 fn name_of(h: usize, par: i32, flags: u32) -> String {
     if flags & 0x81 == 0 || !(1..=18).contains(&h) {
-        return format!("Hole {h}");
+        return trf("STR_HOLE_NAME_NUMBER", &[("HOLE", &h)]);
     }
     match par {
-        3 => NAMES_PAR3[h - 1],
-        4 => NAMES_PAR4[h - 1],
-        _ => NAMES_OTHER[h - 1],
+        3 => tr(NAMES_PAR3[h - 1]),
+        4 => tr(NAMES_PAR4[h - 1]),
+        _ => tr(NAMES_OTHER[h - 1]),
     }
     .to_string()
 }
@@ -398,22 +396,22 @@ pub struct HoleStats {
 /// The dialog's word for a fun percent.
 pub fn fun_word(v: i32) -> &'static str {
     match v {
-        v if v < 0 => "poor",
-        0..=19 => "fair",
-        20..=39 => "good",
-        40..=59 => "very good",
-        _ => "outstanding",
+        v if v < 0 => tr("STR_HOLESTATS_POOR"),
+        0..=19 => tr("STR_HOLESTATS_FAIR"),
+        20..=39 => tr("STR_HOLESTATS_GOOD"),
+        40..=59 => tr("STR_HOLESTATS_VERY_GOOD"),
+        _ => tr("STR_HOLESTATS_OUTSTANDING"),
     }
 }
 
 /// The dialog's word for a differential in hundredths.
 pub fn demand_word(v: i32) -> &'static str {
     match v {
-        v if v < 0 => "poor",
-        0..=24 => "fair",
-        25..=49 => "good",
-        50..=99 => "very good",
-        _ => "outstanding",
+        v if v < 0 => tr("STR_HOLESTATS_POOR"),
+        0..=24 => tr("STR_HOLESTATS_FAIR"),
+        25..=49 => tr("STR_HOLESTATS_GOOD"),
+        50..=99 => tr("STR_HOLESTATS_VERY_GOOD"),
+        _ => tr("STR_HOLESTATS_OUTSTANDING"),
     }
 }
 

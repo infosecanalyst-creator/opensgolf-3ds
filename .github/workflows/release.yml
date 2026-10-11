@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 env:
-  BIN: simgolf
+  BIN: opensgolf
 
 jobs:
   desktop:
@@ -32,7 +32,7 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }} -p simgolf -p sgtool
+        run: cargo build --release --target ${{ matrix.target }} -p opensgolf -p sgtool
       - name: Package
         shell: bash
         run: |
@@ -41,6 +41,7 @@ jobs:
           cp "target/${{ matrix.target }}/release/${BIN}${{ matrix.ext }}" "$out/"
           cp "target/${{ matrix.target }}/release/sgtool${{ matrix.ext }}" "$out/"
           cp LICENSE README.md docs/PLAYING.md docs/MODDING.md "$out/"
+          cp -r packs lang "$out/"
           if [ "$RUNNER_OS" = "Windows" ]; then
             7z a "$out.zip" "$out" > /dev/null
           else

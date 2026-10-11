@@ -6,6 +6,7 @@
 use crate::app::*;
 use crate::gfx::Gfx;
 use crate::ui::{load_pcx, load_pcx_alpha, rgb, rgba, text_width, Image, Screen as Ui};
+use sg_core::lang::{tr, trf};
 use sg_core::ratings;
 use sg_core::top10;
 
@@ -100,7 +101,20 @@ const REPORT_PITCH: f32 = 17.0;
 /// The report's cells on the art (left edge and width), in column order Yds .. Profit.
 const CX: [f32; 12] = [112.0, 157.0, 190.0, 233.0, 283.0, 330.0, 375.0, 422.0, 468.0, 571.0, 641.0, 716.0];
 const CW: [f32; 12] = [41.0, 29.0, 39.0, 46.0, 43.0, 41.0, 43.0, 42.0, 99.0, 66.0, 71.0, 74.0];
-const HEAD: [&str; 12] = ["Yds", "Par", "Avg", "Time", "Fun", "+Len", "+Acc", "+Img", "Type", "Avg.Fee", "Revenue", "Profit"];
+const HEAD: [&str; 12] = [
+    "STR_REPORT_YDS",
+    "STR_REPORT_PAR",
+    "STR_REPORT_AVG",
+    "STR_REPORT_TIME",
+    "STR_REPORT_FUN",
+    "STR_REPORT_LEN",
+    "STR_REPORT_ACC",
+    "STR_REPORT_IMG",
+    "STR_REPORT_TYPE",
+    "STR_REPORT_AVG_FEE",
+    "STR_REPORT_REVENUE",
+    "STR_REPORT_PROFIT",
+];
 
 impl App {
     /// The OK tick at (x, y): the idle cut unless the art has it already, and the lit cut under the pointer.
@@ -169,9 +183,9 @@ impl App {
         s.image_part(g, art, 0.0, 0.0, 0.0, 0.0, 800.0, REPORT_TOP);
         // fonts (0x44fb30): the title in 0x821020 (Klepto 24) centred at (316, 35); every other line
         // in 0x821ee8 (Manual SSi 14), the rows' tops 2 below their pieces, the totals' 11 below theirs
-        s.put_centered(g, crate::ui::F_INFO_TITLE, 316.0, 35.0, "COURSE REPORT", ink);
+        s.put_centered(g, crate::ui::F_INFO_TITLE, 316.0, 35.0, tr("STR_REPORT_TITLE"), ink);
         for c in 0..12 {
-            s.text_centered(g, CX[c] + CW[c] / 2.0, 86.0, HEAD[c], 14.0, ink);
+            s.text_centered(g, CX[c] + CW[c] / 2.0, 86.0, tr(HEAD[c]), 14.0, ink);
         }
         let all = self.club.game & sg_core::golfer::game::TWO_TEES != 0;
         let holes = self.report_holes();
@@ -260,7 +274,7 @@ impl App {
             text_right(&s, g, 151.0, ty, &r.yards.to_string(), 14.0, ink);
             s.text_centered(g, 172.0, ty, &r.par.to_string(), 14.0, ink);
             text_right(&s, g, 227.0, ty, &hundredths(r.avg), 14.0, ink);
-            text_right(&s, g, 278.0, ty, &format!("{}m", r.minutes), 14.0, ink);
+            text_right(&s, g, 278.0, ty, &trf("STR_UNIT_MINUTES", &[("MINUTES", &r.minutes)]), 14.0, ink);
             text_right(&s, g, 324.0, ty, &format!("{}%", r.fun), 14.0, ink);
             text_right(&s, g, 369.0, ty, &hundredths(r.len), 14.0, ink);
             text_right(&s, g, 415.0, ty, &hundredths(r.acc), 14.0, ink);
@@ -274,12 +288,16 @@ impl App {
         s.image_part(g, art, 0.0, total_y, 0.0, 420.0, 800.0, 29.0);
         let ty = total_y + 21.0;
         if open > 0 {
-            s.text(g, 15.0, ty, "Total", 14.0, ink);
+            s.text(g, 15.0, ty, tr("STR_REPORT_TOTAL"), 14.0, ink);
             text_right(&s, g, 151.0, ty, &digits(t_yds), 14.0, ink);
             s.text_centered(g, 172.0, ty, &t_par.to_string(), 14.0, ink);
             text_right(&s, g, 227.0, ty, &hundredths(t_avg), 14.0, ink);
             // the exe shows the last hole's minutes past the hour, not the total's
-            let time = if t_min >= 60 { format!("{}h {}m", t_min / 60, m_last % 60) } else { format!("{}m", m_last % 60) };
+            let time = if t_min >= 60 {
+                trf("STR_UNIT_HOURS_MINUTES", &[("HOURS", &(t_min / 60)), ("MINUTES", &(m_last % 60))])
+            } else {
+                trf("STR_UNIT_MINUTES", &[("MINUTES", &(m_last % 60))])
+            };
             text_right(&s, g, 278.0, ty, &time, 14.0, ink);
             text_right(&s, g, 324.0, ty, &format!("{}%", t_fun / open), 14.0, ink);
             for (c, (x, v)) in [(369.0, t_len / open), (415.0, t_acc / open), (462.0, t_img / open)].into_iter().enumerate() {
@@ -304,7 +322,7 @@ impl App {
         let by = total_y + 29.0;
         s.image_part(g, art, 0.0, by, 0.0, 468.0, 800.0, 72.0);
         // the legend's tops at the bottom piece's y - 63 + its height (72), the tick 15 below them (0x4520f0)
-        for (x, t) in [(178.0, "Top 100 Hole"), (335.0, "Top 18 Hole"), (487.0, "Scenic Hole")] {
+        for (x, t) in [(178.0, tr("STR_REPORT_TOP_100")), (335.0, tr("STR_REPORT_TOP_18")), (487.0, tr("STR_REPORT_SCENIC"))] {
             s.put_centered(g, crate::ui::F_INFO14, x, by + 9.0, t, ink);
         }
         self.ok_tick(g, &s, 734.0, by + 24.0, false);
@@ -327,14 +345,19 @@ impl App {
         let st = ratings::hole_stats(hole);
         let ink = black();
         s.image_part(g, art, 0.0, 0.0, 0.0, 0.0, 800.0, 220.0);
-        let mut title = format!("HOLE STATS for {}", ratings::hole_name(h, hole));
+        let mut title = trf("STR_HOLESTATS_TITLE", &[("HOLE", &ratings::hole_name(h, hole))]);
         if hole.flags & 0x81 != 0 {
-            title += &format!(" ({h})");
+            title += &trf("STR_HOLESTATS_NUMBER", &[("HOLE", &h)]);
         }
         // fonts (0x453330): the title in 0x821020 (Klepto 24) centred at (385, 48), the rest in 0x821ee8 (Manual SSi 14)
         s.put_centered(g, crate::ui::F_INFO_TITLE, 385.0, 48.0, &title, ink);
         // left column: label at 190, value centred at 356
-        let rows = [(83.0, "Fun Factor"), (104.0, "Length"), (125.0, "Accuracy"), (146.0, "Imagination")];
+        let rows = [
+            (83.0, tr("STR_HOLESTATS_FUN")),
+            (104.0, tr("STR_HOLESTATS_LENGTH")),
+            (125.0, tr("STR_HOLESTATS_ACCURACY")),
+            (146.0, tr("STR_HOLESTATS_IMAGINATION")),
+        ];
         for (y, l) in rows {
             s.text(g, 190.0, y + 10.0, l, 14.0, ink);
         }
@@ -346,7 +369,7 @@ impl App {
             s.text_centered(g, 356.0, rows[k + 1].0 + 10.0, &t, 14.0, ink);
         }
         // right column: label at 441, values centred at 536 or 591
-        s.text(g, 441.0, 93.0, "Yards", 14.0, ink);
+        s.text(g, 441.0, 93.0, tr("STR_HOLESTATS_YARDS"), 14.0, ink);
         s.text_centered(g, 536.0, 93.0, &hole.length.to_string(), 14.0, ink);
         let rounds = hole.tee_shots;
         if rounds > 0 {
@@ -355,22 +378,22 @@ impl App {
             let on_hole = self.club.g.iter().filter(|g| g.hole == h as i32 && g.strokes > 0).count() as i32;
             let r = (rounds - on_hole).max(1);
             let (label, value) = match k {
-                0 => ("Avg. Drive: ", format!("{} yds", hole.drive_sum / rounds)),
-                1 => ("Longest Drive", format!("{} yds", hole.drive_max)),
-                2 => ("Fairways hit", format!("{}%", hole.fairways * 100 / rounds)),
-                3 => ("Greens in Reg", format!("{}%", hole.gir * 100 / r)),
-                _ => ("Average Putts", hundredths(hole.putts * 100 / r)),
+                0 => (tr("STR_HOLESTATS_AVG_DRIVE"), trf("STR_UNIT_YDS", &[("YARDS", &(hole.drive_sum / rounds))])),
+                1 => (tr("STR_HOLESTATS_LONGEST_DRIVE"), trf("STR_UNIT_YDS", &[("YARDS", &hole.drive_max)])),
+                2 => (tr("STR_HOLESTATS_FAIRWAYS_HIT"), format!("{}%", hole.fairways * 100 / rounds)),
+                3 => (tr("STR_HOLESTATS_GREENS_IN_REG"), format!("{}%", hole.gir * 100 / r)),
+                _ => (tr("STR_HOLESTATS_AVERAGE_PUTTS"), hundredths(hole.putts * 100 / r)),
             };
             s.text(g, 441.0, 114.0, label, 14.0, ink);
             s.text_centered(g, 591.0, 114.0, &value, 14.0, ink);
         }
-        s.text(g, 441.0, 135.0, "Par ", 14.0, ink);
+        s.text(g, 441.0, 135.0, tr("STR_HOLESTATS_PAR"), 14.0, ink);
         s.text_centered(g, 536.0, 135.0, &hole.par.to_string(), 14.0, ink);
-        s.text(g, 441.0, 156.0, "Stroke average", 14.0, ink);
+        s.text(g, 441.0, 156.0, tr("STR_HOLESTATS_STROKE_AVERAGE"), 14.0, ink);
         if let Some(a) = st.avg {
             s.text_centered(g, 591.0, 156.0, &hundredths(a), 14.0, ink);
         }
-        s.text(g, 190.0, 188.0, "Average shots on this hole", 14.0, ink);
+        s.text(g, 190.0, 188.0, tr("STR_HOLESTATS_AVERAGE_SHOTS"), 14.0, ink);
         for (k, &(v, n)) in st.cols.iter().enumerate() {
             let x = 445.0 + 34.0 * k as f32;
             let label = if k == 5 { format!("{v}+") } else { v.to_string() };
@@ -379,12 +402,12 @@ impl App {
                 s.text_centered(g, x, 197.0, &n.to_string(), 14.0, ink);
             }
         }
-        s.text(g, 190.0, 213.0, "Comments", 14.0, ink);
+        s.text(g, 190.0, 213.0, tr("STR_HOLESTATS_COMMENTS"), 14.0, ink);
         let mut y = 220.0;
         if hole.par == 0 {
             s.image_part(g, art, 0.0, y, 0.0, 282.0, 800.0, 16.0);
             if (self.clock * 1000.0) as u64 & 0x200 != 0 {
-                s.text_centered(g, 400.0, y + 12.0, "Under Construction!", 14.0, c15(0x7d08));
+                s.text_centered(g, 400.0, y + 12.0, tr("STR_HOLESTATS_UNDER_CONSTRUCTION"), 14.0, c15(0x7d08));
             }
             y += 16.0;
         }
@@ -416,9 +439,9 @@ impl App {
         s.image_part(g, art, 195.0, 45.0, 195.0, 45.0, 411.0, 79.0);
         let n = (1..19).filter(|&h| self.club.holes[h].par != 0).count();
         // fonts (0x455a30): the title in 0x821020 (Klepto 24) centred at (413, 59), the rest in 0x821ee8 (Manual SSi 14)
-        s.put_centered(g, crate::ui::F_INFO_TITLE, 413.0, 59.0, &format!("Best {n} Hole Scores"), ink);
-        s.text(g, 236.0, 106.0, "Golfer", 14.0, ink);
-        s.text_centered(g, 551.0, 106.0, "Score", 14.0, ink);
+        s.put_centered(g, crate::ui::F_INFO_TITLE, 413.0, 59.0, &trf("STR_BEST_TITLE", &[("HOLES", &n)]), ink);
+        s.text(g, 236.0, 106.0, tr("STR_BEST_GOLFER"), 14.0, ink);
+        s.text_centered(g, 551.0, 106.0, tr("STR_BEST_SCORE"), 14.0, ink);
         let mut y = 124.0;
         for (score, name) in self.club.top_rounds.iter().zip(&self.club.top_names).take_while(|(v, _)| **v != 0) {
             s.image_part(g, art, 195.0, y, 195.0, 224.0, 411.0, 17.0);
@@ -518,15 +541,15 @@ impl App {
             let (fig, big) = if row == 0 { (F_MANUAL15, F_MANUAL20) } else { (F_ARIAL10, F_MANUAL15) };
             let ink = c15(0x4206);
             let fun_y = cash_y - 2.0 * p;
-            s.put_centered(g, fig, x0, cash_y, &format!("Cash: {}", e.cash / 10), ink);
-            s.put_centered(g, fig, x0, cash_y - p, &format!("Skill: {}", hundredths(e.skill)), ink);
-            s.put_centered(g, fig, x0, fun_y, &format!("Fun: {}", e.fun), ink);
+            s.put_centered(g, fig, x0, cash_y, &trf("STR_TOP10_CASH", &[("CASH", &(e.cash / 10))]), ink);
+            s.put_centered(g, fig, x0, cash_y - p, &trf("STR_TOP10_SKILL", &[("SKILL", &hundredths(e.skill))]), ink);
+            s.put_centered(g, fig, x0, fun_y, &trf("STR_TOP10_FUN", &[("FUN", &e.fun)]), ink);
             let total_y = fun_y - if row == 0 { 8.0 + p } else { 2.0 + p };
             let total = e.score().to_string();
             s.put_centered(g, big, x0, total_y - 1.0, &total, black());
             s.put_centered(g, big, x0, total_y + 1.0, &total, c15(0x7ff0));
             s.put_centered(g, big, x0, total_y, &total, c15(0x5288));
-            s.put_centered(g, F_ARIAL10, x0, total_y - 13.0, &format!("Total Score (x{})", e.difficulty + 1), ink);
+            s.put_centered(g, F_ARIAL10, x0, total_y - 13.0, &trf("STR_TOP10_TOTAL", &[("FACTOR", &(e.difficulty + 1))]), ink);
             if rank == 0 {
                 s.put_centered(g, F_ARIAL10, x0, total_y - 27.0, &e.course, ink);
             }

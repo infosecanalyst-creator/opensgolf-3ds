@@ -8,8 +8,8 @@ use crate::panels_ui::COUNTERS;
 use crate::screens_ui::top;
 use crate::ui::{load_pcx_alpha, rgb, rgba, wrap_text, Image, Screen as Ui};
 use sg_core::course::{idx, N};
-use sg_core::economy::LEDGER_LABELS;
 use sg_core::land;
+use sg_core::lang::{tr, trf};
 use sg_core::staff;
 
 /// The report art.
@@ -83,39 +83,39 @@ fn pixel_line(s: &Ui, g: &mut Gfx, x0: i32, y0: i32, x1: i32, y1: i32, c: [f32; 
 }
 
 const SHORTCUTS: [(&str, &str); 16] = [
-    ("F1", "Course status report."),
-    ("F2", "Player comments report."),
-    ("F3", "Histograph."),
-    ("F4", "Financial Report."),
-    ("F5", "Course Overview Map."),
-    ("F6", "World Map."),
-    ("F7", "SGA Evaluation."),
-    ("F8", "Handy keyboard commands screen."),
-    ("F9", "Membership Roster."),
-    ("F10", "Professional Accomplishments."),
-    ("?", "Repeat last message."),
-    ("shift+b", "Sell a building lot."),
-    ("shift+r", "Routing, Aura, and lot values"),
-    ("shift+w", "World map, change courses"),
-    ("Tab", "Rotate buildings/trees before placing."),
-    ("Esc", "Quit the game."),
+    ("F1", "STR_SHORTCUT_STATUS_REPORT"),
+    ("F2", "STR_SHORTCUT_COMMENTS_REPORT"),
+    ("F3", "STR_SHORTCUT_HISTOGRAPH"),
+    ("F4", "STR_SHORTCUT_FINANCIAL"),
+    ("F5", "STR_SHORTCUT_OVERVIEW_MAP"),
+    ("F6", "STR_SHORTCUT_WORLD_MAP"),
+    ("F7", "STR_SHORTCUT_SGA"),
+    ("F8", "STR_SHORTCUT_KEYBOARD"),
+    ("F9", "STR_SHORTCUT_ROSTER"),
+    ("F10", "STR_SHORTCUT_ACCOMPLISHMENTS"),
+    ("?", "STR_SHORTCUT_REPEAT"),
+    ("shift+b", "STR_SHORTCUT_SELL_LOT"),
+    ("shift+r", "STR_SHORTCUT_ROUTING"),
+    ("shift+w", "STR_SHORTCUT_CHANGE_COURSES"),
+    ("Tab", "STR_SHORTCUT_ROTATE"),
+    ("Esc", "STR_SHORTCUT_QUIT"),
 ];
 const SHORTCUTS_RIGHT: [(&str, &str); 15] = [
-    ("g", "Select GREEN/TEES tool."),
-    ("f", "Select FAIRWAY tool."),
-    ("r", "Select ROUGH tool."),
-    ("s", "Select SAND TRAP tool."),
-    ("t", "Select TREES tool."),
-    ("w", "Select WATER tool."),
-    ("p", "Select PATH tool."),
-    ("b", "Select BENCHES tool."),
-    ("z", "Zoom the view."),
-    ("x", "Unzoom the view."),
-    ("shift+p", "Pause/Unpause the game."),
-    ("shift+t", "Turn trees off/on."),
-    ("shift+n", "Toggle names display."),
-    ("e", "Toggle elevation mode."),
-    ("/", "Instant shot analysis."),
+    ("g", "STR_SHORTCUT_GREEN_TEES"),
+    ("f", "STR_SHORTCUT_FAIRWAY"),
+    ("r", "STR_SHORTCUT_ROUGH"),
+    ("s", "STR_SHORTCUT_SAND_TRAP"),
+    ("t", "STR_SHORTCUT_TREES"),
+    ("w", "STR_SHORTCUT_WATER"),
+    ("p", "STR_SHORTCUT_PATH"),
+    ("b", "STR_SHORTCUT_BENCHES"),
+    ("z", "STR_SHORTCUT_ZOOM"),
+    ("x", "STR_SHORTCUT_UNZOOM"),
+    ("shift+p", "STR_SHORTCUT_PAUSE"),
+    ("shift+t", "STR_SHORTCUT_TREES_OFF"),
+    ("shift+n", "STR_SHORTCUT_NAMES"),
+    ("e", "STR_SHORTCUT_ELEVATION"),
+    ("/", "STR_SHORTCUT_ANALYSIS"),
 ];
 
 impl App {
@@ -177,10 +177,10 @@ impl App {
         // fonts (0x4546b0): the title in 0x821020 (Klepto 24) centred at (389, 61), the rest in 0x821ee8 (Manual SSi 14): the
         // headings with their tops at 96, "Comments" left at 182, the hole and frequency centred on 504 and 598
         use crate::ui::{F_INFO14, F_INFO_TITLE};
-        s.put_centered(g, F_INFO_TITLE, 389.0, 61.0, "PLAYER COMMENTS REPORT", black());
-        s.put(g, F_INFO14, 182.0, 96.0, "Comments", black());
-        s.put_centered(g, F_INFO14, 504.0, 96.0, "Hole", black());
-        s.put_centered(g, F_INFO14, 598.0, 96.0, "Frequency", black());
+        s.put_centered(g, F_INFO_TITLE, 389.0, 61.0, tr("STR_COMMENTS_TITLE"), black());
+        s.put(g, F_INFO14, 182.0, 96.0, tr("STR_COMMENTS_COMMENTS"), black());
+        s.put_centered(g, F_INFO14, 504.0, 96.0, tr("STR_COMMENTS_HOLE"), black());
+        s.put_centered(g, F_INFO14, 598.0, 96.0, tr("STR_COMMENTS_FREQUENCY"), black());
         let rows = self.comment_rows();
         let y0 = 124.0;
         for (n, (_, line, hole, freq)) in rows.iter().enumerate() {
@@ -224,8 +224,13 @@ impl App {
         // fonts (0x455ed0): the title in 0x821020 (Klepto 24) centred at (375, 20); the legend and the scales in 0x821ee8
         // (Manual SSi 14), the legend centred with its top at 542
         use crate::ui::{F_INFO14, F_INFO_TITLE};
-        s.put_centered(g, F_INFO_TITLE, 375.0, 20.0, "HISTOGRAPH", black());
-        for (x, t) in [(177.0, "Skill"), (332.0, "Cash"), (488.0, "Fun"), (644.0, "Event")] {
+        s.put_centered(g, F_INFO_TITLE, 375.0, 20.0, tr("STR_HISTOGRAPH_TITLE"), black());
+        for (x, t) in [
+            (177.0, tr("STR_HISTOGRAPH_SKILL")),
+            (332.0, tr("STR_HISTOGRAPH_CASH")),
+            (488.0, tr("STR_HISTOGRAPH_FUN")),
+            (644.0, tr("STR_HISTOGRAPH_EVENT")),
+        ] {
             s.put_centered(g, F_INFO14, x, 542.0, t, black());
         }
         let skill_s = if self.club.ratings.skill > 2500 { 2 } else { 1 };
@@ -309,11 +314,11 @@ impl App {
         // labels centred on 98 with tops 87 + 17 i (7 more for the total), the years centred on 222 + 75 j at 60, the
         // figures right aligned on 256 + 75 j with tops 86 + 17 i and the total 24 below the last
         use crate::ui::{F_INFO14, F_INFO_TITLE};
-        s.put(g, F_INFO_TITLE, 218.0, 21.0, "FINANCIAL REPORT", black());
-        for (i, l) in LEDGER_LABELS.iter().enumerate() {
-            s.put_centered(g, F_INFO14, 98.0, 87.0 + 17.0 * i as f32, l, black());
+        s.put(g, F_INFO_TITLE, 218.0, 21.0, tr("STR_FINANCE_TITLE"), black());
+        for i in 0..sg_core::economy::LEDGER_COLUMNS {
+            s.put_centered(g, F_INFO14, 98.0, 87.0 + 17.0 * i as f32, sg_core::economy::ledger_label(i), black());
         }
-        s.put_centered(g, F_INFO14, 98.0, 87.0 + 136.0 + 7.0, "Total (\u{a7})", black());
+        s.put_centered(g, F_INFO14, 98.0, 87.0 + 136.0 + 7.0, tr("STR_FINANCE_TOTAL"), black());
         let last = self.econ.year_index().min(99);
         // eight columns fit the art (the exe draws a ninth off the screen)
         let first = last.saturating_sub(7);
@@ -587,51 +592,60 @@ impl App {
         let ink = c15(0);
         // the course name with its long class word in the 16 point face (0x821f28), 10 pixels higher with " Employees" on the employees tab
         let long = self.long_course_name();
-        let name = if tab == 1 { format!("{long} Employees") } else { long };
+        let name = if tab == 1 { trf("STR_ROUTING_EMPLOYEES", &[("COURSE", &long)]) } else { long };
         s.text_centered(g, 400.0, top(if tab == 1 { 48.0 } else { 58.0 }, 16.0), &name, 16.0, ink);
-        s.text_centered(g, 400.0, top(15.0, 24.0), "ROUTING MAP", 24.0, ink);
+        s.text_centered(g, 400.0, top(15.0, 24.0), tr("STR_ROUTING_TITLE"), 24.0, ink);
         let row = |y: f32| top(y, 14.0);
         match tab {
             0 => {
-                s.text_centered(g, 400.0, row(85.0), "COURSE ROUTING", 14.0, ink);
-                s.text_centered(g, 400.0, row(108.0), "Left click to select hole.", 14.0, ink);
-                s.text_centered(g, 400.0, row(126.0), "Right click to swap holes.", 14.0, ink);
-                for (x, t) in [(71.0, "Hole #"), (132.0, "PAR"), (182.0, "YDS"), (239.0, "Time")] {
+                s.text_centered(g, 400.0, row(85.0), tr("STR_ROUTING_COURSE_ROUTING"), 14.0, ink);
+                s.text_centered(g, 400.0, row(108.0), tr("STR_ROUTING_LEFT_CLICK"), 14.0, ink);
+                s.text_centered(g, 400.0, row(126.0), tr("STR_ROUTING_RIGHT_CLICK"), 14.0, ink);
+                for (x, t) in [
+                    (71.0, tr("STR_ROUTING_HOLE")),
+                    (132.0, tr("STR_ROUTING_PAR")),
+                    (182.0, tr("STR_ROUTING_YDS")),
+                    (239.0, tr("STR_ROUTING_TIME")),
+                ] {
                     s.text_centered(g, x, row(85.0), t, 14.0, ink);
                 }
-                for (x, t) in [(564.0, "Hole #"), (630.0, "PAR"), (680.0, "YDS"), (737.0, "Time")] {
+                for (x, t) in [
+                    (564.0, tr("STR_ROUTING_HOLE")),
+                    (630.0, tr("STR_ROUTING_PAR")),
+                    (680.0, tr("STR_ROUTING_YDS")),
+                    (737.0, tr("STR_ROUTING_TIME")),
+                ] {
                     s.text_centered(g, x, row(85.0), t, 14.0, ink);
                 }
             }
             2 => {
-                s.text_centered(g, 400.0, row(188.0), "COURSE AURA", 14.0, ink);
-                s.text_centered(g, 400.0, row(85.0), "AURA", 14.0, ink);
-                s.text(g, 624.0, row(206.0), "Happy", 14.0, ink);
-                s.text(g, 136.0, row(206.0), "Unhappy", 14.0, ink);
+                s.text_centered(g, 400.0, row(188.0), tr("STR_ROUTING_COURSE_AURA"), 14.0, ink);
+                s.text_centered(g, 400.0, row(85.0), tr("STR_ROUTING_AURA"), 14.0, ink);
+                s.text(g, 624.0, row(206.0), tr("STR_ROUTING_HAPPY"), 14.0, ink);
+                s.text(g, 136.0, row(206.0), tr("STR_ROUTING_UNHAPPY"), 14.0, ink);
                 // the paragraph wrapped to 300 pixels from (250, 110) (0x478530); the line pitch is a PLACEHOLDER
-                let text = "Course AURA indicates where on your course players have made mostly happy comments and where they \
-                            have made unhappy comments.";
+                let text = tr("STR_ROUTING_AURA_TEXT");
                 for (i, l) in wrap_text(text, 14.0, 300.0).iter().enumerate() {
                     s.text(g, 250.0, row(110.0 + 16.0 * i as f32), l, 14.0, ink);
                 }
             }
             3 => {
-                s.text_centered(g, 400.0, row(188.0), "HOME SITE VALUE", 14.0, ink);
-                s.text(g, 631.0, row(206.0), "High", 14.0, ink);
-                s.text(g, 142.0, row(206.0), "Low", 14.0, ink);
+                s.text_centered(g, 400.0, row(188.0), tr("STR_ROUTING_HOME_SITE_VALUE"), 14.0, ink);
+                s.text(g, 631.0, row(206.0), tr("STR_ROUTING_HIGH"), 14.0, ink);
+                s.text(g, 142.0, row(206.0), tr("STR_ROUTING_LOW"), 14.0, ink);
                 let inc = [
-                    "Things which INCREASE home value:",
-                    "Close to water and trees.",
-                    "Close to a fun golf hole.",
-                    "Close to a top 100 or top 18 hole.",
-                    "Building a Marina",
+                    tr("STR_ROUTING_INCREASE"),
+                    tr("STR_ROUTING_INCREASE_WATER"),
+                    tr("STR_ROUTING_INCREASE_FUN"),
+                    tr("STR_ROUTING_INCREASE_TOP"),
+                    tr("STR_ROUTING_INCREASE_MARINA"),
                 ];
                 let dec = [
-                    "Things which DECREASE home value:",
-                    "Close to an unfun hole.",
-                    "Close to another building.",
-                    "Too close to green, fairway, or OB.",
-                    "Far away from the golf course.",
+                    tr("STR_ROUTING_DECREASE"),
+                    tr("STR_ROUTING_DECREASE_UNFUN"),
+                    tr("STR_ROUTING_DECREASE_BUILDING"),
+                    tr("STR_ROUTING_DECREASE_TOO_CLOSE"),
+                    tr("STR_ROUTING_DECREASE_FAR"),
                 ];
                 for (i, (a, b)) in inc.iter().zip(dec.iter()).enumerate() {
                     let y = [86.0, 104.0, 121.0, 138.0, 156.0][i];
@@ -737,11 +751,11 @@ impl App {
                 queue.push((y0 + 71.0, si, view, f, x0 + 746.0, y0 + 103.0, 1.0));
             }
             s.text(g, x0 + 415.0, row(y0 + 71.0), &format!("{}. {}", k + 1, self.employee_name(&e)), 14.0, ink);
-            let month = ["March", "April", "May", "June", "July", "August", "September", "October"][(e.hired & 7) as usize];
+            let month = tr(crate::hud_ui::MONTH_KEYS[(e.hired & 7) as usize]);
             let paid = crate::screens_ui::digits(e.paid as i64 * 100);
-            let hired = format!("Hired: {month} {}, paid: \u{a7}{paid}", 2001 + (e.hired >> 3));
+            let hired = trf("STR_ROUTING_HIRED_PAID", &[("MONTH", &month), ("YEAR", &(2001 + (e.hired >> 3))), ("PAID", &paid)]);
             s.text(g, x0 + 430.0, row(y0 + 86.0), &hired, 14.0, ink);
-            let counter = format!("{} {}", COUNTERS[kind][e.upgraded as usize], e.served);
+            let counter = format!("{} {}", tr(COUNTERS[kind][e.upgraded as usize]), e.served);
             s.text(g, x0 + 430.0, row(y0 + 101.0), &counter, 14.0, ink);
         }
         let mut number = 1;
@@ -795,18 +809,18 @@ impl App {
         // fonts (0x44e770): the title in 0x821020 (Klepto 24) centred at (287, 28); the keys centred and the descriptions
         // left, in 0x821ee8 (Manual SSi 14), tops as listed
         use crate::ui::{F_INFO14, F_INFO_TITLE};
-        s.put_centered(g, F_INFO_TITLE, 287.0, 28.0, "KEYBOARD SHORTCUTS", black());
+        s.put_centered(g, F_INFO_TITLE, 287.0, 28.0, tr("STR_SHORTCUTS_TITLE"), black());
         let ys = [0x51, 0x62, 0x73, 0x84, 0x95, 0xa6, 0xb7, 200, 0xd9, 0xea, 0xfb, 0x10c, 0x11d, 0x12e, 0x13f, 0x157];
         for (i, (k, d)) in SHORTCUTS.iter().enumerate() {
             let y = ys[i] as f32;
             let c = if i == 7 { c15(0x0200) } else { black() };
             s.put_centered(g, F_INFO14, 0x44 as f32, y, k, c);
-            s.put(g, F_INFO14, 0x6c as f32, y, d, c);
+            s.put(g, F_INFO14, 0x6c as f32, y, tr(d), c);
         }
         for (i, (k, d)) in SHORTCUTS_RIGHT.iter().enumerate() {
             let y = ys[i] as f32;
             s.put_centered(g, F_INFO14, 0x1bc as f32, y, k, black());
-            s.put(g, F_INFO14, 0x1e3 as f32, y, d, black());
+            s.put(g, F_INFO14, 0x1e3 as f32, y, tr(d), black());
         }
         self.ok_tick(g, &s, 710.0, 362.0, false);
         g.flush();
@@ -871,7 +885,7 @@ impl App {
     pub fn move_to_property(&mut self, g: &mut Gfx, prop: usize) {
         let price = self.offer_for(prop).1 as f64;
         if !self.econ.sandbox && self.econ.cash < price {
-            return self.show_toast("You need more money before you can purchase this property.");
+            return self.show_toast(tr("STR_TOAST_NEED_MONEY_PROPERTY"));
         }
         let cash = self.econ.cash - if self.econ.sandbox { 0.0 } else { price };
         let tick = self.game_tick;

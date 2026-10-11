@@ -284,7 +284,13 @@ mod tests {
             install(&o.entry, &data, &packs, &found).unwrap();
         }
         let found = crate::packs::discover(&[packs]);
-        let ids: Vec<(&str, &str)> = found.packs.iter().map(|p| (p.manifest.id.as_str(), p.manifest.version.as_str())).collect();
+        // (the built-in free base set is always found too)
+        let ids: Vec<(&str, &str)> = found
+            .packs
+            .iter()
+            .filter(|p| p.manifest.id != crate::packs::FREE)
+            .map(|p| (p.manifest.id.as_str(), p.manifest.version.as_str()))
+            .collect();
         assert_eq!(ids, [("pack-a", "1.1.0"), ("pack-b", "2.0")]);
         assert!(found.broken.is_empty(), "{:?}", found.broken);
         assert!(super::offers(&idx, &found).is_empty(), "nothing left to offer");

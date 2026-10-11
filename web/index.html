@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>SimGolf in the browser</title>
+<title>OpenSGolf</title>
 <style>
   html, body { margin: 0; padding: 0; height: 100%; background: #0b0f1a; color: #e8e8f0; font-family: system-ui, sans-serif; overflow: hidden; }
   #glcanvas { display: none; width: 100vw; height: 100vh; outline: none; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
@@ -36,6 +36,7 @@
   </div>
   <label>Choose your SimGolf game folder<input id="folder" type="file" webkitdirectory directory multiple></label>
   <label>Or a .zip of it<input id="zip" type="file" accept=".zip"></label>
+  <label id="playfree" title="No game files needed: OpenSGolf's own free art, sounds and text (docs/MODDING.md)">Play with the free OpenSGolf graphics</label>
   <p class="note"><input type="checkbox" id="remember" checked style="display:inline"> Keep the files in this browser so next time it starts at once</p>
   <div id="status"></div>
   <details class="note">
@@ -60,13 +61,14 @@
     <div id="packstatus"></div>
   </details>
   <p class="note">The game's art, sounds and data belong to Electronic Arts and are not included here, which is why the page
-  needs your copy. Works in desktop Chrome, Edge and Firefox, and on phones and tablets by touch: tap to click, drag to scroll, hold
+  asks for your copy. Without one, <b>Play with the free OpenSGolf graphics</b> starts the game on its own free base set
+  (simple drawn art, synthesised sounds and new text, made by the engine itself). Works in desktop Chrome, Edge and Firefox, and on phones and tablets by touch: tap to click, drag to scroll, hold
   for a right click, pinch to zoom, twist two fingers to turn the view. Sound starts after your first click or tap. Saved courses stay in this
   browser. Source and notes: <a href="https://github.com/crspytopgn/simgolf-native">github.com/crspytopgn/simgolf-native</a>.</p>
 </div>
 <canvas id="glcanvas" tabindex="1"></canvas>
 <script src="gl.js"></script>
-<script src="simgolf.js"></script>
+<script src="opensgolf.js"></script>
 <script>
   document.getElementById("folder").addEventListener("change", e => sgLoadFolder(e.target.files));
   document.getElementById("zip").addEventListener("change", e => sgLoadZip(e.target.files[0]));
@@ -74,6 +76,7 @@
   document.getElementById("hdzip").addEventListener("change", e => sgLoadHdZip(e.target.files[0]));
   document.getElementById("packfolder").addEventListener("change", e => sgLoadPackFolder(e.target.files));
   document.getElementById("packzip").addEventListener("change", e => sgLoadPackZip(e.target.files[0]));
+  document.getElementById("playfree").addEventListener("click", () => sgPlayFree());
   sgInit();
 </script>
 </body>

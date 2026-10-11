@@ -1,0 +1,1956 @@
+##language en
+##name English
+#
+# OpenSGolf's English text (docs/TRANSLATING.md). One string per line: `STR_KEY  :text`. The text is everything after the
+# colon, spaces included: some texts start or end with a space because the game joins them with other pieces, and the
+# options of a pop-up box are the lines that start with a space. Escapes: \n a line break, \t a tab, \\ a backslash, \{
+# and \} literal braces. Names in braces such as {GOLFER} or {MONEY} are filled in by the game.
+#
+# Much of this text is the original SimGolf's own English, kept word for word (its quirks and typos too) so the game reads
+# like the original; that text remains Electronic Arts'. Where a text comes from the original program, the comment above
+# it names the routine or the string address in the publisher's golf.exe that the engine's code cites.
+
+########################################################################################################################
+# Window and title screen
+########################################################################################################################
+# The window's title
+STR_WINDOW_TITLE                        :OpenSGolf
+
+# The title menu's labels (0x420e.. and the menu's opening 0x40f5c0)
+STR_TITLE_CONTINUE                      :Continue Saved Game
+STR_TITLE_NEW_GAME                      :Start New Game
+STR_TITLE_SANDBOX                       :Sandbox Mode
+STR_TITLE_SELECT_THEME                  :Select A Theme
+STR_TITLE_CHAMPIONSHIP                  :Play a Championship
+STR_TITLE_SELECT_DIFFICULTY             :Select Difficulty
+
+# The four difficulties, easiest first (Select Difficulty, 0x43a400)
+STR_DIFFICULTY_EASY                     :Easy
+STR_DIFFICULTY_MODERATE                 :Moderate
+STR_DIFFICULTY_DIFFICULT                :Difficult
+STR_DIFFICULTY_IMPOSSIBLE               :Impossible
+
+########################################################################################################################
+# Title screens: Load Previous Game, Select Championship Course, Pick A Pro, Select a Theme Pack
+########################################################################################################################
+# The title screens' file lists: Load Previous Game, Select Championship Course, Pick A Pro (docs/DECODE_PICKAPRO.md)
+STR_FILES_AUTOSAVE                      :autosave ({NAME})
+STR_FILES_LOAD                          :Load
+STR_FILES_CANCEL                        :Cancel
+STR_FILES_DELETE                        :Delete
+# The delete box
+STR_FILES_DELETE_QUESTION               :Are you sure you want to delete {NAME}?
+STR_FILES_DELETE_YES                    : Yes, delete this file.
+STR_FILES_DELETE_NO                     : No, never mind.
+STR_FILES_LOAD_TITLE                    :Load Previous Game
+STR_FILES_CHAMP_TITLE                   :Select Championship Course
+STR_FILES_PRO_TITLE                     :Pick A Pro
+STR_FILES_MORE                          :(more...)
+STR_FILES_NO_CHAMP_COURSE               :No course saved for championship play yet (System Functions in a game).
+STR_FILES_LOADING                       :Loading...
+# Load Previous Game's left panel (docs/DECODE_PICKAPRO.md 3)
+STR_FILES_HOLES                         :Holes
+STR_FILES_PAR                           :Par
+STR_FILES_YARDS                         :Yards
+STR_FILES_CASH                          :Cash
+STR_FILES_FUN_RATING                    :Fun Rating
+STR_FILES_LENGTH_SKILL                  :Length Skill
+STR_FILES_ACCURACY_SKILL                :Accuracy Skill
+STR_FILES_IMAGINATION                   :Imagination
+STR_FILES_HOLE                          :Hole
+STR_FILES_THEME                         : (Theme: {THEME})
+STR_FILES_DESIGNED_BY                   :Designed by {DESIGNER}
+STR_FILES_COURSE_RECORD                 :Course Record: {SCORE}
+# Pick A Pro's left panel (docs/DECODE_PICKAPRO.md 1)
+STR_FILES_PRO_SKILLS                    :{PRO}'s skills
+STR_FILES_SIGNATURE_SAYING              :Signature saying:
+
+# Select a Theme Pack's column heads (docs/DECODE_TITLE2.md 4)
+STR_THEMES_STORIES                      :Stories
+STR_THEMES_CHARACTERS                   :Characters
+STR_THEMES_CELEBRITIES                  :Celebrities
+STR_THEMES_PRO_GOLFERS                  :Pro Golfers
+STR_THEMES_COURSES                      :Courses
+STR_THEMES_TITLE                        :Select a Theme Pack
+
+STR_SAVE_PROMPT                         :SAVE GAME, edit name then press Enter
+
+STR_OK                                  :OK
+
+########################################################################################################################
+# Messages on the ticker (the message window, 0x40cb00)
+########################################################################################################################
+# The welcome for the course's theme (0x45fd80 at tick 0x20), in the exe's words (its slips included): Desert, Tropical,
+# Links, Parkland; {COURSE} the course's name, {THOUSANDS} the starting cash in thousands
+STR_WELCOME_DESERT                      :Welcome to the {COURSE} Country Club. What was once a vast expanse of featureless desert is now a vast expanse of featureless desert interrupted by a lonely golf clubhouse. This area is blessed with sunshine 365 days of the year. A rapidly growing population of avid golfers is demanding a larger improved course. As the new manager, can you use your §{THOUSANDS},000 budget to turn {COURSE} into a world-class golf resort?
+STR_WELCOME_TROPICAL                    :Welcome to {COURSE} Golf Course. This delightful slice of tropical paradise needs only your help to become a world-class golfing destination. After all, who doesn't enjoy a little humidity - and the alligators have been really well behaved lately. With the successful conclusion of the recent mosquito eradication program and the dedication of the new 'El Presidente' international airport, {COURSE} is bursting with potential. 
+STR_WELCOME_LINKS                       :Welcome to {COURSE} Golf Links.  This ancient and venerable institution has fallen upon hard times. The sheep have returned to graze the pastoral fields whereupon kings and princes did ply the game of Golfe in days of yore. But all is not lost, with a tidy sum of money acquired by liquidating your late uncle's butterfly collection and a royal deed of grant from the local magistrate, you are ready to return {COURSE} to it's former preeminence in the world of Golfe.
+STR_WELCOME_PARKLAND                    :Welcome to {COURSE} Golf Club.  The unexpected passing of your great-uncle Harry has left you in possession of {COURSE}. The property includes rolling hills, crisp woodlands, and a sparkling waters. However, uncle Harry was somewhat of a lazy slacker and never built any golf holes! With the §{THOUSANDS},000 he left you can you turn {COURSE} into a world-class golf course?  Good Luck.
+
+# {HIS} in messages about a golfer
+STR_MSG_HIS                             :his
+STR_MSG_HER                             :her
+# The first-fee lesson (0x4c7444, 0x4c7408, 0x4c73cc, 0x4c7374, 0x4c7334); {FEE} in simoleans without a sign
+STR_MSG_FIRST_GREENS_FEE                :{GOLFER} has just paid you your first greens fee of {FEE} simoleans!  Golfers pay a fee at the end of each hole - happy golfers pay higher fees, unhappy golfers pay less. Greens fees are your main source of revenue, so it pays to keep your golfers happy. Refer to your financial report for more detailed information.
+# A visitor on the last hole (0x4c71c0 and the closing quote 0x4c4e54)
+STR_MSG_VIP_LAST_HOLE                   :{WHO} {VISITOR} is playing the last hole on your course. He was last heard to mutter, '{REMARK}'
+STR_MSG_COURSE_RECORD                   :{GOLFER} has just set a new course record of {SCORE}!
+# Membership (0x4c48e8 or 0x4c4924 and its adjective, the level's name from 0x4c2a88, 0x4c48cc, then what the level brings:
+# 0x4c4884, or 0x4c483c with 2 or 5 and 0x4c481c)
+STR_MSG_MEMBER_APPLIES                  :{GOLFER} applies for membership at your club! 
+STR_MSG_MEMBER_SILVER                   :{GOLFER} has decided to upgrade to a prestigious Silver membership at your club! Silver members will pay big bucks for an attractive home site on your course.
+STR_MSG_MEMBER_GOLD                     :{GOLFER} has decided to upgrade to a coveted Gold membership at your club! Gold members like to drive around in shiny customized golf carts and pay §200 extra greens fees per hole.
+STR_MSG_MEMBER_PLATINUM                 :{GOLFER} has decided to upgrade to an exclusive Platinum membership at your club! Platinum members like to drive around in shiny customized golf carts and pay §500 extra greens fees per hole.
+# A golfer quits: {GOLFER} {REASON} {WHEN}. The reasons end in "after", "on" (the club thrown or wrapped) or "at" (the golfer
+# hit or insulted), and {WHEN} is the matching phrase below
+STR_MSG_QUIT_TOUGHER_COURSE             :will be looking for a tougher course
+STR_MSG_QUIT_NEEDS_IMPROVEMENT          :thinks your course needs improvement
+STR_MSG_QUIT_PUNCHED                    :has punched out another golfer
+STR_MSG_QUIT_WRAPPED_CLUB               :has wrapped {HIS} club around a tree
+STR_MSG_QUIT_THROWN_CLUBS               :has thrown {HIS} clubs into the lake
+STR_MSG_QUIT_THIRSTY                    :is too thirsty to play any more
+STR_MSG_QUIT_HUNGRY                     :is too hungry to keep playing
+STR_MSG_QUIT_INSULTED                   :has insulted another golfer
+STR_MSG_QUIT_TIRED                      :is too tired to continue
+STR_MSG_QUIT_DISGUST                    :is leaving the course in disgust
+STR_MSG_QUIT                            :{GOLFER} {REASON} {WHEN}.
+STR_MSG_QUIT_RESIGNS                    : {GOLFER} resigns {HIS} membership.
+STR_MSG_LEAVING_WAITING                 :{GOLFER} and {PARTNER} are leaving the course at hole {HOLE}, 'Arghh, I am so tired of waiting for these idiots!'
+STR_MSG_CHALLENGE                       :{PRO} challenges {GOLFER} to a match!
+# {WHEN} in the quit message: the reason's word and the hole, or the round when the golfer has played the last hole
+STR_MSG_QUIT_AFTER_HOLE                 :after hole {HOLE}
+STR_MSG_QUIT_AFTER_ROUND                :after today's round
+STR_MSG_QUIT_AT_HOLE                    :at hole {HOLE}
+STR_MSG_QUIT_AT_ROUND                   :at today's round
+STR_MSG_QUIT_ON_HOLE                    :on hole {HOLE}
+STR_MSG_QUIT_ON_ROUND                   :on today's round
+# A hole earns a type, a Top 100 and a Top 18 rating (the hole ratings, posted with the site picture)
+STR_MSG_FIRST_HOLE_TYPE                 :Hole #{HOLE} has been recognized as your first "{TYPE}" type hole.
+STR_MSG_TOP_100_HOLE                    :Hole #{HOLE} (henceforth known as '{NAME}'), has been rated as one of the best 100 holes in the country by Golf Enquirer magazine! Increase greens fees by §100.
+STR_MSG_TOP_18_HOLE                     :{NAME} has been rated as one of the Top 18 holes in the country by Great Golf Holes magazine! Increase greens fees by §100.
+STR_MSG_HOLE_HAS_TEE                    :Hole {HOLE} already has its tee; open it before starting the next hole.
+STR_MSG_MATCH_CANCELED                  :Match canceled.
+# The SGA's offer (0x4c62cc, the course name, 0x4c627c, the purse, 0x4c6250, the pro's name, 0x4c6230); {PURSE} in thousands
+STR_MSG_SGA_OFFER                       :The SGA is interested in holding a tournament at your course. 'We'd like to schedule the {COURSE} Open Golf Tournament here as soon as possible.' We can offer a top prize of §{PURSE},000!  Click the tournament button in the {PRO} panel to begin the tournament.
+# A story's ending gives a landmark ({A_LANDMARK} is the landmark's long name as written after "a")
+STR_MSG_LANDMARK_AVAILABLE              :A{A_LANDMARK} is now available in your landmarks menu.
+# The design tip five months in (0x45fd80 at tick 0x1400)
+STR_MSG_DESIGN_TIP                      :Building a great golf course requires imagination, intuition, persistence, and a bulldozer. The basic idea is to present the player with a variety of shots which appear challenging and require strategic thinking, but are within the player's ability. This philosophy is known as 'look hard and play easy.' Players who enjoy your course will tell their friends, return more often, and pay higher greens fees!
+# The Save dialog
+STR_MSG_GAME_SAVED                      :Game Saved.
+
+# First-time narration (the switch at the end of the reaction routine 0x467a00): {GOLFER} the golfer, {HE} he or she,
+# {TERRAIN} the theme's terrain name, {WHAT} the scenery name (0x407700), {CELEBRITY} the celebrity's name
+STR_NARR_01_TOUGH_SHOT                  :{GOLFER} has successfully made a tough-looking shot and is enjoying your course.
+STR_NARR_02_EASY_SHOT_IN                :{GOLFER} is disappointed that an easy looking shot ended up in the {TERRAIN}. If it happens again {HE} will become discouraged.
+STR_NARR_03_WORSE_LOCATION              :{GOLFER} is disappointed that the shot has ended up in a worse location, the {TERRAIN}.
+STR_NARR_04_NO_DANGERS                  :{GOLFER}'s next shot does not involve many dangers or hazards. Too many shots like this may tend to bore your players.
+STR_NARR_05_CHALLENGING                 :{GOLFER}'s next shot looks challenging - {HE} will be happy if lands on the green or fairway.
+STR_NARR_06_SLOPE                       :{GOLFER} plans to use the slope of the hill to run the ball towards the hole.
+STR_NARR_08_NO_SAFE_PLACE               :{GOLFER} cannot find a safe place to aim the next shot.  This can be frustrating. Perhaps you should add more fairway to this hole.
+STR_NARR_09_ALMOST_HIT                  :{GOLFER} was almost hit by a shot from another hole. This is very scary.  Try to keep your holes seperated, sometimes trees can be useful.
+STR_NARR_0A_NO_PATH                     :{GOLFER} is unhappy because no path has been provided to walk through the {TERRAIN}. Press 'p' to select the path tool.
+STR_NARR_0B_SCENIC                      :{GOLFER} is pleased to have a scenic {WHAT} in view for the next shot.
+STR_NARR_0C_BOUNCED_OFF_TREE            :{GOLFER}'s ball just bounced off a tree. {GOLFER} will be more careful next time.
+STR_NARR_0D_ENDED_UP_IN                 :{GOLFER}'s ball somehow ended up in the {TERRAIN}. {GOLFER} will be more careful next time.
+STR_NARR_0E_SODA                        :{GOLFER} needs to find a soda vendor soon or {HE} will be unhappy.
+STR_NARR_0F_SNACK                       :{GOLFER} needs to find a snack bar soon or {HE} will be unhappy.
+STR_NARR_10_CURVED_LEFT                 :{GOLFER} is amazed that the last shot curved off to the left.
+STR_NARR_11_FADED_RIGHT                 :{GOLFER} is amazed that the last shot faded off to the right.
+STR_NARR_12_TASTY_SNACK                 :{GOLFER} is enjoying a tasty snack at your conveniently located snack bar.
+STR_NARR_14_EYESORE                     :{GOLFER} is disappointed to see a {WHAT} in the middle of your otherwise lovely golf course.
+STR_NARR_15_WAITING                     :{GOLFER} is frustrated that a lot of golfers are waiting at this hole. Placing a Ranger/Marshall near the tee will speed up play on this hole. Click the employees button on the People menu to hire course employees.
+STR_NARR_16_VACATION_HOME               :{GOLFER} is excited to see {CELEBRITY}'s vacation home on your golf course.
+STR_NARR_18_DANDELIONS                  :{GOLFER} is disappointed to see dandelions growing in the middle of your otherwise lovely golf course. Hire a groundskeeper to eradicate these weeds. Click the employees button on the People menu to hire course employees.
+STR_NARR_19_BEVERAGE                    :{GOLFER} is enjoying a cool refreshing beverage from your friendly soda vendor.
+STR_NARR_1A_BENCH_NEEDED                :{GOLFER} needs to find a bench to rest on soon or {HE} will start to slow down.
+STR_NARR_1B_BENCH                       :{GOLFER} is relaxing on your comfy bench and will soon resume play with renewed energy.
+STR_NARR_1C_LOVELY                      :{GOLFER} is enjoying the lovely {WHAT} you have included in your course.
+STR_NARR_1D_DIFFERENT                   :{GOLFER} likes the fact that this hole is very different from the last hole.
+STR_NARR_1E_SIMILAR                     :{GOLFER} dislikes the fact that this hole is very similar to the last hole. Try to vary the par and direction of your holes.
+STR_NARR_1F_DIFFICULT                   :{GOLFER}'s next shot looks extremely difficult. {GOLFER} will be thrilled if it finds the green or fairway.
+STR_NARR_20_DECISION                    :{GOLFER} has an interesting decision to make on this next shot. This is a characteristic of a well designed hole.
+STR_NARR_23_QUIT                        :{GOLFER} has quit playing in frustration. Security may be required.
+STR_NARR_24_ANGRY_GOLFER                :{GOLFER} does not enjoy seeing an angry golfer on your course.
+STR_NARR_27_WILDLIFE                    :{GOLFER} is intrigued by the wildlife on your course.
+STR_NARR_33_DRIVING_RANGE               :{GOLFER} appreciates the new driving range you added to your course.
+STR_NARR_34_PRO_SHOP                    :{GOLFER} appreciates the new pro shop you added to your course.
+STR_NARR_35_PUTTING_GREEN               :{GOLFER} appreciates the new putting green you added to your course.
+STR_NARR_36_NEW_CLUB                    :{GOLFER} is using this club for the first time today. A good course will use every club in the bag.
+STR_NARR_37_DRAW                        :{GOLFER} is setting up to hit a draw shot which curves from right to left.
+STR_NARR_38_FADE                        :{GOLFER} is setting up to hit a fade shot which curves from left to right.
+STR_NARR_39_HIGH                        :{GOLFER} is setting up to hit a high shot which will spin back once it hits the green.
+STR_NARR_3C_LOW                         :{GOLFER} is setting up to hit a low shot which will run under the trees.
+STR_NARR_41_CANNOT_SEE                  :{GOLFER} hit a good shot but cannot see exactly where it landed because of trees or elevation. 
+# {HE} in the narration
+STR_NARR_HE                             :he
+STR_NARR_SHE                            :she
+# The whole message: the golfer's thought in quotes, then the narration
+STR_NARR_MESSAGE                        :'{THOUGHT}' {NARRATION}
+
+# What a visitor thinks of the course at mood m (0x469a20)
+STR_VIP_MOOD_0                          :I hate this stupid course!
+STR_VIP_MOOD_1                          :I don't like this course much.
+STR_VIP_MOOD_2                          :I'm not having much fun today.
+STR_VIP_MOOD_3                          :This course is almost adequate.
+STR_VIP_MOOD_4                          :Well, I guess this course is OK.
+STR_VIP_MOOD_5                          :This course is quite nice.
+STR_VIP_MOOD_6                          :This is a really good course.
+STR_VIP_MOOD_7                          :This course is excellent.
+STR_VIP_MOOD_8                          :This is the best course I've ever played!
+STR_VIP_MOOD_LEAVING                    :I hate this course! I'm leaving!
+# Special visitors (0x4676e0 names; {SUFFIX} is " II", " III", ... for the second, third, ... of a kind)
+STR_VIP_NAME_COMMISSIONER               :I.M. Picky{SUFFIX}
+STR_VIP_NAME_CEO                        :J.P. Bigdome{SUFFIX}
+STR_VIP_NAME_HEIRESS_IVANA              :Ivana Richman
+STR_VIP_NAME_HEIRESS_AGNES              :Agnes Heffledorp
+STR_VIP_CEO                             :Corporate CEO
+STR_VIP_COMMISSIONER                    :County commissioner
+STR_VIP_HEIRESS                         :Wealthy Heiress
+# The visitor arrives (0x4d3af0, 0x4d3a88, 0x4d3a14 after 0x4d3b78); {LEAD} is the rating sentence below
+STR_VIP_CEO_PLAYING                     :{WHO} {VISITOR} is playing your course today. If he likes your course he may invest in a seat on your board of directors!
+STR_VIP_COMMISSIONER_PLAYING            :{LEAD} and your fame is spreading. {WHO} {VISITOR} is playing your course today. If he likes your course he may approve a request to purchase more land!
+STR_VIP_HEIRESS_PLAYING                 :{LEAD} and your fame is spreading. {WHO} {VISITOR} is playing your course today. If she enjoys her round she may donate a valuable scenic landmark to your course.
+# The verdict at the end of the round (0x4266b0); {QUIT} is the partner sentence (0x4c70c4, 0x4c70ac) or nothing, {REMARK} the
+# visitor's mood remark
+STR_VIP_PARTNER_QUIT                    :My partner {PARTNER} has quit, even though 
+STR_VIP_CEO_NEEDS_MORE_HOLES            :Corporate CEO {VISITOR} has decided not to invest in your course. 'Good course, needs more holes' he says.
+STR_VIP_CEO_NO                          :Corporate CEO {VISITOR} has decided not to invest in your course. '{QUIT}{REMARK}' he fumes.
+STR_VIP_COMMISSIONER_YES                :County commissioner {VISITOR} has decided to approve an expansion request! 'I'll be back again if your {GOAL}', he says.
+STR_VIP_COMMISSIONER_NO                 :County commissioner {VISITOR} has decided not to approve your expansion request. '{QUIT}{REMARK}' he comments.
+STR_VIP_HEIRESS_NO                      :Wealthy Heiress {VISITOR} has decided not to donate a landmark to your course. '{QUIT}{REMARK}' she comments. 'I'll be back in a few months.'
+STR_VIP_EFFECT_HAPPY_THOUGHTS           :golfers will have happy thoughts.
+STR_VIP_EFFECT_NO_DANDELIONS            :no dandelions will appear.
+STR_VIP_EFFECT_STORIES                  :golfer stories will proceed happily.
+STR_VIP_GOAL_FUN_UP_TO                  :fun rating is up to {RATING}
+STR_VIP_CELEBRITY_HOME                  :International {KIND} {CELEBRITY} has purchased a vacation home at your golf course!
+# The rating sentence that leads the commissioner's and the heiress's arrival ({LEAD}); a skill rating reads 123.45
+STR_VIP_FUN_RATING_UP_TO                :Your Fun Rating is up to {RATING}
+STR_VIP_SKILL_RATING_UP_TO              :Your Skill Rating is up to {RATING}
+# The visitor's goal for the next visit ({GOAL}): the commissioner's reads "is over", the heiress's "is up to"
+STR_VIP_GOAL_FUN_OVER                   :fun rating is over {RATING}
+STR_VIP_GOAL_SKILL_OVER                 :skill rating is over {RATING}
+STR_VIP_GOAL_SKILL_UP_TO                :skill rating is up to {RATING}
+# The CEO invests (0x4c71b0, 0x4c7124, 0x4c7100)
+STR_VIP_CEO_YES                         :Corporate CEO {VISITOR} has decided to invest in your course. 'I'll give you §{MONEY} for a seat on the board' he says.
+# The heiress's landmark's effect ({EFFECT}); {PRO} is the player's pro
+STR_VIP_EFFECT_SKILLS                   :{PRO}'s skills will improve rapidly.
+# The heiress donates (0x4c6fa4, 0x4c6f88, the landmark's name with its article, 0x4c6f54, the effect, 0x4c6e78, the short name,
+# 0x4c6e54, the price, 0x4c6e38, the goal, 0x4c6df8); {A_LANDMARK} is the landmark's long name as written after "a"
+STR_VIP_HEIRESS_YES                     :Wealthy Heiress {VISITOR} has decided to donate a{A_LANDMARK} to your course! In the area near this landmark {EFFECT} Go to 'Landmarks' under the Improvements menu to place your landmark. Additional {LANDMARK}s can be added to your course for §{MONEY}. 'I'll be back if your {GOAL}', she says.
+
+# A famous golfer's challenge (0x4c6ba4, 0x4c6b68, 0x4c6b58, 0x4c6b44, 0x4c6b2c / 0x4c6b18, 0x4c6afc, 0x4c6af4, 0x4c6ad0,
+# 0x4c6aa0): the challenge, the pro's best skills ({SKILLS} joined with STR_CHALLENGE_AND), the pro panel hint
+STR_CHALLENGE_WAGER                     :Famous golfer {PRO} challenges you to a match at your course with a wager of §{HOLE_MONEY} per hole and §{MATCH_MONEY} for the match! 
+STR_CHALLENGE_PROUD                     :{HE} is proud of {HIS} {PERCENT}0 percent skill rating in {SKILLS}
+STR_CHALLENGE_SHE                       :She
+STR_CHALLENGE_HE                        :He
+STR_CHALLENGE_HER                       :her
+STR_CHALLENGE_HIS                       :his
+STR_CHALLENGE_AND                       : and 
+STR_CHALLENGE_CLICK                     :. Click on the match icon on the {PRO} panel when you are ready to start the match.
+
+# Match money at the end of a hole (0x4c7324, 0x4c7314, 0x4c730c, 0x4c7300 or 0x4c72f8, 0x4c4944) and of the match (0x4c72dc
+# with 0x4c72d0, 0x4c72b4 or 0x4c72a8)
+STR_MATCH_WIN_HOLE                      :{GOLFER} wins hole #{HOLE} by a score of {SCORE} to {OTHER_SCORE}! Collect §{MONEY}.
+STR_MATCH_LOSE_HOLE                     :{GOLFER} wins hole #{HOLE} by a score of {SCORE} to {OTHER_SCORE}. Pay §{MONEY}.
+STR_MATCH_END_LOSE                      :At the end of the match, you lose §{MONEY}.
+STR_MATCH_END_TIED                      :At the end of the match, the score is tied.
+STR_MATCH_END_WIN                       :At the end of the match, you win §{MONEY}.
+STR_MATCH_EVEN_PAR                      :even par
+STR_MATCH_UNDER_PAR                     :{STROKES} under par
+STR_MATCH_OVER_PAR                      :{STROKES} over par
+STR_MATCH_TIED_AT                       :{GOLFER} and {OTHER} are tied at {SCORE}.
+# The match standing after the last hole (one shot, or more)
+STR_MATCH_LEADS_BY_ONE                  :{GOLFER} leads {OTHER} by {SHOTS} shot.
+STR_MATCH_LEADS_BY                      :{GOLFER} leads {OTHER} by {SHOTS} shots.
+STR_MATCH_TRAILS_BY_ONE                 :{GOLFER} trails {OTHER} by {SHOTS} shot.
+STR_MATCH_TRAILS_BY                     :{GOLFER} trails {OTHER} by {SHOTS} shots.
+
+# A remarkable shot (0x407e00), in pieces: the golfer's name, then a good shot's verb (0x4c508c / 0x4c5080 / 0x4c5074 /
+# 0x4c5068), "tricky " or "tough " (0x4c5060 / 0x4c5058), the club (0x4c5040 / 0x4c5050 / the club and 0x4c5048), the yards
+# (0x4c5038), where it went (0x4c4ff8 / 0x4c502c, 0x4c5024 or 0x4c501c and 0x4c5010 / 0x4c4fe8 / 0x4c4fd0); a bad shot's verb
+# (0x4c50a8 / 0x4c50b4 / 0x4c50c0 / 0x4c50cc), the club, 0x4c509c and the ground's name; then the hole (0x4c4fc8, the hole's
+# name, 0x4c4fc4)
+STR_SHOT_LAUNCHES                       : launches a 
+STR_SHOT_SNAKES                         : snakes a 
+STR_SHOT_KNOCKS                         : knocks a 
+STR_SHOT_LOFTS                          : lofts a 
+STR_SHOT_TRICKY                         :tricky 
+STR_SHOT_TOUGH                          :tough 
+STR_SHOT_DRIVE                          :drive 
+STR_SHOT_PUTT                           :putt 
+STR_SHOT_CLUB                           :{CLUB} shot 
+STR_SHOT_YARDS                          :{YARDS} yards 
+STR_SHOT_INTO_THE_HOLE                  :into the hole
+STR_SHOT_INCHES                         :inches from the hole
+STR_SHOT_WITHIN_FEET                    :to within {FEET} feet of the pin
+STR_SHOT_WITHIN_YARDS                   :to within {YARDS} yards of the pin
+STR_SHOT_FAIRWAY                        :safely onto the fairway
+STR_SHOT_YANKS                          : yanks a 
+STR_SHOT_FLUBS                          : flubs a 
+STR_SHOT_SCUFFS                         : scuffs a 
+STR_SHOT_FLUFFS                         : fluffs a 
+STR_SHOT_INTO_THE                       : into the 
+STR_SHOT_AT_HOLE                        : at {HOLE}!  
+# The partner's reaction (0x4c4fac, 0x4c4f54, 0x4c4f48 with 0x4c4f38 and 0x4c4f30 / 0x4c4f28, 0x4c4f78 with 0x4c4f94 /
+# 0x4c4f90 and 0x4c4f6c, 0x4c4f98 with his / her and 0x4c4f88)
+STR_SHOT_HIS                            :his
+STR_SHOT_HER                            :her
+STR_SHOT_PARTNER_AMAZED                 :{PARTNER} looks on in amazement.
+STR_SHOT_PARTNER_DELIGHTED              :{PARTNER} is equally delighted.
+STR_SHOT_PARTNER_RATS                   :'Rats', {PARTNER} mutters to {HIMSELF}.
+STR_SHOT_HIMSELF                        :himself
+STR_SHOT_HERSELF                        :herself
+STR_SHOT_PARTNER_CONGRATULATES          :{PARTNER} congratulates {HIS} partner.
+STR_SHOT_PARTNER_EYES                   :{PARTNER} can not believe {HIS} eyes.
+# The pro's skill after a remarkable shot (0x4c3f70, the name, 0x4c4e64, the skill and 0x4c4e60; 0x4c4ef0, the skill,
+# 0x4c4ed8, the level, 0x4c4ed0; at the cap 0x4c4e88, the next class and 0x4c4e7c; a bad shot 0x4c4f14 / 0x4c4f00, the skill,
+# 0x4c4ef8)
+STR_SHOT_NEW_SKILL                      : {GOLFER} acquires a new skill: {SKILL}!
+STR_SHOT_SKILL_IMPROVES                 : {GOLFER}'s '{SKILL}' skill improves to {LEVEL}0%! 
+STR_SHOT_SKILL_CAP                      :To further improve this skill you will need expand your course to a {RANK} course. 
+STR_SHOT_SKILL_LOSS                     : {GOLFER} loses 10% of {HIS} {SKILL} skill.
+
+# What each building does, as the unlock message tells it (kinds 6..14)
+STR_UNLOCK_PUTTING_GREEN                : allows your golfers with imagination ability to improve their putting.
+STR_UNLOCK_SNACK_BAR                    : will feed golfers who get hungry and provide some extra revenue.
+STR_UNLOCK_PRO_SHOP                     : allows your accurate golfers to improve their equipment.
+STR_UNLOCK_SWIM_CLUB                    : helps your players to begin play with a better attitude.
+STR_UNLOCK_DRIVING_RANGE                : allows your long hitters to improve the length of their shots.
+STR_UNLOCK_CART_GARAGE                  : increases your players speed of play.
+STR_UNLOCK_MARINA                       : increases the value of all homes and lots at your course.
+STR_UNLOCK_RESORT_HOTEL                 : keeps your players from getting tired towards the end of their round.
+STR_UNLOCK_AIRSTRIP                     : allows you to charge higher greens fees at your course.
+# The course rank upgrade (0x40e5f0) on reaching 6, 10 and 18 holes
+STR_UNLOCK_RANK                         : Your course is now upgraded from a {FROM} to a {TO} course. This will DOUBLE your tournament prize monies if your course passes the more stringent SGA evaluation. 
+STR_UNLOCK_RANK_EMPLOYEES               :In addition you may now hire more experienced employees, for a slightly higher salary of course.
+STR_UNLOCK_RANK_BUILDINGS               :In addition you may build upgraded buildings which are more effective.
+STR_UNLOCK_NEW_FACILITIES               : As your course grows you can add new facilities. 
+STR_UNLOCK_NEW_PLAYERS                  : New players are flocking to your golf course. 
+STR_UNLOCK_BUILDING                     :You may now build a {BUILDING}. A {BUILDING}{WHAT}
+
+########################################################################################################################
+# The event log: the End of Year report's highlights and the Histograph
+########################################################################################################################
+# The monthly event log as the year-end screen (0x44cff0) and the Histograph write it
+STR_LOG_HOLE_OPENED                     :Hole {HOLE} opened.
+STR_LOG_BUILT                           :{BUILDING} built.
+STR_LOG_BUILDING                        :Building
+STR_LOG_WON_MATCH                       :Won match vs. {PRO}
+STR_LOG_A_PRO                           :a pro
+STR_LOG_TOP_100                         :Hole {HOLE} rated top 100.
+STR_LOG_TOP_18                          :Hole {HOLE} rated top 18.
+STR_LOG_CELEBRITY_HOME                  :{CELEBRITY} buys a home.
+STR_LOG_A_CELEBRITY                     :A celebrity
+STR_LOG_GARY_GOLF                       :Gary Golf
+STR_LOG_TOURNAMENT_PLACE                :{PRO} places {PLACE} in tournament.
+STR_LOG_CEO                             :J.P. Bigdome joins the board.
+STR_LOG_HAPPY_ENDING                    :Happy Ending: {STORY}
+STR_LOG_LAND                            :Additional land purchased.
+STR_LOG_HEIRESS                         :Ivana donates a {LANDMARK}
+
+########################################################################################################################
+# Golfers' thoughts (text routine 0x469b00) and what they put in them
+########################################################################################################################
+# Terrain nouns put into thoughts: the single name, then the group name (trees use the group name in most remarks)
+STR_THOUGHT_TERRAIN_TEE                 :tee
+STR_THOUGHT_TERRAIN_TEE_GROUP           :tee box
+STR_THOUGHT_TERRAIN_GREEN               :green
+STR_THOUGHT_TERRAIN_GREEN_GROUP         :green
+STR_THOUGHT_TERRAIN_FAIRWAY             :fairway
+STR_THOUGHT_TERRAIN_FAIRWAY_GROUP       :fairway
+STR_THOUGHT_TERRAIN_ROUGH               :rough
+STR_THOUGHT_TERRAIN_ROUGH_GROUP         :rough
+STR_THOUGHT_TERRAIN_DEEP_ROUGH          :deep rough
+STR_THOUGHT_TERRAIN_DEEP_ROUGH_GROUP    :deep rough
+STR_THOUGHT_TERRAIN_MOUNDS              :mounds
+STR_THOUGHT_TERRAIN_MOUNDS_GROUP        :mounds
+STR_THOUGHT_TERRAIN_SAND_TRAP           :sand trap
+STR_THOUGHT_TERRAIN_SAND_TRAP_GROUP     :sand
+STR_THOUGHT_TERRAIN_WASTE_BUNKER        :waste bunker
+STR_THOUGHT_TERRAIN_WASTE_BUNKER_GROUP  :waste area
+STR_THOUGHT_TERRAIN_POT_BUNKER          :pot bunker
+STR_THOUGHT_TERRAIN_POT_BUNKER_GROUP    :pot bunker
+STR_THOUGHT_TERRAIN_RAVINE              :ravine
+STR_THOUGHT_TERRAIN_RAVINE_GROUP        :ravine
+STR_THOUGHT_TERRAIN_BRUSH               :brush
+STR_THOUGHT_TERRAIN_BRUSH_GROUP         :brush
+STR_THOUGHT_TERRAIN_ROCKS               :rocks
+STR_THOUGHT_TERRAIN_ROCKS_GROUP         :rocks
+STR_THOUGHT_TERRAIN_TREE                :tree
+STR_THOUGHT_TERRAIN_TREE_GROUP          :trees
+STR_THOUGHT_TERRAIN_PINE                :pine
+STR_THOUGHT_TERRAIN_PINE_GROUP          :pines
+STR_THOUGHT_TERRAIN_PALM                :palm
+STR_THOUGHT_TERRAIN_PALM_GROUP          :palms
+STR_THOUGHT_TERRAIN_ELM                 :elm
+STR_THOUGHT_TERRAIN_ELM_GROUP           :elms
+STR_THOUGHT_TERRAIN_WATER               :water
+STR_THOUGHT_TERRAIN_WATER_GROUP         :water
+STR_THOUGHT_TERRAIN_WETLANDS            :wetlands
+STR_THOUGHT_TERRAIN_WETLANDS_GROUP      :wetlands
+STR_THOUGHT_TERRAIN_MARSH               :marsh
+STR_THOUGHT_TERRAIN_MARSH_GROUP         :marsh
+STR_THOUGHT_TERRAIN_OUT_OF_BOUNDS       :out of bounds
+STR_THOUGHT_TERRAIN_OUT_OF_BOUNDS_GROUP :out of bounds
+STR_THOUGHT_TERRAIN_BUILDING            :building
+STR_THOUGHT_TERRAIN_BUILDING_GROUP      :buildings
+# Pet names a partner adds to a remark ({PET} in the lines below)
+STR_THOUGHT_PET_HONEY                   :, honey
+STR_THOUGHT_PET_SUGAR                   :, sugar
+STR_THOUGHT_PET_DEAR                    :, dear
+STR_THOUGHT_PET_SWEETIE                 :, sweetie
+# Scenery names (0x407700) put into thoughts as {WHAT}
+STR_THOUGHT_FEATURE_VIEW                :view
+STR_THOUGHT_FEATURE_HOME_SITE           :home site
+STR_THOUGHT_FEATURE_FLOWERBED           :flowerbed
+STR_THOUGHT_FEATURE_LANDMARK            :landmark
+STR_THOUGHT_FEATURE_RED_POPPY_BED       :red poppy bed
+STR_THOUGHT_FEATURE_ORANGE_FLOWERBED    :orange flowerbed
+STR_THOUGHT_FEATURE_PURPLE_IRIS_PATCH   :purple iris patch
+STR_THOUGHT_FEATURE_BLUE_FOXGLOVE       :blue foxglove
+STR_THOUGHT_FEATURE_PINK_SAGE_BUSH      :pink sage bush
+STR_THOUGHT_FEATURE_AQUA_HIBISCUS       :aqua hibiscus
+STR_THOUGHT_FEATURE_ORANGE_BOUGAINVILLEA:orange bougainvillea
+STR_THOUGHT_FEATURE_PURPLE_ORCHID       :purple orchid
+STR_THOUGHT_FEATURE_BLUE_HYDRANGEA      :blue hydrangea
+STR_THOUGHT_FEATURE_RED_ROSE_BUSH       :red rose bush
+STR_THOUGHT_FEATURE_GREEN_FLOWERBED     :green flowerbed
+STR_THOUGHT_FEATURE_YELLOW_DAISY_BED    :yellow daisy bed
+STR_THOUGHT_FEATURE_WHITE_CARNATION     :white carnation
+STR_THOUGHT_FEATURE_MYSTERIOUS_BONES    :mysterious bones
+STR_THOUGHT_FEATURE_ORNAMENTAL_GRASS    :ornamental grass
+STR_THOUGHT_FEATURE_ROCK_FORMATION      :rock formation
+STR_THOUGHT_FEATURE_SCENIC_TREE         :scenic tree
+STR_THOUGHT_FEATURE_NATURAL_BRIDGE      :natural bridge
+STR_THOUGHT_FEATURE_ROSE_BUSH           :rose bush
+STR_THOUGHT_FEATURE_RHODODENDRON        :rhododendron
+STR_THOUGHT_FEATURE_SCENIC_CACTUS       :scenic cactus
+STR_THOUGHT_FEATURE_SCENIC_BRIDGE       :scenic bridge
+STR_THOUGHT_FEATURE_FOUNTAIN            :fountain
+STR_THOUGHT_FEATURE_WILDFLOWER          :wildflower
+# Golfer thoughts by mood event (text routine 0x469b00). {PLACE} is one of the two place phrases, {TERRAIN} a terrain noun
+STR_THOUGHT_PLACE_UNDER                 :under the {TERRAIN}
+STR_THOUGHT_PLACE_IN                    :in the {TERRAIN}
+STR_THOUGHT_01_HOWD_YOU_LIKE            :How'd you like that shot, {PARTNER}?
+STR_THOUGHT_01_NOTHIN_BUT               :Oh yeah, nothin' but {TERRAIN}!
+STR_THOUGHT_01_SO_GOOD                  :Whoa, I am so GOOD!
+STR_THOUGHT_01_I_ROCK                   :Oh yeah, I rock!
+STR_THOUGHT_01_PARTNER_COULDNT          :{GOLFER}, I couldn't do it any better!
+STR_THOUGHT_01_PARTNER_SOOOO_GOOD       :{GOLFER}, you are soooo GOOD!
+STR_THOUGHT_01_PARTNER_GREAT_SHOT       :{GOLFER}, what a great shot!
+STR_THOUGHT_01_PARTNER_TRULY_ROCK       :{GOLFER}, you truly rock!
+STR_THOUGHT_02_HA_YOURE                 :Ha, {GOLFER}, you're {PLACE}!
+STR_THOUGHT_02_OH_DARN_YOURE            :Oh darn, you're {PLACE}{PET}!
+STR_THOUGHT_02_DARN_IM                  :Darn, I'm {PLACE}!
+STR_THOUGHT_03_EVEN_BETTER              :You look even better {PLACE}, {GOLFER}.
+STR_THOUGHT_03_NOW_YOURE                :Oh, {GOLFER}, now you're {PLACE}!
+STR_THOUGHT_03_PREFER_BEING             :You prefer being {PLACE}, do you?
+STR_THOUGHT_03_NOW_IM                   :{EXCLAMATION}, now I'm {PLACE}!
+STR_THOUGHT_03_EXCL_GREAT               :Great
+STR_THOUGHT_03_EXCL_OH_NO               :Oh no
+STR_THOUGHT_03_EXCL_SWELL               :Swell
+STR_THOUGHT_03_EXCL_LOVELY              :Lovely
+STR_THOUGHT_04_ONLY_YOU                 :Only you could miss this shot, {GOLFER}.
+STR_THOUGHT_04_PRETTY_EASY              :This shot looks pretty easy. Yawn.
+STR_THOUGHT_05_CAREFUL_OF               :Careful of the {TERRAIN}{PET}.
+STR_THOUGHT_05_SAY_HELLO                :Say hello to Mr. {TERRAIN} for me, {GOLFER}.
+STR_THOUGHT_05_GOING_INTO               :You're going into the {TERRAIN}, {GOLFER}.
+STR_THOUGHT_05_WATCH_OUT                :Watch out for the {TERRAIN}, {GOLFER}.
+STR_THOUGHT_05_STAY_AWAY                :Eeek, I gotta stay away from the {TERRAIN}.
+STR_THOUGHT_25_HIT_IT_PAST              :Eeek, I gotta hit it past the {TERRAIN}.
+STR_THOUGHT_26_WATCH_OUT_FOR            :Eeek, I gotta watch out for the {TERRAIN}.
+STR_THOUGHT_06_USE_THE_SLOPE            :I'll use the slope on this shot.
+STR_THOUGHT_07_RIDING_OVER_BRIDGE       :I love riding over this scenic bridge.
+STR_THOUGHT_07_WALKING_OVER_BRIDGE      :I love walking over this scenic bridge.
+STR_THOUGHT_08_WHO_DESIGNED             :Who designed this #@%&! course?
+STR_THOUGHT_09_ALMOST_HIT_ME            :Hey, that ball almost hit me!
+# {THIS} is "these" for a plural terrain name, else "this"
+STR_THOUGHT_0A_THESE                    :these
+STR_THOUGHT_0A_THIS                     :this
+STR_THOUGHT_0A_MUST_I_WALK              :Must I walk through {THIS} {TERRAIN}?
+# {ADJ} is "nice" or "beautiful"
+STR_THOUGHT_0B_NICE                     :nice
+STR_THOUGHT_0B_BEAUTIFUL                :beautiful
+STR_THOUGHT_0B_LOOK_AT_THIS             :Look at this {ADJ} {WHAT}{PET}.
+STR_THOUGHT_0B_CHECK_OUT                :Check out this {ADJ} {WHAT}!
+STR_THOUGHT_0C_DARN_THAT                :Darn that stupid {TERRAIN}!
+STR_THOUGHT_0D_HEAR_A_SPLASH            :Did I hear a splash, {GOLFER}?
+STR_THOUGHT_0D_DROWNED_IT               :Argh, I drowned it!
+STR_THOUGHT_0D_SWIM                     :Did my ball go for a swim?
+STR_THOUGHT_0D_IN_THE_DRINK             :Nooooo, I'm in the drink!
+STR_THOUGHT_0E_THIRSTY                  :I'm getting a little thirsty.
+STR_THOUGHT_0F_HUNGRY                   :I'm starting to get hungry.
+STR_THOUGHT_10_HOOKED                   :Gosh, I kinda hooked that shot.
+STR_THOUGHT_11_SLICED                   :Oops, I really sliced that shot.
+STR_THOUGHT_12_GOOD_SNACK               :There's nothing like a good snack on the course.
+# The end of a hole: the score word, then a remark ({SCORE} {REMARK})
+STR_THOUGHT_SCORE_TRIPLE_EAGLE          :Triple Eagle!
+STR_THOUGHT_SCORE_DOUBLE_EAGLE          :Double Eagle!
+STR_THOUGHT_SCORE_EAGLE                 :Eagle!
+STR_THOUGHT_SCORE_BIRDIE                :Birdie!
+STR_THOUGHT_SCORE_PAR                   :Par.
+STR_THOUGHT_SCORE_BOGEY                 :Bogey.
+STR_THOUGHT_SCORE_DOUBLE_BOGEY          :Double Bogey.
+STR_THOUGHT_SCORE_TRIPLE_BOGEY          :Triple Bogey.
+STR_THOUGHT_SCORE_ARGGG                 :Arggg!
+STR_THOUGHT_13_TOO_HARD                 :This hole is too hard.
+STR_THOUGHT_13_TOO_EASY                 :This hole is too easy.
+STR_THOUGHT_17_TOO_HARD_EASY            :This hole is too hard/easy.
+STR_THOUGHT_13_LENGTH_HELPS             :My length skill helps on this hole.
+STR_THOUGHT_13_REWARDS_ACCURACY         :This hole rewards my accuracy.
+STR_THOUGHT_13_IMAGINATIVE              :I had to use some imaginative shots here.
+STR_THOUGHT_13_TAKE_THAT                :take that, loser!
+STR_THOUGHT_13_YOU_WERE_LUCKY           :you were lucky on this hole.
+STR_THOUGHT_13_HOLE_DONE                :{SCORE} {REMARK}
+STR_THOUGHT_14_UGLY                     :Gee, what an ugly {WHAT}.
+STR_THOUGHT_15_SLOWPOKES                :I'm tired of waiting for these slowpokes.
+STR_THOUGHT_16_A_MOVIE_STAR             :a movie star
+STR_THOUGHT_16_THATS_HOUSE              :Hey, that's {CELEBRITY}'s house!
+STR_THOUGHT_18_SOMETHING_GROWING        :Yuck, there's something growing here that shouldn't be.
+STR_THOUGHT_19_FOAMY_BEVERAGE           :Ahhh, a cool foamy beverage.
+STR_THOUGHT_1A_YOU_LOOK_TIRED_PET       :You look a bit tired{PET}.
+STR_THOUGHT_1A_YOU_LOOK_TIRED           :You look a bit tired, {GOLFER}.
+STR_THOUGHT_1A_GETTING_TIRED            :I'm starting to get tired.
+STR_THOUGHT_1B_COMFORTABLE_BENCH        :This bench is so comfortable.
+STR_THOUGHT_1C_LOVELY_PET               :Look at that lovely {WHAT}{PET}.
+STR_THOUGHT_1C_LOVELY_PARTNER           :Look at that lovely {WHAT}, {PARTNER}.
+STR_THOUGHT_1C_MY_LOVELY                :My, that's a lovely {WHAT}.
+STR_THOUGHT_1C_WHAT_A_NICE              :Oh, what a nice {WHAT}!
+STR_THOUGHT_1C_LIKING                   :I am liking that {WHAT}.
+STR_THOUGHT_1C_COOL                     :Gee, that's a cool {WHAT}!
+STR_THOUGHT_1D_VARIETY                  :I like the variety on this course.
+STR_THOUGHT_1E_DOGLEG_LEFT              :Great, another dogleg left.
+STR_THOUGHT_1E_DOGLEG_RIGHT             :Yawn, another dogleg right.
+STR_THOUGHT_1E_ANOTHER_PAR              :Wow, yet another par {PAR}.
+STR_THOUGHT_1E_LIKE_THE_LAST            :This hole is like the last hole.
+STR_THOUGHT_1F_NEVER_SEEN               :I've never seen such {TERRAIN}!
+STR_THOUGHT_1F_TON_OF                   :I see a ton of {TERRAIN}.
+STR_THOUGHT_1F_LOOK_AT_ALL              :Look at all the {TERRAIN}!
+STR_THOUGHT_1F_ANY_MORE                 :Could there be any more {TERRAIN}?
+STR_THOUGHT_20_LONG_OR_SAFE             :Should I go long or play it safe?
+STR_THOUGHT_21_LEFT_OR_RIGHT            :Hmmm, should I go left or right?
+STR_THOUGHT_22_THANKS_FOR_ASKING        :Great, thanks for asking!
+STR_THOUGHT_22_THANKS_FOR_NOTICING      :Good, thanks for noticing.
+STR_THOUGHT_22_ENCOURAGEMENT            :Thanks for the encouragement.
+STR_THOUGHT_3A_TRYING_TO_PLAY           :Hey, I'm trying to play golf here!
+STR_THOUGHT_3A_FINE_THANKS              :Ummm, fine thanks.
+STR_THOUGHT_3A_LOUSY                    :Lousy, now that you mention it.
+STR_THOUGHT_23_NEVER_AGAIN              :I will never play this game again!
+STR_THOUGHT_23_HATE_MY_CLUBS            :I hate my clubs, I hate my hat, I hate this course!
+STR_THOUGHT_23_SCREAM                   :I am so mad I could just scream!
+STR_THOUGHT_23_PIECE_OF_ME              :Come on, you want a piece of me?
+STR_THOUGHT_24_GUY_CRAZY                :That guy's gone crazy.
+STR_THOUGHT_24_SHE_FLIPPED              :Whoa, she's flipped out.
+STR_THOUGHT_27_CRITTER                  :critter
+STR_THOUGHT_27_SCARED                   :I guess I scared that little {ANIMAL}.
+STR_THOUGHT_27_FRIGHTENED               :I think I frightened that poor {ANIMAL}.
+STR_THOUGHT_28_OH_MAMA                  :Oh mama!
+STR_THOUGHT_28_OHH_BABY                 :Ohh baby!
+STR_THOUGHT_28_YES                      :Yes!
+STR_THOUGHT_28_GADZOOKS                 :Gadzooks!
+STR_THOUGHT_28_OH_YEAH                  :Oh yeah!
+STR_THOUGHT_28_SMOKER                   :A smoker!
+STR_THOUGHT_28_SCREAMER                 :A screamer!
+STR_THOUGHT_28_NAILED_IT                :Nailed it!
+STR_THOUGHT_29_CLEAN_AND_SHINY          :Clean and shiny.
+STR_THOUGHT_29_HIT_IT_STRAIGHT          :Now I'll hit it straight.
+STR_THOUGHT_2A_LUCKY_BOUNCE             :Lucky bounce, {GOLFER}!
+STR_THOUGHT_2B_STEEP_SLOPE              :Must I walk up this steep slope?
+STR_THOUGHT_2C_NICE_LANDMARK            :Never mind... nice landmark, though.
+STR_THOUGHT_2D_UPHILL                   :Hmmm, a tricky uphill shot.
+STR_THOUGHT_2E_DOWNHILL                 :OK, a nice downhill shot.
+STR_THOUGHT_2F_ATTITUDE                 :{PARTNER}, your attitude stinks.
+STR_THOUGHT_2F_STOP_WHINING             :Stop whining and play, {PARTNER}.
+STR_THOUGHT_2F_TALK_TO_THE_HAND         :Talk to the hand, {PARTNER}.
+STR_THOUGHT_2F_CONCENTRATING            :Quiet, {PARTNER}, I'm concentrating.
+STR_THOUGHT_30_WHAT_DO_YOU_DO           :So what do you do, {PARTNER}?
+STR_THOUGHT_31_THIS_AND_THAT            :Oh, this and that.
+STR_THOUGHT_31_IM_A                     :I'm a {JOB}.
+# Building remarks: "{FIRST}..." then "...{SECOND}"
+STR_THOUGHT_33_HELPED_DISTANCE          :really helped my distance.
+STR_THOUGHT_34_IMPROVED_ACCURACY        :really improved my accuracy.
+STR_THOUGHT_35_IMPROVED_PUTTING         :really improved my putting.
+STR_THOUGHT_33_DRIVING_RANGE            :driving range
+STR_THOUGHT_34_PRO_SHOP                 :pro shop
+STR_THOUGHT_35_PUTTING_GREEN            :putting green
+STR_THOUGHT_33_NEW_HAS                  :This new {BUILDING} has
+STR_THOUGHT_33_UPGRADED_HAS             :This upgraded {BUILDING} has
+STR_THOUGHT_33_DELUXE_HAS               :Our deluxe {BUILDING} has
+STR_THOUGHT_33_SECOND                   :...{SECOND}
+STR_THOUGHT_33_FIRST                    :{FIRST}...
+STR_THOUGHT_36_USE_MY_CLUB              :I'll use my {CLUB} for this shot.
+STR_THOUGHT_37_DRAW                     :I'll draw this shot from right to left.
+STR_THOUGHT_38_FADE                     :I'll fade this shot from left to right.
+STR_THOUGHT_39_HIGH_AND_SOFT            :I'll bring this ball in high and soft.
+STR_THOUGHT_3C_LOW_UNDER                :I'll run this ball low under the {TERRAIN}.
+STR_THOUGHT_3C_LOW                      :I'll run this ball low.
+STR_THOUGHT_3B_LAST_TIME                :I had a {SCORE} on this hole last time.
+STR_THOUGHT_3B_TOP_18                   :This hole is rated in the top 18 in the country.
+STR_THOUGHT_3B_TOP_100                  :You know, {PARTNER}, hole {HOLE} is a top 100 hole.
+STR_THOUGHT_3B_ALWAYS_LIKED             :I've always liked this hole.
+STR_THOUGHT_3D_HOW_ARE_YOU              :How are you today, {PARTNER}?
+STR_THOUGHT_3D_FINE                     :Fine.
+STR_THOUGHT_3D_NEW_CLUBS                :Are those new clubs?
+STR_THOUGHT_3D_BROTHER_IN_LAW           :They belong to my brother-in-law.
+STR_THOUGHT_3D_GREAT_DAY                :Looks like a great day for golf.
+STR_THOUGHT_3D_SURE_DOES                :Sure does.
+STR_THOUGHT_3D_BIRDS_SINGING            :Listen to those birds singing.
+STR_THOUGHT_3D_ANY_BETTER               :It doesn't get any better than this.
+STR_THOUGHT_3D_PREPARE_AMAZED           :Prepare to be amazed.
+STR_THOUGHT_3D_MAGIC_TIME               :It's magic time.
+STR_THOUGHT_3D_TEE_OFF_FIRST            :Shall I tee off first?
+STR_THOUGHT_3D_DONT_CARE                :I don't care.
+STR_THOUGHT_3F_A_GAME                   :I brought my A game today.
+STR_THOUGHT_3F_TROPHY_NOW               :Might as well just give me the trophy now.
+STR_THOUGHT_3F_CADDIE                   :I hope my caddie counted my clubs.
+STR_THOUGHT_3F_LOSERS_GO_HOME           :You losers might as well go home now.
+STR_THOUGHT_3F_GOOD_TO_BE_BACK          :It's good to be back on the course.
+STR_THOUGHT_3F_GREAT_TOURNAMENT         :Wasn't that a great tournament, {PARTNER}?
+STR_THOUGHT_3F_TICKETS                  :I've already got tickets for the next one.
+STR_THOUGHT_3F_COULD_HAVE_WON           :I think I could have won that tournament.
+STR_THOUGHT_41_DIDNT_SEE                :I didn't see where that shot landed.
+# The course opinion at the end of a hole (0x469a20), by mood
+STR_THOUGHT_OPINION_0                   :I hate this stupid course.
+STR_THOUGHT_OPINION_1                   :I don't like this course much.
+STR_THOUGHT_OPINION_2                   :I'm not having much fun today.
+STR_THOUGHT_OPINION_3                   :This course is almost adequate.
+STR_THOUGHT_OPINION_4                   :Well, I guess this course is OK.
+STR_THOUGHT_OPINION_5                   :This course is quite nice.
+STR_THOUGHT_OPINION_6                   :This is a really good course.
+STR_THOUGHT_OPINION_6_SURPRISING        :This is a really surprising course.
+STR_THOUGHT_OPINION_7                   :This course is excellent!
+STR_THOUGHT_OPINION_7_FASCINATING       :This course is fascinating.
+STR_THOUGHT_OPINION_8                   :This is the best course I've ever played!
+STR_THOUGHT_OPINION_8_INTERESTING       :yet this is a most interesting course.
+STR_THOUGHT_OPINION_LEAVING             :I hate this course. I'm leaving.
+
+# Stock heads' signature sayings (table 0x4d55e8 +4, event 0x3e): men's heads 0..18, then women's; PARTNER is replaced by
+# the partner's name
+STR_SIGNATURE_MAN_0                     :Praise the Lord for this fabulous day.
+STR_SIGNATURE_MAN_1                     :Dig my groovy head covers, PARTNER.
+STR_SIGNATURE_MAN_2                     :PARTNER, wouldn't you love a new set of encyclopedias?
+STR_SIGNATURE_MAN_3                     :PARTNER, do you hear an ambulance?
+STR_SIGNATURE_MAN_4                     :Surf's up, dude.
+STR_SIGNATURE_MAN_5                     :Someday this will all be mine.
+STR_SIGNATURE_MAN_6                     :I should be studying for finals.
+STR_SIGNATURE_MAN_7                     :A couple of aspirin will take care of that.
+STR_SIGNATURE_MAN_8                     :PARTNER, keep your head down - swing easy.
+STR_SIGNATURE_MAN_9                     :I'm in the mood for a hostile takeover.
+STR_SIGNATURE_MAN_10                    :Did you know those mushrooms are edible?
+STR_SIGNATURE_MAN_11                    :PARTNER, guess how much I'm worth.
+STR_SIGNATURE_MAN_12                    :I'm in the groove. C'mon let's move.
+STR_SIGNATURE_MAN_13                    :Golf is cool, you know.
+STR_SIGNATURE_MAN_14                    :PARTNER, you appear to have some envy issues.
+STR_SIGNATURE_MAN_15                    :This course may require further study.
+STR_SIGNATURE_MAN_16                    :Get in touch with your inner swing plane.
+STR_SIGNATURE_MAN_17                    :PARTNER, just grip it and rip it man.
+STR_SIGNATURE_MAN_18                    :Look at all shades of green.
+STR_SIGNATURE_WOMAN_0                   :One, two, three, SWING!
+STR_SIGNATURE_WOMAN_1                   :This is my good side.
+STR_SIGNATURE_WOMAN_2                   :Could I be more perky?
+STR_SIGNATURE_WOMAN_3                   :Where does it hurt, PARTNER?
+STR_SIGNATURE_WOMAN_4                   :You say hello, I say bub bye
+STR_SIGNATURE_WOMAN_5                   :...and I'm working on my tan.
+STR_SIGNATURE_WOMAN_6                   :Memo to self: stay in control.
+STR_SIGNATURE_WOMAN_7                   :This just in: Yippee! Film at 11.
+STR_SIGNATURE_WOMAN_8                   :YOU CALL THAT A SWING, MAGGOT!
+STR_SIGNATURE_WOMAN_9                   :Now Bobby Jones, HE was a golfer.
+STR_SIGNATURE_WOMAN_10                  :I give myself two thumbs up!
+STR_SIGNATURE_WOMAN_11                  :PARTNER, do you like brownies?
+STR_SIGNATURE_WOMAN_12                  :Ouch, I hurt my typing finger.
+STR_SIGNATURE_WOMAN_13                  :So far, I give myself a B+.
+STR_SIGNATURE_WOMAN_14                  :PARTNER, I'm gonna request a mistrial.
+STR_SIGNATURE_WOMAN_15                  :And my hair still looks fabulous.
+STR_SIGNATURE_WOMAN_16                  :I just about got this game figured out.
+STR_SIGNATURE_WOMAN_17                  :I give that shot a perfect 10.
+STR_SIGNATURE_WOMAN_18                  :This course is a masterpiece.
+
+# The Customise screen's dialogue row labels (pointer table 0x4c2cc0)
+STR_SAYING_LABEL_SIGNATURE              :Signature saying
+STR_SAYING_LABEL_GOOD_SHOT              :Made good shot
+STR_SAYING_LABEL_TOO_EASY               :Too easy shot
+STR_SAYING_LABEL_HARD_SHOT              :Hard shot
+STR_SAYING_LABEL_REALLY_HARD            :Really hard shot
+STR_SAYING_LABEL_BAD_SHOT               :Hit bad shot
+STR_SAYING_LABEL_WORSE_SHOT             :Hit worse shot
+STR_SAYING_LABEL_ALMOST_HIT             :Almost hit by ball
+STR_SAYING_LABEL_HIT_TREE               :Hit a tree
+STR_SAYING_LABEL_WATER                  :Hit into the water
+STR_SAYING_LABEL_SCENIC                 :Notices scenic improvement
+STR_SAYING_LABEL_UGLY                   :Notices ugly item
+STR_SAYING_LABEL_ANIMAL                 :Notices animal
+STR_SAYING_LABEL_LONG_WAIT              :Long wait at tee
+STR_SAYING_LABEL_THIRSTY                :Getting thirsty
+STR_SAYING_LABEL_FOUND_DRINK            :Found a drink
+STR_SAYING_LABEL_HUNGRY                 :Getting hungry
+STR_SAYING_LABEL_FOUND_FOOD             :Found some food
+STR_SAYING_LABEL_TIRED                  :Getting tired
+STR_SAYING_LABEL_FOUND_BENCH            :Found a bench
+
+# Club names by club number (0x40a9a0)
+STR_CLUB_DRIVER                         :Driver
+STR_CLUB_3_WOOD                         :3 Wood
+STR_CLUB_4_WOOD                         :4 Wood
+STR_CLUB_2_IRON                         :2 Iron
+STR_CLUB_3_IRON                         :3 Iron
+STR_CLUB_4_IRON                         :4 Iron
+STR_CLUB_5_IRON                         :5 Iron
+STR_CLUB_6_IRON                         :6 Iron
+STR_CLUB_7_IRON                         :7 Iron
+STR_CLUB_8_IRON                         :8 Iron
+STR_CLUB_9_IRON                         :9 Iron
+STR_CLUB_LOB_WEDGE                      :Lob Wedge
+STR_CLUB_SAND_WEDGE                     :Sand Wedge
+STR_CLUB_PUTTER                         :Putter
+STR_CLUB_5_WOOD                         :5 Wood
+STR_CLUB_WEDGE                          :Wedge
+
+########################################################################################################################
+# The advisor's line over the pro (main frame 0x41676d)
+########################################################################################################################
+# The advisor's line over the pro (main frame 0x41676d)
+STR_ADVISOR_PRESS_H                     :Press 'h' to open the hole.
+STR_ADVISOR_BUILD_GREEN                 :Now we need to build a green.
+STR_ADVISOR_BUILD_TEE                   :First we need to build a tee.
+STR_ADVISOR_FIRST_HOLE                  :Let's build our first golf hole.
+STR_ADVISOR_FAIRWAY_SAND                :We might add some fairway or sand traps.
+STR_ADVISOR_CLICK_BUILD_COURSE          :Click on the big 'Build Course' button.
+STR_ADVISOR_BUILD_MORE                  :We've built one hole, let's build more!
+STR_ADVISOR_GOLFERS_COMING              :Here come some golfers!
+STR_ADVISOR_FUN_RATING                  :This hole has a {PERCENT}% fun rating.
+STR_ADVISOR_PRACTICE_ROUND              :I'm ready for a practice round.
+STR_ADVISOR_TOURNAMENT                  :I'm ready to play a tournament.
+STR_ADVISOR_EACH_HOLE_DIFFERENT         :I like to make each hole different.
+STR_ADVISOR_FLOWERS_BENCHES             :Some flowers and benches will cheer our golfers.
+STR_ADVISOR_PATHS                       :Adding paths will help speed up play.
+STR_ADVISOR_SLOPES                      :Slopes affect the bounce and roll of the ball.
+STR_ADVISOR_BUILDINGS_PATH              :Buildings need a path to the clubhouse.
+STR_ADVISOR_BUILDINGS_IMPROVE           :Buildings are one way to improve our course.
+STR_ADVISOR_EMPLOYEE_GREAT_JOB          :{EMPLOYEE} is doing a great job.
+STR_ADVISOR_HIRE_EMPLOYEES              :If you hire employees I won't have to do everything myself!
+
+########################################################################################################################
+# Short notes at the bottom of the screen (toasts)
+########################################################################################################################
+# Championship files saved from a game (Shift+F7, Shift+F8): the toasts
+STR_TOAST_CHAMP_NO_SAVE_IN_TOURNAMENT   :Cannot save course during a tournament.
+STR_TOAST_CHAMP_COURSE_SAVED            :{COURSE} saved for championship play.
+STR_TOAST_COULD_NOT_SAVE                :Could not save: {ERROR}
+STR_TOAST_CHAMP_PRO_SAVED               :{PRO} saved for championship play.
+STR_TOAST_CHAMP_PRO_NOT_SAVED           :Could not save the pro.
+# Toasts of the building and terrain tools
+STR_TOAST_NOT_OPERATIONAL               :WARNING: Your {BUILDING} will not be operational until you have a path connecting it to your clubhouse.
+STR_TOAST_NOT_ENOUGH_MONEY              :You don't have enough money.
+STR_TOAST_CHANGE_COSTS                  :This change costs {COST}. You have only {CASH}.
+STR_TOAST_BUILDING_DEMOLISHED           :Building demolished
+STR_TOAST_BUILD_MORE_HOLES              :Build more holes to unlock this building
+STR_TOAST_NO_UPGRADES_YET               :Sorry, upgraded buildings are not available until you build beyond 9 holes.
+STR_TOAST_NO_FURTHER_UPGRADE            :You cannot upgrade this building any further.
+STR_TOAST_NO_ROOM                       :There is no room for that building there
+STR_TOAST_LOT_NOT_ATTRACTIVE            :This is not a very attractive location for a building lot. Home buyers like water, woods, and grass near a golf hole with a good fun factor.
+STR_TOAST_EMPLOYEE_POSTED               :{EMPLOYEE} will work around here
+STR_TOAST_EMPLOYEE_CLICK                :Click the course where the {EMPLOYEE} should work
+# the typo is the exe's
+STR_TOAST_BUILDING_LOCKED               :This building is will become available as you build additional holes.
+STR_TOAST_NO_HOME_SITES                 :No home sites are free: each Silver (or better) member buys one lot.
+STR_TOAST_NO_LANDMARK                   :The club has no landmark to place yet.
+STR_TOAST_ANALYZE_NOT_AVAILABLE         :Analyze Golf Shot is not available yet
+STR_TOAST_CANNOT_RENAME                 :Employees cannot be renamed yet
+STR_TOAST_PRO_ALREADY_PLAYING           :{PRO} is already playing
+STR_TOAST_PRO_NEEDS_HOLE                :Your pro needs at least one hole to play
+STR_TOAST_NO_CHALLENGE                  :No famous golfer has challenged you yet
+STR_TOAST_ROUND_CANT_START              :The round can't start now
+STR_TOAST_NO_ROUND_TO_CANCEL            :There is no round to cancel
+STR_TOAST_NEED_MONEY_PROPERTY           :You need more money before you can purchase this property.
+STR_TOAST_NO_TOURNAMENT_OFFER           :The SGA has not offered you a tournament yet
+STR_TOAST_TOURNAMENT_CANCELED           :The tournament has been canceled.
+STR_TOAST_COULD_NOT_LOAD_GAME           :Could not load the saved game: {ERROR}
+STR_TOAST_COULD_NOT_LOAD_COURSE         :Could not load the course: {ERROR}
+STR_TOAST_COULD_NOT_SAVE_GAME           :Could not save the game: {ERROR}
+# Toasts of the keyboard
+STR_TOAST_CANCEL_ROUND                  :Are you sure you want to cancel this round? Press N again to cancel.
+STR_TOAST_SPEED_NORMAL                  :Normal speed
+STR_TOAST_SPEED_FAST                    :Fast (x2)
+STR_TOAST_SPEED_FASTEST                 :Fastest (x4)
+STR_TOAST_HOLE_NEEDS_TEE_GREEN          :A new hole needs a tee and a green
+
+# Why an item cannot go on a tile (the building tool, 0x41f34e)
+STR_ERROR_CANT_BUILD_THERE              :Can't build there.
+STR_ERROR_CANT_BUILD_BENCH              :Can't build bench there.
+STR_ERROR_CANT_BUILD_BRIDGE             :Can't build bridge there.
+# What the player sees when they ask for HD graphics and there is no pack
+STR_ERROR_NO_HD_PACK                    :No HD art pack found. Make one from your own copy of the game with tools/hd_pack (see docs/HD.md). Staying with Classic graphics.
+# Errors reading a saved game
+STR_ERROR_FILE_NOT_FOUND                :{FILE}: not found
+STR_ERROR_NOT_A_SAVED_GAME              :{FILE}: not a saved game
+STR_ERROR_COULD_NOT_WRITE               :{FILE}: could not write
+STR_ERROR_THEME_NOT_LOADED              :could not load the theme
+
+########################################################################################################################
+# The course view: pause line, hole label, tool under the pointer, Shot Analysis, touch buttons
+########################################################################################################################
+# "Paused" and " Fast" at the top of the screen (font 0x519948)
+STR_PAUSED                              :Paused
+STR_PAUSED_FAST                         : Fast
+
+# Hole type names by skill mask (0x4c2a28)
+STR_HOLE_TYPE_BREATHER                  :Breather
+STR_HOLE_TYPE_FREEWAY                   :Freeway
+STR_HOLE_TYPE_PRECISE                   :Precise
+STR_HOLE_TYPE_CHALLENGE                 :Challenge
+STR_HOLE_TYPE_CREATIVE                  :Creative
+STR_HOLE_TYPE_HEROIC                    :Heroic
+STR_HOLE_TYPE_STRATEGIC                 :Strategic
+STR_HOLE_TYPE_CLASSIC                   :Classic
+# Proper hole names, indexed by hole number, one table per par (0x407280): women's names for par 3 (0x4c2e88), trees and
+# shrubs for par 4 (0x4c2e38), dark places for the rest (0x4c2ed8)
+STR_HOLE_NAME_PAR3_1                    :Alexandra
+STR_HOLE_NAME_PAR3_2                    :Belinda
+STR_HOLE_NAME_PAR3_3                    :Carmen
+STR_HOLE_NAME_PAR3_4                    :Dorothy
+STR_HOLE_NAME_PAR3_5                    :Elizabeth
+STR_HOLE_NAME_PAR3_6                    :Faith
+STR_HOLE_NAME_PAR3_7                    :Gisele
+STR_HOLE_NAME_PAR3_8                    :Hope
+STR_HOLE_NAME_PAR3_9                    :Ingrid
+STR_HOLE_NAME_PAR3_10                   :Jacqueline
+STR_HOLE_NAME_PAR3_11                   :Lara
+STR_HOLE_NAME_PAR3_12                   :Melinda
+STR_HOLE_NAME_PAR3_13                   :Naomi
+STR_HOLE_NAME_PAR3_14                   :Priscilla
+STR_HOLE_NAME_PAR3_15                   :Roxanne
+STR_HOLE_NAME_PAR3_16                   :Sarah
+STR_HOLE_NAME_PAR3_17                   :Valerie
+STR_HOLE_NAME_PAR3_18                   :Zelda
+STR_HOLE_NAME_PAR4_1                    :Olive
+STR_HOLE_NAME_PAR4_2                    :Dogwood
+STR_HOLE_NAME_PAR4_3                    :Peach
+STR_HOLE_NAME_PAR4_4                    :Crab Apple
+STR_HOLE_NAME_PAR4_5                    :Magnolia
+STR_HOLE_NAME_PAR4_6                    :Juniper
+STR_HOLE_NAME_PAR4_7                    :Pampas
+STR_HOLE_NAME_PAR4_8                    :Jasmime
+STR_HOLE_NAME_PAR4_9                    :Cherry
+STR_HOLE_NAME_PAR4_10                   :Camellia
+STR_HOLE_NAME_PAR4_11                   :Daisy
+STR_HOLE_NAME_PAR4_12                   :Golden Bell
+STR_HOLE_NAME_PAR4_13                   :Azalea
+STR_HOLE_NAME_PAR4_14                   :Chinese Fir
+STR_HOLE_NAME_PAR4_15                   :Firethorn
+STR_HOLE_NAME_PAR4_16                   :Redbud
+STR_HOLE_NAME_PAR4_17                   :Nandina
+STR_HOLE_NAME_PAR4_18                   :Holly
+STR_HOLE_NAME_PAR5_1                    :Pride
+STR_HOLE_NAME_PAR5_2                    :Inferno
+STR_HOLE_NAME_PAR5_3                    :Fortress
+STR_HOLE_NAME_PAR5_4                    :The Siren
+STR_HOLE_NAME_PAR5_5                    :Centaur
+STR_HOLE_NAME_PAR5_6                    :Styx
+STR_HOLE_NAME_PAR5_7                    :Flame
+STR_HOLE_NAME_PAR5_8                    :Serpent
+STR_HOLE_NAME_PAR5_9                    :Paradise
+STR_HOLE_NAME_PAR5_10                   :Eden
+STR_HOLE_NAME_PAR5_11                   :Valley
+STR_HOLE_NAME_PAR5_12                   :Torment
+STR_HOLE_NAME_PAR5_13                   :Misery
+STR_HOLE_NAME_PAR5_14                   :Archangel
+STR_HOLE_NAME_PAR5_15                   :Smoke
+STR_HOLE_NAME_PAR5_16                   :Gryphon
+STR_HOLE_NAME_PAR5_17                   :Beast
+STR_HOLE_NAME_PAR5_18                   :Purgatory
+# A hole without a proper name ("Hole " and the number)
+STR_HOLE_NAME_NUMBER                    :Hole {HOLE}
+# The announcement of a new hole (0x40e720): "Hole #3, a scenic 328 yard par 4, is now open for play.", in pieces
+STR_HOLE_OPEN_SHORT                     :short 
+STR_HOLE_OPEN_LONG                      :long 
+STR_HOLE_OPEN_SCENIC                    :scenic 
+STR_HOLE_OPEN_START                     :Hole #{HOLE}, a {SIZE}{YARDS} yard 
+STR_HOLE_OPEN_UPHILL                    :uphill 
+STR_HOLE_OPEN_DOWNHILL                  :downhill 
+STR_HOLE_OPEN_PAR                       :par {PAR}
+STR_HOLE_OPEN_DOGLEG_LEFT               : with a dogleg to the left
+STR_HOLE_OPEN_DOGLEG_RIGHT              : with a dogleg to the right
+STR_HOLE_OPEN_END                       :, is now open for play.
+# The label of the hole being built (0x404bc0) and its hint
+STR_HOLE_LABEL_HOLE                     :Hole {HOLE}
+STR_HOLE_LABEL_YARDS                    :{YARDS} yards
+STR_HOLE_LABEL_PAR                      :Par {PAR}
+STR_HOLE_LABEL_PRESS_H                  :Press 'h' to open hole
+
+# The tool under the pointer: the tricky green label, the distance from the last shot, the Home Site's sums (0x41a5d3)
+STR_CURSOR_TRICKY_GREEN                 :Tricky Green
+STR_CURSOR_YARDS                        :{YARDS} yards
+STR_CURSOR_LOT_VALUE                    :Lot value: {MONEY}
+STR_CURSOR_SITE_CLEAR                   :Site clear: {MONEY}
+STR_CURSOR_SITE_PREP                    :Site prep.: {MONEY}
+STR_CURSOR_PROFIT                       :Profit: {MONEY}
+
+# Shot Analysis: the four kinds of golfer (0x40d760's labels) and the figure beside each ({SIGN} is + when positive)
+STR_ANALYSIS_NO_LENGTH                  :no Length skill
+STR_ANALYSIS_NO_ACCURACY                :no Accuracy skill
+STR_ANALYSIS_NO_IMAGINATION             :no Imagination skill
+STR_ANALYSIS_ALL_SKILLS                 :golfers with ALL skills
+STR_ANALYSIS_YARDS                      :{SIGN}{YARDS} yds.
+# Shot Analysis (the hole analysis box)
+STR_ANALYSIS_TITLE                      :Shot Analysis:
+STR_ANALYSIS_GOLFERS_PLAYING            :Golfers playing hole {HOLE}...
+
+# What the undo tool names under the pointer (0x40a160)
+STR_UNDO_OUT_OF_BOUNDS                  :Out of bounds
+STR_UNDO_PERMANENT                      :Permanent
+STR_UNDO_DEMOLISH                       :Demolish {BUILDING}
+STR_UNDO_REMOVE_PATH                    :Remove Path
+STR_UNDO_REMOVE_BENCH                   :Remove Bench
+STR_UNDO_REMOVE_SCENIC_TREE             :Remove Scenic Tree
+STR_UNDO_REMOVE_SCENIC_BRIDGE           :Remove Scenic Bridge
+STR_UNDO_REMOVE_FLOWERS                 :Remove Flowers
+STR_UNDO_RESET_TO                       :Reset to {TERRAIN}
+
+# The touch screen buttons (browser build)
+STR_TOUCH_OPEN_HOLE                     :Open hole
+STR_TOUCH_TURN                          :Turn
+STR_TOUCH_SPEED                         :Speed
+STR_TOUCH_MESSAGE                       :Message
+
+########################################################################################################################
+# The course badge (0x40daa0) and the date
+########################################################################################################################
+STR_COURSE_MONTEREY                     :Ocean's Edge
+STR_COURSE_SAN_DIEGO                    :Dolphin Coast
+STR_COURSE_ROCKY_MTNS                   :Jurassic Springs
+STR_COURSE_LAS_VEGAS                    :Ace in the Hole
+STR_COURSE_PHOENIX                      :Coyote Flats
+STR_COURSE_HAWAII                       :Flamingo Shores
+STR_COURSE_OAHU                         :Island Palms
+STR_COURSE_NOVA_SCOTIA                  :Windy Point
+STR_COURSE_NORTHEAST                    :Ravenwood Farms
+STR_COURSE_CAROLINA                     :Christmas Pines
+STR_COURSE_IRELAND                      :County Kincaide
+STR_COURSE_SCOTLAND                     :Harold's Keep
+STR_COURSE_WALES                        :Thistle Runes
+STR_COURSE_SPAIN                        :Sangria Bay
+STR_COURSE_FLORIDA                      :Ocean Grove
+STR_COURSE_JAMAICA                      :Scorpion Cove
+# The course name with the rank suffix the badge appends (0x40daa0 with argument 0); the Championship one is empty in the exe
+STR_COURSE_NAME_MC                      :{COURSE} MC
+STR_COURSE_NAME_GC                      :{COURSE} GC
+STR_COURSE_NAME_CC                      :{COURSE} CC
+STR_COURSE_NAME_CHAMPIONSHIP            :{COURSE}
+# The course name with the long class word (0x40daa0 with argument 1), as the routing map shows it
+STR_COURSE_NAME_MUNICIPAL               :{COURSE} Municipal
+STR_COURSE_NAME_GOLF_CLUB               :{COURSE} Golf Club
+STR_COURSE_NAME_COUNTRY_CLUB            :{COURSE} Country Club
+STR_COURSE_NAME_LONG_CHAMPIONSHIP       :{COURSE} Championship
+
+# The date under the course badge
+STR_DATE                                :{MONTH} {YEAR}
+
+# The months of the game's year (0x4c2908), March to October
+STR_MONTH_MARCH                         :March
+STR_MONTH_APRIL                         :April
+STR_MONTH_MAY                           :May
+STR_MONTH_JUNE                          :June
+STR_MONTH_JULY                          :July
+STR_MONTH_AUGUST                        :August
+STR_MONTH_SEPTEMBER                     :September
+STR_MONTH_OCTOBER                       :October
+# The twelve months, for the plain course badge used when the interface art is missing
+STR_MONTH_JANUARY                       :January
+STR_MONTH_FEBRUARY                      :February
+STR_MONTH_NOVEMBER                      :November
+STR_MONTH_DECEMBER                      :December
+
+# The course name of the demo course (no property)
+STR_DEMO_COURSE                         :Demo Course
+
+########################################################################################################################
+# The dock (0x432ba0) and its panels: Build Course, Add Buildings, People, the Player panel
+########################################################################################################################
+# The dock's tooltip captions (0x432ba0)
+STR_DOCK_BUILD_COURSE                   :Build Course
+STR_DOCK_ADD_BUILDINGS                  :Add Buildings
+STR_DOCK_PEOPLE                         :People
+STR_DOCK_ZOOM                           :Zoom Map
+STR_DOCK_UNZOOM                         :Unzoom Map
+STR_DOCK_ROTATE                         :Rotate Map
+STR_DOCK_INFORMATION                    :Information
+STR_DOCK_PAUSE                          :Pause or Unpause
+STR_DOCK_SYSTEM                         :System Functions
+
+# The golfer list panel's tooltips
+STR_TIP_GOLFERS                         :Golfers
+STR_TIP_HIRE_EMPLOYEES                  :Hire Employees
+STR_TIP_AMENITIES                       :Amenities
+STR_TIP_COURSE_TERRAIN                  :Course Terrain
+STR_TIP_ELEVATION                       :Elevation
+STR_TIP_COST                            :Cost: {COST}
+STR_TIP_BUILDINGS                       :Buildings
+STR_TIP_HIRE_EMPLOYEES_LOWER            :Hire employees
+
+# The dock panels (Build Course, Add Buildings, People). What the exe shows when Undo is clicked
+STR_PANEL_UNDO_HELP                     :Undo: click the map to take back what was built there. Your money will be refunded!
+STR_PANEL_UNDO                          :Undo
+
+# The terrain panel's tile buttons by theme (the exe's per-theme tile table); the theme's Interface text file's descriptions
+# are looked up by the English name
+STR_TILE_DESERT                         :Desert
+STR_TILE_DESERT_ROUGH                   :Rough
+STR_TILE_RAVINE                         :Ravine
+STR_TILE_JOSHUA_TREE                    :Joshua tree
+STR_TILE_CACTUS                         :Cactus
+STR_TILE_TROPICAL_BUSH                  :Tropical bush
+STR_TILE_TROPICAL_TREE                  :Tropical tree
+STR_TILE_GORSE                          :Gorse
+STR_TILE_TEES                           :Tees
+STR_TILE_GREEN                          :Green
+STR_TILE_FAIRWAY                        :Fairway
+STR_TILE_FIRM_FAIRWAY                   :Firm fairway
+STR_TILE_ROUGH                          :Rough
+STR_TILE_DEEP_ROUGH                     :Deep rough
+STR_TILE_MOUND                          :Mound
+STR_TILE_SAND_TRAP                      :Sand trap
+STR_TILE_WASTE_BUNKER                   :Waste bunker
+STR_TILE_POT_BUNKER                     :Pot bunker
+STR_TILE_STREAM                         :Stream
+STR_TILE_BRUSH                          :Brush
+STR_TILE_ROCKS                          :Rocks
+STR_TILE_TREE                           :Tree
+STR_TILE_PINE_TREE                      :Pine tree
+STR_TILE_PALM_TREE                      :Palm tree
+STR_TILE_ELM_TREE                       :Elm tree
+STR_TILE_WATER                          :Water
+
+# The amenities panel's slots (tooltips)
+STR_AMENITY_BALLWASHER                  :Ballwasher
+STR_AMENITY_PATHWAY                     :Pathway
+STR_AMENITY_BUILDING_LOT                :Building Lot
+STR_AMENITY_BENCHES                     :Benches
+STR_AMENITY_LANDMARKS                   :Landmarks
+STR_AMENITY_FLOWER_BED                  :Flower Bed
+STR_AMENITY_SCENIC_TREES                :Scenic Trees
+STR_AMENITY_SCENIC_BRIDGE               :Scenic Bridge
+STR_AMENITY_LANDMARK_COST               :5000-20,000
+
+# Add Buildings: what each lot's building does (the info box's third line, the exe's)
+STR_LOT_PUTTING_GREEN                   :Helps imaginative golfers
+STR_LOT_SNACK_BAR                       :Feeds hungry golfers
+STR_LOT_PRO_SHOP                        :Improves accurate golfers
+STR_LOT_SWIM_CLUB                       :Golfers become members
+STR_LOT_DRIVING_RANGE                   :Helps long hitters
+STR_LOT_CART_GARAGE                     :Golfers play faster
+STR_LOT_MARINA                          :Increases property values
+STR_LOT_RESORT_HOTEL                    :Golfers stay happier
+STR_LOT_AIRSTRIP                        :Higher greens fees
+STR_LOT_UPGRADED                        :Upgraded {BUILDING}
+
+# Landmark names by type (the landmark tool's 0..13, then two only donations give, then the eyesores), long form (0x4074a0
+# with its second argument 1)
+STR_LANDMARK_LONG_SUNDIAL               :garden sundial
+STR_LANDMARK_LONG_BARN                  :traditional barn
+STR_LANDMARK_LONG_CANNON                :authentic Civil War cannon
+STR_LANDMARK_LONG_STONEHENGE            :ancient stonehenge rock
+STR_LANDMARK_LONG_WATER_MILL            :operating water mill
+STR_LANDMARK_LONG_ROCK_FACE             :unusual rock face
+STR_LANDMARK_LONG_STATUE                :authentic Civil War statue
+STR_LANDMARK_LONG_LIGHTHOUSE            :scenic New England lighthouse
+STR_LANDMARK_LONG_BUDDHA                :peaceful Buddha
+STR_LANDMARK_LONG_WINDMILL              :Dutch windmill
+STR_LANDMARK_LONG_HISTORIC_STATUE       :historic statue
+STR_LANDMARK_LONG_EASTER_ISLAND         :haunting Easter Island head
+STR_LANDMARK_LONG_PAGODA                :exquisite pagoda
+STR_LANDMARK_LONG_HATTERAS              :historic Hatteras lighthouse
+STR_LANDMARK_LONG_ORIENTAL_HOUSE        :ornate oriental house
+STR_LANDMARK_LONG_TARPIT                :dusty dinosaur tarpit
+STR_LANDMARK_FALLBACK                   :landmark
+# The long name as the exe writes it after "a": with the "n" of "an" where the exe has one, otherwise after a space
+STR_LANDMARK_AFTER_AN                   :n {LANDMARK}
+STR_LANDMARK_AFTER_A                    : {LANDMARK}
+# Short names (0x4074a0 with its second argument 0), as the landmark tool labels its preview
+STR_LANDMARK_SUNDIAL                    :sundial
+STR_LANDMARK_BARN                       :barn
+STR_LANDMARK_CANNON                     :Civil War cannon
+STR_LANDMARK_STONEHENGE                 :stonehenge
+STR_LANDMARK_WATER_MILL                 :water mill
+STR_LANDMARK_ROCK_FACE                  :rock face
+STR_LANDMARK_STATUE                     :Civil War statue
+STR_LANDMARK_LIGHTHOUSE                 :lighthouse
+STR_LANDMARK_BUDDHA                     :Buddha
+STR_LANDMARK_WINDMILL                   :windmill
+STR_LANDMARK_HISTORIC_STATUE            :historic statue
+STR_LANDMARK_EASTER_ISLAND              :Easter Island head
+STR_LANDMARK_PAGODA                     :pagoda
+STR_LANDMARK_HATTERAS                   :historic lighthouse
+STR_LANDMARK_ORIENTAL_HOUSE             :oriental house
+STR_LANDMARK_TARPIT                     :dinosaur tarpit
+STR_LANDMARK_WATER_TOWER                :water tower
+STR_LANDMARK_RADIO_ANTENNA              :radio antenna
+STR_LANDMARK_OIL_PUMP                   :oil pump
+STR_LANDMARK_FREE                       :FREE!
+STR_LANDMARK_TIP                        :{LANDMARK}, {PRICE}
+STR_LANDMARK_EFFECT_HAPPY_GOLFERS       :Happy Golfers
+STR_LANDMARK_EFFECT_NO_DANDELIONS       :No Dandelions
+STR_LANDMARK_EFFECT_SKILL_UPGRADE       :Skill Upgrade
+STR_LANDMARK_EFFECT_HAPPY_ENDINGS       :Happy Endings
+
+# The elevation panel's tools
+STR_ELEVATION_VERTEX                    :Raise/lower vertex
+STR_ELEVATION_SQUARE                    :Raise/lower square
+STR_ELEVATION_AREA                      :Raise/lower area
+STR_ELEVATION_ANALYZE                   :Analyze Golf Shot
+
+# An employee's name (0x467600): the first name (0x4c148c) and the title by job and experience; the last first name
+# has no space in the exe
+STR_EMPLOYEE_CHUCK                      :Chuck {TITLE}
+STR_EMPLOYEE_CHICHI                     :ChiChi {TITLE}
+STR_EMPLOYEE_RANDY                      :Randy {TITLE}
+STR_EMPLOYEE_MIKE                       :Mike {TITLE}
+STR_EMPLOYEE_JOE                        :Joe {TITLE}
+STR_EMPLOYEE_TOMMY                      :Tommy {TITLE}
+STR_EMPLOYEE_SALLY                      :Sally {TITLE}
+STR_EMPLOYEE_RITA                       :Rita{TITLE}
+# The employee panel: actions, what the counter under a selected employee counts (regular, skilled), the hire dialog
+STR_EMPLOYEE_MOVE                       :Move this employee
+STR_EMPLOYEE_FIRE                       :Fire this employee
+STR_EMPLOYEE_RENAME                     :Rename this employee
+STR_EMPLOYEE_HIRED                      :Hired: {MONTH} {YEAR}
+STR_EMPLOYEE_PAID                       :Paid: {SIGN}{AMOUNT}
+
+STR_COUNTER_GREETED                     :Players greeted:
+STR_COUNTER_CHEERED                     :Players cheered:
+STR_COUNTER_RUSHED                      :Players rushed:
+STR_COUNTER_INTIMIDATED                 :Slackers intimidated:
+STR_COUNTER_WEEDS_DESTROYED             :Weeds destroyed:
+STR_COUNTER_WEEDS_ERADICATED            :Weeds eradicated:
+STR_COUNTER_BEVERAGES                   :Beverages served:
+STR_COUNTER_SATISFIED                   :Satisfied customers:
+
+STR_HIRE_GREETERS                       :Greeters...
+STR_HIRE_SPEED_UP                       :Speed up play...
+STR_HIRE_WEED_KILLERS                   :Weed Killers...
+STR_HIRE_THIRST                         :Thirst quenchers...
+STR_HIRE_SKILLED_REFUSAL                :You need to build up to a Daily Fee course (6 or more holes) before you can hire skilled employees.
+STR_HIRE_TITLE                          :HIRE AN EMPLOYEE
+STR_HIRE_WAGE                           :{EMPLOYEE}: {WAGE} per week
+
+# The Player (JoeCool) panel's buttons
+STR_PLAYER_PRACTICE_ROUND               :Practice Round
+STR_PLAYER_BEGIN_TOURNAMENT             :Begin Tournament
+STR_PLAYER_STRAIGHT                     :Straight shot
+STR_PLAYER_FADE                         :Fade shot, L to R
+STR_PLAYER_DRAW                         :Draw shot, R to L
+STR_PLAYER_HIGH                         :High backspin shot
+STR_PLAYER_LOW                          :Low punch shot
+STR_PLAYER_GOLFERS                      :Golfers
+STR_PLAYER_HIRE                         :Hire employee
+STR_PLAYER_PLAY_VS                      :Play {PRO}
+STR_PLAYER_PLAY_VS_PRO                  :Play vs. a pro
+
+# The Player panel's scorecard
+STR_SCORECARD_HOLE                      :Hole
+STR_SCORECARD_PAR                       :Par
+STR_SCORECARD_PRACTICE                  : Practice
+STR_SCORECARD_ROUND                     :  Round
+STR_SCORECARD_EXHIBITION                :Exhibition
+STR_SCORECARD_PER_HOLE                  :§{MONEY}/hole
+STR_SCORECARD_PROFESSIONAL              :Professional
+STR_SCORECARD_TOURNAMENT                :Tournament
+STR_SCORECARD_VS                        : vs.
+
+# The aim's lines (the Player panel, or a box of their own without its art)
+STR_AIM_ATTITUDE                        :Attitude: {ATTITUDE}
+STR_AIM_CLUB                            :Club: {CLUB}
+STR_AIM_DISTANCE                        :Distance: {YARDS} yds
+STR_AIM_LIE                             :Lie: {LIE}
+STR_AIM_SKILL                           :{SKILL} +{PERCENT}%
+
+########################################################################################################################
+# The plain panels and badge used when the interface art is missing (not in the original)
+########################################################################################################################
+# The plain panels used when the interface art is missing
+STR_PLAIN_PATH_GRAVEL                   :Path, gravel
+STR_PLAIN_PATH_PAVED                    :Path, paved
+STR_PLAIN_RAISE                         :Raise ground
+STR_PLAIN_LOWER                         :Lower ground
+STR_PLAIN_CLICK_TO_AIM                  :Click the course to aim and swing.  N twice cancels the round.
+STR_PLAIN_PRACTICE                      :{PRO}: Practice Round
+STR_PLAIN_MATCH_VS                      :{PRO}: Match vs. {PRO2}  (§{MONEY}/hole)
+STR_PLAIN_MATCH_WAITING                 :{PRO}: Match vs. a pro  (waiting for a challenge)
+STR_PLAIN_BEGIN_TOURNAMENT              :{PRO}: Begin Tournament
+STR_PLAIN_TOURNAMENT_CANCEL             :Tournament under way: cancel it (no prizes)
+STR_PLAIN_PRO_PLAYING                   :{PRO} is playing: cancel the round
+STR_PLAIN_POINTS_TO_ADD                 :  ({POINTS} points to add)
+STR_PLAIN_SKILLS                        :{PRO}'s skills{POINTS}
+STR_PLAIN_GOLFERS                       :Golfers on the course
+STR_PLAIN_EMPLOYEES                     :Employees
+STR_PLAIN_STAFF                         :{KIND}: {COUNT}  (click to hire, right click to fire)
+STR_PLAIN_SANDBOX                       :Sandbox
+STR_PLAIN_FUN_SKILL                     :Fun {FUN}  Skill {SKILL}
+# The plain golfer list used when the panel art is missing
+STR_PLAIN_GOLFERS_ON_COURSE             :Golfers on the course: {COUNT}
+STR_PLAIN_NEXT_PAGE                     :next page >
+# The pro's shot buttons (panel buttons 4..8)
+STR_PLAIN_SHOT_STRAIGHT                 :Straight shot
+STR_PLAIN_SHOT_FADE                     :Fade shot (L to R)
+STR_PLAIN_SHOT_DRAW                     :Draw shot (R to L)
+STR_PLAIN_SHOT_HIGH                     :High backspin shot
+STR_PLAIN_SHOT_LOW                      :Low punch shot
+
+# The terrain brushes (the plain Build Course panel used when the interface art is missing)
+STR_PAINT_FAIRWAY                       :Fairway
+STR_PAINT_FIRM_FAIRWAY                  :Firm fairway
+STR_PAINT_GREEN                         :Green
+STR_PAINT_TEE                           :Tee
+STR_PAINT_ROUGH                         :Rough
+STR_PAINT_DEEP_ROUGH                    :Deep rough
+STR_PAINT_WOODS                         :Woods
+STR_PAINT_SAND_BUNKER                   :Sand bunker
+STR_PAINT_POT_BUNKER                    :Pot bunker
+STR_PAINT_WATER_SHALLOW                 :Water shallow
+STR_PAINT_WATER_MIDDLE                  :Water middle
+STR_PAINT_WATER_DEEP                    :Water deep
+STR_PAINT_ROCK                          :Rock
+STR_PAINT_BRUSH                         :Brush
+STR_PAINT_BUILDING_LOT                  :Building lot
+STR_PAINT_CLIFF                         :Cliff (editor id)
+STR_PAINT_RAVINE                        :Ravine (editor id)
+STR_PAINT_FLOWER_BED                    :Flower bed (editor id)
+STR_PAINT_ZEN_SAND                      :Zen sand (editor id)
+STR_PAINT_GRASS_BUNKER                  :Grass bunker (editor id)
+STR_PAINT_WASTE_BUNKER                  :Waste bunker
+STR_PAINT_STREAM                        :Stream
+STR_PAINT_PINE_TREE                     :Pine tree
+STR_PAINT_PALM_TREE                     :Palm tree
+
+########################################################################################################################
+# Pop-up menus: Information, System Functions, Preferences; the quit, land offer and career-over boxes
+########################################################################################################################
+# The Information menu
+STR_MENU_INFO_TITLE                     :Information...
+STR_MENU_INFO_REPEAT                    : Repeat Last Message
+STR_MENU_INFO_REPORT                    : Course Report
+STR_MENU_INFO_COMMENTS                  : Player Comments
+STR_MENU_INFO_ROUTING                   : Routing Map
+STR_MENU_INFO_HISTOGRAM                 : Histogram
+STR_MENU_INFO_SGA                       : SGA Evaluation
+STR_MENU_INFO_FINANCE                   : Financial Report
+STR_MENU_INFO_ROSTER                    : Membership Roster
+STR_MENU_INFO_ACCOMPLISHMENTS           : Professional Accomplishments
+STR_MENU_INFO_WORLD_MAP                 : World Map
+STR_MENU_INFO_BEST_SCORES               : Best Scores
+STR_MENU_INFO_TOP10                     : Top 10 Designers
+# The System Functions menu
+STR_MENU_SYSTEM_TITLE                   :System Functions
+STR_MENU_SYSTEM_SAVE                    : Save the current game
+STR_MENU_SYSTEM_LOAD                    : Load a previous game
+STR_MENU_SYSTEM_CANCEL_MATCH            : Cancel match or tournament
+STR_MENU_SYSTEM_SAVE_PRO                : Save your pro for Championship
+STR_MENU_SYSTEM_RENAME                  : Rename your course
+STR_MENU_SYSTEM_PREFERENCES             : Preferences
+STR_MENU_SYSTEM_SAVE_COURSE             : Save course for Championship
+STR_MENU_SYSTEM_QUIT                    : Quit to the title screen
+STR_MENU_SYSTEM_BACK                    : Back to the game
+# Preferences
+STR_MENU_PREFS_TITLE                    :Preferences...
+STR_MENU_PREFS_THOUGHTS                 : Show golfers' thoughts
+STR_MENU_PREFS_ADVISOR                  : Advisor and first-time messages
+STR_MENU_PREFS_ANIMALS                  : Ambient animals
+STR_MENU_PREFS_SOUND                    : Sound
+STR_MENU_PREFS_HD                       : HD graphics (off: Classic)
+# The Preferences' language line (only when a translation is installed; a click switches to the next language)
+STR_MENU_PREFS_LANGUAGE                 : Language: {LANGUAGE}
+# Preferences > Content (the port's own, docs/MODDING.md)
+STR_MENU_PREFS_CONTENT                  : Content packs...
+
+# The quit question (main loop 0x420b4e): the heading by the career's length, or after a championship
+STR_RETIRE_HIS                          :his
+STR_RETIRE_HER                          :her
+STR_RETIRE_CHAMPIONSHIP                 :After an exciting championship
+STR_RETIRE_RETURNS_HOME                 :{PRO} returns home.
+STR_RETIRE_WAIT                         : Wait, I don't want to quit yet!
+STR_RETIRE_SAVE_FIRST                   : I'd like to save this game first.
+STR_RETIRE_SO_LONG                      : So long for now.
+# "lengthy" once the year index is above 9 (from 2011 on)
+STR_RETIRE_LENGTHY_CAREER               :After a lengthy career
+STR_RETIRE_SHORT_CAREER                 :After a short career
+STR_RETIRE_PLANS                        :{PRO} plans {HIS} retirement.
+
+# The commissioner's approval (main routine 0x41e2a0, texts 0x4c5d74 and 0x4c5d48)
+STR_LAND_OFFER_1                        :Do you wish to purchase additional
+STR_LAND_OFFER_2                        :land to expand your course?
+STR_LAND_OFFER_YES                      : Yup, I've got big plans.
+STR_LAND_OFFER_NO                       : No, I'm fine.
+
+# Three year ends in the red (text 0x4c5ad0)
+STR_CAREER_OVER_1                       :Your career as a golf course designer
+STR_CAREER_OVER_2                       :has ended.  Will you...
+STR_CAREER_OVER_SANDBOX                 : Continue this game in Sandbox Mode.
+STR_CAREER_OVER_MENU                    : Return to Main Menu.
+
+STR_RENAME_COURSE                       :Rename Course...
+
+########################################################################################################################
+# The golfer card, Customise Golfer, Select the Next Pair, the skill points card
+########################################################################################################################
+# The golfer card's five bars (the first is the string at 0x4d2120)
+STR_CARD_FUN                            :Fun
+STR_CARD_ATTITUDE                       :Attitude
+STR_CARD_ENERGY                         :Energy
+STR_CARD_HUNGER                         :Hunger
+STR_CARD_THIRST                         :Thirst
+# The golfer card: identity lines, the opinion in quotes, the buttons' tooltips
+STR_CARD_NAME_JOB                       :{GOLFER} ({JOB})
+STR_CARD_MARITAL_AGE                    :{MARITAL}, age {AGE}
+STR_CARD_OPINION                        :"{OPINION}"
+STR_CARD_CUSTOMIZE                      :Customize
+STR_CARD_MOVE_EJECT                     :Move/Eject Golfer
+STR_CARD_SNAPSHOT                       :Take Snapshot
+STR_CARD_COMMENTS                       :Golfer Comments
+STR_CARD_VIEW_STORY                     :View Story
+STR_CARD_NEXT_CHAPTER                   :Next Chapter
+STR_CARD_STORY_HEAD                     :'{STORY}' with {GOLFER} and {PARTNER}
+
+# Customise Golfer: the buttons' tooltips
+STR_CUST_LOAD                           :Load character
+STR_CUST_SAVE                           :Save character
+STR_CUST_BODY_TYPE                      :Body type
+STR_CUST_ADULT_CHILD                    :Adult/child
+STR_CUST_SELECT_FACE                    :Select face
+STR_CUST_SHIRT_COLOR                    :Shirt Color
+STR_CUST_PANTS_COLOR                    :Pants Color
+STR_CUST_HAIR_COLOR                     :Hair Color
+STR_CUST_SKIN_TONE                      :Skin Tone
+STR_CUST_GENDER                         :Gender
+STR_CUST_CANCEL                         :Cancel
+STR_CUST_EXIT                           :Exit
+STR_CUST_UPDATE_BIO                     :Update Bio
+# Saving a character (0x437910, 0x4385d0, 0x46de70)
+STR_CUST_INVALID_FILE_NAME              :Invalid file name.
+STR_CUST_INVALID_FILE_PATH              :Invalid file path.
+STR_CUST_SAVED_AS                       :Character saved as
+STR_CUST_PICK_ONE                       :Pick one...
+STR_CUST_ALREADY_EXISTS                 :already exists!
+STR_CUST_OVERWRITE                      : Overwrite the old version.
+STR_CUST_OVERWRITE_CANCEL               : Cancel
+STR_CUST_JUNIOR                         :{NAME} Jr.
+STR_CUST_SKILL_LEVELS                   :Golf Skill Levels
+# The one-line text boxes' prompts (0x45b2c0)
+STR_CUST_NEW_NAME                       :New name...
+STR_CUST_PROFESSION                     :Profession...
+STR_CUST_NEW_TEXT                       :New text...
+
+# Select the next pair of golfers (0x459850)
+STR_PAIR_TITLE                          :SELECT THE NEXT PAIR OF GOLFERS
+STR_PAIR_AGE                            :{AGE} years old
+
+# The skill points card: the explanation 0x4065c0 shows on the first allocation (texts 0x4c4714 and 0x4c46bc), the confirm
+# box, the award heading, the points line
+STR_SKILLS_INTRO                        :Before you play your course you may customize your character by improving his or her golf skills. You can also win additional skill points for each accomplishment added to your trophy.
+STR_SKILLS_UNUSED_TITLE                 :You haven't used all your skill points!
+STR_SKILLS_UNUSED_QUESTION              :Do you really want to exit?
+STR_SKILLS_UNUSED_YES                   : Yea, I don't need no stinkin' skill points.
+STR_SKILLS_UNUSED_NO                    : Whoops, my bad.
+STR_SKILLS_AWARD_TITLE                  :Add three skill points to your player...
+STR_SKILLS_ADD_POINTS                   :Add {POINTS} skill points.
+
+# The five trait words of a person (pointer table 0x4c2864) and the three skill class words (table 0x4c2858)
+STR_TRAIT_NEAT                          :Neat
+STR_TRAIT_OUTGOING                      :Outgoing
+STR_TRAIT_ACTIVE                        :Active
+STR_TRAIT_PLAYFUL                       :Playful
+STR_TRAIT_NICE                          :Nice
+
+STR_CLASS_LENGTH                        :length
+STR_CLASS_ACCURACY                      :accuracy
+STR_CLASS_IMAGINATION                   :imagination
+
+# A golfer's marital word (the golfer card)
+STR_MARITAL_SINGLE                      :Single
+STR_MARITAL_MARRIED                     :Married
+STR_MARITAL_DIVORCED                    :Divorced
+STR_MARITAL_WIDOWED                     :Widowed
+
+STR_AGE_YOUNG                           :Young
+STR_AGE_MIDDLE_AGED                     :Middle Aged
+STR_AGE_MATURE                          :Mature
+
+# Lists of words: "a, b and c"
+STR_LIST_AND                            :{LIST} and {LAST}
+STR_LIST_SEPARATOR                      :, 
+
+# The membership panel
+STR_MEMBER_RESIGNED                     :Resigned
+STR_MEMBER_VISITOR                      :Visitor
+STR_MEMBER_MEMBER                       :Member
+STR_MEMBER_SILVER                       :Silver Member
+STR_MEMBER_GOLD                         :Gold Member
+STR_MEMBER_PLATINUM                     :Platinum Member
+STR_MEMBER_ROUNDS_NONE                  :none
+STR_MEMBER_LOW_ROUND                    :Low round: {SCORE}
+STR_MEMBER_HANDICAP                     :Handicap: {HANDICAP}
+STR_MEMBER_ROUNDS_PLAYED                :Rounds played: {ROUNDS}
+STR_MEMBER_BIO                          :Bio
+
+# The SimFoto
+STR_SIMFOTO_HAPPY_ENDING                :Happy Ending!
+STR_SIMFOTO                             :SimFoto
+
+########################################################################################################################
+# Reports: Course Report, Hole Stats, Player Comments, Histograph, Financial Report, Routing Map, Keyboard Shortcuts,
+# Membership Roster, End of Year, Best Scores, Top Ten Designers
+########################################################################################################################
+# The Course Report (0x44fb30): column heads, total, legend
+STR_REPORT_YDS                          :Yds
+STR_REPORT_PAR                          :Par
+STR_REPORT_AVG                          :Avg
+STR_REPORT_TIME                         :Time
+STR_REPORT_FUN                          :Fun
+STR_REPORT_LEN                          :+Len
+STR_REPORT_ACC                          :+Acc
+STR_REPORT_IMG                          :+Img
+STR_REPORT_TYPE                         :Type
+STR_REPORT_AVG_FEE                      :Avg.Fee
+STR_REPORT_REVENUE                      :Revenue
+STR_REPORT_PROFIT                       :Profit
+STR_REPORT_TITLE                        :COURSE REPORT
+STR_REPORT_TOTAL                        :Total
+STR_REPORT_TOP_100                      :Top 100 Hole
+STR_REPORT_TOP_18                       :Top 18 Hole
+STR_REPORT_SCENIC                       :Scenic Hole
+
+# The Hole Stats dialog's words for a fun percent and for a differential
+STR_HOLESTATS_POOR                      :poor
+STR_HOLESTATS_FAIR                      :fair
+STR_HOLESTATS_GOOD                      :good
+STR_HOLESTATS_VERY_GOOD                 :very good
+STR_HOLESTATS_OUTSTANDING               :outstanding
+# Hole Stats (0x453330)
+STR_HOLESTATS_TITLE                     :HOLE STATS for {HOLE}
+STR_HOLESTATS_NUMBER                    : ({HOLE})
+STR_HOLESTATS_FUN                       :Fun Factor
+STR_HOLESTATS_LENGTH                    :Length
+STR_HOLESTATS_ACCURACY                  :Accuracy
+STR_HOLESTATS_IMAGINATION               :Imagination
+STR_HOLESTATS_YARDS                     :Yards
+STR_HOLESTATS_AVG_DRIVE                 :Avg. Drive: 
+STR_HOLESTATS_LONGEST_DRIVE             :Longest Drive
+STR_HOLESTATS_FAIRWAYS_HIT              :Fairways hit
+STR_HOLESTATS_GREENS_IN_REG             :Greens in Reg
+STR_HOLESTATS_AVERAGE_PUTTS             :Average Putts
+STR_HOLESTATS_PAR                       :Par 
+STR_HOLESTATS_STROKE_AVERAGE            :Stroke average
+STR_HOLESTATS_AVERAGE_SHOTS             :Average shots on this hole
+STR_HOLESTATS_COMMENTS                  :Comments
+STR_HOLESTATS_UNDER_CONSTRUCTION        :Under Construction!
+
+# Player Comments report (F2)
+STR_COMMENTS_TITLE                      :PLAYER COMMENTS REPORT
+STR_COMMENTS_COMMENTS                   :Comments
+STR_COMMENTS_HOLE                       :Hole
+STR_COMMENTS_FREQUENCY                  :Frequency
+
+# Histograph (F3, 0x455ed0)
+STR_HISTOGRAPH_TITLE                    :HISTOGRAPH
+STR_HISTOGRAPH_SKILL                    :Skill
+STR_HISTOGRAPH_CASH                     :Cash
+STR_HISTOGRAPH_FUN                      :Fun
+STR_HISTOGRAPH_EVENT                    :Event
+
+# Financial Report (F4, 0x44f6b0)
+STR_FINANCE_TITLE                       :FINANCIAL REPORT
+STR_FINANCE_TOTAL                       :Total (§)
+
+# The financial report's row labels (the exe's own wording)
+STR_LEDGER_GREENS_FEES                  :Greens Fees
+STR_LEDGER_HOME_SITES                   :Home Sites
+STR_LEDGER_FOOD_DRINK                   :Food/Drink
+STR_LEDGER_BUILD_COURSE                 :Build course
+STR_LEDGER_FACILITIES                   :Facilities
+STR_LEDGER_SALARIES                     :Salaries
+STR_LEDGER_MAINTENANCE                  :Maint./Interest
+STR_LEDGER_OTHER                        :Other
+
+# Routing Map (shift+R): the four tabs
+STR_ROUTING_EMPLOYEES                   :{COURSE} Employees
+STR_ROUTING_TITLE                       :ROUTING MAP
+STR_ROUTING_COURSE_ROUTING              :COURSE ROUTING
+STR_ROUTING_LEFT_CLICK                  :Left click to select hole.
+STR_ROUTING_RIGHT_CLICK                 :Right click to swap holes.
+STR_ROUTING_HOLE                        :Hole #
+STR_ROUTING_PAR                         :PAR
+STR_ROUTING_YDS                         :YDS
+STR_ROUTING_TIME                        :Time
+STR_ROUTING_COURSE_AURA                 :COURSE AURA
+STR_ROUTING_AURA                        :AURA
+STR_ROUTING_HAPPY                       :Happy
+STR_ROUTING_UNHAPPY                     :Unhappy
+STR_ROUTING_AURA_TEXT                   :Course AURA indicates where on your course players have made mostly happy comments and where they have made unhappy comments.
+STR_ROUTING_HOME_SITE_VALUE             :HOME SITE VALUE
+STR_ROUTING_HIGH                        :High
+STR_ROUTING_LOW                         :Low
+STR_ROUTING_INCREASE                    :Things which INCREASE home value:
+STR_ROUTING_INCREASE_WATER              :Close to water and trees.
+STR_ROUTING_INCREASE_FUN                :Close to a fun golf hole.
+STR_ROUTING_INCREASE_TOP                :Close to a top 100 or top 18 hole.
+STR_ROUTING_INCREASE_MARINA             :Building a Marina
+STR_ROUTING_DECREASE                    :Things which DECREASE home value:
+STR_ROUTING_DECREASE_UNFUN              :Close to an unfun hole.
+STR_ROUTING_DECREASE_BUILDING           :Close to another building.
+STR_ROUTING_DECREASE_TOO_CLOSE          :Too close to green, fairway, or OB.
+STR_ROUTING_DECREASE_FAR                :Far away from the golf course.
+STR_ROUTING_HIRED_PAID                  :Hired: {MONTH} {YEAR}, paid: §{PAID}
+
+STR_SHORTCUTS_TITLE                     :KEYBOARD SHORTCUTS
+
+# Keyboard Shortcuts (F8, 0x44e770): what each key does (the keys themselves stay as they are)
+STR_SHORTCUT_STATUS_REPORT              :Course status report.
+STR_SHORTCUT_COMMENTS_REPORT            :Player comments report.
+STR_SHORTCUT_HISTOGRAPH                 :Histograph.
+STR_SHORTCUT_FINANCIAL                  :Financial Report.
+STR_SHORTCUT_OVERVIEW_MAP               :Course Overview Map.
+STR_SHORTCUT_WORLD_MAP                  :World Map.
+STR_SHORTCUT_SGA                        :SGA Evaluation.
+STR_SHORTCUT_KEYBOARD                   :Handy keyboard commands screen.
+STR_SHORTCUT_ROSTER                     :Membership Roster.
+STR_SHORTCUT_ACCOMPLISHMENTS            :Professional Accomplishments.
+STR_SHORTCUT_REPEAT                     :Repeat last message.
+STR_SHORTCUT_SELL_LOT                   :Sell a building lot.
+STR_SHORTCUT_ROUTING                    :Routing, Aura, and lot values
+STR_SHORTCUT_CHANGE_COURSES             :World map, change courses
+STR_SHORTCUT_ROTATE                     :Rotate buildings/trees before placing.
+STR_SHORTCUT_QUIT                       :Quit the game.
+STR_SHORTCUT_GREEN_TEES                 :Select GREEN/TEES tool.
+STR_SHORTCUT_FAIRWAY                    :Select FAIRWAY tool.
+STR_SHORTCUT_ROUGH                      :Select ROUGH tool.
+STR_SHORTCUT_SAND_TRAP                  :Select SAND TRAP tool.
+STR_SHORTCUT_TREES                      :Select TREES tool.
+STR_SHORTCUT_WATER                      :Select WATER tool.
+STR_SHORTCUT_PATH                       :Select PATH tool.
+STR_SHORTCUT_BENCHES                    :Select BENCHES tool.
+STR_SHORTCUT_ZOOM                       :Zoom the view.
+STR_SHORTCUT_UNZOOM                     :Unzoom the view.
+STR_SHORTCUT_PAUSE                      :Pause/Unpause the game.
+STR_SHORTCUT_TREES_OFF                  :Turn trees off/on.
+STR_SHORTCUT_NAMES                      :Toggle names display.
+STR_SHORTCUT_ELEVATION                  :Toggle elevation mode.
+STR_SHORTCUT_ANALYSIS                   :Instant shot analysis.
+
+# The Membership Roster (0x454c50)
+STR_ROSTER_TITLE                        :Membership Roster
+STR_ROSTER_MEMBER                       :Member
+STR_ROSTER_LOW                          :Low
+STR_ROSTER_HCP                          :Hcp
+STR_ROSTER_RNDS                         :Rnds
+STR_ROSTER_STATUS                       :Status
+STR_ROSTER_PHOTO_OPP                    :Photo Opp
+STR_ROSTER_HAPPY_ENDING                 :Happy Ending
+
+# The board's notices at a year end in the red
+STR_BOARD_CONCERNED                     :The board is concerned about our negative cash situation.\nYou have two years to return to positive cash.
+STR_BOARD_WORRIED                       :The board is very worried about our lingering debt.\nYou have one more year to get out of debt.
+STR_BOARD_TERMINATED                    :You have been unable to make a profit on this course.\nRegrettably, the board has terminated your contract.
+# The accomplishments board: the plaque caption (course, two spaces, day month year)
+STR_BOARD_CAPTION                       :{COURSE}  {DAY} {MONTH} {YEAR}
+
+# The End of Year report (0x44cff0): "END of  YEAR: " and the year (the colon and wide gaps as footage shows them)
+STR_YEAREND_TITLE                       :END of  YEAR:  {YEAR}
+STR_YEAREND_THIS_YEAR                   :This Year
+STR_YEAREND_LAST_YEAR                   :Last Year
+STR_YEAREND_CASH                        :Cash reserves have {CHANGE}
+STR_YEAREND_FUN                         :Your fun rating has {CHANGE}
+STR_YEAREND_SKILL                       :Your skill rating has {CHANGE}
+STR_YEAREND_MEMBERSHIP                  :Your membership has {CHANGE}
+STR_YEAREND_INCREASED                   :increased
+STR_YEAREND_DECREASED                   :decreased
+STR_YEAREND_NOT_CHANGED                 :not changed
+STR_YEAREND_HIGHLIGHTS                  :Highlights
+STR_YEAREND_HIGHLIGHT                   :{MONTH}: {EVENT}
+
+# Best Scores (0x455a30)
+STR_BEST_TITLE                          :Best {HOLES} Hole Scores
+STR_BEST_GOLFER                         :Golfer
+STR_BEST_SCORE                          :Score
+
+# The course name of the made-up Top Ten Designers entries
+STR_TOP10_HARBOUR_LIGHTS                :Harbour Lights GC
+# Top Ten Designers
+STR_TOP10_CASH                          :Cash: {CASH}
+STR_TOP10_SKILL                         :Skill: {SKILL}
+STR_TOP10_FUN                           :Fun: {FUN}
+STR_TOP10_TOTAL                         :Total Score (x{FACTOR})
+
+STR_UNIT_MINUTES                        :{MINUTES}m
+STR_UNIT_HOURS_MINUTES                  :{HOURS}h {MINUTES}m
+STR_UNIT_YDS                            :{YARDS} yds
+
+########################################################################################################################
+# The world map (property chooser) and Tracts for Sale
+########################################################################################################################
+# The world map's property chooser
+STR_WORLD_WHERE_1                       :Where will you build
+STR_WORLD_WHERE_2                       :your golf course?
+STR_WORLD_UNLIMITED                     :Unlimited §
+STR_WORLD_FLAT                          :flat
+STR_WORLD_ROLLING                       :rolling
+STR_WORLD_HILLY                         :hilly
+STR_WORLD_INLAND                        :inland
+STR_WORLD_COASTAL                       :coastal
+STR_WORLD_ISLAND                        :island
+STR_WORLD_PARKLAND                      :parkland
+STR_WORLD_DESERT                        :desert
+STR_WORLD_TROPICAL                      :tropical
+STR_WORLD_LINKS                         :links
+STR_WORLD_BUY_ACRES                     :Buy {ACRES} acres of {RELIEF}
+STR_WORLD_PROPERTY_KIND                 :{LIE} {KIND} property
+STR_WORLD_FOR_ONLY                      :for only {PRICE}.
+STR_WORLD_ACRES_PRICE                   :{ACRES} acres: {PRICE}
+STR_WORLD_ALREADY_PURCHASED             :Already Purchased.
+STR_WORLD_AVAILABLE                     :Available
+STR_WORLD_INSUFFICIENT_FUNDS            :Insufficient funds
+STR_WORLD_LEGEND_PURCHASED              :Already purchased
+STR_WORLD_CANCEL                        :Cancel
+STR_WORLD_SAVE_GAME                     :Save Game
+STR_WORLD_RESET_WORLD                   :Reset World
+STR_WORLD_LOAD_GAME                     :Load Game
+STR_WORLD_OFF_TO                        :We're off to {PLACE}!
+STR_WORLD_ONE_MOMENT                    :... one moment please ...
+
+# Tracts for Sale: a tract's line
+STR_TRACT_ALREADY_PURCHASED             :Already purchased.
+STR_TRACT_BUY                           :Buy tract #{NUMBER}, {ACRES} acres of {TERRAIN1}, {TERRAIN2}, and {TERRAIN3}
+# Tracts for Sale (0x4587a0)
+STR_TRACT_TITLE                         :TRACTS FOR SALE
+STR_TRACT_PRICE                         :Price: {PRICE}
+STR_TRACT_CASH_RESERVE                  :Cash Reserve
+
+# The sixteen properties (the exe's property records): the place, the course's own name (record +0x19, in the date caption
+# and the messages) and the property's bonus, as the world map shows them
+STR_PROPERTY_MONTEREY                   :Monterey
+STR_PROPERTY_SAN_DIEGO                  :San Diego
+STR_PROPERTY_ROCKY_MTNS                 :Rocky Mtns.
+STR_PROPERTY_LAS_VEGAS                  :Las Vegas
+STR_PROPERTY_PHOENIX                    :Phoenix
+STR_PROPERTY_HAWAII                     :Hawaii
+STR_PROPERTY_OAHU                       :Oahu
+STR_PROPERTY_NOVA_SCOTIA                :Nova Scotia
+STR_PROPERTY_NORTHEAST                  :Northeast
+STR_PROPERTY_CAROLINA                   :Carolina
+STR_PROPERTY_IRELAND                    :Ireland
+STR_PROPERTY_SCOTLAND                   :Scotland
+STR_PROPERTY_WALES                      :Wales
+STR_PROPERTY_SPAIN                      :Spain
+STR_PROPERTY_FLORIDA                    :Florida
+STR_PROPERTY_JAMAICA                    :Jamaica
+
+STR_BONUS_MONTEREY                      :Scenic Cypress
+STR_BONUS_SAN_DIEGO                     :Dolphins
+STR_BONUS_ROCKY_MTNS                    :Free Hotel
+STR_BONUS_LAS_VEGAS                     :Fun, Fun, Fun
+STR_BONUS_PHOENIX                       :Free Spa
+STR_BONUS_HAWAII                        :Scenic Waterfall
+STR_BONUS_OAHU                          :Japanese Garden
+STR_BONUS_NOVA_SCOTIA                   :Scenic Lighthouse
+STR_BONUS_NORTHEAST                     :Civil War Battlefield
+STR_BONUS_CAROLINA                      :Free Putting Green
+STR_BONUS_IRELAND                       :Leprechauns
+STR_BONUS_SCOTLAND                      :Free Castle
+STR_BONUS_WALES                         :Stonehenge
+STR_BONUS_SPAIN                         :Scenic Vineyards
+STR_BONUS_FLORIDA                       :Free Pro Shop
+STR_BONUS_JAMAICA                       :Scenic Statues
+
+########################################################################################################################
+# Tournaments: the SGA report and offer, the preparation list, the leader board and the results
+########################################################################################################################
+# The ten criteria of the SGA report
+STR_SGA_COURSE_LENGTH                   :Course length
+STR_SGA_NUMBER_OF_HOLES                 :Number of holes
+STR_SGA_TIME_TO_PLAY                    :Time to play
+STR_SGA_FUN                             :Fun
+STR_SGA_VARIETY                         :Variety
+STR_SGA_SCENIC_HOLES                    :Scenic holes
+STR_SGA_LENGTH_HOLES                    :Length holes
+STR_SGA_ACCURACY_HOLES                  :Accuracy holes
+STR_SGA_IMAGINATION_HOLES               :Imagination holes
+STR_SGA_FACILITIES                      :Facilities
+# The SGA report (0x44fb30 in its SGA modes)
+STR_SGA_TITLE                           :REPORT of the SIM GOLF ASSOCIATION
+STR_SGA_SELECTION                       :Selection Criteria: {CLASS}
+STR_SGA_GRADE                           :Grade:
+STR_SGA_IDEAL_MINIMUM                   :Ideal  (Minimum)
+STR_SGA_IDEAL_TIME                      :4 hours or less  (max: 5 hrs)
+STR_SGA_VALUE_YARDS                     :{YARDS} yds.
+STR_SGA_VALUE_HOURS                     :{HOURS} h {MINUTES} m
+STR_SGA_VALUE_MINUTES                   :{MINUTES} m
+STR_SGA_NOT_ACCEPTABLE                  :- not acceptable -
+STR_SGA_RECOMMENDATION                  :Committee recommendation
+STR_SGA_IMPROVEMENT_REQUIRED            :Improvement Required.
+STR_SGA_FIRST_PRIZE                     :§{PURSE},000 first prize.
+# The SGA report's rows
+STR_SGA_ROW_LENGTH                      :Length of Course
+STR_SGA_ROW_HOLES                       :Number of Holes
+STR_SGA_ROW_TIME                        :Time to Play
+STR_SGA_ROW_FUN                         :Fun Factor
+STR_SGA_ROW_VARIETY                     :Holes with Variety
+STR_SGA_ROW_SCENIC                      :Scenic Holes
+STR_SGA_ROW_LENGTH_HOLES                :Length Holes
+STR_SGA_ROW_ACCURACY_HOLES              :Accuracy Holes
+STR_SGA_ROW_IMAGINATION_HOLES           :Imagination Holes
+STR_SGA_ROW_FACILITIES                  :Facilities on Site
+
+# The SGA's offer box (0x46d6e0 at (400, 360), main loop 0x41ce8b)
+STR_OFFER_LINE_1                        :The SGA offers to hold the
+STR_OFFER_LINE_2                        :{EVENT} tournament
+STR_OFFER_LINE_3                        :at your course with a
+STR_OFFER_LINE_4                        :first prize of §{PURSE},000.
+STR_OFFER_YES                           : 'Great, let the games begin.'
+STR_OFFER_NO                            : 'I think I need more practice.'
+
+# The tournament preparation checklist (0x4e3d20 on)
+STR_PREP_TV_TOWERS                      :Install TV towers and booths for live broadcast.
+STR_PREP_SMOOTH_GREENS                  :Roll your greens extra smooth and fast.
+STR_PREP_DEEP_ROUGH                     :Increase the depth of rough and deep rough grass.
+STR_PREP_CHANGE_PAR                     :Change hole {HOLE} from a par {OLD} to a par {NEW}.
+# The tournament recommendations list (0x46d200): the two-line heading, then the options (STR_PREP_*)
+STR_PREP_HEADING_1                      :In preparation for the tournament the
+STR_PREP_HEADING_2                      :following changes have been recommended:
+
+# The SGA's event names by score
+STR_EVENT_JR_QUALIFYING                 :Jr. Qualifying School
+STR_EVENT_SGA_QUALIFYING                :SGA Qualifying School
+STR_EVENT_JR_TOUR_EVENT                 :Jr. Tour Event
+STR_EVENT_JR_TOUR_CHAMPIONSHIP          :Jr. Tour Championship
+STR_EVENT_SGA_AMATEUR                   :SGA Amateur Championship
+STR_EVENT_SENIOR_TOUR_EVENT             :Senior SGA Tour Event
+STR_EVENT_SENIOR_CHAMPIONSHIP           :Senior SGA Championship
+STR_EVENT_SGA_TOUR_EVENT                :SGA Tour Event
+STR_EVENT_SGA_PLAYERS                   :SGA Players Championship
+STR_EVENT_SGA_CHAMPIONSHIP              :SGA Championship
+STR_EVENT_IMPROVEMENT_REQUIRED          :Improvement Required
+STR_EVENT_GRAND_SLAM                    :Grand Slam Championship
+STR_EVENT_MINI_SLAM                     :Mini Slam Championship
+
+STR_TOURNAMENT_JOE_PRO                  :Joe Pro
+# The year's tournament as the SGA names it ("2004 San Diego Open")
+STR_TOURNAMENT_OPEN_NAME                :{YEAR} {PLACE} Open
+
+# The leader board over the course (0x45a090)
+STR_LEADERBOARD_OF_THE                  :LEADER BOARD of the
+STR_LEADERBOARD_AT                      :at {COURSE}
+STR_LEADERBOARD_OF                      :LEADER BOARD of
+STR_LEADERBOARD_PURSE                   :the §{PURSE},000
+
+# Tournament Results
+STR_RESULTS_TITLE                       :TOURNAMENT RESULTS
+STR_RESULTS_RANKING                     :Ranking
+STR_RESULTS_PRIZE                       :Prize
+STR_RESULTS_FINAL                       :F
+
+# The leader board's score against par: even
+STR_SCORE_EVEN                          :E
+
+# The championship event's name on the leaderboard, by difficulty
+STR_CHAMPIONSHIP_QUALIFYING             :SGA Qualifying School
+STR_CHAMPIONSHIP_JUNIOR                 :SGA Jr. Championship
+STR_CHAMPIONSHIP_TOUR                   :SGA Tour Championship
+STR_CHAMPIONSHIP_OPEN                   :SGA Open Championship
+
+########################################################################################################################
+# Names of things: terrain, buildings, landmarks, animals, staff, skills, clubs, ranks, celebrities
+########################################################################################################################
+# The terrain table's names (+0x00, the singular form) as the exe's static table at 0x4c1a40 has them
+STR_TERRAIN_TEES                        :tees
+STR_TERRAIN_GREEN                       :green
+STR_TERRAIN_FAIRWAY                     :fairway
+STR_TERRAIN_FIRM_FAIRWAY                :firm fairway
+STR_TERRAIN_ROUGH                       :rough
+STR_TERRAIN_DEEP_ROUGH                  :deep rough
+STR_TERRAIN_MOUND                       :mound
+STR_TERRAIN_SAND_TRAP                   :sand trap
+STR_TERRAIN_WASTE_BUNKER                :waste bunker
+STR_TERRAIN_POT_BUNKER                  :pot bunker
+STR_TERRAIN_RAVINE                      :ravine
+STR_TERRAIN_BRUSH                       :brush
+STR_TERRAIN_ROCKS                       :rocks
+STR_TERRAIN_TREE                        :tree
+STR_TERRAIN_PINE_TREE                   :pine tree
+STR_TERRAIN_PALM_TREE                   :palm tree
+STR_TERRAIN_ELM_TREE                    :elm tree
+STR_TERRAIN_WATER                       :water
+STR_TERRAIN_WETLANDS                    :wetlands
+STR_TERRAIN_MARSH                       :marsh
+STR_TERRAIN_OUT_OF_BOUNDS               :out of bounds
+STR_TERRAIN_BUILDING                    :building
+
+# Terrain names as the themes rename them (the tract offers and the narration): single, then plural
+STR_THEME_TERRAIN_DESERT                :desert
+STR_THEME_TERRAIN_DESERT_PLURAL         :desert
+STR_THEME_TERRAIN_ROUGH                 :rough
+STR_THEME_TERRAIN_ROUGH_PLURAL          :rough
+STR_THEME_TERRAIN_BRUSH                 :brush
+STR_THEME_TERRAIN_BRUSH_PLURAL          :brush
+STR_THEME_TERRAIN_RAVINE                :ravine
+STR_THEME_TERRAIN_RAVINE_PLURAL         :ravine
+STR_THEME_TERRAIN_JOSHUA_TREE           :joshua tree
+STR_THEME_TERRAIN_JOSHUA_TREE_PLURAL    :joshua trees
+STR_THEME_TERRAIN_CACTUS                :cactus
+STR_THEME_TERRAIN_CACTUS_PLURAL         :cacti
+STR_THEME_TERRAIN_PALM_TREE             :palm tree
+STR_THEME_TERRAIN_PALM_TREE_PLURAL      :palm trees
+STR_THEME_TERRAIN_CANYON                :canyon
+STR_THEME_TERRAIN_CANYON_PLURAL         :canyon
+STR_THEME_TERRAIN_STREAM                :stream
+STR_THEME_TERRAIN_STREAM_PLURAL         :stream
+STR_THEME_TERRAIN_WETLANDS              :wetlands
+STR_THEME_TERRAIN_WETLANDS_PLURAL       :wetlands
+STR_THEME_TERRAIN_TROPICAL_BUSH         :tropical bush
+STR_THEME_TERRAIN_TROPICAL_BUSH_PLURAL  :tropical bushes
+STR_THEME_TERRAIN_TROPICAL_TREE         :tropical tree
+STR_THEME_TERRAIN_TROPICAL_TREE_PLURAL  :tropical trees
+STR_THEME_TERRAIN_BURN                  :burn
+STR_THEME_TERRAIN_BURN_PLURAL           :burn
+STR_THEME_TERRAIN_GORSE                 :gorse
+STR_THEME_TERRAIN_GORSE_PLURAL          :gorse
+STR_THEME_TERRAIN_MAPLE_TREE            :maple tree
+STR_THEME_TERRAIN_MAPLE_TREE_PLURAL     :maple trees
+STR_THEME_TERRAIN_PINE                  :pine
+STR_THEME_TERRAIN_PINE_PLURAL           :pines
+STR_THEME_TERRAIN_SCOTS_PINE            :scots pine
+STR_THEME_TERRAIN_SCOTS_PINE_PLURAL     :scots pines
+# The plural of a tree type the theme does not rename: the terrain table's name and an s
+STR_THEME_TERRAIN_TREES                 :{TREE}s
+
+# Buildings and objects by the exe's object kind
+STR_BUILDING_PATHWAY                    :Pathway
+STR_BUILDING_BENCHES                    :Benches
+STR_BUILDING_FLOWER_BED                 :Flower Bed
+STR_BUILDING_BALL_WASHER                :Ball Washer
+STR_BUILDING_LANDMARK                   :Landmark
+STR_BUILDING_HOME_SITE                  :Home Site
+STR_BUILDING_PUTTING_GREEN              :Putting Green
+STR_BUILDING_SNACK_BAR                  :Snack Bar
+STR_BUILDING_PRO_SHOP                   :Pro Shop
+STR_BUILDING_SWIM_CLUB                  :Swim Club
+STR_BUILDING_DRIVING_RANGE              :Driving Range
+STR_BUILDING_CART_GARAGE                :Cart Garage
+STR_BUILDING_MARINA                     :Marina
+STR_BUILDING_RESORT_HOTEL               :Resort Hotel
+STR_BUILDING_AIRSTRIP                   :Airstrip
+STR_BUILDING_CLUBHOUSE                  :Clubhouse
+STR_BUILDING_WILLOW_TREE                :Willow Tree
+STR_BUILDING_TV_TOWER                   :TV Tower
+STR_BUILDING_TV_BOOTH                   :TV Booth
+STR_BUILDING_SCENIC_BRIDGE              :Scenic Bridge
+
+# Animal names (the exe's kind table 0x4c1998), as the habitat labels and the golfers' thoughts use them
+STR_ANIMAL_ELK                          :Elk
+STR_ANIMAL_CRANE                        :Crane
+STR_ANIMAL_FLAMINGO                     :Flamingo
+STR_ANIMAL_SHEEP                        :Sheep
+STR_ANIMAL_CROCODILE                    :Crocodile
+STR_ANIMAL_SNAKE                        :Snake
+STR_ANIMAL_GILA                         :Gila
+STR_ANIMAL_ROAD_RUNNER                  :Road runner
+STR_ANIMAL_DUCK                         :Duck
+
+STR_WILDLIFE_HABITAT                    :{ANIMAL} habitat
+
+# Employee kinds
+STR_STAFF_CLUB_PRO                      :Club Pro
+STR_STAFF_RANGER                        :Ranger
+STR_STAFF_GROUNDSKEEPER                 :Groundskeeper
+STR_STAFF_SODA_VENDOR                   :Soda Vendor
+STR_STAFF_UNKNOWN                       :?
+STR_STAFF_CELEBRITY                     :Celebrity
+STR_STAFF_MARSHALL                      :Marshall
+STR_STAFF_TECHNICIAN                    :Technician
+STR_STAFF_REFRESHER                     :Refresher
+
+STR_JOB_GOLF_PRO                        :Golf Pro
+
+# Skill names in the order of the skill bytes (the pro panel, Customise Golfer)
+STR_SKILL_POWER_HITTER                  :Power Hitter
+STR_SKILL_LONG_DRIVER                   :Long Driver
+STR_SKILL_ACCURATE_DRIVER               :Accurate Driver
+STR_SKILL_ACCURATE_IRONS                :Accurate Irons
+STR_SKILL_ACCURATE_PUTTER               :Accurate Putter
+STR_SKILL_DRAW_SHOT                     :Draw Shot
+STR_SKILL_FADE_SHOT                     :Fade Shot
+STR_SKILL_HIGH_BACKSPIN                 :High Backspin Shot
+STR_SKILL_RECOVERY                      :Recovery Skills
+STR_SKILL_LUCK                          :Luck
+STR_SKILL_DRAW_SHOT_R_TO_L              :Draw Shot (R to L)
+STR_SKILL_FADE_SHOT_L_TO_R              :Fade Shot (L to R)
+STR_SKILL_POSITIVE_ATTITUDE             :Positive Attitude
+STR_SKILL_MENTAL_TOUGHNESS              :Mental Toughness
+
+# The lie under the ball, for the pro panel
+STR_LIE_TEE                             :Tee
+STR_LIE_GREEN                           :Green
+STR_LIE_FAIRWAY                         :Fairway
+STR_LIE_SAND_TRAP                       :Sand Trap
+STR_LIE_POT_BUNKER                      :Pot Bunker
+STR_LIE_RAVINE                          :Ravine
+STR_LIE_ROCKS                           :Rocks
+STR_LIE_WATER                           :Water
+STR_LIE_MARSH                           :Marsh
+STR_LIE_OUT_OF_BOUNDS                   :Out of Bounds
+STR_LIE_ROUGH                           :Rough
+
+# The "Attitude" word for the pro's momentum
+STR_ATTITUDE_FURIOUS                    :furious
+STR_ATTITUDE_MAD                        :mad
+STR_ATTITUDE_UPSET                      :upset
+STR_ATTITUDE_WORRIED                    :worried
+STR_ATTITUDE_CALM                       :calm
+STR_ATTITUDE_DETERMINED                 :determined
+STR_ATTITUDE_PUMPED                     :pumped
+STR_ATTITUDE_INVINCIBLE                 :invincible
+
+# Course ranks
+STR_RANK_MUNICIPAL                      :Municipal
+STR_RANK_DAILY_FEE                      :Daily Fee
+STR_RANK_COUNTRY_CLUB                   :Country Club
+STR_RANK_CHAMPIONSHIP                   :Championship
+
+# Celebrity type names (the exe's table at 0x4c2ba8)
+STR_CELEBRITY_ACTION_STAR               :action star
+STR_CELEBRITY_POP_STAR                  :pop star
+STR_CELEBRITY_POLITICIAN                :politician
+STR_CELEBRITY_COMEDIAN                  :comedian
+STR_CELEBRITY_SUPERMODEL                :supermodel
+STR_CELEBRITY_FITNESS_STAR              :fitness star
+STR_CELEBRITY_COMEDIENNE                :comedienne
+STR_CELEBRITY_LEADING_MAN               :leading man
+STR_CELEBRITY_MOVIE_STAR                :movie star
+STR_CELEBRITY_ROCK_AND_ROLLER           :rock and roller
+STR_CELEBRITY_ATHLETE                   :athlete
+
+# The 22 Professional Accomplishments, as the plaques name them (table 0x4c1578); on Easy and Moderate ids 0, 1 and 4 are
+# the three alternatives that follow
+STR_ACCOMPLISHMENT_CHALLENGE_HOLE       :1st Challenge Hole
+STR_ACCOMPLISHMENT_HEROIC_HOLE          :1st Heroic Hole
+STR_ACCOMPLISHMENT_SKILL_UPGRADE        :1st Skill Upgrade
+STR_ACCOMPLISHMENT_TOURNAMENT           :1st Tournament
+STR_ACCOMPLISHMENT_STRATEGIC_HOLE       :1st Strategic Hole
+STR_ACCOMPLISHMENT_MATCH_VICTORY        :1st Match Victory
+STR_ACCOMPLISHMENT_9_HOLE_COURSE        :1st 9+ Hole Course
+STR_ACCOMPLISHMENT_TOP_100_HOLE         :1st Top 100 Hole
+STR_ACCOMPLISHMENT_500K_TOURNAMENT      :1st $500,000 Tournament
+STR_ACCOMPLISHMENT_CLASSIC_HOLE         :1st Classic Hole
+STR_ACCOMPLISHMENT_TOP_18_HOLE          :1st Top 18 Hole
+STR_ACCOMPLISHMENT_VICTORY_9            :1st Tournament Victory (9+ Hole)
+STR_ACCOMPLISHMENT_GRAND_SLAM_COURSE_9  :1st Grand Slam Course (9+ holes)
+STR_ACCOMPLISHMENT_1M_TOURNAMENT        :1st $1,000,000 Tournament
+STR_ACCOMPLISHMENT_18_HOLE_COURSE       :1st 18 Hole Course
+STR_ACCOMPLISHMENT_VICTORY_18           :1st Tournament Victory (18 Hole)
+STR_ACCOMPLISHMENT_GRAND_SLAM_COURSE_18 :1st Grand Slam Course (18 Hole)
+STR_ACCOMPLISHMENT_GRAND_SLAM_PARKLAND  :1st Grand Slam Victory (Parkland)
+STR_ACCOMPLISHMENT_GRAND_SLAM_DESERT    :1st Grand Slam Victory (Desert)
+STR_ACCOMPLISHMENT_GRAND_SLAM_TROPICAL  :1st Grand Slam Victory (Tropical)
+STR_ACCOMPLISHMENT_GRAND_SLAM_LINKS     :1st Grand Slam Victory (Links)
+STR_ACCOMPLISHMENT_100_STAR             :1st 100 Star Rating
+STR_ACCOMPLISHMENT_DOGLEG_RIGHT         :1st Dogleg Right Hole
+STR_ACCOMPLISHMENT_DOGLEG_LEFT          :1st Dogleg Left Hole
+STR_ACCOMPLISHMENT_PAR_5                :1st Par 5 Hole

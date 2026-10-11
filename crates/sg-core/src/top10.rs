@@ -3,6 +3,7 @@
 //! default table of made-up designers. Facts are from docs/DECODE_TOP10_PAIR.md, restated in our own words.
 
 use crate::land::ExeRng;
+use crate::lang::tr;
 
 /// Bytes per record and records in the table.
 pub const RECORD: usize = 0x9c;
@@ -99,7 +100,7 @@ pub fn defaults(rng: &mut ExeRng) -> Vec<Entry> {
             name[2] = name[2].wrapping_add(rng.below(24) as u8);
             Entry {
                 name: name.iter().map(|&c| c as char).collect(),
-                course: "Harbour Lights GC".to_string(),
+                course: tr("STR_TOP10_HARBOUR_LIGHTS").to_string(),
                 fun,
                 skill,
                 cash,

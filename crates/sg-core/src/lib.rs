@@ -21,6 +21,7 @@ pub mod economy;
 pub mod flc;
 pub mod flight;
 pub mod formats;
+pub mod freeset;
 pub mod fsutil;
 pub mod geom;
 pub mod golfer;
@@ -28,6 +29,9 @@ pub mod holetool;
 pub mod homes;
 pub mod index;
 pub mod land;
+pub mod lang;
+#[cfg(test)]
+mod lang_golden;
 pub mod mixer;
 pub mod mood;
 pub mod narration;

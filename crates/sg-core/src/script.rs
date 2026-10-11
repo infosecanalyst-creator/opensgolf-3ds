@@ -230,7 +230,7 @@ impl Host {
         getter!("skill_rating", |v| v.skill as f64 / 100.0);
         getter!("members", |v| v.members as i64);
         getter!("rank", |v| v.rank as i64);
-        getter!("rank_name", |v| crate::economy::RANK_NAMES[v.rank.clamp(0, 3) as usize].to_string());
+        getter!("rank_name", |v| crate::economy::rank_name(v.rank.clamp(0, 3) as usize).to_string());
         getter!("difficulty", |v| v.difficulty as i64);
         getter!("sandbox", |v| v.sandbox);
         getter!("course_name", |v| v.course.clone());

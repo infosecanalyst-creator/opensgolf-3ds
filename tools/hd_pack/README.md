@@ -20,9 +20,9 @@ For what HD mode is and its limits, see [docs/HD.md](../../docs/HD.md).
 
 ```sh
 # AI upscaling (Real-ESRGAN), into the folder the game looks in by default (<save folder>/HD):
-python3 tools/hd_pack/hd_pack.py --game "C:/Program Files/Maxis/SimGolf" --out "%APPDATA%/SimGolf/HD"
-python3 tools/hd_pack/hd_pack.py --game game/Program_Files_(ENGLISH) --out ~/.local/share/simgolf/HD          # Linux
-python3 tools/hd_pack/hd_pack.py --game ... --out "~/Library/Application Support/SimGolf/HD"                   # macOS
+python3 tools/hd_pack/hd_pack.py --game "C:/Program Files/Maxis/SimGolf" --out "%APPDATA%/OpenSGolf/HD"
+python3 tools/hd_pack/hd_pack.py --game game/Program_Files_(ENGLISH) --out ~/.local/share/opensgolf/HD          # Linux
+python3 tools/hd_pack/hd_pack.py --game ... --out "~/Library/Application Support/OpenSGolf/HD"                   # macOS
 
 # no AI, plain Lanczos resampling (to test the pipeline and the loader quickly):
 python3 tools/hd_pack/hd_pack.py --game ... --out /tmp/hdpack --method lanczos

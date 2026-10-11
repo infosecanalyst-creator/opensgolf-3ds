@@ -5,8 +5,8 @@ The game's art belongs to Electronic Arts. This tool reads it from your game fol
 result into a folder of your choosing. The pack is a derivative of the original art: keep it for yourself, never share or upload
 it. The port's repository ships only this tool and the loader, never any art.
 
-    python3 hd_pack.py --game "C:/Games/SimGolf" --out "%APPDATA%/SimGolf/HD"
-    python3 hd_pack.py --game game/Program_Files_(ENGLISH) --out ~/.local/share/simgolf/HD --method lanczos
+    python3 hd_pack.py --game "C:/Games/SimGolf" --out "%APPDATA%/OpenSGolf/HD"
+    python3 hd_pack.py --game game/Program_Files_(ENGLISH) --out ~/.local/share/opensgolf/HD --method lanczos
 
 What goes in the pack (each image exactly SCALE times its source size, so every cut, layout and hit test of the game keeps
 working; the game draws the HD image in the place of the classic one):
