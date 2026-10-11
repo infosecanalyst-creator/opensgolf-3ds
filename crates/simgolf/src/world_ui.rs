@@ -6,6 +6,7 @@ use crate::gfx::Gfx;
 use crate::info_ui::c15;
 use crate::ui::{money, rgb, rgba, text_width, wrap_text, Screen as Ui};
 use sg_core::land::{self, RECORDS, SLOT_PRICE_UNITS};
+use sg_core::lang::{tr, trf};
 use sg_core::properties::{PROPERTIES, START_FUNDS};
 
 /// Card origins on WorldBase.pcx, one per offer slot (cheapest first, down the left arc and then the right).
@@ -123,8 +124,8 @@ impl App {
             WORLD_RESET_SAVE if self.world_move => {
                 let f = self.game_file();
                 match self.save_game(&f) {
-                    Ok(()) => _ = self.post_message("Game Saved.", 1, -4),
-                    Err(e) => self.show_toast(&format!("Could not save the game: {e}")),
+                    Ok(()) => _ = self.post_message(tr("STR_MSG_GAME_SAVED"), 1, -4),
+                    Err(e) => self.show_toast(&trf("STR_TOAST_COULD_NOT_SAVE_GAME", &[("ERROR", &e)])),
                 }
             }
             WORLD_RESET_SAVE => {
@@ -135,7 +136,7 @@ impl App {
             WORLD_LOAD => {
                 let f = self.game_file();
                 if let Err(e) = self.load_game(g, &f) {
-                    self.show_toast(&format!("Could not load the saved game: {e}"));
+                    self.show_toast(&trf("STR_TOAST_COULD_NOT_LOAD_GAME", &[("ERROR", &e)]));
                 } else {
                     self.world_move = false;
                 }
@@ -145,7 +146,7 @@ impl App {
                 if self.world_owned(p) {
                     // a property already bought takes no click
                 } else if !self.can_afford(p) {
-                    self.info.world_msg = Some("You need more money before you can purchase this property.".into());
+                    self.info.world_msg = Some(tr("STR_TOAST_NEED_MONEY_PROPERTY").into());
                     self.ui_sound(0x18);
                 } else {
                     // "We're off to ...!" shows for a moment before the new course is built
@@ -180,9 +181,9 @@ impl App {
         }
         s.image(g, &self.world_base, 0.0, 0.0);
         let navy = c15(0x2108);
-        s.text_centered(g, 126.0, 29.0, "Where will you build", 13.0, navy);
-        s.text_centered(g, 126.0, 43.0, "your golf course?", 13.0, navy);
-        let funds = if self.world_unlimited() { "Unlimited \u{a7}".to_string() } else { money(self.world_cash() as i64) };
+        s.text_centered(g, 126.0, 29.0, tr("STR_WORLD_WHERE_1"), 13.0, navy);
+        s.text_centered(g, 126.0, 43.0, tr("STR_WORLD_WHERE_2"), 13.0, navy);
+        let funds = if self.world_unlimited() { tr("STR_WORLD_UNLIMITED").to_string() } else { money(self.world_cash() as i64) };
         s.text_centered(g, 740.0, 30.0, &funds, 14.0, navy);
         let a = &self.info.art;
         let blink = (self.clock * 4.0) as i64 % 2 == 0;
@@ -222,26 +223,34 @@ impl App {
                 s.image_part(g, icon, cx, cy - 2.0, sx, 0.0, w, h);
             }
             let black = rgb(0.0, 0.0, 0.0);
-            s.text_centered(g, cx + 96.0, cy + 15.0, RECORDS[p].name, 13.0, black);
-            s.text_centered(g, cx + 104.0, cy + 26.0, RECORDS[p].bonus, 10.0, black);
+            s.text_centered(g, cx + 96.0, cy + 15.0, RECORDS[p].name(), 13.0, black);
+            s.text_centered(g, cx + 104.0, cy + 26.0, RECORDS[p].bonus(), 10.0, black);
             let rec = &RECORDS[p];
             if sel && ok && !owned {
-                let relief = ["flat", "rolling", "hilly"][rec.relief.min(2) as usize];
-                let lie = ["inland", "coastal", "island"][rec.coast.min(2) as usize];
-                let kind = ["parkland", "desert", "tropical", "links"][rec.theme.min(3) as usize];
-                s.text_centered(g, cx + 112.0, cy + 37.0, &format!("Buy {acres} acres of {relief}"), 10.0, navy);
-                s.text_centered(g, cx + 106.0, cy + 47.0, &format!("{lie} {kind} property"), 10.0, navy);
-                s.text_centered(g, cx + 104.0, cy + 57.0, &format!("for only {}.", money(price as i64)), 10.0, navy);
+                let relief = [tr("STR_WORLD_FLAT"), tr("STR_WORLD_ROLLING"), tr("STR_WORLD_HILLY")][rec.relief.min(2) as usize];
+                let lie = [tr("STR_WORLD_INLAND"), tr("STR_WORLD_COASTAL"), tr("STR_WORLD_ISLAND")][rec.coast.min(2) as usize];
+                let kind = [tr("STR_WORLD_PARKLAND"), tr("STR_WORLD_DESERT"), tr("STR_WORLD_TROPICAL"), tr("STR_WORLD_LINKS")]
+                    [rec.theme.min(3) as usize];
+                s.text_centered(
+                    g,
+                    cx + 112.0,
+                    cy + 37.0,
+                    &trf("STR_WORLD_BUY_ACRES", &[("ACRES", &acres), ("RELIEF", &relief)]),
+                    10.0,
+                    navy,
+                );
+                s.text_centered(g, cx + 106.0, cy + 47.0, &trf("STR_WORLD_PROPERTY_KIND", &[("LIE", &lie), ("KIND", &kind)]), 10.0, navy);
+                s.text_centered(g, cx + 104.0, cy + 57.0, &trf("STR_WORLD_FOR_ONLY", &[("PRICE", &money(price as i64))]), 10.0, navy);
             } else if !self.world_unlimited() {
                 // a bought property shows the year it was bought and the year it was left (never kept: "????")
                 let t = match self.bought_year(p) {
                     Some(y) => format!("{} - ????", 2001 + y),
-                    None => format!("{acres} acres: {}", money(price as i64)),
+                    None => trf("STR_WORLD_ACRES_PRICE", &[("ACRES", &acres), ("PRICE", &money(price as i64))]),
                 };
                 s.text_centered(g, cx + 112.0, cy + 40.0, &t, 11.0, navy);
             }
             if sel && owned {
-                s.text_centered(g, cx + 112.0, cy + 53.0, "Already Purchased.", 10.0, navy);
+                s.text_centered(g, cx + 112.0, cy + 53.0, tr("STR_WORLD_ALREADY_PURCHASED"), 10.0, navy);
             }
             let state = if sel && blink {
                 3
@@ -257,7 +266,11 @@ impl App {
             pin(g, cx + 160.0, cy + 10.0, variant, state);
         }
         // legend
-        for (x, st, t) in [(24.0, 1, "Available"), (124.0, 0, "Insufficient funds"), (244.0, 2, "Already purchased")] {
+        for (x, st, t) in [
+            (24.0, 1, tr("STR_WORLD_AVAILABLE")),
+            (124.0, 0, tr("STR_WORLD_INSUFFICIENT_FUNDS")),
+            (244.0, 2, tr("STR_WORLD_LEGEND_PURCHASED")),
+        ] {
             s.image_part(g, &a.tacks, x, 550.0, 0.0, 50.0 * st as f32, 20.0, 24.0);
             s.text(g, x + 20.0, 570.0, t, 11.0, rgb(0.0, 0.0, 0.0));
         }
@@ -279,10 +292,10 @@ impl App {
         let frames = if self.info.world_tip.0 == self.hover { self.info.world_tip.1 + 1 } else { 0 };
         self.info.world_tip = (self.hover, frames);
         let tip = match self.hover {
-            WORLD_CANCEL => Some((768.0, 557.0, "Cancel")),
-            WORLD_RESET_SAVE if self.world_move => Some((760.0, 476.0, "Save Game")),
-            WORLD_RESET_SAVE => Some((760.0, 476.0, "Reset World")),
-            WORLD_LOAD => Some((774.0, 425.0, "Load Game")),
+            WORLD_CANCEL => Some((768.0, 557.0, tr("STR_WORLD_CANCEL"))),
+            WORLD_RESET_SAVE if self.world_move => Some((760.0, 476.0, tr("STR_WORLD_SAVE_GAME"))),
+            WORLD_RESET_SAVE => Some((760.0, 476.0, tr("STR_WORLD_RESET_WORLD"))),
+            WORLD_LOAD => Some((774.0, 425.0, tr("STR_WORLD_LOAD_GAME"))),
             _ => None,
         };
         if let (Some((x, y, t)), true) = (tip, frames > 20) {
@@ -298,10 +311,10 @@ impl App {
         }
         if let Some((p, _)) = self.info.world_go {
             s.fill(g, 204.0, 276.0, 192.0, 48.0, rgba(0.05, 0.06, 0.2, 0.75));
-            let t = format!("We're off to {}!", RECORDS[p].name);
+            let t = trf("STR_WORLD_OFF_TO", &[("PLACE", &(RECORDS[p].name()))]);
             let size = if text_width(&t, 13.0) > 186.0 { 13.0 * 186.0 / text_width(&t, 13.0) } else { 13.0 };
             s.text_centered(g, 300.0, 296.0, &t, size, rgb(1.0, 1.0, 1.0));
-            s.text_centered(g, 300.0, 312.0, "... one moment please ...", 11.0, rgb(1.0, 1.0, 1.0));
+            s.text_centered(g, 300.0, 312.0, tr("STR_WORLD_ONE_MOMENT"), 11.0, rgb(1.0, 1.0, 1.0));
         }
         g.flush();
     }
@@ -364,15 +377,15 @@ impl App {
         // tract numbers in 0x821f28 (Manual SSi 16), the rest in 0x821ee8 (Manual SSi 14): the tract texts left at the box
         // plus (4, 2), "Cash Reserve" left at (548, 263) and the cash centred at (720, 264), both black
         use crate::ui::{F_INFO14, F_INFO16, F_INFO_TITLE};
-        s.put_centered(g, F_INFO_TITLE, 400.0, 16.0, "TRACTS FOR SALE", black_ink());
+        s.put_centered(g, F_INFO_TITLE, 400.0, 16.0, tr("STR_TRACT_TITLE"), black_ink());
         for i in 0..9usize {
-            let tr = self.tracts[i];
+            let tract = self.tracts[i];
             let (col, row) = (i / 3, i % 3);
             // the tract's number on the map (0x4587a0): while any of its tiles is for sale, in black 0x821f28 centred on x
             // 7 left of and 4 above the routing map's point (0x456b70, baseline 441: 0x822b80 is clear again by then) of its
             // tile (8, 8); that point is only taken while that tile is for sale, else the variables still hold the
             // previous tract's text origin (nothing defined for tract 1, which the port leaves unnumbered then)
-            if tr.oob > 0 {
+            if tract.oob > 0 {
                 let (a0, b0) = sg_core::tracts::origin(i);
                 let (a, b) = (a0 + 8, b0 + 8);
                 let centre_for_sale = self.land.as_ref().is_some_and(|l| l.ty[(a * land::N + b) as usize] == land::T_OUT);
@@ -394,9 +407,9 @@ impl App {
             // the bar's ball (0x4587a0): the yellow ball of the tract under the pointer while it is for sale, the silver ball
             // of a tract with no land left for sale (bought), which also reads "Already purchased."
             let (bx, by) = ([15.0, 272.0, 538.0][col], [54.0, 122.0, 190.0][row]);
-            if hover == i as i32 && tr.oob > 0 {
+            if hover == i as i32 && tract.oob > 0 {
                 s.image_part(g, &a.land_buttons, bx, by, 1.0 + 60.0 * i as f32, 1.0, 59.0, 61.0);
-            } else if tr.oob == 0 {
+            } else if tract.oob == 0 {
                 s.image_part(g, &a.land_buttons, bx, by, 1.0 + 60.0 * i as f32, 64.0, 59.0, 61.0);
             }
             let (x0, y0) = ([78.0, 334.0, 600.0][col], 62.0 + 68.0 * row as f32);
@@ -404,8 +417,8 @@ impl App {
             // footage of the original: one sentence, "Buy tract #1, 22 acres of" / "rough, trees, and water", wrapped to 165
             // with 17 between the lines from 1 above the card's text origin (3 above "Already purchased."), the price on the
             // line after it
-            let text = sg_core::tracts::describe(&tr, i, theme);
-            if tr.oob == 0 {
+            let text = sg_core::tracts::describe(&tract, i, theme);
+            if tract.oob == 0 {
                 s.put(g, F_INFO14, tx, y0 + 2.0, &text, navy);
                 continue;
             }
@@ -413,10 +426,10 @@ impl App {
             for (k, l) in lines.iter().enumerate() {
                 s.put(g, F_INFO14, tx, y0 - 1.0 + 17.0 * k as f32, l, navy);
             }
-            let price = format!("Price: {}", money(tr.price as i64 * 100));
+            let price = trf("STR_TRACT_PRICE", &[("PRICE", &money(tract.price as i64 * 100))]);
             s.put_right(g, F_INFO14, x0 + 165.0, y0 - 1.0 + 17.0 * lines.len() as f32, &price, navy);
         }
-        s.put(g, F_INFO14, 548.0, 263.0, "Cash Reserve", black_ink());
+        s.put(g, F_INFO14, 548.0, 263.0, tr("STR_TRACT_CASH_RESERVE"), black_ink());
         s.put_centered(g, F_INFO14, 720.0, 264.0, &money(self.econ.cash as i64), black_ink());
         s.image_part(g, &a.land_buttons, 71.0, 533.0, 259.0, 127.0, 72.0, 61.0);
         // the OK tick lit under the pointer (the exe copies " I don't think I'll buy any land." into its text buffer here

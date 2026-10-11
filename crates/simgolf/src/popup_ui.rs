@@ -9,6 +9,7 @@ use crate::app::*;
 use crate::gfx::Gfx;
 use crate::render::Rect;
 use crate::ui::{rgb, rgba, Screen as Ui};
+use sg_core::lang::{tr, trf};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PopupKind {
@@ -357,6 +358,9 @@ impl Popup {
     }
 }
 
+/// The Preferences' option that switches the language (shown only when there is a translation to switch to).
+const PREFS_LANGUAGE: usize = 5;
+
 /// What a popup returned: an option index (counted from the first option line), or None when cancelled.
 pub type PopupResult = Option<usize>;
 
@@ -366,26 +370,24 @@ impl App {
         let pro_out = self.club.gary != -1;
         let retire = {
             let me = self.club.roster.first();
-            let his = if me.map(|p| p.male_bit()).unwrap_or(1) != 0 { "his" } else { "her" };
+            let his = if me.map(|p| p.male_bit()).unwrap_or(1) != 0 { tr("STR_RETIRE_HIS") } else { tr("STR_RETIRE_HER") };
             // EXACT (main loop 0x420b4e): "lengthy" once the year index (ticks >> 13, 0 for 2001) is above 9, so from
             // 2011 on; in championship play (flag 0x4000000) the heading is "After an exciting championship" /
             // "<pro> returns home." instead. The name is the first roster golfer's and "her" follows its female bit.
             if self.club.game & sg_core::championship::CHAMPIONSHIP != 0 {
-                ["After an exciting championship".to_string(), format!("{} returns home.", self.pro_name())]
+                [tr("STR_RETIRE_CHAMPIONSHIP").to_string(), trf("STR_RETIRE_RETURNS_HOME", &[("PRO", &self.pro_name())])]
             } else {
-                let span = if self.econ.year_index() > 9 { "lengthy" } else { "short" };
-                [format!("After a {span} career"), format!("{} plans {his} retirement.", self.pro_name())]
+                let career = if self.econ.year_index() > 9 { "STR_RETIRE_LENGTHY_CAREER" } else { "STR_RETIRE_SHORT_CAREER" };
+                [tr(career).to_string(), trf("STR_RETIRE_PLANS", &[("PRO", &self.pro_name()), ("HIS", &his)])]
             }
         };
-        let (lines, disabled, cx, top): (Vec<&str>, u32, f32, f32) = match kind {
+        // the language line (docs/TRANSLATING.md), only when there is more than English to choose from
+        let languages = if kind == PopupKind::Prefs { crate::language::available().len() } else { 0 };
+        let language =
+            if languages > 1 { trf("STR_MENU_PREFS_LANGUAGE", &[("LANGUAGE", &crate::language::current_name())]) } else { String::new() };
+        let (mut lines, disabled, cx, top): (Vec<&str>, u32, f32, f32) = match kind {
             PopupKind::Retire => (
-                vec![
-                    retire[0].as_str(),
-                    retire[1].as_str(),
-                    " Wait, I don't want to quit yet!",
-                    " I'd like to save this game first.",
-                    " So long for now.",
-                ],
+                vec![retire[0].as_str(), retire[1].as_str(), tr("STR_RETIRE_WAIT"), tr("STR_RETIRE_SAVE_FIRST"), tr("STR_RETIRE_SO_LONG")],
                 0,
                 400.0,
                 100.0,
@@ -393,19 +395,19 @@ impl App {
             PopupKind::Info => (
                 vec![
                     // footage of the original (G4 review): "Information..."
-                    "Information...",
-                    " Repeat Last Message",
-                    " Course Report",
-                    " Player Comments",
-                    " Routing Map",
-                    " Histogram",
-                    " SGA Evaluation",
-                    " Financial Report",
-                    " Membership Roster",
-                    " Professional Accomplishments",
-                    " World Map",
-                    " Best Scores",
-                    " Top 10 Designers",
+                    tr("STR_MENU_INFO_TITLE"),
+                    tr("STR_MENU_INFO_REPEAT"),
+                    tr("STR_MENU_INFO_REPORT"),
+                    tr("STR_MENU_INFO_COMMENTS"),
+                    tr("STR_MENU_INFO_ROUTING"),
+                    tr("STR_MENU_INFO_HISTOGRAM"),
+                    tr("STR_MENU_INFO_SGA"),
+                    tr("STR_MENU_INFO_FINANCE"),
+                    tr("STR_MENU_INFO_ROSTER"),
+                    tr("STR_MENU_INFO_ACCOMPLISHMENTS"),
+                    tr("STR_MENU_INFO_WORLD_MAP"),
+                    tr("STR_MENU_INFO_BEST_SCORES"),
+                    tr("STR_MENU_INFO_TOP10"),
                 ],
                 if self.last_message.is_empty() { 1 } else { 0 },
                 200.0,
@@ -413,16 +415,16 @@ impl App {
             ),
             PopupKind::System => (
                 vec![
-                    "System Functions",
-                    " Save the current game",
-                    " Load a previous game",
-                    " Cancel match or tournament",
-                    " Save your pro for Championship",
-                    " Rename your course",
-                    " Preferences",
-                    " Save course for Championship",
-                    " Quit to the title screen",
-                    " Back to the game",
+                    tr("STR_MENU_SYSTEM_TITLE"),
+                    tr("STR_MENU_SYSTEM_SAVE"),
+                    tr("STR_MENU_SYSTEM_LOAD"),
+                    tr("STR_MENU_SYSTEM_CANCEL_MATCH"),
+                    tr("STR_MENU_SYSTEM_SAVE_PRO"),
+                    tr("STR_MENU_SYSTEM_RENAME"),
+                    tr("STR_MENU_SYSTEM_PREFERENCES"),
+                    tr("STR_MENU_SYSTEM_SAVE_COURSE"),
+                    tr("STR_MENU_SYSTEM_QUIT"),
+                    tr("STR_MENU_SYSTEM_BACK"),
                 ],
                 if tour || pro_out { 0 } else { 1 << 2 } | if tour { 1 << 6 } else { 0 },
                 250.0,
@@ -430,12 +432,12 @@ impl App {
             ),
             PopupKind::Prefs => (
                 vec![
-                    "Preferences...",
-                    " Show golfers' thoughts",
-                    " Advisor and first-time messages",
-                    " Ambient animals",
-                    " Sound",
-                    " HD graphics (off: Classic)",
+                    tr("STR_MENU_PREFS_TITLE"),
+                    tr("STR_MENU_PREFS_THOUGHTS"),
+                    tr("STR_MENU_PREFS_ADVISOR"),
+                    tr("STR_MENU_PREFS_ANIMALS"),
+                    tr("STR_MENU_PREFS_SOUND"),
+                    tr("STR_MENU_PREFS_HD"),
                 ],
                 0,
                 400.0,
@@ -443,25 +445,20 @@ impl App {
             ),
             // the commissioner's approval (main routine 0x41e2a0): the two-choice box centred on x 0x1c2 from y 0xa0 (EXACT,
             // the call's pushes at 0x41e2ee and 0x41e303), texts 0x4c5d74 and 0x4c5d48
-            PopupKind::LandOffer => (
-                vec!["Do you wish to purchase additional", "land to expand your course?", " Yup, I've got big plans.", " No, I'm fine."],
-                0,
-                450.0,
-                160.0,
-            ),
+            PopupKind::LandOffer => {
+                (vec![tr("STR_LAND_OFFER_1"), tr("STR_LAND_OFFER_2"), tr("STR_LAND_OFFER_YES"), tr("STR_LAND_OFFER_NO")], 0, 450.0, 160.0)
+            }
             // the debt counter past 2 (three year ends in the red): the box at (250, 150), text 0x4c5ad0
             PopupKind::CareerOver => (
-                vec![
-                    "Your career as a golf course designer",
-                    "has ended.  Will you...",
-                    " Continue this game in Sandbox Mode.",
-                    " Return to Main Menu.",
-                ],
+                vec![tr("STR_CAREER_OVER_1"), tr("STR_CAREER_OVER_2"), tr("STR_CAREER_OVER_SANDBOX"), tr("STR_CAREER_OVER_MENU")],
                 0,
                 250.0,
                 150.0,
             ),
         };
+        if languages > 1 {
+            lines.push(&language);
+        }
         let checks = if kind == PopupKind::Prefs {
             self.show_thoughts as u32
                 | (self.show_advisor as u32) << 1
@@ -568,6 +565,16 @@ impl App {
         let p = self.popup.as_mut()?;
         let k = pick.or(p.sel).unwrap_or(0);
         if p.kind == PopupKind::Prefs {
+            if pick == Some(PREFS_LANGUAGE) {
+                // the next language, at once: the box is rebuilt in it with the ticks kept
+                let checks = p.checks;
+                crate::language::cycle();
+                self.open_popup(PopupKind::Prefs);
+                if let Some(p) = self.popup.as_mut() {
+                    p.checks = checks;
+                }
+                return Some(usize::MAX);
+            }
             if pick.is_some() {
                 p.checks ^= 1 << k;
                 return Some(usize::MAX); // toggled, stay open
@@ -627,7 +634,7 @@ impl App {
         let r = Rect::new(220.0, 240.0, 360.0, 90.0);
         s.fill(g, r.x - 3.0, r.y - 3.0, r.w + 6.0, r.h + 6.0, rgba(0.55, 0.55, 0.85, 0.95));
         s.fill(g, r.x, r.y, r.w, r.h, rgba(0.92, 0.92, 1.0, 0.97));
-        s.text_centered(g, 400.0, 268.0, "Rename Course...", 17.0, rgb(0.15, 0.1, 0.4));
+        s.text_centered(g, 400.0, 268.0, tr("STR_RENAME_COURSE"), 17.0, rgb(0.15, 0.1, 0.4));
         s.fill(g, r.x + 20.0, 282.0, r.w - 40.0, 28.0, rgb(1.0, 1.0, 1.0));
         let caret = if (self.clock * 2.0) as i64 % 2 == 0 { "|" } else { "" };
         s.text(g, r.x + 26.0, 302.0, &format!("{name}{caret}"), 16.0, rgb(0.05, 0.05, 0.2));

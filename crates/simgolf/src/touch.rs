@@ -13,6 +13,7 @@ use crate::gfx::Gfx;
 use crate::ui::{rgb, rgba, Screen as Ui};
 use crate::Stage;
 use miniquad::{EventHandler, KeyCode, KeyMods, MouseButton, TouchPhase};
+use sg_core::lang::tr;
 
 /// Drawable pixels a finger may wander before a press becomes a drag.
 const SLOP: f32 = 12.0;
@@ -56,9 +57,13 @@ pub struct Touch {
     queued: Option<(MouseButton, f32, f32, u8)>,
 }
 
-/// The touch buttons: label and the key each one presses.
-const BUTTONS: [(&str, KeyCode); 4] =
-    [("Open hole", KeyCode::H), ("Turn", KeyCode::Tab), ("Speed", KeyCode::RightBracket), ("Message", KeyCode::Slash)];
+/// The touch buttons: label (a text key) and the key each one presses.
+const BUTTONS: [(&str, KeyCode); 4] = [
+    ("STR_TOUCH_OPEN_HOLE", KeyCode::H),
+    ("STR_TOUCH_TURN", KeyCode::Tab),
+    ("STR_TOUCH_SPEED", KeyCode::RightBracket),
+    ("STR_TOUCH_MESSAGE", KeyCode::Slash),
+];
 
 fn button_rect(i: usize) -> (f32, f32, f32, f32) {
     (734.0, 190.0 + 40.0 * i as f32, 62.0, 32.0)
@@ -230,7 +235,7 @@ impl Stage {
             let (x, y, w, h) = button_rect(i);
             s.fill(g, x, y, w, h, rgba(0.1, 0.1, 0.3, 0.7));
             s.fill(g, x, y, w, 1.0, rgba(0.7, 0.7, 1.0, 0.8));
-            s.text_centered(g, x + w * 0.5, y + h * 0.5 + 4.0, label, 12.0, rgb(1.0, 1.0, 1.0));
+            s.text_centered(g, x + w * 0.5, y + h * 0.5 + 4.0, tr(label), 12.0, rgb(1.0, 1.0, 1.0));
         }
         g.flush();
     }

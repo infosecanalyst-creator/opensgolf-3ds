@@ -6,6 +6,7 @@
 //! in a row in the red end the game. There is no upkeep for terrain, paths or buildings, no taxes and no loans. Sandbox games
 //! pay the same costs; they only skip the affordability checks and the board.
 use crate::land::ExeRng;
+use crate::lang::tr;
 
 pub const STAFF_KINDS: usize = 4;
 pub const CLUB_PRO: usize = 0;
@@ -24,8 +25,16 @@ pub const LEDGER_MAINTENANCE: usize = 6;
 pub const LEDGER_OTHER: usize = 7;
 pub const LEDGER_COLUMNS: usize = 8;
 /// The report's row labels (the exe's own wording; the money sign is the section sign).
-pub const LEDGER_LABELS: [&str; LEDGER_COLUMNS] =
-    ["Greens Fees", "Home Sites", "Food/Drink", "Build course", "Facilities", "Salaries", "Maint./Interest", "Other"];
+pub const LEDGER_LABEL_KEYS: [&str; LEDGER_COLUMNS] = [
+    "STR_LEDGER_GREENS_FEES",
+    "STR_LEDGER_HOME_SITES",
+    "STR_LEDGER_FOOD_DRINK",
+    "STR_LEDGER_BUILD_COURSE",
+    "STR_LEDGER_FACILITIES",
+    "STR_LEDGER_SALARIES",
+    "STR_LEDGER_MAINTENANCE",
+    "STR_LEDGER_OTHER",
+];
 /// Months per year in the exe's calendar (March to October).
 pub const MONTHS_PER_YEAR: i32 = 8;
 
@@ -90,7 +99,17 @@ pub fn rank(holes: usize) -> i32 {
     }
 }
 
-pub const RANK_NAMES: [&str; 4] = ["Municipal", "Daily Fee", "Country Club", "Championship"];
+/// Course rank k's name (`RANK_NAME_KEYS`).
+pub fn rank_name(k: usize) -> &'static str {
+    crate::lang::tr(RANK_NAME_KEYS[k])
+}
+
+/// The financial report's row label of ledger column k (`LEDGER_LABEL_KEYS`).
+pub fn ledger_label(k: usize) -> &'static str {
+    crate::lang::tr(LEDGER_LABEL_KEYS[k])
+}
+
+pub const RANK_NAME_KEYS: [&str; 4] = ["STR_RANK_MUNICIPAL", "STR_RANK_DAILY_FEE", "STR_RANK_COUNTRY_CLUB", "STR_RANK_CHAMPIONSHIP"];
 
 /// An amount of money as the exe's 0x42dc00 appends it to a message (after a "§" the message holds): a minus sign when
 /// negative, then the digits in groups of three with commas.
@@ -122,7 +141,10 @@ impl Economy {
     pub const FIRING_UNITS: f64 = 25.0;
 
     pub fn staff_name(k: usize) -> &'static str {
-        ["Club Pro", "Ranger", "Groundskeeper", "Soda Vendor"].get(k).copied().unwrap_or("?")
+        [tr("STR_STAFF_CLUB_PRO"), tr("STR_STAFF_RANGER"), tr("STR_STAFF_GROUNDSKEEPER"), tr("STR_STAFF_SODA_VENDOR")]
+            .get(k)
+            .copied()
+            .unwrap_or(tr("STR_STAFF_UNKNOWN"))
     }
     pub fn staff_count(&self) -> i32 {
         self.staff.iter().sum()
@@ -295,9 +317,9 @@ impl Economy {
             let stage = self.debt_stage;
             self.debt_stage += 1;
             self.notice = match stage {
-                0 => "The board is concerned about our negative cash situation.\nYou have two years to return to positive cash.",
-                1 => "The board is very worried about our lingering debt.\nYou have one more year to get out of debt.",
-                2 => "You have been unable to make a profit on this course.\nRegrettably, the board has terminated your contract.",
+                0 => tr("STR_BOARD_CONCERNED"),
+                1 => tr("STR_BOARD_WORRIED"),
+                2 => tr("STR_BOARD_TERMINATED"),
                 _ => "",
             }
             .to_string();

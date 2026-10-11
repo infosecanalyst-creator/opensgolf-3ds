@@ -7,6 +7,7 @@
 
 use crate::course::{f, idx, inside, Course, TYPES};
 use crate::golfer::Club;
+use crate::lang::{tr, trf};
 
 /// The tone of a line: neutral, pleased, upset.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -27,49 +28,54 @@ pub struct Line {
 /// Terrain names: the single name and the group name (trees use the group name in most remarks).
 pub fn terrain(t: u8) -> (&'static str, &'static str) {
     match t {
-        0 => ("tee", "tee box"),
-        1 => ("green", "green"),
-        2 | 3 => ("fairway", "fairway"),
-        4 => ("rough", "rough"),
-        5 => ("deep rough", "deep rough"),
-        6 => ("mounds", "mounds"),
-        7 => ("sand trap", "sand"),
-        8 => ("waste bunker", "waste area"),
-        9 => ("pot bunker", "pot bunker"),
-        10 => ("ravine", "ravine"),
-        11 => ("brush", "brush"),
-        12 => ("rocks", "rocks"),
-        13 => ("tree", "trees"),
-        14 => ("pine", "pines"),
-        15 => ("palm", "palms"),
-        16 => ("elm", "elms"),
-        17 => ("water", "water"),
-        18 => ("wetlands", "wetlands"),
-        19 => ("marsh", "marsh"),
-        20 => ("out of bounds", "out of bounds"),
-        _ => ("building", "buildings"),
+        0 => (tr("STR_THOUGHT_TERRAIN_TEE"), tr("STR_THOUGHT_TERRAIN_TEE_GROUP")),
+        1 => (tr("STR_THOUGHT_TERRAIN_GREEN"), tr("STR_THOUGHT_TERRAIN_GREEN_GROUP")),
+        2 | 3 => (tr("STR_THOUGHT_TERRAIN_FAIRWAY"), tr("STR_THOUGHT_TERRAIN_FAIRWAY_GROUP")),
+        4 => (tr("STR_THOUGHT_TERRAIN_ROUGH"), tr("STR_THOUGHT_TERRAIN_ROUGH_GROUP")),
+        5 => (tr("STR_THOUGHT_TERRAIN_DEEP_ROUGH"), tr("STR_THOUGHT_TERRAIN_DEEP_ROUGH_GROUP")),
+        6 => (tr("STR_THOUGHT_TERRAIN_MOUNDS"), tr("STR_THOUGHT_TERRAIN_MOUNDS_GROUP")),
+        7 => (tr("STR_THOUGHT_TERRAIN_SAND_TRAP"), tr("STR_THOUGHT_TERRAIN_SAND_TRAP_GROUP")),
+        8 => (tr("STR_THOUGHT_TERRAIN_WASTE_BUNKER"), tr("STR_THOUGHT_TERRAIN_WASTE_BUNKER_GROUP")),
+        9 => (tr("STR_THOUGHT_TERRAIN_POT_BUNKER"), tr("STR_THOUGHT_TERRAIN_POT_BUNKER_GROUP")),
+        10 => (tr("STR_THOUGHT_TERRAIN_RAVINE"), tr("STR_THOUGHT_TERRAIN_RAVINE_GROUP")),
+        11 => (tr("STR_THOUGHT_TERRAIN_BRUSH"), tr("STR_THOUGHT_TERRAIN_BRUSH_GROUP")),
+        12 => (tr("STR_THOUGHT_TERRAIN_ROCKS"), tr("STR_THOUGHT_TERRAIN_ROCKS_GROUP")),
+        13 => (tr("STR_THOUGHT_TERRAIN_TREE"), tr("STR_THOUGHT_TERRAIN_TREE_GROUP")),
+        14 => (tr("STR_THOUGHT_TERRAIN_PINE"), tr("STR_THOUGHT_TERRAIN_PINE_GROUP")),
+        15 => (tr("STR_THOUGHT_TERRAIN_PALM"), tr("STR_THOUGHT_TERRAIN_PALM_GROUP")),
+        16 => (tr("STR_THOUGHT_TERRAIN_ELM"), tr("STR_THOUGHT_TERRAIN_ELM_GROUP")),
+        17 => (tr("STR_THOUGHT_TERRAIN_WATER"), tr("STR_THOUGHT_TERRAIN_WATER_GROUP")),
+        18 => (tr("STR_THOUGHT_TERRAIN_WETLANDS"), tr("STR_THOUGHT_TERRAIN_WETLANDS_GROUP")),
+        19 => (tr("STR_THOUGHT_TERRAIN_MARSH"), tr("STR_THOUGHT_TERRAIN_MARSH_GROUP")),
+        20 => (tr("STR_THOUGHT_TERRAIN_OUT_OF_BOUNDS"), tr("STR_THOUGHT_TERRAIN_OUT_OF_BOUNDS_GROUP")),
+        _ => (tr("STR_THOUGHT_TERRAIN_BUILDING"), tr("STR_THOUGHT_TERRAIN_BUILDING_GROUP")),
     }
 }
 
 /// Club names by club number (0x40a9a0).
-pub const CLUBS: [&str; 14] = [
-    "Driver",
-    "3 Wood",
-    "4 Wood",
-    "2 Iron",
-    "3 Iron",
-    "4 Iron",
-    "5 Iron",
-    "6 Iron",
-    "7 Iron",
-    "8 Iron",
-    "9 Iron",
-    "Lob Wedge",
-    "Sand Wedge",
-    "Putter",
+pub const CLUB_KEYS: [&str; 14] = [
+    "STR_CLUB_DRIVER",
+    "STR_CLUB_3_WOOD",
+    "STR_CLUB_4_WOOD",
+    "STR_CLUB_2_IRON",
+    "STR_CLUB_3_IRON",
+    "STR_CLUB_4_IRON",
+    "STR_CLUB_5_IRON",
+    "STR_CLUB_6_IRON",
+    "STR_CLUB_7_IRON",
+    "STR_CLUB_8_IRON",
+    "STR_CLUB_9_IRON",
+    "STR_CLUB_LOB_WEDGE",
+    "STR_CLUB_SAND_WEDGE",
+    "STR_CLUB_PUTTER",
 ];
 
-const PETS: [&str; 4] = [", honey", ", sugar", ", dear", ", sweetie"];
+/// The name of club k (0..13).
+pub fn club_name(k: usize) -> &'static str {
+    tr(CLUB_KEYS[k])
+}
+
+const PETS: [&str; 4] = ["STR_THOUGHT_PET_HONEY", "STR_THOUGHT_PET_SUGAR", "STR_THOUGHT_PET_DEAR", "STR_THOUGHT_PET_SWEETIE"];
 
 fn is_tree(t: u8) -> bool {
     TYPES[(t as usize).min(22)].class == 13
@@ -79,13 +85,13 @@ fn is_tree(t: u8) -> bool {
 /// fountains, bridges and the like.
 pub fn feature(c: &Course, a: i32, b: i32, theme: u8) -> String {
     if !inside(a, b) {
-        return "view".into();
+        return tr("STR_THOUGHT_FEATURE_VIEW").into();
     }
     let i = idx(a, b);
     let t = c.ty[i];
     let fl = c.flags[i];
     if t == 21 {
-        return "home site".into();
+        return tr("STR_THOUGHT_FEATURE_HOME_SITE").into();
     }
     if t == 22 {
         let o = c.object_at(a, b);
@@ -94,32 +100,52 @@ pub fn feature(c: &Course, a: i32, b: i32, theme: u8) -> String {
                 return crate::vips::landmark_name(obj.sub).to_lowercase();
             }
             if obj.kind == 2 {
-                return "flowerbed".into();
+                return tr("STR_THOUGHT_FEATURE_FLOWERBED").into();
             }
         }
-        return "landmark".into();
+        return tr("STR_THOUGHT_FEATURE_LANDMARK").into();
     }
     if fl & f::FLOWERS != 0 {
         let k = (a * 7 + b) % 5;
         return match theme {
-            1 => ["red poppy bed", "orange flowerbed", "purple iris patch", "blue foxglove", "pink sage bush"][k as usize],
-            2 => ["aqua hibiscus", "orange bougainvillea", "purple orchid", "blue hydrangea", "red rose bush"][k as usize],
-            _ => ["green flowerbed", "yellow daisy bed", "purple iris patch", "white carnation", "red rose bush"][k as usize],
+            1 => [
+                tr("STR_THOUGHT_FEATURE_RED_POPPY_BED"),
+                tr("STR_THOUGHT_FEATURE_ORANGE_FLOWERBED"),
+                tr("STR_THOUGHT_FEATURE_PURPLE_IRIS_PATCH"),
+                tr("STR_THOUGHT_FEATURE_BLUE_FOXGLOVE"),
+                tr("STR_THOUGHT_FEATURE_PINK_SAGE_BUSH"),
+            ][k as usize],
+            2 => [
+                tr("STR_THOUGHT_FEATURE_AQUA_HIBISCUS"),
+                tr("STR_THOUGHT_FEATURE_ORANGE_BOUGAINVILLEA"),
+                tr("STR_THOUGHT_FEATURE_PURPLE_ORCHID"),
+                tr("STR_THOUGHT_FEATURE_BLUE_HYDRANGEA"),
+                tr("STR_THOUGHT_FEATURE_RED_ROSE_BUSH"),
+            ][k as usize],
+            _ => [
+                tr("STR_THOUGHT_FEATURE_GREEN_FLOWERBED"),
+                tr("STR_THOUGHT_FEATURE_YELLOW_DAISY_BED"),
+                tr("STR_THOUGHT_FEATURE_PURPLE_IRIS_PATCH"),
+                tr("STR_THOUGHT_FEATURE_WHITE_CARNATION"),
+                tr("STR_THOUGHT_FEATURE_RED_ROSE_BUSH"),
+            ][k as usize],
         }
         .into();
     }
     match TYPES[(t as usize).min(22)].class {
-        4 if t == 4 => if theme == 1 { "mysterious bones" } else { "ornamental grass" }.into(),
-        4 if t == 10 => if theme == 1 { "rock formation" } else { "scenic tree" }.into(),
-        4 if t == 12 => if theme == 1 { "natural bridge" } else { "rock formation" }.into(),
-        4 => "rose bush".into(),
-        7 => "rhododendron".into(),
-        12 => "rock formation".into(),
-        13 => if theme == 1 { "scenic cactus" } else { "scenic tree" }.into(),
-        17 if fl & f::PATH != 0 => "scenic bridge".into(),
-        17 => if theme == 1 { "rock formation" } else { "fountain" }.into(),
-        18 => "fountain".into(),
-        _ => "wildflower".into(),
+        4 if t == 4 => {
+            if theme == 1 { tr("STR_THOUGHT_FEATURE_MYSTERIOUS_BONES") } else { tr("STR_THOUGHT_FEATURE_ORNAMENTAL_GRASS") }.into()
+        }
+        4 if t == 10 => if theme == 1 { tr("STR_THOUGHT_FEATURE_ROCK_FORMATION") } else { tr("STR_THOUGHT_FEATURE_SCENIC_TREE") }.into(),
+        4 if t == 12 => if theme == 1 { tr("STR_THOUGHT_FEATURE_NATURAL_BRIDGE") } else { tr("STR_THOUGHT_FEATURE_ROCK_FORMATION") }.into(),
+        4 => tr("STR_THOUGHT_FEATURE_ROSE_BUSH").into(),
+        7 => tr("STR_THOUGHT_FEATURE_RHODODENDRON").into(),
+        12 => tr("STR_THOUGHT_FEATURE_ROCK_FORMATION").into(),
+        13 => if theme == 1 { tr("STR_THOUGHT_FEATURE_SCENIC_CACTUS") } else { tr("STR_THOUGHT_FEATURE_SCENIC_TREE") }.into(),
+        17 if fl & f::PATH != 0 => tr("STR_THOUGHT_FEATURE_SCENIC_BRIDGE").into(),
+        17 => if theme == 1 { tr("STR_THOUGHT_FEATURE_ROCK_FORMATION") } else { tr("STR_THOUGHT_FEATURE_FOUNTAIN") }.into(),
+        18 => tr("STR_THOUGHT_FEATURE_FOUNTAIN").into(),
+        _ => tr("STR_THOUGHT_FEATURE_WILDFLOWER").into(),
     }
 }
 
@@ -129,7 +155,7 @@ impl Club {
     }
 
     fn pet(g: usize) -> &'static str {
-        PETS[g & 3]
+        tr(PETS[g & 3])
     }
 
     /// The text of mood event `id` with argument `arg` for golfer g (0x469b00).
@@ -158,7 +184,11 @@ impl Club {
         let mut by_partner = false;
         let ty = arg.clamp(0, 22) as u8;
         let (t1, t2) = terrain(ty);
-        let place = if is_tree(ty) { format!("under the {t1}") } else { format!("in the {t1}") };
+        let place = if is_tree(ty) {
+            trf("STR_THOUGHT_PLACE_UNDER", &[("TERRAIN", &t1)])
+        } else {
+            trf("STR_THOUGHT_PLACE_IN", &[("TERRAIN", &t1)])
+        };
         let noun = if is_tree(ty) { t2 } else { t1 };
         let hole = self.g[g].hole.clamp(0, 18) as usize;
         // a person's own dialogue slot for this event comes first (0x469b00 for golfer slots below 0x98)
@@ -175,20 +205,20 @@ impl Club {
                 tone = Tone::Good;
                 if rel & 1 == 0 {
                     match (r & 1, r & 2) {
-                        (0, 0) => format!("How'd you like that shot, {partner}?"),
-                        (0, _) => format!("Oh yeah, nothin' but {t1}!"),
-                        (_, 0) => "Whoa, I am so GOOD!".into(),
-                        _ => "Oh yeah, I rock!".into(),
+                        (0, 0) => trf("STR_THOUGHT_01_HOWD_YOU_LIKE", &[("PARTNER", &partner)]),
+                        (0, _) => trf("STR_THOUGHT_01_NOTHIN_BUT", &[("TERRAIN", &t1)]),
+                        (_, 0) => tr("STR_THOUGHT_01_SO_GOOD").into(),
+                        _ => tr("STR_THOUGHT_01_I_ROCK").into(),
                     }
                 } else {
                     by_partner = true;
                     let pm = self.male(p) != 0;
                     let pr = self.g[p].roster & 1;
                     match (pr, pm) {
-                        (0, true) => format!("{me}, I couldn't do it any better!"),
-                        (0, false) => format!("{me}, you are soooo GOOD!"),
-                        (_, true) => format!("{me}, what a great shot!"),
-                        _ => format!("{me}, you truly rock!"),
+                        (0, true) => trf("STR_THOUGHT_01_PARTNER_COULDNT", &[("GOLFER", &me)]),
+                        (0, false) => trf("STR_THOUGHT_01_PARTNER_SOOOO_GOOD", &[("GOLFER", &me)]),
+                        (_, true) => trf("STR_THOUGHT_01_PARTNER_GREAT_SHOT", &[("GOLFER", &me)]),
+                        _ => trf("STR_THOUGHT_01_PARTNER_TRULY_ROCK", &[("GOLFER", &me)]),
                     }
                 }
             }
@@ -197,13 +227,13 @@ impl Club {
                 match rel {
                     2 => {
                         by_partner = true;
-                        format!("Ha, {me}, you're {place}!")
+                        trf("STR_THOUGHT_02_HA_YOURE", &[("GOLFER", &me), ("PLACE", &place)])
                     }
                     4 => {
                         by_partner = true;
-                        format!("Oh darn, you're {place}{}!", Self::pet(g))
+                        trf("STR_THOUGHT_02_OH_DARN_YOURE", &[("PLACE", &place), ("PET", &Self::pet(g))])
                     }
-                    _ => format!("Darn, I'm {place}!"),
+                    _ => trf("STR_THOUGHT_02_DARN_IM", &[("PLACE", &place)]),
                 }
             }
             0x03 => {
@@ -211,112 +241,126 @@ impl Club {
                 match rel {
                     2 => {
                         by_partner = true;
-                        format!("You look even better {place}, {me}.")
+                        trf("STR_THOUGHT_03_EVEN_BETTER", &[("PLACE", &place), ("GOLFER", &me)])
                     }
                     3 => {
                         by_partner = true;
-                        format!("Oh, {me}, now you're {place}!")
+                        trf("STR_THOUGHT_03_NOW_YOURE", &[("GOLFER", &me), ("PLACE", &place)])
                     }
                     4 => {
                         by_partner = true;
-                        format!("You prefer being {place}, do you?")
+                        trf("STR_THOUGHT_03_PREFER_BEING", &[("PLACE", &place)])
                     }
-                    _ => format!("{}, now I'm {place}!", ["Great", "Oh no", "Swell", "Lovely"][(r & 3) as usize]),
+                    _ => trf(
+                        "STR_THOUGHT_03_NOW_IM",
+                        &[
+                            (
+                                "EXCLAMATION",
+                                &[
+                                    tr("STR_THOUGHT_03_EXCL_GREAT"),
+                                    tr("STR_THOUGHT_03_EXCL_OH_NO"),
+                                    tr("STR_THOUGHT_03_EXCL_SWELL"),
+                                    tr("STR_THOUGHT_03_EXCL_LOVELY"),
+                                ][(r & 3) as usize],
+                            ),
+                            ("PLACE", &place),
+                        ],
+                    ),
                 }
             }
             0x04 => {
                 tone = Tone::Bad;
                 if rel == 4 {
                     by_partner = true;
-                    format!("Only you could miss this shot, {me}.")
+                    trf("STR_THOUGHT_04_ONLY_YOU", &[("GOLFER", &me)])
                 } else {
-                    "This shot looks pretty easy. Yawn.".into()
+                    tr("STR_THOUGHT_04_PRETTY_EASY").into()
                 }
             }
             0x05 | 0x25 | 0x26 => match rel {
                 1 => {
                     by_partner = true;
-                    format!("Careful of the {noun}{}.", Self::pet(g))
+                    trf("STR_THOUGHT_05_CAREFUL_OF", &[("TERRAIN", &noun), ("PET", &Self::pet(g))])
                 }
                 2 if g & 1 == 0 => {
                     by_partner = true;
-                    format!("Say hello to Mr. {noun} for me, {me}.")
+                    trf("STR_THOUGHT_05_SAY_HELLO", &[("TERRAIN", &noun), ("GOLFER", &me)])
                 }
                 2 => {
                     by_partner = true;
-                    format!("You're going into the {noun}, {me}.")
+                    trf("STR_THOUGHT_05_GOING_INTO", &[("TERRAIN", &noun), ("GOLFER", &me)])
                 }
                 3 | 5 => {
                     by_partner = true;
-                    format!("Watch out for the {noun}, {me}.")
+                    trf("STR_THOUGHT_05_WATCH_OUT", &[("TERRAIN", &noun), ("GOLFER", &me)])
                 }
                 _ => match id {
-                    0x05 => format!("Eeek, I gotta stay away from the {noun}."),
-                    0x25 => format!("Eeek, I gotta hit it past the {noun}."),
-                    _ => format!("Eeek, I gotta watch out for the {noun}."),
+                    0x05 => trf("STR_THOUGHT_05_STAY_AWAY", &[("TERRAIN", &noun)]),
+                    0x25 => trf("STR_THOUGHT_25_HIT_IT_PAST", &[("TERRAIN", &noun)]),
+                    _ => trf("STR_THOUGHT_26_WATCH_OUT_FOR", &[("TERRAIN", &noun)]),
                 },
             },
             0x06 => {
                 tone = Tone::Good;
-                "I'll use the slope on this shot.".into()
+                tr("STR_THOUGHT_06_USE_THE_SLOPE").into()
             }
             0x07 => {
                 tone = Tone::Good;
                 if self.g[g].flags & 0x10000 != 0 {
-                    "I love riding over this scenic bridge.".into()
+                    tr("STR_THOUGHT_07_RIDING_OVER_BRIDGE").into()
                 } else {
-                    "I love walking over this scenic bridge.".into()
+                    tr("STR_THOUGHT_07_WALKING_OVER_BRIDGE").into()
                 }
             }
             0x08 => {
                 tone = Tone::Bad;
-                "Who designed this #@%&! course?".into()
+                tr("STR_THOUGHT_08_WHO_DESIGNED").into()
             }
             0x09 => {
                 tone = Tone::Bad;
-                "Hey, that ball almost hit me!".into()
+                tr("STR_THOUGHT_09_ALMOST_HIT_ME").into()
             }
             0x0a => {
                 tone = Tone::Bad;
-                let w = if t1.ends_with('s') { "these" } else { "this" };
-                format!("Must I walk through {w} {t1}?")
+                let w = if t1.ends_with('s') { tr("STR_THOUGHT_0A_THESE") } else { tr("STR_THOUGHT_0A_THIS") };
+                trf("STR_THOUGHT_0A_MUST_I_WALK", &[("THIS", &w), ("TERRAIN", &t1)])
             }
             0x0b => {
                 tone = Tone::Good;
                 let what = feature(c, arg / 50, arg % 50, theme);
-                let adj = if arg & 0x100 != 0 { "nice" } else { "beautiful" };
+                let adj = if arg & 0x100 != 0 { tr("STR_THOUGHT_0B_NICE") } else { tr("STR_THOUGHT_0B_BEAUTIFUL") };
                 if rel == 1 {
-                    format!("Look at this {adj} {what}{}.", Self::pet(p))
+                    trf("STR_THOUGHT_0B_LOOK_AT_THIS", &[("ADJ", &adj), ("WHAT", &what), ("PET", &Self::pet(p))])
                 } else {
-                    format!("Check out this {adj} {what}!")
+                    trf("STR_THOUGHT_0B_CHECK_OUT", &[("ADJ", &adj), ("WHAT", &what)])
                 }
             }
             0x0c => {
                 tone = Tone::Bad;
-                format!("Darn that stupid {t1}!")
+                trf("STR_THOUGHT_0C_DARN_THAT", &[("TERRAIN", &t1)])
             }
             0x0d => {
                 tone = Tone::Bad;
                 if rel == 2 || rel == 4 {
                     by_partner = true;
-                    format!("Did I hear a splash, {me}?")
+                    trf("STR_THOUGHT_0D_HEAR_A_SPLASH", &[("GOLFER", &me)])
                 } else {
-                    ["Argh, I drowned it!", "Did my ball go for a swim?", "Nooooo, I'm in the drink!"][(r % 3) as usize].into()
+                    [tr("STR_THOUGHT_0D_DROWNED_IT"), tr("STR_THOUGHT_0D_SWIM"), tr("STR_THOUGHT_0D_IN_THE_DRINK")][(r % 3) as usize].into()
                 }
             }
             0x0e => {
                 tone = Tone::Bad;
-                "I'm getting a little thirsty.".into()
+                tr("STR_THOUGHT_0E_THIRSTY").into()
             }
             0x0f => {
                 tone = Tone::Bad;
-                "I'm starting to get hungry.".into()
+                tr("STR_THOUGHT_0F_HUNGRY").into()
             }
-            0x10 => "Gosh, I kinda hooked that shot.".into(),
-            0x11 => "Oops, I really sliced that shot.".into(),
+            0x10 => tr("STR_THOUGHT_10_HOOKED").into(),
+            0x11 => tr("STR_THOUGHT_11_SLICED").into(),
             0x12 => {
                 tone = Tone::Good;
-                "There's nothing like a good snack on the course.".into()
+                tr("STR_THOUGHT_12_GOOD_SNACK").into()
             }
             0x13 | 0x17 => {
                 // the hole just finished: the golfer has moved on to the next one by the time the thought shows, so take it
@@ -326,26 +370,26 @@ impl Club {
                 let par = self.holes[hole].par;
                 let d = self.g[g].card[hole] as i32 - par;
                 let word = match d {
-                    -4 => "Triple Eagle!",
-                    -3 => "Double Eagle!",
-                    -2 => "Eagle!",
-                    -1 => "Birdie!",
-                    0 => "Par.",
-                    1 => "Bogey.",
-                    2 => "Double Bogey.",
-                    3 => "Triple Bogey.",
-                    _ => "Arggg!",
+                    -4 => tr("STR_THOUGHT_SCORE_TRIPLE_EAGLE"),
+                    -3 => tr("STR_THOUGHT_SCORE_DOUBLE_EAGLE"),
+                    -2 => tr("STR_THOUGHT_SCORE_EAGLE"),
+                    -1 => tr("STR_THOUGHT_SCORE_BIRDIE"),
+                    0 => tr("STR_THOUGHT_SCORE_PAR"),
+                    1 => tr("STR_THOUGHT_SCORE_BOGEY"),
+                    2 => tr("STR_THOUGHT_SCORE_DOUBLE_BOGEY"),
+                    3 => tr("STR_THOUGHT_SCORE_TRIPLE_BOGEY"),
+                    _ => tr("STR_THOUGHT_SCORE_ARGGG"),
                 };
                 let fl = self.holes[hole].flags;
                 let remark = if fl & 4 != 0 && d >= 2 {
                     tone = Tone::Bad;
-                    "This hole is too hard.".to_string()
+                    tr("STR_THOUGHT_13_TOO_HARD").to_string()
                 } else if fl & 8 != 0 && d < 0 {
                     tone = Tone::Bad;
-                    "This hole is too easy.".to_string()
+                    tr("STR_THOUGHT_13_TOO_EASY").to_string()
                 } else if id == 0x17 {
                     tone = Tone::Bad;
-                    "This hole is too hard/easy.".to_string()
+                    tr("STR_THOUGHT_17_TOO_HARD_EASY").to_string()
                 } else {
                     let s = (g + hole) & 3;
                     let class = self.g[g].class;
@@ -357,253 +401,268 @@ impl Club {
                     };
                     if mask & fl != 0 && d <= 0 {
                         match mask {
-                            0x100 => "My length skill helps on this hole.",
-                            0x200 => "This hole rewards my accuracy.",
-                            _ => "I had to use some imaginative shots here.",
+                            0x100 => tr("STR_THOUGHT_13_LENGTH_HELPS"),
+                            0x200 => tr("STR_THOUGHT_13_REWARDS_ACCURACY"),
+                            _ => tr("STR_THOUGHT_13_IMAGINATIVE"),
                         }
                         .to_string()
                     } else if (rel == 2 || rel == 4) && self.g[p].card[hole] != 0 {
                         if self.g[p].card[hole] > self.g[g].card[hole] {
-                            "take that, loser!".into()
+                            tr("STR_THOUGHT_13_TAKE_THAT").into()
                         } else {
-                            "you were lucky on this hole.".into()
+                            tr("STR_THOUGHT_13_YOU_WERE_LUCKY").into()
                         }
                     } else {
                         course_opinion(arg, d).into()
                     }
                 };
-                format!("{word} {remark}")
+                trf("STR_THOUGHT_13_HOLE_DONE", &[("SCORE", &word), ("REMARK", &remark)])
             }
             0x14 => {
                 tone = Tone::Bad;
-                format!("Gee, what an ugly {}.", feature(c, arg / 50, arg % 50, theme))
+                trf("STR_THOUGHT_14_UGLY", &[("WHAT", &feature(c, arg / 50, arg % 50, theme))])
             }
             0x15 => {
                 tone = Tone::Bad;
-                "I'm tired of waiting for these slowpokes.".into()
+                tr("STR_THOUGHT_15_SLOWPOKES").into()
             }
             0x16 => {
                 tone = Tone::Good;
-                let who = self.celebrities.get(arg.max(0) as usize).map(|c| c.name.clone()).unwrap_or_else(|| "a movie star".into());
-                format!("Hey, that's {who}'s house!")
+                let who = self
+                    .celebrities
+                    .get(arg.max(0) as usize)
+                    .map(|c| c.name.clone())
+                    .unwrap_or_else(|| tr("STR_THOUGHT_16_A_MOVIE_STAR").into());
+                trf("STR_THOUGHT_16_THATS_HOUSE", &[("CELEBRITY", &who)])
             }
             0x18 => {
                 tone = Tone::Bad;
-                "Yuck, there's something growing here that shouldn't be.".into()
+                tr("STR_THOUGHT_18_SOMETHING_GROWING").into()
             }
             0x19 => {
                 tone = Tone::Good;
-                "Ahhh, a cool foamy beverage.".into()
+                tr("STR_THOUGHT_19_FOAMY_BEVERAGE").into()
             }
             0x1a => match rel {
                 1 => {
                     by_partner = true;
-                    format!("You look a bit tired{}.", Self::pet(g))
+                    trf("STR_THOUGHT_1A_YOU_LOOK_TIRED_PET", &[("PET", &Self::pet(g))])
                 }
                 3 | 5 => {
                     by_partner = true;
-                    format!("You look a bit tired, {me}.")
+                    trf("STR_THOUGHT_1A_YOU_LOOK_TIRED", &[("GOLFER", &me)])
                 }
-                _ => "I'm starting to get tired.".into(),
+                _ => tr("STR_THOUGHT_1A_GETTING_TIRED").into(),
             },
             0x1b => {
                 tone = Tone::Good;
-                "This bench is so comfortable.".into()
+                tr("STR_THOUGHT_1B_COMFORTABLE_BENCH").into()
             }
             0x1c => {
                 tone = Tone::Good;
                 let what = feature(c, arg / 50, arg % 50, theme);
                 match rel {
-                    1 => format!("Look at that lovely {what}{}.", Self::pet(p)),
-                    3 | 5 => format!("Look at that lovely {what}, {partner}."),
+                    1 => trf("STR_THOUGHT_1C_LOVELY_PET", &[("WHAT", &what), ("PET", &Self::pet(p))]),
+                    3 | 5 => trf("STR_THOUGHT_1C_LOVELY_PARTNER", &[("WHAT", &what), ("PARTNER", &partner)]),
                     _ => match (male, r & 1) {
-                        (false, 0) => format!("My, that's a lovely {what}."),
-                        (false, _) => format!("Oh, what a nice {what}!"),
-                        (true, 0) => format!("I am liking that {what}."),
-                        _ => format!("Gee, that's a cool {what}!"),
+                        (false, 0) => trf("STR_THOUGHT_1C_MY_LOVELY", &[("WHAT", &what)]),
+                        (false, _) => trf("STR_THOUGHT_1C_WHAT_A_NICE", &[("WHAT", &what)]),
+                        (true, 0) => trf("STR_THOUGHT_1C_LIKING", &[("WHAT", &what)]),
+                        _ => trf("STR_THOUGHT_1C_COOL", &[("WHAT", &what)]),
                     },
                 }
             }
             0x1d => {
                 tone = Tone::Good;
-                "I like the variety on this course.".into()
+                tr("STR_THOUGHT_1D_VARIETY").into()
             }
             0x1e => {
                 tone = Tone::Bad;
                 let fl = self.holes[hole].flags;
                 let pf = self.holes[hole.saturating_sub(1)].flags;
                 if fl & 0x20 != 0 && pf & 0x20 != 0 {
-                    "Great, another dogleg left.".into()
+                    tr("STR_THOUGHT_1E_DOGLEG_LEFT").into()
                 } else if fl & 0x40 != 0 && pf & 0x40 != 0 {
-                    "Yawn, another dogleg right.".into()
+                    tr("STR_THOUGHT_1E_DOGLEG_RIGHT").into()
                 } else if hole > 1 && self.holes[hole].par == self.holes[hole - 1].par {
-                    format!("Wow, yet another par {}.", self.holes[hole].par)
+                    trf("STR_THOUGHT_1E_ANOTHER_PAR", &[("PAR", &self.holes[hole].par)])
                 } else {
-                    "This hole is like the last hole.".into()
+                    tr("STR_THOUGHT_1E_LIKE_THE_LAST").into()
                 }
             }
             0x1f => match r & 3 {
-                0 => format!("I've never seen such {noun}!"),
-                1 => format!("I see a ton of {noun}."),
-                2 => format!("Look at all the {noun}!"),
-                _ => format!("Could there be any more {noun}?"),
+                0 => trf("STR_THOUGHT_1F_NEVER_SEEN", &[("TERRAIN", &noun)]),
+                1 => trf("STR_THOUGHT_1F_TON_OF", &[("TERRAIN", &noun)]),
+                2 => trf("STR_THOUGHT_1F_LOOK_AT_ALL", &[("TERRAIN", &noun)]),
+                _ => trf("STR_THOUGHT_1F_ANY_MORE", &[("TERRAIN", &noun)]),
             },
             0x20 => {
                 tone = Tone::Good;
-                "Should I go long or play it safe?".into()
+                tr("STR_THOUGHT_20_LONG_OR_SAFE").into()
             }
             0x21 => {
                 tone = Tone::Good;
-                "Hmmm, should I go left or right?".into()
+                tr("STR_THOUGHT_21_LEFT_OR_RIGHT").into()
             }
             0x22 => {
                 tone = Tone::Good;
                 match arg {
-                    0 => "Great, thanks for asking!",
-                    1 => "Good, thanks for noticing.",
-                    2 => "Thanks for the encouragement.",
+                    0 => tr("STR_THOUGHT_22_THANKS_FOR_ASKING"),
+                    1 => tr("STR_THOUGHT_22_THANKS_FOR_NOTICING"),
+                    2 => tr("STR_THOUGHT_22_ENCOURAGEMENT"),
                     _ => "",
                 }
                 .into()
             }
             0x3a => match arg {
-                0 => "Hey, I'm trying to play golf here!",
-                1 => "Ummm, fine thanks.",
-                _ => "Lousy, now that you mention it.",
+                0 => tr("STR_THOUGHT_3A_TRYING_TO_PLAY"),
+                1 => tr("STR_THOUGHT_3A_FINE_THANKS"),
+                _ => tr("STR_THOUGHT_3A_LOUSY"),
             }
             .into(),
             0x23 => {
                 tone = Tone::Bad;
                 match ((self.tick as usize + g * 45) / 80) & 3 {
-                    0 => "I will never play this game again!",
-                    1 => "I hate my clubs, I hate my hat, I hate this course!",
-                    2 => "I am so mad I could just scream!",
-                    _ => "Come on, you want a piece of me?",
+                    0 => tr("STR_THOUGHT_23_NEVER_AGAIN"),
+                    1 => tr("STR_THOUGHT_23_HATE_MY_CLUBS"),
+                    2 => tr("STR_THOUGHT_23_SCREAM"),
+                    _ => tr("STR_THOUGHT_23_PIECE_OF_ME"),
                 }
                 .into()
             }
             0x24 => {
                 tone = Tone::Bad;
-                if arg != 0 { "That guy's gone crazy." } else { "Whoa, she's flipped out." }.into()
+                if arg != 0 { tr("STR_THOUGHT_24_GUY_CRAZY") } else { tr("STR_THOUGHT_24_SHE_FLIPPED") }.into()
             }
             0x27 => {
                 tone = Tone::Good;
-                let animal =
-                    crate::wildlife::KINDS.get(arg.max(0) as usize).map(|k| k.name.to_lowercase()).unwrap_or_else(|| "critter".into());
+                let animal = crate::wildlife::KINDS
+                    .get(arg.max(0) as usize)
+                    .map(|k| k.name().to_lowercase())
+                    .unwrap_or_else(|| tr("STR_THOUGHT_27_CRITTER").into());
                 if male {
-                    format!("I guess I scared that little {animal}.")
+                    trf("STR_THOUGHT_27_SCARED", &[("ANIMAL", &animal)])
                 } else {
-                    format!("I think I frightened that poor {animal}.")
+                    trf("STR_THOUGHT_27_FRIGHTENED", &[("ANIMAL", &animal)])
                 }
             }
-            0x28 => ["Oh mama!", "Ohh baby!", "Yes!", "Gadzooks!", "Oh yeah!", "A smoker!", "A screamer!", "Nailed it!"][(r & 7) as usize]
+            0x28 => [
+                tr("STR_THOUGHT_28_OH_MAMA"),
+                tr("STR_THOUGHT_28_OHH_BABY"),
+                tr("STR_THOUGHT_28_YES"),
+                tr("STR_THOUGHT_28_GADZOOKS"),
+                tr("STR_THOUGHT_28_OH_YEAH"),
+                tr("STR_THOUGHT_28_SMOKER"),
+                tr("STR_THOUGHT_28_SCREAMER"),
+                tr("STR_THOUGHT_28_NAILED_IT"),
+            ][(r & 7) as usize]
                 .into(),
-            0x29 => if g & 1 == 0 { "Clean and shiny." } else { "Now I'll hit it straight." }.into(),
+            0x29 => if g & 1 == 0 { tr("STR_THOUGHT_29_CLEAN_AND_SHINY") } else { tr("STR_THOUGHT_29_HIT_IT_STRAIGHT") }.into(),
             0x2a => {
                 by_partner = true;
-                format!("Lucky bounce, {me}!")
+                trf("STR_THOUGHT_2A_LUCKY_BOUNCE", &[("GOLFER", &me)])
             }
             0x2b => {
                 tone = Tone::Bad;
-                "Must I walk up this steep slope?".into()
+                tr("STR_THOUGHT_2B_STEEP_SLOPE").into()
             }
             0x2c => {
                 tone = Tone::Good;
-                "Never mind... nice landmark, though.".into()
+                tr("STR_THOUGHT_2C_NICE_LANDMARK").into()
             }
-            0x2d => "Hmmm, a tricky uphill shot.".into(),
+            0x2d => tr("STR_THOUGHT_2D_UPHILL").into(),
             0x2e => {
                 tone = Tone::Good;
-                "OK, a nice downhill shot.".into()
+                tr("STR_THOUGHT_2E_DOWNHILL").into()
             }
             0x2f => {
                 tone = Tone::Bad;
                 match r & 3 {
-                    0 => format!("{partner}, your attitude stinks."),
-                    1 => format!("Stop whining and play, {partner}."),
-                    2 => format!("Talk to the hand, {partner}."),
-                    _ => format!("Quiet, {partner}, I'm concentrating."),
+                    0 => trf("STR_THOUGHT_2F_ATTITUDE", &[("PARTNER", &partner)]),
+                    1 => trf("STR_THOUGHT_2F_STOP_WHINING", &[("PARTNER", &partner)]),
+                    2 => trf("STR_THOUGHT_2F_TALK_TO_THE_HAND", &[("PARTNER", &partner)]),
+                    _ => trf("STR_THOUGHT_2F_CONCENTRATING", &[("PARTNER", &partner)]),
                 }
             }
-            0x30 => format!("So what do you do, {partner}?"),
+            0x30 => trf("STR_THOUGHT_30_WHAT_DO_YOU_DO", &[("PARTNER", &partner)]),
             0x31 => {
                 let job = self.roster.get(r as usize).map(|p| p.job.clone()).unwrap_or_default();
                 if job.is_empty() {
-                    "Oh, this and that.".into()
+                    tr("STR_THOUGHT_31_THIS_AND_THAT").into()
                 } else {
-                    format!("I'm a {}.", job.to_lowercase())
+                    trf("STR_THOUGHT_31_IM_A", &[("JOB", &job.to_lowercase())])
                 }
             }
             0x33..=0x35 => {
                 let (k, second) = match id {
-                    0x33 => (10, "really helped my distance."),
-                    0x34 => (8, "really improved my accuracy."),
-                    _ => (6, "really improved my putting."),
+                    0x33 => (10, tr("STR_THOUGHT_33_HELPED_DISTANCE")),
+                    0x34 => (8, tr("STR_THOUGHT_34_IMPROVED_ACCURACY")),
+                    _ => (6, tr("STR_THOUGHT_35_IMPROVED_PUTTING")),
                 };
                 let lvl = c.level[k];
                 let name = match id {
-                    0x33 => "driving range",
-                    0x34 => "pro shop",
-                    _ => "putting green",
+                    0x33 => tr("STR_THOUGHT_33_DRIVING_RANGE"),
+                    0x34 => tr("STR_THOUGHT_34_PRO_SHOP"),
+                    _ => tr("STR_THOUGHT_35_PUTTING_GREEN"),
                 };
                 let first = match lvl {
-                    1 => format!("This new {name} has"),
-                    2 => format!("This upgraded {name} has"),
-                    3 => format!("Our deluxe {name} has"),
+                    1 => trf("STR_THOUGHT_33_NEW_HAS", &[("BUILDING", &name)]),
+                    2 => trf("STR_THOUGHT_33_UPGRADED_HAS", &[("BUILDING", &name)]),
+                    3 => trf("STR_THOUGHT_33_DELUXE_HAS", &[("BUILDING", &name)]),
                     _ => String::new(),
                 };
                 if first.is_empty() {
                     String::new()
                 } else if (self.tick as usize + g * 5) & 8 == 0 {
-                    format!("...{second}")
+                    trf("STR_THOUGHT_33_SECOND", &[("SECOND", &second)])
                 } else {
-                    format!("{first}...")
+                    trf("STR_THOUGHT_33_FIRST", &[("FIRST", &first)])
                 }
             }
             0x36 => {
                 if self.difficulty <= 1 {
                     tone = Tone::Good;
                 }
-                format!("I'll use my {} for this shot.", CLUBS[arg.clamp(0, 13) as usize])
+                trf("STR_THOUGHT_36_USE_MY_CLUB", &[("CLUB", &club_name(arg.clamp(0, 13) as usize))])
             }
-            0x37 => "I'll draw this shot from right to left.".into(),
-            0x38 => "I'll fade this shot from left to right.".into(),
-            0x39 => "I'll bring this ball in high and soft.".into(),
+            0x37 => tr("STR_THOUGHT_37_DRAW").into(),
+            0x38 => tr("STR_THOUGHT_38_FADE").into(),
+            0x39 => tr("STR_THOUGHT_39_HIGH_AND_SOFT").into(),
             0x3c => {
                 if is_tree(ty) {
-                    format!("I'll run this ball low under the {t1}.")
+                    trf("STR_THOUGHT_3C_LOW_UNDER", &[("TERRAIN", &t1)])
                 } else {
-                    "I'll run this ball low.".into()
+                    tr("STR_THOUGHT_3C_LOW").into()
                 }
             }
             0x3b => {
                 let m = self.member(g);
                 if m.card.get(hole).copied().unwrap_or(0) != 0 && self.holes[hole].flags & 1 == 0 {
-                    format!("I had a {} on this hole last time.", m.card[hole])
+                    trf("STR_THOUGHT_3B_LAST_TIME", &[("SCORE", &m.card[hole])])
                 } else if self.holes[hole].flags & 2 != 0 {
-                    "This hole is rated in the top 18 in the country.".into()
+                    tr("STR_THOUGHT_3B_TOP_18").into()
                 } else if self.holes[hole].flags & 1 != 0 {
-                    format!("You know, {partner}, hole {hole} is a top 100 hole.")
+                    trf("STR_THOUGHT_3B_TOP_100", &[("PARTNER", &partner), ("HOLE", &hole)])
                 } else {
                     tone = Tone::Good;
-                    "I've always liked this hole.".into()
+                    tr("STR_THOUGHT_3B_ALWAYS_LIKED").into()
                 }
             }
             0x3d => {
                 let ask = g & 1 == 1;
                 match (arg, ask) {
-                    (3, true) => format!("How are you today, {partner}?"),
-                    (3, false) => "Fine.".into(),
-                    (4, true) => "Are those new clubs?".into(),
-                    (4, false) => "They belong to my brother-in-law.".into(),
-                    (5, true) => "Looks like a great day for golf.".into(),
-                    (5, false) => "Sure does.".into(),
-                    (6, true) => "Listen to those birds singing.".into(),
-                    (6, false) => "It doesn't get any better than this.".into(),
-                    (7, true) => "Prepare to be amazed.".into(),
-                    (7, false) => "It's magic time.".into(),
-                    (_, true) => "Shall I tee off first?".into(),
-                    _ => "I don't care.".into(),
+                    (3, true) => trf("STR_THOUGHT_3D_HOW_ARE_YOU", &[("PARTNER", &partner)]),
+                    (3, false) => tr("STR_THOUGHT_3D_FINE").into(),
+                    (4, true) => tr("STR_THOUGHT_3D_NEW_CLUBS").into(),
+                    (4, false) => tr("STR_THOUGHT_3D_BROTHER_IN_LAW").into(),
+                    (5, true) => tr("STR_THOUGHT_3D_GREAT_DAY").into(),
+                    (5, false) => tr("STR_THOUGHT_3D_SURE_DOES").into(),
+                    (6, true) => tr("STR_THOUGHT_3D_BIRDS_SINGING").into(),
+                    (6, false) => tr("STR_THOUGHT_3D_ANY_BETTER").into(),
+                    (7, true) => tr("STR_THOUGHT_3D_PREPARE_AMAZED").into(),
+                    (7, false) => tr("STR_THOUGHT_3D_MAGIC_TIME").into(),
+                    (_, true) => tr("STR_THOUGHT_3D_TEE_OFF_FIRST").into(),
+                    _ => tr("STR_THOUGHT_3D_DONT_CARE").into(),
                 }
             }
             0x3e => {
@@ -613,21 +672,21 @@ impl Club {
             0x3f => {
                 let pro = self.g[g].vip() == 0x20;
                 match (pro, g & 3) {
-                    (true, 0) => "I brought my A game today.".into(),
-                    (true, 1) => "Might as well just give me the trophy now.".into(),
-                    (true, 2) => "I hope my caddie counted my clubs.".into(),
-                    (true, _) => "You losers might as well go home now.".into(),
-                    (false, 0) => "It's good to be back on the course.".into(),
-                    (false, 1) => format!("Wasn't that a great tournament, {partner}?"),
-                    (false, 2) => "I've already got tickets for the next one.".into(),
-                    _ => "I think I could have won that tournament.".into(),
+                    (true, 0) => tr("STR_THOUGHT_3F_A_GAME").into(),
+                    (true, 1) => tr("STR_THOUGHT_3F_TROPHY_NOW").into(),
+                    (true, 2) => tr("STR_THOUGHT_3F_CADDIE").into(),
+                    (true, _) => tr("STR_THOUGHT_3F_LOSERS_GO_HOME").into(),
+                    (false, 0) => tr("STR_THOUGHT_3F_GOOD_TO_BE_BACK").into(),
+                    (false, 1) => trf("STR_THOUGHT_3F_GREAT_TOURNAMENT", &[("PARTNER", &partner)]),
+                    (false, 2) => tr("STR_THOUGHT_3F_TICKETS").into(),
+                    _ => tr("STR_THOUGHT_3F_COULD_HAVE_WON").into(),
                 }
             }
             0x41 => {
                 if self.difficulty > 1 {
                     tone = Tone::Bad;
                 }
-                "I didn't see where that shot landed.".into()
+                tr("STR_THOUGHT_41_DIDNT_SEE").into()
             }
             _ => String::new(),
         };
@@ -638,19 +697,19 @@ impl Club {
 /// The course opinion at the end of a hole (0x469a20), by mood and the hole's score against par.
 pub fn course_opinion(mood: i32, d: i32) -> &'static str {
     match mood {
-        0 => "I hate this stupid course.",
-        1 => "I don't like this course much.",
-        2 => "I'm not having much fun today.",
-        3 => "This course is almost adequate.",
-        4 => "Well, I guess this course is OK.",
-        5 => "This course is quite nice.",
-        6 if d < 2 => "This is a really good course.",
-        6 => "This is a really surprising course.",
-        7 if d < 1 => "This course is excellent!",
-        7 => "This course is fascinating.",
-        8..=0x7f if d < 1 => "This is the best course I've ever played!",
-        8..=0x7f => "yet this is a most interesting course.",
-        _ => "I hate this course. I'm leaving.",
+        0 => tr("STR_THOUGHT_OPINION_0"),
+        1 => tr("STR_THOUGHT_OPINION_1"),
+        2 => tr("STR_THOUGHT_OPINION_2"),
+        3 => tr("STR_THOUGHT_OPINION_3"),
+        4 => tr("STR_THOUGHT_OPINION_4"),
+        5 => tr("STR_THOUGHT_OPINION_5"),
+        6 if d < 2 => tr("STR_THOUGHT_OPINION_6"),
+        6 => tr("STR_THOUGHT_OPINION_6_SURPRISING"),
+        7 if d < 1 => tr("STR_THOUGHT_OPINION_7"),
+        7 => tr("STR_THOUGHT_OPINION_7_FASCINATING"),
+        8..=0x7f if d < 1 => tr("STR_THOUGHT_OPINION_8"),
+        8..=0x7f => tr("STR_THOUGHT_OPINION_8_INTERESTING"),
+        _ => tr("STR_THOUGHT_OPINION_LEAVING"),
     }
 }
 

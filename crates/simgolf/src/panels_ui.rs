@@ -15,6 +15,7 @@ use crate::render::Rect;
 use crate::ui::{load_pcx, load_pcx_alpha, rgb, rgba, Image, Screen as Ui};
 use sg_core::economy::{self, Economy, WAGE_UNITS};
 use sg_core::land;
+use sg_core::lang::{tr, trf};
 
 /// A hit region of the exe (0x467170): with a = |dx * xs| and b = |dy * ys| the distance is (b + 2a) / 2 when b < a, else
 /// (a + 2b) / 2 (an octagon), and the point is inside when that is below r.
@@ -64,7 +65,7 @@ const TIP_DELAY_FRAMES: u32 = 10;
 
 /// What the exe shows when Undo is clicked (the port takes the click on the map instead of the right button; the money comes
 /// back the same way).
-const UNDO_HELP: &str = "Undo: click the map to take back what was built there. Your money will be refunded!";
+const UNDO_HELP: &str = "STR_PANEL_UNDO_HELP";
 
 // ---- Build Course: the terrain panel -------------------------------------------------------------------------------------------
 
@@ -104,38 +105,38 @@ const TERRAIN_TO_AMENITIES: (Hit, Cut, f32, f32) = (hit(237, 525, 20), (150.0, 4
 /// The terrain panel's Undo has a hover look only.
 const TERRAIN_UNDO: (Hit, Cut, f32, f32) = (hit(261, 578, 15), (40.0, 550.0, 34.0, 40.0), 246.0, 562.0);
 
-/// Name of a tile button in the theme (exe theme order), from the exe's per-theme tile table.
-fn tile_name(id: i32, theme: usize) -> &'static str {
+/// The text key of a tile button's name in the theme (exe theme order), from the exe's per-theme tile table ("?" for none).
+fn tile_key(id: i32, theme: usize) -> &'static str {
     match (theme, id) {
-        (1, 4) => "Desert",
-        (1, 5) => "Rough",
-        (1, 10) => "Ravine",
+        (1, 4) => "STR_TILE_DESERT",
+        (1, 5) => "STR_TILE_DESERT_ROUGH",
+        (1, 10) => "STR_TILE_RAVINE",
         // the desert's tree is drawn as a Joshua tree and its pine as a cactus (the button art and sg_core::decor agree)
-        (1, 13) => "Joshua tree",
-        (1, 14) => "Cactus",
-        (2, 11) => "Tropical bush",
-        (2, 13) => "Tropical tree",
+        (1, 13) => "STR_TILE_JOSHUA_TREE",
+        (1, 14) => "STR_TILE_CACTUS",
+        (2, 11) => "STR_TILE_TROPICAL_BUSH",
+        (2, 13) => "STR_TILE_TROPICAL_TREE",
         // the Links names are inferred
-        (3, 11) => "Gorse",
+        (3, 11) => "STR_TILE_GORSE",
         _ => [
-            "Tees",
-            "Green",
-            "Fairway",
-            "Firm fairway",
-            "Rough",
-            "Deep rough",
-            "Mound",
-            "Sand trap",
-            "Waste bunker",
-            "Pot bunker",
-            "Stream",
-            "Brush",
-            "Rocks",
-            "Tree",
-            "Pine tree",
-            "Palm tree",
-            "Elm tree",
-            "Water",
+            "STR_TILE_TEES",
+            "STR_TILE_GREEN",
+            "STR_TILE_FAIRWAY",
+            "STR_TILE_FIRM_FAIRWAY",
+            "STR_TILE_ROUGH",
+            "STR_TILE_DEEP_ROUGH",
+            "STR_TILE_MOUND",
+            "STR_TILE_SAND_TRAP",
+            "STR_TILE_WASTE_BUNKER",
+            "STR_TILE_POT_BUNKER",
+            "STR_TILE_STREAM",
+            "STR_TILE_BRUSH",
+            "STR_TILE_ROCKS",
+            "STR_TILE_TREE",
+            "STR_TILE_PINE_TREE",
+            "STR_TILE_PALM_TREE",
+            "STR_TILE_ELM_TREE",
+            "STR_TILE_WATER",
         ]
         .get(id as usize)
         .copied()
@@ -146,8 +147,9 @@ fn tile_name(id: i32, theme: usize) -> &'static str {
 /// A terrain type's name as the exe's terrain table holds it (lower case first letter: "tees", "fairway", "sand trap"), for
 /// types with a tile button.
 pub(crate) fn terrain_name(id: i32) -> Option<String> {
-    let n = tile_name(id, 0);
-    (n != "?").then(|| {
+    let key = tile_key(id, 0);
+    (key != "?").then(|| {
+        let n = tr(key);
         let mut c = n.chars();
         c.next().map(|f| f.to_lowercase().collect::<String>() + c.as_str()).unwrap_or_default()
     })
@@ -203,16 +205,16 @@ const fn amenity(tip: &'static str, kind: i32, hit: Hit, x: f32, y: f32, hover: 
 
 /// Slots by the exe's hit result (slot 8 is art the panel code never tests, so it is left out of the hit test).
 const AMENITIES: [AmenitySlot; 10] = [
-    amenity("Ballwasher", 3, hit(302, 563, 20), 274.0, 536.0, (0.0, 0.0, 60.0, 56.0)),
-    amenity("Pathway", 0, hit(333, 526, 20), 302.0, 504.0, (0.0, 100.0, 64.0, 50.0)),
-    amenity("Building Lot", 5, hit(363, 563, 20), 334.0, 538.0, (0.0, 200.0, 62.0, 50.0)),
-    amenity("Benches", 1, hit(470, 575, 18), 449.0, 553.0, (300.0, 0.0, 51.0, 47.0)),
-    amenity("Landmarks", 4, hit(591, 575, 18), 571.0, 553.0, (300.0, 100.0, 51.0, 45.0)),
-    amenity("Flower Bed", 2, hit(652, 575, 18), 632.0, 553.0, (300.0, 150.0, 51.0, 47.0)),
-    amenity("Scenic Trees", 16, hit(714, 575, 18), 693.0, 553.0, (300.0, 200.0, 51.0, 45.0)),
-    amenity("Undo", -1, hit(248, 567, 12), 234.0, 553.0, (0.0, 450.0, 36.0, 36.0)),
+    amenity("STR_AMENITY_BALLWASHER", 3, hit(302, 563, 20), 274.0, 536.0, (0.0, 0.0, 60.0, 56.0)),
+    amenity("STR_AMENITY_PATHWAY", 0, hit(333, 526, 20), 302.0, 504.0, (0.0, 100.0, 64.0, 50.0)),
+    amenity("STR_AMENITY_BUILDING_LOT", 5, hit(363, 563, 20), 334.0, 538.0, (0.0, 200.0, 62.0, 50.0)),
+    amenity("STR_AMENITY_BENCHES", 1, hit(470, 575, 18), 449.0, 553.0, (300.0, 0.0, 51.0, 47.0)),
+    amenity("STR_AMENITY_LANDMARKS", 4, hit(591, 575, 18), 571.0, 553.0, (300.0, 100.0, 51.0, 45.0)),
+    amenity("STR_AMENITY_FLOWER_BED", 2, hit(652, 575, 18), 632.0, 553.0, (300.0, 150.0, 51.0, 47.0)),
+    amenity("STR_AMENITY_SCENIC_TREES", 16, hit(714, 575, 18), 693.0, 553.0, (300.0, 200.0, 51.0, 45.0)),
+    amenity("STR_PANEL_UNDO", -1, hit(248, 567, 12), 234.0, 553.0, (0.0, 450.0, 36.0, 36.0)),
     amenity("", -1, hit(0, 0, 0), 762.0, 545.0, (0.0, 500.0, 38.0, 36.0)),
-    amenity("Scenic Bridge", 19, hit(531, 580, 12), 510.0, 553.0, (300.0, 50.0, 51.0, 45.0)),
+    amenity("STR_AMENITY_SCENIC_BRIDGE", 19, hit(531, 580, 12), 510.0, 553.0, (300.0, 50.0, 51.0, 45.0)),
 ];
 /// "Course Terrain": back to the terrain panel.
 const AMENITIES_BACK: (Hit, Cut, f32, f32) = (hit(269, 500, 16), (0.0, 400.0, 34.0, 34.0), 254.0, 483.0);
@@ -300,15 +302,15 @@ fn strip_button(i: i32, state: i32) -> Cut {
 
 /// Lot i places building kind 6 + i. The hover text (third line of the info box) is the exe's.
 const LOT_EFFECT: [&str; 9] = [
-    "Helps imaginative golfers",
-    "Feeds hungry golfers",
-    "Improves accurate golfers",
-    "Golfers become members",
-    "Helps long hitters",
-    "Golfers play faster",
-    "Increases property values",
-    "Golfers stay happier",
-    "Higher greens fees",
+    "STR_LOT_PUTTING_GREEN",
+    "STR_LOT_SNACK_BAR",
+    "STR_LOT_PRO_SHOP",
+    "STR_LOT_SWIM_CLUB",
+    "STR_LOT_DRIVING_RANGE",
+    "STR_LOT_CART_GARAGE",
+    "STR_LOT_MARINA",
+    "STR_LOT_RESORT_HOTEL",
+    "STR_LOT_AIRSTRIP",
 ];
 
 /// Hit region of lot i: an ellipse twice as wide as tall over its isometric slab.
@@ -337,19 +339,19 @@ const BUILDINGS_TO_ELEVATION: (Hit, Cut, f32, f32) = (hit(236, 526, 16), (150.0,
 /// Undo on the Buildings panel: hover and armed cuts at the same place.
 const BUILDINGS_UNDO: (Hit, Cut, Cut, f32, f32) = (hit(277, 567, 12), (40.0, 550.0, 34.0, 40.0), (80.0, 550.0, 34.0, 40.0), 261.0, 553.0);
 
-const MSG_UPGRADE_EARLY: &str = "Sorry, upgraded buildings are not available until you build beyond 9 holes.";
-const MSG_MAX_LEVEL: &str = "You cannot upgrade this building any further.";
+const MSG_UPGRADE_EARLY: &str = "STR_TOAST_NO_UPGRADES_YET";
+const MSG_MAX_LEVEL: &str = "STR_TOAST_NO_FURTHER_UPGRADE";
 // the typo is the exe's
-const MSG_LOCKED: &str = "This building is will become available as you build additional holes.";
+const MSG_LOCKED: &str = "STR_TOAST_BUILDING_LOCKED";
 
 // ---- Add Buildings: the elevation panel ----------------------------------------------------------------------------------------
 
 /// Tools 0 vertex, 1 square, 2 area, 3 Analyze Golf Shot: tooltip, hit, where drawn, hover cut, selected cut.
 const ELEVATION_TOOLS: [(&str, Hit, f32, f32, Cut, Cut); 4] = [
-    ("Raise/lower vertex", hit(352, 547, 25), 312.0, 501.0, (0.0, 0.0, 88.0, 99.0), (100.0, 0.0, 88.0, 99.0)),
-    ("Raise/lower square", hit(467, 547, 25), 429.0, 501.0, (0.0, 100.0, 88.0, 99.0), (100.0, 100.0, 88.0, 99.0)),
-    ("Raise/lower area", hit(587, 547, 25), 546.0, 501.0, (0.0, 200.0, 88.0, 99.0), (100.0, 200.0, 88.0, 99.0)),
-    ("Analyze Golf Shot", hit(715, 547, 16), 688.0, 501.0, (400.0, 0.0, 72.0, 99.0), (500.0, 0.0, 72.0, 99.0)),
+    ("STR_ELEVATION_VERTEX", hit(352, 547, 25), 312.0, 501.0, (0.0, 0.0, 88.0, 99.0), (100.0, 0.0, 88.0, 99.0)),
+    ("STR_ELEVATION_SQUARE", hit(467, 547, 25), 429.0, 501.0, (0.0, 100.0, 88.0, 99.0), (100.0, 100.0, 88.0, 99.0)),
+    ("STR_ELEVATION_AREA", hit(587, 547, 25), 546.0, 501.0, (0.0, 200.0, 88.0, 99.0), (100.0, 200.0, 88.0, 99.0)),
+    ("STR_ELEVATION_ANALYZE", hit(715, 547, 16), 688.0, 501.0, (400.0, 0.0, 72.0, 99.0), (500.0, 0.0, 72.0, 99.0)),
 ];
 /// "Buildings": back to the Buildings panel.
 const ELEVATION_BACK: (Hit, Cut, f32, f32) = (hit(270, 499, 16), (0.0, 400.0, 41.0, 44.0), 254.0, 483.0);
@@ -369,9 +371,9 @@ const SCROLL: [(Hit, f32, f32, Cut, Cut); 2] = [
 /// Move, Fire and Rename for the selected employee: tooltip, hit, where drawn, row on the sheet. Their cuts are 52 x 48 at
 /// x 400 hover, 500 armed (Move only), 600 disabled (nobody selected) and 700 idle.
 const EMP_ACTIONS: [(&str, Hit, f32, f32, f32); 3] = [
-    ("Move this employee", hit(647, 513, 16), 631.0, 497.0, 0.0),
-    ("Fire this employee", hit(699, 510, 16), 683.0, 494.0, 50.0),
-    ("Rename this employee", hit(756, 513, 16), 740.0, 497.0, 100.0),
+    ("STR_EMPLOYEE_MOVE", hit(647, 513, 16), 631.0, 497.0, 0.0),
+    ("STR_EMPLOYEE_FIRE", hit(699, 510, 16), 683.0, 494.0, 50.0),
+    ("STR_EMPLOYEE_RENAME", hit(756, 513, 16), 740.0, 497.0, 100.0),
 ];
 /// The eight portraits, column major; each hits round (x + 32, y + 16).
 const PORTRAITS: [(f32, f32); 8] =
@@ -381,18 +383,18 @@ const EMP_TAB_GOLFERS: (Hit, Cut, f32, f32) = (hit(286, 492, 16), (0.0, 400.0, 3
 const EMP_TAB_PLAYER: (Hit, Cut, f32, f32) = (hit(256, 510, 16), (0.0, 450.0, 33.0, 33.0), 240.0, 494.0);
 /// What the counter under a selected employee counts (regular, skilled).
 pub(crate) const COUNTERS: [[&str; 2]; 4] = [
-    ["Players greeted:", "Players cheered:"],
-    ["Players rushed:", "Slackers intimidated:"],
-    ["Weeds destroyed:", "Weeds eradicated:"],
-    ["Beverages served:", "Satisfied customers:"],
+    ["STR_COUNTER_GREETED", "STR_COUNTER_CHEERED"],
+    ["STR_COUNTER_RUSHED", "STR_COUNTER_INTIMIDATED"],
+    ["STR_COUNTER_WEEDS_DESTROYED", "STR_COUNTER_WEEDS_ERADICATED"],
+    ["STR_COUNTER_BEVERAGES", "STR_COUNTER_SATISFIED"],
 ];
 /// The hire dialog: four kinds in bands 40 pixels tall, the upper half the regular hire, the lower the skilled one (the exe
 /// tests only the pointer's y).
 const HIRE_BAND_Y: [f32; 4] = [171.0, 242.0, 313.0, 384.0];
 /// The hire dialog's OK tick (docs/UI_SCREENS.md section 11).
 const HIRE_OK: (f32, f32) = (553.0, 422.0);
-const HIRE_BLURB: [&str; 4] = ["Greeters...", "Speed up play...", "Weed Killers...", "Thirst quenchers..."];
-const SKILLED_REFUSAL: &str = "You need to build up to a Daily Fee course (6 or more holes) before you can hire skilled employees.";
+const HIRE_BLURB: [&str; 4] = ["STR_HIRE_GREETERS", "STR_HIRE_SPEED_UP", "STR_HIRE_WEED_KILLERS", "STR_HIRE_THIRST"];
+const SKILLED_REFUSAL: &str = "STR_HIRE_SKILLED_REFUSAL";
 
 fn hire_choice_at(px: f32, py: f32) -> Option<usize> {
     if !(224.0..523.0).contains(&px) {
@@ -570,7 +572,8 @@ impl App {
                 s.image_part(g, t, x - 76.0 + 16.0 * k as f32, 389.0, sx, 60.0, 16.0, 19.0);
             }
         }
-        let name = tile_name(id, theme);
+        let key = tile_key(id, theme);
+        let name = tr(key);
         // footage of the original shows "Fairway 300", "Pot bunker 800": no money sign
         let title = format!("{} {}", capitalised(name), Economy::terrain_cost_units(id) * 100);
         s.put_centered(g, F_MANUAL15, x - 12.0, 394.0, &title, rgb(0.0, 0.0, 0.0));
@@ -578,7 +581,8 @@ impl App {
         let k = ((4 - row.hazard as i32) * 2).clamp(1, 10);
         s.image_part(g, &self.hud.faces, x - 90.0, 391.0, 594.0 - 16.0 * (k - 1) as f32, 100.0, 16.0, 16.0);
         // 0x45b0d0: greedy lines of at most 16 * 8 pixels, the line height less 4 (at least 10) apart, while above y 584
-        let text = terrain_text(self, theme, name);
+        // the theme's text file names the tiles in English
+        let text = terrain_text(self, theme, sg_core::lang::en(key));
         let pitch = (F_ARIAL10.line() - 4.0).max(10.0);
         let mut y = 410.0;
         let mut line = String::new();
@@ -897,7 +901,7 @@ impl App {
         // the current tool's name over its button, white on a shadow, in every frame of the footage (not decoded)
         if let Some(i) = (0..16).find(|&i| current == Some(tile_id(i))) {
             let r = terrain_slot_rect(i, theme);
-            let name = capitalised(tile_name(tile_id(i), theme));
+            let name = capitalised(tr(tile_key(tile_id(i), theme)));
             let (cx, y) = (r.x + r.w * 0.5, r.y + LABEL_DY);
             s.put_centered(g, crate::ui::F_ARIAL10, cx + 1.0, y + 1.0, &name, rgb(0.0, 0.0, 0.0));
             s.put_centered(g, crate::ui::F_ARIAL10, cx, y, &name, rgb(1.0, 1.0, 1.0));
@@ -907,8 +911,8 @@ impl App {
         }
         let (mx, my) = self.pstate.mouse;
         match h {
-            -2 => tip_bar(g, s, "Amenities", mx, my),
-            -3 => tip_bar(g, s, "Undo", mx, my),
+            -2 => tip_bar(g, s, tr("STR_TIP_AMENITIES"), mx, my),
+            -3 => tip_bar(g, s, tr("STR_PANEL_UNDO"), mx, my),
             _ => {}
         }
     }
@@ -996,10 +1000,19 @@ impl App {
             let name = sg_core::vips::landmark_short_name(hot);
             let mut ch = name.chars();
             let name = ch.next().map(|f| f.to_uppercase().collect::<String>() + ch.as_str()).unwrap_or_default();
-            let price = if self.club.free_landmarks & (1 << hot) != 0 { "FREE!".to_string() } else { ((hot * 5 + 25) * 200).to_string() };
+            let price = if self.club.free_landmarks & (1 << hot) != 0 {
+                tr("STR_LANDMARK_FREE").to_string()
+            } else {
+                ((hot * 5 + 25) * 200).to_string()
+            };
             // the exe's bars at the pointer less 12 and less 2 (tip_bar's point is the exe's plus 5)
-            tip_bar(g, s, &format!("{name}, {price}"), mx, my - 7.0);
-            let effect = ["Happy Golfers", "No Dandelions", "Skill Upgrade", "Happy Endings"][(hot & 3) as usize];
+            tip_bar(g, s, &trf("STR_LANDMARK_TIP", &[("LANDMARK", &name), ("PRICE", &price)]), mx, my - 7.0);
+            let effect = [
+                tr("STR_LANDMARK_EFFECT_HAPPY_GOLFERS"),
+                tr("STR_LANDMARK_EFFECT_NO_DANDELIONS"),
+                tr("STR_LANDMARK_EFFECT_SKILL_UPGRADE"),
+                tr("STR_LANDMARK_EFFECT_HAPPY_ENDINGS"),
+            ][(hot & 3) as usize];
             tip_bar(g, s, effect, mx, my + 3.0);
         }
     }
@@ -1026,22 +1039,22 @@ impl App {
         let (mx, my) = self.pstate.mouse;
         match h {
             // 0x432f..: the bars sit 20 right of the pointer and 10 below it for the back button
-            -2 => tip_bar(g, s, "Course Terrain", mx + 20.0, my + 15.0),
+            -2 => tip_bar(g, s, tr("STR_TIP_COURSE_TERRAIN"), mx + 20.0, my + 15.0),
             i if i >= 0 => {
                 // a slot's bars hang from its picture's corner (the exe's table 0x4c7a98): the name on a bar centred at
                 // (x + 20, y + 10), the cost in dollars as a plain number on a second bar 10 lower ("Scenic Bridge / 10000"
                 // in footage of the original); the Landmarks show the range "5000-20,000", Undo has no cost
                 let sl = &AMENITIES[i as usize];
                 let (x, y) = (sl.x + 20.0, sl.y);
-                tip_bar(g, s, sl.tip, x, y + 15.0);
+                tip_bar(g, s, tr(sl.tip), x, y + 15.0);
                 let cost = match sl.kind {
                     -1 => None,
-                    4 => Some("5000-20,000".to_string()),
+                    4 => Some(tr("STR_AMENITY_LANDMARK_COST").to_string()),
                     k => Some((land::BUILDINGS[k as usize].2 as i64 * 100).to_string()),
                 };
                 if let Some(c) = cost {
                     // the cost's bar has the name's width (0x4493d0 with the same ends)
-                    tip_bar_sized(g, s, &c, sl.tip.len(), x, y + 25.0);
+                    tip_bar_sized(g, s, &c, tr(sl.tip).len(), x, y + 25.0);
                 }
             }
             _ => {}
@@ -1085,8 +1098,8 @@ impl App {
         }
         let (mx, my) = self.pstate.mouse;
         match h {
-            -2 => tip_bar(g, s, "Elevation", mx, my),
-            -3 => tip_bar(g, s, "Undo", mx, my),
+            -2 => tip_bar(g, s, tr("STR_TIP_ELEVATION"), mx, my),
+            -3 => tip_bar(g, s, tr("STR_PANEL_UNDO"), mx, my),
             _ => {}
         }
     }
@@ -1100,15 +1113,15 @@ impl App {
         self.popup_frame(g, s, cx - 80.0, 460.0, 160.0, 100.0);
         // the Snack Bar never says "Upgraded" nor shows the upgrade price
         let up = level != 0 && i != 1;
-        let name = land::BUILDINGS[6 + i].0;
+        let name = land::building_name(6 + i as i32);
         let units = land::BUILDINGS[6 + i].2 as i64;
         let dollars = if up { units * 300 / 2 } else { units * 100 };
         let ink = rgb(0.0, 0.0, 0.0);
-        let title = if up { format!("Upgraded {name}") } else { name.to_string() };
+        let title = if up { trf("STR_LOT_UPGRADED", &[("BUILDING", &name)]) } else { name.to_string() };
         let f = crate::ui::F_ARIAL10;
         s.put_centered(g, f, cx, 462.0, &title, ink);
-        s.put_centered(g, f, cx, 472.0, &format!("Cost: {}", crate::ui::group(dollars.max(0) as u64)), ink);
-        s.put_centered(g, f, cx, 482.0, LOT_EFFECT[i], ink);
+        s.put_centered(g, f, cx, 472.0, &trf("STR_TIP_COST", &[("COST", &crate::ui::group(dollars.max(0) as u64))]), ink);
+        s.put_centered(g, f, cx, 482.0, tr(LOT_EFFECT[i]), ink);
     }
 
     /// The exe's pop-up frame (0x40d0b0): a size that is not a multiple of 16 grows to the next 16 - 1 (a remainder r adds
@@ -1175,9 +1188,9 @@ impl App {
         if tip {
             let (mx, my) = self.pstate.mouse;
             let t = match h {
-                -2 => "Buildings",
-                -3 => "Undo",
-                i => ELEVATION_TOOLS[i as usize].0,
+                -2 => tr("STR_TIP_BUILDINGS"),
+                -3 => tr("STR_PANEL_UNDO"),
+                i => tr(ELEVATION_TOOLS[i as usize].0),
             };
             tip_bar(g, s, t, mx, my);
         }
@@ -1255,18 +1268,21 @@ impl App {
             // centred at x 700, black, placed by their tops: the name (in the face the frame last used, taken to be the body
             // face 0x51b360, derived), "Hired: <Month> <Year>", "Paid: <dollars>" (grouped, no currency sign) and the counter
             // label in Arial Bold 10 (0x519fd8), the count in the body face
-            let month = ["March", "April", "May", "June", "July", "August", "September", "October"][(e.hired & 7) as usize];
+            let month = tr(crate::hud_ui::MONTH_KEYS[(e.hired & 7) as usize]);
             let paid = e.paid as i64 * 100;
             let lines = [
                 (534.0, self.employee_name(&e), crate::ui::Face::Manual, 15.0),
-                (546.0, format!("Hired: {month} {}", 2001 + (e.hired >> 3)), crate::ui::Face::Arial, 10.0),
+                (546.0, trf("STR_EMPLOYEE_HIRED", &[("MONTH", &month), ("YEAR", &(2001 + (e.hired >> 3)))]), crate::ui::Face::Arial, 10.0),
                 (
                     558.0,
-                    format!("Paid: {}{}", if paid < 0 { "-" } else { "" }, crate::ui::group(paid.unsigned_abs())),
+                    trf(
+                        "STR_EMPLOYEE_PAID",
+                        &[("SIGN", &(if paid < 0 { "-" } else { "" })), ("AMOUNT", &crate::ui::group(paid.unsigned_abs()))],
+                    ),
                     crate::ui::Face::Arial,
                     10.0,
                 ),
-                (572.0, COUNTERS[kind][up].to_string(), crate::ui::Face::Arial, 10.0),
+                (572.0, tr(COUNTERS[kind][up]).to_string(), crate::ui::Face::Arial, 10.0),
                 (584.0, format!("{}", e.served), crate::ui::Face::Manual, 15.0),
             ];
             for (y, t, face, size) in lines {
@@ -1279,9 +1295,9 @@ impl App {
             let (mx, my) = self.pstate.mouse;
             let pro = self.pro_name();
             let t = match h {
-                0 => "Hire employees",
-                4..=6 => EMP_ACTIONS[(h - 4) as usize].0,
-                -2 => "Golfers",
+                0 => tr("STR_TIP_HIRE_EMPLOYEES_LOWER"),
+                4..=6 => tr(EMP_ACTIONS[(h - 4) as usize].0),
+                -2 => tr("STR_TIP_GOLFERS"),
                 -3 => pro.as_str(),
                 _ => "",
             };
@@ -1325,12 +1341,12 @@ impl App {
         // fonts (0x459400): the title in 0x821020 (Klepto 24) centred at (377, 107), the rest in 0x821ee8 (Manual SSi 14),
         // all black: each kind's blurb left at 231 with its top at 0x97 + 0x47 k, 20 above its first line, the wage lines
         // left at 246
-        s.put_centered(g, crate::ui::F_INFO_TITLE, 377.0, 107.0, "HIRE AN EMPLOYEE", ink);
+        s.put_centered(g, crate::ui::F_INFO_TITLE, 377.0, 107.0, tr("STR_HIRE_TITLE"), ink);
         let (mx, my) = self.pstate.mouse;
         let hot = hire_choice_at(mx, my);
         for k in 0..4 {
             let y = HIRE_BAND_Y[k];
-            s.put(g, crate::ui::F_INFO14, 231.0, y - 20.0, HIRE_BLURB[k], ink);
+            s.put(g, crate::ui::F_INFO14, 231.0, y - 20.0, tr(HIRE_BLURB[k]), ink);
             for sk in 0..2 {
                 let c = 2 * k + sk;
                 let ty = y + sk as f32 * 20.0;
@@ -1343,7 +1359,10 @@ impl App {
                 // 0x42dc00 and " per week", left at 0xf6 with its top at the line's y (the heading's + 20, + 40), black;
                 // footage of the original: a Municipal course lists the skilled lines in black like the rest (the
                 // refusal comes on the click)
-                let text = format!("{}: {} per week", STAFF_NAMES[k][sk], crate::ui::group((WAGE_UNITS[k][sk] * 100) as u64));
+                let text = trf(
+                    "STR_HIRE_WAGE",
+                    &[("EMPLOYEE", &staff_title(k, sk == 1)), ("WAGE", &crate::ui::group((WAGE_UNITS[k][sk] * 100) as u64))],
+                );
                 s.put(g, crate::ui::F_INFO14, 246.0, ty, &text, ink);
             }
             // 0x459400: the box beside each kind shows it walking, the skilled version while its line is hovered, in view k,
@@ -1394,7 +1413,7 @@ impl App {
     fn arm_undo(&mut self) {
         self.tool = 5;
         self.edit = true;
-        self.show_toast(UNDO_HELP);
+        self.show_toast(tr(UNDO_HELP));
     }
 
     fn terrain_click(&mut self, h: i32) -> bool {
@@ -1438,11 +1457,7 @@ impl App {
                 let slot = i as usize;
                 if self.amenity_disabled(slot) {
                     self.ui_sound(0x18);
-                    let why = if slot == 2 {
-                        "No home sites are free: each Silver (or better) member buys one lot."
-                    } else {
-                        "The club has no landmark to place yet."
-                    };
+                    let why = if slot == 2 { tr("STR_TOAST_NO_HOME_SITES") } else { tr("STR_TOAST_NO_LANDMARK") };
                     self.show_toast(why);
                     return true;
                 }
@@ -1483,9 +1498,9 @@ impl App {
                 let kind = 6 + i;
                 let level = self.lot_level(kind);
                 let refusal = if (level != 0 && economy::rank(self.hole_numbers.len()) < 2) || level > 1 {
-                    Some(if level < 2 { MSG_UPGRADE_EARLY } else { MSG_MAX_LEVEL })
+                    Some(tr(if level < 2 { MSG_UPGRADE_EARLY } else { MSG_MAX_LEVEL }))
                 } else if !self.build_available(kind as usize) {
-                    Some(MSG_LOCKED)
+                    Some(tr(MSG_LOCKED))
                 } else {
                     None
                 };
@@ -1522,7 +1537,7 @@ impl App {
                 // map is left alone (placeholder)
                 self.pstate.elev_tool = 3;
                 self.edit = false;
-                self.show_toast("Analyze Golf Shot is not available yet");
+                self.show_toast(tr("STR_TOAST_ANALYZE_NOT_AVAILABLE"));
             }
             i if i >= 0 => {
                 self.pstate.elev_tool = i as usize;
@@ -1551,8 +1566,8 @@ impl App {
                 let Some(i) = sel else { return false };
                 let e = self.employees[i];
                 self.moving_employee = Some(i);
-                let name = STAFF_NAMES[(-2 - e.job as i32).clamp(0, 3) as usize][e.upgraded as usize];
-                self.show_toast(&format!("Click the course where the {name} should work"));
+                let name = staff_title((-2 - e.job as i32).clamp(0, 3) as usize, e.upgraded);
+                self.show_toast(&trf("STR_TOAST_EMPLOYEE_CLICK", &[("EMPLOYEE", &name)]));
             }
             5 => {
                 let Some(i) = sel else { return false };
@@ -1565,7 +1580,7 @@ impl App {
                 if sel.is_none() {
                     return false;
                 }
-                self.show_toast("Employees cannot be renamed yet");
+                self.show_toast(tr("STR_TOAST_CANNOT_RENAME"));
             }
             8..=15 => {
                 let Some(&i) = rows.get(self.pstate.emp_off + (h - 8) as usize) else { return false };
@@ -1592,7 +1607,7 @@ impl App {
             let (kind, skilled) = (c / 2, c % 2 == 1);
             if skilled && economy::rank(self.hole_numbers.len()) < 1 {
                 self.ui_sound(0x18);
-                self.show_toast(SKILLED_REFUSAL);
+                self.show_toast(tr(SKILLED_REFUSAL));
                 return;
             }
             if self.hire_employee(kind, skilled) {

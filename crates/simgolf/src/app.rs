@@ -9,6 +9,7 @@ use sg_core::economy::{self, Economy};
 use sg_core::fsutil::resolve;
 use sg_core::golfer::{self as golf, Club};
 use sg_core::land::{self, ExeRng, Land, Noise, Slot};
+use sg_core::lang::{tr, trf};
 use sg_core::mixer::Mixer;
 use sg_core::properties::{PROPERTIES, START_FUNDS};
 use sg_core::sprites::{load_sprite, Sprite};
@@ -163,37 +164,38 @@ pub struct HoleStat {
 }
 
 pub struct PaintEntry {
-    pub name: &'static str,
+    /// The brush's name (a text key).
+    pub name_key: &'static str,
     pub ty: i32,
     pub vbyte: i32,
 }
 
 pub const PAINT: [PaintEntry; 24] = [
-    PaintEntry { name: "Fairway", ty: 2, vbyte: 0 },
-    PaintEntry { name: "Firm fairway", ty: 3, vbyte: 0 },
-    PaintEntry { name: "Green", ty: 1, vbyte: 0 },
-    PaintEntry { name: "Tee", ty: 0, vbyte: 0 },
-    PaintEntry { name: "Rough", ty: 4, vbyte: 0 },
-    PaintEntry { name: "Deep rough", ty: 5, vbyte: 0 },
-    PaintEntry { name: "Woods", ty: 13, vbyte: 0 },
-    PaintEntry { name: "Sand bunker", ty: 7, vbyte: 0 },
-    PaintEntry { name: "Pot bunker", ty: 9, vbyte: 0 },
-    PaintEntry { name: "Water shallow", ty: 17, vbyte: 0 },
-    PaintEntry { name: "Water middle", ty: 17, vbyte: 1 },
-    PaintEntry { name: "Water deep", ty: 17, vbyte: 2 },
-    PaintEntry { name: "Rock", ty: 12, vbyte: 0 },
-    PaintEntry { name: "Brush", ty: 11, vbyte: 0 },
-    PaintEntry { name: "Building lot", ty: 22, vbyte: 0 },
-    PaintEntry { name: "Cliff (editor id)", ty: 31, vbyte: 0 },
-    PaintEntry { name: "Ravine (editor id)", ty: 32, vbyte: 0 },
-    PaintEntry { name: "Flower bed (editor id)", ty: 33, vbyte: 0 },
-    PaintEntry { name: "Zen sand (editor id)", ty: 34, vbyte: 0 },
-    PaintEntry { name: "Grass bunker (editor id)", ty: 35, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_FAIRWAY", ty: 2, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_FIRM_FAIRWAY", ty: 3, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_GREEN", ty: 1, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_TEE", ty: 0, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_ROUGH", ty: 4, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_DEEP_ROUGH", ty: 5, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_WOODS", ty: 13, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_SAND_BUNKER", ty: 7, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_POT_BUNKER", ty: 9, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_WATER_SHALLOW", ty: 17, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_WATER_MIDDLE", ty: 17, vbyte: 1 },
+    PaintEntry { name_key: "STR_PAINT_WATER_DEEP", ty: 17, vbyte: 2 },
+    PaintEntry { name_key: "STR_PAINT_ROCK", ty: 12, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_BRUSH", ty: 11, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_BUILDING_LOT", ty: 22, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_CLIFF", ty: 31, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_RAVINE", ty: 32, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_FLOWER_BED", ty: 33, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_ZEN_SAND", ty: 34, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_GRASS_BUNKER", ty: 35, vbyte: 0 },
     // the rest of the Build Course panel's buttons, which paint these exe tile ids directly
-    PaintEntry { name: "Waste bunker", ty: 8, vbyte: 0 },
-    PaintEntry { name: "Stream", ty: 10, vbyte: 0 },
-    PaintEntry { name: "Pine tree", ty: 14, vbyte: 0 },
-    PaintEntry { name: "Palm tree", ty: 15, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_WASTE_BUNKER", ty: 8, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_STREAM", ty: 10, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_PINE_TREE", ty: 14, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_PALM_TREE", ty: 15, vbyte: 0 },
 ];
 
 /// Building kinds the Add Buildings panel offers, in the exe's order (kind numbers of `land::BUILDINGS`): benches, flower beds,
@@ -309,8 +311,8 @@ const SAVE_MAGIC: &[u8] = b"SIMGOLF-NATIVE-SAVE\n";
 
 /// Reads a whole game saved by `App::save_game` (also used for the Load screen's preview of a save).
 pub fn read_save(path: &Path) -> Result<SaveGame, String> {
-    let data = sg_core::fsutil::read_file(path).ok_or_else(|| format!("{}: not found", path.display()))?;
-    let body = data.strip_prefix(SAVE_MAGIC).ok_or_else(|| format!("{}: not a saved game", path.display()))?;
+    let data = sg_core::fsutil::read_file(path).ok_or_else(|| trf("STR_ERROR_FILE_NOT_FOUND", &[("FILE", &path.display())]))?;
+    let body = data.strip_prefix(SAVE_MAGIC).ok_or_else(|| trf("STR_ERROR_NOT_A_SAVED_GAME", &[("FILE", &path.display())]))?;
     let json = miniz_oxide::inflate::decompress_to_vec_zlib(body).map_err(|e| format!("{}: {e:?}", path.display()))?;
     serde_json::from_slice(&json).map_err(|e| format!("{}: {e}", path.display()))
 }
@@ -732,7 +734,7 @@ impl App {
             staff_clips: [[(None, None); 3]; 9],
             weed_sprite: None,
             bed_palette: [0; 18],
-            course_name: "Demo Course".into(),
+            course_name: tr("STR_DEMO_COURSE").into(),
             screen: Screen::Play,
             title_base: Image::default(),
             title_un: Image::default(),
@@ -1782,7 +1784,7 @@ impl App {
                 let text = self.welcome_text();
                 self.post_message(&text, 1, -4);
             } else if tick == 0x1400 {
-                self.post_message(DESIGN_TIP, 0, -4);
+                self.post_message(tr(DESIGN_TIP), 0, -4);
             }
         }
         if self.econ.sandbox {
@@ -1850,12 +1852,10 @@ impl App {
                 .iter()
                 .skip(1)
                 .filter(|o| (6..=14).contains(&o.kind) && o.flags & 0x40 == 0)
-                .map(|o| land::BUILDINGS[o.kind as usize].0.to_string())
+                .map(|o| land::building_name(o.kind).to_string())
                 .collect();
             for name in cut {
-                self.show_toast(&format!(
-                    "WARNING: Your {name} will not be operational until you have a path connecting it to your clubhouse."
-                ));
+                self.show_toast(&trf("STR_TOAST_NOT_OPERATIONAL", &[("BUILDING", &name)]));
             }
         }
         if tick > 0 && tick & 0x1fff == 0 && !self.club.championship() {
@@ -2101,7 +2101,7 @@ impl App {
         let land = land::generate(slot_index, self.offer[slot_index], self.difficulty, sandbox, &mut self.exe_rng, &self.noise);
         self.terrain = land.to_terrain();
         self.land = Some(land);
-        self.course_name = p.course.to_string();
+        self.course_name = p.course().to_string();
         self.load_theme(g, p.theme);
         self.club.course_name = self.course_name.clone();
         self.club.course_theme = self.exe_theme();
@@ -2124,7 +2124,7 @@ impl App {
         self.cam_z = z;
         println!(
             "new game: {}, {} acres, price {}, cash left {:.0}{}",
-            p.name,
+            p.name(),
             acres,
             price,
             self.econ.start_cash,
@@ -2183,7 +2183,7 @@ impl App {
         if sg_core::fsutil::write_file(path, &out) {
             Ok(())
         } else {
-            Err(format!("{}: could not write", path.display()))
+            Err(trf("STR_ERROR_COULD_NOT_WRITE", &[("FILE", &path.display())]))
         }
     }
 
@@ -2210,7 +2210,7 @@ impl App {
         }
         self.adopt_holes = false;
         if !self.load_theme(g, s.theme) {
-            return Err("could not load the theme".into());
+            return Err(tr("STR_ERROR_THEME_NOT_LOADED").into());
         }
         self.club = s.club;
         self.register_portraits(g);
@@ -2382,7 +2382,7 @@ impl App {
         }
         if broke {
             self.ui_sound(24);
-            self.show_toast("You don't have enough money.");
+            self.show_toast(tr("STR_TOAST_NOT_ENOUGH_MONEY"));
         } else if refused {
             self.ui_sound(24);
         }
@@ -2441,10 +2441,9 @@ impl App {
         }
         let cost = price as f64 * Economy::UNIT;
         if !self.econ.affordable(cost, self.hole_numbers.len()) {
-            self.show_toast(&format!(
-                "This change costs {}. You have only {}.",
-                crate::ui::money(cost as i64),
-                crate::ui::money(self.econ.cash as i64)
+            self.show_toast(&trf(
+                "STR_TOAST_CHANGE_COSTS",
+                &[("COST", &crate::ui::money(cost as i64)), ("CASH", &crate::ui::money(self.econ.cash as i64))],
             ));
             return;
         }
@@ -2556,7 +2555,7 @@ impl App {
         };
         let amount = cost as f64 * Economy::UNIT;
         if !self.econ.affordable(amount, holes) {
-            self.show_toast(&format!("This change costs {}. You have only {}.", money(amount as i64), money(self.econ.cash as i64)));
+            self.show_toast(&trf("STR_TOAST_CHANGE_COSTS", &[("COST", &money(amount as i64)), ("CASH", &money(self.econ.cash as i64))]));
             self.ui_sound(24);
             return false;
         }
@@ -2640,7 +2639,7 @@ impl App {
                     self.econ.spend_to(economy::LEDGER_HOME_SITES, c as f64 * Economy::UNIT);
                 }
                 self.after_object_change();
-                self.show_toast("Building demolished");
+                self.show_toast(tr("STR_TOAST_BUILDING_DEMOLISHED"));
                 self.snd("Interface/Building.wav", 0.7, false);
             }
             land::Undone::Refund(r) => {
@@ -2689,22 +2688,22 @@ impl App {
         let Some(land) = self.land.as_mut() else { return };
         land.sync_from_terrain(&self.terrain);
         if !self.build_available(kind as usize) {
-            return self.show_toast("Build more holes to unlock this building");
+            return self.show_toast(tr("STR_TOAST_BUILD_MORE_HOLES"));
         }
         let Some(land) = self.land.as_mut() else { return };
         let existing = if kind >= 6 { land.objects.iter().position(|o| o.kind == kind) } else { None };
         if existing.is_some() && economy::rank(holes) < 2 {
             self.ui_sound(24);
-            return self.show_toast("Sorry, upgraded buildings are not available until you build beyond 9 holes.");
+            return self.show_toast(tr("STR_TOAST_NO_UPGRADES_YET"));
         }
         if existing.is_some_and(|i| land.objects[i].sub >= 1) {
             self.ui_sound(24);
-            return self.show_toast("You cannot upgrade this building any further.");
+            return self.show_toast(tr("STR_TOAST_NO_FURTHER_UPGRADE"));
         }
         // an upgrade is placed one tile larger
         let size = land::BUILDINGS[kind as usize].1 + existing.is_some() as i32;
         let Some(mut clear) = land.fits(tx, ty, size, kind, theme) else {
-            return self.show_toast("There is no room for that building there");
+            return self.show_toast(tr("STR_TOAST_NO_ROOM"));
         };
         if kind == 0 {
             clear /= 2;
@@ -2719,14 +2718,13 @@ impl App {
             cost = if self.club.free_landmarks & (1 << t) != 0 { 0.0 } else { ((t * 5 + 25) * 2) as f64 * Economy::UNIT };
         }
         if !self.econ.affordable(cost, holes) {
-            return self.show_toast(&format!("This change costs {}. You have only {}.", money(cost as i64), money(self.econ.cash as i64)));
+            return self
+                .show_toast(&trf("STR_TOAST_CHANGE_COSTS", &[("COST", &money(cost as i64)), ("CASH", &money(self.econ.cash as i64))]));
         }
         let lot = if kind == land::K_HOME_SITE {
             let v = sg_core::homes::lot_value(&self.course, &self.club.holes, self.difficulty, tx, ty);
             if v < 50 {
-                return self.show_toast(
-                    "This is not a very attractive location for a building lot. Home buyers like water, woods, and grass near a golf hole with a good fun factor.",
-                );
+                return self.show_toast(tr("STR_TOAST_LOT_NOT_ATTRACTIVE"));
             }
             v / 4
         } else {
@@ -2925,31 +2923,10 @@ impl App {
         let n = &self.course_name;
         let k = (self.econ.cash / Economy::UNIT) as i64 * 100 / 1000;
         match self.exe_theme() {
-            1 => format!(
-                "Welcome to the {n} Country Club. What was once a vast expanse of featureless desert is now a vast expanse of \
-                 featureless desert interrupted by a lonely golf clubhouse. This area is blessed with sunshine 365 days of the \
-                 year. A rapidly growing population of avid golfers is demanding a larger improved course. As the new manager, \
-                 can you use your \u{a7}{k},000 budget to turn {n} into a world-class golf resort?"
-            ),
-            2 => format!(
-                "Welcome to {n} Golf Course. This delightful slice of tropical paradise needs only your help to become a \
-                 world-class golfing destination. After all, who doesn't enjoy a little humidity - and the alligators have been \
-                 really well behaved lately. With the successful conclusion of the recent mosquito eradication program and the \
-                 dedication of the new 'El Presidente' international airport, {n} is bursting with potential. "
-            ),
-            3 => format!(
-                "Welcome to {n} Golf Links.  This ancient and venerable institution has fallen upon hard times. The sheep have \
-                 returned to graze the pastoral fields whereupon kings and princes did ply the game of Golfe in days of yore. \
-                 But all is not lost, with a tidy sum of money acquired by liquidating your late uncle's butterfly collection \
-                 and a royal deed of grant from the local magistrate, you are ready to return {n} to it's former preeminence \
-                 in the world of Golfe."
-            ),
-            _ => format!(
-                "Welcome to {n} Golf Club.  The unexpected passing of your great-uncle Harry has left you in possession of \
-                 {n}. The property includes rolling hills, crisp woodlands, and a sparkling waters. However, uncle Harry was \
-                 somewhat of a lazy slacker and never built any golf holes! With the \u{a7}{k},000 he left you can you turn {n} \
-                 into a world-class golf course?  Good Luck."
-            ),
+            1 => trf("STR_WELCOME_DESERT", &[("COURSE", &n), ("THOUSANDS", &k)]),
+            2 => trf("STR_WELCOME_TROPICAL", &[("COURSE", &n)]),
+            3 => trf("STR_WELCOME_LINKS", &[("COURSE", &n)]),
+            _ => trf("STR_WELCOME_PARKLAND", &[("COURSE", &n), ("THOUSANDS", &k)]),
         }
     }
 
@@ -2970,11 +2947,8 @@ impl App {
 }
 
 /// Original pitch angles, chosen per resolution in Terrain::initSystem (38.68, 40.54, 40.83 degrees).
-/// The design tip five months in (0x45fd80 at tick 0x1400).
-pub const DESIGN_TIP: &str = "Building a great golf course requires imagination, intuition, persistence, and a bulldozer. The basic \
-     idea is to present the player with a variety of shots which appear challenging and require strategic thinking, but are \
-     within the player's ability. This philosophy is known as 'look hard and play easy.' Players who enjoy your course will \
-     tell their friends, return more often, and pay higher greens fees!";
+/// The design tip five months in (0x45fd80 at tick 0x1400), a text key.
+pub const DESIGN_TIP: &str = "STR_MSG_DESIGN_TIP";
 
 /// Our zoom at the exe's zoom level 1 (a tile 16 pixels wide on the 800 x 600 screen); its levels are 1, 2 and 4.
 pub const ZOOM_UNIT: f32 = 0.905 / 4.0;
@@ -3567,9 +3541,18 @@ impl App {
     }
 }
 
-/// Names of the employee kinds, basic and experienced, as the exe shows them.
-pub const STAFF_NAMES: [[&str; 2]; 4] =
-    [["Club Pro", "Celebrity"], ["Ranger", "Marshall"], ["Groundskeeper", "Technician"], ["Soda Vendor", "Refresher"]];
+/// The name of employee kind k (0 Club Pro, 1 Ranger, 2 Groundskeeper, 3 Soda Vendor), basic or experienced.
+pub fn staff_title(k: usize, experienced: bool) -> &'static str {
+    tr(STAFF_NAME_KEYS[k][experienced as usize])
+}
+
+/// Names of the employee kinds, basic and experienced, as the exe shows them (text keys).
+pub const STAFF_NAME_KEYS: [[&str; 2]; 4] = [
+    ["STR_STAFF_CLUB_PRO", "STR_STAFF_CELEBRITY"],
+    ["STR_STAFF_RANGER", "STR_STAFF_MARSHALL"],
+    ["STR_STAFF_GROUNDSKEEPER", "STR_STAFF_TECHNICIAN"],
+    ["STR_STAFF_SODA_VENDOR", "STR_STAFF_REFRESHER"],
+];
 
 impl App {
     /// A left click on the course: drop an employee being moved on that tile, or pick up a hired employee standing at the click,
@@ -3600,8 +3583,8 @@ impl App {
             if let Some(e) = self.employees.get_mut(i) {
                 e.post = Some(t);
                 e.steps = 0;
-                let name = STAFF_NAMES[(-2 - e.job as i32).clamp(0, 3) as usize][e.upgraded as usize];
-                self.show_toast(&format!("{name} will work around here"));
+                let name = staff_title((-2 - e.job as i32).clamp(0, 3) as usize, e.upgraded);
+                self.show_toast(&trf("STR_TOAST_EMPLOYEE_POSTED", &[("EMPLOYEE", &name)]));
             }
             return;
         }
@@ -3612,13 +3595,13 @@ impl App {
             }
             let (ex, ez) = self.units_to_world(e.x, e.y);
             if (ex - wx).hypot(ez - wz) < 70.0 {
-                pick = Some((i, STAFF_NAMES[(-2 - e.job as i32).clamp(0, 3) as usize][e.upgraded as usize]));
+                pick = Some((i, staff_title((-2 - e.job as i32).clamp(0, 3) as usize, e.upgraded)));
                 break;
             }
         }
         if let Some((i, name)) = pick {
             self.moving_employee = Some(i);
-            self.show_toast(&format!("Click the course where the {name} should work"));
+            self.show_toast(&trf("STR_TOAST_EMPLOYEE_CLICK", &[("EMPLOYEE", &name)]));
             return;
         }
         self.clicked_tile = Some(t);

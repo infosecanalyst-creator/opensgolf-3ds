@@ -8,6 +8,7 @@ use crate::course::{idx, inside, Course};
 use crate::geom::{len, tdist};
 use crate::golfer::{flag, Club, Golfer};
 use crate::land::ExeRng;
+use crate::lang::trf;
 
 /// The golfer record the analysis plans with (0x99).
 pub const ANALYST: usize = 0x99;
@@ -15,10 +16,10 @@ pub const ANALYST: usize = 0x99;
 /// The four kinds of golfer, in the order the shots cycle through them: their class bits (0x40d760's argument), the label
 /// and the colour word (0x40d760) the label, the ball track and the landing circle are drawn in.
 pub const KINDS: [(u8, &str, u32); 4] = [
-    (6, "no Length skill", 0x7ff0),
-    (5, "no Accuracy skill", 0x421f),
-    (3, "no Imagination skill", 0x43f0),
-    (7, "golfers with ALL skills", 0x7fff),
+    (6, "STR_ANALYSIS_NO_LENGTH", 0x7ff0),
+    (5, "STR_ANALYSIS_NO_ACCURACY", 0x421f),
+    (3, "STR_ANALYSIS_NO_IMAGINATION", 0x43f0),
+    (7, "STR_ANALYSIS_ALL_SKILLS", 0x7fff),
 ];
 
 /// One trial shot: the kind it was played by (index into [`KINDS`]), the ball's trace in map units (the first point is the
@@ -51,7 +52,7 @@ impl Analysis {
     /// The figure printed for kind k (0..2) beside its label: (all skills - k) / 3 yards, with a '+' when positive.
     pub fn figure(&self, k: usize) -> String {
         let v = (self.sums[3] - self.sums[k]) / 3;
-        format!("{}{v} yds.", if self.sums[k] < self.sums[3] { "+" } else { "" })
+        trf("STR_ANALYSIS_YARDS", &[("SIGN", &(if self.sums[k] < self.sums[3] { "+" } else { "" })), ("YARDS", &v)])
     }
 }
 

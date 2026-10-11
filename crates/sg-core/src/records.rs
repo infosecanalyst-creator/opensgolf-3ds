@@ -6,33 +6,34 @@
 //! restated in our own words.
 
 use crate::golfer::Club;
+use crate::lang::{tr, trf};
 
 /// The 22 accomplishments, as the plaques name them; on Easy and Moderate ids 0, 1 and 4 are the three alternatives.
-pub const TITLES: [&str; 22] = [
-    "1st Challenge Hole",
-    "1st Heroic Hole",
-    "1st Skill Upgrade",
-    "1st Tournament",
-    "1st Strategic Hole",
-    "1st Match Victory",
-    "1st 9+ Hole Course",
-    "1st Top 100 Hole",
-    "1st $500,000 Tournament",
-    "1st Classic Hole",
-    "1st Top 18 Hole",
-    "1st Tournament Victory (9+ Hole)",
-    "1st Grand Slam Course (9+ holes)",
-    "1st $1,000,000 Tournament",
-    "1st 18 Hole Course",
-    "1st Tournament Victory (18 Hole)",
-    "1st Grand Slam Course (18 Hole)",
-    "1st Grand Slam Victory (Parkland)",
-    "1st Grand Slam Victory (Desert)",
-    "1st Grand Slam Victory (Tropical)",
-    "1st Grand Slam Victory (Links)",
-    "1st 100 Star Rating",
+pub const TITLE_KEYS: [&str; 22] = [
+    "STR_ACCOMPLISHMENT_CHALLENGE_HOLE",
+    "STR_ACCOMPLISHMENT_HEROIC_HOLE",
+    "STR_ACCOMPLISHMENT_SKILL_UPGRADE",
+    "STR_ACCOMPLISHMENT_TOURNAMENT",
+    "STR_ACCOMPLISHMENT_STRATEGIC_HOLE",
+    "STR_ACCOMPLISHMENT_MATCH_VICTORY",
+    "STR_ACCOMPLISHMENT_9_HOLE_COURSE",
+    "STR_ACCOMPLISHMENT_TOP_100_HOLE",
+    "STR_ACCOMPLISHMENT_500K_TOURNAMENT",
+    "STR_ACCOMPLISHMENT_CLASSIC_HOLE",
+    "STR_ACCOMPLISHMENT_TOP_18_HOLE",
+    "STR_ACCOMPLISHMENT_VICTORY_9",
+    "STR_ACCOMPLISHMENT_GRAND_SLAM_COURSE_9",
+    "STR_ACCOMPLISHMENT_1M_TOURNAMENT",
+    "STR_ACCOMPLISHMENT_18_HOLE_COURSE",
+    "STR_ACCOMPLISHMENT_VICTORY_18",
+    "STR_ACCOMPLISHMENT_GRAND_SLAM_COURSE_18",
+    "STR_ACCOMPLISHMENT_GRAND_SLAM_PARKLAND",
+    "STR_ACCOMPLISHMENT_GRAND_SLAM_DESERT",
+    "STR_ACCOMPLISHMENT_GRAND_SLAM_TROPICAL",
+    "STR_ACCOMPLISHMENT_GRAND_SLAM_LINKS",
+    "STR_ACCOMPLISHMENT_100_STAR",
 ];
-pub const EASY_TITLES: [&str; 3] = ["1st Dogleg Right Hole", "1st Dogleg Left Hole", "1st Par 5 Hole"];
+pub const EASY_TITLE_KEYS: [&str; 3] = ["STR_ACCOMPLISHMENT_DOGLEG_RIGHT", "STR_ACCOMPLISHMENT_DOGLEG_LEFT", "STR_ACCOMPLISHMENT_PAR_5"];
 
 /// Event log types (high bits; the low five bits are the argument).
 pub mod log {
@@ -60,10 +61,10 @@ impl Club {
     /// The title shown for accomplishment `id` at the club's difficulty.
     pub fn award_title(&self, id: usize) -> &'static str {
         match id {
-            0 if self.difficulty < 2 => EASY_TITLES[0],
-            1 if self.difficulty < 2 => EASY_TITLES[1],
-            4 if self.difficulty < 2 => EASY_TITLES[2],
-            _ => TITLES[id.min(21)],
+            0 if self.difficulty < 2 => tr(EASY_TITLE_KEYS[0]),
+            1 if self.difficulty < 2 => tr(EASY_TITLE_KEYS[1]),
+            4 if self.difficulty < 2 => tr(EASY_TITLE_KEYS[2]),
+            _ => tr(TITLE_KEYS[id.min(21)]),
         }
     }
 
@@ -98,20 +99,28 @@ impl Club {
     pub fn event_text(&self, v: u16) -> String {
         let (ty, arg) = (v & 0xffe0, (v & 0x1f) as i32);
         match ty {
-            log::HOLE if self.par(arg) != 0 => format!("Hole {arg} opened."),
-            log::BUILT => format!("{} built.", crate::land::BUILDINGS.get(arg as usize).map(|b| b.0).unwrap_or("Building")),
-            log::MATCH => format!("Won match vs. {}", self.pros.get(arg as usize).map(|p| p.name.as_str()).unwrap_or("a pro")),
-            log::TOP100 => format!("Hole {arg} rated top 100."),
-            log::TOP18 => format!("Hole {arg} rated top 18."),
-            log::CELEB => format!("{} buys a home.", self.celebrities.get(arg as usize).map(|c| c.name.as_str()).unwrap_or("A celebrity")),
-            log::TOURNAMENT => {
-                let pro = self.roster.first().map(|p| p.name.as_str()).unwrap_or("Gary Golf");
-                format!("{pro} places {arg} in tournament.")
+            log::HOLE if self.par(arg) != 0 => trf("STR_LOG_HOLE_OPENED", &[("HOLE", &arg)]),
+            log::BUILT => trf(
+                "STR_LOG_BUILT",
+                &[("BUILDING", &crate::land::BUILDINGS.get(arg as usize).map(|b| tr(b.0)).unwrap_or(tr("STR_LOG_BUILDING")))],
+            ),
+            log::MATCH => {
+                trf("STR_LOG_WON_MATCH", &[("PRO", &self.pros.get(arg as usize).map(|p| p.name.as_str()).unwrap_or(tr("STR_LOG_A_PRO")))])
             }
-            log::CEO => "J.P. Bigdome joins the board.".into(),
-            log::HAPPY => format!("Happy Ending: {}", self.stories.title(arg).trim()),
-            log::LAND => "Additional land purchased.".into(),
-            log::HEIRESS => format!("Ivana donates a {}", crate::vips::landmark_short_name(arg)),
+            log::TOP100 => trf("STR_LOG_TOP_100", &[("HOLE", &arg)]),
+            log::TOP18 => trf("STR_LOG_TOP_18", &[("HOLE", &arg)]),
+            log::CELEB => trf(
+                "STR_LOG_CELEBRITY_HOME",
+                &[("CELEBRITY", &self.celebrities.get(arg as usize).map(|c| c.name.as_str()).unwrap_or(tr("STR_LOG_A_CELEBRITY")))],
+            ),
+            log::TOURNAMENT => {
+                let pro = self.roster.first().map(|p| p.name.as_str()).unwrap_or(tr("STR_LOG_GARY_GOLF"));
+                trf("STR_LOG_TOURNAMENT_PLACE", &[("PRO", &pro), ("PLACE", &arg)])
+            }
+            log::CEO => tr("STR_LOG_CEO").into(),
+            log::HAPPY => trf("STR_LOG_HAPPY_ENDING", &[("STORY", &self.stories.title(arg).trim())]),
+            log::LAND => tr("STR_LOG_LAND").into(),
+            log::HEIRESS => trf("STR_LOG_HEIRESS", &[("LANDMARK", &crate::vips::landmark_short_name(arg))]),
             _ => String::new(),
         }
     }

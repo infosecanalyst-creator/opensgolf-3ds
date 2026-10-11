@@ -6,6 +6,7 @@ use crate::gfx::{Gfx, Mat4, Mode, Uniforms, Vert};
 use crate::ui::{money, rgb, rgba, text_width, wrap_text, Screen as Ui};
 use sg_core::decor::WEEDY_BED;
 use sg_core::economy::{Economy, STAFF_KINDS};
+use sg_core::lang::{tr, trf};
 use sg_core::sprites::SPRITE_UNITS_PER_PIXEL;
 use sg_core::terrain::{DEPTH_RANGE, TILE_SIZE};
 
@@ -371,7 +372,8 @@ pub const MENU_BTN: [Rect; 6] = [
 pub const THEME_PACKS: [&str; 4] = ["Standard", "Firaxis", "More Stories", "The Sims"];
 /// The title menu's labels (0x420e.. and the menu's opening 0x40f5c0): Klepto ITC 18 (0x51a028) in 0x6318, centred on the
 /// label's point with the text's top 8 below it; "Start New Game" has the theme pack's name in brackets 24 further down.
-const MENU_LABEL: [&str; 5] = ["Continue Saved Game", "Start New Game", "Sandbox Mode", "Select A Theme", "Play a Championship"];
+const MENU_LABEL_KEYS: [&str; 5] =
+    ["STR_TITLE_CONTINUE", "STR_TITLE_NEW_GAME", "STR_TITLE_SANDBOX", "STR_TITLE_SELECT_THEME", "STR_TITLE_CHAMPIONSHIP"];
 const MENU_LABEL_X: [f32; 5] = [182.0, 573.0, 141.0, 631.0, 415.0];
 const MENU_LABEL_Y: [f32; 5] = [66.0, 88.0, 431.0, 409.0, 525.0];
 
@@ -400,7 +402,8 @@ pub fn difficulty_hit(vx: f32, vy: f32) -> i32 {
     DIFF_CENTRES.iter().position(|&(cx, cy)| oct_dist((vx - cx) / 2.0, vy - cy) < 80.0).map(|i| i as i32).unwrap_or(-1)
 }
 /// The four difficulties the manual names, in the exe's order (0 easiest).
-pub const DIFFICULTY_NAMES: [&str; 4] = ["Easy", "Moderate", "Difficult", "Impossible"];
+pub const DIFFICULTY_KEYS: [&str; 4] =
+    ["STR_DIFFICULTY_EASY", "STR_DIFFICULTY_MODERATE", "STR_DIFFICULTY_DIFFICULT", "STR_DIFFICULTY_IMPOSSIBLE"];
 
 /// The lower left dock: centre and radius of each button's hit disc.
 pub struct DockBtn {
@@ -443,21 +446,22 @@ pub const DOCK_LIT: [(f32, f32, f32, f32, f32, f32); 10] = [
 const DOCK_TRAIL: [(f32, f32); 3] = [(34.0, 509.0), (95.0, 525.0), (142.0, 555.0)];
 
 /// The dock's tooltip captions (0x432ba0), in our button order.
-pub const DOCK_HELP: [&str; 10] = [
-    "Build Course",
-    "Add Buildings",
-    "People",
-    "Zoom Map",
-    "Unzoom Map",
-    "Rotate Map",
-    "Rotate Map",
-    "Information",
-    "Pause or Unpause",
-    "System Functions",
+pub const DOCK_HELP_KEYS: [&str; 10] = [
+    "STR_DOCK_BUILD_COURSE",
+    "STR_DOCK_ADD_BUILDINGS",
+    "STR_DOCK_PEOPLE",
+    "STR_DOCK_ZOOM",
+    "STR_DOCK_UNZOOM",
+    "STR_DOCK_ROTATE",
+    "STR_DOCK_ROTATE",
+    "STR_DOCK_INFORMATION",
+    "STR_DOCK_PAUSE",
+    "STR_DOCK_SYSTEM",
 ];
 
 /// The pro's shot buttons (panel buttons 4..8) and their option values and keys.
-pub const SHOT_NAMES: [&str; 5] = ["Straight shot", "Fade shot (L to R)", "Draw shot (R to L)", "High backspin shot", "Low punch shot"];
+pub const SHOT_NAME_KEYS: [&str; 5] =
+    ["STR_PLAIN_SHOT_STRAIGHT", "STR_PLAIN_SHOT_FADE", "STR_PLAIN_SHOT_DRAW", "STR_PLAIN_SHOT_HIGH", "STR_PLAIN_SHOT_LOW"];
 pub const SHOT_OPTS: [i32; 5] = [0, -1, 1, 3, 4];
 pub const SHOT_KEYS: [&str; 5] = ["S", "F", "D", "H", "L"];
 
@@ -477,8 +481,20 @@ pub fn panel_item_rect(i: usize, cols: usize) -> Rect {
     Rect::new(232.0 + (i % cols) as f32 * cw, 462.0 + (i / cols) as f32 * 18.5, cw - 4.0, 17.0)
 }
 
-const MONTHS: [&str; 12] =
-    ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const MONTH_KEYS: [&str; 12] = [
+    "STR_MONTH_JANUARY",
+    "STR_MONTH_FEBRUARY",
+    "STR_MONTH_MARCH",
+    "STR_MONTH_APRIL",
+    "STR_MONTH_MAY",
+    "STR_MONTH_JUNE",
+    "STR_MONTH_JULY",
+    "STR_MONTH_AUGUST",
+    "STR_MONTH_SEPTEMBER",
+    "STR_MONTH_OCTOBER",
+    "STR_MONTH_NOVEMBER",
+    "STR_MONTH_DECEMBER",
+];
 
 impl App {
     pub fn panel_cols(&self) -> usize {
@@ -495,63 +511,67 @@ impl App {
             1 => {
                 for (i, p) in PAINT.iter().enumerate().take(15) {
                     v.push(PanelItem {
-                        label: format!("{}  {}", p.name, money(Economy::terrain_cost_units(p.ty) as i64 * 100)),
+                        label: format!("{}  {}", tr(p.name_key), money(Economy::terrain_cost_units(p.ty) as i64 * 100)),
                         kind: 0,
                         arg: i,
                     });
                 }
-                v.push(PanelItem { label: "Path, gravel".into(), kind: 1, arg: 1 });
-                v.push(PanelItem { label: "Path, paved".into(), kind: 1, arg: 2 });
-                v.push(PanelItem { label: "Raise ground".into(), kind: 2, arg: 0 });
-                v.push(PanelItem { label: "Lower ground".into(), kind: 3, arg: 0 });
+                v.push(PanelItem { label: tr("STR_PLAIN_PATH_GRAVEL").into(), kind: 1, arg: 1 });
+                v.push(PanelItem { label: tr("STR_PLAIN_PATH_PAVED").into(), kind: 1, arg: 2 });
+                v.push(PanelItem { label: tr("STR_PLAIN_RAISE").into(), kind: 2, arg: 0 });
+                v.push(PanelItem { label: tr("STR_PLAIN_LOWER").into(), kind: 3, arg: 0 });
             }
             2 => {
                 for &k in OFFERED_KINDS.iter() {
                     let k = k as usize;
                     if self.build_available(k) {
                         let (name, _, price) = sg_core::land::BUILDINGS[k];
-                        v.push(PanelItem { label: format!("{name}  {}", money(price as i64 * 100)), kind: 4, arg: k });
+                        v.push(PanelItem { label: format!("{}  {}", tr(name), money(price as i64 * 100)), kind: 4, arg: k });
                     }
                 }
             }
             // 3 People (this list only when the panel art is missing), 5 the player's pro
             3 | 5 if self.club.pro_aiming().is_some() => {
                 // the pro waits for the aim: the five shot buttons (panel buttons 4..8)
-                for (i, name) in SHOT_NAMES.iter().enumerate() {
-                    v.push(PanelItem { label: format!("{name}  ({})", SHOT_KEYS[i]), kind: 7, arg: i });
+                for (i, name) in SHOT_NAME_KEYS.iter().enumerate() {
+                    v.push(PanelItem { label: format!("{}  ({})", tr(name), SHOT_KEYS[i]), kind: 7, arg: i });
                 }
-                v.push(PanelItem { label: "Click the course to aim and swing.  N twice cancels the round.".into(), kind: 8, arg: 0 });
+                v.push(PanelItem { label: tr("STR_PLAIN_CLICK_TO_AIM").into(), kind: 8, arg: 0 });
             }
             3 | 5 => {
                 let pro = self.pro_name();
                 if self.club.gary == -1 {
-                    v.push(PanelItem { label: format!("{pro}: Practice Round"), kind: 6, arg: 0 });
+                    v.push(PanelItem { label: trf("STR_PLAIN_PRACTICE", &[("PRO", &pro)]), kind: 6, arg: 0 });
                     let m = if self.club.game & sg_core::pro::CHALLENGE != 0 && self.club.challenge_pro >= 0 {
                         let who = self.club.pros.get(self.club.challenge_pro as usize).map(|p| p.name.clone()).unwrap_or_default();
-                        format!("{pro}: Match vs. {who}  (\u{a7}{}/hole)", self.club.wager_level * 2000)
+                        trf("STR_PLAIN_MATCH_VS", &[("PRO", &pro), ("PRO2", &who), ("MONEY", &(self.club.wager_level * 2000))])
                     } else {
-                        format!("{pro}: Match vs. a pro  (waiting for a challenge)")
+                        trf("STR_PLAIN_MATCH_WAITING", &[("PRO", &pro)])
                     };
                     v.push(PanelItem { label: m, kind: 6, arg: 1 });
                     if self.club.can_begin_tournament() {
-                        v.push(PanelItem { label: format!("{pro}: Begin Tournament"), kind: 6, arg: 4 });
+                        v.push(PanelItem { label: trf("STR_PLAIN_BEGIN_TOURNAMENT", &[("PRO", &pro)]), kind: 6, arg: 4 });
                     }
                 } else if self.club.game & sg_core::golfer::game::TOURNAMENT != 0 {
-                    v.push(PanelItem { label: "Tournament under way: cancel it (no prizes)".into(), kind: 6, arg: 3 });
+                    v.push(PanelItem { label: tr("STR_PLAIN_TOURNAMENT_CANCEL").into(), kind: 6, arg: 3 });
                 } else {
-                    v.push(PanelItem { label: format!("{pro} is playing: cancel the round"), kind: 6, arg: 3 });
+                    v.push(PanelItem { label: trf("STR_PLAIN_PRO_PLAYING", &[("PRO", &pro)]), kind: 6, arg: 3 });
                 }
-                let pts = if self.club.skill_points > 0 { format!("  ({} points to add)", self.club.skill_points) } else { String::new() };
-                v.push(PanelItem { label: format!("{pro}'s skills{pts}"), kind: 6, arg: 2 });
-                v.push(PanelItem { label: "Golfers on the course".into(), kind: 9, arg: 0 });
+                let pts = if self.club.skill_points > 0 {
+                    trf("STR_PLAIN_POINTS_TO_ADD", &[("POINTS", &self.club.skill_points)])
+                } else {
+                    String::new()
+                };
+                v.push(PanelItem { label: trf("STR_PLAIN_SKILLS", &[("PRO", &pro), ("POINTS", &pts)]), kind: 6, arg: 2 });
+                v.push(PanelItem { label: tr("STR_PLAIN_GOLFERS").into(), kind: 9, arg: 0 });
                 if self.panel == 5 {
                     // hiring and firing are on the Employee panel
-                    v.push(PanelItem { label: "Employees".into(), kind: 10, arg: 0 });
+                    v.push(PanelItem { label: tr("STR_PLAIN_EMPLOYEES").into(), kind: 10, arg: 0 });
                     return v;
                 }
                 for k in 0..STAFF_KINDS {
                     v.push(PanelItem {
-                        label: format!("{}: {}  (click to hire, right click to fire)", Economy::staff_name(k), self.econ.staff[k]),
+                        label: trf("STR_PLAIN_STAFF", &[("KIND", &Economy::staff_name(k)), ("COUNT", &(self.econ.staff[k]))]),
                         kind: 5,
                         arg: k,
                     });
@@ -576,7 +596,7 @@ impl App {
         }
         let grey = crate::info_ui::c15(0x6318);
         for b in 0..5 {
-            s.put_centered(g, crate::ui::F_KLEPTO18, MENU_LABEL_X[b], MENU_LABEL_Y[b] + 8.0, MENU_LABEL[b], grey);
+            s.put_centered(g, crate::ui::F_KLEPTO18, MENU_LABEL_X[b], MENU_LABEL_Y[b] + 8.0, tr(MENU_LABEL_KEYS[b]), grey);
         }
         let theme = format!("({})", THEME_PACKS.get(self.theme_pack).copied().unwrap_or("Standard"));
         s.put_centered(g, crate::ui::F_KLEPTO18, MENU_LABEL_X[1], MENU_LABEL_Y[1] + 24.0, &theme, grey);
@@ -603,12 +623,12 @@ impl App {
         // 0x43a400: all in Klepto ITC 24 (0x519a40), centred with the given tops; the hovered name black, the others in
         // 0x4210, two pixels lower
         let k24 = crate::ui::F_KLEPTO24;
-        s.put_centered(g, k24, 602.0, 42.0, "Select Difficulty", rgb(0.0, 0.0, 0.0));
+        s.put_centered(g, k24, 602.0, 42.0, tr("STR_TITLE_SELECT_DIFFICULTY"), rgb(0.0, 0.0, 0.0));
         for (i, &(x, y)) in DIFF_LABELS.iter().enumerate() {
             if self.hover == i as i32 {
-                s.put_centered(g, k24, x, y, DIFFICULTY_NAMES[i], rgb(0.0, 0.0, 0.0));
+                s.put_centered(g, k24, x, y, tr(DIFFICULTY_KEYS[i]), rgb(0.0, 0.0, 0.0));
             } else {
-                s.put_centered(g, k24, x, y + 2.0, DIFFICULTY_NAMES[i], crate::info_ui::c15(0x4210));
+                s.put_centered(g, k24, x, y + 2.0, tr(DIFFICULTY_KEYS[i]), crate::info_ui::c15(0x4210));
             }
         }
         g.flush();
@@ -644,10 +664,10 @@ impl App {
         } else {
             // a plain stand-in without the art
             let mi = self.econ.month_index();
-            let date = format!("{} {}", MONTHS[((2 + mi % 8) % 12) as usize], 2001 + mi / 8);
+            let date = trf("STR_DATE", &[("MONTH", &tr(MONTH_KEYS[((2 + mi % 8) % 12) as usize])), ("YEAR", &(2001 + mi / 8))]);
             let panel_bg = rgba(0.12, 0.1, 0.3, 0.78);
             let red = self.econ.cash < 0.0 && !self.econ.sandbox;
-            let cash = if self.econ.sandbox { "Sandbox".to_string() } else { money(self.econ.cash as i64) };
+            let cash = if self.econ.sandbox { tr("STR_PLAIN_SANDBOX").to_string() } else { money(self.econ.cash as i64) };
             let rt = self.club.ratings;
             let fun = format!("{}", rt.fun);
             let skill = format!("{}.{:02}", rt.skill / 100, (rt.skill % 100).abs());
@@ -656,7 +676,7 @@ impl App {
             s.text(g, 18.0, 47.0, &date, 14.0, rgb(0.85, 0.85, 1.0));
             s.fill(g, 560.0, 8.0, 232.0, 52.0, panel_bg);
             s.text(g, 572.0, 30.0, &cash, 19.0, if red { rgb(1.0, 0.5, 0.5) } else { rgb(1.0, 1.0, 0.7) });
-            s.text(g, 572.0, 52.0, &format!("Fun {fun}  Skill {skill}"), 15.0, rgb(0.9, 0.9, 1.0));
+            s.text(g, 572.0, 52.0, &trf("STR_PLAIN_FUN_SKILL", &[("FUN", &fun), ("SKILL", &skill)]), 15.0, rgb(0.9, 0.9, 1.0));
         }
         self.draw_floats(g, &s);
         self.draw_advisor(g, &s);
@@ -741,7 +761,7 @@ impl App {
             if self.dock_hover >= 0 && self.dock_tip.1 > 11 {
                 // the shared bar: a 10 pixel black line at half opacity (Terrain::drawLine's alpha in tenths, 5), the words in
                 // Arial Bold 10 with their top 5 above the line
-                let tip = DOCK_HELP[self.dock_hover as usize];
+                let tip = tr(DOCK_HELP_KEYS[self.dock_hover as usize]);
                 let (px, py) = self.info.pointer;
                 crate::panels_ui::tip_bar(g, s, tip, px, py);
             }

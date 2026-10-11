@@ -9,6 +9,7 @@
 //! Map layout follows the exe: tiles are addressed (a, b) with a the first index, 50 x 50 tiles, and corner heights on a 51 x 51
 //! grid. `to_terrain` converts to the port's Terrain (x = a, y = b).
 
+use crate::lang::{tr, trf};
 use crate::terrain::Terrain;
 
 pub const N: i32 = 50;
@@ -91,10 +92,12 @@ fn clamp_exe(v: i32, lo: i32, hi: i32) -> i32 {
 /// One of the exe's sixteen property records.
 #[derive(Clone, Copy, Debug)]
 pub struct PropertyRecord {
-    pub name: &'static str,
-    /// The course's own name (record +0x19), used in the date caption and the messages.
-    pub course: &'static str,
-    pub bonus: &'static str,
+    /// The place (a text key, see `name`).
+    pub name_key: &'static str,
+    /// The course's own name (record +0x19), used in the date caption and the messages (a text key, see `course`).
+    pub course_key: &'static str,
+    /// The property's bonus (a text key, see `bonus`).
+    pub bonus_key: &'static str,
     /// Marker position on the world map art.
     pub map_x: i32,
     pub map_y: i32,
@@ -117,26 +120,43 @@ const fn rec(
     coast: u8,
     relief: u8,
 ) -> PropertyRecord {
-    PropertyRecord { name, course, bonus, map_x, map_y, theme, coast, relief }
+    PropertyRecord { name_key: name, course_key: course, bonus_key: bonus, map_x, map_y, theme, coast, relief }
+}
+
+impl PropertyRecord {
+    /// The place's name.
+    pub fn name(&self) -> &'static str {
+        tr(self.name_key)
+    }
+
+    /// The course's own name.
+    pub fn course(&self) -> &'static str {
+        tr(self.course_key)
+    }
+
+    /// The property's bonus.
+    pub fn bonus(&self) -> &'static str {
+        tr(self.bonus_key)
+    }
 }
 
 pub const RECORDS: [PropertyRecord; 16] = [
-    rec("Monterey", "Ocean's Edge", "Scenic Cypress", 53, 226, 0, 1, 1),
-    rec("San Diego", "Dolphin Coast", "Dolphins", 53, 244, 0, 1, 0),
-    rec("Rocky Mtns.", "Jurassic Springs", "Free Hotel", 92, 226, 0, 0, 2),
-    rec("Las Vegas", "Ace in the Hole", "Fun, Fun, Fun", 73, 241, 1, 0, 0),
-    rec("Phoenix", "Coyote Flats", "Free Spa", 70, 262, 1, 0, 0),
-    rec("Hawaii", "Flamingo Shores", "Scenic Waterfall", 26, 327, 2, 1, 1),
-    rec("Oahu", "Island Palms", "Japanese Garden", 23, 311, 2, 2, 0),
-    rec("Nova Scotia", "Windy Point", "Scenic Lighthouse", 158, 250, 3, 1, 1),
-    rec("Northeast", "Ravenwood Farms", "Civil War Battlefield", 138, 254, 0, 0, 1),
-    rec("Carolina", "Christmas Pines", "Free Putting Green", 133, 272, 0, 0, 0),
-    rec("Ireland", "County Kincaide", "Leprechauns", 262, 232, 3, 0, 2),
-    rec("Scotland", "Harold's Keep", "Free Castle", 266, 222, 3, 1, 0),
-    rec("Wales", "Thistle Runes", "Stonehenge", 272, 239, 3, 2, 1),
-    rec("Spain", "Sangria Bay", "Scenic Vineyards", 275, 270, 1, 1, 1),
-    rec("Florida", "Ocean Grove", "Free Pro Shop", 125, 298, 2, 1, 0),
-    rec("Jamaica", "Scorpion Cove", "Scenic Statues", 129, 342, 2, 0, 1),
+    rec("STR_PROPERTY_MONTEREY", "STR_COURSE_MONTEREY", "STR_BONUS_MONTEREY", 53, 226, 0, 1, 1),
+    rec("STR_PROPERTY_SAN_DIEGO", "STR_COURSE_SAN_DIEGO", "STR_BONUS_SAN_DIEGO", 53, 244, 0, 1, 0),
+    rec("STR_PROPERTY_ROCKY_MTNS", "STR_COURSE_ROCKY_MTNS", "STR_BONUS_ROCKY_MTNS", 92, 226, 0, 0, 2),
+    rec("STR_PROPERTY_LAS_VEGAS", "STR_COURSE_LAS_VEGAS", "STR_BONUS_LAS_VEGAS", 73, 241, 1, 0, 0),
+    rec("STR_PROPERTY_PHOENIX", "STR_COURSE_PHOENIX", "STR_BONUS_PHOENIX", 70, 262, 1, 0, 0),
+    rec("STR_PROPERTY_HAWAII", "STR_COURSE_HAWAII", "STR_BONUS_HAWAII", 26, 327, 2, 1, 1),
+    rec("STR_PROPERTY_OAHU", "STR_COURSE_OAHU", "STR_BONUS_OAHU", 23, 311, 2, 2, 0),
+    rec("STR_PROPERTY_NOVA_SCOTIA", "STR_COURSE_NOVA_SCOTIA", "STR_BONUS_NOVA_SCOTIA", 158, 250, 3, 1, 1),
+    rec("STR_PROPERTY_NORTHEAST", "STR_COURSE_NORTHEAST", "STR_BONUS_NORTHEAST", 138, 254, 0, 0, 1),
+    rec("STR_PROPERTY_CAROLINA", "STR_COURSE_CAROLINA", "STR_BONUS_CAROLINA", 133, 272, 0, 0, 0),
+    rec("STR_PROPERTY_IRELAND", "STR_COURSE_IRELAND", "STR_BONUS_IRELAND", 262, 232, 3, 0, 2),
+    rec("STR_PROPERTY_SCOTLAND", "STR_COURSE_SCOTLAND", "STR_BONUS_SCOTLAND", 266, 222, 3, 1, 0),
+    rec("STR_PROPERTY_WALES", "STR_COURSE_WALES", "STR_BONUS_WALES", 272, 239, 3, 2, 1),
+    rec("STR_PROPERTY_SPAIN", "STR_COURSE_SPAIN", "STR_BONUS_SPAIN", 275, 270, 1, 1, 1),
+    rec("STR_PROPERTY_FLORIDA", "STR_COURSE_FLORIDA", "STR_BONUS_FLORIDA", 125, 298, 2, 1, 0),
+    rec("STR_PROPERTY_JAMAICA", "STR_COURSE_JAMAICA", "STR_BONUS_JAMAICA", 129, 342, 2, 0, 1),
 ];
 
 /// Price of an offer slot, in the exe's money units (one unit is 100 of the game's money).
@@ -206,7 +226,8 @@ pub fn deal_offer(rng: &mut ExeRng, sandbox: bool) -> [Slot; 16] {
 /// Per-type table the exe keeps for its 23 tile types (copied at start-up from a static table in the exe).
 #[derive(Clone, Copy, Debug)]
 pub struct TypeInfo {
-    pub name: &'static str,
+    /// The type's name (a text key: `tr(name_key)`).
+    pub name_key: &'static str,
     /// Byte +0x22: types with a positive value collapse into class 4 for border drawing in the Desert theme (types 5 and 7 excepted).
     pub desert_group: i8,
     /// Byte +0x24: what a tile of this type adds to the clearing cost of a building footprint.
@@ -218,33 +239,33 @@ pub struct TypeInfo {
 }
 
 const fn ti(name: &'static str, desert_group: i8, clear_cost: u8, layer: u8, class: u8) -> TypeInfo {
-    TypeInfo { name, desert_group, clear_cost, layer, class }
+    TypeInfo { name_key: name, desert_group, clear_cost, layer, class }
 }
 
 pub const TYPES: [TypeInfo; 23] = [
-    ti("tees", 0, 0, 2, 0),
-    ti("green", -1, 0, 1, 1),
-    ti("fairway", 0, 0, 1, 2),
-    ti("firm fairway", 0, 0, 1, 2),
-    ti("rough", 1, 0, 2, 4),
-    ti("deep rough", 2, 0, 3, 4),
-    ti("mound", 2, 0, 3, 4),
-    ti("sand trap", 3, 0, 4, 7),
-    ti("waste bunker", 2, 0, 3, 8),
-    ti("pot bunker", 5, 0, 5, 7),
-    ti("ravine", 5, 0, 3, 4),
-    ti("brush", 3, 0, 3, 4),
-    ti("rocks", 3, 5, 4, 4),
-    ti("tree", 4, 5, 4, 13),
-    ti("pine tree", 4, 5, 4, 13),
-    ti("palm tree", 4, 5, 4, 13),
-    ti("elm tree", 4, 10, 4, 13),
-    ti("water", 8, 10, 16, 17),
-    ti("wetlands", 3, 50, 4, 4),
-    ti("marsh", 3, 100, 4, 4),
-    ti("out of bounds", 8, 0, 12, 18),
-    ti("building", 4, 0, 4, 18),
-    ti("building", 4, 0, 4, 18),
+    ti("STR_TERRAIN_TEES", 0, 0, 2, 0),
+    ti("STR_TERRAIN_GREEN", -1, 0, 1, 1),
+    ti("STR_TERRAIN_FAIRWAY", 0, 0, 1, 2),
+    ti("STR_TERRAIN_FIRM_FAIRWAY", 0, 0, 1, 2),
+    ti("STR_TERRAIN_ROUGH", 1, 0, 2, 4),
+    ti("STR_TERRAIN_DEEP_ROUGH", 2, 0, 3, 4),
+    ti("STR_TERRAIN_MOUND", 2, 0, 3, 4),
+    ti("STR_TERRAIN_SAND_TRAP", 3, 0, 4, 7),
+    ti("STR_TERRAIN_WASTE_BUNKER", 2, 0, 3, 8),
+    ti("STR_TERRAIN_POT_BUNKER", 5, 0, 5, 7),
+    ti("STR_TERRAIN_RAVINE", 5, 0, 3, 4),
+    ti("STR_TERRAIN_BRUSH", 3, 0, 3, 4),
+    ti("STR_TERRAIN_ROCKS", 3, 5, 4, 4),
+    ti("STR_TERRAIN_TREE", 4, 5, 4, 13),
+    ti("STR_TERRAIN_PINE_TREE", 4, 5, 4, 13),
+    ti("STR_TERRAIN_PALM_TREE", 4, 5, 4, 13),
+    ti("STR_TERRAIN_ELM_TREE", 4, 10, 4, 13),
+    ti("STR_TERRAIN_WATER", 8, 10, 16, 17),
+    ti("STR_TERRAIN_WETLANDS", 3, 50, 4, 4),
+    ti("STR_TERRAIN_MARSH", 3, 100, 4, 4),
+    ti("STR_TERRAIN_OUT_OF_BOUNDS", 8, 0, 12, 18),
+    ti("STR_TERRAIN_BUILDING", 4, 0, 4, 18),
+    ti("STR_TERRAIN_BUILDING", 4, 0, 4, 18),
 ];
 
 pub const T_TEE: u8 = 0;
@@ -276,28 +297,33 @@ pub fn border_class(ty: u8, desert: bool) -> u8 {
     }
 }
 
-/// Buildings and objects: (name, footprint edge in tiles, price in money units), by the exe's object kind.
+/// The name of a building or object kind (see `BUILDINGS`), "" for an unknown kind.
+pub fn building_name(kind: i32) -> &'static str {
+    BUILDINGS.get(kind.max(0) as usize).filter(|_| kind >= 0).map(|b| tr(b.0)).unwrap_or("")
+}
+
+/// Buildings and objects: (name key, footprint edge in tiles, price in money units), by the exe's object kind.
 pub const BUILDINGS: [(&str, i32, i32); 20] = [
-    ("Pathway", 1, 1),
-    ("Benches", 1, 2),
-    ("Flower Bed", 1, 5),
-    ("Ball Washer", 1, 50),
-    ("Landmark", 1, 15),
-    ("Home Site", 2, 10),
-    ("Putting Green", 3, 100),
-    ("Snack Bar", 2, 150),
-    ("Pro Shop", 2, 200),
-    ("Swim Club", 3, 300),
-    ("Driving Range", 5, 250),
-    ("Cart Garage", 2, 400),
-    ("Marina", 2, 1000),
-    ("Resort Hotel", 4, 2500),
-    ("Airstrip", 6, 5000),
-    ("Clubhouse", 4, 200),
-    ("Willow Tree", 1, 25),
-    ("TV Tower", 1, 10),
-    ("TV Booth", 1, 10),
-    ("Scenic Bridge", 1, 100),
+    ("STR_BUILDING_PATHWAY", 1, 1),
+    ("STR_BUILDING_BENCHES", 1, 2),
+    ("STR_BUILDING_FLOWER_BED", 1, 5),
+    ("STR_BUILDING_BALL_WASHER", 1, 50),
+    ("STR_BUILDING_LANDMARK", 1, 15),
+    ("STR_BUILDING_HOME_SITE", 2, 10),
+    ("STR_BUILDING_PUTTING_GREEN", 3, 100),
+    ("STR_BUILDING_SNACK_BAR", 2, 150),
+    ("STR_BUILDING_PRO_SHOP", 2, 200),
+    ("STR_BUILDING_SWIM_CLUB", 3, 300),
+    ("STR_BUILDING_DRIVING_RANGE", 5, 250),
+    ("STR_BUILDING_CART_GARAGE", 2, 400),
+    ("STR_BUILDING_MARINA", 2, 1000),
+    ("STR_BUILDING_RESORT_HOTEL", 4, 2500),
+    ("STR_BUILDING_AIRSTRIP", 6, 5000),
+    ("STR_BUILDING_CLUBHOUSE", 4, 200),
+    ("STR_BUILDING_WILLOW_TREE", 1, 25),
+    ("STR_BUILDING_TV_TOWER", 1, 10),
+    ("STR_BUILDING_TV_BOOTH", 1, 10),
+    ("STR_BUILDING_SCENIC_BRIDGE", 1, 100),
 ];
 /// No undo record on a tile.
 pub const UNDO_NONE: u8 = 0xff;
@@ -1729,7 +1755,7 @@ impl Land {
         if !self.in_play(a, b) {
             return Err("");
         }
-        let Some(mut clear) = self.fits(a, b, 1, kind, theme) else { return Err("Can't build there.") };
+        let Some(mut clear) = self.fits(a, b, 1, kind, theme) else { return Err(tr("STR_ERROR_CANT_BUILD_THERE")) };
         if kind == K_PATH {
             clear /= 2;
         }
@@ -1738,10 +1764,10 @@ impl Land {
         Ok(match kind {
             K_PATH if f & flag::PATH != 0 => 0,
             K_BENCH if f & 0x200 != 0 => 0,
-            K_BENCH if ![0, 2, 4, 6].iter().any(|&d| self.bench_ok(a, b, d)) => return Err("Can't build bench there."),
+            K_BENCH if ![0, 2, 4, 6].iter().any(|&d| self.bench_ok(a, b, d)) => return Err(tr("STR_ERROR_CANT_BUILD_BENCH")),
             K_FLOWERS if f & 0x1000 != 0 => 0,
             K_WILLOW => 25,
-            K_BRIDGE if self.ty[i] != T_WATER => return Err("Can't build bridge there."),
+            K_BRIDGE if self.ty[i] != T_WATER => return Err(tr("STR_ERROR_CANT_BUILD_BRIDGE")),
             K_BRIDGE => 100,
             _ => BUILDINGS[kind as usize].2 + clear,
         })
@@ -1861,37 +1887,37 @@ impl Land {
     /// resets the terrain painted; without a record the label only names the bench, path or flower bed on the tile.
     pub fn undo_label(&self, a: i32, b: i32) -> (String, bool) {
         if !self.in_play(a, b) {
-            return ("Out of bounds".into(), false);
+            return (tr("STR_UNDO_OUT_OF_BOUNDS").into(), false);
         }
         let i = idx(a, b);
         let f = self.flags[i];
         if f & flag::OBSTACLE != 0 {
-            return ("Permanent".into(), false);
+            return (tr("STR_UNDO_PERMANENT").into(), false);
         }
         if let Some(o) = self.object_on(a, b) {
-            let name = BUILDINGS.get(self.objects[o].kind as usize).map(|b| b.0).unwrap_or("");
-            return (format!("Demolish {name}"), true);
+            let name = building_name(self.objects[o].kind);
+            return (trf("STR_UNDO_DEMOLISH", &[("BUILDING", &name)]), true);
         }
         let code = self.undo[i];
         if code != UNDO_NONE && code & 0x80 != 0 {
             let s = match code & 0x7f {
-                0 => "Remove Path",
-                1 => "Remove Bench",
-                0x10 => "Remove Scenic Tree",
-                0x13 => "Remove Scenic Bridge",
-                _ => "Remove Flowers",
+                0 => tr("STR_UNDO_REMOVE_PATH"),
+                1 => tr("STR_UNDO_REMOVE_BENCH"),
+                0x10 => tr("STR_UNDO_REMOVE_SCENIC_TREE"),
+                0x13 => tr("STR_UNDO_REMOVE_SCENIC_BRIDGE"),
+                _ => tr("STR_UNDO_REMOVE_FLOWERS"),
             };
             return (s.into(), true);
         }
         if code < 0x7d {
-            return (format!("Reset to {}", crate::course::type_name(code as i32)), true);
+            return (trf("STR_UNDO_RESET_TO", &[("TERRAIN", &crate::course::type_name(code as i32))]), true);
         }
         let s = if f & 0x200 != 0 {
-            "Remove Bench"
+            tr("STR_UNDO_REMOVE_BENCH")
         } else if f & flag::PATH != 0 {
-            "Remove Path"
+            tr("STR_UNDO_REMOVE_PATH")
         } else if f & 0x1000 != 0 {
-            "Remove Flowers"
+            tr("STR_UNDO_REMOVE_FLOWERS")
         } else {
             ""
         };
