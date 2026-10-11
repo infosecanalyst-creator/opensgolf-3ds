@@ -759,7 +759,7 @@ fn person(ix: &mut Ix, c: &Ctx) {
         ix.ball(hp.0 - fx * 0.8 * k, hp.1 - 1.2 * k, 2.9 * k, 2.2 * k, ALT, 0.0);
         ix.rod((hp.0 - fx * 1.6 * k, hp.1 - 0.5 * k), (hp.0 - fx * 1.8 * k, hp.1 + 3.0 * k), 1.6 * k, ALT, 0.0);
     } else {
-        ix.ball(hp.0, hp.1 - 1.4 * k, 2.8 * k, 1.6 * k, HAT, 0.1);
+        ix.ball(hp.0, hp.1 - 1.9 * k, 2.5 * k, 1.2 * k, HAT, 0.1);
         ix.rod((hp.0, hp.1 - 0.9 * k), (hp.0 + fx * 3.6 * k, hp.1 - 0.6 * k + fz * 1.0 * k), 0.8 * k, HAT, 0.0);
     }
     if facing_viewer {

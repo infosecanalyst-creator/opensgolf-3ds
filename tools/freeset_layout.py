@@ -208,7 +208,8 @@ def grid_split(x0, y0, m):
 def split(x0, y0, m, depth=0):
     h, w = m.shape
     if m.mean() > 0.6 and w * h > 15000:
-        return [(x0, y0, x0 + w, y0 + h)]  # a solid panel: the buttons on it are drawn by the engine from other cuts
+        # a solid panel (the buttons on it are drawn by the engine from other cuts), unless it is a grid of equal buttons
+        return grid_split(x0, y0, m) or [(x0, y0, x0 + w, y0 + h)]
     parts = xy_split(x0, y0, m)
     if parts:
         out = []

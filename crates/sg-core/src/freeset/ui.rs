@@ -10,6 +10,8 @@ pub const BASE: Col = rgb(66, 108, 150);
 pub const GOLD: Col = rgb(228, 180, 64);
 pub const GREEN: Col = rgb(84, 168, 92);
 pub const GREY: Col = rgb(140, 146, 156);
+/// The neutral panels and frames.
+pub const SLATE: Col = rgb(132, 152, 178);
 pub const PAPER: Col = rgb(246, 238, 214);
 pub const DARK: Col = rgb(36, 46, 58);
 pub const RED: Col = rgb(200, 74, 62);
@@ -20,7 +22,7 @@ pub fn tone(t: u8, light: u8) -> Col {
     let c = match t {
         b'g' => GOLD,
         b'e' => GREEN,
-        b's' => GREY,
+        b's' => SLATE,
         b'w' => PAPER,
         b'k' => DARK,
         b'r' => RED,
@@ -190,6 +192,42 @@ fn draw(low: &str, name: &str, w: usize, h: usize, comps: &[Comp], full: bool) -
     }
     if name == "titleunsel.pcx" || name == "titlemo.pcx" {
         title_buttons(&mut c, comps, name == "titlemo.pcx");
+        return c;
+    }
+    if name.ends_with("layout.pcx") {
+        // the building buttons of a theme: a little building per column, the rows its states
+        for p in comps {
+            if p.w < 12.0 || p.h < 12.0 {
+                continue;
+            }
+            let state_dim = matches!(p.tone, b'b' | b'k' | b's') && p.light < 2;
+            iso_slab(&mut c, p, if state_dim { SLATE } else { rgb(110, 176, 92) });
+            let kind = ((p.x / 68.0) as u32 + hash(name)) % 5;
+            if p.w > 30.0 && (p.x / 68.0) as i32 > 0 {
+                mini_building(&mut c, p, kind, state_dim);
+            }
+        }
+        return c;
+    }
+    if name == "buildingpanel.pcx" || name == "amenitiespanel.pcx" {
+        for p in comps {
+            if p.y < 300.0 && p.x < 300.0 && p.w > 40.0 {
+                let top = match p.tone {
+                    b'e' => rgb(90, 200, 150),
+                    b'g' => GOLD,
+                    _ => {
+                        if p.light >= 2 {
+                            rgb(120, 180, 160)
+                        } else {
+                            SLATE
+                        }
+                    }
+                };
+                iso_slab(&mut c, p, top);
+            } else {
+                element(&mut c, p);
+            }
+        }
         return c;
     }
     if name.contains("terrainbuttons") {
@@ -578,6 +616,40 @@ fn terrain_buttons(c: &mut Canvas, comps: &[Comp], theme: usize) {
             element(c, p);
         }
     }
+}
+
+/// An isometric slab filling the box: a diamond top of `top` over two shaded sides.
+fn iso_slab(c: &mut Canvas, p: &Comp, top: Col) {
+    let (x, y, w, h) = (p.x, p.y, p.w, p.h);
+    let t = (h * 0.18).max(3.0);
+    let (cx, cy) = (x + w / 2.0, y + (h - t) / 2.0);
+    let (hw, hh) = (w / 2.0 - 0.5, (h - t) / 2.0 - 0.5);
+    let n = (cx, cy - hh);
+    let e = (cx + hw, cy);
+    let s = (cx, cy + hh);
+    let wv = (cx - hw, cy);
+    c.poly(&[wv, s, (s.0, s.1 + t), (wv.0, wv.1 + t)], shade(top, -0.35));
+    c.poly(&[s, e, (e.0, e.1 + t), (s.0, s.1 + t)], shade(top, -0.5));
+    c.poly(&[n, e, s, wv], top);
+    c.line(wv.0, wv.1, n.0, n.1, 1.2, shade(top, 0.3));
+    c.line(n.0, n.1, e.0, e.1, 1.2, shade(top, 0.3));
+}
+
+/// A little house on a slab (the building buttons): walls, a roof, a door.
+fn mini_building(c: &mut Canvas, p: &Comp, kind: u32, dim: bool) {
+    let (cx, base) = (p.x + p.w / 2.0, p.y + p.h * 0.5);
+    let bw = p.w * [0.28, 0.34, 0.24, 0.3, 0.38][kind as usize];
+    let bh = p.h * [0.32, 0.26, 0.4, 0.3, 0.22][kind as usize];
+    let wall = if dim { rgb(150, 160, 175) } else { rgb(236, 226, 200) };
+    let roof = if dim {
+        rgb(100, 112, 130)
+    } else {
+        [rgb(180, 70, 55), rgb(70, 100, 150), rgb(90, 120, 80), rgb(150, 110, 80), rgb(190, 130, 60)][kind as usize]
+    };
+    c.poly(&[(cx - bw, base - bh * 0.5), (cx, base), (cx, base - bh), (cx - bw, base - bh * 1.5)], shade(wall, -0.1));
+    c.poly(&[(cx, base), (cx + bw, base - bh * 0.5), (cx + bw, base - bh * 1.5), (cx, base - bh)], shade(wall, -0.3));
+    c.poly(&[(cx - bw, base - bh * 1.5), (cx, base - bh), (cx + bw, base - bh * 1.5), (cx, base - bh * 2.4)], roof);
+    c.rect(cx - bw * 0.55, base - bh * 0.75, bw * 0.25, bh * 0.45, shade(rgb(120, 80, 50), if dim { -0.3 } else { 0.0 }));
 }
 
 /// A rounded diamond button holding a tile of `col`: state 0 normal, 1 pointed at (lighter), 2 selected (gold rim),
