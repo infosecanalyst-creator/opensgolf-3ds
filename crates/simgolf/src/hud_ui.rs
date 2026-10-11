@@ -139,7 +139,7 @@ impl App {
 
     /// The course name with no class at all (0x40daa0 with argument -1): the championship leader board's "at <name>".
     pub fn base_course_name(&self) -> String {
-        let site = self.land.as_ref().and_then(|l| sg_core::properties::PROPERTIES.get(l.slot.property));
+        let site = self.land.as_ref().and_then(|l| sg_core::data::properties().get(l.slot.property));
         match site {
             // an old save's default "<property> GC" (always English): the property's course name
             Some(p) if self.course_name == format!("{} GC", sg_core::lang::en(p.name_key)) => p.course().to_string(),

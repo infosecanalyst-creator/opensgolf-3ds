@@ -4,7 +4,7 @@
 //!
 //! Facts are from the publisher's golf.exe (docs/PUBLISHER_EXE_NOTES.md, "SGA tournaments"), restated in our own words.
 
-use crate::course::{f, idx, inside, Course, TYPES};
+use crate::course::{f, idx, inside, Course};
 use crate::geom::{clamp, DX, DY, UNIT};
 use crate::golfer::{anim, flag, game, Club, Column, Golfer, Member, SLOTS};
 use crate::land::ExeRng;
@@ -448,7 +448,7 @@ impl Club {
                     }
                     let i = idx(a, b);
                     let ty = c.ty[i];
-                    let class = TYPES[(ty as usize).min(22)].class;
+                    let class = crate::data::row(ty).class;
                     if (class == 4 || class == 13) && ty != crate::course::t::BUILDING && c.flags[i] & (f::LOW | f::CUP | f::OBSTACLE) == 0
                     {
                         let (dx, dy) = (pin.0 - a, pin.1 - b);

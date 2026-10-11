@@ -5,6 +5,9 @@
 //! All file access of the port goes through this module. Natively it is the disk. In a browser (wasm32) it is the page: the
 //! player picks their own SimGolf folder, the page keeps its files in memory, and these functions call into the page
 //! (web/simgolf.js); lookups there are case-insensitive already. Files written in the browser are kept by the page.
+//!
+//! Content packs (docs/MODDING.md) sit over the game folder: [`read_file`] returns an enabled pack's replacement of a game
+//! file when there is one (crate::vfs), the file itself otherwise.
 use std::path::{Path, PathBuf};
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -94,7 +97,14 @@ mod imp {
     }
 }
 
+/// Reads a file. A file of the game folder that an enabled content pack replaces is read from the pack (crate::vfs).
 pub fn read_file(path: impl AsRef<Path>) -> Option<Vec<u8>> {
+    let p = path.as_ref();
+    crate::vfs::read_override(p).or_else(|| imp::read(p))
+}
+
+/// Reads a file as it is on disk (or in the browser's store), never through the content packs.
+pub fn read_raw(path: impl AsRef<Path>) -> Option<Vec<u8>> {
     imp::read(path.as_ref())
 }
 

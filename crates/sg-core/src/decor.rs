@@ -5,7 +5,7 @@
 //! along b (8, 5), so a screen offset (dx, dy) in zoom units is (dx / 8 - dy / 5) / 2 tiles along a and (dx / 8 + dy / 5) / 2
 //! along b.
 
-use crate::course::{N, TYPES};
+use crate::course::N;
 use crate::geom::{DX, DY};
 
 /// One sprite to draw on a tile.
@@ -38,7 +38,7 @@ fn ty_at(ty: &[u8], a: i32, b: i32) -> u8 {
 }
 
 fn group(t: u8) -> u8 {
-    TYPES[(t as usize).min(22)].group
+    crate::data::row(t).group
 }
 
 /// The trees of a tile of type tree (13), pine (14) or palm (15) (0x41407a..0x41491d). `grown` is false while the tile's
@@ -47,7 +47,7 @@ fn group(t: u8) -> u8 {
 #[allow(clippy::too_many_arguments)]
 pub fn trees(ty: &[u8], var: u8, scenic: bool, a: i32, b: i32, theme: u8, grown: bool, field: &dyn Fn(i32, i32) -> i32) -> Vec<Draw> {
     let own = ty_at(ty, a, b);
-    if TYPES[(own as usize).min(22)].class != 13 || own == 16 || scenic {
+    if crate::data::row(own).class != 13 || own == 16 || scenic {
         return Vec::new();
     }
     // which types stand around the tile, and on how many of the four axes both sides agree on being this kind of woods
@@ -158,7 +158,7 @@ pub fn tree_sound(t: u8) -> Option<(i32, i32)> {
 /// The weed sprite of a tile (0x413f46): crabgrass where the type is no hazard, the theme's weed elsewhere; the frame steps
 /// back from the last by the tile's position, never below its variant, and follows the growth counter while it grows.
 pub fn weed(t: u8, a: i32, b: i32, frames: i32, counter: Option<i32>) -> Draw {
-    let hazard = TYPES[(t as usize).min(22)].hazard;
+    let hazard = crate::data::row(t).hazard;
     let (sprite, pal) = if hazard <= 0 { (0x184, 0x4c) } else { (0x190, 0x4d) };
     let lo = (a + 2 * b) & 3;
     let hi = counter.map(|c| c.clamp(0, 0x63)).unwrap_or(999);

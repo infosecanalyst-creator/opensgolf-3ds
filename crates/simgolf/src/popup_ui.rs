@@ -70,6 +70,9 @@ pub struct ChoiceBox {
     pub checks: Option<u32>,
     /// Greyed option bits.
     pub disabled: u32,
+    /// Checkbox mode: option bits that are commands rather than checkboxes (drawn without a box; the port's Content packs
+    /// line of Preferences).
+    pub plain: u32,
 }
 
 /// The popup's font: the default font object 0x519928, Manual SSi Bold 20 (0x46d6e0 selects it first).
@@ -77,7 +80,7 @@ pub const CHOICE_FONT: crate::ui::Fnt = crate::ui::F_MANUAL20;
 
 impl ChoiceBox {
     pub fn new(lines: Vec<String>, cx: f32, top: f32) -> ChoiceBox {
-        ChoiceBox { lines, cx, top, checks: None, disabled: 0 }
+        ChoiceBox { lines, cx, top, checks: None, disabled: 0, plain: 0 }
     }
 
     /// The indexes of the option lines.
@@ -164,7 +167,9 @@ impl App {
                 continue;
             }
             let lit = hover == Some(k);
+            let plain = b.plain & (1 << k) != 0;
             let chosen = match b.checks {
+                Some(_) if plain => lit,
                 Some(m) => m & (1 << k) != 0,
                 None => lit,
             };
@@ -175,6 +180,7 @@ impl App {
                 s.put(g, f, x, y + 8.0, l, c);
             }
             match b.checks {
+                Some(_) if plain => {}
                 Some(_) => {
                     // the InfoButtons boxes 0x561260[1] (ticked) and [2] (crossed), 26 x 26 at (300 + 50 k, 0)
                     let cut = if chosen { 350.0 } else { 400.0 };
@@ -351,6 +357,7 @@ impl Popup {
             top: self.top,
             checks: (self.kind == PopupKind::Prefs).then_some(self.checks),
             disabled: self.disabled,
+            plain: if self.kind == PopupKind::Prefs { 1 << PREFS_CONTENT | 1 << PREFS_LANGUAGE } else { 0 },
         }
     }
     fn options(&self) -> Vec<usize> {
@@ -358,8 +365,10 @@ impl Popup {
     }
 }
 
+/// The option of the Preferences list that opens Preferences > Content.
+pub const PREFS_CONTENT: usize = 5;
 /// The Preferences' option that switches the language (shown only when there is a translation to switch to).
-const PREFS_LANGUAGE: usize = 5;
+const PREFS_LANGUAGE: usize = 6;
 
 /// What a popup returned: an option index (counted from the first option line), or None when cancelled.
 pub type PopupResult = Option<usize>;
@@ -438,6 +447,8 @@ impl App {
                     tr("STR_MENU_PREFS_ANIMALS"),
                     tr("STR_MENU_PREFS_SOUND"),
                     tr("STR_MENU_PREFS_HD"),
+                    // the port's own: Preferences > Content (docs/MODDING.md)
+                    tr("STR_MENU_PREFS_CONTENT"),
                 ],
                 0,
                 400.0,
@@ -574,6 +585,10 @@ impl App {
                     p.checks = checks;
                 }
                 return Some(usize::MAX);
+            }
+            // the Content packs line opens its screen (the ticks so far are kept, as with OK)
+            if k == PREFS_CONTENT && (pick.is_some() || p.sel == Some(k)) {
+                return Some((p.checks | 1 << PREFS_CONTENT) as usize);
             }
             if pick.is_some() {
                 p.checks ^= 1 << k;

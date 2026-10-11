@@ -47,6 +47,10 @@ The save folder is `%APPDATA%\SimGolf` on Windows, `~/Library/Application Suppor
 
 If HD is chosen and no pack is found, the game says how to make one and stays Classic.
 
+Content packs (docs/MODDING.md) sit above the HD pack: when an enabled mod replaces a picture, terrain texture or sprite,
+the mod's file is used, loaded the classic way, and the HD pack's upscale of the original is not. Everything else is as
+described here.
+
 ## What changes in HD
 
 | | Classic | HD |

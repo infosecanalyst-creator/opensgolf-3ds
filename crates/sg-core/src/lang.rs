@@ -124,6 +124,16 @@ pub fn en(key: &'static str) -> &'static str {
     t.en.get(key).copied().unwrap_or(key)
 }
 
+/// A name from a data table (docs/MODDING.md section 3), which holds either a text key (the built-in names, so they follow
+/// the language) or a pack's own text (shown as it is).
+pub fn text(s: &'static str) -> &'static str {
+    if s.starts_with("STR_") {
+        tr(s)
+    } else {
+        s
+    }
+}
+
 /// True when the table (English or the overlay) has the key.
 pub fn has(key: &str) -> bool {
     raw(key).is_some()

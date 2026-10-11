@@ -525,8 +525,12 @@ impl App {
                 for &k in OFFERED_KINDS.iter() {
                     let k = k as usize;
                     if self.build_available(k) {
-                        let (name, _, price) = sg_core::land::BUILDINGS[k];
-                        v.push(PanelItem { label: format!("{}  {}", tr(name), money(price as i64 * 100)), kind: 4, arg: k });
+                        let (name, _, price) = sg_core::data::buildings()[k];
+                        v.push(PanelItem {
+                            label: format!("{}  {}", sg_core::lang::text(name), money(price as i64 * 100)),
+                            kind: 4,
+                            arg: k,
+                        });
                     }
                 }
             }

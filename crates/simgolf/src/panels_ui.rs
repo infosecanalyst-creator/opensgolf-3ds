@@ -13,7 +13,7 @@ use crate::app::*;
 use crate::gfx::Gfx;
 use crate::render::Rect;
 use crate::ui::{load_pcx, load_pcx_alpha, rgb, rgba, Image, Screen as Ui};
-use sg_core::economy::{self, Economy, WAGE_UNITS};
+use sg_core::economy::{self, Economy};
 use sg_core::land;
 use sg_core::lang::{tr, trf};
 
@@ -577,7 +577,7 @@ impl App {
         // footage of the original shows "Fairway 300", "Pot bunker 800": no money sign
         let title = format!("{} {}", capitalised(name), Economy::terrain_cost_units(id) * 100);
         s.put_centered(g, F_MANUAL15, x - 12.0, 394.0, &title, rgb(0.0, 0.0, 0.0));
-        let row = sg_core::course::TYPES.get(id as usize).copied().unwrap_or(sg_core::course::TYPES[4]);
+        let row = sg_core::data::get().rows.get(id as usize).copied().unwrap_or(sg_core::data::get().rows[4]);
         let k = ((4 - row.hazard as i32) * 2).clamp(1, 10);
         s.image_part(g, &self.hud.faces, x - 90.0, 391.0, 594.0 - 16.0 * (k - 1) as f32, 100.0, 16.0, 16.0);
         // 0x45b0d0: greedy lines of at most 16 * 8 pixels, the line height less 4 (at least 10) apart, while above y 584
@@ -1050,7 +1050,7 @@ impl App {
                 let cost = match sl.kind {
                     -1 => None,
                     4 => Some(tr("STR_AMENITY_LANDMARK_COST").to_string()),
-                    k => Some((land::BUILDINGS[k as usize].2 as i64 * 100).to_string()),
+                    k => Some((sg_core::data::buildings()[k as usize].2 as i64 * 100).to_string()),
                 };
                 if let Some(c) = cost {
                     // the cost's bar has the name's width (0x4493d0 with the same ends)
@@ -1114,7 +1114,7 @@ impl App {
         // the Snack Bar never says "Upgraded" nor shows the upgrade price
         let up = level != 0 && i != 1;
         let name = land::building_name(6 + i as i32);
-        let units = land::BUILDINGS[6 + i].2 as i64;
+        let units = sg_core::data::buildings()[6 + i].2 as i64;
         let dollars = if up { units * 300 / 2 } else { units * 100 };
         let ink = rgb(0.0, 0.0, 0.0);
         let title = if up { trf("STR_LOT_UPGRADED", &[("BUILDING", &name)]) } else { name.to_string() };
@@ -1361,7 +1361,7 @@ impl App {
                 // refusal comes on the click)
                 let text = trf(
                     "STR_HIRE_WAGE",
-                    &[("EMPLOYEE", &staff_title(k, sk == 1)), ("WAGE", &crate::ui::group((WAGE_UNITS[k][sk] * 100) as u64))],
+                    &[("EMPLOYEE", &staff_title(k, sk == 1)), ("WAGE", &crate::ui::group((sg_core::data::wages()[k][sk] * 100) as u64))],
                 );
                 s.put(g, crate::ui::F_INFO14, 246.0, ty, &text, ink);
             }

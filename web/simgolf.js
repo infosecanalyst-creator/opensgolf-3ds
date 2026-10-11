@@ -129,10 +129,11 @@ function sgStatus(t) {
 // --- browser storage of the game files --------------------------------------------------------------------------------------
 function sgDb() {
     return new Promise((ok, fail) => {
-        const r = indexedDB.open("simgolf", 2);
+        const r = indexedDB.open("simgolf", 3);
         r.onupgradeneeded = () => {
-            // "files": the game folder; "hd": the player's own HD art pack (optional, docs/HD.md)
-            for (const s of ["files", "hd"]) if (!r.result.objectStoreNames.contains(s)) r.result.createObjectStore(s);
+            // "files": the game folder; "hd": the player's own HD art pack (optional, docs/HD.md); "packs": content packs
+            // the player added (docs/MODDING.md)
+            for (const s of ["files", "hd", "packs"]) if (!r.result.objectStoreNames.contains(s)) r.result.createObjectStore(s);
         };
         r.onsuccess = () => ok(r.result);
         r.onerror = () => fail(r.error);
@@ -151,6 +152,21 @@ async function sgStoreAll(entries, store = "files") {
         });
     } catch (e) {
         console.warn("could not keep the game files in this browser", e);
+    }
+}
+// Adds entries to a store without clearing it (content packs are added one at a time).
+async function sgStoreAdd(entries, store) {
+    try {
+        const db = await sgDb();
+        await new Promise((ok, fail) => {
+            const tx = db.transaction(store, "readwrite");
+            const st = tx.objectStore(store);
+            for (const [path, bytes] of entries) st.put(bytes, path);
+            tx.oncomplete = ok;
+            tx.onerror = () => fail(tx.error);
+        });
+    } catch (e) {
+        console.warn("could not keep the pack in this browser", e);
     }
 }
 async function sgLoadStored(store = "files") {
@@ -353,7 +369,68 @@ async function sgForgetHd() {
     sgHdStatus("The HD pack was removed from this browser.");
 }
 
+// --- content packs (mods) -----------------------------------------------------------------------------------------------------
+// Packs the player adds (docs/MODDING.md) go under "packs/", the browser version's packs folder: a folder pack as its files
+// (packs/<folder>/pack.toml ...), a .zip as the zip itself (packs/<name>.zip; the game reads zips). They are kept in this
+// browser. The game lists them in System Functions > Preferences > Content packs, where they are switched on.
+function sgPackStatus(t) {
+    document.getElementById("packstatus").textContent = t;
+}
+function sgPackName(n) {
+    return n.replace(/[\\/:*?"<>|]/g, "_");
+}
+async function sgLoadPackFolder(fileList) {
+    const files = Array.from(fileList);
+    const tomls = files.map(f => f.webkitRelativePath).filter(p => p.toLowerCase().endsWith("/pack.toml"));
+    if (tomls.length === 0) {
+        sgPackStatus("That folder is not a content pack (no pack.toml found).");
+        return;
+    }
+    // the shallowest pack.toml marks the pack's root
+    const rootPath = tomls.sort((a, b) => a.split("/").length - b.split("/").length)[0];
+    const root = rootPath.substring(0, rootPath.length - "pack.toml".length);
+    const name = sgPackName(root.replace(/\/$/, "").split("/").pop() || "pack");
+    const keep = [];
+    for (const f of files) {
+        const p = f.webkitRelativePath;
+        if (!p.startsWith(root)) continue;
+        const rel = "packs/" + name + "/" + p.substring(root.length);
+        const bytes = new Uint8Array(await f.arrayBuffer());
+        sgAddFile(rel, bytes);
+        keep.push([rel, bytes]);
+    }
+    if (document.getElementById("remember").checked) await sgStoreAdd(keep, "packs");
+    sgPackStatus("Added " + name + " (" + keep.length + " files). Switch it on in the game: System Functions, Preferences, Content packs.");
+}
+async function sgLoadPackZip(file) {
+    if (!file) return;
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    if (bytes.length < 4 || bytes[0] !== 0x50 || bytes[1] !== 0x4b) {
+        sgPackStatus("That is not a .zip file.");
+        return;
+    }
+    const rel = "packs/" + sgPackName(file.name);
+    sgAddFile(rel, bytes);
+    if (document.getElementById("remember").checked) await sgStoreAdd([[rel, bytes]], "packs");
+    sgPackStatus("Added " + file.name + ". Switch it on in the game: System Functions, Preferences, Content packs.");
+}
+async function sgForgetPacks() {
+    try {
+        const db = await sgDb();
+        db.transaction("packs", "readwrite").objectStore("packs").clear();
+    } catch (e) {}
+    for (const k of Array.from(sgfs.files.keys())) if (k.startsWith("packs/")) sgfs.files.delete(k);
+    sgfs.dirs.delete("packs");
+    sgPackStatus("The content packs were removed from this browser.");
+}
+
 async function sgInit() {
+    const packs = await sgLoadStored("packs");
+    if (packs.length > 0) {
+        for (const [path, bytes] of packs) sgAddFile(path, bytes);
+        const names = new Set(packs.map(([p]) => p.split("/")[1]));
+        sgPackStatus("Content packs kept in this browser: " + Array.from(names).join(", ") + ".");
+    }
     const hd = await sgLoadStored("hd");
     if (hd.length > 0) {
         for (const [path, bytes] of hd) sgAddFile(path, bytes);

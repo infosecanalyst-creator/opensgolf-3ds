@@ -11,7 +11,6 @@ use sg_core::golfer::{self as golf, Club};
 use sg_core::land::{self, ExeRng, Land, Noise, Slot};
 use sg_core::lang::{tr, trf};
 use sg_core::mixer::Mixer;
-use sg_core::properties::{PROPERTIES, START_FUNDS};
 use sg_core::sprites::{load_sprite, Sprite};
 use sg_core::staff::{self, Employee, StaffEvent, StaffGolfer, TileState};
 use sg_core::terrain::*;
@@ -198,7 +197,7 @@ pub const PAINT: [PaintEntry; 24] = [
     PaintEntry { name_key: "STR_PAINT_PALM_TREE", ty: 15, vbyte: 0 },
 ];
 
-/// Building kinds the Add Buildings panel offers, in the exe's order (kind numbers of `land::BUILDINGS`): benches, flower beds,
+/// Building kinds the Add Buildings panel offers, in the exe's order (kind numbers of `sg_core::data::buildings()`): benches, flower beds,
 /// ball washers, then the amenities as holes unlock them. Paths have their own tool; landmarks and home sites need donations and
 /// members first.
 pub const OFFERED_KINDS: [i32; 16] = [1, 2, 3, 16, 19, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
@@ -244,6 +243,8 @@ pub enum Screen {
     Finance,
     Routing,
     Shortcuts,
+    /// Preferences > Content: the installed content packs (the port's own screen, docs/MODDING.md).
+    Content,
 }
 
 /// Where saved games, championship courses and pros, and accomplishment snapshots go. The browser keeps them in its own storage
@@ -476,6 +477,8 @@ pub struct App {
     pub float_next: usize,
     /// The popup menu shown, and the last ticker message (Repeat Last Message).
     pub popup: Option<crate::popup_ui::Popup>,
+    /// The content packs found and loaded (docs/MODDING.md), for Preferences > Content.
+    pub content: crate::content::ContentState,
     pub last_message: String,
     /// The main screen's message window (the exe's ticker).
     pub ticker: crate::message_ui::Ticker,
@@ -700,6 +703,7 @@ impl App {
             floats: [(0, 0, 0, 0); 8],
             float_next: 0,
             popup: None,
+            content: Default::default(),
             last_message: String::new(),
             ticker: Default::default(),
             rename: None,
@@ -2068,7 +2072,7 @@ impl App {
 
     /// Swaps property `k` with the one in the cheapest slot it may hold (0 for Parkland, else 1).
     pub fn cheap_slot(&mut self, k: usize) {
-        let to = if PROPERTIES[k].theme == 0 { 0 } else { 1 };
+        let to = if sg_core::data::properties()[k].theme == 0 { 0 } else { 1 };
         let from = self.slot_of[k];
         if from == to {
             return;
@@ -2083,11 +2087,11 @@ impl App {
     /// Acres and price (in money) of a property in this game's offer.
     pub fn offer_for(&self, prop_idx: usize) -> (i32, i32) {
         let slot = self.slot_of[prop_idx];
-        (self.offer[slot].acres, land::SLOT_PRICE_UNITS[slot] * 100)
+        (self.offer[slot].acres, sg_core::data::economy().offer_units[slot] * 100)
     }
 
     pub fn start_game(&mut self, g: &mut Gfx, prop_idx: usize, sandbox: bool) {
-        let p = PROPERTIES[prop_idx];
+        let p = sg_core::data::properties()[prop_idx];
         // a game started without the difficulty screen (scripted runs) still gets its Top 10 id
         if self.course_id.is_none() {
             self.course_id = Some(self.exe_rng.below(0xffff));
@@ -2096,7 +2100,8 @@ impl App {
         self.econ.sandbox = sandbox;
         // The property is paid for out of the starting funds.
         // The exe starts with 1000 units (10000 in sandbox) and takes the property's price off a normal game.
-        self.econ.start_cash = if sandbox { (START_FUNDS * 10) as f64 } else { (START_FUNDS - price) as f64 };
+        self.econ.start_cash =
+            if sandbox { sg_core::data::economy().sandbox_funds as f64 } else { (sg_core::data::economy().start_funds - price) as f64 };
         let slot_index = self.slot_of[prop_idx];
         let land = land::generate(slot_index, self.offer[slot_index], self.difficulty, sandbox, &mut self.exe_rng, &self.noise);
         self.terrain = land.to_terrain();
@@ -2202,7 +2207,7 @@ impl App {
         if self.bought.iter().all(|&y| y < 0) {
             // a game saved before the purchases were kept: its own property, bought in a year not recorded (shown as 2001)
             if let Some(p) = self.land.as_ref().map(|l| l.slot.property) {
-                self.bought = vec![-1; PROPERTIES.len()];
+                self.bought = vec![-1; sg_core::data::properties().len()];
                 if let Some(b) = self.bought.get_mut(p) {
                     *b = 0;
                 }
@@ -2341,7 +2346,7 @@ impl App {
                 }
                 if let Some(o) = on {
                     let obj = self.land.as_ref().map(|l| l.objects[o]).unwrap_or_default();
-                    let edge = land::BUILDINGS.get(obj.kind as usize).map(|b| b.1).unwrap_or(1);
+                    let edge = sg_core::data::buildings().get(obj.kind as usize).map(|b| b.1).unwrap_or(1);
                     if (obj.kind == land::K_LANDMARK && obj.sub <= 16) || obj.kind == land::K_CLUBHOUSE || edge > 1 {
                         // landmarks are permanent; for a building the exe first asks whether to demolish it (the question
                         // is not drawn yet: such tiles are left alone)
@@ -2701,7 +2706,7 @@ impl App {
             return self.show_toast(tr("STR_TOAST_NO_FURTHER_UPGRADE"));
         }
         // an upgrade is placed one tile larger
-        let size = land::BUILDINGS[kind as usize].1 + existing.is_some() as i32;
+        let size = sg_core::data::buildings()[kind as usize].1 + existing.is_some() as i32;
         let Some(mut clear) = land.fits(tx, ty, size, kind, theme) else {
             return self.show_toast(tr("STR_TOAST_NO_ROOM"));
         };
@@ -2709,7 +2714,7 @@ impl App {
             clear /= 2;
         }
         let level = existing.map(|i| land.objects[i].sub + 1).unwrap_or(0);
-        let mut cost = (land::BUILDINGS[kind as usize].2 * (level + 2) / 2 + clear) as f64 * Economy::UNIT;
+        let mut cost = (sg_core::data::buildings()[kind as usize].2 * (level + 2) / 2 + clear) as f64 * Economy::UNIT;
         // a landmark: the one chosen from the strip; (type * 5 + 25) * 2, or nothing the first time a donated type is placed
         // (clearing is not charged)
         let landmark = self.chosen_landmark();
@@ -3458,7 +3463,7 @@ impl App {
             if self.terrain.type_at(o.a, o.b) == 20 {
                 continue;
             }
-            let size = land::BUILDINGS.get(o.kind as usize).map(|b| b.1).unwrap_or(1);
+            let size = sg_core::data::buildings().get(o.kind as usize).map(|b| b.1).unwrap_or(1);
             let (cx, cz) = self.terrain.tile_centre(o.a, o.b);
             let off = (size - 1) as f32 * TILE_SIZE * 0.5;
             let (x, z) = (cx + off, cz + off);

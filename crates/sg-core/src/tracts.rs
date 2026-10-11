@@ -72,7 +72,7 @@ pub fn buy(land: &mut Land, i: usize) {
             let t = ((a0 + da) * N + b0 + db) as usize;
             if land.ty[t] == T_OUT {
                 land.ty[t] = land.original[t];
-                land.layer[t] = crate::land::TYPES[(land.ty[t] as usize).min(22)].layer;
+                land.layer[t] = crate::data::land_type(land.ty[t]).layer;
             }
         }
     }
@@ -104,8 +104,8 @@ pub fn type_name(t: u8, theme: u8, plural: bool) -> String {
     if let Some((one, many)) = named {
         return if plural { many } else { one }.to_string();
     }
-    let base = crate::lang::tr(crate::land::TYPES[(t as usize).min(22)].name_key).to_string();
-    if plural && crate::land::TYPES[(t as usize).min(22)].class == 13 {
+    let base = crate::lang::text(crate::data::land_type(t).name_key).to_string();
+    if plural && crate::data::land_type(t).class == 13 {
         trf("STR_THEME_TERRAIN_TREES", &[("TREE", &base)])
     } else {
         base
@@ -117,7 +117,7 @@ pub fn describe(tract: &Tract, i: usize, theme: u8) -> String {
     if tract.oob == 0 {
         return tr("STR_TRACT_ALREADY_PURCHASED").to_string();
     }
-    let name = |t: u8| type_name(t, theme, crate::land::TYPES[(t as usize).min(22)].class == 13);
+    let name = |t: u8| type_name(t, theme, crate::data::land_type(t).class == 13);
     trf(
         "STR_TRACT_BUY",
         &[

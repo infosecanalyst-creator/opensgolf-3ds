@@ -5,7 +5,7 @@
 
 use crate::land::{port_theme, RECORDS};
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Property {
     /// Text keys of the place, the course and the bonus (see `name`, `course`, `bonus`).
     pub name_key: &'static str,
@@ -34,17 +34,17 @@ const fn p(i: usize) -> Property {
 impl Property {
     /// The place's name.
     pub fn name(&self) -> &'static str {
-        crate::lang::tr(self.name_key)
+        crate::lang::text(self.name_key)
     }
 
     /// The course's own name.
     pub fn course(&self) -> &'static str {
-        crate::lang::tr(self.course_key)
+        crate::lang::text(self.course_key)
     }
 
     /// The property's bonus.
     pub fn bonus(&self) -> &'static str {
-        crate::lang::tr(self.bonus_key)
+        crate::lang::text(self.bonus_key)
     }
 }
 

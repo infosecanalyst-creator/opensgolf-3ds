@@ -6,7 +6,7 @@
 //! own pro ("Gary Golf" by default) does all four jobs and walks to the last tile the player clicked. Employees walk tile by tile
 //! with the exe's weighted path search, at a speed set by the ground under them. The code is our own.
 
-use crate::land::{ExeRng, TYPES};
+use crate::land::ExeRng;
 use crate::terrain::Terrain;
 
 pub const UNIT: i32 = 1024;
@@ -236,11 +236,11 @@ fn tile_ok(t: &Terrain, a: i32, b: i32) -> bool {
 
 fn layer(t: &Terrain, a: i32, b: i32) -> i32 {
     let ty = t.type_at(a, b);
-    TYPES.get(ty as usize).map(|i| i.layer as i32).unwrap_or(4)
+    crate::data::get().land_types.get(ty as usize).map(|i| i.layer as i32).unwrap_or(4)
 }
 
 fn class(ty: i32) -> u8 {
-    TYPES.get(ty as usize).map(|i| i.class).unwrap_or(0)
+    crate::data::get().land_types.get(ty as usize).map(|i| i.class).unwrap_or(0)
 }
 
 fn on_path(t: &Terrain, a: i32, b: i32) -> bool {
@@ -782,7 +782,7 @@ pub fn spread_weeds(t: &Terrain, tiles: &mut TileState, tick: u32, difficulty: i
             mask |= 1;
             count += 1;
         }
-        if TYPES.get(t.type_at(na, nb) as usize).map(|i| i.desert_group <= 0).unwrap_or(false) {
+        if crate::data::get().land_types.get(t.type_at(na, nb) as usize).map(|i| i.desert_group <= 0).unwrap_or(false) {
             mask |= 2;
         }
     }

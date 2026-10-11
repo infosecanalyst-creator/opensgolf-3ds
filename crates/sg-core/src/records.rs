@@ -102,7 +102,10 @@ impl Club {
             log::HOLE if self.par(arg) != 0 => trf("STR_LOG_HOLE_OPENED", &[("HOLE", &arg)]),
             log::BUILT => trf(
                 "STR_LOG_BUILT",
-                &[("BUILDING", &crate::land::BUILDINGS.get(arg as usize).map(|b| tr(b.0)).unwrap_or(tr("STR_LOG_BUILDING")))],
+                &[(
+                    "BUILDING",
+                    &crate::data::buildings().get(arg as usize).map(|b| crate::lang::text(b.0)).unwrap_or(tr("STR_LOG_BUILDING")),
+                )],
             ),
             log::MATCH => {
                 trf("STR_LOG_WON_MATCH", &[("PRO", &self.pros.get(arg as usize).map(|p| p.name.as_str()).unwrap_or(tr("STR_LOG_A_PRO")))])

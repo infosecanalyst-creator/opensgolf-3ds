@@ -5,7 +5,7 @@
 //! is not available beyond the first words its labels show; the lines here start with those words where they are known and
 //! are otherwise written for this port.
 
-use crate::course::{f, idx, inside, Course, TYPES};
+use crate::course::{f, idx, inside, Course};
 use crate::golfer::Club;
 use crate::lang::{tr, trf};
 
@@ -78,7 +78,7 @@ pub fn club_name(k: usize) -> &'static str {
 const PETS: [&str; 4] = ["STR_THOUGHT_PET_HONEY", "STR_THOUGHT_PET_SUGAR", "STR_THOUGHT_PET_DEAR", "STR_THOUGHT_PET_SWEETIE"];
 
 fn is_tree(t: u8) -> bool {
-    TYPES[(t as usize).min(22)].class == 13
+    crate::data::row(t).class == 13
 }
 
 /// The name of the scenery on a tile (0x407700, simplified to what this port tracks): landmarks, flower beds, scenic trees,
@@ -132,7 +132,7 @@ pub fn feature(c: &Course, a: i32, b: i32, theme: u8) -> String {
         }
         .into();
     }
-    match TYPES[(t as usize).min(22)].class {
+    match crate::data::row(t).class {
         4 if t == 4 => {
             if theme == 1 { tr("STR_THOUGHT_FEATURE_MYSTERIOUS_BONES") } else { tr("STR_THOUGHT_FEATURE_ORNAMENTAL_GRASS") }.into()
         }
