@@ -12,6 +12,7 @@
 //! Pictures are PNG files named after the original's PCX, TGA or BMP (the engine takes a PNG for any of those, crate::vfs),
 //! except where the engine lists a folder by file type (terrain textures, heads) or reads a palette: those are BMP and PCX.
 mod enc;
+mod icon;
 mod paint;
 mod sound;
 mod sprite;
@@ -19,6 +20,7 @@ mod tex;
 mod text;
 mod ui;
 
+pub use icon::app_icon;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 

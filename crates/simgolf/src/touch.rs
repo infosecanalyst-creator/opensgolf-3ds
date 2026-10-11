@@ -1,4 +1,4 @@
-//! Touch controls for phones and tablets (the browser build). The original is a mouse and keyboard game, so this is the port's
+//! Touch controls for phones and tablets (the browser build and the Android app). The original is a mouse and keyboard game, so this is the port's
 //! own layer: it turns touches into the mouse clicks and keys the game already understands.
 //!
 //! * One finger: a tap is a left click; dragging pans the course (or paints with the current tool); holding still for half a
@@ -6,7 +6,8 @@
 //! * Two fingers: dragging pans, pinching steps through the three zoom levels, twisting turns the view a quarter.
 //! * A few touch buttons down the right edge stand in for keys the screen has no button for (open the hole, turn the
 //!   building, game speed, repeat the last message); they show only once the screen has been touched.
-//! * When a name is typed (rename, save) the phone's keyboard is raised through the page (web/opensgolf.js).
+//! * When a name is typed (rename, save) the phone's keyboard is raised: through the page in a browser (web/opensgolf.js),
+//!   through miniquad on Android.
 
 use crate::app::*;
 use crate::gfx::Gfx;
@@ -254,12 +255,15 @@ extern "C" {
     fn sg_keyboard(show: u32);
 }
 
-/// Raises or lowers the phone's keyboard (a hidden text box in the page); nothing on the desktop.
+/// Raises or lowers the phone's keyboard: in a browser a hidden text box in the page, on Android the system keyboard through
+/// miniquad (its typed letters come back as char events); nothing on the desktop.
 fn show_keyboard(show: bool) {
     #[cfg(target_arch = "wasm32")]
     unsafe {
         sg_keyboard(show as u32)
     }
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(target_os = "android")]
+    miniquad::window::show_keyboard(show);
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
     let _ = show;
 }

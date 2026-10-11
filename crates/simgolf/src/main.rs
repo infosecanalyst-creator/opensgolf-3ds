@@ -11,6 +11,8 @@
 // UI drawing takes source and destination rectangles as plain numbers; index loops mirror the original's tables.
 #![allow(clippy::too_many_arguments, clippy::needless_range_loop)]
 
+#[cfg(target_os = "android")]
+mod android;
 mod app;
 mod audio;
 mod champ_ui;
@@ -108,10 +110,20 @@ fn ints(s: &str) -> Vec<i32> {
     v
 }
 
+/// Where the original game's files are looked for when --game is not given. In a browser the page puts the player's game
+/// folder at "game" (web/opensgolf.js); on Android it is the app's external files folder (android.rs).
+fn default_game_dir() -> PathBuf {
+    #[cfg(target_os = "android")]
+    {
+        android::game_dir()
+    }
+    #[cfg(not(target_os = "android"))]
+    PathBuf::from(if cfg!(target_arch = "wasm32") { "game" } else { "game/Program_Files_(ENGLISH)" })
+}
+
 fn parse_args() -> Options {
     let mut o = Options {
-        // In a browser the page puts the player's game folder at "game" (web/opensgolf.js).
-        game_dir: PathBuf::from(if cfg!(target_arch = "wasm32") { "game" } else { "game/Program_Files_(ENGLISH)" }),
+        game_dir: default_game_dir(),
         theme: 0,
         seed: 7,
         win_w: 1280,
@@ -2005,6 +2017,9 @@ impl EventHandler for Stage {
     }
 
     fn key_down_event(&mut self, k: KeyCode, mods: KeyMods, _repeat: bool) {
+        // Android's back button (miniquad hands it over as Back): Esc, which closes a screen, goes back to the menu and
+        // on the menu quits, as the back button does in Android apps
+        let k = if k == KeyCode::Back { KeyCode::Escape } else { k };
         self.shift = mods.shift || k == KeyCode::LeftShift || k == KeyCode::RightShift;
         self.app.shift_held = self.shift;
         self.ctrl = mods.ctrl || k == KeyCode::LeftControl || k == KeyCode::RightControl;
@@ -2092,7 +2107,19 @@ impl EventHandler for Stage {
     }
 }
 
+/// The window's icon (Windows' title bar and taskbar, macOS's Dock): the app icon, drawn by the free set's painter.
+fn window_icon() -> conf::Icon {
+    let px = |n: usize| sg_core::freeset::app_icon(n).px;
+    let mut icon = conf::Icon { small: [0; 16 * 16 * 4], medium: [0; 32 * 32 * 4], big: [0; 64 * 64 * 4] };
+    icon.small.copy_from_slice(&px(16));
+    icon.medium.copy_from_slice(&px(32));
+    icon.big.copy_from_slice(&px(64));
+    icon
+}
+
 fn main() {
+    #[cfg(target_os = "android")]
+    android::init();
     let o = parse_args();
     // the text's language first: the window's title is already text
     match &o.lang_file {
@@ -2105,8 +2132,16 @@ fn main() {
         window_height: o.win_h,
         high_dpi: true,
         window_resizable: true,
+        // a phone or tablet: the whole screen (the manifest keeps it landscape, Cargo.toml)
+        fullscreen: cfg!(target_os = "android"),
         // 32-bit mesh indices need WebGL 2 in a browser.
-        platform: conf::Platform { webgl_version: conf::WebGLVersion::WebGL2, ..Default::default() },
+        platform: conf::Platform {
+            webgl_version: conf::WebGLVersion::WebGL2,
+            // GNOME matches the window to the AppImage's opensgolf.desktop by this
+            linux_wm_class: "opensgolf",
+            ..Default::default()
+        },
+        icon: Some(window_icon()),
         ..Default::default()
     };
     miniquad::start(conf, move || Box::new(Stage::new(o)));

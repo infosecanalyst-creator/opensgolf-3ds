@@ -248,7 +248,7 @@ pub enum Screen {
 }
 
 /// Where saved games, championship courses and pros, accomplishment snapshots, packs and settings go. The browser keeps them
-/// in its own storage under plain names; on the desktop they go in the user's data folder (OPENSGOLF_SAVE_DIR, or the older
+/// in its own storage under plain names; Android in the app's internal data folder; on the desktop they go in the user's data folder (OPENSGOLF_SAVE_DIR, or the older
 /// SIMGOLF_SAVE_DIR, overrides it), not wherever the game happened to be started from. A player who already has a folder from
 /// before the project became OpenSGolf (named SimGolf / simgolf) keeps using it.
 pub fn save_dir() -> PathBuf {
@@ -256,7 +256,12 @@ pub fn save_dir() -> PathBuf {
     {
         PathBuf::new()
     }
-    #[cfg(not(target_arch = "wasm32"))]
+    // Android: the app's internal data folder (android.rs)
+    #[cfg(target_os = "android")]
+    {
+        crate::android::files_dir()
+    }
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
     {
         let env = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty()).map(PathBuf::from);
         if let Some(d) = env("OPENSGOLF_SAVE_DIR").or_else(|| env("SIMGOLF_SAVE_DIR")) {

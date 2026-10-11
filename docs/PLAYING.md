@@ -64,13 +64,30 @@ As in the original: **F1** Course Report, **F2** Player Comments (the twenty mos
 
 Content packs (mods, docs/MODDING.md): System Functions, Preferences, *Content packs...* lists the installed packs; switch them on or off and order the mods there (Up and Down, or PageUp and PageDown on the picked row). The choices are saved in `settings.json` at once and take effect the next time the game starts. `--screen content` opens the screen for stills.
 
-## Touch (phones and tablets, in the browser)
+## Touch (phones and tablets)
+
+The same touch controls work in the browser and in the Android app (crates/simgolf/src/touch.rs).
 
 Tap for a click; drag one finger to scroll the course (or to paint with the selected tool); hold a finger still for half a
 second for a right click (undo, remove, close a screen). With two fingers: drag to scroll, pinch to step through the three
 zoom levels, twist to turn the view a quarter. Once the screen has been touched, four buttons on the right stand in for keys
 that have no button in the game: Open hole (h), Turn (Tab), Speed (]) and Message (?). Naming a course or a save raises the
-phone's keyboard.
+phone's keyboard (in the browser through a hidden text box on the page, on Android the system keyboard).
+
+### Android
+
+Installing the APK (sideloading) is described in the README, [Install](../README.md#install). The app runs in landscape and
+full screen, starts on the free base set, and keeps its saves, settings, content packs and championship files in its private
+storage (`Context.getFilesDir()`, removed when the app is uninstalled). To play with your own copy of SimGolf, copy the
+game's `Program_Files_(ENGLISH)` folder to `Android/data/org.opensgolf.game/files/game/` on the device's shared storage (the
+app creates `game/` the first time it starts; the folder's contents straight in `game/` work too) and restart the app. On
+Android 11 and newer the phone's own file manager may hide `Android/data`; copy from a computer over USB instead.
+The back button works as Esc: it closes the screen that is open, on the course opens System Functions (save, load, quit),
+on the title screens goes back to the title menu, and on the title menu leaves the game. Sound goes through the phone's
+audio output (AAudio or OpenSL ES, through cpal's oboe backend); an APK whose sound could not be built (tools/android_build.sh
+falls back to a silent build) plays without it. The content packs and translations that the desktop packages put next to
+the program are not inside the APK yet, and the app's packs folder is in its private storage (TODO: bundle the packs as
+assets and read player packs from the external files folder).
 
 ## Language
 

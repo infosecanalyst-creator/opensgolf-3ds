@@ -1,5 +1,9 @@
 //! Sound output: feeds the system's default output device from the Mixer (44.1 kHz stereo), resampling when the device runs at
-//! another rate. Built with the `audio` feature (cpal: CoreAudio on macOS, WASAPI on Windows, ALSA on Linux).
+//! another rate. Built with the `audio` feature (cpal: CoreAudio on macOS, WASAPI on Windows, ALSA on Linux, oboe/AAudio on
+//! Android).
+// a build without the `audio` feature (the desktop's silent build, or the Android app when its sound could not be built)
+// has no device to feed
+#![cfg_attr(all(not(feature = "audio"), not(target_arch = "wasm32")), allow(dead_code))]
 use sg_core::mixer::{Mixer, RATE};
 use std::sync::Arc;
 
