@@ -8,6 +8,7 @@
 use crate::course::{f, idx, inside, t, Course, NN};
 use crate::geom::{adiff, angle, cdir, clamp, dir8, len, tdist, DX, DY, UNIT};
 use crate::land::ExeRng;
+use crate::lang::{tr, trf};
 use crate::roster::Person;
 
 pub const SLOTS: usize = 152;
@@ -607,9 +608,9 @@ impl Club {
 
     fn his_her(&self, g: usize) -> &'static str {
         if self.male(g) == 1 {
-            "his"
+            tr("STR_MSG_HIS")
         } else {
-            "her"
+            tr("STR_MSG_HER")
         }
     }
 
@@ -1259,13 +1260,7 @@ impl Club {
         if self.game & game::TOURNAMENT == 0 {
             if self.year == 0 && self.fees_this_year == 0 {
                 // the exe's first-fee lesson (0x4c7444, 0x4c7408, 0x4c73cc, 0x4c7374, 0x4c7334)
-                let text = format!(
-                    "{} has just paid you your first greens fee of {} simoleans!  Golfers pay a fee at the end of each hole - happy \
-                     golfers pay higher fees, unhappy golfers pay less. Greens fees are your main source of revenue, so it pays to \
-                     keep your golfers happy. Refer to your financial report for more detailed information.",
-                    self.name(g),
-                    fee * 100
-                );
+                let text = trf("STR_MSG_FIRST_GREENS_FEE", &[("GOLFER", &self.name(g)), ("FEE", &(fee * 100))]);
                 self.message_by(text, g as i32, 1);
             }
             self.fees_this_year += fee;
@@ -1314,14 +1309,14 @@ impl Club {
         let nh = self.g[g].hole;
         if self.par(nh + 1) == 0 {
             let who = match self.g[g].vip() {
-                0x40 => Some("County commissioner"),
-                0x60 => Some("Corporate CEO"),
+                0x40 => Some(tr("STR_VIP_COMMISSIONER")),
+                0x60 => Some(tr("STR_VIP_CEO")),
                 _ => None,
             };
             if let Some(w) = who {
                 let r = crate::vips::mood_remark(self.g[g].mood);
                 // the exe's 0x4c71c0 and the closing quote 0x4c4e54
-                let text = format!("{w} {} is playing the last hole on your course. He was last heard to mutter, '{r}'", self.vip_name(g));
+                let text = trf("STR_MSG_VIP_LAST_HOLE", &[("WHO", &w), ("VISITOR", &self.vip_name(g)), ("REMARK", &r)]);
                 self.message_by(text, g as i32, 1);
             }
         }
@@ -1385,7 +1380,7 @@ impl Club {
             // has just updated, so the announcement (and its membership point) never happens. Kept as the exe has it.
             let best = self.top_rounds[0];
             if self.next_hole > 2 && self.g[g].card[1] != 0 && (best == 0 || total < best) && total <= pars {
-                self.message(format!("{} has just set a new course record of {total}!", self.name(g)));
+                self.message(trf("STR_MSG_COURSE_RECORD", &[("GOLFER", &self.name(g)), ("SCORE", &total)]));
                 points += 1;
             }
         }
@@ -1426,19 +1421,10 @@ impl Club {
         // level brings: 0x4c4884, or 0x4c483c with 2 or 5 and 0x4c481c); the message window's wrap folds the exe's double
         // space after the level name
         let text = match lvl {
-            0..=2 => format!("{name} applies for membership at your club! "),
-            3 => format!(
-                "{name} has decided to upgrade to a prestigious Silver membership at your club! Silver members will pay big bucks \
-                 for an attractive home site on your course."
-            ),
-            4 => format!(
-                "{name} has decided to upgrade to a coveted Gold membership at your club! Gold members like to drive around in \
-                 shiny customized golf carts and pay \u{a7}200 extra greens fees per hole."
-            ),
-            _ => format!(
-                "{name} has decided to upgrade to an exclusive Platinum membership at your club! Platinum members like to drive \
-                 around in shiny customized golf carts and pay \u{a7}500 extra greens fees per hole."
-            ),
+            0..=2 => trf("STR_MSG_MEMBER_APPLIES", &[("GOLFER", &name)]),
+            3 => trf("STR_MSG_MEMBER_SILVER", &[("GOLFER", &name)]),
+            4 => trf("STR_MSG_MEMBER_GOLD", &[("GOLFER", &name)]),
+            _ => trf("STR_MSG_MEMBER_PLATINUM", &[("GOLFER", &name)]),
         };
         // the exe posts this with priority 0 and upgrades only when it shows (0x406670); here it always shows
         self.message_by(text, g as i32, 1);
@@ -1672,28 +1658,29 @@ impl Club {
 
     /// A golfer whose mood fell below zero quits: the club hears why, a member resigns, and the golfer storms off.
     fn quit(&mut self, g: usize) {
-        // the exe's reasons end in "after", "on" (the club thrown or wrapped) or "at" (the golfer hit or insulted)
+        // the exe's reasons end in "after", "on" (the club thrown or wrapped) or "at" (the golfer hit or insulted): the
+        // keys of the phrase that follows, on a hole or after the round
         let (reason, word) = match self.g[g].thought & 0x7f {
-            4 => ("will be looking for a tougher course".to_string(), "after"),
-            8 | 0x17 | 0x1e => ("thinks your course needs improvement".to_string(), "after"),
-            9 => ("has punched out another golfer".to_string(), "at"),
-            0xc => (format!("has wrapped {} club around a tree", self.his_her(g)), "on"),
-            0xd => (format!("has thrown {} clubs into the lake", self.his_her(g)), "on"),
-            0xe => ("is too thirsty to play any more".to_string(), "after"),
-            0xf => ("is too hungry to keep playing".to_string(), "after"),
-            0x15 => ("has insulted another golfer".to_string(), "at"),
-            0x1a => ("is too tired to continue".to_string(), "after"),
-            _ => ("is leaving the course in disgust".to_string(), "after"),
+            4 => (tr("STR_MSG_QUIT_TOUGHER_COURSE").to_string(), ("STR_MSG_QUIT_AFTER_HOLE", "STR_MSG_QUIT_AFTER_ROUND")),
+            8 | 0x17 | 0x1e => (tr("STR_MSG_QUIT_NEEDS_IMPROVEMENT").to_string(), ("STR_MSG_QUIT_AFTER_HOLE", "STR_MSG_QUIT_AFTER_ROUND")),
+            9 => (tr("STR_MSG_QUIT_PUNCHED").to_string(), ("STR_MSG_QUIT_AT_HOLE", "STR_MSG_QUIT_AT_ROUND")),
+            0xc => (trf("STR_MSG_QUIT_WRAPPED_CLUB", &[("HIS", &self.his_her(g))]), ("STR_MSG_QUIT_ON_HOLE", "STR_MSG_QUIT_ON_ROUND")),
+            0xd => (trf("STR_MSG_QUIT_THROWN_CLUBS", &[("HIS", &self.his_her(g))]), ("STR_MSG_QUIT_ON_HOLE", "STR_MSG_QUIT_ON_ROUND")),
+            0xe => (tr("STR_MSG_QUIT_THIRSTY").to_string(), ("STR_MSG_QUIT_AFTER_HOLE", "STR_MSG_QUIT_AFTER_ROUND")),
+            0xf => (tr("STR_MSG_QUIT_HUNGRY").to_string(), ("STR_MSG_QUIT_AFTER_HOLE", "STR_MSG_QUIT_AFTER_ROUND")),
+            0x15 => (tr("STR_MSG_QUIT_INSULTED").to_string(), ("STR_MSG_QUIT_AT_HOLE", "STR_MSG_QUIT_AT_ROUND")),
+            0x1a => (tr("STR_MSG_QUIT_TIRED").to_string(), ("STR_MSG_QUIT_AFTER_HOLE", "STR_MSG_QUIT_AFTER_ROUND")),
+            _ => (tr("STR_MSG_QUIT_DISGUST").to_string(), ("STR_MSG_QUIT_AFTER_HOLE", "STR_MSG_QUIT_AFTER_ROUND")),
         };
         let h = self.g[g].hole;
-        let at = if h < 19 { format!("{word} hole {h}") } else { format!("{word} today's round") };
+        let at = if h < 19 { trf(word.0, &[("HOLE", &h)]) } else { tr(word.1).to_string() };
         let name = self.name(g);
         // one ticker message, the resignation appended, said by the golfer; the exe frees the ticker first (0x40cb00 with
         // priority 0 right after clearing its busy flag), so it always shows
-        let mut text = format!("{name} {reason} {at}.");
+        let mut text = trf("STR_MSG_QUIT", &[("GOLFER", &name), ("REASON", &reason), ("WHEN", &at)]);
         if self.member(g).level & 7 > 1 {
             let hh = self.his_her(g);
-            text += &format!(" {name} resigns {hh} membership.");
+            text += &trf("STR_MSG_QUIT_RESIGNS", &[("GOLFER", &name), ("HIS", &hh)]);
             self.member_mut(g).level &= !7;
         }
         self.message_by(text, g as i32, 1);
@@ -2338,11 +2325,7 @@ impl Club {
         self.g[g].anim = anim::STAND;
         if self.g[g].mood < 0 && self.g[g].vip() != 0x20 {
             let h = self.g[g].hole;
-            let text = format!(
-                "{} and {} are leaving the course at hole {h}, 'Arghh, I am so tired of waiting for these idiots!'",
-                self.name(g),
-                self.name(p)
-            );
+            let text = trf("STR_MSG_LEAVING_WAITING", &[("GOLFER", &self.name(g)), ("PARTNER", &self.name(p)), ("HOLE", &h)]);
             self.message_by(text, g as i32, 1);
             self.sound(0x29, None);
             self.g[g].pause = 0;
@@ -2648,7 +2631,7 @@ impl Club {
                         self.aim_lock = 10;
                         if h == 1 && self.g[p].vip() == 0x20 && self.g[g].strokes == 0 && self.game & game::TOURNAMENT == 0 {
                             self.sound(0x2a, None);
-                            self.message(format!("{} challenges {} to a match!", self.name(p), self.name(g)));
+                            self.message(trf("STR_MSG_CHALLENGE", &[("PRO", &self.name(p)), ("GOLFER", &self.name(g))]));
                         }
                     }
                     if self.g[g].aim_a == -1 {

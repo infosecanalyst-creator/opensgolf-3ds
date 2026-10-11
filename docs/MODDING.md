@@ -107,11 +107,15 @@ text comes from the code, crates/sg-core/src/data.rs). The reference is in secti
 All text the engine shows has a key. `lang/en.txt` is plain UTF-8, one string per line, in the OpenTTD style:
 
 ```
-STR_TOOLTIP_COST           :Cost: {MONEY}
-STR_MSG_FIRST_GREENS_FEE   :{GOLFER} has just paid you your first greens fee of {MONEY}!
+STR_TIP_COST               :Cost: {COST}
+STR_MSG_FIRST_GREENS_FEE   :{GOLFER} has just paid you your first greens fee of {FEE} simoleans!  Golfers pay ...
 ```
 
-Parameters in braces are filled by the engine. A missing key falls back to English, then to the key itself.
+Parameters in braces are filled by the engine. A missing key falls back to English, then to the key itself. The English
+file is built into the program (`sg_core::lang`); a translation or a pack's `lang/<code>.txt` is laid over it with
+`sg_core::lang::load_overlay`, later overlays winning. The player's language is the `language` setting in `settings.json`
+(default `en`, a `Language:` line in Preferences once a translation is installed). docs/TRANSLATING.md has the file
+format, the parameters and how to try a translation out.
 
 The `original` base set takes text from the player's copy where the copy has it (the Interface, story and character files).
 Text that only exists inside the original program is kept in this repository's `lang/en.txt`, word for word, so the game
@@ -140,7 +144,7 @@ pack with a pull request to the index; packs must have a free licence and must n
 | Step | Status |
 |------|--------|
 | Licence (GPL-2.0-or-later) and name | done |
-| Text keys and `lang/en.txt` (original English text kept) | planned |
+| Text keys and `lang/en.txt` (original English text kept) | done: about 1,600 keys, translations by setting or `--lang` (docs/TRANSLATING.md) |
 | Pack loader, load order, file overrides (folders and .zip, desktop and browser) | done |
 | PNG for PCX/TGA/BMP art, OGG for WAV sound | done |
 | Data files for terrain, buildings, amenities, staff, properties, economy | done |

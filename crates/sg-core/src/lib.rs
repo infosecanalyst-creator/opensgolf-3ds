@@ -28,6 +28,9 @@ pub mod golfer;
 pub mod holetool;
 pub mod homes;
 pub mod land;
+pub mod lang;
+#[cfg(test)]
+mod lang_golden;
 pub mod mixer;
 pub mod mood;
 pub mod narration;

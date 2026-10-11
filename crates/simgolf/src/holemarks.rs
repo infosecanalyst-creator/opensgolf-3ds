@@ -10,6 +10,7 @@ use crate::screens_ui::{c15, top, BODY, LARGE};
 use crate::ui::{line_rgba, rgb, Screen as Ui};
 use sg_core::analysis::KINDS;
 use sg_core::assets::decode_pcx;
+use sg_core::lang::{tr, trf};
 use sg_core::sprites::Sprite;
 
 /// Exe colour words used here (0x8000 plus 15-bit RGB): the analysis title, its rule, the black of shadows and circles.
@@ -175,13 +176,13 @@ impl App {
             s.text_centered(g, x, top(y + 1.0, BODY), t, BODY, crate::ui::SHADOW_1);
             s.text_centered(g, x, top(y, BODY), t, BODY, c15(WHITE));
         };
-        label(g, x, y - lift - 26.0, &format!("Hole {h}"));
-        label(g, x, y - lift - 13.0, &format!("{yards} yards"));
-        label(g, x, y - lift, &format!("Par {par}"));
+        label(g, x, y - lift - 26.0, &trf("STR_HOLE_LABEL_HOLE", &[("HOLE", &h)]));
+        label(g, x, y - lift - 13.0, &trf("STR_HOLE_LABEL_YARDS", &[("YARDS", &yards)]));
+        label(g, x, y - lift, &trf("STR_HOLE_LABEL_PAR", &[("PAR", &par)]));
         let (tx, ty) = centre(back);
         if let Some((x, y)) = self.screen_of(tx, ty) {
             if self.game_tick & 0xc != 0 {
-                label(g, x, y - lift, "Press 'h' to open hole");
+                label(g, x, y - lift, tr("STR_HOLE_LABEL_PRESS_H"));
             }
         }
         g.flush();
@@ -245,7 +246,7 @@ impl App {
         self.art.trans_frame(g, &s, 282.0, 21.0, 256.0, 159.0);
         s.line(g, 282.0, 64.5, 538.0, 64.5, 1.0, c15(RULE));
         for (k, &(_, label, col)) in KINDS.iter().enumerate().take(self.analysis_shown.min(4)) {
-            s.text(g, 296.0, top(144.0 - 20.0 * k as f32, LARGE), label, LARGE, c15(col));
+            s.text(g, 296.0, top(144.0 - 20.0 * k as f32, LARGE), tr(label), LARGE, c15(col));
         }
         for shot in an.shots.iter().take(self.analysis_shown) {
             let k = shot.kind;
@@ -273,8 +274,8 @@ impl App {
             }
         }
         if self.analysis_shown >= an.shots.len() {
-            s.text_centered(g, 410.0, top(34.0, LARGE), "Shot Analysis:", LARGE, c15(CYAN));
-            s.text_centered(g, 410.0, top(50.0, BODY), &format!("Golfers playing hole {}...", an.hole), BODY, c15(CYAN));
+            s.text_centered(g, 410.0, top(34.0, LARGE), tr("STR_ANALYSIS_TITLE"), LARGE, c15(CYAN));
+            s.text_centered(g, 410.0, top(50.0, BODY), &trf("STR_ANALYSIS_GOLFERS_PLAYING", &[("HOLE", &an.hole)]), BODY, c15(CYAN));
             for k in 0..3 {
                 s.text_centered(g, 490.0, top(147.0 - 20.0 * k as f32, BODY), &an.figure(k), BODY, c15(KINDS[k].2));
             }

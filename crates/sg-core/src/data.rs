@@ -82,7 +82,8 @@ const OBJECT_IDS: [&str; 20] = [
     "scenic-bridge",
 ];
 const STAFF_IDS: [&str; 4] = ["club-pro", "ranger", "groundskeeper", "soda-vendor"];
-const STAFF_NAMES: [&str; 4] = ["Club Pro", "Ranger", "Groundskeeper", "Soda Vendor"];
+/// The employee kinds' names (text keys; the files hold the English text).
+const STAFF_NAMES: [&str; 4] = ["STR_STAFF_CLUB_PRO", "STR_STAFF_RANGER", "STR_STAFF_GROUNDSKEEPER", "STR_STAFF_SODA_VENDOR"];
 
 /// Money as the engine counts it (units of 100) from money as the files give it.
 fn units(money: i64, what: &str) -> Result<i32, String> {
@@ -374,7 +375,7 @@ fn theme_of(t: u8) -> Theme {
 
 fn object_def(kind: usize) -> ObjectDef {
     let (name, footprint, price) = crate::land::BUILDINGS[kind];
-    ObjectDef { id: OBJECT_IDS[kind].into(), kind: kind as u8, name: name.into(), footprint, price: price as i64 * 100 }
+    ObjectDef { id: OBJECT_IDS[kind].into(), kind: kind as u8, name: en(name).into(), footprint, price: price as i64 * 100 }
 }
 
 impl Tables {
@@ -387,7 +388,7 @@ impl Tables {
                 TerrainDef {
                     id: TERRAIN_IDS[t].into(),
                     tile: t as u8,
-                    name: if t < TILE_ROWS { crate::land::TYPES[t].name.into() } else { EXTRA_TERRAIN_NAMES[t - TILE_ROWS].into() },
+                    name: if t < TILE_ROWS { en(crate::land::TYPES[t].name_key).into() } else { EXTRA_TERRAIN_NAMES[t - TILE_ROWS].into() },
                     cost: Economy::builtin_terrain_cost_units(t as i32) as i64 * 100,
                     clear_cost: Economy::builtin_terrain_clear_units(t as i32) as i64 * 100,
                     view: row.map(|_| crate::homes::BUILTIN_VIEW[t]),
@@ -407,7 +408,7 @@ impl Tables {
             .map(|k| StaffDef {
                 id: STAFF_IDS[k].into(),
                 kind: k as u8,
-                name: STAFF_NAMES[k].into(),
+                name: en(STAFF_NAMES[k]).into(),
                 wage: crate::economy::WAGE_UNITS[k][0] as i64 * 100,
                 wage_experienced: crate::economy::WAGE_UNITS[k][1] as i64 * 100,
             })
@@ -416,11 +417,11 @@ impl Tables {
             .iter()
             .enumerate()
             .map(|(i, r)| PropertyDef {
-                id: slug(r.name),
+                id: slug(en(r.name_key)),
                 index: i as u8,
-                name: r.name.into(),
-                course: r.course.into(),
-                bonus: r.bonus.into(),
+                name: en(r.name_key).into(),
+                course: en(r.course_key).into(),
+                bonus: en(r.bonus_key).into(),
                 map_x: r.map_x,
                 map_y: r.map_y,
                 theme: theme_of(r.theme),
@@ -626,6 +627,21 @@ fn leak(s: &str) -> &'static str {
     Box::leak(s.to_string().into_boxed_str())
 }
 
+/// The built-in English text of a key (the data files hold names as text).
+fn en(key: &'static str) -> &'static str {
+    crate::lang::en(key)
+}
+
+/// A name for the engine's tables: the built-in key while the name is the built-in English text (so it follows the
+/// player's language), else the pack's own text (`crate::lang::text` shows either).
+fn name_of(text: &str, key: &'static str) -> &'static str {
+    if text == en(key) {
+        key
+    } else {
+        leak(text)
+    }
+}
+
 impl Data {
     /// Builds the engine's tables from merged ones. Built-in entries a pack removed keep their built-in values (the engine
     /// has a slot for each); entries with ids the engine does not know are kept in the tables but not used. Both are
@@ -669,7 +685,7 @@ impl Data {
         });
         let clear_units: [i32; TERRAIN_SLOTS] = std::array::from_fn(|i| (ter[i].clear_cost / 100) as i32);
         let land_types: [TypeInfo; TILE_ROWS] = std::array::from_fn(|i| TypeInfo {
-            name: leak(&ter[i].name),
+            name_key: name_of(&ter[i].name, crate::land::TYPES[i].name_key),
             // the land table reads the same bytes of the exe's terrain table: +0x22 (the lie), +0x24 (the clearing cost),
             // +0x25 (walking cost / layer) and +0x26 (the class)
             desert_group: rows[i].hazard,
@@ -691,10 +707,11 @@ impl Data {
             b.properties.iter().map(|bp| pick(&t.properties, &b.properties, &bp.id, "properties", &mut warn)).collect();
         let records: [PropertyRecord; 16] = std::array::from_fn(|i| {
             let p = props[i];
+            let r = &crate::land::RECORDS[i];
             PropertyRecord {
-                name: leak(&p.name),
-                course: leak(&p.course),
-                bonus: leak(&p.bonus),
+                name_key: name_of(&p.name, r.name_key),
+                course_key: name_of(&p.course, r.course_key),
+                bonus_key: name_of(&p.bonus, r.bonus_key),
                 map_x: p.map_x,
                 map_y: p.map_y,
                 theme: p.theme as u8,
@@ -710,14 +727,16 @@ impl Data {
             paint_units: std::array::from_fn(|i| u(ter[i].cost)),
             clear_units,
             views: std::array::from_fn(|i| ter[i].view.unwrap_or(0)),
-            buildings: std::array::from_fn(|k| (leak(&objects[k].name), objects[k].footprint, u(objects[k].price))),
+            buildings: std::array::from_fn(|k| {
+                (name_of(&objects[k].name, crate::land::BUILDINGS[k].0), objects[k].footprint, u(objects[k].price))
+            }),
             wages: std::array::from_fn(|k| [u(staff[k].wage), u(staff[k].wage_experienced)]),
-            staff_names: std::array::from_fn(|k| leak(&staff[k].name)),
+            staff_names: std::array::from_fn(|k| name_of(&staff[k].name, STAFF_NAMES[k])),
             records,
             properties: std::array::from_fn(|i| Property {
-                name: records[i].name,
-                course: records[i].course,
-                bonus: records[i].bonus,
+                name_key: records[i].name_key,
+                course_key: records[i].course_key,
+                bonus_key: records[i].bonus_key,
                 theme: crate::land::port_theme(records[i].theme),
                 column: if i < 10 { 0 } else { 1 },
             }),

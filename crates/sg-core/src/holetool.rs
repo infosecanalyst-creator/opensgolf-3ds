@@ -8,6 +8,7 @@ use crate::course::{f, idx, inside, t, Course};
 use crate::geom::{angle, cosr, dir8, sinr, tdist, UNIT};
 use crate::golfer::{game, Club, Event, Golfer, HOLE_RECORDS};
 use crate::land::ExeRng;
+use crate::lang::{tr, trf};
 
 /// The golfer record the layout pass plans with (record 0x9a, after the 152 golfers and two more the exe keeps).
 pub const TRIAL: usize = 0x9a;
@@ -69,7 +70,7 @@ impl Club {
                 } else {
                     go = false;
                 }
-                self.message(format!("Hole {h} already has its tee; open it before starting the next hole."));
+                self.message(trf("STR_MSG_HOLE_HAS_TEE", &[("HOLE", &h)]));
             }
         } else if new == t::GREEN {
             if self.holes[hu].pin.0 == 0 && a != 0 && (!green_next || self.holes[hu].back.0 != 0) {
@@ -410,55 +411,51 @@ impl Club {
 /// hole's flags.
 pub fn opening_text(h: i32, par: i32, len: i32, eff: i32, flags: u32) -> String {
     let size = match par {
-        3 if eff < 125 => "short ",
-        3 if eff > 200 => "long ",
-        4 if eff < 350 => "short ",
-        4 if eff > 425 => "long ",
-        5 if eff < 500 => "short ",
-        5 if eff > 575 => "long ",
-        _ => "scenic ",
+        3 if eff < 125 => tr("STR_HOLE_OPEN_SHORT"),
+        3 if eff > 200 => tr("STR_HOLE_OPEN_LONG"),
+        4 if eff < 350 => tr("STR_HOLE_OPEN_SHORT"),
+        4 if eff > 425 => tr("STR_HOLE_OPEN_LONG"),
+        5 if eff < 500 => tr("STR_HOLE_OPEN_SHORT"),
+        5 if eff > 575 => tr("STR_HOLE_OPEN_LONG"),
+        _ => tr("STR_HOLE_OPEN_SCENIC"),
     };
-    let mut s = format!("Hole #{h}, a {size}{len} yard ");
+    let mut s = trf("STR_HOLE_OPEN_START", &[("HOLE", &h), ("SIZE", &size), ("YARDS", &len)]);
     if flags & 0x1000 != 0 {
-        s += "uphill ";
+        s += tr("STR_HOLE_OPEN_UPHILL");
     }
     if flags & 0x2000 != 0 {
-        s += "downhill ";
+        s += tr("STR_HOLE_OPEN_DOWNHILL");
     }
-    s += &format!("par {par}");
+    s += &trf("STR_HOLE_OPEN_PAR", &[("PAR", &par)]);
     if flags & 0x20 != 0 {
-        s += " with a dogleg to the left";
+        s += tr("STR_HOLE_OPEN_DOGLEG_LEFT");
     }
     if flags & 0x40 != 0 {
-        s += " with a dogleg to the right";
+        s += tr("STR_HOLE_OPEN_DOGLEG_RIGHT");
     }
-    s + ", is now open for play."
+    s + tr("STR_HOLE_OPEN_END")
 }
 
 /// What each building does, as the unlock message tells it (kinds 6..14).
 const UNLOCK_BLURB: [&str; 9] = [
-    " allows your golfers with imagination ability to improve their putting.",
-    " will feed golfers who get hungry and provide some extra revenue.",
-    " allows your accurate golfers to improve their equipment.",
-    " helps your players to begin play with a better attitude.",
-    " allows your long hitters to improve the length of their shots.",
-    " increases your players speed of play.",
-    " increases the value of all homes and lots at your course.",
-    " keeps your players from getting tired towards the end of their round.",
-    " allows you to charge higher greens fees at your course.",
+    "STR_UNLOCK_PUTTING_GREEN",
+    "STR_UNLOCK_SNACK_BAR",
+    "STR_UNLOCK_PRO_SHOP",
+    "STR_UNLOCK_SWIM_CLUB",
+    "STR_UNLOCK_DRIVING_RANGE",
+    "STR_UNLOCK_CART_GARAGE",
+    "STR_UNLOCK_MARINA",
+    "STR_UNLOCK_RESORT_HOTEL",
+    "STR_UNLOCK_AIRSTRIP",
 ];
 
 /// The course rank upgrade (0x40e5f0) on reaching 6, 10 and 18 holes.
 fn rank_text(step: usize) -> String {
-    let names = crate::economy::RANK_NAMES;
-    let mut s = format!(
-        " Your course is now upgraded from a {} to a {} course. This will DOUBLE your tournament prize monies if your course passes the more stringent SGA evaluation. ",
-        names[step],
-        names[step + 1]
-    );
+    let names = crate::economy::rank_name;
+    let mut s = trf("STR_UNLOCK_RANK", &[("FROM", &names(step)), ("TO", &names(step + 1))]);
     match step {
-        0 => s += "In addition you may now hire more experienced employees, for a slightly higher salary of course.",
-        1 => s += "In addition you may build upgraded buildings which are more effective.",
+        0 => s += tr("STR_UNLOCK_RANK_EMPLOYEES"),
+        1 => s += tr("STR_UNLOCK_RANK_BUILDINGS"),
         _ => {}
     }
     s
@@ -474,14 +471,10 @@ impl Club {
         } else if h == 10 {
             s += &rank_text(1);
         } else if h > self.unlocked - 5 && self.unlocked <= 14 && !self.sandbox {
-            s += if h & 1 == 0 {
-                " As your course grows you can add new facilities. "
-            } else {
-                " New players are flocking to your golf course. "
-            };
+            s += if h & 1 == 0 { tr("STR_UNLOCK_NEW_FACILITIES") } else { tr("STR_UNLOCK_NEW_PLAYERS") };
             let k = self.unlocked;
-            let name = crate::data::buildings()[k as usize].0;
-            s += &format!("You may now build a {name}. A {name}{}", UNLOCK_BLURB[(k - 6) as usize]);
+            let name = crate::land::building_name(k);
+            s += &trf("STR_UNLOCK_BUILDING", &[("BUILDING", &name), ("WHAT", &tr(UNLOCK_BLURB[(k - 6) as usize]))]);
             self.unlocked += 1;
         }
         if h == 18 {

@@ -15,7 +15,8 @@ use crate::screens_ui::{c15, top, BODY, SMALL};
 use crate::ui::{group, text_width, Screen as Ui};
 use sg_core::course::{idx, inside};
 use sg_core::golfer::game;
-use sg_core::pro::{self, SKILL_NAMES};
+use sg_core::lang::{tr, trf};
+use sg_core::pro;
 use sg_core::tournament::OFFERED;
 
 /// The body, cut from the sheet and drawn at the same place.
@@ -78,16 +79,16 @@ const SHOTS: [i32; 5] = [0, -1, 1, 3, 4];
 
 const TIPS: [&str; 11] = [
     "",
-    "Practice Round",
+    "STR_PLAYER_PRACTICE_ROUND",
     "",
-    "Begin Tournament",
-    "Straight shot",
-    "Fade shot, L to R",
-    "Draw shot, R to L",
-    "High backspin shot",
-    "Low punch shot",
-    "Golfers",
-    "Hire employee",
+    "STR_PLAYER_BEGIN_TOURNAMENT",
+    "STR_PLAYER_STRAIGHT",
+    "STR_PLAYER_FADE",
+    "STR_PLAYER_DRAW",
+    "STR_PLAYER_HIGH",
+    "STR_PLAYER_LOW",
+    "STR_PLAYER_GOLFERS",
+    "STR_PLAYER_HIRE",
 ];
 
 /// The round's scorecard (0x461110), over the cover cut drawn at (297, 493): hole numbers and pars along the top two rows,
@@ -192,10 +193,10 @@ impl App {
         if tip && h >= 0 {
             let t = match h {
                 2 => match self.club.pros.get(self.club.challenge_pro.max(0) as usize).filter(|_| self.club.challenge_pro != -1) {
-                    Some(p) => format!("Play {}", p.name),
-                    None => "Play vs. a pro".to_string(),
+                    Some(p) => trf("STR_PLAYER_PLAY_VS", &[("PRO", &p.name)]),
+                    None => tr("STR_PLAYER_PLAY_VS_PRO").to_string(),
                 },
-                _ => TIPS[h as usize].to_string(),
+                _ => tr(TIPS[h as usize]).to_string(),
             };
             if !t.is_empty() {
                 let (mx, my) = self.pstate.mouse;
@@ -206,11 +207,9 @@ impl App {
 
     /// The pro's skills that have points, as "name +N%", white small text in columns of five from (494, 540), 12 apart.
     fn draw_pro_skills(&self, g: &mut Gfx, s: &Ui) {
-        let rows: Vec<(String, bool)> = SKILL_NAMES
-            .iter()
-            .enumerate()
-            .filter(|&(k, _)| self.club.pro_skill[k] != 0)
-            .map(|(k, name)| (format!("{name} +{}%", self.club.pro_skill[k] as i32 * 10), true))
+        let rows: Vec<(String, bool)> = (0..pro::SKILL_NAME_KEYS.len())
+            .filter(|&k| self.club.pro_skill[k] != 0)
+            .map(|k| (trf("STR_AIM_SKILL", &[("SKILL", &pro::skill_name(k)), ("PERCENT", &(self.club.pro_skill[k] as i32 * 10))]), true))
             .collect();
         self.draw_skill_lines(g, s, &rows);
     }
@@ -235,16 +234,20 @@ impl App {
         let c = &self.club;
         let white = c15(0x7fff);
         let black = c15(0);
-        s.text(g, 410.0, top(519.0, SMALL), "Hole", SMALL, white);
-        s.text(g, 414.0, top(534.0, SMALL), "Par", SMALL, white);
+        s.text(g, 410.0, top(519.0, SMALL), tr("STR_SCORECARD_HOLE"), SMALL, white);
+        s.text(g, 414.0, top(534.0, SMALL), tr("STR_SCORECARD_PAR"), SMALL, white);
         let partner = c.g[gary].partner;
         let vs_pro = partner >= 0 && c.g[partner as usize].vip() == 0x20;
         let (a, b, x) = if !vs_pro {
-            (" Practice".to_string(), "  Round".to_string(), 334.0)
+            (tr("STR_SCORECARD_PRACTICE").to_string(), tr("STR_SCORECARD_ROUND").to_string(), 334.0)
         } else if c.game & game::TOURNAMENT == 0 {
-            ("Exhibition".to_string(), format!("\u{a7}{}/hole", group(c.wager_level.max(0) as u64 * 2000)), 334.0)
+            (
+                tr("STR_SCORECARD_EXHIBITION").to_string(),
+                trf("STR_SCORECARD_PER_HOLE", &[("MONEY", &group(c.wager_level.max(0) as u64 * 2000))]),
+                334.0,
+            )
         } else {
-            ("Professional".to_string(), "Tournament".to_string(), 325.0)
+            (tr("STR_SCORECARD_PROFESSIONAL").to_string(), tr("STR_SCORECARD_TOURNAMENT").to_string(), 325.0)
         };
         s.text(g, x, top(522.0, BODY), &a, BODY, black);
         // the exe draws the wager line from x 320
@@ -256,7 +259,7 @@ impl App {
             let gg = &c.g[gi];
             let mut name = c.name(gi);
             if gi == gary {
-                name.push_str(" vs.");
+                name.push_str(tr("STR_SCORECARD_VS"));
             }
             // a long name (over 115 pixels) is drawn in Arial Bold 10; the exe selects Manual SSi Bold 15 again for the numbers
             let size = if text_width(&name, BODY) > 115.0 { SMALL } else { BODY };

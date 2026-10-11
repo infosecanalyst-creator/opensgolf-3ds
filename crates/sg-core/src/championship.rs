@@ -13,7 +13,13 @@ use crate::roster::{Person, RECORD};
 pub const CHAMPIONSHIP: u32 = game::EDITOR;
 
 /// The event's name on the leaderboard by difficulty.
-pub const EVENTS: [&str; 4] = ["SGA Qualifying School", "SGA Jr. Championship", "SGA Tour Championship", "SGA Open Championship"];
+pub fn event_name(difficulty: i32) -> &'static str {
+    crate::lang::tr(EVENT_KEYS[difficulty.clamp(0, 3) as usize])
+}
+
+/// The event names' keys by difficulty.
+pub const EVENT_KEYS: [&str; 4] =
+    ["STR_CHAMPIONSHIP_QUALIFYING", "STR_CHAMPIONSHIP_JUNIOR", "STR_CHAMPIONSHIP_TOUR", "STR_CHAMPIONSHIP_OPEN"];
 
 const SAYINGS: usize = 25;
 const SAYING: usize = 50;

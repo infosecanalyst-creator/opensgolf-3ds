@@ -1,0 +1,5 @@
+# The string tables keep spaces at the ends of texts: the game builds some messages from pieces (docs/TRANSLATING.md).
+[lang/*.txt]
+charset = utf-8
+trim_trailing_whitespace = false
+insert_final_newline = true

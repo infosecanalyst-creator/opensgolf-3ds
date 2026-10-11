@@ -577,6 +577,7 @@ impl Screen {
 
     #[allow(clippy::too_many_arguments)]
     fn text_in(&self, g: &mut Gfx, face: Face, x: f32, y: f32, s: &str, size: f32, c: [f32; 4]) {
+        log_text(s);
         let Some(f) = Font::get(face) else { return };
         let Some(tex) = f.tex else { return };
         let k = size / BAKE_PX;
@@ -607,6 +608,31 @@ impl Screen {
         // as the exe's centred call: half the width rounded down
         self.text(g, cx - (text_width(s, size) / 2.0).floor(), y, s, size, c);
     }
+}
+
+/// Test hook: SG_TEXTLOG=FILE writes every text drawn to FILE, each different one once, in the order first drawn (for
+/// checking a translation, or that a change left the text alone).
+pub fn log_text(s: &str) {
+    use std::io::Write;
+    struct Log {
+        file: Option<std::fs::File>,
+        seen: std::collections::HashSet<String>,
+    }
+    thread_local! {
+        static LOG: std::cell::RefCell<Option<Log>> = const { std::cell::RefCell::new(None) };
+    }
+    LOG.with(|l| {
+        let mut l = l.borrow_mut();
+        let log = l.get_or_insert_with(|| Log {
+            file: std::env::var_os("SG_TEXTLOG").and_then(|p| std::fs::File::create(p).ok()),
+            seen: Default::default(),
+        });
+        if let Some(f) = log.file.as_mut() {
+            if log.seen.insert(s.to_string()) {
+                let _ = writeln!(f, "{}", s.replace('\n', "\\n"));
+            }
+        }
+    });
 }
 
 pub fn text_width(s: &str, size: f32) -> f32 {

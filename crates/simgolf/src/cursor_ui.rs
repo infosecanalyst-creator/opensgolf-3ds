@@ -27,6 +27,7 @@ use crate::app::*;
 use crate::gfx::{Gfx, Mode, Uniforms, Vert};
 use crate::ui::{line_rgba, rgb, Screen as Ui};
 use sg_core::land;
+use sg_core::lang::{tr, trf};
 
 /// The exe's 15-bit colours.
 fn c15(v: u16) -> [f32; 4] {
@@ -369,7 +370,7 @@ impl App {
             }
         }
         if ty == 1 && v & 1 != 0 {
-            top_text(g, s, sx + 4.0, sy - 16.0, "Tricky Green", SMALL, c15(WHITE));
+            top_text(g, s, sx + 4.0, sy - 16.0, tr("STR_CURSOR_TRICKY_GREEN"), SMALL, c15(WHITE));
         }
         self.draw_hole_reach(g, s, ty, a, b, (sx, sy));
     }
@@ -395,7 +396,7 @@ impl App {
         let (dx, dy) = ((a - from.0) * 25, (b - from.1) * 25);
         let yards = ((dx * dx + dy * dy) as f64).sqrt() as i32;
         let (mx, my) = (((fx as i32 + sx as i32) / 2) as f32, ((fy as i32 + sy as i32) / 2) as f32);
-        top_text(g, s, mx, my, &format!("{yards} yards"), SMALL, c15(WHITE));
+        top_text(g, s, mx, my, &trf("STR_CURSOR_YARDS", &[("YARDS", &yards)]), SMALL, c15(WHITE));
     }
 
     /// The elevation tools' grid, heights and marks.
@@ -486,7 +487,7 @@ impl App {
                 let mut ch = n.chars();
                 ch.next().map(|f| f.to_uppercase().collect::<String>() + ch.as_str()).unwrap_or_default()
             } else {
-                sg_core::data::buildings()[kind as usize].0.to_string()
+                land::building_name(kind).to_string()
             };
             label(g, s, sx, sy - 8.0, &name, BODY, col);
         }
@@ -522,11 +523,11 @@ impl App {
         let prep = sg_core::data::buildings()[land::K_HOME_SITE as usize].2;
         let profit = share - prep - clear;
         self.art.trans_frame(g, s, 673.0, 380.0, 127.0, 112.0);
-        label(g, s, 736.0, 405.0, &format!("Lot value: {}", share * 100), BODY, c15(GREEN));
-        label(g, s, 736.0, 420.0, &format!("Site clear: {}", clear * 100), BODY, c15(RED));
-        label(g, s, 736.0, 435.0, &format!("Site prep.: {}", prep * 100), BODY, c15(RED));
+        label(g, s, 736.0, 405.0, &trf("STR_CURSOR_LOT_VALUE", &[("MONEY", &(share * 100))]), BODY, c15(GREEN));
+        label(g, s, 736.0, 420.0, &trf("STR_CURSOR_SITE_CLEAR", &[("MONEY", &(clear * 100))]), BODY, c15(RED));
+        label(g, s, 736.0, 435.0, &trf("STR_CURSOR_SITE_PREP", &[("MONEY", &(prep * 100))]), BODY, c15(RED));
         s.line(g, 688.0, 450.5, 784.0, 450.5, 1.0, c15(GREY));
-        label(g, s, 736.0, 455.0, &format!("Profit: {}", profit * 100), BODY, c15(GREEN));
+        label(g, s, 736.0, 455.0, &trf("STR_CURSOR_PROFIT", &[("MONEY", &(profit * 100))]), BODY, c15(GREEN));
         label(g, s, sx, sy + 8.0, &format!("${}", profit * 100), BODY, c15(if profit > 0 { GREEN } else { RED }));
     }
 }

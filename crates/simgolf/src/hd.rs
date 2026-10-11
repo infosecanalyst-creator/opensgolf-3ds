@@ -13,6 +13,7 @@ use crate::gfx::Gfx;
 use crate::ui::Image;
 use miniquad::TextureId;
 use sg_core::assets::{decode_pcx, Rgba};
+use sg_core::lang::tr;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -21,9 +22,8 @@ use std::rc::Rc;
 /// The settings file in the save folder: `{"graphics": "hd"}` or `{"graphics": "classic"}`.
 pub const SETTINGS_FILE: &str = "settings.json";
 
-/// What the player sees when they ask for HD and there is no pack.
-pub const NO_PACK: &str =
-    "No HD art pack found. Make one from your own copy of the game with tools/hd_pack (see docs/HD.md). Staying with Classic graphics.";
+/// What the player sees when they ask for HD and there is no pack (a text key).
+pub const NO_PACK: &str = "STR_ERROR_NO_HD_PACK";
 
 /// The App's HD state.
 #[derive(Default)]
@@ -182,7 +182,7 @@ impl App {
             }
             Err(e) => {
                 eprintln!("HD: {e}");
-                Some(NO_PACK.to_string())
+                Some(tr(NO_PACK).to_string())
             }
         }
     }

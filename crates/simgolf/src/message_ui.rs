@@ -13,6 +13,7 @@ use crate::app::*;
 use crate::gfx::Gfx;
 use crate::screens_ui::{top, BODY};
 use crate::ui::{rgb, text_width, Screen as Ui};
+use sg_core::lang::{tr, trf};
 use sg_core::staff;
 
 /// Where the ticker is drawn (0x40d6a0 passes (0xf0, -8) to 0x40d320).
@@ -180,8 +181,18 @@ pub fn round16(pos: f32, size: f32) -> (f32, f32) {
     }
 }
 
-/// Employee first names (pointer table 0x4c148c), by job and upgrade like the titles; the last has no space in the exe.
-const FIRST_NAMES: [&str; 8] = ["Chuck ", "ChiChi ", "Randy ", "Mike ", "Joe ", "Tommy ", "Sally ", "Rita"];
+/// Employee names: the first name (pointer table 0x4c148c) before the title, by job and upgrade like the titles; the last
+/// first name has no space in the exe.
+const FIRST_NAMES: [&str; 8] = [
+    "STR_EMPLOYEE_CHUCK",
+    "STR_EMPLOYEE_CHICHI",
+    "STR_EMPLOYEE_RANDY",
+    "STR_EMPLOYEE_MIKE",
+    "STR_EMPLOYEE_JOE",
+    "STR_EMPLOYEE_TOMMY",
+    "STR_EMPLOYEE_SALLY",
+    "STR_EMPLOYEE_RITA",
+];
 
 impl App {
     /// An employee's name (0x467600): the first name and the title by job and experience ("Chuck Club Pro"; the last
@@ -191,12 +202,13 @@ impl App {
             return self.pro_name();
         }
         let job = (-2 - e.job as i32).clamp(0, 3) as usize;
-        format!("{}{}", FIRST_NAMES[job * 2 + e.upgraded as usize], STAFF_NAMES[job][e.upgraded as usize])
+        trf(FIRST_NAMES[job * 2 + e.upgraded as usize], &[("TITLE", &staff_title(job, e.upgraded))])
     }
 
     /// Posts a ticker message (0x40cb00); see `Ticker::post`.
     pub fn post_message(&mut self, text: &str, priority: i32, speaker: i32) -> bool {
         let card = self.card.is_some();
+        crate::ui::log_text(text);
         let ok = self.ticker.post(text, priority, speaker, self.difficulty, card);
         if ok {
             self.last_message = text.to_string();
@@ -367,28 +379,28 @@ impl App {
         let (tee, green) = (h1.back.0 != 0, h1.pin.0 != 0);
         let mut t = String::new();
         if h1.par == 0 {
-            t = "Press 'h' to open the hole.".into();
+            t = tr("STR_ADVISOR_PRESS_H").into();
             if !green {
-                t = "Now we need to build a green.".into();
+                t = tr("STR_ADVISOR_BUILD_GREEN").into();
             }
             if !tee {
-                t = "First we need to build a tee.".into();
+                t = tr("STR_ADVISOR_BUILD_TEE").into();
             }
             if tick & 0x20 == 0 {
-                t = "Let's build our first golf hole.".into();
+                t = tr("STR_ADVISOR_FIRST_HOLE").into();
                 if tee && green {
-                    t = "We might add some fairway or sand traps.".into();
+                    t = tr("STR_ADVISOR_FAIRWAY_SAND").into();
                 }
             } else if mode != 0 {
-                t = "Click on the big 'Build Course' button.".into();
+                t = tr("STR_ADVISOR_CLICK_BUILD_COURSE").into();
             }
             // shown on three frames in four of each 32
             return (tick & 0x18 != 0).then_some((t, pro.x, pro.y));
         }
         if holes[2].par == 0 {
-            t = "We've built one hole, let's build more!".into();
+            t = tr("STR_ADVISOR_BUILD_MORE").into();
             if self.club.g[1].hole == 1 && self.club.g[1].strokes == 0 {
-                t = "Here come some golfers!".into();
+                t = tr("STR_ADVISOR_GOLFERS_COMING").into();
             }
         }
         if holes[3].par != 0 {
@@ -410,28 +422,26 @@ impl App {
             }
             let hr = &holes[h];
             let pct = hr.mood_sum * 100 / (hr.plans / 2 + hr.tee_shots + 4);
-            t = format!("This hole has a {pct}% fun rating.");
+            t = trf("STR_ADVISOR_FUN_RATING", &[("PERCENT", &pct)]);
             if self.club.pro_mask == 0 {
-                t = "I'm ready for a practice round.".into();
+                t = tr("STR_ADVISOR_PRACTICE_ROUND").into();
             } else if self.club.game & sg_core::tournament::OFFERED != 0 {
-                t = "I'm ready to play a tournament.".into();
+                t = tr("STR_ADVISOR_TOURNAMENT").into();
             }
         }
         if tick & 0x40 != 0 {
             match mode {
-                0 if !self.pstate.alt => t = "I like to make each hole different.".into(),
-                0 if tick & 0x80 != 0 => t = "Some flowers and benches will cheer our golfers.".into(),
-                0 => t = "Adding paths will help speed up play.".into(),
-                1 if self.pstate.alt => t = "Slopes affect the bounce and roll of the ball.".into(),
-                1 if self.difficulty != 0 => t = "Buildings need a path to the clubhouse.".into(),
-                1 => t = "Buildings are one way to improve our course.".into(),
+                0 if !self.pstate.alt => t = tr("STR_ADVISOR_EACH_HOLE_DIFFERENT").into(),
+                0 if tick & 0x80 != 0 => t = tr("STR_ADVISOR_FLOWERS_BENCHES").into(),
+                0 => t = tr("STR_ADVISOR_PATHS").into(),
+                1 if self.pstate.alt => t = tr("STR_ADVISOR_SLOPES").into(),
+                1 if self.difficulty != 0 => t = tr("STR_ADVISOR_BUILDINGS_PATH").into(),
+                1 => t = tr("STR_ADVISOR_BUILDINGS_IMPROVE").into(),
                 2 => {
                     // staff record 1, the first employee hired: its first name and title (0x467600)
                     t = match self.employees.get(1).filter(|e| e.active && e.job != staff::job::OWNER) {
-                        Some(e) => {
-                            format!("{} is doing a great job.", self.employee_name(e))
-                        }
-                        None => "If you hire employees I won't have to do everything myself!".into(),
+                        Some(e) => trf("STR_ADVISOR_EMPLOYEE_GREAT_JOB", &[("EMPLOYEE", &self.employee_name(e))]),
+                        None => tr("STR_ADVISOR_HIRE_EMPLOYEES").into(),
                     }
                 }
                 _ => {}
@@ -458,10 +468,10 @@ impl App {
     pub fn draw_paused(&self, g: &mut Gfx, s: &Ui) {
         let mut t = String::new();
         if self.paused {
-            t += "Paused";
+            t += tr("STR_PAUSED");
         }
         if self.speed > 1 {
-            t += " Fast";
+            t += tr("STR_PAUSED_FAST");
         }
         if !t.is_empty() {
             // footage of the original shows it over the shadowed call's dark red shadow (0x404bc0, ui::SHADOW_1)

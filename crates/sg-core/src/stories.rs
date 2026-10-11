@@ -11,6 +11,7 @@ use crate::course::{idx, inside, Course};
 use crate::geom::{angle, dir8, len};
 use crate::golfer::{anim, flag, Club};
 use crate::land::ExeRng;
+use crate::lang::trf;
 
 /// The pair was picked by the player on the clubhouse screen (flag 0x20000 during pairing only).
 pub const MANUAL_PAIR: u32 = 0x20000;
@@ -463,7 +464,7 @@ impl Club {
         self.log_event(crate::records::log::HAPPY, story);
         let hole = self.g[owner].hole.clamp(0, 18) as usize;
         let title = self.stories.title(story);
-        self.message(format!("Happy Ending: {}", title.trim_start()));
+        self.message(trf("STR_LOG_HAPPY_ENDING", &[("STORY", &title.trim_start())]));
         for gg in [owner, partner] {
             self.member_mut(gg).holes[hole] |= 2;
         }
@@ -486,7 +487,7 @@ impl Club {
         self.free_landmarks |= 1 << t;
         self.landmarks_owned |= 1 << t;
         // "A" (0x4e409c), the name with its article, " is now available in your landmarks menu." (0x4e4070)
-        self.message_by(format!("A{} is now available in your landmarks menu.", crate::vips::landmark_after_a(t)), -1, 0);
+        self.message_by(trf("STR_MSG_LANDMARK_AVAILABLE", &[("A_LANDMARK", &crate::vips::landmark_after_a(t))]), -1, 0);
     }
 
     /// The story line a golfer is saying now (thought 0x32): the owner's opening line or the partner's reply.

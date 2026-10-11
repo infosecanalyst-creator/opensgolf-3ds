@@ -6,6 +6,7 @@ use crate::files_ui::ListKind;
 use crate::gfx::Gfx;
 use sg_core::championship::{self, ProFile};
 use sg_core::economy::Economy;
+use sg_core::lang::{tr, trf};
 use std::path::{Path, PathBuf};
 
 /// Extension of our courses saved for championship play (a whole-game save with the club emptied at start).
@@ -28,13 +29,13 @@ impl App {
     pub fn save_championship_course(&mut self) {
         if self.club.game & sg_core::golfer::game::TOURNAMENT != 0 {
             self.ui_sound(24);
-            return self.show_toast("Cannot save course during a tournament.");
+            return self.show_toast(tr("STR_TOAST_CHAMP_NO_SAVE_IN_TOURNAMENT"));
         }
         let dir = self.championship_dir();
         let path = dir.join(format!("{}.{COURSE_EXT}", self.course_name));
         match self.save_game(&path) {
-            Ok(()) => self.show_toast(&format!("{} saved for championship play.", self.course_name)),
-            Err(e) => self.show_toast(&format!("Could not save: {e}")),
+            Ok(()) => self.show_toast(&trf("STR_TOAST_CHAMP_COURSE_SAVED", &[("COURSE", &self.course_name)])),
+            Err(e) => self.show_toast(&trf("STR_TOAST_COULD_NOT_SAVE", &[("ERROR", &e)])),
         }
     }
 
@@ -44,9 +45,9 @@ impl App {
         let p = self.club.pro_file();
         let path = dir.join(format!("{}.pro", p.person.name));
         if sg_core::fsutil::write_file(&path, &championship::pro_bytes(&p)) {
-            self.show_toast(&format!("{} saved for championship play.", p.person.name));
+            self.show_toast(&trf("STR_TOAST_CHAMP_PRO_SAVED", &[("PRO", &p.person.name)]));
         } else {
-            self.show_toast("Could not save the pro.");
+            self.show_toast(tr("STR_TOAST_CHAMP_PRO_NOT_SAVED"));
         }
     }
 
@@ -69,7 +70,7 @@ impl App {
         self.screen = Screen::Play;
         println!(
             "championship: {} with {} on {} ({} players)",
-            championship::EVENTS[diff.clamp(0, 3) as usize],
+            championship::event_name(diff),
             pro.person.name,
             self.course_name,
             self.club.leaderboard().0.len()

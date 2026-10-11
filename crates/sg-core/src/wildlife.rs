@@ -8,6 +8,7 @@ use crate::course::{idx, inside, Course};
 use crate::geom::{cdir, len, DX, DY};
 use crate::golfer::{Club, SLOTS};
 use crate::land::ExeRng;
+use crate::lang::trf;
 
 /// Animation states (sprite bases; add the kind): walk, stand, going down (to eat or drink), the eating / drinking loop.
 pub const WALK: i32 = 0x103;
@@ -18,7 +19,8 @@ pub const LOOP: i32 = 0x11e;
 /// One kind of animal: its name, its clips in Flics/Animals (walk, stand, down, loop), the directions of the non-walk clips
 /// as the exe loads them, its call sound slot, and where it lives.
 pub struct Kind {
-    pub name: &'static str,
+    /// The name (a text key, see `name`).
+    pub name_key: &'static str,
     pub clips: [&'static str; 4],
     pub dirs: i32,
     pub call: Option<i32>,
@@ -28,10 +30,24 @@ pub struct Kind {
     pub themes: u8,
 }
 
+impl Kind {
+    /// The animal's name.
+    pub fn name(&self) -> &'static str {
+        crate::lang::tr(self.name_key)
+    }
+}
+
 pub const KINDS: [Kind; 9] = [
-    Kind { name: "Elk", clips: ["ELK_Run", "ELK_Sq", "ELK_EatDown", "ELK_EatLoop"], dirs: 4, call: Some(59), habitat: 14, themes: 0b1001 },
     Kind {
-        name: "Crane",
+        name_key: "STR_ANIMAL_ELK",
+        clips: ["ELK_Run", "ELK_Sq", "ELK_EatDown", "ELK_EatLoop"],
+        dirs: 4,
+        call: Some(59),
+        habitat: 14,
+        themes: 0b1001,
+    },
+    Kind {
+        name_key: "STR_ANIMAL_CRANE",
         clips: ["Crane_Walk", "Crane_Sq", "Crane_DrinkDown", "Crane_DrinkLoop"],
         dirs: 4,
         call: Some(58),
@@ -39,7 +55,7 @@ pub const KINDS: [Kind; 9] = [
         themes: 0b0001,
     },
     Kind {
-        name: "Flamingo",
+        name_key: "STR_ANIMAL_FLAMINGO",
         clips: ["Flamingo_Walk", "Flamingo_Sq", "Flamingo_DrinkDown", "Flamingo_DrinkLoop"],
         dirs: 4,
         call: None,
@@ -47,7 +63,7 @@ pub const KINDS: [Kind; 9] = [
         themes: 0b0100,
     },
     Kind {
-        name: "Sheep",
+        name_key: "STR_ANIMAL_SHEEP",
         clips: ["Sheep_Walk", "Sheep_SQ", "Sheep_EatDown", "Sheep_EatLoop"],
         dirs: 4,
         call: Some(195),
@@ -55,7 +71,7 @@ pub const KINDS: [Kind; 9] = [
         themes: 0b1000,
     },
     Kind {
-        name: "Crocodile",
+        name_key: "STR_ANIMAL_CROCODILE",
         clips: ["Croc_Walk", "Croc_SQ", "Croc_Turnover", "Croc_BackScratch"],
         dirs: 8,
         call: Some(196),
@@ -63,16 +79,23 @@ pub const KINDS: [Kind; 9] = [
         themes: 0b0100,
     },
     Kind {
-        name: "Snake",
+        name_key: "STR_ANIMAL_SNAKE",
         clips: ["Snake_Walk", "Snake_SQ", "Snake_SQ", "Snake_Fidget"],
         dirs: 4,
         call: Some(198),
         habitat: 12,
         themes: 0b0110,
     },
-    Kind { name: "Gila", clips: ["Gila_Walk", "Gila_SQ", "Gila_SQ", "Gila_Fidget"], dirs: 4, call: Some(197), habitat: 4, themes: 0b0010 },
     Kind {
-        name: "Road runner",
+        name_key: "STR_ANIMAL_GILA",
+        clips: ["Gila_Walk", "Gila_SQ", "Gila_SQ", "Gila_Fidget"],
+        dirs: 4,
+        call: Some(197),
+        habitat: 4,
+        themes: 0b0010,
+    },
+    Kind {
+        name_key: "STR_ANIMAL_ROAD_RUNNER",
         clips: ["RR_Walk", "RR_SQ", "RR_DrinkDown", "RR_DrinkLoop"],
         dirs: 4,
         call: None,
@@ -80,7 +103,7 @@ pub const KINDS: [Kind; 9] = [
         themes: 0b0010,
     },
     Kind {
-        name: "Duck",
+        name_key: "STR_ANIMAL_DUCK",
         clips: ["Duck_Walk", "Duck_SQ", "Duck_DrinkDown", "Duck_DrinkLoop"],
         dirs: 4,
         call: None,
@@ -314,7 +337,7 @@ impl Wildlife {
                 self.animals[f as usize].leader = l;
             }
         }
-        self.labels.push((centre.0, centre.1, format!("{} habitat", KINDS[k as usize].name), 48));
+        self.labels.push((centre.0, centre.1, trf("STR_WILDLIFE_HABITAT", &[("ANIMAL", &KINDS[k as usize].name())]), 48));
         if let Some(s) = KINDS[k as usize].call {
             self.sounds.push((s, centre));
         }
