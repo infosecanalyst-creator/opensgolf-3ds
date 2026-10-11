@@ -23,10 +23,8 @@ ureq = { version = "3", optional = true, default-features = false, features = ["
 default = ["audio", "net"]
 # Sound output through the system's audio device (CoreAudio, WASAPI, ALSA). Without it the game runs silent.
 audio = ["dep:cpal"]
-<<<<<<< HEAD
 # Downloading content packs over HTTPS (desktop). Without it only file:// content indexes work.
 net = ["dep:ureq"]
-=======
 
 # Android only: hands miniquad's Java VM to cpal's oboe sound output (src/android.rs).
 [target.'cfg(target_os = "android")'.dependencies]
@@ -55,4 +53,3 @@ icon = "@mipmap/ic_launcher"
 "android:screenOrientation" = "sensorLandscape"
 # Android 12 and newer refuse a launcher activity that does not say this
 "android:exported" = "true"
->>>>>>> claude/magical-tesla-d1thkl
