@@ -343,6 +343,10 @@ fn open_screen(app: &mut App, screen: Option<&str>) {
         Some("content-index") if app.ui_ok => {
             app.open_content();
             app.open_content_index();
+            // SG_INDEX_DOWNLOAD=N downloads the index's offer N at once (a local index finishes before the still)
+            if let Some(k) = std::env::var("SG_INDEX_DOWNLOAD").ok().and_then(|v| v.parse().ok()) {
+                app.index_download(k);
+            }
         }
         Some("golfers") if app.ui_ok => app.panel = 4,
         Some("holestats") if app.ui_ok => {
@@ -818,6 +822,7 @@ impl Stage {
                     "menu" => app.screen = Screen::Menu,
                     "property" => app.screen = Screen::Property,
                     "difficulty" => app.screen = Screen::Difficulty,
+                    "scenarios" => app.open_scenarios(),
                     "land" => app.open_land_screen(),
                     s => {
                         app.test_title_screen(s, false);
@@ -907,6 +912,10 @@ impl Stage {
         // SG_MESSAGE="speaker;text" posts a ticker message (speaker -1 nobody, a golfer slot, or a picture code), for stills
         if let Some((who, text)) = std::env::var("SG_MESSAGE").ok().as_deref().and_then(|v| v.split_once(';')) {
             app.post_message(text, 1, who.trim().parse().unwrap_or(message_ui::NOBODY));
+        }
+        // SG_EXPORT_SCENARIO=1 exports the game as a scenario pack (the Save dialog's button), for tests
+        if std::env::var_os("SG_EXPORT_SCENARIO").is_some() {
+            app.export_scenario();
         }
         if std::env::var_os("SG_PAUSED").is_some() {
             app.paused = true;

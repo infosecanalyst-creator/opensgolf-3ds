@@ -64,6 +64,18 @@ As in the original: **F1** Course Report, **F2** Player Comments (the twenty mos
 
 Content packs (mods, docs/MODDING.md): System Functions, Preferences, *Content packs...* lists the installed packs; switch them on or off and order the mods there (Up and Down, or PageUp and PageDown on the picked row). The choices are saved in `settings.json` at once and take effect the next time the game starts. `--screen content` opens the screen for stills.
 
+Scenarios (docs/MODDING.md 5): with a scenario pack installed, *Start New Game* first offers a free game (the original's
+way on: Select Difficulty, then a property) or one of the scenarios, each with its goals; a scenario that names no
+difficulty goes by way of Select Difficulty. Messages say when a goal is reached or missed and when the scenario is won or
+lost; *Information, Scenario Goals* (the menu's last line, shown when the game has goals) lists them. The Save dialog's
+*Export as scenario pack* button (or Tab) writes the game as a scenario pack into the save folder's `packs`, under the
+name typed. Scripts of the enabled packs run by themselves (docs/MODDING.md 6); when one fails a toast says so and the
+Content screen shows the error. *Find more...* on the Content screen lists the packs of the content index set in
+`settings.json` (`content_index_url`, docs/CONTENT_INDEX.md) and downloads them. Test hooks: `--scenario ID` starts a
+scenario pack (Moderate when it names no difficulty), `--screen scenarios` (from the title) and `--screen goals` or
+`--screen content-index` (with a game) open those screens, `SG_INDEX_DOWNLOAD=N` downloads offer N of the index at once,
+`SG_EXPORT_SCENARIO=1` exports the game as a scenario pack.
+
 ## Touch (phones and tablets, in the browser)
 
 Tap for a click; drag one finger to scroll the course (or to paint with the selected tool); hold a finger still for half a

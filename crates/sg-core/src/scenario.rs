@@ -453,7 +453,7 @@ pub fn export_manifest(id: &str, name: &str, author: &str) -> String {
         authors: if author.is_empty() { Vec::new() } else { vec![author.to_string()] },
         license: "CC-BY-SA-4.0".into(),
         description: format!("The course {name}, exported from OpenSGolf."),
-        requires: vec!["original >= 1.0".into()],
+        requires: Vec::new(),
         conflicts: Vec::new(),
     };
     #[derive(Serialize)]
@@ -469,6 +469,8 @@ pub fn id_from_name(name: &str) -> String {
     for c in name.chars() {
         if c.is_ascii_alphanumeric() {
             out.push(c.to_ascii_lowercase());
+        } else if c == '\'' || c == '\u{2019}' {
+            // "Ocean's Edge" -> "oceans-edge"
         } else if !out.ends_with('-') && !out.is_empty() {
             out.push('-');
         }
@@ -567,6 +569,7 @@ by_year = 2003
         let id = id_from_name("Sunny Pines G.C.!");
         assert_eq!(id, "sunny-pines-g-c");
         assert_eq!(id_from_name("***"), "my-scenario");
+        assert_eq!(id_from_name("Ocean's Edge"), "oceans-edge");
         let m = crate::packs::Manifest::parse(&export_manifest(&id, "Sunny Pines", "Me")).unwrap();
         assert_eq!(m.kind, crate::packs::Kind::Scenario);
     }

@@ -2023,7 +2023,7 @@ STR_SCENARIOS_HELP                      :Play a free game, or a scenario with go
 STR_SCENARIOS_FREE_GAME                 :Free game
 STR_SCENARIOS_FREE_GAME_TEXT            :Choose the difficulty and a property, and play as long as you like.
 STR_SCENARIOS_SUMMARY                   :{PLACE}, {DIFFICULTY}{MONEY}, {GOALS} goals
-STR_SCENARIOS_MONEY                     :, §{MONEY} to start
+STR_SCENARIOS_MONEY                     :, ${MONEY} to start
 STR_SCENARIOS_ANY_DIFFICULTY            :your choice of difficulty
 STR_SCENARIOS_GOALS                     :Goals: {GOALS}.
 STR_SCENARIOS_BACK                      :Back
@@ -2047,7 +2047,7 @@ STR_GOAL_STATE_BY                       :open, by the end of {YEAR}
 STR_GOAL_STATE_DONE                     :reached
 STR_GOAL_STATE_MISSED                   :missed
 STR_GOAL_COND_HOLES                     :{N} holes
-STR_GOAL_COND_CASH                      :§{MONEY} cash
+STR_GOAL_COND_CASH                      :${MONEY} cash
 STR_GOAL_COND_FUN                       :fun rating {N}
 STR_GOAL_COND_SKILL                     :skill rating {N}
 STR_GOAL_COND_MEMBERS                   :{N} members

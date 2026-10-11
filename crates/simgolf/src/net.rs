@@ -22,6 +22,7 @@ enum Inner {
 }
 
 #[cfg(target_arch = "wasm32")]
+#[link(wasm_import_module = "env")]
 extern "C" {
     fn sg_net_fetch(url: *const u8, len: usize) -> i32;
     fn sg_net_status(id: i32) -> i32;

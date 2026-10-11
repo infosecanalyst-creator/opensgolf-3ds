@@ -123,6 +123,16 @@ New text in the code goes into `lang/en.txt` with a key (`STR_<AREA>_<WHAT>`), n
 `sg_core::lang::tr("STR_...")` or `trf("STR_...", &[("NAME", &value)])`. `cargo test -p sg-core lang` checks that every key
 the code uses is in `lang/en.txt` once and that none there is unused.
 
+## Content packs, scenarios and scripts
+
+Mods, scenarios, game scripts and translations are content packs ([docs/MODDING.md](docs/MODDING.md)); the examples in
+`packs/` (`example-cheap-fairways`, `example-scenario-desert-challenge`, `example-script-bonus`) are complete small packs to
+start from. A finished pack is shared through the content index, a separate repository (planned: `opensgolf/content`) that
+the game's Preferences > Content > *Find more* reads: open a pull request there that adds your pack's entry to
+`index.json`, as described in [docs/CONTENT_INDEX.md](docs/CONTENT_INDEX.md). Packs must have a free licence and contain
+nothing from the original game. Engine changes for packs (the loader, scenarios, the Rhai API, the index) come to this
+repository with tests, like any other code.
+
 ## Reporting bugs and differences from the original
 
 Use the issue templates. For a difference from the original game, a screenshot or a video timestamp of the original next to

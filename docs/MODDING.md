@@ -48,8 +48,9 @@ loaded.
 Status: `original` and `opensgolf-free` are built in (crates/sg-core/src/packs.rs, `ORIGINAL` and `FREE`). A `base` pack is
 chosen in Preferences > Content or for one run with `--base ID`; it is a layer over the player's game folder, and since a
 base set's files stand in for missing ones (folders included, section 2) the game folder may be missing altogether. With no
-base set chosen and no original files in the game folder, the game uses `opensgolf-free` and says so. `translation` packs are loaded last, one at a time, but their `lang/` text is not read yet (section 4).
-`scenario` packs are listed and not loaded yet (section 5).
+base set chosen and no original files in the game folder, the game uses `opensgolf-free` and says so. `translation` packs
+are loaded last, one at a time, and their `lang/` text is laid over the string table (section 4). `scenario` packs are
+chosen when a game starts (section 5).
 
 ## 2. Load order and overrides
 
@@ -65,7 +66,8 @@ Later packs win. Every pack can:
   folder.
 * **Change data** (**done** for six files, section 3): `data/*.toml` files are merged entry by entry (an entry with the same
   `id` replaces fields of the earlier one; `remove = true` deletes it).
-* **Change text** (planned, section 4): `lang/<code>.txt` lines replace strings with the same key.
+* **Change text** (**done**, section 4): `lang/<code>.txt` lines replace strings with the same key (the player's language,
+  then English).
 
 The player's choices (which packs are on, the mods' order, the base set and the translation) are saved under `"content"` in
 `settings.json` in the save folder as soon as they are made on the Content screen, and **take effect the next time the game
@@ -117,6 +119,19 @@ file is built into the program (`sg_core::lang`); a translation or a pack's `lan
 (default `en`, a `Language:` line in Preferences once a translation is installed). docs/TRANSLATING.md has the file
 format, the parameters and how to try a translation out.
 
+Packs carry text too (**done**, crates/sg-core/src/packs.rs `load` and `apply`): after the player's language is applied,
+every loaded pack's text is laid over the table in load order (the base set, the mods in the player's order, then the
+translation):
+
+* a `base` or `mod` pack: its `lang/en.txt` (the English of its own new keys, or its changed English text), then its
+  `lang/<code>.txt` for the player's language;
+* the chosen `translation` pack: its `lang/<code>.txt` for the player's language; when it has none, its first (usually
+  only) file, and the game switches to that language for the run. So a translation pack works by choosing it on the
+  Content screen, whatever the `language` setting says.
+
+Later packs win over earlier ones; a key a pack does not have keeps the text it had. A pack can carry keys the engine does
+not use yet (for a newer version); they are kept and do nothing.
+
 The `original` base set takes text from the player's copy where the copy has it (the Interface, story and character files).
 Text that only exists inside the original program is kept in this repository's `lang/en.txt`, word for word, so the game
 reads like the original; that text remains Electronic Arts'. The free base set will carry its own rewritten text so it can
@@ -124,20 +139,104 @@ be shared without any of EA's material. Translations are made in the open (plann
 
 ## 5. Scenarios and courses
 
-A scenario pack holds `scenario.toml` (property, theme, money, difficulty, goals with the text to show, starting holes) and
-optionally a saved course. Courses saved from the game can be exported as scenario packs from the save menu.
+**done** (crates/sg-core/src/scenario.rs, crates/simgolf/src/scenario_ui.rs). A scenario pack (`kind = "scenario"`) holds
+`scenario.toml`: the property (or a theme), the money, the difficulty, optionally a saved game to start from (its land,
+holes, buildings and date), the texts to show, and the goals. With a scenario pack installed, **Start New Game** first asks
+for a free game (the original's way on) or a scenario. A scenario's goals are checked at each month start; a goal with
+`by_year` is missed when that year ends without it. A message says when a goal is reached or missed; when every goal is
+reached the scenario is won (`win_text`), when one is missed it is lost (`lose_text`), and either way the game goes on.
+**Information > Scenario Goals** lists the goals and how they stand. The goals are saved with the game. A scenario's own
+`scripts/` run with the game it starts (section 6).
 
-## 6. Scripts (planned)
+**Export as scenario**: the Save dialog's *Export as scenario pack* button (or Tab) writes the game as a scenario pack into
+the save folder's `packs` (`<id>/pack.toml`, `scenario.toml` and `course.sgs`, the whole game), named after the name
+typed. Its scenario starts from the saved game with the game's cash and difficulty and keeps the goals of the scenario it
+was played from; add `[[goal]]` tables to make it a challenge. The example is `packs/example-scenario-desert-challenge`.
 
-Game scripts, like OpenTTD's GameScripts, in **Rhai** (pure Rust, sandboxed, works in the browser): event hooks (month
-start, golfer finishes a hole, building placed), access to read the game state and to show messages, set goals and award
-money. Scripts cannot touch files or the network.
+```toml
+[scenario]
+name = "Desert Challenge"            # none: the pack's name
+description = "Build nine holes near Phoenix on a tight budget."
+property = "phoenix"                 # a properties.toml id (section 9); none: the first property of `theme`, else monterey
+theme = "desert"                     # parkland | desert | tropical | links (must match `property` when both are given)
+start_money = 60000                  # none: the normal start (the starting funds less the property's price)
+difficulty = "moderate"              # easy | moderate | difficult | impossible; none: the player picks it
+sandbox = false
+course = "course.sgs"                # a saved game in the pack to start from (System Functions > Save writes them)
+intro = "Welcome to the desert!"     # shown when the game starts
+win_text = "The investors are delighted!"
+lose_text = "The investors have lost patience."
 
-## 7. Content service (planned)
+[[goal]]
+id = "nine-holes"                    # for scripts (complete_goal); none: goal-1, goal-2, ...
+text = "Open 9 holes by the end of 2002"
+holes = 9                            # every condition given must hold at once:
+# cash = 150000                      #   at least this much cash
+# fun = 30                           #   a fun rating of at least this
+# skill = 12.5                       #   a skill rating of at least this (as the status bar shows it)
+# members = 20                       #   at least this many members
+# rank = "country-club"              #   municipal | daily-fee | country-club | championship (by number of holes)
+by_year = 2002                       # must be met by the end of this year (the game starts in 2001); none: any time
+```
 
-An index file (`index.json`) in a public repository lists packs with id, version, kind, licence, download URL and checksum.
-**Preferences > Content > Find more** downloads packs into the packs folder and checks the checksum. Anyone can submit a
-pack with a pull request to the index; packs must have a free licence and must not contain material from the original game.
+A wrong value (an unknown property, a goal without a condition, an unknown field) shows on the Start New Game screen and
+the scenario cannot be started. A scenario's `requires` must be loaded (they are switched on on the Content screen).
+
+## 6. Scripts
+
+**done** (crates/sg-core/src/script.rs, the game side in crates/simgolf/src/scenario_ui.rs). Game scripts, like OpenTTD's
+GameScripts, in [Rhai](https://rhai.rs) (pure Rust, sandboxed, works in the browser): every `scripts/*.rhai` of the
+enabled packs (and of the scenario a game was started from) is compiled when a game starts or is loaded, in load order,
+files by name. A file defines the hooks it wants:
+
+| Hook | When |
+|------|------|
+| `on_start()` | a new game starts (after the scenario's goals are set) |
+| `on_month()` | each month start (the game's year has eight months, March to October) |
+| `on_year_end()` | each year end (instead of `on_month` that tick) |
+| `on_hole_finished(golfer, hole, strokes)` | a golfer holes out; `golfer` is a map: `name`, `hole`, `strokes`, `member`, `pro` |
+| `on_building_placed(kind, x, y)` | the player places a building; `kind` is its id (`snack-bar`, section 9), `x`, `y` the tile |
+
+Inside a hook `this` is the pack's own state, a map that is saved with the game (`this.aces = (this.aces ?? 0) + 1`).
+
+What a script can call:
+
+| Function | Gives or does |
+|----------|---------------|
+| `year()`, `month()` | the date (2001.., 3..10) |
+| `cash()`, `fun_rating()`, `skill_rating()`, `members()` | the status bar's figures (`skill_rating()` as shown, e.g. 12.5) |
+| `rank()`, `rank_name()` | the course's rank (0 Municipal .. 3 Championship) and its name |
+| `difficulty()`, `sandbox()`, `course_name()` | 0 Easy .. 3 Impossible; a sandbox game; the course's name |
+| `hole_count()`, `holes()`, `hole_par(n)` | the open holes: an array of maps (`number`, `par`, `yards`) |
+| `golfers()` | the golfers on the course (maps as for `on_hole_finished`) |
+| `show_message(text)` | a message in the ticker (one at a time, in order) |
+| `add_money(amount, reason)` | pays (or, negative, charges) the club, booked as Other income; at most 10,000,000 a call |
+| `set_goal(id, text)` | adds a goal (or changes its text) to Information > Scenario Goals |
+| `complete_goal(id)`, `fail_goal(id)` | settles one of the pack's goals, or a goal of the scenario the pack is |
+| `random(n)` | a number from 0 to n - 1, from the pack's own generator (saved with the game; the game's own random numbers are never touched, so a loaded game goes on the same way) |
+| `print(text)`, `debug(value)` | a line in the terminal (`script <pack>: ...`) |
+
+Scripts are sandboxed: Rhai has no file, network or clock access here, `eval` is off, and each hook call is limited (200,000
+operations, call depth 32, strings of 16 KB, arrays and maps of 10,000 items). An error (a syntax error, a run-time error, a
+limit reached) never stops the game: what that call asked for is dropped, a toast says which pack failed, the terminal shows
+the message (`script <pack>: <file>: <hook>: <error>`) and the Content screen shows it on the pack's row. A pack whose
+scripts fail ten times is stopped for the session. The example is `packs/example-script-bonus` (a hole-in-one bonus).
+
+## 7. Content service
+
+**done** (crates/sg-core/src/index.rs, the game side in crates/simgolf/src/content.rs and net.rs). An index file
+(`index.json`, docs/CONTENT_INDEX.md) lists packs with id, name, version, kind, licence, download address, size and SHA-256
+checksum. **Preferences > Content > Find more...** reads the index at the address in `settings.json`
+(`"content_index_url"`; empty by default, and the screen says how to set it), lists the packs the player does not have (or
+has in an older version), and downloads the one picked into the save folder's `packs` as `<id>.zip` after checking its
+size, checksum, and that its pack.toml has the index's id and version. An older .zip of the pack there is replaced. New
+packs are off until switched on, and take effect at the next start.
+
+On the desktop, `https://` addresses are fetched by a small HTTPS client in Rust (ureq with rustls) behind the default
+cargo feature `net` (`--no-default-features` leaves it out); in the browser, by the page's `fetch()` (web/opensgolf.js; the
+server must allow CORS) and the pack is kept with the packs added on the start page. A `file://` address or a plain path
+works everywhere, which is also how to try an index locally. Anyone can submit a pack with a pull request to the index;
+packs must have a free licence and must not contain material from the original game.
 
 ## 8. Progress
 
@@ -158,9 +257,10 @@ pack with a pull request to the index; packs must have a free licence and must n
 | `--base ID`; falling back to the free set without original files; browser *Play with the free graphics* | done |
 | Headless play test on the free set in CI (`tools/freeset_playtest.sh`) | done |
 | Free set: hand-made art replacing the drawn pieces, music, more stories | planned |
-| Scenario packs | planned |
-| Rhai scripts | planned |
-| Content index and in-game downloader | planned |
+| Packs' `lang/` text (mods and translation packs) | done |
+| Scenario packs, Start New Game choice, goals report, Export as scenario (`packs/example-scenario-desert-challenge`) | done |
+| Rhai scripts (`packs/example-script-bonus`) | done |
+| Content index and in-game downloader (Preferences > Content > Find more) | done; a public index is not set up yet |
 
 ## 9. Reference for pack makers
 
@@ -199,6 +299,9 @@ my-pack/
   text/Themes/Standard/...      stories (TXT), characters (CHR, GLF), golfer lists (DTA), terrain descriptions
   fonts/manu3_.TTF              the game's fonts (KLEPTO__.TTF for titles, manu3_.TTF for most text)
   video/Flics/...               the intro videos (planned: not read yet)
+  lang/en.txt, lang/de.txt      text over the string table (section 4)
+  scripts/*.rhai                game scripts (section 6)
+  scenario.toml, course.sgs     a scenario pack's scenario and the saved game it starts from (section 5)
   README.md                     anything else is ignored
 ```
 

@@ -3,6 +3,7 @@
 #   1. writes the free set to a folder and decodes every file with the engine's own decoders (sgtool check),
 #   2. starts a new game, builds a hole and hires a groundskeeper, lets golfers play for about three in-game months and saves,
 #   3. loads the save and opens every report screen,
+#   4. starts the example scenario with the example script pack on, saves, and opens its goals report,
 # each step on a virtual display, failing on a crash, a non-zero exit or any missing-file or decode error in the output.
 #
 # usage: tools/freeset_playtest.sh [OUT_DIR]      (run from the repository root after cargo build --release)
@@ -66,6 +67,15 @@ echo "== the title screens"
 for s in menu property difficulty load themes credits pickapro champ; do
     step "title-$s" --screen "$s" --time 2
 done
+
+echo "== the example scenario and script packs"
+mkdir -p "$OUT/save/packs"
+cp -r packs/example-scenario-desert-challenge packs/example-script-bonus "$OUT/save/packs/"
+printf '{"content": {"mods": [{"id": "example-script-bonus", "enabled": true}]}}\n' > "$OUT/save/settings.json"
+step scenario-start --screen scenarios --time 2
+step scenario-play --scenario example-scenario-desert-challenge --time 60 --save-game "$OUT/save/scenario.sgs"
+grep -E "scenario|scripts:" "$OUT/scenario-play.log" | sed 's/^/     /'
+step scenario-goals --load-game "$OUT/save/scenario.sgs" --screen goals --time 2
 
 if [ $fail -ne 0 ]; then
     echo "free set play test: FAILED (logs and stills in $OUT)"

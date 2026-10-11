@@ -601,7 +601,7 @@ impl App {
     }
 
     /// Downloads offer `k` (one at a time).
-    fn index_download(&mut self, k: usize) {
+    pub fn index_download(&mut self, k: usize) {
         let Some(v) = self.content.index.as_mut() else { return };
         if v.download.is_some() || v.loading.is_some() {
             return self.ui_sound(0x18);
