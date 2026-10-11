@@ -61,6 +61,11 @@ miniquad_add_plugin({
             const path = sgStr(ptr, len);
             const bytes = new Uint8Array(wasm_memory.buffer, data, dataLen).slice();
             sgAddFile(path, bytes);
+            // a pack the game downloaded (Preferences > Content > Find more) or exported goes with the packs the player added
+            if (sgKey(path).startsWith("packs/")) {
+                sgStoreAdd([[path, bytes]], "packs");
+                return;
+            }
             try {
                 let bin = "";
                 for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
@@ -76,6 +81,10 @@ miniquad_add_plugin({
             const parts = path.replace(/\\/g, "/").split("/").filter(s => s.length > 0);
             const kids = sgfs.dirs.get(sgKey(parts.slice(0, -1).join("/")));
             if (kids) kids.delete(parts[parts.length - 1].toLowerCase());
+            if (k.startsWith("packs/")) {
+                // an older version of a downloaded pack
+                sgDb().then(db => db.transaction("packs", "readwrite").objectStore("packs").delete(path)).catch(() => {});
+            }
             try {
                 for (let i = localStorage.length - 1; i >= 0; i--) {
                     const lk = localStorage.key(i);
@@ -103,8 +112,49 @@ miniquad_add_plugin({
             new Uint8Array(wasm_memory.buffer, dst, n).set(b.subarray(0, n));
             return n;
         };
+        // Downloads for Preferences > Content > Find more (crates/simgolf/src/net.rs): the game starts a fetch and polls it
+        // each frame. The content index and the packs must be served with CORS allowed (GitHub's raw files and releases are).
+        env.sg_net_fetch = function (ptr, len) {
+            const url = sgStr(ptr, len);
+            const id = sgnet.next++;
+            const req = { status: -2, data: null, error: "" };
+            sgnet.reqs.set(id, req);
+            fetch(url)
+                .then(r => {
+                    if (!r.ok) throw new Error(url + ": HTTP " + r.status);
+                    return r.arrayBuffer();
+                })
+                .then(b => {
+                    req.data = new Uint8Array(b);
+                    req.status = req.data.length;
+                })
+                .catch(e => {
+                    req.error = String(e && e.message ? e.message : e);
+                    req.status = -1;
+                });
+            return id;
+        };
+        env.sg_net_status = function (id) {
+            const r = sgnet.reqs.get(id);
+            return r ? r.status : -1;
+        };
+        env.sg_net_take = function (id, dst) {
+            const r = sgnet.reqs.get(id);
+            if (r && r.data) new Uint8Array(wasm_memory.buffer, dst, r.data.length).set(r.data);
+            sgnet.reqs.delete(id);
+        };
+        env.sg_net_error = function (id, dst, cap) {
+            const r = sgnet.reqs.get(id);
+            const b = enc.encode(r ? r.error : "no such download");
+            const n = Math.min(b.length, cap);
+            new Uint8Array(wasm_memory.buffer, dst, n).set(b.subarray(0, n));
+            sgnet.reqs.delete(id);
+            return n;
+        };
     },
 });
+
+const sgnet = { next: 1, reqs: new Map() };
 
 // Loading the player's files. The game folder is the one that holds Flics, Sounds and Data; the player may pick it, any folder
 // above it, or a .zip of it. Videos (.bik) and Windows binaries are not needed and are skipped. The files are kept in this

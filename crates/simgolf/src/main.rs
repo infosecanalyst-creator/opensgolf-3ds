@@ -26,12 +26,14 @@ mod info_ui;
 mod language;
 mod member_panel;
 mod message_ui;
+mod net;
 mod panels_ui;
 mod player_panel;
 mod popup_ui;
 mod pro_ui;
 mod render;
 mod reports_ui;
+mod scenario_ui;
 mod screens_ui;
 mod thoughts_ui;
 mod touch;
@@ -87,12 +89,14 @@ struct Options {
     /// --lang CODE: the language for this run (else the saved setting); --lang-file FILE: a translation file to try out.
     lang: Option<String>,
     lang_file: Option<PathBuf>,
+    /// --scenario ID: starts the scenario pack with that id (docs/MODDING.md 5).
+    scenario: Option<String>,
 }
 
 const USAGE: &str = "usage: opensgolf [--game DIR] [--theme T] [--seed N] [--size WxH] [--zoom Z] [--rot DEG] [--center TX,TY] [--png FILE] \
 [--time S] [--follow] [--golfer NAME] [--sandbox] [--cash N] [--difficulty 0-3] [--screen menu|property|play|report] [--course FILE] [--save FILE] \
 [--edit SPEC] [--panel N] [--mute] [--sound-log] [--clock MS] [--property N|NAME] [--hd | --classic] [--hd-pack DIR] \
-[--lang CODE] [--lang-file FILE] [--base original|opensgolf-free|ID]";
+[--lang CODE] [--lang-file FILE] [--base original|opensgolf-free|ID] [--scenario ID]";
 
 /// Leading comma separated integers, like sscanf("%d,%d,...") (stops at the first one that does not parse).
 fn ints(s: &str) -> Vec<i32> {
@@ -144,6 +148,7 @@ fn parse_args() -> Options {
         base: None,
         lang: None,
         lang_file: None,
+        scenario: None,
     };
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -198,6 +203,7 @@ fn parse_args() -> Options {
             "--base" => o.base = Some(next()),
             "--lang" => o.lang = Some(next()),
             "--lang-file" => o.lang_file = Some(PathBuf::from(next())),
+            "--scenario" => o.scenario = Some(next()),
             "--panel" => o.panel = Some(atoi(&next())),
             "--center" => {
                 let v = ints(&next());
@@ -333,6 +339,11 @@ fn open_screen(app: &mut App, screen: Option<&str>) {
         }
         Some("shortcuts") if app.ui_ok => app.screen = Screen::Shortcuts,
         Some("content") if app.ui_ok => app.open_content(),
+        Some("goals") if app.ui_ok => app.open_goals(),
+        Some("content-index") if app.ui_ok => {
+            app.open_content();
+            app.open_content_index();
+        }
         Some("golfers") if app.ui_ok => app.panel = 4,
         Some("holestats") if app.ui_ok => {
             app.info.stats_hole = (1..19).find(|&h| app.club.holes[h].par != 0).unwrap_or(1);
@@ -798,7 +809,8 @@ impl Stage {
                 || o.load_game.is_some()
                 || o.golfer.is_some()
                 || o.sandbox
-                || o.follow;
+                || o.follow
+                || o.scenario.is_some();
             let s = o.screen.clone().unwrap_or_else(|| if scripted { "play".into() } else { "menu".into() });
             if app.ui_ok {
                 match s.as_str() {
@@ -835,6 +847,13 @@ impl Stage {
                 // the property's price came out of the default funds; the test hook sets the cash after it
                 app.econ.start_cash = c;
                 app.econ.cash = c;
+            }
+            open_screen(&mut app, o.screen.as_deref());
+        }
+        if let Some(id) = &o.scenario {
+            if let Err(e) = app.start_scenario_by_id(&mut g, id) {
+                eprintln!("error: {e}");
+                std::process::exit(1);
             }
             open_screen(&mut app, o.screen.as_deref());
         }
@@ -976,7 +995,10 @@ impl Stage {
                 }
                 9 => self.app.open_world_map(),
                 10 => self.app.screen = Screen::BestScores,
-                _ => self.app.open_top10(None),
+                11 => self.app.open_top10(None),
+                // the port's own line, shown when the game has goals
+                12 => self.app.open_goals(),
+                _ => {}
             },
             PopupKind::LandOffer => {
                 if k == 0 {
@@ -1188,6 +1210,11 @@ impl Stage {
             if hit == 100 || hit < 0 {
                 // the back button, or a click on nothing, goes back (0x43a400 returns -1)
                 app.screen = Screen::Menu;
+                app.scen.chosen = None;
+            } else if let Some(k) = app.scen.chosen {
+                // a scenario that names no difficulty (scenario_ui)
+                app.difficulty = hit;
+                app.start_scenario(&mut self.g, k);
             } else if std::mem::take(&mut app.title.champ_pending) {
                 app.difficulty = hit;
                 // the new game's Top 10 id is drawn right after the difficulty (0x421518)
@@ -1205,6 +1232,8 @@ impl Stage {
         if app.screen == Screen::Menu {
             match hit {
                 0 => app.open_files(files_ui::ListKind::Load, false),
+                // with scenario packs installed, Start New Game first asks: a free game or a scenario (the port's own)
+                1 if app.has_scenarios() => app.open_scenarios(),
                 1 | 2 | 4 => {
                     // Start New Game, Sandbox Mode and Play a Championship ask for the difficulty first (0x43a400)
                     app.sandbox_choice = hit == 2;
@@ -1488,6 +1517,10 @@ impl Stage {
             app.draw_property(&mut self.g);
         } else if app.screen == Screen::Difficulty && app.ui_ok {
             app.draw_difficulty(&mut self.g);
+        } else if app.screen == Screen::Scenarios && app.ui_ok {
+            app.draw_menu(&mut self.g);
+            ui::set_face(None);
+            app.draw_scenarios(&mut self.g);
         } else {
             app.render_world(&mut self.g);
             app.draw_water_glints(&mut self.g);
@@ -1528,6 +1561,7 @@ impl Stage {
                 Screen::Routing => app.draw_routing(&mut self.g),
                 Screen::Shortcuts => app.draw_shortcuts(&mut self.g),
                 Screen::Content => app.draw_content(&mut self.g),
+                Screen::Goals => app.draw_goals(&mut self.g),
                 Screen::HoleStats => app.draw_hole_stats(&mut self.g),
                 Screen::BestScores => app.draw_best_scores(&mut self.g),
                 Screen::Top10 => app.draw_top10(&mut self.g),
@@ -1554,7 +1588,7 @@ impl Stage {
         // any screen of a game in progress will do: the grab draws the course alone
         if matches!(
             self.app.screen,
-            Screen::Menu | Screen::Difficulty | Screen::Property | Screen::Files | Screen::Themes | Screen::Credits
+            Screen::Menu | Screen::Scenarios | Screen::Difficulty | Screen::Property | Screen::Files | Screen::Themes | Screen::Credits
         ) || !self.app.ui_ok
         {
             return;
@@ -1795,7 +1829,13 @@ impl EventHandler for Stage {
                 && self.app.ui_ok
                 && !matches!(
                     self.app.screen,
-                    Screen::Menu | Screen::Difficulty | Screen::Property | Screen::Files | Screen::Themes | Screen::Credits
+                    Screen::Menu
+                        | Screen::Scenarios
+                        | Screen::Difficulty
+                        | Screen::Property
+                        | Screen::Files
+                        | Screen::Themes
+                        | Screen::Credits
                 )
             {
                 self.take_snapshot();
@@ -1891,6 +1931,12 @@ impl EventHandler for Stage {
             return;
         }
         self.app.info.pointer = self.app.view.to_virtual(x, y);
+        if button == MouseButton::Left {
+            let (vx, vy) = self.app.view.to_virtual(x, y);
+            if self.app.save_dialog_click(vx, vy) {
+                return;
+            }
+        }
         if self.app.screen == Screen::Land {
             let (vx, vy) = self.app.view.to_virtual(x, y);
             self.app.land_pointer(vx, vy);
@@ -1926,6 +1972,11 @@ impl EventHandler for Stage {
                 if button == MouseButton::Left {
                     self.app.content_click(vx, vy);
                 }
+            } else if self.app.screen == Screen::Scenarios {
+                let (vx, vy) = self.app.view.to_virtual(x, y);
+                if button == MouseButton::Left {
+                    self.app.scenarios_click(&mut self.g, vx, vy);
+                }
             } else if self.app.screen == Screen::Roster {
                 let (vx, vy) = self.app.view.to_virtual(x, y);
                 self.app.roster_click(vx, vy, button == MouseButton::Right);
@@ -1939,6 +1990,7 @@ impl EventHandler for Stage {
                     | Screen::Shortcuts
                     | Screen::BestScores
                     | Screen::Top10
+                    | Screen::Goals
             ) {
                 self.app.close_info();
             } else if self.app.screen == Screen::Skills {
@@ -2025,6 +2077,10 @@ impl EventHandler for Stage {
             }
             return;
         }
+        if self.app.screen == Screen::Scenarios && self.app.ui_ok {
+            self.app.scenarios_key(&mut self.g, k);
+            return;
+        }
         if self.app.screen != Screen::Play && self.app.ui_ok {
             let app = &mut self.app;
             if app.screen == Screen::Report {
@@ -2050,6 +2106,7 @@ impl EventHandler for Stage {
                     | Screen::Shortcuts
                     | Screen::BestScores
                     | Screen::Top10
+                    | Screen::Goals
             ) {
                 app.close_info();
             } else if app.screen == Screen::Content {

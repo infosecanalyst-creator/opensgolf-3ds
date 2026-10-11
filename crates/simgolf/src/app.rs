@@ -245,6 +245,10 @@ pub enum Screen {
     Shortcuts,
     /// Preferences > Content: the installed content packs (the port's own screen, docs/MODDING.md).
     Content,
+    /// Start New Game with scenario packs installed: a free game or a scenario (the port's own, docs/MODDING.md 5).
+    Scenarios,
+    /// Information > Scenario goals: the goals of the game and how they stand.
+    Goals,
 }
 
 /// Where saved games, championship courses and pros, accomplishment snapshots, packs and settings go. The browser keeps them
@@ -306,6 +310,12 @@ pub struct SaveGame {
     /// The year each property was bought (older saves: none recorded).
     #[serde(default)]
     pub bought: Vec<i32>,
+    /// The goals of the game: its scenario's and its scripts' (docs/MODDING.md 5 and 6; older saves: none).
+    #[serde(default, skip_serializing_if = "sg_core::scenario::Goals::is_empty")]
+    pub goals: sg_core::scenario::Goals,
+    /// The state of each pack's scripts (`this` and the script's random generator), by pack id.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub scripts: std::collections::BTreeMap<String, sg_core::script::PackState>,
 }
 
 const SAVE_MAGIC: &[u8] = b"SIMGOLF-NATIVE-SAVE\n";
@@ -313,9 +323,14 @@ const SAVE_MAGIC: &[u8] = b"SIMGOLF-NATIVE-SAVE\n";
 /// Reads a whole game saved by `App::save_game` (also used for the Load screen's preview of a save).
 pub fn read_save(path: &Path) -> Result<SaveGame, String> {
     let data = sg_core::fsutil::read_file(path).ok_or_else(|| trf("STR_ERROR_FILE_NOT_FOUND", &[("FILE", &path.display())]))?;
-    let body = data.strip_prefix(SAVE_MAGIC).ok_or_else(|| trf("STR_ERROR_NOT_A_SAVED_GAME", &[("FILE", &path.display())]))?;
-    let json = miniz_oxide::inflate::decompress_to_vec_zlib(body).map_err(|e| format!("{}: {e:?}", path.display()))?;
-    serde_json::from_slice(&json).map_err(|e| format!("{}: {e}", path.display()))
+    read_save_bytes(&data, &path.display().to_string())
+}
+
+/// Reads a whole game from the bytes of a save file (`name` for the messages): a scenario pack's course may be in a zip.
+pub fn read_save_bytes(data: &[u8], name: &str) -> Result<SaveGame, String> {
+    let body = data.strip_prefix(SAVE_MAGIC).ok_or_else(|| trf("STR_ERROR_NOT_A_SAVED_GAME", &[("FILE", &name)]))?;
+    let json = miniz_oxide::inflate::decompress_to_vec_zlib(body).map_err(|e| format!("{name}: {e:?}"))?;
+    serde_json::from_slice(&json).map_err(|e| format!("{name}: {e}"))
 }
 
 /// One texture-batched mesh of the course.
@@ -479,6 +494,8 @@ pub struct App {
     pub popup: Option<crate::popup_ui::Popup>,
     /// The content packs found and loaded (docs/MODDING.md), for Preferences > Content.
     pub content: crate::content::ContentState,
+    /// The scenario's goals and the packs' scripts of the game in progress (scenario_ui).
+    pub scen: crate::scenario_ui::ScenarioState,
     pub last_message: String,
     /// The main screen's message window (the exe's ticker).
     pub ticker: crate::message_ui::Ticker,
@@ -704,6 +721,7 @@ impl App {
             float_next: 0,
             popup: None,
             content: Default::default(),
+            scen: Default::default(),
             last_message: String::new(),
             ticker: Default::default(),
             rename: None,
@@ -891,8 +909,10 @@ impl App {
                 self.jingle = None;
             }
         }
-        let title = matches!(self.screen, Screen::Menu | Screen::Difficulty | Screen::Property | Screen::Themes | Screen::Credits)
-            || (self.screen == Screen::Files && !self.title.over_game());
+        let title = matches!(
+            self.screen,
+            Screen::Menu | Screen::Scenarios | Screen::Difficulty | Screen::Property | Screen::Themes | Screen::Credits
+        ) || (self.screen == Screen::Files && !self.title.over_game());
         if self.music_screen == Some(title) {
             return;
         }
@@ -1897,7 +1917,8 @@ impl App {
                         self.post_message(&text, if priority < 0 { priority } else { 1 }, speaker);
                     }
                 }
-                golf::Event::HoleDone { hole, strokes, mood, fee, .. } => {
+                golf::Event::HoleDone { g, hole, strokes, mood, fee } => {
+                    self.script_hole_done(g, hole, strokes);
                     if self.hole_stats.len() != self.hole_numbers.len() {
                         self.hole_stats = vec![HoleStat::default(); self.hole_numbers.len()];
                     }
@@ -1931,6 +1952,8 @@ impl App {
                 golf::Event::GreatShot { g, partner, text, bad, pts } => self.great_shot_event(g, partner, text, bad, &pts),
             }
         }
+        // the scenario's goals and the packs' scripts (docs/MODDING.md 5 and 6)
+        self.scenario_tick(tick);
     }
 
     /// Advances the club by dt seconds: one golfer and staff update per game tick (87 ms), fees, wages and the board's messages.
@@ -2102,6 +2125,10 @@ impl App {
         // The exe starts with 1000 units (10000 in sandbox) and takes the property's price off a normal game.
         self.econ.start_cash =
             if sandbox { sg_core::data::economy().sandbox_funds as f64 } else { (sg_core::data::economy().start_funds - price) as f64 };
+        if let Some(m) = self.scen.start_money.take() {
+            // a scenario's own starting cash (docs/MODDING.md 5)
+            self.econ.start_cash = m as f64;
+        }
         let slot_index = self.slot_of[prop_idx];
         let land = land::generate(slot_index, self.offer[slot_index], self.difficulty, sandbox, &mut self.exe_rng, &self.noise);
         self.terrain = land.to_terrain();
@@ -2135,6 +2162,8 @@ impl App {
             self.econ.start_cash,
             if sandbox { " (sandbox)" } else { "" }
         );
+        // the scenario's goals (none for a free game) and the packs' scripts
+        self.begin_game_scripts();
     }
 
     /// "Return to Main Menu." at the end of a career, the way the exe leaves a game (0x420e0f): the game is saved as
@@ -2181,6 +2210,8 @@ impl App {
             theme_pack: THEME_PACKS.get(self.theme_pack).copied().unwrap_or("Standard").replace(' ', "_"),
             course_id: self.course_id,
             bought: self.bought.clone(),
+            goals: self.scen.goals.clone(),
+            scripts: self.scripts_for_save(),
         };
         let json = serde_json::to_vec(&save).map_err(|e| e.to_string())?;
         let mut out = SAVE_MAGIC.to_vec();
@@ -2195,6 +2226,11 @@ impl App {
     /// Loads a whole game saved by `save_game` and goes on from where it was.
     pub fn load_game(&mut self, g: &mut Gfx, path: &Path) -> Result<(), String> {
         let s = read_save(path)?;
+        self.load_save(g, s)
+    }
+
+    /// Goes on with a game read by `read_save` (or `read_save_bytes`).
+    pub fn load_save(&mut self, g: &mut Gfx, s: SaveGame) -> Result<(), String> {
         if let Some(k) = THEME_PACKS.iter().position(|p| p.replace(' ', "_").eq_ignore_ascii_case(&s.theme_pack)) {
             self.theme_pack = k;
         }
@@ -2241,6 +2277,7 @@ impl App {
         self.pstate.alt = false;
         self.edit = false;
         self.dirty = true;
+        self.restore_game_scripts(s.goals, &s.scripts);
         Ok(())
     }
 
@@ -2763,6 +2800,8 @@ impl App {
         }
         self.after_object_change();
         self.snd("Interface/Building.wav", 0.7, false);
+        let kind = sg_core::data::object_id(kind as usize).to_string();
+        self.script_hook(sg_core::script::Hook::BuildingPlaced { kind, x: tx, y: ty });
     }
 
     /// After objects change: terrain meshes, trees and object sprites are rebuilt.

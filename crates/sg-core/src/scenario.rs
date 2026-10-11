@@ -124,27 +124,28 @@ impl Conditions {
 
     /// The conditions in words, e.g. "9 holes, $50,000 cash".
     pub fn describe(&self) -> String {
+        use crate::lang::trf;
         let mut v = Vec::new();
         if let Some(n) = self.holes {
-            v.push(format!("{n} holes"));
+            v.push(trf("STR_GOAL_COND_HOLES", &[("N", &n)]));
         }
         if let Some(c) = self.cash {
-            v.push(format!("${} cash", crate::economy::money_digits(c)));
+            v.push(trf("STR_GOAL_COND_CASH", &[("MONEY", &crate::economy::money_digits(c))]));
         }
         if let Some(n) = self.fun {
-            v.push(format!("fun rating {n}"));
+            v.push(trf("STR_GOAL_COND_FUN", &[("N", &n)]));
         }
         if let Some(s) = self.skill {
-            v.push(format!("skill rating {s:.2}"));
+            v.push(trf("STR_GOAL_COND_SKILL", &[("N", &format!("{s:.2}"))]));
         }
         if let Some(n) = self.members {
-            v.push(format!("{n} members"));
+            v.push(trf("STR_GOAL_COND_MEMBERS", &[("N", &n)]));
         }
         if let Some(r) = &self.rank {
             let k = RANK_IDS.iter().position(|&x| x == r).unwrap_or(0);
-            v.push(format!("{} rank", crate::economy::rank_name(k)));
+            v.push(trf("STR_GOAL_COND_RANK", &[("RANK", &crate::economy::rank_name(k))]));
         }
-        v.join(", ")
+        v.join(crate::lang::tr("STR_LIST_SEPARATOR"))
     }
 }
 
@@ -357,8 +358,8 @@ pub enum Note {
 impl Note {
     pub fn text(&self) -> String {
         match self {
-            Note::Done(t) => format!("Goal reached: {t}"),
-            Note::Failed(t) => format!("Goal missed: {t}"),
+            Note::Done(t) => crate::lang::trf("STR_GOAL_REACHED", &[("GOAL", t)]),
+            Note::Failed(t) => crate::lang::trf("STR_GOAL_MISSED", &[("GOAL", t)]),
             Note::Won(t) | Note::Lost(t) => t.clone(),
         }
     }
@@ -398,12 +399,12 @@ impl Goals {
         }
         if self.list.iter().any(|g| g.state == GoalState::Failed) {
             self.outcome = Some(Outcome::Lost);
-            let t = if self.lose_text.is_empty() { "You did not reach the scenario's goals in time." } else { &self.lose_text };
+            let t = if self.lose_text.is_empty() { crate::lang::tr("STR_SCENARIO_LOST_DEFAULT") } else { &self.lose_text };
             return Some(Note::Lost(t.to_string()));
         }
         if self.list.iter().all(|g| g.state == GoalState::Done) {
             self.outcome = Some(Outcome::Won);
-            let t = if self.win_text.is_empty() { "Congratulations! You reached every goal of the scenario." } else { &self.win_text };
+            let t = if self.win_text.is_empty() { crate::lang::tr("STR_SCENARIO_WON_DEFAULT") } else { &self.win_text };
             return Some(Note::Won(t.to_string()));
         }
         None

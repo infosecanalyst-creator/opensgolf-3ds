@@ -16,7 +16,7 @@
 
 use crate::app::*;
 use crate::gfx::Gfx;
-use crate::render::oct_dist;
+use crate::render::{oct_dist, Rect};
 use crate::ui::{load_pcx, load_pcx_alpha, money, rgb, rgba, text_width, Image, Screen as Ui};
 use miniquad::KeyCode;
 use sg_core::assets::Rgba;
@@ -896,7 +896,33 @@ impl App {
                     self.end_career();
                 }
             }
+            // the port's own: the game as a scenario pack (docs/MODDING.md 5)
+            KeyCode::Tab => self.save_dialog_export(),
             _ => {}
+        }
+        true
+    }
+
+    /// The Save dialog's Export as scenario: the game, under the name typed, as a scenario pack in the packs folder.
+    fn save_dialog_export(&mut self) {
+        let Some(name) = self.title.save_name.take() else { return };
+        let n = name.trim().to_string();
+        let name = if n.is_empty() { self.course_name.clone() } else { n };
+        let keep = std::mem::replace(&mut self.course_name, name);
+        self.export_scenario();
+        self.course_name = keep;
+        if std::mem::take(&mut self.title.quit_after_save) {
+            self.end_career();
+        }
+    }
+
+    /// A click while the Save dialog is open: its Export as scenario button. Returns false when the dialog is not open.
+    pub fn save_dialog_click(&mut self, x: f32, y: f32) -> bool {
+        if self.title.save_name.is_none() {
+            return false;
+        }
+        if save_export_button().has(x, y) {
+            self.save_dialog_export();
         }
         true
     }
@@ -914,15 +940,25 @@ impl App {
         let s = Ui::new(self.draw_w, self.draw_h);
         let head = tr("STR_SAVE_PROMPT");
         let w = (text_width(head, 17.0) + 60.0).max(360.0);
-        let (x, y, h) = (400.0 - w / 2.0, 240.0, 90.0);
+        // (the port's Export as scenario button makes it 30 taller than the original's)
+        let (x, y, h) = (400.0 - w / 2.0, 240.0, 120.0);
         s.fill(g, x - 3.0, y - 3.0, w + 6.0, h + 6.0, rgba(0.55, 0.55, 0.85, 0.95));
         s.fill(g, x, y, w, h, rgba(0.92, 0.92, 1.0, 0.97));
         s.text_centered(g, 400.0, y + 28.0, head, 17.0, rgb(0.15, 0.1, 0.4));
         s.fill(g, x + 20.0, y + 42.0, w - 40.0, 28.0, WHITE);
         let caret = if (self.clock * 2.0) as i64 % 2 == 0 { "|" } else { "" };
         s.text(g, x + 26.0, y + 62.0, &format!("{name}{caret}"), 16.0, rgb(0.05, 0.05, 0.2));
+        let b = save_export_button();
+        let (px, py) = self.info.pointer;
+        s.fill(g, b.x, b.y, b.w, b.h, if b.has(px, py) { rgba(0.85, 0.85, 1.0, 1.0) } else { rgba(0.66, 0.66, 0.84, 1.0) });
+        s.text_centered(g, 400.0, b.y + 16.0, tr("STR_SAVE_EXPORT_SCENARIO"), 13.0, rgb(0.15, 0.1, 0.4));
         g.flush();
     }
+}
+
+/// The Save dialog's Export as scenario button (the port's own).
+fn save_export_button() -> Rect {
+    Rect::new(280.0, 324.0, 240.0, 22.0)
 }
 
 #[cfg(test)]

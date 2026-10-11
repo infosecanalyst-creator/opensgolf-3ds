@@ -11,6 +11,7 @@ use crate::app::*;
 use crate::gfx::Gfx;
 use crate::render::Rect;
 use crate::ui::{rgb, Screen as Ui, F_ARIAL10, F_MANUAL15, F_MANUAL20};
+use sg_core::lang::{tr, trf};
 use sg_core::packs::{self, Found, Kind, Plan, Settings, Status};
 use std::path::{Path, PathBuf};
 
@@ -42,6 +43,45 @@ pub struct ContentState {
     /// The base set used whatever the saved choice says (--base, or the free set when the game folder has no original
     /// files): the Content screen shows the order the next start will really load.
     pub forced_base: Option<String>,
+    /// Find more: the content index and its downloads (None: the list of installed packs is shown).
+    pub index: Option<IndexView>,
+}
+
+impl ContentState {
+    /// Looks for the packs again (after a download or an export), keeping the choices; the packs loaded stay as they are
+    /// until the next start.
+    pub fn rediscover(&mut self) {
+        self.found = packs::discover(&pack_dirs());
+        self.settings = saved_settings().complete(&self.found);
+        let mut s = self.settings.clone();
+        if s.base.is_none() {
+            s.base = self.forced_base.clone();
+        }
+        let mut plan = packs::resolve(&self.found, &s);
+        packs::attach_warnings(&mut plan, &self.warnings);
+        self.plan = Some(plan);
+    }
+}
+
+/// The settings.json key of the content index's address (empty by default: docs/CONTENT_INDEX.md).
+const INDEX_URL_KEY: &str = "content_index_url";
+
+/// Find more: the index as read, the packs it offers, and a download in progress.
+#[derive(Default)]
+pub struct IndexView {
+    pub url: String,
+    /// Fetching the index.
+    pub loading: Option<crate::net::Request>,
+    pub offers: Vec<sg_core::index::Offer>,
+    /// The index's problems (entries left out) or why it could not be read.
+    pub problems: Vec<String>,
+    pub scroll: usize,
+    pub picked: Option<usize>,
+    /// The pack being downloaded (an index into `offers`) and its request.
+    pub download: Option<(usize, crate::net::Request)>,
+    /// The last thing that happened, for the status line (and whether it is an error).
+    pub status: String,
+    pub failed: bool,
 }
 
 /// Where packs are looked for: the save folder's `packs`, then `packs` next to the program.
@@ -100,10 +140,7 @@ pub fn startup(game_dir: &Path, base: Option<&str>) -> ContentState {
     } else if settings.base.is_none() && !has_original(game_dir) {
         settings.base = Some(packs::FREE.to_string());
         forced_base = settings.base.clone();
-        let msg = format!(
-            "No SimGolf files found in {}: playing with the free OpenSGolf graphics (use --game DIR for your own copy).",
-            game_dir.display()
-        );
+        let msg = trf("STR_CONTENT_NO_GAME_FILES", &[("DIR", &game_dir.display())]);
         println!("{msg}");
         notice = Some(msg);
     }
@@ -124,7 +161,18 @@ pub fn startup(game_dir: &Path, base: Option<&str>) -> ContentState {
         eprintln!("content pack {}: {w}", if id.is_empty() { "data" } else { id });
     }
     packs::apply(game_dir, loaded);
-    ContentState { found, loaded: ids, settings: saved, plan: Some(plan), warnings, scroll: 0, picked: None, notice, forced_base }
+    ContentState {
+        found,
+        loaded: ids,
+        settings: saved,
+        plan: Some(plan),
+        warnings,
+        scroll: 0,
+        picked: None,
+        notice,
+        forced_base,
+        index: None,
+    }
 }
 
 /// True when `game_dir` holds the original game's files (its Interface and Flics folders), read before any pack is mounted.
@@ -139,11 +187,18 @@ enum Hit {
     Down(usize),
     Row(usize),
     More(bool),
+    FindMore,
     Done,
+}
+
+/// The Find more... button (and, on the index, the Back to the list button).
+fn find_more_button() -> Rect {
+    Rect::new(BOX.x + BOX.w - 200.0, BOX.y + BOX.h - 50.0, 116.0, 22.0)
 }
 
 impl App {
     pub fn open_content(&mut self) {
+        self.content.index = None;
         self.content.scroll = 0;
         self.content.picked = None;
         self.replan_content();
@@ -174,6 +229,9 @@ impl App {
     fn content_hit(&self, x: f32, y: f32) -> Option<Hit> {
         if Rect::new(BOX.x + BOX.w - 70.0, BOX.y + BOX.h - 58.0, 50.0, 50.0).has(x, y) {
             return Some(Hit::Done);
+        }
+        if find_more_button().has(x, y) {
+            return Some(Hit::FindMore);
         }
         let n = self.content_rows();
         if n > ROWS {
@@ -207,7 +265,11 @@ impl App {
 
     /// A click on the Content screen.
     pub fn content_click(&mut self, x: f32, y: f32) {
+        if self.content.index.is_some() {
+            return self.index_click(x, y);
+        }
         match self.content_hit(x, y) {
+            Some(Hit::FindMore) => self.open_content_index(),
             Some(Hit::Done) => self.close_content(),
             Some(Hit::Toggle(i)) => self.content_toggle(i),
             Some(Hit::Up(i)) => self.content_move(i, true),
@@ -222,6 +284,9 @@ impl App {
     /// order, Esc closes.
     pub fn content_key(&mut self, k: miniquad::KeyCode) {
         use miniquad::KeyCode;
+        if self.content.index.is_some() {
+            return self.index_key(k);
+        }
         let n = self.content_rows();
         match k {
             KeyCode::Escape => self.close_content(),
@@ -325,6 +390,10 @@ impl App {
     }
 
     pub fn draw_content(&mut self, g: &mut Gfx) {
+        if self.content.index.is_some() {
+            self.index_poll();
+            return self.draw_index(g);
+        }
         use crate::info_ui::c15;
         let s = Ui::new(self.draw_w, self.draw_h);
         self.view = s.view;
@@ -334,15 +403,8 @@ impl App {
         let (green, dark) = (c15(0x0180), c15(0x2108));
         let red = rgb(0.85, 0.1, 0.1);
         let navy = c15(0x0018);
-        s.put_shadowed(g, F_MANUAL20, 400.0, BOX.y + 14.0, "Content packs", yellow, true);
-        s.put(
-            g,
-            F_ARIAL10,
-            BOX.x + 24.0,
-            BOX.y + 40.0,
-            "Base set first, then the mods in this order (later ones win), then the translation.",
-            navy,
-        );
+        s.put_shadowed(g, F_MANUAL20, 400.0, BOX.y + 14.0, tr("STR_CONTENT_TITLE"), yellow, true);
+        s.put(g, F_ARIAL10, BOX.x + 24.0, BOX.y + 40.0, tr("STR_CONTENT_HELP"), navy);
         let Some(plan) = self.content.plan.clone() else { return };
         let (px, py) = self.info.pointer;
         let changed = self.content_changed();
@@ -361,26 +423,28 @@ impl App {
             }
             let title = if m.version == "?" { m.name.clone() } else { format!("{}  {}", m.name, m.version) };
             s.put(g, F_MANUAL15, BOX.x + 54.0, y + 4.0, &title, if row.pack.is_some() || m.id == packs::ORIGINAL { white } else { grey });
-            let who = if m.authors.is_empty() { String::new() } else { format!(" by {}", m.authors.join(", ")) };
-            let lic = if m.license.is_empty() { String::new() } else { format!(", {}", m.license) };
-            let loaded_now = self.content.loaded.contains(&m.id);
-            let (state, colour) = match &row.status {
-                Status::Active if !loaded_now => ("on after a restart".to_string(), green),
-                Status::Active => ("on".to_string(), green),
-                Status::Off if loaded_now => ("off after a restart".to_string(), dark),
-                Status::Off => ("off".to_string(), dark),
-                Status::Error(e) => (format!("error: {e}"), red),
-                Status::NotLoaded(e) => (e.clone(), dark),
+            let line = pack_line(m, &row.status, self.content.loaded.contains(&m.id), row.pack.is_none() && m.id != packs::ORIGINAL);
+            let colour = match &row.status {
+                Status::Active => green,
+                Status::Error(_) => red,
+                _ => dark,
             };
-            let kind = if row.pack.is_none() && m.id != packs::ORIGINAL { "?" } else { m.kind.name() };
-            let line = format!("{kind}{who}{lic}  -  {state}");
             s.put(g, F_ARIAL10, BOX.x + 54.0, y + 24.0, &fit(&line, BOX.w - 190.0), colour);
+            // a problem with its data, else with its scripts this session (scenario_ui)
+            let script_errors: Vec<&String> = self.scen.errors.iter().filter(|(id, _)| *id == m.id).map(|(_, e)| e).collect();
             if let Some(w) = row.warnings.first() {
-                let more = if row.warnings.len() > 1 { format!(" (+{} more)", row.warnings.len() - 1) } else { String::new() };
-                s.put(g, F_ARIAL10, BOX.x + 54.0, y + 34.0, &fit(&format!("warning: {w}{more}"), BOX.w - 190.0), c15(0x5200));
+                let more =
+                    if row.warnings.len() > 1 { trf("STR_CONTENT_MORE", &[("N", &(row.warnings.len() - 1))]) } else { String::new() };
+                let t = trf("STR_CONTENT_WARNING", &[("WARNING", &w), ("MORE", &more)]);
+                s.put(g, F_ARIAL10, BOX.x + 54.0, y + 34.0, &fit(&t, BOX.w - 190.0), c15(0x5200));
+            } else if let Some(e) = script_errors.last() {
+                let more =
+                    if script_errors.len() > 1 { trf("STR_CONTENT_MORE", &[("N", &(script_errors.len() - 1))]) } else { String::new() };
+                let t = trf("STR_CONTENT_SCRIPT_ERROR", &[("ERROR", e), ("MORE", &more)]);
+                s.put(g, F_ARIAL10, BOX.x + 54.0, y + 34.0, &fit(&t, BOX.w - 190.0), red);
             }
             if m.kind == Kind::Mod && row.pack.is_some() {
-                for (dx, label) in [(BOX.w - 112.0, "Up"), (BOX.w - 62.0, "Down")] {
+                for (dx, label) in [(BOX.w - 112.0, tr("STR_CONTENT_UP")), (BOX.w - 62.0, tr("STR_CONTENT_DOWN"))] {
                     let r = Rect::new(BOX.x + dx, y + 4.0, 44.0, 20.0);
                     s.fill(g, r.x, r.y, r.w, r.h, if r.has(px, py) { rgb(0.85, 0.85, 1.0) } else { rgb(0.47, 0.47, 0.70) });
                     s.put_centered(g, F_ARIAL10, r.x + r.w / 2.0, r.y + 4.0, label, navy);
@@ -390,7 +454,11 @@ impl App {
         let n = plan.rows.len();
         let below = TOP + ROWS as f32 * ROW_H;
         if n > ROWS {
-            for (dx, label, ok) in [(24.0, "Previous", self.content.scroll > 0), (110.0, "Next", self.content.scroll + ROWS < n)] {
+            let more = [
+                (24.0, tr("STR_CONTENT_PREVIOUS"), self.content.scroll > 0),
+                (110.0, tr("STR_CONTENT_NEXT"), self.content.scroll + ROWS < n),
+            ];
+            for (dx, label, ok) in more {
                 s.fill(g, BOX.x + dx, below + 4.0, 80.0, 20.0, rgb(0.47, 0.47, 0.70));
                 s.put_centered(g, F_ARIAL10, BOX.x + dx + 40.0, below + 8.0, label, if ok { navy } else { grey });
             }
@@ -408,12 +476,11 @@ impl App {
                 ty += 12.0;
             }
         }
-        let note = if changed {
-            "Your changes are saved. They take effect when you restart the game."
-        } else {
-            "Changes are saved at once and take effect when you restart the game."
-        };
+        let note = if changed { tr("STR_CONTENT_NOTE_CHANGED") } else { tr("STR_CONTENT_NOTE") };
         s.put(g, F_ARIAL10, BOX.x + 24.0, BOX.y + BOX.h - 26.0, note, if changed { red } else { navy });
+        let b = find_more_button();
+        s.fill(g, b.x, b.y, b.w, b.h, if b.has(px, py) { rgb(0.85, 0.85, 1.0) } else { rgb(0.47, 0.47, 0.70) });
+        s.put_centered(g, F_ARIAL10, b.x + b.w / 2.0, b.y + 5.0, tr("STR_CONTENT_FIND_MORE"), navy);
         if self.art.trans.tex.is_some() {
             s.image_part(g, &self.art.trans, BOX.x + BOX.w - 70.0, BOX.y + BOX.h - 58.0, 350.0, 140.0, 50.0, 50.0);
         }
@@ -421,8 +488,35 @@ impl App {
     }
 }
 
+/// A pack's second line: its kind, authors and licence, and whether it is on.
+fn pack_line(m: &packs::Manifest, status: &Status, loaded_now: bool, broken: bool) -> String {
+    let who = if m.authors.is_empty() { String::new() } else { trf("STR_CONTENT_BY", &[("AUTHORS", &m.authors.join(", "))]) };
+    let lic = if m.license.is_empty() { String::new() } else { trf("STR_CONTENT_LICENCE", &[("LICENCE", &m.license)]) };
+    let state = match status {
+        Status::Active if !loaded_now => tr("STR_CONTENT_ON_AFTER_RESTART").to_string(),
+        Status::Active => tr("STR_CONTENT_ON").to_string(),
+        Status::Off if loaded_now => tr("STR_CONTENT_OFF_AFTER_RESTART").to_string(),
+        Status::Off => tr("STR_CONTENT_OFF").to_string(),
+        Status::Error(e) => trf("STR_CONTENT_ERROR", &[("ERROR", e)]),
+        Status::NotLoaded(_) if m.kind == Kind::Scenario => tr("STR_CONTENT_SCENARIO_CHOSEN").to_string(),
+        Status::NotLoaded(e) => e.clone(),
+    };
+    let kind = if broken { "?" } else { kind_name(m.kind) };
+    trf("STR_CONTENT_PACK_LINE", &[("KIND", &kind), ("BY", &who), ("LICENCE", &lic), ("STATE", &state)])
+}
+
+/// A pack kind's name.
+fn kind_name(k: Kind) -> &'static str {
+    match k {
+        Kind::Base => tr("STR_CONTENT_KIND_BASE"),
+        Kind::Mod => tr("STR_CONTENT_KIND_MOD"),
+        Kind::Translation => tr("STR_CONTENT_KIND_TRANSLATION"),
+        Kind::Scenario => tr("STR_CONTENT_KIND_SCENARIO"),
+    }
+}
+
 /// `t` cut to fit `w` pixels of the small font, with "..." when cut.
-fn fit(t: &str, w: f32) -> String {
+pub fn fit(t: &str, w: f32) -> String {
     if F_ARIAL10.width(t) <= w {
         return t.to_string();
     }
@@ -431,4 +525,229 @@ fn fit(t: &str, w: f32) -> String {
         s.pop();
     }
     format!("{s}...")
+}
+
+// ---- Find more: the content index (docs/MODDING.md 7, docs/CONTENT_INDEX.md) --------------------------------------------------
+
+/// The address of the content index from settings.json (`content_index_url`), empty when none is set.
+pub fn index_url() -> String {
+    read_settings_json()[INDEX_URL_KEY].as_str().unwrap_or("").trim().to_string()
+}
+
+impl App {
+    /// Preferences > Content > Find more: reads the content index (nothing to read when no address is set).
+    pub fn open_content_index(&mut self) {
+        let url = index_url();
+        let mut v = IndexView { url: url.clone(), ..Default::default() };
+        if url.is_empty() {
+            v.status = tr("STR_INDEX_NO_URL").to_string();
+        } else {
+            v.status = tr("STR_INDEX_LOADING").to_string();
+            v.loading = Some(crate::net::get(&url, 16 * 1024 * 1024));
+        }
+        self.content.index = Some(v);
+        self.index_poll();
+    }
+
+    /// Looks at the requests in progress (each frame while the screen is open).
+    pub fn index_poll(&mut self) {
+        let Some(v) = self.content.index.as_mut() else { return };
+        if let Some(r) = v.loading.as_mut().and_then(|r| r.poll()) {
+            v.loading = None;
+            match r.and_then(|d| sg_core::index::Index::parse(&d)) {
+                Ok((idx, warnings)) => {
+                    for w in &warnings {
+                        eprintln!("content index: {w}");
+                    }
+                    v.offers = sg_core::index::offers(&idx, &self.content.found);
+                    v.problems = warnings;
+                    v.status = if v.offers.is_empty() {
+                        tr("STR_INDEX_NOTHING_NEW").to_string()
+                    } else {
+                        trf("STR_INDEX_LISTED", &[("N", &v.offers.len())])
+                    };
+                    v.failed = false;
+                }
+                Err(e) => {
+                    eprintln!("content index {}: {e}", v.url);
+                    v.status = trf("STR_INDEX_FAILED", &[("ERROR", &e)]);
+                    v.failed = true;
+                }
+            }
+        }
+        let done = v.download.as_mut().and_then(|(k, r)| r.poll().map(|r| (*k, r)));
+        let Some((k, reply)) = done else { return };
+        v.download = None;
+        let Some(offer) = v.offers.get(k).cloned() else { return };
+        let dir = save_dir().join("packs");
+        let r = reply.and_then(|data| sg_core::index::install(&offer.entry, &data, &dir, &self.content.found));
+        match r {
+            Ok(path) => {
+                println!("content index: installed {} {} as {}", offer.entry.id, offer.entry.version, path.display());
+                self.content.rediscover();
+                let v = self.content.index.as_mut().expect("open");
+                v.offers.remove(k);
+                v.picked = None;
+                v.status = trf("STR_INDEX_INSTALLED", &[("PACK", &offer.entry.name), ("VERSION", &offer.entry.version)]);
+                v.failed = false;
+            }
+            Err(e) => {
+                eprintln!("content index: {}: {e}", offer.entry.id);
+                let v = self.content.index.as_mut().expect("open");
+                v.status = trf("STR_INDEX_DOWNLOAD_FAILED", &[("PACK", &offer.entry.name), ("ERROR", &e)]);
+                v.failed = true;
+            }
+        }
+    }
+
+    /// Downloads offer `k` (one at a time).
+    fn index_download(&mut self, k: usize) {
+        let Some(v) = self.content.index.as_mut() else { return };
+        if v.download.is_some() || v.loading.is_some() {
+            return self.ui_sound(0x18);
+        }
+        let Some(o) = v.offers.get(k) else { return };
+        let url = sg_core::index::resolve_url(&v.url, &o.entry.url);
+        println!("content index: downloading {} from {url}", o.entry.id);
+        v.status = trf("STR_INDEX_DOWNLOADING", &[("PACK", &o.entry.name)]);
+        v.failed = false;
+        v.download = Some((k, crate::net::get(&url, o.entry.size.min(sg_core::index::MAX_PACK_SIZE))));
+        self.index_poll();
+    }
+
+    fn index_click(&mut self, x: f32, y: f32) {
+        if Rect::new(BOX.x + BOX.w - 70.0, BOX.y + BOX.h - 58.0, 50.0, 50.0).has(x, y) {
+            return self.close_content();
+        }
+        if find_more_button().has(x, y) {
+            self.content.index = None;
+            return;
+        }
+        let Some(v) = self.content.index.as_mut() else { return };
+        let n = v.offers.len();
+        if n > ROWS {
+            if Rect::new(BOX.x + 24.0, TOP + ROWS as f32 * ROW_H + 4.0, 80.0, 20.0).has(x, y) {
+                v.scroll = v.scroll.saturating_sub(ROWS);
+                return;
+            }
+            if Rect::new(BOX.x + 110.0, TOP + ROWS as f32 * ROW_H + 4.0, 80.0, 20.0).has(x, y) {
+                v.scroll = (v.scroll + ROWS).min(n.saturating_sub(ROWS));
+                return;
+            }
+        }
+        if y < TOP || !(BOX.x + 10.0..=BOX.x + BOX.w - 10.0).contains(&x) {
+            return;
+        }
+        let k = ((y - TOP) / ROW_H) as usize;
+        let i = v.scroll + k;
+        if k >= ROWS || i >= n {
+            return;
+        }
+        if Rect::new(BOX.x + BOX.w - 112.0, TOP + k as f32 * ROW_H + 4.0, 94.0, 20.0).has(x, y) {
+            return self.index_download(i);
+        }
+        v.picked = Some(i);
+    }
+
+    fn index_key(&mut self, k: miniquad::KeyCode) {
+        use miniquad::KeyCode;
+        let Some(v) = self.content.index.as_mut() else { return };
+        let n = v.offers.len();
+        match k {
+            KeyCode::Escape | KeyCode::Backspace => self.content.index = None,
+            KeyCode::Up | KeyCode::Down if n > 0 => {
+                let p = match (v.picked, k == KeyCode::Down) {
+                    (None, _) => 0,
+                    (Some(p), true) => (p + 1).min(n - 1),
+                    (Some(p), false) => p.saturating_sub(1),
+                };
+                v.picked = Some(p);
+                if p < v.scroll {
+                    v.scroll = p;
+                } else if p >= v.scroll + ROWS {
+                    v.scroll = p + 1 - ROWS;
+                }
+            }
+            KeyCode::Enter | KeyCode::KpEnter | KeyCode::Space => {
+                if let Some(p) = v.picked {
+                    self.index_download(p);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn draw_index(&mut self, g: &mut Gfx) {
+        use crate::info_ui::c15;
+        let s = Ui::new(self.draw_w, self.draw_h);
+        self.view = s.view;
+        crate::info_ui::dim(g, &s);
+        self.draw_info_frame(g, &s, BOX.x, BOX.y, BOX.w, BOX.h);
+        let (white, grey, yellow, navy, green) = (c15(0x7fff), c15(0x6318), c15(0x7ff0), c15(0x0018), c15(0x0180));
+        let red = rgb(0.85, 0.1, 0.1);
+        let Some(v) = self.content.index.as_ref() else { return };
+        s.put_shadowed(g, F_MANUAL20, 400.0, BOX.y + 14.0, tr("STR_INDEX_TITLE"), yellow, true);
+        let source = if v.url.is_empty() { tr("STR_INDEX_SOURCE_NONE").to_string() } else { trf("STR_INDEX_SOURCE", &[("URL", &v.url)]) };
+        s.put(g, F_ARIAL10, BOX.x + 24.0, BOX.y + 40.0, &fit(&source, BOX.w - 48.0), navy);
+        let (px, py) = self.info.pointer;
+        let busy = v.download.as_ref().map(|d| d.0);
+        for (k, o) in v.offers.iter().enumerate().skip(v.scroll).take(ROWS) {
+            let y = TOP + (k - v.scroll) as f32 * ROW_H;
+            if v.picked == Some(k) || Rect::new(BOX.x + 10.0, y, BOX.w - 20.0, ROW_H - 2.0).has(px, py) {
+                s.fill(g, BOX.x + 12.0, y, BOX.w - 24.0, ROW_H - 2.0, rgb(0.66, 0.66, 0.84));
+            }
+            let e = &o.entry;
+            s.put(g, F_MANUAL15, BOX.x + 24.0, y + 4.0, &fit(&format!("{}  {}", e.name, e.version), BOX.w - 160.0), white);
+            let who = if e.authors.is_empty() { String::new() } else { trf("STR_CONTENT_BY", &[("AUTHORS", &e.authors.join(", "))]) };
+            let lic = trf("STR_CONTENT_LICENCE", &[("LICENCE", &e.licence)]);
+            let state = match &o.installed {
+                Some(old) => trf("STR_INDEX_UPDATE", &[("VERSION", old)]),
+                None => tr("STR_INDEX_NEW").to_string(),
+            };
+            let size = trf("STR_INDEX_SIZE", &[("KB", &e.size.div_ceil(1024))]);
+            let line = trf(
+                "STR_INDEX_PACK_LINE",
+                &[("KIND", &kind_name(e.kind)), ("BY", &who), ("LICENCE", &lic), ("STATE", &state), ("SIZE", &size)],
+            );
+            s.put(g, F_ARIAL10, BOX.x + 24.0, y + 24.0, &fit(&line, BOX.w - 160.0), green);
+            let r = Rect::new(BOX.x + BOX.w - 112.0, y + 4.0, 94.0, 20.0);
+            let label = if busy == Some(k) { tr("STR_INDEX_DOWNLOADING_BUTTON") } else { tr("STR_INDEX_DOWNLOAD") };
+            s.fill(g, r.x, r.y, r.w, r.h, if r.has(px, py) { rgb(0.85, 0.85, 1.0) } else { rgb(0.47, 0.47, 0.70) });
+            s.put_centered(g, F_ARIAL10, r.x + r.w / 2.0, r.y + 4.0, label, navy);
+        }
+        let n = v.offers.len();
+        let below = TOP + ROWS as f32 * ROW_H;
+        if n > ROWS {
+            let more = [(24.0, tr("STR_CONTENT_PREVIOUS"), v.scroll > 0), (110.0, tr("STR_CONTENT_NEXT"), v.scroll + ROWS < n)];
+            for (dx, label, ok) in more {
+                s.fill(g, BOX.x + dx, below + 4.0, 80.0, 20.0, rgb(0.47, 0.47, 0.70));
+                s.put_centered(g, F_ARIAL10, BOX.x + dx + 40.0, below + 8.0, label, if ok { navy } else { grey });
+            }
+        }
+        // the picked pack's description, then what happened last and the index's problems
+        let mut ty = below + 30.0;
+        let mut lines: Vec<(String, [f32; 4])> = Vec::new();
+        if let Some(o) = v.picked.and_then(|k| v.offers.get(k)) {
+            lines.extend(crate::ui::wrap_text(&o.entry.description, 10.0, BOX.w - 120.0).into_iter().take(2).map(|l| (l, navy)));
+        }
+        lines.extend(
+            crate::ui::wrap_text(&v.status, 10.0, BOX.w - 120.0).into_iter().take(3).map(|l| (l, if v.failed { red } else { navy })),
+        );
+        if let Some(p) = v.problems.first() {
+            let more = if v.problems.len() > 1 { trf("STR_CONTENT_MORE", &[("N", &(v.problems.len() - 1))]) } else { String::new() };
+            lines.push((trf("STR_INDEX_PROBLEM", &[("PROBLEM", p), ("MORE", &more)]), c15(0x5200)));
+        }
+        for (l, c) in lines.into_iter().take(5) {
+            s.put(g, F_ARIAL10, BOX.x + 24.0, ty, &fit(&l, BOX.w - 230.0), c);
+            ty += 12.0;
+        }
+        s.put(g, F_ARIAL10, BOX.x + 24.0, BOX.y + BOX.h - 26.0, tr("STR_CONTENT_NOTE"), navy);
+        let b = find_more_button();
+        s.fill(g, b.x, b.y, b.w, b.h, if b.has(px, py) { rgb(0.85, 0.85, 1.0) } else { rgb(0.47, 0.47, 0.70) });
+        s.put_centered(g, F_ARIAL10, b.x + b.w / 2.0, b.y + 5.0, tr("STR_INDEX_BACK"), navy);
+        if self.art.trans.tex.is_some() {
+            s.image_part(g, &self.art.trans, BOX.x + BOX.w - 70.0, BOX.y + BOX.h - 58.0, 350.0, 140.0, 50.0, 50.0);
+        }
+        g.flush();
+    }
 }

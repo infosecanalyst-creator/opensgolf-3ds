@@ -470,6 +470,10 @@ impl App {
         if languages > 1 {
             lines.push(&language);
         }
+        // the port's own: the goals of a scenario or of the packs' scripts (docs/MODDING.md 5), after the original's lines
+        if kind == PopupKind::Info && self.has_goals() {
+            lines.push(tr("STR_MENU_INFO_GOALS"));
+        }
         let checks = if kind == PopupKind::Prefs {
             self.show_thoughts as u32
                 | (self.show_advisor as u32) << 1

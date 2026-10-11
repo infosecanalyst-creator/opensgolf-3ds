@@ -74,6 +74,8 @@ STR_THEMES_COURSES                      :Courses
 STR_THEMES_TITLE                        :Select a Theme Pack
 
 STR_SAVE_PROMPT                         :SAVE GAME, edit name then press Enter
+# The Save dialog's button for the port's Export as scenario (docs/MODDING.md 5)
+STR_SAVE_EXPORT_SCENARIO                :Export as scenario pack (Tab)
 
 STR_OK                                  :OK
 
@@ -1240,6 +1242,8 @@ STR_MENU_INFO_ACCOMPLISHMENTS           : Professional Accomplishments
 STR_MENU_INFO_WORLD_MAP                 : World Map
 STR_MENU_INFO_BEST_SCORES               : Best Scores
 STR_MENU_INFO_TOP10                     : Top 10 Designers
+# The port's own last line, shown when the game has goals (a scenario's or a script's, docs/MODDING.md 5)
+STR_MENU_INFO_GOALS                     : Scenario Goals
 # The System Functions menu
 STR_MENU_SYSTEM_TITLE                   :System Functions
 STR_MENU_SYSTEM_SAVE                    : Save the current game
@@ -1954,3 +1958,105 @@ STR_ACCOMPLISHMENT_100_STAR             :1st 100 Star Rating
 STR_ACCOMPLISHMENT_DOGLEG_RIGHT         :1st Dogleg Right Hole
 STR_ACCOMPLISHMENT_DOGLEG_LEFT          :1st Dogleg Left Hole
 STR_ACCOMPLISHMENT_PAR_5                :1st Par 5 Hole
+
+########################################################################################################################
+# Content packs, scenarios, scripts and the content index (the port's own, docs/MODDING.md)
+########################################################################################################################
+# Preferences > Content. {KIND} a pack kind, {BY} STR_CONTENT_BY or nothing, {LICENCE} STR_CONTENT_LICENCE or nothing,
+# {STATE} on, off, an error ...
+STR_CONTENT_TITLE                       :Content packs
+STR_CONTENT_HELP                        :Base set first, then the mods in this order (later ones win), then the translation.
+STR_CONTENT_PACK_LINE                   :{KIND}{BY}{LICENCE}  -  {STATE}
+STR_CONTENT_BY                          : by {AUTHORS}
+STR_CONTENT_LICENCE                     :, {LICENCE}
+STR_CONTENT_KIND_BASE                   :base set
+STR_CONTENT_KIND_MOD                    :mod
+STR_CONTENT_KIND_TRANSLATION            :translation
+STR_CONTENT_KIND_SCENARIO               :scenario
+STR_CONTENT_ON                          :on
+STR_CONTENT_ON_AFTER_RESTART            :on after a restart
+STR_CONTENT_OFF                         :off
+STR_CONTENT_OFF_AFTER_RESTART           :off after a restart
+STR_CONTENT_ERROR                       :error: {ERROR}
+STR_CONTENT_SCENARIO_CHOSEN             :chosen when a game starts: Start New Game
+STR_CONTENT_WARNING                     :warning: {WARNING}{MORE}
+STR_CONTENT_SCRIPT_ERROR                :script error: {ERROR}{MORE}
+STR_CONTENT_MORE                        : (+{N} more)
+STR_CONTENT_UP                          :Up
+STR_CONTENT_DOWN                        :Down
+STR_CONTENT_PREVIOUS                    :Previous
+STR_CONTENT_NEXT                        :Next
+STR_CONTENT_NOTE                        :Changes are saved at once and take effect when you restart the game.
+STR_CONTENT_NOTE_CHANGED                :Your changes are saved. They take effect when you restart the game.
+STR_CONTENT_FIND_MORE                   :Find more...
+# Shown at start up when the game folder has no SimGolf files
+STR_CONTENT_NO_GAME_FILES               :No SimGolf files found in {DIR}: playing with the free OpenSGolf graphics (use --game DIR for your own copy).
+
+# Preferences > Content > Find more: the content index (docs/CONTENT_INDEX.md)
+STR_INDEX_TITLE                         :Find more content
+STR_INDEX_SOURCE                        :Content index: {URL}
+STR_INDEX_SOURCE_NONE                   :No content index is set.
+STR_INDEX_NO_URL                        :No content index is set. Put the address of an index.json in settings.json as "content_index_url" (in the save folder; docs/CONTENT_INDEX.md says how), then open Find more again.
+STR_INDEX_LOADING                       :Reading the content index...
+STR_INDEX_FAILED                        :The content index could not be read: {ERROR}
+STR_INDEX_NOTHING_NEW                   :You have every pack the index lists, in its newest version.
+STR_INDEX_LISTED                        :{N} packs you do not have yet (or have in an older version). Pick one to read about it.
+STR_INDEX_PACK_LINE                     :{KIND}{BY}{LICENCE}  -  {STATE}, {SIZE}
+STR_INDEX_NEW                           :new
+STR_INDEX_UPDATE                        :update (you have {VERSION})
+STR_INDEX_SIZE                          :{KB} KB
+STR_INDEX_DOWNLOAD                      :Download
+STR_INDEX_DOWNLOADING_BUTTON            :Downloading...
+STR_INDEX_DOWNLOADING                   :Downloading {PACK}...
+STR_INDEX_INSTALLED                     :{PACK} {VERSION} is installed. Switch it on in the list of packs; it takes effect when you restart the game.
+STR_INDEX_DOWNLOAD_FAILED               :{PACK} was not installed: {ERROR}
+STR_INDEX_PROBLEM                       :index: {PROBLEM}{MORE}
+STR_INDEX_BACK                          :Installed packs
+# Why a download cannot start
+STR_NET_TOO_BIG                         :{URL} is larger than expected
+STR_NET_NOT_BUILT                       :{URL}: this version of the game was built without downloads (the net feature); use a file:// index
+
+# Start New Game when scenario packs are installed. {PLACE} a property, {DIFFICULTY}, {MONEY} STR_SCENARIOS_MONEY or
+# nothing, {GOALS} a count
+STR_SCENARIOS_TITLE                     :Start New Game
+STR_SCENARIOS_HELP                      :Play a free game, or a scenario with goals to reach. Click twice (or press Enter) to start.
+STR_SCENARIOS_FREE_GAME                 :Free game
+STR_SCENARIOS_FREE_GAME_TEXT            :Choose the difficulty and a property, and play as long as you like.
+STR_SCENARIOS_SUMMARY                   :{PLACE}, {DIFFICULTY}{MONEY}, {GOALS} goals
+STR_SCENARIOS_MONEY                     :, §{MONEY} to start
+STR_SCENARIOS_ANY_DIFFICULTY            :your choice of difficulty
+STR_SCENARIOS_GOALS                     :Goals: {GOALS}.
+STR_SCENARIOS_BACK                      :Back
+STR_SCENARIO_NO_FILE                    :the pack has no scenario.toml
+
+# Goals: the messages, Information > Scenario Goals, and the conditions in words
+STR_GOAL_REACHED                        :Goal reached: {GOAL}
+STR_GOAL_MISSED                         :Goal missed: {GOAL}
+STR_SCENARIO_WON_DEFAULT                :Congratulations! You reached every goal of the scenario.
+STR_SCENARIO_LOST_DEFAULT               :You did not reach the scenario's goals in time.
+STR_GOALS_TITLE                         :Goals
+STR_GOALS_TITLE_SCENARIO                :Goals: {NAME}
+STR_GOALS_IN_PROGRESS                   :Reach every goal to win the scenario.
+STR_GOALS_WON                           :The scenario is won!
+STR_GOALS_LOST                          :The scenario is lost.
+STR_GOALS_SCRIPTS_ONLY                  :Goals set by the scripts of your content packs.
+STR_GOALS_NONE                          :There are no goals yet.
+STR_GOALS_CLOSE                         :Click anywhere or press a key to go back to the game.
+STR_GOAL_STATE_OPEN                     :open
+STR_GOAL_STATE_BY                       :open, by the end of {YEAR}
+STR_GOAL_STATE_DONE                     :reached
+STR_GOAL_STATE_MISSED                   :missed
+STR_GOAL_COND_HOLES                     :{N} holes
+STR_GOAL_COND_CASH                      :§{MONEY} cash
+STR_GOAL_COND_FUN                       :fun rating {N}
+STR_GOAL_COND_SKILL                     :skill rating {N}
+STR_GOAL_COND_MEMBERS                   :{N} members
+STR_GOAL_COND_RANK                      :{RANK} rank
+
+# Scripts (docs/MODDING.md 6): the toast when a pack's script fails (the message is on the Content screen)
+STR_SCRIPT_ERROR_TOAST                  :A script of the pack {PACK} failed: see System Functions, Preferences, Content packs.
+
+# Export as scenario (the Save dialog, docs/MODDING.md 5)
+STR_EXPORT_UNNAMED                      :My Course
+STR_EXPORT_DESCRIPTION                  :{COURSE}, a course by {PRO}, exported from OpenSGolf.
+STR_TOAST_EXPORTED                      :Exported as the scenario pack {PACK} (in the packs folder of the save folder).
