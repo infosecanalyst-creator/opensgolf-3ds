@@ -16,3 +16,5 @@ toml = { version = "0.8", features = ["preserve_order"] }
 rhai = { version = "1.23", default-features = false, features = ["std", "no_time", "serde", "no_custom_syntax", "no_module"] }
 # The checksums of downloaded content packs (docs/MODDING.md 7)
 sha2 = { version = "0.10", default-features = false }
+# WebP pictures in HD packs: about a tenth of the size of PNG at quality 95 (docs/HD.md)
+image-webp = "0.2"

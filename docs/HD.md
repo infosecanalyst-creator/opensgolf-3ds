@@ -36,6 +36,11 @@ python3 tools/hd_pack/hd_pack.py --game <your SimGolf folder> --out <save folder
 The save folder is `%APPDATA%\OpenSGolf` on Windows, `~/Library/Application Support/OpenSGolf` on macOS and
 `~/.local/share/opensgolf` (or `$XDG_DATA_HOME/opensgolf`) on Linux, or `OPENSGOLF_SAVE_DIR` when set.
 
+## Smaller packs
+
+Pictures in a pack may be WebP instead of PNG (same name with `.webp`). At quality 95 a pack is about a tenth of
+the size and looks the same, which helps when moving a 4x pack between machines.
+
 ## Turning it on
 
 - **In the game:** System Functions → Preferences → *HD graphics (off: Classic)*. Switching reloads all the art: the

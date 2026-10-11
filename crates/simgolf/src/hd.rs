@@ -90,7 +90,7 @@ impl Pack {
     /// The pack's picture for a source file, checked to be exactly `scale` times the source size.
     fn image(&self, key: &str) -> Option<(Rgba, u32, u32)> {
         let e = self.files.get(key)?;
-        let img = decode_png(&sg_core::fsutil::read_file(self.path(e.file.as_deref()?))?)?;
+        let img = decode_png(&read_picture(&self.path(e.file.as_deref()?))?)?;
         (img.w == e.w * self.scale && img.h == e.h * self.scale).then_some((img, e.w, e.h))
     }
 }
@@ -522,7 +522,7 @@ fn palette_delta(flc: &Path, pal: &Path) -> Option<Vec<Vec<[i16; 3]>>> {
 impl HdSprite {
     /// Frame `i` at the pack's resolution.
     pub fn frame(&self, i: usize) -> Option<Rgba> {
-        let mut img = decode_png(&sg_core::fsutil::read_file(self.files.get(i)?)?)?;
+        let mut img = decode_png(&read_picture(self.files.get(i)?)?)?;
         if img.w != self.w * self.scale || img.h != self.h * self.scale {
             return None;
         }
@@ -550,4 +550,11 @@ impl HdSprite {
 // ---- PNG decoding -------------------------------------------------------------------------------------------------------------
 
 /// The PNG decoder moved to sg-core (content packs use it too).
-pub use sg_core::png::decode_png;
+/// HD pictures may be PNG or WebP (sg_core::png::decode_image tells them apart).
+pub use sg_core::png::decode_image as decode_png;
+
+/// A pack picture's bytes: the file as named, or the same name with `.webp` for a pack whose pictures were converted to
+/// WebP (much smaller to download, see docs/HD.md).
+fn read_picture(p: &Path) -> Option<Vec<u8>> {
+    sg_core::fsutil::read_file(p).or_else(|| sg_core::fsutil::read_file(p.with_extension("webp")))
+}

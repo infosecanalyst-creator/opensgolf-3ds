@@ -199,3 +199,22 @@ mod tests {
         assert_eq!(&img.px[8..11], &[11, 22, 33]);
     }
 }
+
+/// Decodes a picture that is a PNG or a WebP (lossy or lossless, with or without alpha), told apart by their signatures.
+/// HD packs may hold WebP pictures (docs/HD.md); everything else is PNG.
+pub fn decode_image(d: &[u8]) -> Option<Rgba> {
+    if d.len() >= 12 && &d[..4] == b"RIFF" && &d[8..12] == b"WEBP" {
+        return decode_webp(d);
+    }
+    decode_png(d)
+}
+
+fn decode_webp(d: &[u8]) -> Option<Rgba> {
+    let mut dec = image_webp::WebPDecoder::new(std::io::Cursor::new(d)).ok()?;
+    let (w, h) = dec.dimensions();
+    let alpha = dec.has_alpha();
+    let mut buf = vec![0u8; dec.output_buffer_size()?];
+    dec.read_image(&mut buf).ok()?;
+    let px = if alpha { buf } else { buf.chunks_exact(3).flat_map(|c| [c[0], c[1], c[2], 255]).collect() };
+    Some(Rgba { w, h, px })
+}
