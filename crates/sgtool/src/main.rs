@@ -163,12 +163,31 @@ fn main() {
                 Err(e) => fail(e),
             }
         }
+        // the application icon (our own drawing, sg_core::freeset::app_icon) as icon_<size>.png at the given sizes, by
+        // default every size the release packages use (the desktop packages, macOS's iconset, Android's launcher)
+        ("icon", n) if n >= 3 => {
+            let dir = Path::new(&a[2]);
+            let mut sizes: Vec<usize> = a[3..].iter().filter_map(|s| s.parse().ok()).collect();
+            if sizes.is_empty() {
+                sizes = vec![16, 32, 48, 64, 72, 96, 128, 144, 192, 256, 512, 1024];
+            }
+            if let Err(e) = std::fs::create_dir_all(dir) {
+                fail(e.to_string());
+            }
+            for n in sizes {
+                let f = dir.join(format!("icon_{n}.png"));
+                if !sg_core::png::write_png(&f, &sg_core::freeset::app_icon(n)) {
+                    fail(format!("cannot write {}", f.display()));
+                }
+            }
+            println!("wrote the icon to {}", a[2]);
+        }
         ("fixture", n) if n >= 3 => {
             fixture::write_fixture(Path::new(&a[2]), a.get(3).map(Path::new));
             println!("wrote a placeholder game folder to {}", a[2]);
         }
         _ => {
-            eprintln!("usage: sgtool check|png|sheet|chr|top10|dta|story|fixture|freeset|dump-data ...");
+            eprintln!("usage: sgtool check|png|sheet|chr|top10|dta|story|fixture|freeset|icon|dump-data ...");
             exit(2);
         }
     }

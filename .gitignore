@@ -14,6 +14,8 @@ game/
 *.TTF
 # the bundled OFL stand-in for Arial Bold is ours to ship (see crates/simgolf/fonts/LiberationSans-OFL.txt)
 !crates/simgolf/fonts/LiberationSans-Bold.ttf
+# the Android launcher icon is our own drawing (tools/make_icons.sh)
+!crates/simgolf/android/res/**/*.png
 spec/
 .DS_Store
 target/

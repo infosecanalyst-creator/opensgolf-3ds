@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=OpenSGolf
+GenericName=Golf Course Builder
+Comment=Build and run a golf resort (a free engine that plays like SimGolf)
+Exec=opensgolf
+Icon=opensgolf
+Terminal=false
+Categories=Game;Simulation;
+StartupWMClass=opensgolf

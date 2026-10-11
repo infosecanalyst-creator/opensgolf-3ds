@@ -23,5 +23,36 @@ ureq = { version = "3", optional = true, default-features = false, features = ["
 default = ["audio", "net"]
 # Sound output through the system's audio device (CoreAudio, WASAPI, ALSA). Without it the game runs silent.
 audio = ["dep:cpal"]
+<<<<<<< HEAD
 # Downloading content packs over HTTPS (desktop). Without it only file:// content indexes work.
 net = ["dep:ureq"]
+=======
+
+# Android only: hands miniquad's Java VM to cpal's oboe sound output (src/android.rs).
+[target.'cfg(target_os = "android")'.dependencies]
+ndk-context = "0.1"
+
+# The Android app (docs/PLAYING.md, "Android"), built with cargo-quad-apk (the notfl3/cargo-apk docker image,
+# .github/workflows/android.yml): `cargo quad-apk build --release -p opensgolf`.
+[package.metadata.android]
+package_name = "org.opensgolf.game"
+label = "OpenSGolf"
+version_code = 1
+version_name = "0.1.0"
+min_sdk_version = 26
+target_sdk_version = 33
+build_targets = ["aarch64-linux-android", "armv7-linux-androideabi", "x86_64-linux-android"]
+fullscreen = true
+opengles_version_major = 3
+opengles_version_minor = 0
+# the launcher icon: sg_core::freeset::app_icon, written by `sgtool icon` (tools/make_icons.sh)
+res = "android/res"
+icon = "@mipmap/ic_launcher"
+# no permissions: the app reads and writes only its own folders (its internal data folder and
+# Android/data/org.opensgolf.game/files, which need none)
+
+[package.metadata.android.activity_attributes]
+"android:screenOrientation" = "sensorLandscape"
+# Android 12 and newer refuse a launcher activity that does not say this
+"android:exported" = "true"
+>>>>>>> claude/magical-tesla-d1thkl

@@ -754,6 +754,7 @@ dependencies = [
  "fontdue",
  "miniquad",
  "miniz_oxide",
+ "ndk-context",
  "serde",
  "serde_json",
  "sg-core",
