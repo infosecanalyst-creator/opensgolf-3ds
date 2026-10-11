@@ -18,7 +18,7 @@ be modded. Code, art, sound, text, translations, courses, testing and bug report
 ## Code
 
 1. Install Rust (https://rustup.rs). On Linux also `sudo apt install libasound2-dev`.
-2. `cargo build --release`, then `target/release/simgolf --game "/path/to/your/SimGolf/Program_Files_(ENGLISH)"`.
+2. `cargo build --release`, then `target/release/opensgolf --game "/path/to/your/SimGolf/Program_Files_(ENGLISH)"`.
 3. Before a pull request: `cargo fmt`, `cargo clippy --release --workspace`, `cargo test --release --workspace`, and for
    browser changes `web/build.sh`.
 4. Match the style of the code around your change. Comments say where a rule comes from (an exe address, the manual, footage

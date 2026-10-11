@@ -389,7 +389,7 @@ fn main() {
     children.extend(audio_child);
 
     let conf = conf::Conf {
-        window_title: "SimGolf native: video".into(),
+        window_title: "OpenSGolf: video".into(),
         window_width: info.width as i32,
         window_height: info.height as i32,
         high_dpi: true,

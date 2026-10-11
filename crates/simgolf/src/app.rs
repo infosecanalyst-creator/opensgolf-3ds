@@ -247,9 +247,10 @@ pub enum Screen {
     Content,
 }
 
-/// Where saved games, championship courses and pros, and accomplishment snapshots go. The browser keeps them in its own storage
-/// under plain names; on the desktop they go in the user's data folder (SIMGOLF_SAVE_DIR overrides it), not wherever the game
-/// happened to be started from.
+/// Where saved games, championship courses and pros, accomplishment snapshots, packs and settings go. The browser keeps them
+/// in its own storage under plain names; on the desktop they go in the user's data folder (OPENSGOLF_SAVE_DIR, or the older
+/// SIMGOLF_SAVE_DIR, overrides it), not wherever the game happened to be started from. A player who already has a folder from
+/// before the project became OpenSGolf (named SimGolf / simgolf) keeps using it.
 pub fn save_dir() -> PathBuf {
     #[cfg(target_arch = "wasm32")]
     {
@@ -258,23 +259,22 @@ pub fn save_dir() -> PathBuf {
     #[cfg(not(target_arch = "wasm32"))]
     {
         let env = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty()).map(PathBuf::from);
-        if let Some(d) = env("SIMGOLF_SAVE_DIR") {
+        if let Some(d) = env("OPENSGOLF_SAVE_DIR").or_else(|| env("SIMGOLF_SAVE_DIR")) {
             return d;
         }
-        if cfg!(target_os = "windows") {
-            if let Some(d) = env("APPDATA") {
-                return d.join("SimGolf");
-            }
+        let (base, new, old) = if cfg!(target_os = "windows") {
+            (env("APPDATA"), "OpenSGolf", "SimGolf")
         } else if cfg!(target_os = "macos") {
-            if let Some(h) = env("HOME") {
-                return h.join("Library/Application Support/SimGolf");
-            }
-        } else if let Some(d) = env("XDG_DATA_HOME") {
-            return d.join("simgolf");
-        } else if let Some(h) = env("HOME") {
-            return h.join(".local/share/simgolf");
+            (env("HOME").map(|h| h.join("Library/Application Support")), "OpenSGolf", "SimGolf")
+        } else {
+            (env("XDG_DATA_HOME").or_else(|| env("HOME").map(|h| h.join(".local/share"))), "opensgolf", "simgolf")
+        };
+        let Some(base) = base else { return PathBuf::new() };
+        let (new, old) = (base.join(new), base.join(old));
+        if !new.exists() && old.is_dir() {
+            return old;
         }
-        PathBuf::new()
+        new
     }
 }
 

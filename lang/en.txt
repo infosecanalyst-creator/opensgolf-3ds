@@ -14,7 +14,7 @@
 # Window and title screen
 ########################################################################################################################
 # The window's title
-STR_WINDOW_TITLE                        :SimGolf native
+STR_WINDOW_TITLE                        :OpenSGolf
 
 # The title menu's labels (0x420e.. and the menu's opening 0x40f5c0)
 STR_TITLE_CONTINUE                      :Continue Saved Game

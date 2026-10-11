@@ -1,6 +1,6 @@
 [package]
-name = "simgolf"
-description = "SimGolf native port: the game (reads the data of your own copy of SimGolf)"
+name = "opensgolf"
+description = "OpenSGolf: the game (with the free base set, or the data of your own copy of SimGolf)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

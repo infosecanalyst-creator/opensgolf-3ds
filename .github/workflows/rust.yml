@@ -41,9 +41,9 @@ jobs:
           cp freeset-test/title-menu.png menu.png
       - uses: actions/upload-artifact@v4
         with:
-          name: simgolf-${{ matrix.os }}
+          name: opensgolf-${{ matrix.os }}
           path: |
-            target/release/simgolf${{ runner.os == 'Windows' && '.exe' || '' }}
+            target/release/opensgolf${{ runner.os == 'Windows' && '.exe' || '' }}
             target/release/sgtool${{ runner.os == 'Windows' && '.exe' || '' }}
             target/release/sgplay${{ runner.os == 'Windows' && '.exe' || '' }}
             *.png
@@ -60,5 +60,5 @@ jobs:
         run: ./web/build.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: simgolf-web
+          name: opensgolf-web
           path: web/dist

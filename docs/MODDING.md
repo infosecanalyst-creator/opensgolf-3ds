@@ -38,8 +38,8 @@ Two base sets are planned:
   without the original files. It starts as simple placeholder art and is meant to grow through contributions, like OpenGFX
   did for OpenTTD. **done** (first version): see section 10.
 
-Where packs live (**done**): `packs/` in the save folder (`~/.local/share/simgolf/packs` on Linux,
-`~/Library/Application Support/SimGolf/packs` on macOS, `%APPDATA%\SimGolf\packs` on Windows, or `$SIMGOLF_SAVE_DIR/packs`),
+Where packs live (**done**): `packs/` in the save folder (`~/.local/share/opensgolf/packs` on Linux,
+`~/Library/Application Support/OpenSGolf/packs` on macOS, `%APPDATA%\OpenSGolf\packs` on Windows, or `$OPENSGOLF_SAVE_DIR/packs`),
 plus `packs/` next to the program. Each pack is a folder, or a `.zip` with `pack.toml` at its root or in its one top
 folder. The browser version keeps the packs the player adds on the start page (*Optional: content packs*) in the browser's
 storage. A pack whose id was already found earlier (the save folder is searched first) is listed as a duplicate and not

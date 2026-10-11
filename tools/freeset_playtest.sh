@@ -14,15 +14,15 @@ TIME=${TIME:-300}
 BIN=target/release
 rm -rf "$OUT"
 mkdir -p "$OUT/save"
-SIMGOLF_SAVE_DIR="$PWD/$OUT/save"
-export SIMGOLF_SAVE_DIR
+OPENSGOLF_SAVE_DIR="$PWD/$OUT/save"
+export OPENSGOLF_SAVE_DIR
 fail=0
 
 step() {
     name=$1
     shift
     # shellcheck disable=SC2086
-    $XVFB $BIN/simgolf --game "$OUT/no-game-folder" --mute --size 800x600 --png "$OUT/$name.png" "$@" > "$OUT/$name.log" 2>&1
+    $XVFB $BIN/opensgolf --game "$OUT/no-game-folder" --mute --size 800x600 --png "$OUT/$name.png" "$@" > "$OUT/$name.log" 2>&1
     code=$?
     if [ $code -ne 0 ] || [ ! -s "$OUT/$name.png" ]; then
         echo "FAIL $name: exit $code"

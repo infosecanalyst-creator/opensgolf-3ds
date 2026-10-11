@@ -50,8 +50,8 @@ English sentences are made of pieces the original game puts together (a golfer's
 
 ## Trying it out
 
-* Put the file in a `lang` folder in the save folder (`~/.local/share/simgolf/lang/` on Linux,
-  `%APPDATA%\SimGolf\lang\` on Windows, `~/Library/Application Support/SimGolf/lang/` on macOS), next to the program,
+* Put the file in a `lang` folder in the save folder (`~/.local/share/opensgolf/lang/` on Linux,
+  `%APPDATA%\OpenSGolf\lang\` on Windows, `~/Library/Application Support/OpenSGolf/lang/` on macOS), next to the program,
   or in the folder you start the game from. Packs (docs/MODDING.md) can carry `lang/<code>.txt` too.
 * Choose the language: once a translation is there, **System Functions > Preferences** shows a `Language:` line; each
   click switches to the next language and remembers it in `settings.json` (`"language": "de"`). You can also write the

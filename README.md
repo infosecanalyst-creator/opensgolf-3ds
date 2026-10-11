@@ -78,16 +78,16 @@ See docs/FORMATS.md (data formats), docs/TERRAIN.md (terrain engine) and docs/PL
 Install Rust (https://rustup.rs), then from this folder:
 
     cargo build --release
-    target/release/simgolf --game "/path/to/game/Program_Files_(ENGLISH)"
-    target/release/simgolf            # no copy of the game: the free base set
+    target/release/opensgolf --game "/path/to/game/Program_Files_(ENGLISH)"
+    target/release/opensgolf            # no copy of the game: the free base set
 
-On Windows the programs are `target\release\simgolf.exe` and so on. Nothing else needs installing on macOS or Windows. On Linux the
+On Windows the programs are `target\release\opensgolf.exe` and so on. Nothing else needs installing on macOS or Windows. On Linux the
 sound needs the ALSA headers to build (`sudo apt install libasound2-dev`), or build without sound with
-`cargo build --release -p simgolf --no-default-features`.
+`cargo build --release -p opensgolf --no-default-features`.
 
 | Program | What it does |
 |---------|--------------|
-| `simgolf` | The game. |
+| `opensgolf` | The game. |
 | `sgtool` | Inspect and convert the original assets: `check DIR` decodes everything and reports failures; `png file.pcx out.png` (also tga, bmp, flc [frame]); `sheet anim.flc sheet.png`; `chr Gack.chr gack`; `top10 top10.sve`; `dta file.dta`; `story file.txt`; `freeset DIR` writes the free base set as a pack folder; `fixture DIR [font.ttf]` writes a small stand-in game folder for tests. |
 | `sgplay` | Plays the Bink intro and closing videos through an installed ffmpeg (docs/SOUND_VIDEO.md). |
 
@@ -106,7 +106,7 @@ with any static web server, for example `python3 -m http.server -d web/dist`, an
 own SimGolf copy (the one containing Flics, Sounds and Data); its files are read into the browser tab only, nothing is uploaded.
 Without one, *Play with the free OpenSGolf graphics* starts on the free base set.
 Sound starts after the first click (a browser rule). Saved courses are kept in the browser's local storage. CI builds it too
-(artifact `simgolf-web`).
+(artifact `opensgolf-web`).
 
 ## HD graphics (optional)
 

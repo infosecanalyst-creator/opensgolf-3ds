@@ -624,6 +624,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
+name = "opensgolf"
+version = "0.1.0"
+dependencies = [
+ "cpal",
+ "fontdue",
+ "miniquad",
+ "miniz_oxide",
+ "serde",
+ "serde_json",
+ "sg-core",
+]
+
+[[package]]
 name = "pin-project-lite"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -809,19 +822,6 @@ name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
-
-[[package]]
-name = "simgolf"
-version = "0.1.0"
-dependencies = [
- "cpal",
- "fontdue",
- "miniquad",
- "miniz_oxide",
- "serde",
- "serde_json",
- "sg-core",
-]
 
 [[package]]
 name = "slab"

@@ -1,6 +1,6 @@
-//! simgolf: the SimGolf native port. Reads the data of your own copy of the game at run time.
+//! opensgolf: the OpenSGolf game. Runs on the free base set, or reads the data of your own copy of SimGolf at run time.
 //!
-//!   simgolf --game "<dir>/Program_Files_(ENGLISH)" [--theme parkland|links|desert|tropical] [--seed N] [--size WxH] [--zoom Z]
+//!   opensgolf --game "<dir>/Program_Files_(ENGLISH)" [--theme parkland|links|desert|tropical] [--seed N] [--size WxH] [--zoom Z]
 //!           [--rot DEG] [--center TX,TY] [--time SECONDS] [--follow] [--png out.png] [--golfer NAME] [--sandbox] [--cash N]
 //!           [--screen menu|property|play|report] [--course FILE] [--save FILE] [--edit SPEC] [--panel N] [--mute] [--sound-log]
 //!           [--hd | --classic] [--hd-pack DIR]
@@ -89,7 +89,7 @@ struct Options {
     lang_file: Option<PathBuf>,
 }
 
-const USAGE: &str = "usage: simgolf --game DIR [--theme T] [--seed N] [--size WxH] [--zoom Z] [--rot DEG] [--center TX,TY] [--png FILE] \
+const USAGE: &str = "usage: opensgolf [--game DIR] [--theme T] [--seed N] [--size WxH] [--zoom Z] [--rot DEG] [--center TX,TY] [--png FILE] \
 [--time S] [--follow] [--golfer NAME] [--sandbox] [--cash N] [--difficulty 0-3] [--screen menu|property|play|report] [--course FILE] [--save FILE] \
 [--edit SPEC] [--panel N] [--mute] [--sound-log] [--clock MS] [--property N|NAME] [--hd | --classic] [--hd-pack DIR] \
 [--lang CODE] [--lang-file FILE] [--base original|opensgolf-free|ID]";
@@ -110,7 +110,7 @@ fn ints(s: &str) -> Vec<i32> {
 
 fn parse_args() -> Options {
     let mut o = Options {
-        // In a browser the page puts the player's game folder at "game" (web/simgolf.js).
+        // In a browser the page puts the player's game folder at "game" (web/opensgolf.js).
         game_dir: PathBuf::from(if cfg!(target_arch = "wasm32") { "game" } else { "game/Program_Files_(ENGLISH)" }),
         theme: 0,
         seed: 7,
@@ -1313,7 +1313,7 @@ impl Stage {
                     app.tool = 4;
                     app.build_idx = sg_core::land::K_HOME_SITE as usize;
                 }
-                KeyCode::F6 if self.screenshot(&PathBuf::from("simgolf-shot.png")) => println!("saved simgolf-shot.png"),
+                KeyCode::F6 if self.screenshot(&PathBuf::from("opensgolf-shot.png")) => println!("saved opensgolf-shot.png"),
                 _ => {}
             }
             return;

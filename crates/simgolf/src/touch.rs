@@ -6,7 +6,7 @@
 //! * Two fingers: dragging pans, pinching steps through the three zoom levels, twisting turns the view a quarter.
 //! * A few touch buttons down the right edge stand in for keys the screen has no button for (open the hole, turn the
 //!   building, game speed, repeat the last message); they show only once the screen has been touched.
-//! * When a name is typed (rename, save) the phone's keyboard is raised through the page (web/simgolf.js).
+//! * When a name is typed (rename, save) the phone's keyboard is raised through the page (web/opensgolf.js).
 
 use crate::app::*;
 use crate::gfx::Gfx;
