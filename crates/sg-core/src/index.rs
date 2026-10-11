@@ -177,9 +177,12 @@ pub fn resolve_url(index_url: &str, url: &str) -> String {
     if url.contains("://") || url.starts_with('/') || index_url.is_empty() {
         return url.to_string();
     }
-    match index_url.rfind('/') {
-        Some(k) => format!("{}{url}", &index_url[..=k]),
-        None => url.to_string(),
+    // a local index on Windows may be a path with backslashes (`file://C:\\packs\\index.json`, `C:\\packs\\index.json`)
+    let sep = |c: char| c == '/' || (is_local(index_url) && c == '\\');
+    match index_url.rfind(sep) {
+        // not the slashes of the scheme itself
+        Some(k) if !index_url[..=k].ends_with("://") => format!("{}{url}", &index_url[..=k]),
+        _ => url.to_string(),
     }
 }
 
@@ -229,6 +232,10 @@ mod tests {
         assert_eq!(resolve_url("https://x.org/content/index.json", "packs/a.zip"), "https://x.org/content/packs/a.zip");
         assert_eq!(resolve_url("https://x.org/index.json", "https://y.org/a.zip"), "https://y.org/a.zip");
         assert_eq!(resolve_url("file:///tmp/c/index.json", "a.zip"), "file:///tmp/c/a.zip");
+        assert_eq!(resolve_url("file://D:\\c\\index.json", "a.zip"), "file://D:\\c\\a.zip");
+        assert_eq!(resolve_url("D:\\c\\index.json", "a.zip"), "D:\\c\\a.zip");
+        // an https index keeps forward slashes only; an address with no path has no folder to resolve against
+        assert_eq!(resolve_url("https://x.org", "a.zip"), "a.zip");
         assert!(is_local("file:///tmp/a") && is_local("/tmp/a") && !is_local("https://x.org/a"));
     }
 

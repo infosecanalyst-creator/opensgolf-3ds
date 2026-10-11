@@ -318,7 +318,7 @@ mod tests {
         assert_eq!((m.id.as_str(), m.version.as_str()), (crate::packs::FREE, VERSION));
         let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/opensgolf-free/pack.toml");
         if let Ok(t) = std::fs::read_to_string(file) {
-            assert_eq!(t.replace('\r', ""), PACK_TOML);
+            assert_eq!(t.replace('\r', ""), PACK_TOML.replace('\r', ""));
         }
     }
 
