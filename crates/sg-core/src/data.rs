@@ -811,6 +811,26 @@ pub fn economy() -> &'static EconomyData {
     &get().economy
 }
 
+/// The id of an object kind (buildings.toml and amenities.toml), e.g. "snack-bar"; empty for an unknown kind.
+pub fn object_id(kind: usize) -> &'static str {
+    OBJECT_IDS.get(kind).copied().unwrap_or("")
+}
+
+/// The id of the property in slot `i` (properties.toml), e.g. "las-vegas". The ids of the slots are fixed.
+pub fn property_id(i: usize) -> String {
+    crate::land::RECORDS.get(i).map(|r| slug(r.name)).unwrap_or_default()
+}
+
+/// The slot of a property id.
+pub fn property_index(id: &str) -> Option<usize> {
+    (0..crate::land::RECORDS.len()).find(|&i| property_id(i) == id)
+}
+
+/// The theme of the property in slot `i` as the loaded tables have it.
+pub fn property_theme(i: usize) -> Theme {
+    theme_of(records().get(i).map(|r| r.theme).unwrap_or(0))
+}
+
 // ---- the template for modders ------------------------------------------------------------------------------------------------
 
 /// The comment at the top of each file `sgtool dump-data` writes: what the file is and what each field means.

@@ -14,7 +14,14 @@ serde_json = "1"
 miniz_oxide = "0.8"
 cpal = { version = "0.15", optional = true }
 
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# Preferences > Content > Find more (docs/MODDING.md 7): a small HTTPS client in pure Rust (rustls), desktop only; the
+# browser version downloads through the page's fetch()
+ureq = { version = "3", optional = true, default-features = false, features = ["rustls"] }
+
 [features]
-default = ["audio"]
+default = ["audio", "net"]
 # Sound output through the system's audio device (CoreAudio, WASAPI, ALSA). Without it the game runs silent.
 audio = ["dep:cpal"]
+# Downloading content packs over HTTPS (desktop). Without it only file:// content indexes work.
+net = ["dep:ureq"]

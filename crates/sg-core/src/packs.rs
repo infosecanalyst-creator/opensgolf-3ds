@@ -256,7 +256,7 @@ fn file_name(p: &Path) -> String {
 }
 
 /// A .zip pack: pack.toml at the archive's root, or in its one top folder.
-fn open_zip(data: Vec<u8>) -> Result<(Manifest, Source), String> {
+pub fn open_zip(data: Vec<u8>) -> Result<(Manifest, Source), String> {
     let zip = Zip::open(data)?;
     let toml_name = zip
         .names()
@@ -450,6 +450,18 @@ fn r_text(r: &Requirement) -> String {
     }
 }
 
+/// Checks a pack chosen later (a scenario, when a game starts) against the packs a plan loads: its requirements must be
+/// loaded and it must not conflict with them.
+pub fn check_against(m: &Manifest, plan: &Plan, found: &Found) -> Result<(), String> {
+    let active: Vec<(String, Version, Vec<Requirement>)> = plan
+        .rows
+        .iter()
+        .filter(|r| r.status == Status::Active)
+        .map(|r| (r.manifest.id.clone(), r.manifest.version(), r.manifest.conflict_list()))
+        .collect();
+    check(m, &active, &[], found)
+}
+
 /// Puts the packs found in load order following the player's settings, and works out every pack's status.
 pub fn resolve(found: &Found, settings: &Settings) -> Plan {
     let s = settings.complete(found);
@@ -522,7 +534,7 @@ pub fn resolve(found: &Found, settings: &Settings) -> Plan {
         rows.push(Row { manifest: p.manifest.clone(), location: p.location.clone(), pack: Some(i), status, warnings: Vec::new() });
     }
     for (i, p) in found.packs.iter().enumerate().filter(|(_, p)| p.manifest.kind == Kind::Scenario) {
-        let status = Status::NotLoaded("scenarios are chosen when a game starts (not supported yet)".into());
+        let status = Status::NotLoaded("chosen when a game starts: Start New Game, Scenario...".into());
         rows.push(Row { manifest: p.manifest.clone(), location: p.location.clone(), pack: Some(i), status, warnings: Vec::new() });
     }
     for (loc, e) in &found.broken {
