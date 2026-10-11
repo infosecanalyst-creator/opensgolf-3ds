@@ -1,0 +1,30 @@
+name: Bug report
+description: Something crashes, misbehaves or looks broken
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what happened instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The version or commit (shown in Preferences), or "browser".
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options: [Windows, macOS, Linux, Browser (desktop), Browser (phone or tablet), Android, iOS]
+  - type: dropdown
+    id: baseset
+    attributes:
+      label: Base set
+      options: [Original game files, OpenSGolf free set]
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots, save file, log

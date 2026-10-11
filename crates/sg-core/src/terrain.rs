@@ -191,7 +191,13 @@ impl TextureCatalog {
     }
 }
 
-/// `<Theme>Lighting.txt`: "#AMBIENT / r g b", "#DIFFUSE", "#SPECULAR" (0..255). The "#HIGHLIGHT" hex block is not decoded.
+/// `<Theme>Lighting.txt` (Terrain.dll 0x10006dd0, the file picked by theme at 0x10003980): the line after "#AMBIENT", then
+/// the one after "#DIFFUSE", then the one after "#SPECULAR", each three numbers 0..255 divided by 255, set as light 0's
+/// ambient, diffuse and specular colours. The "#HIGHLIGHT" block after them is never read, by the renderer or the exe.
+/// Light 0 is directional (`light_direction`), the material keeps OpenGL's defaults (ambient 0.2, diffuse 0.8) except a
+/// white specular with shininess 13, colour material is off and textures modulate the lit colour (the renderer's
+/// glTexEnvi call passes the texture target where GL_TEXTURE_ENV belongs, so it is refused and modulation stays): see
+/// `Lighting::shade`.
 #[derive(Clone, Copy, Debug)]
 pub struct Lighting {
     pub ambient: [f32; 3],
@@ -203,6 +209,42 @@ impl Default for Lighting {
     fn default() -> Self {
         Lighting { ambient: [0.78; 3], diffuse: [0.94; 3], specular: [1.0; 3] }
     }
+}
+
+impl Lighting {
+    /// OpenGL's fixed-function colour at a vertex with eye-space unit normal `n`, before the texture: the global ambient
+    /// (0.2) and the light's ambient times the material ambient (0.2), the light's diffuse times the material diffuse (0.8)
+    /// times n.l, and where n.l > 0 the light's specular times (n.h)^13 with h halfway between l and the viewer at infinity
+    /// (0, 0, 1); clamped to 1.
+    pub fn shade(&self, n: [f32; 3]) -> [f32; 3] {
+        let l = light_direction();
+        let d = n[0] * l[0] + n[1] * l[1] + n[2] * l[2];
+        let hv = [l[0], l[1], l[2] + 1.0];
+        let hl = (hv[0] * hv[0] + hv[1] * hv[1] + hv[2] * hv[2]).sqrt();
+        let nh = ((n[0] * hv[0] + n[1] * hv[1] + n[2] * hv[2]) / hl).max(0.0);
+        let mut out = [0.0; 3];
+        for k in 0..3 {
+            let mut c = 0.2 * 0.2 + 0.2 * self.ambient[k];
+            if d > 0.0 {
+                c += 0.8 * self.diffuse[k] * d + self.specular[k] * nh.powi(13);
+            }
+            out[k] = c.min(1.0);
+        }
+        out
+    }
+}
+
+/// Light 0's direction in eye space (Terrain.dll 0x10007155..0x10007201, and the same at 0x100035fd): (-0.5, 0.1, -1)
+/// turned 40 degrees about x, then 45 degrees about y, then normalised; it is given while the modelview matrix is the
+/// identity (the renderer pushes and pops its view around each frame), so it stays fixed to the screen whatever the view.
+pub fn light_direction() -> [f32; 3] {
+    let (s, c) = 40f32.to_radians().sin_cos();
+    let (x, y, z) = (-0.5f32, 0.1f32, -1.0f32);
+    let (y, z) = (c * y - s * z, s * y + c * z);
+    let (s, c) = 45f32.to_radians().sin_cos();
+    let (x, z) = (c * x + s * z, -s * x + c * z);
+    let l = (x * x + y * y + z * z).sqrt();
+    [x / l, y / l, z / l]
 }
 
 pub fn parse_lighting(text: &str) -> Lighting {
@@ -247,9 +289,20 @@ pub struct Terrain {
     /// Clubhouse footprint edge in tiles when it is even: the sprite then stands on the corner between the middle tiles, half a
     /// tile on from (clubhouse_x, clubhouse_y). 0 for the demo course's odd footprint.
     pub clubhouse_size: i32,
+    /// The view's quarter turn (0..3), which turns the sand trap pictures (see `texture_type_for`).
+    #[serde(skip)]
+    pub sand_phase: i32,
 }
 
 pub const MAX_LEVEL: i32 = 24;
+/// The exe's corner heights: sea level 3 (our 0), the Elevation tools' range 3..=13, and the cap on a lowered corner of a
+/// property that is not hilly (the byte at 0x571ff6 + 46 * site, the relief, is not 2).
+pub const EXE_SEA: i32 = 3;
+pub const EXE_LOW: i32 = 3;
+pub const EXE_HIGH: i32 = 13;
+pub const EXE_LOW_CAP: i32 = 10;
+/// The Area tool's kernel (0x4c2f68, 5 x 5 shorts): row = x offset + 2, column = y offset + 2. Not symmetric.
+pub const AREA_KERNEL: [[i32; 5]; 5] = [[6, 4, 3, 4, 6], [4, 2, 1, 2, 4], [3, 1, 0, 1, 3], [4, 2, 1, 2, 3], [6, 4, 3, 4, 6]];
 const DX4: [i32; 4] = [0, 1, 0, -1];
 const DY4: [i32; 4] = [-1, 0, 1, 0];
 
@@ -354,47 +407,77 @@ impl Terrain {
         set(x + DX4[dir as usize], y + DY4[dir as usize], (dir + 2) & 3);
     }
 
-    /// No corner may differ from a neighbour by more than 1 level (4-neighbourhood). Higher corners pull lower ones up.
-    pub fn relax(&mut self) {
-        let (w, h) = (self.w, self.h);
-        let at = |c: &Vec<i8>, x: i32, y: i32| c[(y * (w + 1) + x) as usize] as i32;
-        let mut changed = true;
-        let mut guard = 0;
-        while changed && guard < 64 {
-            changed = false;
-            for y in 0..=h {
-                for x in 0..=w {
-                    const DX: [i32; 4] = [1, -1, 0, 0];
-                    const DY: [i32; 4] = [0, 0, 1, -1];
-                    for k in 0..4 {
-                        let (nx, ny) = (x + DX[k], y + DY[k]);
-                        if nx < 0 || ny < 0 || nx > w || ny > h {
-                            continue;
-                        }
-                        let (a, b) = (at(&self.corner, x, y), at(&self.corner, nx, ny));
-                        if a - b > 1 {
-                            self.corner[(ny * (w + 1) + nx) as usize] = (a - 1) as i8;
-                            changed = true;
-                        }
-                    }
-                }
-            }
-            guard += 1;
-        }
-    }
-
-    /// Raises (+) or lowers (-) the corner by `delta` levels, then keeps neighbouring corners within one level of each other by
-    /// spreading the change (APPROXIMATION: the original's slope rule is not decoded).
+    /// Raises (+) or lowers (-) one corner by `delta` levels, within 0..=10 (the exe's heights 3..13). Nothing spreads to
+    /// the neighbours: the exe's elevation edits change only the corners they name (see `edit_elevation`), and a step
+    /// between two corners is drawn as a wall. Scripted runs and the keyboard's round brush use this.
     pub fn raise_corner(&mut self, cx: i32, cy: i32, delta: i32) {
         if cx < 0 || cy < 0 || cx > self.w || cy > self.h {
             return;
         }
         let i = (cy * (self.w + 1) + cx) as usize;
-        self.corner[i] = (self.corner[i] as i32 + delta).clamp(0, MAX_LEVEL) as i8;
-        self.relax();
+        self.corner[i] = (self.corner[i] as i32 + delta).clamp(EXE_LOW - EXE_SEA, EXE_HIGH - EXE_SEA) as i8;
     }
 
-    /// Sets the tile's four corners to their average level (water, greens, tees, buildings).
+    /// The Elevation panel's edits (raise 0x41db46, lower 0x41d997) on corner (cx, cy), the exe's vertex (cx, cy - 1); the
+    /// exe's heights are ours plus 3. `tool` 0 changes the corner by one, raising up to 13 and lowering down to 3, but on a
+    /// property that is not hilly a lowered corner is also capped at 10. `tool` 1 works on the 2 x 2 block (cx..cx+1,
+    /// cy-1..cy) instead: raising adds one to its lowest corners while that is below 13, lowering takes one off its highest
+    /// while that is above 3. `tool` 2 is tool 0 followed by a pass over the 5 x 5 corners round it (0x406f20, 0x406f90):
+    /// with c the centre's new height and k from `AREA_KERNEL`, raising adds one to every corner below c - k, lowering takes
+    /// one off every corner above c + k (no limits there). Nothing else moves.
+    pub fn edit_elevation(&mut self, tool: i32, cx: i32, cy: i32, raise: bool, hilly: bool) {
+        let w = self.w;
+        let h = self.h;
+        let ok = |x: i32, y: i32| x >= 0 && y >= 0 && x <= w && y <= h;
+        let at = |t: &Terrain, x: i32, y: i32| t.corner[(y * (w + 1) + x) as usize] as i32 + EXE_SEA;
+        let set = |t: &mut Terrain, x: i32, y: i32, v: i32| t.corner[(y * (w + 1) + x) as usize] = (v - EXE_SEA) as i8;
+        if tool == 1 {
+            let block: Vec<(i32, i32)> =
+                [(cx, cy - 1), (cx + 1, cy - 1), (cx, cy), (cx + 1, cy)].into_iter().filter(|&(x, y)| ok(x, y)).collect();
+            if raise {
+                let m = block.iter().map(|&(x, y)| at(self, x, y)).fold(99, i32::min);
+                for &(x, y) in &block {
+                    if at(self, x, y) == m && m < EXE_HIGH {
+                        set(self, x, y, m + 1);
+                    }
+                }
+            } else {
+                let m = block.iter().map(|&(x, y)| at(self, x, y)).fold(0, i32::max);
+                for &(x, y) in &block {
+                    if at(self, x, y) == m && m > EXE_LOW {
+                        set(self, x, y, m - 1);
+                    }
+                }
+            }
+            return;
+        }
+        if !ok(cx, cy) {
+            return;
+        }
+        let v = at(self, cx, cy);
+        let top = if raise || hilly { EXE_HIGH } else { EXE_LOW_CAP };
+        let c = (v + if raise { 1 } else { -1 }).clamp(EXE_LOW, top);
+        set(self, cx, cy, c);
+        if tool == 2 {
+            for (i, row) in AREA_KERNEL.iter().enumerate() {
+                for (j, &k) in row.iter().enumerate() {
+                    let (x, y) = (cx + i as i32 - 2, cy + j as i32 - 2);
+                    if !ok(x, y) {
+                        continue;
+                    }
+                    let h = at(self, x, y);
+                    if raise && h < c - k {
+                        set(self, x, y, h + 1);
+                    } else if !raise && h > c + k {
+                        set(self, x, y, h - 1);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Sets the tile's four corners to their average level (scripted painting of water, greens, tees, buildings; the
+    /// port's own tooling).
     pub fn flatten_tile(&mut self, x: i32, y: i32) {
         if !self.inside(x, y) {
             return;
@@ -411,7 +494,6 @@ impl Terrain {
                 self.corner[((y + j) * (self.w + 1) + x + i) as usize] = level;
             }
         }
-        self.relax();
     }
 
     /// Course file: a small text format, see docs/GAMELOGIC.md.
@@ -536,6 +618,7 @@ impl Terrain {
             clubhouse_x: -1,
             clubhouse_y: -1,
             clubhouse_size: 0,
+            sand_phase: 0,
             ..Default::default()
         };
         let mut rng = Rng::new(if seed != 0 { seed } else { 1 });
@@ -762,7 +845,7 @@ pub fn blend_variation(a: i32, b: i32, c: i32) -> i32 {
 }
 
 /// Texture type the original picks for a tile type (Tile::m116d).
-fn texture_type_for(tile_type: i32, vbyte: i32, param: i32, desert: bool) -> i32 {
+fn texture_type_for(tile_type: i32, vbyte: i32, param: i32, desert: bool, phase: i32) -> i32 {
     match tile_type {
         1 => {
             if vbyte & 0x80 != 0 {
@@ -772,7 +855,10 @@ fn texture_type_for(tile_type: i32, vbyte: i32, param: i32, desert: bool) -> i32
             }
         }
         6 | 21 => TT_ROUGH as i32,
-        7 => TT_SAND_BUNKER1 as i32 + (vbyte & 3),
+        // Terrain.dll picks the sand picture as (variation & 3) - phase, the phase being the view's quarter turn: the exe
+        // hands it the view as 0, 90, 180 or -90 degrees (0x4498a0) and the DLL's setter (0x1000adc0) maps those to 0..3
+        // (TERRAIN.md)
+        7 => TT_SAND_BUNKER1 as i32 + ((vbyte & 3) - phase).rem_euclid(4),
         13..=16 => 13,
         17 => match vbyte {
             1 => TT_WATER_MIDDLE as i32,
@@ -866,7 +952,7 @@ pub fn build_tile_triangles(t: &Terrain, tx: i32, ty: i32, out: &mut Vec<TileTri
         // Original triangle index -> (a, b, c), and -> record.
         let abc = [[n, e, ne], [e, n, ne], [e, s, se], [s, e, se], [s, w, sw], [w, s, sw], [w, n, nw], [n, w, nw]];
         const REC_OF: [usize; 8] = [2, 3, 7, 6, 5, 4, 0, 1];
-        let tex_type = texture_type_for(ttype, vbyte, ttype, t.desert);
+        let tex_type = texture_type_for(ttype, vbyte, ttype, t.desert, t.sand_phase);
         for i in 0..8 {
             let mut v = blend_variation(abc[i][0], abc[i][1], abc[i][2]);
             if (tex_type == TT_ROUGH as i32 || ttype == 7 || tex_type == TT_FAIRWAY as i32) && v > 4 {
@@ -875,35 +961,67 @@ pub fn build_tile_triangles(t: &Terrain, tx: i32, ty: i32, out: &mut Vec<TileTri
             var[REC_OF[i]] = v;
         }
     }
-    let tex_type =
-        if ttype == TT_TEE as i32 || ttype == TT_POT_SAND_BUNKER as i32 { ttype } else { texture_type_for(ttype, vbyte, ttype, t.desert) };
+    let tex_type = if ttype == TT_TEE as i32 || ttype == TT_POT_SAND_BUNKER as i32 {
+        ttype
+    } else {
+        texture_type_for(ttype, vbyte, ttype, t.desert, t.sand_phase)
+    };
     let use_set = if ttype == TT_TEE as i32 { vbyte } else { set };
+    // Terrain.dll keeps a 3 x 3 vertex patch per tile (the global vertex array is 3W x 3H, so tiles share no vertices) with
+    // one normal per vertex: the sum of the unit face normals of the tile's triangles that use it, normalised. So a slope is
+    // shaded smoothly inside a tile rather than per triangle.
+    type Tri = ([Vertex; 3], [(usize, usize); 3], usize);
+    let mut tris_all: Vec<Tri> = Vec::with_capacity(8);
     for q in 0..4 {
         let (j, k) = (q / 2, q % 2);
-        let tris = [[vtx(j, k), vtx(j + 1, k), vtx(j + 1, k + 1)], [vtx(j, k), vtx(j + 1, k + 1), vtx(j, k + 1)]];
-        for (s, tri) in tris.iter().enumerate() {
-            let (ux, uy, uz) = (tri[1].x - tri[0].x, tri[1].y - tri[0].y, tri[1].z - tri[0].z);
-            let (vx, vy, vz) = (tri[2].x - tri[0].x, tri[2].y - tri[0].y, tri[2].z - tri[0].z);
-            let (mut nx, mut ny, mut nz) = (uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx);
-            let len = (nx * nx + ny * ny + nz * nz).sqrt();
-            if len > 0.0 {
-                nx /= len;
-                ny /= len;
-                nz /= len;
-            }
-            if ny < 0.0 {
-                nx = -nx;
-                ny = -ny;
-                nz = -nz;
-            }
-            let mut tt = TileTri { tex_type, set: use_set, variation: var[q * 2 + s], v: *tri };
-            for v in tt.v.iter_mut() {
-                v.nx = nx;
-                v.ny = ny;
-                v.nz = nz;
-            }
-            out.push(tt);
+        // The tile is a fan of eight triangles round its centre, each holding half of one tile edge (the edge its blend
+        // variation belongs to), so every quadrant is split along the diagonal from the tile corner to the centre: NW and SE
+        // along one diagonal, NE and SW along the other.
+        let idx: [[(usize, usize); 3]; 2] = if j == k {
+            [[(j, k), (j + 1, k), (j + 1, k + 1)], [(j, k), (j + 1, k + 1), (j, k + 1)]]
+        } else if k == 1 {
+            // NE: corner (0,2); first the north half edge, then the east one
+            [[(0, 1), (1, 1), (0, 2)], [(1, 1), (1, 2), (0, 2)]]
+        } else {
+            // SW: corner (2,0); first the west half edge, then the south one
+            [[(1, 0), (2, 0), (1, 1)], [(2, 0), (2, 1), (1, 1)]]
+        };
+        for (s, ix) in idx.iter().enumerate() {
+            tris_all.push(([vtx(ix[0].0, ix[0].1), vtx(ix[1].0, ix[1].1), vtx(ix[2].0, ix[2].1)], *ix, q * 2 + s));
         }
+    }
+    let mut sum = [[[0f32; 3]; 3]; 3];
+    for (tri, ix, _) in &tris_all {
+        let (ux, uy, uz) = (tri[1].x - tri[0].x, tri[1].y - tri[0].y, tri[1].z - tri[0].z);
+        let (vx, vy, vz) = (tri[2].x - tri[0].x, tri[2].y - tri[0].y, tri[2].z - tri[0].z);
+        let (mut nx, mut ny, mut nz) = (uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx);
+        let len = (nx * nx + ny * ny + nz * nz).sqrt();
+        if len > 0.0 {
+            nx /= len;
+            ny /= len;
+            nz /= len;
+        }
+        if ny < 0.0 {
+            nx = -nx;
+            ny = -ny;
+            nz = -nz;
+        }
+        for &(j, k) in ix {
+            sum[j][k][0] += nx;
+            sum[j][k][1] += ny;
+            sum[j][k][2] += nz;
+        }
+    }
+    for (tri, ix, r) in tris_all {
+        let mut tt = TileTri { tex_type, set: use_set, variation: var[r], v: tri };
+        for (v, &(j, k)) in tt.v.iter_mut().zip(&ix) {
+            let n = sum[j][k];
+            let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+            if len > 0.0 {
+                (v.nx, v.ny, v.nz) = (n[0] / len, n[1] / len, n[2] / len);
+            }
+        }
+        out.push(tt);
     }
 }
 
@@ -935,14 +1053,57 @@ mod tests {
     }
 
     #[test]
-    fn relax_limits_slopes() {
+    fn exe_light() {
+        let l = light_direction();
+        assert!((l[0] + 0.7570).abs() < 1e-3 && (l[1] - 0.6409).abs() < 1e-3 && (l[2] + 0.1271).abs() < 1e-3, "{l:?}");
+        let park = parse_lighting("#AMBIENT\r\n200 200 180\r\n#DIFFUSE\r\n240 240 240\r\n#SPECULAR\r\n255 255 245\r\n#HIGHLIGHT\r\nx0x");
+        // facing away from the light: the ambient terms only
+        let back = park.shade([-l[0], -l[1], -l[2]]);
+        assert!((back[0] - (0.04 + 0.2 * 200.0 / 255.0)).abs() < 1e-5);
+        // facing it: ambient and full diffuse; the light is almost square to the viewer, so the highlight adds little
+        let full = 0.04 + 0.2 * 200.0 / 255.0 + 0.8 * 240.0 / 255.0;
+        let lit = park.shade(l);
+        assert!(lit[0] > full && lit[0] < full + 0.01, "{lit:?}");
+        // flat ground at the 800 x 600 view's pitch (38.68 degrees): about 0.56
+        let (s, c) = 38.682186f32.to_radians().sin_cos();
+        let ground = park.shade([0.0, c, s]);
+        assert!((ground[0] - 0.56).abs() < 0.02, "{ground:?}");
+    }
+
+    #[test]
+    fn elevation_edits_as_the_exe() {
         let mut t = Terrain::demo_course(8, 8, 1);
-        t.raise_corner(4, 4, 10);
-        for y in 0..=8 {
-            for x in 0..8 {
-                assert!((t.corner_at(x, y) - t.corner_at(x + 1, y)).abs() <= 1);
-            }
+        t.corner.iter_mut().for_each(|c| *c = 2); // the exe's height 5 everywhere
+                                                  // a vertex: one step, nothing spreads
+        t.edit_elevation(0, 4, 4, true, false);
+        assert_eq!((t.corner_at(4, 4), t.corner_at(3, 4), t.corner_at(5, 4)), (3, 2, 2));
+        // raising stops at 13 (ours 10); lowering on land that is not hilly is capped at 10 (ours 7)
+        t.corner[(4 * 9 + 4) as usize] = 10;
+        t.edit_elevation(0, 4, 4, true, false);
+        assert_eq!(t.corner_at(4, 4), 10);
+        t.edit_elevation(0, 4, 4, false, false);
+        assert_eq!(t.corner_at(4, 4), 7);
+        t.corner[(4 * 9 + 4) as usize] = 10;
+        t.edit_elevation(0, 4, 4, false, true);
+        assert_eq!(t.corner_at(4, 4), 9);
+        // the 2 x 2 block: its lowest corners go up together
+        t.corner.iter_mut().for_each(|c| *c = 2);
+        t.corner[(3 * 9 + 5) as usize] = 4;
+        t.edit_elevation(1, 4, 4, true, false);
+        assert_eq!([t.corner_at(4, 3), t.corner_at(5, 3), t.corner_at(4, 4), t.corner_at(5, 4)], [3, 4, 3, 3]);
+        t.edit_elevation(1, 4, 4, false, false);
+        assert_eq!([t.corner_at(4, 3), t.corner_at(5, 3), t.corner_at(4, 4), t.corner_at(5, 4)], [3, 3, 3, 3]);
+        // the area: corners further below the new centre than the kernel allows come up one
+        t.corner.iter_mut().for_each(|c| *c = 0);
+        for _ in 0..4 {
+            t.edit_elevation(2, 4, 4, true, false);
         }
+        assert_eq!(t.corner_at(4, 4), 4);
+        assert_eq!(t.corner_at(5, 4), 3, "kernel 1 next to the centre");
+        assert_eq!(t.corner_at(6, 6), 0, "kernel 6 in the corner");
+        assert_eq!(t.corner_at(6, 4), 1, "kernel 3 two corners out");
+        // the exe's kernel is not symmetric: 3 at (+1, +2) but 4 at (+1, -2)
+        assert_eq!((t.corner_at(5, 6), t.corner_at(5, 2)), (1, 0));
     }
 
     #[test]

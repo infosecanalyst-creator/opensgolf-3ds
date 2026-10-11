@@ -81,11 +81,24 @@ second "Overgrowth" (probably a copy-paste slip in the original).
   `tex[37 types][25 sets][9 variations]`. Type 0 (Tee) uses a slightly different loop.
 * Textures are 64x64 24-bit BMPs, built with `gluBuild2DMipmaps`, linear filtering, repeat wrap.
 * Overlays loaded per theme: `Path.tga`, `PathCap.tga`, `PathInside.tga`, `PathCurve.tga`, the same
-  four with an `X` suffix, `CliffTest.bmp`, `RetainWallA.bmp`, `strata.bmp`.
+  four with an `X` suffix, `CliffTest.bmp`, `RetainWallA.bmp`, `strata.bmp` (texture ids 35, 34 and 36; the table is at
+  0x100687f8 + id * 0x384).
+* The property's cliff (0x1000ea30): for a tile that is not type 20, each side whose neighbour exists and is type 20 gets a
+  face of two triangles from the side's end vertices down to y = -75, textured once with strata (u 0..1 along the side,
+  t 1 at the top), drawn only for the views that face it (N, the y - 1 side: views 1, 2; S: 0, 3; W: 0, 1; E: 2, 3), its
+  normal one of two per side by the view's parity from 0x10063c40 (S: (-0.707, 0, -0.707) / (-1, 1, 0); N: (0.707, 0,
+  0.707) / (1, 1, 0); E: (1, 1, 0) / (-1, 0, 0); W: (-1, 1, 0) / (1, 0, 0)).
 * File names differ in case between themes (`overgrowth` vs `Overgrowth`): look them up
   case-insensitively.
-* Lighting: `<Theme>Lighting.txt` with `#AMBIENT`, `#DIFFUSE`, `#SPECULAR` (r g b, 0..255) and an
-  undecoded `#HIGHLIGHT` hex block. `changeLighting` steps values by 0.1 and clamps at 1.0.
+* Lighting (0x10006dd0, file by theme at 0x10003980: 0 Parkland, 1 Desert, 2 Tropical, 3 Links, else `lighting.txt`): the
+  line after `#AMBIENT`, then after `#DIFFUSE`, then after `#SPECULAR`, three numbers each divided by 255, become light 0's
+  ambient, diffuse and specular. The `#HIGHLIGHT` block is never read (by the DLL or the exe). Light 0 is directional:
+  (-0.5, 0.1, -1) turned 40 degrees about x, 45 about y and normalised, (-0.757, 0.641, -0.127), given while the modelview
+  is the identity, so fixed in eye space. Material: glMaterialfv(GL_FRONT, GL_SPECULAR, 1 1 1 1), shininess 13; ambient and
+  diffuse keep OpenGL's defaults (0.2, 0.8); no colour material, no GL_NORMALIZE (the normals are unit: face normals and
+  their vertex sums are normalised), global ambient default 0.2. The glTexEnvi call passes the texture target (0xde1) where
+  GL_TEXTURE_ENV belongs, so it fails and textures stay in GL_MODULATE. `changeLighting` (+-0.1 on the ambient, diffuse
+  0.9, specular 1 1 0.9) is not imported by the exe. Port: `sg_core::terrain::Lighting::shade`, the shader in gfx.rs.
 
 ## Edge blending (per-triangle texture variation)
 
@@ -151,6 +164,11 @@ Approximates (marked `APPROXIMATION` in code): elevation scale; the light direct
 type class grouping; the water-in-desert-theme variant (`m1096` swaps triangles next to land to
 WaterShallowDesert when a global theme flag is 1, not ported yet).
 
-Not decoded yet: path overlays, cliffs and retaining walls, water animation timing (type 7 phase at
-0x10070a14), type 6 geometry, and how `golf.exe` stores a course (that code is in the protected
+The type 7 phase: golf.exe hands the view to Terrain.dll as an angle (0x4498a0: view 0x5685f4 = 0, 2, 4, 6 gives 0, 90, 180
+and -90 degrees, through the import at 0x4a4f82), and the DLL's setter (0x1000adc0) stores the phase as 0 for 0 degrees, 1
+for 90, 2 for 180 and 3 otherwise. So the phase is the view's quarter turn (`Terrain::sand_phase`, EXACT); the exe's brush
+picture for sand (0x41ab87) turns the same way. The port rebuilds the ground when the view turns.
+
+Water has no texture animation in the DLL (no clock, no texture matrix). Not decoded yet: path overlays, cliffs and
+retaining walls, type 6 geometry, and how `golf.exe` stores a course (that code is in the protected
 executable, which this project does not touch).

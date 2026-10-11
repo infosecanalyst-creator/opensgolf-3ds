@@ -1,11 +1,20 @@
 [package]
 name = "sg-core"
-description = "SimGolf native port: asset decoders, data formats and game rules (no windowing, no audio device)"
+description = "OpenSGolf: asset decoders, data formats and game rules (no windowing, no audio device)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
+fontdue = "0.9"
+lewton = "0.10"
 miniz_oxide = "0.8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+toml = { version = "0.8", features = ["preserve_order"] }
+# Game scripts of content packs (docs/MODDING.md 6): sandboxed, pure Rust, builds for the browser (no clock there)
+rhai = { version = "1.23", default-features = false, features = ["std", "no_time", "serde", "no_custom_syntax", "no_module"] }
+# The checksums of downloaded content packs (docs/MODDING.md 7)
+sha2 = { version = "0.10", default-features = false }
+# WebP pictures in HD packs: about a tenth of the size of PNG at quality 95 (docs/HD.md)
+image-webp = "0.2"

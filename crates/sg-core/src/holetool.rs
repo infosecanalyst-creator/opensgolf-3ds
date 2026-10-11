@@ -8,6 +8,7 @@ use crate::course::{f, idx, inside, t, Course};
 use crate::geom::{angle, cosr, dir8, sinr, tdist, UNIT};
 use crate::golfer::{game, Club, Event, Golfer, HOLE_RECORDS};
 use crate::land::ExeRng;
+use crate::lang::{tr, trf};
 
 /// The golfer record the layout pass plans with (record 0x9a, after the 152 golfers and two more the exe keeps).
 pub const TRIAL: usize = 0x9a;
@@ -42,7 +43,7 @@ impl Club {
         let old_flags = c.flags[i];
         let cup = old == t::GREEN && old_flags & f::CUP != 0;
         if self.game & game::TOURNAMENT != 0 && (old == t::TEE || cup) {
-            self.out.push(Event::Sound { slot: REFUSED, at: None });
+            self.out.push(Event::Sound { slot: REFUSED, at: None, delay: 0 });
             return false;
         }
         let hu = h.clamp(0, HOLE_RECORDS as i32 - 1) as usize;
@@ -69,7 +70,7 @@ impl Club {
                 } else {
                     go = false;
                 }
-                self.out.push(Event::Message(format!("Hole {h} already has its tee; open it before starting the next hole.")));
+                self.message(trf("STR_MSG_HOLE_HAS_TEE", &[("HOLE", &h)]));
             }
         } else if new == t::GREEN {
             if self.holes[hu].pin.0 == 0 && a != 0 && (!green_next || self.holes[hu].back.0 != 0) {
@@ -131,18 +132,19 @@ impl Club {
     pub fn open_hole(&mut self, c: &mut Course) -> Option<usize> {
         let h = self.next_hole;
         if !(1..19).contains(&h) {
-            self.out.push(Event::Sound { slot: REFUSED, at: None });
+            self.out.push(Event::Sound { slot: REFUSED, at: None, delay: 0 });
             return None;
         }
         let hu = h as usize;
         let two = self.two_tees();
         let hr = &self.holes[hu];
         if hr.back.0 == 0 || hr.pin.0 == 0 || (two && hr.fwd.0 == 0) {
-            self.out.push(Event::Sound { slot: REFUSED, at: None });
+            self.out.push(Event::Sound { slot: REFUSED, at: None, delay: 0 });
             return None;
         }
         self.top_rounds = [0; 10];
-        self.out.push(Event::Sound { slot: OPENED, at: None });
+        self.top_names = Default::default();
+        self.out.push(Event::Sound { slot: OPENED, at: None, delay: 0 });
         let level10 = c.level[10];
         let hr = &mut self.holes[hu];
         if hr.length == 0 {
@@ -200,7 +202,12 @@ impl Club {
         while (self.next_hole as usize) < 19 && self.holes[self.next_hole as usize].par != 0 {
             self.next_hole += 1;
         }
-        self.out.push(Event::Message(format!("Hole {h} is open: par {par}, length {len}.")));
+        let mut msg = opening_text(h, par, len, eff, self.holes[hu].flags);
+        let unlocked = self.unlocked;
+        msg += &self.unlock_text(h);
+        // a building unlocked with this hole speaks with its picture (minus its kind), otherwise nobody (0x40e720)
+        let speaker = if self.unlocked != unlocked { -unlocked } else { -1 };
+        self.message_by(msg, speaker, 1);
         self.log_event(crate::records::log::HOLE, h);
         let fl = self.holes[hu].flags;
         let pin = self.holes[hu].pin;
@@ -223,6 +230,44 @@ impl Club {
             self.award_at(14, green);
         }
         Some(hu)
+    }
+
+    /// The figures the course view shows over the green of the hole being built once it has a tee and a green (0x417277):
+    /// its number, its length in yards and the par it would open with. A hole the layout pass has not measured gets the
+    /// straight length from the back tee, 25 yards a tile plus a quarter of what is over 200, and keeps it, as the exe
+    /// stores it while drawing. The par rule is open_hole's, except that the dogleg's 25 yards count at any length.
+    pub fn building_figures(&mut self, c: &Course) -> Option<(i32, i32, i32)> {
+        let h = self.next_hole;
+        if !(1..19).contains(&h) {
+            return None;
+        }
+        let hr = &mut self.holes[h as usize];
+        if hr.back.0 == 0 || hr.pin.0 == 0 {
+            return None;
+        }
+        if hr.length == 0 {
+            let (dx, dy) = ((hr.back.0 - hr.pin.0) as f64, (hr.back.1 - hr.pin.1) as f64);
+            let mut l = ((dx * dx + dy * dy) * 625.0).sqrt() as i32 as i16 as i32;
+            if l > 200 {
+                l += (l - 200) / 4;
+            }
+            hr.length = l as i16 as i32;
+        }
+        let mut eff = hr.length;
+        if hr.flags & 0x60 != 0 {
+            eff += 25;
+        }
+        if eff > 300 {
+            eff -= 25 * c.level[10];
+        }
+        let par = match eff {
+            e if e > 625 => 6,
+            e if e >= 475 => 5,
+            e if e >= 250 => 4,
+            e if e > 50 => 3,
+            _ => 2,
+        };
+        Some((h, hr.length, par))
     }
 
     /// The layout pass the exe's main frame runs over the hole being built once it has a tee and a green (0x41353d): a trial
@@ -278,7 +323,9 @@ impl Club {
                     first = land;
                     break;
                 }
-                if c.h(c.tile_type(land.0, land.1)) > 1 {
+                // the landing tile's own type (0x413725 indexes the tile map directly)
+                let lt = if inside(land.0, land.1) { c.ty[idx(land.0, land.1)] } else { t::OUT };
+                if c.h(lt) > 1 {
                     break;
                 }
                 let gg = &self.g[TRIAL];
@@ -359,10 +406,156 @@ impl Club {
     }
 }
 
+/// The announcement of a new hole (0x40e720): "Hole #3, a scenic 328 yard par 4, is now open for play." A par 3 under 125
+/// yards (par 4 under 350, par 5 under 500) is short, one over 200 (425, 575) long; the dogleg and slope come from the
+/// hole's flags.
+pub fn opening_text(h: i32, par: i32, len: i32, eff: i32, flags: u32) -> String {
+    let size = match par {
+        3 if eff < 125 => tr("STR_HOLE_OPEN_SHORT"),
+        3 if eff > 200 => tr("STR_HOLE_OPEN_LONG"),
+        4 if eff < 350 => tr("STR_HOLE_OPEN_SHORT"),
+        4 if eff > 425 => tr("STR_HOLE_OPEN_LONG"),
+        5 if eff < 500 => tr("STR_HOLE_OPEN_SHORT"),
+        5 if eff > 575 => tr("STR_HOLE_OPEN_LONG"),
+        _ => tr("STR_HOLE_OPEN_SCENIC"),
+    };
+    let mut s = trf("STR_HOLE_OPEN_START", &[("HOLE", &h), ("SIZE", &size), ("YARDS", &len)]);
+    if flags & 0x1000 != 0 {
+        s += tr("STR_HOLE_OPEN_UPHILL");
+    }
+    if flags & 0x2000 != 0 {
+        s += tr("STR_HOLE_OPEN_DOWNHILL");
+    }
+    s += &trf("STR_HOLE_OPEN_PAR", &[("PAR", &par)]);
+    if flags & 0x20 != 0 {
+        s += tr("STR_HOLE_OPEN_DOGLEG_LEFT");
+    }
+    if flags & 0x40 != 0 {
+        s += tr("STR_HOLE_OPEN_DOGLEG_RIGHT");
+    }
+    s + tr("STR_HOLE_OPEN_END")
+}
+
+/// What each building does, as the unlock message tells it (kinds 6..14).
+const UNLOCK_BLURB: [&str; 9] = [
+    "STR_UNLOCK_PUTTING_GREEN",
+    "STR_UNLOCK_SNACK_BAR",
+    "STR_UNLOCK_PRO_SHOP",
+    "STR_UNLOCK_SWIM_CLUB",
+    "STR_UNLOCK_DRIVING_RANGE",
+    "STR_UNLOCK_CART_GARAGE",
+    "STR_UNLOCK_MARINA",
+    "STR_UNLOCK_RESORT_HOTEL",
+    "STR_UNLOCK_AIRSTRIP",
+];
+
+/// The course rank upgrade (0x40e5f0) on reaching 6, 10 and 18 holes.
+fn rank_text(step: usize) -> String {
+    let names = crate::economy::rank_name;
+    let mut s = trf("STR_UNLOCK_RANK", &[("FROM", &names(step)), ("TO", &names(step + 1))]);
+    match step {
+        0 => s += tr("STR_UNLOCK_RANK_EMPLOYEES"),
+        1 => s += tr("STR_UNLOCK_RANK_BUILDINGS"),
+        _ => {}
+    }
+    s
+}
+
+impl Club {
+    /// What opening hole `h` adds to its announcement: the rank upgrade at 6, 10 and 18 holes, otherwise the next building
+    /// kind while the course is growing (the counter only ever rises).
+    fn unlock_text(&mut self, h: i32) -> String {
+        let mut s = String::new();
+        if h == 6 {
+            s += &rank_text(0);
+        } else if h == 10 {
+            s += &rank_text(1);
+        } else if h > self.unlocked - 5 && self.unlocked <= 14 && !self.sandbox {
+            s += if h & 1 == 0 { tr("STR_UNLOCK_NEW_FACILITIES") } else { tr("STR_UNLOCK_NEW_PLAYERS") };
+            let k = self.unlocked;
+            let name = crate::land::building_name(k);
+            s += &trf("STR_UNLOCK_BUILDING", &[("BUILDING", &name), ("WHAT", &tr(UNLOCK_BLURB[(k - 6) as usize]))]);
+            self.unlocked += 1;
+        }
+        if h == 18 {
+            s += &rank_text(2);
+        }
+        s
+    }
+}
+
+/// The port's own tooling, not a rule of the game: terrain painted outside the hole tool (a course file, the demo course, a
+/// scripted edit) has tees and greens but no hole records. Each 8-connected cluster of tee tiles, in reading order of its
+/// first tile (b, then a), is paired with the nearest unused cluster of two or more green tiles whose centre lies at least
+/// 2.5 tiles away; the pair is (tee tile, green tile), each the cluster's mean tile.
+pub fn painted_pairs(c: &Course) -> Vec<((i32, i32), (i32, i32))> {
+    use crate::course::N;
+    let clusters = |ty: u8| {
+        let mut out: Vec<(f32, f32, usize)> = Vec::new();
+        let mut seen = vec![false; crate::course::NN];
+        for b in 0..N {
+            for a in 0..N {
+                if seen[idx(a, b)] || c.ty[idx(a, b)] != ty {
+                    continue;
+                }
+                seen[idx(a, b)] = true;
+                let mut stack = vec![(a, b)];
+                let (mut sa, mut sb, mut n) = (0.0f32, 0.0f32, 0usize);
+                while let Some((x, y)) = stack.pop() {
+                    sa += x as f32;
+                    sb += y as f32;
+                    n += 1;
+                    for dy in -1..=1 {
+                        for dx in -1..=1 {
+                            let (nx, ny) = (x + dx, y + dy);
+                            if inside(nx, ny) && !seen[idx(nx, ny)] && c.ty[idx(nx, ny)] == ty {
+                                seen[idx(nx, ny)] = true;
+                                stack.push((nx, ny));
+                            }
+                        }
+                    }
+                }
+                out.push((sa / n as f32, sb / n as f32, n));
+            }
+        }
+        out
+    };
+    let tees = clusters(t::TEE);
+    let mut greens: Vec<(f32, f32, bool)> = clusters(t::GREEN).into_iter().filter(|g| g.2 >= 2).map(|g| (g.0, g.1, false)).collect();
+    let mut out = Vec::new();
+    for &(ta, tb, _) in &tees {
+        let best = greens
+            .iter()
+            .enumerate()
+            .filter(|(_, g)| !g.2)
+            .map(|(i, g)| (i, (g.0 - ta).hypot(g.1 - tb)))
+            .min_by(|x, y| x.1.total_cmp(&y.1));
+        let Some((i, d)) = best else { continue };
+        if d < 2.5 {
+            continue;
+        }
+        greens[i].2 = true;
+        out.push(((ta as i32, tb as i32), (greens[i].0 as i32, greens[i].1 as i32)));
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::course::Course;
+
+    #[test]
+    fn painted_tee_and_green_pair_up() {
+        let mut c = course();
+        c.ty[idx(5, 5)] = t::TEE;
+        for (a, b) in [(5, 20), (6, 20), (5, 21), (6, 21)] {
+            c.ty[idx(a, b)] = t::GREEN;
+        }
+        // a lone green tile is not a green
+        c.ty[idx(30, 6)] = t::GREEN;
+        assert_eq!(painted_pairs(&c), vec![((5, 5), (5, 20))]);
+    }
 
     fn course() -> Course {
         let mut c = Course::default();

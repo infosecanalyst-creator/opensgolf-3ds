@@ -209,3 +209,24 @@ Read from `FUN_004362f0` (draw, line 30129), `FUN_00435f00` (hit test, 29984), `
 | stats card plus/minus | CharRec skill points; edit rules per 3.4 (cap 10, cannot go below the starting value, bitmask of changed skills) |
 
 Open items to resolve with further decompile work: strings behind `DAT_` addresses, the caller of `FUN_0045c560`, the world golfer click, the course info draw site, the meaning of `DAT_00824144`, the TransPopups array order, and sprite `0x56a894`.
+
+## 8. Resolved with the complete decompile
+
+* Trait words (pointer table 0x4c2864): Neat, Outgoing, Active, Playful, Nice. The first bar's label is the string
+  at 0x4d2120, "Fun".
+* The click handler is in the main loop (0x41e6f9, jump table 0x421a88 on the hover id):
+  * 0 Customize: `0x4385d0(profile of the slot, slot)` for any golfer, then the golfer's +0xb8 short takes the
+    profile's byte +0x21 sign-extended. A golfer whose type is a pro's (type & 0xe0 == 0x20) gets the skills panel.
+  * 1 Move/Eject: 0x4c2e10 = slot + 0x80. The next left click puts the golfer on the clicked tile's centre (+0x9e
+    cleared); on building 0 (the clubhouse) he goes home (hole 19, strokes 0, mood 0) and, outside sandbox play, an
+    ordinary golfer's membership record marks the hole quit and the member gone (0xff). A right click lets go.
+  * 2 Take Snapshot: 0x4c2e0c = slot (the camera moves to the golfer when he is off screen; he and his pair slot get
+    thought timer 1). The next frame draws the SimFoto (0x4185bb): the two golfers' screen points widened to 240 x 200,
+    grown by 16 and clamped (16..700, 16..500 / 100..784, 100..584), a 16 px white border, a black line, "Happy
+    Ending!" (yellow, large) over a pair in its fourth chapter telling a story line, "SimFoto" (grey) in the bottom
+    border, the date month'day'year (yellow) at (right - 80, bottom - 16); the region from (left - 2, top - 2) is saved
+    as `snapshots\<name>-<date>.jpg` (0x431d20), the shutter sound 0x95 plays and the picture stays until a click.
+  * 3 toggles 0x824144 (the story page). 4 closes.
+  * 5 Next Chapter: the replier (the one without the story flag) gets hole_mood[hole] = rand(chapter * 8), then
+    rand(32) unless his newest reaction is bad, and 99 when it is good and attitude + 4 >= chapter + rand(4) +
+    difficulty; then 0x466370(owner, 1); a failed beat costs both a point of mood; both get flag 0x200000.

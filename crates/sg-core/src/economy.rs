@@ -6,6 +6,7 @@
 //! in a row in the red end the game. There is no upkeep for terrain, paths or buildings, no taxes and no loans. Sandbox games
 //! pay the same costs; they only skip the affordability checks and the board.
 use crate::land::ExeRng;
+use crate::lang::tr;
 
 pub const STAFF_KINDS: usize = 4;
 pub const CLUB_PRO: usize = 0;
@@ -24,8 +25,16 @@ pub const LEDGER_MAINTENANCE: usize = 6;
 pub const LEDGER_OTHER: usize = 7;
 pub const LEDGER_COLUMNS: usize = 8;
 /// The report's row labels (the exe's own wording; the money sign is the section sign).
-pub const LEDGER_LABELS: [&str; LEDGER_COLUMNS] =
-    ["Greens Fees", "Home Sites", "Food/Drink", "Build course", "Facilities", "Salaries", "Maint./Interest", "Other"];
+pub const LEDGER_LABEL_KEYS: [&str; LEDGER_COLUMNS] = [
+    "STR_LEDGER_GREENS_FEES",
+    "STR_LEDGER_HOME_SITES",
+    "STR_LEDGER_FOOD_DRINK",
+    "STR_LEDGER_BUILD_COURSE",
+    "STR_LEDGER_FACILITIES",
+    "STR_LEDGER_SALARIES",
+    "STR_LEDGER_MAINTENANCE",
+    "STR_LEDGER_OTHER",
+];
 /// Months per year in the exe's calendar (March to October).
 pub const MONTHS_PER_YEAR: i32 = 8;
 
@@ -81,16 +90,36 @@ impl Default for Economy {
 pub const WAGE_UNITS: [[i32; 2]; STAFF_KINDS] = [[3, 7], [2, 3], [2, 4], [2, 5]];
 
 /// Course rank by number of holes: 0 Municipal (under 6), 1 Daily Fee (6..9), 2 Country Club (10..17), 3 Championship (18).
+/// The thresholds are data/economy.toml's `rank_holes` (built in: 6, 10, 18).
 pub fn rank(holes: usize) -> i32 {
-    match holes {
-        0..=5 => 0,
-        6..=9 => 1,
-        10..=17 => 2,
-        _ => 3,
-    }
+    crate::data::economy().rank_holes.iter().filter(|&&n| holes >= n).count() as i32
 }
 
-pub const RANK_NAMES: [&str; 4] = ["Municipal", "Daily Fee", "Country Club", "Championship"];
+/// Course rank k's name (`RANK_NAME_KEYS`).
+pub fn rank_name(k: usize) -> &'static str {
+    crate::lang::tr(RANK_NAME_KEYS[k])
+}
+
+/// The financial report's row label of ledger column k (`LEDGER_LABEL_KEYS`).
+pub fn ledger_label(k: usize) -> &'static str {
+    crate::lang::tr(LEDGER_LABEL_KEYS[k])
+}
+
+pub const RANK_NAME_KEYS: [&str; 4] = ["STR_RANK_MUNICIPAL", "STR_RANK_DAILY_FEE", "STR_RANK_COUNTRY_CLUB", "STR_RANK_CHAMPIONSHIP"];
+
+/// An amount of money as the exe's 0x42dc00 appends it to a message (after a "§" the message holds): a minus sign when
+/// negative, then the digits in groups of three with commas.
+pub fn money_digits(v: i64) -> String {
+    let d = v.unsigned_abs().to_string();
+    let mut out = String::from(if v < 0 { "-" } else { "" });
+    for (k, c) in d.chars().enumerate() {
+        if k > 0 && (d.len() - k).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
 
 /// One employee as the wage charge sees it: kind 0..3 and whether experienced.
 #[derive(Clone, Copy, Debug)]
@@ -107,16 +136,41 @@ impl Economy {
     /// Firing an employee costs 25 units (booked under Salaries).
     pub const FIRING_UNITS: f64 = 25.0;
 
+    /// An employee kind's name (data/staff.toml).
     pub fn staff_name(k: usize) -> &'static str {
-        ["Club Pro", "Ranger", "Groundskeeper", "Soda Vendor"].get(k).copied().unwrap_or("?")
+        crate::lang::text(crate::data::get().staff_names.get(k).copied().unwrap_or("STR_STAFF_UNKNOWN"))
     }
     pub fn staff_count(&self) -> i32 {
         self.staff.iter().sum()
     }
 
-    /// Cost per tile of laying a terrain type, in units of 100, from the exe's terrain table (the figure its build menu shows is this
-    /// times 100). Indexed by the original tile id 0..19; ids without an entry (building lots, editor-only ids) cost nothing.
+    /// What it costs to clear a terrain type before painting over it, in units (data/terrain.toml; built in:
+    /// [`Self::builtin_terrain_clear_units`]).
+    pub fn terrain_clear_units(ty: i32) -> i32 {
+        crate::data::clear_units(ty)
+    }
+
+    /// Cost per tile of laying a terrain type, in units (data/terrain.toml; built in: [`Self::builtin_terrain_cost_units`]).
     pub fn terrain_cost_units(ty: i32) -> i32 {
+        crate::data::paint_units(ty)
+    }
+
+    /// The built-in clearing cost (terrain table +0x24): rocks and trees 5, elm and water 10, wetlands 50, marsh 100,
+    /// everything else nothing.
+    pub fn builtin_terrain_clear_units(ty: i32) -> i32 {
+        match ty {
+            12..=15 => 5,
+            16 | 17 | 23..=25 => 10,
+            18 => 50,
+            19 => 100,
+            _ => 0,
+        }
+    }
+
+    /// The built-in cost per tile of laying a terrain type, in units of 100, from the exe's terrain table (the figure its
+    /// build menu shows is this times 100). Indexed by the original tile id 0..19; ids without an entry (building lots,
+    /// editor-only ids) cost nothing.
+    pub fn builtin_terrain_cost_units(ty: i32) -> i32 {
         const K: [i32; 20] = [5, 10, 3, 3, 1, 2, 4, 6, 4, 8, 10, 4, 4, 10, 10, 10, 25, 50, 2, 6];
         match ty {
             0..=19 => K[ty as usize],
@@ -178,7 +232,7 @@ impl Economy {
             return false;
         }
         self.staff[kind] -= 1;
-        self.spend_to(LEDGER_SALARIES, Self::FIRING_UNITS * Self::UNIT);
+        self.spend_to(LEDGER_SALARIES, crate::data::economy().firing_units as f64 * Self::UNIT);
         true
     }
 
@@ -222,47 +276,59 @@ impl Economy {
     }
 
     /// One game tick: maintenance and wages every 1024/(difficulty+2) ticks, debt interest at month start, the board at year end.
-    pub fn on_tick(&mut self, tick: u32, difficulty: i32, active_holes: usize, staff: &[Payroll], rng: &mut ExeRng) {
+    /// Returns the wage units paid to each entry of `staff` this tick (the exe adds them to the employee's total paid, +0x14).
+    pub fn on_tick(&mut self, tick: u32, difficulty: i32, active_holes: usize, staff: &[Payroll], rng: &mut ExeRng) -> Vec<i32> {
         self.tick = tick;
+        let mut paid = vec![0; staff.len()];
         if self.game_over {
-            return;
+            return paid;
         }
         let interval = 1024 / (difficulty.clamp(0, 3) as u32 + 2);
         if tick.is_multiple_of(interval) {
+            let upkeep = crate::data::economy().maintenance_units as f64 * Self::UNIT;
             for _ in 0..active_holes {
-                self.spend_to(LEDGER_MAINTENANCE, Self::UNIT);
-                self.upkeep_paid += Self::UNIT;
+                self.spend_to(LEDGER_MAINTENANCE, upkeep);
+                self.upkeep_paid += upkeep;
             }
             let r = rank(active_holes);
-            for p in staff {
+            for (p, paid) in staff.iter().zip(paid.iter_mut()) {
                 if rng.below(4 - difficulty.clamp(0, 3)) <= r {
-                    let w = WAGE_UNITS[p.kind.min(3)][p.experienced as usize] as f64 * Self::UNIT;
+                    let units = crate::data::wages()[p.kind.min(3)][p.experienced as usize];
+                    let w = units as f64 * Self::UNIT;
                     self.spend_to(LEDGER_SALARIES, w);
                     self.wages_paid += w;
+                    *paid = units;
                 }
             }
         }
         if tick & 0x3ff == 0 && self.cash < 0.0 {
-            // 2% a month on debt, in whole units, truncated toward zero.
+            // 2% a month on debt (data/economy.toml), in whole units, truncated toward zero: units x 2 / 100 is the
+            // exe's units / 50 exactly
             let units = (self.cash / Self::UNIT).trunc() as i64;
-            let interest = (units / 50) as f64 * Self::UNIT;
+            let interest = (units * crate::data::economy().interest_percent as i64 / 100) as f64 * Self::UNIT;
             self.earn(interest);
             self.book(LEDGER_MAINTENANCE, interest);
         }
         if tick & 0x1fff == 0 && tick > 0 {
             self.year_end();
         }
+        paid
     }
 
-    /// The board at year end: three year ends in a row with negative cash end the game; a positive one clears the record.
+    /// The board at year end, as the year-end report runs it (0x44cff0): with cash below zero outside a sandbox the debt
+    /// counter steps 0 -> 1 -> 2 -> 3, and the report adds two lines in red for the step (the board is concerned, two years
+    /// to recover; very worried, one more year; no profit, the contract is terminated); cash of zero or more resets the
+    /// counter. Once the counter is past 2 the game is over (`game_over`): the main loop asks the player to go on in
+    /// Sandbox Mode or return to the main menu (`continue_in_sandbox`).
     fn year_end(&mut self) {
         if self.cash < 0.0 && !self.sandbox {
             let stage = self.debt_stage;
             self.debt_stage += 1;
             self.notice = match stage {
-                0 => "The board is concerned about our negative cash situation. You have two years to return to positive cash.",
-                1 => "The board is very worried about our lingering debt. You have one more year to get out of debt.",
-                _ => "You have been unable to make a profit on this course. Regrettably, the board has terminated your contract.",
+                0 => tr("STR_BOARD_CONCERNED"),
+                1 => tr("STR_BOARD_WORRIED"),
+                2 => tr("STR_BOARD_TERMINATED"),
+                _ => "",
             }
             .to_string();
             if self.debt_stage > 2 {
@@ -273,11 +339,28 @@ impl Economy {
         }
         self.version = self.version.wrapping_add(1);
     }
+
+    /// "Continue this game in Sandbox Mode." after the contract is terminated (main loop 0x420b27): the debt counter goes
+    /// back to 0 and the game carries on as a sandbox game (flag 0x1000000).
+    pub fn continue_in_sandbox(&mut self) {
+        self.debt_stage = 0;
+        self.game_over = false;
+        self.sandbox = true;
+        self.version = self.version.wrapping_add(1);
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn money_digits_group_by_thousands() {
+        assert_eq!(money_digits(0), "0");
+        assert_eq!(money_digits(800), "800");
+        assert_eq!(money_digits(2000), "2,000");
+        assert_eq!(money_digits(-1234567), "-1,234,567");
+    }
 
     #[test]
     fn three_negative_year_ends_end_the_game() {
@@ -292,6 +375,26 @@ mod tests {
             }
         }
         assert!(e.game_over);
+        assert_eq!(e.notice.lines().last(), Some("Regrettably, the board has terminated your contract."));
+        e.continue_in_sandbox();
+        assert!(!e.game_over && e.sandbox && e.debt_stage == 0);
+    }
+
+    #[test]
+    fn a_positive_year_end_clears_the_debt_counter() {
+        let mut e = Economy { start_cash: -100.0, ..Default::default() };
+        e.init();
+        let mut rng = ExeRng::from_clock(1);
+        for t in 1..=0x2000u32 {
+            e.on_tick(t, 1, 0, &[], &mut rng);
+        }
+        assert_eq!(e.debt_stage, 1);
+        assert_eq!(e.notice, "The board is concerned about our negative cash situation.\nYou have two years to return to positive cash.");
+        e.cash = 0.0;
+        for t in 0x2001..=0x4000u32 {
+            e.on_tick(t, 1, 0, &[], &mut rng);
+        }
+        assert_eq!(e.debt_stage, 0);
     }
 
     #[test]
@@ -312,8 +415,10 @@ mod tests {
         e.init();
         let mut rng = ExeRng::from_clock(9);
         let staff = [Payroll { kind: CLUB_PRO, experienced: false }];
-        e.on_tick(204, 3, 0, &staff, &mut rng);
+        let paid = e.on_tick(204, 3, 0, &staff, &mut rng);
         assert_eq!(e.cash, e.start_cash - 300.0);
+        // the units go on the employee's total paid
+        assert_eq!(paid, vec![3]);
     }
 
     #[test]

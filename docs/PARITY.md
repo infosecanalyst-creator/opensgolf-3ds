@@ -40,7 +40,7 @@ The pre-game character page the port used to show does not exist in the original
 ## Rules for every change (so a gap is never silent)
 
 * Before building any screen or feature, check what the exe draws and plays for it: list the art files, sounds and animations it references (grep the decompile for the screen's routine) and use them. A screen built from flat boxes is a placeholder and must be tagged `PLACEHOLDER` with the art it should use.
-* After each batch run `python3 tools/parity_audit.py GAME_DIR spec/golf_decomp.c` and compare the gap count with the last commit; it must not rise, and the finished screen's files must leave the list.
+* After each batch run `python3 tools/parity_audit.py GAME_DIR spec/golf_decomp.c` and compare the gap count with the last commit; it must not rise, and the finished screen's files must leave the list. (The script now reads the Rust crates as well as the old C++ tree; on 2026-10-10 it counts 411 gaps, most of them FLC sets loaded by pattern.)
 * Update the gap table above in the same commit.
 
 ## Update 67 additions (headless only, never run on the Mac)
@@ -48,7 +48,7 @@ The pre-game character page the port used to show does not exist in the original
 |---|---|
 | HUD | Top bar uses the original courseinfo art and shade sheet |
 | Best Scores | Module, test, recording, persistence and screen done; trigger keys F12 (Best), F11 (Top 10), Shift+K are PLACEHOLDERS until menus fully replace them |
-| Popup menus | Information (12 items) and System Functions (8 items) on the InfoButtons 9-slice frame, plus Preferences and rename prompt. PLACEHOLDER: radio ball sprite, text colours, Preferences labels beyond three. Load Game saves a While Browsing file but Cancel does not yet restore it |
+| Popup menus | Information (12 items) and System Functions (8 items) on the InfoButtons 9-slice frame, plus Preferences and rename prompt. EXACT: the frame, fill, text colours and offsets, radio balls, checkboxes and OK tick (0x46d6e0, DECODE_MENUS 1), the list box 0x46de70, the retirement question's rules. PLACEHOLDER: Preferences labels beyond three (the port adds Sound, HD graphics and *Content packs...*, the last a command line drawn without a checkbox that opens the port's Preferences > Content screen, docs/MODDING.md). Load Game saves a While Browsing file but Cancel does not yet restore it |
 | Open | Load screen emblem and tooltips, pair selection trigger, stats card, golfer bodies and palettes, play-core constants from DECODE_PLAYCORE.md, world facts from DECODE_WORLD2.md |
 Audit count: 982 gaps (down from 987).
 
@@ -127,7 +127,7 @@ Not yet run on the Mac. Headless checks only.
 
 | Area | State | Notes |
 |------|-------|-------|
-| Player panel (JoeCoolPanel, dock modes 3 and 4) | DERIVED | Opens from the player tab of the Golfers panel; hit zones, tooltips and button table are EXACT (ui_panels.h). Skill list, scorecard dst (297,366) and the hover and disabled cut columns (50, 100) are PLACEHOLDER |
+| Player panel (JoeCoolPanel, dock modes 3 and 4) | EXACT | crates/simgolf/src/player_panel.rs (dock panel 5). Hit zones, draw table (0x4c7ac0), cut states (hover, selected, disabled, idle at x 0/50/100/150, ovals 0/100/200/300), enable conditions, skill list (494,540), the round scorecard over the cover cut (0x461110) and tooltips read from the exe. Port choices: the shot ovals' hits follow the aim (exe: any mode 3), each oval uses its own alpha cell (the exe's two alpha cells are near identical), Customise opens on the pro's slot (exe: slot 0x98); the panel has no cancel button, N twice still cancels |
 | Practice Round | DERIVED | Needs two open holes and no player out; the player's character walks the course with its own skills and body, pays no fee, is not recorded in the books and never quits. Play (vs a pro) and Begin Tournament only show a notice |
 | Shot shape ovals | DERIVED | Selection is stored and drawn; it does not change shots yet |
 | Hole open message | PLACEHOLDER wording | Odd and even hole texts and the dogleg side follow DECODE_WORLD2 5.4 |
@@ -158,7 +158,22 @@ Tested headless only (a hooked match run to a win, the tutorial page render); no
 | Refusal, chip, TaDa, Twinkle, bagpipe, end-of-year, tournament place sounds | DERIVED | Wired to the shipped wav files; trigger points are my reading |
 | Emotion voice clips | weak reading | Bank-to-reaction mapping guessed from file names |
 | Bottom golfer mood strip | PLACEHOLDER position | Round faces from MemberPanel.pcx with number cells; click opens the golfer card |
-| Name tags over golfers and staff | PLACEHOLDER | Seen in real screenshots; font, offset and Shift+N toggle are mine |
+| Name tags over golfers and staff | EXACT font and place, PLACEHOLDER toggle | 0x462be0: Arial Bold 10 at zoom 4 (Manual SSi 15 above), centred with the text's top at the golfer's point, no shadow; the Shift+N toggle is mine |
+| Text sizes and placement | EXACT | The exe's font size is GDI's em height in pixels (jgl.dll builds a LOGFONT with lfHeight = -size); a text call's y is the top, the baseline sitting tmAscent - tmInternalLeading below it (TA_BASELINE TextOut), widths in whole pixels per glyph. ui::Fnt carries face and size for each font object (F_ARIAL10, F_MANUAL15, F_MANUAL20, F_KLEPTO18/24, F_MANUAL24, the info set F_INFO_TITLE/F_INFO20/16/14) and Screen::put* place text by its top. Converted: HUD, ticker, thoughts and advisor bubbles, names, floating money, tooltip bars, the Amenities info box, golfer card, pair screen, top 10, the info screens' titles and bodies (report, hole stats, best scores, comments, histograph, finance, shortcuts, SGA, results, leaderboard, year end, land, hire), the title menu, difficulty, load and theme screens and the credits |
+| Ticker strip and dialog frame fills | EXACT | 0x40ca10 darkens 16 x 16 tiles through s_TransPopups masks (the frame's 3 x 3 rounded cuts by tile place, the strip's square at (317, 0)) with colour table 0x824148, which halves each channel; the rail pieces are TransPopups (300/317/334, 34), cut by 0x4466b1 |
+| Tooltip bar | EXACT | 0x432620: Arial Bold 10, three pixels per character either side of the point (kept on screen), a black line 10 thick at half opacity (Terrain::drawLine's last argument is the alpha in tenths), white text centred with its top 5 above the point; the golfer card's button tips use it at the pointer |
+| Terrain button tooltip | EXACT, DERIVED text file match | 0x433190: the translucent frame (x - 80, 402, 160 x 112) with its TransPopups tab strip, the name, " $" and the cost in Manual SSi 15, the lie's mood face, the description from Interface/<theme>.txt (the line after "*Name", matched without case: DERIVED) wrapped at 128 in Arial Bold 10, the bounce and roll meters with the GBUBBLES ball; the exe's "Lie:" words are built and never drawn. The amenity strip's box is still a PLACEHOLDER |
+| Speech bubbles (thoughts, advisor) | EXACT, DERIVED tail | Text top at zoom * 10 above the person, Arial Bold 10 at zoom 4 (Manual SSi 15 above), a 10 pixel half black line the text's width plus 8, the tail cut (512, 140) of course1.pcx at (x + 4, y + 10) through the halving table; the tail's shape (its darker pixels) is DERIVED |
+| Flower beds under rotation | EXACT | 0x41266b rotates the neighbour mask right one place per quarter turn (0x5685f4 / 2) before the piece table, so pieces follow the screen; the single and four-sided pieces keep view (a - 2b) & 3 whatever the camera |
+| Landmarks on the course | EXACT | 0x463180 case 4: sprite 0x168 + type in palette 100 + type, view (facing + rot / 2) & 3, type 3 turning by the full eighth count |
+| Weedy flower bed palette | EXACT | The exe loads palette 0xbb only from flics\bldgs\flowers\...IckyPal, which the disc does not have, so the load fails and the palette object stays empty. The tile loop's paletted blit (0x4741b0, jgl.dll sprite vtable +0x78 at 0x100098c0) keeps the palette it is given in the sprite object and, given none, draws in the one kept (the +0x6c blit restores it, +0x78 and +0x4c do not). So a weedy bed shows the colour its piece sprite was last drawn in: the previous bed of that piece in the tile loop (b outer, a inner, tiles on the screen), or the Flowers design strip's last icon of that shape (0x432200 draws through the same sprites after the map), or the FLC's own palette before any. `App::bed_palette`, render.rs |
+| Edge of the property (cliff) | EXACT | Terrain.dll 0x1000ea30: every tile not out of bounds gets, on each side whose neighbour exists and is type 20, a face from the side's end vertices down to height -75 textured once with the theme's strata.bmp; sides drawn by view (-y: views 1, 2; +y: 0, 3; -x: 0, 1; +x: 2, 3) with the normal table at 0x10063c40 (two per side by view parity, not unit length, so the shader no longer normalises normals). The map's own border has no wall. Matches footage p1 1700 (the stone edge along Dolphin Coast). `App::build_edge_walls` |
+| World overlay lines | EXACT | Terrain::drawLine's last argument is the alpha in tenths and its colour each 5-bit channel times 8 over 255 (Terrain.dll 0x100048a0). Every world line passes 7: aim line and its shadow (0x41bbdc), hole length line (0x41af71), elevation block outline (0x41617f), footprint (0x419e6a), landmark ring and shot analysis circles (0x407c60), analysis tracks (0x41d5f0), sweet shot streak (0x415809); the hole layout path's white line 9 over a black one at 7 (0x41382f, 0x4137fe). `ui::line_rgba` |
+| Bridges under rotation | EXACT | 0x41192c reads the four path neighbours by screen heading ((0x5685f4 + 2k) & 7), so the masks turn right one place per quarter turn before the piece table, like the flower beds; the caps' screen offsets follow the screen |
+| Wildlife kind table | EXACT | 0x4c1998, nine records of 18 bytes: name (Elk, Crane, Flamingo, Sheep, Crocodile, Snake, Gila, Road runner, Duck), habitat type (14, 4, 15, 4, 4, 12, 4, 4, 4) and theme mask (9, 1, 4, 8, 4, 6, 2, 2, 12), read from the publisher exe |
+| Player Comments report | EXACT | 0x4546b0: rows from the header piece's height + 22 (124), words 2 lower; nothing in place of the rows when none was recorded; OkStates tick at (591, bottom piece + 14) |
+| Histograph | EXACT | 0x455ed0: labels Skill, Cash, Fun, Event centred at y 542; the skill scale in the hundredths format (0x42dd50: 0.00 .. 5.00, 10.00 .. 25.00, doubled over 2500); plot lines from last month's height to this month's (0x478b80) clipped to (106, 72, 598 x 450); only the cash line mirrors a small negative sample; event marks: 2 x 2 dot on the skill line at x + 10, cyan stalk at x + 11, dot on top, words left at (x + 14, top - 3) |
+| Sprite shadows | EXACT order | 0x43d740 composites NameShadow.flc under Name.flc into the same frames at load, so shadows are drawn with their sprite in depth order (a nearer sprite's shadow falls over a farther one), not in a pass of their own |
 
 Tested headless only; not run on the Mac.
 
@@ -203,3 +218,25 @@ Not found in the decompile: the info card click handlers, the story screen, the 
 Checked headless on all dock buttons; the panel tab and player panel hovers were not changed and not re-verified with real mouse input.
 
 Tool (update 80): `sgsprites <game dir> <output dir>` exports every Flics sprite to a PNG sheet (row per view, column per frame, shadows as _shadow). Palette variants are not applied.
+
+## Tournament screens, second pass
+
+| Item | Status | Notes |
+|---|---|---|
+| Live leader board | EXACT | 0x45a090: frame (0, 8, 144, 22 (H + 1) + 16), title tops 9 / 21 / 33, rows from 45 every 11, x 7 (x 1 from place 10), pro 0x23e8, prize not grouped, no shrinking; championship "at <course>". Footage p1 4700-6200 agrees (2 pixel registration error at the top of the screen) |
+| Tournament results | EXACT | 0x45a090: row steps 26 / 18, names at x 25, hole columns by hole number, "F" = total strokes, prize "§n,000" in 0x1284, bands 2 pixels left and the header 10 up (trimmed sprite cuts). Footage p2 86-92 agrees |
+| Recommendations list | EXACT (exe over footage) | 0x46d200: the TV towers' line is the first option (bit 0) and the towers and booths are placed only when it stays ticked; the footage's build shows no such line. Booth direction coin fixed (+2 on a non-zero coin) |
+| Professional Tournament scorecard | EXACT | 0x461110 as before; a long name's smaller font no longer applies to its numbers. Test hook `--edit "g:2"` |
+| Great-shot SimFoto | EXACT | 0x409620 / 0x407e00 (DECODE_TOURNAMENTS.md 9): the zoom and replay-record gate, the composed message, the photo's bounds, track and flight, border, caption and date, the message box at (150, top - 192) or below the photo, the click wait (F10 saves), the ticker fallback and the after-effects; footage p1 3001, 5161, 6158 agree (box frame at top - 156, the wrap word for word, the HUD hidden). Not ported: the pro's partner slot's skill table 0x5a5a14 |
+| Message box height | EXACT | 0x40d320 takes 15 per line break (0x45af30 counts breaks) plus 0x20, with or without a speaker; footage strips p2 1120 / 1880 and the p1 3001 box agree |
+
+## Dock panels and maps (October 2026)
+
+| Item | Status | Notes |
+|---|---|---|
+| Green button flag | EXACT | The loader (0x43d740, shadow argument 1) plays the Shadow.flc and then the body into one canvas, so the flag carries its shadow; the port draws the shadow sprite first at the same anchor. Position checked: canvas centre (240, 240) of the 80 x 60 cut at (200, 200) lands on (slot x + 31, slot y + 24), the port's anchor; footage p1 1600-1760 agrees within a pixel, so no y offset |
+| People button | EXACT | 0x432720: mode 2 unless already 2 (then closed, 5); the Employee overlay flag 0x561254 is left alone. The port keeps the overlay's underlying mode (Golfers or Player): from the Employee panel over the Player panel People moves to mode 2 and the Employee panel stays; mode 3 (the pro's shot, 0x4289e0) clears the flag. Dock hover compares the raw mode, so People lights over the Player panel |
+| Golfers list click | EXACT | 0x435680: the camera always goes to the golfer; the card (0x53df54) opens only when his screen x (+0x08, -1 off screen) is set or a card is open |
+| Routing map flags | EXACT | Palette 0x60 + theme (the Parkland house palette, unloaded 0x61/0x62, the Links flag palette), not 0x63; marker, line, number, line, flag drawn at once in that order (0x4628d0 draws straight away); shadows drawn. Tile colours were already exact. The G4 clip shows no yellow numbers and dark flags; the exe draws the numbers unconditionally and footage of the land map (p1 3120) shows them |
+| Land map | EXACT | 0x4587a0 draws the routing map's tiles (tab used last, 2 px higher) and the same hole marks; tract numbers in 0x821f28 centred at (x - 7, y - 4) of tile (8, 8)'s routing point, only while the tract has land for sale; if that tile is not for sale the position is the previous tract's text origin (stale variables), its price line when that tract was for sale (two lines of 17, PLACEHOLDER pitch). Footage p1 3120 matches within a pixel |
+| Face strip under panels | EXACT, unchanged | The strip (0x418d09 in 0x40f5c0) is drawn before the dock and panel calls (0x432ba0 and the panel draws), hidden only in a tournament; panels cover it, as the port already did |

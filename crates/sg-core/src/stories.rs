@@ -11,6 +11,7 @@ use crate::course::{idx, inside, Course};
 use crate::geom::{angle, dir8, len};
 use crate::golfer::{anim, flag, Club};
 use crate::land::ExeRng;
+use crate::lang::trf;
 
 /// The pair was picked by the player on the clubhouse screen (flag 0x20000 during pairing only).
 pub const MANUAL_PAIR: u32 = 0x20000;
@@ -295,6 +296,51 @@ impl Club {
         self.g[p].flags |= flag::STORY_BEAT;
     }
 
+    /// The golfer card's Next Chapter for golfer `gi` (the card's click handler, 0x41e81c). Only a story pair answers. The
+    /// replier (the one of the two without the story flag) gets a random reply for the hole the clicked golfer is on:
+    /// rand(chapter * 8), drawn again as rand(32) unless the replier's newest reaction was bad, and made the best reply (99)
+    /// when that reaction was good and the replier's attitude + 4 reaches chapter + rand(4) + difficulty. Then the beat is
+    /// forced for the owner (the clicked golfer when it has the story flag, else its pair slot); a failed beat costs both a
+    /// point of mood, and both are flagged as having had their beat. Returns false when the pair has no story.
+    pub fn next_chapter(&mut self, c: &mut Course, rng: &mut ExeRng, gi: usize) -> bool {
+        let p = self.g[gi].partner.clamp(0, crate::golfer::SLOTS as i32 - 1) as usize;
+        let own = self.g[gi].flags & flag::STORY != 0;
+        if !own && self.g[p].flags & flag::STORY == 0 {
+            return false;
+        }
+        let replier = if own { p } else { gi };
+        let step = self.g[gi].story_step;
+        let hole = self.g[gi].hole.clamp(0, 18) as usize;
+        let newest = self.g[replier].args[0];
+        let mut v = rng.below(step * 8);
+        if newest & 0x8000 == 0 {
+            v = rng.below(0x20);
+            if newest & 0x4000 != 0 {
+                let r = rng.below(4);
+                let attitude: i32 = self.g[replier].args[..5]
+                    .iter()
+                    .map(|&a| match a & 0xc000 {
+                        0x4000 => 1,
+                        0xc000 => -1,
+                        _ => 0,
+                    })
+                    .sum();
+                if step + r + self.difficulty <= attitude + 4 {
+                    v = 99;
+                }
+            }
+        }
+        self.g[replier].hole_mood[hole] = v as u8;
+        let owner = if own { gi } else { gi ^ 1 };
+        if !self.story_beat(c, rng, owner, true) {
+            self.g[gi].mood -= 1;
+            self.g[p].mood -= 1;
+        }
+        self.g[gi].flags |= flag::STORY_BEAT;
+        self.g[p].flags |= flag::STORY_BEAT;
+        true
+    }
+
     /// The partner's reply quality for the scene (0x4669f0): worked out from mood on the first beat of a hole, nudged by the
     /// newest thought and a story landmark, and read back afterwards.
     fn story_choice(&mut self, c: &Course, step: i32, hole: usize, owner: usize) -> i32 {
@@ -368,13 +414,13 @@ impl Club {
             let pm = self.male(p);
             if self.g[p].story_step < step {
                 if ch == step - 1 {
-                    self.sound(0xa4 + pm, Some((self.g[p].x, self.g[p].y)));
+                    self.sound_after(0xa4 + pm, Some((self.g[p].x, self.g[p].y)), 1500);
                 } else {
-                    self.sound(0x5a + pm, Some((self.g[p].x, self.g[p].y)));
+                    self.sound_after(0x5a + pm, Some((self.g[p].x, self.g[p].y)), 1500);
                     self.g[g].mood -= 1;
                 }
             } else {
-                self.sound(0xa6 + pm, Some((self.g[g].x, self.g[g].y)));
+                self.sound_after(0xa6 + pm, Some((self.g[g].x, self.g[g].y)), 1500);
                 if step == 1 {
                     let j = jingle(c.theme, story & 1 != 0, false);
                     self.sound(j, None);
@@ -418,7 +464,7 @@ impl Club {
         self.log_event(crate::records::log::HAPPY, story);
         let hole = self.g[owner].hole.clamp(0, 18) as usize;
         let title = self.stories.title(story);
-        self.message(format!("Happy Ending: {}", title.trim_start()));
+        self.message(trf("STR_LOG_HAPPY_ENDING", &[("STORY", &title.trim_start())]));
         for gg in [owner, partner] {
             self.member_mut(gg).holes[hole] |= 2;
         }
@@ -440,7 +486,8 @@ impl Club {
         let t = landmark_for(c0, rng);
         self.free_landmarks |= 1 << t;
         self.landmarks_owned |= 1 << t;
-        self.message(format!("A {} is now available in your landmarks, free of charge.", crate::vips::landmark_name(t)));
+        // "A" (0x4e409c), the name with its article, " is now available in your landmarks menu." (0x4e4070)
+        self.message_by(trf("STR_MSG_LANDMARK_AVAILABLE", &[("A_LANDMARK", &crate::vips::landmark_after_a(t))]), -1, 0);
     }
 
     /// The story line a golfer is saying now (thought 0x32): the owner's opening line or the partner's reply.

@@ -8,11 +8,9 @@ use sg_core::course::Course;
 use sg_core::economy::{self, Economy};
 use sg_core::fsutil::resolve;
 use sg_core::golfer::{self as golf, Club};
-use sg_core::holes::*;
 use sg_core::land::{self, ExeRng, Land, Noise, Slot};
+use sg_core::lang::{tr, trf};
 use sg_core::mixer::Mixer;
-use sg_core::properties::{PROPERTIES, START_FUNDS};
-use sg_core::shot::GolferSkills;
 use sg_core::sprites::{load_sprite, Sprite};
 use sg_core::staff::{self, Employee, StaffEvent, StaffGolfer, TileState};
 use sg_core::terrain::*;
@@ -107,6 +105,16 @@ pub struct Prop {
     /// Drawn size (1 = the sprite's own) and height of the body above the ground in world units (the shadow stays down).
     pub scale: f32,
     pub lift: f32,
+    /// A golfer's colours: the clip is drawn in the palette composed for this outfit.
+    pub outfit: Option<sg_core::bodies::Outfit>,
+    /// The exe's view of the sprite whatever the camera (sprites the exe queues in a fixed view).
+    pub view: Option<i32>,
+    /// The sprite moved this many 800 x 600 pixels right and down on the screen from its ground point (the exe's screen
+    /// offsets); the prop still sorts by its ground point.
+    pub shift: (f32, f32),
+    /// A flower bed piece: its sprite id, palette id (0xbb while weedy, drawn in the piece's last palette, see
+    /// `App::bed_palette`) and tile.
+    pub bed: Option<(u16, u8, i32, i32)>,
 }
 
 impl Default for Prop {
@@ -133,6 +141,10 @@ impl Default for Prop {
             ambient: false,
             scale: 1.0,
             lift: 0.0,
+            outfit: None,
+            view: None,
+            shift: (0.0, 0.0),
+            bed: None,
         }
     }
 }
@@ -151,35 +163,41 @@ pub struct HoleStat {
 }
 
 pub struct PaintEntry {
-    pub name: &'static str,
+    /// The brush's name (a text key).
+    pub name_key: &'static str,
     pub ty: i32,
     pub vbyte: i32,
 }
 
-pub const PAINT: [PaintEntry; 20] = [
-    PaintEntry { name: "Fairway", ty: 2, vbyte: 0 },
-    PaintEntry { name: "Firm fairway", ty: 3, vbyte: 0 },
-    PaintEntry { name: "Green", ty: 1, vbyte: 0 },
-    PaintEntry { name: "Tee", ty: 0, vbyte: 0 },
-    PaintEntry { name: "Rough", ty: 4, vbyte: 0 },
-    PaintEntry { name: "Deep rough", ty: 5, vbyte: 0 },
-    PaintEntry { name: "Woods", ty: 13, vbyte: 0 },
-    PaintEntry { name: "Sand bunker", ty: 7, vbyte: 0 },
-    PaintEntry { name: "Pot bunker", ty: 9, vbyte: 0 },
-    PaintEntry { name: "Water shallow", ty: 17, vbyte: 0 },
-    PaintEntry { name: "Water middle", ty: 17, vbyte: 1 },
-    PaintEntry { name: "Water deep", ty: 17, vbyte: 2 },
-    PaintEntry { name: "Rock", ty: 12, vbyte: 0 },
-    PaintEntry { name: "Brush", ty: 11, vbyte: 0 },
-    PaintEntry { name: "Building lot", ty: 22, vbyte: 0 },
-    PaintEntry { name: "Cliff (editor id)", ty: 31, vbyte: 0 },
-    PaintEntry { name: "Ravine (editor id)", ty: 32, vbyte: 0 },
-    PaintEntry { name: "Flower bed (editor id)", ty: 33, vbyte: 0 },
-    PaintEntry { name: "Zen sand (editor id)", ty: 34, vbyte: 0 },
-    PaintEntry { name: "Grass bunker (editor id)", ty: 35, vbyte: 0 },
+pub const PAINT: [PaintEntry; 24] = [
+    PaintEntry { name_key: "STR_PAINT_FAIRWAY", ty: 2, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_FIRM_FAIRWAY", ty: 3, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_GREEN", ty: 1, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_TEE", ty: 0, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_ROUGH", ty: 4, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_DEEP_ROUGH", ty: 5, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_WOODS", ty: 13, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_SAND_BUNKER", ty: 7, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_POT_BUNKER", ty: 9, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_WATER_SHALLOW", ty: 17, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_WATER_MIDDLE", ty: 17, vbyte: 1 },
+    PaintEntry { name_key: "STR_PAINT_WATER_DEEP", ty: 17, vbyte: 2 },
+    PaintEntry { name_key: "STR_PAINT_ROCK", ty: 12, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_BRUSH", ty: 11, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_BUILDING_LOT", ty: 22, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_CLIFF", ty: 31, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_RAVINE", ty: 32, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_FLOWER_BED", ty: 33, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_ZEN_SAND", ty: 34, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_GRASS_BUNKER", ty: 35, vbyte: 0 },
+    // the rest of the Build Course panel's buttons, which paint these exe tile ids directly
+    PaintEntry { name_key: "STR_PAINT_WASTE_BUNKER", ty: 8, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_STREAM", ty: 10, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_PINE_TREE", ty: 14, vbyte: 0 },
+    PaintEntry { name_key: "STR_PAINT_PALM_TREE", ty: 15, vbyte: 0 },
 ];
 
-/// Building kinds the Add Buildings panel offers, in the exe's order (kind numbers of `land::BUILDINGS`): benches, flower beds,
+/// Building kinds the Add Buildings panel offers, in the exe's order (kind numbers of `sg_core::data::buildings()`): benches, flower beds,
 /// ball washers, then the amenities as holes unlock them. Paths have their own tool; landmarks and home sites need donations and
 /// members first.
 pub const OFFERED_KINDS: [i32; 16] = [1, 2, 3, 16, 19, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
@@ -192,25 +210,81 @@ pub enum Screen {
     Report,
     /// The exe's TRACTS FOR SALE screen.
     Land,
+    /// Select Difficulty, between Start New Game (or Sandbox Mode) and the property chooser.
+    Difficulty,
+    /// A popup menu over the game (Information, System Functions, Preferences).
+    Popup,
     /// The pro's skill dialog.
     Skills,
     /// The SGA report or tournament offer, the preparation checklist, the tournament results.
     Sga,
     Prep,
     Results,
-    /// Play a Championship: the course and pro choosers.
-    Champ,
+    /// Load Previous Game, and the championship course and Pick A Pro choosers built on it (files_ui).
+    Files,
+    /// Select a Theme Pack.
+    Themes,
+    /// The credits, from the title logo.
+    Credits,
+    /// The Hole Stats dialog behind a Course Report row, Best Scores and Top 10 Designers.
+    HoleStats,
+    BestScores,
+    Top10,
     /// SELECT THE NEXT PAIR OF GOLFERS, the accomplishments board, the year-end report, the Membership Roster.
     Pair,
     Board,
     YearEnd,
     Roster,
+    /// Customise Golfer, the player's own character editor.
+    Customise,
     /// F2 Player Comments, F3 Histograph, F4 Financial Report, F5 Routing Map, F8 Keyboard Shortcuts.
     Comments,
     Histograph,
     Finance,
     Routing,
     Shortcuts,
+    /// Preferences > Content: the installed content packs (the port's own screen, docs/MODDING.md).
+    Content,
+    /// Start New Game with scenario packs installed: a free game or a scenario (the port's own, docs/MODDING.md 5).
+    Scenarios,
+    /// Information > Scenario goals: the goals of the game and how they stand.
+    Goals,
+}
+
+/// Where saved games, championship courses and pros, accomplishment snapshots, packs and settings go. The browser keeps them
+/// in its own storage under plain names; Android in the app's internal data folder; on the desktop they go in the user's data folder (OPENSGOLF_SAVE_DIR, or the older
+/// SIMGOLF_SAVE_DIR, overrides it), not wherever the game happened to be started from. A player who already has a folder from
+/// before the project became OpenSGolf (named SimGolf / simgolf) keeps using it.
+pub fn save_dir() -> PathBuf {
+    #[cfg(target_arch = "wasm32")]
+    {
+        PathBuf::new()
+    }
+    // Android: the app's internal data folder (android.rs)
+    #[cfg(target_os = "android")]
+    {
+        crate::android::files_dir()
+    }
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+    {
+        let env = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty()).map(PathBuf::from);
+        if let Some(d) = env("OPENSGOLF_SAVE_DIR").or_else(|| env("SIMGOLF_SAVE_DIR")) {
+            return d;
+        }
+        let (base, new, old) = if cfg!(target_os = "windows") {
+            (env("APPDATA"), "OpenSGolf", "SimGolf")
+        } else if cfg!(target_os = "macos") {
+            (env("HOME").map(|h| h.join("Library/Application Support")), "OpenSGolf", "SimGolf")
+        } else {
+            (env("XDG_DATA_HOME").or_else(|| env("HOME").map(|h| h.join(".local/share"))), "opensgolf", "simgolf")
+        };
+        let Some(base) = base else { return PathBuf::new() };
+        let (new, old) = (base.join(new), base.join(old));
+        if !new.exists() && old.is_dir() {
+            return old;
+        }
+        new
+    }
 }
 
 /// A whole game as saved: the land and terrain, the golfers and holes, the staff, the money and calendar, and the exe's random
@@ -232,15 +306,42 @@ pub struct SaveGame {
     pub staff_tiles: TileState,
     pub game_tick: u32,
     pub hole_stats: Vec<HoleStat>,
+    /// The theme pack folder the game was played with (older saves: Standard).
+    #[serde(default)]
+    pub theme_pack: String,
+    /// The Top 10 course id (older saves: none).
+    #[serde(default)]
+    pub course_id: Option<i32>,
+    /// The year each property was bought (older saves: none recorded).
+    #[serde(default)]
+    pub bought: Vec<i32>,
+    /// The goals of the game: its scenario's and its scripts' (docs/MODDING.md 5 and 6; older saves: none).
+    #[serde(default, skip_serializing_if = "sg_core::scenario::Goals::is_empty")]
+    pub goals: sg_core::scenario::Goals,
+    /// The state of each pack's scripts (`this` and the script's random generator), by pack id.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub scripts: std::collections::BTreeMap<String, sg_core::script::PackState>,
 }
 
 const SAVE_MAGIC: &[u8] = b"SIMGOLF-NATIVE-SAVE\n";
+
+/// Reads a whole game saved by `App::save_game` (also used for the Load screen's preview of a save).
+pub fn read_save(path: &Path) -> Result<SaveGame, String> {
+    let data = sg_core::fsutil::read_file(path).ok_or_else(|| trf("STR_ERROR_FILE_NOT_FOUND", &[("FILE", &path.display())]))?;
+    read_save_bytes(&data, &path.display().to_string())
+}
+
+/// Reads a whole game from the bytes of a save file (`name` for the messages): a scenario pack's course may be in a zip.
+pub fn read_save_bytes(data: &[u8], name: &str) -> Result<SaveGame, String> {
+    let body = data.strip_prefix(SAVE_MAGIC).ok_or_else(|| trf("STR_ERROR_NOT_A_SAVED_GAME", &[("FILE", &name)]))?;
+    let json = miniz_oxide::inflate::decompress_to_vec_zlib(body).map_err(|e| format!("{name}: {e:?}"))?;
+    serde_json::from_slice(&json).map_err(|e| format!("{name}: {e}"))
+}
 
 /// One texture-batched mesh of the course.
 pub struct Batch {
     pub tex: TextureId,
     pub mesh: Mesh,
-    pub water: bool,
 }
 
 pub struct App {
@@ -252,12 +353,13 @@ pub struct App {
     pub light: Lighting,
     /// Loaded textures by file (None when the file could not be decoded).
     pub textures: HashMap<PathBuf, Option<TextureId>>,
+    /// The optional HD graphics (off by default; see hd.rs).
+    pub hd: crate::hd::HdState,
     pub batches: Vec<Batch>,
     pub path_batches: Vec<Batch>,
     /// Paths not joined to the clubhouse, drawn as mud tracks (manual p. 18).
     pub mud_batches: Vec<Batch>,
     pub wall_batches: Vec<Batch>,
-    pub hole: HoleInfo,
     pub last_report: String,
     pub econ: Economy,
     pub cam_x: f32,
@@ -277,8 +379,7 @@ pub struct App {
     /// The golfers and the course as they see it (the exe's golfer table and tile arrays).
     pub club: Club,
     pub course: Course,
-    /// The open holes (par set), drawn and reported from the golfers' hole records, and their hole numbers.
-    pub holes: Vec<HoleRoute>,
+    /// The numbers of the open holes (par set), from the golfers' hole records.
     pub hole_numbers: Vec<i32>,
     /// The terrain came from outside the hole tool (demo course, saved terrain, scripted edits): its painted tee and green
     /// pairs become holes at the next course sync.
@@ -288,11 +389,19 @@ pub struct App {
     pub golfer_clips: HashMap<i32, (Option<usize>, Option<usize>)>,
     /// 0..3 as in the exe (the standard game's value is not known yet; 1 is a guess).
     pub difficulty: i32,
+    /// The course's id in the Top 10 table (0x822c78): rand(0xffff) drawn when the difficulty is picked for a new game.
+    /// None for a game saved before it was kept.
+    pub course_id: Option<i32>,
+    /// The year (0 = 2001) each property was bought in this game, -1 for one not bought (the land records' byte +6).
+    pub bought: Vec<i32>,
     /// The exe's random number generator (land, offer) and the height noise it fills once at start-up.
     pub exe_rng: ExeRng,
     /// A second generator for things only drawn (celebrity residents, wildlife steps, water sparkle), so the club's draws do
     /// not depend on the camera or the frame rate.
     pub deco_rng: ExeRng,
+    /// A generator for what only the pointer and the frame show: the port's pick of a garden item's design and the water
+    /// glints' coin (the exe tosses that with its own generator, 0x822d9c, every frame).
+    pub look_rng: ExeRng,
     pub noise: Noise,
     /// This game's deal of properties to offer slots, and the slot each property is in.
     pub offer: [Slot; 16],
@@ -309,6 +418,11 @@ pub struct App {
     pub clicked_tile: Option<(i32, i32)>,
     /// The tile under the pointer (the pro's employee follows it until a hole exists).
     pub hover_tile: Option<(i32, i32)>,
+    /// The instant shot analysis on screen ('/' and '.'), how many of its shots are drawn so far, and the hole it analyses
+    /// (0x56c790, kept for '.').
+    pub analysis: Option<sg_core::analysis::Analysis>,
+    pub analysis_shown: usize,
+    pub analysis_hole: i32,
     /// The pro's skill dialog while open, and the shot preview while he waits for the player's aim.
     pub skill_dialog: Option<crate::pro_ui::SkillDialog>,
     pub aim: Option<sg_core::pro::AimPreview>,
@@ -322,7 +436,8 @@ pub struct App {
     pub sga: Option<crate::tourney_ui::SgaScreen>,
     pub prep: Option<(sg_core::tournament::Prep, i32)>,
     pub results: Option<sg_core::tournament::Results>,
-    pub champ: Option<crate::champ_ui::ChampScreen>,
+    /// The title's side screens (Load Previous Game, championship choosers, Theme Packs, credits) and the Save dialog.
+    pub title: crate::files_ui::TitleScreens,
     /// Tiles the player retyped since the last tick (each may draw wildlife), and the water depth of each tile.
     pub retyped: Vec<(i32, i32)>,
     /// The clubhouse and record screens: their art, the pair screen's picks, the golfers list page, the golfer card open,
@@ -330,22 +445,67 @@ pub struct App {
     pub art: crate::screens_ui::Art,
     pub pair_picks: Vec<usize>,
     pub golfer_page: usize,
+    /// The golfers drawn in the Golfers panel's cells this frame, in cell order (the exe's 0x5a9cf0).
+    pub member_cells: Vec<usize>,
     pub card: Option<usize>,
+    pub card_ui: crate::screens_ui::CardUi,
+    /// Take Snapshot's photo while it is being taken or held on screen.
+    pub simfoto: Option<crate::screens_ui::SimFoto>,
+    /// The great-shot SimFoto while it is on screen (0x407e00).
+    pub great_shot: Option<crate::screens_ui::GreatShot>,
+    /// The Preferences' "Show snapshots of great shots." (bit 2 of 0x5a5a00, on by default).
+    pub show_snapshots: bool,
+    /// The --screen greatshot test hook is waiting for the golfers' screen points.
+    pub test_great_shot: bool,
+    /// A character file was loaded whose portrait still has to be registered (needs the graphics context).
+    pub portraits_due: bool,
+    /// Customise Golfer, while open.
+    pub cust: Option<crate::cust_ui::Customise>,
     pub year_notice: String,
+    /// The tick the End of Year report reads (0x44cff0 reads the date of the moment it opens: the year index of the tick
+    /// that ends the year, so 2000 + n after the n-th season, the year just finished).
+    pub year_end_tick: u32,
     pub roster_offset: usize,
-    /// The accomplishment snapshot still to take (id and map point), and the snapshots taken this session.
-    pub snapshot_due: Option<(usize, (i32, i32))>,
+    /// The accomplishment snapshots still to take (id and map point), and the snapshots taken this session.
+    pub snapshot_due: Vec<(usize, (i32, i32))>,
     pub snapshots: HashMap<usize, crate::ui::Image>,
     /// The report screens' art, the routing map's tab and selected hole.
     pub reports: crate::reports_ui::ReportArt,
+    /// The dock panels' sheets and their state (panels_ui).
+    pub panel_art: crate::panels_ui::PanelArt,
+    pub pstate: crate::panels_ui::PanelState,
+    /// The info screens' art and state (OK ticks, report, hole stats, best scores, top 10, land and world screens).
+    pub info: crate::info_ui::Info,
     pub route_tab: usize,
     pub route_hole: usize,
+    /// The routing map's employee list: rows scrolled off the top (eight show at a time).
+    pub route_scroll: usize,
     /// The property chooser was opened from the course (F6) to move the club.
     pub world_move: bool,
     /// Draw the course only (for snapshots).
     pub no_hud: bool,
     /// Option "show golfer thoughts" (option bit 0x10).
     pub show_thoughts: bool,
+    /// Option bit 0, "Display golfer names on screen" (Shift+N).
+    pub show_names: bool,
+    /// The dock button under the pointer and for how many frames (its tooltip waits for 11).
+    pub dock_tip: (i32, u32),
+    /// Frames drawn while paused (0x5a9f5c): the dock's Pause button blinks gold every fourth frame.
+    pub dock_blink: u32,
+    /// Floating money (0x40c890): an 8-entry ring of (amount in $100 units, map x, map y, ticks left).
+    pub floats: [(i32, i32, i32, u8); 8],
+    pub float_next: usize,
+    /// The popup menu shown, and the last ticker message (Repeat Last Message).
+    pub popup: Option<crate::popup_ui::Popup>,
+    /// The content packs found and loaded (docs/MODDING.md), for Preferences > Content.
+    pub content: crate::content::ContentState,
+    /// The scenario's goals and the packs' scripts of the game in progress (scenario_ui).
+    pub scen: crate::scenario_ui::ScenarioState,
+    pub last_message: String,
+    /// The main screen's message window (the exe's ticker).
+    pub ticker: crate::message_ui::Ticker,
+    /// The course name being typed (Rename Course...), while the prompt is open.
+    pub rename: Option<String>,
     pub water_depth: Vec<u8>,
     /// An employee picked up to be moved: the next click on the course becomes their post (the exe's "Move this employee").
     pub moving_employee: Option<usize>,
@@ -353,18 +513,47 @@ pub struct App {
     /// 6 Lawn Technician, 7 Soda Vendor; 8 the player's pro) and state (walk, stand, action): body and shadow.
     pub staff_clips: [[(Option<usize>, Option<usize>); 3]; 9],
     pub weed_sprite: Option<usize>,
+    /// The palette id each flower bed piece sprite (0x1a2..0x1b3) was last drawn in, 0 for none yet. The exe draws a bed
+    /// through jgl's paletted blit (sprite vtable +0x78, 0x100098c0 in jgl.dll), which keeps the palette it is given in the
+    /// sprite object and, given none, draws in the one it kept. A weedy bed's palette object (0xbb) is never loaded (its
+    /// "flics\bldgs\flowers\...IckyPal" files are not on the disc), so the exe hands the blit no palette and the bed shows in
+    /// the colour the same piece sprite was last drawn in: the previous bed of that piece in the tile loop, or the design
+    /// strip's last icon of that shape, or before any of those the FLC's own palette.
+    pub bed_palette: [u8; 18],
     pub course_name: String,
     pub screen: Screen,
     pub title_base: Image,
     pub title_un: Image,
     pub title_mo: Image,
+    /// The highlight art split per title menu button (0..5) and for the logo (6).
+    pub title_mo_parts: Vec<crate::ui::Image>,
+    /// The swap palettes golfers are recoloured from, the palettes composed so far and the recoloured frames (sprite, frame,
+    /// outfit), dropped wholesale when the cache grows large.
+    pub swaps: sg_core::bodies::Swaps,
+    pub outfit_pals: HashMap<sg_core::bodies::Outfit, [u8; 768]>,
+    pub outfit_tex: HashMap<(usize, usize, sg_core::bodies::Outfit), miniquad::TextureId>,
+    /// Red silhouettes of sprite frames (sprite, frame), for a building preview that will not fit.
+    pub red_tex: HashMap<(usize, usize), miniquad::TextureId>,
+    /// The terrain brushes' tile pictures under the pointer (Data/parkland.pcx, desert, tropical, links: the exe's theme order).
+    pub tool_tiles: [Image; 4],
+    /// The rocks the frame stands along water banks (cliffs01.pcx, cut by 0x445970; see wild_ui's bank rocks).
+    pub cliffs: Image,
     pub world_base: Image,
+    /// The main screen's course badge and rating pills (Interface/courseinfo.pcx with its alpha sheet).
+    pub hud_art: Image,
+    /// The rest of the HUD's art and its face strip (hud_ui).
+    pub hud: crate::hud_ui::HudArt,
+    /// Shift is held (the face strip then shows the back nine only).
+    pub shift_held: bool,
+    /// The Select Difficulty art: the screen and the sheet of its lit items.
+    pub diff_base: Image,
+    pub diff_mo: Image,
     pub theme_icons: [Image; 4],
     pub report_art: Image,
     pub dock_art: Image,
     /// H toggles the advisor and story banners.
     pub show_advisor: bool,
-    /// Open dock panel: 0 none, 1 terrain, 2 buildings, 3 people.
+    /// Open dock panel: 0 none, 1 terrain (and Amenities), 2 buildings (and Elevation), 3 employees, 4 golfers, 5 player.
     pub panel: i32,
     /// Dock button under the mouse, -1 none.
     pub dock_hover: i32,
@@ -390,18 +579,32 @@ pub struct App {
     pub follow: bool,
     // Course editing
     pub edit: bool,
-    /// 0 paint, 1 raise (shift lowers), 2 path (shift removes), 3 wall, 4 building.
+    /// 0 paint, 1 raise (shift lowers), 2 path (shift removes), 4 building, 5 undo. (The original has no wall tool: walls
+    /// follow the ground, see build_walls.)
     pub tool: i32,
     /// 1 gravel, 2 paved.
     pub path_kind: i32,
     /// Building kind the building tool places (an exe kind, see OFFERED_KINDS).
     pub build_idx: usize,
+    /// Tab's turn for the next building (the exe's 0x5a34f0; the object faces `turn & 3`).
+    pub turn: i32,
     /// = selects raising, - selects lowering (the original's hotkeys); shift flips it.
     pub raise_sign: i32,
     pub paused: bool,
+    /// Game speed (Space cycles 1, 2, 4): above 1 the exe's fast mode is on as well (golfers walk twice as far a tick).
+    pub speed: u8,
     pub paint_idx: usize,
     /// The paint tool's variant (0x5a34f0, drawn when a terrain brush is picked) and the brush it was drawn for.
     pub paint_variant: Option<(usize, i32)>,
+    /// The design the next bench, flower bed, willow, scenic bridge or landmark takes and the kind it is for (the exe's
+    /// 0x56a514 and 0x5a9f60): set when the amenity is picked, then chosen from the strip of designs over the panel; it stays
+    /// after a placement. None for a landmark not chosen yet.
+    pub design: Option<(i32, i32)>,
+    /// The design last under the pointer on that strip (0x5a9f50), which a click in the panel makes the design; -1 none.
+    pub design_hover: i32,
+    /// Where each golfer slot's ball was drawn last frame (the exe keeps the screen point, 0x567b34 / 0x567d94), for the
+    /// sweet shot's streak.
+    pub ball_trail: Vec<Option<[f32; 3]>>,
     /// The land screen's tracts and the one under the pointer (9 = the cancel button).
     pub tracts: [sg_core::tracts::Tract; 9],
     pub land_hover: i32,
@@ -419,7 +622,6 @@ pub struct App {
     /// World units per drawable pixel (last render).
     pub upp: f32,
     pub course_file: PathBuf,
-    pub skills: GolferSkills,
     // Sound
     pub mixer: Option<Arc<Mixer>>,
     pub audio: Option<crate::audio::AudioOut>,
@@ -427,6 +629,11 @@ pub struct App {
     pub sound_log: bool,
     pub music_on: bool,
     pub ambience: i32,
+    /// The title tune (slot 0x80) while it plays, and whether the last frame was on the title screens (None: not yet known).
+    pub title_music: i32,
+    pub music_screen: Option<bool>,
+    /// The playing screen jingle and the screen it belongs to.
+    pub jingle: Option<(i32, Screen)>,
     pub music: i32,
     pub music_idx: usize,
     /// Wall clock (seconds) used for toasts and the story timer.
@@ -456,11 +663,11 @@ impl App {
             catalog: TextureCatalog::default(),
             light: Lighting::default(),
             textures: HashMap::new(),
+            hd: crate::hd::HdState { pack_dir: save_dir().join("HD"), ..Default::default() },
             batches: Vec::new(),
             path_batches: Vec::new(),
             mud_batches: Vec::new(),
             wall_batches: Vec::new(),
-            hole: HoleInfo::default(),
             last_report: String::new(),
             econ: Economy::default(),
             cam_x: 0.0,
@@ -477,14 +684,16 @@ impl App {
             time: 0.0,
             club: Club::default(),
             course: Course::default(),
-            holes: Vec::new(),
             hole_numbers: Vec::new(),
             adopt_holes: true,
             sim_time: 0.0,
             golfer_clips: HashMap::new(),
             difficulty: 1,
+            course_id: None,
+            bought: Vec::new(),
             exe_rng,
             deco_rng: ExeRng::from_clock(0x5167),
+            look_rng: ExeRng::from_clock(0x6c1),
             noise,
             offer,
             slot_of,
@@ -496,6 +705,9 @@ impl App {
             tick_acc: 0.0,
             clicked_tile: None,
             hover_tile: None,
+            analysis: None,
+            analysis_shown: 0,
+            analysis_hole: 0,
             skill_dialog: None,
             aim: None,
             cancel_until: 0,
@@ -504,32 +716,69 @@ impl App {
             sga: None,
             prep: None,
             results: None,
-            champ: None,
+            title: Default::default(),
             retyped: Vec::new(),
             show_thoughts: true,
+            show_names: true,
+            dock_tip: (-1, 0),
+            dock_blink: 0,
+            floats: [(0, 0, 0, 0); 8],
+            float_next: 0,
+            popup: None,
+            content: Default::default(),
+            scen: Default::default(),
+            last_message: String::new(),
+            ticker: Default::default(),
+            rename: None,
             art: Default::default(),
             pair_picks: Vec::new(),
             golfer_page: 0,
+            member_cells: Vec::new(),
             card: None,
+            card_ui: Default::default(),
+            simfoto: None,
+            great_shot: None,
+            show_snapshots: true,
+            test_great_shot: false,
+            portraits_due: false,
+            cust: None,
             year_notice: String::new(),
+            year_end_tick: 0,
             roster_offset: 0,
-            snapshot_due: None,
+            snapshot_due: Vec::new(),
             snapshots: HashMap::new(),
             no_hud: false,
             reports: Default::default(),
+            panel_art: Default::default(),
+            pstate: Default::default(),
+            info: Default::default(),
             route_tab: 0,
             route_hole: 1,
+            route_scroll: 0,
             world_move: false,
             water_depth: Vec::new(),
             moving_employee: None,
             staff_clips: [[(None, None); 3]; 9],
             weed_sprite: None,
-            course_name: "Demo Course".into(),
+            bed_palette: [0; 18],
+            course_name: tr("STR_DEMO_COURSE").into(),
             screen: Screen::Play,
             title_base: Image::default(),
             title_un: Image::default(),
             title_mo: Image::default(),
+            title_mo_parts: Vec::new(),
+            swaps: Default::default(),
+            outfit_pals: HashMap::new(),
+            outfit_tex: HashMap::new(),
+            red_tex: HashMap::new(),
+            tool_tiles: [Image::default(); 4],
+            cliffs: Image::default(),
             world_base: Image::default(),
+            hud_art: Image::default(),
+            hud: Default::default(),
+            shift_held: false,
+            diff_base: Image::default(),
+            diff_mo: Image::default(),
             theme_icons: [Image::default(); 4],
             report_art: Image::default(),
             dock_art: Image::default(),
@@ -555,9 +804,14 @@ impl App {
             path_kind: 1,
             build_idx: 7,
             raise_sign: 1,
+            turn: 0,
             paused: false,
+            speed: 1,
             paint_idx: 0,
             paint_variant: None,
+            design: None,
+            design_hover: -1,
+            ball_trail: Vec::new(),
             tracts: Default::default(),
             land_hover: -1,
             brush: 0,
@@ -568,14 +822,16 @@ impl App {
             dirty: false,
             mv: [0.0; 16],
             upp: 1.0,
-            course_file: PathBuf::from("course.sgc"),
-            skills: GolferSkills::default(),
+            course_file: save_dir().join("course.sgc"),
             mixer: None,
             audio: None,
             mute: false,
             sound_log: false,
             music_on: false,
             ambience: -1,
+            title_music: -1,
+            music_screen: None,
+            jingle: None,
             music: -1,
             music_idx: 0,
             clock: 0.0,
@@ -587,9 +843,12 @@ impl App {
         resolve(&self.game_dir, rel)
     }
 
+    /// A message for the player: on the course it goes to the ticker as the exe's messages do (priority 1, nobody
+    /// speaking); the title screens, which have no ticker, show it as a note at the bottom for 3 seconds.
     pub fn show_toast(&mut self, msg: &str) {
         self.toast = msg.to_string();
         self.toast_until = self.clock + 3.0;
+        self.post_message(msg, 1, crate::message_ui::NOBODY);
     }
 
     // ---- sound ------------------------------------------------------------------------------------------------------------
@@ -606,11 +865,83 @@ impl App {
         id
     }
 
-    /// Plays one of the exe's sound slots (the file each slot holds after the exe's loader, sg_core::sounds). The exe pans and
-    /// scales these by screen position; here they play centred.
-    pub fn slot_sound(&mut self, slot: i32, _x: f32, _z: f32) {
-        if let Some(file) = sg_core::sounds::slot_file(slot) {
-            self.snd(file, 0.7, false);
+    /// Plays one of the exe's sound slots (the file each slot holds after the exe's loader, sg_core::sounds) at a world point,
+    /// as the exe's positional call does: silent off screen, panned by the screen x, louder towards the edges (the exe's own
+    /// odd volume curve, 50 at the centre to 74 of 127 at the edge).
+    pub fn slot_sound(&mut self, slot: i32, x: f32, z: f32) {
+        self.slot_sound_after(slot, Some((x, z)), 0);
+    }
+
+    /// An interface sound: centred, never gated (the exe's position -1).
+    pub fn ui_sound(&mut self, slot: i32) {
+        self.slot_sound_after(slot, None, 0);
+    }
+
+    /// A screen's jingle (year end 0x7f, accomplishments 0x7e): it fades when the player leaves that screen.
+    pub fn screen_jingle(&mut self, slot: i32, screen: Screen) {
+        let id = self.slot_sound_after(slot, None, 0);
+        self.jingle = Some((id, screen));
+    }
+
+    pub fn slot_sound_after(&mut self, slot: i32, at: Option<(f32, f32)>, delay_ms: u32) -> i32 {
+        let Some(file) = sg_core::sounds::slot_file(slot) else { return -1 };
+        let sx = match at {
+            Some((x, z)) => match self.screen_of_world(x, z) {
+                Some((vx, vy)) if (0.0..800.0).contains(&vx) && (0.0..=500.0).contains(&vy) => vx,
+                _ => return -1,
+            },
+            None => 400.0,
+        };
+        let vol = (((sx - 400.0).abs() as i32 >> 4) + 50) as f32 / 127.0 * 1.3;
+        let pan = (sx * 127.0 / 800.0 - 64.0) / 64.0;
+        let (Some(m), false) = (self.mixer.clone(), self.mute) else { return -1 };
+        let id = m.play_at(file, vol, pan, delay_ms, false);
+        if self.sound_log {
+            println!("  sound: {file}{}", if id < 0 { "  (missing)" } else { "" });
+        }
+        id
+    }
+
+    /// Music and ambience by screen, as the exe's main loop has them: the title tune (Music Idea, slot 0x80) plays once when
+    /// the title menu opens and fades over a second when a game starts; the course ambience (slot 0x2d) loops during a game
+    /// and fades when the player goes back to the title. There is no music during play.
+    pub fn screen_audio(&mut self) {
+        if let Some((id, sc)) = self.jingle {
+            if sc != self.screen {
+                if let Some(m) = &self.mixer {
+                    m.fade_out(id, 1000);
+                }
+                self.jingle = None;
+            }
+        }
+        let title = matches!(
+            self.screen,
+            Screen::Menu | Screen::Scenarios | Screen::Difficulty | Screen::Property | Screen::Themes | Screen::Credits
+        ) || (self.screen == Screen::Files && !self.title.over_game());
+        if self.music_screen == Some(title) {
+            return;
+        }
+        self.music_screen = Some(title);
+        let Some(m) = self.mixer.clone() else { return };
+        if self.mute {
+            return;
+        }
+        if title {
+            if self.ambience >= 0 {
+                m.fade_out(self.ambience, 1000);
+                self.ambience = -1;
+            }
+            if self.screen == Screen::Menu && !m.playing(self.title_music) {
+                self.title_music = sg_core::sounds::slot_file(0x80).map(|f| m.play(f, 0.8, false)).unwrap_or(-1);
+            }
+        } else {
+            if self.title_music >= 0 {
+                m.fade_out(self.title_music, 1000);
+                self.title_music = -1;
+            }
+            if self.ambience < 0 {
+                self.start_ambience();
+            }
         }
     }
 
@@ -618,7 +949,8 @@ impl App {
         if let (Some(m), true) = (&self.mixer, self.ambience >= 0) {
             m.stop(self.ambience);
         }
-        self.ambience = self.snd("GolfAmbience122.wav", 0.22, true);
+        // slot 0x2d at the exe's full volume (100 of 127)
+        self.ambience = self.snd("GolfAmbience122.wav", 0.6, true);
     }
 
     pub fn toggle_music(&mut self) {
@@ -647,6 +979,12 @@ impl App {
         if let Some(t) = self.textures.get(path) {
             return *t;
         }
+        if crate::hd::active() {
+            if let Some(t) = crate::hd::texture(g, path) {
+                self.textures.insert(path.to_path_buf(), Some(t));
+                return Some(t);
+            }
+        }
         let tga = sg_core::fsutil::ext_lower(path) == ".tga";
         let id = sg_core::fsutil::read_file(path)
             .and_then(|d| if tga { sg_core::assets::decode_tga(&d).ok() } else { sg_core::assets::decode_bmp(&d).ok() })
@@ -664,8 +1002,8 @@ impl App {
         Vert { pos: [v.x, v.y, v.z], uv: [v.u, v.v], normal: [v.nx, v.ny, v.nz], color: [1.0; 4] }
     }
 
-    fn upload(g: &mut Gfx, map: BTreeMap<usize, (TextureId, Vec<Vert>, bool)>) -> Vec<Batch> {
-        map.into_values().map(|(tex, v, water)| Batch { tex, mesh: g.mesh(&v), water }).collect()
+    fn upload(g: &mut Gfx, map: BTreeMap<usize, (TextureId, Vec<Vert>)>) -> Vec<Batch> {
+        map.into_values().map(|(tex, v)| Batch { tex, mesh: g.mesh(&v) }).collect()
     }
 
     fn clear_batches(&mut self, g: &mut Gfx) {
@@ -679,7 +1017,8 @@ impl App {
     pub fn rebuild_batches(&mut self, g: &mut Gfx) {
         self.clear_batches(g);
         self.terrain.desert = self.theme == 2; // the original swaps shallow water for its desert variant in this theme
-        let mut map: BTreeMap<usize, (TextureId, Vec<Vert>, bool)> = BTreeMap::new();
+        self.terrain.sand_phase = ((self.rot / 90.0).round() as i32).rem_euclid(4);
+        let mut map: BTreeMap<usize, (TextureId, Vec<Vert>)> = BTreeMap::new();
         let mut tris = Vec::new();
         let mut order: HashMap<Option<TextureId>, usize> = HashMap::new();
         for y in 0..self.terrain.h {
@@ -693,12 +1032,9 @@ impl App {
                 for t in &tris {
                     let path = self.catalog.pick(t.tex_type, t.set, t.variation).cloned();
                     let tex = path.and_then(|p| self.texture_for(g, &p));
-                    let water =
-                        tex.is_some() && (t.tex_type == TT_WATER_SHALLOW as i32 || t.tex_type == TT_MARSH as i32 || is_water(t.tex_type));
                     let next = order.len();
                     let key = *order.entry(tex).or_insert(next);
-                    let e = map.entry(key).or_insert_with(|| (tex.unwrap_or(g.white), Vec::new(), water));
-                    e.2 |= water;
+                    let e = map.entry(key).or_insert_with(|| (tex.unwrap_or(g.white), Vec::new()));
                     e.1.extend(t.v.iter().map(Self::to_vert));
                 }
             }
@@ -706,6 +1042,7 @@ impl App {
         self.batches = Self::upload(g, map);
         self.build_paths(g);
         self.build_walls(g);
+        self.build_edge_walls(g);
     }
 
     /// Path overlay (our own model): every path tile gets a centre piece, plus an arm toward each path neighbour, cut out of the
@@ -715,7 +1052,15 @@ impl App {
         if t.path_kind.is_empty() {
             return;
         }
-        let connected = paths_connected_to_clubhouse(t);
+        // joined to the clubhouse: the exe's tile flag 0x40 from the clubhouse flood, which the terrain renderer gets with
+        // each path (no land yet: every path counts as joined)
+        let connected: Option<Vec<bool>> = self.land.as_ref().map(|l| {
+            let mut l = l.clone();
+            l.sync_from_terrain(t);
+            l.joined_tiles()
+        });
+        let joined_at =
+            |tx: i32, ty: i32| connected.as_ref().is_none_or(|j| !sg_core::course::inside(tx, ty) || j[sg_core::course::idx(tx, ty)]);
         let (ox, oz) = (-t.w as f32 * TILE_SIZE * 0.5, -t.h as f32 * TILE_SIZE * 0.5);
         struct Piece {
             r: [f32; 4],
@@ -725,7 +1070,9 @@ impl App {
         for ty in 0..t.h {
             for tx in 0..t.w {
                 let kind = t.path_at(tx, ty);
-                if kind == 0 {
+                // nothing is drawn out of bounds: a property's paths beyond the purchased land (round a landmark the
+                // land generator placed there) show once the tract is bought
+                if kind == 0 || t.type_at(tx, ty) == 20 {
                     continue;
                 }
                 let n = t.path_at(tx, ty - 1) != 0;
@@ -755,7 +1102,7 @@ impl App {
                 if e {
                     pieces.push(Piece { r: [b, a, 1.0, b], disc: false });
                 }
-                let joined = connected[t.tile_index(tx, ty)] != 0;
+                let joined = joined_at(tx, ty);
                 let vert = |wx: f32, wz: f32, u: f32, v: f32| {
                     let y = t.height_at(wx, wz) + 1.5;
                     let e = 12.0;
@@ -792,33 +1139,48 @@ impl App {
                 }
             }
         }
-        let mut paths: BTreeMap<usize, (TextureId, Vec<Vert>, bool)> = BTreeMap::new();
-        let mut mud: BTreeMap<usize, (TextureId, Vec<Vert>, bool)> = BTreeMap::new();
+        let mut paths: BTreeMap<usize, (TextureId, Vec<Vert>)> = BTreeMap::new();
+        let mut mud: BTreeMap<usize, (TextureId, Vec<Vert>)> = BTreeMap::new();
         let mut order: HashMap<&'static str, usize> = HashMap::new();
         for (joined, file, v) in jobs {
             let Some(tex) = self.theme_texture(g, file) else { continue };
             let next = order.len();
             let key = *order.entry(file).or_insert(next);
             let m = if joined { &mut paths } else { &mut mud };
-            m.entry(key).or_insert_with(|| (tex, Vec::new(), false)).1.extend(v);
+            m.entry(key).or_insert_with(|| (tex, Vec::new())).1.extend(v);
         }
         self.path_batches = Self::upload(g, paths);
         self.mud_batches = Self::upload(g, mud);
     }
 
-    /// Retaining walls: PLACEHOLDER look, a vertical strip standing on the tile edge, 30 units tall, plus a thin cap.
+    /// Retaining walls, built where the ground steps as the exe builds them (0x449540): a tile gets a wall on each edge whose
+    /// neighbour stands higher there (the course's wall bits, 0x42f530: the tile's two corners on that edge, flattened as its
+    /// type flattens them, against the neighbour's), in the style of its type (1 for water, 2 for any other ground; the
+    /// neighbour's style if the tile's is 0). Terrain.dll draws the face; the port's ground is one continuous surface, so
+    /// the look here is a PLACEHOLDER: a strip of `RetainingWallA.bmp` standing on the edge as tall as the step, with a thin cap.
+    /// Water banks get the same strip (the exe also stands rocks from cliffs01.pcx on them: see draw_bank_rocks).
     fn build_walls(&mut self, g: &mut Gfx) {
-        if self.terrain.wall_mask.is_empty() {
+        self.terrain.wall_mask = vec![0; self.terrain.ty.len()];
+        if self.land.is_none() {
             return;
+        }
+        self.sync_course();
+        use sg_core::course;
+        for ty in 0..self.terrain.h {
+            for tx in 0..self.terrain.w {
+                if course::inside(tx, ty) {
+                    let w = self.course.walls[course::idx(tx, ty)];
+                    let i = self.terrain.tile_index(tx, ty);
+                    self.terrain.wall_mask[i] = (0..4).fold(0, |m, d| m | (((w >> (2 * d)) & 1) << d));
+                }
+            }
         }
         let Some(tex) = self.theme_texture(g, "RetainingWallA.bmp") else { return };
         let t = &self.terrain;
-        const WALL_HEIGHT: f32 = 30.0;
+        let c = &self.course;
         const CAP: f32 = 5.0;
         let (ox, oz) = (-t.w as f32 * TILE_SIZE * 0.5, -t.h as f32 * TILE_SIZE * 0.5);
         let mut batch = Vec::new();
-        const DX: [i32; 4] = [0, 1, 0, -1];
-        const DY: [i32; 4] = [-1, 0, 1, 0];
         let vn = |x: f32, y: f32, z: f32, u: f32, v: f32, n: [f32; 3]| {
             let mut q = Vert::new(x, y, z, u, v);
             q.normal = n;
@@ -830,51 +1192,102 @@ impl App {
                     if !t.wall_at(tx, ty, dir) {
                         continue;
                     }
-                    // A shared edge is drawn by the north / west tile only, unless it lies on the map border.
-                    if (dir == 1 || dir == 2) && t.wall_at(tx + DX[dir as usize], ty + DY[dir as usize], (dir + 2) & 3) {
-                        continue;
-                    }
+                    // the step at each end of the edge: the neighbour's corner over this tile's (exe corners k = 2d - 1, 2d + 1)
+                    let d = 2 * dir;
+                    let (na, nb) = (tx + sg_core::geom::DX[d as usize], ty + sg_core::geom::DY[d as usize]);
+                    let k = d - 1;
+                    let step =
+                        |own: i32, theirs: i32| (c.corner(na, nb, theirs & 7) - c.corner(tx, ty, own & 7)).max(0) as f32 * HEIGHT_STEP;
+                    let (s0, s1) = (step(k, k + 6), step(k + 2, k + 4));
                     let (x, z) = (ox + tx as f32 * TILE_SIZE, oz + ty as f32 * TILE_SIZE);
+                    // ends in the order of corners k, k + 2 (7 = -x -y, 1 = +x -y, 3 = +x +y, 5 = -x +y)
                     let (x0, z0, x1, z1, ix, iz) = match dir {
                         0 => (x, z, x + TILE_SIZE, z, 0.0, CAP),
-                        2 => (x, z + TILE_SIZE, x + TILE_SIZE, z + TILE_SIZE, 0.0, -CAP),
-                        3 => (x, z, x, z + TILE_SIZE, CAP, 0.0),
-                        _ => (x + TILE_SIZE, z, x + TILE_SIZE, z + TILE_SIZE, -CAP, 0.0),
+                        1 => (x + TILE_SIZE, z, x + TILE_SIZE, z + TILE_SIZE, -CAP, 0.0),
+                        2 => (x + TILE_SIZE, z + TILE_SIZE, x, z + TILE_SIZE, 0.0, -CAP),
+                        _ => (x, z + TILE_SIZE, x, z, CAP, 0.0),
                     };
-                    let nx = if dir == 3 {
-                        -1.0
-                    } else if dir == 1 {
-                        1.0
-                    } else {
-                        0.0
-                    };
-                    let nz = if dir == 0 {
-                        -1.0
-                    } else if dir == 2 {
-                        1.0
-                    } else {
-                        0.0
-                    };
+                    let side = [[0.0, 0.0, -1.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [-1.0, 0.0, 0.0]][dir as usize];
                     const N: i32 = 4;
                     for i in 0..N {
                         let (a, b) = (i as f32 / N as f32, (i + 1) as f32 / N as f32);
                         let (xa, za, xb, zb) = (x0 + (x1 - x0) * a, z0 + (z1 - z0) * a, x0 + (x1 - x0) * b, z0 + (z1 - z0) * b);
+                        let (ha, hb) = (s0 + (s1 - s0) * a, s0 + (s1 - s0) * b);
                         let (ya, yb) = (t.height_at(xa, za), t.height_at(xb, zb));
-                        let side = [nx, 0.0, nz];
                         let (p0, p1) = (vn(xa, ya, za, a, 0.3, side), vn(xb, yb, zb, b, 0.3, side));
-                        let (p2, p3) = (vn(xb, yb + WALL_HEIGHT, zb, b, 0.0, side), vn(xa, ya + WALL_HEIGHT, za, a, 0.0, side));
+                        let (p2, p3) = (vn(xb, yb + hb, zb, b, 0.0, side), vn(xa, ya + ha, za, a, 0.0, side));
                         batch.extend_from_slice(&[p0, p1, p2, p0, p2, p3]);
                         let up = [0.0, 1.0, 0.0];
-                        let (c0, c1) = (vn(xa, ya + WALL_HEIGHT, za, a, 0.3, up), vn(xb, yb + WALL_HEIGHT, zb, b, 0.3, up));
-                        let (c2, c3) =
-                            (vn(xb + ix, yb + WALL_HEIGHT, zb + iz, b, 0.4, up), vn(xa + ix, ya + WALL_HEIGHT, za + iz, a, 0.4, up));
+                        let (c0, c1) = (vn(xa, ya + ha, za, a, 0.3, up), vn(xb, yb + hb, zb, b, 0.3, up));
+                        let (c2, c3) = (vn(xb + ix, yb + hb, zb + iz, b, 0.4, up), vn(xa + ix, ya + ha, za + iz, a, 0.4, up));
                         batch.extend_from_slice(&[c0, c1, c2, c0, c2, c3]);
                     }
                 }
             }
         }
         if !batch.is_empty() {
-            self.wall_batches.push(Batch { tex, mesh: g.mesh(&batch), water: false });
+            self.wall_batches.push(Batch { tex, mesh: g.mesh(&batch) });
+        }
+    }
+
+    /// The cliff round the property (Terrain.dll 0x1000ea30, every frame for every tile that is not out of bounds): on each
+    /// side whose neighbour tile exists and is out of bounds (type 20), a face from the side's two end vertices straight down
+    /// to height -75, two triangles textured once with the theme's `strata.bmp` (u 0 to 1 along the side, its grass cap at
+    /// the top). Only the sides facing the camera are drawn: the -y side ("N" in the DLL) in views 1 and 2, +y in views 0
+    /// and 3, -x in views 0 and 1, +x in views 2 and 3, the view being the camera's quarter turns. Each side's normal comes
+    /// from a table at 0x10063c40, one of two by the view's parity, and is not unit length (OpenGL does not normalise it).
+    /// The map's own border has no neighbour, so no cliff. Built for the current view: a quarter turn rebuilds the batches.
+    fn build_edge_walls(&mut self, g: &mut Gfx) {
+        let Some(tex) = self.theme_texture(g, "strata.bmp") else { return };
+        let t = &self.terrain;
+        let view = ((self.rot / 90.0).round() as i32).rem_euclid(4);
+        let odd = (view & 1) as usize;
+        // (neighbour step, the views that draw it, the normals for even and odd views)
+        type Side = ((i32, i32), [i32; 2], [[f32; 3]; 2]);
+        const SIDES: [Side; 4] = [
+            ((0, -1), [1, 2], [[0.707, 0.0, 0.707], [1.0, 1.0, 0.0]]),
+            ((0, 1), [0, 3], [[-0.707, 0.0, -0.707], [-1.0, 1.0, 0.0]]),
+            ((-1, 0), [0, 1], [[-1.0, 1.0, 0.0], [1.0, 0.0, 0.0]]),
+            ((1, 0), [2, 3], [[1.0, 1.0, 0.0], [-1.0, 0.0, 0.0]]),
+        ];
+        const BOTTOM: f32 = -75.0;
+        let (ox, oz) = (-t.w as f32 * TILE_SIZE * 0.5, -t.h as f32 * TILE_SIZE * 0.5);
+        let mut batch = Vec::new();
+        for ((dx, dy), views, normals) in SIDES {
+            if !views.contains(&view) {
+                continue;
+            }
+            let n = normals[odd];
+            let vn = |x: f32, y: f32, z: f32, u: f32, v: f32| {
+                let mut q = Vert::new(x, y, z, u, v);
+                q.normal = n;
+                q
+            };
+            for ty in 0..t.h {
+                for tx in 0..t.w {
+                    let (nx, ny) = (tx + dx, ty + dy);
+                    if t.type_at(tx, ty) == 20 || !(0..t.w).contains(&nx) || !(0..t.h).contains(&ny) || t.type_at(nx, ny) != 20 {
+                        continue;
+                    }
+                    let (x, z) = (ox + tx as f32 * TILE_SIZE, oz + ty as f32 * TILE_SIZE);
+                    let ((x0, z0), (x1, z1)) = match (dx, dy) {
+                        (0, -1) => ((x, z), (x + TILE_SIZE, z)),
+                        (0, _) => ((x, z + TILE_SIZE), (x + TILE_SIZE, z + TILE_SIZE)),
+                        (-1, _) => ((x, z), (x, z + TILE_SIZE)),
+                        _ => ((x + TILE_SIZE, z), (x + TILE_SIZE, z + TILE_SIZE)),
+                    };
+                    let (y0, y1) = (t.height_at(x0, z0), t.height_at(x1, z1));
+                    // the bitmaps are bottom-up in OpenGL, so v 1 is the picture's top row (the port's images are top-down)
+                    let top0 = vn(x0, y0, z0, 0.0, 0.0);
+                    let bot0 = vn(x0, BOTTOM, z0, 0.0, 1.0);
+                    let bot1 = vn(x1, BOTTOM, z1, 1.0, 1.0);
+                    let top1 = vn(x1, y1, z1, 1.0, 0.0);
+                    batch.extend_from_slice(&[top0, bot0, bot1, top0, bot1, top1]);
+                }
+            }
+        }
+        if !batch.is_empty() {
+            self.wall_batches.push(Batch { tex, mesh: g.mesh(&batch) });
         }
     }
 
@@ -889,6 +1302,11 @@ impl App {
         let r = match load_sprite(&path, shadow, pal_path.as_deref()) {
             Ok(s) => {
                 let n = s.frames.len();
+                if crate::hd::active() && !shadow {
+                    if let Some(h) = crate::hd::sprite(&path, pal_path.as_deref(), &s) {
+                        self.hd.sprites.insert(self.sprites.len(), h);
+                    }
+                }
                 self.sprites.push(GlSprite { s, tex: vec![None; n] });
                 Some(self.sprites.len() - 1)
             }
@@ -904,7 +1322,7 @@ impl App {
     }
 
     /// A decoration sprite of the exe (id and palette id) for the loaded theme, body and shadow.
-    fn decor_sprite(&mut self, id: u16, pal: u8) -> (Option<usize>, Option<usize>) {
+    pub(crate) fn decor_sprite(&mut self, id: u16, pal: u8) -> (Option<usize>, Option<usize>) {
         let theme = self.exe_theme();
         let Some(file) = sg_core::decor::sprite_file(id, theme) else { return (None, None) };
         let pal = sg_core::decor::palette_file(pal, theme);
@@ -1010,6 +1428,7 @@ impl App {
                 }
             }
         }
+        self.push_holemarks();
     }
 
     /// The tile's growth counter is running (flag 0x4000).
@@ -1052,6 +1471,15 @@ impl App {
     }
 
     /// Whether the building tool may place this kind now: unlocked by the course's holes (sandbox: all).
+    /// Building kinds unlocked: the club's counter, never below what the open holes have earned (saves from before the counter
+    /// was kept), all of them in sandbox.
+    pub fn unlocked(&self) -> i32 {
+        if self.econ.sandbox {
+            return 17;
+        }
+        self.club.unlocked.max(land::unlocked_kinds(self.hole_numbers.len(), false))
+    }
+
     pub fn build_available(&self, kind: usize) -> bool {
         // The garden page (kinds up to 5, the willow and the bridge) is always open; buildings unlock with holes.
         let k = kind as i32;
@@ -1063,8 +1491,7 @@ impl App {
         if k == land::K_HOME_SITE && self.club.homesite_demand < 1 && !self.econ.sandbox {
             return false;
         }
-        OFFERED_KINDS.contains(&k)
-            && (k <= 5 || k == land::K_WILLOW || k == land::K_BRIDGE || k < land::unlocked_kinds(self.holes.len(), self.econ.sandbox))
+        OFFERED_KINDS.contains(&k) && (k <= 5 || k == land::K_WILLOW || k == land::K_BRIDGE || k < self.unlocked())
     }
 
     /// Scenery: trees on Woods tiles, the placed buildings, a clubhouse, and the pool of golfers.
@@ -1116,7 +1543,8 @@ impl App {
         let stories = std::mem::take(&mut self.club.stories);
         let celebrities = std::mem::take(&mut self.club.celebrities);
         let pros = std::mem::take(&mut self.club.pros);
-        self.club = Club::new(if roster.is_empty() { sg_core::roster::load(&self.game_dir) } else { roster });
+        let pack = THEME_PACKS.get(self.theme_pack).copied().unwrap_or("Standard").replace(' ', "_");
+        self.club = Club::new(if roster.is_empty() { sg_core::roster::load(&self.game_dir, &pack) } else { roster });
         self.club.stories = stories;
         self.club.celebrities = celebrities;
         self.club.pros = pros;
@@ -1132,6 +1560,13 @@ impl App {
         self.club.new_game(&mut self.exe_rng);
         self.course = Course::default();
         self.staff_golfers.clear();
+        // what was showing of the old course: its floating money, a golfer's card, the shot analysis
+        self.floats = [(0, 0, 0, 0); 8];
+        self.card = None;
+        self.analysis = None;
+        // and its messages: one showing would carry over, and Repeat Last Message would bring it back
+        self.ticker = Default::default();
+        self.last_message.clear();
         self.econ.init();
         self.sim_time = 0.0;
         self.sync_course();
@@ -1161,21 +1596,21 @@ impl App {
             }
         }
         self.sprite_index.clear();
+        self.hd.sprites.clear();
+        for (_, t) in self.red_tex.drain() {
+            g.ctx.delete_texture(t);
+        }
         let lighting = sg_core::fsutil::read_file(self.game_path(&format!("{}Lighting.txt", THEMES[theme])))
             .map(|d| sg_core::terrain::parse_lighting(&sg_core::formats::latin1(&d)))
             .unwrap_or_default();
         self.light = lighting;
         self.rebuild_batches(g);
         self.populate_props();
+        self.register_portraits(g);
         true
     }
 
     // ---- golfers and the club -----------------------------------------------------------------------------------------------
-
-    /// Golfers playing or walking home (the waiting ones are inside the clubhouse).
-    pub fn golfers_on_course(&self) -> usize {
-        self.club.g.iter().take(golf::SLOTS).filter(|g| g.hole > 0).count()
-    }
 
     /// Brings the golfers' view of the course up to date: tiles, objects and levels from the land, weeds from the staff's tiles,
     /// the clubhouse door, and one hole record per tee and green pair (back and forward tee on the tee, pin and cup on the green).
@@ -1185,7 +1620,7 @@ impl App {
             land.sync_from_terrain(&self.terrain);
         }
         let Some(land) = &self.land else { return };
-        self.course.sync(land);
+        self.course.sync(land, self.difficulty == 0 || self.econ.sandbox);
         self.water_depth = sg_core::wildlife::water_depth(&self.course);
         self.course.door = self.club_anchor();
         self.course.theme = self.exe_theme();
@@ -1223,57 +1658,24 @@ impl App {
         self.rebuild_hole_routes();
     }
 
-    /// Forgets every hole (new terrain loaded); its painted tees and greens are adopted at the next sync.
-    pub fn reset_holes(&mut self) {
-        for h in 1..19 {
-            let rec = &mut self.club.holes[h];
-            rec.par = 0;
-            rec.back = (0, 0);
-            rec.fwd = (0, 0);
-            rec.pin = (0, 0);
-            rec.length = 0;
-            rec.flags = 0;
-            rec.markers = [(-1, -1); 3];
-        }
-        self.club.next_hole = 1;
-        self.adopt_holes = true;
-    }
-
-    /// The open holes as routes for drawing and the course report.
+    /// The numbers of the open holes, from the golfers' hole records.
     fn rebuild_hole_routes(&mut self) {
         let numbers: Vec<i32> = (1..19).filter(|&h| self.club.holes[h as usize].par != 0).collect();
-        let p = &self.terrain.path;
-        self.holes = numbers
-            .iter()
-            .map(|&h| {
-                let rec = &self.club.holes[h as usize];
-                let (tx, tz) = self.terrain.tile_centre(rec.back.0, rec.back.1);
-                let (gx, gz) = self.terrain.tile_centre(rec.pin.0, rec.pin.1);
-                let near = |x: f32, z: f32, px: f32, pz: f32| (x - px).hypot(z - pz) < 300.0;
-                let route = if p.len() >= 4 && near(p[0], p[1], tx, tz) && near(p[p.len() - 2], p[p.len() - 1], gx, gz) {
-                    p.clone()
-                } else {
-                    vec![tx, tz, gx, gz]
-                };
-                HoleRoute { tee_x: tx, tee_z: tz, green_x: gx, green_z: gz, length: (gx - tx).hypot(gz - tz), par: rec.par, route }
-            })
-            .collect();
         if numbers != self.hole_numbers {
             self.hole_numbers = numbers;
-            self.hole_stats = vec![HoleStat::default(); self.holes.len()];
+            self.hole_stats = vec![HoleStat::default(); self.hole_numbers.len()];
         }
     }
 
     /// Terrain from outside the hole tool: each painted tee and green pair not yet a hole is built and opened, in the order
-    /// the pairs are found (tees top row first), as if made with the tool.
+    /// the pairs are found (tees top row first), as if made with the tool (sg_core::holetool::painted_pairs, the port's own
+    /// tooling).
     fn adopt_painted_holes(&mut self) {
-        for r in find_holes(&self.terrain) {
+        for (tee, pin) in sg_core::holetool::painted_pairs(&self.course) {
             let h = self.club.next_hole;
             if !(1..19).contains(&h) {
                 break;
             }
-            let tee = self.terrain.tile_of(r.tee_x, r.tee_z);
-            let pin = self.terrain.tile_of(r.green_x, r.green_z);
             let numbered =
                 |c: &Course, (a, b): (i32, i32)| sg_core::course::inside(a, b) && c.flags[sg_core::course::idx(a, b)] & 0x1f != 0;
             if numbered(&self.course, tee) || numbered(&self.course, pin) {
@@ -1297,7 +1699,7 @@ impl App {
             self.club.open_hole(&mut self.course);
         }
         // adopted holes open quietly
-        self.club.out.retain(|e| !matches!(e, golf::Event::Sound { .. } | golf::Event::Message(_)));
+        self.club.out.retain(|e| !matches!(e, golf::Event::Sound { .. } | golf::Event::Message { .. }));
     }
 
     /// The exe's open-hole command (key H, or a click on the new hole's cup green): the hole being built needs a tee and a
@@ -1350,7 +1752,7 @@ impl App {
     }
 
     /// Sprite id (clip + body) of a golfer clip, loaded on first use: (body, shadow).
-    fn golfer_clip(&mut self, id: i32) -> (Option<usize>, Option<usize>) {
+    pub(crate) fn golfer_clip(&mut self, id: i32) -> (Option<usize>, Option<usize>) {
         if let Some(c) = self.golfer_clips.get(&id) {
             return *c;
         }
@@ -1402,11 +1804,31 @@ impl App {
         let tick = self.game_tick;
         let sites = self.land.as_ref().map(|l| l.objects.iter().filter(|o| o.kind == land::K_HOME_SITE).count()).unwrap_or(0) as i32;
         self.club.sandbox = self.econ.sandbox;
+        for f in self.floats.iter_mut() {
+            f.3 = f.3.saturating_sub(1);
+        }
+        if !self.econ.sandbox && self.ui_ok {
+            // the opening story and the first design tip (0x45fd80), told by the course itself
+            if tick == 0x20 {
+                let text = self.welcome_text();
+                self.post_message(&text, 1, -4);
+            } else if tick == 0x1400 {
+                self.post_message(tr(DESIGN_TIP), 0, -4);
+            }
+        }
+        if self.econ.sandbox {
+            // the exe holds a sandbox's cash at 10000 units every frame
+            self.econ.cash = 10000.0 * Economy::UNIT;
+        }
         self.club.island = self.land.as_ref().map(|l| l.slot.record().coast == 2).unwrap_or(false);
         if std::mem::take(&mut self.club.land_offer) {
-            // the commissioner approved an expansion: the exe asks whether to buy land, then shows the tracts
-            self.show_toast("Do you wish to purchase additional land to expand your course?");
-            self.open_land_screen();
+            // the commissioner approved an expansion: sound 56 and the question; yes shows the tracts
+            self.ui_sound(56);
+            if self.ui_ok {
+                self.open_popup(crate::popup_ui::PopupKind::LandOffer);
+            } else {
+                self.open_land_screen();
+            }
         }
         self.club.home_sites = sites;
         self.club.homesite_demand = self.club.ratings.waitlist;
@@ -1439,6 +1861,10 @@ impl App {
         self.club.course_name = self.course_name.clone();
         self.club.course_theme = self.exe_theme();
         self.pro_round_tick();
+        self.club.ticker_busy = self.ticker.busy() || self.card.is_some();
+        self.club.advisor = self.show_advisor;
+        self.club.view_close = self.exe_zoom() > 3.0;
+        self.club.show_snapshots = self.show_snapshots;
         self.club.tick(&mut self.course, &mut self.exe_rng, tick);
         sg_core::ratings::pass(&mut self.club, self.difficulty);
         self.pro_after_tick();
@@ -1447,9 +1873,24 @@ impl App {
             let members = self.club.member_count();
             self.club.record_history(self.club.cash, members);
         }
+        if tick & 0x3ff == 0 && self.difficulty != 0 && !self.econ.sandbox && !self.club.championship() {
+            // the monthly reminder for buildings with no path to the clubhouse
+            let cut: Vec<String> = self
+                .course
+                .objects
+                .iter()
+                .skip(1)
+                .filter(|o| (6..=14).contains(&o.kind) && o.flags & 0x40 == 0)
+                .map(|o| land::building_name(o.kind).to_string())
+                .collect();
+            for name in cut {
+                self.show_toast(&trf("STR_TOAST_NOT_OPERATIONAL", &[("BUILDING", &name)]));
+            }
+        }
         if tick > 0 && tick & 0x1fff == 0 && !self.club.championship() {
             println!("[{:6.1}s] end of year {}", self.sim_time, 2000 + (tick >> 13));
             self.open_year_end();
+            self.top10_year_end();
         }
         self.wildlife_tick();
         self.tourney_after_tick();
@@ -1457,14 +1898,12 @@ impl App {
         let events: Vec<golf::Event> = self.club.out.drain(..).collect();
         for e in events {
             match e {
-                golf::Event::Sound { slot, at } => {
-                    let (wx, wz) = match at {
-                        Some((x, y)) => self.units_to_world(x, y),
-                        None => (self.cam_x, self.cam_z),
-                    };
-                    self.slot_sound(slot, wx, wz);
+                golf::Event::Sound { slot, at, delay } => {
+                    let at = at.map(|(x, y)| self.units_to_world(x, y));
+                    self.slot_sound_after(slot, at, delay);
                 }
-                golf::Event::Earn { units, column, .. } => {
+                golf::Event::Earn { units, column, at } => {
+                    self.float_money(units, at);
                     let col = match column {
                         golf::Column::GreensFees => economy::LEDGER_GREEN_FEES,
                         golf::Column::FoodDrink => economy::LEDGER_FOOD_DRINK,
@@ -1476,15 +1915,17 @@ impl App {
                         self.econ.earn_to(col, units as f64 * Economy::UNIT);
                     }
                 }
-                golf::Event::Message(m) => {
-                    if !m.is_empty() {
-                        println!("[{:6.1}s] {m}", self.sim_time);
-                        self.show_toast(&m);
+                golf::Event::Message { text, speaker, priority } => {
+                    if !text.is_empty() {
+                        // the club already refused what the busy ticker would refuse; a negative priority still delays it
+                        println!("[{:6.1}s] {text}", self.sim_time);
+                        self.post_message(&text, if priority < 0 { priority } else { 1 }, speaker);
                     }
                 }
-                golf::Event::HoleDone { hole, strokes, mood, fee, .. } => {
-                    if self.hole_stats.len() != self.holes.len() {
-                        self.hole_stats = vec![HoleStat::default(); self.holes.len()];
+                golf::Event::HoleDone { g, hole, strokes, mood, fee } => {
+                    self.script_hole_done(g, hole, strokes);
+                    if self.hole_stats.len() != self.hole_numbers.len() {
+                        self.hole_stats = vec![HoleStat::default(); self.hole_numbers.len()];
                     }
                     let k = self.hole_numbers.iter().position(|&n| n == hole).unwrap_or(usize::MAX);
                     let time = self.club.holes.get(hole as usize).map(|h| h.time).unwrap_or(0);
@@ -1513,38 +1954,53 @@ impl App {
                     }
                 }
                 golf::Event::Thought { .. } => {}
+                golf::Event::GreatShot { g, partner, text, bad, pts } => self.great_shot_event(g, partner, text, bad, &pts),
             }
         }
+        // the scenario's goals and the packs' scripts (docs/MODDING.md 5 and 6)
+        self.scenario_tick(tick);
     }
 
     /// Advances the club by dt seconds: one golfer and staff update per game tick (87 ms), fees, wages and the board's messages.
     pub fn step_game(&mut self, dt: f32) {
-        if !self.econ.notice.is_empty() {
-            println!("[{:6.1}s] board: {}", self.sim_time, self.econ.notice);
-            self.year_notice = self.econ.notice.clone();
-            self.econ.notice.clear();
-        }
         self.tick_acc += dt as f64;
         let tick_s = sg_core::flight::TICK_MS as f64 / 1000.0;
-        while self.tick_acc >= tick_s {
+        // the great-shot SimFoto holds the game where it is (0x407e00 waits for a click inside the golfers' tick)
+        while self.tick_acc >= tick_s && self.great_shot.is_none() {
             self.tick_acc -= tick_s;
             if !self.econ.game_over {
                 self.club_tick();
             }
+            self.ticker.step();
             self.staff_tick();
+            self.staff_animate();
             self.resident_tick();
         }
     }
 
     /// Advances the simulation to the current time and points every golfer prop at its golfer.
     pub fn update_props(&mut self) {
-        while self.sim_time < self.time {
+        while self.sim_time < self.time && self.great_shot.is_none() {
             self.step_game(1.0 / 60.0);
             self.sim_time += 1.0 / 60.0;
         }
         if self.time < self.sim_time - 1.0 {
             // clock went backwards
             self.sim_time = 0.0;
+        }
+        // where each golfer is on screen, or -1 when off it (the exe's drawing records this; a golfer who has finished and is
+        // out of sight goes straight home)
+        for gi in 0..golf::SLOTS {
+            if self.club.g[gi].hole == 0 {
+                continue;
+            }
+            let (x, y) = (self.club.g[gi].x, self.club.g[gi].y);
+            let (sx, sy) = self.screen_of(x, y).map(|(a, b)| (a as i32, b as i32)).unwrap_or((-1, -1));
+            self.club.g[gi].sx = sx;
+            self.club.g[gi].sy = sy;
+        }
+        if std::mem::take(&mut self.test_great_shot) {
+            self.test_great_shot_now();
         }
         const DX: [f32; 8] = [0.0, 1.0, 1.0, 1.0, 0.0, -1.0, -1.0, -1.0];
         const DY: [f32; 8] = [-1.0, -1.0, 0.0, 1.0, 1.0, 1.0, 0.0, -1.0];
@@ -1571,6 +2027,7 @@ impl App {
                 d = (d - 1) & 7;
             }
             let (wx, wz) = self.units_to_world(x, y);
+            let outfit = self.club.outfit(gi);
             let p = &mut self.props[pi];
             p.hidden = false;
             p.body = Some(b);
@@ -1580,6 +2037,7 @@ impl App {
             p.frame = frame;
             p.heading = DY[d as usize].atan2(DX[d as usize]).to_degrees();
             p.facing = -((d + 2 + (d & 1)) / 2);
+            p.outfit = Some(outfit);
         }
         self.update_staff_props();
         self.update_resident_props();
@@ -1596,18 +2054,35 @@ impl App {
         }
     }
 
-    /// Course Status Report (the original's F1): the hole's class and length, and how many paths are joined to the clubhouse.
+    /// The console's course summary (scripted runs): each open hole's par and yards from the golfers' hole records, and how
+    /// many path tiles the clubhouse flood reaches (the exe's tile flag 0x40; the others are drawn as unjoined paths).
     pub fn report_course(&mut self, force: bool) {
-        self.hole = analyze_hole(&self.terrain);
         self.sync_course();
-        let conn = paths_connected_to_clubhouse(&self.terrain);
-        let paths = self.terrain.path_kind.iter().filter(|&&k| k != 0).count();
-        let joined = self.terrain.path_kind.iter().zip(&conn).filter(|(&k, &c)| k != 0 && c != 0).count();
+        let holes: Vec<String> = self
+            .hole_numbers
+            .iter()
+            .map(|&h| {
+                let r = &self.club.holes[h as usize];
+                format!("{h}: par {} {} yd", r.par, r.length)
+            })
+            .collect();
+        let joined = self.land.as_ref().map(|l| l.joined_tiles()).unwrap_or_default();
+        let (mut paths, mut on) = (0, 0);
+        for (i, &k) in self.terrain.path_kind.iter().enumerate() {
+            if k == 0 {
+                continue;
+            }
+            paths += 1;
+            let (x, y) = (i as i32 % self.terrain.w, i as i32 / self.terrain.w);
+            if !sg_core::course::inside(x, y) || joined.get(sg_core::course::idx(x, y)).copied().unwrap_or(true) {
+                on += 1;
+            }
+        }
         let r = format!(
-            "{}; {} holes (tee to green pairs); paths: {paths} tiles, {joined} joined to the clubhouse, {} shown as mud",
-            self.hole.report(),
-            self.holes.len(),
-            paths - joined
+            "{} holes [{}]; paths: {paths} tiles, {on} joined to the clubhouse, {} not joined",
+            self.hole_numbers.len(),
+            holes.join(", "),
+            paths - on
         );
         if force || r != self.last_report {
             println!("course: {r}");
@@ -1623,47 +2098,100 @@ impl App {
         self.slot_of = slots_of(&self.offer);
     }
 
+    /// Swaps property `k` with the one in the cheapest slot it may hold (0 for Parkland, else 1).
+    pub fn cheap_slot(&mut self, k: usize) {
+        let to = if sg_core::data::properties()[k].theme == 0 { 0 } else { 1 };
+        let from = self.slot_of[k];
+        if from == to {
+            return;
+        }
+        let other = self.offer[to].property;
+        let sandbox = self.econ.sandbox;
+        self.offer[to] = Slot { property: k, acres: land::slot_acres(to as i32, k, sandbox) };
+        self.offer[from] = Slot { property: other, acres: land::slot_acres(from as i32, other, sandbox) };
+        self.slot_of = slots_of(&self.offer);
+    }
+
     /// Acres and price (in money) of a property in this game's offer.
     pub fn offer_for(&self, prop_idx: usize) -> (i32, i32) {
         let slot = self.slot_of[prop_idx];
-        (self.offer[slot].acres, land::SLOT_PRICE_UNITS[slot] * 100)
+        (self.offer[slot].acres, sg_core::data::economy().offer_units[slot] * 100)
     }
 
     pub fn start_game(&mut self, g: &mut Gfx, prop_idx: usize, sandbox: bool) {
-        let p = PROPERTIES[prop_idx];
+        let p = sg_core::data::properties()[prop_idx];
+        // a game started without the difficulty screen (scripted runs) still gets its Top 10 id
+        if self.course_id.is_none() {
+            self.course_id = Some(self.exe_rng.below(0xffff));
+        }
         let (acres, price) = self.offer_for(prop_idx);
         self.econ.sandbox = sandbox;
         // The property is paid for out of the starting funds.
         // The exe starts with 1000 units (10000 in sandbox) and takes the property's price off a normal game.
-        self.econ.start_cash = if sandbox { (START_FUNDS * 10) as f64 } else { (START_FUNDS - price) as f64 };
+        self.econ.start_cash =
+            if sandbox { sg_core::data::economy().sandbox_funds as f64 } else { (sg_core::data::economy().start_funds - price) as f64 };
+        if let Some(m) = self.scen.start_money.take() {
+            // a scenario's own starting cash (docs/MODDING.md 5)
+            self.econ.start_cash = m as f64;
+        }
         let slot_index = self.slot_of[prop_idx];
         let land = land::generate(slot_index, self.offer[slot_index], self.difficulty, sandbox, &mut self.exe_rng, &self.noise);
         self.terrain = land.to_terrain();
         self.land = Some(land);
-        self.course_name = format!("{} GC", p.name);
+        self.course_name = p.course().to_string();
         self.load_theme(g, p.theme);
         self.club.course_name = self.course_name.clone();
         self.club.course_theme = self.exe_theme();
+        self.bought.clear();
+        self.mark_bought(prop_idx);
         self.screen = Screen::Play;
         self.hover = -1;
         self.edit = false;
-        self.panel = 0;
+        // a new game starts in dock mode 0 (0x567afc is 0): the Build Course panel is open, as in footage of the original,
+        // with no tool armed
+        self.panel = 1;
+        self.pstate.alt = false;
         self.reset_staff();
         self.load_story();
         self.reset_clock = true;
+        // the game opens on the clubhouse
+        let (a, b) = self.club_anchor();
+        let (x, z) = self.units_to_world(a * 1024 + 1024, b * 1024 + 1024);
+        self.cam_x = x;
+        self.cam_z = z;
         println!(
             "new game: {}, {} acres, price {}, cash left {:.0}{}",
-            p.name,
+            p.name(),
             acres,
             price,
             self.econ.start_cash,
             if sandbox { " (sandbox)" } else { "" }
         );
+        // the scenario's goals (none for a free game) and the packs' scripts
+        self.begin_game_scripts();
+    }
+
+    /// "Return to Main Menu." at the end of a career, the way the exe leaves a game (0x420e0f): the game is saved as
+    /// "&QuitSave" (an autosave in the Load list), the course ambience fades (slot 0x2d over a second) and the title comes
+    /// back. Loading that save brings the same question back, as its debt counter is still past 2.
+    pub fn end_career(&mut self) {
+        let path = crate::files_ui::saved_games_dir().join("&QuitSave.sgs");
+        match self.save_game(&path) {
+            Ok(()) => println!("saved game {}", path.display()),
+            Err(e) => eprintln!("could not save {}: {e}", path.display()),
+        }
+        self.screen = Screen::Menu;
+        self.hover = -1;
     }
 
     /// The whole-game save file, next to the course file.
     pub fn game_file(&self) -> PathBuf {
         self.course_file.with_extension("sgs")
+    }
+
+    /// Where the accomplishment snapshots (accomp<id>.png) are written and the board reads them back.
+    pub fn snapshot_dir(&self) -> PathBuf {
+        self.course_file.parent().map(|p| p.to_path_buf()).unwrap_or_default().join("snapshots")
     }
 
     /// Saves the whole game.
@@ -1684,6 +2212,11 @@ impl App {
             staff_tiles: self.staff_tiles.clone(),
             game_tick: self.game_tick,
             hole_stats: self.hole_stats.clone(),
+            theme_pack: THEME_PACKS.get(self.theme_pack).copied().unwrap_or("Standard").replace(' ', "_"),
+            course_id: self.course_id,
+            bought: self.bought.clone(),
+            goals: self.scen.goals.clone(),
+            scripts: self.scripts_for_save(),
         };
         let json = serde_json::to_vec(&save).map_err(|e| e.to_string())?;
         let mut out = SAVE_MAGIC.to_vec();
@@ -1691,25 +2224,42 @@ impl App {
         if sg_core::fsutil::write_file(path, &out) {
             Ok(())
         } else {
-            Err(format!("{}: could not write", path.display()))
+            Err(trf("STR_ERROR_COULD_NOT_WRITE", &[("FILE", &path.display())]))
         }
     }
 
     /// Loads a whole game saved by `save_game` and goes on from where it was.
     pub fn load_game(&mut self, g: &mut Gfx, path: &Path) -> Result<(), String> {
-        let data = sg_core::fsutil::read_file(path).ok_or_else(|| format!("{}: not found", path.display()))?;
-        let body = data.strip_prefix(SAVE_MAGIC).ok_or_else(|| format!("{}: not a saved game", path.display()))?;
-        let json = miniz_oxide::inflate::decompress_to_vec_zlib(body).map_err(|e| format!("{}: {e:?}", path.display()))?;
-        let s: SaveGame = serde_json::from_slice(&json).map_err(|e| format!("{}: {e}", path.display()))?;
+        let s = read_save(path)?;
+        self.load_save(g, s)
+    }
+
+    /// Goes on with a game read by `read_save` (or `read_save_bytes`).
+    pub fn load_save(&mut self, g: &mut Gfx, s: SaveGame) -> Result<(), String> {
+        if let Some(k) = THEME_PACKS.iter().position(|p| p.replace(' ', "_").eq_ignore_ascii_case(&s.theme_pack)) {
+            self.theme_pack = k;
+        }
         self.terrain = s.terrain;
         self.land = s.land;
         self.course_name = s.course_name;
         self.difficulty = s.difficulty;
+        self.course_id = s.course_id;
+        self.bought = s.bought;
+        if self.bought.iter().all(|&y| y < 0) {
+            // a game saved before the purchases were kept: its own property, bought in a year not recorded (shown as 2001)
+            if let Some(p) = self.land.as_ref().map(|l| l.slot.property) {
+                self.bought = vec![-1; sg_core::data::properties().len()];
+                if let Some(b) = self.bought.get_mut(p) {
+                    *b = 0;
+                }
+            }
+        }
         self.adopt_holes = false;
         if !self.load_theme(g, s.theme) {
-            return Err("could not load the theme".into());
+            return Err(tr("STR_ERROR_THEME_NOT_LOADED").into());
         }
         self.club = s.club;
+        self.register_portraits(g);
         let tutorial = self.club.stories.tutorial;
         self.load_story();
         self.club.stories.tutorial = tutorial;
@@ -1727,8 +2277,24 @@ impl App {
         self.tick_acc = 0.0;
         self.reset_clock = true;
         self.screen = Screen::Play;
+        // the exe's load (0x40b9b0) sets the dock mode to 0: the Build Course panel opens, no tool armed
+        self.panel = 1;
+        self.pstate.alt = false;
+        self.edit = false;
         self.dirty = true;
+        self.restore_game_scripts(s.goals, &s.scripts);
         Ok(())
+    }
+
+    /// Gives every person whose head is a character file's own portrait the custom head that portrait takes this session.
+    pub fn register_portraits(&mut self, g: &mut Gfx) {
+        for i in 0..self.club.roster.len() {
+            let Some(rel) = self.club.roster[i].portrait.clone() else { continue };
+            let female = self.club.roster[i].female();
+            if let Some(h) = self.art.portrait_head(g, &self.game_path(&rel), female) {
+                self.club.roster[i].head = Some(h);
+            }
+        }
     }
 
     /// Loads the theme pack's stories (every *.txt in its Themes folder, or the Standard folder's when it has none, listed in
@@ -1769,26 +2335,18 @@ impl App {
         self.club.pros = pros;
     }
 
-    /// Advisor text from what the club looks like now. These hints are our own words.
-    pub fn advisor_text(&self) -> &'static str {
-        if self.holes.is_empty() {
-            "Welcome to your new club. Open Build Course (the big round button at the bottom left), then paint a tee and a green a good distance apart to make your first hole."
-        } else if !self.land.as_ref().map(|l| l.objects.iter().any(|o| (6..=14).contains(&o.kind))).unwrap_or(false) {
-            "Golfers are on the course. Open Add Buildings and put up an amenity, then lay a path from it to the clubhouse: buildings only work once a path joins them to the clubhouse."
-        } else if self.holes.len() < 3 {
-            "More holes bring more golfers and more money. Build another tee and green, and make the holes different: long, narrow and tricky shots raise the club's skill rating."
-        } else if self.econ.staff_count() == 0 {
-            "Your course is growing. The People button lets you hire a club pro, ranger, groundskeeper or soda vendor, who cost wages but keep golfers happy."
-        } else {
-            "Watch the fun and skill numbers at the top right. Press the information button for the course report, and keep cash above zero so the board stays calm."
-        }
-    }
-
     // ---- course editing ----------------------------------------------------------------------------------------------------
 
     pub fn edit_paint(&mut self, tx: i32, ty: i32) {
         let pe = &PAINT[self.paint_idx];
         let r = self.brush;
+        self.ensure_land();
+        if let Some(land) = self.land.as_mut() {
+            land.sync_from_terrain(&self.terrain);
+        }
+        let tournament = self.club.game & golf::game::TOURNAMENT != 0;
+        let mut refused = false;
+        let mut broke = false;
         for dy in -r..=r {
             for dx in -r..=r {
                 if dx * dx + dy * dy > r * r + r {
@@ -1798,9 +2356,52 @@ impl App {
                 if !self.terrain.inside(x, y) {
                     continue;
                 }
-                // tees and greens go through the hole tool's bookkeeping (the hole being built gets its tee or cup)
+                // the exe's checks before a tile is painted (0x41fee2): on the property, affordable, not a permanent
+                // obstacle or a landmark, no tee or cup taken away during a tournament
                 let old = self.terrain.ty[self.terrain.tile_index(x, y)];
                 let new = pe.ty as u8;
+                let li = (x * land::N + y) as usize;
+                let (in_play, obstacle, on) = match self.land.as_ref() {
+                    Some(l) => (l.in_play(x, y), l.flags[li] & land::flag::OBSTACLE != 0, l.object_on(x, y)),
+                    None => (true, false, None),
+                };
+                let clear = Economy::terrain_clear_units(old as i32);
+                let cost = clear + Economy::terrain_cost_units(pe.ty);
+                if !in_play || obstacle {
+                    refused = true;
+                    continue;
+                }
+                if clear >= 50 {
+                    self.ui_sound(24); // a warning only: wetlands and marsh are dear to clear
+                }
+                if old == new && pe.vbyte == self.terrain.variation[self.terrain.tile_index(x, y)] as i32 {
+                    continue; // nothing to change, nothing charged
+                }
+                let cup = self.course.flags.get(sg_core::course::idx(x, y)).is_some_and(|&f| f & sg_core::course::f::CUP != 0);
+                if tournament && (old == 0 || cup) {
+                    refused = true;
+                    continue;
+                }
+                if !self.econ.affordable(cost as f64 * Economy::UNIT, self.hole_numbers.len()) {
+                    broke = true;
+                    continue;
+                }
+                if let Some(o) = on {
+                    let obj = self.land.as_ref().map(|l| l.objects[o]).unwrap_or_default();
+                    let edge = sg_core::data::buildings().get(obj.kind as usize).map(|b| b.1).unwrap_or(1);
+                    if (obj.kind == land::K_LANDMARK && obj.sub <= 16) || obj.kind == land::K_CLUBHOUSE || edge > 1 {
+                        // landmarks are permanent; for a building the exe first asks whether to demolish it (the question
+                        // is not drawn yet: such tiles are left alone)
+                        refused = true;
+                        continue;
+                    }
+                    if let Some(l) = self.land.as_mut() {
+                        let size = l.footprint_size(&obj);
+                        l.remove_object(o);
+                        l.write_area(&mut self.terrain, obj.a, obj.b, obj.a + size - 1, obj.b + size - 1);
+                    }
+                }
+                // tees and greens go through the hole tool's bookkeeping (the hole being built gets its tee or cup)
                 if old <= 1 || new <= 1 {
                     let green_next = [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().any(|&(ex, ey)| {
                         self.terrain.inside(x + ex, y + ey) && self.terrain.ty[self.terrain.tile_index(x + ex, y + ey)] == 1
@@ -1811,18 +2412,26 @@ impl App {
                 }
                 // tees use this byte as their look
                 let vb = if pe.ty == 0 { ((x * 7 + y * 13) as u32 % 5) as i32 } else { pe.vbyte };
-                if self.terrain.ty[self.terrain.tile_index(x, y)] as i32 != pe.ty {
-                    self.econ.spend_to(economy::LEDGER_BUILD_COURSE, Economy::terrain_cost_units(pe.ty) as f64 * Economy::UNIT);
+                self.econ.spend_to(economy::LEDGER_BUILD_COURSE, cost as f64 * Economy::UNIT);
+                let hb = (self.club.next_hole as usize).min(18);
+                self.club.holes[hb].build_cost += cost;
+                if old > 1 {
+                    if let Some(l) = self.land.as_mut() {
+                        l.record_paint(x, y, old, cost);
+                    }
                 }
-                let changed = self.terrain.ty[self.terrain.tile_index(x, y)] as i32 != pe.ty;
+                let changed = old as i32 != pe.ty;
                 self.terrain.paint(x, y, pe.ty, vb);
                 if changed {
                     self.painted_tile(x, y, pe.ty as u8);
                 }
-                if matches!(pe.ty, 0 | 1 | 17 | 22) {
-                    self.terrain.flatten_tile(x, y);
-                }
             }
+        }
+        if broke {
+            self.ui_sound(24);
+            self.show_toast(tr("STR_TOAST_NOT_ENOUGH_MONEY"));
+        } else if refused {
+            self.ui_sound(24);
         }
         // one "already has its tee" message per stroke, not per tile
         self.club.out.dedup();
@@ -1843,7 +2452,7 @@ impl App {
     /// Opens the land screen (after the County Commissioner approves an expansion and the player says yes).
     pub fn open_land_screen(&mut self) {
         self.ensure_land();
-        self.slot_sound(56, 0.0, 0.0);
+        self.ui_sound(56);
         let Some(land) = self.land.as_ref() else { return };
         self.tracts = sg_core::tracts::roll(land, self.club.purchases, &mut self.exe_rng);
         self.land_hover = -1;
@@ -1853,25 +2462,7 @@ impl App {
     /// Pointer over the land screen (virtual 800 x 600 coordinates): which tract or the cancel button. The exe redraws on
     /// every change and rolls the prices again each time (keeping the first ones), which draws from the generator.
     pub fn land_pointer(&mut self, x: f32, y: f32) {
-        let mut hit = -1;
-        if (54.0..258.0).contains(&y) {
-            let row = ((y - 54.0) / 68.0) as i32;
-            let col = if (15.0..262.0).contains(&x) {
-                0
-            } else if (272.0..524.0).contains(&x) {
-                1
-            } else if (538.0..775.0).contains(&x) {
-                2
-            } else {
-                -1
-            };
-            if col >= 0 && row < 3 {
-                hit = row + 3 * col;
-            }
-        }
-        if (662.0..726.0).contains(&x) && (533.0..597.0).contains(&y) {
-            hit = 9;
-        }
+        let hit = self.land_hit(x, y);
         if hit != self.land_hover {
             self.land_hover = hit;
             if let Some(land) = self.land.as_ref() {
@@ -1887,7 +2478,7 @@ impl App {
             return;
         }
         if !(0..9).contains(&self.land_hover) {
-            self.slot_sound(24, 0.0, 0.0);
+            self.ui_sound(24);
             return;
         }
         let i = self.land_hover as usize;
@@ -1896,11 +2487,10 @@ impl App {
             return;
         }
         let cost = price as f64 * Economy::UNIT;
-        if !self.econ.affordable(cost, self.holes.len()) {
-            self.show_toast(&format!(
-                "This change costs {}. You have only {}.",
-                crate::ui::money(cost as i64),
-                crate::ui::money(self.econ.cash as i64)
+        if !self.econ.affordable(cost, self.hole_numbers.len()) {
+            self.show_toast(&trf(
+                "STR_TOAST_CHANGE_COSTS",
+                &[("COST", &crate::ui::money(cost as i64)), ("CASH", &crate::ui::money(self.econ.cash as i64))],
             ));
             return;
         }
@@ -1965,7 +2555,7 @@ impl App {
             }
         }
         if let Some((slot, _)) = sg_core::decor::tree_sound(new) {
-            self.slot_sound(slot, 0.0, 0.0);
+            self.ui_sound(slot);
         }
     }
 
@@ -1996,14 +2586,8 @@ impl App {
     pub fn place_tile_item(&mut self, x: i32, y: i32, kind: i32) -> bool {
         self.ensure_land();
         let theme = self.exe_theme();
-        let holes = self.holes.len();
-        let variant = match kind {
-            land::K_BENCH => self.exe_rng.below(5),
-            land::K_FLOWERS => self.exe_rng.below(4),
-            land::K_WILLOW => self.exe_rng.below(7),
-            land::K_BRIDGE => self.exe_rng.below(8),
-            _ => 0,
-        };
+        let holes = self.hole_numbers.len();
+        let variant = self.item_design(kind);
         let Some(land) = self.land.as_mut() else { return false };
         land.sync_from_terrain(&self.terrain);
         let cost = match land.tile_item_cost(x, y, kind, theme) {
@@ -2012,14 +2596,14 @@ impl App {
                 if !m.is_empty() {
                     self.show_toast(m);
                 }
-                self.slot_sound(24, 0.0, 0.0);
+                self.ui_sound(24);
                 return false;
             }
         };
         let amount = cost as f64 * Economy::UNIT;
         if !self.econ.affordable(amount, holes) {
-            self.show_toast(&format!("This change costs {}. You have only {}.", money(amount as i64), money(self.econ.cash as i64)));
-            self.slot_sound(24, 0.0, 0.0);
+            self.show_toast(&trf("STR_TOAST_CHANGE_COSTS", &[("COST", &money(amount as i64)), ("CASH", &money(self.econ.cash as i64))]));
+            self.ui_sound(24);
             return false;
         }
         let Some(land) = self.land.as_mut() else { return false };
@@ -2035,13 +2619,48 @@ impl App {
             self.econ.spend_to(economy::LEDGER_FACILITIES, amount);
         }
         match kind {
-            land::K_BENCH => self.slot_sound(262, 0.0, 0.0),
-            land::K_FLOWERS => self.slot_sound(148, 0.0, 0.0),
-            land::K_BRIDGE => self.slot_sound(263, 0.0, 0.0),
+            land::K_BENCH => self.ui_sound(262),
+            land::K_FLOWERS => self.ui_sound(148),
+            land::K_BRIDGE => self.ui_sound(263),
             _ => {}
         }
         self.after_object_change();
         true
+    }
+
+    /// Picking a garden amenity sets its design as the exe's amenity click does (0x434ac0): the first bench, a flower bed of
+    /// the first shape in one of its first four colours, one of the seven scenic trees or eight bridges at random (the
+    /// generator at 0x822d9c), and no landmark until one is chosen from the strip.
+    pub fn arm_design(&mut self, kind: i32) {
+        let v = match kind {
+            land::K_BENCH => 0,
+            land::K_FLOWERS => self.look_rng.below(4),
+            land::K_WILLOW => self.look_rng.below(7),
+            land::K_BRIDGE => self.look_rng.below(8),
+            _ => -1,
+        };
+        self.design = (v >= 0).then_some((kind, v));
+        self.design_hover = v;
+    }
+
+    /// The design of the next tile item of a kind (bench 0..4, flowers 0..14, willow 0..6, bridge 0..7); the amenity's first
+    /// design when the tool was armed some other way.
+    pub fn item_design(&mut self, kind: i32) -> i32 {
+        match self.design {
+            Some((k, v)) if k == kind => v,
+            _ => {
+                self.arm_design(kind);
+                self.design.map(|d| d.1).unwrap_or(0)
+            }
+        }
+    }
+
+    /// The landmark the landmark tool places: the one chosen from the strip, while the club still owns it.
+    pub fn chosen_landmark(&self) -> Option<i32> {
+        match self.design {
+            Some((k, t)) if k == land::K_LANDMARK && self.club.landmarks_owned & (1 << t) != 0 => Some(t),
+            _ => None,
+        }
     }
 
     /// Undo on a tile, as the exe's second right-click does: an item comes off with exactly what it cost back (booked to Build
@@ -2051,7 +2670,7 @@ impl App {
         let Some(land) = self.land.as_mut() else { return };
         land.sync_from_terrain(&self.terrain);
         match land.undo_tile(x, y) {
-            land::Undone::Refused => self.slot_sound(24, 0.0, 0.0),
+            land::Undone::Refused => self.ui_sound(24),
             land::Undone::Building(i) => {
                 if land.objects[i].kind == land::K_CLUBHOUSE {
                     return;
@@ -2067,7 +2686,7 @@ impl App {
                     self.econ.spend_to(economy::LEDGER_HOME_SITES, c as f64 * Economy::UNIT);
                 }
                 self.after_object_change();
-                self.show_toast("Building demolished");
+                self.show_toast(tr("STR_TOAST_BUILDING_DEMOLISHED"));
                 self.snd("Interface/Building.wav", 0.7, false);
             }
             land::Undone::Refund(r) => {
@@ -2099,11 +2718,16 @@ impl App {
         }
         self.ensure_land();
         let theme = self.exe_theme();
-        let holes = self.holes.len();
+        let holes = self.hole_numbers.len();
         if remove {
             return self.undo_tile(tx, ty);
         }
         let kind = self.build_idx as i32;
+        if kind == land::K_LANDMARK && self.chosen_landmark().is_none() {
+            // a click on the course before a landmark is chosen puts the tool down (0x41fc7c)
+            self.edit = false;
+            return;
+        }
         if matches!(kind, land::K_PATH | land::K_BENCH | land::K_FLOWERS | land::K_WILLOW | land::K_BRIDGE) {
             self.place_tile_item(tx, ty, kind);
             return;
@@ -2111,40 +2735,43 @@ impl App {
         let Some(land) = self.land.as_mut() else { return };
         land.sync_from_terrain(&self.terrain);
         if !self.build_available(kind as usize) {
-            return self.show_toast("Build more holes to unlock this building");
+            return self.show_toast(tr("STR_TOAST_BUILD_MORE_HOLES"));
         }
         let Some(land) = self.land.as_mut() else { return };
-        let size = land::BUILDINGS[kind as usize].1;
         let existing = if kind >= 6 { land.objects.iter().position(|o| o.kind == kind) } else { None };
         if existing.is_some() && economy::rank(holes) < 2 {
-            return self.show_toast("Sorry, upgraded buildings are not available until you build beyond 9 holes.");
+            self.ui_sound(24);
+            return self.show_toast(tr("STR_TOAST_NO_UPGRADES_YET"));
         }
+        if existing.is_some_and(|i| land.objects[i].sub >= 1) {
+            self.ui_sound(24);
+            return self.show_toast(tr("STR_TOAST_NO_FURTHER_UPGRADE"));
+        }
+        // an upgrade is placed one tile larger
+        let size = sg_core::data::buildings()[kind as usize].1 + existing.is_some() as i32;
         let Some(mut clear) = land.fits(tx, ty, size, kind, theme) else {
-            return self.show_toast("There is no room for that building there");
+            return self.show_toast(tr("STR_TOAST_NO_ROOM"));
         };
         if kind == 0 {
             clear /= 2;
         }
         let level = existing.map(|i| land.objects[i].sub + 1).unwrap_or(0);
-        let mut cost = (land::BUILDINGS[kind as usize].2 * (level + 2) / 2 + clear) as f64 * Economy::UNIT;
-        // a landmark: the first owned type still free to place, else the first owned one; (type * 5 + 25) * 2, or nothing
-        // the first time a donated type is placed (clearing is not charged)
-        let landmark = (0..14)
-            .find(|t| self.club.free_landmarks & (1 << t) != 0)
-            .or_else(|| (0..14).find(|t| self.club.landmarks_owned & (1 << t) != 0));
+        let mut cost = (sg_core::data::buildings()[kind as usize].2 * (level + 2) / 2 + clear) as f64 * Economy::UNIT;
+        // a landmark: the one chosen from the strip; (type * 5 + 25) * 2, or nothing the first time a donated type is placed
+        // (clearing is not charged)
+        let landmark = self.chosen_landmark();
         if kind == land::K_LANDMARK {
             let Some(t) = landmark else { return };
             cost = if self.club.free_landmarks & (1 << t) != 0 { 0.0 } else { ((t * 5 + 25) * 2) as f64 * Economy::UNIT };
         }
         if !self.econ.affordable(cost, holes) {
-            return self.show_toast(&format!("This change costs {}. You have only {}.", money(cost as i64), money(self.econ.cash as i64)));
+            return self
+                .show_toast(&trf("STR_TOAST_CHANGE_COSTS", &[("COST", &money(cost as i64)), ("CASH", &money(self.econ.cash as i64))]));
         }
         let lot = if kind == land::K_HOME_SITE {
             let v = sg_core::homes::lot_value(&self.course, &self.club.holes, self.difficulty, tx, ty);
             if v < 50 {
-                return self.show_toast(
-                    "This is not a very attractive location for a building lot. Home buyers like water, woods, and grass near a golf hole with a good fun factor.",
-                );
+                return self.show_toast(tr("STR_TOAST_LOT_NOT_ATTRACTIVE"));
             }
             v / 4
         } else {
@@ -2158,9 +2785,13 @@ impl App {
             land.remove_object(i);
             land.write_area(&mut self.terrain, o.a, o.b, o.a + s - 1, o.b + s - 1);
         }
-        let n = land.place(&mut self.exe_rng, tx, ty, kind, 0, theme);
-        self.club.log_event(sg_core::records::log::BUILT, kind);
+        let n = land.place_sized(&mut self.exe_rng, tx, ty, kind, 0, theme, existing.is_some() as i32);
+        if kind >= 6 && existing.is_none() {
+            // the exe logs the first building of each kind
+            self.club.log_event(sg_core::records::log::BUILT, kind);
+        }
         land.objects[n].sub = level;
+        land.objects[n].dir = (self.turn & 3) as u8;
         if kind == land::K_LANDMARK {
             let t = landmark.unwrap_or(0);
             land.objects[n].sub = t;
@@ -2174,6 +2805,8 @@ impl App {
         }
         self.after_object_change();
         self.snd("Interface/Building.wav", 0.7, false);
+        let kind = sg_core::data::object_id(kind as usize).to_string();
+        self.script_hook(sg_core::script::Hook::BuildingPlaced { kind, x: tx, y: ty });
     }
 
     /// After objects change: terrain meshes, trees and object sprites are rebuilt.
@@ -2214,18 +2847,6 @@ impl App {
         self.land = Some(land);
     }
 
-    pub fn edit_wall(&mut self, remove: bool) {
-        // Nearest tile edge to the picked point.
-        let (tx, ty) = self.terrain.tile_of(self.hit_x, self.hit_z);
-        let fx = (self.hit_x + self.terrain.w as f32 * TILE_SIZE * 0.5) / TILE_SIZE - tx as f32;
-        let fz = (self.hit_z + self.terrain.h as f32 * TILE_SIZE * 0.5) / TILE_SIZE - ty as f32;
-        let d = [fz, 1.0 - fx, 1.0 - fz, fx]; // distances to N, E, S, W edges
-        let dir = (0..4).fold(0, |best, i| if d[i] < d[best] { i } else { best });
-        self.terrain.set_wall(tx, ty, dir as i32, !remove);
-        self.dirty = true;
-        self.snd("Interface/Place Rocks Generic.wav", 0.7, false);
-    }
-
     pub fn edit_raise(&mut self, cx: i32, cy: i32, delta: i32) {
         let r = self.brush;
         for dy in -r..=r {
@@ -2254,11 +2875,17 @@ impl App {
         match self.tool {
             0 => self.edit_paint(a, b),
             2 => self.edit_path(a, b, lower),
-            3 => self.edit_wall(lower),
             4 => self.edit_building(a, b, lower),
+            5 => self.undo_tile(a, b),
             _ => {
                 let down = lower != (self.raise_sign < 0);
-                self.edit_raise(a, b, if down { -1 } else { 1 })
+                let delta = if down { -1 } else { 1 };
+                // the Elevation panel's tools edit as the exe does; the keyboard's raise tool keeps the round brush
+                if self.panel == 2 && self.pstate.alt && self.panel_art.ready() {
+                    self.edit_elevation(a, b, delta)
+                } else {
+                    self.edit_raise(a, b, delta)
+                }
             }
         }
     }
@@ -2317,39 +2944,64 @@ impl App {
         Some((x as f32, z as f32))
     }
 
+    /// z / x and the dock's zoom buttons: the next of the exe's three levels (1, 2, 4) in or out.
+    pub fn zoom_step(&mut self, inward: bool) {
+        let level = (self.zoom / ZOOM_UNIT).log2().round().clamp(0.0, 2.0) as i32;
+        let level = if inward { (level + 1).min(2) } else { (level - 1).max(0) };
+        self.zoom = ZOOM_UNIT * (1 << level) as f32;
+    }
+
+    /// PageUp / Home and the Rotate Map buttons: a quarter turn of the view (the exe's rotation steps by 2 of 8).
+    pub fn rotate_view(&mut self, quarters: i32) {
+        self.rot = ((self.rot / 90.0).round() + quarters as f32).rem_euclid(4.0) * 90.0;
+        // the sand traps' pictures turn with the view (Terrain.dll's phase)
+        self.dirty |= self.terrain.ty.contains(&7);
+        // so does the cliff round the property (only the sides facing the camera are built)
+        self.dirty |= self.terrain.ty.contains(&20);
+        // the flower beds pick their pieces by how their neighbours lie on the screen (decor::flower_bed), and landmark 3
+        // turns twice as fast as the view
+        if self.land.is_some() {
+            self.props.retain(|p| !p.object);
+            self.add_land_objects();
+        }
+    }
+
+    /// The welcome for the course's theme (0x45fd80 at tick 0x20), with the course name and the starting cash in thousands,
+    /// in the exe's words (its slips included).
+    pub fn welcome_text(&self) -> String {
+        let n = &self.course_name;
+        let k = (self.econ.cash / Economy::UNIT) as i64 * 100 / 1000;
+        match self.exe_theme() {
+            1 => trf("STR_WELCOME_DESERT", &[("COURSE", &n), ("THOUSANDS", &k)]),
+            2 => trf("STR_WELCOME_TROPICAL", &[("COURSE", &n)]),
+            3 => trf("STR_WELCOME_LINKS", &[("COURSE", &n)]),
+            _ => trf("STR_WELCOME_PARKLAND", &[("COURSE", &n), ("THOUSANDS", &k)]),
+        }
+    }
+
+    /// Queues a floating amount at a map point for 24 ticks (0x40c890); none in a sandbox.
+    pub fn float_money(&mut self, units: i32, at: (i32, i32)) {
+        if units == 0 || self.econ.sandbox {
+            return;
+        }
+        self.floats[self.float_next] = (units, at.0, at.1, 0x18);
+        self.float_next = (self.float_next + 1) % 8;
+    }
+
     pub fn pan(&mut self, right: f32, up: f32) {
         let yaw = (45.0 + self.rot) * std::f32::consts::PI / 180.0;
         self.cam_x += yaw.cos() * right + yaw.sin() * up;
         self.cam_z += yaw.sin() * right - yaw.cos() * up;
     }
-
-    /// The edit tool line (the C++ port showed it in the window title; Tab exits, T tool, [ ] type, , . brush, shift lowers or removes).
-    pub fn edit_status(&self) -> String {
-        let tool = match self.tool {
-            0 => "Paint",
-            1 => "Raise/Lower",
-            2 => "Path",
-            3 => "Wall",
-            _ => "Building",
-        };
-        let what = match self.tool {
-            0 => PAINT[self.paint_idx].name,
-            2 => {
-                if self.path_kind == 1 {
-                    "gravel"
-                } else {
-                    "paved"
-                }
-            }
-            3 => "edge",
-            4 => land::BUILDINGS.get(self.build_idx).map(|b| b.0).unwrap_or("?"),
-            _ => "terrain",
-        };
-        format!("Edit: {tool}, {what}, brush {}", self.brush * 2 + 1)
-    }
 }
 
 /// Original pitch angles, chosen per resolution in Terrain::initSystem (38.68, 40.54, 40.83 degrees).
+/// The design tip five months in (0x45fd80 at tick 0x1400), a text key.
+pub const DESIGN_TIP: &str = "STR_MSG_DESIGN_TIP";
+
+/// Our zoom at the exe's zoom level 1 (a tile 16 pixels wide on the 800 x 600 screen); its levels are 1, 2 and 4.
+pub const ZOOM_UNIT: f32 = 0.905 / 4.0;
+
 pub fn pitch_for(w: f32, h: f32) -> f64 {
     if w == 800.0 && h == 600.0 {
         38.682186
@@ -2413,11 +3065,30 @@ impl App {
 
     /// Hires an employee of kind 0..3 (Club Pro, Ranger, Groundskeeper, Soda Vendor).
     pub fn hire_staff(&mut self, kind: usize) -> bool {
+        self.hire_employee(kind, false)
+    }
+
+    /// Hires an employee of kind 0..3, the experienced version (Celebrity, Marshall, Technician, Refresher) when `skilled`.
+    pub fn hire_employee(&mut self, kind: usize, skilled: bool) -> bool {
         if !self.econ.hire(kind) {
             return false;
         }
         let club = self.club_anchor();
-        staff::hire(&mut self.employees, kind, false, club, &mut self.exe_rng);
+        let i = staff::hire(&mut self.employees, kind, skilled, club, &mut self.exe_rng);
+        self.employees[i].hired = (self.club.tick >> 10) as i32;
+        true
+    }
+
+    /// Fires one employee (an index into `employees`), as the Employee panel's Fire button does: 25 units under Salaries.
+    pub fn fire_employee(&mut self, i: usize) -> bool {
+        let Some(e) = self.employees.get(i).filter(|e| e.active && (-5..=-2).contains(&e.job)) else { return false };
+        if !self.econ.fire((-2 - e.job as i32) as usize) {
+            return false;
+        }
+        self.employees[i].active = false;
+        if self.moving_employee == Some(i) {
+            self.moving_employee = None;
+        }
         true
     }
 
@@ -2437,15 +3108,32 @@ impl App {
     /// One game tick of staff work and weeds.
     fn staff_tick(&mut self) {
         self.game_tick = self.game_tick.wrapping_add(1);
-        let payroll: Vec<economy::Payroll> = self
-            .employees
-            .iter()
-            // no wages in a championship
-            .filter(|e| e.active && e.job != staff::job::OWNER && !self.club.championship())
-            .map(|e| economy::Payroll { kind: (-2 - e.job as i32).clamp(0, 3) as usize, experienced: e.upgraded })
+        // no wages in a championship
+        let staffed: Vec<usize> = (0..self.employees.len())
+            .filter(|&i| {
+                let e = &self.employees[i];
+                e.active && e.job != staff::job::OWNER && !self.club.championship()
+            })
             .collect();
-        let holes = self.holes.len();
-        self.econ.on_tick(self.game_tick, self.difficulty, holes, &payroll, &mut self.exe_rng);
+        let payroll: Vec<economy::Payroll> = staffed
+            .iter()
+            .map(|&i| {
+                let e = &self.employees[i];
+                economy::Payroll { kind: (-2 - e.job as i32).clamp(0, 3) as usize, experienced: e.upgraded }
+            })
+            .collect();
+        let holes = self.hole_numbers.len();
+        let paid = self.econ.on_tick(self.game_tick, self.difficulty, holes, &payroll, &mut self.exe_rng);
+        if self.game_tick > 0 && self.game_tick & 0x1fff == 0 {
+            // the year's debt lines for the year-end report (none when the cash is not negative)
+            self.year_notice = std::mem::take(&mut self.econ.notice);
+            if !self.year_notice.is_empty() {
+                println!("[{:6.1}s] board: {}", self.sim_time, self.year_notice.replace('\n', " "));
+            }
+        }
+        for (&i, units) in staffed.iter().zip(paid) {
+            self.employees[i].paid = (self.employees[i].paid + units).min(0x7fff);
+        }
         if self.staff_tiles.flags.len() != (self.terrain.w * self.terrain.h) as usize {
             self.staff_tiles = TileState::new(self.terrain.w, self.terrain.h);
         }
@@ -2465,7 +3153,7 @@ impl App {
             sg.thirst = g.thirst;
             sg.fatigue = g.fatigue;
             sg.hurried = g.flags & golf::flag::HURRIED != 0;
-            sg.busy = g.sub != 0;
+            sg.busy = g.strokes > 1;
             sg.last_pro_event = g.thoughts.iter().copied().find(|&t| t == 0x22 || t == 0x3a).unwrap_or(0) as u32;
             sg.pause = g.pause;
             sg.face = -1;
@@ -2506,7 +3194,6 @@ impl App {
             }
             let sg = self.staff_golfers[gi];
             let g = &mut self.club.g[gi];
-            g.thirst = sg.thirst;
             g.pause = sg.pause;
             if sg.face >= 0 {
                 g.facing = sg.face as i32;
@@ -2517,8 +3204,13 @@ impl App {
         }
         for ev in out {
             match ev {
-                StaffEvent::Mood { golfer, event, arg, .. } => {
+                StaffEvent::Mood { golfer, event, arg, counter_ok } => {
                     if self.club.g.get(golfer).map(|g| g.hole > 0).unwrap_or(false) {
+                        if event == sg_core::mood::ev::DRINK {
+                            // the drink's bonus reads the thirst at the sale (the experienced vendor's always counts);
+                            // the vendor's zero is copied back below
+                            self.club.g[golfer].thirst = if counter_ok { 99 } else { 0 };
+                        }
                         self.club.event(&mut self.course, &mut self.exe_rng, golfer, event, arg);
                     }
                 }
@@ -2532,6 +3224,12 @@ impl App {
                 }
                 StaffEvent::WeedPulled { a, b } => println!("[{:6.1}s] groundskeeper pulled a weed at {a},{b}", self.sim_time),
                 StaffEvent::Left { .. } => {}
+            }
+        }
+        // thirst last, after the drink's mood event
+        for gi in 0..golf::SLOTS {
+            if self.club.g[gi].hole > 0 {
+                self.club.g[gi].thirst = self.staff_golfers[gi].thirst;
             }
         }
     }
@@ -2572,6 +3270,38 @@ impl App {
         self.weed_sprite = self.sprite_for(weed, false, None);
     }
 
+    /// The clip set and state of an employee: (set, state) into staff_clips (state 0 walking, 1 standing, 2 working).
+    pub(crate) fn staff_clip_of(&self, e: &staff::Employee) -> (usize, usize) {
+        let set =
+            if e.job == staff::job::OWNER { 8 } else { ((-(e.job as i32) - 2) + if e.upgraded { 4 } else { 0 }).clamp(0, 7) as usize };
+        let state = if e.anim < staff::ANIM_STAND {
+            0
+        } else if e.anim == staff::ANIM_STAND {
+            1
+        } else {
+            2
+        };
+        (set, state)
+    }
+
+    /// One game tick of the employees' animation, as the exe's: two frames a tick walking, one otherwise; a finished action
+    /// clip goes back to standing.
+    fn staff_animate(&mut self) {
+        for i in 0..self.employees.len() {
+            let e = self.employees[i];
+            if !e.active {
+                continue;
+            }
+            let (set, state) = self.staff_clip_of(&e);
+            let n = self.staff_clips[set][state].0.map(|b| self.sprites[b].s.frames_per_view.max(1)).unwrap_or(1);
+            let e = &mut self.employees[i];
+            e.frame = e.frame.wrapping_add(if state == 0 { 2 } else { 1 });
+            if e.frame as i32 % n == 0 && e.anim == staff::ANIM_ACTION {
+                e.anim = staff::ANIM_STAND;
+            }
+        }
+    }
+
     /// Points the employee props at the employees: clip by job and state, frame advanced like the exe's (two a frame when
     /// walking), facing from the employee's direction.
     pub fn update_staff_props(&mut self) {
@@ -2590,33 +3320,26 @@ impl App {
                 self.props[pi].hidden = true;
                 continue;
             }
-            let set =
-                if e.job == staff::job::OWNER { 8 } else { ((-(e.job as i32) - 2) + if e.upgraded { 4 } else { 0 }).clamp(0, 7) as usize };
-            let state = if e.anim < staff::ANIM_STAND {
-                0
-            } else if e.anim == staff::ANIM_STAND {
-                1
-            } else {
-                2
-            };
+            let (set, state) = self.staff_clip_of(&e);
             let (body, shadow) = self.staff_clips[set][state];
             let Some(b) = body else {
                 self.props[pi].hidden = true;
                 continue;
             };
+            // the frame steps with the game tick (staff_tick), not with the screen's refresh
             let n = self.sprites[b].s.frames_per_view.max(1);
-            let step = if state == 0 { 2 } else { 1 };
-            let e = &mut self.employees[ei];
-            e.frame = e.frame.wrapping_add(step);
             let f = e.frame as i32 % n;
-            if f == 0 && e.anim == staff::ANIM_ACTION {
-                e.anim = staff::ANIM_STAND;
-            }
+            let e = &self.employees[ei];
             const DX: [f32; 8] = [0.0, 1.0, 1.0, 1.0, 0.0, -1.0, -1.0, -1.0];
             const DY: [f32; 8] = [-1.0, -1.0, 0.0, 1.0, 1.0, 1.0, 0.0, -1.0];
             let k = (e.dir as i32 & 7) as usize;
             let (x, z) = (e.x, e.y);
             let (wx, wz) = self.units_to_world(x, z);
+            let outfit = (e.job == staff::job::OWNER).then(|| {
+                let mut o = self.club.roster.first().map(|p| p.outfit(0)).unwrap_or_default();
+                o.alt_skin = 4; // the pro's hands are drawn pale, as for every pro
+                o
+            });
             let p = &mut self.props[pi];
             p.hidden = false;
             p.body = Some(b);
@@ -2624,6 +3347,7 @@ impl App {
             p.x = wx;
             p.z = wz;
             p.frame = f;
+            p.outfit = outfit;
             p.heading = DY[k].atan2(DX[k]).to_degrees();
         }
     }
@@ -2661,6 +3385,17 @@ impl App {
         for i in have..want {
             self.props.push(Prop { resident: Some(i), hidden: true, ..Default::default() });
         }
+        // where each golfer is on screen, or -1 when off it (the exe's drawing records this; a golfer who has finished and is
+        // out of sight goes straight home)
+        for gi in 0..golf::SLOTS {
+            if self.club.g[gi].hole == 0 {
+                continue;
+            }
+            let (x, y) = (self.club.g[gi].x, self.club.g[gi].y);
+            let (sx, sy) = self.screen_of(x, y).map(|(a, b)| (a as i32, b as i32)).unwrap_or((-1, -1));
+            self.club.g[gi].sx = sx;
+            self.club.g[gi].sy = sy;
+        }
         const DX: [f32; 8] = [0.0, 1.0, 1.0, 1.0, 0.0, -1.0, -1.0, -1.0];
         const DY: [f32; 8] = [-1.0, -1.0, 0.0, 1.0, 1.0, 1.0, 0.0, -1.0];
         for pi in 0..self.props.len() {
@@ -2693,19 +3428,18 @@ impl App {
     fn add_land_objects(&mut self) {
         let Some(land) = self.land.clone() else { return };
         let theme = land.slot.record().theme;
-        // Tile items: benches and ornamental trees as the exe draws them (sg_core::decor); flower beds INTERIM: the single-bed
-        // sprite of the theme (the exe picks the bed's shape from its neighbours through a table not decoded here).
-        let beds = match theme {
-            1 => "flowers/DesFlowers_Single",
-            2 => "flowers/TropFlowers_Single",
-            _ => "flowers/Flowers_Single",
-        };
+        let exe_theme = self.exe_theme();
+        // Tile items: benches, ornamental trees and flower beds as the exe draws them (sg_core::decor)
         let noise = self.noise.clone();
         let field = |x: i32, y: i32| noise.field(x, y);
         let mut draws: Vec<(i32, i32, sg_core::decor::Draw)> = Vec::new();
         for a in 0..land::N {
             for b in 0..land::N {
                 let i = (a * land::N + b) as usize;
+                // nothing stands on land outside the property (the generator's benches round a landmark beyond the border)
+                if land.ty[i] == land::T_OUT {
+                    continue;
+                }
                 let f = land.flags[i];
                 if f & 0x20 != 0 && land.ty[i] == land::T_WATER {
                     // bridge pieces on a path over water
@@ -2725,7 +3459,8 @@ impl App {
                             }
                         }
                     }
-                    for d in sg_core::decor::bridge(path, dry, water_path, f & 0x100 != 0, (f & 0x1f) as u8, 0, 1) {
+                    let rot = ((self.rot / 90.0).round() as i32).rem_euclid(4);
+                    for d in sg_core::decor::bridge(path, dry, water_path, f & 0x100 != 0, (f & 0x1f) as u8, 0, 1, rot) {
                         draws.push((a, b, d));
                     }
                 }
@@ -2740,24 +3475,51 @@ impl App {
                         draws.push((a, b, d));
                     }
                 } else if f & 0x1000 != 0 && land.ty[i] != land::T_OUT {
-                    let body = self.sprite_for(&format!("{beds}.flc"), false, None);
-                    if body.is_some() {
-                        let shadow = self.sprite_for(&format!("{beds}Shadow.flc"), true, None);
-                        let (x, z) = self.terrain.tile_centre(a, b);
-                        self.props.push(Prop { x, z, body, shadow, facing: (land.var[i] & 3) as i32, object: true, ..Default::default() });
+                    let course = &self.course;
+                    let bed = |a: i32, b: i32| {
+                        let j = (a * land::N + b) as usize;
+                        ((0..land::N).contains(&a) && (0..land::N).contains(&b) && land.flags[j] & 0x1000 != 0)
+                            .then(|| (land.var[j], course.level_table.get(j).copied().unwrap_or(0)))
+                    };
+                    let weedy = course.flags.get(i).is_some_and(|f| f & sg_core::course::f::WEED != 0);
+                    let t = &self.staff_tiles;
+                    let growth = self.tile_growing(a, b).then(|| t.counter[(b * t.w + a) as usize] as i32);
+                    let rot = ((self.rot / 90.0).round() as i32).rem_euclid(4);
+                    for d in sg_core::decor::flower_bed(a, b, &bed, weedy, growth, &|a, b| course.raw_corner(a, b), rot) {
+                        draws.push((a, b, d));
                     }
                 }
             }
         }
         for (a, b, d) in draws {
+            let n = self.props.len();
             self.push_decor(a, b, d, true, false);
+            // the beds go straight onto the frame in the exe's tile loop, under the queued sprites
+            if (0x1a2..=0x1b3).contains(&d.sprite) && self.props.len() > n {
+                self.props[n].flat = true;
+                self.props[n].bed = Some((d.sprite, d.pal, a, b));
+            }
         }
-        let level = (self.holes.len() > 10) as u16;
+        let level = (self.hole_numbers.len() > 10) as u16;
         for (oi, o) in land.objects.iter().enumerate().filter(|(_, o)| o.kind >= 0) {
-            let size = land::BUILDINGS.get(o.kind as usize).map(|b| b.1).unwrap_or(1);
+            // land outside the property is not drawn, nor what stands on it (an obstacle placed before the border was
+            // taken away shows again when the tract is bought)
+            if self.terrain.type_at(o.a, o.b) == 20 {
+                continue;
+            }
+            let size = sg_core::data::buildings().get(o.kind as usize).map(|b| b.1).unwrap_or(1);
             let (cx, cz) = self.terrain.tile_centre(o.a, o.b);
             let off = (size - 1) as f32 * TILE_SIZE * 0.5;
             let (x, z) = (cx + off, cz + off);
+            // a landmark in its own palette, 100 + type, facing its way plus the view's quarter turns (one more for type 3,
+            // whose view the exe turns by the full eighth count, 0x463180 case 4)
+            let (mut pal, mut facing) = (None, o.dir as i32);
+            if o.kind == land::K_LANDMARK {
+                pal = sg_core::decor::palette_file(100 + o.sub.clamp(0, 18) as u8, exe_theme);
+                if o.sub == 3 {
+                    facing += ((self.rot / 90.0).round() as i32).rem_euclid(4);
+                }
+            }
             let layers: Vec<(String, bool, bool)> = if o.kind == land::K_HOME_SITE && o.sub != 0 {
                 // a celebrity's vacation home: one of two houses by the object slot's parity (0x4012d0)
                 let (house, dirt) = sg_core::celebs::HOUSES[oi & 1];
@@ -2781,12 +3543,12 @@ impl App {
                 sg_core::objects::building_layers(o.kind, level, theme).iter().map(|l| (l.file.to_string(), l.flat, l.animated)).collect()
             };
             for (file, flat, animated) in layers {
-                let body = self.sprite_for(&format!("{file}.flc"), false, None);
+                let body = self.sprite_for(&format!("{file}.flc"), false, pal);
                 if body.is_none() {
                     continue;
                 }
                 let shadow = if flat { None } else { self.sprite_for(&format!("{file}Shadow.flc"), true, None) };
-                self.props.push(Prop { x, z, body, shadow, flat, facing: o.dir as i32, animated, object: true, ..Default::default() });
+                self.props.push(Prop { x, z, body, shadow, flat, facing, animated, object: true, ..Default::default() });
             }
         }
     }
@@ -2828,9 +3590,18 @@ impl App {
     }
 }
 
-/// Names of the employee kinds, basic and experienced, as the exe shows them.
-pub const STAFF_NAMES: [[&str; 2]; 4] =
-    [["Club Pro", "Celebrity"], ["Ranger", "Marshall"], ["Groundskeeper", "Technician"], ["Soda Vendor", "Refresher"]];
+/// The name of employee kind k (0 Club Pro, 1 Ranger, 2 Groundskeeper, 3 Soda Vendor), basic or experienced.
+pub fn staff_title(k: usize, experienced: bool) -> &'static str {
+    tr(STAFF_NAME_KEYS[k][experienced as usize])
+}
+
+/// Names of the employee kinds, basic and experienced, as the exe shows them (text keys).
+pub const STAFF_NAME_KEYS: [[&str; 2]; 4] = [
+    ["STR_STAFF_CLUB_PRO", "STR_STAFF_CELEBRITY"],
+    ["STR_STAFF_RANGER", "STR_STAFF_MARSHALL"],
+    ["STR_STAFF_GROUNDSKEEPER", "STR_STAFF_TECHNICIAN"],
+    ["STR_STAFF_SODA_VENDOR", "STR_STAFF_REFRESHER"],
+];
 
 impl App {
     /// A left click on the course: drop an employee being moved on that tile, or pick up a hired employee standing at the click,
@@ -2851,7 +3622,9 @@ impl App {
         }
         if self.moving_employee.is_none() && sg_core::course::inside(t.0, t.1) {
             let o = self.course.object_at(t.0, t.1);
-            if o >= 0 && self.course.objects.get(o as usize).is_some_and(|ob| ob.kind == land::K_CLUBHOUSE) && self.open_pair_screen() {
+            let clubhouse = o >= 0 && self.course.objects.get(o as usize).is_some_and(|ob| ob.kind == land::K_CLUBHOUSE);
+            // a golfer under the click (or one held by the card's Move/Eject) comes before the clubhouse
+            if self.golfer_click(wx, wz, clubhouse) || clubhouse && self.open_pair_screen() {
                 return;
             }
         }
@@ -2859,8 +3632,8 @@ impl App {
             if let Some(e) = self.employees.get_mut(i) {
                 e.post = Some(t);
                 e.steps = 0;
-                let name = STAFF_NAMES[(-2 - e.job as i32).clamp(0, 3) as usize][e.upgraded as usize];
-                self.show_toast(&format!("{name} will work around here"));
+                let name = staff_title((-2 - e.job as i32).clamp(0, 3) as usize, e.upgraded);
+                self.show_toast(&trf("STR_TOAST_EMPLOYEE_POSTED", &[("EMPLOYEE", &name)]));
             }
             return;
         }
@@ -2871,13 +3644,13 @@ impl App {
             }
             let (ex, ez) = self.units_to_world(e.x, e.y);
             if (ex - wx).hypot(ez - wz) < 70.0 {
-                pick = Some((i, STAFF_NAMES[(-2 - e.job as i32).clamp(0, 3) as usize][e.upgraded as usize]));
+                pick = Some((i, staff_title((-2 - e.job as i32).clamp(0, 3) as usize, e.upgraded)));
                 break;
             }
         }
         if let Some((i, name)) = pick {
             self.moving_employee = Some(i);
-            self.show_toast(&format!("Click the course where the {name} should work"));
+            self.show_toast(&trf("STR_TOAST_EMPLOYEE_CLICK", &[("EMPLOYEE", &name)]));
             return;
         }
         self.clicked_tile = Some(t);

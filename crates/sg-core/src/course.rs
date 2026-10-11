@@ -3,10 +3,15 @@
 //! and the objects. Built from `land::Land` whenever the course changes (the exe's refresh routine 0x42f7a0).
 
 use crate::geom::{len, DX, DY, UNIT};
-use crate::land::{Land, Object, BUILDINGS};
+use crate::land::{Land, Object};
 
 pub const N: i32 = 50;
 pub const NN: usize = 2500;
+
+/// The exe's height step (the int at 0x4c2e00): screen pixels per corner level per zoom step, used as `level * step * zoom
+/// / 4` for the ground and in the ball, balloon and waterfall lifts. Nothing writes it, so its value is the one in the
+/// publisher exe's initialised data: 5.
+pub const HEIGHT_STEP_PX: i32 = 5;
 
 /// Tile types the golfer code tests by number.
 pub mod t {
@@ -41,8 +46,41 @@ pub mod f {
     pub const OBSTACLE: u16 = 0x8000;
 }
 
+/// The terrain table's names (+0x00, the singular form) as the exe's static table at 0x4c1a40 has them. The exe patches some
+/// names per theme when it copies the table at run time (which ones, and to what, is not decoded: these are the defaults).
+pub const TYPE_NAME_KEYS: [&str; 23] = [
+    "STR_TERRAIN_TEES",
+    "STR_TERRAIN_GREEN",
+    "STR_TERRAIN_FAIRWAY",
+    "STR_TERRAIN_FIRM_FAIRWAY",
+    "STR_TERRAIN_ROUGH",
+    "STR_TERRAIN_DEEP_ROUGH",
+    "STR_TERRAIN_MOUND",
+    "STR_TERRAIN_SAND_TRAP",
+    "STR_TERRAIN_WASTE_BUNKER",
+    "STR_TERRAIN_POT_BUNKER",
+    "STR_TERRAIN_RAVINE",
+    "STR_TERRAIN_BRUSH",
+    "STR_TERRAIN_ROCKS",
+    "STR_TERRAIN_TREE",
+    "STR_TERRAIN_PINE_TREE",
+    "STR_TERRAIN_PALM_TREE",
+    "STR_TERRAIN_ELM_TREE",
+    "STR_TERRAIN_WATER",
+    "STR_TERRAIN_WETLANDS",
+    "STR_TERRAIN_MARSH",
+    "STR_TERRAIN_OUT_OF_BOUNDS",
+    "STR_TERRAIN_BUILDING",
+    "STR_TERRAIN_BUILDING",
+];
+
+/// A tile type's name from the terrain table, "" for an unknown type.
+pub fn type_name(ty: i32) -> &'static str {
+    TYPE_NAME_KEYS.get(ty as usize).map(|k| crate::lang::tr(k)).unwrap_or("")
+}
+
 /// One row of the runtime terrain table (0x578350, 0x30 bytes per type).
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TypeRow {
     /// +0x20 bounce
     pub bounce: i32,
@@ -146,7 +184,7 @@ impl Default for Course {
             level_table: vec![0; NN],
             walls: vec![0; NN],
             objects: Vec::new(),
-            hazard: std::array::from_fn(|i| TYPES[i].hazard),
+            hazard: std::array::from_fn(|i| crate::data::get().rows[i].hazard),
             theme: 0,
             door: (0, 0),
             slot_index: 0,
@@ -162,8 +200,56 @@ impl Default for Course {
 }
 
 impl Course {
+    /// The routing map's aura (0x4616f0, rebuilt each frame the aura tab is open): a happy and an unhappy map, a byte per tile.
+    /// Nothing shows until the landing counters (0x53ea24) add up to 10; their sum, at most 1750, scales every tile's happy
+    /// count by 20000 and unhappy count by -40000. Each spreads two thirds of that over the 15 x 15 tiles round it (0x4615f0),
+    /// divided by the cheap distance of three times the tile offset plus 2, onto in-bounds tiles that are not out of bounds,
+    /// each byte clamped to 0..255. Returns (happy, unhappy).
+    pub fn aura(&self) -> (Vec<u8>, Vec<u8>) {
+        let mut happy = vec![0u8; NN];
+        let mut unhappy = vec![0u8; NN];
+        let total: i32 = self.landing.iter().take(NN).map(|&v| v as u8 as i32).sum();
+        if total <= 9 {
+            return (happy, unhappy);
+        }
+        let total = total.min(1750);
+        let mut spread = |a: i32, b: i32, v: i32| {
+            let v = v * 2 / 3;
+            for da in -7..=7 {
+                for db in -7..=7 {
+                    let (ta, tb) = (a + da, b + db);
+                    if self.oob(ta, tb) {
+                        continue;
+                    }
+                    let d = crate::staff::approx_dist(da * 3, db * 3);
+                    let i = idx(ta, tb);
+                    if v < 1 {
+                        unhappy[i] = (unhappy[i] as i32 - v / (d + 2)).clamp(0, 255) as u8;
+                    } else {
+                        happy[i] = (v / (d + 2) + happy[i] as i32).clamp(0, 255) as u8;
+                    }
+                }
+            }
+        };
+        for a in 0..N {
+            for b in 0..N {
+                let i = idx(a, b);
+                let h = self.happy.get(i).copied().unwrap_or(0) as i32;
+                if h != 0 {
+                    spread(a, b, h * 20000 / total);
+                }
+                let u = self.unhappy.get(i).copied().unwrap_or(0) as i32;
+                if u != 0 {
+                    spread(a, b, u * -40000 / total);
+                }
+            }
+        }
+        (happy, unhappy)
+    }
+
     /// Takes tiles, flags, heights and objects from the land, keeping the per-tile counters, then rebuilds levels and walls.
-    pub fn sync(&mut self, land: &Land) {
+    /// `all_joined`: difficulty 0 and sandbox games treat every building as joined to the clubhouse.
+    pub fn sync(&mut self, land: &Land, all_joined: bool) {
         self.ty.copy_from_slice(&land.ty);
         // Weed bits belong to the staff routines; keep the ones already here.
         for i in 0..NN {
@@ -189,7 +275,7 @@ impl Course {
                 continue;
             }
             // Operational: joined to the clubhouse by path (kinds 0..5 and 17.. always count).
-            if o.kind <= 5 || o.kind >= 17 || joined.get(i).copied().unwrap_or(false) {
+            if all_joined || o.kind <= 5 || o.kind >= 17 || joined.get(i).copied().unwrap_or(false) {
                 o.flags |= 0x40;
             } else {
                 o.flags &= !0x40;
@@ -220,7 +306,7 @@ impl Course {
     }
 
     pub fn row(&self, ty: u8) -> &TypeRow {
-        &TYPES[(ty as usize).min(22)]
+        crate::data::row(ty)
     }
 
     /// Hazard byte of a type, as the table holds it right now.
@@ -445,7 +531,7 @@ impl Course {
 
     /// Footprint edge of an object as lookups count it (0x40df80): upgraded buildings grow, except the snack bar.
     pub fn object_edge(&self, kind: i32) -> i32 {
-        let e = BUILDINGS.get(kind as usize).map(|b| b.1).unwrap_or(1);
+        let e = crate::data::buildings().get(kind as usize).map(|b| b.1).unwrap_or(1);
         if kind > 5 && kind != 7 {
             e - 1 + self.level.get(kind as usize).copied().unwrap_or(0)
         } else {
@@ -472,7 +558,7 @@ impl Course {
     pub fn nearest(&self, kind: i32, x: i32, y: i32) -> (i32, i32) {
         let mut best = -1;
         let mut bd = 0xffff;
-        let half = BUILDINGS.get(kind as usize).map(|b| b.1).unwrap_or(1) / 2;
+        let half = crate::data::buildings().get(kind as usize).map(|b| b.1).unwrap_or(1) / 2;
         for (i, o) in self.objects.iter().enumerate() {
             if o.kind != kind {
                 continue;
@@ -535,5 +621,30 @@ impl Course {
             }
         }
         bits
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn aura_spreads_and_scales_by_landings() {
+        let mut c = Course::default();
+        assert_eq!(c.aura().0.iter().map(|&v| v as u32).sum::<u32>(), 0);
+        c.landing[idx(0, 0)] = 9;
+        c.happy[idx(25, 25)] = 1;
+        // fewer than 10 landings: nothing
+        assert_eq!(c.aura().0[idx(25, 25)], 0);
+        c.landing[idx(0, 0)] = -1; // 255 landings, read as a byte
+        let (happy, unhappy) = c.aura();
+        // 1 * 20000 / 255 = 78, two thirds 52, over (0 + 2) at the tile itself, over (cheap distance 3 + 2) next to it
+        assert_eq!(happy[idx(25, 25)], 26);
+        assert_eq!(happy[idx(26, 25)], 10);
+        assert_eq!(happy[idx(25, 33)], 0);
+        assert!(unhappy.iter().all(|&v| v == 0));
+        c.unhappy[idx(10, 10)] = 2;
+        // 2 * -40000 / 255 = -313, two thirds -208, 104 at the tile
+        assert_eq!(c.aura().1[idx(10, 10)], 104);
     }
 }

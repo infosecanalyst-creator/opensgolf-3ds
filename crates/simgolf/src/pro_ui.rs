@@ -1,12 +1,15 @@
 //! The player's pro in the app: the pro panel's buttons, the skill dialog, aiming with the pointer, and the round's start.
-//! The rules live in sg_core::pro; the layout of the dialog and the panel text placement here are our own.
+//! The rules live in sg_core::pro. The skill dialog follows the exe's wide stats card (0x45f0f0 with x offset 200,
+//! docs/DECODE_GOLFERCARD.md 3, DECODE_CARDS2.md 1, DECODE_CARDS3.md 1); the panel text placement here is our own.
 
 use crate::app::*;
 use crate::gfx::Gfx;
-use crate::render::Rect;
-use crate::ui::{rgb, rgba, Screen as Ui};
+use crate::popup_ui::ChoiceBox;
+use crate::screens_ui::{c15, skill_value, top, BODY, LARGE};
+use crate::ui::{rgb, Screen as Ui};
 use sg_core::golfer::SLOTS;
-use sg_core::pro::{self, SKILL_NAMES};
+use sg_core::lang::{tr, trf};
+use sg_core::pro;
 use sg_core::staff;
 use sg_core::terrain::TILE_SIZE;
 
@@ -18,23 +21,61 @@ pub struct SkillDialog {
     pub title: String,
     /// The round to ask for when the dialog closes (practice false, match true).
     pub then: Option<bool>,
+    /// The confirm box over the dialog (OK with points left).
     pub confirm: bool,
+    /// Points were given on opening: the pads and the points line show, and OK closes it; otherwise any click does.
+    pub editable: bool,
+    /// Opened for an accomplishment's three points: footage of the original shows the card over the trophy room under a
+    /// heading "Add three skill points to your player...".
+    pub award: bool,
+    /// The first allocation, before the pro's first round (0x4065c0): the explanation box under the card.
+    pub intro: bool,
 }
 
-const DLG: Rect = Rect::new(190.0, 50.0, 420.0, 400.0);
+/// The explanation 0x4065c0 shows under the card on the first allocation (texts 0x4c4714 and 0x4c46bc).
+const INTRO: &str = "STR_SKILLS_INTRO";
 
-fn plus_rect(k: usize) -> Rect {
-    Rect::new(DLG.x + 260.0, DLG.y + 70.0 + 26.0 * k as f32, 30.0, 22.0)
+/// The x offset the exe passes for the player's own card.
+const X0: f32 = 200.0;
+
+/// Row r's top.
+fn row_y(r: usize) -> f32 {
+    90.0 + 24.0 * r as f32
 }
-fn minus_rect(k: usize) -> Rect {
-    Rect::new(DLG.x + 296.0, DLG.y + 70.0 + 26.0 * k as f32, 30.0, 22.0)
+
+/// The pad under the pointer: (row, true for the top half that adds).
+fn pad_hit(vx: f32, vy: f32) -> Option<(usize, bool)> {
+    if !(X0 + 50.0..=X0 + 82.0).contains(&vx) {
+        return None;
+    }
+    (0..10).find_map(|r| {
+        let y = row_y(r);
+        if vy > y && vy <= y + 12.0 {
+            Some((r, true))
+        } else if vy > y + 12.0 && vy <= y + 24.0 {
+            Some((r, false))
+        } else {
+            None
+        }
+    })
 }
-const DONE: Rect = Rect::new(DLG.x + 160.0, DLG.y + 350.0, 100.0, 30.0);
+
+/// The OK ball: within 20 of (x0 + 350, 334) both ways.
+fn ok_hit(vx: f32, vy: f32) -> bool {
+    (vx - X0 - 350.0).abs() < 20.0 && (vy - 334.0).abs() < 20.0
+}
+
+/// The confirm box (the generic popup 0x46d6e0 at (400, 200)), worded as footage of the original shows it: the first
+/// answer leaves with the points kept, the second goes back to the card.
+fn confirm_box() -> ChoiceBox {
+    let lines = [tr("STR_SKILLS_UNUSED_TITLE"), tr("STR_SKILLS_UNUSED_QUESTION"), tr("STR_SKILLS_UNUSED_YES"), tr("STR_SKILLS_UNUSED_NO")];
+    ChoiceBox::new(lines.iter().map(|l| l.to_string()).collect(), 400.0, 200.0)
+}
 
 impl App {
     /// The pro's name (roster person 0).
     pub fn pro_name(&self) -> String {
-        self.club.roster.first().map(|p| p.name.clone()).unwrap_or_else(|| "Gary Golf".to_string())
+        self.club.roster.first().map(|p| p.name.clone()).unwrap_or_else(|| tr("STR_LOG_GARY_GOLF").to_string())
     }
 
     /// The pro panel's buttons: 0 practice round, 1 match, 2 skills, 3 cancel the round.
@@ -43,17 +84,20 @@ impl App {
             0 | 1 => {
                 let m = b == 1;
                 if self.club.gary != -1 {
-                    self.show_toast(&format!("{} is already playing", self.pro_name()));
+                    self.show_toast(&trf("STR_TOAST_PRO_ALREADY_PLAYING", &[("PRO", &self.pro_name())]));
                 } else if self.club.next_hole < 2 {
-                    self.show_toast("Your pro needs at least one hole to play");
+                    self.show_toast(tr("STR_TOAST_PRO_NEEDS_HOLE"));
                 } else if m && self.club.game & pro::CHALLENGE == 0 {
-                    self.show_toast("No famous golfer has challenged you yet");
+                    self.show_toast(tr("STR_TOAST_NO_CHALLENGE"));
                 } else if self.club.pro_skill.iter().all(|&v| v == 0) {
                     // the first allocation comes before the first round (0x4065c0)
                     let pts = self.club.first_skill_points();
                     self.open_skills(pts, Some(m));
+                    if let Some(d) = self.skill_dialog.as_mut() {
+                        d.intro = true;
+                    }
                 } else if !self.club.request_pro_round(m) {
-                    self.show_toast("The round can't start now");
+                    self.show_toast(tr("STR_TOAST_ROUND_CANT_START"));
                 }
             }
             2 => {
@@ -64,7 +108,7 @@ impl App {
             _ if self.club.game & sg_core::golfer::game::TOURNAMENT != 0 => self.cancel_tournament(),
             _ => {
                 if !self.club.cancel_pro_round(&mut self.exe_rng) {
-                    self.show_toast("There is no round to cancel");
+                    self.show_toast(tr("STR_TOAST_NO_ROUND_TO_CANCEL"));
                 }
             }
         }
@@ -86,14 +130,11 @@ impl App {
             self.finish_skills(then);
             return;
         }
-        let title = if then.is_some() {
-            "Before you play your course you must choose your pro's skills.".to_string()
-        } else if points > 0 {
-            "Add skill points to your pro's skills.".to_string()
-        } else {
-            format!("{}'s skills", self.pro_name())
-        };
-        self.skill_dialog = Some(SkillDialog { floor: self.club.pro_skill, points, title, then, confirm: false });
+        // the card's title is the pro's name
+        let title = self.pro_name();
+        let editable = points > 0;
+        self.skill_dialog =
+            Some(SkillDialog { floor: self.club.pro_skill, points, title, then, confirm: false, editable, award: false, intro: false });
         self.screen = Screen::Skills;
     }
 
@@ -114,7 +155,7 @@ impl App {
         }
         if let Some(m) = then {
             if !self.club.request_pro_round(m) {
-                self.show_toast("The round can't start now");
+                self.show_toast(tr("STR_TOAST_ROUND_CANT_START"));
             }
         }
     }
@@ -125,81 +166,134 @@ impl App {
             self.screen = Screen::Play;
             return;
         };
-        let interactive = d.points > 0 || d.then.is_some();
-        let mut handled = false;
-        if interactive {
-            for k in 0..10 {
-                let v = &mut self.club.pro_skill[k];
-                if plus_rect(k).has(vx, vy) {
-                    handled = true;
-                    if d.points > 0 && *v < 10 {
-                        *v += 1;
-                        d.points -= 1;
-                        d.confirm = false;
-                    } else {
-                        self.slot_sound(0x18, self.cam_x, self.cam_z);
-                    }
-                } else if minus_rect(k).has(vx, vy) {
-                    handled = true;
-                    if *v > d.floor[k] {
-                        *v -= 1;
-                        d.points += 1;
-                    } else {
-                        self.slot_sound(0x18, self.cam_x, self.cam_z);
-                    }
-                }
-            }
-        }
-        if DONE.has(vx, vy) || !interactive {
-            if d.points > 0 && !d.confirm {
-                d.confirm = true;
-                self.show_toast("You haven't used all your skill points. Click Done again to keep them for later.");
+        if d.confirm {
+            // the confirm box: its first answer keeps the points for later, anything else goes back to the dialog
+            d.confirm = false;
+            if confirm_box().option_at(vx, vy) == Some(0) {
+                self.close_skills(d);
+            } else {
                 self.skill_dialog = Some(d);
-                return;
             }
-            self.club.skill_points = d.points.max(0);
-            self.screen = Screen::Play;
-            self.finish_skills(d.then);
             return;
         }
-        if !handled {
-            self.slot_sound(0x18, self.cam_x, self.cam_z);
+        if !d.editable {
+            // read only: any click leaves
+            self.close_skills(d);
+            return;
+        }
+        if let Some((k, add)) = pad_hit(vx, vy) {
+            let v = &mut self.club.pro_skill[k];
+            if add && d.points > 0 && *v < 10 {
+                *v += 1;
+                d.points -= 1;
+            } else if !add && *v > 0 && *v > d.floor[k] {
+                *v -= 1;
+                d.points += 1;
+            } else {
+                self.ui_sound(0x18);
+            }
+        } else if ok_hit(vx, vy) {
+            if d.points > 0 {
+                d.confirm = true;
+            } else {
+                self.close_skills(d);
+                return;
+            }
         }
         self.skill_dialog = Some(d);
     }
 
+    /// Keys in the skill dialog: Enter is OK (or the confirm box's choice), Esc leaves the confirm box (or a read-only card).
+    pub fn skills_key(&mut self, enter: bool) {
+        let Some(d) = self.skill_dialog.as_mut() else { return };
+        let (cx, cy) = if d.confirm {
+            if enter {
+                let b = confirm_box();
+                let r = b.rect();
+                (r.x + 50.0, b.line_tops()[2] + 5.0)
+            } else {
+                (-1.0, -1.0)
+            }
+        } else if !d.editable || enter {
+            (X0 + 350.0, 334.0)
+        } else {
+            return;
+        };
+        self.skills_click(cx, cy);
+    }
+
+    fn close_skills(&mut self, d: SkillDialog) {
+        self.club.skill_points = d.points.max(0);
+        self.screen = Screen::Play;
+        self.finish_skills(d.then);
+    }
+
     pub fn draw_skills(&mut self, g: &mut Gfx) {
         let Some(d) = self.skill_dialog.clone() else { return };
+        if d.award {
+            // EXACT (0x46e810 after the board): the trophy room dimmed by 0.4 (0x474440 with 0x3ecccccd; footage of the
+            // original shows it at about 0.56 of its brightness), then the heading 0x4e3e28 drawn once as the list box
+            // at (0x50, 5): an odd y, so a white outline with the text in cyan (the frame's foot is under the card)
+            crate::ui::set_face(Some(crate::ui::Face::Info));
+            self.draw_board(g);
+            crate::ui::set_face(None);
+        }
         let s = Ui::new(self.draw_w, self.draw_h);
         self.view = s.view;
-        s.fill(g, DLG.x, DLG.y, DLG.w, DLG.h, rgba(0.1, 0.12, 0.3, 0.94));
-        s.text(g, DLG.x + 14.0, DLG.y + 24.0, &d.title, 13.0, rgb(1.0, 1.0, 0.8));
-        let interactive = d.points > 0 || d.then.is_some();
-        if interactive {
-            let col = if d.points > 0 { rgb(1.0, 0.45, 0.4) } else { rgb(0.8, 1.0, 0.8) };
-            s.text(g, DLG.x + 14.0, DLG.y + 50.0, &format!("{} skill points", d.points), 15.0, col);
+        if d.award {
+            s.fill(g, -400.0, -400.0, 1600.0, 1400.0, crate::ui::rgba(0.0, 0.0, 0.0, 0.4));
+            let b = crate::popup_ui::ListBox::new(vec![tr("STR_SKILLS_AWARD_TITLE").to_string()], 0x50, 5);
+            self.draw_list_box(g, &s, &b, None);
         }
-        for k in 0..10 {
-            let v = self.club.pro_skill[k];
-            let y = DLG.y + 86.0 + 26.0 * k as f32;
-            let c = if v == 0 { rgb(0.55, 0.55, 0.65) } else { rgb(1.0, 1.0, 1.0) };
-            s.text(g, DLG.x + 20.0, y, SKILL_NAMES[k], 15.0, c);
-            s.text(g, DLG.x + 190.0, y, &format!("{}%", v as i32 * 10), 15.0, c);
-            if interactive {
-                // plus and minus signs drawn as bars (the interface font has no plus)
-                let w = rgb(1.0, 1.0, 1.0);
-                for (r, plus) in [(plus_rect(k), true), (minus_rect(k), false)] {
-                    s.fill(g, r.x, r.y, r.w, r.h, rgba(0.4, 0.4, 0.8, 0.7));
-                    let (cx, cy) = (r.x + r.w / 2.0, r.y + r.h / 2.0);
-                    s.fill(g, cx - 7.0, cy - 1.5, 14.0, 3.0, w);
-                    if plus {
-                        s.fill(g, cx - 1.5, cy - 7.0, 3.0, 14.0, w);
-                    }
+        if d.intro {
+            // EXACT (0x4065c0): drawn before the card, at (200, 0x172) through 0x40d320 with nobody speaking, mode -2
+            self.draw_note_box(g, &s, 200.0, 370.0, tr(INTRO));
+        }
+        let (mx, my) = self.card_ui.mouse;
+        self.art.solid_frame(g, &s, X0 + 46.0, 50.0, 320.0, 316.0);
+        s.text_centered(g, X0 + 210.0, top(58.0, LARGE), &d.title, LARGE, rgb(1.0, 1.0, 1.0));
+        // the pro on the sky and grass window, head over body
+        s.image(g, &self.art.head_body, X0 + 247.0, 86.0);
+        let me = self.club.roster.first().cloned().unwrap_or_default();
+        let look = crate::cust_ui::person_look(&me);
+        let mut o = me.outfit(0);
+        o.alt_skin = 4; // the pro's hands are drawn pale
+        let swaps = std::mem::take(&mut self.swaps);
+        self.art.head_over_body(g, &s, &swaps, &me, o, 0, look, 1, X0 + 255.0, 102.0);
+        self.swaps = swaps;
+        if d.editable {
+            // footage of the original: "Add 16 skill points." in white with points left (the decoded red test is not
+            // borne out)
+            s.text_centered(g, X0 + 210.0, top(80.0, BODY), &trf("STR_SKILLS_ADD_POINTS", &[("POINTS", &d.points)]), BODY, c15(0x7fff));
+        }
+        let hover = if d.editable && !d.confirm { pad_hit(mx, my) } else { None };
+        let t = &self.art.trans;
+        for r in 0..10 {
+            let y = row_y(r);
+            s.image_part(g, t, X0 + 82.0, y, 32.0, 100.0, 191.0, 24.0);
+            if d.editable {
+                s.image_part(g, t, X0 + 50.0, y, 0.0, 150.0, 40.0, 24.0);
+                match hover {
+                    Some((k, true)) if k == r => s.image_part(g, t, X0 + 50.0, y, 0.0, 200.0, 35.0, 12.0),
+                    Some((k, false)) if k == r => s.image_part(g, t, X0 + 50.0, y + 12.0, 0.0, 220.0, 35.0, 12.0),
+                    _ => {}
                 }
             }
+            let v = self.club.pro_skill[r];
+            if v != 0 {
+                s.text(g, X0 + 87.0, top(y + 7.0, BODY), &skill_value(v), BODY, rgb(0.0, 0.0, 0.0));
+            }
+            let c = if v != 0 { rgb(0.0, 0.0, 0.0) } else { c15(0x4210) };
+            s.text(g, X0 + 138.0, top(y + 7.0, BODY), pro::skill_label(r), BODY, c);
         }
-        s.fill(g, DONE.x, DONE.y, DONE.w, DONE.h, rgba(0.3, 0.6, 0.3, 0.85));
-        s.text_centered(g, DONE.x + DONE.w / 2.0, DONE.y + 21.0, "Done", 16.0, rgb(1.0, 1.0, 1.0));
+        if d.editable {
+            // the OK ball: footage of the original shows the yellow cut with the pointer away from it
+            s.image_part(g, t, X0 + 326.0, 318.0, 350.0, 140.0, 50.0, 50.0);
+        }
+        if d.confirm {
+            let b = confirm_box();
+            self.draw_choice_box(g, &s, &b, b.option_at(mx, my));
+        }
         g.flush();
     }
 
@@ -219,7 +313,7 @@ impl App {
         self.club.start_pro_round(&self.course, &mut self.exe_rng, (e.x, e.y), e.dir as i32);
         if self.club.gary >= 0 {
             println!("[{:6.1}s] {} starts a round (golfer {})", self.sim_time, self.pro_name(), self.club.gary);
-            self.panel = 3;
+            self.show_player_panel();
             self.edit = false;
         }
     }
@@ -266,7 +360,7 @@ impl App {
                         self.pro_name(),
                         self.club.g[g].hole,
                         p.distance,
-                        pro::CLUB_NAMES[p.club.clamp(0, 11) as usize]
+                        pro::club_label(p.club.clamp(0, 11) as usize)
                     );
                 }
             }
@@ -274,8 +368,10 @@ impl App {
         if self.club.skill_points > 0 && self.club.pro_mask != 0 && self.ui_ok && self.screen == Screen::Play && self.club.award_pending < 0
         {
             let pts = self.club.skill_points;
-            self.show_toast("Add three skill points to your pro's skills.");
             self.open_skills(pts, None);
+            if let Some(d) = self.skill_dialog.as_mut() {
+                d.award = true;
+            }
         }
     }
 
@@ -303,7 +399,7 @@ impl App {
             }
         }
         self.aim = self.club.aim_frame(&self.course, tile, corner);
-        self.panel = 3;
+        self.show_player_panel();
     }
 
     /// A click on the course while the pro waits: the aim is taken.
@@ -317,9 +413,11 @@ impl App {
         true
     }
 
-    /// The panel text while aiming (3.2): club, attitude, distance, lie and the skills that count for this shot.
-    pub fn aim_text(&self) -> Vec<(String, bool)> {
-        let Some(g) = self.club.pro_aiming() else { return Vec::new() };
+    /// The panel text while aiming (0x41b62f..0x41baf4): the lines "Attitude: <word>", "Club: <club>", "Distance: <n> yds" and
+    /// "Lie: <terrain name>" (the name from the terrain table 0x578350, lower case: "Lie: tees", "Lie: sand trap" in footage of
+    /// the original), then each skill the pro has as "<skill> +<10 x points>%" and whether it counts for this shot.
+    pub fn aim_text(&self) -> Option<AimText> {
+        let g = self.club.pro_aiming()?;
         let gg = &self.club.g[g];
         let (bx, by) = (gg.bx, gg.by);
         let lie = if sg_core::course::inside(bx >> 10, by >> 10) {
@@ -330,18 +428,44 @@ impl App {
         let hazard = self.course.h(lie) > 0;
         let p = self.aim.unwrap_or_default();
         let opt = self.club.planner.option;
-        let mut v = vec![
-            (format!("Club: {}", pro::CLUB_NAMES[p.club.clamp(0, 11) as usize]), true),
-            (format!("Attitude: {}", pro::attitude(gg.momentum)), true),
-            (format!("Distance: {} yards", p.distance), true),
-            (format!("Lie: {}", pro::lie_name(lie)), true),
+        let lie_word = match crate::panels_ui::terrain_name(lie as i32) {
+            Some(n) => n,
+            None => pro::lie_name(lie).to_lowercase(),
+        };
+        let lines = [
+            trf("STR_AIM_ATTITUDE", &[("ATTITUDE", &pro::attitude(gg.momentum))]),
+            trf("STR_AIM_CLUB", &[("CLUB", &pro::club_label(p.club.clamp(0, 11) as usize))]),
+            trf("STR_AIM_DISTANCE", &[("YARDS", &p.distance)]),
+            trf("STR_AIM_LIE", &[("LIE", &lie_word)]),
         ];
-        for k in 0..10 {
-            let s = self.club.pro_skill[k];
-            if s != 0 {
-                v.push((format!("{}  {}%", SKILL_NAMES[k], s as i32 * 10), pro::skill_applies(k, p.club, gg.strokes, opt, hazard)));
-            }
-        }
-        v
+        let skills = (0..10)
+            .filter(|&k| self.club.pro_skill[k] != 0)
+            .map(|k| {
+                let v = self.club.pro_skill[k] as i32 * 10;
+                (
+                    trf("STR_AIM_SKILL", &[("SKILL", &pro::skill_name(k)), ("PERCENT", &v)]),
+                    pro::skill_applies(k, p.club, gg.strokes, opt, hazard),
+                )
+            })
+            .collect();
+        Some((lines, skills))
+    }
+}
+
+/// The aim's four lines and its skill lines with whether each counts for the shot.
+pub type AimText = ([String; 4], Vec<(String, bool)>);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pads_and_ok() {
+        // row 0 spans y 90..114: the top half adds, the lower half removes
+        assert_eq!(pad_hit(260.0, 95.0), Some((0, true)));
+        assert_eq!(pad_hit(260.0, 110.0), Some((0, false)));
+        assert_eq!(pad_hit(260.0, 310.0), Some((9, true)));
+        assert_eq!(pad_hit(300.0, 95.0), None);
+        assert!(ok_hit(550.0, 334.0) && ok_hit(565.0, 350.0) && !ok_hit(575.0, 334.0));
     }
 }

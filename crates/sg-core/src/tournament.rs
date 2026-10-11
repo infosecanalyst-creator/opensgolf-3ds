@@ -4,41 +4,47 @@
 //!
 //! Facts are from the publisher's golf.exe (docs/PUBLISHER_EXE_NOTES.md, "SGA tournaments"), restated in our own words.
 
-use crate::course::{f, idx, inside, Course, TYPES};
+use crate::course::{f, idx, inside, Course};
 use crate::geom::{clamp, DX, DY, UNIT};
 use crate::golfer::{anim, flag, game, Club, Column, Golfer, Member, SLOTS};
 use crate::land::ExeRng;
+use crate::lang::{tr, trf};
 use crate::roster::Person;
 
 /// A tournament has been offered (game flag 0x400000): the pro panel's Begin Tournament button is lit.
 pub const OFFERED: u32 = 0x400000;
 
 /// The ten criteria of the SGA report.
-pub const CRITERIA: [&str; 10] = [
-    "Course length",
-    "Number of holes",
-    "Time to play",
-    "Fun",
-    "Variety",
-    "Scenic holes",
-    "Length holes",
-    "Accuracy holes",
-    "Imagination holes",
-    "Facilities",
+pub const CRITERIA_KEYS: [&str; 10] = [
+    "STR_SGA_COURSE_LENGTH",
+    "STR_SGA_NUMBER_OF_HOLES",
+    "STR_SGA_TIME_TO_PLAY",
+    "STR_SGA_FUN",
+    "STR_SGA_VARIETY",
+    "STR_SGA_SCENIC_HOLES",
+    "STR_SGA_LENGTH_HOLES",
+    "STR_SGA_ACCURACY_HOLES",
+    "STR_SGA_IMAGINATION_HOLES",
+    "STR_SGA_FACILITIES",
 ];
+
+/// The name of SGA criterion k (`CRITERIA_KEYS`).
+pub fn criterion(k: usize) -> &'static str {
+    tr(CRITERIA_KEYS[k])
+}
 
 /// Event names by (score - 40) / 5.
 const EVENTS: [&str; 10] = [
-    "Jr. Qualifying School",
-    "SGA Qualifying School",
-    "Jr. Tour Event",
-    "Jr. Tour Championship",
-    "SGA Amateur Championship",
-    "Senior SGA Tour Event",
-    "Senior SGA Championship",
-    "SGA Tour Event",
-    "SGA Players Championship",
-    "SGA Championship",
+    "STR_EVENT_JR_QUALIFYING",
+    "STR_EVENT_SGA_QUALIFYING",
+    "STR_EVENT_JR_TOUR_EVENT",
+    "STR_EVENT_JR_TOUR_CHAMPIONSHIP",
+    "STR_EVENT_SGA_AMATEUR",
+    "STR_EVENT_SENIOR_TOUR_EVENT",
+    "STR_EVENT_SENIOR_CHAMPIONSHIP",
+    "STR_EVENT_SGA_TOUR_EVENT",
+    "STR_EVENT_SGA_PLAYERS",
+    "STR_EVENT_SGA_CHAMPIONSHIP",
 ];
 
 /// The SGA report: each criterion's measured value, what the SGA asks for, and its score 0..10.
@@ -70,13 +76,11 @@ pub struct Prep {
 
 impl Prep {
     pub fn lines(&self) -> Vec<String> {
-        let mut v = vec![
-            "Install TV towers and booths for the broadcast".to_string(),
-            "Roll your greens extra smooth and fast".to_string(),
-            "Increase the depth of rough and difficulty of lies".to_string(),
-        ];
+        // the exe's strings (0x4e3d20 on), each an option line of the list
+        let mut v =
+            vec![tr("STR_PREP_TV_TOWERS").to_string(), tr("STR_PREP_SMOOTH_GREENS").to_string(), tr("STR_PREP_DEEP_ROUGH").to_string()];
         for &(h, old, new) in &self.par_changes {
-            v.push(format!("Change hole {h} from a par {old} to a par {new}"));
+            v.push(trf("STR_PREP_CHANGE_PAR", &[("HOLE", &h), ("OLD", &old), ("NEW", &new)]));
         }
         v
     }
@@ -194,16 +198,16 @@ impl Club {
         let mut r = SgaReport { class: c, holes: n, values, ideal, scores, score, ..Default::default() };
         if score < 1 {
             self.game &= !OFFERED;
-            r.event = "Improvement Required";
+            r.event = tr("STR_EVENT_IMPROVEMENT_REQUIRED");
             return r;
         }
         self.sga_score = score;
         let e = (score - 40) / 5;
         r.event = match e {
-            1..=9 => EVENTS[e as usize],
-            10..=12 if k == 18 => "Grand Slam Championship",
-            10..=12 => "Mini Slam Championship",
-            _ => EVENTS[0],
+            1..=9 => tr(EVENTS[e as usize]),
+            10..=12 if k == 18 => tr("STR_EVENT_GRAND_SLAM"),
+            10..=12 => tr("STR_EVENT_MINI_SLAM"),
+            _ => tr(EVENTS[0]),
         };
         self.purse = ((score - 50) / 5 + 5) * (c + 1) * (n + 1) * 2;
         r.purse = self.purse;
@@ -219,16 +223,15 @@ impl Club {
             return false;
         }
         self.purse = 0;
-        let r = self.sga_evaluate(facilities);
+        self.sga_evaluate(facilities);
         if self.purse == 0 {
             self.game &= !OFFERED;
             return false;
         }
-        let pro = self.roster.first().map(|p| p.name.clone()).unwrap_or_else(|| "Gary Golf".to_string());
-        self.message(format!(
-            "The SGA is interested in holding the {} at {course_name}, with a first prize of ${},000! Click the tournament button on the {pro} panel to begin the tournament.",
-            r.event, self.purse
-        ));
+        let pro = self.roster.first().map(|p| p.name.clone()).unwrap_or_else(|| tr("STR_LOG_GARY_GOLF").to_string());
+        // the exe's pieces (0x4c62cc, the course name, 0x4c627c, the purse, 0x4c6250, the pro's name, 0x4c6230); the event's
+        // name is not in it
+        self.message(trf("STR_MSG_SGA_OFFER", &[("COURSE", &course_name), ("PURSE", &self.purse), ("PRO", &pro)]));
         self.sound(0x2f, None);
         self.game |= OFFERED;
         self.purse = 0;
@@ -284,7 +287,7 @@ impl Club {
     /// hole 1 with a famous partner; everyone else is a famous pro picked for the purse and the club's cash.
     pub fn start_tournament(&mut self, c: &Course, rng: &mut ExeRng, pos: (i32, i32), facing: i32, cash: i32) {
         if self.pros.is_empty() {
-            self.pros.push(crate::vips::Pro { name: "Joe Pro".to_string(), skills: [3; 12], ..Default::default() });
+            self.pros.push(crate::vips::Pro { name: tr("STR_TOURNAMENT_JOE_PRO").to_string(), skills: [3; 12], ..Default::default() });
         }
         self.backup = Some((self.roster.clone(), self.members.clone()));
         self.pro_mask = 0;
@@ -350,7 +353,7 @@ impl Club {
                     g.roster = r as i32;
                     if let Some(p) = self.roster.get_mut(r) {
                         p.name = pro.name.clone();
-                        p.job = "Golf Pro".to_string();
+                        p.job = tr("STR_JOB_GOLF_PRO").to_string();
                         p.b21 = if pro.body >= 4 { 0x89 } else { 9 };
                     }
                     g.skill_mask = 0xe0;
@@ -426,7 +429,8 @@ impl Club {
             let d = self.holes[h].tee_facing.rem_euclid(8);
             let mut kinds = vec![(17, d)];
             if h as i32 >= n - 1 {
-                let bd = if rng.below(2) == 0 { (d + 2) & 7 } else { (d - 2) & 7 };
+                // the booth turns two steps one way or the other: +2 when the coin (0x45c1e0(2)) is not zero, else -2
+                let bd = if rng.below(2) != 0 { (d + 2) & 7 } else { (d - 2) & 7 };
                 kinds.push((18, bd));
             }
             for (kind, dir) in kinds {
@@ -444,7 +448,7 @@ impl Club {
                     }
                     let i = idx(a, b);
                     let ty = c.ty[i];
-                    let class = TYPES[(ty as usize).min(22)].class;
+                    let class = crate::data::row(ty).class;
                     if (class == 4 || class == 13) && ty != crate::course::t::BUILDING && c.flags[i] & (f::LOW | f::CUP | f::OBSTACLE) == 0
                     {
                         let (dx, dy) = (pin.0 - a, pin.1 - b);

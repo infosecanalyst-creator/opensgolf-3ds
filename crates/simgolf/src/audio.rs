@@ -1,5 +1,9 @@
 //! Sound output: feeds the system's default output device from the Mixer (44.1 kHz stereo), resampling when the device runs at
-//! another rate. Built with the `audio` feature (cpal: CoreAudio on macOS, WASAPI on Windows, ALSA on Linux).
+//! another rate. Built with the `audio` feature (cpal: CoreAudio on macOS, WASAPI on Windows, ALSA on Linux, oboe/AAudio on
+//! Android).
+// a build without the `audio` feature (the desktop's silent build, or the Android app when its sound could not be built)
+// has no device to feed
+#![cfg_attr(all(not(feature = "audio"), not(target_arch = "wasm32")), allow(dead_code))]
 use sg_core::mixer::{Mixer, RATE};
 use std::sync::Arc;
 
@@ -96,7 +100,7 @@ mod device {
     }
 }
 
-/// In a browser the page pulls sound through Web Audio (web/simgolf.js): it calls `sg_audio_fill` with its output rate and a
+/// In a browser the page pulls sound through Web Audio (web/opensgolf.js): it calls `sg_audio_fill` with its output rate and a
 /// frame count and gets back interleaved stereo f32 samples.
 #[cfg(target_arch = "wasm32")]
 mod device {

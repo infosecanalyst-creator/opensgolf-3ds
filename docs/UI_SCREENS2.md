@@ -113,7 +113,17 @@ To do list (right side): the first three classes with tick 0, in class order, as
 
 **After closing (exact flow, derived meaning).** When the pending-skill mask `0x4c2c9c` is non zero and the class is not 99, a dialog with the text "Add three skill points to your player...\n" opens on the player card ("Gary Golf" literal). OK close hit area is not a separate button here: any click closes (exact modal loop).
 
-Unknown: what writes the site index at +0x2c; the pin sheet piece used for the polaroid pin (position exact, identity derived); sound 0x38 meaning; the exact edition meaning of `0x822c88`.
+Other pieces (exact, 0x46e810 with the loader at 0x445ee5..0x4461c0): each polaroid's pin is TacksandArrow_A object 8, (100,0,20,24), at (x + 100, y - 179); the caption
+is Arial Bold 10 (0x519fd8). The to-do strips are the handwritten lines of tacs&tees_A (table 0x4c2d38: x, y for 25 entries, then w, h for 25; entries 22..24 are the
+easy editions' dogleg right, dogleg left and par five lines used for classes 0, 1 and 4). After the strips: TrophyParts_A (510,13,132,162) at (519,395) and
+(649,13,130,163) at (177,395) (the two golf clubs), tacs&tees_A (51,482,184,80) at (51,482) (tee and ball) and (732,511,53,52) at (732,511) (the tick), then the tower.
+
+The pin's colour (EXACT, 0x46ed33): colour sprite 0x53c990 + 0x2c * ((k + 1) mod 3), i.e. TacksandArrow cuts 8, 9, 10
+at (100, 0), (100, 50), (100, 100): grey, yellow and red, so the oldest photo is yellow, the next red, the third grey;
+the mask is always TacksandArrow_A cut 8. (TacksandArrow: 16 cuts 20 x 24 at (50 (i / 4), 50 (i mod 4)), rows grey,
+yellow, red, white.)
+
+Unknown: what writes the site index at +0x2c; sound 0x38 meaning; the exact edition meaning of `0x822c88`.
 
 ## 3. World map / property chooser (F6, shift+w), routine `0x46f550`
 
@@ -192,6 +202,35 @@ Rows: hole i = 1..18; left list holes 1..9, right list holes 10..18; row r = (i 
 The right list number sits at 569, 5 px right of its heading (564). Empty slots draw grey (`0x80006318`), filled black. PAR = par byte, YDS = yards, Time = `(total ticks / rounds) / 40` followed by "m", blank until a round exists.
 The selected row draws a green outer rectangle (shift + 32, y - 3, 238, 17) `0x800023e8` and a white inner (shift + 33, y - 2, 236, 15) `0x80007fff`, then the text on top. The hole record stride is 520 bytes (par at -0x20, yards at -0x1c, round count at +0, tick total at +0x1cc); the tee marker
 for the selected hole is drawn on the map at the hole's coordinates with the iso transform (`0x456b70`).
+
+**Map tiles (exact).** Each tile that is not out of bounds (type 20) is a 12 x 6 diamond at the iso point of `0x456b70`. Routing and employees: by class (the switch on the class byte). Aura: red = unhappy byte >> 3, green = happy byte >> 3, blue = (byte)(happy + unhappy) >> 4; water (type 17) 0x0218. The two byte maps come from `0x4616f0`, rebuilt every frame of the aura tab: nothing unless the landing counters (0x53ea24, as bytes) sum to 10 or more; the sum, capped at 1750, divides each tile's happy count (0x5a6378) times 20000 and unhappy count (0x56c7e4) times -40000; `0x4615f0` spreads two thirds of the value over the 15 x 15 tiles round it (skipping off-map and out-of-bounds tiles, `0x40bf60`), dividing by `0x467170(3 dx, 3 dy) + 2`, positive values onto the happy map and the rest subtracted from the unhappy map, each byte clamped 0..255. Home site value: q = clamp((lot value / 4 - site work) * 3 / 2, 0, 255), green q >> 3, with the lot value `0x42ef40` and the site work `0x40db90(a, b, 2, 5)`; dark red 0x2000 where that returns -1. The out-of-bounds colours in the code (0x2108, black) are unreachable. On a course where no rounds have been played both maps are black: no landings, and the lot value counts only holes with tee shots. A tree sprite lookup (0x19d, 0x197, 0x194, 0xf9 for class 13 tiles) is computed and never drawn.
+
+**Hole marks (exact).** For each hole with a par: sprite `0x18d + clamp(par - 3, 0, 2)` (tee markers), its last frame, view 0, queued (`0x4628d0`) at the back tee's map point, box 40 x 40, zoom 4, palette 0x5e; a line (`Terrain::drawLine`, colour 0x7fff, width 2, last argument 10 not decoded) from the tee through the 250 yard marker (else the 200 one; markers at 0x59ae80 + 24 h, map units >> 10) to the pin; the hole number centred 4 px above that marker, or above the tee-to-pin midpoint when the hole has neither, in 0x7ff0 with the shadow style (`0x404bc0`) and the 14 point face, except on the employees tab; then the theme's flag `0x189 + theme`, frame 0, view 3, zoom 2, palette 0x60 + theme at the pin. Correction (October 2026): `0x4628d0` is not a queue; it fills entry 0x838200 and calls the draw `0x462be0` at once (the queued variant is `0x462a30`), so the order is marker, line to the marker, number, line on to the pin, flag, hole by hole; scale zoom x global zoom / 16 (the global zoom is 4 in play: full size and half size, derived). Palette 0x60 + theme is not the flag palette (0x63): the theme loader puts its regular house palette in 0x60 (`flics\homes\regular\parkland\A\ParkHouseA_palette`, desert A, tropical B, links B) and the flag palette in 0x63, and nothing loads 0x61 or 0x62. So Parkland flags take house colours (dark, as the land map in footage p1 3120 shows), Links flags their own palette, Desert and Tropical an unloaded one (the port keeps the file's colours; jgl's handling of a null palette is not decoded). Marker and flag sprites carry their shadows (loaded with 0x43d740's shadow argument). The land map (`0x4587a0`) sets 0x822b80, calls this routine (only the tiles, in the mode used last, 2 px higher because `0x456b70` then takes 1 off instead of adding 1), clears the flag and runs the same hole loop at the routing points; its tract numbers (0x821f28, black, `0x476700` centred) stand at (x - 7, y - 4) of tile (a0 + 8, b0 + 8) of the tract (a0 = (i mod 3) * 16 + 1, b0 = (i / 3) * 16 + 1), drawn while any tile of the tract is for sale; that point is only stored while the centre tile is for sale, otherwise the stale variables hold the previous tract's text origin (moved down to its price line if that tract was for sale). Initial mode word 0x4d20dc = -1 (routing).
+
+**Employee figures (exact).** The list figure and the Employee panel portraits (0x436e50, box 30 x 40) are the employee's current clip: walk (0x20e) below state 11, stand (0x216) at 11, action (0x21e) at 12, plus kind + 4 x skilled; frame = frame counter mod clip length, view (camera - facing - 2) & 7, palette 0x82 + set, zoom 4; depth y - 32 on the map list. Both reset an action clip that has wrapped to standing (the port's tick already does).
+
+**Employee panel text (exact, 0x436e50).** Centred at x 700, black: name (534, the face left from the frame, derived body face 0x51b360), "Hired: <Month> <Year>" (546) and "Paid: <dollars>" (558, grouped with commas, no currency sign) and the counter label (572) in 0x519fd8, the count (584) in 0x51b360. The routing list's line is "Hired: <Month> <Year>, paid: (section sign)<dollars>".
+
+**Tab buttons, hover and clicks (exact, 0x457fb5..0x458188 and the loop after it).** Hover spots in test order: employees (62..141, 315..394) = 1, routing (183..262, 254..333) = 0,
+aura (536..615, 254..333) = 2, value (659..738, 315..394) = 3, OK (662..741, 532..596) = -2, and in the employees mode with more than eight employees the list arrows
+(775..792, 64..100) = 9 and (775..792, 205..241) = 10. Cuts of the bottom sheet (table 0x4ba698): the spot under the pointer draws its pale cut (0..3: (261,0) at (182,254),
+(0,0) at (60,313), (396,0) at (483,254), (130,0) at (612,313)); the open mode draws its yellow cut (cuts 4..7, y 114/118, aura at (482,254)); OK hover cut 8 at (662,532);
+arrow hover cuts 9, 10 at (775,64), (775,205). A click below y 280 switches to mode spot - 1 on a button, leaves on OK, else does nothing; then the arrows scroll the
+employee list by one; then a click below y 256 leaves (so y 257..280 closes the map); otherwise (in every mode) the row is `clamp((y - 104) / 17 + 1, 1, 19)`, plus 9
+when x > 399, clamped to 1..18: a left click selects it, a right click moves the selected hole there: the hole is held aside, the holes between shift one place
+toward the old slot, the hole goes into the new slot and the tee and green tiles are renumbered (so it is a move, not the swap the help line names); the selection
+keeps its number. Keys close. The map opens on hole 1 and the list top; the mode word persists.
+
+**Employees mode (exact).** The course name plus " Employees" at (400,48) in the 16 point face 0x821f28 (Manual SSi 16; 0x821ee8 is Manual SSi 14, 0x821020 Klepto 24).
+Listed: staff records in use with a negative job other than -6 (the player's pro); eight at a time, the first four in the left column. Entry v (1..8):
+column shift 0 for v > 4, -374 otherwise; row offset 45 ((v - 1) & 3). The employee's figure at (746 + shift, 103 + row); "<n>. <name>" left at (415 + shift, 71 + row)
+(n counts all listed employees, the name is 0x467600: first name and title, e.g. "Chuck Club Pro"); "Hired: <Month> <Year>, paid: (section sign)<money>" at (430 + shift, 86 + row)
+from the month hired (+0x12, tick >> 10, set at hire 0x40acc0) and the wages paid (+0x14 in units, added at each wage event 0x417960); the counter line at
+(430 + shift, 101 + row): Players greeted / Players cheered (Club Pro, Celebrity), Players rushed / Slackers intimidated, Weeds destroyed / Weeds eradicated,
+Beverages served / Satisfied customers, then the count (+0x16). More than eight: the track (cut 11) at (775,64) and a white thumb x 781, w 6, y 106 + top * 95 / n,
+h min(95 - that, 760 / n). On the map every staff record (the pro too) gets an ellipse round its post: 25 points, x = sin * r, y = cos * (r / 2), lines 2 wide, r 24 (48
+groundskeeper), r += r / 2 when experienced; colours Soda Vendor 0x03ff, Groundskeeper 0x7ff0, Ranger 0x0018, Club Pro 0x6318, pro 0x7fff; then, except for the pro,
+"<n>. " centred 10 px above the post and the name centred on it in Arial Bold 10 (0x519fd8), both in that colour.
 
 ## 6. Unknowns in one list
 

@@ -118,3 +118,27 @@ pub fn max_range(difficulty: i32, base_byte: i32, length_digit: i32, accuracy_di
     }
     r.min(330)
 }
+
+/// How far up the screen a ball in the air is drawn above its ground point, in 800 x 600 pixels (0x415652..0x4157b5): the
+/// height step times the zoom times the ball's height (+0xdc), divided by 5 and then by 16, each toward zero. With the step
+/// at 5 that is height * zoom / 16. `zoom` is the exe's zoom step (1 far .. 4 near); between steps the port's continuous
+/// zoom is used as it is.
+pub fn ball_lift(height: i32, zoom: f32) -> f32 {
+    let v = (crate::course::HEIGHT_STEP_PX as f32 * zoom * height as f32 / 5.0).trunc();
+    (v / 16.0).trunc()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ball_lift_is_height_times_zoom_over_16() {
+        assert_eq!(ball_lift(0, 4.0), 0.0);
+        assert_eq!(ball_lift(15, 1.0), 0.0);
+        assert_eq!(ball_lift(16, 1.0), 1.0);
+        assert_eq!(ball_lift(160, 4.0), 40.0);
+        assert_eq!(ball_lift(161, 2.0), 20.0);
+        assert_eq!(ball_lift(-17, 1.0), -1.0);
+    }
+}

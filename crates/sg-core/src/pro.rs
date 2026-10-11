@@ -5,48 +5,113 @@
 //! Facts are from the publisher's golf.exe (docs/PUBLISHER_EXE_NOTES.md, "The player's pro"), restated in our own words.
 
 use crate::course::{idx, inside, Course};
+use crate::economy::money_digits;
 use crate::geom::{angle, clamp, cosr, dir8, len, sinr, tdist};
-use crate::golfer::{flag, game, Club, Column, Golfer, SLOTS};
+use crate::golfer::{flag, game, Club, Column, Event, Golfer, SLOTS};
 use crate::land::ExeRng;
+use crate::lang::{tr, trf};
 
 /// A famous golfer's challenge is waiting to be played (game flag 0x2000); the pro's round starts next tick (0x4000).
 pub const CHALLENGE: u32 = 0x2000;
 pub const START_ROUND: u32 = 0x4000;
 
 /// Skill names in the order of the skill bytes.
-pub const SKILL_NAMES: [&str; 10] = [
-    "Power Hitter",
-    "Long Driver",
-    "Accurate Driver",
-    "Accurate Irons",
-    "Accurate Putter",
-    "Draw Shot",
-    "Fade Shot",
-    "High Backspin Shot",
-    "Recovery Skills",
-    "Luck",
+pub const SKILL_NAME_KEYS: [&str; 10] = [
+    "STR_SKILL_POWER_HITTER",
+    "STR_SKILL_LONG_DRIVER",
+    "STR_SKILL_ACCURATE_DRIVER",
+    "STR_SKILL_ACCURATE_IRONS",
+    "STR_SKILL_ACCURATE_PUTTER",
+    "STR_SKILL_DRAW_SHOT",
+    "STR_SKILL_FADE_SHOT",
+    "STR_SKILL_HIGH_BACKSPIN",
+    "STR_SKILL_RECOVERY",
+    "STR_SKILL_LUCK",
+];
+
+/// The exe's skill names (pointer table 0x4c2c3c), all twelve, as the great-shot message prints them.
+pub const EXE_SKILL_KEYS: [&str; 12] = [
+    "STR_SKILL_POWER_HITTER",
+    "STR_SKILL_LONG_DRIVER",
+    "STR_SKILL_ACCURATE_DRIVER",
+    "STR_SKILL_ACCURATE_IRONS",
+    "STR_SKILL_ACCURATE_PUTTER",
+    "STR_SKILL_DRAW_SHOT_R_TO_L",
+    "STR_SKILL_FADE_SHOT_L_TO_R",
+    "STR_SKILL_HIGH_BACKSPIN",
+    "STR_SKILL_RECOVERY",
+    "STR_SKILL_LUCK",
+    "STR_SKILL_POSITIVE_ATTITUDE",
+    "STR_SKILL_MENTAL_TOUGHNESS",
+];
+
+/// The skill names as the stats cards print them (footage of the original: the skill points card and a pro's card read
+/// "Draw Shot (R to L)" and "Fade Shot (L to R)", as Pick A Pro does).
+pub const SKILL_LABEL_KEYS: [&str; 10] = [
+    "STR_SKILL_POWER_HITTER",
+    "STR_SKILL_LONG_DRIVER",
+    "STR_SKILL_ACCURATE_DRIVER",
+    "STR_SKILL_ACCURATE_IRONS",
+    "STR_SKILL_ACCURATE_PUTTER",
+    "STR_SKILL_DRAW_SHOT_R_TO_L",
+    "STR_SKILL_FADE_SHOT_L_TO_R",
+    "STR_SKILL_HIGH_BACKSPIN",
+    "STR_SKILL_RECOVERY",
+    "STR_SKILL_LUCK",
 ];
 
 /// Club names for the panel. APPROXIMATION: the exe's club name routine (0x40a9a0) was not decoded; these follow the
 /// club numbers 0 (longest) to 11 (shortest) the planner uses.
-pub const CLUB_NAMES: [&str; 12] =
-    ["Driver", "3 Wood", "5 Wood", "2 Iron", "3 Iron", "4 Iron", "5 Iron", "6 Iron", "7 Iron", "8 Iron", "9 Iron", "Wedge"];
+pub const CLUB_NAME_KEYS: [&str; 12] = [
+    "STR_CLUB_DRIVER",
+    "STR_CLUB_3_WOOD",
+    "STR_CLUB_5_WOOD",
+    "STR_CLUB_2_IRON",
+    "STR_CLUB_3_IRON",
+    "STR_CLUB_4_IRON",
+    "STR_CLUB_5_IRON",
+    "STR_CLUB_6_IRON",
+    "STR_CLUB_7_IRON",
+    "STR_CLUB_8_IRON",
+    "STR_CLUB_9_IRON",
+    "STR_CLUB_WEDGE",
+];
+
+/// Skill k's name (`SKILL_NAME_KEYS`).
+pub fn skill_name(k: usize) -> &'static str {
+    tr(SKILL_NAME_KEYS[k])
+}
+
+/// Skill k's name as the exe prints it (`EXE_SKILL_KEYS`).
+pub fn exe_skill(k: usize) -> &'static str {
+    tr(EXE_SKILL_KEYS[k])
+}
+
+/// Skill k's name as the stats cards print it (`SKILL_LABEL_KEYS`).
+pub fn skill_label(k: usize) -> &'static str {
+    tr(SKILL_LABEL_KEYS[k])
+}
+
+/// Club k's name for the panel (`CLUB_NAME_KEYS`).
+pub fn club_label(k: usize) -> &'static str {
+    tr(CLUB_NAME_KEYS[k])
+}
 
 /// The lie under the ball, for the panel. APPROXIMATION: the names in the exe's terrain records are not available.
 pub fn lie_name(ty: u8) -> &'static str {
     use crate::course::t;
     match ty {
-        t::TEE => "Tee",
-        t::GREEN => "Green",
-        t::FAIRWAY | 3 => "Fairway",
-        t::SAND | 8 => "Sand Trap",
-        t::POT => "Pot Bunker",
-        t::RAVINE => "Ravine",
-        t::ROCKS => "Rocks",
-        t::WATER => "Water",
-        t::MARSH => "Marsh",
-        t::OUT => "Out of Bounds",
-        _ => "Rough",
+        t::TEE => tr("STR_LIE_TEE"),
+        t::GREEN => tr("STR_LIE_GREEN"),
+        t::FAIRWAY | 3 => tr("STR_LIE_FAIRWAY"),
+        t::SAND | 8 => tr("STR_LIE_SAND_TRAP"),
+        t::POT => tr("STR_LIE_POT_BUNKER"),
+        t::RAVINE => tr("STR_LIE_RAVINE"),
+        t::ROCKS => tr("STR_LIE_ROCKS"),
+        t::WATER => tr("STR_LIE_WATER"),
+        t::MARSH => tr("STR_LIE_MARSH"),
+        t::OUT => tr("STR_LIE_OUT_OF_BOUNDS"),
+        _ => tr("STR_LIE_ROUGH"),
     }
 }
 
@@ -83,6 +148,26 @@ pub fn aim_line(ball: (i32, i32), p: &AimPreview, opt: i32) -> Vec<(i32, i32)> {
     out
 }
 
+/// How far up the screen each point of `aim_line` is drawn, in 800 x 600 pixels (0x41bbe1..0x41c0bd). With A = zoom x k x
+/// distance (k = 3 for the high shot, 0 for option 4, else 2), the ball and the last two points stay on the ground, points 1
+/// and 4 go up A / 3 / 8 and points 2 and 3 A / 2 / 8, each division toward zero; a black copy of the line runs one pixel
+/// under the ground points (the shadow) and the white line joins the lifted points. `zoom` is the exe's zoom step (1..4).
+pub fn aim_lifts(distance: i32, opt: i32, zoom: f32) -> Vec<f32> {
+    let k = match opt {
+        3 => 3.0,
+        4 => 0.0,
+        _ => 2.0,
+    };
+    let a = zoom * k * distance as f32;
+    let d1 = ((a / 3.0).trunc() / 8.0).trunc();
+    let d2 = ((a / 2.0).trunc() / 8.0).trunc();
+    let mut v = vec![0.0, d1, d2, d2, d1, 0.0];
+    if opt != 3 {
+        v.push(0.0);
+    }
+    v
+}
+
 /// What the aiming frame shows: the shot as the planner would take it.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct AimPreview {
@@ -98,14 +183,14 @@ pub struct AimPreview {
 /// The "Attitude" word for the pro's momentum.
 pub fn attitude(m: i32) -> &'static str {
     match clamp(m, -4, 4) {
-        -4 => "furious",
-        -3 => "mad",
-        -2 => "upset",
-        -1 => "worried",
-        0 => "calm",
-        1 => "determined",
-        2 => "pumped",
-        _ => "invincible",
+        -4 => tr("STR_ATTITUDE_FURIOUS"),
+        -3 => tr("STR_ATTITUDE_MAD"),
+        -2 => tr("STR_ATTITUDE_UPSET"),
+        -1 => tr("STR_ATTITUDE_WORRIED"),
+        0 => tr("STR_ATTITUDE_CALM"),
+        1 => tr("STR_ATTITUDE_DETERMINED"),
+        2 => tr("STR_ATTITUDE_PUMPED"),
+        _ => tr("STR_ATTITUDE_INVINCIBLE"),
     }
 }
 
@@ -208,7 +293,7 @@ impl Club {
             }
             if let Some(r) = self.roster.get_mut(crate::vips::ROSTER_CHALLENGER as usize) {
                 r.name = pro.name.clone();
-                r.job = "Golf Pro".to_string();
+                r.job = tr("STR_JOB_GOLF_PRO").to_string();
             }
             self.challenge_pro = -1;
         }
@@ -310,7 +395,7 @@ impl Club {
                 self.g[g].flags &= !flag::GARY;
                 let k = rng.below(3);
                 self.g[g].class = (self.g[g].class & 7).wrapping_add(0xffu8.wrapping_shl(k as u32));
-                self.message("Match canceled.".to_string());
+                self.message(tr("STR_MSG_MATCH_CANCELED").to_string());
                 self.round_end(rng, g);
                 self.g[g].strokes = 0;
                 self.g[g].anim = 0;
@@ -348,24 +433,24 @@ impl Club {
         let pro = self.pros[r as usize].clone();
         let best = pro.skills.iter().copied().max().unwrap_or(0);
         let female = pro.body >= 4;
-        let mut text = format!(
-            "Famous golfer {} challenges you to a match at your course with a wager of ${} a hole, and ${} for the match.",
-            pro.name,
-            (5 * l + 5) * 400,
-            (5 * l + 5) * 800
-        );
+        // the exe's pieces (0x4c6ba4, 0x4c6b68, 0x4c6b58, 0x4c6b44, 0x4c6b2c / 0x4c6b18, 0x4c6afc, 0x4c6af4, 0x4c6ad0,
+        // 0x4c6aa0); the amounts are plain numbers after the section sign
+        let mut text =
+            trf("STR_CHALLENGE_WAGER", &[("PRO", &pro.name), ("HOLE_MONEY", &((5 * l + 5) * 400)), ("MATCH_MONEY", &((5 * l + 5) * 800))]);
         if best > 0 {
-            let names: Vec<&str> = (0..10).filter(|&k| pro.skills[k] == best).map(|k| SKILL_NAMES[k]).collect();
-            text += &format!(
-                " {} is proud of {} {}0 percent skill rating in {}.",
-                if female { "She" } else { "He" },
-                if female { "her" } else { "his" },
-                best,
-                names.join(" and ")
+            let names: Vec<&str> = (0..10).filter(|&k| pro.skills[k] == best).map(skill_name).collect();
+            text += &trf(
+                "STR_CHALLENGE_PROUD",
+                &[
+                    ("HE", &(if female { tr("STR_CHALLENGE_SHE") } else { tr("STR_CHALLENGE_HE") })),
+                    ("HIS", &(if female { tr("STR_CHALLENGE_HER") } else { tr("STR_CHALLENGE_HIS") })),
+                    ("PERCENT", &best),
+                    ("SKILLS", &names.join(tr("STR_CHALLENGE_AND"))),
+                ],
             );
         }
-        let pro_name = self.roster.first().map(|p| p.name.clone()).unwrap_or_else(|| "Gary Golf".to_string());
-        text += &format!(" Click on the match icon on the {pro_name} panel when you are ready to start.");
+        let pro_name = self.roster.first().map(|p| p.name.clone()).unwrap_or_else(|| tr("STR_LOG_GARY_GOLF").to_string());
+        text += &trf("STR_CHALLENGE_CLICK", &[("PRO", &pro_name)]);
         self.message(text);
         self.game |= CHALLENGE;
         self.sound(0x26, None);
@@ -390,12 +475,21 @@ impl Club {
         let (so, se) = (self.g[o].card[hu] as i32, self.g[e].card[hu] as i32);
         let at = (self.g[o].x, self.g[o].y);
         if so < se {
-            self.message(format!("{} wins hole {h} by a score of {so} to {se}. ${}", self.name(o), a * 100));
+            // the exe's pieces (0x4c7324, 0x4c7314, 0x4c730c, 0x4c7300 or 0x4c72f8, 0x4c4944)
+            let text = trf(
+                "STR_MATCH_WIN_HOLE",
+                &[("GOLFER", &self.name(o)), ("HOLE", &h), ("SCORE", &so), ("OTHER_SCORE", &se), ("MONEY", &money_digits(a as i64 * 100))],
+            );
+            self.message_by(text, self.gary, 0);
             self.earn(a, Column::Other, at);
             self.sound(0x23, None);
         }
         if se < so {
-            self.message(format!("{} wins hole {h} by a score of {se} to {so}. -${}", self.name(e), a * 100));
+            let text = trf(
+                "STR_MATCH_LOSE_HOLE",
+                &[("GOLFER", &self.name(e)), ("HOLE", &h), ("SCORE", &se), ("OTHER_SCORE", &so), ("MONEY", &money_digits(a as i64 * 100))],
+            );
+            self.message_by(text, self.gary, 0);
             self.earn(-a, Column::Other, at);
             self.sound(0x24, None);
         }
@@ -403,15 +497,16 @@ impl Club {
             let total = |c: &Golfer| (1..=hu).map(|k| c.card[k] as i32).sum::<i32>();
             let (to, te) = (total(&self.g[o]), total(&self.g[e]));
             if te < to {
-                self.message(format!("At the end of the match, {} wins. -${}", self.name(e), a * 100));
+                // 0x4c72dc with 0x4c72d0, 0x4c72b4 or 0x4c72a8 (the exe goes on with the standings, not in the port)
+                self.message(trf("STR_MATCH_END_LOSE", &[("MONEY", &money_digits(a as i64 * 100))]));
                 self.earn(-a, Column::Other, at);
                 self.sound(0x24, None);
                 self.wager_level -= 1;
             } else if te == to {
-                self.message("At the end of the match, the score is tied.".to_string());
+                self.message(tr("STR_MATCH_END_TIED").to_string());
                 self.wager_level -= 1;
             } else {
-                self.message(format!("At the end of the match, {} wins! ${}", self.name(o), a * 100));
+                self.message(trf("STR_MATCH_END_WIN", &[("MONEY", &money_digits(a as i64 * 100))]));
                 self.earn(a, Column::Other, at);
                 self.sound(0x23, None);
                 self.trophies += 1;
@@ -425,33 +520,44 @@ impl Club {
             if to == te {
                 let d = to - par;
                 let at = match d {
-                    0 => "even par".to_string(),
-                    d if d < 0 => format!("{} under par", -d),
-                    d => format!("{d} over par"),
+                    0 => tr("STR_MATCH_EVEN_PAR").to_string(),
+                    d if d < 0 => trf("STR_MATCH_UNDER_PAR", &[("STROKES", &(-d))]),
+                    d => trf("STR_MATCH_OVER_PAR", &[("STROKES", &d)]),
                 };
-                self.message(format!("{no} and {ne} are tied at {at}."));
+                self.message_by(trf("STR_MATCH_TIED_AT", &[("GOLFER", &no), ("OTHER", &ne), ("SCORE", &at)]), self.gary, 1);
             } else {
                 let n = (to - te).abs();
-                let word = if to < te { "leads" } else { "trails" };
-                self.message(format!("{no} {word} {ne} by {n} shot{}.", if n == 1 { "" } else { "s" }));
+                let key = if to < te {
+                    crate::lang::plural(n as i64, "STR_MATCH_LEADS_BY_ONE", "STR_MATCH_LEADS_BY")
+                } else {
+                    crate::lang::plural(n as i64, "STR_MATCH_TRAILS_BY_ONE", "STR_MATCH_TRAILS_BY")
+                };
+                self.message_by(trf(key, &[("GOLFER", &no), ("OTHER", &ne), ("SHOTS", &n)]), self.gary, 1);
                 self.sound(if to < te { 0x2f } else { 0x30 }, None);
             }
             self.gary = -1;
         }
     }
 
-    /// When a shot comes to rest (the exe does it when the shot's replay ends, 0x409620): an ordinary golfer's or the pro's
-    /// shot far beyond what its difficulty predicts is a great shot; for the pro a skill may grow, and a shot that ends in a
-    /// hazard may cost him one.
+    /// When a shot comes to rest or drops (0x409620): at the exe's closest zoom, for a shot struck on screen (it has a replay
+    /// record), an ordinary golfer's or the pro's shot far beyond what its difficulty predicts is a great shot (famous pros
+    /// other than the player's are left out); for the pro the bar moves with a random share of his skills, and a shot of
+    /// his that ends in a hazard may be a bad one.
     pub(crate) fn shot_review(&mut self, c: &Course, rng: &mut ExeRng, g: usize) {
-        if g as i32 != self.gary || self.g[g].hole < 1 || self.g[g].hole > 18 {
+        if !self.view_close || self.g[g].hole < 1 || self.g[g].hole > 18 {
             return;
         }
+        let Some(rec) = self.shot_recs.iter().find(|r| r.g == g).map(|r| r.pts.clone()) else { return };
+        let pro = g as i32 == self.gary;
+        if self.g[g].kind & 0xe0 == 0x20 && !pro {
+            return;
+        }
+        // (the exe also passes over the golfer its new member message follows, 0x4c2e0c, which the port does not keep)
         let gg = &self.g[g];
         let l = len(gg.ox - gg.bx, gg.oy - gg.by) * 25 / 1024;
         let pin = self.holes[gg.hole as usize].pin;
         let d = tdist(gg.bx, gg.by, pin.0, pin.1);
-        let s: i32 = gg.skills[..10].iter().map(|&v| v as i32).sum();
+        let s: i32 = if pro { gg.skills[..10].iter().map(|&v| v as i32).sum() } else { 0 };
         let ty = |x: i32, y: i32| if inside(x >> 10, y >> 10) { c.ty[idx(x >> 10, y >> 10)] } else { crate::course::t::OUT };
         let (to, tr) = (ty(gg.ox, gg.oy), ty(gg.bx, gg.by));
         if c.h(tr) < 1 {
@@ -473,117 +579,340 @@ impl Club {
                 dk = 25;
                 base = 200 / r;
             }
-            if c.h(to) > 0 {
-                base -= clamp(c.h(to), 0, 3) * base / 6;
-            }
-            base = (rng.below(s) + 5 + 4 * self.difficulty) * base / 32;
-            if c.landmark_bits(gg.x, gg.y) & 4 == 4 {
-                base /= 2;
+            if pro {
+                if c.h(to) > 0 {
+                    base -= clamp(c.h(to), 0, 3) * base / 6;
+                }
+                base = (rng.below(s) + 5 + 4 * self.difficulty) * base / 32;
+                if c.landmark_bits(gg.x, gg.y) & 4 == 4 {
+                    base /= 2;
+                }
             }
             if (dk + 1) * base < l {
-                self.skill_change(c, rng, g, d, l, false);
+                self.great_shot(c, rng, g, d, l, false, rec);
             }
-        } else if rng.below(((c.h(to) + 4) * 250) / (self.difficulty + 2)) < c.h(tr) * s {
-            self.skill_change(c, rng, g, d, l, true);
+        } else if pro && rng.below(((c.h(to) + 4) * 250) / (self.difficulty + 2)) < c.h(tr) * s {
+            self.great_shot(c, rng, g, d, l, true, rec);
         }
     }
 
-    /// A skill of the pro grows (a great shot) or shrinks (a bad finish) (0x407e00), chosen by what the shot showed.
-    fn skill_change(&mut self, c: &Course, rng: &mut ExeRng, g: usize, d: i32, l: i32, bad: bool) {
-        let rank = crate::economy::rank((self.next_hole - 1).max(0) as usize);
-        let cap = if rank == 3 { 99 } else { rank * 2 + 6 };
-        let mut mask: u16 = 0xffff;
-        for k in 0..12 {
-            if self.pro_skill[k] as i32 >= cap {
-                mask &= !(1 << k);
-            }
-        }
-        if bad {
-            mask = 0;
-            for k in 0..12 {
-                if self.pro_skill[k] > 3 {
-                    mask |= 1 << k;
-                }
-            }
-        }
+    /// A remarkable shot (0x407e00): the message, and for the player's pro the skill it grows (a great shot) or costs (a bad
+    /// finish), chosen by what the shot showed. The message is "<name> launches / knocks / lofts / snakes a [tricky / tough]
+    /// <club> shot / drive / putt <n> yards <where> at <hole>!", where is "safely onto the fairway", "to within N feet / yards
+    /// of the pin", "into the hole" or "inches from the hole"; a bad one "<name> yanks / flubs / scuffs / fluffs a <club> into
+    /// the <ground> at <hole>!". Then the partner's reaction (a good shot) and the skill line. The game shows it with the
+    /// great-shot SimFoto, or on the ticker when the shot is off screen (`Event::GreatShot`); a bad shot whose skill cannot
+    /// fall says nothing at all.
+    #[allow(clippy::too_many_arguments)]
+    fn great_shot(&mut self, c: &Course, rng: &mut ExeRng, g: usize, d: i32, l: i32, bad: bool, pts: Vec<(i32, i32, i32)>) {
+        let pro = g as i32 == self.gary;
         let gg = self.g[g].clone();
+        let p = gg.partner.clamp(0, SLOTS as i32 - 1) as usize;
         let lie_type = |x: i32, y: i32| if inside(x >> 10, y >> 10) { c.ty[idx(x >> 10, y >> 10)] } else { crate::course::t::OUT };
-        let origin = lie_type(gg.ox, gg.oy);
-        let mut pick: u16 = 0;
-        if origin == crate::course::t::GREEN && mask & 0x10 != 0 {
-            pick = 0x10;
-        } else {
-            for t in 1..=100 {
-                pick = match rng.below(12) {
-                    0 if c.h(origin) > 0 => 0x100,
-                    1 if gg.flags & flag::HIT_TREE != 0 || d == 0 => 0x200,
-                    2 if gg.strokes == 0 && gg.club < 2 => 0x2,
-                    3 if gg.strokes == 0 && gg.club < 4 => 0x4,
-                    4 if gg.shot_type == 1 => 0x20,
-                    5 if gg.shot_type == -1 => 0x40,
-                    6 if gg.shot_type == 3 => 0x80,
-                    7 if crate::planner::max_range(self, c, g) < l => 0x1,
-                    8 if (3..=10).contains(&gg.club) => 0x8,
-                    9 if t > 50 || d == 0 => {
-                        if lie_type(gg.bx, gg.by) == crate::course::t::GREEN && d != 0 {
-                            0x10
-                        } else {
-                            0x200
-                        }
-                    }
-                    _ => 0,
-                };
-                if pick != 0 && pick & mask != 0 {
-                    break;
-                }
-                pick = 0;
-            }
-        }
-        if pick == 0 {
-            return;
-        }
-        let k = pick.trailing_zeros() as usize;
-        let name = self.name(g);
+        let rest = lie_type(gg.bx, gg.by);
+        let club = gg.club.clamp(0, 13);
+        let name = self.vip_name(g);
+        // the exe's pieces: 0x4c508c / 0x4c5080 / 0x4c5074 / 0x4c5068, 0x4c5060 / 0x4c5058, 0x4c5040 / 0x4c5050 / the club
+        // and 0x4c5048, the yards and 0x4c5038, 0x4c4ff8 / 0x4c502c, 0x4c5024 or 0x4c501c and 0x4c5010 / 0x4c4fe8 /
+        // 0x4c4fd0; a bad shot 0x4c50a8 / 0x4c50b4 / 0x4c50c0 / 0x4c50cc, the club, 0x4c509c and the ground's name
+        let mut t = name.clone();
         if !bad {
-            if self.pro_skill[k] >= 10 {
-                return;
+            t += match club {
+                0 => tr("STR_SHOT_LAUNCHES"),
+                13 => tr("STR_SHOT_SNAKES"),
+                1..=6 => tr("STR_SHOT_KNOCKS"),
+                _ => tr("STR_SHOT_LOFTS"),
+            };
+            if gg.rating > 10 {
+                t += tr("STR_SHOT_TRICKY");
+            } else if gg.rating == 10 {
+                t += tr("STR_SHOT_TOUGH");
             }
-            if self.pro_skill[k] == 0 {
-                self.pro_skill[k] = clamp(3 - self.difficulty, 1, 3) as u8;
-                self.pro_mask |= pick;
-                self.g[g].skill_mask |= pick;
-                self.message(format!("{name} acquires a new skill: {}!", SKILL_NAMES[k.min(9)]));
+            match club {
+                0 => t += tr("STR_SHOT_DRIVE"),
+                13 => t += tr("STR_SHOT_PUTT"),
+                k => t += &trf("STR_SHOT_CLUB", &[("CLUB", &crate::thoughts::club_name(k as usize))]),
+            }
+            t += &trf("STR_SHOT_YARDS", &[("YARDS", &l)]);
+            let pin = self.holes[gg.hole.clamp(0, 18) as usize].pin;
+            if d == 0 {
+                let cup = gg.bx == pin.0 * 0x400 + 0x200 && gg.by == pin.1 * 0x400 + 0x200;
+                t += if cup { tr("STR_SHOT_INTO_THE_HOLE") } else { tr("STR_SHOT_INCHES") };
+            } else if rest == crate::course::t::GREEN {
+                t += &if d < 8 {
+                    trf("STR_SHOT_WITHIN_FEET", &[("FEET", &(d * 2))])
+                } else {
+                    trf("STR_SHOT_WITHIN_YARDS", &[("YARDS", &d)])
+                };
             } else {
-                self.pro_skill[k] += 1;
-                let mut t = format!("{name}'s {} skill improves to {}0%.", SKILL_NAMES[k.min(9)], self.pro_skill[k]);
-                if self.pro_skill[k] as i32 == cap {
-                    let next = crate::economy::RANK_NAMES[(rank as usize + 1).min(3)];
-                    t += &format!(" To further improve this skill you will need a {next} course.");
-                }
-                self.message(t);
+                t += tr("STR_SHOT_FAIRWAY");
             }
-            self.g[g].skills[k] = self.pro_skill[k];
-            let at = (self.g[g].bx, self.g[g].by);
-            self.award_at(2, at);
-            self.sound(0x2f, None);
         } else {
-            if self.pro_skill[k] <= 2 {
-                return;
-            }
-            self.pro_skill[k] -= 1;
-            self.g[g].skills[k] = self.pro_skill[k];
-            let his = if self.male(g) != 0 { "his" } else { "her" };
-            self.message(format!("{name} loses 10% of {his} {} skill.", SKILL_NAMES[k.min(9)]));
-            if self.g[g].momentum >= 0 {
-                self.g[g].momentum = -1;
+            let odd = gg.hole & 1 != 0;
+            t += match (club < 5, odd) {
+                (true, false) => tr("STR_SHOT_YANKS"),
+                (true, true) => tr("STR_SHOT_FLUBS"),
+                (false, false) => tr("STR_SHOT_SCUFFS"),
+                (false, true) => tr("STR_SHOT_FLUFFS"),
+            };
+            t += crate::thoughts::club_name(club as usize);
+            t += tr("STR_SHOT_INTO_THE");
+            t += &crate::tracts::type_name(rest.min(22), c.theme, false);
+        }
+        // 0x4c4fc8, the hole's name (0x407280), 0x4c4fc4
+        let h = gg.hole.clamp(0, 18) as usize;
+        t += &trf("STR_SHOT_AT_HOLE", &[("HOLE", &crate::ratings::hole_name(h, &self.holes[h]))]);
+        if !bad && self.g[p].hole > 0 {
+            // the partner's reaction by the golfer's +0xae: 0x4c4fac, 0x4c4f54, 0x4c4f48 with 0x4c4f38 and 0x4c4f30 /
+            // 0x4c4f28, 0x4c4f78 with 0x4c4f94 / 0x4c4f90 and 0x4c4f6c, 0x4c4f98 with his / her and 0x4c4f88
+            let pn = self.vip_name(p);
+            let male = self.male(p) != 0;
+            let his = if male { tr("STR_SHOT_HIS") } else { tr("STR_SHOT_HER") };
+            match gg.field_ae {
+                0 => t += &trf("STR_SHOT_PARTNER_AMAZED", &[("PARTNER", &pn)]),
+                1 => t += &trf("STR_SHOT_PARTNER_DELIGHTED", &[("PARTNER", &pn)]),
+                2 => {
+                    t += &trf(
+                        "STR_SHOT_PARTNER_RATS",
+                        &[("PARTNER", &pn), ("HIMSELF", &(if male { tr("STR_SHOT_HIMSELF") } else { tr("STR_SHOT_HERSELF") }))],
+                    )
+                }
+                3 | 5 => t += &trf("STR_SHOT_PARTNER_CONGRATULATES", &[("PARTNER", &pn), ("HIS", &his)]),
+                4 => t += &trf("STR_SHOT_PARTNER_EYES", &[("PARTNER", &pn), ("HIS", &his)]),
+                _ => {}
             }
         }
+        // (the exe also grows the skills of the pro's partner slot outside tournaments from a second table, 0x5a5a14,
+        // which the port does not keep)
+        if pro {
+            let rank = crate::economy::rank((self.next_hole - 1).max(0) as usize);
+            let cap = if rank == 3 { 99 } else { rank * 2 + 6 };
+            let mut mask: u16 = 0xffff;
+            for k in 0..12 {
+                if self.pro_skill[k] as i32 >= cap {
+                    mask &= !(1 << k);
+                }
+            }
+            if bad {
+                mask = 0;
+                for k in 0..12 {
+                    if self.pro_skill[k] > 3 {
+                        mask |= 1 << k;
+                    }
+                }
+            }
+            let origin = lie_type(gg.ox, gg.oy);
+            let mut pick: u16 = 0;
+            if origin == crate::course::t::GREEN && mask & 0x10 != 0 {
+                pick = 0x10;
+            } else {
+                for n in 1..=100 {
+                    pick = match rng.below(12) {
+                        0 if c.h(origin) > 0 => 0x100,
+                        1 if gg.flags & flag::HIT_TREE != 0 || d == 0 => 0x200,
+                        2 if gg.strokes == 0 && gg.club < 2 => 0x2,
+                        3 if gg.strokes == 0 && gg.club < 4 => 0x4,
+                        4 if gg.shot_type == 1 => 0x20,
+                        5 if gg.shot_type == -1 => 0x40,
+                        6 if gg.shot_type == 3 => 0x80,
+                        7 if crate::planner::max_range(self, c, g) < l => 0x1,
+                        8 if (3..=10).contains(&gg.club) => 0x8,
+                        9 if n > 50 || d == 0 => {
+                            if rest == crate::course::t::GREEN && d != 0 {
+                                0x10
+                            } else {
+                                0x200
+                            }
+                        }
+                        _ => 0,
+                    };
+                    if pick != 0 && pick & mask != 0 {
+                        break;
+                    }
+                    pick = 0;
+                }
+            }
+            if pick == 0 && bad {
+                return;
+            }
+            if pick != 0 && gg.kind != 0 {
+                let k = pick.trailing_zeros() as usize;
+                let skill = exe_skill(k.min(11));
+                if !bad {
+                    if self.pro_skill[k] < 10 {
+                        if self.pro_skill[k] == 0 {
+                            // 0x4c3f70, the name, 0x4c4e64, the skill and 0x4c4e60
+                            self.pro_skill[k] = clamp(3 - self.difficulty, 1, 3) as u8;
+                            self.pro_mask |= pick;
+                            self.g[g].skill_mask |= pick;
+                            t += &trf("STR_SHOT_NEW_SKILL", &[("GOLFER", &name), ("SKILL", &skill)]);
+                        } else {
+                            // 0x4c3f70, the name, 0x4c4ef0, the skill, 0x4c4ed8, the level, 0x4c4ed0; at the cap
+                            // 0x4c4e88, the next class (0x4c2a1c by the class) and 0x4c4e7c
+                            self.pro_skill[k] += 1;
+                            t += &trf("STR_SHOT_SKILL_IMPROVES", &[("GOLFER", &name), ("SKILL", &skill), ("LEVEL", &(self.pro_skill[k]))]);
+                            if self.pro_skill[k] as i32 == cap {
+                                let next = crate::economy::rank_name((rank as usize + 1).min(3));
+                                t += &trf("STR_SHOT_SKILL_CAP", &[("RANK", &next)]);
+                            }
+                        }
+                        self.g[g].skills[k] = self.pro_skill[k];
+                        self.award_at(2, (gg.x, gg.y));
+                        self.sound(0x2f, None);
+                    }
+                } else {
+                    if self.pro_skill[k] < 3 {
+                        return;
+                    }
+                    // 0x4c3f70, the name, 0x4c4f14 / 0x4c4f00, the skill, 0x4c4ef8
+                    self.pro_skill[k] -= 1;
+                    self.g[g].skills[k] = self.pro_skill[k];
+                    let his = if self.male(g) != 0 { tr("STR_SHOT_HIS") } else { tr("STR_SHOT_HER") };
+                    t += &trf("STR_SHOT_SKILL_LOSS", &[("GOLFER", &name), ("HIS", &his), ("SKILL", &skill)]);
+                }
+            }
+        }
+        self.out.push(Event::GreatShot { g, partner: p, text: t, bad, pts });
+    }
+
+    /// After the great-shot SimFoto is let go (the end of 0x407e00): the golfer's member record notes the photo on this hole
+    /// and the golfer takes flag 0x20000; a good shot's golfer, unless his newest thought is already the tough-shot one, has
+    /// it now (0x467a00 type 1), cheers (animation 12, paused 99) and turns two steps back; a bad one's momentum turns
+    /// negative.
+    pub fn great_shot_after(&mut self, c: &mut Course, rng: &mut ExeRng, g: usize, bad: bool) {
+        self.great_shot_noted(g);
+        self.g[g].flags |= flag::BAD_LIE;
+        if !bad {
+            if self.g[g].thoughts[0] & 0x7f != 1 {
+                self.event(c, rng, g, 1, 1);
+                let gg = &mut self.g[g];
+                gg.anim = crate::golfer::anim::HAPPY;
+                gg.pause = -99;
+                gg.facing = (gg.facing - 2) & 7;
+            }
+        } else if self.g[g].momentum >= 0 {
+            self.g[g].momentum = -1;
+        }
+    }
+
+    /// The golfer's member record notes a great-shot SimFoto on the current hole (bit 1 of +3 + hole), as the exe also does
+    /// for an ordinary golfer's great shot made off screen.
+    pub fn great_shot_noted(&mut self, g: usize) {
+        let h = self.g[g].hole.clamp(0, 18) as usize;
+        let r = self.g[g].roster.clamp(0, self.members.len() as i32 - 1) as usize;
+        if let Some(m) = self.members.get_mut(r) {
+            m.holes[h] |= 1;
+        }
+    }
+
+    /// Test hook for a still of the great-shot SimFoto: golfer `g`'s ball is put most of the way from where he stands to
+    /// his hole's pin, and that shot (a 4 Wood rated tough, its arc in nine points) is reviewed as a great one.
+    pub fn great_shot_test(&mut self, c: &Course, rng: &mut ExeRng, g: usize) {
+        let gg = &self.g[g];
+        let h = gg.hole.clamp(1, 18) as usize;
+        let pin = self.holes[h].pin;
+        let (ox, oy) = (gg.x, gg.y);
+        let (px, py) = if pin.0 > 0 { (pin.0 * 0x400 + 0x200, pin.1 * 0x400 + 0x200) } else { (ox + 0x2000, oy - 0x2000) };
+        let (bx, by) = (ox + (px - ox) * 7 / 10, oy + (py - oy) * 7 / 10);
+        let pts = (0..9).map(|k| (ox + (bx - ox) * k / 8, oy + (by - oy) * k / 8, 4 * 450 * k * (8 - k) / 64)).collect();
+        let gg = &mut self.g[g];
+        (gg.ox, gg.oy, gg.bx, gg.by, gg.club, gg.rating) = (ox, oy, bx, by, 2, 10);
+        let l = len(ox - bx, oy - by) * 25 / 1024;
+        let d = tdist(bx, by, pin.0, pin.1);
+        self.great_shot(c, rng, g, d, l, false, pts);
+    }
+
+    /// No member has had a great-shot SimFoto on hole `h` yet (bit 1 of +3 + h in the 76 member records).
+    pub fn first_great_shot(&self, h: i32) -> bool {
+        let h = h.clamp(0, 18) as usize;
+        self.members.iter().all(|m| m.holes[h] & 1 == 0)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A fairway with a green round (35, 25), hole 2's pin; the pro in slot 3 on hole 2 with his partner in slot 2.
+    fn great_shot_club() -> (Course, Club) {
+        use crate::course::t;
+        let mut c = Course::default();
+        c.ty.iter_mut().for_each(|v| *v = t::FAIRWAY);
+        for a in 33..=37 {
+            for b in 23..=27 {
+                c.ty[idx(a, b)] = t::GREEN;
+            }
+        }
+        c.refresh();
+        let mut cl = Club::default();
+        cl.holes[2].pin = (35, 25);
+        cl.holes[2].par = 4;
+        cl.next_hole = 3;
+        cl.gary = 3;
+        cl.g[3].kind = 0x24;
+        (cl.g[3].partner, cl.g[2].partner) = (2, 3);
+        (cl.g[3].hole, cl.g[2].hole) = (2, 2);
+        (c, cl)
+    }
+
+    fn said(cl: &Club) -> Option<String> {
+        cl.out.iter().find_map(|e| if let Event::GreatShot { text, .. } = e { Some(text.clone()) } else { None })
+    }
+
+    #[test]
+    fn great_shot_message() {
+        let (c, mut cl) = great_shot_club();
+        let mut rng = ExeRng { state: 1 };
+        let (n, p) = (cl.vip_name(3), cl.vip_name(2));
+        // a 4 Wood rated 10 that stays on the fairway
+        let g = &mut cl.g[3];
+        (g.club, g.rating, g.ox, g.oy, g.bx, g.by) = (2, 10, 5 << 10, 25 << 10, 20 << 10, 25 << 10);
+        cl.great_shot(&c, &mut rng, 3, 15, 174, false, vec![]);
+        let t = said(&cl).unwrap();
+        assert!(t.starts_with(&format!(
+            "{n} knocks a tough 4 Wood shot 174 yards safely onto the fairway at Hole 2!  {p} looks on in amazement. {n}"
+        )));
+        // a putt from the green into the cup: the putter skill grows (the pick is certain from the green)
+        cl.out.clear();
+        cl.pro_skill[4] = 2;
+        let g = &mut cl.g[3];
+        (g.club, g.rating, g.ox, g.oy, g.bx, g.by) = (13, 0, 34 << 10, 25 << 10, (35 << 10) + 0x200, (25 << 10) + 0x200);
+        g.field_ae = 4;
+        cl.great_shot(&c, &mut rng, 3, 0, 12, false, vec![]);
+        let his = if cl.male(2) != 0 { "his" } else { "her" };
+        assert_eq!(
+            said(&cl).unwrap(),
+            format!(
+                "{n} snakes a putt 12 yards into the hole at Hole 2!  {p} can not believe {his} eyes. {n}'s 'Accurate Putter' skill \
+                 improves to 30%! "
+            )
+        );
+        assert_eq!(cl.pro_skill[4], 3);
+        // a bad finish with no skill above 3 to lose says nothing
+        cl.out.clear();
+        cl.pro_skill = [2; 16];
+        cl.great_shot(&c, &mut rng, 3, 15, 174, true, vec![]);
+        assert!(said(&cl).is_none());
+        // an ordinary golfer's great shot: no skill line, and his partner on hole 0 has no reaction
+        cl.out.clear();
+        cl.g[2].hole = 0;
+        cl.g[3].field_ae = 0;
+        cl.gary = -1;
+        cl.great_shot(&c, &mut rng, 3, 0, 12, false, vec![]);
+        assert!(said(&cl).unwrap().ends_with("into the hole at Hole 2!  "));
+    }
+
+    #[test]
+    fn aim_line_lifts() {
+        // 100 range units at zoom 4: A = 800, A/3/8 = 33, A/2/8 = 50
+        assert_eq!(aim_lifts(100, 0, 4.0), vec![0.0, 33.0, 50.0, 50.0, 33.0, 0.0, 0.0]);
+        // the high shot: A = 1200 and one point fewer
+        assert_eq!(aim_lifts(100, 3, 4.0), vec![0.0, 50.0, 75.0, 75.0, 50.0, 0.0]);
+        assert!(aim_lifts(100, 4, 4.0).iter().all(|&v| v == 0.0));
+        let p = AimPreview { x: 0, y: -40960, distance: 100, club: 1, max_range: 200 };
+        assert_eq!(aim_lifts(100, 1, 2.0).len(), aim_line((0, 0), &p, 1).len());
+        assert_eq!(aim_lifts(100, 3, 2.0).len(), aim_line((0, 0), &p, 3).len());
+    }
 
     #[test]
     fn requests() {
@@ -618,6 +947,8 @@ mod tests {
         cl.match_money(2);
         let earned: i32 = cl.out.iter().map(|e| if let crate::golfer::Event::Earn { units, .. } = e { *units } else { 0 }).sum();
         assert_eq!(earned, 40);
+        let said = |cl: &Club, t: &str| cl.out.iter().any(|e| matches!(e, crate::golfer::Event::Message { text, .. } if text.ends_with(t)));
+        assert!(said(&cl, " wins hole #1 by a score of 4 to 5! Collect \u{a7}4,000."));
         // last hole: a tie on the hole, the pro wins the match by a stroke
         cl.out.clear();
         cl.g[2].card[2] = 3;
@@ -627,6 +958,7 @@ mod tests {
         cl.match_money(2);
         let earned: i32 = cl.out.iter().map(|e| if let crate::golfer::Event::Earn { units, .. } = e { *units } else { 0 }).sum();
         assert_eq!(earned, 40);
+        assert!(said(&cl, "At the end of the match, you win \u{a7}4,000."));
         assert_eq!(cl.trophies, 1);
         assert_eq!(cl.gary, -1);
         assert!(cl.awards & (1 << 5) != 0);

@@ -4,10 +4,11 @@
 //!
 //! Facts are from the publisher's golf.exe (docs/PUBLISHER_EXE_NOTES.md, "Wildlife and water"), restated in our own words.
 
-use crate::course::{idx, inside, Course, TYPES};
+use crate::course::{idx, inside, Course};
 use crate::geom::{cdir, len, DX, DY};
 use crate::golfer::{Club, SLOTS};
 use crate::land::ExeRng;
+use crate::lang::trf;
 
 /// Animation states (sprite bases; add the kind): walk, stand, going down (to eat or drink), the eating / drinking loop.
 pub const WALK: i32 = 0x103;
@@ -18,81 +19,96 @@ pub const LOOP: i32 = 0x11e;
 /// One kind of animal: its name, its clips in Flics/Animals (walk, stand, down, loop), the directions of the non-walk clips
 /// as the exe loads them, its call sound slot, and where it lives.
 pub struct Kind {
-    pub name: &'static str,
+    /// The name (a text key, see `name`).
+    pub name_key: &'static str,
     pub clips: [&'static str; 4],
     pub dirs: i32,
     pub call: Option<i32>,
-    /// Habitat tile type and theme mask (bit per exe theme). APPROXIMATION: the exe's kind table (0x4c1998) is in data that
-    /// is not available; these are chosen to suit each animal and its art.
+    /// Habitat tile type and theme mask (bit per exe theme), with the name, from the exe's kind table (0x4c1998, records of
+    /// 18 bytes: the name in 16, the habitat type, the theme mask; EXACT, read from the publisher exe's data).
     pub habitat: u8,
     pub themes: u8,
 }
 
+impl Kind {
+    /// The animal's name.
+    pub fn name(&self) -> &'static str {
+        crate::lang::tr(self.name_key)
+    }
+}
+
 pub const KINDS: [Kind; 9] = [
-    Kind { name: "Elk", clips: ["ELK_Run", "ELK_Sq", "ELK_EatDown", "ELK_EatLoop"], dirs: 4, call: Some(59), habitat: 13, themes: 0b1001 },
     Kind {
-        name: "Crane",
-        clips: ["Crane_Walk", "Crane_Sq", "Crane_DrinkDown", "Crane_DrinkLoop"],
+        name_key: "STR_ANIMAL_ELK",
+        clips: ["ELK_Run", "ELK_Sq", "ELK_EatDown", "ELK_EatLoop"],
         dirs: 4,
-        call: Some(58),
-        habitat: 19,
+        call: Some(59),
+        habitat: 14,
         themes: 0b1001,
     },
     Kind {
-        name: "Flamingo",
+        name_key: "STR_ANIMAL_CRANE",
+        clips: ["Crane_Walk", "Crane_Sq", "Crane_DrinkDown", "Crane_DrinkLoop"],
+        dirs: 4,
+        call: Some(58),
+        habitat: 4,
+        themes: 0b0001,
+    },
+    Kind {
+        name_key: "STR_ANIMAL_FLAMINGO",
         clips: ["Flamingo_Walk", "Flamingo_Sq", "Flamingo_DrinkDown", "Flamingo_DrinkLoop"],
         dirs: 4,
         call: None,
-        habitat: 18,
+        habitat: 15,
         themes: 0b0100,
     },
     Kind {
-        name: "Sheep",
+        name_key: "STR_ANIMAL_SHEEP",
         clips: ["Sheep_Walk", "Sheep_SQ", "Sheep_EatDown", "Sheep_EatLoop"],
         dirs: 4,
         call: Some(195),
-        habitat: 5,
+        habitat: 4,
         themes: 0b1000,
     },
     Kind {
-        name: "Crocodile",
+        name_key: "STR_ANIMAL_CROCODILE",
         clips: ["Croc_Walk", "Croc_SQ", "Croc_Turnover", "Croc_BackScratch"],
         dirs: 8,
         call: Some(196),
-        habitat: 19,
+        habitat: 4,
         themes: 0b0100,
     },
     Kind {
-        name: "Snake",
+        name_key: "STR_ANIMAL_SNAKE",
         clips: ["Snake_Walk", "Snake_SQ", "Snake_SQ", "Snake_Fidget"],
         dirs: 4,
         call: Some(198),
-        habitat: 11,
-        themes: 0b0010,
+        habitat: 12,
+        themes: 0b0110,
     },
     Kind {
-        name: "Gila monster",
+        name_key: "STR_ANIMAL_GILA",
         clips: ["Gila_Walk", "Gila_SQ", "Gila_SQ", "Gila_Fidget"],
         dirs: 4,
         call: Some(197),
-        habitat: 8,
+        habitat: 4,
         themes: 0b0010,
     },
     Kind {
-        name: "Roadrunner",
+        name_key: "STR_ANIMAL_ROAD_RUNNER",
         clips: ["RR_Walk", "RR_SQ", "RR_DrinkDown", "RR_DrinkLoop"],
         dirs: 4,
         call: None,
-        habitat: 5,
+        habitat: 4,
         themes: 0b0010,
     },
     Kind {
-        name: "Duck",
+        name_key: "STR_ANIMAL_DUCK",
         clips: ["Duck_Walk", "Duck_SQ", "Duck_DrinkDown", "Duck_DrinkLoop"],
         dirs: 4,
         call: None,
-        habitat: 18,
-        themes: 0b0001,
+        habitat: 4,
+        themes: 0b1100,
     },
 ];
 
@@ -229,7 +245,7 @@ fn tile_ty(c: &Course, a: i32, b: i32) -> u8 {
 /// The water depth of each tile (0x42f1c0): 0 at the shore, 1 next to it, 2 in open water; 255 off the water.
 pub fn water_depth(c: &Course) -> Vec<u8> {
     let n = crate::course::N;
-    let water = |a: i32, b: i32| inside(a, b) && TYPES[c.ty[idx(a, b)] as usize].class == 17;
+    let water = |a: i32, b: i32| inside(a, b) && crate::data::row(c.ty[idx(a, b)]).class == 17;
     let mut d = vec![255u8; (n * n) as usize];
     for a in 0..n {
         for b in 0..n {
@@ -321,7 +337,7 @@ impl Wildlife {
                 self.animals[f as usize].leader = l;
             }
         }
-        self.labels.push((centre.0, centre.1, format!("{} habitat", KINDS[k as usize].name), 48));
+        self.labels.push((centre.0, centre.1, trf("STR_WILDLIFE_HABITAT", &[("ANIMAL", &KINDS[k as usize].name())]), 48));
         if let Some(s) = KINDS[k as usize].call {
             self.sounds.push((s, centre));
         }
@@ -466,7 +482,7 @@ impl Club {
     /// The four fly-overs (second half of 0x430360). `sail_frames` is the sailboat clip's frame count.
     pub fn flyers_tick(&mut self, c: &Course, rng: &mut ExeRng, tick: u32) {
         let max = 0xcc00;
-        let water = |a: i32, b: i32| inside(a, b) && TYPES[c.ty[idx(a, b)] as usize].class == 17;
+        let water = |a: i32, b: i32| inside(a, b) && crate::data::row(c.ty[idx(a, b)]).class == 17;
         for i in 0..4 {
             let mut f = self.wildlife.flyers[i];
             match f.kind {
@@ -487,20 +503,20 @@ impl Club {
                         if tick.is_multiple_of(4) {
                             let phase = (tick / (((f.y >> 10) * 4 + 256) as u32)) % 5;
                             let (a, b) = (f.x >> 10, f.y >> 10);
-                            // the height scale (0x4c2e00) is data that is not available; 8 per corner step is taken
-                            let ground = if inside(a, b) { c.raw_corner(a, b).max(0) } else { 0 };
+                            // the stored corner height (0x40c170, 3 off the map) times the height step
+                            let ground = c.raw_corner(a, b) * crate::course::HEIGHT_STEP_PX;
                             match phase {
                                 0 | 1 | 4 => {
                                     if f.h == 0 {
                                         self.wildlife.sounds.push((57, (f.x, f.y)));
                                     }
                                     let lift = if phase == 0 { 60 } else { 40 };
-                                    if f.h < ground * 8 + lift {
+                                    if f.h < ground + lift {
                                         f.h += 1;
                                     }
                                 }
                                 _ => {
-                                    let cls = |a: i32, b: i32| if inside(a, b) { TYPES[c.ty[idx(a, b)] as usize].class } else { 18 };
+                                    let cls = |a: i32, b: i32| if inside(a, b) { crate::data::row(c.ty[idx(a, b)]).class } else { 18 };
                                     let blocked = matches!(cls(a, b), 13 | 18 | 17)
                                         || matches!(cls(a + 1, b), 13 | 18)
                                         || (inside(a, b) && c.h(c.ty[idx(a, b)]) <= 0);
@@ -608,19 +624,19 @@ mod tests {
         assert_eq!(d[idx(11, 11)], 1);
         assert_eq!(d[idx(12, 12)], 2);
         assert_eq!(d[idx(5, 5)], 255);
-        // a habitat: ducks on wetlands in parkland eventually move in when the land is retyped
+        // a habitat (the exe table at 0x4c1998): cranes on rough in parkland eventually move in when the land is retyped
         let mut w = Wildlife::default();
         for a in 20..30 {
             for b in 20..30 {
-                c.ty[idx(a, b)] = 18;
+                c.ty[idx(a, b)] = crate::course::t::ROUGH;
             }
         }
         let mut rng = ExeRng::from_clock(3);
         for _ in 0..2000 {
             w.retyped(&c, &mut rng, 25, 25, 0);
         }
-        let n = w.animals.iter().filter(|a| a.kind == 8).count();
-        assert!(n >= 2, "ducks moved in: {n}");
-        assert!(w.animals.iter().all(|a| a.kind == -1 || a.kind == 8));
+        let n = w.animals.iter().filter(|a| a.kind == 1).count();
+        assert!(n >= 2, "cranes moved in: {n}");
+        assert!(w.animals.iter().all(|a| a.kind == -1 || a.kind == 1));
     }
 }

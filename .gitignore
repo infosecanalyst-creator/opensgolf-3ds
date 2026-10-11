@@ -12,7 +12,24 @@ game/
 *.bik
 *.ttf
 *.TTF
+# the bundled OFL stand-in for Arial Bold is ours to ship (see crates/simgolf/fonts/LiberationSans-OFL.txt)
+!crates/simgolf/fonts/LiberationSans-Bold.ttf
+# the Android launcher icon is our own drawing (tools/make_icons.sh)
+!crates/simgolf/android/res/**/*.png
 spec/
 .DS_Store
 target/
 web/dist/
+*.sgs
+*.sgch
+*.pro
+Championship/
+snapshots/
+.claude/worktrees/
+# HD art packs (tools/hd_pack) are made from the player's own copy of the game's art: never commit or ship them
+HD/
+hdpack*/
+*.hdpack
+hd_pack_out/
+freeset-test/
+hd-download/

@@ -1,0 +1,4 @@
+# Text files keep Unix line endings on every platform: several are built into the program (include_str!: lang/en.txt,
+# pack manifests) and are compared byte for byte by tests.
+* text=auto eol=lf
+*.bat text eol=crlf

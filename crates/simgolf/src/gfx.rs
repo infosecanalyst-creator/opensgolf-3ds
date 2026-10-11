@@ -1,9 +1,9 @@
 //! Rendering on top of miniquad (OpenGL on Windows, Linux and macOS): a column-major matrix type, one shader that covers every
 //! draw the game makes (lit terrain, overlays, sprites, 2D interface), static meshes and an immediate-mode batcher.
 //!
-//! The original renders with fixed-function OpenGL. The shader reproduces what the C++ port used of it: per-vertex lighting from one
-//! directional light fixed in eye space (ambient + diffuse, white material), texture modulation, an alpha test and a texture
-//! offset for the water shimmer.
+//! The original renders its terrain with fixed-function OpenGL (Terrain.dll). The shader reproduces what it uses: per-vertex
+//! lighting from one directional light fixed in eye space with OpenGL's default material and a white specular of shininess
+//! 13 (sg_core::terrain::Lighting::shade), texture modulation, and an alpha test.
 use miniquad::*;
 use sg_core::assets::Rgba;
 
@@ -93,16 +93,27 @@ impl Vert {
 pub struct Uniforms {
     pub mvp: [f32; 16],
     pub mv: [f32; 16],
-    pub uv_offset: [f32; 2],
     pub lit: f32,
     pub alpha_ref: f32,
     pub light_amb: [f32; 3],
     pub light_dif: [f32; 3],
+    pub light_spec: [f32; 3],
+    /// Toward the light, in eye space.
+    pub light_dir: [f32; 3],
 }
 
 impl Uniforms {
     pub fn flat(proj: &Mat4, mv: &Mat4) -> Uniforms {
-        Uniforms { mvp: proj.mul(mv).0, mv: mv.0, uv_offset: [0.0; 2], lit: 0.0, alpha_ref: -1.0, light_amb: [1.0; 3], light_dif: [0.0; 3] }
+        Uniforms {
+            mvp: proj.mul(mv).0,
+            mv: mv.0,
+            lit: 0.0,
+            alpha_ref: -1.0,
+            light_amb: [1.0; 3],
+            light_dif: [0.0; 3],
+            light_spec: [0.0; 3],
+            light_dir: [0.0, 1.0, 0.0],
+        }
     }
 }
 
@@ -113,21 +124,30 @@ attribute vec3 in_normal;
 attribute vec4 in_color;
 uniform mat4 mvp;
 uniform mat4 mv;
-uniform vec2 uv_offset;
 uniform float lit;
 uniform float alpha_ref;
 uniform vec3 light_amb;
 uniform vec3 light_dif;
+uniform vec3 light_spec;
+uniform vec3 light_dir;
 varying lowp vec4 color;
 varying highp vec2 uv;
 void main() {
     gl_Position = mvp * vec4(in_pos, 1.0);
-    uv = in_uv + uv_offset;
+    uv = in_uv;
     vec4 c = in_color;
     if (lit > 0.5) {
-        vec3 n = normalize((mv * vec4(in_normal, 0.0)).xyz);
-        vec3 l = normalize(vec3(-0.45, 0.85, 0.45));
-        c.rgb = c.rgb * min(light_amb + light_dif * max(dot(n, l), 0.0), vec3(1.0));
+        // OpenGL's lighting of the default material: global ambient 0.2 and the light's ambient times 0.2, the light's
+        // diffuse times 0.8, and the specular (shininess 13, viewer at infinity) where the face is lit
+        // not normalised, as OpenGL without GL_NORMALIZE: the terrain's normals are unit, the cliff's are not
+        vec3 n = (mv * vec4(in_normal, 0.0)).xyz;
+        float d = dot(n, light_dir);
+        vec3 s = vec3(0.04) + 0.2 * light_amb;
+        if (d > 0.0) {
+            vec3 h = normalize(light_dir + vec3(0.0, 0.0, 1.0));
+            s += 0.8 * light_dif * d + light_spec * pow(max(dot(n, h), 0.0), 13.0);
+        }
+        c.rgb = c.rgb * min(s, vec3(1.0));
     }
     color = c;
 }
@@ -195,11 +215,12 @@ impl Gfx {
                         uniforms: vec![
                             UniformDesc::new("mvp", UniformType::Mat4),
                             UniformDesc::new("mv", UniformType::Mat4),
-                            UniformDesc::new("uv_offset", UniformType::Float2),
                             UniformDesc::new("lit", UniformType::Float1),
                             UniformDesc::new("alpha_ref", UniformType::Float1),
                             UniformDesc::new("light_amb", UniformType::Float3),
                             UniformDesc::new("light_dif", UniformType::Float3),
+                            UniformDesc::new("light_spec", UniformType::Float3),
+                            UniformDesc::new("light_dir", UniformType::Float3),
                         ],
                     },
                 },
@@ -264,6 +285,14 @@ impl Gfx {
 
     /// A texture from RGBA pixels. `mipmaps` for terrain textures (trilinear like the original), clamped at the edges.
     pub fn texture(&mut self, img: &Rgba, mipmaps: bool) -> TextureId {
+        // transparent pixels still carry the art's key colour (magenta); smoothing would blend it into the edges
+        let bled;
+        let img = if img.px.chunks_exact(4).any(|p| p[3] == 0) {
+            bled = bleed_alpha(img);
+            &bled
+        } else {
+            img
+        };
         let params = TextureParams {
             kind: TextureKind::Texture2D,
             width: img.w,
@@ -280,6 +309,26 @@ impl Gfx {
         if mipmaps {
             self.ctx.texture_generate_mipmaps(id);
         }
+        id
+    }
+
+    /// A texture from an HD pack picture (only used in HD mode, see hd.rs): trilinear filtered with mipmaps, since it is drawn
+    /// smaller than its own resolution. The pack's pictures carry their colours under transparent pixels already.
+    pub fn texture_hd(&mut self, img: &Rgba) -> TextureId {
+        let params = TextureParams {
+            kind: TextureKind::Texture2D,
+            width: img.w,
+            height: img.h,
+            format: TextureFormat::RGBA8,
+            wrap: TextureWrap::Clamp,
+            min_filter: FilterMode::Linear,
+            mag_filter: FilterMode::Linear,
+            mipmap_filter: MipmapFilterMode::Linear,
+            allocate_mipmaps: true,
+            sample_count: 1,
+        };
+        let id = self.ctx.new_texture(TextureAccess::Static, TextureSource::Bytes(&img.px), params);
+        self.ctx.texture_generate_mipmaps(id);
         id
     }
 
@@ -310,10 +359,7 @@ impl Gfx {
         let tex = tex.unwrap_or(self.white);
         let same = self.batch_tex == Some(tex)
             && self.batch_mode == mode
-            && self
-                .batch_uniforms
-                .map(|b| b.mvp == u.mvp && b.uv_offset == u.uv_offset && b.lit == u.lit && b.alpha_ref == u.alpha_ref)
-                .unwrap_or(false);
+            && self.batch_uniforms.map(|b| b.mvp == u.mvp && b.lit == u.lit && b.alpha_ref == u.alpha_ref).unwrap_or(false);
         if !same {
             self.flush();
             self.batch_tex = Some(tex);
@@ -374,5 +420,71 @@ mod tests {
         let m = Mat4::ortho(-2.0, 2.0, -1.0, 1.0, -5.0, 5.0).0;
         assert!((m[0] * 2.0 + m[12] - 1.0).abs() < 1e-6);
         assert!((-m[5] + m[13] + 1.0).abs() < 1e-6);
+    }
+}
+
+/// Gives every fully transparent pixel the average colour of its opaque neighbours (repeated outwards a few pixels), so linear
+/// filtering and mipmaps at a sprite's edge mix in the sprite's own colours instead of the transparent key colour.
+pub fn bleed_alpha(img: &Rgba) -> Rgba {
+    let (w, h) = (img.w as usize, img.h as usize);
+    let mut out = img.clone();
+    let mut known: Vec<bool> = img.px.chunks_exact(4).map(|p| p[3] != 0).collect();
+    for _ in 0..4 {
+        let mut next = known.clone();
+        let mut changed = false;
+        for y in 0..h {
+            for x in 0..w {
+                let i = y * w + x;
+                if known[i] {
+                    continue;
+                }
+                let (mut r, mut g, mut b, mut n) = (0u32, 0u32, 0u32, 0u32);
+                for (dx, dy) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1), (-1, -1), (1, -1), (-1, 1), (1, 1)] {
+                    let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+                    if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 {
+                        continue;
+                    }
+                    let j = ny as usize * w + nx as usize;
+                    if known[j] {
+                        r += out.px[j * 4] as u32;
+                        g += out.px[j * 4 + 1] as u32;
+                        b += out.px[j * 4 + 2] as u32;
+                        n += 1;
+                    }
+                }
+                if n > 0 {
+                    out.px[i * 4] = (r / n) as u8;
+                    out.px[i * 4 + 1] = (g / n) as u8;
+                    out.px[i * 4 + 2] = (b / n) as u8;
+                    next[i] = true;
+                    changed = true;
+                }
+            }
+        }
+        known = next;
+        if !changed {
+            break;
+        }
+    }
+    // whatever is still far from any opaque pixel goes black, so even the smallest mipmaps carry no key colour
+    for (p, k) in out.px.chunks_exact_mut(4).zip(&known) {
+        if !k {
+            p[0] = 0;
+            p[1] = 0;
+            p[2] = 0;
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod bleed_tests {
+    #[test]
+    fn transparent_pixels_take_their_neighbours_colour() {
+        let mut img = sg_core::assets::Rgba::new(3, 1);
+        img.px = vec![255, 0, 255, 0, 10, 20, 30, 255, 255, 0, 255, 0];
+        let out = super::bleed_alpha(&img);
+        assert_eq!(&out.px[0..4], &[10, 20, 30, 0]);
+        assert_eq!(&out.px[8..12], &[10, 20, 30, 0]);
     }
 }

@@ -1,0 +1,10 @@
+[pack]
+id = "opensgolf-free"
+name = "OpenSGolf free graphics"
+version = "0.1.0"
+kind = "base"
+authors = ["OpenSGolf contributors"]
+license = "GPL-2.0-or-later"
+description = "Free art, sounds and text drawn by OpenSGolf itself, so the game runs without the original files. Files in this folder replace the drawn ones."
+requires = []
+conflicts = []

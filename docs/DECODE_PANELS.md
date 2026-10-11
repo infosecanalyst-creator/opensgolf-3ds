@@ -44,6 +44,13 @@ Golfers (mode 2) and Player (mode 4)
   Employee panel -2 tab (286,492) -> mode 2, -3 tab (256,510) -> mode 4, overlay flag cleared
 ```
 
+The People dock button (0x432720) sets mode 2 unless the mode is 2 already, which closes the dock (mode 5); it never
+touches the overlay flag. So the Employee panel opened from the Player panel (mode 4) stays up when People is pressed (the
+mode under it becomes 2), a second press closes the dock, and the next People press opens the Employee panel again until
+one of its tabs clears the flag. Mode 3 (set in the golfer update 0x4289e0 when the pro waits at his ball) clears the flag.
+The Employee overlay draws over modes 2 and 4 only (0x4362f0 tests mode != 3). The dock's hover light compares the button
+with the raw mode, so People lights over the Player panel (0x432ba0). exact.
+
 So the Elevation panel is only reachable through Buildings, and the Employee panel is an overlay of the Golfers and Player
 panels (it is "People" in the port's wording). The big round dock buttons choose the mode; they are not part of these panels.
 exact.
@@ -149,7 +156,7 @@ enough money" popup. The info box shows `table_cost * 100` dollars for level 0 a
 `level != 0` (the Snack Bar, id 7, always shows level 0 and never says "Upgraded").
 
 Info box (exact): after 10 frames of hover on a lot, a framed 160x100 box at x = `clamp((lot%5)*80 + (lot > 4 ? 431 : 391),
-80, 720) - 80`, y = 460 with centred lines at y 462 (`Upgraded ` + name), 472 (`Cost: $N`), 482 (the hover text). The
+80, 720) - 80`, y = 460 with centred lines at y 462 (`Upgraded ` + name), 472 (`Cost: N`, grouped, no money sign), 482 (the hover text). The
 frame is `FUN_0040d0b0`, which draws 16x16 corner and edge tiles from the per-theme pop-up frame sheet `Pop_UpOk` (`frame` in
 the header: row offset Parkland 0, Links 0, Tropical 100, Desert 200; eight pieces; alpha `Pop_UpOk_A`) over a translucent
 fill (colour 0x80007fdc). I located this art through the title-screen loader (`FUN_0043cd70`).
@@ -201,7 +208,7 @@ object sprites of the per-theme building art, with ids base 0x208 benches, 0x168
 
 Costs (building table, units): Pathway 1 per tile, Benches 2, Flower Bed 5, Ball Washer 50, Home Site 10, Scenic Bridge 100,
 Willow Tree (scenic trees) 25. Landmarks cost `250 + 50 * design` units, 0 ("FREE!") when that design's bit is already set in
-`DAT_00822c70`. Tooltip: heading, `Cost: $N` under it (landmark tooltips also show the design name uppercased and the effect
+`DAT_00822c70`. Slot tooltip: two bars at (slot x + 20, slot y + 10 and + 20), the name and the cost in dollars as a plain number ("Scenic Bridge" / "10000" in footage), "5000-20,000" for Landmarks, both as wide as the name. The strip (landmark tooltips also show the design name uppercased and the effect
 name from `design & 3`: 0 Happy Golfers, 1 No Dandelions, 2 Skill Upgrade, 3 Happy Endings). No gravel/paved distinction exists
 in these routines (placeholder: the port's path kinds are its own).
 

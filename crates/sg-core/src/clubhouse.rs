@@ -7,6 +7,7 @@
 use crate::course::Course;
 use crate::golfer::{Club, SLOTS};
 use crate::land::ExeRng;
+use crate::lang::tr;
 
 impl Club {
     /// The golfers waiting in the clubhouse, newest first (the screen's order); the last is the one waiting longest.
@@ -45,8 +46,13 @@ impl Club {
     /// The marital word of a golfer (+0xb8 bits; later bits win).
     pub fn marital(&self, g: usize) -> &'static str {
         let b = self.g[g].looks as u32;
-        let mut w = "Single";
-        for (bit, word) in [(0x08, "Single"), (0x10, "Married"), (0x20, "Divorced"), (0x40, "Widowed")] {
+        let mut w = tr("STR_MARITAL_SINGLE");
+        for (bit, word) in [
+            (0x08, tr("STR_MARITAL_SINGLE")),
+            (0x10, tr("STR_MARITAL_MARRIED")),
+            (0x20, tr("STR_MARITAL_DIVORCED")),
+            (0x40, tr("STR_MARITAL_WIDOWED")),
+        ] {
             if b & bit != 0 {
                 w = word;
             }

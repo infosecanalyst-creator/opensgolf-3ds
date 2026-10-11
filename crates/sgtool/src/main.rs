@@ -7,6 +7,8 @@
 //!   sgtool dta   <file.dta>            dump a .dta table
 //!   sgtool story <file.txt>            dump a conversation script
 //!   sgtool fixture <dir> [font.ttf]    write a stand-in game folder with placeholder art (for tests)
+//!   sgtool dump-data <dir>             write the built-in data tables as data/*.toml (a template for content packs)
+//!   sgtool freeset <dir>               write the free base set (opensgolf-free) as a pack folder, every file drawn anew
 mod fixture;
 
 use sg_core::assets::{decode_bmp, decode_pcx, decode_tga, decode_wav, to_rgba, Rgba};
@@ -142,12 +144,50 @@ fn main() {
                 }
             }
         }
+        ("dump-data", n) if n >= 3 => {
+            // the engine's built-in tables (the `original` base set's data), one file per table, under <dir>/data
+            let dir = Path::new(&a[2]).join("data");
+            for (file, text) in sg_core::data::Tables::builtin().to_toml() {
+                let path = dir.join(format!("{file}.toml"));
+                let body = format!("{}\n{text}", sg_core::data::file_header(file));
+                if !sg_core::fsutil::write_file(&path, body.as_bytes()) {
+                    fail(format!("cannot write {}", path.display()));
+                }
+                println!("wrote {}", path.display());
+            }
+        }
+        ("freeset", n) if n >= 3 => {
+            let dir = Path::new(&a[2]);
+            match sg_core::freeset::write_all(dir) {
+                Ok((files, bytes)) => println!("wrote the free base set to {}: {files} files, {:.1} MB", a[2], bytes as f64 / 1e6),
+                Err(e) => fail(e),
+            }
+        }
+        // the application icon (our own drawing, sg_core::freeset::app_icon) as icon_<size>.png at the given sizes, by
+        // default every size the release packages use (the desktop packages, macOS's iconset, Android's launcher)
+        ("icon", n) if n >= 3 => {
+            let dir = Path::new(&a[2]);
+            let mut sizes: Vec<usize> = a[3..].iter().filter_map(|s| s.parse().ok()).collect();
+            if sizes.is_empty() {
+                sizes = vec![16, 32, 48, 64, 72, 96, 128, 144, 192, 256, 512, 1024];
+            }
+            if let Err(e) = std::fs::create_dir_all(dir) {
+                fail(e.to_string());
+            }
+            for n in sizes {
+                let f = dir.join(format!("icon_{n}.png"));
+                if !sg_core::png::write_png(&f, &sg_core::freeset::app_icon(n)) {
+                    fail(format!("cannot write {}", f.display()));
+                }
+            }
+            println!("wrote the icon to {}", a[2]);
+        }
         ("fixture", n) if n >= 3 => {
             fixture::write_fixture(Path::new(&a[2]), a.get(3).map(Path::new));
             println!("wrote a placeholder game folder to {}", a[2]);
         }
         _ => {
-            eprintln!("usage: sgtool check|png|sheet|chr|top10|dta|story|fixture ...");
+            eprintln!("usage: sgtool check|png|sheet|chr|top10|dta|story|fixture|freeset|icon|dump-data ...");
             exit(2);
         }
     }

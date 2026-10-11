@@ -1,0 +1,455 @@
+# Modding and content packs
+
+OpenSGolf is built to be modded the way OpenTTD is: the engine holds the rules, and everything a player sees or reads comes
+from **packs** that are loaded in order. This document is the design and the record of what is done. Status markers:
+**done**, **in progress**, **planned**.
+
+## 1. Packs
+
+A pack is a folder (or a `.zip` of that folder) with a `pack.toml` at its root:
+
+```toml
+[pack]
+id = "my-desert-courses"          # unique, lower case, letters, digits and dashes
+name = "Desert Courses"
+version = "1.2.0"                 # semantic version
+kind = "mod"                      # base | mod | translation | scenario
+authors = ["Your Name"]
+license = "CC-BY-SA-4.0"          # SPDX identifier
+description = "Adds two desert properties and a cactus garden."
+requires = ["original >= 1.0"]   # other packs this one needs (`original`: the built-in base set)
+conflicts = []
+```
+
+Kinds:
+
+| Kind | What it is | How many are loaded |
+|------|------------|---------------------|
+| `base` | A complete set of art, sounds, music, text and data the game can run on. | exactly one |
+| `mod` | Adds or overrides data, art, sounds or text. | any number, in the player's order |
+| `translation` | Text in one language (`lang/<code>.txt`). | the player's language |
+| `scenario` | A course, a starting property, goals and settings. | chosen when a game starts |
+
+Two base sets are planned:
+
+* **`original`**: built into the engine. It reads the art, sounds, music, videos and text of the player's own installed copy
+  of SimGolf at runtime and never copies them anywhere. This is the 1:1 game.
+* **`opensgolf-free`**: the free base set (GPL-2.0-or-later), with art, sounds and text made for OpenSGolf, so the game runs
+  without the original files. It starts as simple placeholder art and is meant to grow through contributions, like OpenGFX
+  did for OpenTTD. **done** (first version): see section 10.
+
+Where packs live (**done**): `packs/` in the save folder (`~/.local/share/opensgolf/packs` on Linux,
+`~/Library/Application Support/OpenSGolf/packs` on macOS, `%APPDATA%\OpenSGolf\packs` on Windows, or `$OPENSGOLF_SAVE_DIR/packs`),
+plus `packs/` next to the program. Each pack is a folder, or a `.zip` with `pack.toml` at its root or in its one top
+folder. The browser version keeps the packs the player adds on the start page (*Optional: content packs*) in the browser's
+storage. A pack whose id was already found earlier (the save folder is searched first) is listed as a duplicate and not
+loaded.
+
+Status: `original` and `opensgolf-free` are built in (crates/sg-core/src/packs.rs, `ORIGINAL` and `FREE`). A `base` pack is
+chosen in Preferences > Content or for one run with `--base ID`; it is a layer over the player's game folder, and since a
+base set's files stand in for missing ones (folders included, section 2) the game folder may be missing altogether. With no
+base set chosen and no original files in the game folder, the game uses `opensgolf-free` and says so. `translation` packs
+are loaded last, one at a time, and their `lang/` text is laid over the string table (section 4). `scenario` packs are
+chosen when a game starts (section 5).
+
+## 2. Load order and overrides
+
+The base set loads first, then mods in the order the player chooses in **Preferences > Content**, then the translation.
+Later packs win. Every pack can:
+
+* **Override files** (**done**): any file under `gfx/`, `sfx/`, `music/`, `video/`, `text/` or `fonts/` replaces the game
+  folder's file with the same relative path (case insensitive), e.g. `gfx/Interface/BuildPanel.png` replaces
+  `Interface/BuildPanel.pcx` and `sfx/Sounds/Applause.ogg` replaces `Sounds/Applause.wav`. PNG, PCX, TGA, BMP and FLC are
+  accepted for art; WAV and OGG for sound; `text/` takes the game folder's text and character files (TXT, DTA, CHR, GLF, PRO,
+  SVE) and `fonts/` its TrueType fonts. A pack's file that the game folder does not have is added to it: folder listings show
+  it (stories, characters, heads and textures are found by listing folders), so a base set can stand in for a whole game
+  folder.
+* **Change data** (**done** for six files, section 3): `data/*.toml` files are merged entry by entry (an entry with the same
+  `id` replaces fields of the earlier one; `remove = true` deletes it).
+* **Change text** (**done**, section 4): `lang/<code>.txt` lines replace strings with the same key (the player's language,
+  then English).
+
+The player's choices (which packs are on, the mods' order, the base set and the translation) are saved under `"content"` in
+`settings.json` in the save folder as soon as they are made on the Content screen, and **take effect the next time the game
+starts**: the packs are mounted once, before any art, sound or data is read, so a game in progress never changes under the
+player. A mod that was never switched on is off: new packs start switched off and go to the end of the order.
+
+Problems never stop the game. A pack with a bad `pack.toml`, a missing or switched off requirement, a requirement loaded
+after it, a version that does not match, or a conflict with a loaded pack is not loaded, and the Content screen shows why
+(packs that need it are then not loaded either). A data entry with a bad value is left out with a warning on the pack's
+row; the rest of the pack loads.
+
+The HD graphics mode (docs/HD.md) is the first override layer: an enabled pack's file wins over the HD upscale of the file it
+replaces (which is then loaded the classic way); everything else of HD is unchanged. It stays a local thing that is never
+shared, because it is made from the original art.
+
+How it works: every read of a game file goes through `sg_core::fsutil::read_file`, which asks `sg_core::vfs` first, and
+`fsutil::exists`, `is_dir` and `list_dir` add the folders and files the packs make inside the game folder. With no packs
+enabled nothing is mounted and the reads are exactly what they were.
+
+## 3. Data files
+
+Each file is a list of tables with an `id`. The engine's built-in values are the `original` base set's data;
+`sgtool dump-data DIR` writes them out as `DIR/data/*.toml`, with the meaning of every field at the top of each file (the
+text comes from the code, crates/sg-core/src/data.rs). The reference is in section 9.
+
+| File | Contents | Status |
+|------|----------|--------|
+| `data/terrain.toml` | tile types: name, paint and clearing cost, home-site view, bounce, roll, hazard (lie), walking cost, blend class, scenery group, shape flags | **done** (art set and panel slot planned) |
+| `data/buildings.toml` | buildings: name, footprint, price | **done** (unlock hole, upgrade levels, effects planned) |
+| `data/amenities.toml` | paths, benches, flower beds, ball washers, landmarks, willows, TV towers and booths, bridges: name, footprint, price | **done** (effects, strip art planned) |
+| `data/staff.toml` | employee kinds: name, wage, experienced wage | **done** (task, speed, art planned) |
+| `data/properties.toml` | the sixteen properties: place, course name, bonus, map position, theme, coast, relief | **done** (emblem planned) |
+| `data/economy.toml` | starting money (normal and sandbox), offer slot prices, firing cost, hole maintenance, debt interest, rank thresholds | **done** (fee formula planned) |
+| `data/golfers.toml` | name lists, traits, skill ranges, celebrity and VIP visitors | planned |
+| `data/tournaments.toml` | SGA events, purses, entry rules, rival pros | planned |
+
+## 4. Text and translations
+
+All text the engine shows has a key. `lang/en.txt` is plain UTF-8, one string per line, in the OpenTTD style:
+
+```
+STR_TIP_COST               :Cost: {COST}
+STR_MSG_FIRST_GREENS_FEE   :{GOLFER} has just paid you your first greens fee of {FEE} simoleans!  Golfers pay ...
+```
+
+Parameters in braces are filled by the engine. A missing key falls back to English, then to the key itself. The English
+file is built into the program (`sg_core::lang`); a translation or a pack's `lang/<code>.txt` is laid over it with
+`sg_core::lang::load_overlay`, later overlays winning. The player's language is the `language` setting in `settings.json`
+(default `en`, a `Language:` line in Preferences once a translation is installed). docs/TRANSLATING.md has the file
+format, the parameters and how to try a translation out.
+
+Packs carry text too (**done**, crates/sg-core/src/packs.rs `load` and `apply`): after the player's language is applied,
+every loaded pack's text is laid over the table in load order (the base set, the mods in the player's order, then the
+translation):
+
+* a `base` or `mod` pack: its `lang/en.txt` (the English of its own new keys, or its changed English text), then its
+  `lang/<code>.txt` for the player's language;
+* the chosen `translation` pack: its `lang/<code>.txt` for the player's language; when it has none, its first (usually
+  only) file, and the game switches to that language for the run. So a translation pack works by choosing it on the
+  Content screen, whatever the `language` setting says.
+
+Later packs win over earlier ones; a key a pack does not have keeps the text it had. A pack can carry keys the engine does
+not use yet (for a newer version); they are kept and do nothing.
+
+The `original` base set takes text from the player's copy where the copy has it (the Interface, story and character files).
+Text that only exists inside the original program is kept in this repository's `lang/en.txt`, word for word, so the game
+reads like the original; that text remains Electronic Arts'. The free base set will carry its own rewritten text so it can
+be shared without any of EA's material. Translations are made in the open (planned: Weblate).
+
+## 5. Scenarios and courses
+
+**done** (crates/sg-core/src/scenario.rs, crates/simgolf/src/scenario_ui.rs). A scenario pack (`kind = "scenario"`) holds
+`scenario.toml`: the property (or a theme), the money, the difficulty, optionally a saved game to start from (its land,
+holes, buildings and date), the texts to show, and the goals. With a scenario pack installed, **Start New Game** first asks
+for a free game (the original's way on) or a scenario. A scenario's goals are checked at each month start; a goal with
+`by_year` is missed when that year ends without it. A message says when a goal is reached or missed; when every goal is
+reached the scenario is won (`win_text`), when one is missed it is lost (`lose_text`), and either way the game goes on.
+**Information > Scenario Goals** lists the goals and how they stand. The goals are saved with the game. A scenario's own
+`scripts/` run with the game it starts (section 6).
+
+**Export as scenario**: the Save dialog's *Export as scenario pack* button (or Tab) writes the game as a scenario pack into
+the save folder's `packs` (`<id>/pack.toml`, `scenario.toml` and `course.sgs`, the whole game), named after the name
+typed. Its scenario starts from the saved game with the game's cash and difficulty and keeps the goals of the scenario it
+was played from; add `[[goal]]` tables to make it a challenge. The example is `packs/example-scenario-desert-challenge`.
+
+```toml
+[scenario]
+name = "Desert Challenge"            # none: the pack's name
+description = "Build nine holes near Phoenix on a tight budget."
+property = "phoenix"                 # a properties.toml id (section 9); none: the first property of `theme`, else monterey
+theme = "desert"                     # parkland | desert | tropical | links (must match `property` when both are given)
+start_money = 60000                  # none: the normal start (the starting funds less the property's price)
+difficulty = "moderate"              # easy | moderate | difficult | impossible; none: the player picks it
+sandbox = false
+course = "course.sgs"                # a saved game in the pack to start from (System Functions > Save writes them)
+intro = "Welcome to the desert!"     # shown when the game starts
+win_text = "The investors are delighted!"
+lose_text = "The investors have lost patience."
+
+[[goal]]
+id = "nine-holes"                    # for scripts (complete_goal); none: goal-1, goal-2, ...
+text = "Open 9 holes by the end of 2002"
+holes = 9                            # every condition given must hold at once:
+# cash = 150000                      #   at least this much cash
+# fun = 30                           #   a fun rating of at least this
+# skill = 12.5                       #   a skill rating of at least this (as the status bar shows it)
+# members = 20                       #   at least this many members
+# rank = "country-club"              #   municipal | daily-fee | country-club | championship (by number of holes)
+by_year = 2002                       # must be met by the end of this year (the game starts in 2001); none: any time
+```
+
+A wrong value (an unknown property, a goal without a condition, an unknown field) shows on the Start New Game screen and
+the scenario cannot be started. A scenario's `requires` must be loaded (they are switched on on the Content screen).
+
+## 6. Scripts
+
+**done** (crates/sg-core/src/script.rs, the game side in crates/simgolf/src/scenario_ui.rs). Game scripts, like OpenTTD's
+GameScripts, in [Rhai](https://rhai.rs) (pure Rust, sandboxed, works in the browser): every `scripts/*.rhai` of the
+enabled packs (and of the scenario a game was started from) is compiled when a game starts or is loaded, in load order,
+files by name. A file defines the hooks it wants:
+
+| Hook | When |
+|------|------|
+| `on_start()` | a new game starts (after the scenario's goals are set) |
+| `on_month()` | each month start (the game's year has eight months, March to October) |
+| `on_year_end()` | each year end (instead of `on_month` that tick) |
+| `on_hole_finished(golfer, hole, strokes)` | a golfer holes out; `golfer` is a map: `name`, `hole`, `strokes`, `member`, `pro` |
+| `on_building_placed(kind, x, y)` | the player places a building; `kind` is its id (`snack-bar`, section 9), `x`, `y` the tile |
+
+Inside a hook `this` is the pack's own state, a map that is saved with the game (`this.aces = (this.aces ?? 0) + 1`).
+
+What a script can call:
+
+| Function | Gives or does |
+|----------|---------------|
+| `year()`, `month()` | the date (2001.., 3..10) |
+| `cash()`, `fun_rating()`, `skill_rating()`, `members()` | the status bar's figures (`skill_rating()` as shown, e.g. 12.5) |
+| `rank()`, `rank_name()` | the course's rank (0 Municipal .. 3 Championship) and its name |
+| `difficulty()`, `sandbox()`, `course_name()` | 0 Easy .. 3 Impossible; a sandbox game; the course's name |
+| `hole_count()`, `holes()`, `hole_par(n)` | the open holes: an array of maps (`number`, `par`, `yards`) |
+| `golfers()` | the golfers on the course (maps as for `on_hole_finished`) |
+| `show_message(text)` | a message in the ticker (one at a time, in order) |
+| `add_money(amount, reason)` | pays (or, negative, charges) the club, booked as Other income; at most 10,000,000 a call |
+| `set_goal(id, text)` | adds a goal (or changes its text) to Information > Scenario Goals |
+| `complete_goal(id)`, `fail_goal(id)` | settles one of the pack's goals, or a goal of the scenario the pack is |
+| `random(n)` | a number from 0 to n - 1, from the pack's own generator (saved with the game; the game's own random numbers are never touched, so a loaded game goes on the same way) |
+| `print(text)`, `debug(value)` | a line in the terminal (`script <pack>: ...`) |
+
+Scripts are sandboxed: Rhai has no file, network or clock access here, `eval` is off, and each hook call is limited (200,000
+operations, call depth 32, strings of 16 KB, arrays and maps of 10,000 items). An error (a syntax error, a run-time error, a
+limit reached) never stops the game: what that call asked for is dropped, a toast says which pack failed, the terminal shows
+the message (`script <pack>: <file>: <hook>: <error>`) and the Content screen shows it on the pack's row. A pack whose
+scripts fail ten times is stopped for the session. The example is `packs/example-script-bonus` (a hole-in-one bonus).
+
+## 7. Content service
+
+**done** (crates/sg-core/src/index.rs, the game side in crates/simgolf/src/content.rs and net.rs). An index file
+(`index.json`, docs/CONTENT_INDEX.md) lists packs with id, name, version, kind, licence, download address, size and SHA-256
+checksum. **Preferences > Content > Find more...** reads the index at the address in `settings.json`
+(`"content_index_url"`; empty by default, and the screen says how to set it), lists the packs the player does not have (or
+has in an older version), and downloads the one picked into the save folder's `packs` as `<id>.zip` after checking its
+size, checksum, and that its pack.toml has the index's id and version. An older .zip of the pack there is replaced. New
+packs are off until switched on, and take effect at the next start.
+
+On the desktop, `https://` addresses are fetched by a small HTTPS client in Rust (ureq with rustls) behind the default
+cargo feature `net` (`--no-default-features` leaves it out); in the browser, by the page's `fetch()` (web/opensgolf.js; the
+server must allow CORS) and the pack is kept with the packs added on the start page. A `file://` address or a plain path
+works everywhere, which is also how to try an index locally. Anyone can submit a pack with a pull request to the index;
+packs must have a free licence and must not contain material from the original game.
+
+## 8. Progress
+
+| Step | Status |
+|------|--------|
+| Licence (GPL-2.0-or-later) and name | done |
+| Text keys and `lang/en.txt` (original English text kept) | done: about 1,600 keys, translations by setting or `--lang` (docs/TRANSLATING.md) |
+| Pack loader, load order, file overrides (folders and .zip, desktop and browser) | done |
+| PNG for PCX/TGA/BMP art, OGG for WAV sound | done |
+| Data files for terrain, buildings, amenities, staff, properties, economy | done |
+| `sgtool dump-data` (the built-in tables as a template) | done |
+| Example mod (`packs/example-cheap-fairways`) | done |
+| Preferences > Content screen | done |
+| Data files for golfers and tournaments; the planned fields of section 3 | planned |
+| Overrides for the intro videos (sgplay does not read packs yet) | planned |
+| Free base set `opensgolf-free`: drawn art, synthesised sounds, own text, OFL fonts (section 10) | done (first version) |
+| `text/` and `fonts/` override folders; pack files listed in the game folder | done |
+| `--base ID`; falling back to the free set without original files; browser *Play with the free graphics* | done |
+| Headless play test on the free set in CI (`tools/freeset_playtest.sh`) | done |
+| Free set: hand-made art replacing the drawn pieces, music, more stories | planned |
+| Packs' `lang/` text (mods and translation packs) | done |
+| Scenario packs, Start New Game choice, goals report, Export as scenario (`packs/example-scenario-desert-challenge`) | done |
+| Rhai scripts (`packs/example-script-bonus`) | done |
+| Content index and in-game downloader (Preferences > Content > Find more) | done; a public index is not set up yet |
+
+## 9. Reference for pack makers
+
+The repository's `packs/example-cheap-fairways/` is a complete small mod to start from. To try a pack, put its folder (or a
+.zip of it) in one of the packs folders of section 1, start the game, switch it on in System Functions > Preferences >
+Content packs, and start the game again. The terminal shows which packs loaded and every problem found
+(`content pack ...: ...`).
+
+### pack.toml
+
+One `[pack]` table; unknown keys are an error.
+
+| Field | Required | Meaning |
+|-------|----------|---------|
+| `id` | yes | Unique id: lower case letters, digits and dashes (at most 64). `original` is taken by the built-in base set. |
+| `name` | yes | The name the Content screen shows. |
+| `version` | yes | Numbers separated by dots, e.g. `1.2.0` (`1.2` is the same as `1.2.0`; a `-beta` or `+build` suffix is ignored when versions are compared). |
+| `kind` | yes | `base`, `mod`, `translation` or `scenario` (section 1). |
+| `authors` | no | List of names. |
+| `license` | no | An SPDX identifier, e.g. `CC-BY-SA-4.0`, `CC0-1.0`, `GPL-2.0-or-later`. |
+| `description` | no | One or two sentences; shown when the pack is picked on the Content screen. |
+| `requires` | no | Packs that must be loaded before this one, each `"id"` or `"id OP VERSION[, OP VERSION]"` with OP one of `>=`, `>`, `<=`, `<`, `=`, `!=`, `^` (same first number, at least this version) or `~` (same first two numbers, at least this version). `original >= 1.0` is the built-in base set. |
+| `conflicts` | no | Packs this one cannot be loaded with, in the same form. The check goes both ways. |
+
+### Files of a pack
+
+```
+my-pack/
+  pack.toml
+  data/terrain.toml             merged over the tables (section 3; the six files of the table above)
+  gfx/Interface/BuildPanel.png  replaces Interface/BuildPanel.pcx of the game folder
+  gfx/Data/Textures/...         terrain textures (BMP or TGA in the game; PNG accepted)
+  gfx/Flics/...                 sprites and animations (FLC only)
+  sfx/Sounds/Applause.ogg       replaces Sounds/Applause.wav
+  music/Sounds/...              music lives under Sounds/ in the game folder too
+  text/Themes/Standard/...      stories (TXT), characters (CHR, GLF), golfer lists (DTA), terrain descriptions
+  fonts/manu3_.TTF              the game's fonts (KLEPTO__.TTF for titles, manu3_.TTF for most text)
+  video/Flics/...               the intro videos (planned: not read yet)
+  lang/en.txt, lang/de.txt      text over the string table (section 4)
+  scripts/*.rhai                game scripts (section 6)
+  scenario.toml, course.sgs     a scenario pack's scenario and the saved game it starts from (section 5)
+  README.md                     anything else is ignored
+```
+
+The path under `gfx/`, `sfx/`, `music/`, `video/`, `text/` and `fonts/` is the path in the game folder, matched without
+regard to case. The folders take these types: `gfx/` PNG, PCX, TGA, BMP, FLC; `sfx/` and `music/` WAV, OGG; `video/` BIK,
+FLC; `text/` TXT, DTA, CHR, GLF, PRO, SVE; `fonts/` TTF. A file of
+another type is ignored. A PNG replaces the PCX, TGA or BMP of the same name and an OGG the WAV of the same name; a file
+with the original's own name and type wins over a replacement of another type in the same pack.
+
+What to know about replacement art and sound:
+
+* PNG: 8 bits per channel, not interlaced (greyscale, RGB, palette, with or without alpha). Keep the original's size:
+  the game cuts many pictures into parts at fixed places. Where the original uses magenta (255, 0, 255) as transparent,
+  so does the replacement; PNG alpha works too.
+* Pictures the game reads as palette art (the customise-golfer sheets) take their palette from the PNG's first 256
+  colours in the order they appear; more colours are mapped to the nearest of those. Palette files (`*.pcx` the sprites
+  are recoloured with) must stay PCX.
+* Sprites and animations (`.flc`) are replaced by FLC files only.
+* OGG Vorbis, mono or stereo, any sample rate; WAV 8 or 16 bit PCM. The game converts both to 44.1 kHz stereo.
+
+### Data files
+
+Every file is TOML. Entries are tables in an array named after the file (`[[terrain]]`, `[[building]]`, `[[amenity]]`,
+`[[staff]]`, `[[property]]`); `economy.toml` is one `[economy]` table. Each entry names its `id`; the fields given replace
+the ones of the entry with that id (from the base set or an earlier pack), the others stay. `remove = true` deletes the
+entry. A new id makes a new entry.
+
+Rules the engine applies:
+
+* **Money is the game's money as shown**: a fairway costs `300`. The engine counts in hundreds, so every amount must be a
+  multiple of 100.
+* The slot fields (`tile`, `kind`, `index`) of the built-in entries are fixed: a pack cannot move an entry to another slot.
+* The engine has one slot for each built-in id. Removing a built-in entry keeps its built-in values in the game (with a
+  warning); a new id is kept but not used yet (with a warning). Both are for packs to come (new terrain, new buildings).
+* A wrong value (out of range, wrong type, unknown field) leaves that entry as it was and puts a warning on the pack's row.
+
+#### terrain.toml
+
+| Field | Unit | Meaning |
+|-------|------|---------|
+| `id`, `tile` | | Built-in ids by tile: 0 `tee`, 1 `green`, 2 `fairway`, 3 `firm-fairway`, 4 `rough`, 5 `deep-rough`, 6 `mounds`, 7 `sand-trap`, 8 `waste-bunker`, 9 `pot-bunker`, 10 `ravine`, 11 `brush`, 12 `rocks`, 13 `tree`, 14 `pine-tree`, 15 `palm-tree`, 16 `elm-tree`, 17 `water`, 18 `wetlands`, 19 `marsh`, 20 `out-of-bounds`, 21 `home-site`, 22 `building`; paint-only ids with a price and nothing else: 23 `water-middle`, 24 `water-deep`, 25 `water-shallow-desert`, 26 `tricky-green`, 27 `sand-bunker`. |
+| `name` | text | The exe's name of the type (tract descriptions say "acres of rough, ..."). |
+| `cost` | money | Painting one tile (the Build Course panel's figure). |
+| `clear_cost` | money | Clearing one tile of it before something is painted or built over it (at most 25500 for tiles 0..22). |
+| `view` | points | What one such tile next to a home site adds to the lot's view (with the lie as a factor). |
+| `bounce`, `roll` | 0..15 | How a ball bounces and rolls on it (the tooltip's meters). |
+| `hazard` | -1..8 | The lie: how hard a shot from it is; -1 is the green (the tooltip's face). |
+| `walk` | | Walking cost for golfers and staff (also the tile's draw layer). |
+| `class` | | Blend class: tiles of one class blend at their borders (0 tee, 1 green, 2 fairway, 4 rough, 7 sand, 8 waste, 13 trees, 17 water, 18 out of bounds). |
+| `group` | | Scenery group: which trees, rocks or grasses are drawn on it. |
+| `flags` | bits | Shape: 1 level table, 2 flat at the lowest corner, 4 flat at the highest, 8 height 0; 0x100.. scenery bits. |
+
+```toml
+[[terrain]]
+id = "fairway"
+cost = 100          # was 300
+
+[[terrain]]
+id = "rough"
+roll = 1            # balls stop sooner in the rough
+```
+
+#### buildings.toml and amenities.toml
+
+| Field | Unit | Meaning |
+|-------|------|---------|
+| `id`, `kind` | | buildings.toml: 5 `home-site`, 6 `putting-green`, 7 `snack-bar`, 8 `pro-shop`, 9 `swim-club`, 10 `driving-range`, 11 `cart-garage`, 12 `marina`, 13 `resort-hotel`, 14 `airstrip`, 15 `clubhouse`. amenities.toml: 0 `pathway`, 1 `benches`, 2 `flower-bed`, 3 `ball-washer`, 4 `landmark`, 16 `willow-tree`, 17 `tv-tower`, 18 `tv-booth`, 19 `scenic-bridge`. |
+| `name` | text | The name the panels and messages use. |
+| `footprint` | tiles | Edge of the square footprint, 1..8. |
+| `price` | money | Price (a building's upgrade costs price x (level + 2) / 2; a home site's price is what preparing the lot costs). |
+
+```toml
+[[building]]
+id = "snack-bar"
+price = 10000
+```
+
+#### staff.toml
+
+| Field | Unit | Meaning |
+|-------|------|---------|
+| `id`, `kind` | | 0 `club-pro`, 1 `ranger`, 2 `groundskeeper`, 3 `soda-vendor`. |
+| `name` | text | The kind's name (the hire buttons of the people list). |
+| `wage`, `wage_experienced` | money | Wage per pay interval (every 1024 / (difficulty + 2) ticks, with a chance that grows with the course's rank); the hire panel shows it "per week". |
+
+#### properties.toml
+
+| Field | Unit | Meaning |
+|-------|------|---------|
+| `id`, `index` | | 0 `monterey`, 1 `san-diego`, 2 `rocky-mtns`, 3 `las-vegas`, 4 `phoenix`, 5 `hawaii`, 6 `oahu`, 7 `nova-scotia`, 8 `northeast`, 9 `carolina`, 10 `ireland`, 11 `scotland`, 12 `wales`, 13 `spain`, 14 `florida`, 15 `jamaica` (0..9 on the world map's left arc, 10..15 on the right). |
+| `name`, `course`, `bonus` | text | The place, the course's own name and the bonus, as the world map and the messages show them. |
+| `map_x`, `map_y` | pixels | The marker on the world map art. |
+| `theme` | | `parkland`, `desert`, `tropical` or `links`: the art, sounds and land of the property. |
+| `coast` | | `inland` (the owned land is a square), `coast` (the sea runs along one side) or `island` (water all round); also changes the acreage of the offer. |
+| `relief` | | `gentle`, `rolling` or `hilly`: how the land is generated. |
+
+The offer of the world map deals the properties to slots by theme (the four dearest slots get four different themes, the
+cheapest a Parkland one), so a pack that changes themes changes the deal too.
+
+#### economy.toml
+
+| Field | Unit | Built in | Meaning |
+|-------|------|----------|---------|
+| `start_funds` | money | 100000 | What a normal game starts with, before the property's price is taken off. |
+| `sandbox_funds` | money | 1000000 | What a sandbox game starts with. |
+| `offer_prices` | money x 16 | 50000 .. 1000000 | The price of each offer slot of the world map, cheapest first. |
+| `firing_cost` | money | 2500 | Firing an employee. |
+| `hole_maintenance` | money | 100 | Maintenance of each active hole, charged with the wages. |
+| `debt_interest_percent` | percent | 2 | Interest on debt at each month start (whole hundreds, rounded toward zero). |
+| `rank_holes` | holes x 3 | [6, 10, 18] | Holes for Daily Fee, Country Club and Championship; fewer than the first is Municipal. |
+
+```toml
+[economy]
+start_funds = 200000
+debt_interest_percent = 5
+```
+
+### For engine developers
+
+The loaders and their tests are in crates/sg-core/src: `packs.rs` (pack.toml, discovery, load order, loading), `vfs.rs`
+(the override layers), `zip.rs`, `data.rs` (the schemas, merging, the tables the engine reads through `data::get()` and its
+accessors), with the game side in crates/simgolf/src/content.rs (start up, settings, the Content screen). A table the engine
+reads moves into `data.rs` by giving it an entry type, a built-in conversion in `Tables::builtin`, a slot in `Data`, and a
+test that the merged defaults equal the built-in table (`merged_defaults_equal_the_builtin_tables`).
+
+## 10. The free base set (`opensgolf-free`)
+
+**Done (first version).** The set is drawn, synthesised and written by the engine itself (crates/sg-core/src/freeset/) when a
+file is read, so nothing has to be shipped: written out it is about 5,500 files and 82 MB, too much to commit, and drawing a
+file takes milliseconds. `sgtool freeset DIR` writes it all as a pack folder; packs/opensgolf-free/ in the repository holds
+its pack.toml and README and is where hand-made replacements go (a folder or zip with the id `opensgolf-free` is loaded over
+the drawn files).
+
+* Every file has the name, size and layout the engine expects of the original's: picture sizes and the boxes of the pieces the
+  engine cuts from each sheet, sprite frame sizes, views, frames per view and anchors, sound lengths. Those numbers are in
+  `freeset/manifest.txt`, measured from an installed copy by `tools/freeset_layout.py`; nothing else is taken from the
+  original (no pixels, palettes, samples or text).
+* Pictures are PNG under the original's names (the engine takes a PNG for a PCX, TGA or BMP), except what the engine lists by
+  type or reads as palette art: terrain textures are BMP, heads, bodies and palettes PCX.
+* Sprites use one palette that keeps the engine's slots: golfer clothes, skin, hat and hair ramps (recoloured by the swap
+  palettes in Bodies/), 255 the transparent key; shadow sprites use the shadow ramp.
+* Sounds: synthesised effects, voices as vowel babble, jingles as short tunes; no music (the game plays nothing where a file
+  is missing).
+* Text: own stories, characters, famous golfers, celebrities, terrain descriptions, credits and high scores. Text that lives
+  inside the engine (the message lines of lang/en.txt, the built-in roster and tables) is not part of a base set yet.
+* Fonts: Liberation Sans Bold (OFL) as both game fonts.
+
+Testing: `tools/freeset_playtest.sh` (CI, Linux) decodes every file with `sgtool check`, starts a new game with no game
+folder, builds a hole, plays about three months, saves, loads and opens every report and title screen, failing on any crash
+or missing-file or decode message; `packs::tests::the_free_base_set_stands_in_for_a_missing_game_folder` checks the loaders
+(textures, swap palettes, sounds, roster, stories, fonts, sprites) against it.

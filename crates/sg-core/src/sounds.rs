@@ -1,5 +1,7 @@
-//! The exe's sound slots: the file each slot ends up holding after the start-up loader has run (a slot loaded twice keeps
-//! the later file). Paths are relative to the game's Sounds folder, or under "simsfx/" for the SimsFX folder.
+//! The exe's sound slots: the file each slot ends up holding after the start-up loader has run. A slot loaded twice keeps
+//! the FIRST file: the loader only reads a file into an empty slot (docs/DECODE_VOICES2.md 3.3), so slots 8 and 0x10..0x18
+//! hold the tree, voice and boing clips registered early, not the emotion clips registered after them. Paths are relative
+//! to the game's Sounds folder, or under "simsfx/" for the SimsFX folder.
 
 /// (slot, file); None where the exe loads a path that does not exist, so nothing plays.
 pub const SLOTS: &[(i32, Option<&str>)] = &[
@@ -11,7 +13,7 @@ pub const SLOTS: &[(i32, Option<&str>)] = &[
     (5, Some("Golf sfx/Ball Water.wav")),
     (6, Some("Golf sfx/Ball Tree.wav")),
     (7, Some("Golf sfx/Ball Tree2.wav")),
-    (8, Some("simsfx/Female/fWATER0.wav")),
+    (8, Some("Golf sfx/Ball Tree Leaves.wav")),
     (9, Some("simsfx/Male/mWATER0.wav")),
     (10, Some("simsfx/Female/fHAPPY0.wav")),
     (11, Some("simsfx/Male/mHAPPY0.wav")),
@@ -19,15 +21,15 @@ pub const SLOTS: &[(i32, Option<&str>)] = &[
     (13, Some("simsfx/Male/mHAPPY1.wav")),
     (14, Some("Female/Good Shot FM2.wav")),
     (15, Some("Male/Good Shot M2.wav")),
-    (16, Some("emotion/PLS Failure mix.wav")),
-    (17, Some("emotion/MKLS Failure mix.wav")),
-    (18, Some("emotion/MalePSSFailure.wav")),
-    (19, Some("emotion/SSS Failure mix.wav")),
+    (16, Some("simsfx/Female/fHARD0.wav")),
+    (17, Some("simsfx/Male/mHARD0.wav")),
+    (18, Some("simsfx/Female/fEASY0.wav")),
+    (19, Some("simsfx/Male/mEASY0.wav")),
     (20, Some("simsfx/Female/fTRICKY0.wav")),
-    (21, Some("emotion/FemalePLSFailure.wav")),
-    (22, Some("emotion/FemaleSSSFailure.wav")),
-    (23, Some("emotion/FemalePSSFailure.wav")),
-    (24, Some("emotion/FemaleSkTTFailure.wav")),
+    (21, Some("simsfx/Male/mTRICKY0.wav")),
+    (22, Some("simsfx/Female/fBLIND.wav")),
+    (23, Some("simsfx/Male/mBLIND.wav")),
+    (24, Some("effects/boing.wav")),
     (25, Some("effects/cash.wav")),
     (29, Some("effects/lake 1.wav")),
     (30, Some("effects/wind 1.wav")),

@@ -1,0 +1,18 @@
+name: Difference from the original
+description: OpenSGolf does something differently from Sid Meier's SimGolf
+labels: [fidelity]
+body:
+  - type: textarea
+    id: original
+    attributes:
+      label: What the original does
+      description: A screenshot, or a video link with a timestamp, helps most.
+    validations:
+      required: true
+  - type: textarea
+    id: ours
+    attributes:
+      label: What OpenSGolf does
+      description: A screenshot of the same moment.
+    validations:
+      required: true

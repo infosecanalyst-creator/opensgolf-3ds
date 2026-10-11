@@ -592,3 +592,27 @@ Championship, so only the first is offered by this screen (DERIVED from the list
 8. Whether any keyboard exit (Esc) exists on the customise screen and which game state sets the 0x4000000 skill-apply bit.
 9. Any skill point budget (not on this screen).
 10. The unidentified round tabs (torso versus head silhouette to skin versus hair) and the use of the blue oval disc O40.
+
+## 8. Resolved with the complete decompile and the exe's data tables
+
+* Hit centres (0x4c7b38): toggles (210, 150 / 185 / 220), traits (93, 127 / 156 / 182 / 211 / 239), Load (48, 22),
+  Save (258, 22), 10 body type (454, 30), 11 adult/child (454, 80), 12 face (454, 130), 13 shirt (454, 180), 14 pants
+  (454, 230), 15 hair (328, 56), 16 skin (328, 107), 17 gender (328, 157), 18 Undo (762, 33), 19 Exit (760, 220),
+  20 Update Bio (580, 98). Hover and lit positions (0x4c7b90): toggles (157, 135 + 35 k), traits (39, 115 + 28 k),
+  Load (33, 7), Save (244, 7), 10..14 (436, 11 + 50 k), 15..17 (310, 37 + 50 k), Undo (743, 16), Exit (736, 192).
+  The tooltip of 19 is "Exit".
+* Face picker slots (0x4c7be0): (29, 305), (97, 425), (165, 305), ... alternating rows, 68 apart.
+* Per head defaults (0x4d55e8, 0x44 an entry, men 0..19 then women 20..39): skin +0, hair +3, signature saying +4.
+* Dialogue rows: labels 0x4c2cc0 (Signature saying, Made good shot, ... Found a bench) and event codes 0x4c2d10
+  (3e 01 04 05 1f 02 03 09 0c 0d 1c 14 27 15 0e 19 0f 12 1a 1b, then -1). The label is drawn with "..." in the
+  colour of the event's stock line; the right column shows the record's slot or, empty, the stock line in grey.
+  0x469b00 uses a golfer's own non-empty slot for the event before its stock line (golfer slots below 0x98).
+* The object at (299, 220) is CGButtons O40, the blue disc under the two walking figures (frame 5 of the walk,
+  views 0 and 4, at (315, 239) and (335, 239)). The body still is the 0x5439e0 array by body type (+4 child) of the
+  gender; the walkers' body set is the age/trait rule for women and the edited toggles for men.
+* Mode 0 panel: level (Visitor 0x6318, Member 0x4210, Silver Member 0x2108, Gold Member 0x7ff0, Platinum Member
+  white, Resigned 0x6000; a teal bar (500, 28, 160, 17) above Silver), "Low round: " / "Handicap: " / "Rounds
+  played: " at (580, 50 / 64 / 78), "Bio" at (580, 98), the biography from (484, 114).
+* Load lists `Themes\<pack>\*.pro` (mode 1) or `*.chr` (mode 0) in a "Pick one..." list (0x46de70 at (100, 20));
+  Save writes the same folder; an existing file asks "<path> / already exists! / Overwrite the old version. /
+  Cancel" (popup at (200, 30)); a saved one says "Character saved as / Themes\<pack>\<name>.pro" at (300, 100).

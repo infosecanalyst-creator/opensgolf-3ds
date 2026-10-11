@@ -6,6 +6,7 @@
 
 use crate::geom::angle;
 use crate::golfer::{Club, Event, Hole};
+use crate::lang::{tr, trf};
 
 /// The club ratings the status bar shows (all recomputed on each pass).
 #[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -26,7 +27,16 @@ pub struct ClubRatings {
 }
 
 /// Hole type names by skill mask (0x4c2a28).
-pub const TYPE_NAMES: [&str; 8] = ["Breather", "Freeway", "Precise", "Challenge", "Creative", "Heroic", "Strategic", "Classic"];
+pub const TYPE_NAME_KEYS: [&str; 8] = [
+    "STR_HOLE_TYPE_BREATHER",
+    "STR_HOLE_TYPE_FREEWAY",
+    "STR_HOLE_TYPE_PRECISE",
+    "STR_HOLE_TYPE_CHALLENGE",
+    "STR_HOLE_TYPE_CREATIVE",
+    "STR_HOLE_TYPE_HEROIC",
+    "STR_HOLE_TYPE_STRATEGIC",
+    "STR_HOLE_TYPE_CLASSIC",
+];
 
 /// The per-class numbers of a hole: rounds and strokes with a prior of 8 rounds at par, and the finished rounds alone.
 struct Classes {
@@ -141,14 +151,19 @@ pub fn pass(club: &mut Club, difficulty: i32) -> ClubRatings {
             }
         }
         let mask = type_mask(d, difficulty, if difficulty != 0 { 100 } else { 50 });
-        if mask != 0 && club.types_announced & (1 << mask) == 0 && !message {
+        // posted with priority 0 and the site picture (-4): refused while the ticker is busy, and then nothing is marked
+        if mask != 0
+            && club.types_announced & (1 << mask) == 0
+            && !message
+            && club.message_by(
+                trf("STR_MSG_FIRST_HOLE_TYPE", &[("HOLE", &h), ("TYPE", &(tr(TYPE_NAME_KEYS[mask as usize]).to_uppercase()))]),
+                -4,
+                0,
+            )
+        {
             message = true;
             club.types_announced |= 1 << mask;
-            club.out.push(Event::Message(format!(
-                "Hole #{h} has been recognized as your first \"{}\" type hole.",
-                TYPE_NAMES[mask as usize].to_uppercase()
-            )));
-            club.out.push(Event::Sound { slot: 0x2a, at: None });
+            club.out.push(Event::Sound { slot: 0x2a, at: None, delay: 0 });
             let green = (hole.pin.0 * 1024 + 512, hole.pin.1 * 1024 + 512);
             match mask {
                 3 if difficulty >= 2 => club.award_at(0, green),
@@ -191,23 +206,33 @@ pub fn pass(club: &mut Club, difficulty: i32) -> ClubRatings {
         if difficulty < 2 && score < f {
             score = f;
         }
-        if hole.fees > 200 && score > 200 && flags & 0xd == 0 && !message {
+        // the Top 100 and Top 18 notices: priority 0 with the laurel ball icon (-21), marked only when shown
+        if hole.fees > 200
+            && score > 200
+            && flags & 0xd == 0
+            && !message
+            && club.message_by(
+                // the hole takes its proper name now (0x80 set first, 0x416f5a)
+                trf("STR_MSG_TOP_100_HOLE", &[("HOLE", &h), ("NAME", &name_of(h, hole.par, flags | 0x80))]),
+                -21,
+                0,
+            )
+        {
             message = true;
             flags |= 0x1;
-            club.out.push(Event::Message(format!(
-                "Hole #{h} has been rated as one of the Top 100 golf holes in the country by Golf Enquirer magazine!"
-            )));
-            club.out.push(Event::Sound { slot: 0x2e, at: None });
+            club.out.push(Event::Sound { slot: 0x2e, at: None, delay: 0 });
             club.award_at(7, (hole.pin.0 * 1024 + 512, hole.pin.1 * 1024 + 512));
             club.log_event(crate::records::log::TOP100, h as i32);
         }
-        if hole.fees > 400 && score > 300 && flags & 0xe == 0 && !message {
+        if hole.fees > 400
+            && score > 300
+            && flags & 0xe == 0
+            && !message
+            && club.message_by(trf("STR_MSG_TOP_18_HOLE", &[("NAME", &name_of(h, hole.par, flags))]), -21, 0)
+        {
             message = true;
             flags |= 0x2;
-            club.out.push(Event::Message(format!(
-                "Hole #{h} has been rated as one of the Top 18 golf holes in the country by Great Golf Holes magazine!"
-            )));
-            club.out.push(Event::Sound { slot: 0x2f, at: None });
+            club.out.push(Event::Sound { slot: 0x2f, at: None, delay: 0 });
             club.award_at(10, (hole.pin.0 * 1024 + 512, hole.pin.1 * 1024 + 512));
             club.log_event(crate::records::log::TOP18, h as i32);
         }
@@ -259,7 +284,7 @@ pub fn report_row(h: usize, hole: &Hole, difficulty: i32, all_classes: bool) -> 
         len: d.0,
         acc: d.1,
         img: d.2,
-        type_name: TYPE_NAMES[type_mask(d, difficulty, 100) as usize],
+        type_name: tr(TYPE_NAME_KEYS[type_mask(d, difficulty, 100) as usize]),
         scenic: ev(22) / 2 + ev(28) + ev(11) >= 8,
         variety: hole.monotony,
         avg_fee: if c.ntot != 0 { hole.fees * 100 / c.ntot } else { 0 },
@@ -269,9 +294,207 @@ pub fn report_row(h: usize, hole: &Hole, difficulty: i32, all_classes: bool) -> 
     }
 }
 
+/// Proper hole names, indexed by hole number, one table per par (0x407280 picks the table by the hole's par byte): women's
+/// names for par 3 (pointer table 0x4c2e88), trees and shrubs for par 4 (0x4c2e38), dark places for the rest (0x4c2ed8).
+const NAMES_PAR3: [&str; 18] = [
+    "STR_HOLE_NAME_PAR3_1",
+    "STR_HOLE_NAME_PAR3_2",
+    "STR_HOLE_NAME_PAR3_3",
+    "STR_HOLE_NAME_PAR3_4",
+    "STR_HOLE_NAME_PAR3_5",
+    "STR_HOLE_NAME_PAR3_6",
+    "STR_HOLE_NAME_PAR3_7",
+    "STR_HOLE_NAME_PAR3_8",
+    "STR_HOLE_NAME_PAR3_9",
+    "STR_HOLE_NAME_PAR3_10",
+    "STR_HOLE_NAME_PAR3_11",
+    "STR_HOLE_NAME_PAR3_12",
+    "STR_HOLE_NAME_PAR3_13",
+    "STR_HOLE_NAME_PAR3_14",
+    "STR_HOLE_NAME_PAR3_15",
+    "STR_HOLE_NAME_PAR3_16",
+    "STR_HOLE_NAME_PAR3_17",
+    "STR_HOLE_NAME_PAR3_18",
+];
+const NAMES_PAR4: [&str; 18] = [
+    "STR_HOLE_NAME_PAR4_1",
+    "STR_HOLE_NAME_PAR4_2",
+    "STR_HOLE_NAME_PAR4_3",
+    "STR_HOLE_NAME_PAR4_4",
+    "STR_HOLE_NAME_PAR4_5",
+    "STR_HOLE_NAME_PAR4_6",
+    "STR_HOLE_NAME_PAR4_7",
+    "STR_HOLE_NAME_PAR4_8",
+    "STR_HOLE_NAME_PAR4_9",
+    "STR_HOLE_NAME_PAR4_10",
+    "STR_HOLE_NAME_PAR4_11",
+    "STR_HOLE_NAME_PAR4_12",
+    "STR_HOLE_NAME_PAR4_13",
+    "STR_HOLE_NAME_PAR4_14",
+    "STR_HOLE_NAME_PAR4_15",
+    "STR_HOLE_NAME_PAR4_16",
+    "STR_HOLE_NAME_PAR4_17",
+    "STR_HOLE_NAME_PAR4_18",
+];
+const NAMES_OTHER: [&str; 18] = [
+    "STR_HOLE_NAME_PAR5_1",
+    "STR_HOLE_NAME_PAR5_2",
+    "STR_HOLE_NAME_PAR5_3",
+    "STR_HOLE_NAME_PAR5_4",
+    "STR_HOLE_NAME_PAR5_5",
+    "STR_HOLE_NAME_PAR5_6",
+    "STR_HOLE_NAME_PAR5_7",
+    "STR_HOLE_NAME_PAR5_8",
+    "STR_HOLE_NAME_PAR5_9",
+    "STR_HOLE_NAME_PAR5_10",
+    "STR_HOLE_NAME_PAR5_11",
+    "STR_HOLE_NAME_PAR5_12",
+    "STR_HOLE_NAME_PAR5_13",
+    "STR_HOLE_NAME_PAR5_14",
+    "STR_HOLE_NAME_PAR5_15",
+    "STR_HOLE_NAME_PAR5_16",
+    "STR_HOLE_NAME_PAR5_17",
+    "STR_HOLE_NAME_PAR5_18",
+];
+
+/// A hole's name (0x407280): "Hole N" ("Hole " and the number), or once it is a Top 100 hole (or its naming is pending,
+/// flag 0x80) the name the player gave it, else the proper name of its number in the table of its par. (The port keeps no
+/// player-given hole names.)
+pub fn hole_name(h: usize, hole: &Hole) -> String {
+    name_of(h, hole.par, hole.flags)
+}
+
+fn name_of(h: usize, par: i32, flags: u32) -> String {
+    if flags & 0x81 == 0 || !(1..=18).contains(&h) {
+        return trf("STR_HOLE_NAME_NUMBER", &[("HOLE", &h)]);
+    }
+    match par {
+        3 => tr(NAMES_PAR3[h - 1]),
+        4 => tr(NAMES_PAR4[h - 1]),
+        _ => tr(NAMES_OTHER[h - 1]),
+    }
+    .to_string()
+}
+
+/// The Hole Stats dialog's numbers (0x453330).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct HoleStats {
+    /// Fun percent, shown only when a shot was planned here.
+    pub fun: Option<i32>,
+    /// Length, Accuracy and Imagination differentials over the visible histogram columns, hundredths.
+    pub len: i32,
+    pub acc: i32,
+    pub img: i32,
+    /// The six columns: stroke value and finished rounds (the last column holds that many strokes and more, up to 9).
+    pub cols: [(i32, i32); 6],
+    /// Average strokes over the visible columns, hundredths (None without a round in them).
+    pub avg: Option<i32>,
+    /// The five most frequent remarks: event type, percent of rounds, the last stored argument.
+    pub comments: Vec<(u32, i32, i32)>,
+}
+
+/// The dialog's word for a fun percent.
+pub fn fun_word(v: i32) -> &'static str {
+    match v {
+        v if v < 0 => tr("STR_HOLESTATS_POOR"),
+        0..=19 => tr("STR_HOLESTATS_FAIR"),
+        20..=39 => tr("STR_HOLESTATS_GOOD"),
+        40..=59 => tr("STR_HOLESTATS_VERY_GOOD"),
+        _ => tr("STR_HOLESTATS_OUTSTANDING"),
+    }
+}
+
+/// The dialog's word for a differential in hundredths.
+pub fn demand_word(v: i32) -> &'static str {
+    match v {
+        v if v < 0 => tr("STR_HOLESTATS_POOR"),
+        0..=24 => tr("STR_HOLESTATS_FAIR"),
+        25..=49 => tr("STR_HOLESTATS_GOOD"),
+        50..=99 => tr("STR_HOLESTATS_VERY_GOOD"),
+        _ => tr("STR_HOLESTATS_OUTSTANDING"),
+    }
+}
+
+/// Computes the Hole Stats dialog: the histogram starts at max(par - 2, 1) and only its columns enter the differentials
+/// (with the 8 rounds at par of the report) and the stroke average.
+pub fn hole_stats(hole: &Hole) -> HoleStats {
+    let first = (hole.par - 2).max(1) as usize;
+    let bin = |cls: usize, k: usize| hole.hist.get(cls * 11 + k).copied().unwrap_or(0);
+    let mut n = [8i32; 8];
+    let mut s = [8 * hole.par; 8];
+    let (mut cnt, mut sum) = (0, 0);
+    for k in first..=9 {
+        for c in 0..8 {
+            let v = bin(c, k);
+            n[c] += v;
+            s[c] += v * k as i32;
+            cnt += v;
+            sum += v * k as i32;
+        }
+    }
+    let avg = |c: usize| s[c] * 100 / n[c];
+    let mut cols = [(0, 0); 6];
+    for (i, col) in cols.iter_mut().enumerate() {
+        let k = first + i;
+        let top = if i == 5 { 9 } else { k };
+        *col = (k as i32, (k..=top).map(|b| (0..8).map(|c| bin(c, b)).sum::<i32>()).sum());
+    }
+    let mut comments = Vec::new();
+    if hole.tee_shots > 0 {
+        let mut ev: Vec<i32> = (0..50).map(|e| hole.events.get(e).copied().unwrap_or(0)).collect();
+        for _ in 0..5 {
+            let (e, c) = ev.iter().enumerate().fold((0, 0), |b, (e, &c)| if c > b.1 { (e, c) } else { b });
+            if c <= 0 {
+                break;
+            }
+            ev[e] = 0;
+            let arg = hole.event_args.get(e).copied().unwrap_or(0) & 0x3fff;
+            comments.push((e as u32, c * 100 / hole.tee_shots, arg));
+        }
+    }
+    HoleStats {
+        fun: if hole.plans != 0 { Some(hole_fun(hole)) } else { None },
+        len: avg(6) - avg(7),
+        acc: avg(5) - avg(7),
+        img: avg(3) - avg(7),
+        cols,
+        avg: if cnt > 0 { Some(sum * 100 / cnt) } else { None },
+        comments,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hole_stats_columns() {
+        let mut h = Hole { par: 4, hist: vec![0; 88], events: vec![0; 64], event_args: vec![0; 64], ..Default::default() };
+        h.hist[7 * 11 + 4] = 10;
+        h.hist[6 * 11 + 5] = 10;
+        h.hist[7 * 11 + 1] = 3; // a hole in one: left of the first column (2), so it counts nowhere
+        h.hist[7 * 11 + 9] = 1;
+        h.tee_shots = 20;
+        h.events[11] = 4;
+        h.events[3] = 4;
+        h.events[55] = 9;
+        let st = hole_stats(&h);
+        assert_eq!(st.cols[0], (2, 0));
+        assert_eq!(st.cols[2], (4, 10));
+        assert_eq!(st.cols[5], (7, 1));
+        assert_eq!(st.avg, Some((40 + 50 + 9) * 100 / 21));
+        assert_eq!(st.fun, None);
+        // the lowest type wins a tie; types from 50 never show
+        assert_eq!(st.comments, vec![(3, 20, 0), (11, 20, 0)]);
+        assert_eq!(hole_name(3, &h), "Hole 3");
+        h.flags |= 1;
+        assert_eq!(hole_name(3, &h), "Peach");
+        h.par = 3;
+        assert_eq!(hole_name(18, &h), "Zelda");
+        h.par = 5;
+        assert_eq!(hole_name(1, &h), "Pride");
+        assert_eq!(demand_word(57), "very good");
+    }
 
     #[test]
     fn differentials_and_types() {

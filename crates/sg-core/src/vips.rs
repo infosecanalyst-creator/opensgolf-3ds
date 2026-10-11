@@ -5,8 +5,10 @@
 //!
 //! Facts are from the publisher's golf.exe (docs/PUBLISHER_EXE_NOTES.md, "Special visitors"), restated in our own words.
 
+use crate::economy::money_digits;
 use crate::golfer::{Club, Column, Event};
 use crate::land::ExeRng;
+use crate::lang::{tr, trf};
 
 /// Roster slots of the visitors (loaded from the Standard theme's golfer files).
 pub const ROSTER_CHALLENGER: i32 = 76;
@@ -17,43 +19,85 @@ pub const ROSTER_CEO: i32 = 79;
 /// Landmark names by type (the landmark tool's 0..13, then two only donations give, then the eyesores).
 pub fn landmark_name(t: i32) -> &'static str {
     const N: [&str; 16] = [
-        "garden sundial",
-        "traditional barn",
-        "authentic Civil War cannon",
-        "ancient stonehenge rock",
-        "operating water mill",
-        "unusual rock face",
-        "authentic Civil War statue",
-        "scenic New England lighthouse",
-        "peaceful Buddha",
-        "Dutch windmill",
-        "historic statue",
-        "haunting Easter Island head",
-        "exquisite pagoda",
-        "historic Hatteras lighthouse",
-        "ornate oriental house",
-        "dusty dinosaur tarpit",
+        "STR_LANDMARK_LONG_SUNDIAL",
+        "STR_LANDMARK_LONG_BARN",
+        "STR_LANDMARK_LONG_CANNON",
+        "STR_LANDMARK_LONG_STONEHENGE",
+        "STR_LANDMARK_LONG_WATER_MILL",
+        "STR_LANDMARK_LONG_ROCK_FACE",
+        "STR_LANDMARK_LONG_STATUE",
+        "STR_LANDMARK_LONG_LIGHTHOUSE",
+        "STR_LANDMARK_LONG_BUDDHA",
+        "STR_LANDMARK_LONG_WINDMILL",
+        "STR_LANDMARK_LONG_HISTORIC_STATUE",
+        "STR_LANDMARK_LONG_EASTER_ISLAND",
+        "STR_LANDMARK_LONG_PAGODA",
+        "STR_LANDMARK_LONG_HATTERAS",
+        "STR_LANDMARK_LONG_ORIENTAL_HOUSE",
+        "STR_LANDMARK_LONG_TARPIT",
     ];
-    N.get(t as usize).copied().unwrap_or("landmark")
+    tr(N.get(t as usize).copied().unwrap_or("STR_LANDMARK_FALLBACK"))
+}
+
+/// A landmark's long name as the exe writes it after "a" (0x4074a0 with its second argument 1): with the "n" of "an" where
+/// the exe has one (not on the ancient stonehenge rock), otherwise after a space.
+pub fn landmark_after_a(t: i32) -> String {
+    let n = landmark_name(t);
+    if [2, 4, 5, 6, 13, 14].contains(&t) {
+        trf("STR_LANDMARK_AFTER_AN", &[("LANDMARK", &n)])
+    } else {
+        trf("STR_LANDMARK_AFTER_A", &[("LANDMARK", &n)])
+    }
+}
+
+/// A landmark's short name (0x4074a0 with its second argument 0), as the landmark tool labels its preview.
+pub fn landmark_short_name(t: i32) -> &'static str {
+    const N: [&str; 19] = [
+        "STR_LANDMARK_SUNDIAL",
+        "STR_LANDMARK_BARN",
+        "STR_LANDMARK_CANNON",
+        "STR_LANDMARK_STONEHENGE",
+        "STR_LANDMARK_WATER_MILL",
+        "STR_LANDMARK_ROCK_FACE",
+        "STR_LANDMARK_STATUE",
+        "STR_LANDMARK_LIGHTHOUSE",
+        "STR_LANDMARK_BUDDHA",
+        "STR_LANDMARK_WINDMILL",
+        "STR_LANDMARK_HISTORIC_STATUE",
+        "STR_LANDMARK_EASTER_ISLAND",
+        "STR_LANDMARK_PAGODA",
+        "STR_LANDMARK_HATTERAS",
+        "STR_LANDMARK_ORIENTAL_HOUSE",
+        "STR_LANDMARK_TARPIT",
+        "STR_LANDMARK_WATER_TOWER",
+        "STR_LANDMARK_RADIO_ANTENNA",
+        "STR_LANDMARK_OIL_PUMP",
+    ];
+    tr(N.get(t as usize).copied().unwrap_or("STR_LANDMARK_FALLBACK"))
 }
 
 /// What a visitor thinks of the course at mood m (0x469a20).
 pub fn mood_remark(m: i32) -> &'static str {
     match m {
-        0 => "I hate this stupid course!",
-        1 => "I don't like this course much.",
-        2 => "I'm not having much fun today.",
-        3 => "This course is almost adequate.",
-        4 => "Well, I guess this course is OK.",
-        5 => "This course is quite nice.",
-        6 => "This is a really good course.",
-        7 => "This course is excellent.",
-        8..=127 => "This is the best course I've ever played!",
-        _ => "I hate this course! I'm leaving!",
+        0 => tr("STR_VIP_MOOD_0"),
+        1 => tr("STR_VIP_MOOD_1"),
+        2 => tr("STR_VIP_MOOD_2"),
+        3 => tr("STR_VIP_MOOD_3"),
+        4 => tr("STR_VIP_MOOD_4"),
+        5 => tr("STR_VIP_MOOD_5"),
+        6 => tr("STR_VIP_MOOD_6"),
+        7 => tr("STR_VIP_MOOD_7"),
+        8..=127 => tr("STR_VIP_MOOD_8"),
+        _ => tr("STR_VIP_MOOD_LEAVING"),
     }
 }
 
 /// Second, third, ... visitor of the same kind.
+/// A skill rating in hundredths as the visitors' sentences write it ("123.45").
+fn skill_text(v: i32) -> String {
+    format!("{}.{:02}", v / 100, (v % 100).abs())
+}
+
 fn suffix(n: i32) -> &'static str {
     const S: [&str; 10] = ["", " II", " III", " IV", " V", " VI", " VII", " VIII", " IX", " X"];
     S.get(n as usize).copied().unwrap_or(" X")
@@ -72,19 +116,24 @@ pub struct Celebrity {
 
 /// Celebrity type names (the exe's table at 0x4c2ba8; only the first is visible in the decompile, the rest follow the file's
 /// own legend).
-pub const CELEBRITY_TYPES: [&str; 11] = [
-    "action star",
-    "pop star",
-    "politician",
-    "comedian",
-    "supermodel",
-    "fitness star",
-    "comedienne",
-    "leading man",
-    "movie star",
-    "rock and roller",
-    "athlete",
+pub const CELEBRITY_TYPE_KEYS: [&str; 11] = [
+    "STR_CELEBRITY_ACTION_STAR",
+    "STR_CELEBRITY_POP_STAR",
+    "STR_CELEBRITY_POLITICIAN",
+    "STR_CELEBRITY_COMEDIAN",
+    "STR_CELEBRITY_SUPERMODEL",
+    "STR_CELEBRITY_FITNESS_STAR",
+    "STR_CELEBRITY_COMEDIENNE",
+    "STR_CELEBRITY_LEADING_MAN",
+    "STR_CELEBRITY_MOVIE_STAR",
+    "STR_CELEBRITY_ROCK_AND_ROLLER",
+    "STR_CELEBRITY_ATHLETE",
 ];
+
+/// The name of celebrity type k (0..10; larger numbers read as the last).
+pub fn celebrity_type(k: u8) -> &'static str {
+    tr(CELEBRITY_TYPE_KEYS[(k as usize).min(10)])
+}
 
 /// Parses celebrities.dta: "Name,Type,Skin,Hair,Shirt,Pants" lines, '*' lines are comments, up to 100 entries.
 pub fn parse_celebrities(text: &str) -> Vec<Celebrity> {
@@ -150,13 +199,13 @@ impl Club {
     pub fn vip_name(&self, g: usize) -> String {
         let gg = &self.g[g];
         match gg.vip() {
-            0x40 => format!("I.M. Picky{}", suffix(self.purchases & 0x7f)),
-            0x60 => format!("J.P. Bigdome{}", suffix((gg.kind & 0x1f) as i32)),
+            0x40 => trf("STR_VIP_NAME_COMMISSIONER", &[("SUFFIX", &suffix(self.purchases & 0x7f))]),
+            0x60 => trf("STR_VIP_NAME_CEO", &[("SUFFIX", &suffix((gg.kind & 0x1f) as i32))]),
             0x80 => {
                 if g & 1 != 0 {
-                    "Ivana Richman".to_string()
+                    tr("STR_VIP_NAME_HEIRESS_IVANA").to_string()
                 } else {
-                    "Agnes Heffledorp".to_string()
+                    tr("STR_VIP_NAME_HEIRESS_AGNES").to_string()
                 }
             }
             _ => self.name(g),
@@ -165,18 +214,18 @@ impl Club {
 
     fn rating_text(&self) -> (i32, String) {
         if self.difficulty < 2 {
-            (self.ratings.fun, format!("Your Fun Rating is up to {}", self.ratings.fun))
+            (self.ratings.fun, trf("STR_VIP_FUN_RATING_UP_TO", &[("RATING", &self.ratings.fun)]))
         } else {
             let s = self.ratings.skill;
-            (s, format!("Your Skill Rating is up to {}.{:02}", s / 100, (s % 100).abs()))
+            (s, trf("STR_VIP_SKILL_RATING_UP_TO", &[("RATING", &skill_text(s))]))
         }
     }
 
     fn rating_goal(&self, v: i32) -> String {
         if self.difficulty < 2 {
-            format!("fun rating is over {v}")
+            trf("STR_VIP_GOAL_FUN_OVER", &[("RATING", &v)])
         } else {
-            format!("skill rating is over {}.{:02}", v / 100, (v % 100).abs())
+            trf("STR_VIP_GOAL_SKILL_OVER", &[("RATING", &skill_text(v))])
         }
     }
 
@@ -212,19 +261,20 @@ impl Club {
         self.g[p2].kind = kind;
         self.g[p2].roster = roster;
         let who = match kind & 0xe0 {
-            0x60 => "Corporate CEO",
-            0x40 => "County commissioner",
-            _ => "Wealthy Heiress",
+            0x60 => tr("STR_VIP_CEO"),
+            0x40 => tr("STR_VIP_COMMISSIONER"),
+            _ => tr("STR_VIP_HEIRESS"),
         };
         let name = self.vip_name(p2);
+        // the exe's sentences (0x4d3af0, 0x4d3a88, 0x4d3a14 after 0x4d3b78); the CEO's overwrites the rating lead
         let text = if ceo {
-            format!("{who} {name} is playing your course today. If he likes it, he may invest in your club.")
+            trf("STR_VIP_CEO_PLAYING", &[("WHO", &who), ("VISITOR", &name)])
         } else if comm {
-            format!("{lead} and your fame is spreading... {who} {name} is playing your course today. If he likes it, he may approve an expansion.")
+            trf("STR_VIP_COMMISSIONER_PLAYING", &[("LEAD", &lead), ("WHO", &who), ("VISITOR", &name)])
         } else {
-            format!("{lead} and your fame is spreading... {who} {name} is playing your course today. If she likes it, she may donate a landmark.")
+            trf("STR_VIP_HEIRESS_PLAYING", &[("LEAD", &lead), ("WHO", &who), ("VISITOR", &name)])
         };
-        self.message(text);
+        self.message_by(text, p2 as i32, 1);
         self.g[p2].class = class;
         let mut mask: u16 = fixed;
         for _ in 0..4 {
@@ -262,9 +312,10 @@ impl Club {
         let m = self.g[g].mood;
         let finished = self.par(self.g[g].hole) == 0;
         let name = self.vip_name(g);
+        // the exe's pieces: "My partner " (0x4c70c4), the name, " has quit, even though " (0x4c70ac), before the remark
         let partner_quit = |me: &Club| {
             if m > 2 {
-                format!(" My partner {} has quit, even though", me.name(g ^ 1))
+                trf("STR_VIP_PARTNER_QUIT", &[("PARTNER", &me.name(g ^ 1))])
             } else {
                 String::new()
             }
@@ -276,45 +327,47 @@ impl Club {
                 if finished && m > 2 {
                     if 2 * k < self.g[g].hole {
                         let amount = ((m > 4) as i32 + 1) * 50;
-                        self.message(format!(
-                            "Corporate CEO {name} has decided to invest ${} for a seat on the board, he says.",
-                            amount * 100
-                        ));
+                        self.message_by(
+                            // the exe's pieces (0x4c71b0, 0x4c7124, 0x4c7100)
+                            trf("STR_VIP_CEO_YES", &[("VISITOR", &name), ("MONEY", &money_digits(amount as i64 * 100))]),
+                            g as i32,
+                            1,
+                        );
                         self.out.push(Event::Earn { units: amount, column: Column::Other, at: (self.g[g].x, self.g[g].y) });
                         self.log_event(crate::records::log::CEO, k);
                         self.sound(0x19, None);
                     } else {
-                        self.message(format!("Corporate CEO {name} has decided not to invest in your club."));
+                        self.message_by(trf("STR_VIP_CEO_NEEDS_MORE_HOLES", &[("VISITOR", &name)]), g as i32, 1);
                         self.ceo_count = k - 1;
                     }
                 } else {
                     let pq = partner_quit(self);
-                    self.message(format!("Corporate CEO {name} has decided not to invest in you.{pq} \"{}\" he fumes.", mood_remark(m)));
+                    self.message_by(trf("STR_VIP_CEO_NO", &[("VISITOR", &name), ("QUIT", &pq), ("REMARK", &mood_remark(m))]), g as i32, 1);
                 }
             }
             0x40 => {
                 if finished && m > 2 {
                     let goal = self.rating_goal((self.difficulty + 2) * (self.purchases + 3) * 50);
-                    self.message(format!(
-                        "County commissioner {name} has decided to approve an expansion request! \"I'll be back again if your {goal},\" he says."
-                    ));
+                    self.message_by(trf("STR_VIP_COMMISSIONER_YES", &[("VISITOR", &name), ("GOAL", &goal)]), g as i32, 1);
                     self.sound(0x2f, None);
                     self.land_offer = true;
                 } else {
                     let pq = partner_quit(self);
-                    self.message(format!(
-                        "County commissioner {name} has decided not to approve your expansion request.{pq} \"{}\" he comments.",
-                        mood_remark(m)
-                    ));
+                    self.message_by(
+                        trf("STR_VIP_COMMISSIONER_NO", &[("VISITOR", &name), ("QUIT", &pq), ("REMARK", &mood_remark(m))]),
+                        g as i32,
+                        1,
+                    );
                 }
             }
             0x80 => {
                 if !finished || m < 3 {
                     let pq = partner_quit(self);
-                    self.message(format!(
-                        "Wealthy Heiress {name} has decided not to donate a landmark.{pq} \"{}\" she comments. \"I'll be back in a while.\"",
-                        mood_remark(m)
-                    ));
+                    self.message_by(
+                        trf("STR_VIP_HEIRESS_NO", &[("VISITOR", &name), ("QUIT", &pq), ("REMARK", &mood_remark(m))]),
+                        g as i32,
+                        1,
+                    );
                 } else {
                     let mut t = m;
                     let mut id;
@@ -329,17 +382,32 @@ impl Club {
                         }
                     }
                     let effect = match id & 3 {
-                        0 => "golfers will have happy thoughts".to_string(),
-                        1 => "no dandelions will appear".to_string(),
-                        2 => format!("{}'s skills will improve rapidly", self.roster.first().map(|p| p.name.clone()).unwrap_or_default()),
-                        _ => "golfer stories will proceed happily".to_string(),
+                        0 => tr("STR_VIP_EFFECT_HAPPY_THOUGHTS").to_string(),
+                        1 => tr("STR_VIP_EFFECT_NO_DANDELIONS").to_string(),
+                        2 => trf("STR_VIP_EFFECT_SKILLS", &[("PRO", &self.roster.first().map(|p| p.name.clone()).unwrap_or_default())]),
+                        _ => tr("STR_VIP_EFFECT_STORIES").to_string(),
                     };
-                    let goal = self.rating_goal((self.donations + 2) * (self.donations + 2) * 25);
-                    self.message(format!(
-                        "Wealthy Heiress {name} has decided to donate a {} to your course. In the area near it, {effect}. More can be added to your course for ${} each. \"I'll be back if your {goal},\" she says.",
-                        landmark_name(id),
-                        (id * 5 + 5) * 200
-                    ));
+                    // the heiress's goal reads "is up to", the commissioner's "is over"
+                    let v = (self.donations + 2) * (self.donations + 2) * 25;
+                    let goal = if self.difficulty < 2 {
+                        trf("STR_VIP_GOAL_FUN_UP_TO", &[("RATING", &v)])
+                    } else {
+                        trf("STR_VIP_GOAL_SKILL_UP_TO", &[("RATING", &skill_text(v))])
+                    };
+                    // the exe's pieces (0x4c6fa4, 0x4c6f88, 0x4074a0's name with its article, 0x4c6f54, the effect, 0x4c6e78, the
+                    // short name, 0x4c6e54, the price, 0x4c6e38, the goal, 0x4c6df8)
+                    let text = trf(
+                        "STR_VIP_HEIRESS_YES",
+                        &[
+                            ("VISITOR", &name),
+                            ("A_LANDMARK", &landmark_after_a(id)),
+                            ("EFFECT", &effect),
+                            ("LANDMARK", &landmark_short_name(id)),
+                            ("MONEY", &money_digits(((id * 5 + 5) * 200) as i64)),
+                            ("GOAL", &goal),
+                        ],
+                    );
+                    self.message_by(text, g as i32, 1);
                     self.donations += 1;
                     self.sound(0x2f, None);
                     self.landmarks_owned |= 1 << id;
@@ -367,8 +435,8 @@ impl Club {
             return None;
         }
         let cel = &self.celebrities[c as usize];
-        let kind = CELEBRITY_TYPES[(cel.kind as usize).min(10)];
-        self.message(format!("International {kind} {} has purchased a vacation home at your golf course!", cel.name));
+        let kind = celebrity_type(cel.kind);
+        self.message(trf("STR_VIP_CELEBRITY_HOME", &[("KIND", &kind), ("CELEBRITY", &cel.name)]));
         self.sound(0x33, None);
         self.celeb_homes += 1;
         self.log_event(crate::records::log::CELEB, c);
@@ -391,5 +459,25 @@ mod tests {
         assert_eq!(p[0].skills[0], 3);
         assert_eq!(p[1].skills[2], 10);
         assert_eq!(mood_remark(5), "This course is quite nice.");
+    }
+
+    #[test]
+    fn verdicts_in_the_exe_words() {
+        assert_eq!(landmark_after_a(0), " garden sundial");
+        assert_eq!(landmark_after_a(2), "n authentic Civil War cannon");
+        let mut cl = Club::default();
+        let mut rng = ExeRng::from_clock(1);
+        cl.holes[1].par = 4;
+        cl.g[3].kind = 0x80;
+        cl.g[3].hole = 1;
+        cl.g[3].mood = 1;
+        cl.vip_verdict(&mut rng, 3);
+        let said: Vec<String> =
+            cl.out.iter().filter_map(|e| if let Event::Message { text, .. } = e { Some(text.clone()) } else { None }).collect();
+        assert_eq!(
+            said,
+            ["Wealthy Heiress Ivana Richman has decided not to donate a landmark to your course. 'I don't like this course much.' \
+              she comments. 'I'll be back in a few months.'"]
+        );
     }
 }
