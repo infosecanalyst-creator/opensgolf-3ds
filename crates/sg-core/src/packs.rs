@@ -576,6 +576,55 @@ pub struct Loaded {
     pub data: crate::data::Data,
     /// Problems with the data files, as (pack id, message); "" for the merged tables as a whole.
     pub warnings: Vec<(String, String)>,
+    /// The text the packs carry (`lang/<code>.txt`), in load order, as (pack id, file, text): laid over the string table by
+    /// [`apply`].
+    pub lang: Vec<(String, String, String)>,
+    /// The language a translation pack switches to when it has no file for the player's language (its only one).
+    pub language: Option<String>,
+}
+
+/// The `lang/<code>.txt` files of a pack, as (code, path in the pack), sorted by code.
+pub fn lang_files(source: &Source) -> Vec<(String, String)> {
+    let mut v: Vec<(String, String)> = source
+        .files()
+        .into_iter()
+        .filter_map(|f| {
+            let low = f.to_lowercase();
+            let code = low.strip_prefix("lang/")?.strip_suffix(".txt")?;
+            let code = f.get(5..f.len() - 4).filter(|c| c.len() == code.len())?;
+            (!code.is_empty() && !code.contains('/')).then(|| (code.to_string(), f.clone()))
+        })
+        .collect();
+    v.sort();
+    v
+}
+
+/// The text files of one pack to lay over the string table for `language` (the player's language code): a mod's (and a
+/// base set's) `lang/en.txt` first (the English of its own new keys), then `lang/<language>.txt`. A translation pack gives
+/// its file for the language, else its only (first) file, whose code it returns as the language to use.
+fn pack_lang(p: &Pack, language: &str) -> (Vec<(String, String)>, Option<String>) {
+    let files = lang_files(&p.source);
+    let find = |code: &str| files.iter().find(|(c, _)| c.eq_ignore_ascii_case(code)).map(|(_, f)| f.clone());
+    let mut picked = Vec::new();
+    let mut switch = None;
+    if p.manifest.kind == Kind::Translation {
+        match find(language) {
+            Some(f) => picked.push(f),
+            None => {
+                if let Some((c, f)) = files.first() {
+                    picked.push(f.clone());
+                    switch = Some(c.clone());
+                }
+            }
+        }
+    } else {
+        picked.extend(find("en"));
+        if language != "en" {
+            picked.extend(find(language));
+        }
+    }
+    let texts = picked.into_iter().filter_map(|f| p.source.read(&f).map(|d| (f, String::from_utf8_lossy(&d).into_owned()))).collect();
+    (texts, switch)
 }
 
 /// Reads the packs of a plan: indexes their override files and merges their data files in load order.
@@ -583,9 +632,15 @@ pub fn load(found: &Found, plan: &Plan) -> Loaded {
     let mut tables = crate::data::Tables::builtin();
     let mut layers = Vec::new();
     let mut warnings = Vec::new();
+    let mut lang = Vec::new();
+    let mut language = None;
+    let current = crate::lang::language();
     for &i in &plan.order {
         let p = &found.packs[i];
         let id = &p.manifest.id;
+        let (texts, switch) = pack_lang(p, &current);
+        lang.extend(texts.into_iter().map(|(f, t)| (id.clone(), f, t)));
+        language = language.or(switch);
         for rel in p.source.files() {
             let low = rel.to_lowercase();
             if let Some(f) = low.strip_prefix("data/").and_then(|f| f.strip_suffix(".toml")) {
@@ -609,12 +664,19 @@ pub fn load(found: &Found, plan: &Plan) -> Loaded {
     }
     let (data, w) = crate::data::Data::from_tables(&tables);
     warnings.extend(w.into_iter().map(|w| (String::new(), w)));
-    Loaded { layers, data, warnings }
+    Loaded { layers, data, warnings, lang, language }
 }
 
 /// Puts the loaded packs in effect: their files over the game folder at `game_dir`, their data as the tables the game
 /// reads. With no packs this restores the game folder alone and the built-in tables.
 pub fn apply(game_dir: &Path, loaded: Loaded) {
+    // the packs' text over the string table (the player's language is already applied: crate::lang)
+    if let Some(code) = &loaded.language {
+        crate::lang::set_language(code);
+    }
+    for (_, _, text) in &loaded.lang {
+        crate::lang::load_overlay(text);
+    }
     if loaded.layers.is_empty() {
         crate::vfs::unmount();
         crate::data::reset();
@@ -749,6 +811,34 @@ mod tests {
         let p = resolve(&f, &s);
         assert_eq!(p.active_ids(), ["free", "m"]);
         assert_eq!(status(&p, ORIGINAL), Status::Off);
+    }
+
+    #[test]
+    fn packs_carry_text_for_the_string_table() {
+        let dir = std::env::temp_dir().join(format!("sg-packs-lang-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let one = dir.join("one");
+        std::fs::create_dir_all(one.join("a-mod/lang")).unwrap();
+        std::fs::write(one.join("a-mod/pack.toml"), manifest("a-mod", "mod", "1.0", &[], &[])).unwrap();
+        std::fs::write(one.join("a-mod/lang/en.txt"), "XTEST_PACK_MOD_KEY :from the mod\n").unwrap();
+        std::fs::write(one.join("a-mod/lang/de.txt"), "XTEST_PACK_MOD_KEY :vom Mod\n").unwrap();
+        std::fs::create_dir_all(one.join("a-tr/lang")).unwrap();
+        std::fs::write(one.join("a-tr/pack.toml"), manifest("a-tr", "translation", "1.0", &[], &[])).unwrap();
+        std::fs::write(one.join("a-tr/lang/pt_BR.txt"), "##language pt_BR\nXTEST_PACK_TR_KEY :ola\n").unwrap();
+        let f = discover(std::slice::from_ref(&one));
+        assert_eq!(lang_files(&f.packs[1].source), [("pt_BR".to_string(), "lang/pt_BR.txt".to_string())]);
+        let mut s = on(&["a-mod"]);
+        s.translation = Some("a-tr".into());
+        let loaded = load(&f, &resolve(&f, &s));
+        // the mod's English (the player's language is English here), then the translation's only file, which it switches to
+        let files: Vec<(&str, &str)> = loaded.lang.iter().map(|(id, f, _)| (id.as_str(), f.as_str())).collect();
+        assert_eq!(files, [("a-mod", "lang/en.txt"), ("a-tr", "lang/pt_BR.txt")]);
+        assert_eq!(loaded.language.as_deref(), Some("pt_BR"));
+        for (_, _, t) in &loaded.lang {
+            crate::lang::load_overlay(t);
+        }
+        assert!(crate::lang::has("XTEST_PACK_MOD_KEY") && crate::lang::has("XTEST_PACK_TR_KEY"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
