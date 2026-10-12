@@ -5,7 +5,10 @@ tablet.
 
 ## ▶ [Play now in your browser](https://crspytopgn.github.io/opensgolf/)
 
-Click the link, then **Play with free graphics**. That's it. Nothing to install.
+Click the link, then **Choose game folder** and pick your SimGolf folder (or a .zip of it). That's it. Nothing to install.
+No copy of SimGolf? **Play with free graphics** to try it (an early beta, still a work in progress).
+
+[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/crspytopgn)
 
 ## Or download it
 
