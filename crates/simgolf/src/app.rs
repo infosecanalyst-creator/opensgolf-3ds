@@ -1929,9 +1929,10 @@ impl App {
         for f in self.floats.iter_mut() {
             f.3 = f.3.saturating_sub(1);
         }
-        if !self.econ.sandbox && self.ui_ok {
-            // the opening story and the first design tip (0x45fd80), told by the course itself
-            if tick == 0x20 {
+        if self.ui_ok {
+            // the opening story and the first design tip (0x45fd80), told by the course itself; a sandbox game skips only
+            // the opening story (the exe's sandbox test returns from the tick 0x20 branch, the tip at 0x1400 has none)
+            if tick == 0x20 && !self.econ.sandbox {
                 let text = self.welcome_text();
                 self.post_message(&text, 1, -4);
             } else if tick == 0x1400 {

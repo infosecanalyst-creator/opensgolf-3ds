@@ -700,6 +700,22 @@ Confidence: high unless marked.
   (tick & 0x3ff == 0); the report itself stores the current member count in this month's slot (EXACT). The port only wrote
   at the charges, which on Medium and Expert never fall on the month start, so a year end showed This Year all zero, red.
 
+## Help for new players: the unfinished tutorial and what the game does show (0x4604f0, 0x45fd80, 0x416305, 0x467a00)
+
+- The exe holds an unfinished tutorial (EXACT, dead code): 0x4604f0 steps a counter (0x567a18) through two camera tours of
+  a prepared course, "the SimGolf tutorial" (steps 1 to 11: what makes a hole fun, scenic terrain, doglegs, snack bars,
+  benches) and "the Sim Golf Course Tycoon tutorial" (0x15 to 0x1d: holes that test length, accuracy and imagination), each
+  step centring the view on a hole of that course and posting its text; any key steps on, Escape loads `Tutorial Save.sve`.
+  The main loop runs it only while game flag 0x8000 is set. Nothing sets that flag or starts the counter (its only writes
+  are the steps' own + 1 and resets to 0, and it lives in zeroed data, so step 0 returns at once), no menu offers it, and
+  neither the prepared course nor `Tutorial Save.sve` is on the disc. The shipped game has no tutorial; the port has none.
+- What the shipped game shows a new player, and the port with it: the property's welcome story at tick 0x20 (not in a
+  sandbox) and the design tip ("looks hard, plays easy") at tick 0x1400 (in a sandbox too), both spoken by the course
+  (0x45fd80); on Easy in the first year the advisor's line over the player's pro (0x416305: build a tee, a green, press H,
+  build more holes, paths, buildings, employees, the nearest hole's fun, practice round, tournament); the first-time
+  narration of each golfer reaction type (0x467a00's tail, Preferences bit 4, on at the start of a game); the hole opening
+  and building unlock messages (0x40e720).
+
 ## The clubhouse pair screen (0x459850)
 
 - Clicking the clubhouse (not in a tournament, once a hole is open) lists the golfers waiting, newest first. With two
