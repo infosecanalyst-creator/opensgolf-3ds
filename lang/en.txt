@@ -1267,6 +1267,8 @@ STR_MENU_PREFS_CONTENT                  : Content packs...
 # Preferences > Enhanced graphics (the port's own, not in the original; docs/ENHANCED.md). The options start with a space.
 STR_MENU_PREFS_ENHANCED_ON              : Enhanced graphics (off: Classic)
 STR_MENU_PREFS_ENHANCED                 : Enhanced graphics settings...
+# Preferences > Keyboard controls (the port's own screen listing every key)
+STR_MENU_PREFS_KEYS                     : Keyboard controls...
 STR_ENHANCED_TITLE                      :Enhanced graphics (not in the original)
 STR_ENHANCED_MASTER                     : Enhanced graphics (off: Classic)
 STR_ENHANCED_NATIVE_TEXT                : Sharp text at the screen's resolution
@@ -1276,6 +1278,7 @@ STR_ENHANCED_TERRAIN_FILTER             : Sharper course textures
 STR_ENHANCED_MSAA                       : Anti-aliasing
 STR_ENHANCED_SMOOTH_CAMERA              : Smooth camera: zoom, turns and panning
 STR_ENHANCED_SMOOTH_MOTION              : Smooth motion between game ticks
+STR_ENHANCED_PHOTO_MODE                 : Photo mode (the C key or the camera button)
 STR_ENHANCED_FX_SCALER                  : Pixel-art scaling of sprites and pictures
 STR_ENHANCED_FX_SCALER_SHARP            : Sharp bilinear scaling instead of edge-directed
 STR_ENHANCED_FX_WATER                   : Animated water
@@ -1326,6 +1329,34 @@ STR_FX_SCALER_EDGE                      :Edge-directed
 STR_FX_QUALITY_LOW                      :Low
 STR_FX_QUALITY_MEDIUM                   :Medium
 STR_FX_QUALITY_HIGH                     :High
+
+# Enhanced graphics > photo mode (the port's own, docs/ENHANCED.md "Photo mode"): the camera button's tooltip, the hint at
+# the top, the buttons along the bottom ({VALUE} the current choice) and what a photo did ({FILE}, {WIDTH} x {HEIGHT})
+STR_PHOTO_BUTTON_TIP                    :Photo mode (C)
+STR_PHOTO_TITLE                         :Photo mode
+STR_PHOTO_HINT_1                        :Drag or arrows: move   Wheel, pinch or Z / X: zoom   PageUp / Home: turn   Click: focus here
+STR_PHOTO_HINT_2                        :Space: pause   F, [ ]: focus blur   L: look   V: vignette   R: size   Enter: take photo   H: hide   Esc: leave
+STR_PHOTO_BTN_LEAVE                     :Leave
+STR_PHOTO_BTN_PAUSE                     :Pause
+STR_PHOTO_BTN_RESUME                    :Resume
+STR_PHOTO_BTN_LOOK                      :Look: {VALUE}
+STR_PHOTO_BTN_BLUR                      :Blur: {VALUE}
+STR_PHOTO_BTN_VIGNETTE                  :Vignette: {VALUE}
+STR_PHOTO_BTN_SIZE                      :Size: {VALUE}
+STR_PHOTO_BTN_SHOOT                     :Take photo
+STR_PHOTO_ON                            :on
+STR_PHOTO_OFF                           :off
+STR_PHOTO_LOOK_NATURAL                  :Natural
+STR_PHOTO_LOOK_WARM                     :Warm
+STR_PHOTO_LOOK_VIVID                    :Vivid
+STR_PHOTO_LOOK_BW                       :B&W
+STR_PHOTO_LOOK_VINTAGE                  :Vintage
+STR_PHOTO_SIZE_WINDOW                   :window
+STR_PHOTO_SIZE_2X                       :2x
+STR_PHOTO_SIZE_4K                       :4K
+STR_PHOTO_SAVED                         :Photo saved ({WIDTH} x {HEIGHT}): {FILE}
+STR_PHOTO_DOWNLOADED                    :Photo downloaded ({WIDTH} x {HEIGHT}): {FILE}
+STR_PHOTO_FAILED                        :The photo could not be saved
 
 # The quit question (main loop 0x420b4e): the heading by the career's length, or after a championship
 STR_RETIRE_HIS                          :his
@@ -2039,6 +2070,153 @@ STR_CONTENT_NOTE_CHANGED                :Your changes are saved. They take effec
 STR_CONTENT_FIND_MORE                   :Find more...
 # Shown at start up when the game folder named with --game has no SimGolf files
 STR_CONTENT_NO_GAME_FILES               :No SimGolf files found in {DIR}: playing with the free OpenSGolf graphics.
+
+# Preferences > Keyboard controls (the port's own screen, keys_ui.rs). STR_KEYS_HEAD_* are the group headings,
+# STR_KEYS_K_* the keys as printed (keep them short: they share a column of about 110 pixels) and the others what the
+# key does. {PAGE} and {PAGES} number the pages.
+STR_KEYS_TITLE                          :Keyboard controls
+STR_KEYS_HELP                           :Every key of the game: the original's, and OpenSGolf's own (game speed, the stand-ins for the F keys).
+STR_KEYS_PAGE                           :Page {PAGE} of {PAGES}
+STR_KEYS_CLOSE                          :Esc, Enter or a click outside the box closes this screen.
+STR_KEYS_HEAD_VIEW                      :Moving around the course
+STR_KEYS_K_ARROWS                       :Arrow keys
+STR_KEYS_ARROWS                         :Scroll the course four tiles
+STR_KEYS_K_ZOOM                         :z / x
+STR_KEYS_ZOOM                           :Zoom in / zoom out
+STR_KEYS_K_TURN                         :PageUp / Home
+STR_KEYS_TURN                           :Turn the view a quarter
+STR_KEYS_K_TURN_MAC                     :fn+Up / fn+Left
+STR_KEYS_TURN_MAC                       :The same on a Mac keyboard
+STR_KEYS_K_TURN_BACK                    :0
+STR_KEYS_TURN_BACK                      :Turn the view back; again: go to the clubhouse
+STR_KEYS_K_HOLES                        :1 to 9
+STR_KEYS_HOLES                          :Go to hole 1 to 9
+STR_KEYS_K_HOLES_BACK                   :Shift+1 to 9
+STR_KEYS_HOLES_BACK                     :Go to hole 10 to 18
+STR_KEYS_K_SHIFT_HELD                   :Shift (held)
+STR_KEYS_SHIFT_HELD                     :The face strip shows the back nine only
+STR_KEYS_K_PHOTO_MODE                   :c
+STR_KEYS_PHOTO_MODE                     :Photo mode (Enhanced graphics; Esc leaves)
+STR_KEYS_HEAD_TIME                      :Time
+STR_KEYS_K_PAUSE                        :Shift+P
+STR_KEYS_PAUSE                          :Pause / go on
+STR_KEYS_K_SPEED                        :]
+STR_KEYS_SPEED                          :Game speed: normal, x2, x4
+STR_KEYS_HEAD_BUILD                     :Building the course
+STR_KEYS_K_GREEN                        :g
+STR_KEYS_GREEN                          :Green tool; again: tee tool
+STR_KEYS_K_FAIRWAY                      :f
+STR_KEYS_FAIRWAY                        :Fairway tool
+STR_KEYS_K_ROUGH                        :r
+STR_KEYS_ROUGH                          :Rough tool
+STR_KEYS_K_SAND                         :s
+STR_KEYS_SAND                           :Sand trap tool
+STR_KEYS_K_TREES                        :t
+STR_KEYS_TREES                          :Trees tool
+STR_KEYS_K_WATER                        :w
+STR_KEYS_WATER                          :Water tool
+STR_KEYS_K_RAVINE                       :v
+STR_KEYS_RAVINE                         :Ravine tool
+STR_KEYS_K_PATH                         :p
+STR_KEYS_PATH                           :Path tool
+STR_KEYS_K_BENCH                        :b
+STR_KEYS_BENCH                          :Bench tool
+STR_KEYS_K_HOME_SITE                    :Shift+B
+STR_KEYS_HOME_SITE                      :Home site tool (sell a lot)
+STR_KEYS_K_ELEVATION                    :e
+STR_KEYS_ELEVATION                      :Elevation tools
+STR_KEYS_K_RAISE                        := / -
+STR_KEYS_RAISE                          :Raise / lower the ground at the pointer
+STR_KEYS_K_TAB                          :Tab
+STR_KEYS_TAB                            :Turn a building before placing it; step the elevation brush
+STR_KEYS_K_SPACE                        :Space
+STR_KEYS_SPACE                          :Put the tool down
+STR_KEYS_K_UNDO                         :Shift+click
+STR_KEYS_UNDO                           :Take back a path or garden item; demolish a building
+STR_KEYS_HEAD_HOLES                     :Holes and messages
+STR_KEYS_K_OPEN_HOLE                    :h
+STR_KEYS_OPEN_HOLE                      :Open the hole being built
+STR_KEYS_K_ANALYSIS                     :/
+STR_KEYS_ANALYSIS                       :Instant shot analysis of the hole at the pointer
+STR_KEYS_K_ANALYSIS_AGAIN               :.
+STR_KEYS_ANALYSIS_AGAIN                 :The last shot analysis again
+STR_KEYS_K_TREES_OFF                    :Shift+T
+STR_KEYS_TREES_OFF                      :Trees off / on
+STR_KEYS_K_NAMES                        :Shift+N
+STR_KEYS_NAMES                          :Golfers' names off / on
+STR_KEYS_K_MESSAGE                      :?
+STR_KEYS_MESSAGE                        :Repeat the last message
+STR_KEYS_K_MUSIC                        :m
+STR_KEYS_MUSIC                          :Music off / on
+STR_KEYS_HEAD_REPORTS                   :Reports and maps
+STR_KEYS_K_F1                           :F1
+STR_KEYS_F1                             :Course Report
+STR_KEYS_K_F2                           :F2
+STR_KEYS_F2                             :Player Comments
+STR_KEYS_K_F3                           :F3
+STR_KEYS_F3                             :Histograph
+STR_KEYS_K_F4                           :F4
+STR_KEYS_F4                             :Financial Report
+STR_KEYS_K_F5                           :F5
+STR_KEYS_F5                             :Routing Map
+STR_KEYS_K_F6                           :F6
+STR_KEYS_F6                             :World Map (move the club)
+STR_KEYS_K_F7                           :F7
+STR_KEYS_F7                             :SGA Evaluation
+STR_KEYS_K_F8                           :F8
+STR_KEYS_F8                             :The original's Keyboard Shortcuts
+STR_KEYS_K_F9                           :F9
+STR_KEYS_F9                             :Membership Roster
+STR_KEYS_K_F10                          :F10
+STR_KEYS_F10                            :Professional Accomplishments
+STR_KEYS_K_ROUTING                      :Shift+R
+STR_KEYS_ROUTING                        :Routing Map
+STR_KEYS_K_WORLD                        :Shift+W
+STR_KEYS_WORLD                          :World Map
+STR_KEYS_K_ALT_DIGITS                   :Alt+1 to 0
+STR_KEYS_ALT_DIGITS                     :F1 to F10 (on a Mac: Option+1 to 0), with Shift as with the F keys
+STR_KEYS_K_CTRL_DIGITS                  :Ctrl+1 to 0
+STR_KEYS_CTRL_DIGITS                    :F1 to F10 too, where the browser lets it
+STR_KEYS_HEAD_GOLFERS                   :Your pro and the golfers
+STR_KEYS_K_SHOTS                        :s f d h l
+STR_KEYS_SHOTS                          :While your pro aims: straight, fade, draw, high, low
+STR_KEYS_K_CANCEL_ROUND                 :n, n
+STR_KEYS_CANCEL_ROUND                   :Cancel your pro's round or the tournament
+STR_KEYS_K_TOURNAMENT                   :Shift+J
+STR_KEYS_TOURNAMENT                     :Begin a tournament the SGA offered
+STR_KEYS_K_LET_GO                       :Space
+STR_KEYS_LET_GO                         :Let go of the golfer picked
+STR_KEYS_HEAD_FILES                     :Saving and loading
+STR_KEYS_K_SAVE                         :Shift+S
+STR_KEYS_SAVE                           :Save the game
+STR_KEYS_K_LOAD                         :Shift+L
+STR_KEYS_LOAD                           :Load a game
+STR_KEYS_K_CHAMP_COURSE                 :Shift+C
+STR_KEYS_CHAMP_COURSE                   :Save the course for a championship
+STR_KEYS_K_SAVE_BOX                     :Enter / Esc
+STR_KEYS_SAVE_BOX                       :Save box: save / cancel
+STR_KEYS_K_EXPORT                       :Tab
+STR_KEYS_EXPORT                         :Save box: export as a scenario pack
+STR_KEYS_HEAD_PICTURES                  :Pictures
+STR_KEYS_K_SCREENSHOT                   :Shift+F6
+STR_KEYS_SCREENSHOT                     :Screenshot into the save folder (the browser downloads it)
+STR_KEYS_K_PHOTO                        :F10
+STR_KEYS_PHOTO                          :On a SimFoto: keep the photo
+STR_KEYS_HEAD_OTHER                     :Everywhere
+STR_KEYS_K_ESC                          :Esc
+STR_KEYS_ESC                            :System Functions; closes a screen or box
+STR_KEYS_K_MENU_MOVE                    :Up / Down
+STR_KEYS_MENU_MOVE                      :Move in a menu or list
+STR_KEYS_K_MENU_CHOOSE                  :Enter / Space
+STR_KEYS_MENU_CHOOSE                    :Choose; OK
+STR_KEYS_K_PAGES                        :Left / Right
+STR_KEYS_PAGES                          :Pages of this screen and of Enhanced graphics settings
+STR_KEYS_K_CONTENT_ORDER                :PgUp / PgDn
+STR_KEYS_CONTENT_ORDER                  :Content packs: move the mod picked
+STR_KEYS_K_BACK_BUTTON                  :Back button
+STR_KEYS_BACK_BUTTON                    :Android: the same as Esc
+STR_KEYS_K_BROWSER                      :F11 / F12
+STR_KEYS_BROWSER                        :Left to the browser (full screen, tools), as are the Cmd keys
 
 # The player's own SimGolf files (the port's own, gamefiles.rs): the title screen's button and the Preferences line
 STR_GAME_FILES_USE_MINE                 :Use my SimGolf files...

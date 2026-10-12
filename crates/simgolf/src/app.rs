@@ -258,6 +258,8 @@ pub enum Screen {
     Scenarios,
     /// Information > Scenario goals: the goals of the game and how they stand.
     Goals,
+    /// Preferences > Keyboard controls: every key of the game (the port's own screen, keys_ui.rs).
+    Keys,
 }
 
 /// Where saved games, championship courses and pros, accomplishment snapshots, packs and settings go. The browser keeps them
@@ -377,6 +379,8 @@ pub struct App {
     pub fx: crate::fx::FxWorld,
     /// The optional Enhanced graphics' camera and motion state (off by default; see enhanced.rs).
     pub enh: crate::enhanced::EnhState,
+    /// Enhanced graphics' photo mode while it is open (photo.rs); always None in Classic.
+    pub photo: Option<Box<crate::photo::Photo>>,
     pub batches: Vec<Batch>,
     pub path_batches: Vec<Batch>,
     /// Paths not joined to the clubhouse, drawn as mud tracks (manual p. 18).
@@ -521,6 +525,9 @@ pub struct App {
     pub popup: Option<crate::popup_ui::Popup>,
     /// The content packs found and loaded (docs/MODDING.md), for Preferences > Content.
     pub content: crate::content::ContentState,
+    /// Preferences > Keyboard controls (keys_ui.rs): the page shown and the screen to go back to.
+    pub keys_page: usize,
+    pub keys_back: Screen,
     /// The scenario's goals and the packs' scripts of the game in progress (scenario_ui).
     pub scen: crate::scenario_ui::ScenarioState,
     pub last_message: String,
@@ -702,6 +709,7 @@ impl App {
             hd: crate::hd::HdState { pack_dir: save_dir().join("HD"), ..Default::default() },
             fx: Default::default(),
             enh: Default::default(),
+            photo: None,
             batches: Vec::new(),
             path_batches: Vec::new(),
             mud_batches: Vec::new(),
@@ -764,6 +772,8 @@ impl App {
             float_next: 0,
             popup: None,
             content: Default::default(),
+            keys_page: 0,
+            keys_back: Screen::Play,
             scen: Default::default(),
             last_message: String::new(),
             ticker: Default::default(),

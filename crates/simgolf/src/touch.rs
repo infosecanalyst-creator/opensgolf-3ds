@@ -159,8 +159,8 @@ impl Stage {
             let sin_p = (pitch_for(self.app.draw_w, self.app.draw_h).to_radians()).sin() as f32;
             self.app.pan(-dx * k, dy * k / sin_p);
             let ratio = spread / self.touch.spread;
-            if crate::enhanced::smooth_camera() {
-                // Enhanced: the zoom follows the fingers continuously
+            if crate::enhanced::smooth_camera() || self.app.photo.is_some() {
+                // Enhanced (and its photo mode): the zoom follows the fingers continuously
                 if ratio > 0.0 && ratio.is_finite() {
                     self.app.zoom_by(ratio.log2());
                     self.touch.spread = spread;
@@ -229,7 +229,7 @@ impl Stage {
     }
 
     fn touch_buttons_shown(&self) -> bool {
-        self.touch.used && self.app.ui_ok && self.app.screen == Screen::Play
+        self.touch.used && self.app.ui_ok && self.app.screen == Screen::Play && self.app.photo.is_none()
     }
 
     pub(crate) fn draw_touch_buttons(&mut self) {
