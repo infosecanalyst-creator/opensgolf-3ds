@@ -49,11 +49,29 @@ const ICON_H: f32 = 40.0;
 use crate::screens_ui::{BODY, LARGE, SMALL};
 
 /// How a preview sprite is drawn: see-through (queue flag 0x200, the exe's alpha 0.6) or as the refused red silhouette
-/// (flag 0x800: tint 0x7c00 at strength 0xf8).
+/// (flag 0x800: 0x474260 with colour 0x7c00; see `tint15`).
 #[derive(Clone, Copy, PartialEq)]
 enum Look {
     Ghost,
     Red,
+}
+
+/// The refused building's tint colour (0x462be0 passes 0x80007c00: red in the 15-bit format).
+const RED_TINT: u16 = 0x7c00;
+
+/// jgl.dll's tint blit (sprite vtable +0x4c, 0x10009920 storing the palette when one is given and calling 0x1000e920): every
+/// drawn pixel (palette index below 0xf8, not the key 0xff) becomes, channel by channel in the screen's 5-5-5 format, half
+/// the sprite's colour plus half the tint's, each halved with the low bit dropped. The strength the exe passes (0xf8) is not
+/// read. The port's pictures are 8-bit, taken to 5 bits as the palette's 15-bit table does (the top five bits) and back as
+/// the port shows every 15-bit colour (v * 255 / 31).
+fn tint15(rgb: [u8; 3], tint: u16) -> [u8; 3] {
+    let t = [(tint >> 10) & 31, (tint >> 5) & 31, tint & 31];
+    let mut out = [0u8; 3];
+    for c in 0..3 {
+        let v = (rgb[c] as u16 >> 3 >> 1) + (t[c] >> 1);
+        out[c] = (v as u32 * 255 / 31) as u8;
+    }
+    out
 }
 
 /// What the armed tool shows.
@@ -291,12 +309,9 @@ impl App {
                 Some(&t) => t,
                 None => {
                     let mut img = self.sprites[si].s.frames[i].clone();
-                    // PLACEHOLDER: the renderer's tint call (vtable +0x4c) is not decoded; the colour is taken 0xf8/0x100 of
-                    // the way to red
                     for p in img.px.chunks_mut(4) {
-                        p[0] = ((p[0] as u32 * 8 + 248 * 248) >> 8) as u8;
-                        p[1] = ((p[1] as u32 * 8) >> 8) as u8;
-                        p[2] = ((p[2] as u32 * 8) >> 8) as u8;
+                        let [r, g, b] = tint15([p[0], p[1], p[2]], RED_TINT);
+                        (p[0], p[1], p[2]) = (r, g, b);
                     }
                     let t = g.texture(&img, false);
                     self.red_tex.insert((si, i), t);
@@ -543,4 +558,19 @@ fn top_text(g: &mut Gfx, s: &Ui, cx: f32, top: f32, text: &str, size: f32, c: [f
 fn label(g: &mut Gfx, s: &Ui, cx: f32, top: f32, text: &str, size: f32, c: [f32; 4]) {
     top_text(g, s, cx, top + 1.0, text, size, [0.0, 0.0, 0.0, c[3]]);
     top_text(g, s, cx, top, text, size, c);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn red_tint_halves_each_channel() {
+        // white: (31 >> 1) + (31 >> 1) = 30 red, 15 green and blue
+        assert_eq!(tint15([255, 255, 255], RED_TINT), [246, 123, 123]);
+        // black takes half the tint
+        assert_eq!(tint15([0, 0, 0], RED_TINT), [123, 0, 0]);
+        // the low bit of each half is dropped: 5-bit 3 gives 1
+        assert_eq!(tint15([24, 24, 24], 0), [8, 8, 8]);
+    }
 }
