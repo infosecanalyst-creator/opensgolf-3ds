@@ -670,6 +670,10 @@ Confidence: high unless marked.
   animal one time in a hundred; out of bounds removes it.
 - Four fly-overs: a balloon (lands on open ground, burner sound), a sailboat steering along water, a bird of prey per
   theme and a blimp; each appears one time in a hundred when idle (the balloon and blimp from the second year).
+- Views (EXACT, 0x430360): an animal, the bird and a four-view sailboat moving along heading h (0 north, 2 east) take view
+  ((camera eighths - h - 2) & 7) / 2 (eight-view sprites the same without the halving); the blimp, which always flies
+  east, view (camera quarter - 2) & 3; the balloon view (row & 3) whatever the camera, its shadow (tick / 1000) & 3. The
+  port had used h / 2 for all of them, so birds and the blimp crossed the screen facing the wrong way.
 - Water depth: shore 0, next to the shore 1, open 2. Ripples on the shore below a water tile (two tiles in three),
   rocks and coral by fixed tile formulas in shallow flat water, dolphins every 64 frames on scenic open water, else a
   fountain (a rock in the desert). One splash at a time, 13 frames.
