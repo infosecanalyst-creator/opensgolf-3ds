@@ -2390,13 +2390,13 @@ impl App {
         let mut pros = read("progolfers.dta").map(|t| sg_core::vips::parse_pros(&t)).unwrap_or_default();
         // the pack's own pro files join the table (0x4659a0: Themes\<pack>\*.pro in directory order, which the port takes
         // as case-insensitive name order)
-        let mut pro_files: Vec<PathBuf> = sg_core::fsutil::list_dir(&self.game_path(&format!("Themes/{pack}")))
+        let mut pro_files: Vec<PathBuf> = sg_core::fsutil::list_dir(self.game_path(&format!("Themes/{pack}")))
             .into_iter()
             .filter(|p| sg_core::fsutil::ext_lower(p) == ".pro")
             .collect();
         pro_files.sort_by_key(|p| p.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default());
         let parsed: Vec<_> =
-            pro_files.iter().filter_map(|p| sg_core::fsutil::read_file(p)).filter_map(|b| sg_core::championship::parse_pro(&b)).collect();
+            pro_files.iter().filter_map(sg_core::fsutil::read_file).filter_map(|b| sg_core::championship::parse_pro(&b)).collect();
         sg_core::vips::append_pro_files(&mut pros, &parsed);
         self.club.celebrities = celebs;
         self.club.pros = pros;
