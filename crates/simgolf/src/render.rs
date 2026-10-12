@@ -75,6 +75,10 @@ impl App {
         // the water's glints go onto the frame in the tile loop (0x411574), before the queued sprites
         self.draw_water_glints(g);
         self.draw_props(g, &Uniforms::flat(&proj, &mv));
+        if crate::fx::active() {
+            // Enhanced graphics (fx_light.rs): the haze in the distance and the rain, over the course
+            self.fx_overlay(g);
+        }
         if self.edit && self.has_hit {
             self.draw_cursor_preview(g, &Uniforms::flat(&proj, &mv));
         }
@@ -209,26 +213,8 @@ impl App {
             if let Some(&(x, z, lift)) = shown.get(pi) {
                 (p.x, p.z, p.lift) = (x, z, lift);
             }
+            let view = app.prop_view(&p, si, quarter);
             let sp = &app.sprites[si].s;
-            let views = sp.views;
-            let mut view = if views >= 8 {
-                (quarter * 2) % 8
-            } else if views >= 4 {
-                (quarter + p.facing).rem_euclid(views)
-            } else if views == 2 {
-                quarter % 2
-            } else {
-                0
-            };
-            if views >= 8 && p.heading > -999.0 {
-                // View 0 faces world -X (heading 180); each further view turns 45 degrees counter clockwise on screen, i.e.
-                // heading - 45; a 90 degree camera turn adds 2 views.
-                let k = ((180.0 - p.heading) / 45.0).round() as i32;
-                view = ((k + 2 * quarter) % 8 + 8) % 8;
-            }
-            if let Some(v) = p.view {
-                view = v.rem_euclid(views.max(1));
-            }
             let (w, h, ax, ay) = (sp.w as f32, sp.h as f32, sp.anchor_x as f32, sp.anchor_y as f32);
             let tex = match p.outfit.filter(|_| !shadow) {
                 Some(o) => app.outfit_texture(g, si, view, p.frame, o).unwrap_or_else(|| app.sprite_texture(g, si, view, p.frame)),
@@ -236,6 +222,8 @@ impl App {
             };
             // Enhanced graphics only: the art's own shadow frame, softened (fx.rs)
             let tex = if shadow && crate::fx::active() { app.fx_shadow(g, si, view, p.frame, tex).unwrap_or(tex) } else { tex };
+            // Enhanced graphics only: the time of day, rain and clouds tint the pre-lit sprite (fx_light.rs)
+            let tint = if crate::fx::active() { app.fx_sprite_tint(p.x, p.z, shadow) } else { None };
             let y = app.terrain.height_at(p.x, p.z) + if shadow { 0.0 } else { p.lift };
             // the exe's screen offset, in world units along the eye's axes
             let (ox, oy) = (p.shift.0 * px, -p.shift.1 * px);
@@ -245,7 +233,11 @@ impl App {
             let (l, r) = (-ax * s, (w - ax) * s);
             let (t, b) = (ay * s, -(h - ay) * s); // up is positive
             let c = |cx: f32, cy: f32, tu: f32, tv: f32| {
-                Vert::new(p.x + rx * cx + ux * cy, y + ry * cx + uy * cy, p.z + rz * cx + uz * cy, tu, tv)
+                let v = Vert::new(p.x + rx * cx + ux * cy, y + ry * cx + uy * cy, p.z + rz * cx + uz * cy, tu, tv);
+                match tint {
+                    Some(t) => v.col(t),
+                    None => v,
+                }
             };
             g.quad(Mode::Flat, Some(tex), u, [c(l, t, 0.0, 0.0), c(r, t, 1.0, 0.0), c(r, b, 1.0, 1.0), c(l, b, 0.0, 1.0)]);
         };
@@ -278,6 +270,11 @@ impl App {
                 quad(self, g, b, i, false);
             }
         }
+        // Enhanced graphics only: shadows cast along the sun, on the ground under every sprite (fx_shadow.rs)
+        if crate::fx::active() {
+            self.fx_cast_shadows(g, u, &items, &shown);
+        }
+        let art_shadows = !crate::fx_shadow::hide_art_shadows();
         // the exe composites each sprite's shadow under its body when it loads them (0x43d740 draws NameShadow.flc, then
         // Name.flc over it, into the same frames), so a sprite's shadow is drawn with it in the depth order: a nearer
         // sprite's shadow falls over a farther sprite
@@ -291,7 +288,7 @@ impl App {
                 g.tris(Mode::Flat, rock_tex, u, &rocks[next_rock].1);
                 next_rock += 1;
             }
-            let sh = self.props[i].shadow;
+            let sh = self.props[i].shadow.filter(|_| art_shadows);
             quad(self, g, sh, i, true);
             if !self.props[i].flat {
                 let b = self.props[i].body;
@@ -302,6 +299,30 @@ impl App {
             g.tris(Mode::Flat, rock_tex, u, &r.1);
         }
         self.draw_balls(g, u);
+    }
+
+    /// The view of a prop's sprite drawn with the camera turned `quarter` quarter turns.
+    pub(crate) fn prop_view(&self, p: &Prop, si: usize, quarter: i32) -> i32 {
+        let views = self.sprites[si].s.views;
+        let mut view = if views >= 8 {
+            (quarter * 2) % 8
+        } else if views >= 4 {
+            (quarter + p.facing).rem_euclid(views)
+        } else if views == 2 {
+            quarter % 2
+        } else {
+            0
+        };
+        if views >= 8 && p.heading > -999.0 {
+            // View 0 faces world -X (heading 180); each further view turns 45 degrees counter clockwise on screen, i.e.
+            // heading - 45; a 90 degree camera turn adds 2 views.
+            let k = ((180.0 - p.heading) / 45.0).round() as i32;
+            view = ((k + 2 * quarter) % 8 + 8) % 8;
+        }
+        if let Some(v) = p.view {
+            view = v.rem_euclid(views.max(1));
+        }
+        view
     }
 
     /// The balls (0x41557f, for every golfer with a ball): the 2 x 2 white cut at (192, 0) of BLDG.PCX with the 2 x 2 black
@@ -320,6 +341,10 @@ impl App {
         let side = (2.0 * self.exe_zoom() / 4.0).max(1.0f32);
         if self.ball_trail.len() != self.club.g.len() {
             self.ball_trail = vec![None; self.club.g.len()];
+        }
+        // Enhanced graphics only: the trails behind balls in the air, under the balls (fx_ball.rs)
+        if crate::fx::active() {
+            self.fx_ball_trails(g, u);
         }
         let white = [1.0; 4];
         let black = [0.0, 0.0, 0.0, 1.0];
@@ -373,6 +398,10 @@ impl App {
                 }
             }
             self.ball_trail[i] = Some(ball);
+        }
+        // Enhanced graphics only: sand, water or grass thrown up where balls came down (fx_ball.rs)
+        if crate::fx::active() {
+            self.fx_ball_impacts(g, u);
         }
     }
 
@@ -645,6 +674,8 @@ impl App {
         }
         let theme = format!("({})", THEME_PACKS.get(self.theme_pack).copied().unwrap_or("Standard"));
         s.put_centered(g, crate::ui::F_KLEPTO18, MENU_LABEL_X[1], MENU_LABEL_Y[1] + 24.0, &theme, grey);
+        // the port's own: "Use my SimGolf files..." (gamefiles.rs)
+        self.draw_files_button(g, &s);
         if !self.toast.is_empty() && self.clock < self.toast_until {
             let w = text_width(&self.toast, 18.0) + 24.0;
             s.fill(g, 400.0 - w / 2.0, 560.0, w, 30.0, rgba(0.1, 0.1, 0.3, 0.9));
@@ -793,9 +824,11 @@ impl App {
                 let (sx, sy, w, h, dx, dy) = DOCK_LIT[self.dock_hover as usize];
                 s.image_part(g, &self.dock_art, dx, dy, sx, sy, w, h);
             }
-            // while paused the Pause button blinks gold (0x5a9f5c counts the paused frames, lit while bit 2 is set)
+            // while paused the Pause button blinks gold (0x5a9f5c counts the paused frames, lit while bit 2 is set). The exe
+            // drew a frame per game tick (about 87 ms); counted in time rather than in our frames, so the blink keeps that
+            // pace at any refresh rate instead of strobing at 60-144 fps
             if self.paused {
-                self.dock_blink = self.dock_blink.wrapping_add(1);
+                self.dock_blink = (self.clock / 0.087) as u32;
                 if self.dock_blink & 4 != 0 {
                     let (sx, sy, w, h, dx, dy) = DOCK_LIT[8];
                     s.image_part(g, &self.dock_art, dx, dy, sx + 50.0, sy, w, h);

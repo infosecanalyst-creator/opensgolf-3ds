@@ -594,6 +594,10 @@ pub struct App {
     pub sandbox_choice: bool,
     pub toast: String,
     pub toast_until: f64,
+    /// A message in the game's box over the screen, with an OK or a question's two options (gamefiles.rs).
+    pub notice: Option<crate::gamefiles::Notice>,
+    /// The title screen says that the free graphics are in use and how to use the original files (once, gamefiles.rs).
+    pub free_hint: bool,
     /// Camera follows the golfer.
     pub follow: bool,
     // Course editing
@@ -819,6 +823,8 @@ impl App {
             sandbox_choice: false,
             toast: String::new(),
             toast_until: 0.0,
+            notice: None,
+            free_hint: false,
             follow: false,
             edit: false,
             tool: 0,
@@ -2040,6 +2046,10 @@ impl App {
             self.tick_acc -= tick_s;
             if !self.econ.game_over {
                 self.club_tick();
+            }
+            // Enhanced graphics only: the balls' trails and impacts read the simulation after its tick (fx_ball.rs)
+            if crate::fx::active() {
+                self.fx_ball_tick();
             }
             self.ticker.step();
             self.staff_tick();

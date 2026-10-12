@@ -1275,15 +1275,27 @@ STR_ENHANCED_TERRAIN_FILTER             : Sharper course textures
 STR_ENHANCED_MSAA                       : Anti-aliasing
 STR_ENHANCED_SMOOTH_CAMERA              : Smooth camera: zoom, turns and panning
 STR_ENHANCED_SMOOTH_MOTION              : Smooth motion between game ticks
-STR_ENHANCED_FX_SCALER                  : Effects: pixel-art scaling of sprites and pictures
-STR_ENHANCED_FX_SCALER_SHARP            : Effects: sharp bilinear scaling instead of edge-directed
-STR_ENHANCED_FX_WATER                   : Effects: animated water
-STR_ENHANCED_FX_TERRAIN_LIGHT           : Effects: terrain light, occlusion and shadows
-STR_ENHANCED_FX_SPRITE_SHADOWS          : Effects: soft sprite shadows
-STR_ENHANCED_FX_SKY                     : Effects: sky beyond the map
-STR_ENHANCED_FX_TILT_SHIFT              : Effects: tilt-shift (miniature look)
-STR_ENHANCED_FX_GRADING                 : Effects: colour grading and vignette
-STR_ENHANCED_FX_BLOOM                   : Effects: bloom
+STR_ENHANCED_FX_SCALER                  : Pixel-art scaling of sprites and pictures
+STR_ENHANCED_FX_SCALER_SHARP            : Sharp bilinear scaling instead of edge-directed
+STR_ENHANCED_FX_WATER                   : Animated water
+STR_ENHANCED_FX_TERRAIN_LIGHT           : Terrain light, occlusion and shadows
+STR_ENHANCED_FX_SPRITE_SHADOWS          : Soft sprite shadows
+STR_ENHANCED_FX_SKY                     : Sky beyond the map
+STR_ENHANCED_FX_TILT_SHIFT              : Tilt-shift (miniature look)
+STR_ENHANCED_FX_GRADING                 : Colour grading and vignette
+STR_ENHANCED_FX_BLOOM                   : Bloom
+STR_ENHANCED_FX_QUALITY                 : Effects quality: {VALUE}
+STR_ENHANCED_FX_CAST_SHADOWS            : Cast shadows from buildings and trees
+STR_ENHANCED_FX_BALL_TRAIL              : Trail behind balls in flight
+STR_ENHANCED_FX_BALL_IMPACTS            : Sand, splash and grass where balls land
+STR_ENHANCED_FX_TIME_OF_DAY             : Time of day: morning, sunset and dusk
+STR_ENHANCED_FX_CLOUDS                  : Drifting cloud shadows
+STR_ENHANCED_FX_HAZE                    : Distance haze
+STR_ENHANCED_FX_RAIN                    : Rain on some days
+STR_ENHANCED_FX_MIST                    : Morning mist in low ground
+STR_ENHANCED_PAGE_DISPLAY               :Display
+STR_ENHANCED_PAGE_EFFECTS               :Effects
+STR_ENHANCED_PAGE_ATMOSPHERE            :Atmosphere
 # Enhanced graphics > Effects (the port's own, docs/ENHANCED.md): each option's label and its choices
 STR_FX_EFFECTS                          :Effects
 STR_FX_SCALER                           :Pixel-art scaling of sprites and pictures
@@ -1298,6 +1310,14 @@ STR_FX_GRADING                          :Colour grading
 STR_FX_BLOOM                            :Bloom
 STR_FX_VIGNETTE                         :Vignette
 STR_FX_QUALITY                          :Effects quality
+STR_FX_CAST_SHADOWS                     :Cast shadows from buildings and trees
+STR_FX_TIME_OF_DAY                      :Time of day
+STR_FX_CLOUDS                           :Cloud shadows
+STR_FX_RAIN                             :Rain on some days
+STR_FX_MIST                             :Morning mist
+STR_FX_HAZE                             :Distance haze
+STR_FX_BALL_TRAIL                       :Ball trail
+STR_FX_BALL_IMPACTS                     :Ball impacts
 STR_FX_OFF                              :Off
 STR_FX_ON                               :On
 STR_FX_SCALER_SHARP                     :Sharp bilinear
@@ -2016,8 +2036,29 @@ STR_CONTENT_NEXT                        :Next
 STR_CONTENT_NOTE                        :Changes are saved at once and take effect when you restart the game.
 STR_CONTENT_NOTE_CHANGED                :Your changes are saved. They take effect when you restart the game.
 STR_CONTENT_FIND_MORE                   :Find more...
-# Shown at start up when the game folder has no SimGolf files
-STR_CONTENT_NO_GAME_FILES               :No SimGolf files found in {DIR}: playing with the free OpenSGolf graphics (use --game DIR for your own copy).
+# Shown at start up when the game folder named with --game has no SimGolf files
+STR_CONTENT_NO_GAME_FILES               :No SimGolf files found in {DIR}: playing with the free OpenSGolf graphics.
+
+# The player's own SimGolf files (the port's own, gamefiles.rs): the title screen's button and the Preferences line
+STR_GAME_FILES_USE_MINE                 :Use my SimGolf files...
+STR_GAME_FILES_USE_FREE                 :Use the free graphics
+STR_GAME_FILES_WHERE                    :Where do my SimGolf files go?
+# The title of the system's folder picker
+STR_GAME_FILES_PICK_TITLE               :Choose the folder SimGolf is installed in
+# Shown once on the title screen when no SimGolf files were found
+STR_GAME_FILES_HINT                     :Playing with OpenSGolf's free graphics. Have SimGolf? Choose 'Use my SimGolf files...'
+# The folder picked does not hold the game; {MISSING} lists what it lacks
+STR_GAME_FILES_NOT_FOUND                :The folder "{DIR}" does not hold SimGolf's game files ({MISSING} not there). Choose the folder SimGolf is installed in: the one with the Interface and Flics folders, or the CD's Program_Files_(ENGLISH).
+# Shown after the game started again on the files chosen
+STR_GAME_FILES_USING                    :Playing with your own SimGolf files.
+STR_GAME_FILES_USING_FREE               :Playing with OpenSGolf's free graphics.
+# Where to put the files (Android, or a build without a folder picker)
+STR_GAME_FILES_COPY_HERE                :Copy everything in SimGolf's Program_Files_(ENGLISH) folder (on the CD, or in the folder SimGolf is installed in) into {DIR}, then start OpenSGolf again.
+# Asked before the game starts again from Preferences during a game
+STR_GAME_FILES_ASK_RESTART              :OpenSGolf starts again to change its graphics. Anything not saved in this game is lost.
+STR_GAME_FILES_GO_ON                    :Start again now
+STR_GAME_FILES_NOT_NOW                  :Not now
+STR_GAME_FILES_RESTART                  :Your choice is saved. Start OpenSGolf again to use it.
 
 # Preferences > Content > Find more: the content index (docs/CONTENT_INDEX.md)
 STR_INDEX_TITLE                         :Find more content
