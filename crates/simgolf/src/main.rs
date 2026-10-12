@@ -1554,7 +1554,6 @@ impl Stage {
             app.draw_scenarios(&mut self.g);
         } else {
             app.render_world(&mut self.g);
-            app.draw_water_glints(&mut self.g);
             app.draw_building_label(&mut self.g);
             if app.great_shot.is_none() {
                 app.draw_cursor_overlay(&mut self.g);

@@ -268,8 +268,8 @@ impl App {
     /// The glints on the water (0x411574), drawn straight onto the frame in the tile loop: at the closest zoom, on each water
     /// tile on the screen that wins a 2 in 3 toss every frame, k = (tick / 2 - 9 y - 11 x) & 31 picks a 5 frame twinkle out of
     /// every 64 frames, one pixel on the line through the tile's centre, (tick + 17 y) % (8 * zoom) pixels from the tile's
-    /// left (the centre less 8 * zoom), grey, light grey, white, light grey, grey. APPROXIMATION: the port draws them after
-    /// the sprites, so one can show over a sprite standing on the water.
+    /// left (the centre less 8 * zoom), grey, light grey, white, light grey, grey. Drawn before the
+    /// sprites, as the tile loop draws them before the queue.
     pub fn draw_water_glints(&mut self, g: &mut crate::gfx::Gfx) {
         const COLOURS: [u32; 5] = [0x4210, 0x6318, 0x7fff, 0x6318, 0x4210];
         if self.screen != Screen::Play || self.terrain.ty.is_empty() {
@@ -305,11 +305,15 @@ impl App {
     }
 
     /// The rocks on the water banks (sg_core::decor::bank_rocks), cuts of cliffs01.pcx stood upright at their points beside
-    /// each water tile's centre, at the scale the exe's queue gives them (zoom / 4). APPROXIMATION: the exe sorts them with the
-    /// other sprites by their point's height on the screen; the port draws them on the ground before the sprites.
-    pub fn draw_bank_rocks(&mut self, g: &mut crate::gfx::Gfx, u: &crate::gfx::Uniforms) {
-        use crate::gfx::{Mode, Vert};
-        let Some(tex) = self.cliffs.tex else { return };
+    /// each water tile's centre, at the scale the exe's queue gives them (zoom / 4). The exe queues them (0x462a30) with the
+    /// other sprites, which are drawn in the order of their points' height on the screen, so each rock comes with the depth
+    /// key `draw_props` sorts the props by: its tile centre's, moved along the ground by the rock's screen offset.
+    pub(crate) fn bank_rock_quads(&self) -> Vec<(f32, [crate::gfx::Vert; 6])> {
+        use crate::gfx::Vert;
+        let mut out = Vec::new();
+        if self.cliffs.tex.is_none() {
+            return out;
+        }
         let (sw, sh) = (self.cliffs.w, self.cliffs.h);
         let rot = 2 * ((self.rot / 90.0).round() as i32).rem_euclid(4);
         let theme = self.exe_theme();
@@ -318,7 +322,11 @@ impl App {
         let vscale = (self.draw_w / 800.0).min(self.draw_h / 600.0);
         // world units per 800 x 600 pixel, times the queue's scale
         let k = self.upp * vscale * self.exe_zoom() / 4.0;
-        let mut v = Vec::new();
+        // a step along the ground towards the viewer: how far it moves the depth key per unit it moves the point down the
+        // screen (the props' key is the eye depth of their ground point)
+        let (fx, fz) = (mv[2], mv[10]);
+        let down = -(mv[1] * fx + mv[9] * fz);
+        let key_per_down = if down.abs() > 1e-6 { (fx * fx + fz * fz) / down } else { 0.0 };
         for a in 0..sg_core::course::N {
             for b in 0..sg_core::course::N {
                 let i = idx(a, b);
@@ -327,6 +335,7 @@ impl App {
                 }
                 let (cx, cz) = self.terrain.tile_centre(a, b);
                 let cy = self.terrain.height_at(cx, cz);
+                let centre_key = mv[2] * cx + mv[6] * cy + mv[10] * cz;
                 for r in sg_core::decor::bank_rocks(&self.course, a, b, rot, theme) {
                     let (x, y, w, h) = r.sheet;
                     let (l, t) = ((r.dx - r.ax) as f32, (r.dy - r.ay) as f32);
@@ -341,12 +350,10 @@ impl App {
                     let q = corner(l + w, t, x1, y0);
                     let r2 = corner(l + w, t + h, x1, y1);
                     let s = corner(l, t + h, x0, y1);
-                    v.extend_from_slice(&[p, q, r2, p, r2, s]);
+                    out.push((centre_key + r.dy as f32 * k * key_per_down, [p, q, r2, p, r2, s]));
                 }
             }
         }
-        if !v.is_empty() {
-            g.tris(Mode::Flat, Some(tex), u, &v);
-        }
+        out
     }
 }

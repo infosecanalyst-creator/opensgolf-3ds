@@ -49,7 +49,7 @@ draws them as Terrain.dll 0x1000f7f0 does (see TERRAIN.md): each tile keeps its 
 side and the neighbour's, `RetainWallA.bmp` stretched over the step (`CliffTest.bmp` round water). Water painted on raised
 ground sits at sea level with no wall where its lowest corner matches the ground round it, as 0x449540 reads (DERIVED: no
 write lowering the corners was found on the paint path; the land generator keeps water at sea level). The exe also stands rock cuts of `cliffs01.pcx` on water banks where a wall faces the camera, picked by the
-bank's height in steps (`sg_core::decor::bank_rocks`, drawn by the port before the sprites).
+bank's height in steps (`sg_core::decor::bank_rocks`, drawn by the port among the sprites in their depth order).
 
 ## The tool under the pointer
 
