@@ -30,6 +30,7 @@ mod fx_ball;
 mod fx_glsl;
 mod fx_light;
 mod fx_shadow;
+mod fx_smooth;
 mod gamefiles;
 mod gfx;
 mod hd;

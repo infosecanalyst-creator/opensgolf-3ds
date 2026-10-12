@@ -1279,7 +1279,7 @@ STR_ENHANCED_MSAA                       : Anti-aliasing
 STR_ENHANCED_SMOOTH_CAMERA              : Smooth camera: zoom, turns and panning
 STR_ENHANCED_SMOOTH_MOTION              : Smooth motion between game ticks
 STR_ENHANCED_FX_SCALER                  : Pixel-art scaling of sprites and pictures
-STR_ENHANCED_FX_SCALER_SHARP            : Sharp bilinear scaling instead of edge-directed
+STR_ENHANCED_FX_SCALER_MODE             : Pixel-art scaler: {VALUE}
 STR_ENHANCED_FX_WATER                   : Animated water
 STR_ENHANCED_FX_TERRAIN_LIGHT           : Terrain light, occlusion and shadows
 STR_ENHANCED_FX_SPRITE_SHADOWS          : Soft sprite shadows
@@ -1325,6 +1325,7 @@ STR_FX_OFF                              :Off
 STR_FX_ON                               :On
 STR_FX_SCALER_SHARP                     :Sharp bilinear
 STR_FX_SCALER_EDGE                      :Edge-directed
+STR_FX_SCALER_SMOOTH                    :Smooth (strongest)
 STR_FX_QUALITY_LOW                      :Low
 STR_FX_QUALITY_MEDIUM                   :Medium
 STR_FX_QUALITY_HIGH                     :High
