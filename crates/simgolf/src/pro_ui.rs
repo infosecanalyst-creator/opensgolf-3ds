@@ -89,7 +89,7 @@ impl App {
                     self.show_toast(tr("STR_TOAST_PRO_NEEDS_HOLE"));
                 } else if m && self.club.game & pro::CHALLENGE == 0 {
                     self.show_toast(tr("STR_TOAST_NO_CHALLENGE"));
-                } else if self.club.pro_skill.iter().all(|&v| v == 0) {
+                } else if self.club.pro_skill[..12].iter().all(|&v| v == 0) {
                     // the first allocation comes before the first round (0x4065c0)
                     let pts = self.club.first_skill_points();
                     self.open_skills(pts, Some(m));
