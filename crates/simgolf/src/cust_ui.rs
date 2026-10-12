@@ -9,8 +9,8 @@
 //! 0x4c7b38, hover and lit positions 0x4c7b90, face picker slots 0x4c7be0, dialogue rows 0x4c2cc0 / 0x4c2d10, per-head
 //! defaults 0x4d55e8); the art is the disc's.
 //!
-//! PLACEHOLDERS (not decoded): which CGButtons piece each hover position shows (the yellow twin of the piece under it is
-//! drawn), the sprite drawn at (352, 116) for a child, the multi-line biography editor (a one-box editor here) and the last argument of
+//! The hovered result shows CGButtons object 2 x idx (the first of its pair), a child the barrel (Bodies/Barrel.pcx) at
+//! (352, 116). PLACEHOLDERS (not decoded): the multi-line biography editor (a one-box editor here) and the last argument of
 //! each event the dialogue table's stock lines are built with (0 here; the exe keeps one per event at 0x838da8).
 
 use crate::app::*;
@@ -716,6 +716,11 @@ impl App {
         if c.toggles & 2 != 0 {
             o.alt_skin = 4;
         }
+        // a child (record +0x2c bit 8) stands behind Bodies/Barrel.pcx, drawn at (352, 116) before the preview palette and
+        // the body (0x438838)
+        if p.fixed & 8 != 0 {
+            s.image(g, &self.art.barrel, 352.0, 116.0);
+        }
         let swaps = std::mem::take(&mut self.swaps);
         self.art.head_over_body(g, &s, &swaps, &p, o, c.record, still, 1, 336.0, 40.0);
         self.swaps = swaps;
@@ -750,33 +755,38 @@ impl App {
             c.frames += 1;
         }
         let cg = &self.art.cg;
-        // the lit piece of a result at its position: the class toggles and traits that are on, then the hovered result
-        let lit = |g: &mut Gfx, i: usize| {
+        // a result's piece at its position (0x4c7b90): the class toggles and traits that are on take the second piece of
+        // their pair (the loops from objects 1 and 7, 0x59df4c / 0x59e054: the yellow column at x 150), the hovered result
+        // takes object 2 x idx (0x43876e: 0x59df20 + 0x58 idx), the first of a pair: the pale column at x 0 for 0..7, the
+        // Load and Save highlights, the pale round tab at x 300, the undo and OK rings
+        let lit = |g: &mut Gfx, i: usize, hover: bool| {
             let (x, y) = HOVER_AT[i];
+            let col = if hover { 0.0 } else { 150.0 };
             match i {
-                0..=2 => s.image_part(g, cg, x, y, 150.0, 300.0 + 50.0 * i as f32, 112.0, 35.0),
-                3..=7 => s.image_part(g, cg, x, y, 150.0, 50.0 + 50.0 * (i - 3) as f32, 112.0, 28.0),
+                0..=2 => s.image_part(g, cg, x, y, col, 300.0 + 50.0 * i as f32, 112.0, 35.0),
+                3..=7 => s.image_part(g, cg, x, y, col, 50.0 + 50.0 * (i - 3) as f32, 112.0, 28.0),
                 8 => s.image_part(g, cg, x, y, 0.0, 0.0, 35.0, 37.0),
                 9 => s.image_part(g, cg, x, y, 100.0, 0.0, 35.0, 37.0),
                 18 => s.image_part(g, cg, x, y, 500.0, 0.0, 60.0, 61.0),
                 19 => s.image_part(g, cg, x, y, 500.0, 100.0, 60.0, 61.0),
                 // the round tabs: right of the window rows 0..4 of the sheet (body type, adult/child, face, shirt,
                 // trousers), left of it rows 5..7 (hair, skin, gender)
-                _ => s.image_part(g, cg, x, y, 350.0, 50.0 * (i - 10) as f32, 50.0, 50.0),
+                _ => s.image_part(g, cg, x, y, 300.0, 50.0 * (i - 10) as f32, 50.0, 50.0),
             }
         };
-        for i in 0..3 {
-            if c.toggles & (1 << i) != 0 {
-                lit(g, i);
-            }
+        // in the exe's order: the hovered piece (0x43876e), the traits that are on (0x438e16), the toggles (0x438ee8)
+        if (0..20).contains(&hit) {
+            lit(g, hit as usize, true);
         }
         for i in 0..5 {
             if p.traits & (1 << i) != 0 {
-                lit(g, 3 + i);
+                lit(g, 3 + i, false);
             }
         }
-        if (0..20).contains(&hit) {
-            lit(g, hit as usize);
+        for i in 0..3 {
+            if c.toggles & (1 << i) != 0 {
+                lit(g, i, false);
+            }
         }
         // the name box: name (a child's with " Jr."), "(profession)", marital status, age group; the row under the pointer
         // lit (the name orange, the others white)
