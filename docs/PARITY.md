@@ -48,7 +48,7 @@ The pre-game character page the port used to show does not exist in the original
 |---|---|
 | HUD | Top bar uses the original courseinfo art and shade sheet |
 | Best Scores | Module, test, recording, persistence and screen done; trigger keys F12 (Best), F11 (Top 10), Shift+K are PLACEHOLDERS until menus fully replace them |
-| Popup menus | Information (12 items) and System Functions (8 items) on the InfoButtons 9-slice frame, plus Preferences and rename prompt. EXACT: the frame, fill, text colours and offsets, radio balls, checkboxes and OK tick (0x46d6e0, DECODE_MENUS 1), the list box 0x46de70, the retirement question's rules. PLACEHOLDER: Preferences labels beyond three (the port adds Sound, HD graphics and *Content packs...*, the last a command line drawn without a checkbox that opens the port's Preferences > Content screen, docs/MODDING.md). Load Game saves a While Browsing file but Cancel does not yet restore it |
+| Popup menus | Information (12 items) and System Functions (8 items) on the InfoButtons 9-slice frame, plus Preferences and rename prompt. EXACT: the frame, fill, text colours and offsets, radio balls, checkboxes and OK tick (0x46d6e0, DECODE_MENUS 1), the list box 0x46de70, the retirement question's rules. PLACEHOLDER: Preferences labels beyond three (the port adds Sound, HD graphics, *Content packs...* and *Enhanced graphics...*, the last two command lines drawn without a checkbox that open the port's Preferences > Content screen, docs/MODDING.md, and the Enhanced graphics checkbox list, docs/ENHANCED.md). Load Game saves a While Browsing file but Cancel does not yet restore it |
 | Open | Load screen emblem and tooltips, pair selection trigger, stats card, golfer bodies and palettes, play-core constants from DECODE_PLAYCORE.md, world facts from DECODE_WORLD2.md |
 Audit count: 982 gaps (down from 987).
 
@@ -240,3 +240,10 @@ Tool (update 80): `sgsprites <game dir> <output dir>` exports every Flics sprite
 | Routing map flags | EXACT | Palette 0x60 + theme (the Parkland house palette, unloaded 0x61/0x62, the Links flag palette), not 0x63; marker, line, number, line, flag drawn at once in that order (0x4628d0 draws straight away); shadows drawn. Tile colours were already exact. The G4 clip shows no yellow numbers and dark flags; the exe draws the numbers unconditionally and footage of the land map (p1 3120) shows them |
 | Land map | EXACT | 0x4587a0 draws the routing map's tiles (tab used last, 2 px higher) and the same hole marks; tract numbers in 0x821f28 centred at (x - 7, y - 4) of tile (8, 8)'s routing point, only while the tract has land for sale; if that tile is not for sale the position is the previous tract's text origin (stale variables), its price line when that tract was for sale (two lines of 17, PLACEHOLDER pitch). Footage p1 3120 matches within a pixel |
 | Face strip under panels | EXACT, unchanged | The strip (0x418d09 in 0x40f5c0) is drawn before the dock and panel calls (0x432ba0 and the panel draws), hidden only in a tournament; panels cover it, as the port already did |
+
+## Non-original options
+
+| Option | Status | Notes |
+|---|---|---|
+| Enhanced graphics | NOT ORIGINAL, opt-in | The port's own drawing for large and wide screens (docs/ENHANCED.md): sharp text, premultiplied and mipmapped art, the HUD anchored to a wide window's edges, anisotropic filtering, MSAA, a smooth camera and smooth motion between ticks. Off by default; with it off every frame is byte-identical to Classic, and it never changes the simulation (zoom-dependent rules read the nearest original zoom level). Parity is always judged with Enhanced off |
+| HD graphics | NOT ORIGINAL, opt-in | The player's own upscaled art pack (docs/HD.md); Classic unchanged with it off |

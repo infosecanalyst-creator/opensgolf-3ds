@@ -152,6 +152,16 @@ runs the same code and draws the same pixels as before. The upscaled art is a de
 yourself from your own copy with `tools/hd_pack/hd_pack.py`. It is never shipped, downloaded from this project, or to be
 shared. Turn it on in Preferences (*HD graphics*), with `--hd` / `--classic`, or `--hd-pack DIR`. See [docs/HD.md](docs/HD.md).
 
+## Enhanced graphics (optional)
+
+**Enhanced graphics** is the port's own option for 4K and widescreen monitors, without changing any art: text rasterised at
+the screen's own resolution, interface art with premultiplied alpha and mipmaps, the HUD at the corners of a wide window
+(full-screen pages framed), anisotropic filtering and 4× anti-aliasing for the course, a smooth camera (continuous zoom,
+animated turns, panning with inertia) and golfers, balls, animals and fly-overs moving smoothly between the simulation's
+ticks. It is not part of the original, and **Classic stays the default and byte-identical** with it off. Turn it on in
+System Functions → Preferences → *Enhanced graphics...*, or with `--enhanced` / `--classic-render` for one run. It combines
+with HD. See [docs/ENHANCED.md](docs/ENHANCED.md).
+
 ## Playing
 
 Keys: arrows/WASD pan, Q/E rotate, +/- or mouse wheel zoom, 1-4 themes, R new demo course, P toggle scenery, F follow the golfer,
