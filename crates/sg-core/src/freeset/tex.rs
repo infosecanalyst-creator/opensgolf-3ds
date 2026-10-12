@@ -400,7 +400,7 @@ fn paint(kind: Kind, th: &Theme, x: f32, y: f32, seed: u32, set: u32, var: u32) 
         }
         Kind::Brush => {
             let under = grass(x, y, th.rough, 0.5, seed);
-            plants(x, y, under, shade(th.scrub, -0.1), 4, 55 + set * 8, 0.42, seed ^ 0x5)
+            plants(x, y, under, mix(th.scrub, rgb(150, 140, 60), 0.35), 8, 50 + set * 6, 0.36, seed ^ 0x5)
         }
         Kind::Sand => sand(x, y, th.sand, seed),
         Kind::Cracks => {
@@ -452,23 +452,16 @@ fn paint(kind: Kind, th: &Theme, x: f32, y: f32, seed: u32, set: u32, var: u32) 
             stones(x, y, big, th.rock, 8, share, 0.3, seed ^ 0x17)
         }
         Kind::Woods => {
-            let floor = grass(x, y, mix(th.deep, th.ground, 0.4), 0.3, seed);
+            // the forest floor: bare earth with leaf litter and a few tufts
+            let (c, h) = ground(x, y, mix(th.ground, rgb(120, 84, 52), 0.3), seed);
             let litter = fbm(x, y, 16, 2, seed ^ 0x45);
-            let leaf = smooth(0.15, 0.3, litter);
-            let c = mix(floor.0, shade(mix(th.ground, rgb(150, 90, 40), 0.5), grain(x, y, seed) * 0.3), leaf * 0.55);
-            plants(x, y, (c, floor.1), shade(th.deep, -0.1), 8, 14, 0.3, seed ^ 0x81)
+            let c = mix(c, shade(mix(th.ground, rgb(150, 100, 50), 0.5), grain(x, y, seed) * 0.4), smooth(0.1, 0.35, litter) * 0.5);
+            plants(x, y, (c, h), shade(th.rough, 0.05), 8, 10, 0.26, seed ^ 0x81)
         }
         Kind::Paving => {
-            // staggered flagstones with mortar
-            let row = (y / 16.0).floor();
-            let off = if row as i32 % 2 == 0 { 0.0 } else { 16.0 };
-            let col = ((x + off) / 32.0).floor();
-            let (fx, fy) = ((x + off).rem_euclid(32.0), y.rem_euclid(16.0));
-            let seam = fx.min(32.0 - fx).min(fy.min(16.0 - fy));
-            let id = h32(col as i32, row as i32, seed);
-            let stone = shade(rgb(196, 188, 172), (id % 9) as f32 * 0.02 - 0.08 + grain(x, y, seed) * 0.06);
-            let mortar = smooth(0.6, 1.6, seam);
-            (mix(rgb(120, 112, 100), stone, mortar), 0.3 + mortar * 0.4)
+            // the grounds of a building: a light, even lawn
+            let (c, h) = turf(x, y, mix(th.green, th.rough, 0.35), 0, 0.0, seed);
+            (c, h * 0.5 + 0.3)
         }
         Kind::Ravine => {
             let (c, h) = ground(x, y, shade(th.ground, -0.2), seed);
@@ -588,6 +581,8 @@ pub fn texture(path: &str) -> Vec<u8> {
         var - 5
     };
     let second = !is_tee && var > 5;
+    // a building's lawn has no border pieces of its own in the second set
+    let shape = if second && kind == Kind::Paving { 1 } else { shape };
     // the look depends on type, theme and set, not on the shape, so the pieces of one area match
     let look = hash(&format!("{}{}{}", name.to_lowercase(), th_i, set));
     let relief = match kind {

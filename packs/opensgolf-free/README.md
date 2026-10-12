@@ -5,23 +5,31 @@ plays without any file of the original SimGolf. Licence: GPL-2.0-or-later (the f
 
 ## How it is made
 
-The set is **drawn by the engine itself**. Its 5,465 files (about 82 MB if written out) are made by code in
-`crates/sg-core/src/freeset/` when the game reads them, so nothing has to be downloaded or committed:
+The set has two parts, both built into the game (nothing is downloaded at run time):
 
-* **Pictures** (`paint.rs`, `ui.rs`, `tex.rs`): panels, buttons, screens and terrain textures in a simple flat-shaded style,
-  drawn with signed-distance shapes; terrain textures per theme in the nine blend shapes the terrain renderer uses; the
-  title logo, dock symbols, terrain buttons, hole signs and faces get their own drawings.
-* **Sprites** (`sprite.rs`): people from a jointed figure posed for each animation (walk, address, swing, putt, cheer, sit,
-  drive a cart...) and turned for each of the 8 views; buildings as boxes with roofs, doors and windows turned for the 4
-  views; trees grown over their 16 frames; animals, flowers, benches, flags, bridges, boats and monuments from a few shapes
-  each. All in one palette that keeps the engine's colour slots (the golfer clothes, skin and hair ramps the swap palettes
-  recolour, the transparent key, the shadow ramp).
-* **Sounds** (`sound.rs`): synthesised from tones, noise and envelopes (a click and whoosh for a drive, a plop for water,
-  a babble of vowel sounds for a golfer's voice, little tunes for jingles). There is no music yet.
-* **Text** (`text.rs`): our own stories, characters, famous golfers, celebrities, terrain descriptions, lighting, credits and
-  a starting high score table; every name is made up.
-* **Fonts**: Liberation Sans Bold (SIL Open Font License 1.1, `crates/simgolf/fonts/LiberationSans-OFL.txt`) under the two
-  names the game loads, `KLEPTO__.TTF` and `manu3_.TTF`.
+* **Rendered art** in `art/` (about 9 MB): sprite sheets of the trees, bushes, cacti, palms, scenic plants, buildings and
+  golfers, rendered offline by `tools/freeset_art/build.py` from 3D models made in code (a painterly tree grower, a building
+  kit in each theme's style, a jointed golfer posed for every animation) with the game's own camera (pitch 38.7 degrees,
+  4 or 8 views), and the sounds and music made by `tools/freeset_art/sounds.py` from CC0 recordings and our own synthesis
+  (see `CREDITS.md`). `crates/sg-core/src/freeset/baked.rs` turns a sheet into the FLC the engine reads.
+  Golfers are drawn in the palette slots the engine recolours, so every golfer still wears their own colours; trees use
+  the leaf ramp the colour variant palettes change.
+* **Drawn at run time** by code in `crates/sg-core/src/freeset/` for everything else:
+  * **Terrain** (`tex.rs`): each theme's surfaces painted from wrapping noise with lit relief (mowing stripes, blades and
+    clumps of grass, scrub, stones, sand grain and ripples, water sheen), in the nine blend shapes the terrain renderer uses.
+  * **Pictures** (`paint.rs`, `ui.rs`): panels, buttons, screens, the title logo, dock symbols, terrain buttons, hole signs
+    and faces, drawn with signed-distance shapes.
+  * **Sprites without a rendered sheet** (`sprite.rs`): animals, flowers, benches, flags, bridges, boats, monuments and the
+    rest, from a few shapes each, in one palette that keeps the engine's colour slots.
+  * **Sounds without a recording** (`sound.rs`): synthesised.
+  * **Text** (`text.rs`): our own stories, characters, famous golfers, celebrities, terrain descriptions, lighting, credits and
+    a starting high score table; every name is made up.
+  * **Fonts**: Liberation Sans Bold (SIL Open Font License 1.1, `crates/simgolf/fonts/LiberationSans-OFL.txt`) under the two
+    names the game loads, `KLEPTO__.TTF` and `manu3_.TTF`.
+
+To rebuild the rendered art: `python3 tools/freeset_art/build.py` (numpy and Pillow; `--only REGEX` for some sprites), and
+for the sounds `python3 tools/freeset_art/fetch_sources.py DIR` then `python3 tools/freeset_art/sounds.py DIR` (ffmpeg
+with libvorbis). Both rewrite `crates/sg-core/src/freeset/baked_list.rs`, the list of files built into the game.
 
 Every file has the name, size and layout the engine expects of the original's file: the same picture sizes, the same places
 for the pieces the engine cuts out of a sheet, the same sprite views, frame counts and anchors, so everything lands where
