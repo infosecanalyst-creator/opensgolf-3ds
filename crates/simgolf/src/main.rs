@@ -640,6 +640,16 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 }
                 println!("hired staff kind {}: {ok}", at(0));
             }
+            b'e' if item.len() > 2 && v.len() >= 3 => {
+                // raise (or lower) the vertices of a square of side 2r + 1 round x,y by n steps, for stills of the steps
+                let (x, y, n, r) = (at(0), at(1), at(2), at(3));
+                for dy in -r..=r {
+                    for dx in -r..=r {
+                        app.terrain.raise_corner(x + dx, y + dy, n);
+                    }
+                }
+                app.dirty = true;
+            }
             b't' if item.len() > 2 && v.len() >= 3 => {
                 // paint one tile through the hole tool (type 0 tee, 1 green)
                 app.paint_idx = PAINT.iter().position(|p| p.ty == at(2)).unwrap_or(app.paint_idx);
@@ -1593,7 +1603,6 @@ impl Stage {
             // with the effects' post-processing the course is drawn offscreen and composited before the interface (fx.rs)
             let post = fx::active() && app.fx_world_begin(&mut self.g);
             app.render_world(&mut self.g);
-            app.draw_water_glints(&mut self.g);
             if post {
                 app.fx_world_end(&mut self.g, target);
             }

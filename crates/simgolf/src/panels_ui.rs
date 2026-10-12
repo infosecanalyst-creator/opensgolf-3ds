@@ -144,17 +144,6 @@ fn tile_key(id: i32, theme: usize) -> &'static str {
     }
 }
 
-/// A terrain type's name as the exe's terrain table holds it (lower case first letter: "tees", "fairway", "sand trap"), for
-/// types with a tile button.
-pub(crate) fn terrain_name(id: i32) -> Option<String> {
-    let key = tile_key(id, 0);
-    (key != "?").then(|| {
-        let n = tr(key);
-        let mut c = n.chars();
-        c.next().map(|f| f.to_lowercase().collect::<String>() + c.as_str()).unwrap_or_default()
-    })
-}
-
 /// Top left and size of terrain slot i.
 fn terrain_slot_rect(i: usize, theme: usize) -> Rect {
     if i < 13 {

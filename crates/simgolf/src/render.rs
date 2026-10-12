@@ -72,7 +72,8 @@ impl App {
         }
         self.mv = mv.0;
         self.upp = upp;
-        self.draw_bank_rocks(g, &Uniforms::flat(&proj, &mv));
+        // the water's glints go onto the frame in the tile loop (0x411574), before the queued sprites
+        self.draw_water_glints(g);
         self.draw_props(g, &Uniforms::flat(&proj, &mv));
         if self.edit && self.has_hit {
             self.draw_cursor_preview(g, &Uniforms::flat(&proj, &mv));
@@ -280,13 +281,25 @@ impl App {
         // the exe composites each sprite's shadow under its body when it loads them (0x43d740 draws NameShadow.flc, then
         // Name.flc over it, into the same frames), so a sprite's shadow is drawn with it in the depth order: a nearer
         // sprite's shadow falls over a farther sprite
-        for &(_, i) in &items {
+        // the bank rocks are queued with the sprites (wild_ui's bank_rock_quads)
+        let mut rocks = self.bank_rock_quads();
+        rocks.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        let rock_tex = self.cliffs.tex;
+        let mut next_rock = 0;
+        for &(key, i) in &items {
+            while next_rock < rocks.len() && rocks[next_rock].0 < key {
+                g.tris(Mode::Flat, rock_tex, u, &rocks[next_rock].1);
+                next_rock += 1;
+            }
             let sh = self.props[i].shadow;
             quad(self, g, sh, i, true);
             if !self.props[i].flat {
                 let b = self.props[i].body;
                 quad(self, g, b, i, false);
             }
+        }
+        for r in &rocks[next_rock..] {
+            g.tris(Mode::Flat, rock_tex, u, &r.1);
         }
         self.draw_balls(g, u);
     }

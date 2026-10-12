@@ -40,8 +40,10 @@ about 256 px wide, matching the 229 to 243 px building sprites. `kSpriteUnitsPer
 
 Palette index 255 is the key colour (magenta or cyan depending on the file); it is not index 0.
 Shadow sprites use the same frame layout and anchor as their body and a 5 colour palette ramp
-(white, light green, mid green, green plus the key); the game draws it as translucent black whose
-density follows the ramp. The shadow does **not** rotate between views, only the body does: the
+(white, light green, mid green, green plus the key) at palette indices 0xfb, 0xfa, 0xf9, 0xf8. jgl.dll's blit
+(0x10013400) does not take these colours: for an index 0xf8..0xfc it replaces the screen pixel through one of the shading
+tables the exe built (0x461830): 0xf8 halves each 5-bit channel, 0xf9 takes 5/8, 0xfa 6/8, 0xfb 7/8, 0xfc adds 4. So the
+shadow is black at 1/2, 3/8, 1/4 and 1/8 strength, the darkest where the ramp is pure green. The shadow does **not** rotate between views, only the body does: the
 light is fixed relative to the camera, so shadows always fall the same way on screen. (The game's
 terrain light is fixed in eye space for the same reason.)
 
