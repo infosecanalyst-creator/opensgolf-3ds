@@ -40,6 +40,7 @@ mod member_panel;
 mod message_ui;
 mod net;
 mod panels_ui;
+mod photo;
 mod player_panel;
 mod popup_ui;
 mod pro_ui;
@@ -715,6 +716,8 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 }
             }
             b'm' if v.len() >= 2 => app.move_hole(at(0) as usize, at(1) as usize),
+            // test hook: photo mode (photo.rs), P:LOOK,BLUR,VIGNETTE,ZOOM,HINT,SHOOT
+            b'P' => photo::test_hook(app, &v),
             b'a' if v.len() >= 3 => {
                 // test hook: an animal of kind v[2] and a follower at x,y
                 app.club.wildlife.spawn(&mut app.exe_rng, at(0), at(1), at(2));
@@ -1001,6 +1004,7 @@ impl Stage {
             let (x, z) = app.terrain.tile_centre(cx, cy);
             app.cam_x = x;
             app.cam_z = z;
+            app.photo_rebase_camera();
         }
         app.report_course(true);
         let t = now();
@@ -1379,6 +1383,11 @@ impl Stage {
     /// 0x41de29): lower-case letters pick tools, shifted letters open screens, digits jump to holes, arrows scroll four tiles,
     /// PageUp / Home turn the view a quarter, z / x zoom between the three levels.
     fn play_key(&mut self, k: KeyCode) {
+        // Enhanced graphics' photo mode (photo.rs): c, a key the original leaves unused; nothing in Classic
+        if k == KeyCode::C && !self.shift {
+            self.photo_enter();
+            return;
+        }
         let app = &mut self.app;
         let shift = self.shift;
         // a terrain key picks that brush on the Build Course panel (0x40d890 with the type itself)
@@ -1664,6 +1673,9 @@ impl Stage {
             app.draw_menu(&mut self.g);
             ui::set_face(None);
             app.draw_scenarios(&mut self.g);
+        } else if app.photo.is_some() {
+            // Enhanced graphics' photo mode: the course alone (photo.rs)
+            self.draw_photo(target);
         } else {
             // with the effects' post-processing the course is drawn offscreen and composited before the interface (fx.rs)
             let post = fx::active() && app.fx_world_begin(&mut self.g, target);
@@ -1678,6 +1690,8 @@ impl Stage {
             if !app.no_hud {
                 app.draw_hud(&mut self.g);
             }
+            // Enhanced graphics: the camera button that opens photo mode (photo.rs; nothing in Classic)
+            app.draw_photo_button(&mut self.g);
             if app.screen == Screen::Popup {
                 app.draw_popup(&mut self.g);
             }
@@ -1945,6 +1959,7 @@ impl EventHandler for Stage {
         let t = now();
         self.app.clock = t;
         self.touch_update();
+        self.photo_update();
         if self.pause_toggle {
             self.pause_toggle = false;
             self.toggle_pause();
@@ -2057,6 +2072,11 @@ impl EventHandler for Stage {
         if self.frames == 1 {
             self.pointer_test_hook();
         }
+        // a photo asked for in photo mode is drawn offscreen once the frame is shown (photo.rs; after the scripted
+        // pointer, which may set the focus)
+        if self.app.photo.as_ref().is_some_and(|p| p.pending_shot.is_some()) {
+            self.photo_take();
+        }
         if std::env::var_os("SG_PICKTEST").is_some() && self.frames == 2 {
             self.pick_test();
         }
@@ -2086,6 +2106,10 @@ impl EventHandler for Stage {
     fn mouse_motion_event(&mut self, x: f32, y: f32) {
         let (dx, dy) = (x - self.mouse.0, y - self.mouse.1);
         self.mouse = (x, y);
+        if self.app.photo.is_some() {
+            self.photo_motion(x, y, dx, dy);
+            return;
+        }
         self.app.info.pointer = self.app.view.to_virtual(x, y);
         let (vx, vy) = self.app.view.to_virtual(x, y);
         if self.app.notice.is_some() {
@@ -2145,6 +2169,10 @@ impl EventHandler for Stage {
     }
 
     fn mouse_wheel_event(&mut self, _x: f32, y: f32) {
+        if self.app.photo.is_some() {
+            self.photo_wheel(y);
+            return;
+        }
         if (self.app.screen == Screen::Play || !self.app.ui_ok) && y != 0.0 && self.app.great_shot.is_none() {
             // y is in notches (the browser's pixels are turned into notches by web/opensgolf.js); a trackpad sends many
             // small turns
@@ -2179,6 +2207,10 @@ impl EventHandler for Stage {
         if self.app.notice.is_some() {
             let (vx, vy) = self.app.view.to_virtual(x, y);
             self.app.notice_pointer(vx, vy, button == MouseButton::Left);
+            return;
+        }
+        if self.app.photo.is_some() {
+            self.photo_button(true, button, x, y);
             return;
         }
         if self.app.great_shot_dismiss() || self.app.simfoto_dismiss() {
@@ -2272,6 +2304,10 @@ impl EventHandler for Stage {
         if button == MouseButton::Right && self.app.card_ui.held.take().is_some() {
             return;
         }
+        if button == MouseButton::Left && self.app.photo_button_hit(vx, vy) {
+            self.photo_enter();
+            return;
+        }
         if self.app.ui_ok && button == MouseButton::Left && self.app.card_click(vx, vy) {
             return;
         }
@@ -2309,7 +2345,11 @@ impl EventHandler for Stage {
         }
     }
 
-    fn mouse_button_up_event(&mut self, _button: MouseButton, _x: f32, _y: f32) {
+    fn mouse_button_up_event(&mut self, button: MouseButton, x: f32, y: f32) {
+        if self.app.photo.is_some() {
+            self.photo_button(false, button, x, y);
+            return;
+        }
         if self.dragging {
             self.app.drag_state(false, now());
         }
@@ -2358,6 +2398,10 @@ impl Stage {
         // a notice (gamefiles.rs) takes the keys until it is closed
         if self.app.notice.is_some() {
             self.app.notice_key(k);
+            return;
+        }
+        if self.app.photo.is_some() {
+            self.photo_key(k);
             return;
         }
         if self.app.great_shot.is_some() {

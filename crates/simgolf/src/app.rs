@@ -374,6 +374,8 @@ pub struct App {
     pub fx: crate::fx::FxWorld,
     /// The optional Enhanced graphics' camera and motion state (off by default; see enhanced.rs).
     pub enh: crate::enhanced::EnhState,
+    /// Enhanced graphics' photo mode while it is open (photo.rs); always None in Classic.
+    pub photo: Option<Box<crate::photo::Photo>>,
     pub batches: Vec<Batch>,
     pub path_batches: Vec<Batch>,
     /// Paths not joined to the clubhouse, drawn as mud tracks (manual p. 18).
@@ -697,6 +699,7 @@ impl App {
             hd: crate::hd::HdState { pack_dir: save_dir().join("HD"), ..Default::default() },
             fx: Default::default(),
             enh: Default::default(),
+            photo: None,
             batches: Vec::new(),
             path_batches: Vec::new(),
             mud_batches: Vec::new(),

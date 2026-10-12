@@ -283,7 +283,18 @@ fn post_supported() -> bool {
 }
 
 fn wants_post(s: &FxSettings) -> bool {
-    s.enabled && post_supported() && (s.tilt_shift || s.grading || s.bloom || s.vignette)
+    // photo mode always composites (its looks, focus blur and vignette; photo.rs), in the browser too
+    s.enabled && ((post_supported() && (s.tilt_shift || s.grading || s.bloom || s.vignette)) || crate::photo::post().is_some())
+}
+
+thread_local! {
+    /// The size of the target being drawn when it is not the window (photo mode's larger photos, photo.rs).
+    static RENDER_SIZE: Cell<Option<(f32, f32)>> = const { Cell::new(None) };
+}
+
+/// Drawing into a target of this size instead of the window (None: the window again), for the scaler's magnification.
+pub fn set_render_size(size: Option<(f32, f32)>) {
+    RENDER_SIZE.with(|r| r.set(size));
 }
 
 // ---- theme looks --------------------------------------------------------------------------------------------------------------
@@ -579,7 +590,7 @@ pub fn apply_scaler(
         return false;
     }
     let (tw, th) = ctx.texture_size(tex);
-    let (sw, sh) = window::screen_size();
+    let (sw, sh) = RENDER_SIZE.with(|r| r.get()).unwrap_or_else(window::screen_size);
     let (a, b) = (batch[0], batch[1]);
     let clip = |p: [f32; 3]| {
         let m = &u.mvp;
@@ -946,22 +957,32 @@ impl App {
             g.ctx.draw(0, 6, 1);
             g.ctx.end_render_pass();
         };
+        // a photo larger than the window (photo.rs) blurs as far across the picture as the screen shows
+        let spread = crate::photo::post().map(|ph| ph.spread).unwrap_or(1.0);
         let blur = |g: &mut Gfx, a: usize, b: usize| {
-            run(g, &f.blur, p.passes[b], p.tex[a], [1.0 / small.0, 0.0, 0.0, 0.0]);
-            run(g, &f.blur, p.passes[a], p.tex[b], [0.0, 1.0 / small.1, 0.0, 0.0]);
+            run(g, &f.blur, p.passes[b], p.tex[a], [spread / small.0, 0.0, 0.0, 0.0]);
+            run(g, &f.blur, p.passes[a], p.tex[b], [0.0, spread / small.1, 0.0, 0.0]);
         };
-        let tilt = s.tilt_shift && s.quality > 0;
+        // photo mode (photo.rs): its own focus blur, as many blur passes as its strength, and its own composite
+        let photo = crate::photo::post();
+        let tilt = (s.tilt_shift && s.quality > 0 && photo.is_none()) || photo.is_some_and(|ph| ph.blur > 0);
         let bloom = s.bloom && s.quality > 0;
         if tilt {
             run(g, &f.down, p.passes[0], p.scene, [k / full.0 * 2.0, k / full.1 * 2.0, 0.0, 0.0]);
-            blur(g, 0, 1);
-            blur(g, 0, 1);
+            for _ in 0..photo.map(|ph| ph.blur_passes()).unwrap_or(2) {
+                blur(g, 0, 1);
+            }
         }
         if bloom {
             run(g, &f.down, p.passes[2], p.scene, [k / full.0 * 2.0, k / full.1 * 2.0, 1.0, look.bloom_from]);
             blur(g, 2, 3);
         }
         g.ctx.begin_pass(target, PassAction::Nothing);
+        if let Some(ph) = photo {
+            let theme = crate::photo::ThemeGrade { contrast: look.contrast, vibrance: look.vibrance, tint: look.tint };
+            crate::photo::composite(g, &f, [p.scene, p.tex[0], p.tex[2]], ph, theme, if bloom { 0.45 } else { 0.0 }, full.0 / full.1);
+            return;
+        }
         g.ctx.apply_pipeline(&f.composite);
         g.ctx.apply_bindings(&Bindings {
             vertex_buffers: vec![f.quad_vb],

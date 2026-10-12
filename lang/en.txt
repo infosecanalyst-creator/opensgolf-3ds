@@ -1276,6 +1276,7 @@ STR_ENHANCED_TERRAIN_FILTER             : Sharper course textures
 STR_ENHANCED_MSAA                       : Anti-aliasing
 STR_ENHANCED_SMOOTH_CAMERA              : Smooth camera: zoom, turns and panning
 STR_ENHANCED_SMOOTH_MOTION              : Smooth motion between game ticks
+STR_ENHANCED_PHOTO_MODE                 : Photo mode (the C key or the camera button)
 STR_ENHANCED_FX_SCALER                  : Pixel-art scaling of sprites and pictures
 STR_ENHANCED_FX_SCALER_SHARP            : Sharp bilinear scaling instead of edge-directed
 STR_ENHANCED_FX_WATER                   : Animated water
@@ -1326,6 +1327,34 @@ STR_FX_SCALER_EDGE                      :Edge-directed
 STR_FX_QUALITY_LOW                      :Low
 STR_FX_QUALITY_MEDIUM                   :Medium
 STR_FX_QUALITY_HIGH                     :High
+
+# Enhanced graphics > photo mode (the port's own, docs/ENHANCED.md "Photo mode"): the camera button's tooltip, the hint at
+# the top, the buttons along the bottom ({VALUE} the current choice) and what a photo did ({FILE}, {WIDTH} x {HEIGHT})
+STR_PHOTO_BUTTON_TIP                    :Photo mode (C)
+STR_PHOTO_TITLE                         :Photo mode
+STR_PHOTO_HINT_1                        :Drag or arrows: move   Wheel, pinch or Z / X: zoom   PageUp / Home: turn   Click: focus here
+STR_PHOTO_HINT_2                        :Space: pause   F, [ ]: focus blur   L: look   V: vignette   R: size   Enter: take photo   H: hide   Esc: leave
+STR_PHOTO_BTN_LEAVE                     :Leave
+STR_PHOTO_BTN_PAUSE                     :Pause
+STR_PHOTO_BTN_RESUME                    :Resume
+STR_PHOTO_BTN_LOOK                      :Look: {VALUE}
+STR_PHOTO_BTN_BLUR                      :Blur: {VALUE}
+STR_PHOTO_BTN_VIGNETTE                  :Vignette: {VALUE}
+STR_PHOTO_BTN_SIZE                      :Size: {VALUE}
+STR_PHOTO_BTN_SHOOT                     :Take photo
+STR_PHOTO_ON                            :on
+STR_PHOTO_OFF                           :off
+STR_PHOTO_LOOK_NATURAL                  :Natural
+STR_PHOTO_LOOK_WARM                     :Warm
+STR_PHOTO_LOOK_VIVID                    :Vivid
+STR_PHOTO_LOOK_BW                       :B&W
+STR_PHOTO_LOOK_VINTAGE                  :Vintage
+STR_PHOTO_SIZE_WINDOW                   :window
+STR_PHOTO_SIZE_2X                       :2x
+STR_PHOTO_SIZE_4K                       :4K
+STR_PHOTO_SAVED                         :Photo saved ({WIDTH} x {HEIGHT}): {FILE}
+STR_PHOTO_DOWNLOADED                    :Photo downloaded ({WIDTH} x {HEIGHT}): {FILE}
+STR_PHOTO_FAILED                        :The photo could not be saved
 
 # The quit question (main loop 0x420b4e): the heading by the career's length, or after a championship
 STR_RETIRE_HIS                          :his

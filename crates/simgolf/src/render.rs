@@ -79,11 +79,14 @@ impl App {
             // Enhanced graphics (fx_light.rs): the haze in the distance and the rain, over the course
             self.fx_overlay(g);
         }
-        if self.edit && self.has_hit {
-            self.draw_cursor_preview(g, &Uniforms::flat(&proj, &mv));
+        // photo mode (photo.rs) shows the course alone: no tool preview, aim line or layout path
+        if self.photo.is_none() {
+            if self.edit && self.has_hit {
+                self.draw_cursor_preview(g, &Uniforms::flat(&proj, &mv));
+            }
+            self.draw_aim(g, &Uniforms::flat(&proj, &mv));
+            self.draw_layout_path(g, &Uniforms::flat(&proj, &mv));
         }
-        self.draw_aim(g, &Uniforms::flat(&proj, &mv));
-        self.draw_layout_path(g, &Uniforms::flat(&proj, &mv));
         g.flush();
     }
 

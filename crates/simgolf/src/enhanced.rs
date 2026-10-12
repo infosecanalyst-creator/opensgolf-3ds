@@ -44,6 +44,8 @@ pub struct Settings {
     pub smooth_camera: bool,
     /// Golfers, balls, animals, carts and fly-overs moved smoothly between the simulation's ticks.
     pub smooth_motion: bool,
+    /// Photo mode may be opened (the C key, the camera button; photo.rs).
+    pub photo_mode: bool,
     // the shader effects (fx.rs), each read through fx::sync
     /// Pixel-art scaling of magnified sprites and interface pictures (fx.rs).
     pub fx_scaler: bool,
@@ -94,6 +96,7 @@ impl Settings {
         msaa: true,
         smooth_camera: true,
         smooth_motion: true,
+        photo_mode: true,
         fx_scaler: true,
         fx_scaler_sharp: false,
         fx_water: true,
@@ -162,6 +165,9 @@ pub fn smooth_camera() -> bool {
 pub fn smooth_motion() -> bool {
     on(|s| s.smooth_motion)
 }
+pub fn photo_mode() -> bool {
+    on(|s| s.photo_mode)
+}
 
 /// What a change of an option needs before it shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -220,6 +226,7 @@ pub const OPTIONS: &[OptionEntry] = &[
     tick!("msaa", "STR_ENHANCED_MSAA", DISPLAY, msaa),
     tick!("smooth_camera", "STR_ENHANCED_SMOOTH_CAMERA", DISPLAY, smooth_camera),
     tick!("smooth_motion", "STR_ENHANCED_SMOOTH_MOTION", DISPLAY, smooth_motion),
+    tick!("photo_mode", "STR_ENHANCED_PHOTO_MODE", DISPLAY, photo_mode),
     tick!("fx_scaler", "STR_ENHANCED_FX_SCALER", EFFECTS, fx_scaler),
     tick!("fx_scaler_sharp", "STR_ENHANCED_FX_SCALER_SHARP", EFFECTS, fx_scaler_sharp),
     tick!("fx_water", "STR_ENHANCED_FX_WATER", EFFECTS, fx_water),
@@ -581,9 +588,14 @@ fn ease(dt: f32) -> f32 {
 }
 
 impl App {
+    /// Whether the camera eases: with the smooth camera, and always in photo mode (photo.rs).
+    fn smooth_cam(&self) -> bool {
+        smooth_camera() || self.photo.is_some()
+    }
+
     /// The zoom the course is drawn at: the eased one with the smooth camera, else the zoom itself.
     pub fn view_zoom(&self) -> f32 {
-        if smooth_camera() && self.enh.view_zoom > 0.0 {
+        if self.smooth_cam() && self.enh.view_zoom > 0.0 {
             self.enh.view_zoom
         } else {
             self.zoom
@@ -592,7 +604,7 @@ impl App {
 
     /// The camera's turn as drawn (degrees): part way through an animated quarter turn with the smooth camera.
     pub fn view_rot(&self) -> f32 {
-        if smooth_camera() {
+        if self.smooth_cam() {
             self.rot - self.enh.rot_left
         } else {
             self.rot
@@ -603,7 +615,7 @@ impl App {
     pub fn camera_frame(&mut self, now: f64) {
         let dt = if self.enh.last_frame > 0.0 { (now - self.enh.last_frame).clamp(0.0, 0.1) as f32 } else { 0.0 };
         self.enh.last_frame = now;
-        if !smooth_camera() {
+        if !self.smooth_cam() {
             self.enh.view_zoom = self.zoom;
             self.enh.rot_left = 0.0;
             self.enh.pan_left = (0.0, 0.0);
@@ -650,7 +662,7 @@ impl App {
     /// A drag of the course by (right, up) world units: panned at once, its speed kept for the inertia.
     pub fn drag_pan(&mut self, right: f32, up: f32, now: f64) {
         self.pan(right, up);
-        if !smooth_camera() {
+        if !self.smooth_cam() {
             return;
         }
         let dt = (now - self.enh.last_drag).max(1e-3) as f32;
@@ -674,7 +686,7 @@ impl App {
 
     /// An arrow key's scroll: eased with the smooth camera, at once otherwise.
     pub fn key_pan(&mut self, right: f32, up: f32) {
-        if smooth_camera() {
+        if self.smooth_cam() {
             self.enh.pan_left.0 += right;
             self.enh.pan_left.1 += up;
         } else {
@@ -684,17 +696,18 @@ impl App {
 
     /// A quarter turn has just been made: the shown camera starts from where it was.
     pub fn turned(&mut self, degrees: f32) {
-        if smooth_camera() {
+        if self.smooth_cam() {
             // the short way round
             self.enh.rot_left = (self.enh.rot_left + degrees + 180.0).rem_euclid(360.0) - 180.0;
         }
     }
 
     /// The mouse wheel or a pinch with the smooth camera: the zoom moves continuously between the original's closest and
-    /// farthest levels (a wheel notch is a quarter of a doubling).
+    /// farthest levels (a wheel notch is a quarter of a doubling); in photo mode further both ways (photo.rs).
     pub fn zoom_by(&mut self, doublings: f32) {
         use crate::app::ZOOM_UNIT;
-        self.zoom = (self.zoom * doublings.exp2()).clamp(ZOOM_UNIT, ZOOM_UNIT * 4.0);
+        let (lo, hi) = if self.photo.is_some() { crate::photo::ZOOM_RANGE } else { (ZOOM_UNIT, ZOOM_UNIT * 4.0) };
+        self.zoom = (self.zoom * doublings.exp2()).clamp(lo, hi);
     }
 
     /// The simulation advanced: the positions at this tick become the newest of the two kept (smooth motion only). Called
