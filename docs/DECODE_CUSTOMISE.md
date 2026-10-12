@@ -287,7 +287,7 @@ a per head default table with entry stride 0x44 (`DAT_004D55E8`, +0 for skin, +3
 
 Per frame (EXACT, 32310 to 32384):
 
-1. If the child bit (record +0x2c bit 8) is set: draw object 0x5787a0 at (352, 116), which 0x445860 cuts from `bodies\barrel.pcx` (60 x 120 at (0, 0)): the child stands behind a barrel (EXACT, asm 0x438834).
+1. If the child bit (record +0x2c bit 8) is set: draw object 0x5787a0 at (352, 116), which 0x445860 cuts from `bodies\barrel.pcx` (60 x 120 at (0, 0)), before the body: the child is drawn over a barrel (EXACT, asm 0x438834).
 2. Rebuild the preview palette with `FUN_00462020(0x99)` (virtual slot 0x99, palette object index 0x199).
 3. Draw an object at (355, 116) (size matches a 90x120 head cell, so this is the head, DERIVED). Which head row (happy,
    neutral, angry): UNKNOWN.

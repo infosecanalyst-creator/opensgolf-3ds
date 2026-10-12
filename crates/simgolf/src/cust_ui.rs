@@ -716,7 +716,7 @@ impl App {
         if c.toggles & 2 != 0 {
             o.alt_skin = 4;
         }
-        // a child (record +0x2c bit 8) stands behind Bodies/Barrel.pcx, drawn at (352, 116) before the preview palette and
+        // a child (record +0x2c bit 8) is drawn over Bodies/Barrel.pcx, put at (352, 116) before the preview palette and
         // the body (0x438838)
         if p.fixed & 8 != 0 {
             s.image(g, &self.art.barrel, 352.0, 116.0);
