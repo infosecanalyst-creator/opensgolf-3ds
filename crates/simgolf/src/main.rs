@@ -22,6 +22,7 @@ mod champ_ui;
 mod content;
 mod cursor_ui;
 mod cust_ui;
+mod edges;
 mod enhanced;
 mod files_ui;
 mod fx;

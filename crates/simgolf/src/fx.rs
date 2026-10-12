@@ -554,6 +554,12 @@ pub(crate) fn gpu(g: &mut Gfx) -> &FxGpu {
 
 // ---- the pixel-art scaler -----------------------------------------------------------------------------------------------------
 
+/// How a texture holds its colours, for the scaler: straight, premultiplied (Enhanced's smooth interface textures), or
+/// straight with the distance to a smoothed outline in alpha (Enhanced's smooth edges for colour-keyed art, edges.rs).
+pub const TEX_STRAIGHT: u8 = 0;
+pub const TEX_PREMUL: u8 = 1;
+pub const TEX_SDF: u8 = 2;
+
 /// Whether the scaler may take over a batch (called by Gfx::flush for the flat 2D / sprite draws).
 pub fn scaler_wanted() -> bool {
     let s = settings();
@@ -562,8 +568,9 @@ pub fn scaler_wanted() -> bool {
 
 /// Draw state for a batch of flat quads drawn with the scaler: sets the pipeline, bindings and uniforms and returns true, or
 /// returns false (the caller draws the classic way) when the picture is not magnified, is text, or the batch is not quads.
-/// The magnification is measured on the batch's first quad edge (its first two vertices). `premul`: the texture holds
-/// premultiplied colours (and the batch's vertex colours are premultiplied).
+/// The magnification is measured on the batch's first quad edge (its first two vertices). `colours`: how the texture holds
+/// its colours (TEX_STRAIGHT, TEX_PREMUL or TEX_SDF; with the last two the batch's vertex colours are premultiplied and the
+/// output is too).
 #[allow(clippy::too_many_arguments)]
 pub fn apply_scaler(
     ctx: &mut Box<dyn RenderingBackend>,
@@ -573,29 +580,14 @@ pub fn apply_scaler(
     ib: BufferId,
     tex: TextureId,
     u: &Uniforms,
-    premul: bool,
+    colours: u8,
 ) -> bool {
     if batch.len() < 6 || PLAIN.with(|p| p.borrow().contains(&tex)) {
         return false;
     }
     let (tw, th) = ctx.texture_size(tex);
-    let (sw, sh) = window::screen_size();
-    let (a, b) = (batch[0], batch[1]);
-    let clip = |p: [f32; 3]| {
-        let m = &u.mvp;
-        let x = m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12];
-        let y = m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13];
-        let w = m[3] * p[0] + m[7] * p[1] + m[11] * p[2] + m[15];
-        (x / w * sw * 0.5, y / w * sh * 0.5)
-    };
-    let (pa, pb) = (clip(a.pos), clip(b.pos));
-    let px = (pb.0 - pa.0).hypot(pb.1 - pa.1);
-    let texels = ((b.uv[0] - a.uv[0]) * tw as f32).hypot((b.uv[1] - a.uv[1]) * th as f32);
-    if texels < 0.5 {
-        return false;
-    }
-    let scale = px / texels;
-    if !scale.is_finite() || scale < 1.05 {
+    let Some(scale) = crate::gfx::batch_scale(&**ctx, batch, tex, u) else { return false };
+    if scale < 1.05 {
         return false;
     }
     // edge-directed rules need room to show; at low magnifications and on the lowest quality the sharp filter does it
@@ -604,14 +596,14 @@ pub fn apply_scaler(
         *fx = Some(Box::new(FxGpu::new(&mut **ctx)));
     }
     let Some(f) = fx.as_deref() else { return false };
-    ctx.apply_pipeline(if premul { &f.scaler_pm } else { &f.scaler });
+    ctx.apply_pipeline(if colours != TEX_STRAIGHT { &f.scaler_pm } else { &f.scaler });
     ctx.apply_bindings(&Bindings { vertex_buffers: vec![vb], index_buffer: ib, images: vec![tex] });
     ctx.apply_uniforms(UniformsSource::table(&ScalerUniforms {
         mvp: u.mvp,
         sp: [tw as f32, th as f32, scale, mode as f32],
         alpha_ref: u.alpha_ref,
         soft: if mode == SCALER_EDGE { SOFT_EDGE.with(|s| s.get()) } else { SOFT_SHARP.with(|s| s.get()) },
-        pm: premul as i32 as f32,
+        pm: colours as f32,
     }));
     true
 }

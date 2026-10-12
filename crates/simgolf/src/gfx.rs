@@ -166,6 +166,34 @@ void main() {
 }
 "#;
 
+/// Enhanced graphics' smooth edges (edges.rs): a colour-keyed picture whose alpha holds the distance to its smoothed outline
+/// (-edges::SPREAD..+SPREAD texels over 0..1, so 8 texels across). `edge` is how many screen pixels a texel covers in this
+/// draw, so the coverage ramp is one screen pixel wide at any size. Colours come out premultiplied (drawn with the
+/// premultiplied blend).
+const FRAGMENT_SDF: &str = r#"#version 100
+precision mediump float;
+varying lowp vec4 color;
+varying highp vec2 uv;
+uniform sampler2D tex;
+uniform float alpha_ref;
+uniform float edge;
+void main() {
+    vec4 t = texture2D(tex, uv);
+    float a = clamp((t.a - 0.5) * 8.0 * edge + 0.5, 0.0, 1.0);
+    vec4 c = vec4(t.rgb * a, a) * color;
+    if (c.a <= alpha_ref) discard;
+    gl_FragColor = c;
+}
+"#;
+
+/// The uniforms of FRAGMENT_SDF's draws: the usual ones and the screen pixels per texel.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+struct SdfUniforms {
+    u: Uniforms,
+    edge: f32,
+}
+
 /// Which fixed state a draw uses.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {
@@ -193,6 +221,11 @@ pub struct Gfx {
     overlay_pm: Pipeline,
     flat_pm: Pipeline,
     premul: std::collections::HashSet<TextureId>,
+    /// Enhanced graphics' smooth edges (edges.rs): textures whose alpha is a distance to the outline, drawn with FRAGMENT_SDF
+    /// (premultiplied blending) by these pipelines.
+    overlay_sdf: Pipeline,
+    flat_sdf: Pipeline,
+    sdf: std::collections::HashSet<TextureId>,
     pub white: TextureId,
     stream_vb: BufferId,
     stream_ib: BufferId,
@@ -233,6 +266,23 @@ impl Gfx {
                 },
             )
             .expect("shader");
+        let sdf_uniforms = vec![
+            UniformDesc::new("mvp", UniformType::Mat4),
+            UniformDesc::new("mv", UniformType::Mat4),
+            UniformDesc::new("lit", UniformType::Float1),
+            UniformDesc::new("alpha_ref", UniformType::Float1),
+            UniformDesc::new("light_amb", UniformType::Float3),
+            UniformDesc::new("light_dif", UniformType::Float3),
+            UniformDesc::new("light_spec", UniformType::Float3),
+            UniformDesc::new("light_dir", UniformType::Float3),
+            UniformDesc::new("edge", UniformType::Float1),
+        ];
+        let sdf_shader = ctx
+            .new_shader(
+                ShaderSource::Glsl { vertex: VERTEX, fragment: FRAGMENT_SDF },
+                ShaderMeta { images: vec!["tex".to_string()], uniforms: UniformBlockLayout { uniforms: sdf_uniforms } },
+            )
+            .expect("shader");
         let attrs = [
             VertexAttribute::new("in_pos", VertexFormat::Float3),
             VertexAttribute::new("in_uv", VertexFormat::Float2),
@@ -245,7 +295,7 @@ impl Gfx {
             BlendFactor::OneMinusValue(BlendValue::SourceAlpha),
         ));
         let alpha_blend = Some(BlendState::new(Equation::Add, BlendFactor::One, BlendFactor::OneMinusValue(BlendValue::SourceAlpha)));
-        let mut pipe = |depth_test: Comparison, depth_write: bool, color_blend: Option<BlendState>| {
+        let mut pipe = |shader: ShaderId, depth_test: Comparison, depth_write: bool, color_blend: Option<BlendState>| {
             ctx.new_pipeline(
                 &[BufferLayout::default()],
                 &attrs,
@@ -259,12 +309,14 @@ impl Gfx {
                 },
             )
         };
-        let solid = pipe(Comparison::Less, true, None);
-        let overlay = pipe(Comparison::Less, false, blend);
-        let flat = pipe(Comparison::Always, false, blend);
+        let solid = pipe(shader, Comparison::Less, true, None);
+        let overlay = pipe(shader, Comparison::Less, false, blend);
+        let flat = pipe(shader, Comparison::Always, false, blend);
         let pm = Some(BlendState::new(Equation::Add, BlendFactor::One, BlendFactor::OneMinusValue(BlendValue::SourceAlpha)));
-        let overlay_pm = pipe(Comparison::Less, false, pm);
-        let flat_pm = pipe(Comparison::Always, false, pm);
+        let overlay_pm = pipe(shader, Comparison::Less, false, pm);
+        let flat_pm = pipe(shader, Comparison::Always, false, pm);
+        let overlay_sdf = pipe(sdf_shader, Comparison::Less, false, pm);
+        let flat_sdf = pipe(sdf_shader, Comparison::Always, false, pm);
         let white = ctx.new_texture_from_rgba8(1, 1, &[255, 255, 255, 255]);
         let stream_cap = 4096;
         let stream_vb = ctx.new_buffer(BufferType::VertexBuffer, BufferUsage::Stream, BufferSource::empty::<Vert>(stream_cap));
@@ -277,6 +329,9 @@ impl Gfx {
             overlay_pm,
             flat_pm,
             premul: Default::default(),
+            overlay_sdf,
+            flat_sdf,
+            sdf: Default::default(),
             white,
             stream_vb,
             stream_ib,
@@ -291,8 +346,11 @@ impl Gfx {
 
     fn pipeline(&self, mode: Mode, tex: TextureId) -> &Pipeline {
         let pm = !self.premul.is_empty() && self.premul.contains(&tex);
+        let sdf = self.is_sdf(tex);
         match mode {
             Mode::Solid => &self.solid,
+            Mode::Overlay if sdf => &self.overlay_sdf,
+            Mode::Flat if sdf => &self.flat_sdf,
             Mode::Overlay if pm => &self.overlay_pm,
             Mode::Overlay => &self.overlay,
             Mode::Flat if pm => &self.flat_pm,
@@ -303,6 +361,33 @@ impl Gfx {
     /// Whether a texture holds premultiplied colours (Enhanced graphics' smooth interface option, enhanced.rs).
     pub fn is_premul(&self, tex: TextureId) -> bool {
         !self.premul.is_empty() && self.premul.contains(&tex)
+    }
+
+    /// Whether a texture's alpha is a distance to its outline (Enhanced graphics' smooth edges, edges.rs).
+    pub fn is_sdf(&self, tex: TextureId) -> bool {
+        !self.sdf.is_empty() && self.sdf.contains(&tex)
+    }
+
+    /// Enhanced graphics' smooth edges: a colour-keyed picture with the distance to its smoothed outline in alpha (edges.rs),
+    /// straight colours, mipmapped (trilinear) and clamped.
+    fn texture_sdf(&mut self, img: &Rgba) -> TextureId {
+        let params = TextureParams {
+            kind: TextureKind::Texture2D,
+            width: img.w,
+            height: img.h,
+            format: TextureFormat::RGBA8,
+            wrap: TextureWrap::Clamp,
+            min_filter: FilterMode::Linear,
+            mag_filter: FilterMode::Linear,
+            mipmap_filter: MipmapFilterMode::Linear,
+            allocate_mipmaps: true,
+            sample_count: 1,
+        };
+        let id = self.ctx.new_texture(TextureAccess::Static, TextureSource::Bytes(&img.px), params);
+        self.ctx.texture_generate_mipmaps(id);
+        self.premul.remove(&id);
+        self.sdf.insert(id);
+        id
     }
 
     /// Enhanced graphics: a texture with premultiplied colours, mipmapped (trilinear) and clamped; `aniso` adds anisotropic
@@ -334,6 +419,7 @@ impl Gfx {
         if aniso {
             crate::enhanced::anisotropy(self, id);
         }
+        self.sdf.remove(&id);
         self.premul.insert(id);
         id
     }
@@ -389,6 +475,12 @@ impl Gfx {
         } else {
             img
         };
+        // a colour-keyed picture (interface art, sprites): smooth outlines at any size (edges.rs)
+        if enhanced && !mipmaps && crate::enhanced::smooth_edges() {
+            if let Some(soft) = crate::edges::soft_edges(img) {
+                return self.texture_sdf(&soft);
+            }
+        }
         if enhanced && (crate::enhanced::smooth_ui() || (mipmaps && crate::enhanced::terrain_filter())) {
             return self.texture_enhanced(img, mipmaps && crate::enhanced::terrain_filter());
         }
@@ -408,6 +500,9 @@ impl Gfx {
         if mipmaps {
             self.ctx.texture_generate_mipmaps(id);
         }
+        // a texture made the classic way under the id of one deleted earlier
+        self.premul.remove(&id);
+        self.sdf.remove(&id);
         id
     }
 
@@ -480,7 +575,7 @@ impl Gfx {
             self.batch_mode = mode;
             self.batch_uniforms = Some(*u);
         }
-        if self.is_premul(tex) {
+        if self.is_premul(tex) || self.is_sdf(tex) {
             // premultiplied blending takes the vertex colour premultiplied too
             self.batch.extend(verts.iter().map(|v| {
                 let mut v = *v;
@@ -521,24 +616,28 @@ impl Gfx {
         }
         self.ctx.buffer_update(self.stream_vb, BufferSource::slice(&self.batch));
         // Enhanced graphics only (fx.rs): magnified sprites and interface pictures through the pixel-art scaler
+        let sdf = self.is_sdf(tex);
+        let colours = if sdf {
+            crate::fx::TEX_SDF
+        } else if self.is_premul(tex) {
+            crate::fx::TEX_PREMUL
+        } else {
+            crate::fx::TEX_STRAIGHT
+        };
         let scaled = self.batch_mode == Mode::Flat
             && tex != self.white
             && crate::fx::scaler_wanted()
-            && crate::fx::apply_scaler(
-                &mut self.ctx,
-                &mut self.fx,
-                &self.batch,
-                self.stream_vb,
-                self.stream_ib,
-                tex,
-                &u,
-                !self.premul.is_empty() && self.premul.contains(&tex),
-            );
+            && crate::fx::apply_scaler(&mut self.ctx, &mut self.fx, &self.batch, self.stream_vb, self.stream_ib, tex, &u, colours);
         if !scaled {
             let p = *self.pipeline(self.batch_mode, tex);
             self.ctx.apply_pipeline(&p);
             self.ctx.apply_bindings(&Bindings { vertex_buffers: vec![self.stream_vb], index_buffer: self.stream_ib, images: vec![tex] });
-            self.ctx.apply_uniforms(UniformsSource::table(&u));
+            if sdf {
+                let edge = batch_scale(&*self.ctx, &self.batch, tex, &u).unwrap_or(1.0);
+                self.ctx.apply_uniforms(UniformsSource::table(&SdfUniforms { u, edge }));
+            } else {
+                self.ctx.apply_uniforms(UniformsSource::table(&u));
+            }
         }
         self.ctx.draw(0, self.batch.len() as i32, 1);
         self.batch.clear();
@@ -563,6 +662,29 @@ mod tests {
         assert!((m[0] * 2.0 + m[12] - 1.0).abs() < 1e-6);
         assert!((-m[5] + m[13] + 1.0).abs() < 1e-6);
     }
+}
+
+/// How many screen pixels a texel of `tex` covers in a batch of quads, measured along its first edge (its first two
+/// vertices); None when that edge has no length in the texture.
+pub fn batch_scale(ctx: &dyn RenderingBackend, batch: &[Vert], tex: TextureId, u: &Uniforms) -> Option<f32> {
+    if batch.len() < 2 {
+        return None;
+    }
+    let (tw, th) = ctx.texture_size(tex);
+    let (sw, sh) = window::screen_size();
+    let (a, b) = (batch[0], batch[1]);
+    let clip = |p: [f32; 3]| {
+        let m = &u.mvp;
+        let x = m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12];
+        let y = m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13];
+        let w = m[3] * p[0] + m[7] * p[1] + m[11] * p[2] + m[15];
+        (x / w * sw * 0.5, y / w * sh * 0.5)
+    };
+    let (pa, pb) = (clip(a.pos), clip(b.pos));
+    let px = (pb.0 - pa.0).hypot(pb.1 - pa.1);
+    let texels = ((b.uv[0] - a.uv[0]) * tw as f32).hypot((b.uv[1] - a.uv[1]) * th as f32);
+    let scale = px / texels;
+    (texels >= 0.5 && scale.is_finite() && scale > 0.0).then_some(scale)
 }
 
 /// Gives every fully transparent pixel the average colour of its opaque neighbours (repeated outwards a few pixels), so linear

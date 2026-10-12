@@ -31,7 +31,8 @@ pub struct Settings {
     pub enabled: bool,
     /// Text rasterised from the TrueType fonts at the screen's pixel size (layout unchanged).
     pub native_text: bool,
-    /// Interface and sprite art with premultiplied alpha and mipmaps (clean edges at any scale).
+    /// Interface and sprite art with premultiplied alpha and mipmaps, colour-keyed art with smoothed outlines (edges.rs):
+    /// clean edges at any scale.
     pub smooth_ui: bool,
     /// On windows wider (or taller) than 4:3 the HUD goes to the window's corners and edges; full-screen pages are
     /// framed.
@@ -146,6 +147,11 @@ pub fn native_text() -> bool {
 }
 pub fn smooth_ui() -> bool {
     on(|s| s.smooth_ui)
+}
+/// Colour-keyed art (interface pictures, sprites) with smooth outlines at any size (edges.rs): part of the smooth interface
+/// art option.
+pub fn smooth_edges() -> bool {
+    smooth_ui()
 }
 pub fn widescreen() -> bool {
     on(|s| s.widescreen)
