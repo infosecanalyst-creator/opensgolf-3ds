@@ -1275,6 +1275,36 @@ STR_ENHANCED_TERRAIN_FILTER             : Sharper course textures
 STR_ENHANCED_MSAA                       : Anti-aliasing
 STR_ENHANCED_SMOOTH_CAMERA              : Smooth camera: zoom, turns and panning
 STR_ENHANCED_SMOOTH_MOTION              : Smooth motion between game ticks
+STR_ENHANCED_FX_SCALER                  : Effects: pixel-art scaling of sprites and pictures
+STR_ENHANCED_FX_SCALER_SHARP            : Effects: sharp bilinear scaling instead of edge-directed
+STR_ENHANCED_FX_WATER                   : Effects: animated water
+STR_ENHANCED_FX_TERRAIN_LIGHT           : Effects: terrain light, occlusion and shadows
+STR_ENHANCED_FX_SPRITE_SHADOWS          : Effects: soft sprite shadows
+STR_ENHANCED_FX_SKY                     : Effects: sky beyond the map
+STR_ENHANCED_FX_TILT_SHIFT              : Effects: tilt-shift (miniature look)
+STR_ENHANCED_FX_GRADING                 : Effects: colour grading and vignette
+STR_ENHANCED_FX_BLOOM                   : Effects: bloom
+# Enhanced graphics > Effects (the port's own, docs/ENHANCED.md): each option's label and its choices
+STR_FX_EFFECTS                          :Effects
+STR_FX_SCALER                           :Pixel-art scaling of sprites and pictures
+STR_FX_WATER                            :Animated water
+STR_FX_LIGHTING                         :Per-pixel terrain light
+STR_FX_OCCLUSION                        :Ambient occlusion
+STR_FX_SHADOWS                          :Soft terrain shadows
+STR_FX_SPRITE_SHADOWS                   :Soft sprite shadows
+STR_FX_SKY                              :Sky beyond the map
+STR_FX_TILT_SHIFT                       :Tilt-shift (miniature look)
+STR_FX_GRADING                          :Colour grading
+STR_FX_BLOOM                            :Bloom
+STR_FX_VIGNETTE                         :Vignette
+STR_FX_QUALITY                          :Effects quality
+STR_FX_OFF                              :Off
+STR_FX_ON                               :On
+STR_FX_SCALER_SHARP                     :Sharp bilinear
+STR_FX_SCALER_EDGE                      :Edge-directed
+STR_FX_QUALITY_LOW                      :Low
+STR_FX_QUALITY_MEDIUM                   :Medium
+STR_FX_QUALITY_HIGH                     :High
 
 # The quit question (main loop 0x420b4e): the heading by the career's length, or after a championship
 STR_RETIRE_HIS                          :his

@@ -44,6 +44,25 @@ pub struct Settings {
     pub smooth_camera: bool,
     /// Golfers, balls, animals, carts and fly-overs moved smoothly between the simulation's ticks.
     pub smooth_motion: bool,
+    // the shader effects (fx.rs), each read through fx::sync
+    /// Pixel-art scaling of magnified sprites and interface pictures (fx.rs).
+    pub fx_scaler: bool,
+    /// The scaler's sharp-bilinear filter instead of the edge-directed one.
+    pub fx_scaler_sharp: bool,
+    /// Animated water: reflections, sparkle, shore foam.
+    pub fx_water: bool,
+    /// Per-pixel terrain light, ambient occlusion and soft relief shadows.
+    pub fx_terrain_light: bool,
+    /// The art's sprite shadows softened.
+    pub fx_sprite_shadows: bool,
+    /// A sky instead of black beyond the map.
+    pub fx_sky: bool,
+    /// Tilt-shift blur towards the screen's top and bottom.
+    pub fx_tilt_shift: bool,
+    /// Colour grading and vignette, per theme.
+    pub fx_grading: bool,
+    /// Bloom on the brightest highlights.
+    pub fx_bloom: bool,
 }
 
 impl Settings {
@@ -57,6 +76,15 @@ impl Settings {
         msaa: true,
         smooth_camera: true,
         smooth_motion: true,
+        fx_scaler: true,
+        fx_scaler_sharp: false,
+        fx_water: true,
+        fx_terrain_light: true,
+        fx_sprite_shadows: true,
+        fx_sky: true,
+        fx_tilt_shift: false,
+        fx_grading: true,
+        fx_bloom: true,
     };
 }
 
@@ -172,6 +200,63 @@ pub const OPTIONS: &[OptionEntry] = &[
         set: |s, v| s.smooth_motion = v,
         reload: Reload::Nothing,
     },
+    OptionEntry {
+        key: "fx_scaler",
+        label: "STR_ENHANCED_FX_SCALER",
+        get: |s| s.fx_scaler,
+        set: |s, v| s.fx_scaler = v,
+        reload: Reload::Nothing,
+    },
+    OptionEntry {
+        key: "fx_scaler_sharp",
+        label: "STR_ENHANCED_FX_SCALER_SHARP",
+        get: |s| s.fx_scaler_sharp,
+        set: |s, v| s.fx_scaler_sharp = v,
+        reload: Reload::Nothing,
+    },
+    OptionEntry {
+        key: "fx_water",
+        label: "STR_ENHANCED_FX_WATER",
+        get: |s| s.fx_water,
+        set: |s, v| s.fx_water = v,
+        reload: Reload::Nothing,
+    },
+    OptionEntry {
+        key: "fx_terrain_light",
+        label: "STR_ENHANCED_FX_TERRAIN_LIGHT",
+        get: |s| s.fx_terrain_light,
+        set: |s, v| s.fx_terrain_light = v,
+        reload: Reload::Nothing,
+    },
+    OptionEntry {
+        key: "fx_sprite_shadows",
+        label: "STR_ENHANCED_FX_SPRITE_SHADOWS",
+        get: |s| s.fx_sprite_shadows,
+        set: |s, v| s.fx_sprite_shadows = v,
+        reload: Reload::Nothing,
+    },
+    OptionEntry { key: "fx_sky", label: "STR_ENHANCED_FX_SKY", get: |s| s.fx_sky, set: |s, v| s.fx_sky = v, reload: Reload::Nothing },
+    OptionEntry {
+        key: "fx_tilt_shift",
+        label: "STR_ENHANCED_FX_TILT_SHIFT",
+        get: |s| s.fx_tilt_shift,
+        set: |s, v| s.fx_tilt_shift = v,
+        reload: Reload::Nothing,
+    },
+    OptionEntry {
+        key: "fx_grading",
+        label: "STR_ENHANCED_FX_GRADING",
+        get: |s| s.fx_grading,
+        set: |s, v| s.fx_grading = v,
+        reload: Reload::Nothing,
+    },
+    OptionEntry {
+        key: "fx_bloom",
+        label: "STR_ENHANCED_FX_BLOOM",
+        get: |s| s.fx_bloom,
+        set: |s, v| s.fx_bloom = v,
+        reload: Reload::Nothing,
+    },
 ];
 
 // ---- the settings file ------------------------------------------------------------------------------------------------------
@@ -207,6 +292,7 @@ pub fn init(force: Option<bool>) {
         s.enabled = on;
     }
     set(s);
+    crate::fx::sync(&s);
     if s.enabled {
         let on: Vec<&str> = OPTIONS.iter().filter(|o| (o.get)(&s)).map(|o| o.key).collect();
         println!("Enhanced graphics: on ({})", on.join(", "));
@@ -249,6 +335,8 @@ impl App {
         }
         set(new);
         save(&new);
+        // the shader effects follow their ticks (what the terrain's meshes depend on is rebuilt)
+        self.fx_set(crate::fx::from_enhanced(&new));
         let art = |s: &Settings| {
             let mut k: Vec<bool> = OPTIONS.iter().filter(|o| o.reload == Reload::Art).map(|o| s.enabled && (o.get)(s)).collect();
             k.push(s.enabled);

@@ -112,6 +112,16 @@ stop. `--enhanced` and `--classic-render` switch it for one run. Test hooks: `--
 `SG_POINTER=x,y` moves the pointer and `SG_CLICK=x,y[;x,y...]` clicks, in window pixels, after the first frame of a
 scripted still (for checking where clicks land on a wide window).
 
+### Enhanced graphics: the effects
+
+The effects are ticks on the same screen; `--fx` turns on only the optional shader effects for one run (docs/ENHANCED.md, "Effects"): smoother magnified sprites and interface art,
+animated water, terrain light with occlusion and shadows, a sky beyond the map, colour grading, bloom and vignette.
+`--fx-set LIST` picks options (`scaler=off|sharp|edge`, `water`, `lighting`, `occlusion`, `shadows`, `sprite-shadows`,
+`sky`, `tilt-shift`, `grading`, `bloom`, `vignette` = on/off, `quality=low|medium|high`), `--fx-list` prints them, and
+`OPENSGOLF_FX` does the same from the environment. Without them the game looks exactly as before. Test hooks: `SG_FX_BENCH=N`
+with `--png` prints the frame time over N frames, `SG_FX_LOG=1` the light map's build time, `SG_FX_DUMP=FILE` writes the
+light map, `SG_FX_SOFT=sharp,edge` overrides the scaler's softness (texels).
+
 ## Language
 
 The game is in English unless a translation is installed (docs/TRANSLATING.md): then System Functions > Preferences has a

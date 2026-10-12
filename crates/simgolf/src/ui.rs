@@ -420,7 +420,9 @@ impl Font {
             row_h = row_h.max(m.height);
         }
         let img = sg_core::assets::Rgba { w: ATLAS as u32, h: ATLAS as u32, px: atlas };
-        Some(Font { tex: Some(g.texture_classic(&img)), glyphs, vm, raw: Some(font) })
+        let tex = g.texture_classic(&img);
+        crate::fx::plain_texture(tex); // text is not pixel art: the effects' scaler leaves it alone
+        Some(Font { tex: Some(tex), glyphs, vm, raw: Some(font) })
     }
 
     /// Top of the exe's text to its baseline: tmAscent - tmInternalLeading, which is the em less tmDescent.

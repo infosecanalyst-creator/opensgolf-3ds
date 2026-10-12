@@ -21,6 +21,8 @@ mod cursor_ui;
 mod cust_ui;
 mod enhanced;
 mod files_ui;
+mod fx;
+mod fx_glsl;
 mod gfx;
 mod hd;
 mod holemarks;
@@ -87,6 +89,8 @@ struct Options {
     /// --hd / --classic: the graphics mode for this run (else the saved choice).
     hd: Option<bool>,
     hd_pack: Option<PathBuf>,
+    fx: bool,
+    fx_set: Option<String>,
     /// --enhanced / --classic-render: Enhanced graphics on or off for this run (else the saved choice; enhanced.rs).
     enhanced: Option<bool>,
     /// --base ID: the base set for this run (original, opensgolf-free or a base pack), not saved.
@@ -101,7 +105,7 @@ struct Options {
 const USAGE: &str = "usage: opensgolf [--game DIR] [--theme T] [--seed N] [--size WxH] [--zoom Z] [--rot DEG] [--center TX,TY] [--png FILE] \
 [--time S] [--follow] [--golfer NAME] [--sandbox] [--cash N] [--difficulty 0-3] [--screen menu|property|play|report] [--course FILE] [--save FILE] \
 [--edit SPEC] [--panel N] [--mute] [--sound-log] [--clock MS] [--property N|NAME] [--hd | --classic] [--hd-pack DIR] \
-[--enhanced | --classic-render] \
+[--enhanced | --classic-render] [--fx] [--fx-set LIST] \
 [--lang CODE] [--lang-file FILE] [--base original|opensgolf-free|ID] [--scenario ID]";
 
 /// Leading comma separated integers, like sscanf("%d,%d,...") (stops at the first one that does not parse).
@@ -161,6 +165,8 @@ fn parse_args() -> Options {
         property: None,
         hd: None,
         hd_pack: None,
+        fx: false,
+        fx_set: None,
         enhanced: None,
         base: None,
         lang: None,
@@ -217,6 +223,13 @@ fn parse_args() -> Options {
             "--hd" => o.hd = Some(true),
             "--classic" => o.hd = Some(false),
             "--hd-pack" => o.hd_pack = Some(PathBuf::from(next())),
+            "--fx" => o.fx = true,
+            "--fx-set" => o.fx_set = Some(next()),
+            "--fx-list" => {
+                fx::configure(true, None);
+                fx::print_options();
+                std::process::exit(0);
+            }
             "--enhanced" => o.enhanced = Some(true),
             "--classic-render" => o.enhanced = Some(false),
             "--base" => o.base = Some(next()),
@@ -826,6 +839,8 @@ impl Stage {
         let hd_msg = app.init_hd(o.hd.unwrap_or_else(hd::saved_choice));
         // Enhanced graphics (enhanced.rs), also before any art: the textures carry its filtering
         enhanced::init(o.enhanced);
+        // the effects (fx.rs) follow Enhanced's ticks; --fx / --fx-set / OPENSGOLF_FX turn them on for this run
+        fx::configure(o.fx, o.fx_set.as_deref());
         if !app.load_theme(&mut g, app.theme) {
             std::process::exit(1);
         }
@@ -1585,7 +1600,12 @@ impl Stage {
             ui::set_face(None);
             app.draw_scenarios(&mut self.g);
         } else {
+            // with the effects' post-processing the course is drawn offscreen and composited before the interface (fx.rs)
+            let post = fx::active() && app.fx_world_begin(&mut self.g);
             app.render_world(&mut self.g);
+            if post {
+                app.fx_world_end(&mut self.g, target);
+            }
             app.draw_building_label(&mut self.g);
             if app.great_shot.is_none() {
                 app.draw_cursor_overlay(&mut self.g);
@@ -1780,6 +1800,39 @@ impl Stage {
         img
     }
 
+    /// Draws `n` frames into an offscreen target and prints the mean time a frame took (the last read waits for the GPU).
+    fn bench(&mut self, n: u32) {
+        let (w, h) = (self.app.draw_w as u32, self.app.draw_h as u32);
+        let params = |format| TextureParams { width: w, height: h, format, ..Default::default() };
+        let color = self.g.ctx.new_render_texture(params(TextureFormat::RGBA8));
+        let depth = self.g.ctx.new_render_texture(params(TextureFormat::Depth));
+        let pass = self.g.ctx.new_render_pass(color, Some(depth));
+        // one frame first (shaders compiled, targets made), then wait for it
+        self.draw_frame(Some(pass));
+        let mut raw = vec![0u8; (w * h * 4) as usize];
+        self.g.ctx.texture_read_pixels(color, &mut raw);
+        // the process's CPU time too (Linux): with a software renderer that is the drawing's cost, whatever else runs
+        let cpu = || {
+            let st = std::fs::read_to_string("/proc/self/stat").unwrap_or_default();
+            let f: Vec<f64> = st.rsplit(')').next().unwrap_or("").split_whitespace().filter_map(|x| x.parse().ok()).collect();
+            (f.get(11).copied().unwrap_or(0.0) + f.get(12).copied().unwrap_or(0.0)) * 10.0
+        };
+        let (t0, c0) = (now(), cpu());
+        for _ in 0..n {
+            self.draw_frame(Some(pass));
+        }
+        self.g.ctx.texture_read_pixels(color, &mut raw);
+        let ms = (now() - t0) * 1000.0 / n as f64;
+        let cms = (cpu() - c0) / n as f64;
+        println!(
+            "bench: {w}x{h}, effects {}, {ms:.2} ms a frame over {n} frames, {cms:.0} ms CPU",
+            if fx::active() { "on" } else { "off" }
+        );
+        self.g.ctx.delete_render_pass(pass);
+        self.g.ctx.delete_texture(color);
+        self.g.ctx.delete_texture(depth);
+    }
+
     /// Test hooks for the pointer after the first frame: SG_POINTER=x,y moves it to window pixel (x, y), SG_CLICK=x,y
     /// clicks the left button there, several clicks separated by ';' (for stills of hover looks and of where clicks land,
     /// e.g. with Enhanced widescreen).
@@ -1943,6 +1996,10 @@ impl EventHandler for Stage {
         }
         if let Some(out) = self.png_out.clone() {
             if self.frames >= 2 {
+                // SG_FX_BENCH=N: the frame time over N frames drawn offscreen (Classic or with the effects), for measuring
+                if let Some(n) = std::env::var("SG_FX_BENCH").ok().and_then(|v| v.parse::<u32>().ok()) {
+                    self.bench(n.max(1));
+                }
                 // let the first frame settle
                 if !self.screenshot(&out) {
                     eprintln!("could not write {}", out.display());

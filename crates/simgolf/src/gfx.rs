@@ -202,6 +202,8 @@ pub struct Gfx {
     batch_tex: Option<TextureId>,
     batch_mode: Mode,
     batch_uniforms: Option<Uniforms>,
+    /// The Enhanced graphics effects' pipelines (fx.rs), made on first use; None in Classic.
+    pub fx: Option<Box<crate::fx::FxGpu>>,
 }
 
 fn seq_indices(n: usize) -> Vec<u32> {
@@ -283,6 +285,7 @@ impl Gfx {
             batch_tex: None,
             batch_mode: Mode::Flat,
             batch_uniforms: None,
+            fx: None,
         }
     }
 
@@ -363,6 +366,7 @@ impl Gfx {
         if pm {
             self.premul.insert(id);
         }
+        crate::fx::plain_texture(id); // text: the effects' scaler leaves it alone
         id
     }
 
@@ -452,6 +456,18 @@ impl Gfx {
         self.ctx.draw(0, mesh.count, 1);
     }
 
+    /// A mesh with another pipeline and its own textures and uniforms (the effects' shaders, fx.rs).
+    pub fn draw_mesh_with(&mut self, pipeline: &Pipeline, mesh: &Mesh, images: &[TextureId], u: UniformsSource) {
+        self.flush();
+        if mesh.count == 0 {
+            return;
+        }
+        self.ctx.apply_pipeline(pipeline);
+        self.ctx.apply_bindings(&Bindings { vertex_buffers: vec![mesh.vb], index_buffer: mesh.ib, images: images.to_vec() });
+        self.ctx.apply_uniforms(u);
+        self.ctx.draw(0, mesh.count, 1);
+    }
+
     /// Queues triangles (three vertices each). Consecutive calls with the same texture, mode and uniforms are drawn together.
     pub fn tris(&mut self, mode: Mode, tex: Option<TextureId>, u: &Uniforms, verts: &[Vert]) {
         let tex = tex.unwrap_or(self.white);
@@ -504,10 +520,26 @@ impl Gfx {
                 self.ctx.new_buffer(BufferType::IndexBuffer, BufferUsage::Immutable, BufferSource::slice(&seq_indices(self.stream_cap)));
         }
         self.ctx.buffer_update(self.stream_vb, BufferSource::slice(&self.batch));
-        let p = *self.pipeline(self.batch_mode, tex);
-        self.ctx.apply_pipeline(&p);
-        self.ctx.apply_bindings(&Bindings { vertex_buffers: vec![self.stream_vb], index_buffer: self.stream_ib, images: vec![tex] });
-        self.ctx.apply_uniforms(UniformsSource::table(&u));
+        // Enhanced graphics only (fx.rs): magnified sprites and interface pictures through the pixel-art scaler
+        let scaled = self.batch_mode == Mode::Flat
+            && tex != self.white
+            && crate::fx::scaler_wanted()
+            && crate::fx::apply_scaler(
+                &mut self.ctx,
+                &mut self.fx,
+                &self.batch,
+                self.stream_vb,
+                self.stream_ib,
+                tex,
+                &u,
+                !self.premul.is_empty() && self.premul.contains(&tex),
+            );
+        if !scaled {
+            let p = *self.pipeline(self.batch_mode, tex);
+            self.ctx.apply_pipeline(&p);
+            self.ctx.apply_bindings(&Bindings { vertex_buffers: vec![self.stream_vb], index_buffer: self.stream_ib, images: vec![tex] });
+            self.ctx.apply_uniforms(UniformsSource::table(&u));
+        }
         self.ctx.draw(0, self.batch.len() as i32, 1);
         self.batch.clear();
     }

@@ -161,6 +161,10 @@ animated turns, panning with inertia) and golfers, balls, animals and fly-overs 
 ticks. It is not part of the original, and **Classic stays the default and byte-identical** with it off. Turn it on in
 System Functions → Preferences → *Enhanced graphics...*, or with `--enhanced` / `--classic-render` for one run. It combines
 with HD. See [docs/ENHANCED.md](docs/ENHANCED.md).
+Its shader **effects** (a pixel-art scaler for sprites and interface art, animated water with reflections, sparkle and
+shore foam, per-pixel terrain light with ambient occlusion and soft relief shadows, softened sprite shadows, a sky beyond
+the map, tilt-shift, colour grading, bloom and vignette) have their own ticks there; `--fx` turns just the effects on for
+one run.
 
 ## Playing
 

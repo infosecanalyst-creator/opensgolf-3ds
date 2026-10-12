@@ -1,0 +1,1155 @@
+//! Enhanced graphics effects (docs/ENHANCED.md, "Effects"): a pixel-art scaler for the sprites and interface pictures,
+//! animated water, per-pixel terrain light with ambient occlusion and soft sun shadows, softened sprite shadows, a sky behind
+//! the course, and post-processing of the course (tilt-shift, colour grade, bloom, vignette). None of it edits the art.
+//!
+//! Classic is untouched: every hook in the renderer is behind [`active`], which is false unless the player turned the effects
+//! on, and with it false none of this module's code runs and the classic pixels are the same byte for byte.
+//!
+//! The options are an [`FxSettings`]; [`options`] lists them (key, label, choices, get, set) for a preferences screen. For now
+//! they come from `--fx` / `--fx-set KEY=VALUE,...` or the environment variable `OPENSGOLF_FX` ([`configure`]).
+use crate::app::App;
+use crate::fx_glsl as glsl;
+use crate::gfx::{Gfx, Mat4, Mode, Uniforms, Vert};
+use miniquad::*;
+use sg_core::assets::Rgba;
+use sg_core::terrain::{Terrain, HEIGHT_STEP, TILE_SIZE};
+use std::cell::{Cell, RefCell};
+use std::collections::{HashMap, HashSet};
+
+// ---- settings -----------------------------------------------------------------------------------------------------------------
+
+/// The pixel-art scaler's modes.
+pub const SCALER_OFF: u8 = 0;
+pub const SCALER_SHARP: u8 = 1;
+pub const SCALER_EDGE: u8 = 2;
+
+/// The effects' options. `enabled` is the master switch (the Enhanced graphics setting); every other option defaults to what
+/// the effects use when it is on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FxSettings {
+    pub enabled: bool,
+    /// SCALER_OFF, SCALER_SHARP (sharp bilinear) or SCALER_EDGE (edge directed).
+    pub scaler: u8,
+    pub water: bool,
+    /// Per-pixel terrain light.
+    pub lighting: bool,
+    pub occlusion: bool,
+    pub shadows: bool,
+    pub soft_sprite_shadows: bool,
+    pub sky: bool,
+    pub tilt_shift: bool,
+    pub grading: bool,
+    pub bloom: bool,
+    pub vignette: bool,
+    /// 0 low, 1 medium, 2 high.
+    pub quality: u8,
+}
+
+impl Default for FxSettings {
+    fn default() -> Self {
+        FxSettings {
+            enabled: false,
+            scaler: SCALER_EDGE,
+            water: true,
+            lighting: true,
+            occlusion: true,
+            shadows: true,
+            soft_sprite_shadows: true,
+            sky: true,
+            // a strong look: offered, not on by default
+            tilt_shift: false,
+            grading: true,
+            bloom: true,
+            vignette: true,
+            quality: 1,
+        }
+    }
+}
+
+thread_local! {
+    /// The scaler's blend between texels, in texels (SG_FX_SOFT=sharp,edge overrides them for tuning).
+    static SOFT_SHARP: Cell<f32> = Cell::new(soft_env(0, 0.0));
+    static SOFT_EDGE: Cell<f32> = Cell::new(soft_env(1, 0.5));
+    static SETTINGS: Cell<FxSettings> = Cell::new(FxSettings::default());
+    /// Textures the scaler leaves alone (the font atlases: text is not pixel art).
+    static PLAIN: RefCell<HashSet<TextureId>> = RefCell::new(HashSet::new());
+}
+
+fn soft_env(i: usize, default: f32) -> f32 {
+    std::env::var("SG_FX_SOFT").ok().and_then(|v| v.split(',').nth(i).and_then(|x| x.parse().ok())).unwrap_or(default)
+}
+
+pub fn settings() -> FxSettings {
+    SETTINGS.with(|s| s.get())
+}
+
+pub fn set_settings(s: FxSettings) {
+    SETTINGS.with(|c| c.set(s));
+}
+
+/// Whether the effects are on. False in Classic: then no effect code runs.
+pub fn active() -> bool {
+    settings().enabled
+}
+
+/// Marks a texture the scaler must not touch (text).
+pub fn plain_texture(t: TextureId) {
+    PLAIN.with(|p| p.borrow_mut().insert(t));
+}
+
+/// One option for a preferences screen: `label` and `choices` are text keys (lang/en.txt); `get` gives the index of the
+/// current choice, `set` picks one.
+pub struct FxOption {
+    pub key: &'static str,
+    pub label: &'static str,
+    pub choices: &'static [&'static str],
+    pub get: fn(&FxSettings) -> usize,
+    pub set: fn(&mut FxSettings, usize),
+}
+
+const ON_OFF: &[&str] = &["STR_FX_OFF", "STR_FX_ON"];
+
+macro_rules! flag {
+    ($key:literal, $label:literal, $field:ident) => {
+        FxOption { key: $key, label: $label, choices: ON_OFF, get: |s| s.$field as usize, set: |s, v| s.$field = v != 0 }
+    };
+}
+
+static OPTIONS: [FxOption; 13] = [
+    FxOption { key: "effects", label: "STR_FX_EFFECTS", choices: ON_OFF, get: |s| s.enabled as usize, set: |s, v| s.enabled = v != 0 },
+    FxOption {
+        key: "scaler",
+        label: "STR_FX_SCALER",
+        choices: &["STR_FX_OFF", "STR_FX_SCALER_SHARP", "STR_FX_SCALER_EDGE"],
+        get: |s| s.scaler.min(2) as usize,
+        set: |s, v| s.scaler = v.min(2) as u8,
+    },
+    flag!("water", "STR_FX_WATER", water),
+    flag!("lighting", "STR_FX_LIGHTING", lighting),
+    flag!("occlusion", "STR_FX_OCCLUSION", occlusion),
+    flag!("shadows", "STR_FX_SHADOWS", shadows),
+    flag!("sprite-shadows", "STR_FX_SPRITE_SHADOWS", soft_sprite_shadows),
+    flag!("sky", "STR_FX_SKY", sky),
+    flag!("tilt-shift", "STR_FX_TILT_SHIFT", tilt_shift),
+    flag!("grading", "STR_FX_GRADING", grading),
+    flag!("bloom", "STR_FX_BLOOM", bloom),
+    flag!("vignette", "STR_FX_VIGNETTE", vignette),
+    FxOption {
+        key: "quality",
+        label: "STR_FX_QUALITY",
+        choices: &["STR_FX_QUALITY_LOW", "STR_FX_QUALITY_MEDIUM", "STR_FX_QUALITY_HIGH"],
+        get: |s| s.quality.min(2) as usize,
+        set: |s, v| s.quality = v.min(2) as u8,
+    },
+];
+
+/// The options in the order a preferences screen lists them; the first is the master switch.
+pub fn options() -> &'static [FxOption] {
+    &OPTIONS
+}
+
+/// Prints the options and their current choices (`--fx-list`).
+pub fn print_options() {
+    let s = settings();
+    for o in options() {
+        let names: Vec<String> = o.choices.iter().enumerate().map(|(i, c)| format!("{i} {}", sg_core::lang::tr(c))).collect();
+        println!("{:<15} {:<40} {} [{}]", o.key, sg_core::lang::tr(o.label), (o.get)(&s), names.join(", "));
+    }
+}
+
+/// Applies `key=value,...` to settings: a value is a choice's index, on/off/true/false/yes/no, or a choice's name
+/// (sharp, edge, low, medium, high). A bare `on`/`1` (or `off`/`0`) turns the effects on (off).
+pub fn apply_spec(s: &mut FxSettings, spec: &str) -> Result<(), String> {
+    for item in spec.split(',').map(str::trim).filter(|i| !i.is_empty()) {
+        let (key, val) = match item.split_once('=') {
+            Some((k, v)) => (k.trim(), v.trim()),
+            None => ("effects", item),
+        };
+        let opt = options().iter().find(|o| o.key.eq_ignore_ascii_case(key)).ok_or_else(|| format!("unknown effect option {key}"))?;
+        let v = match val.to_ascii_lowercase().as_str() {
+            "on" | "true" | "yes" => 1,
+            "off" | "false" | "no" | "none" => 0,
+            "sharp" | "sharp-bilinear" | "low" => 1 - (opt.key == "quality") as usize,
+            "edge" | "edge-directed" | "high" => 2,
+            "medium" => 1,
+            n => n.parse::<usize>().map_err(|_| format!("bad value {val} for {key}"))?,
+        };
+        if v >= opt.choices.len() {
+            return Err(format!("bad value {val} for {key}"));
+        }
+        (opt.set)(s, v);
+    }
+    Ok(())
+}
+
+/// The temporary switch until the effects join the Enhanced graphics settings: `--fx` (on) and `--fx-set LIST` on the command
+/// line, else `OPENSGOLF_FX` (a list as for [`apply_spec`], e.g. `1` or `scaler=sharp,tilt-shift=on`).
+pub fn configure(flag: bool, spec: Option<&str>) {
+    let mut s = settings();
+    let env = std::env::var("OPENSGOLF_FX").ok();
+    if let Some(e) = env.as_deref().filter(|_| !flag && spec.is_none()) {
+        s.enabled = true;
+        if let Err(err) = apply_spec(&mut s, e) {
+            eprintln!("OPENSGOLF_FX: {err}");
+        }
+    }
+    if flag || spec.is_some() {
+        s.enabled = true;
+    }
+    FORCED.with(|f| f.set(s.enabled && (flag || spec.is_some() || env.is_some())));
+    if let Some(sp) = spec {
+        if let Err(err) = apply_spec(&mut s, sp) {
+            eprintln!("--fx-set: {err}");
+        }
+    }
+    set_settings(s);
+}
+
+thread_local! {
+    /// The effects were turned on for this run by --fx / --fx-set / OPENSGOLF_FX, whatever the Enhanced master switch.
+    static FORCED: Cell<bool> = const { Cell::new(false) };
+}
+
+/// The effects as the Enhanced graphics ticks set them (on with the master switch, or when forced on for the run).
+pub fn from_enhanced(e: &crate::enhanced::Settings) -> FxSettings {
+    let mut s = settings();
+    s.enabled = e.enabled || FORCED.with(|f| f.get());
+    s.scaler = if !e.fx_scaler {
+        SCALER_OFF
+    } else if e.fx_scaler_sharp {
+        SCALER_SHARP
+    } else {
+        SCALER_EDGE
+    };
+    s.water = e.fx_water;
+    s.lighting = e.fx_terrain_light;
+    s.occlusion = e.fx_terrain_light;
+    s.shadows = e.fx_terrain_light;
+    s.soft_sprite_shadows = e.fx_sprite_shadows;
+    s.sky = e.fx_sky;
+    s.tilt_shift = e.fx_tilt_shift;
+    s.grading = e.fx_grading;
+    s.vignette = e.fx_grading;
+    s.bloom = e.fx_bloom;
+    s
+}
+
+/// Puts the Enhanced settings' effects in use (at start up, before `configure` applies the run's own switches).
+pub fn sync(e: &crate::enhanced::Settings) {
+    set_settings(from_enhanced(e));
+}
+
+/// Whether the post-processing passes run: they need a depth buffer in an offscreen target, which the browser build does not
+/// get (the effects that draw directly still run there).
+fn post_supported() -> bool {
+    !cfg!(target_arch = "wasm32")
+}
+
+fn wants_post(s: &FxSettings) -> bool {
+    s.enabled && post_supported() && (s.tilt_shift || s.grading || s.bloom || s.vignette)
+}
+
+// ---- theme looks --------------------------------------------------------------------------------------------------------------
+
+/// Per theme (the exe's order: parkland, desert, tropical, links): the sky's top, its haze at the horizon (also what the
+/// water reflects low down), the haze below the map, the grade (contrast, vibrance), a tint and the bloom's threshold.
+struct Look {
+    sky_top: [f32; 3],
+    sky_low: [f32; 3],
+    below: [f32; 3],
+    contrast: f32,
+    vibrance: f32,
+    tint: [f32; 3],
+    bloom_from: f32,
+}
+
+const LOOKS: [Look; 4] = [
+    Look {
+        sky_top: [0.33, 0.55, 0.84],
+        sky_low: [0.80, 0.89, 0.96],
+        below: [0.47, 0.58, 0.66],
+        contrast: 1.06,
+        vibrance: 0.16,
+        tint: [1.0, 1.0, 1.0],
+        bloom_from: 0.78,
+    },
+    Look {
+        sky_top: [0.38, 0.60, 0.86],
+        sky_low: [0.97, 0.88, 0.72],
+        below: [0.72, 0.56, 0.42],
+        contrast: 1.05,
+        vibrance: 0.10,
+        tint: [1.03, 1.0, 0.96],
+        bloom_from: 0.80,
+    },
+    Look {
+        sky_top: [0.16, 0.58, 0.90],
+        sky_low: [0.82, 0.96, 0.98],
+        below: [0.34, 0.66, 0.72],
+        contrast: 1.05,
+        vibrance: 0.20,
+        tint: [1.0, 1.01, 1.01],
+        bloom_from: 0.80,
+    },
+    Look {
+        sky_top: [0.47, 0.57, 0.70],
+        sky_low: [0.83, 0.86, 0.88],
+        below: [0.46, 0.52, 0.56],
+        contrast: 1.08,
+        vibrance: 0.07,
+        tint: [0.98, 1.0, 1.03],
+        bloom_from: 0.82,
+    },
+];
+
+// ---- GPU state (in Gfx) -------------------------------------------------------------------------------------------------------
+
+#[repr(C)]
+struct ScalerUniforms {
+    mvp: [f32; 16],
+    sp: [f32; 4],
+    alpha_ref: f32,
+    soft: f32,
+    pm: f32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct GroundUniforms {
+    mvp: [f32; 16],
+    mv: [f32; 16],
+    light_amb: [f32; 3],
+    light_dif: [f32; 3],
+    light_spec: [f32; 3],
+    light_dir: [f32; 3],
+    lm_rect: [f32; 4],
+    params: [f32; 4],
+    water: [f32; 4],
+    eye_w: [f32; 3],
+    light_w: [f32; 3],
+    sky_top: [f32; 3],
+    sky_low: [f32; 3],
+}
+
+#[repr(C)]
+struct PassUniforms {
+    p: [f32; 4],
+}
+
+#[repr(C)]
+struct CompositeUniforms {
+    tilt: [f32; 4],
+    glow: [f32; 4],
+    grade: [f32; 4],
+    tint: [f32; 4],
+}
+
+/// The effects' pipelines and the full-screen quad, made the first time an effect draws.
+#[derive(Clone, Copy)]
+pub struct FxGpu {
+    scaler: Pipeline,
+    /// The scaler blending premultiplied colours (Enhanced's smooth interface textures).
+    scaler_pm: Pipeline,
+    ground_solid: Pipeline,
+    ground_overlay: Pipeline,
+    water: Pipeline,
+    down: Pipeline,
+    blur: Pipeline,
+    composite: Pipeline,
+    quad_vb: BufferId,
+    quad_ib: BufferId,
+    /// A 1 x 1 light map (full sun, no occlusion, far from water) for when none is built.
+    no_lightmap: TextureId,
+}
+
+fn shader(ctx: &mut dyn RenderingBackend, vs: &str, fs: &str, images: &[&str], uniforms: &[(&str, UniformType)]) -> ShaderId {
+    let meta = ShaderMeta {
+        images: images.iter().map(|s| s.to_string()).collect(),
+        uniforms: UniformBlockLayout { uniforms: uniforms.iter().map(|&(n, t)| UniformDesc::new(n, t)).collect() },
+    };
+    match ctx.new_shader(ShaderSource::Glsl { vertex: vs, fragment: fs }, meta) {
+        Ok(s) => s,
+        Err(e) => panic!("effects shader: {e:?}"),
+    }
+}
+
+impl FxGpu {
+    fn new(ctx: &mut dyn RenderingBackend) -> FxGpu {
+        use UniformType::*;
+        let attrs = [
+            VertexAttribute::new("in_pos", VertexFormat::Float3),
+            VertexAttribute::new("in_uv", VertexFormat::Float2),
+            VertexAttribute::new("in_normal", VertexFormat::Float3),
+            VertexAttribute::new("in_color", VertexFormat::Float4),
+        ];
+        let blend = Some(BlendState::new(
+            Equation::Add,
+            BlendFactor::Value(BlendValue::SourceAlpha),
+            BlendFactor::OneMinusValue(BlendValue::SourceAlpha),
+        ));
+        let alpha_blend = Some(BlendState::new(Equation::Add, BlendFactor::One, BlendFactor::OneMinusValue(BlendValue::SourceAlpha)));
+        let pipe = |ctx: &mut dyn RenderingBackend, sh: ShaderId, depth_test: Comparison, depth_write: bool, b: bool| {
+            ctx.new_pipeline(
+                &[BufferLayout::default()],
+                &attrs,
+                sh,
+                PipelineParams {
+                    depth_test,
+                    depth_write,
+                    color_blend: if b { blend } else { None },
+                    alpha_blend: if b { alpha_blend } else { None },
+                    ..Default::default()
+                },
+            )
+        };
+        let scaler_sh = shader(
+            ctx,
+            glsl::SCALER_VS,
+            &glsl::scaler_fs(),
+            &["tex"],
+            &[("mvp", Mat4), ("sp", Float4), ("alpha_ref", Float1), ("soft", Float1), ("pm", Float1)],
+        );
+        let ground_uniforms = [
+            ("mvp", Mat4),
+            ("mv", Mat4),
+            ("light_amb", Float3),
+            ("light_dif", Float3),
+            ("light_spec", Float3),
+            ("light_dir", Float3),
+            ("lm_rect", Float4),
+            ("params", Float4),
+            ("water", Float4),
+            ("eye_w", Float3),
+            ("light_w", Float3),
+            ("sky_top", Float3),
+            ("sky_low", Float3),
+        ];
+        let terrain_sh = shader(ctx, glsl::GROUND_VS, &glsl::terrain_fs(), &["tex", "lmap"], &ground_uniforms);
+        let water_sh = shader(ctx, glsl::GROUND_VS, &glsl::water_fs(), &["tex", "lmap"], &ground_uniforms);
+        let down_sh = shader(ctx, glsl::POST_VS, &glsl::down_fs(), &["src"], &[("p", Float4)]);
+        let blur_sh = shader(ctx, glsl::POST_VS, &glsl::blur_fs(), &["src"], &[("p", Float4)]);
+        let comp_sh = shader(
+            ctx,
+            glsl::POST_VS,
+            &glsl::composite_fs(),
+            &["scene", "blurred", "bloom"],
+            &[("tilt", Float4), ("glow", Float4), ("grade", Float4), ("tint", Float4)],
+        );
+        let scaler = pipe(ctx, scaler_sh, Comparison::Always, false, true);
+        let scaler_pm = ctx.new_pipeline(
+            &[BufferLayout::default()],
+            &attrs,
+            scaler_sh,
+            PipelineParams {
+                depth_test: Comparison::Always,
+                depth_write: false,
+                color_blend: alpha_blend,
+                alpha_blend,
+                ..Default::default()
+            },
+        );
+        let ground_solid = pipe(ctx, terrain_sh, Comparison::Less, true, false);
+        let ground_overlay = pipe(ctx, terrain_sh, Comparison::Less, false, true);
+        let water = pipe(ctx, water_sh, Comparison::Less, true, false);
+        let down = pipe(ctx, down_sh, Comparison::Always, false, false);
+        let blur = pipe(ctx, blur_sh, Comparison::Always, false, false);
+        let composite = pipe(ctx, comp_sh, Comparison::Always, false, false);
+        let v = |x: f32, y: f32| Vert::new(x, y, 0.0, (x + 1.0) * 0.5, (y + 1.0) * 0.5);
+        let quad = [v(-1.0, -1.0), v(1.0, -1.0), v(1.0, 1.0), v(-1.0, -1.0), v(1.0, 1.0), v(-1.0, 1.0)];
+        let quad_vb = ctx.new_buffer(BufferType::VertexBuffer, BufferUsage::Immutable, BufferSource::slice(&quad));
+        let quad_ib = ctx.new_buffer(BufferType::IndexBuffer, BufferUsage::Immutable, BufferSource::slice(&[0u32, 1, 2, 3, 4, 5]));
+        let no_lightmap = ctx.new_texture_from_rgba8(1, 1, &[255, 255, 255, 0]);
+        FxGpu { scaler, scaler_pm, ground_solid, ground_overlay, water, down, blur, composite, quad_vb, quad_ib, no_lightmap }
+    }
+}
+
+fn gpu(g: &mut Gfx) -> &FxGpu {
+    if g.fx.is_none() {
+        g.fx = Some(Box::new(FxGpu::new(&mut *g.ctx)));
+    }
+    g.fx.as_deref().expect("effects pipelines")
+}
+
+// ---- the pixel-art scaler -----------------------------------------------------------------------------------------------------
+
+/// Whether the scaler may take over a batch (called by Gfx::flush for the flat 2D / sprite draws).
+pub fn scaler_wanted() -> bool {
+    let s = settings();
+    s.enabled && s.scaler != SCALER_OFF
+}
+
+/// Draw state for a batch of flat quads drawn with the scaler: sets the pipeline, bindings and uniforms and returns true, or
+/// returns false (the caller draws the classic way) when the picture is not magnified, is text, or the batch is not quads.
+/// The magnification is measured on the batch's first quad edge (its first two vertices). `premul`: the texture holds
+/// premultiplied colours (and the batch's vertex colours are premultiplied).
+#[allow(clippy::too_many_arguments)]
+pub fn apply_scaler(
+    ctx: &mut Box<dyn RenderingBackend>,
+    fx: &mut Option<Box<FxGpu>>,
+    batch: &[Vert],
+    vb: BufferId,
+    ib: BufferId,
+    tex: TextureId,
+    u: &Uniforms,
+    premul: bool,
+) -> bool {
+    if batch.len() < 6 || PLAIN.with(|p| p.borrow().contains(&tex)) {
+        return false;
+    }
+    let (tw, th) = ctx.texture_size(tex);
+    let (sw, sh) = window::screen_size();
+    let (a, b) = (batch[0], batch[1]);
+    let clip = |p: [f32; 3]| {
+        let m = &u.mvp;
+        let x = m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12];
+        let y = m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13];
+        let w = m[3] * p[0] + m[7] * p[1] + m[11] * p[2] + m[15];
+        (x / w * sw * 0.5, y / w * sh * 0.5)
+    };
+    let (pa, pb) = (clip(a.pos), clip(b.pos));
+    let px = (pb.0 - pa.0).hypot(pb.1 - pa.1);
+    let texels = ((b.uv[0] - a.uv[0]) * tw as f32).hypot((b.uv[1] - a.uv[1]) * th as f32);
+    if texels < 0.5 {
+        return false;
+    }
+    let scale = px / texels;
+    if !scale.is_finite() || scale < 1.05 {
+        return false;
+    }
+    // edge-directed rules need room to show; at low magnifications and on the lowest quality the sharp filter does it
+    let mode = if settings().scaler == SCALER_EDGE && scale >= 1.5 && settings().quality > 0 { SCALER_EDGE } else { SCALER_SHARP };
+    if fx.is_none() {
+        *fx = Some(Box::new(FxGpu::new(&mut **ctx)));
+    }
+    let Some(f) = fx.as_deref() else { return false };
+    ctx.apply_pipeline(if premul { &f.scaler_pm } else { &f.scaler });
+    ctx.apply_bindings(&Bindings { vertex_buffers: vec![vb], index_buffer: ib, images: vec![tex] });
+    ctx.apply_uniforms(UniformsSource::table(&ScalerUniforms {
+        mvp: u.mvp,
+        sp: [tw as f32, th as f32, scale, mode as f32],
+        alpha_ref: u.alpha_ref,
+        soft: if mode == SCALER_EDGE { SOFT_EDGE.with(|s| s.get()) } else { SOFT_SHARP.with(|s| s.get()) },
+        pm: premul as i32 as f32,
+    }));
+    true
+}
+
+// ---- world state (in App) -----------------------------------------------------------------------------------------------------
+
+struct PostTargets {
+    size: (u32, u32),
+    small: (u32, u32),
+    scene: TextureId,
+    depth: TextureId,
+    pass: RenderPass,
+    msaa: Option<[TextureId; 2]>,
+    /// Quarter (or half) size: blur ping-pong and bloom ping-pong.
+    tex: [TextureId; 4],
+    passes: [RenderPass; 4],
+}
+
+/// The effects' per-course state: the water's meshes, the light map, the post-processing targets, softened sprite shadows.
+#[derive(Default)]
+pub struct FxWorld {
+    water: Vec<crate::app::Batch>,
+    lightmap: Option<TextureId>,
+    lightmap_key: u64,
+    lm_rect: [f32; 4],
+    post: Option<PostTargets>,
+    /// (sprite, frame) -> (the classic shadow texture it was made from, the softened one).
+    shadows: HashMap<(usize, usize), (TextureId, TextureId)>,
+    time: f32,
+    last_clock: f64,
+    /// The course is being drawn offscreen this frame (fx_world_begin .. fx_world_end).
+    post_on: bool,
+}
+
+impl FxWorld {
+    /// Whether water batches are kept (to drop when the effects are switched off).
+    pub fn has_water(&self) -> bool {
+        !self.water.is_empty()
+    }
+}
+
+/// Terrain texture types that are water (Terrain.dll's WaterShallow, WaterMiddle, WaterDeep, WaterShallowDesert).
+pub fn is_water_tex(tex_type: i32) -> bool {
+    matches!(tex_type, 17 | 23 | 24 | 25)
+}
+
+/// Whether rebuild_batches should set the water apart for the water shader.
+pub fn water_on() -> bool {
+    let s = settings();
+    s.enabled && s.water
+}
+
+/// The rotation of the view (eye from world), as render_world builds it.
+fn view_rotation(app: &App) -> [f32; 16] {
+    Mat4::rotate(crate::app::pitch_for(app.draw_w, app.draw_h), 1.0, 0.0, 0.0).mul(&Mat4::rotate((45.0 + app.rot) as f64, 0.0, 1.0, 0.0)).0
+}
+
+/// An eye-space direction in world space (the view's rotation transposed).
+fn to_world(m: &[f32; 16], e: [f32; 3]) -> [f32; 3] {
+    let mut w = [0.0; 3];
+    for (c, o) in w.iter_mut().enumerate() {
+        *o = (0..3).map(|r| m[c * 4 + r] * e[r]).sum();
+    }
+    w
+}
+
+impl App {
+    /// After the terrain's batches are built (rebuild_batches, while the effects are on or have water batches to drop): keeps
+    /// the water batches it set apart and makes the light map when the ground changed.
+    pub fn fx_terrain_built(&mut self, g: &mut Gfx, water: Vec<crate::app::Batch>) {
+        for b in std::mem::replace(&mut self.fx.water, water) {
+            g.delete_mesh(b.mesh);
+        }
+        let s = settings();
+        if !s.enabled {
+            return;
+        }
+        let need = s.shadows || s.occlusion || s.water;
+        let n = [2usize, 4, 8][s.quality.min(2) as usize];
+        let light_w = to_world(&view_rotation(self), sg_core::terrain::light_direction());
+        let key = lightmap_key(&self.terrain, n, (self.rot.round() as i32).rem_euclid(360), s);
+        if !need {
+            return;
+        }
+        if self.fx.lightmap.is_some() && self.fx.lightmap_key == key {
+            return;
+        }
+        let t0 = crate::app::now();
+        let img = build_lightmap(&self.terrain, n, light_w, s.shadows, s.occlusion);
+        if std::env::var_os("SG_FX_LOG").is_some() {
+            let t = &self.terrain;
+            let wet: Vec<(i32, i32)> =
+                (0..t.w * t.h).map(|k| (k % t.w, k / t.w)).filter(|&(x, y)| t.type_at(x, y) == sg_core::course::t::WATER as i32).collect();
+            let n = wet.len().max(1) as i32;
+            let mid = (wet.iter().map(|w| w.0).sum::<i32>() / n, wet.iter().map(|w| w.1).sum::<i32>() / n);
+            println!(
+                "fx: light map {}x{} for {}x{} tiles in {:.0} ms; {} water tiles around {:?}",
+                img.w,
+                img.h,
+                t.w,
+                t.h,
+                (crate::app::now() - t0) * 1000.0,
+                wet.len(),
+                mid
+            );
+        }
+        if let Some(f) = std::env::var_os("SG_FX_DUMP") {
+            sg_core::png::write_png(std::path::Path::new(&f), &img);
+        }
+        if let Some(old) = self.fx.lightmap.take() {
+            g.ctx.delete_texture(old);
+        }
+        let tex = g.ctx.new_texture_from_data_and_format(
+            &img.px,
+            TextureParams { width: img.w, height: img.h, format: TextureFormat::RGBA8, ..Default::default() },
+        );
+        self.fx.lightmap = Some(tex);
+        self.fx.lightmap_key = key;
+        let (w, h) = (self.terrain.w as f32 * TILE_SIZE, self.terrain.h as f32 * TILE_SIZE);
+        self.fx.lm_rect = [-w * 0.5, -h * 0.5, 1.0 / w, 1.0 / h];
+    }
+
+    /// Takes new settings (from the Enhanced graphics preferences): what the terrain's meshes depend on is rebuilt.
+    pub fn fx_set(&mut self, s: FxSettings) {
+        let old = settings();
+        set_settings(s);
+        if old != s {
+            self.dirty = true;
+        }
+    }
+
+    fn look(&self) -> &'static Look {
+        &LOOKS[self.exe_theme().min(3) as usize]
+    }
+
+    /// Draws the ground in place of render_world's classic loops: the sky behind, then terrain, walls and paths with the
+    /// effects' light, and the water.
+    pub fn fx_draw_ground(&mut self, g: &mut Gfx, proj: &Mat4, mv: &Mat4, lit: &Uniforms, overlay: &Uniforms) {
+        let s = settings();
+        let look = self.look();
+        let dt = (self.clock - self.fx.last_clock).clamp(0.0, 0.1) as f32;
+        self.fx.last_clock = self.clock;
+        self.fx.time += dt;
+        if s.sky {
+            self.fx_sky(g, look);
+        }
+        let terrain_fx = s.lighting || s.occlusion || s.shadows;
+        let rot = view_rotation(self);
+        let lm = self.fx.lightmap.unwrap_or_else(|| gpu(g).no_lightmap);
+        let has_lm = self.fx.lightmap.is_some();
+        let u = GroundUniforms {
+            mvp: proj.mul(mv).0,
+            mv: mv.0,
+            light_amb: lit.light_amb,
+            light_dif: lit.light_dif,
+            light_spec: lit.light_spec,
+            light_dir: lit.light_dir,
+            lm_rect: if has_lm { self.fx.lm_rect } else { [0.0, 0.0, 0.0, 0.0] },
+            params: [
+                s.lighting as i32 as f32,
+                if s.shadows && has_lm { 0.62 } else { 0.0 },
+                if s.occlusion && has_lm { 1.0 } else { 0.0 },
+                -1.0,
+            ],
+            water: [self.fx.time, 0.22, 1.0, 0.55],
+            eye_w: [rot[2], rot[6], rot[10]],
+            light_w: to_world(&rot, sg_core::terrain::light_direction()),
+            sky_top: look.sky_top,
+            sky_low: look.sky_low,
+        };
+        g.flush();
+        let p = *gpu(g);
+        for b in self.batches.iter().chain(&self.wall_batches) {
+            if terrain_fx {
+                g.draw_mesh_with(&p.ground_solid, &b.mesh, &[b.tex, lm], UniformsSource::table(&u));
+            } else {
+                g.draw_mesh(Mode::Solid, &b.mesh, b.tex, lit);
+            }
+        }
+        for b in &self.fx.water {
+            g.draw_mesh_with(&p.water, &b.mesh, &[b.tex, lm], UniformsSource::table(&u));
+        }
+        let mut uo = u;
+        uo.params[3] = overlay.alpha_ref;
+        for b in self.path_batches.iter().chain(&self.mud_batches) {
+            if terrain_fx {
+                g.draw_mesh_with(&p.ground_overlay, &b.mesh, &[b.tex, lm], UniformsSource::table(&uo));
+            } else {
+                g.draw_mesh(Mode::Overlay, &b.mesh, b.tex, overlay);
+            }
+        }
+    }
+
+    /// The sky behind the course: its colour at the top of the screen fading to the horizon's haze, then to the haze below
+    /// the map at the bottom.
+    fn fx_sky(&self, g: &mut Gfx, look: &Look) {
+        let u = Uniforms::flat(&Mat4::identity(), &Mat4::identity());
+        let c = |rgb: [f32; 3]| [rgb[0], rgb[1], rgb[2], 1.0];
+        let (top, mid, low) = (c(look.sky_top), c(look.sky_low), c(look.below));
+        let v = |x: f32, y: f32, col: [f32; 4]| Vert::new(x, y, 0.0, 0.0, 0.0).col(col);
+        g.quad(Mode::Flat, None, &u, [v(-1.0, 1.0, top), v(1.0, 1.0, top), v(1.0, 0.1, mid), v(-1.0, 0.1, mid)]);
+        g.quad(Mode::Flat, None, &u, [v(-1.0, 0.1, mid), v(1.0, 0.1, mid), v(1.0, -1.0, low), v(-1.0, -1.0, low)]);
+    }
+
+    /// A softened copy of a sprite's shadow frame (the art's own shadow: none is invented), or None to draw the classic one.
+    pub fn fx_shadow(&mut self, g: &mut Gfx, si: usize, view: i32, frame: i32, classic: TextureId) -> Option<TextureId> {
+        let s = settings();
+        if !s.enabled || !s.soft_sprite_shadows || crate::hd::active() {
+            return None;
+        }
+        let i = self.sprites[si].s.frame_index(view, frame);
+        if let Some(&(src, t)) = self.fx.shadows.get(&(si, i)) {
+            if src == classic {
+                return Some(t);
+            }
+            g.ctx.delete_texture(t);
+        }
+        let img = soften_shadow(&self.sprites[si].s.frames[i]);
+        let t = g.texture(&img, false);
+        self.fx.shadows.insert((si, i), (classic, t));
+        Some(t)
+    }
+
+    /// Before the course is drawn: with post-processing on, moves the drawing to the offscreen scene target and returns true.
+    pub fn fx_world_begin(&mut self, g: &mut Gfx) -> bool {
+        let s = settings();
+        if !wants_post(&s) {
+            return false;
+        }
+        g.flush();
+        g.ctx.end_render_pass();
+        let size = (self.draw_w as u32, self.draw_h as u32);
+        let div = if s.quality >= 2 { 2 } else { 4 };
+        if self.fx.post.as_ref().is_some_and(|p| p.size != size || p.small != (size.0.div_ceil(div), size.1.div_ceil(div))) {
+            if let Some(p) = self.fx.post.take() {
+                free_post(g, p);
+            }
+        }
+        if self.fx.post.is_none() {
+            self.fx.post = Some(make_post(g, size, div));
+        }
+        let Some(p) = &self.fx.post else { return false };
+        let b = self.look().below;
+        g.ctx.begin_pass(Some(p.pass), PassAction::clear_color(b[0], b[1], b[2], 1.0));
+        self.fx.post_on = true;
+        true
+    }
+
+    /// After the course: blurs and composites it into `target` (the frame's own pass), where the interface then draws.
+    pub fn fx_world_end(&mut self, g: &mut Gfx, target: Option<RenderPass>) {
+        if !std::mem::take(&mut self.fx.post_on) {
+            return;
+        }
+        g.flush();
+        g.ctx.end_render_pass();
+        let s = settings();
+        let look = self.look();
+        let Some(p) = &self.fx.post else { return };
+        let f = *gpu(g);
+        let full = (p.size.0 as f32, p.size.1 as f32);
+        let small = (p.small.0 as f32, p.small.1 as f32);
+        let k = full.0 / small.0 / 4.0;
+        let run = |g: &mut Gfx, pipe: &Pipeline, pass: RenderPass, src: TextureId, u: [f32; 4]| {
+            g.ctx.begin_pass(Some(pass), PassAction::Nothing);
+            g.ctx.apply_pipeline(pipe);
+            g.ctx.apply_bindings(&Bindings { vertex_buffers: vec![f.quad_vb], index_buffer: f.quad_ib, images: vec![src] });
+            g.ctx.apply_uniforms(UniformsSource::table(&PassUniforms { p: u }));
+            g.ctx.draw(0, 6, 1);
+            g.ctx.end_render_pass();
+        };
+        let blur = |g: &mut Gfx, a: usize, b: usize| {
+            run(g, &f.blur, p.passes[b], p.tex[a], [1.0 / small.0, 0.0, 0.0, 0.0]);
+            run(g, &f.blur, p.passes[a], p.tex[b], [0.0, 1.0 / small.1, 0.0, 0.0]);
+        };
+        let tilt = s.tilt_shift && s.quality > 0;
+        let bloom = s.bloom && s.quality > 0;
+        if tilt {
+            run(g, &f.down, p.passes[0], p.scene, [k / full.0 * 2.0, k / full.1 * 2.0, 0.0, 0.0]);
+            blur(g, 0, 1);
+            blur(g, 0, 1);
+        }
+        if bloom {
+            run(g, &f.down, p.passes[2], p.scene, [k / full.0 * 2.0, k / full.1 * 2.0, 1.0, look.bloom_from]);
+            blur(g, 2, 3);
+        }
+        g.ctx.begin_pass(target, PassAction::Nothing);
+        g.ctx.apply_pipeline(&f.composite);
+        g.ctx.apply_bindings(&Bindings {
+            vertex_buffers: vec![f.quad_vb],
+            index_buffer: f.quad_ib,
+            images: vec![p.scene, p.tex[0], p.tex[2]],
+        });
+        let gr = |on: bool, v: f32| if on { v } else { 0.0 };
+        g.ctx.apply_uniforms(UniformsSource::table(&CompositeUniforms {
+            tilt: [gr(tilt, 1.0), 0.5, 0.16, 0.0],
+            glow: [gr(bloom, 0.45), gr(s.vignette, 0.28), full.0 / full.1, 0.0],
+            grade: [gr(s.grading, look.contrast), look.vibrance, 0.0, 0.0],
+            tint: [look.tint[0], look.tint[1], look.tint[2], 1.0],
+        }));
+        g.ctx.draw(0, 6, 1);
+    }
+}
+
+fn make_post(g: &mut Gfx, size: (u32, u32), div: u32) -> PostTargets {
+    let (w, h) = size;
+    let small = (w.div_ceil(div).max(1), h.div_ceil(div).max(1));
+    let params = |w: u32, h: u32, format| TextureParams { width: w, height: h, format, ..Default::default() };
+    let scene = g.ctx.new_render_texture(params(w, h, TextureFormat::RGBA8));
+    let depth = g.ctx.new_render_texture(params(w, h, TextureFormat::Depth));
+    // with HD on, the course keeps its anti-aliasing: a multisampled pass resolving into the scene
+    let msaa = if crate::hd::active() || crate::enhanced::msaa() { crate::hd::msaa_pass(g, scene, w, h) } else { None };
+    let pass = msaa.map(|m| m.0).unwrap_or_else(|| g.ctx.new_render_pass(scene, Some(depth)));
+    let tex = [0; 4].map(|_| g.ctx.new_render_texture(params(small.0, small.1, TextureFormat::RGBA8)));
+    let passes = tex.map(|t| g.ctx.new_render_pass(t, None));
+    // start black, so a pass that is off this frame composites nothing stale
+    for p in passes {
+        g.ctx.begin_pass(Some(p), PassAction::clear_color(0.0, 0.0, 0.0, 1.0));
+        g.ctx.end_render_pass();
+    }
+    PostTargets { size, small, scene, depth, pass, msaa: msaa.map(|m| m.1), tex, passes }
+}
+
+fn free_post(g: &mut Gfx, p: PostTargets) {
+    g.ctx.delete_render_pass(p.pass);
+    for pass in p.passes {
+        g.ctx.delete_render_pass(pass);
+    }
+    for t in p.tex.into_iter().chain([p.scene, p.depth]).chain(p.msaa.into_iter().flatten()) {
+        g.ctx.delete_texture(t);
+    }
+}
+
+// ---- the light map ------------------------------------------------------------------------------------------------------------
+
+fn lightmap_key(t: &Terrain, n: usize, rot: i32, s: FxSettings) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    (t.w, t.h, n, rot, s.shadows, s.occlusion).hash(&mut h);
+    for y in 0..=t.h {
+        for x in 0..=t.w {
+            t.corner_at(x, y).hash(&mut h);
+        }
+    }
+    for y in 0..t.h {
+        for x in 0..t.w {
+            (t.type_at(x, y) == sg_core::course::t::WATER as i32).hash(&mut h);
+        }
+    }
+    h.finish()
+}
+
+/// The ground's heights on the corner grid, sampled in tile units like Terrain::height_at.
+struct Heights {
+    w: usize,
+    h: usize,
+    c: Vec<f32>,
+    max: f32,
+}
+
+impl Heights {
+    fn new(t: &Terrain) -> Heights {
+        let (w, h) = (t.w.max(1) as usize, t.h.max(1) as usize);
+        let mut c = Vec::with_capacity((w + 1) * (h + 1));
+        for y in 0..=h {
+            for x in 0..=w {
+                c.push(t.corner_at(x as i32, y as i32) as f32 * HEIGHT_STEP);
+            }
+        }
+        let max = c.iter().copied().fold(f32::MIN, f32::max);
+        Heights { w, h, c, max }
+    }
+    fn at(&self, fx: f32, fz: f32) -> f32 {
+        let fx = fx.clamp(0.0, self.w as f32 - 0.001);
+        let fz = fz.clamp(0.0, self.h as f32 - 0.001);
+        let (x, y) = (fx as usize, fz as usize);
+        let (u, v) = (fx - x as f32, fz - y as f32);
+        let r = self.w + 1;
+        let a = self.c[y * r + x] * (1.0 - u) + self.c[y * r + x + 1] * u;
+        let b = self.c[(y + 1) * r + x] * (1.0 - u) + self.c[(y + 1) * r + x + 1] * u;
+        a * (1.0 - v) + b * v
+    }
+}
+
+/// The light map, `n` texels a tile: r = sun visibility (soft shadows of the relief, marched towards the decoded light), g =
+/// ambient occlusion (baked per vertex of the tile meshes' 3 x 3 grid from the height field's horizon, valleys darker, spread
+/// to the texels bilinearly), b = signed distance to the shore (0.5 at the shore, +-1 tile to 1 / 0), a = water.
+fn build_lightmap(t: &Terrain, n: usize, light_w: [f32; 3], shadows: bool, occlusion: bool) -> Rgba {
+    let hs = Heights::new(t);
+    let (tw, th) = (hs.w, hs.h);
+    let (w, h) = (tw * n, th * n);
+    let mut img = Rgba::new(w as u32, h as u32);
+    // ambient occlusion per mesh vertex (half a tile apart)
+    let (aw, ah) = (2 * tw + 1, 2 * th + 1);
+    let mut ao = vec![1.0f32; aw * ah];
+    if occlusion {
+        const D: f32 = std::f32::consts::FRAC_1_SQRT_2;
+        const DIRS: [(f32, f32); 8] = [(1.0, 0.0), (D, D), (0.0, 1.0), (-D, D), (-1.0, 0.0), (-D, -D), (0.0, -1.0), (D, -D)];
+        const DIST: [f32; 5] = [0.5, 1.0, 1.5, 2.5, 4.0];
+        for gz in 0..ah {
+            for gx in 0..aw {
+                let (px, pz) = (gx as f32 * 0.5, gz as f32 * 0.5);
+                let h0 = hs.at(px, pz);
+                // the horizon each way (how much sky the point sees) and the curvature (a valley's floor sits below the
+                // ground around it), both from the height field
+                let (mut occ, mut around) = (0.0, 0.0);
+                for (dx, dz) in DIRS {
+                    let mut slope = 0.0f32;
+                    for d in DIST {
+                        slope = slope.max((hs.at(px + dx * d, pz + dz * d) - h0) / (d * TILE_SIZE));
+                    }
+                    occ += slope / (1.0 + slope * slope).sqrt();
+                    around += hs.at(px + dx * 1.5, pz + dz * 1.5);
+                }
+                let valley = ((around / 8.0 - h0) / (1.5 * TILE_SIZE)).max(0.0);
+                ao[gz * aw + gx] = (1.0 - 1.4 * occ / 8.0 - 1.6 * valley).clamp(0.35, 1.0);
+            }
+        }
+    }
+    // sun visibility per texel
+    let mut sun = vec![1.0f32; w * h];
+    let horiz = (light_w[0] * light_w[0] + light_w[2] * light_w[2]).sqrt();
+    if shadows && horiz > 1e-3 && light_w[1] > 0.0 {
+        let (lx, lz) = (light_w[0] / horiz, light_w[2] / horiz);
+        let rise = light_w[1] / horiz * TILE_SIZE; // world units up per tile towards the light
+        let row = |j: usize, out: &mut [f32]| {
+            for (i, o) in out.iter_mut().enumerate() {
+                let (px, pz) = ((i as f32 + 0.5) / n as f32, (j as f32 + 0.5) / n as f32);
+                let h0 = hs.at(px, pz) + 0.5;
+                let mut vis = 1.0f32;
+                let mut s = 0.06f32;
+                while s < 12.0 {
+                    let ray = h0 + s * rise;
+                    if ray > hs.max + 1.0 {
+                        break;
+                    }
+                    let d = ray - hs.at(px + lx * s, pz + lz * s);
+                    // a penumbra widening with the distance to what casts it
+                    vis = vis.min(3.0 * d / (s * TILE_SIZE));
+                    if vis <= 0.0 {
+                        break;
+                    }
+                    s += (0.08 * s).max(0.5 / n as f32);
+                }
+                let v = vis.clamp(0.0, 1.0);
+                *o = v * v * (3.0 - 2.0 * v);
+            }
+        };
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1).clamp(1, 16);
+            let rows_per = h.div_ceil(threads).max(1);
+            std::thread::scope(|sc| {
+                for (k, chunk) in sun.chunks_mut(rows_per * w).enumerate() {
+                    let row = &row;
+                    sc.spawn(move || {
+                        for (r, out) in chunk.chunks_mut(w).enumerate() {
+                            row(k * rows_per + r, out);
+                        }
+                    });
+                }
+            });
+        }
+        #[cfg(target_arch = "wasm32")]
+        for (j, out) in sun.chunks_mut(w).enumerate() {
+            row(j, out);
+        }
+    }
+    // water, and the signed distance to the shore in texels (a chamfer transform each way)
+    // the land outside the property (type 20, not drawn) is neither: no foam along the property's edge
+    let class: Vec<u8> = (0..w * h)
+        .map(|k| match t.type_at((k % w / n) as i32, (k / w / n) as i32) {
+            x if x == sg_core::course::t::WATER as i32 => 1,
+            20 => 2,
+            _ => 0,
+        })
+        .collect();
+    let water: Vec<bool> = class.iter().map(|&c| c == 1).collect();
+    let to_land = chamfer(&class, w, h, 0);
+    let to_water = chamfer(&class, w, h, 1);
+    for k in 0..w * h {
+        let (i, j) = (k % w, k / w);
+        // occlusion: bilinear between the vertex grid's values
+        let (fx, fz) = ((i as f32 + 0.5) / n as f32 * 2.0, (j as f32 + 0.5) / n as f32 * 2.0);
+        let (x0, z0) = ((fx as usize).min(aw - 2), (fz as usize).min(ah - 2));
+        let (u, v) = ((fx - x0 as f32).clamp(0.0, 1.0), (fz - z0 as f32).clamp(0.0, 1.0));
+        let a = ao[z0 * aw + x0] * (1.0 - u) + ao[z0 * aw + x0 + 1] * u;
+        let b = ao[(z0 + 1) * aw + x0] * (1.0 - u) + ao[(z0 + 1) * aw + x0 + 1] * u;
+        let occ = a * (1.0 - v) + b * v;
+        let sd = if water[k] { to_land[k] - 0.5 } else { -(to_water[k] - 0.5) } / n as f32;
+        let p = &mut img.px[k * 4..k * 4 + 4];
+        p[0] = (sun[k] * 255.0).round() as u8;
+        p[1] = (occ * 255.0).round() as u8;
+        p[2] = ((0.5 + sd * 0.5).clamp(0.0, 1.0) * 255.0).round() as u8;
+        p[3] = if water[k] { 255 } else { 0 };
+    }
+    img
+}
+
+/// Distance in texels (a chamfer transform, 1 and sqrt 2 steps) from each texel to the nearest texel whose class is `target`;
+/// far away is 1e6.
+fn chamfer(class: &[u8], w: usize, h: usize, target: u8) -> Vec<f32> {
+    let mut d: Vec<f32> = class.iter().map(|&c| if c == target { 0.0 } else { 1e6 }).collect();
+    let (a, b) = (1.0f32, std::f32::consts::SQRT_2);
+    for j in 0..h {
+        for i in 0..w {
+            let k = j * w + i;
+            let mut v = d[k];
+            if i > 0 {
+                v = v.min(d[k - 1] + a);
+            }
+            if j > 0 {
+                v = v.min(d[k - w] + a);
+                if i > 0 {
+                    v = v.min(d[k - w - 1] + b);
+                }
+                if i + 1 < w {
+                    v = v.min(d[k - w + 1] + b);
+                }
+            }
+            d[k] = v;
+        }
+    }
+    for j in (0..h).rev() {
+        for i in (0..w).rev() {
+            let k = j * w + i;
+            let mut v = d[k];
+            if i + 1 < w {
+                v = v.min(d[k + 1] + a);
+            }
+            if j + 1 < h {
+                v = v.min(d[k + w] + a);
+                if i + 1 < w {
+                    v = v.min(d[k + w + 1] + b);
+                }
+                if i > 0 {
+                    v = v.min(d[k + w - 1] + b);
+                }
+            }
+            d[k] = v;
+        }
+    }
+    d
+}
+
+/// A shadow frame with its density blurred (a small Gaussian), so its edge fades softly into the ground.
+fn soften_shadow(img: &Rgba) -> Rgba {
+    let (w, h) = (img.w as usize, img.h as usize);
+    const K: [f32; 5] = [0.0625, 0.25, 0.375, 0.25, 0.0625];
+    let a: Vec<f32> = img.px.chunks_exact(4).map(|p| p[3] as f32).collect();
+    let mut tmp = vec![0.0f32; w * h];
+    for y in 0..h {
+        for x in 0..w {
+            let mut s = 0.0;
+            for (k, wt) in K.iter().enumerate() {
+                let xx = x as i32 + k as i32 - 2;
+                if xx >= 0 && (xx as usize) < w {
+                    s += a[y * w + xx as usize] * wt;
+                }
+            }
+            tmp[y * w + x] = s;
+        }
+    }
+    let mut out = img.clone();
+    for y in 0..h {
+        for x in 0..w {
+            let mut s = 0.0;
+            for (k, wt) in K.iter().enumerate() {
+                let yy = y as i32 + k as i32 - 2;
+                if yy >= 0 && (yy as usize) < h {
+                    s += tmp[yy as usize * w + x] * wt;
+                }
+            }
+            let p = &mut out.px[(y * w + x) * 4..(y * w + x) * 4 + 4];
+            p[0] = 0;
+            p[1] = 0;
+            p[2] = 0;
+            p[3] = s.round().clamp(0.0, 255.0) as u8;
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn specs_parse() {
+        let mut s = FxSettings::default();
+        apply_spec(&mut s, "on,scaler=sharp,tilt-shift=on,quality=high,bloom=0").unwrap();
+        assert!(s.enabled && s.tilt_shift && !s.bloom);
+        assert_eq!((s.scaler, s.quality), (SCALER_SHARP, 2));
+        apply_spec(&mut s, "quality=low,scaler=edge").unwrap();
+        assert_eq!((s.scaler, s.quality), (SCALER_EDGE, 0));
+        assert!(apply_spec(&mut s, "nonsense=1").is_err());
+        assert!(apply_spec(&mut s, "scaler=7").is_err());
+    }
+
+    #[test]
+    fn options_round_trip() {
+        let mut s = FxSettings::default();
+        for o in options() {
+            for v in 0..o.choices.len() {
+                (o.set)(&mut s, v);
+                assert_eq!((o.get)(&s), v, "{}", o.key);
+            }
+        }
+    }
+
+    #[test]
+    fn chamfer_counts_texels() {
+        let class = [1, 0, 2, 0];
+        let d = chamfer(&class, 4, 1, 1);
+        assert_eq!(d, vec![0.0, 1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn shaders_have_their_corners() {
+        let s = crate::fx_glsl::scaler_fs();
+        assert_eq!(s.matches("c = corner(").count(), 4);
+        assert_eq!(s.matches(" = T(cell").count(), 21);
+    }
+}
