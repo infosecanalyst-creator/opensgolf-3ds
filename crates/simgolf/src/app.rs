@@ -2064,6 +2064,10 @@ impl App {
             if !self.econ.game_over {
                 self.club_tick();
             }
+            // Enhanced graphics only: the balls' trails and impacts read the simulation after its tick (fx_ball.rs)
+            if crate::fx::active() {
+                self.fx_ball_tick();
+            }
             self.ticker.step();
             self.staff_tick();
             self.staff_animate();

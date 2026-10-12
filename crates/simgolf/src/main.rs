@@ -25,7 +25,10 @@ mod cust_ui;
 mod enhanced;
 mod files_ui;
 mod fx;
+mod fx_ball;
 mod fx_glsl;
+mod fx_light;
+mod fx_shadow;
 mod gamefiles;
 mod gfx;
 mod hd;
@@ -697,14 +700,20 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
             b'x' => app.save_championship_course(),
             b'q' => app.save_championship_pro(),
             b'A' => app.auto_aim = 1, // scripted runs: the pro aims every full shot at the pin
-            b'M' => app.open_popup(match at(0) {
-                0 => popup_ui::PopupKind::Info,
-                1 => popup_ui::PopupKind::System,
-                2 => popup_ui::PopupKind::Prefs,
-                4 => popup_ui::PopupKind::Retire,
-                5 => popup_ui::PopupKind::Enhanced,
-                _ => popup_ui::PopupKind::LandOffer,
-            }),
+            b'M' => {
+                app.open_popup(match at(0) {
+                    0 => popup_ui::PopupKind::Info,
+                    1 => popup_ui::PopupKind::System,
+                    2 => popup_ui::PopupKind::Prefs,
+                    4 => popup_ui::PopupKind::Retire,
+                    5 => popup_ui::PopupKind::Enhanced,
+                    _ => popup_ui::PopupKind::LandOffer,
+                });
+                // M:5,P opens the Enhanced graphics box on page P
+                if let Some(p) = app.popup.as_mut().filter(|_| v.len() >= 2) {
+                    p.set_page(at(1).clamp(0, enhanced::PAGES.len() as i32 - 1) as u8);
+                }
+            }
             b'm' if v.len() >= 2 => app.move_hole(at(0) as usize, at(1) as usize),
             b'a' if v.len() >= 3 => {
                 // test hook: an animal of kind v[2] and a follower at x,y
@@ -1055,6 +1064,8 @@ impl Stage {
         if k == usize::MAX {
             return; // refused or toggled: the popup stays
         }
+        // the Enhanced graphics box's ticks, across its pages
+        let enh = self.app.popup.as_ref().map(|p| p.enh).unwrap_or_else(enhanced::settings);
         self.app.close_popup();
         use popup_ui::PopupKind;
         match kind {
@@ -1114,7 +1125,7 @@ impl Stage {
             },
             // Preferences > Enhanced graphics: the ticks become the settings (enhanced.rs)
             PopupKind::Enhanced => {
-                if self.app.apply_enhanced(&mut self.g, enhanced::from_checks(k as u32)) {
+                if self.app.apply_enhanced(&mut self.g, enh) {
                     self.app.ui_ok &= load_art(&mut self.app, &mut self.g);
                 }
             }
@@ -1649,7 +1660,7 @@ impl Stage {
             app.draw_scenarios(&mut self.g);
         } else {
             // with the effects' post-processing the course is drawn offscreen and composited before the interface (fx.rs)
-            let post = fx::active() && app.fx_world_begin(&mut self.g);
+            let post = fx::active() && app.fx_world_begin(&mut self.g, target);
             app.render_world(&mut self.g);
             if post {
                 app.fx_world_end(&mut self.g, target);
