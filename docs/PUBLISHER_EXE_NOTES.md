@@ -694,6 +694,11 @@ Confidence: high unless marked.
   after an award; the pro's three skill points follow it.
 - One event log entry a month (type in the high bits, a five-bit argument), shown by the year-end report with this
   year's and last year's cash, fun, skill and membership.
+- Those figures come from a 500-month history (cash 0x51b388, fun 0x53e63c, skill 0x5409ac, members 0x520640, indexed by
+  month % 500); the report compares this month's slot with the one eight months back. The main frame writes cash, fun and
+  skill at each wage charge (every 1024 / (difficulty + 2) ticks, with the member count) and again at every month start
+  (tick & 0x3ff == 0); the report itself stores the current member count in this month's slot (EXACT). The port only wrote
+  at the charges, which on Medium and Expert never fall on the month start, so a year end showed This Year all zero, red.
 
 ## The clubhouse pair screen (0x459850)
 

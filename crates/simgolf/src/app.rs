@@ -1991,7 +1991,10 @@ impl App {
         sg_core::ratings::pass(&mut self.club, self.difficulty);
         self.pro_after_tick();
         self.board_tick();
-        if tick.is_multiple_of(1024 / (self.difficulty.clamp(0, 3) as u32 + 2)) {
+        // the month's history entry (the year-end report reads it): written at each charge and again at every month start
+        // (the main frame's tick & 0x3ff == 0 block, 0x40f5c0); on Medium and Expert the charge interval (341, 204 ticks)
+        // never lands on a month start, so without the second write the year-end slot stayed empty (all zero, in red)
+        if tick.is_multiple_of(1024 / (self.difficulty.clamp(0, 3) as u32 + 2)) || tick & 0x3ff == 0 {
             let members = self.club.member_count();
             self.club.record_history(self.club.cash, members);
         }
