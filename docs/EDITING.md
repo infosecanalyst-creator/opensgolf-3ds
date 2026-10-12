@@ -43,9 +43,12 @@ The original has no wall tool: it rebuilds the walls whenever the ground changes
 whose neighbour stands higher there: the tile's two corners on that edge, flattened as its type flattens them (tees at their
 highest corner, water at its lowest, buildings at their level), are compared with the neighbour's (0x42f530, the course's wall
 bits). The style handed to Terrain.dll is the terrain table's byte +0x28 of the tile's type (1 water, 2 any other ground; the
-neighbour's when it is 0). The port derives the walls the same way (`build_walls`); the look is a PLACEHOLDER (a strip of
-`RetainingWallA.bmp` as tall as the step), since the port's ground is one continuous surface rather than Terrain.dll's
-per-tile corners. The exe also stands rock cuts of `cliffs01.pcx` on water banks where a wall faces the camera, picked by the
+neighbour's when it is 0, which no type of the static table has). The port derives the walls the same way (`build_walls`) and
+draws them as Terrain.dll 0x1000f7f0 does (see TERRAIN.md): each tile keeps its own corners as golf.exe hands them to the DLL
+(flattened tiles step away from their neighbours, water stays at sea level), and the wall is the face between this tile's
+side and the neighbour's, `RetainWallA.bmp` stretched over the step (`CliffTest.bmp` round water). Water painted on raised
+ground sits at sea level with no wall where its lowest corner matches the ground round it, as 0x449540 reads (DERIVED: no
+write lowering the corners was found on the paint path; the land generator keeps water at sea level). The exe also stands rock cuts of `cliffs01.pcx` on water banks where a wall faces the camera, picked by the
 bank's height in steps (`sg_core::decor::bank_rocks`, drawn by the port before the sprites).
 
 ## The tool under the pointer

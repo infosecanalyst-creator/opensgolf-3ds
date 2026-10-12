@@ -325,6 +325,15 @@ pub struct SaveGame {
 
 const SAVE_MAGIC: &[u8] = b"SIMGOLF-NATIVE-SAVE\n";
 
+/// Terrain.dll's normals for the faces on a tile's sides (0x10063c40: north (y - 1), south, west, east, 0x18 bytes each), the
+/// first for views 0 and 2, the second for 1 and 3. Shared by the property's cliff and the retaining walls; not unit length.
+const EDGE_NORMALS: [[[f32; 3]; 2]; 4] = [
+    [[0.707, 0.0, 0.707], [1.0, 1.0, 0.0]],
+    [[-0.707, 0.0, -0.707], [-1.0, 1.0, 0.0]],
+    [[-1.0, 1.0, 0.0], [1.0, 0.0, 0.0]],
+    [[1.0, 1.0, 0.0], [-1.0, 0.0, 0.0]],
+];
+
 /// Reads a whole game saved by `App::save_game` (also used for the Load screen's preview of a save).
 pub fn read_save(path: &Path) -> Result<SaveGame, String> {
     let data = sg_core::fsutil::read_file(path).ok_or_else(|| trf("STR_ERROR_FILE_NOT_FOUND", &[("FILE", &path.display())]))?;
@@ -1018,6 +1027,7 @@ impl App {
         self.clear_batches(g);
         self.terrain.desert = self.theme == 2; // the original swaps shallow water for its desert variant in this theme
         self.terrain.sand_phase = ((self.rot / 90.0).round() as i32).rem_euclid(4);
+        self.sync_tile_corners();
         let mut map: BTreeMap<usize, (TextureId, Vec<Vert>)> = BTreeMap::new();
         let mut tris = Vec::new();
         let mut order: HashMap<Option<TextureId>, usize> = HashMap::new();
@@ -1153,12 +1163,41 @@ impl App {
         self.mud_batches = Self::upload(g, mud);
     }
 
-    /// Retaining walls, built where the ground steps as the exe builds them (0x449540): a tile gets a wall on each edge whose
-    /// neighbour stands higher there (the course's wall bits, 0x42f530: the tile's two corners on that edge, flattened as its
-    /// type flattens them, against the neighbour's), in the style of its type (1 for water, 2 for any other ground; the
-    /// neighbour's style if the tile's is 0). Terrain.dll draws the face; the port's ground is one continuous surface, so
-    /// the look here is a PLACEHOLDER: a strip of `RetainingWallA.bmp` standing on the edge as tall as the step, with a thin cap.
-    /// Water banks get the same strip (the exe also stands rocks from cliffs01.pcx on them: see draw_bank_rocks).
+    /// Each tile's own corners, as golf.exe hands them to Terrain.dll (0x449540): every tile but water (type 17, left at sea
+    /// level) has each corner raised to the course's corner as the ground uses it (0x40bfe0: tees at their highest corner,
+    /// pot bunkers and water at their lowest, buildings at their level, wetlands at sea level), so flattened tiles step away
+    /// from their neighbours. Without land (the demo course) the tiles share their corners.
+    fn sync_tile_corners(&mut self) {
+        self.terrain.tile_corner.clear();
+        if self.land.is_none() || self.terrain.w != sg_core::course::N || self.terrain.h != sg_core::course::N {
+            return;
+        }
+        self.sync_course();
+        let c = &self.course;
+        let level = |a: i32, b: i32, k: i32| (c.corner(a, b, k) - sg_core::terrain::EXE_SEA).max(0) as i8;
+        let mut out = Vec::with_capacity(self.terrain.ty.len());
+        for b in 0..sg_core::course::N {
+            for a in 0..sg_core::course::N {
+                out.push(if c.ty[sg_core::course::idx(a, b)] == sg_core::course::t::WATER {
+                    [0; 4]
+                } else {
+                    // corners 7 (-x -y), 1 (+x -y), 5 (-x +y), 3 (+x +y)
+                    [level(a, b, 7), level(a, b, 1), level(a, b, 5), level(a, b, 3)]
+                });
+            }
+        }
+        self.terrain.tile_corner = out;
+    }
+
+    /// Retaining walls (Terrain.dll 0x1000f7f0, drawn with every tile). golf.exe sets them where the ground steps (0x449540): a
+    /// tile gets a wall on each side whose neighbour stands higher there (the course's wall bits, 0x42f530: the tile's two
+    /// corners on that side, flattened as its type flattens them, against the neighbour's), with the style of the tile's type
+    /// (terrain table +0x28: 1 for water, 2 for every other type). The DLL draws a side whose flag is set and whose neighbour
+    /// exists as four triangles between the tile's three vertices on that side (bottom, t 0) and the neighbour's three on the
+    /// same side (top, t 1), u 0, 0.5, 1 along it: the whole picture stretched over the step, whatever its height. Style 1
+    /// takes `CliffTest.bmp` (texture 35), any other `RetainWallA.bmp` (34). The normal is the cliff's for that side and the
+    /// view's parity (0x10063c40). The face looks towards the lower tile and back faces are culled (GL_CULL_FACE, 0x100034a3),
+    /// so only the sides facing the camera show: the port keeps those for the current view.
     fn build_walls(&mut self, g: &mut Gfx) {
         self.terrain.wall_mask = vec![0; self.terrain.ty.len()];
         if self.land.is_none() {
@@ -1175,58 +1214,62 @@ impl App {
                 }
             }
         }
-        let Some(tex) = self.theme_texture(g, "RetainingWallA.bmp") else { return };
-        let t = &self.terrain;
-        let c = &self.course;
-        const CAP: f32 = 5.0;
-        let (ox, oz) = (-t.w as f32 * TILE_SIZE * 0.5, -t.h as f32 * TILE_SIZE * 0.5);
-        let mut batch = Vec::new();
-        let vn = |x: f32, y: f32, z: f32, u: f32, v: f32, n: [f32; 3]| {
-            let mut q = Vert::new(x, y, z, u, v);
-            q.normal = n;
-            q
+        let (Some(ground), Some(water)) = (self.theme_texture(g, "RetainWallA.bmp"), self.theme_texture(g, "CliffTest.bmp")) else {
+            return;
         };
+        let t = &self.terrain;
+        let view = ((self.rot / 90.0).round() as i32).rem_euclid(4);
+        let odd = (view & 1) as usize;
+        let (ox, oz) = (-t.w as f32 * TILE_SIZE * 0.5, -t.h as f32 * TILE_SIZE * 0.5);
+        let (mut on_ground, mut on_water) = (Vec::new(), Vec::new());
+        // per port side (0 north = -y, 1 east, 2 south, 3 west): the views that see its face, the cliff side whose normal it
+        // takes (EDGE_NORMALS: north, south, west, east), and its three vertices in the DLL's order as (row, column) of the
+        // tile's 3 x 3 patch (the neighbour's are the facing ones across the side)
+        type Side = ([i32; 2], usize, [(usize, usize); 3]);
+        const SIDES: [Side; 4] = [
+            ([0, 3], 0, [(0, 0), (0, 1), (0, 2)]),
+            ([0, 1], 3, [(0, 2), (1, 2), (2, 2)]),
+            ([1, 2], 1, [(2, 2), (2, 1), (2, 0)]),
+            ([2, 3], 2, [(2, 0), (1, 0), (0, 0)]),
+        ];
         for ty in 0..t.h {
             for tx in 0..t.w {
-                for dir in 0..4 {
-                    if !t.wall_at(tx, ty, dir) {
+                for (dir, (views, normal, verts)) in SIDES.iter().enumerate() {
+                    let d = 2 * dir;
+                    let (na, nb) = (tx + sg_core::geom::DX[d], ty + sg_core::geom::DY[d]);
+                    if !t.wall_at(tx, ty, dir as i32) || !t.inside(na, nb) || !views.contains(&view) {
                         continue;
                     }
-                    // the step at each end of the edge: the neighbour's corner over this tile's (exe corners k = 2d - 1, 2d + 1)
-                    let d = 2 * dir;
-                    let (na, nb) = (tx + sg_core::geom::DX[d as usize], ty + sg_core::geom::DY[d as usize]);
-                    let k = d - 1;
-                    let step =
-                        |own: i32, theirs: i32| (c.corner(na, nb, theirs & 7) - c.corner(tx, ty, own & 7)).max(0) as f32 * HEIGHT_STEP;
-                    let (s0, s1) = (step(k, k + 6), step(k + 2, k + 4));
-                    let (x, z) = (ox + tx as f32 * TILE_SIZE, oz + ty as f32 * TILE_SIZE);
-                    // ends in the order of corners k, k + 2 (7 = -x -y, 1 = +x -y, 3 = +x +y, 5 = -x +y)
-                    let (x0, z0, x1, z1, ix, iz) = match dir {
-                        0 => (x, z, x + TILE_SIZE, z, 0.0, CAP),
-                        1 => (x + TILE_SIZE, z, x + TILE_SIZE, z + TILE_SIZE, -CAP, 0.0),
-                        2 => (x + TILE_SIZE, z + TILE_SIZE, x, z + TILE_SIZE, 0.0, -CAP),
-                        _ => (x, z + TILE_SIZE, x, z, CAP, 0.0),
+                    let (own, theirs) = (t.patch_heights(tx, ty), t.patch_heights(na, nb));
+                    let n = EDGE_NORMALS[*normal][odd];
+                    // the neighbour's vertex on the same spot: across a north or south side the other row, else the other column
+                    let facing = |(r, c): (usize, usize)| if dir % 2 == 0 { (2 - r, c) } else { (r, 2 - c) };
+                    let vtx = |(r, c): (usize, usize), y: f32, u: f32, v: f32| {
+                        let x = ox + tx as f32 * TILE_SIZE + c as f32 * TILE_SIZE * 0.5;
+                        let z = oz + ty as f32 * TILE_SIZE + r as f32 * TILE_SIZE * 0.5;
+                        let mut q = Vert::new(x, y, z, u, v);
+                        q.normal = n;
+                        q
                     };
-                    let side = [[0.0, 0.0, -1.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [-1.0, 0.0, 0.0]][dir as usize];
-                    const N: i32 = 4;
-                    for i in 0..N {
-                        let (a, b) = (i as f32 / N as f32, (i + 1) as f32 / N as f32);
-                        let (xa, za, xb, zb) = (x0 + (x1 - x0) * a, z0 + (z1 - z0) * a, x0 + (x1 - x0) * b, z0 + (z1 - z0) * b);
-                        let (ha, hb) = (s0 + (s1 - s0) * a, s0 + (s1 - s0) * b);
-                        let (ya, yb) = (t.height_at(xa, za), t.height_at(xb, zb));
-                        let (p0, p1) = (vn(xa, ya, za, a, 0.3, side), vn(xb, yb, zb, b, 0.3, side));
-                        let (p2, p3) = (vn(xb, yb + hb, zb, b, 0.0, side), vn(xa, ya + ha, za, a, 0.0, side));
-                        batch.extend_from_slice(&[p0, p1, p2, p0, p2, p3]);
-                        let up = [0.0, 1.0, 0.0];
-                        let (c0, c1) = (vn(xa, ya + ha, za, a, 0.3, up), vn(xb, yb + hb, zb, b, 0.3, up));
-                        let (c2, c3) = (vn(xb + ix, yb + hb, zb + iz, b, 0.4, up), vn(xa + ix, ya + ha, za + iz, a, 0.4, up));
-                        batch.extend_from_slice(&[c0, c1, c2, c0, c2, c3]);
-                    }
+                    // the port's pictures are top-down, so the DLL's t 0 (the picture's bottom row) is v 1
+                    let p: Vec<Vert> = verts.iter().enumerate().map(|(i, &(r, c))| vtx((r, c), own[r][c], i as f32 * 0.5, 1.0)).collect();
+                    let q: Vec<Vert> = verts
+                        .iter()
+                        .enumerate()
+                        .map(|(i, &rc)| {
+                            let (fr, fc) = facing(rc);
+                            vtx(rc, theirs[fr][fc], i as f32 * 0.5, 0.0)
+                        })
+                        .collect();
+                    let out = if t.type_at(tx, ty) == 17 { &mut on_water } else { &mut on_ground };
+                    out.extend_from_slice(&[q[0], p[0], p[1], q[0], p[1], q[1], q[1], p[1], p[2], q[1], p[2], q[2]]);
                 }
             }
         }
-        if !batch.is_empty() {
-            self.wall_batches.push(Batch { tex, mesh: g.mesh(&batch) });
+        for (tex, batch) in [(ground, on_ground), (water, on_water)] {
+            if !batch.is_empty() {
+                self.wall_batches.push(Batch { tex, mesh: g.mesh(&batch) });
+            }
         }
     }
 
@@ -1242,13 +1285,13 @@ impl App {
         let t = &self.terrain;
         let view = ((self.rot / 90.0).round() as i32).rem_euclid(4);
         let odd = (view & 1) as usize;
-        // (neighbour step, the views that draw it, the normals for even and odd views)
+        // (neighbour step, the views that draw it, the side's normals for even and odd views)
         type Side = ((i32, i32), [i32; 2], [[f32; 3]; 2]);
         const SIDES: [Side; 4] = [
-            ((0, -1), [1, 2], [[0.707, 0.0, 0.707], [1.0, 1.0, 0.0]]),
-            ((0, 1), [0, 3], [[-0.707, 0.0, -0.707], [-1.0, 1.0, 0.0]]),
-            ((-1, 0), [0, 1], [[-1.0, 1.0, 0.0], [1.0, 0.0, 0.0]]),
-            ((1, 0), [2, 3], [[1.0, 1.0, 0.0], [-1.0, 0.0, 0.0]]),
+            ((0, -1), [1, 2], EDGE_NORMALS[0]),
+            ((0, 1), [0, 3], EDGE_NORMALS[1]),
+            ((-1, 0), [0, 1], EDGE_NORMALS[2]),
+            ((1, 0), [2, 3], EDGE_NORMALS[3]),
         ];
         const BOTTOM: f32 = -75.0;
         let (ox, oz) = (-t.w as f32 * TILE_SIZE * 0.5, -t.h as f32 * TILE_SIZE * 0.5);
@@ -1276,7 +1319,14 @@ impl App {
                         (-1, _) => ((x, z), (x, z + TILE_SIZE)),
                         _ => ((x + TILE_SIZE, z), (x + TILE_SIZE, z + TILE_SIZE)),
                     };
-                    let (y0, y1) = (t.height_at(x0, z0), t.height_at(x1, z1));
+                    // the side's end vertices are this tile's own corners
+                    let l = t.tile_levels(tx, ty).map(|v| v as f32 * sg_core::terrain::HEIGHT_STEP);
+                    let (y0, y1) = match (dx, dy) {
+                        (0, -1) => (l[0], l[1]),
+                        (0, _) => (l[2], l[3]),
+                        (-1, _) => (l[0], l[2]),
+                        _ => (l[1], l[3]),
+                    };
                     // the bitmaps are bottom-up in OpenGL, so v 1 is the picture's top row (the port's images are top-down)
                     let top0 = vn(x0, y0, z0, 0.0, 0.0);
                     let bot0 = vn(x0, BOTTOM, z0, 0.0, 1.0);

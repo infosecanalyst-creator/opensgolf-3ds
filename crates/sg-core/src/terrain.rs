@@ -276,8 +276,9 @@ pub struct Terrain {
     /// Per tile: 0 none, 1 gravel path, 2 paved path (our own overlay model).
     pub path_kind: Vec<u8>,
     /// Retaining walls: one flag per tile edge (bit 0 north = -z, 1 east, 2 south, 3 west). Terrain.dll's Tile keeps a flag byte
-    /// per direction (Tile::getWall/setWall); what the walls look like and cost is decided elsewhere, so the height and look here
-    /// are placeholders. Edits keep the two tiles that share an edge in step.
+    /// per direction (Tile::getWall/setWall, Tile+0x234 + side); golf.exe decides where they go (0x449540) and the DLL draws
+    /// them between the two tiles' own corners (0x1000f7f0, see `tile_corner`). Edits keep the two tiles that share an edge in
+    /// step.
     pub wall_mask: Vec<u8>,
     /// Desert theme: shallow water uses the WaterShallowDesert textures.
     pub desert: bool,
@@ -292,6 +293,12 @@ pub struct Terrain {
     /// The view's quarter turn (0..3), which turns the sand trap pictures (see `texture_type_for`).
     #[serde(skip)]
     pub sand_phase: i32,
+    /// Each tile's own corner levels (north-west, north-east, south-west, south-east), as Terrain.dll keeps them: its vertex
+    /// array is 3W x 3H, so tiles share no vertices, and golf.exe raises each tile's corners to the course's corner as the
+    /// ground uses it (0x449540: `elevateCorner` (level - 3) times per corner from 0x40bfe0, water left at sea level), so a
+    /// flattened tile steps away from its neighbours and the step is closed by a retaining wall. Empty: the shared corners.
+    #[serde(skip)]
+    pub tile_corner: Vec<[i8; 4]>,
 }
 
 pub const MAX_LEVEL: i32 = 24;
@@ -334,6 +341,59 @@ impl Terrain {
         self.inside(x, y) && !self.wall_mask.is_empty() && (self.wall_mask[self.tile_index(x, y)] >> dir) & 1 != 0
     }
 
+    /// A tile's corner levels (north-west, north-east, south-west, south-east): its own (`tile_corner`) when the course has
+    /// set them, else the shared corners.
+    pub fn tile_levels(&self, x: i32, y: i32) -> [i32; 4] {
+        if self.inside(x, y) && self.tile_corner.len() == self.ty.len() {
+            return self.tile_corner[self.tile_index(x, y)].map(|v| v as i32);
+        }
+        [self.corner_at(x, y), self.corner_at(x + 1, y), self.corner_at(x, y + 1), self.corner_at(x + 1, y + 1)]
+    }
+
+    /// The heights of a tile's 3 x 3 vertex patch ([row along z][column along x]): its corners, the edge midpoints and the
+    /// centre between them, sand (type 7) dished 13 units like Terrain.dll's `Tile::m1203` (see TERRAIN.md).
+    pub fn patch_heights(&self, tx: i32, ty: i32) -> [[f32; 3]; 3] {
+        let l = self.tile_levels(tx, ty);
+        let c = [[l[0] as f32 * HEIGHT_STEP, l[1] as f32 * HEIGHT_STEP], [l[2] as f32 * HEIGHT_STEP, l[3] as f32 * HEIGHT_STEP]];
+        let mut hgt = [[0f32; 3]; 3];
+        for (j, row) in hgt.iter_mut().enumerate() {
+            for (i, h) in row.iter_mut().enumerate() {
+                let (fx, fy) = (i as f32 * 0.5, j as f32 * 0.5);
+                *h = (c[0][0] * (1.0 - fx) + c[0][1] * fx) * (1.0 - fy) + (c[1][0] * (1.0 - fx) + c[1][1] * fx) * fy;
+            }
+        }
+        if self.type_at(tx, ty) == 7 {
+            let dish = 13.0;
+            hgt[1][1] -= dish;
+            let sand = |dx: i32, dy: i32| self.type_at(tx + dx, ty + dy) == 7;
+            if sand(0, -1) {
+                hgt[0][1] -= dish;
+            }
+            if sand(0, 1) {
+                hgt[2][1] -= dish;
+            }
+            if sand(-1, 0) {
+                hgt[1][0] -= dish;
+            }
+            if sand(1, 0) {
+                hgt[1][2] -= dish;
+            }
+            if sand(0, -1) && sand(-1, 0) && sand(-1, -1) {
+                hgt[0][0] -= dish;
+            }
+            if sand(0, -1) && sand(1, 0) && sand(1, -1) {
+                hgt[0][2] -= dish;
+            }
+            if sand(0, 1) && sand(-1, 0) && sand(-1, 1) {
+                hgt[2][0] -= dish;
+            }
+            if sand(0, 1) && sand(1, 0) && sand(1, 1) {
+                hgt[2][2] -= dish;
+            }
+        }
+        hgt
+    }
+
     /// World position of a tile centre.
     pub fn tile_centre(&self, tx: i32, ty: i32) -> (f32, f32) {
         (
@@ -364,8 +424,9 @@ impl Terrain {
         fz = fz.clamp(0.0, self.h as f32 - 0.001);
         let (x, y) = (fx as i32, fz as i32);
         let (u, v) = (fx - x as f32, fz - y as f32);
-        let a = self.corner_at(x, y) as f32 * (1.0 - u) + self.corner_at(x + 1, y) as f32 * u;
-        let b = self.corner_at(x, y + 1) as f32 * (1.0 - u) + self.corner_at(x + 1, y + 1) as f32 * u;
+        let c = self.tile_levels(x, y).map(|l| l as f32);
+        let a = c[0] * (1.0 - u) + c[1] * u;
+        let b = c[2] * (1.0 - u) + c[3] * u;
         (a * (1.0 - v) + b * v) * HEIGHT_STEP
     }
 
@@ -885,48 +946,7 @@ pub fn build_tile_triangles(t: &Terrain, tx: i32, ty: i32, out: &mut Vec<TileTri
     let (ttype, vbyte, set) = (t.ty[me] as i32, t.variation[me] as i32, t.set[me] as i32);
 
     // Heights of the 3x3 patch: bilinear between the tile's corner elevations, sand tiles dished.
-    let mut c = [[0f32; 2]; 2];
-    for j in 0..2 {
-        for i in 0..2 {
-            c[j][i] = t.corner_at(tx + i as i32, ty + j as i32) as f32 * HEIGHT_STEP;
-        }
-    }
-    let mut hgt = [[0f32; 3]; 3];
-    for j in 0..3 {
-        for i in 0..3 {
-            let (fx, fy) = (i as f32 * 0.5, j as f32 * 0.5);
-            hgt[j][i] = (c[0][0] * (1.0 - fx) + c[0][1] * fx) * (1.0 - fy) + (c[1][0] * (1.0 - fx) + c[1][1] * fx) * fy;
-        }
-    }
-    if ttype == 7 {
-        let dish = 13.0;
-        hgt[1][1] -= dish;
-        let sand = |dx: i32, dy: i32| t.type_at(tx + dx, ty + dy) == 7;
-        if sand(0, -1) {
-            hgt[0][1] -= dish;
-        }
-        if sand(0, 1) {
-            hgt[2][1] -= dish;
-        }
-        if sand(-1, 0) {
-            hgt[1][0] -= dish;
-        }
-        if sand(1, 0) {
-            hgt[1][2] -= dish;
-        }
-        if sand(0, -1) && sand(-1, 0) && sand(-1, -1) {
-            hgt[0][0] -= dish;
-        }
-        if sand(0, -1) && sand(1, 0) && sand(1, -1) {
-            hgt[0][2] -= dish;
-        }
-        if sand(0, 1) && sand(-1, 0) && sand(-1, 1) {
-            hgt[2][0] -= dish;
-        }
-        if sand(0, 1) && sand(1, 0) && sand(1, 1) {
-            hgt[2][2] -= dish;
-        }
-    }
+    let hgt = t.patch_heights(tx, ty);
     let ox = tx as f32 * TILE_SIZE - t.w as f32 * TILE_SIZE * 0.5;
     let oz = ty as f32 * TILE_SIZE - t.h as f32 * TILE_SIZE * 0.5;
     let vtx = |j: usize, k: usize| Vertex {
@@ -1028,6 +1048,26 @@ pub fn build_tile_triangles(t: &Terrain, tx: i32, ty: i32, out: &mut Vec<TileTri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tiles_keep_their_own_corners() {
+        let mut t = Terrain::demo_course(4, 4, 1);
+        t.ty.iter_mut().for_each(|v| *v = TT_ROUGH);
+        t.corner.iter_mut().for_each(|c| *c = 1);
+        // shared corners while the course has not set any
+        assert_eq!(t.tile_levels(1, 1), [1, 1, 1, 1]);
+        // tile (1, 1) flattened two steps up: its patch and the ground under it follow, the neighbour keeps the shared corners
+        t.tile_corner = vec![[1; 4]; 16];
+        t.tile_corner[5] = [3; 4];
+        assert_eq!(t.patch_heights(1, 1), [[3.0 * HEIGHT_STEP; 3]; 3]);
+        let (cx, cz) = t.tile_centre(1, 1);
+        assert_eq!(t.height_at(cx, cz), 3.0 * HEIGHT_STEP);
+        let (nx, nz) = t.tile_centre(2, 1);
+        assert_eq!(t.height_at(nx, nz), HEIGHT_STEP);
+        // a slope: the edge midpoints and the centre are the averages of the corners
+        t.tile_corner[10] = [0, 2, 0, 2];
+        assert_eq!(t.patch_heights(2, 2)[1], [0.0, HEIGHT_STEP, 2.0 * HEIGHT_STEP]);
+    }
 
     #[test]
     fn blend_lookup_matches_original_table() {
