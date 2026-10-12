@@ -811,7 +811,8 @@ impl App {
             self.pstate.hot = h;
             self.pstate.hot_frames = 0;
         } else {
-            self.pstate.hot_frames = self.pstate.hot_frames.saturating_add(1);
+            // the exe's frames, counted on the clock (exe_steps), not ours
+            self.pstate.hot_frames = self.pstate.hot_frames.saturating_add(self.exe_steps);
         }
         let tip = h != -1 && (self.pstate.hot_frames > TIP_DELAY_FRAMES || self.pstate.still);
         match (self.panel, self.pstate.alt) {

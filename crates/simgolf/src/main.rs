@@ -275,6 +275,11 @@ struct Stage {
     mouse: (f32, f32),
     shift: bool,
     ctrl: bool,
+    /// A key just opened a name box (Shift+S the Save dialog): the character that key types comes next and is not the
+    /// name's (it put an "S" in front of every typed save name).
+    swallow_char: bool,
+    /// The wheel's turn not yet spent on a zoom step (in notches) and the clock of its last event.
+    wheel: (f32, f64),
     pause_toggle: bool,
     shown_version: u32,
     touch: touch::Touch,
@@ -1030,6 +1035,8 @@ impl Stage {
             mouse: (0.0, 0.0),
             shift: false,
             ctrl: false,
+            swallow_char: false,
+            wheel: (0.0, 0.0),
             pause_toggle: false,
             shown_version: 0,
         }
@@ -1355,7 +1362,7 @@ impl Stage {
                         app.files_action(a);
                     }
                 }
-                _ => window::order_quit(),
+                _ => quit_game(),
             }
         } else {
             app.world_click(&mut self.g, hit);
@@ -1471,7 +1478,7 @@ impl Stage {
                     app.open_popup(popup_ui::PopupKind::System);
                     app.hover = -1;
                 } else {
-                    window::order_quit();
+                    quit_game();
                 }
             }
             // Space drops the tool and the selected golfer
@@ -1605,6 +1612,7 @@ impl Stage {
         self.g.ctx.begin_pass(target, clear);
         enhanced::begin_frame();
         app.camera_frame(app.clock);
+        app.count_exe_frames();
         // the title screens set Klepto ITC (difficulty, the file lists and Pick A Pro, the theme packs); the rest of the game
         // draws in Manual SSi and Arial
         let title = app.ui_ok && matches!(app.screen, Screen::Menu | Screen::Difficulty | Screen::Files | Screen::Themes);
@@ -2079,6 +2087,14 @@ impl EventHandler for Stage {
             return;
         }
         self.app.card_pointer(vx, vy);
+        if self.app.screen != Screen::Play {
+            // the pointer has left the dock and the panel for another screen (the Information menu, a report, a question):
+            // the button it was on is no longer lit and its tooltip not shown, which otherwise stayed at the old pointer
+            // over the report or under the menu
+            self.app.dock_hover = -1;
+            self.app.pstate.mouse = (-1000.0, -1000.0);
+            self.app.panel_hover = -1;
+        }
         if self.app.screen == Screen::Land {
             let (vx, vy) = self.app.view.to_virtual(x, y);
             self.app.land_pointer(vx, vy);
@@ -2124,11 +2140,29 @@ impl EventHandler for Stage {
 
     fn mouse_wheel_event(&mut self, _x: f32, y: f32) {
         if (self.app.screen == Screen::Play || !self.app.ui_ok) && y != 0.0 && self.app.great_shot.is_none() {
+            // y is in notches (the browser's pixels are turned into notches by web/opensgolf.js); a trackpad sends many
+            // small turns
             if enhanced::smooth_camera() {
                 // Enhanced: a notch is a quarter of a doubling, between the original's closest and farthest levels
                 self.app.zoom_by((y * 0.25).clamp(-0.5, 0.5));
             } else {
-                self.app.zoom_step(y > 0.0);
+                // a step to the next of the original's three levels for the first turn of a gesture (a pause of a quarter
+                // second or a change of direction starts one), and another for each further notch's worth: a mouse
+                // notch is a step as before, and a trackpad's stream of small turns no longer runs through every level
+                let t = self.app.clock;
+                let (acc, last) = self.wheel;
+                if t - last > 0.25 || (acc != 0.0 && (acc > 0.0) != (y > 0.0)) {
+                    self.app.zoom_step(y > 0.0);
+                    self.wheel = (0.0, t);
+                } else {
+                    let acc = acc + y;
+                    if acc.abs() >= 1.0 {
+                        self.app.zoom_step(acc > 0.0);
+                        self.wheel = (0.0, t);
+                    } else {
+                        self.wheel = (acc, t);
+                    }
+                }
             }
         }
     }
@@ -2281,9 +2315,40 @@ impl EventHandler for Stage {
         // Android's back button (miniquad hands it over as Back): Esc, which closes a screen, goes back to the menu and
         // on the menu quits, as the back button does in Android apps
         let k = if k == KeyCode::Back { KeyCode::Escape } else { k };
+        // the port's own: Alt (Option on a Mac) or Ctrl with 1 to 9 and 0 stand for F1 to F10, for keyboards whose function
+        // keys need Fn (Macs, laptops) or act on the browser
+        let k = if mods.alt || mods.ctrl { fkey_of_digit(k).unwrap_or(k) } else { k };
         self.shift = mods.shift || k == KeyCode::LeftShift || k == KeyCode::RightShift;
         self.app.shift_held = self.shift;
         self.ctrl = mods.ctrl || k == KeyCode::LeftControl || k == KeyCode::RightControl;
+        let typing = self.app.typing();
+        self.key_down(k);
+        self.swallow_char = !typing && self.app.typing();
+    }
+
+    fn char_event(&mut self, c: char, _mods: KeyMods, _repeat: bool) {
+        if std::mem::take(&mut self.swallow_char) {
+            return;
+        }
+        self.app.rename_char(c);
+        self.app.save_char(c);
+        self.app.cust_char(c);
+    }
+
+    fn touch_event(&mut self, phase: TouchPhase, id: u64, x: f32, y: f32) {
+        self.touch(phase, id, x, y);
+    }
+
+    fn key_up_event(&mut self, k: KeyCode, mods: KeyMods) {
+        self.shift = mods.shift && k != KeyCode::LeftShift && k != KeyCode::RightShift;
+        self.app.shift_held = self.shift;
+        self.ctrl = mods.ctrl && k != KeyCode::LeftControl && k != KeyCode::RightControl;
+    }
+}
+
+impl Stage {
+    /// A key pressed (key_down_event after the modifiers and the stand-in keys).
+    fn key_down(&mut self, k: KeyCode) {
         // a notice (gamefiles.rs) takes the keys until it is closed
         if self.app.notice.is_some() {
             self.app.notice_key(k);
@@ -2350,7 +2415,12 @@ impl EventHandler for Stage {
                 app.tourney_key(k);
             } else if k == KeyCode::Escape {
                 if app.screen == Screen::Menu {
-                    window::order_quit();
+                    quit_game();
+                } else if app.screen == Screen::Land || (app.screen == Screen::Property && app.world_move) {
+                    // TRACTS FOR SALE and the world map opened from a game (F6) go back to the course, as their cancel
+                    // buttons do; Esc used to drop the game for the title menu
+                    app.world_move = false;
+                    app.screen = Screen::Play;
                 } else {
                     app.screen = Screen::Menu;
                 }
@@ -2360,22 +2430,40 @@ impl EventHandler for Stage {
         }
         self.play_key(k);
     }
+}
 
-    fn char_event(&mut self, c: char, _mods: KeyMods, _repeat: bool) {
-        self.app.rename_char(c);
-        self.app.save_char(c);
-        self.app.cust_char(c);
+/// Leaves the game (the title menu's exit button, Esc there). A browser tab cannot close itself: the page goes back to its
+/// start page (web/opensgolf.js sg_quit) instead of stopping on the last frame drawn.
+fn quit_game() {
+    #[cfg(target_arch = "wasm32")]
+    {
+        #[link(wasm_import_module = "env")]
+        extern "C" {
+            fn sg_quit();
+        }
+        // SAFETY: a plain call into the page's script, no arguments
+        unsafe { sg_quit() };
     }
+    #[cfg(not(target_arch = "wasm32"))]
+    window::order_quit();
+}
 
-    fn touch_event(&mut self, phase: TouchPhase, id: u64, x: f32, y: f32) {
-        self.touch(phase, id, x, y);
-    }
-
-    fn key_up_event(&mut self, k: KeyCode, mods: KeyMods) {
-        self.shift = mods.shift && k != KeyCode::LeftShift && k != KeyCode::RightShift;
-        self.app.shift_held = self.shift;
-        self.ctrl = mods.ctrl && k != KeyCode::LeftControl && k != KeyCode::RightControl;
-    }
+/// The function key a digit stands for with Alt or Ctrl held: 1 to 9 for F1 to F9, 0 for F10.
+fn fkey_of_digit(k: KeyCode) -> Option<KeyCode> {
+    use KeyCode::*;
+    Some(match k {
+        Key1 => F1,
+        Key2 => F2,
+        Key3 => F3,
+        Key4 => F4,
+        Key5 => F5,
+        Key6 => F6,
+        Key7 => F7,
+        Key8 => F8,
+        Key9 => F9,
+        Key0 => F10,
+        _ => return None,
+    })
 }
 
 /// The window's icon (Windows' title bar and taskbar, macOS's Dock): the app icon, drawn by the free set's painter.

@@ -564,6 +564,13 @@ impl App {
         });
         if let Some(p) = self.popup.as_mut().filter(|p| p.kind == PopupKind::Enhanced) {
             p.refresh_enhanced();
+            // the port's own box: moved up when a page would run off the bottom of the screen (the original's popups keep
+            // their places)
+            let r = p.choice_box().frame();
+            let over = r.y + r.h - 596.0;
+            if over > 0.0 {
+                p.top = (p.top - over).max(4.0);
+            }
         }
         self.screen = Screen::Popup;
     }
