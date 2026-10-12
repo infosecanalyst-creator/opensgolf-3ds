@@ -50,8 +50,11 @@ pub struct Settings {
     // the shader effects (fx.rs), each read through fx::sync
     /// Pixel-art scaling of magnified sprites and interface pictures (fx.rs).
     pub fx_scaler: bool,
-    /// The scaler's sharp-bilinear filter instead of the edge-directed one.
+    /// Settings files from before `fx_scaler_mode`: the sharp-bilinear filter was chosen (read, cleared when the filter is
+    /// chosen again).
     pub fx_scaler_sharp: bool,
+    /// The scaler's filter: 0 sharp bilinear, 1 edge-directed, 2 smooth (fx_smooth.rs).
+    pub fx_scaler_mode: u8,
     /// Animated water: reflections, sparkle, shore foam.
     pub fx_water: bool,
     /// Per-pixel terrain light, ambient occlusion and soft relief shadows.
@@ -114,6 +117,7 @@ impl Settings {
         photo_mode: true,
         fx_scaler: true,
         fx_scaler_sharp: false,
+        fx_scaler_mode: 2,
         fx_water: true,
         fx_terrain_light: true,
         fx_sprite_shadows: true,
@@ -140,6 +144,17 @@ impl Settings {
         fx_lightning: false,
         fx_day_length: 1,
     };
+}
+
+impl Settings {
+    /// The scaler's filter (0 sharp bilinear, 1 edge-directed, 2 smooth), an older file's sharp-bilinear choice included.
+    pub fn scaler_mode(&self) -> u8 {
+        if self.fx_scaler_sharp {
+            0
+        } else {
+            self.fx_scaler_mode.min(2)
+        }
+    }
 }
 
 impl Default for Settings {
@@ -258,7 +273,18 @@ pub const OPTIONS: &[OptionEntry] = &[
     tick!("smooth_motion", "STR_ENHANCED_SMOOTH_MOTION", DISPLAY, smooth_motion),
     tick!("photo_mode", "STR_ENHANCED_PHOTO_MODE", DISPLAY, photo_mode),
     tick!("fx_scaler", "STR_ENHANCED_FX_SCALER", EFFECTS, fx_scaler),
-    tick!("fx_scaler_sharp", "STR_ENHANCED_FX_SCALER_SHARP", EFFECTS, fx_scaler_sharp),
+    OptionEntry {
+        key: "fx_scaler_mode",
+        label: "STR_ENHANCED_FX_SCALER_MODE",
+        page: EFFECTS,
+        choices: &["STR_FX_SCALER_SHARP", "STR_FX_SCALER_EDGE", "STR_FX_SCALER_SMOOTH"],
+        get: |s| s.scaler_mode(),
+        set: |s, v| {
+            s.fx_scaler_mode = v.min(2);
+            s.fx_scaler_sharp = false;
+        },
+        reload: Reload::Nothing,
+    },
     tick!("fx_water", "STR_ENHANCED_FX_WATER", EFFECTS, fx_water),
     tick!("fx_terrain_light", "STR_ENHANCED_FX_TERRAIN_LIGHT", EFFECTS, fx_terrain_light),
     tick!("fx_sprite_shadows", "STR_ENHANCED_FX_SPRITE_SHADOWS", EFFECTS, fx_sprite_shadows),

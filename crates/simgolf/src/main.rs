@@ -33,6 +33,7 @@ mod fx_nature;
 mod fx_night;
 mod fx_reflect;
 mod fx_shadow;
+mod fx_smooth;
 mod fx_wet;
 mod gamefiles;
 mod gfx;

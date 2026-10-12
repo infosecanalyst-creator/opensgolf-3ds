@@ -22,13 +22,15 @@ use std::collections::{HashMap, HashSet};
 pub const SCALER_OFF: u8 = 0;
 pub const SCALER_SHARP: u8 = 1;
 pub const SCALER_EDGE: u8 = 2;
+/// The strongest: edge-directed interpolation along the art's own edges, inside the art too (fx_smooth.rs).
+pub const SCALER_SMOOTH: u8 = 3;
 
 /// The effects' options. `enabled` is the master switch (the Enhanced graphics setting); every other option defaults to what
 /// the effects use when it is on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FxSettings {
     pub enabled: bool,
-    /// SCALER_OFF, SCALER_SHARP (sharp bilinear) or SCALER_EDGE (edge directed).
+    /// SCALER_OFF, SCALER_SHARP (sharp bilinear), SCALER_EDGE (edge directed) or SCALER_SMOOTH (fx_smooth.rs).
     pub scaler: u8,
     pub water: bool,
     /// Per-pixel terrain light.
@@ -74,7 +76,7 @@ impl Default for FxSettings {
     fn default() -> Self {
         FxSettings {
             enabled: false,
-            scaler: SCALER_EDGE,
+            scaler: SCALER_SMOOTH,
             water: true,
             lighting: true,
             occlusion: true,
@@ -162,9 +164,9 @@ static OPTIONS: [FxOption; 28] = [
     FxOption {
         key: "scaler",
         label: "STR_FX_SCALER",
-        choices: &["STR_FX_OFF", "STR_FX_SCALER_SHARP", "STR_FX_SCALER_EDGE"],
-        get: |s| s.scaler.min(2) as usize,
-        set: |s, v| s.scaler = v.min(2) as u8,
+        choices: &["STR_FX_OFF", "STR_FX_SCALER_SHARP", "STR_FX_SCALER_EDGE", "STR_FX_SCALER_SMOOTH"],
+        get: |s| s.scaler.min(SCALER_SMOOTH) as usize,
+        set: |s, v| s.scaler = (v as u8).min(SCALER_SMOOTH),
     },
     flag!("water", "STR_FX_WATER", water),
     flag!("lighting", "STR_FX_LIGHTING", lighting),
@@ -221,7 +223,7 @@ pub fn print_options() {
 }
 
 /// Applies `key=value,...` to settings: a value is a choice's index, on/off/true/false/yes/no, or a choice's name
-/// (sharp, edge, low, medium, high). A bare `on`/`1` (or `off`/`0`) turns the effects on (off).
+/// (sharp, edge, smooth, low, medium, high). A bare `on`/`1` (or `off`/`0`) turns the effects on (off).
 pub fn apply_spec(s: &mut FxSettings, spec: &str) -> Result<(), String> {
     for item in spec.split(',').map(str::trim).filter(|i| !i.is_empty()) {
         let (key, val) = match item.split_once('=') {
@@ -237,6 +239,7 @@ pub fn apply_spec(s: &mut FxSettings, spec: &str) -> Result<(), String> {
             "medium" | "normal" => 1,
             "short" => 0,
             "long" => 2,
+            "smooth" => 3,
             n => n.parse::<usize>().map_err(|_| format!("bad value {val} for {key}"))?,
         };
         if v >= opt.choices.len() {
@@ -279,13 +282,7 @@ thread_local! {
 pub fn from_enhanced(e: &crate::enhanced::Settings) -> FxSettings {
     let mut s = settings();
     s.enabled = e.enabled || FORCED.with(|f| f.get());
-    s.scaler = if !e.fx_scaler {
-        SCALER_OFF
-    } else if e.fx_scaler_sharp {
-        SCALER_SHARP
-    } else {
-        SCALER_EDGE
-    };
+    s.scaler = if !e.fx_scaler { SCALER_OFF } else { [SCALER_SHARP, SCALER_EDGE, SCALER_SMOOTH][e.scaler_mode() as usize] };
     s.water = e.fx_water;
     s.lighting = e.fx_terrain_light;
     s.occlusion = e.fx_terrain_light;
@@ -454,6 +451,9 @@ pub struct FxGpu {
     scaler: Pipeline,
     /// The scaler blending premultiplied colours (Enhanced's smooth interface textures).
     scaler_pm: Pipeline,
+    /// The Smooth scaler (fx_smooth.rs), straight and premultiplied.
+    smooth: Pipeline,
+    smooth_pm: Pipeline,
     ground_solid: Pipeline,
     ground_overlay: Pipeline,
     water: Pipeline,
@@ -557,19 +557,31 @@ impl FxGpu {
             &["scene", "blurred", "bloom"],
             &[("tilt", Float4), ("glow", Float4), ("grade", Float4), ("tint", Float4)],
         );
-        let scaler = pipe(ctx, scaler_sh, Comparison::Always, false, true);
-        let scaler_pm = ctx.new_pipeline(
-            &[BufferLayout::default()],
-            &attrs,
-            scaler_sh,
-            PipelineParams {
-                depth_test: Comparison::Always,
-                depth_write: false,
-                color_blend: alpha_blend,
-                alpha_blend,
-                ..Default::default()
-            },
+        let smooth_sh = shader(
+            ctx,
+            glsl::SCALER_VS,
+            &crate::fx_smooth::smooth_fs(),
+            &["tex"],
+            &[("mvp", Mat4), ("sp", Float4), ("alpha_ref", Float1), ("soft", Float1), ("pm", Float1)],
         );
+        let pm_pipe = |ctx: &mut dyn RenderingBackend, sh| {
+            ctx.new_pipeline(
+                &[BufferLayout::default()],
+                &attrs,
+                sh,
+                PipelineParams {
+                    depth_test: Comparison::Always,
+                    depth_write: false,
+                    color_blend: alpha_blend,
+                    alpha_blend,
+                    ..Default::default()
+                },
+            )
+        };
+        let scaler = pipe(ctx, scaler_sh, Comparison::Always, false, true);
+        let scaler_pm = pm_pipe(ctx, scaler_sh);
+        let smooth = pipe(ctx, smooth_sh, Comparison::Always, false, true);
+        let smooth_pm = pm_pipe(ctx, smooth_sh);
         let ground_solid = pipe(ctx, terrain_sh, Comparison::Less, true, false);
         let ground_overlay = pipe(ctx, terrain_sh, Comparison::Less, false, true);
         let water = pipe(ctx, water_sh, Comparison::Less, true, false);
@@ -601,6 +613,8 @@ impl FxGpu {
         FxGpu {
             scaler,
             scaler_pm,
+            smooth,
+            smooth_pm,
             ground_solid,
             ground_overlay,
             water,
@@ -674,19 +688,26 @@ pub fn apply_scaler(
     if scale < 1.05 {
         return false;
     }
-    // edge-directed rules need room to show; at low magnifications and on the lowest quality the sharp filter does it
-    let mode = if settings().scaler == SCALER_EDGE && scale >= 1.5 && settings().quality > 0 { SCALER_EDGE } else { SCALER_SHARP };
+    // edge-directed rules need room to show; at low magnifications and on the lowest quality the sharp filter does it (the
+    // Smooth filter interpolates, so it already helps from a little magnification on)
+    let s = settings();
+    let mode = match s.scaler {
+        SCALER_EDGE if scale >= 1.5 && s.quality > 0 => SCALER_EDGE,
+        SCALER_SMOOTH if scale >= 1.2 && s.quality > 0 => SCALER_SMOOTH,
+        _ => SCALER_SHARP,
+    };
     if fx.is_none() {
         *fx = Some(Box::new(FxGpu::new(&mut **ctx)));
     }
     let Some(f) = fx.as_deref() else { return false };
-    ctx.apply_pipeline(if colours != TEX_STRAIGHT { &f.scaler_pm } else { &f.scaler });
+    let (straight, pm) = if mode == SCALER_SMOOTH { (&f.smooth, &f.smooth_pm) } else { (&f.scaler, &f.scaler_pm) };
+    ctx.apply_pipeline(if colours != TEX_STRAIGHT { pm } else { straight });
     ctx.apply_bindings(&Bindings { vertex_buffers: vec![vb], index_buffer: ib, images: vec![tex] });
     ctx.apply_uniforms(UniformsSource::table(&ScalerUniforms {
         mvp: u.mvp,
         sp: [tw as f32, th as f32, scale, mode as f32],
         alpha_ref: u.alpha_ref,
-        soft: if mode == SCALER_EDGE { SOFT_EDGE.with(|s| s.get()) } else { SOFT_SHARP.with(|s| s.get()) },
+        soft: if mode != SCALER_SHARP { SOFT_EDGE.with(|s| s.get()) } else { SOFT_SHARP.with(|s| s.get()) },
         pm: colours as f32,
     }));
     true
@@ -1430,6 +1451,8 @@ mod tests {
         assert_eq!((s.scaler, s.quality), (SCALER_SHARP, 2));
         apply_spec(&mut s, "quality=low,scaler=edge").unwrap();
         assert_eq!((s.scaler, s.quality), (SCALER_EDGE, 0));
+        apply_spec(&mut s, "scaler=smooth").unwrap();
+        assert_eq!(s.scaler, SCALER_SMOOTH);
         assert!(apply_spec(&mut s, "nonsense=1").is_err());
         assert!(apply_spec(&mut s, "scaler=7").is_err());
     }
