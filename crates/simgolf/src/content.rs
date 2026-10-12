@@ -123,6 +123,14 @@ fn save_settings(s: &Settings) {
     }
 }
 
+/// Saves the base set chosen (None: the original files), keeping the other content choices; it applies from the next
+/// start (gamefiles.rs restarts the game for it).
+pub fn save_base(base: Option<&str>) {
+    let mut s = saved_settings();
+    s.base = base.map(str::to_string);
+    save_settings(&s);
+}
+
 /// Finds the packs, loads the enabled ones over the game folder at `game_dir`, and installs their data. Runs once, before
 /// anything else of the game is read. With no packs enabled nothing is mounted and the built-in tables stay.
 ///
