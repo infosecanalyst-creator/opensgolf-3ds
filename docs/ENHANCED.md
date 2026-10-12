@@ -59,6 +59,7 @@ is filtered, placed and animated.
 | Sharper course textures (`terrain_filter`) | The terrain's mipmapped textures get anisotropic filtering (up to 8×) where the driver has `GL_EXT_texture_filter_anisotropic` (or OpenGL 4.6), so the course stays sharp towards the top of the screen at the steep viewing angle. Skipped in browsers and on phones (WebGL 1 / GLES 2 do not promise it) and wherever the driver does not know the setting. |
 | Anti-aliasing (`msaa`) | The frame is drawn into a 4× multisampled target and resolved (the HD mode's target): smooth terrain edges, cliffs and lines. Desktop only, where the renderer can resolve multisampled targets. |
 | Smooth camera: zoom, turns and panning (`smooth_camera`) | The mouse wheel and a two-finger pinch zoom continuously between the original's farthest and closest levels (a wheel notch is a quarter of a doubling); the zoom buttons and z / x still step to the next original level. Every zoom change is eased. A quarter turn (PageUp, Home, the dock's turn buttons, a twist) is animated instead of snapping; the sprites switch to the next view half way through. Arrow-key scrolls glide, and a dragged course keeps moving for a moment when let go. The rules keep the original's levels: see *The Classic guarantee*. |
+| Photo mode (`photo_mode`) | Lets photo mode open (the C key or the camera button over the course): see *Photo mode* below. On by default. |
 | Smooth motion between game ticks (`smooth_motion`) | The simulation runs in 87 ms ticks (about 11.5 a second) as the original does; the screen is drawn at the display's refresh rate (60 to 144 Hz, miniquad's swap interval 1). With this option golfers, staff, celebrity residents, animals, carts, the balloon, blimp, sailboat and birds, and the balls (their flight arcs too, without the original's whole-pixel height steps) are drawn between where they were at the last two ticks instead of jumping once a tick. Moves of more than two tiles in a tick (a golfer sent home, a new ball) are not smoothed. This is drawing only: the simulation, saves and tests are unchanged. It shows things one tick (87 ms) behind the simulation. |
 
 ## Effects
@@ -272,6 +273,79 @@ thousand rain and particle vertices are far below a millisecond. If a GPU strugg
 - Under the time of day the water and sprites keep their midday art: the light tints them, it does not relight them.
 - With very gentle hills the decoded light (25° up) casts little shadow; the occlusion is what shows the relief.
 - Tilt-shift blurs by screen height only (the camera is orthographic: there is no real depth to focus on).
+
+## Photo mode
+
+`crates/simgolf/src/photo.rs`. A way to take pictures of the course, for wallpapers and sharing. It opens only with Enhanced
+graphics on (its effects included) and the Display page's *Photo mode* tick, on the course with nothing over it:
+
+- **C** (a key the original's key handler leaves unused; Shift+C stays *Save course for Championship*), or
+- the **camera button** under the rating pills at the top right (Enhanced only; it shows *Photo mode (C)* when the pointer is
+  on it). A tap works the same on a phone or tablet.
+
+The interface goes away (HUD, dock, panels, ticker, names and thoughts, tooltips, the tool's preview and the aim line) and
+the course is shown alone. The game **pauses** on opening, so the golfers hold their swing; Space (or the *Resume* button)
+lets it run on while the photo is framed. The mouse pointer hides after 2.5 seconds without input.
+
+| Input | What it does |
+|---|---|
+| drag, arrows | move the camera (with the smooth camera's glide, whatever the *Smooth camera* tick) |
+| wheel, pinch, Z / X, + / - | zoom smoothly from half the original's farthest level to four times its closest |
+| PageUp / Home, a two-finger twist | turn the view a quarter |
+| click or tap | put the focus there (the focus blur is sharp round it) |
+| F | the focus blur on (strength 3) or off; [ and ] weaken and strengthen it (1 to 5) |
+| L (Shift+L back) | the look: Natural (the theme's own grade), Warm, Vivid, B&W, Vintage |
+| V | the vignette on or off |
+| R | the photo's size: the window's, twice the window's, 4K (3840 × 2160) |
+| Enter | take the photo |
+| Space, P | pause or resume the game |
+| H | hide or show the hint and the buttons |
+| Esc, C, the Android back button | leave photo mode |
+
+A hint at the top lists the keys, and a row of buttons along the bottom does the same for the mouse and touch (Leave,
+Pause / Resume, Look, Blur, Vignette, Size, Take photo); both fade out after a few seconds and come back with any input. None
+of them is in a photo.
+
+**Leaving** gives everything back as it was: the camera's place, zoom and turn (an animated turn too), the pause, the
+followed golfer. Photo mode closes by itself when the game needs the screen (a report, a question, a great shot's photo).
+
+**The picture.** Photo mode always draws through the effects' post-processing (fx.rs `fx_world_begin` / `fx_world_end`),
+whatever the post-processing ticks, with its own composite: the focus blur (the course blurred at a quarter of its size, one
+to three more passes for a stronger blur, mixed in by the distance to the focus point, the sharp area flattened into a wide
+band as a tilted camera over a miniature sees it), the user's bloom, the look (contrast, vibrance, saturation, lifted
+blacks, a tint and, for Vintage, a sepia tone) and the vignette. The zoom goes past the original's levels, so the sprites are
+magnified more: the pixel-art scaler (when on) keeps them sharp.
+
+**Taking a photo** draws the course alone once more into an offscreen target of the photo's size (anti-aliased with
+Enhanced's multisampling up to 4K), with the scaler told the target's size and the blur spread by the target's size over
+the window's, so a larger photo looks like the screen, only sharper. A size the graphics driver cannot draw is scaled down
+to its largest texture (at most 8192 pixels a side). The shutter sounds (the SimFoto's), the screen flashes, and a line says
+where the photo went. Photos are PNG files named `OpenSGolf <course> <date> <time>.png` (UTC):
+
+- desktop: `Photos` in the save folder (next to `settings.json` and `Saved Games`);
+- browser: downloaded (the page hands every PNG the game writes to the browser as a download, as with Shift+F6);
+- Android: `Android/data/org.opensgolf.game/files/Photos` (the app's external files folder, next to `game/`, reachable from
+  a computer over USB; the phone's gallery is not told about it).
+
+In the browser the post-processing needs a depth buffer in an offscreen target, which WebGL 2 refuses with miniquad's
+unsized depth format; `web/opensgolf.js` gives such a texture the sized format of its type (16 bits), so photo mode's
+looks, blur and photos work in the browser too. The rest of the browser build keeps skipping the post-processing as before.
+
+**Classic.** Nothing of photo mode exists with Enhanced off: the C key, the button and every hook (`App::photo`, the zoom's
+range, the touch buttons, render.rs's tool preview, fx.rs's composite) ask whether photo mode is open, which it cannot be.
+Checked: Classic scenes (800 × 600 to 3840 × 2160, a panel, a report, the menu, Preferences, a new game) render byte for
+byte as before; Enhanced scenes differ only by the camera button.
+
+**Test hook:** `--edit "P:LOOK,BLUR,VIGNETTE,ZOOM,HINT,SHOOT"` opens photo mode for stills: LOOK 0 to 4, BLUR 0 (off) to
+5, VIGNETTE 0 or 1, ZOOM in percent of the closest level (0 keeps the zoom), HINT 1 shows the hint and buttons, SHOOT 1 to
+3 takes a photo at the window's size, twice it or 4K after the first frame (written to `Photos` in the save folder).
+`SG_CLICK=x,y` puts the focus there first. For example
+`--size 1920x1080 --enhanced --edit "P:1,3,1,0,0,3"` with `SG_CLICK=1500,560` saves a warm 4K photo focused there.
+
+**Note for developers.** miniquad keeps a cache of the texture bound to each unit and does not drop a deleted texture from
+it, so a texture made later under the same GL name may not be bound again. The end of a frame (`commit_frame`) clears the
+cache; the photo's offscreen drawing makes and deletes targets in the middle of a frame (the post-processing at the photo's
+size), so it clears the cache before and after (without that the next frame's course came out black).
 
 ## For developers: adding an option
 
