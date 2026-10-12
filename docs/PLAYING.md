@@ -1,6 +1,39 @@
 # Playing the club
 
-Run `opensgolf --game "../game/Program_Files_(ENGLISH)"`. It opens on the title menu, drawn from the disc's own Interface art with the game's font: Start New Game (Standard) or Sandbox Mode opens the property chooser, and picking a property starts a course on that property's theme. A property is paid for out of the §100,000 starting funds (sandbox: unlimited). Esc goes back, and from the course returns to the menu. Continue Saved Game opens Load Previous Game (the disc's Title_LoadGame art): the saved games in a list of 16 rows with the scroll arrows, a click on a row shows its holes, par, yards, cash, ratings, theme pack, designer and course record on the left, the tick loads it, the folder deletes it after a yes/no box, the arrow goes back; saves whose names start with '&' are listed as autosaves. Select A Theme opens Select a Theme Pack (the folders under Themes with what each holds); a click on a row picks it, the tick keeps it, the arrow or a key goes back to Standard. A click on the logo shows the credits (credits.txt from the game folder over creditsbckgrd.pcx; a click or key ends them).
+## Your own SimGolf files
+
+Double-click OpenSGolf (`opensgolf.exe`, `OpenSGolf.app`, the AppImage); no options are needed. It looks for your copy of
+SimGolf in this order and plays on the first folder that holds the game's data (`Interface/TitleBASE.pcx`, `Data/Textures`,
+`Flics` and `Themes`, names in any case; a folder above it such as the copied CD with its `Program_Files_(ENGLISH)` is
+followed down up to two levels):
+
+1. `--game DIR` (for scripts and tests; it always wins);
+2. the folder you chose in the game, saved as `game_dir` in `settings.json` in the save folder, while it still holds the files;
+3. a `SimGolf` or `game` folder next to the program (and, on macOS, in `OpenSGolf.app/Contents/Resources` or beside the
+   app; beside the AppImage file);
+4. `game` in the save folder, then the usual install places: Windows `Program Files (x86)` / `Program Files` with
+   `Maxis\SimGolf`, `EA GAMES\SimGolf` or `Electronic Arts\SimGolf`, and `C:\SimGolf`; macOS `~/Games/SimGolf`, `~/SimGolf`,
+   `/Applications/SimGolf`; Linux `~/.local/share/opensgolf/game`, `~/SimGolf`, `~/Games/SimGolf` and a Wine install
+   (`~/.wine/drive_c/Program Files*/Maxis/SimGolf` or `EA GAMES/SimGolf`);
+5. `game` in the folder it was started from.
+
+With none found it plays on the free base set (opensgolf-free), and the first time the title screen says so next to its
+**Use my SimGolf files...** button (top left). That button, and the same line at the end of Preferences, opens the system's
+own folder picker (Windows and macOS dialogs, the desktop's XDG portal on Linux). A folder without the game's data is
+refused with a message naming what is not there; a good one is saved and OpenSGolf starts again on the original files (a
+real restart, so the original's art, sounds, fonts and tables load exactly as on a normal start; from Preferences during a
+game it asks first, as anything not saved is lost). On the original files the button reads **Use the free graphics**, which
+saves the free set as the base set (Preferences > Content's choice) and starts again. The browser version has its own
+picker on the page and no such button; on Android the button says which folder to copy the files to (see Android below).
+Test hook: `SG_PICK_FOLDER=DIR` takes DIR as the folder picked, right after start up (`SG_PICK_FOLDER=free` chooses the
+free graphics).
+
+A Windows release build is a windowed program (no console window); started from a console with options it writes its
+messages to that console. Screenshots (Shift+F6) go to the save folder as `opensgolf-shot.png`.
+
+## The title menu
+
+Start OpenSGolf (from a source build: `opensgolf --game "../game/Program_Files_(ENGLISH)"`). It opens on the title menu, drawn from the disc's own Interface art with the game's font: Start New Game (Standard) or Sandbox Mode opens the property chooser, and picking a property starts a course on that property's theme. A property is paid for out of the §100,000 starting funds (sandbox: unlimited). Esc goes back, and from the course returns to the menu. Continue Saved Game opens Load Previous Game (the disc's Title_LoadGame art): the saved games in a list of 16 rows with the scroll arrows, a click on a row shows its holes, par, yards, cash, ratings, theme pack, designer and course record on the left, the tick loads it, the folder deletes it after a yes/no box, the arrow goes back; saves whose names start with '&' are listed as autosaves. Select A Theme opens Select a Theme Pack (the folders under Themes with what each holds); a click on a row picks it, the tick keeps it, the arrow or a key goes back to Standard. A click on the logo shows the credits (credits.txt from the game folder over creditsbckgrd.pcx; a click or key ends them).
 
 For scripted runs (any of `--png`, `--course`, `--edit`, `--golfer`, `--sandbox`, `--follow`) the game skips the menu and opens on the demo course; `--screen menu|property|play` forces a screen. Add `--theme Desert` for another look there. `--property NAME` (or 0..15) starts a new game on that property straight away, and `--clock MS` fixes the value the exe's random generator is seeded from, so the same land comes back every run.
 
@@ -102,11 +135,12 @@ phone's keyboard (in the browser through a hidden text box on the page, on Andro
 
 ### Android
 
-Installing the APK (sideloading) is described in the README, [Install](../README.md#install). The app runs in landscape and
+Installing the APK (sideloading) is described in the README, [INSTALL.md](INSTALL.md). The app runs in landscape and
 full screen, starts on the free base set, and keeps its saves, settings, content packs and championship files in its private
 storage (`Context.getFilesDir()`, removed when the app is uninstalled). To play with your own copy of SimGolf, copy the
 game's `Program_Files_(ENGLISH)` folder to `Android/data/org.opensgolf.game/files/game/` on the device's shared storage (the
-app creates `game/` the first time it starts; the folder's contents straight in `game/` work too) and restart the app. On
+app creates `game/` the first time it starts; the folder's contents straight in `game/` work too) and restart the app (the
+title screen's **Where do my SimGolf files go?** shows the folder). On
 Android 11 and newer the phone's own file manager may hide `Android/data`; copy from a computer over USB instead.
 The back button works as Esc: it closes the screen that is open, on the course opens System Functions (save, load, quit),
 on the title screens goes back to the title menu, and on the title menu leaves the game. Sound goes through the phone's
