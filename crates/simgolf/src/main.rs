@@ -274,6 +274,8 @@ struct Stage {
     /// A key just opened a name box (Shift+S the Save dialog): the character that key types comes next and is not the
     /// name's (it put an "S" in front of every typed save name).
     swallow_char: bool,
+    /// The wheel's turn not yet spent on a zoom step (in notches) and the clock of its last event.
+    wheel: (f32, f64),
     pause_toggle: bool,
     shown_version: u32,
     touch: touch::Touch,
@@ -1007,6 +1009,7 @@ impl Stage {
             shift: false,
             ctrl: false,
             swallow_char: false,
+            wheel: (0.0, 0.0),
             pause_toggle: false,
             shown_version: 0,
         }
@@ -2081,11 +2084,29 @@ impl EventHandler for Stage {
 
     fn mouse_wheel_event(&mut self, _x: f32, y: f32) {
         if (self.app.screen == Screen::Play || !self.app.ui_ok) && y != 0.0 && self.app.great_shot.is_none() {
+            // y is in notches (the browser's pixels are turned into notches by web/opensgolf.js); a trackpad sends many
+            // small turns
             if enhanced::smooth_camera() {
                 // Enhanced: a notch is a quarter of a doubling, between the original's closest and farthest levels
                 self.app.zoom_by((y * 0.25).clamp(-0.5, 0.5));
             } else {
-                self.app.zoom_step(y > 0.0);
+                // a step to the next of the original's three levels for the first turn of a gesture (a pause of a quarter
+                // second or a change of direction starts one), and another for each further notch's worth: a mouse
+                // notch is a step as before, and a trackpad's stream of small turns no longer runs through every level
+                let t = self.app.clock;
+                let (acc, last) = self.wheel;
+                if t - last > 0.25 || (acc != 0.0 && (acc > 0.0) != (y > 0.0)) {
+                    self.app.zoom_step(y > 0.0);
+                    self.wheel = (0.0, t);
+                } else {
+                    let acc = acc + y;
+                    if acc.abs() >= 1.0 {
+                        self.app.zoom_step(acc > 0.0);
+                        self.wheel = (0.0, t);
+                    } else {
+                        self.wheel = (acc, t);
+                    }
+                }
             }
         }
     }

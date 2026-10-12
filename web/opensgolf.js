@@ -576,6 +576,20 @@ for (const type of ["keydown", "keyup"]) {
     }, true);
 }
 
+// The wheel. gl.js hands the game the browser's raw deltas: about 100 pixels a notch from a mouse (in lines on some
+// Firefox setups), and a stream of small ones from a Mac trackpad, where the desktop builds get one per notch. Here they are
+// turned into notches (a mouse notch is 1, a trackpad's small turns fractions of one) before the game sees them, and the
+// page's own scrolling and pinch zoom stay off.
+window.addEventListener("wheel", e => {
+    const canvas = document.getElementById("glcanvas");
+    if (!canvas || e.target !== canvas || typeof wasm_exports === "undefined") return;
+    e.preventDefault();
+    e.stopPropagation();
+    const unit = e.deltaMode === 1 ? 1 / 3 : e.deltaMode === 2 ? 1 : 1 / 100;
+    const notch = v => Math.max(-1, Math.min(1, -v * unit));
+    wasm_exports.mouse_wheel(notch(e.deltaX), notch(e.deltaY));
+}, { capture: true, passive: false });
+
 // Typing on a phone: the game asks for the keyboard (sg_keyboard) while a name box is open. A hidden text box takes the
 // focus so the phone shows its keyboard, and what is typed goes to the game as key presses. The box keeps one space in it
 // so a backspace always has something to delete and can be seen.
