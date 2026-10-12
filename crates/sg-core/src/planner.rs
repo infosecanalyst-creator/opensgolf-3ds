@@ -871,7 +871,10 @@ fn shot_thoughts(
                     cl.event(c, rng, g, 0x3b, 0x14);
                 }
                 let p = (cl.g[g].partner.clamp(0, 151)) as usize;
-                if cl.g[g].stamps[0] == stamp0
+                // the paired-thought block reads the slot g ^ 1; the layout pass's trial golfer (slot 0x9a) has no pair
+                // and raises no thoughts (0x467a00 refuses slots past the 152 golfers), so it is skipped here
+                if g < crate::golfer::SLOTS
+                    && cl.g[g].stamps[0] == stamp0
                     && cl.g[g].strokes == 3
                     && (hole + g as i32) & 1 == 0
                     && cl.g[g].kind == 0

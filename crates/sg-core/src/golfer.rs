@@ -534,7 +534,8 @@ impl Club {
     }
 
     fn person(&self, g: usize) -> Person {
-        self.roster.get(self.g[g].roster.max(0) as usize).cloned().unwrap_or_default()
+        let r = self.g.get(g).map_or(0, |x| x.roster.max(0));
+        self.roster.get(r as usize).cloned().unwrap_or_default()
     }
 
     /// 1 for a man, 0 for a woman.

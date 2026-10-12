@@ -79,11 +79,14 @@ impl App {
             // Enhanced graphics (fx_light.rs): the haze in the distance and the rain, over the course
             self.fx_overlay(g);
         }
-        if self.edit && self.has_hit {
-            self.draw_cursor_preview(g, &Uniforms::flat(&proj, &mv));
+        // photo mode (photo.rs) shows the course alone: no tool preview, aim line or layout path
+        if self.photo.is_none() {
+            if self.edit && self.has_hit {
+                self.draw_cursor_preview(g, &Uniforms::flat(&proj, &mv));
+            }
+            self.draw_aim(g, &Uniforms::flat(&proj, &mv));
+            self.draw_layout_path(g, &Uniforms::flat(&proj, &mv));
         }
-        self.draw_aim(g, &Uniforms::flat(&proj, &mv));
-        self.draw_layout_path(g, &Uniforms::flat(&proj, &mv));
         g.flush();
     }
 
@@ -222,13 +225,17 @@ impl App {
             };
             // Enhanced graphics only: the art's own shadow frame, softened (fx.rs)
             let tex = if shadow && crate::fx::active() { app.fx_shadow(g, si, view, p.frame, tex).unwrap_or(tex) } else { tex };
-            // Enhanced graphics only: the time of day, rain and clouds tint the pre-lit sprite (fx_light.rs)
+            // Enhanced graphics only: the time of day, rain and clouds tint the pre-lit sprite (fx_light.rs); the seasons
+            // recolour trees, the wind bends them, lit windows glow at dusk (fx_nature.rs, fx_night.rs)
             let tint = if crate::fx::active() { app.fx_sprite_tint(p.x, p.z, shadow) } else { None };
+            let (tex, bend, glow) =
+                if crate::fx::active() && !shadow { app.fx_sprite_extras(g, si, view, &p, tex) } else { (tex, None, None) };
             let y = app.terrain.height_at(p.x, p.z) + if shadow { 0.0 } else { p.lift };
             // the exe's screen offset, in world units along the eye's axes
             let (ox, oy) = (p.shift.0 * px, -p.shift.1 * px);
             let p = Prop { x: p.x + rx * ox + ux * oy, z: p.z + rz * ox + uz * oy, ..p };
             let y = y + ry * ox + uy * oy;
+            let y0 = y;
             let s = s * p.scale;
             let (l, r) = (-ax * s, (w - ax) * s);
             let (t, b) = (ay * s, -(h - ay) * s); // up is positive
@@ -239,7 +246,26 @@ impl App {
                     None => v,
                 }
             };
-            g.quad(Mode::Flat, Some(tex), u, [c(l, t, 0.0, 0.0), c(r, t, 1.0, 0.0), c(r, b, 1.0, 1.0), c(l, b, 0.0, 1.0)]);
+            match bend {
+                Some(bend) => {
+                    for q in crate::fx_nature::strips(l, r, t, b, bend) {
+                        g.quad(Mode::Flat, Some(tex), u, q.map(|(x, y, tu, tv)| c(x, y, tu, tv)));
+                    }
+                }
+                None => g.quad(Mode::Flat, Some(tex), u, [c(l, t, 0.0, 0.0), c(r, t, 1.0, 0.0), c(r, b, 1.0, 1.0), c(l, b, 0.0, 1.0)]),
+            }
+            if let Some((gt, alpha)) = glow {
+                let e = crate::fx_night::GLOW_PAD as f32 * s;
+                let w = |x: f32, y: f32, tu: f32, tv: f32| {
+                    Vert::new(p.x + rx * x + ux * y, y0 + ry * x + uy * y, p.z + rz * x + uz * y, tu, tv).col([1.0, 1.0, 1.0, alpha])
+                };
+                g.quad(
+                    Mode::Flat,
+                    Some(gt),
+                    u,
+                    [w(l - e, t + e, 0.0, 0.0), w(r + e, t + e, 1.0, 0.0), w(r + e, b - e, 1.0, 1.0), w(l - e, b - e, 0.0, 1.0)],
+                );
+            }
         };
         // a flower bed piece sprite keeps the palette it is drawn in and a weedy bed is drawn in the one kept (App::bed_palette),
         // so the beds are walked in the exe's tile loop order (0x410604: b outer, a inner, both rising, tiles on the screen
@@ -273,6 +299,8 @@ impl App {
         // Enhanced graphics only: shadows cast along the sun, on the ground under every sprite (fx_shadow.rs)
         if crate::fx::active() {
             self.fx_cast_shadows(g, u, &items, &shown);
+            // the evening's pools of lamp and window light on the ground (fx_night.rs)
+            self.fx_light_pools(g, u);
         }
         let art_shadows = !crate::fx_shadow::hide_art_shadows();
         // the exe composites each sprite's shadow under its body when it loads them (0x43d740 draws NameShadow.flc, then
@@ -283,10 +311,19 @@ impl App {
         rocks.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
         let rock_tex = self.cliffs.tex;
         let mut next_rock = 0;
+        // Enhanced graphics only: the evening's lamps, in the sprites' order (fx_night.rs)
+        let mut lamps = if crate::fx::active() { self.fx_lamp_quads(px) } else { Vec::new() };
+        lamps.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        let lamp_tex = if lamps.is_empty() { None } else { Some(crate::fx::gpu(g).dot) };
+        let mut next_lamp = 0;
         for &(key, i) in &items {
             while next_rock < rocks.len() && rocks[next_rock].0 < key {
                 g.tris(Mode::Flat, rock_tex, u, &rocks[next_rock].1);
                 next_rock += 1;
+            }
+            while next_lamp < lamps.len() && lamps[next_lamp].0 < key {
+                g.tris(Mode::Flat, lamp_tex, u, &lamps[next_lamp].1);
+                next_lamp += 1;
             }
             let sh = self.props[i].shadow.filter(|_| art_shadows);
             quad(self, g, sh, i, true);
@@ -297,6 +334,9 @@ impl App {
         }
         for r in &rocks[next_rock..] {
             g.tris(Mode::Flat, rock_tex, u, &r.1);
+        }
+        for l in &lamps[next_lamp..] {
+            g.tris(Mode::Flat, lamp_tex, u, &l.1);
         }
         self.draw_balls(g, u);
     }

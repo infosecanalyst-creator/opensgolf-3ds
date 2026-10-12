@@ -671,7 +671,8 @@ pub fn batch_scale(ctx: &dyn RenderingBackend, batch: &[Vert], tex: TextureId, u
         return None;
     }
     let (tw, th) = ctx.texture_size(tex);
-    let (sw, sh) = window::screen_size();
+    // a photo larger than the window (photo.rs) is drawn into a target of its own size
+    let (sw, sh) = crate::fx::render_size().unwrap_or_else(window::screen_size);
     let (a, b) = (batch[0], batch[1]);
     let clip = |p: [f32; 3]| {
         let m = &u.mvp;

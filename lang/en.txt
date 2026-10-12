@@ -1278,6 +1278,7 @@ STR_ENHANCED_TERRAIN_FILTER             : Sharper course textures
 STR_ENHANCED_MSAA                       : Anti-aliasing
 STR_ENHANCED_SMOOTH_CAMERA              : Smooth camera: zoom, turns and panning
 STR_ENHANCED_SMOOTH_MOTION              : Smooth motion between game ticks
+STR_ENHANCED_PHOTO_MODE                 : Photo mode (the C key or the camera button)
 STR_ENHANCED_FX_SCALER                  : Pixel-art scaling of sprites and pictures
 STR_ENHANCED_FX_SCALER_MODE             : Pixel-art scaler: {VALUE}
 STR_ENHANCED_FX_WATER                   : Animated water
@@ -1296,9 +1297,17 @@ STR_ENHANCED_FX_CLOUDS                  : Drifting cloud shadows
 STR_ENHANCED_FX_HAZE                    : Distance haze
 STR_ENHANCED_FX_RAIN                    : Rain on some days
 STR_ENHANCED_FX_MIST                    : Morning mist in low ground
+STR_ENHANCED_FX_REFLECTIONS             : Reflections and sun glitter on the water
+STR_ENHANCED_FX_WIND                    : Wind: trees, palms and flags sway
+STR_ENHANCED_FX_EVENING_LIGHTS          : Lit windows, lamps and fireflies at dusk
+STR_ENHANCED_FX_SEASONS                 : Seasons: blossom, autumn colours, frost
+STR_ENHANCED_FX_AFTER_RAIN              : Wet ground, puddles and rainbows
+STR_ENHANCED_FX_LIGHTNING               : Lightning in heavy rain
+STR_ENHANCED_FX_DAY_LENGTH              : Day length: {VALUE}
 STR_ENHANCED_PAGE_DISPLAY               :Display
 STR_ENHANCED_PAGE_EFFECTS               :Effects
 STR_ENHANCED_PAGE_ATMOSPHERE            :Atmosphere
+STR_ENHANCED_PAGE_WEATHER               :Weather
 # Enhanced graphics > Effects (the port's own, docs/ENHANCED.md): each option's label and its choices
 STR_FX_EFFECTS                          :Effects
 STR_FX_SCALER                           :Pixel-art scaling of sprites and pictures
@@ -1321,6 +1330,16 @@ STR_FX_MIST                             :Morning mist
 STR_FX_HAZE                             :Distance haze
 STR_FX_BALL_TRAIL                       :Ball trail
 STR_FX_BALL_IMPACTS                     :Ball impacts
+STR_FX_REFLECTIONS                      :Water reflections
+STR_FX_WIND                             :Wind
+STR_FX_EVENING_LIGHTS                   :Evening lights
+STR_FX_SEASONS                          :Seasons
+STR_FX_AFTER_RAIN                       :After the rain
+STR_FX_LIGHTNING                        :Lightning
+STR_FX_DAY_LENGTH                       :Day length
+STR_FX_DAY_SHORT                        :Short (a game month)
+STR_FX_DAY_NORMAL                       :Normal (three months)
+STR_FX_DAY_LONG                         :Long (six months)
 STR_FX_OFF                              :Off
 STR_FX_ON                               :On
 STR_FX_SCALER_SHARP                     :Sharp bilinear
@@ -1329,6 +1348,34 @@ STR_FX_SCALER_SMOOTH                    :Smooth (strongest)
 STR_FX_QUALITY_LOW                      :Low
 STR_FX_QUALITY_MEDIUM                   :Medium
 STR_FX_QUALITY_HIGH                     :High
+
+# Enhanced graphics > photo mode (the port's own, docs/ENHANCED.md "Photo mode"): the camera button's tooltip, the hint at
+# the top, the buttons along the bottom ({VALUE} the current choice) and what a photo did ({FILE}, {WIDTH} x {HEIGHT})
+STR_PHOTO_BUTTON_TIP                    :Photo mode (C)
+STR_PHOTO_TITLE                         :Photo mode
+STR_PHOTO_HINT_1                        :Drag or arrows: move   Wheel, pinch or Z / X: zoom   PageUp / Home: turn   Click: focus here
+STR_PHOTO_HINT_2                        :Space: pause   F, [ ]: focus blur   L: look   V: vignette   R: size   Enter: take photo   H: hide   Esc: leave
+STR_PHOTO_BTN_LEAVE                     :Leave
+STR_PHOTO_BTN_PAUSE                     :Pause
+STR_PHOTO_BTN_RESUME                    :Resume
+STR_PHOTO_BTN_LOOK                      :Look: {VALUE}
+STR_PHOTO_BTN_BLUR                      :Blur: {VALUE}
+STR_PHOTO_BTN_VIGNETTE                  :Vignette: {VALUE}
+STR_PHOTO_BTN_SIZE                      :Size: {VALUE}
+STR_PHOTO_BTN_SHOOT                     :Take photo
+STR_PHOTO_ON                            :on
+STR_PHOTO_OFF                           :off
+STR_PHOTO_LOOK_NATURAL                  :Natural
+STR_PHOTO_LOOK_WARM                     :Warm
+STR_PHOTO_LOOK_VIVID                    :Vivid
+STR_PHOTO_LOOK_BW                       :B&W
+STR_PHOTO_LOOK_VINTAGE                  :Vintage
+STR_PHOTO_SIZE_WINDOW                   :window
+STR_PHOTO_SIZE_2X                       :2x
+STR_PHOTO_SIZE_4K                       :4K
+STR_PHOTO_SAVED                         :Photo saved ({WIDTH} x {HEIGHT}): {FILE}
+STR_PHOTO_DOWNLOADED                    :Photo downloaded ({WIDTH} x {HEIGHT}): {FILE}
+STR_PHOTO_FAILED                        :The photo could not be saved
 
 # The quit question (main loop 0x420b4e): the heading by the career's length, or after a championship
 STR_RETIRE_HIS                          :his
@@ -2067,6 +2114,8 @@ STR_KEYS_K_HOLES_BACK                   :Shift+1 to 9
 STR_KEYS_HOLES_BACK                     :Go to hole 10 to 18
 STR_KEYS_K_SHIFT_HELD                   :Shift (held)
 STR_KEYS_SHIFT_HELD                     :The face strip shows the back nine only
+STR_KEYS_K_PHOTO_MODE                   :c
+STR_KEYS_PHOTO_MODE                     :Photo mode (Enhanced graphics; Esc leaves)
 STR_KEYS_HEAD_TIME                      :Time
 STR_KEYS_K_PAUSE                        :Shift+P
 STR_KEYS_PAUSE                          :Pause / go on

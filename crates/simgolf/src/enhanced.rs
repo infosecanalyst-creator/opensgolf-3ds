@@ -45,6 +45,8 @@ pub struct Settings {
     pub smooth_camera: bool,
     /// Golfers, balls, animals, carts and fly-overs moved smoothly between the simulation's ticks.
     pub smooth_motion: bool,
+    /// Photo mode may be opened (the C key, the camera button; photo.rs).
+    pub photo_mode: bool,
     // the shader effects (fx.rs), each read through fx::sync
     /// Pixel-art scaling of magnified sprites and interface pictures (fx.rs).
     pub fx_scaler: bool,
@@ -85,6 +87,20 @@ pub struct Settings {
     pub fx_rain: bool,
     /// Mist pooling in low ground in the morning.
     pub fx_mist: bool,
+    /// Trees, buildings and golfers mirrored in the water, sun glitter, shore lapping (fx_reflect.rs).
+    pub fx_reflections: bool,
+    /// A wind each day: trees, palms and flags sway (fx_nature.rs).
+    pub fx_wind: bool,
+    /// Lit windows, lamps and fireflies at dusk (fx_night.rs).
+    pub fx_evening_lights: bool,
+    /// Spring blossom and autumn colours through the game's year (fx_nature.rs).
+    pub fx_seasons: bool,
+    /// Wet ground, puddles and rainbows after rain (fx_wet.rs).
+    pub fx_after_rain: bool,
+    /// Lightning in heavy rain (fx_wet.rs).
+    pub fx_lightning: bool,
+    /// How long a day of light lasts: 0 short (a game month), 1 normal (three months), 2 long (six) (fx_light.rs).
+    pub fx_day_length: u8,
 }
 
 impl Settings {
@@ -98,6 +114,7 @@ impl Settings {
         msaa: true,
         smooth_camera: true,
         smooth_motion: true,
+        photo_mode: true,
         fx_scaler: true,
         fx_scaler_sharp: false,
         fx_scaler_mode: 2,
@@ -118,6 +135,14 @@ impl Settings {
         fx_time_of_day: false,
         fx_rain: false,
         fx_mist: false,
+        fx_reflections: true,
+        fx_wind: true,
+        fx_evening_lights: true,
+        fx_seasons: true,
+        fx_after_rain: true,
+        // a strong effect: offered, not on by default
+        fx_lightning: false,
+        fx_day_length: 1,
     };
 }
 
@@ -183,6 +208,9 @@ pub fn smooth_camera() -> bool {
 pub fn smooth_motion() -> bool {
     on(|s| s.smooth_motion)
 }
+pub fn photo_mode() -> bool {
+    on(|s| s.photo_mode)
+}
 
 /// What a change of an option needs before it shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -194,10 +222,12 @@ pub enum Reload {
 }
 
 /// The pages of the Enhanced graphics screen (tabs along its top), by text key.
-pub const PAGES: [&str; 3] = ["STR_ENHANCED_PAGE_DISPLAY", "STR_ENHANCED_PAGE_EFFECTS", "STR_ENHANCED_PAGE_ATMOSPHERE"];
+pub const PAGES: [&str; 4] =
+    ["STR_ENHANCED_PAGE_DISPLAY", "STR_ENHANCED_PAGE_EFFECTS", "STR_ENHANCED_PAGE_ATMOSPHERE", "STR_ENHANCED_PAGE_WEATHER"];
 pub const DISPLAY: u8 = 0;
 pub const EFFECTS: u8 = 1;
 pub const ATMOSPHERE: u8 = 2;
+pub const WEATHER: u8 = 3;
 
 /// One line of the Enhanced graphics screen.
 pub struct OptionEntry {
@@ -206,7 +236,7 @@ pub struct OptionEntry {
     /// The line's text key (lang/en.txt); the text starts with a space, as every option line of a pop-up box does. A
     /// setting with choices has a {VALUE} in it.
     pub label: &'static str,
-    /// The page (tab) it is on: DISPLAY, EFFECTS or ATMOSPHERE.
+    /// The page (tab) it is on: DISPLAY, EFFECTS, ATMOSPHERE or WEATHER.
     pub page: u8,
     /// The text keys of a setting's values when it has more than on and off (a click steps to the next); empty for a tick.
     pub choices: &'static [&'static str],
@@ -241,6 +271,7 @@ pub const OPTIONS: &[OptionEntry] = &[
     tick!("msaa", "STR_ENHANCED_MSAA", DISPLAY, msaa),
     tick!("smooth_camera", "STR_ENHANCED_SMOOTH_CAMERA", DISPLAY, smooth_camera),
     tick!("smooth_motion", "STR_ENHANCED_SMOOTH_MOTION", DISPLAY, smooth_motion),
+    tick!("photo_mode", "STR_ENHANCED_PHOTO_MODE", DISPLAY, photo_mode),
     tick!("fx_scaler", "STR_ENHANCED_FX_SCALER", EFFECTS, fx_scaler),
     OptionEntry {
         key: "fx_scaler_mode",
@@ -271,13 +302,28 @@ pub const OPTIONS: &[OptionEntry] = &[
     },
     tick!("fx_sky", "STR_ENHANCED_FX_SKY", ATMOSPHERE, fx_sky),
     tick!("fx_time_of_day", "STR_ENHANCED_FX_TIME_OF_DAY", ATMOSPHERE, fx_time_of_day),
+    OptionEntry {
+        key: "fx_day_length",
+        label: "STR_ENHANCED_FX_DAY_LENGTH",
+        page: ATMOSPHERE,
+        choices: &["STR_FX_DAY_SHORT", "STR_FX_DAY_NORMAL", "STR_FX_DAY_LONG"],
+        get: |s| s.fx_day_length.min(2),
+        set: |s, v| s.fx_day_length = v.min(2),
+        reload: Reload::Nothing,
+    },
+    tick!("fx_evening_lights", "STR_ENHANCED_FX_EVENING_LIGHTS", ATMOSPHERE, fx_evening_lights),
     tick!("fx_clouds", "STR_ENHANCED_FX_CLOUDS", ATMOSPHERE, fx_clouds),
     tick!("fx_haze", "STR_ENHANCED_FX_HAZE", ATMOSPHERE, fx_haze),
-    tick!("fx_rain", "STR_ENHANCED_FX_RAIN", ATMOSPHERE, fx_rain),
-    tick!("fx_mist", "STR_ENHANCED_FX_MIST", ATMOSPHERE, fx_mist),
+    tick!("fx_reflections", "STR_ENHANCED_FX_REFLECTIONS", ATMOSPHERE, fx_reflections),
     tick!("fx_tilt_shift", "STR_ENHANCED_FX_TILT_SHIFT", ATMOSPHERE, fx_tilt_shift),
     tick!("fx_grading", "STR_ENHANCED_FX_GRADING", ATMOSPHERE, fx_grading),
     tick!("fx_bloom", "STR_ENHANCED_FX_BLOOM", ATMOSPHERE, fx_bloom),
+    tick!("fx_rain", "STR_ENHANCED_FX_RAIN", WEATHER, fx_rain),
+    tick!("fx_after_rain", "STR_ENHANCED_FX_AFTER_RAIN", WEATHER, fx_after_rain),
+    tick!("fx_lightning", "STR_ENHANCED_FX_LIGHTNING", WEATHER, fx_lightning),
+    tick!("fx_mist", "STR_ENHANCED_FX_MIST", WEATHER, fx_mist),
+    tick!("fx_wind", "STR_ENHANCED_FX_WIND", WEATHER, fx_wind),
+    tick!("fx_seasons", "STR_ENHANCED_FX_SEASONS", WEATHER, fx_seasons),
 ];
 
 // ---- the settings file ------------------------------------------------------------------------------------------------------
@@ -362,7 +408,10 @@ pub fn popup_lines(page: u8, s: &Settings) -> Vec<String> {
 /// The widest line of every page (the box keeps one width whatever the page).
 pub fn popup_widest(s: &Settings) -> f32 {
     let f = crate::popup_ui::CHOICE_FONT;
-    (0..PAGES.len() as u8).flat_map(|p| popup_lines(p, s)).map(|l| f.width(&l).round()).fold(0.0, f32::max)
+    let lines = (0..PAGES.len() as u8).flat_map(|p| popup_lines(p, s)).map(|l| f.width(&l).round()).fold(0.0, f32::max);
+    // wide enough for every tab to hold its name with some room (the tabs share the box's width equally)
+    let tab = PAGES.iter().map(|k| f.width(sg_core::lang::tr(k))).fold(0.0, f32::max) + 24.0;
+    lines.max(tab * PAGES.len() as f32)
 }
 
 /// The box's ticks on a page: bit 0 the master switch, bit 1 + i the page's option i.
@@ -613,9 +662,14 @@ fn ease(dt: f32) -> f32 {
 }
 
 impl App {
+    /// Whether the camera eases: with the smooth camera, and always in photo mode (photo.rs).
+    fn smooth_cam(&self) -> bool {
+        smooth_camera() || self.photo.is_some()
+    }
+
     /// The zoom the course is drawn at: the eased one with the smooth camera, else the zoom itself.
     pub fn view_zoom(&self) -> f32 {
-        if smooth_camera() && self.enh.view_zoom > 0.0 {
+        if self.smooth_cam() && self.enh.view_zoom > 0.0 {
             self.enh.view_zoom
         } else {
             self.zoom
@@ -624,7 +678,7 @@ impl App {
 
     /// The camera's turn as drawn (degrees): part way through an animated quarter turn with the smooth camera.
     pub fn view_rot(&self) -> f32 {
-        if smooth_camera() {
+        if self.smooth_cam() {
             self.rot - self.enh.rot_left
         } else {
             self.rot
@@ -635,7 +689,7 @@ impl App {
     pub fn camera_frame(&mut self, now: f64) {
         let dt = if self.enh.last_frame > 0.0 { (now - self.enh.last_frame).clamp(0.0, 0.1) as f32 } else { 0.0 };
         self.enh.last_frame = now;
-        if !smooth_camera() {
+        if !self.smooth_cam() {
             self.enh.view_zoom = self.zoom;
             self.enh.rot_left = 0.0;
             self.enh.pan_left = (0.0, 0.0);
@@ -682,7 +736,7 @@ impl App {
     /// A drag of the course by (right, up) world units: panned at once, its speed kept for the inertia.
     pub fn drag_pan(&mut self, right: f32, up: f32, now: f64) {
         self.pan(right, up);
-        if !smooth_camera() {
+        if !self.smooth_cam() {
             return;
         }
         let dt = (now - self.enh.last_drag).max(1e-3) as f32;
@@ -706,7 +760,7 @@ impl App {
 
     /// An arrow key's scroll: eased with the smooth camera, at once otherwise.
     pub fn key_pan(&mut self, right: f32, up: f32) {
-        if smooth_camera() {
+        if self.smooth_cam() {
             self.enh.pan_left.0 += right;
             self.enh.pan_left.1 += up;
         } else {
@@ -716,17 +770,18 @@ impl App {
 
     /// A quarter turn has just been made: the shown camera starts from where it was.
     pub fn turned(&mut self, degrees: f32) {
-        if smooth_camera() {
+        if self.smooth_cam() {
             // the short way round
             self.enh.rot_left = (self.enh.rot_left + degrees + 180.0).rem_euclid(360.0) - 180.0;
         }
     }
 
     /// The mouse wheel or a pinch with the smooth camera: the zoom moves continuously between the original's closest and
-    /// farthest levels (a wheel notch is a quarter of a doubling).
+    /// farthest levels (a wheel notch is a quarter of a doubling); in photo mode further both ways (photo.rs).
     pub fn zoom_by(&mut self, doublings: f32) {
         use crate::app::ZOOM_UNIT;
-        self.zoom = (self.zoom * doublings.exp2()).clamp(ZOOM_UNIT, ZOOM_UNIT * 4.0);
+        let (lo, hi) = if self.photo.is_some() { crate::photo::ZOOM_RANGE } else { (ZOOM_UNIT, ZOOM_UNIT * 4.0) };
+        self.zoom = (self.zoom * doublings.exp2()).clamp(lo, hi);
     }
 
     /// The simulation advanced: the positions at this tick become the newest of the two kept (smooth motion only). Called

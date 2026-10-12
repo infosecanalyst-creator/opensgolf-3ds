@@ -597,4 +597,24 @@ mod tests {
         assert_eq!(cl.holes[1].length, 25);
         assert_eq!(cl.holes[1].par, 2);
     }
+
+    /// The layout pass's trial golfer (slot 0x9a) on a long even-numbered hole reaches its third stroke; the paired-thought
+    /// check must not read the slot past it (a crash when a hole was laid out and opened a second time).
+    #[test]
+    fn trial_golfer_long_even_hole() {
+        let mut cl = Club::default();
+        let mut c = course();
+        cl.paint_hole_tile(&mut c, 5, 5, t::FAIRWAY, t::TEE, false);
+        cl.paint_hole_tile(&mut c, 5, 6, t::FAIRWAY, t::GREEN, false);
+        assert_eq!(cl.open_hole(&mut c), Some(1));
+        cl.paint_hole_tile(&mut c, 20, 2, t::FAIRWAY, t::TEE, false);
+        cl.paint_hole_tile(&mut c, 20, 47, t::FAIRWAY, t::GREEN, false);
+        for seed in 0..20 {
+            let mut rng = ExeRng::from_clock(seed);
+            cl.game &= !game::LAYOUT;
+            cl.layout(&mut c, &mut rng);
+            cl.layout(&mut c, &mut rng);
+        }
+        assert_eq!(cl.open_hole(&mut c), Some(2));
+    }
 }

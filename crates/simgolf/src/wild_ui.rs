@@ -28,6 +28,14 @@ const SPRAYS: [&str; 4] = ["waterspray", "Desert_waterspray", "Trop_waterspray",
 /// World units per exe screen pixel at full zoom (an exe tile is 64 pixels wide on screen and 100 world units here).
 const PX: f32 = TILE_SIZE / 64.0;
 
+/// The facing (added to the camera's quarter turn) of a four-view animal, bird or sailboat moving along exe heading `h`
+/// (0 north, 2 east, ...): the exe asks for view ((camera eighths - h - 2) & 7) / 2 (0x4308b7 for the animals, the bird and
+/// sailboat cases of the fly-over loop), i.e. the camera's quarter turn plus floor((-h - 2) / 2). The port used h / 2,
+/// which showed a bird flying east side on to the viewer, a blimp a quarter turn off and animals walking backwards.
+pub(crate) fn four_view_facing(h: i32) -> i32 {
+    (-h - 2).div_euclid(2)
+}
+
 impl App {
     fn animal_sprite(&mut self, kind: i32, clip: &str) -> (Option<usize>, Option<usize>) {
         // each clip carries its own colours; the kind palettes the exe also loads are not needed for them
@@ -66,6 +74,17 @@ impl App {
         };
         self.club.wildlife_tick(&mut self.course, &mut self.exe_rng, &frames);
         let tick = self.game_tick;
+        // test hook for stills of the fly-overs: SG_FLYER="slot,tile x,tile y,heading" keeps that fly-over in the air there
+        if let Some(v) =
+            std::env::var("SG_FLYER").ok().map(|s| s.split(',').filter_map(|t| t.trim().parse::<i32>().ok()).collect::<Vec<_>>())
+        {
+            if let [k, a, b, h] = v[..] {
+                let f = &mut self.club.wildlife.flyers[k.clamp(0, 3) as usize];
+                if !f.active {
+                    *f = wildlife::Flyer { kind: k.clamp(0, 3), active: true, x: a << 10, y: b << 10, h: 40, heading: h };
+                }
+            }
+        }
         self.club.flyers_tick(&self.course, &mut self.exe_rng, tick);
         for (slot, (x, y)) in std::mem::take(&mut self.club.wildlife.sounds) {
             let (wx, wz) = self.units_to_world(x, y);
@@ -105,7 +124,7 @@ impl App {
                     shadow,
                     frame: a.shown_frame(n),
                     heading: DY[k].atan2(DX[k]).to_degrees(),
-                    facing: (a.heading / 2) & 3,
+                    facing: four_view_facing(a.heading),
                     scale: a.scale() as f32 / 4.0,
                     lift,
                     track: 0x4000_0000 | ai as u32,
@@ -135,6 +154,14 @@ impl App {
             const DX: [f32; 8] = [0.0, 1.0, 1.0, 1.0, 0.0, -1.0, -1.0, -1.0];
             const DY: [f32; 8] = [-1.0, -1.0, 0.0, 1.0, 1.0, 1.0, 0.0, -1.0];
             let k = (f.heading & 7) as usize;
+            // the views the exe's fly-over loop (0x430360, after the animals) asks for: the blimp always its view
+            // (camera quarter - 2), side on to its flight along +x; the balloon a view fixed by its row, whatever the camera;
+            // birds and sailboats the animals' rule (four_view_facing)
+            let (facing, view) = match f.kind {
+                wildlife::BLIMP => (-2, None),
+                wildlife::BALLOON => (0, Some((f.y >> 10) & 3)),
+                _ => (four_view_facing(f.heading), None),
+            };
             add.push(Prop {
                 x,
                 z,
@@ -142,7 +169,8 @@ impl App {
                 shadow,
                 frame: frame.rem_euclid(n.max(1)),
                 heading: DY[k].atan2(DX[k]).to_degrees(),
-                facing: (f.heading / 2) & 3,
+                facing,
+                view,
                 lift,
                 track: 0x5000_0000 | fi as u32,
                 ..Default::default()
