@@ -22,7 +22,10 @@ mod cust_ui;
 mod enhanced;
 mod files_ui;
 mod fx;
+mod fx_ball;
 mod fx_glsl;
+mod fx_light;
+mod fx_shadow;
 mod gfx;
 mod hd;
 mod holemarks;
@@ -1609,7 +1612,7 @@ impl Stage {
             app.draw_scenarios(&mut self.g);
         } else {
             // with the effects' post-processing the course is drawn offscreen and composited before the interface (fx.rs)
-            let post = fx::active() && app.fx_world_begin(&mut self.g);
+            let post = fx::active() && app.fx_world_begin(&mut self.g, target);
             app.render_world(&mut self.g);
             if post {
                 app.fx_world_end(&mut self.g, target);
