@@ -53,16 +53,21 @@ impl App {
         lit.light_dif = self.light.diffuse.map(|v| v * BRIGHTNESS);
         lit.light_spec = self.light.specular;
         lit.light_dir = sg_core::terrain::light_direction();
-        for b in &self.batches {
-            g.draw_mesh(Mode::Solid, &b.mesh, b.tex, &lit);
-        }
-        for b in &self.wall_batches {
-            g.draw_mesh(Mode::Solid, &b.mesh, b.tex, &lit);
-        }
         let mut overlay = lit;
         overlay.alpha_ref = 0.04;
-        for b in self.path_batches.iter().chain(&self.mud_batches) {
-            g.draw_mesh(Mode::Overlay, &b.mesh, b.tex, &overlay);
+        if crate::fx::active() {
+            // Enhanced graphics (fx.rs): the sky, the ground with the effects' light, the water shader
+            self.fx_draw_ground(g, &proj, &mv, &lit, &overlay);
+        } else {
+            for b in &self.batches {
+                g.draw_mesh(Mode::Solid, &b.mesh, b.tex, &lit);
+            }
+            for b in &self.wall_batches {
+                g.draw_mesh(Mode::Solid, &b.mesh, b.tex, &lit);
+            }
+            for b in self.path_batches.iter().chain(&self.mud_batches) {
+                g.draw_mesh(Mode::Overlay, &b.mesh, b.tex, &overlay);
+            }
         }
         self.mv = mv.0;
         self.upp = upp;
@@ -220,6 +225,8 @@ impl App {
                 Some(o) => app.outfit_texture(g, si, view, p.frame, o).unwrap_or_else(|| app.sprite_texture(g, si, view, p.frame)),
                 None => app.sprite_texture(g, si, view, p.frame),
             };
+            // Enhanced graphics only: the art's own shadow frame, softened (fx.rs)
+            let tex = if shadow && crate::fx::active() { app.fx_shadow(g, si, view, p.frame, tex).unwrap_or(tex) } else { tex };
             let y = app.terrain.height_at(p.x, p.z) + if shadow { 0.0 } else { p.lift };
             // the exe's screen offset, in world units along the eye's axes
             let (ox, oy) = (p.shift.0 * px, -p.shift.1 * px);

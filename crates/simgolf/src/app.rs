@@ -355,6 +355,8 @@ pub struct App {
     pub textures: HashMap<PathBuf, Option<TextureId>>,
     /// The optional HD graphics (off by default; see hd.rs).
     pub hd: crate::hd::HdState,
+    /// The Enhanced graphics effects' state (fx.rs); unused in Classic.
+    pub fx: crate::fx::FxWorld,
     pub batches: Vec<Batch>,
     pub path_batches: Vec<Batch>,
     /// Paths not joined to the clubhouse, drawn as mud tracks (manual p. 18).
@@ -664,6 +666,7 @@ impl App {
             light: Lighting::default(),
             textures: HashMap::new(),
             hd: crate::hd::HdState { pack_dir: save_dir().join("HD"), ..Default::default() },
+            fx: Default::default(),
             batches: Vec::new(),
             path_batches: Vec::new(),
             mud_batches: Vec::new(),
@@ -1021,6 +1024,9 @@ impl App {
         let mut map: BTreeMap<usize, (TextureId, Vec<Vert>)> = BTreeMap::new();
         let mut tris = Vec::new();
         let mut order: HashMap<Option<TextureId>, usize> = HashMap::new();
+        // Enhanced graphics only (fx.rs): the water goes into batches of its own for the water shader
+        let fx_water = crate::fx::water_on();
+        let mut water: BTreeMap<usize, (TextureId, Vec<Vert>)> = BTreeMap::new();
         for y in 0..self.terrain.h {
             for x in 0..self.terrain.w {
                 tris.clear();
@@ -1034,12 +1040,17 @@ impl App {
                     let tex = path.and_then(|p| self.texture_for(g, &p));
                     let next = order.len();
                     let key = *order.entry(tex).or_insert(next);
-                    let e = map.entry(key).or_insert_with(|| (tex.unwrap_or(g.white), Vec::new()));
+                    let m = if fx_water && crate::fx::is_water_tex(t.tex_type) { &mut water } else { &mut map };
+                    let e = m.entry(key).or_insert_with(|| (tex.unwrap_or(g.white), Vec::new()));
                     e.1.extend(t.v.iter().map(Self::to_vert));
                 }
             }
         }
         self.batches = Self::upload(g, map);
+        if crate::fx::active() || self.fx.has_water() {
+            let water = Self::upload(g, water);
+            self.fx_terrain_built(g, water);
+        }
         self.build_paths(g);
         self.build_walls(g);
         self.build_edge_walls(g);
