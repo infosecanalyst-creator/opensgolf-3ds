@@ -50,8 +50,9 @@ impl App {
                     let d = ((y * w + x) * 4) as usize;
                     let p = &sheet.px[s..s + 4];
                     let key = p[0] == 255 && p[1] == 0 && p[2] == 255;
-                    // the pure green parallelogram beside each post is its shadow; PLACEHOLDER: how the renderer draws
-                    // that colour is not decoded, so it is half-strength black here
+                    // the pure green parallelogram beside each post is its shadow: palette index 0xf8 of the sheet, which
+                    // jgl's blit (0x10013400) does not draw but looks up the screen pixel in the first of the exe's five
+                    // shading tables (0x824148, built by 0x461830): each 5-bit channel halved. Black at half strength.
                     let shadow = p[0] == 0 && p[1] == 255 && p[2] == 0;
                     let px = if shadow { [0, 0, 0, 128] } else { [p[0], p[1], p[2], if key { 0 } else { 255 }] };
                     img.px[d..d + 4].copy_from_slice(&px);

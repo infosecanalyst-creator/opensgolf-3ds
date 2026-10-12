@@ -168,7 +168,7 @@ const EXPECTED: &[(&str, &str)] = &[
     ("hole proper name", "Crab Apple"),
     ("fun word", "very good"),
     ("attitude", "mad"),
-    ("lie", "Pot Bunker"),
+    ("lie", "pot bunker"),
     ("money 0", "0"),
     ("money 1", "1,234,567"),
     ("money 2", "2,469,134"),

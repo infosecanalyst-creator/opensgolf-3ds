@@ -103,7 +103,7 @@ Live leader board (while golfers are out, exact): the translucent dialog frame (
 * `rankEntrants`, `prizeLadder`, `Tournament::standings`, `finish`: exact.
 * Placeholders: `placeholderStrokes`; clamping a negative formula prize to "no offer" (the exe only treats exactly zero as no offer, totals under 25 give zero or negative values); the screen pitch values; the grand slam victory id, kept as the exe has it.
 
-Open questions: what the tournament preparation warning checks, the match wager formula, whether `*.pro` files really append to the pro table. (Settled since: objects 0x11 and 0x12 are the TV tower and TV booth of the recommendations, section 9; the championship names by difficulty, section 6.)
+Open questions: what the tournament preparation warning checks, the match wager formula, whether `*.pro` files really append to the pro table. (Settled since: objects 0x11 and 0x12 are the TV tower and TV booth of the recommendations, section 9, drawn by 0x463180 as a static sprite 0x246 / 0x248 under an animated 0x247 / 0x249 whose frame runs (tick / 2 + 13 b + 7 a) mod 4n up, held, down and held; the championship names by difficulty, section 6.)
 
 ## 9. Recommendations list and the great-shot SimFoto (second pass, exact)
 

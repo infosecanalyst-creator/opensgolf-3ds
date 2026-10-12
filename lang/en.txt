@@ -706,8 +706,6 @@ STR_CLUB_9_IRON                         :9 Iron
 STR_CLUB_LOB_WEDGE                      :Lob Wedge
 STR_CLUB_SAND_WEDGE                     :Sand Wedge
 STR_CLUB_PUTTER                         :Putter
-STR_CLUB_5_WOOD                         :5 Wood
-STR_CLUB_WEDGE                          :Wedge
 
 ########################################################################################################################
 # The advisor's line over the pro (main frame 0x41676d)
@@ -1889,18 +1887,6 @@ STR_SKILL_FADE_SHOT_L_TO_R              :Fade Shot (L to R)
 STR_SKILL_POSITIVE_ATTITUDE             :Positive Attitude
 STR_SKILL_MENTAL_TOUGHNESS              :Mental Toughness
 
-# The lie under the ball, for the pro panel
-STR_LIE_TEE                             :Tee
-STR_LIE_GREEN                           :Green
-STR_LIE_FAIRWAY                         :Fairway
-STR_LIE_SAND_TRAP                       :Sand Trap
-STR_LIE_POT_BUNKER                      :Pot Bunker
-STR_LIE_RAVINE                          :Ravine
-STR_LIE_ROCKS                           :Rocks
-STR_LIE_WATER                           :Water
-STR_LIE_MARSH                           :Marsh
-STR_LIE_OUT_OF_BOUNDS                   :Out of Bounds
-STR_LIE_ROUGH                           :Rough
 
 # The "Attitude" word for the pro's momentum
 STR_ATTITUDE_FURIOUS                    :furious

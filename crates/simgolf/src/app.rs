@@ -115,6 +115,8 @@ pub struct Prop {
     /// A flower bed piece: its sprite id, palette id (0xbb while weedy, drawn in the piece's last palette, see
     /// `App::bed_palette`) and tile.
     pub bed: Option<(u16, u8, i32, i32)>,
+    /// The animated layer of a TV tower or booth standing at this tile: its frame follows `sg_core::objects::tv_frame`.
+    pub tv: Option<(i32, i32)>,
 }
 
 impl Default for Prop {
@@ -145,6 +147,7 @@ impl Default for Prop {
             view: None,
             shift: (0.0, 0.0),
             bed: None,
+            tv: None,
         }
     }
 }
@@ -2098,7 +2101,11 @@ impl App {
         for p in self.props.iter_mut() {
             if p.animated {
                 if let Some(b) = p.body {
-                    p.frame = (self.game_tick % self.sprites[b].s.frames_per_view.max(1) as u32) as i32;
+                    let n = self.sprites[b].s.frames_per_view.max(1);
+                    p.frame = match p.tv {
+                        Some((a, tb)) => sg_core::objects::tv_frame(self.game_tick, a, tb, n),
+                        None => (self.game_tick % n as u32) as i32,
+                    };
                 }
             }
         }
@@ -3598,7 +3605,8 @@ impl App {
                     continue;
                 }
                 let shadow = if flat { None } else { self.sprite_for(&format!("{file}Shadow.flc"), true, None) };
-                self.props.push(Prop { x, z, body, shadow, flat, facing, animated, object: true, ..Default::default() });
+                let tv = (animated && matches!(o.kind, land::K_TV_TOWER | land::K_TV_BOOTH)).then_some((o.a, o.b));
+                self.props.push(Prop { x, z, body, shadow, flat, facing, animated, object: true, tv, ..Default::default() });
             }
         }
     }
