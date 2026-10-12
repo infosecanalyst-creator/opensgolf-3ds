@@ -2095,6 +2095,8 @@ STR_KEYS_K_HOLES_BACK                   :Shift+1 to 9
 STR_KEYS_HOLES_BACK                     :Go to hole 10 to 18
 STR_KEYS_K_SHIFT_HELD                   :Shift (held)
 STR_KEYS_SHIFT_HELD                     :The face strip shows the back nine only
+STR_KEYS_K_PHOTO_MODE                   :c
+STR_KEYS_PHOTO_MODE                     :Photo mode (Enhanced graphics; Esc leaves)
 STR_KEYS_HEAD_TIME                      :Time
 STR_KEYS_K_PAUSE                        :Shift+P
 STR_KEYS_PAUSE                          :Pause / go on
