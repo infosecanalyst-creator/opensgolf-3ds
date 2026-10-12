@@ -1,6 +1,6 @@
 # Installing OpenSGolf: the details
 
-Every [release](https://github.com/crspytopgn/simgolf-native/releases) has a package for each platform: unpack it and
+Every [release](https://github.com/crspytopgn/opensgolf/releases) has a package for each platform: unpack it and
 double-click. It starts on the free base set. Have SimGolf? Choose **Use my SimGolf files...** on the title screen (or in
 Preferences) and pick the folder SimGolf is installed in, or the CD's `Program_Files_(ENGLISH)` copied to your computer; the
 game remembers it. It also finds a usual install by itself (`Program Files\Maxis\SimGolf`, `~/SimGolf`, a Wine install, or a
@@ -29,7 +29,7 @@ graphics* goes back. No Terminal and no options are needed (`--game DIR` remains
   start the app again (the title screen's **Where do my SimGolf files go?** shows the folder). Saves, settings and packs are in the app's private storage (`/data/data/org.opensgolf.game/files`).
   Building the APK yourself: `docker run --rm -v "$(pwd)":/root/src -w /root/src notfl3/cargo-apk tools/android_build.sh`
   (see the script; CI builds a debug APK on every push, artifact `opensgolf-android-debug`).
-* **Browser**: nothing to install, see [Play in your browser](https://crspytopgn.github.io/simgolf-native/); `opensgolf-web.zip` is the
+* **Browser**: nothing to install, see [Play in your browser](https://crspytopgn.github.io/opensgolf/); `opensgolf-web.zip` is the
   same page to host yourself.
 * **From source**: see [Build and run](../README.md#build-and-run).
 
