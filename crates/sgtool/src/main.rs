@@ -11,7 +11,7 @@
 //!   sgtool freeset <dir>               write the free base set (opensgolf-free) as a pack folder, every file drawn anew
 mod fixture;
 
-use sg_core::assets::{decode_bmp, decode_pcx, decode_tga, decode_wav, to_rgba, Rgba};
+use sg_core::assets::{decode_bmp, decode_pcx, decode_sound, decode_tga, to_rgba, Rgba};
 use sg_core::flc::decode_flc;
 use sg_core::formats::*;
 use sg_core::fsutil::{ext_lower, walk};
@@ -69,7 +69,7 @@ fn main() {
                     ".sve" => parse_top10(&d).map(|_| ()),
                     ".dta" => Ok(()),
                     ".txt" => parse_story(&latin1(&d)).map(|_| ()),
-                    _ => decode_wav(&d).map(|_| ()),
+                    _ => decode_sound(&d).map(|_| ()),
                 };
                 let s = stats.entry(e).or_default();
                 match r {

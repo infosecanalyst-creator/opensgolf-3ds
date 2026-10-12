@@ -381,7 +381,9 @@ impl Popup {
             checks: matches!(self.kind, PopupKind::Prefs | PopupKind::Enhanced).then_some(self.checks),
             disabled: self.disabled,
             plain: match self.kind {
-                PopupKind::Prefs => 1 << PREFS_CONTENT | 1 << PREFS_ENHANCED | 1 << PREFS_LANGUAGE | self.files_line.map_or(0, |k| 1 << k),
+                PopupKind::Prefs => {
+                    1 << PREFS_CONTENT | 1 << PREFS_ENHANCED | 1 << PREFS_KEYS | 1 << PREFS_LANGUAGE | self.files_line.map_or(0, |k| 1 << k)
+                }
                 PopupKind::Enhanced => crate::enhanced::popup_plain(self.page),
                 _ => 0,
             },
@@ -417,8 +419,10 @@ pub const PREFS_CONTENT: usize = 5;
 pub const PREFS_ENHANCED_ON: usize = 6;
 /// The option of the Preferences list that opens Preferences > Enhanced graphics (enhanced.rs).
 pub const PREFS_ENHANCED: usize = 7;
+/// The option of the Preferences list that opens Preferences > Keyboard controls (keys_ui.rs).
+pub const PREFS_KEYS: usize = 8;
 /// The Preferences' option that switches the language (shown only when there is a translation to switch to).
-const PREFS_LANGUAGE: usize = 8;
+const PREFS_LANGUAGE: usize = 9;
 /// The bit of a Preferences result that asks for the "Use my SimGolf files..." line's action (gamefiles.rs), after the
 /// ticks are applied.
 pub const PREFS_FILES_FLAG: usize = 20;
@@ -505,6 +509,8 @@ impl App {
                     // the port's own: Enhanced graphics on or off, and its settings (docs/ENHANCED.md)
                     tr("STR_MENU_PREFS_ENHANCED_ON"),
                     tr("STR_MENU_PREFS_ENHANCED"),
+                    // the port's own: Preferences > Keyboard controls (keys_ui.rs)
+                    tr("STR_MENU_PREFS_KEYS"),
                 ],
                 0,
                 400.0,
@@ -723,6 +729,10 @@ impl App {
             // so does the Enhanced graphics line
             if k == PREFS_ENHANCED && (pick.is_some() || p.sel == Some(k)) {
                 return Some((p.checks | 1 << PREFS_ENHANCED) as usize);
+            }
+            // and the Keyboard controls line
+            if k == PREFS_KEYS && (pick.is_some() || p.sel == Some(k)) {
+                return Some((p.checks | 1 << PREFS_KEYS) as usize);
             }
             if pick.is_some() {
                 p.checks ^= 1 << k;

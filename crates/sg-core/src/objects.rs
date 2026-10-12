@@ -1,6 +1,7 @@
 //! What the exe draws for objects on the map (docs/PUBLISHER_EXE_NOTES.md, "Drawing objects"). The exe registers each building
 //! sprite under a number at start-up, loading a different file per theme for the same number; its object drawing routine then
-//! picks numbers by object kind and building level (level 2 once the course has more than 10 holes). Landmarks are numbered
+//! picks numbers by object kind and building level (the building's upgrade level; for the snack bar, more than 10 holes on
+//! the course). Landmarks are numbered
 //! 0x168 + their type. File names are the exe's, relative to Flics/, without ".flc".
 
 /// Landmark art by landmark type (sprite 0x168 + type).
@@ -468,6 +469,73 @@ pub fn building_layers(kind: i32, level: u16, theme: u8) -> Vec<Layer> {
     v
 }
 
+/// One sprite of a driving range (0x463180 case 10), placed in map units from the range's anchor corner.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RangePiece {
+    pub file: &'static str,
+    /// Map units (1024 a tile) right and down from the anchor tile's corner.
+    pub at: (i32, i32),
+    pub flat: bool,
+    pub animated: bool,
+    /// Added to the game tick for an animated piece's frame (the flags wave out of step).
+    pub phase: u32,
+    /// Drawn in this view whatever the camera (the flags).
+    pub view: Option<i32>,
+}
+
+/// The sprites the exe draws for a driving range of `level` (0 or 1; the range is 5 + level tiles square) in exe theme
+/// `theme` (0x463180 case 10). The exe walks the range's tiles, column i across and row j down: the first column has the
+/// shop on its first tile (with the level 2 shop's animation, except in the Desert, which loads none) and a hitting
+/// platform with its base on each tile after; the other columns have a fence piece at the tile's middle and at its corner on
+/// the range's near and far edges. Every target green (`green(i, j)`, tile type 1) gets a waving flag, drawn in view 0, and
+/// the tiles (2, 2), (4, 3) and (6, 4) the 100, 200 and 300 yard signs (column 6 is past even the larger range, so the 300
+/// yard sign never shows). A flag or sign on an edge row stands where the
+/// exe last placed the fence (the tile's corner on the edge), as it reuses that screen point.
+pub fn driving_range(level: u16, theme: u8, green: &dyn Fn(i32, i32) -> bool) -> Vec<RangePiece> {
+    let l = level.min(1) as i32;
+    let n = 5 + l;
+    let mut v = Vec::new();
+    let put = |v: &mut Vec<RangePiece>, id: u16, at: (i32, i32), flat: bool, animated: bool, phase: u32, view: Option<i32>| {
+        if let Some(file) = sprite(id, theme) {
+            v.push(RangePiece { file, at, flat, animated, phase, view });
+        }
+    };
+    for i in 0..n {
+        for j in 0..n {
+            let mut at = (i * 1024 + 512, j * 1024 + 512);
+            if i == 0 {
+                if j == 0 {
+                    put(&mut v, 0x1b6 + l as u16, at, false, false, 0, None);
+                    if l != 0 && theme != 1 {
+                        put(&mut v, 0x1bf, at, false, true, 0, None);
+                    }
+                } else {
+                    let k = if l != 0 { 8 } else { 0 };
+                    put(&mut v, 0x1b8 + k, at, false, false, 0, None);
+                    put(&mut v, 0x1b9 + k, at, true, false, 0, None);
+                }
+            } else if j == 0 || j == l + 4 {
+                let y = if j == 0 { 0 } else { (5 + l) * 1024 };
+                put(&mut v, 0x1be, (i * 1024 + 512, y), false, false, 0, None);
+                at = (i * 1024, y);
+                put(&mut v, 0x1be, at, false, false, 0, None);
+            }
+            if green(i, j) {
+                put(&mut v, 0x1bd, at, false, true, (i + j) as u32, Some(0));
+            } else if j * 2 - 2 == i {
+                let sign = match i {
+                    2 => 0x1ba,
+                    4 => 0x1bb,
+                    6 => 0x1bc,
+                    _ => continue,
+                };
+                put(&mut v, sign, at, false, false, 0, None);
+            }
+        }
+    }
+    v
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -481,6 +549,27 @@ mod tests {
         assert_eq!(tv_frame(0, 1, 0, 4), tv_frame(14, 0, 0, 4));
         assert_eq!(tv_frame(0, 0, 1, 4), tv_frame(26, 0, 0, 4));
         assert_eq!(building_layers(17, 0, 0).iter().map(|l| l.animated).collect::<Vec<_>>(), [false, true]);
+    }
+
+    #[test]
+    fn driving_range_pieces() {
+        let v = driving_range(0, 0, &|i, j| (i, j) == (3, 2));
+        // the shop on the anchor tile, four platforms with their bases down the first column
+        assert_eq!(v[0].file, "bldgs/park/buildDRL1");
+        assert_eq!(v[0].at, (512, 512));
+        assert_eq!(v.iter().filter(|p| p.file == "bldgs/park/plat_topDRL1").count(), 4);
+        assert_eq!(v.iter().filter(|p| p.file == "bldgs/park/plat_baseDRL1" && p.flat).count(), 4);
+        // two fence pieces per column on each long edge
+        assert_eq!(v.iter().filter(|p| p.file == "bldgs/park/wall_DRL1").count(), 16);
+        // a flag on the green, the 100 and 200 yard signs (the 300's tile, column 6, lies past even the larger range)
+        assert!(v.iter().any(|p| p.file == "bldgs/park/flag_DRL1" && p.at == (3 * 1024 + 512, 2 * 1024 + 512) && p.phase == 5));
+        assert!(v.iter().any(|p| p.file == "bldgs/park/100DRL1" && p.at == (2 * 1024 + 512, 2 * 1024 + 512)));
+        assert!(v.iter().any(|p| p.file == "bldgs/park/200DRL1"));
+        assert!(!v.iter().any(|p| p.file == "bldgs/park/300DRL1"));
+        assert!(!driving_range(1, 0, &|_, _| false).iter().any(|p| p.file == "bldgs/park/300DRL1"));
+        // the level 2 shop's animation is not loaded in the Desert
+        assert!(driving_range(1, 0, &|_, _| false).iter().any(|p| p.animated));
+        assert!(!driving_range(1, 1, &|_, _| false).iter().any(|p| p.animated));
     }
 
     #[test]

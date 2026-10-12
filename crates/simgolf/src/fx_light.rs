@@ -24,6 +24,27 @@ pub const DAY_TICKS: u32 = 1024;
 const ART_SHADOW_UP_DEG: f32 = 50.0;
 const ART_SHADOW_LEN: f32 = 0.75;
 
+/// The game months a day of light lasts for each choice of the day length (short: the first versions' one month, about a
+/// minute and a half at normal speed; normal: three; long: six).
+pub const DAY_MONTHS: [u32; 3] = [1, 3, 6];
+
+/// The calendar ticks of one day of light with the chosen day length.
+pub fn day_ticks() -> u32 {
+    DAY_TICKS * DAY_MONTHS[crate::fx::settings().day_length.min(2) as usize]
+}
+
+/// Across a day's first and last eighth the day's weather blends with the neighbouring day's (half way at the boundary),
+/// so a rain spell, the cloud cover and the wind come and go gently: the other day and its weight.
+fn neighbour(day: u32, f: f32) -> (u32, f32) {
+    if f < 0.125 && day > 0 {
+        (day - 1, 0.5 * (1.0 - smoothstep(0.0, 0.125, f)))
+    } else if f > 0.875 {
+        (day + 1, 0.5 * smoothstep(0.875, 1.0, f))
+    } else {
+        (day, 0.0)
+    }
+}
+
 /// A new game (tick 0) starts in the morning.
 const DAY_START: f32 = 0.12;
 
@@ -60,6 +81,23 @@ pub struct Atmos {
     /// height (fx_shadow.rs).
     pub shadow_dir: [f32; 2],
     pub shadow_len: f32,
+    /// The clouds' drift (world units a second) carried on by fx.rs when the day length is not the short one.
+    pub cloud_vel: [f32; 2],
+    /// The day's wind (fx_nature.rs; strength 0 without the wind option).
+    pub wind: crate::fx_nature::Wind,
+    /// The seasons' weights (fx_nature.rs; all 0 without the seasons option).
+    pub season: crate::fx_nature::Season,
+    /// How wet the ground is (0 dry .. 1 soaked), how far the puddles have spread (0 none .. 1), a rainbow's strength and a
+    /// lightning flash's brightness now (fx_wet.rs).
+    pub wet: f32,
+    pub puddles: f32,
+    pub rainbow: f32,
+    pub flash: f32,
+    /// The evening lights (0 off .. 1 full night) and the fireflies (fx_night.rs).
+    pub night: f32,
+    pub fireflies: f32,
+    /// How low and warm the sun is (0 midday .. 1 sunset): the water's glitter grows with it (fx_reflect.rs).
+    pub golden: f32,
 }
 
 impl Default for Atmos {
@@ -85,6 +123,16 @@ impl Default for Atmos {
             haze_col: [1.0; 3],
             shadow_dir: [1.0, 0.0],
             shadow_len: ART_SHADOW_LEN,
+            cloud_vel: [0.0; 2],
+            wind: Default::default(),
+            season: Default::default(),
+            wet: 0.0,
+            puddles: 0.0,
+            rainbow: 0.0,
+            flash: 0.0,
+            night: 0.0,
+            fireflies: 0.0,
+            golden: 0.0,
         }
     }
 }
@@ -261,6 +309,11 @@ fn hash(words: &[u32]) -> u32 {
     h
 }
 
+/// The render-side hash, for the other effects' modules.
+pub(crate) fn hash_of(words: &[u32]) -> u32 {
+    hash(words)
+}
+
 fn unit(h: u32) -> f32 {
     (h >> 8) as f32 / (1u32 << 24) as f32
 }
@@ -348,7 +401,7 @@ pub fn below_now(app: &App) -> [f32; 3] {
 
 impl App {
     /// The seed of the render-side randomness: the course's name and size, so a save keeps its weather.
-    fn fx_seed(&self) -> u32 {
+    pub(crate) fn fx_seed(&self) -> u32 {
         let name = self.course_name.bytes().fold(0u32, |h, b| h.wrapping_mul(31).wrapping_add(b as u32));
         hash(&[name, self.terrain.w as u32, self.terrain.h as u32])
     }
@@ -356,16 +409,32 @@ impl App {
     /// The day (one game month) and the phase of its light (0..1, 0 dawn, 0.4..0.6 midday, 0.9 sunset). `SG_FX_HOUR`
     /// fixes the phase for stills.
     pub(crate) fn fx_day(&self) -> (u32, f32) {
+        let dt = day_ticks();
         let t = self.econ.tick as f32 + self.tick_fraction();
-        let day = self.econ.tick / DAY_TICKS;
+        let day = self.econ.tick / dt;
         let p = std::env::var("SG_FX_HOUR").ok().and_then(|v| v.parse::<f32>().ok());
-        (day, p.unwrap_or(t / DAY_TICKS as f32 + DAY_START).rem_euclid(1.0))
+        (day, p.unwrap_or(t / dt as f32 + DAY_START).rem_euclid(1.0))
+    }
+
+    /// How far through its day (0..1) the game's clock is.
+    pub(crate) fn fx_day_fraction(&self) -> f32 {
+        let dt = day_ticks();
+        ((self.econ.tick % dt) as f32 + self.tick_fraction()) / dt as f32
+    }
+
+    /// Whether the weather eases from day to day (any day length but the first versions' short one, which is kept as it
+    /// was), and the neighbouring day to blend with.
+    fn fx_blend_day(&self, day: u32) -> (u32, f32) {
+        if crate::fx::settings().day_length == 0 {
+            return (day, 0.0);
+        }
+        neighbour(day, self.fx_day_fraction())
     }
 
     /// How hard it rains on a day (0 dry): about one day in four on parkland, more on the links, never in the desert or the
     /// tropics (sunny resort courses).
     /// `SG_FX_RAIN=1` (or 0) makes every day wet (dry) for stills.
-    fn fx_rain_on(&self, day: u32) -> f32 {
+    pub(crate) fn fx_rain_on(&self, day: u32) -> f32 {
         if let Some(v) = std::env::var("SG_FX_RAIN").ok().and_then(|v| v.parse::<f32>().ok()) {
             return v.clamp(0.0, 1.0);
         }
@@ -395,7 +464,8 @@ impl App {
         let dl = d[0].hypot(d[1]).max(1e-4);
         a.shadow_dir = [d[0] / dl, d[1] / dl];
         let (day, phase) = self.fx_day();
-        let rain = if s.rain { self.fx_rain_on(day) } else { 0.0 };
+        let (other, wt) = self.fx_blend_day(day);
+        let rain = if s.rain { self.fx_rain_on(day) * (1.0 - wt) + self.fx_rain_on(other) * wt } else { 0.0 };
         if s.time_of_day {
             let el0 = base[1].clamp(-1.0, 1.0).asin().to_degrees();
             let (az, el, sun, amb, sprite, top, low, w, shadow) = day_at(phase, el0);
@@ -410,6 +480,7 @@ impl App {
             // a low sun lights flat ground at a grazing angle: its light is raised so the course keeps at least three
             // quarters of its midday brightness (playable), while slopes turned to the sun still glow and the shadows grow
             let comp = (el0.to_radians().sin() * 0.75 / el.sin().max(0.05)).clamp(1.0, 3.0);
+            a.golden = ((1.0 - sun[2] / sun[0].max(0.01)) * 2.0).clamp(0.0, 1.0);
             a.sun = sun.map(|v| v * comp);
             a.amb = amb;
             a.sprite = sprite;
@@ -438,18 +509,45 @@ impl App {
         if a.sun_w[1] <= 0.0 {
             a.shadow = 0.0;
         }
+        if s.wind {
+            a.wind = self.fx_wind_of(day, rain, &rot);
+            if wt > 0.0 {
+                let o = self.fx_wind_of(other, rain, &rot);
+                let w = &mut a.wind;
+                let d = [w.dir[0] * (1.0 - wt) + o.dir[0] * wt, w.dir[1] * (1.0 - wt) + o.dir[1] * wt];
+                let l = d[0].hypot(d[1]).max(1e-3);
+                w.dir = [d[0] / l, d[1] / l];
+                w.k = w.k * (1.0 - wt) + o.k * wt;
+                w.screen_x = w.screen_x * (1.0 - wt) + o.screen_x * wt;
+            }
+        }
         if s.clouds {
             // the cover changes from day to day; rainy days are overcast
             let h = hash(&[self.fx_seed(), day, 0x636c_6f75]);
-            a.cover = 0.62 - 0.14 * unit(h) - 0.25 * rain;
+            let ho = hash(&[self.fx_seed(), other, 0x636c_6f75]);
+            a.cover = 0.62 - 0.14 * (unit(h) * (1.0 - wt) + unit(ho) * wt) - 0.25 * rain;
             a.cloud = (0.42 * a.shadow.max(0.3)).min(0.42);
             let t = self.fx.time;
             let dir = unit(hash(&[h])) * std::f32::consts::TAU;
-            // the clouds drift about 0.6 tiles a second; each day starts somewhere else in the noise
+            // the clouds drift about 0.6 tiles a second (with the wind: along it, faster in a stronger wind); each day starts
+            // somewhere else in the noise
+            let (mut dx, mut dz, mut speed) = (dir.cos(), dir.sin(), 60.0);
+            if a.wind.k > 0.0 {
+                // the noise moves against the offset: drifting along the wind moves the offset upwind
+                (dx, dz, speed) = (-a.wind.dir[0], -a.wind.dir[1], 30.0 + 110.0 * a.wind.k);
+            }
             let (ox, oz) = (unit(hash(&[h, 1])) / CLOUD_REPEAT, unit(hash(&[h, 2])) / CLOUD_REPEAT);
             // kept within one period of the noise, so the shader's coordinates stay small (mediump on some phones)
             let period = 1.0 / CLOUD_REPEAT;
-            a.cloud_off = [(ox + dir.cos() * 60.0 * t).rem_euclid(period), (oz + dir.sin() * 60.0 * t).rem_euclid(period)];
+            a.cloud_off = [(ox + dx * speed * t).rem_euclid(period), (oz + dz * speed * t).rem_euclid(period)];
+            if s.day_length > 0 {
+                // the drift is carried on frame by frame from where it was (fx.rs), so a change of the wind or of the day
+                // turns the clouds gently instead of moving them; they start where the course's own hash puts them
+                let (sx, sz) = (unit(hash(&[self.fx_seed(), 1])) / CLOUD_REPEAT, unit(hash(&[self.fx_seed(), 2])) / CLOUD_REPEAT);
+                let acc = self.fx.cloud_acc;
+                a.cloud_off = [(sx + acc[0]).rem_euclid(period), (sz + acc[1]).rem_euclid(period)];
+                a.cloud_vel = [dx * speed, dz * speed];
+            }
         }
         if s.mist {
             // thick at dawn, gone by late morning with the time of day; a light mist all day without it
@@ -464,6 +562,16 @@ impl App {
         }
         if s.haze {
             a.haze = 0.30 + 0.25 * rain;
+        }
+        if s.seasons {
+            let theme = self.exe_theme();
+            a.season = crate::fx_nature::season_at(self.fx_month(), theme, s.time_of_day.then_some(phase));
+        }
+        if s.after_rain || s.lightning {
+            self.fx_weather_after(&mut a, day, rain);
+        }
+        if s.evening_lights && s.time_of_day {
+            crate::fx_night::evening(&mut a, phase, self.exe_theme(), s.seasons.then(|| self.fx_month()));
         }
         a
     }
@@ -497,7 +605,7 @@ impl App {
     /// Over the course once the sprites are drawn: the haze in the distance and the rain.
     pub(crate) fn fx_overlay(&mut self, g: &mut Gfx) {
         let a = self.fx.atmos;
-        if a.haze <= 0.0 && a.rain <= 0.0 {
+        if a.haze <= 0.0 && a.rain <= 0.0 && a.rainbow <= 0.0 && a.fireflies <= 0.0 && a.flash <= 0.0 {
             return;
         }
         let u = Uniforms::flat(&Mat4::identity(), &Mat4::identity());
@@ -519,8 +627,20 @@ impl App {
                 g.quad(Mode::Flat, None, &u, [v(-1.0, y1, a1), v(1.0, y1, a1), v(1.0, y0, a0), v(-1.0, y0, a0)]);
             }
         }
+        if a.rainbow > 0.0 {
+            // after the rain, with the sun out (fx_wet.rs)
+            self.fx_rainbow_draw(g, &u, a.rainbow);
+        }
         if a.rain > 0.0 {
             self.fx_rain_draw(g, &u, a.rain);
+        }
+        if a.fireflies > 0.0 {
+            // dusk over the rough and the water (fx_night.rs)
+            self.fx_fireflies_draw(g, a.fireflies);
+        }
+        if a.flash > 0.0 {
+            // lightning (fx_wet.rs)
+            self.fx_flash_draw(g, &u, a.flash);
         }
         g.flush();
     }
@@ -538,7 +658,8 @@ impl App {
         let mut splash: Vec<Vert> = Vec::new();
         // pixels to clip space
         let (sx, sy) = (2.0 / w, 2.0 / h);
-        let slant = 0.22;
+        // the drops lean with the wind across the screen (with the wind option), else a fixed slant
+        let slant = if self.fx.atmos.wind.k > 0.0 { 0.06 + 0.5 * self.fx.atmos.wind.k * self.fx.atmos.wind.screen_x } else { 0.22 };
         for i in 0..n {
             let r = |j: u32| unit(hash(&[seed, i, j]));
             let speed = 0.9 + 0.5 * r(3);

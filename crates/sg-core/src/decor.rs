@@ -621,6 +621,8 @@ pub fn palette_file(pal: u8, theme: u8) -> Option<&'static str> {
                 "Landmarks/Red Oil Pump Pal.pcx",
             ][(pal - 100) as usize],
         ),
+        // the ball washer's palette (the start-up list loads it eighth after the four willows and the two blimps)
+        0x3d => Some("Bldgs/upgrade bwasherPal.pcx"),
         0x96 => Some("Flowers/GazeboPal.pcx"),
         0xbc => Some("Flowers/TopiaryPal.pcx"),
         0x4c => Some("Flowers/CrabgrassPal.pcx"),

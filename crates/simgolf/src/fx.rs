@@ -54,6 +54,20 @@ pub struct FxSettings {
     /// Balls in flight trail a fading streak; where they land, sand, water or grass is thrown up (fx_ball.rs).
     pub ball_trail: bool,
     pub ball_impacts: bool,
+    /// Trees, buildings, golfers and the sky mirrored in the water, the sun's glitter, the shore lapping (fx_reflect.rs).
+    pub reflections: bool,
+    /// A wind for each day: trees, palms, bushes and flags sway, the rain and the clouds follow it (fx_nature.rs).
+    pub wind: bool,
+    /// Lit windows, lamps and fireflies at dusk, with the time of day (fx_night.rs).
+    pub evening_lights: bool,
+    /// Blossom in spring, autumn colours in September and October, frost and dew in the mornings (fx_nature.rs).
+    pub seasons: bool,
+    /// Wet, glossy ground and puddles during and after rain, now and then a rainbow (fx_wet.rs).
+    pub after_rain: bool,
+    /// Lightning in heavy rain on parkland and links courses (fx_wet.rs).
+    pub lightning: bool,
+    /// How long a day of light lasts (fx_light.rs DAY_MONTHS): 0 short (one game month), 1 normal (three), 2 long (six).
+    pub day_length: u8,
 }
 
 impl Default for FxSettings {
@@ -82,6 +96,14 @@ impl Default for FxSettings {
             haze: true,
             ball_trail: true,
             ball_impacts: true,
+            reflections: true,
+            wind: true,
+            evening_lights: true,
+            seasons: true,
+            after_rain: true,
+            // a strong effect: offered, not on by default
+            lightning: false,
+            day_length: 1,
         }
     }
 }
@@ -135,7 +157,7 @@ macro_rules! flag {
     };
 }
 
-static OPTIONS: [FxOption; 21] = [
+static OPTIONS: [FxOption; 28] = [
     FxOption { key: "effects", label: "STR_FX_EFFECTS", choices: ON_OFF, get: |s| s.enabled as usize, set: |s, v| s.enabled = v != 0 },
     FxOption {
         key: "scaler",
@@ -169,6 +191,19 @@ static OPTIONS: [FxOption; 21] = [
     flag!("haze", "STR_FX_HAZE", haze),
     flag!("ball-trail", "STR_FX_BALL_TRAIL", ball_trail),
     flag!("ball-impacts", "STR_FX_BALL_IMPACTS", ball_impacts),
+    flag!("reflections", "STR_FX_REFLECTIONS", reflections),
+    flag!("wind", "STR_FX_WIND", wind),
+    flag!("evening-lights", "STR_FX_EVENING_LIGHTS", evening_lights),
+    flag!("seasons", "STR_FX_SEASONS", seasons),
+    flag!("after-rain", "STR_FX_AFTER_RAIN", after_rain),
+    flag!("lightning", "STR_FX_LIGHTNING", lightning),
+    FxOption {
+        key: "day-length",
+        label: "STR_FX_DAY_LENGTH",
+        choices: &["STR_FX_DAY_SHORT", "STR_FX_DAY_NORMAL", "STR_FX_DAY_LONG"],
+        get: |s| s.day_length.min(2) as usize,
+        set: |s, v| s.day_length = v.min(2) as u8,
+    },
 ];
 
 /// The options in the order a preferences screen lists them; the first is the master switch.
@@ -199,7 +234,9 @@ pub fn apply_spec(s: &mut FxSettings, spec: &str) -> Result<(), String> {
             "off" | "false" | "no" | "none" => 0,
             "sharp" | "sharp-bilinear" | "low" => 1 - (opt.key == "quality") as usize,
             "edge" | "edge-directed" | "high" => 2,
-            "medium" => 1,
+            "medium" | "normal" => 1,
+            "short" => 0,
+            "long" => 2,
             n => n.parse::<usize>().map_err(|_| format!("bad value {val} for {key}"))?,
         };
         if v >= opt.choices.len() {
@@ -268,6 +305,13 @@ pub fn from_enhanced(e: &crate::enhanced::Settings) -> FxSettings {
     s.haze = e.fx_haze;
     s.ball_trail = e.fx_ball_trail;
     s.ball_impacts = e.fx_ball_impacts;
+    s.reflections = e.fx_reflections;
+    s.wind = e.fx_wind;
+    s.evening_lights = e.fx_evening_lights;
+    s.seasons = e.fx_seasons;
+    s.after_rain = e.fx_after_rain;
+    s.lightning = e.fx_lightning;
+    s.day_length = e.fx_day_length.min(2);
     s
 }
 
@@ -283,7 +327,23 @@ fn post_supported() -> bool {
 }
 
 fn wants_post(s: &FxSettings) -> bool {
-    s.enabled && post_supported() && (s.tilt_shift || s.grading || s.bloom || s.vignette)
+    // photo mode always composites (its looks, focus blur and vignette; photo.rs), in the browser too
+    s.enabled && ((post_supported() && (s.tilt_shift || s.grading || s.bloom || s.vignette)) || crate::photo::post().is_some())
+}
+
+thread_local! {
+    /// The size of the target being drawn when it is not the window (photo mode's larger photos, photo.rs).
+    static RENDER_SIZE: Cell<Option<(f32, f32)>> = const { Cell::new(None) };
+}
+
+/// Drawing into a target of this size instead of the window (None: the window again), for the scaler's magnification.
+pub fn set_render_size(size: Option<(f32, f32)>) {
+    RENDER_SIZE.with(|r| r.set(size));
+}
+
+/// The size of the target being drawn when it is not the window (None: the window).
+pub fn render_size() -> Option<(f32, f32)> {
+    RENDER_SIZE.with(|r| r.get())
 }
 
 // ---- theme looks --------------------------------------------------------------------------------------------------------------
@@ -370,6 +430,9 @@ struct GroundUniforms {
     cover: [f32; 4],
     mist: [f32; 4],
     mist_col: [f32; 3],
+    fx1: [f32; 4],
+    fx2: [f32; 4],
+    fx3: [f32; 4],
 }
 
 #[repr(C)]
@@ -407,6 +470,9 @@ pub struct FxGpu {
     pub(crate) clouds: TextureId,
     /// A soft round dot (the balls' impacts and the rain's splashes, fx_ball.rs).
     pub(crate) dot: TextureId,
+    /// A 1 x 1 detail map (no puddles, grass) and an empty reflection, for when none is made.
+    no_detail: TextureId,
+    no_reflection: TextureId,
 }
 
 fn shader(ctx: &mut dyn RenderingBackend, vs: &str, fs: &str, images: &[&str], uniforms: &[(&str, UniformType)]) -> ShaderId {
@@ -474,9 +540,13 @@ impl FxGpu {
             ("cover", Float4),
             ("mist", Float4),
             ("mist_col", Float3),
+            ("fx1", Float4),
+            ("fx2", Float4),
+            ("fx3", Float4),
         ];
-        let terrain_sh = shader(ctx, glsl::GROUND_VS, &glsl::terrain_fs(), &["tex", "lmap", "clouds"], &ground_uniforms);
-        let water_sh = shader(ctx, glsl::GROUND_VS, &glsl::water_fs(), &["tex", "lmap", "clouds"], &ground_uniforms);
+        let ground_images = ["tex", "lmap", "clouds", "fxmap", "reflt"];
+        let terrain_sh = shader(ctx, glsl::GROUND_VS, &glsl::terrain_fs(), &ground_images, &ground_uniforms);
+        let water_sh = shader(ctx, glsl::GROUND_VS, &glsl::water_fs(), &ground_images, &ground_uniforms);
         let shade_sh = shader(ctx, glsl::SHADE_VS, &glsl::shade_fs(), &["mask"], &[("tint", Float4)]);
         let down_sh = shader(ctx, glsl::POST_VS, &glsl::down_fs(), &["src"], &[("p", Float4)]);
         let blur_sh = shader(ctx, glsl::POST_VS, &glsl::blur_fs(), &["src"], &[("p", Float4)]);
@@ -526,6 +596,8 @@ impl FxGpu {
         let no_lightmap = ctx.new_texture_from_rgba8(1, 1, &[255, 255, 255, 0]);
         let clouds = crate::fx_light::cloud_texture(ctx);
         let dot = crate::fx_ball::dot_texture(ctx);
+        let no_detail = ctx.new_texture_from_rgba8(1, 1, &[0, 255, 0, 0]);
+        let no_reflection = ctx.new_texture_from_rgba8(1, 1, &[0, 0, 0, 0]);
         FxGpu {
             scaler,
             scaler_pm,
@@ -541,6 +613,8 @@ impl FxGpu {
             no_lightmap,
             clouds,
             dot,
+            no_detail,
+            no_reflection,
         }
     }
 }
@@ -554,16 +628,33 @@ pub(crate) fn gpu(g: &mut Gfx) -> &FxGpu {
 
 // ---- the pixel-art scaler -----------------------------------------------------------------------------------------------------
 
+/// How a texture holds its colours, for the scaler: straight, premultiplied (Enhanced's smooth interface textures), or
+/// straight with the distance to a smoothed outline in alpha (Enhanced's smooth edges for colour-keyed art, edges.rs).
+pub const TEX_STRAIGHT: u8 = 0;
+pub const TEX_PREMUL: u8 = 1;
+pub const TEX_SDF: u8 = 2;
+
 /// Whether the scaler may take over a batch (called by Gfx::flush for the flat 2D / sprite draws).
 pub fn scaler_wanted() -> bool {
     let s = settings();
-    s.enabled && s.scaler != SCALER_OFF
+    s.enabled && s.scaler != SCALER_OFF && !SCALER_PAUSED.with(|p| p.get())
+}
+
+thread_local! {
+    /// The scaler is not used for a while (the reflections' offscreen pass, fx_reflect.rs).
+    static SCALER_PAUSED: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Holds the scaler off (true) or lets it run again (false).
+pub(crate) fn pause_scaler(on: bool) {
+    SCALER_PAUSED.with(|p| p.set(on));
 }
 
 /// Draw state for a batch of flat quads drawn with the scaler: sets the pipeline, bindings and uniforms and returns true, or
 /// returns false (the caller draws the classic way) when the picture is not magnified, is text, or the batch is not quads.
-/// The magnification is measured on the batch's first quad edge (its first two vertices). `premul`: the texture holds
-/// premultiplied colours (and the batch's vertex colours are premultiplied).
+/// The magnification is measured on the batch's first quad edge (its first two vertices). `colours`: how the texture holds
+/// its colours (TEX_STRAIGHT, TEX_PREMUL or TEX_SDF; with the last two the batch's vertex colours are premultiplied and the
+/// output is too).
 #[allow(clippy::too_many_arguments)]
 pub fn apply_scaler(
     ctx: &mut Box<dyn RenderingBackend>,
@@ -573,29 +664,14 @@ pub fn apply_scaler(
     ib: BufferId,
     tex: TextureId,
     u: &Uniforms,
-    premul: bool,
+    colours: u8,
 ) -> bool {
     if batch.len() < 6 || PLAIN.with(|p| p.borrow().contains(&tex)) {
         return false;
     }
     let (tw, th) = ctx.texture_size(tex);
-    let (sw, sh) = window::screen_size();
-    let (a, b) = (batch[0], batch[1]);
-    let clip = |p: [f32; 3]| {
-        let m = &u.mvp;
-        let x = m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12];
-        let y = m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13];
-        let w = m[3] * p[0] + m[7] * p[1] + m[11] * p[2] + m[15];
-        (x / w * sw * 0.5, y / w * sh * 0.5)
-    };
-    let (pa, pb) = (clip(a.pos), clip(b.pos));
-    let px = (pb.0 - pa.0).hypot(pb.1 - pa.1);
-    let texels = ((b.uv[0] - a.uv[0]) * tw as f32).hypot((b.uv[1] - a.uv[1]) * th as f32);
-    if texels < 0.5 {
-        return false;
-    }
-    let scale = px / texels;
-    if !scale.is_finite() || scale < 1.05 {
+    let Some(scale) = crate::gfx::batch_scale(&**ctx, batch, tex, u) else { return false };
+    if scale < 1.05 {
         return false;
     }
     // edge-directed rules need room to show; at low magnifications and on the lowest quality the sharp filter does it
@@ -604,14 +680,14 @@ pub fn apply_scaler(
         *fx = Some(Box::new(FxGpu::new(&mut **ctx)));
     }
     let Some(f) = fx.as_deref() else { return false };
-    ctx.apply_pipeline(if premul { &f.scaler_pm } else { &f.scaler });
+    ctx.apply_pipeline(if colours != TEX_STRAIGHT { &f.scaler_pm } else { &f.scaler });
     ctx.apply_bindings(&Bindings { vertex_buffers: vec![vb], index_buffer: ib, images: vec![tex] });
     ctx.apply_uniforms(UniformsSource::table(&ScalerUniforms {
         mvp: u.mvp,
         sp: [tw as f32, th as f32, scale, mode as f32],
         alpha_ref: u.alpha_ref,
         soft: if mode == SCALER_EDGE { SOFT_EDGE.with(|s| s.get()) } else { SOFT_SHARP.with(|s| s.get()) },
-        pm: premul as i32 as f32,
+        pm: colours as f32,
     }));
     true
 }
@@ -656,6 +732,20 @@ pub struct FxWorld {
     pub(crate) cast: crate::fx_shadow::CastState,
     /// Ball trails and impacts (fx_ball.rs).
     pub(crate) balls: crate::fx_ball::BallState,
+    /// Sprite kinds and the seasons' recoloured trees (fx_nature.rs).
+    pub(crate) nature: crate::fx_nature::NatureState,
+    /// The detail map (puddle potential, grass; fx_wet.rs) and the key of the ground it was made for.
+    detail: Option<TextureId>,
+    detail_key: u64,
+    /// The reflections' target (fx_reflect.rs), its pass and size, and whether it was drawn this frame.
+    pub(crate) reflect: Option<(TextureId, RenderPass, (u32, u32))>,
+    /// Near-water tiles (fx_reflect.rs): per tile, the water's height when water is within a few tiles.
+    pub(crate) water_near: Vec<Option<f32>>,
+    pub(crate) water_near_key: u64,
+    /// How far the clouds have drifted (fx_light.rs; world units, within one period of their noise).
+    pub(crate) cloud_acc: [f32; 2],
+    /// The evening lights: windows' glow per sprite frame (fx_night.rs).
+    pub(crate) night: crate::fx_night::NightState,
 }
 
 impl FxWorld {
@@ -712,6 +802,34 @@ impl App {
         }
         self.fx.mist_level = mist_level(&self.terrain);
         self.fx_lightmap(g, false);
+        self.fx_detail_map(g);
+        if s.reflections {
+            self.fx_water_near();
+        }
+    }
+
+    /// Makes the detail map (puddle potential and grass, fx_wet.rs) when the ground changed and the seasons or the wet
+    /// ground want it.
+    fn fx_detail_map(&mut self, g: &mut Gfx) {
+        let s = settings();
+        if !(s.after_rain || s.seasons || s.lighting) {
+            return;
+        }
+        let n = [4usize, 8, 8][s.quality.min(2) as usize];
+        let key = lightmap_key(&self.terrain, n, 0, FxSettings::default()) ^ 0x5d;
+        if self.fx.detail.is_some() && self.fx.detail_key == key {
+            return;
+        }
+        let img = crate::fx_wet::build_detail(&self.terrain, n);
+        if let Some(old) = self.fx.detail.take() {
+            g.ctx.delete_texture(old);
+        }
+        let tex = g.ctx.new_texture_from_data_and_format(
+            &img.px,
+            TextureParams { width: img.w, height: img.h, format: TextureFormat::RGBA8, ..Default::default() },
+        );
+        self.fx.detail = Some(tex);
+        self.fx.detail_key = key;
     }
 
     /// Makes the light map when the ground, the view's turn or (with the time of day) the sun changed. `sun_moved`: only
@@ -796,6 +914,11 @@ impl App {
         // the sun, sky and weather of this moment (fx_light.rs): the classic midday unless the time of day or rain is on
         let atm = self.fx_atmos();
         self.fx.atmos = atm;
+        let period = 1.0 / crate::fx_light::CLOUD_REPEAT;
+        self.fx.cloud_acc = [
+            (self.fx.cloud_acc[0] + atm.cloud_vel[0] * dt).rem_euclid(period),
+            (self.fx.cloud_acc[1] + atm.cloud_vel[1] * dt).rem_euclid(period),
+        ];
         if s.time_of_day && s.shadows {
             self.fx_lightmap(g, true);
         }
@@ -814,11 +937,19 @@ impl App {
         if s.sky {
             self.fx_sky(g, &atm);
         }
-        let terrain_fx = s.lighting || s.occlusion || s.shadows || atm.cloud > 0.0 || atm.mist > 0.0;
+        let season_on = atm.season.fresh + atm.season.autumn + atm.season.frost + atm.season.dew > 0.0;
+        let terrain_fx = s.lighting || s.occlusion || s.shadows || atm.cloud > 0.0 || atm.mist > 0.0 || atm.wet > 0.0 || season_on;
         let rot = view_rotation(self);
         let lm = self.fx.lightmap.unwrap_or_else(|| gpu(g).no_lightmap);
         let clouds = gpu(g).clouds;
         let has_lm = self.fx.lightmap.is_some();
+        if (atm.wet > 0.0 || season_on || s.lighting) && self.fx.detail.is_none() {
+            self.fx_detail_map(g);
+        }
+        let detail = self.fx.detail.unwrap_or_else(|| gpu(g).no_detail);
+        // what stands round the water, drawn mirrored for the water shader (fx_reflect.rs)
+        let reflt = if s.reflections && !self.fx.water.is_empty() { self.fx_reflections(g, proj, mv) } else { None };
+        let upp = 2.0 / (proj.0[0] * self.draw_w).max(1e-6);
         let u = GroundUniforms {
             mvp: proj.mul(mv).0,
             mv: mv.0,
@@ -833,33 +964,49 @@ impl App {
                 if s.occlusion && has_lm { 1.0 } else { 0.0 },
                 -1.0,
             ],
-            water: [self.fx.time, 0.22, 1.0, 0.55],
+            water: [
+                self.fx.time,
+                if s.reflections { 0.22 + 0.2 * atm.golden } else { 0.22 },
+                if s.reflections { 1.0 + 1.8 * atm.golden } else { 1.0 },
+                0.55,
+            ],
             eye_w: [rot[2], rot[6], rot[10]],
             light_w: if atm.tinted { atm.sun_w } else { to_world(&rot, sg_core::terrain::light_direction()) },
             sky_top: atm.sky_top,
             sky_low: atm.sky_low,
             cloud: [atm.cloud, crate::fx_light::CLOUD_REPEAT, atm.cloud_off[0], atm.cloud_off[1]],
-            cover: [atm.cover, atm.cover + 0.22, 0.0, 0.0],
+            cover: [atm.cover, atm.cover + 0.22, 1.0 / self.draw_w.max(1.0), 1.0 / self.draw_h.max(1.0)],
             mist: [atm.mist, self.fx.mist_level.0, 1.0 / self.fx.mist_level.1.max(1.0), self.fx.time.rem_euclid(10000.0)],
             mist_col: atm.mist_col,
+            fx1: [atm.wet, 1.02 - 0.5 * atm.puddles, atm.rain, self.fx.time.rem_euclid(1000.0)],
+            fx2: [atm.season.fresh * 0.8, atm.season.autumn, atm.season.frost, atm.season.dew],
+            fx3: [
+                if reflt.is_some() { 1.0 } else { 0.0 },
+                // the smooth ground normals (SG_FX_FACETED=1: the tiles' flat faces, as before, for comparisons)
+                if s.lighting && self.fx.detail.is_some() && std::env::var_os("SG_FX_FACETED").is_none() { 1.0 } else { 0.0 },
+                if s.reflections { 1.0 } else { 0.0 },
+                1.0 / (upp * 1.6).max(0.05),
+            ],
         };
+        let reflt = reflt.unwrap_or_else(|| gpu(g).no_reflection);
+        let imgs = |t: TextureId| [t, lm, clouds, detail, reflt];
         g.flush();
         let p = *gpu(g);
         for b in self.batches.iter().chain(&self.wall_batches) {
             if terrain_fx {
-                g.draw_mesh_with(&p.ground_solid, &b.mesh, &[b.tex, lm, clouds], UniformsSource::table(&u));
+                g.draw_mesh_with(&p.ground_solid, &b.mesh, &imgs(b.tex), UniformsSource::table(&u));
             } else {
                 g.draw_mesh(Mode::Solid, &b.mesh, b.tex, lit);
             }
         }
         for b in &self.fx.water {
-            g.draw_mesh_with(&p.water, &b.mesh, &[b.tex, lm, clouds], UniformsSource::table(&u));
+            g.draw_mesh_with(&p.water, &b.mesh, &imgs(b.tex), UniformsSource::table(&u));
         }
         let mut uo = u;
         uo.params[3] = overlay.alpha_ref;
         for b in self.path_batches.iter().chain(&self.mud_batches) {
             if terrain_fx {
-                g.draw_mesh_with(&p.ground_overlay, &b.mesh, &[b.tex, lm, clouds], UniformsSource::table(&uo));
+                g.draw_mesh_with(&p.ground_overlay, &b.mesh, &imgs(b.tex), UniformsSource::table(&uo));
             } else {
                 g.draw_mesh(Mode::Overlay, &b.mesh, b.tex, overlay);
             }
@@ -946,22 +1093,32 @@ impl App {
             g.ctx.draw(0, 6, 1);
             g.ctx.end_render_pass();
         };
+        // a photo larger than the window (photo.rs) blurs as far across the picture as the screen shows
+        let spread = crate::photo::post().map(|ph| ph.spread).unwrap_or(1.0);
         let blur = |g: &mut Gfx, a: usize, b: usize| {
-            run(g, &f.blur, p.passes[b], p.tex[a], [1.0 / small.0, 0.0, 0.0, 0.0]);
-            run(g, &f.blur, p.passes[a], p.tex[b], [0.0, 1.0 / small.1, 0.0, 0.0]);
+            run(g, &f.blur, p.passes[b], p.tex[a], [spread / small.0, 0.0, 0.0, 0.0]);
+            run(g, &f.blur, p.passes[a], p.tex[b], [0.0, spread / small.1, 0.0, 0.0]);
         };
-        let tilt = s.tilt_shift && s.quality > 0;
+        // photo mode (photo.rs): its own focus blur, as many blur passes as its strength, and its own composite
+        let photo = crate::photo::post();
+        let tilt = (s.tilt_shift && s.quality > 0 && photo.is_none()) || photo.is_some_and(|ph| ph.blur > 0);
         let bloom = s.bloom && s.quality > 0;
         if tilt {
             run(g, &f.down, p.passes[0], p.scene, [k / full.0 * 2.0, k / full.1 * 2.0, 0.0, 0.0]);
-            blur(g, 0, 1);
-            blur(g, 0, 1);
+            for _ in 0..photo.map(|ph| ph.blur_passes()).unwrap_or(2) {
+                blur(g, 0, 1);
+            }
         }
         if bloom {
             run(g, &f.down, p.passes[2], p.scene, [k / full.0 * 2.0, k / full.1 * 2.0, 1.0, look.bloom_from]);
             blur(g, 2, 3);
         }
         g.ctx.begin_pass(target, PassAction::Nothing);
+        if let Some(ph) = photo {
+            let theme = crate::photo::ThemeGrade { contrast: look.contrast, vibrance: look.vibrance, tint: look.tint };
+            crate::photo::composite(g, &f, [p.scene, p.tex[0], p.tex[2]], ph, theme, if bloom { 0.45 } else { 0.0 }, full.0 / full.1);
+            return;
+        }
         g.ctx.apply_pipeline(&f.composite);
         g.ctx.apply_bindings(&Bindings {
             vertex_buffers: vec![f.quad_vb],
@@ -1006,6 +1163,9 @@ fn free_post(g: &mut Gfx, p: PostTargets) {
     for t in p.tex.into_iter().chain([p.scene, p.depth]).chain(p.msaa.into_iter().flatten()) {
         g.ctx.delete_texture(t);
     }
+    // miniquad keeps the deleted textures in its cache of bound textures: a new one under the same GL name would not be
+    // bound again (photo.rs); clearing the cache (what the end of a frame does) makes the next draws bind theirs
+    g.ctx.commit_frame();
 }
 
 // ---- the light map ------------------------------------------------------------------------------------------------------------

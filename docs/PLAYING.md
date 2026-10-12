@@ -53,7 +53,14 @@ On the Add Buildings panel (or b for benches, Shift+B for a home site; Tab turns
 
 ## In-game interface (dock, panels, advisor, stories)
 
-The lower left of the course screen now shows the game's own dock art (Interface/3mainLowerLeft.pcx). The three big round buttons open panels along the bottom: **Build Course** (terrain brushes, paths, raise and lower, each with its cost), **Add Buildings** (the amenities for the theme) and **People** (click to hire, right click to fire a club pro, ranger, groundskeeper or soda vendor). Click an item, then click the map. The small buttons zoom, rotate, open the course report, pause, and save the course. The keys are the original's (its F8 screen lists them): g f r s t w p b pick the green/tee, fairway, rough, sand, trees, water, path and bench tools (v the ravine), e the elevation tools, = and - raise and lower the ground under the pointer (Tab steps the elevation brush), h opens the hole being built; z and x zoom between the original's three levels, PageUp and Home turn the view a quarter (0 turns it back), the arrows scroll four tiles, 1 to 9 and Shift+1 to 9 jump to holes 1 to 18; Space drops the tool; Shift+P pause, Shift+T trees, Shift+N names, Shift+R routing map, Shift+W world map, Shift+J begin a tournament, Shift+C save the course for championship play, Shift+S and Shift+L save and load. The original has no game speed control; the port's own ] cycles normal, x2 and x4.
+The lower left of the course screen now shows the game's own dock art (Interface/3mainLowerLeft.pcx). The three big round buttons open panels along the bottom: **Build Course** (terrain brushes, paths, raise and lower, each with its cost), **Add Buildings** (the amenities for the theme) and **People** (click to hire, right click to fire a club pro, ranger, groundskeeper or soda vendor). Click an item, then click the map. The small buttons zoom, rotate, open the course report, pause, and save the course. The keys are the original's (its F8 screen lists them): g f r s t w p b pick the green/tee, fairway, rough, sand, trees, water, path and bench tools (v the ravine), e the elevation tools, = and - raise and lower the ground under the pointer (Tab steps the elevation brush), h opens the hole being built; z and x zoom between the original's three levels, PageUp and Home turn the view a quarter (0 turns it back), the arrows scroll four tiles, 1 to 9 and Shift+1 to 9 jump to holes 1 to 18; Space drops the tool; Shift+P pause, Shift+T trees, Shift+N names, Shift+R routing map, Shift+W world map, Shift+J begin a tournament, Shift+C save the course for championship play, Shift+S and Shift+L save and load. The original has no game speed control; the port's own ] cycles normal, x2 and x4. With Enhanced graphics on, the port's own c (a key the original leaves unused) opens photo mode (see *Photo mode* below).
+
+System Functions → Preferences → *Keyboard controls...* (the port's own screen) lists every key the game takes, grouped:
+moving around the course, time, building, holes and messages, reports and maps, your pro and the golfers, saving and
+loading, pictures, and the keys that work everywhere, with the browser's and the Mac's stand-ins. Its pages turn with the
+Previous and Next buttons, Left and Right (or PageUp, PageDown, Space), or a click or tap in the box; Esc, Enter, the tick
+or a click outside the box close it. (The title menu has no Preferences, as in the original.) `--screen keys` opens it for
+stills, `SG_KEYS_PAGE=N` on page N (from 0).
 
 Messages appear at the top of the screen as in the original (the message window): a translucent strip with nobody speaking, or a framed box with the speaker's ball portrait, the newly unlocked building or an icon; a new message replaces the one showing, minor ones wait until it is gone, and Repeat Last Message (Information menu) brings the last one back. On Easy, during the first year, your pro gives advice in a line over his head, in the exe's words. Paused shows at the top centre. Golfer stories play as in the original: a pair that fits a story from your Themes folder gets it at the first tee, and its lines appear at the top as the two walk together (Shift+H hides them); good moods carry it to a Happy Ending, which unlocks a landmark. Special visitors (the Corporate CEO, the County commissioner, the Wealthy heiress) come once your ratings earn them; please them and they invest, approve a land expansion (the TRACTS FOR SALE screen opens) or donate a landmark. Donated and owned landmarks can be placed with the building tool. Story text is read from your disc at run time and is not stored in this project.
 
@@ -152,7 +159,7 @@ assets and read player packs from the external files folder).
 ## Enhanced graphics
 
 System Functions → Preferences → the *Enhanced graphics* tick, or *Enhanced graphics settings...* for the details (the port's own, not in the original; docs/ENHANCED.md) turns on a
-way of drawing the game for large and wide screens: sharp text, smooth interface art, the HUD at the window's corners on a
+way of drawing the game for large and wide screens: sharp text, smooth interface art (with smooth outlines for the colour-keyed buttons, icons and sprites instead of stair steps), the HUD at the window's corners on a
 wide window, sharper and anti-aliased course, a smooth camera and smooth motion. Each part has its own tick; Classic stays
 the default. With the smooth camera the mouse wheel and a pinch zoom continuously between the three levels (z, x and the
 zoom buttons still step to the next level), turns are animated, arrow-key scrolls glide and a dragged course coasts to a
@@ -164,29 +171,68 @@ of day, cloud shadows, haze, rain, mist and the post-processing). The master swi
 `SG_POINTER=x,y` moves the pointer and `SG_CLICK=x,y[;x,y...]` clicks, in window pixels, after the first frame of a
 scripted still (for checking where clicks land on a wide window).
 
+### Photo mode
+
+With Enhanced graphics on, **C** (or the camera button under the rating pills, top right; a tap on a phone) opens photo
+mode (docs/ENHANCED.md, "Photo mode"): the interface goes, the game pauses (Space or P runs it on), and the camera is free:
+drag or the arrows to move, the wheel, a pinch, Z / X or + / - to zoom well past the usual levels, PageUp / Home to turn. A
+click or tap puts the focus there; F turns the focus blur on and off, [ and ] set its strength, L steps through the looks
+(Natural, Warm, Vivid, B&W, Vintage), V the vignette, R the size (window, twice the window, 4K), Enter takes the photo, H
+hides the hint and buttons, Esc or C leaves and puts everything back. Buttons along the bottom do the same by mouse or
+touch. Photos are PNGs in `Photos` in the save folder; the browser downloads them; on Android they go to
+`Android/data/org.opensgolf.game/files/Photos`. The Display page's *Photo mode* tick turns the key and the button off. Test
+hook: `--edit "P:LOOK,BLUR,VIGNETTE,ZOOM,HINT,SHOOT"` opens photo mode for stills (LOOK 0 to 4, BLUR 0 to 5, VIGNETTE 0 or
+1, ZOOM in percent of the closest level or 0, HINT 1 to show the hint and buttons, SHOOT 1 to 3 to take a photo at the
+window's size, twice it or 4K); `SG_CLICK=x,y` sets the focus first.
+
 ### Enhanced graphics: the effects
 
 The effects are ticks on the same screen; `--fx` turns on only the optional shader effects for one run (docs/ENHANCED.md, "Effects"): smoother magnified sprites and interface art,
 animated water, terrain light with occlusion and shadows, a sky beyond the map, colour grading, bloom and vignette.
 `--fx-set LIST` picks options (`scaler=off|sharp|edge`, `water`, `lighting`, `occlusion`, `shadows`, `sprite-shadows`,
 `sky`, `tilt-shift`, `grading`, `bloom`, `vignette`, `cast-shadows`, `time-of-day`, `clouds`, `haze`, `rain`, `mist`,
-`ball-trail`, `ball-impacts` = on/off, `quality=low|medium|high`), `--fx-list` prints them, and `OPENSGOLF_FX` does the
+`ball-trail`, `ball-impacts`, `reflections`, `wind`, `evening-lights`, `seasons`, `after-rain`, `lightning` = on/off,
+`quality=low|medium|high`, `day-length=short|normal|long`), `--fx-list` prints them, and `OPENSGOLF_FX` does the
 same from the environment. Without them the game looks exactly as before. Test hooks: `SG_FX_BENCH=N` with `--png` prints
 the frame time over N frames, `SG_FX_LOG=1` the light map's build time and each ball's landing (where, on what, at which
 tick), `SG_FX_DUMP=FILE` writes the light map, `SG_FX_SOFT=sharp,edge` overrides the scaler's softness (texels),
 `SG_FX_HOUR=P` holds the time of day at phase P (0 dawn, 0.15 morning, 0.5 midday, 0.85 golden hour, 0.89 sunset, 0.95
-dusk) and `SG_FX_RAIN=1` (or `0`) makes every day wet (dry) while rain is on.
+dusk) and `SG_FX_RAIN=1` (or `0`) makes every day wet (dry) while rain is on. For stills of the newer effects:
+`SG_FX_MONTH=M` holds the calendar month (3 March .. 10.99 late October, fractions allowed: 4.5 is mid April),
+`SG_FX_WIND=S` or `S,DEG` fixes the wind's strength (0 calm .. 1 a strong breeze) and its direction (degrees from the
+screen's right towards its top), `SG_FX_WET=W` makes the ground that wet with its puddles that far spread,
+`SG_FX_RAINBOW=K` shows a rainbow, `SG_FX_LIGHTNING=K` a lightning flash of that brightness, and `SG_FX_FACETED=1` lights
+the ground with the tiles' flat faces as before the smooth normals (for comparisons).
 
 ### Time of day and weather
 
-With *Time of day* on, one game month is one day of light: the month opens in the morning, has a long midday in the
+With *Time of day* on, a day of light lasts three game months (about four and a half minutes at normal speed; *Day
+length* on the Atmosphere page picks short, one month as in the first versions, normal, or long, six months): the day
+opens in the morning, has a long midday in the
 original's light, a golden afternoon, a sunset and a short blue dusk, then the next month dawns. The sun swings round the
 front of the view, so shadows lengthen sideways rather than down the screen, and the course never gets darker than an
 easy-to-read dusk; the interface is not touched. *Rain* wets about one day in four (never on desert or tropical courses, more on the
 links), the same days whenever the save is loaded; the light dims and the shadows fade while it rains. *Mist* lies in
 hollows and over water, thick at dawn and gone by late morning with the time of day (a light mist all day without it).
 *Cloud shadows* drift over the course, *haze* pales the far (upper) part of the view, more when zoomed out. None of these
-changes the game: golfers play the same in rain or at dusk.
+changes the game: golfers play the same in rain or at dusk. Rain spells, the cloud cover and the wind last a whole day of
+light and blend into the next day's over the first and last eighth of it, so the weather comes and goes gently (the short
+day length keeps the first versions' sudden changes).
+
+The **Weather** page and the newer Atmosphere options (docs/ENHANCED.md has the details):
+
+- *Reflections and sun glitter on the water* (on): trees, buildings and golfers standing near water are mirrored in it,
+  rippling with the waves; the sun's glitter grows warm and strong at golden hour; the water laps at the shore.
+- *Wind* (on): each day has its wind; trees, palms, bushes and tall grasses lean and sway in gusts, flags fly downwind, the
+  rain slants and the clouds drift with it.
+- *Lit windows, lamps and fireflies at dusk* (on, with the time of day): from sunset the buildings' windows glow, lamps
+  light up beside the buildings and along the paths, and fireflies drift over the rough on parkland and tropical courses.
+- *Seasons* (on): blossom on the trees and fresh greens in March and April, autumn colours in September and October, frost
+  and dew on spring and autumn mornings (with the time of day). Palms, cacti and conifers barely change.
+- *Wet ground, puddles and rainbows* (on, with rain): during a rainy day and drying through the next the ground is darker
+  and glossy, puddles fill on level fairway and rough and shrink as they dry, and about every other time the sun comes out
+  after rain a rainbow stands in the sky.
+- *Lightning in heavy rain* (off): flashes and distant flicker in the heaviest rain on parkland and links courses.
 
 ## Language
 

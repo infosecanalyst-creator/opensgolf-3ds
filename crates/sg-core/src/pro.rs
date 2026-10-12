@@ -691,7 +691,8 @@ impl Club {
                         6 if gg.shot_type == 3 => 0x80,
                         7 if crate::planner::max_range(self, c, g) < l => 0x1,
                         8 if (3..=10).contains(&gg.club) => 0x8,
-                        9 if n > 50 || d == 0 => {
+                        // the exe counts its tries from 0 and tests the count before adding one: more than 50 tries made
+                        9 if n > 51 || d == 0 => {
                             if rest == crate::course::t::GREEN && d != 0 {
                                 0x10
                             } else {

@@ -119,6 +119,8 @@ pub struct Prop {
     pub tv: Option<(i32, i32)>,
     /// An ambient animal's or fly-over's identity from tick to tick (0: none), for Enhanced smooth motion (enhanced.rs).
     pub track: u32,
+    /// Added to the game tick for an animated prop's frame (a driving range's flags wave out of step).
+    pub phase: u32,
 }
 
 impl Default for Prop {
@@ -151,6 +153,7 @@ impl Default for Prop {
             bed: None,
             tv: None,
             track: 0,
+            phase: 0,
         }
     }
 }
@@ -255,6 +258,8 @@ pub enum Screen {
     Scenarios,
     /// Information > Scenario goals: the goals of the game and how they stand.
     Goals,
+    /// Preferences > Keyboard controls: every key of the game (the port's own screen, keys_ui.rs).
+    Keys,
 }
 
 /// Where saved games, championship courses and pros, accomplishment snapshots, packs and settings go. The browser keeps them
@@ -374,6 +379,8 @@ pub struct App {
     pub fx: crate::fx::FxWorld,
     /// The optional Enhanced graphics' camera and motion state (off by default; see enhanced.rs).
     pub enh: crate::enhanced::EnhState,
+    /// Enhanced graphics' photo mode while it is open (photo.rs); always None in Classic.
+    pub photo: Option<Box<crate::photo::Photo>>,
     pub batches: Vec<Batch>,
     pub path_batches: Vec<Batch>,
     /// Paths not joined to the clubhouse, drawn as mud tracks (manual p. 18).
@@ -518,6 +525,9 @@ pub struct App {
     pub popup: Option<crate::popup_ui::Popup>,
     /// The content packs found and loaded (docs/MODDING.md), for Preferences > Content.
     pub content: crate::content::ContentState,
+    /// Preferences > Keyboard controls (keys_ui.rs): the page shown and the screen to go back to.
+    pub keys_page: usize,
+    pub keys_back: Screen,
     /// The scenario's goals and the packs' scripts of the game in progress (scenario_ui).
     pub scen: crate::scenario_ui::ScenarioState,
     pub last_message: String,
@@ -657,6 +667,8 @@ pub struct App {
     pub music_screen: Option<bool>,
     /// The playing screen jingle and the screen it belongs to.
     pub jingle: Option<(i32, Screen)>,
+    /// The voice each sound slot last started: the exe keeps one sound buffer per slot, so a slot never sounds twice at once.
+    pub slot_voices: std::collections::HashMap<i32, i32>,
     pub music: i32,
     pub music_idx: usize,
     /// Wall clock (seconds) used for toasts and the story timer.
@@ -697,6 +709,7 @@ impl App {
             hd: crate::hd::HdState { pack_dir: save_dir().join("HD"), ..Default::default() },
             fx: Default::default(),
             enh: Default::default(),
+            photo: None,
             batches: Vec::new(),
             path_batches: Vec::new(),
             mud_batches: Vec::new(),
@@ -759,6 +772,8 @@ impl App {
             float_next: 0,
             popup: None,
             content: Default::default(),
+            keys_page: 0,
+            keys_back: Screen::Play,
             scen: Default::default(),
             last_message: String::new(),
             ticker: Default::default(),
@@ -867,6 +882,7 @@ impl App {
             title_music: -1,
             music_screen: None,
             jingle: None,
+            slot_voices: Default::default(),
             music: -1,
             music_idx: 0,
             clock: 0.0,
@@ -939,7 +955,19 @@ impl App {
         let vol = (((sx - 400.0).abs() as i32 >> 4) + 50) as f32 / 127.0 * 1.3;
         let pan = (sx * 127.0 / 800.0 - 64.0) / 64.0;
         let (Some(m), false) = (self.mixer.clone(), self.mute) else { return -1 };
+        // One buffer per slot (0x4481b0 sets up and plays the slot's own sound object, 0x484940): a slot asked for again
+        // while its clip still sounds (or waits for its delayed start) keeps playing it rather than starting a second copy
+        // over it, as DirectSound's Play does on a buffer that is already playing. Two pros' applause, a skill rise and a
+        // Top 18 hole in one tick, or a burst of refused clicks, were otherwise heard as overlapping copies.
+        if let Some(&old) = self.slot_voices.get(&slot) {
+            if m.playing(old) {
+                return old;
+            }
+        }
         let id = m.play_at(file, vol, pan, delay_ms, false);
+        if id >= 0 {
+            self.slot_voices.insert(slot, id);
+        }
         if self.sound_log {
             println!("  sound: {file}{}", if id < 0 { "  (missing)" } else { "" });
         }
@@ -1553,6 +1581,17 @@ impl App {
         for i in done {
             self.staff_tiles.flags[i] &= !staff::WORKED;
         }
+        // a ball washer plays its frames while a golfer washes (0x463180 case 3: the tile's counter while the tile is
+        // flagged and the counter is short of the frame count, frame 0 otherwise)
+        for p in self.props.iter_mut().filter(|p| p.object) {
+            let (Some((a, b)), Some(bi)) = (p.grow_tile, p.body) else { continue };
+            let t = &self.staff_tiles;
+            let i = (b * t.w + a) as usize;
+            let n = self.sprites[bi].s.frames_per_view;
+            let c = t.counter.get(i).copied().unwrap_or(0) as i32;
+            let washing = a < t.w && t.flags.get(i).is_some_and(|f| f & staff::WORKED != 0);
+            p.frame = if washing && c < n { c } else { 0 };
+        }
     }
 
     pub fn refresh_trees(&mut self) {
@@ -1900,9 +1939,10 @@ impl App {
         for f in self.floats.iter_mut() {
             f.3 = f.3.saturating_sub(1);
         }
-        if !self.econ.sandbox && self.ui_ok {
-            // the opening story and the first design tip (0x45fd80), told by the course itself
-            if tick == 0x20 {
+        if self.ui_ok {
+            // the opening story and the first design tip (0x45fd80), told by the course itself; a sandbox game skips only
+            // the opening story (the exe's sandbox test returns from the tick 0x20 branch, the tip at 0x1400 has none)
+            if tick == 0x20 && !self.econ.sandbox {
                 let text = self.welcome_text();
                 self.post_message(&text, 1, -4);
             } else if tick == 0x1400 {
@@ -1962,7 +2002,10 @@ impl App {
         sg_core::ratings::pass(&mut self.club, self.difficulty);
         self.pro_after_tick();
         self.board_tick();
-        if tick.is_multiple_of(1024 / (self.difficulty.clamp(0, 3) as u32 + 2)) {
+        // the month's history entry (the year-end report reads it): written at each charge and again at every month start
+        // (the main frame's tick & 0x3ff == 0 block, 0x40f5c0); on Medium and Expert the charge interval (341, 204 ticks)
+        // never lands on a month start, so without the second write the year-end slot stayed empty (all zero, in red)
+        if tick.is_multiple_of(1024 / (self.difficulty.clamp(0, 3) as u32 + 2)) || tick & 0x3ff == 0 {
             let members = self.club.member_count();
             self.club.record_history(self.club.cash, members);
         }
@@ -2149,7 +2192,7 @@ impl App {
                     let n = self.sprites[b].s.frames_per_view.max(1);
                     p.frame = match p.tv {
                         Some((a, tb)) => sg_core::objects::tv_frame(self.game_tick, a, tb, n),
-                        None => (self.game_tick % n as u32) as i32,
+                        None => (self.game_tick.wrapping_add(p.phase) % n as u32) as i32,
                     };
                 }
             }
@@ -3627,11 +3670,41 @@ impl App {
                 self.props[n].bed = Some((d.sprite, d.pal, a, b));
             }
         }
-        let level = (self.hole_numbers.len() > 10) as u16;
+        let big_course = self.hole_numbers.len() > 10;
         for (oi, o) in land.objects.iter().enumerate().filter(|(_, o)| o.kind >= 0) {
+            // The art level the exe's object drawing (0x463180) gets: the number built of the kind less one (0x5a8c38, one
+            // more for an upgraded building, i.e. the object's upgrade level), except the snack bar, which takes its second
+            // art once the course has more than 10 holes. The hole count used for every kind here made the art change
+            // whenever the objects were redrawn on a course of 11+ holes (a tournament placing its TV towers, after a load).
+            let level = if o.kind == land::K_SNACK_BAR { big_course as u16 } else { o.sub.clamp(0, 1) as u16 };
             // land outside the property is not drawn, nor what stands on it (an obstacle placed before the border was
             // taken away shows again when the tract is bought)
             if self.terrain.type_at(o.a, o.b) == 20 {
+                continue;
+            }
+            if o.kind == land::K_DRIVING_RANGE {
+                // the range is drawn tile by tile (0x463180 case 10): shop, platforms, fences, flags on its target greens
+                let green = |i: i32, j: i32| {
+                    let (ta, tb) = (o.a + i, o.b + j);
+                    (0..land::N).contains(&ta) && (0..land::N).contains(&tb) && land.ty[(ta * land::N + tb) as usize] == land::T_GREEN
+                };
+                for pc in sg_core::objects::driving_range(level, theme, &green) {
+                    let Some(body) = self.sprite_for(&format!("{}.flc", pc.file), false, None) else { continue };
+                    let shadow = if pc.flat { None } else { self.sprite_for(&format!("{}Shadow.flc", pc.file), true, None) };
+                    let (x, z) = self.units_to_world(o.a * 1024 + pc.at.0, o.b * 1024 + pc.at.1);
+                    self.props.push(Prop {
+                        x,
+                        z,
+                        body: Some(body),
+                        shadow,
+                        flat: pc.flat,
+                        animated: pc.animated,
+                        phase: pc.phase,
+                        view: pc.view,
+                        object: true,
+                        ..Default::default()
+                    });
+                }
                 continue;
             }
             let size = sg_core::data::buildings().get(o.kind as usize).map(|b| b.1).unwrap_or(1);
@@ -3641,6 +3714,9 @@ impl App {
             // a landmark in its own palette, 100 + type, facing its way plus the view's quarter turns (one more for type 3,
             // whose view the exe turns by the full eighth count, 0x463180 case 4)
             let (mut pal, mut facing) = (None, o.dir as i32);
+            if o.kind == land::K_WASHER {
+                pal = sg_core::decor::palette_file(0x3d, exe_theme);
+            }
             if o.kind == land::K_LANDMARK {
                 pal = sg_core::decor::palette_file(100 + o.sub.clamp(0, 18) as u8, exe_theme);
                 if o.sub == 3 {
@@ -3661,6 +3737,10 @@ impl App {
                     Some(f) => vec![(f.to_string(), false, false)],
                     None => continue,
                 }
+            } else if o.kind == land::K_WASHER {
+                // the ball washer (0x463180 case 3): sprite 0x183 "bldgs/upgrade bwasher" in palette 0x3d, in every theme,
+                // facing its way; frame 0, or while a golfer washes (the tile's 0x4000 flag) its counter (update_tree_growth)
+                vec![("bldgs/upgrade bwasher".to_string(), false, false)]
             } else if o.kind == land::K_LANDMARK {
                 match sg_core::objects::LANDMARKS.get(o.sub as usize) {
                     Some(f) => vec![(f.to_string(), false, true)],
@@ -3676,7 +3756,8 @@ impl App {
                 }
                 let shadow = if flat { None } else { self.sprite_for(&format!("{file}Shadow.flc"), true, None) };
                 let tv = (animated && matches!(o.kind, land::K_TV_TOWER | land::K_TV_BOOTH)).then_some((o.a, o.b));
-                self.props.push(Prop { x, z, body, shadow, flat, facing, animated, object: true, tv, ..Default::default() });
+                let grow_tile = (o.kind == land::K_WASHER).then_some((o.a, o.b));
+                self.props.push(Prop { x, z, body, shadow, flat, facing, animated, object: true, tv, grow_tile, ..Default::default() });
             }
         }
     }
