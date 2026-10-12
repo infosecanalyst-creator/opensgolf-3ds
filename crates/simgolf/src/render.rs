@@ -34,11 +34,12 @@ impl App {
     pub fn render_world(&mut self, g: &mut Gfx) {
         // world units per drawable pixel: the zoom is in the 800 x 600 screen's pixels, so a bigger window shows the same view
         let vscale = (self.draw_w / 800.0).min(self.draw_h / 600.0);
-        let upp = 2.0 / (self.zoom * vscale);
+        // the zoom and turn as shown: eased by Enhanced's smooth camera, else the camera's own (enhanced.rs)
+        let upp = 2.0 / (self.view_zoom() * vscale);
         let (hw, hh) = (self.draw_w * upp * 0.5, self.draw_h * upp * 0.5);
         let proj = Mat4::ortho(-hw, hw, -hh, hh, -DEPTH_RANGE, DEPTH_RANGE);
         let mv = Mat4::rotate(pitch_for(self.draw_w, self.draw_h), 1.0, 0.0, 0.0)
-            .mul(&Mat4::rotate((45.0 + self.rot) as f64, 0.0, 1.0, 0.0))
+            .mul(&Mat4::rotate((45.0 + self.view_rot()) as f64, 0.0, 1.0, 0.0))
             .mul(&Mat4::translate(-self.cam_x, 0.0, -self.cam_z));
         // Terrain.dll's light 0: the theme's Lighting.txt colours, a direction fixed in eye space, OpenGL's default material
         // with a white specular of shininess 13 (sg_core::terrain::Lighting). The water's texture is not animated (the
@@ -180,21 +181,28 @@ impl App {
         let (rx, ry, rz) = (mv[0], mv[4], mv[8]); // eye X axis in world space
         let (ux, uy, uz) = (mv[1], mv[5], mv[9]); // eye Y axis in world space
                                                   // The sprites were rendered at 4 camera yaws, 90 degrees apart; 8 view sprites (people) face 45 degree steps.
-        let quarter = ((self.rot / 90.0).round() as i32 % 4 + 4) % 4;
+        let quarter = ((self.view_rot() / 90.0).round() as i32 % 4 + 4) % 4;
         let s = SPRITE_UNITS_PER_PIXEL;
         let px = self.upp * (self.draw_w / 800.0).min(self.draw_h / 600.0); // world units per 800 x 600 pixel
         let mut items: Vec<(f32, usize)> = Vec::new();
+        // where each prop is drawn: between the last two ticks with Enhanced's smooth motion (enhanced.rs), else where it is
+        let smooth = crate::enhanced::smooth_motion();
+        let shown: Vec<(f32, f32, f32)> = if smooth { self.props.iter().map(|p| self.shown_at(p)).collect() } else { Vec::new() };
         for (i, p) in self.props.iter().enumerate() {
             if p.hidden {
                 continue;
             }
-            let y = self.terrain.height_at(p.x, p.z);
-            items.push((mv[2] * p.x + mv[6] * y + mv[10] * p.z, i));
+            let (x, z) = if smooth { (shown[i].0, shown[i].1) } else { (p.x, p.z) };
+            let y = self.terrain.height_at(x, z);
+            items.push((mv[2] * x + mv[6] * y + mv[10] * z, i));
         }
         items.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
         let quad = |app: &mut App, g: &mut Gfx, si: Option<usize>, pi: usize, shadow: bool| {
             let Some(si) = si else { return };
-            let p = app.props[pi].clone();
+            let mut p = app.props[pi].clone();
+            if let Some(&(x, z, lift)) = shown.get(pi) {
+                (p.x, p.z, p.lift) = (x, z, lift);
+            }
             let sp = &app.sprites[si].s;
             let views = sp.views;
             let mut view = if views >= 8 {
@@ -311,7 +319,16 @@ impl App {
                 self.ball_trail[i] = None;
                 continue;
             }
-            let (bx, bz) = self.units_to_world(gl.bx, gl.by);
+            // with Enhanced's smooth motion the ball is drawn between its places at the last two ticks (enhanced.rs)
+            let smooth = self.shown_ball(i);
+            let (bx, bz) = match smooth {
+                Some((x, y, _)) => {
+                    let (x0, z0) = self.units_to_world(0, 0);
+                    let k = TILE_SIZE / sg_core::staff::UNIT as f32;
+                    (x0 + x * k, z0 + y * k)
+                }
+                None => self.units_to_world(gl.bx, gl.by),
+            };
             let gy = self.terrain.height_at(bx, bz);
             let ground = [bx, gy, bz];
             let resting = (gl.flags & flag::BALL_MOVING == 0 || gl.speed <= 0x400) && gl.bz == 0;
@@ -323,7 +340,11 @@ impl App {
             }
             let half = side / 2.0;
             quad(g, ground, -half, 1.0 - half, side, side, black);
-            let lift = sg_core::flight::ball_lift(gl.bz, self.exe_zoom()) * px;
+            let lift = match smooth {
+                // the height between ticks, not stepped to whole pixels
+                Some((_, _, h)) => sg_core::course::HEIGHT_STEP_PX as f32 * self.exe_zoom() * h / 5.0 / 16.0 * px,
+                None => sg_core::flight::ball_lift(gl.bz, self.exe_zoom()) * px,
+            };
             let ball = [bx + ux * lift, gy + uy * lift, bz + uz * lift];
             quad(g, ball, -half, -half, side, side, white);
             if gl.flags & flag::SWEET != 0 {
@@ -662,6 +683,9 @@ impl App {
             g.flush();
             return;
         }
+        // Enhanced widescreen holds each piece of the HUD to its corner or edge of the window (Screen::anchor; nothing in
+        // Classic)
+        use crate::enhanced::Anchor;
         if self.hud_art.tex.is_some() {
             // the exe's face strip, badge and rating pills (hud_ui)
             self.draw_exe_hud(g, &s);
@@ -675,22 +699,30 @@ impl App {
             let rt = self.club.ratings;
             let fun = format!("{}", rt.fun);
             let skill = format!("{}.{:02}", rt.skill / 100, (rt.skill % 100).abs());
+            s.anchor(Anchor::TopLeft);
             s.fill(g, 8.0, 8.0, 230.0, 46.0, panel_bg);
             s.text(g, 18.0, 28.0, &self.course_name, 17.0, rgb(1.0, 1.0, 1.0));
             s.text(g, 18.0, 47.0, &date, 14.0, rgb(0.85, 0.85, 1.0));
+            s.anchor(Anchor::TopRight);
             s.fill(g, 560.0, 8.0, 232.0, 52.0, panel_bg);
             s.text(g, 572.0, 30.0, &cash, 19.0, if red { rgb(1.0, 0.5, 0.5) } else { rgb(1.0, 1.0, 0.7) });
             s.text(g, 572.0, 52.0, &trf("STR_PLAIN_FUN_SKILL", &[("FUN", &fun), ("SKILL", &skill)]), 15.0, rgb(0.9, 0.9, 1.0));
         }
+        s.anchor(Anchor::Centre);
         self.draw_floats(g, &s);
         self.draw_advisor(g, &s);
         self.draw_dock(g, &s);
+        s.anchor(Anchor::TopLeft);
         self.draw_leaderboard(g, &s);
+        s.anchor(Anchor::Top);
         self.draw_card(g, &s);
+        s.anchor(Anchor::Centre);
         self.draw_simfoto(g, &s);
+        s.anchor(Anchor::Top);
         self.draw_paused(g, &s);
         // the ticker goes over the golfer card, as in the exe's frame
         self.draw_ticker(g, &s);
+        s.anchor(Anchor::BottomRight);
         // without the Player panel's art the aim's lines go in a box of their own (with it they are in the panel)
         if !self.player_panel_ready() || self.panel != 5 {
             if let Some((lines, skills)) = self.aim_text() {
@@ -729,6 +761,9 @@ impl App {
     }
 
     fn draw_dock(&mut self, g: &mut Gfx, s: &Ui) {
+        use crate::enhanced::Anchor;
+        // Enhanced widescreen: the dock and its panels in the window's lower left corner
+        s.anchor(Anchor::BottomLeft);
         if self.dock_art.tex.is_some() {
             s.image_part(g, &self.dock_art, 0.0, 430.0, 0.0, 430.0, 215.0, 170.0);
             // 0x432ba0: the hovered button in its bright blue look (column 0 of the sheet), unless it is the open mode's (the
@@ -798,6 +833,7 @@ impl App {
             }
         }
         // Story lines (port-only, until the exe's portrait bubbles for story talk are drawn), below the ticker's place.
+        s.anchor(Anchor::Top);
         if self.show_advisor {
             let y = 124.0;
             if !self.story_lines.is_empty() && self.game_tick < self.story_until {
@@ -815,6 +851,7 @@ impl App {
                 }
             }
         }
+        s.anchor(Anchor::Centre);
         if self.pstate.hire_open && self.panel == 3 && self.panel_art_ready() {
             self.draw_hire_dialog(g, s);
         }

@@ -1266,6 +1266,17 @@ STR_MENU_PREFS_HD                       : HD graphics (off: Classic)
 STR_MENU_PREFS_LANGUAGE                 : Language: {LANGUAGE}
 # Preferences > Content (the port's own, docs/MODDING.md)
 STR_MENU_PREFS_CONTENT                  : Content packs...
+# Preferences > Enhanced graphics (the port's own, not in the original; docs/ENHANCED.md). The options start with a space.
+STR_MENU_PREFS_ENHANCED                 : Enhanced graphics...
+STR_ENHANCED_TITLE                      :Enhanced graphics (not in the original)
+STR_ENHANCED_MASTER                     : Enhanced graphics (off: Classic)
+STR_ENHANCED_NATIVE_TEXT                : Sharp text at the screen's resolution
+STR_ENHANCED_SMOOTH_UI                  : Smooth interface art at any size
+STR_ENHANCED_WIDESCREEN                 : Widescreen: interface at the window's edges
+STR_ENHANCED_TERRAIN_FILTER             : Sharper course textures
+STR_ENHANCED_MSAA                       : Anti-aliasing
+STR_ENHANCED_SMOOTH_CAMERA              : Smooth camera: zoom, turns and panning
+STR_ENHANCED_SMOOTH_MOTION              : Smooth motion between game ticks
 
 # The quit question (main loop 0x420b4e): the heading by the career's length, or after a championship
 STR_RETIRE_HIS                          :his

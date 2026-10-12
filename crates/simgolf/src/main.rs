@@ -19,6 +19,7 @@ mod champ_ui;
 mod content;
 mod cursor_ui;
 mod cust_ui;
+mod enhanced;
 mod files_ui;
 mod gfx;
 mod hd;
@@ -86,6 +87,8 @@ struct Options {
     /// --hd / --classic: the graphics mode for this run (else the saved choice).
     hd: Option<bool>,
     hd_pack: Option<PathBuf>,
+    /// --enhanced / --classic-render: Enhanced graphics on or off for this run (else the saved choice; enhanced.rs).
+    enhanced: Option<bool>,
     /// --base ID: the base set for this run (original, opensgolf-free or a base pack), not saved.
     base: Option<String>,
     /// --lang CODE: the language for this run (else the saved setting); --lang-file FILE: a translation file to try out.
@@ -98,6 +101,7 @@ struct Options {
 const USAGE: &str = "usage: opensgolf [--game DIR] [--theme T] [--seed N] [--size WxH] [--zoom Z] [--rot DEG] [--center TX,TY] [--png FILE] \
 [--time S] [--follow] [--golfer NAME] [--sandbox] [--cash N] [--difficulty 0-3] [--screen menu|property|play|report] [--course FILE] [--save FILE] \
 [--edit SPEC] [--panel N] [--mute] [--sound-log] [--clock MS] [--property N|NAME] [--hd | --classic] [--hd-pack DIR] \
+[--enhanced | --classic-render] \
 [--lang CODE] [--lang-file FILE] [--base original|opensgolf-free|ID] [--scenario ID]";
 
 /// Leading comma separated integers, like sscanf("%d,%d,...") (stops at the first one that does not parse).
@@ -157,6 +161,7 @@ fn parse_args() -> Options {
         property: None,
         hd: None,
         hd_pack: None,
+        enhanced: None,
         base: None,
         lang: None,
         lang_file: None,
@@ -212,6 +217,8 @@ fn parse_args() -> Options {
             "--hd" => o.hd = Some(true),
             "--classic" => o.hd = Some(false),
             "--hd-pack" => o.hd_pack = Some(PathBuf::from(next())),
+            "--enhanced" => o.enhanced = Some(true),
+            "--classic-render" => o.enhanced = Some(false),
             "--base" => o.base = Some(next()),
             "--lang" => o.lang = Some(next()),
             "--lang-file" => o.lang_file = Some(PathBuf::from(next())),
@@ -666,6 +673,7 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 1 => popup_ui::PopupKind::System,
                 2 => popup_ui::PopupKind::Prefs,
                 4 => popup_ui::PopupKind::Retire,
+                5 => popup_ui::PopupKind::Enhanced,
                 _ => popup_ui::PopupKind::LandOffer,
             }),
             b'm' if v.len() >= 2 => app.move_hole(at(0) as usize, at(1) as usize),
@@ -806,6 +814,8 @@ impl Stage {
             app.hd.pack_dir = d.clone();
         }
         let hd_msg = app.init_hd(o.hd.unwrap_or_else(hd::saved_choice));
+        // Enhanced graphics (enhanced.rs), also before any art: the textures carry its filtering
+        enhanced::init(o.enhanced);
         if !app.load_theme(&mut g, app.theme) {
             std::process::exit(1);
         }
@@ -1052,6 +1062,12 @@ impl Stage {
                 7 => self.app.open_popup(PopupKind::Retire),
                 _ => {}
             },
+            // Preferences > Enhanced graphics: the ticks become the settings (enhanced.rs)
+            PopupKind::Enhanced => {
+                if self.app.apply_enhanced(&mut self.g, enhanced::from_checks(k as u32)) {
+                    self.app.ui_ok &= load_art(&mut self.app, &mut self.g);
+                }
+            }
             // the ordinary quit leaves the way the career's end does (DECODE_WORLD2 6.5); EXACT (main loop after
             // 0x420b4e): "save first" runs the Save dialog (0x405b10) and then quits whether or not a game was saved,
             // "So long" quits, "Wait" and Esc go back to the game
@@ -1073,6 +1089,9 @@ impl Stage {
                 self.app.club.wildlife.enabled = m & 4 != 0;
                 if self.app.switch_hd(&mut self.g, m & 16 != 0) {
                     self.app.ui_ok &= load_art(&mut self.app, &mut self.g);
+                }
+                if m & 1 << popup_ui::PREFS_ENHANCED != 0 && m & 1 << popup_ui::PREFS_CONTENT == 0 {
+                    self.app.open_popup(PopupKind::Enhanced);
                 }
                 let sound = m & 8 != 0;
                 if sound == self.app.mute {
@@ -1418,10 +1437,10 @@ impl Stage {
                 // four tiles along the view's diagonal
                 let step = 4.0 * std::f32::consts::SQRT_2 * sg_core::terrain::TILE_SIZE;
                 match k {
-                    KeyCode::Up => app.pan(0.0, step),
-                    KeyCode::Down => app.pan(0.0, -step),
-                    KeyCode::Left => app.pan(-step, 0.0),
-                    _ => app.pan(step, 0.0),
+                    KeyCode::Up => app.key_pan(0.0, step),
+                    KeyCode::Down => app.key_pan(0.0, -step),
+                    KeyCode::Left => app.key_pan(-step, 0.0),
+                    _ => app.key_pan(step, 0.0),
                 }
             }
             // instant shot analysis: '/' of the hole nearest the pointer, '.' of the last one analysed
@@ -1437,7 +1456,9 @@ impl Stage {
                     app.cam_x = x;
                     app.cam_z = z;
                 }
+                let before = app.rot;
                 app.rot = 0.0;
+                app.turned(-before);
                 app.dirty |= app.terrain.sand_phase != 0;
             }
             KeyCode::Z => app.zoom_step(true),
@@ -1506,6 +1527,8 @@ impl Stage {
         // land outside the property (type 20) is not drawn, so it shows black
         let clear = PassAction::clear_color(0.0, 0.0, 0.0, 1.0);
         self.g.ctx.begin_pass(target, clear);
+        enhanced::begin_frame();
+        app.camera_frame(app.clock);
         // the title screens set Klepto ITC (difficulty, the file lists and Pick A Pro, the theme packs); the rest of the game
         // draws in Manual SSi and Arial
         let title = app.ui_ok && matches!(app.screen, Screen::Menu | Screen::Difficulty | Screen::Files | Screen::Themes);
@@ -1530,6 +1553,15 @@ impl Stage {
                     | Screen::BestScores
             );
         ui::set_face(title.then_some(ui::Face::Klepto));
+        // Enhanced widescreen: the title screens framed on a wide window (enhanced.rs; nothing in Classic)
+        let title_page = app.ui_ok
+            && matches!(
+                app.screen,
+                Screen::Files | Screen::Themes | Screen::Credits | Screen::Menu | Screen::Property | Screen::Difficulty | Screen::Scenarios
+            );
+        if title_page && enhanced::widescreen() {
+            enhanced::backdrop(&mut self.g, &ui::Screen::new(app.draw_w, app.draw_h), false);
+        }
         if matches!(app.screen, Screen::Files | Screen::Themes | Screen::Credits) && app.ui_ok {
             app.draw_title_screen(&mut self.g);
         } else if app.screen == Screen::Menu && app.ui_ok {
@@ -1557,6 +1589,13 @@ impl Stage {
             }
             app.draw_rename(&mut self.g);
             app.draw_save_dialog(&mut self.g);
+            // Enhanced widescreen: a full-screen page over the course is framed, the course dimmed round it
+            if enhanced::widescreen()
+                && app.ui_ok
+                && matches!(app.screen, Screen::Board | Screen::Land | Screen::Routing | Screen::Pair | Screen::Top10 | Screen::Customise)
+            {
+                enhanced::backdrop(&mut self.g, &ui::Screen::new(app.draw_w, app.draw_h), true);
+            }
             // only the screen over the course takes the info fonts, not the HUD under it
             ui::set_face(info.then_some(ui::Face::Info));
             if app.screen == Screen::Report {
@@ -1594,6 +1633,7 @@ impl Stage {
         self.draw_touch_buttons();
         self.g.flush();
         self.g.ctx.end_render_pass();
+        enhanced::end_frame();
     }
 
     /// Renders the current frame offscreen and writes it as a PNG.
@@ -1731,6 +1771,26 @@ impl Stage {
         img
     }
 
+    /// Test hooks for the pointer after the first frame: SG_POINTER=x,y moves it to window pixel (x, y), SG_CLICK=x,y
+    /// clicks the left button there, several clicks separated by ';' (for stills of hover looks and of where clicks land,
+    /// e.g. with Enhanced widescreen).
+    fn pointer_test_hook(&mut self) {
+        let pts = |k: &str| -> Vec<(f32, f32)> {
+            let v = std::env::var(k).unwrap_or_default();
+            v.split(';').map(ints).filter(|v| v.len() >= 2).map(|v| (v[0] as f32, v[1] as f32)).collect()
+        };
+        for (x, y) in pts("SG_POINTER") {
+            self.mouse_motion_event(x, y);
+        }
+        for (x, y) in pts("SG_CLICK") {
+            self.mouse_motion_event(x, y);
+            self.mouse_button_down_event(MouseButton::Left, x, y);
+            self.mouse_button_up_event(MouseButton::Left, x, y);
+            // the pointer is tested against the interface as last drawn
+            self.draw_frame(None);
+        }
+    }
+
     fn pick_test(&mut self) {
         // Project known ground points to the screen and pick them back.
         let app = &self.app;
@@ -1866,6 +1926,9 @@ impl EventHandler for Stage {
             }
         }
         self.frames += 1;
+        if self.frames == 1 {
+            self.pointer_test_hook();
+        }
         if std::env::var_os("SG_PICKTEST").is_some() && self.frames == 2 {
             self.pick_test();
         }
@@ -1933,13 +1996,18 @@ impl EventHandler for Stage {
         } else if self.dragging {
             let k = self.app.upp; // drawable pixels -> world units
             let sin_p = (pitch_for(self.app.draw_w, self.app.draw_h).to_radians()).sin() as f32;
-            self.app.pan(-dx * k, dy * k / sin_p);
+            self.app.drag_pan(-dx * k, dy * k / sin_p, now());
         }
     }
 
     fn mouse_wheel_event(&mut self, _x: f32, y: f32) {
         if (self.app.screen == Screen::Play || !self.app.ui_ok) && y != 0.0 && self.app.great_shot.is_none() {
-            self.app.zoom_step(y > 0.0);
+            if enhanced::smooth_camera() {
+                // Enhanced: a notch is a quarter of a doubling, between the original's closest and farthest levels
+                self.app.zoom_by((y * 0.25).clamp(-0.5, 0.5));
+            } else {
+                self.app.zoom_step(y > 0.0);
+            }
         }
     }
 
@@ -2064,6 +2132,7 @@ impl EventHandler for Stage {
             self.app.apply_tool(self.shift, false);
         } else {
             self.dragging = true;
+            self.app.drag_state(true, now());
             if button == MouseButton::Left {
                 if let Some((hx, hz)) = self.app.pick_ground(x, y) {
                     self.app.course_click(hx, hz);
@@ -2073,6 +2142,9 @@ impl EventHandler for Stage {
     }
 
     fn mouse_button_up_event(&mut self, _button: MouseButton, _x: f32, _y: f32) {
+        if self.dragging {
+            self.app.drag_state(false, now());
+        }
         self.dragging = false;
         self.editing = false;
     }

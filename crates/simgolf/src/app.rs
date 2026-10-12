@@ -115,6 +115,8 @@ pub struct Prop {
     /// A flower bed piece: its sprite id, palette id (0xbb while weedy, drawn in the piece's last palette, see
     /// `App::bed_palette`) and tile.
     pub bed: Option<(u16, u8, i32, i32)>,
+    /// An ambient animal's or fly-over's identity from tick to tick (0: none), for Enhanced smooth motion (enhanced.rs).
+    pub track: u32,
 }
 
 impl Default for Prop {
@@ -145,6 +147,7 @@ impl Default for Prop {
             view: None,
             shift: (0.0, 0.0),
             bed: None,
+            track: 0,
         }
     }
 }
@@ -355,6 +358,8 @@ pub struct App {
     pub textures: HashMap<PathBuf, Option<TextureId>>,
     /// The optional HD graphics (off by default; see hd.rs).
     pub hd: crate::hd::HdState,
+    /// The optional Enhanced graphics' camera and motion state (off by default; see enhanced.rs).
+    pub enh: crate::enhanced::EnhState,
     pub batches: Vec<Batch>,
     pub path_batches: Vec<Batch>,
     /// Paths not joined to the clubhouse, drawn as mud tracks (manual p. 18).
@@ -664,6 +669,7 @@ impl App {
             light: Lighting::default(),
             textures: HashMap::new(),
             hd: crate::hd::HdState { pack_dir: save_dir().join("HD"), ..Default::default() },
+            enh: Default::default(),
             batches: Vec::new(),
             path_batches: Vec::new(),
             mud_batches: Vec::new(),
@@ -2002,6 +2008,7 @@ impl App {
         if std::mem::take(&mut self.test_great_shot) {
             self.test_great_shot_now();
         }
+        let track = crate::enhanced::smooth_motion();
         const DX: [f32; 8] = [0.0, 1.0, 1.0, 1.0, 0.0, -1.0, -1.0, -1.0];
         const DY: [f32; 8] = [-1.0, -1.0, 0.0, 1.0, 1.0, 1.0, 0.0, -1.0];
         for pi in 0..self.props.len() {
@@ -2051,6 +2058,9 @@ impl App {
                     p.frame = (self.game_tick % self.sprites[b].s.frames_per_view.max(1) as u32) as i32;
                 }
             }
+        }
+        if track {
+            self.track_motion();
         }
     }
 
@@ -2946,6 +2956,17 @@ impl App {
 
     /// z / x and the dock's zoom buttons: the next of the exe's three levels (1, 2, 4) in or out.
     pub fn zoom_step(&mut self, inward: bool) {
+        if crate::enhanced::smooth_camera() {
+            // Enhanced: from a zoom between levels, the next of the three levels that way
+            let levels = [ZOOM_UNIT, ZOOM_UNIT * 2.0, ZOOM_UNIT * 4.0];
+            let z = self.zoom;
+            self.zoom = if inward {
+                levels.iter().copied().find(|&l| l > z * 1.001).unwrap_or(levels[2])
+            } else {
+                levels.iter().rev().copied().find(|&l| l < z / 1.001).unwrap_or(levels[0])
+            };
+            return;
+        }
         let level = (self.zoom / ZOOM_UNIT).log2().round().clamp(0.0, 2.0) as i32;
         let level = if inward { (level + 1).min(2) } else { (level - 1).max(0) };
         self.zoom = ZOOM_UNIT * (1 << level) as f32;
@@ -2954,6 +2975,7 @@ impl App {
     /// PageUp / Home and the Rotate Map buttons: a quarter turn of the view (the exe's rotation steps by 2 of 8).
     pub fn rotate_view(&mut self, quarters: i32) {
         self.rot = ((self.rot / 90.0).round() + quarters as f32).rem_euclid(4.0) * 90.0;
+        self.turned(quarters as f32 * 90.0);
         // the sand traps' pictures turn with the view (Terrain.dll's phase)
         self.dirty |= self.terrain.ty.contains(&7);
         // so does the cliff round the property (only the sides facing the camera are built)

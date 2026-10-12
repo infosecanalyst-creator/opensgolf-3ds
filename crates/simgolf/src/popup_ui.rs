@@ -23,6 +23,8 @@ pub enum PopupKind {
     LandOffer,
     /// The end of a career: the board terminated the contract (main loop 0x420ae2).
     CareerOver,
+    /// Preferences > Enhanced graphics (the port's own, enhanced.rs): a checkbox list of the Enhanced options.
+    Enhanced,
     /// System Functions, Quit: "After a short career <pro> plans his retirement." (docs/DECODE_WORLD2.md 6.5, footage of
     /// the original at its (400, 100)).
     Retire,
@@ -355,9 +357,9 @@ impl Popup {
             lines: self.lines.clone(),
             cx: self.cx,
             top: self.top,
-            checks: (self.kind == PopupKind::Prefs).then_some(self.checks),
+            checks: matches!(self.kind, PopupKind::Prefs | PopupKind::Enhanced).then_some(self.checks),
             disabled: self.disabled,
-            plain: if self.kind == PopupKind::Prefs { 1 << PREFS_CONTENT | 1 << PREFS_LANGUAGE } else { 0 },
+            plain: if self.kind == PopupKind::Prefs { 1 << PREFS_CONTENT | 1 << PREFS_ENHANCED | 1 << PREFS_LANGUAGE } else { 0 },
         }
     }
     fn options(&self) -> Vec<usize> {
@@ -367,8 +369,10 @@ impl Popup {
 
 /// The option of the Preferences list that opens Preferences > Content.
 pub const PREFS_CONTENT: usize = 5;
+/// The option of the Preferences list that opens Preferences > Enhanced graphics (enhanced.rs).
+pub const PREFS_ENHANCED: usize = 6;
 /// The Preferences' option that switches the language (shown only when there is a translation to switch to).
-const PREFS_LANGUAGE: usize = 6;
+const PREFS_LANGUAGE: usize = 7;
 
 /// What a popup returned: an option index (counted from the first option line), or None when cancelled.
 pub type PopupResult = Option<usize>;
@@ -449,6 +453,8 @@ impl App {
                     tr("STR_MENU_PREFS_HD"),
                     // the port's own: Preferences > Content (docs/MODDING.md)
                     tr("STR_MENU_PREFS_CONTENT"),
+                    // the port's own: Preferences > Enhanced graphics (docs/ENHANCED.md)
+                    tr("STR_MENU_PREFS_ENHANCED"),
                 ],
                 0,
                 400.0,
@@ -456,6 +462,8 @@ impl App {
             ),
             // the commissioner's approval (main routine 0x41e2a0): the two-choice box centred on x 0x1c2 from y 0xa0 (EXACT,
             // the call's pushes at 0x41e2ee and 0x41e303), texts 0x4c5d74 and 0x4c5d48
+            // filled in below from enhanced::OPTIONS
+            PopupKind::Enhanced => (Vec::new(), 0, 400.0, 140.0),
             PopupKind::LandOffer => {
                 (vec![tr("STR_LAND_OFFER_1"), tr("STR_LAND_OFFER_2"), tr("STR_LAND_OFFER_YES"), tr("STR_LAND_OFFER_NO")], 0, 450.0, 160.0)
             }
@@ -470,6 +478,8 @@ impl App {
         if languages > 1 {
             lines.push(&language);
         }
+        let enhanced_lines = if kind == PopupKind::Enhanced { crate::enhanced::popup_lines() } else { Vec::new() };
+        lines.extend(enhanced_lines.iter().map(String::as_str));
         // the port's own: the goals of a scenario or of the packs' scripts (docs/MODDING.md 5), after the original's lines
         if kind == PopupKind::Info && self.has_goals() {
             lines.push(tr("STR_MENU_INFO_GOALS"));
@@ -480,6 +490,8 @@ impl App {
                 | (self.club.wildlife.enabled as u32) << 2
                 | (!self.mute as u32) << 3
                 | (self.hd.enabled as u32) << 4
+        } else if kind == PopupKind::Enhanced {
+            crate::enhanced::popup_checks(&crate::enhanced::settings())
         } else {
             0
         };
@@ -535,7 +547,7 @@ impl App {
                 }
             }
             KeyCode::Enter | KeyCode::KpEnter | KeyCode::Space => {
-                if p.sel.is_none() && p.kind != PopupKind::Prefs {
+                if p.sel.is_none() && !matches!(p.kind, PopupKind::Prefs | PopupKind::Enhanced) {
                     return Some(None);
                 }
                 return Some(self.popup_accept(None));
@@ -594,6 +606,17 @@ impl App {
             if k == PREFS_CONTENT && (pick.is_some() || p.sel == Some(k)) {
                 return Some((p.checks | 1 << PREFS_CONTENT) as usize);
             }
+            // so does the Enhanced graphics line
+            if k == PREFS_ENHANCED && (pick.is_some() || p.sel == Some(k)) {
+                return Some((p.checks | 1 << PREFS_ENHANCED) as usize);
+            }
+            if pick.is_some() {
+                p.checks ^= 1 << k;
+                return Some(usize::MAX); // toggled, stay open
+            }
+            return Some(p.checks as usize);
+        }
+        if p.kind == PopupKind::Enhanced {
             if pick.is_some() {
                 p.checks ^= 1 << k;
                 return Some(usize::MAX); // toggled, stay open
