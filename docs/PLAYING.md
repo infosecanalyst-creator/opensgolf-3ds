@@ -121,7 +121,7 @@ phone's keyboard (in the browser through a hidden text box on the page, on Andro
 
 ### Android
 
-Installing the APK (sideloading) is described in the README, [Install](../README.md#install). The app runs in landscape and
+Installing the APK (sideloading) is described in the README, [INSTALL.md](INSTALL.md). The app runs in landscape and
 full screen, starts on the free base set, and keeps its saves, settings, content packs and championship files in its private
 storage (`Context.getFilesDir()`, removed when the app is uninstalled). To play with your own copy of SimGolf, copy the
 game's `Program_Files_(ENGLISH)` folder to `Android/data/org.opensgolf.game/files/game/` on the device's shared storage (the
