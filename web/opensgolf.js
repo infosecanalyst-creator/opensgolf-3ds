@@ -3,6 +3,22 @@
 // and the game reads them through the sg_fs_* functions below. Lookups are case-insensitive, like Windows.
 "use strict";
 
+// miniquad's depth textures ask for the unsized DEPTH_COMPONENT format (WebGL 1's), which WebGL 2 refuses, leaving the
+// render target incomplete. Photo mode (crates/simgolf/src/photo.rs) draws the course offscreen with a depth buffer, so
+// such a texture is given the sized format of its type instead (16 bits for UNSIGNED_SHORT, as miniquad asks).
+(function () {
+    if (typeof WebGL2RenderingContext === "undefined") return;
+    const proto = WebGL2RenderingContext.prototype;
+    const texImage2D = proto.texImage2D;
+    proto.texImage2D = function (target, level, internal, ...rest) {
+        // rest: width, height, border, format, type, pixels
+        if (internal === 0x1902 && rest.length >= 6 && rest[3] === 0x1902) {
+            internal = rest[4] === 0x1405 ? 0x81a6 : rest[4] === 0x1406 ? 0x8cac : 0x81a5;
+        }
+        return texImage2D.call(this, target, level, internal, ...rest);
+    };
+})();
+
 const sgfs = { files: new Map(), dirs: new Map(), list: [] };
 const enc = new TextEncoder();
 const dec = new TextDecoder();
@@ -62,7 +78,7 @@ miniquad_add_plugin({
         env.sg_fs_write = function (ptr, len, data, dataLen) {
             const path = sgStr(ptr, len);
             const bytes = new Uint8Array(wasm_memory.buffer, data, dataLen).slice();
-            // a picture the player took (Shift+F6 screenshot, a SimFoto, F10 on a great shot) is handed to the browser as a
+            // a picture the player took (Shift+F6 screenshot, a SimFoto, F10 on a great shot, a photo mode photo) is handed to the browser as a
             // download: it would be out of reach (and soon over the quota) in local storage. The accomplishment snapshots
             // the board shows (snapshots/accomp<n>.png) are kept like the saves.
             const low = sgKey(path);
