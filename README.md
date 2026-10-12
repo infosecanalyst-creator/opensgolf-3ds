@@ -20,21 +20,20 @@ word for word like the original; it remains Electronic Arts' text.
 
 ## Install
 
-Every [release](https://github.com/crspytopgn/simgolf-native/releases) has a package for each platform. All of them start on
-the free base set; to play with the original's art and sound, point them at your own copy of SimGolf as described.
+Every [release](https://github.com/crspytopgn/simgolf-native/releases) has a package for each platform: unpack it and
+double-click. It starts on the free base set. Have SimGolf? Choose **Use my SimGolf files...** on the title screen (or in
+Preferences) and pick the folder SimGolf is installed in, or the CD's `Program_Files_(ENGLISH)` copied to your computer; the
+game remembers it. It also finds a usual install by itself (`Program Files\Maxis\SimGolf`, `~/SimGolf`, a Wine install, or a
+`SimGolf` folder next to the program). *Use the free graphics* goes back.
 
-* **Windows**: unzip `opensgolf-<version>-windows-x86_64.zip` anywhere and run `opensgolf.exe`. Your own copy:
-  `opensgolf.exe --game "C:\path\to\SimGolf\Program_Files_(ENGLISH)"` (a shortcut with that target works too), or copy the
-  game's folder to `game\Program_Files_(ENGLISH)` next to where you start it. Windows SmartScreen may warn that the program is
-  unknown (it is not signed): *More info*, *Run anyway*. Saves go to `%APPDATA%\OpenSGolf`.
+* **Windows**: unzip `opensgolf-<version>-windows-x86_64.zip` anywhere and double-click `opensgolf.exe`. Windows SmartScreen
+  may warn that the program is unknown (it is not signed): *More info*, *Run anyway*. Saves go to `%APPDATA%\OpenSGolf`.
 * **macOS** (Apple silicon and Intel): unzip `opensgolf-<version>-macos-universal.zip` and move `OpenSGolf.app` to
   Applications. It is not notarised, so the first time right-click it and choose *Open* (or allow it under System Settings,
-  Privacy & Security). Your own copy: `/Applications/OpenSGolf.app/Contents/MacOS/opensgolf --game "/path/to/Program_Files_(ENGLISH)"`
-  from a Terminal. Saves go to `~/Library/Application Support/OpenSGolf`.
-* **Linux** (x86_64): either the AppImage (`chmod +x opensgolf-<version>-linux-x86_64.AppImage`, then run it; arguments
-  such as `--game DIR` pass through), or unpack the `.tar.gz` and run `./opensgolf` in its folder (`opensgolf.desktop` and
-  `opensgolf.png` in it are for a menu entry). Sound goes through ALSA (PulseAudio and PipeWire provide it). Saves go to
-  `~/.local/share/opensgolf`.
+  Privacy & Security). Saves go to `~/Library/Application Support/OpenSGolf`.
+* **Linux** (x86_64): the AppImage (make it executable in its Properties, or `chmod +x`, then double-click it), or unpack the
+  `.tar.gz` and run `opensgolf` in its folder (`opensgolf.desktop` and `opensgolf.png` in it are for a menu entry). Sound goes
+  through ALSA (PulseAudio and PipeWire provide it). Saves go to `~/.local/share/opensgolf`.
 * **Android** (8.0 or newer; arm64, 32-bit arm and x86_64): download `opensgolf-<version>-android.apk` on the phone or
   tablet and open it. Android asks once to allow installing apps from the browser or file manager you used (*Install
   unknown apps*); allow it and install. The app is not in an app store and is signed with a development (debug) key, so a
