@@ -47,6 +47,24 @@ pub struct Popup {
     pub top: f32,
     /// The screen the popup came from.
     pub back: Screen,
+    /// Preferences: the option of the port's "Use my SimGolf files..." line (gamefiles.rs), when it is shown.
+    pub files_line: Option<usize>,
+    /// Enhanced graphics: the page (tab) shown and the settings as ticked so far (put in use by OK).
+    pub page: u8,
+    pub enh: crate::enhanced::Settings,
+    /// The tab under the pointer.
+    pub tab_hover: Option<u8>,
+}
+
+impl Popup {
+    /// Shows another page of the Enhanced graphics box (what was ticked is kept).
+    pub fn set_page(&mut self, page: u8) {
+        if page != self.page {
+            self.page = page;
+            self.sel = None;
+            self.refresh_enhanced();
+        }
+    }
 }
 
 /// The generic popup (0x46d6e0, EXACT from the code): one text blob split into lines, those starting with a space being
@@ -75,6 +93,9 @@ pub struct ChoiceBox {
     /// Checkbox mode: option bits that are commands rather than checkboxes (drawn without a box; the port's Content packs
     /// line of Preferences).
     pub plain: u32,
+    /// The widest line to size the box for at least (the Enhanced graphics box keeps one size on all its pages; 0 for the
+    /// exe's boxes, sized by their own lines).
+    pub min_w: f32,
 }
 
 /// The popup's font: the default font object 0x519928, Manual SSi Bold 20 (0x46d6e0 selects it first).
@@ -82,7 +103,7 @@ pub const CHOICE_FONT: crate::ui::Fnt = crate::ui::F_MANUAL20;
 
 impl ChoiceBox {
     pub fn new(lines: Vec<String>, cx: f32, top: f32) -> ChoiceBox {
-        ChoiceBox { lines, cx, top, checks: None, disabled: 0, plain: 0 }
+        ChoiceBox { lines, cx, top, checks: None, disabled: 0, plain: 0, min_w: 0.0 }
     }
 
     /// The indexes of the option lines.
@@ -92,7 +113,7 @@ impl ChoiceBox {
 
     /// The box as 0x46d6e0 computes it (before the frame's rounding): x = cx - w / 2, y = the call's y.
     pub fn rect(&self) -> Rect {
-        let widest = self.lines.iter().map(|l| CHOICE_FONT.width(l).round() as i32).max().unwrap_or(0);
+        let widest = self.lines.iter().map(|l| CHOICE_FONT.width(l).round() as i32).max().unwrap_or(0).max(self.min_w as i32);
         let w = (((widest - 1) | 15) + 0x31) as f32;
         let h = (self.lines.len() as f32 * 3.0 + 3.0) * 8.0;
         Rect::new(self.cx - (w / 2.0).trunc(), self.top, w, h)
@@ -359,8 +380,33 @@ impl Popup {
             top: self.top,
             checks: matches!(self.kind, PopupKind::Prefs | PopupKind::Enhanced).then_some(self.checks),
             disabled: self.disabled,
-            plain: if self.kind == PopupKind::Prefs { 1 << PREFS_CONTENT | 1 << PREFS_ENHANCED | 1 << PREFS_LANGUAGE } else { 0 },
+            plain: match self.kind {
+                PopupKind::Prefs => {
+                    1 << PREFS_CONTENT | 1 << PREFS_ENHANCED | 1 << PREFS_KEYS | 1 << PREFS_LANGUAGE | self.files_line.map_or(0, |k| 1 << k)
+                }
+                PopupKind::Enhanced => crate::enhanced::popup_plain(self.page),
+                _ => 0,
+            },
+            min_w: if self.kind == PopupKind::Enhanced { crate::enhanced::popup_widest(&self.enh) } else { 0.0 },
         }
+    }
+
+    /// The Enhanced graphics box: its lines and ticks for the page shown and the settings ticked so far.
+    fn refresh_enhanced(&mut self) {
+        self.lines = crate::enhanced::popup_lines(self.page, &self.enh);
+        self.checks = crate::enhanced::popup_checks(self.page, &self.enh);
+    }
+
+    /// The Enhanced graphics box's page tabs: (page, rectangle), side by side on the two lines under the title.
+    pub fn enhanced_tabs(&self) -> Vec<(u8, Rect)> {
+        let b = self.choice_box();
+        let r = b.rect();
+        let tops = b.line_tops();
+        let n = crate::enhanced::PAGES.len();
+        let (x0, x1) = (r.x + 16.0, r.x + r.w - 16.0);
+        let w = (x1 - x0) / n as f32;
+        let y = tops[1] + 2.0;
+        (0..n).map(|i| (i as u8, Rect::new(x0 + w * i as f32 + 2.0, y, w - 4.0, 30.0))).collect()
     }
     fn options(&self) -> Vec<usize> {
         self.choice_box().options()
@@ -369,10 +415,17 @@ impl Popup {
 
 /// The option of the Preferences list that opens Preferences > Content.
 pub const PREFS_CONTENT: usize = 5;
+/// The option of the Preferences list that switches Enhanced graphics on and off (its master switch, enhanced.rs).
+pub const PREFS_ENHANCED_ON: usize = 6;
 /// The option of the Preferences list that opens Preferences > Enhanced graphics (enhanced.rs).
-pub const PREFS_ENHANCED: usize = 6;
+pub const PREFS_ENHANCED: usize = 7;
+/// The option of the Preferences list that opens Preferences > Keyboard controls (keys_ui.rs).
+pub const PREFS_KEYS: usize = 8;
 /// The Preferences' option that switches the language (shown only when there is a translation to switch to).
-const PREFS_LANGUAGE: usize = 7;
+const PREFS_LANGUAGE: usize = 9;
+/// The bit of a Preferences result that asks for the "Use my SimGolf files..." line's action (gamefiles.rs), after the
+/// ticks are applied.
+pub const PREFS_FILES_FLAG: usize = 20;
 
 /// What a popup returned: an option index (counted from the first option line), or None when cancelled.
 pub type PopupResult = Option<usize>;
@@ -453,8 +506,11 @@ impl App {
                     tr("STR_MENU_PREFS_HD"),
                     // the port's own: Preferences > Content (docs/MODDING.md)
                     tr("STR_MENU_PREFS_CONTENT"),
-                    // the port's own: Preferences > Enhanced graphics (docs/ENHANCED.md)
+                    // the port's own: Enhanced graphics on or off, and its settings (docs/ENHANCED.md)
+                    tr("STR_MENU_PREFS_ENHANCED_ON"),
                     tr("STR_MENU_PREFS_ENHANCED"),
+                    // the port's own: Preferences > Keyboard controls (keys_ui.rs)
+                    tr("STR_MENU_PREFS_KEYS"),
                 ],
                 0,
                 400.0,
@@ -478,8 +534,14 @@ impl App {
         if languages > 1 {
             lines.push(&language);
         }
-        let enhanced_lines = if kind == PopupKind::Enhanced { crate::enhanced::popup_lines() } else { Vec::new() };
-        lines.extend(enhanced_lines.iter().map(String::as_str));
+        // the port's own: "Use my SimGolf files..." or "Use the free graphics" (gamefiles.rs), last
+        let files = if kind == PopupKind::Prefs { self.files_option().map(|(_, l)| format!(" {l}")) } else { None };
+        let files_line = files.as_ref().map(|_| lines.len() - 1);
+        if let Some(f) = &files {
+            lines.push(f);
+        }
+        let enh = crate::enhanced::settings();
+        // the Enhanced graphics box opens on its first page; its lines are made by refresh_enhanced below
         // the port's own: the goals of a scenario or of the packs' scripts (docs/MODDING.md 5), after the original's lines
         if kind == PopupKind::Info && self.has_goals() {
             lines.push(tr("STR_MENU_INFO_GOALS"));
@@ -490,8 +552,7 @@ impl App {
                 | (self.club.wildlife.enabled as u32) << 2
                 | (!self.mute as u32) << 3
                 | (self.hd.enabled as u32) << 4
-        } else if kind == PopupKind::Enhanced {
-            crate::enhanced::popup_checks(&crate::enhanced::settings())
+                | (crate::enhanced::settings().enabled as u32) << PREFS_ENHANCED_ON
         } else {
             0
         };
@@ -506,7 +567,21 @@ impl App {
             cx,
             top,
             back,
+            files_line,
+            page: 0,
+            enh,
+            tab_hover: None,
         });
+        if let Some(p) = self.popup.as_mut().filter(|p| p.kind == PopupKind::Enhanced) {
+            p.refresh_enhanced();
+            // the port's own box: moved up when a page would run off the bottom of the screen (the original's popups keep
+            // their places)
+            let r = p.choice_box().frame();
+            let over = r.y + r.h - 596.0;
+            if over > 0.0 {
+                p.top = (p.top - over).max(4.0);
+            }
+        }
         self.screen = Screen::Popup;
     }
 
@@ -522,7 +597,31 @@ impl App {
         self.view = s.view;
         // footage of the original: the screen under the box is not dimmed
         self.draw_choice_box(g, &s, &p.choice_box(), p.sel);
+        if p.kind == PopupKind::Enhanced {
+            self.draw_enhanced_tabs(g, &s, &p);
+        }
         g.flush();
+    }
+
+    /// The Enhanced graphics box's tabs (the port's own): the page shown lit white on the box's paler blue, the others
+    /// teal on a darker blue; a tab under the pointer is outlined.
+    fn draw_enhanced_tabs(&self, g: &mut Gfx, s: &Ui, p: &Popup) {
+        use crate::info_ui::c15;
+        let f = CHOICE_FONT;
+        for (page, r) in p.enhanced_tabs() {
+            let on = page == p.page;
+            let hover = p.tab_hover == Some(page);
+            let edge = if on || hover { c15(0x7fff) } else { c15(0x2d6b) };
+            s.fill(g, r.x - 1.0, r.y - 1.0, r.w + 2.0, r.h + 2.0, edge);
+            s.fill(g, r.x, r.y, r.w, r.h, if on { c15(0x5ade) } else { c15(0x3dd4) });
+            let label = sg_core::lang::tr(crate::enhanced::PAGES[page as usize]);
+            let x = r.x + (r.w - f.width(label)) * 0.5;
+            if on {
+                s.put_shadowed(g, f, x, r.y + 5.0, label, c15(0x7fff), false);
+            } else {
+                s.put(g, f, x, r.y + 6.0, label, c15(if hover { 0x7fff } else { 0x0210 }));
+            }
+        }
     }
 
     /// Keyboard (0x46d6e0, EXACT): Up and Down move without wrapping (Down from none lights the first option), Enter or
@@ -553,6 +652,12 @@ impl App {
                 return Some(self.popup_accept(None));
             }
             KeyCode::Escape => return Some(None),
+            // the Enhanced graphics box's pages (the port's own): Left and Right, or Tab, change the page
+            KeyCode::Left | KeyCode::Right | KeyCode::Tab if p.kind == PopupKind::Enhanced => {
+                let n = crate::enhanced::PAGES.len() as u8;
+                let page = if k == KeyCode::Left { (p.page + n - 1) % n } else { (p.page + 1) % n };
+                p.set_page(page);
+            }
             _ => {}
         }
         None
@@ -562,6 +667,17 @@ impl App {
     /// outside the box cancels.
     pub fn popup_pointer(&mut self, vx: f32, vy: f32, click: bool) -> Option<PopupResult> {
         let p = self.popup.as_mut()?;
+        if p.kind == PopupKind::Enhanced {
+            // the page tabs (a tap is a click here too)
+            p.tab_hover = p.enhanced_tabs().into_iter().find(|t| t.1.has(vx, vy)).map(|t| t.0);
+            if let Some(page) = p.tab_hover {
+                if click {
+                    p.set_page(page);
+                    return Some(Some(usize::MAX));
+                }
+                return None;
+            }
+        }
         let b = p.choice_box();
         let r = b.frame();
         let hit = b.option_at(vx, vy);
@@ -592,6 +708,10 @@ impl App {
         let p = self.popup.as_mut()?;
         let k = pick.or(p.sel).unwrap_or(0);
         if p.kind == PopupKind::Prefs {
+            // "Use my SimGolf files...": the ticks so far are kept, as with OK, then the line's action runs
+            if p.files_line.is_some_and(|f| f == k && (pick.is_some() || p.sel == Some(k))) {
+                return Some((p.checks | 1 << PREFS_FILES_FLAG) as usize);
+            }
             if pick == Some(PREFS_LANGUAGE) {
                 // the next language, at once: the box is rebuilt in it with the ticks kept
                 let checks = p.checks;
@@ -610,6 +730,10 @@ impl App {
             if k == PREFS_ENHANCED && (pick.is_some() || p.sel == Some(k)) {
                 return Some((p.checks | 1 << PREFS_ENHANCED) as usize);
             }
+            // and the Keyboard controls line
+            if k == PREFS_KEYS && (pick.is_some() || p.sel == Some(k)) {
+                return Some((p.checks | 1 << PREFS_KEYS) as usize);
+            }
             if pick.is_some() {
                 p.checks ^= 1 << k;
                 return Some(usize::MAX); // toggled, stay open
@@ -618,10 +742,12 @@ impl App {
         }
         if p.kind == PopupKind::Enhanced {
             if pick.is_some() {
-                p.checks ^= 1 << k;
+                crate::enhanced::toggle(p.page, k, &mut p.enh);
+                p.refresh_enhanced();
                 return Some(usize::MAX); // toggled, stay open
             }
-            return Some(p.checks as usize);
+            // OK: the caller takes the ticked settings from `enh`
+            return Some(0);
         }
         if p.disabled & (1 << k) != 0 {
             self.ui_sound(0x18);

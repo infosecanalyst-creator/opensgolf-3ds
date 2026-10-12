@@ -63,8 +63,11 @@ impl ContentState {
     }
 }
 
-/// The settings.json key of the content index's address (empty by default: docs/CONTENT_INDEX.md).
+/// The settings.json key of the content index's address (docs/CONTENT_INDEX.md).
 const INDEX_URL_KEY: &str = "content_index_url";
+
+/// The community index (github.com/crspytopgn/opensgolf-content), used when settings.json does not name one.
+pub const DEFAULT_INDEX_URL: &str = "https://raw.githubusercontent.com/crspytopgn/opensgolf-content/main/index.json";
 
 /// Find more: the index as read, the packs it offers, and a download in progress.
 #[derive(Default)]
@@ -121,6 +124,14 @@ fn save_settings(s: &Settings) {
     if let Ok(t) = serde_json::to_string_pretty(&v) {
         sg_core::fsutil::write_file(settings_path(), t.as_bytes());
     }
+}
+
+/// Saves the base set chosen (None: the original files), keeping the other content choices; it applies from the next
+/// start (gamefiles.rs restarts the game for it).
+pub fn save_base(base: Option<&str>) {
+    let mut s = saved_settings();
+    s.base = base.map(str::to_string);
+    save_settings(&s);
 }
 
 /// Finds the packs, loads the enabled ones over the game folder at `game_dir`, and installs their data. Runs once, before
@@ -529,9 +540,10 @@ pub fn fit(t: &str, w: f32) -> String {
 
 // ---- Find more: the content index (docs/MODDING.md 7, docs/CONTENT_INDEX.md) --------------------------------------------------
 
-/// The address of the content index from settings.json (`content_index_url`), empty when none is set.
+/// The address of the content index from settings.json (`content_index_url`): the community index when the key is
+/// missing, none when it is set to "".
 pub fn index_url() -> String {
-    read_settings_json()[INDEX_URL_KEY].as_str().unwrap_or("").trim().to_string()
+    read_settings_json()[INDEX_URL_KEY].as_str().unwrap_or(DEFAULT_INDEX_URL).trim().to_string()
 }
 
 impl App {

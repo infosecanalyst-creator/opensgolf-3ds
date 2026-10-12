@@ -10,7 +10,9 @@ and the downloads in crates/simgolf/src/net.rs.
 
 ## Setting the address
 
-There is no index built in. Put its address in `settings.json` in the save folder (`~/.local/share/opensgolf/` on Linux,
+The game reads the community index, [crspytopgn/opensgolf-content](https://github.com/crspytopgn/opensgolf-content)
+(`https://raw.githubusercontent.com/crspytopgn/opensgolf-content/main/index.json`), unless `settings.json` names another.
+To use another index, put its address in `settings.json` in the save folder (`~/.local/share/opensgolf/` on Linux,
 `%APPDATA%\OpenSGolf\` on Windows, `~/Library/Application Support/OpenSGolf/` on macOS, or `$OPENSGOLF_SAVE_DIR`), next to
 the other settings:
 
@@ -20,7 +22,7 @@ the other settings:
 }
 ```
 
-Until it is set, Find more says so and lists nothing. The address can be:
+Set it to `""` to switch Find more off (it then says so and lists nothing). The address can be:
 
 * `https://...` (or `http://...`): fetched by the game's HTTPS client on the desktop (the default `net` cargo feature; a
   build with `--no-default-features` cannot download and says so), by the page's `fetch()` in a browser (the server must

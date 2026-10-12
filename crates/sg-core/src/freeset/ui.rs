@@ -162,16 +162,19 @@ fn draw(low: &str, name: &str, w: usize, h: usize, comps: &[Comp], full: bool) -
         let decorative = warm || name == "splash.pcx" || name == "logo.pcx";
         // rectangles, and the oval fields (not round shapes, which are the original's pictures: balls, globes, faces)
         let field = |p: &&Comp| matches!(p.shape, b'R' | b'O') || matches!(p.tone, b'w' | b'k') && p.w > 1.6 * p.h;
-        for p in comps.iter().filter(|_| !decorative).filter(field) {
+        // (Select Difficulty's lowest oval is the original's curve along the bottom, not a field: an empty label showed there)
+        let stray = |p: &&Comp| name == "titleseldiffunsel.pcx" && p.y > 500.0;
+        for p in comps.iter().filter(|_| !decorative).filter(field).filter(|p| !stray(p)) {
             element(&mut c, p);
         }
         match name {
             "logo.pcx" | "splash.pcx" => title_logo(&mut c, 400.0, 250.0),
             "titleseldiffunsel.pcx" => {
-                for (k, &(x, y)) in [(388.0f32, 113.0f32), (360.0, 227.0), (366.0, 346.0), (402.0, 464.0)].iter().enumerate() {
-                    c.circle(x - 175.0, y + 8.0, 36.0, shade(BASE, 0.1));
-                    face(&mut c, x - 175.0, y + 8.0, 30.0, [0, 4, 9, 13][k], [0, 1, 2, 1][k], false);
+                for k in 0..4 {
+                    difficulty_face(&mut c, k, 0.0, 0.0, false);
                 }
+                // the back button in the lower right (render.rs: hit within 68 x 68 of (732, 532))
+                round_button(&mut c, 766.0, 566.0, 26.0, BASE, Glyph::Back);
             }
             "worldbase.pcx" => globe(&mut c, 150.0, 330.0, 140.0),
             _ => {}
@@ -188,6 +191,10 @@ fn draw(low: &str, name: &str, w: usize, h: usize, comps: &[Comp], full: bool) -
     }
     if name == "3mainlowerleft.pcx" {
         dock(&mut c);
+        return c;
+    }
+    if name == "titleseldiffmo.pcx" {
+        difficulty_lit(&mut c);
         return c;
     }
     if name == "titleunsel.pcx" || name == "titlemo.pcx" {
@@ -322,6 +329,39 @@ fn dock(c: &mut Canvas) {
     }
 }
 
+/// Select Difficulty's faces, where the original has them (centres from its title screen; render.rs DIFF_CUTS cuts each
+/// with its label from the lit sheet, so a face elsewhere was cut in half), and the label ovals' boxes.
+const DIFF_FACES: [(f32, f32); 4] = [(242.0, 82.0), (203.0, 217.0), (210.0, 371.0), (252.0, 506.0)];
+const DIFF_PILLS: [(f32, f32, f32, f32); 4] =
+    [(299.0, 104.0, 181.0, 49.0), (271.0, 218.0, 182.0, 49.0), (277.0, 338.0, 181.0, 49.0), (313.0, 456.0, 181.0, 49.0)];
+/// render.rs DIFF_CUTS: (sheet x, y, w, h, screen x, y) of each item's lit look.
+const DIFF_CUTS: [(f32, f32, f32, f32, f32, f32); 4] = [
+    (0.0, 0.0, 338.0, 146.0, 193.0, 32.0),
+    (400.0, 0.0, 338.0, 146.0, 150.0, 161.0),
+    (0.0, 300.0, 332.0, 114.0, 161.0, 320.0),
+    (400.0, 300.0, 332.0, 130.0, 200.0, 436.0),
+];
+
+/// Difficulty `k`'s face moved by (dx, dy); lit, on a gold disc with its label oval in gold.
+fn difficulty_face(c: &mut Canvas, k: usize, dx: f32, dy: f32, lit: bool) {
+    let (x, y) = (DIFF_FACES[k].0 + dx, DIFF_FACES[k].1 + dy);
+    if lit {
+        let (px, py, w, h) = DIFF_PILLS[k];
+        element(c, &Comp { x: px + dx, y: py + dy, w, h, shape: b'E', tone: b'g', light: 2 });
+    }
+    c.circle(x, y, 42.0, OUTLINE);
+    c.circle(x, y, 40.0, if lit { GOLD } else { shade(BASE, 0.1) });
+    face(c, x, y, 33.0, [0, 4, 9, 13][k], [0, 1, 2, 1][k], false);
+}
+
+/// Select Difficulty's lit sheet (TitleSelDiffMO): each item lit in its own cut, the back button in gold at its place.
+fn difficulty_lit(c: &mut Canvas) {
+    for (k, &(sx, sy, _, _, dx, dy)) in DIFF_CUTS.iter().enumerate() {
+        difficulty_face(c, k, sx - dx, sy - dy, true);
+    }
+    round_button(c, 766.0, 566.0, 26.0, GOLD, Glyph::Back);
+}
+
 #[derive(Clone, Copy, PartialEq)]
 enum Glyph {
     Build,
@@ -340,6 +380,7 @@ enum Glyph {
     Cards,
     Trophy,
     Exit,
+    Back,
 }
 
 /// A round button of colour `col` at (x, y) with a glyph.
@@ -444,6 +485,10 @@ fn glyph(c: &mut Canvas, g: Glyph, x: f32, y: f32, r: f32, col: Col) {
             );
             c.line(x, y - r * 0.4, x, y + r * 0.4, w, col);
             c.rect(x - r * 0.45, y + r * 0.4, r * 0.9, r * 0.3, col);
+        }
+        Glyph::Back => {
+            c.line(x - r * 0.5, y, x + r * 0.7, y, w * 1.4, col);
+            c.poly(&[(x - r * 0.85, y), (x - r * 0.3, y - r * 0.5), (x - r * 0.3, y + r * 0.5)], col);
         }
         Glyph::Exit => {
             c.rect(x - r * 0.6, y - r * 0.7, r * 0.6, r * 1.4, col);

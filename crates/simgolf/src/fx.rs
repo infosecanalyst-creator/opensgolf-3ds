@@ -43,6 +43,17 @@ pub struct FxSettings {
     pub vignette: bool,
     /// 0 low, 1 medium, 2 high.
     pub quality: u8,
+    /// Shadows cast along the sun by sprites (fx_shadow.rs).
+    pub cast_shadows: bool,
+    /// The day's light follows the game's clock (fx_light.rs).
+    pub time_of_day: bool,
+    pub clouds: bool,
+    pub rain: bool,
+    pub mist: bool,
+    pub haze: bool,
+    /// Balls in flight trail a fading streak; where they land, sand, water or grass is thrown up (fx_ball.rs).
+    pub ball_trail: bool,
+    pub ball_impacts: bool,
 }
 
 impl Default for FxSettings {
@@ -62,6 +73,15 @@ impl Default for FxSettings {
             bloom: true,
             vignette: true,
             quality: 1,
+            cast_shadows: true,
+            // these three change the mood the most: offered, not on by default
+            time_of_day: false,
+            clouds: true,
+            rain: false,
+            mist: false,
+            haze: true,
+            ball_trail: true,
+            ball_impacts: true,
         }
     }
 }
@@ -115,7 +135,7 @@ macro_rules! flag {
     };
 }
 
-static OPTIONS: [FxOption; 13] = [
+static OPTIONS: [FxOption; 21] = [
     FxOption { key: "effects", label: "STR_FX_EFFECTS", choices: ON_OFF, get: |s| s.enabled as usize, set: |s, v| s.enabled = v != 0 },
     FxOption {
         key: "scaler",
@@ -141,6 +161,14 @@ static OPTIONS: [FxOption; 13] = [
         get: |s| s.quality.min(2) as usize,
         set: |s, v| s.quality = v.min(2) as u8,
     },
+    flag!("cast-shadows", "STR_FX_CAST_SHADOWS", cast_shadows),
+    flag!("time-of-day", "STR_FX_TIME_OF_DAY", time_of_day),
+    flag!("clouds", "STR_FX_CLOUDS", clouds),
+    flag!("rain", "STR_FX_RAIN", rain),
+    flag!("mist", "STR_FX_MIST", mist),
+    flag!("haze", "STR_FX_HAZE", haze),
+    flag!("ball-trail", "STR_FX_BALL_TRAIL", ball_trail),
+    flag!("ball-impacts", "STR_FX_BALL_IMPACTS", ball_impacts),
 ];
 
 /// The options in the order a preferences screen lists them; the first is the master switch.
@@ -231,6 +259,15 @@ pub fn from_enhanced(e: &crate::enhanced::Settings) -> FxSettings {
     s.grading = e.fx_grading;
     s.vignette = e.fx_grading;
     s.bloom = e.fx_bloom;
+    s.quality = e.fx_quality.min(2);
+    s.cast_shadows = e.fx_cast_shadows;
+    s.time_of_day = e.fx_time_of_day;
+    s.clouds = e.fx_clouds;
+    s.rain = e.fx_rain;
+    s.mist = e.fx_mist;
+    s.haze = e.fx_haze;
+    s.ball_trail = e.fx_ball_trail;
+    s.ball_impacts = e.fx_ball_impacts;
     s
 }
 
@@ -253,10 +290,10 @@ fn wants_post(s: &FxSettings) -> bool {
 
 /// Per theme (the exe's order: parkland, desert, tropical, links): the sky's top, its haze at the horizon (also what the
 /// water reflects low down), the haze below the map, the grade (contrast, vibrance), a tint and the bloom's threshold.
-struct Look {
-    sky_top: [f32; 3],
-    sky_low: [f32; 3],
-    below: [f32; 3],
+pub(crate) struct Look {
+    pub(crate) sky_top: [f32; 3],
+    pub(crate) sky_low: [f32; 3],
+    pub(crate) below: [f32; 3],
     contrast: f32,
     vibrance: f32,
     tint: [f32; 3],
@@ -329,6 +366,10 @@ struct GroundUniforms {
     light_w: [f32; 3],
     sky_top: [f32; 3],
     sky_low: [f32; 3],
+    cloud: [f32; 4],
+    cover: [f32; 4],
+    mist: [f32; 4],
+    mist_col: [f32; 3],
 }
 
 #[repr(C)]
@@ -356,10 +397,16 @@ pub struct FxGpu {
     down: Pipeline,
     blur: Pipeline,
     composite: Pipeline,
-    quad_vb: BufferId,
-    quad_ib: BufferId,
+    /// The cast shadows' mask multiplied into the frame (fx_shadow.rs).
+    pub(crate) shade: Pipeline,
+    pub(crate) quad_vb: BufferId,
+    pub(crate) quad_ib: BufferId,
     /// A 1 x 1 light map (full sun, no occlusion, far from water) for when none is built.
     no_lightmap: TextureId,
+    /// The clouds' tiling noise (fx_light.rs).
+    pub(crate) clouds: TextureId,
+    /// A soft round dot (the balls' impacts and the rain's splashes, fx_ball.rs).
+    pub(crate) dot: TextureId,
 }
 
 fn shader(ctx: &mut dyn RenderingBackend, vs: &str, fs: &str, images: &[&str], uniforms: &[(&str, UniformType)]) -> ShaderId {
@@ -423,9 +470,14 @@ impl FxGpu {
             ("light_w", Float3),
             ("sky_top", Float3),
             ("sky_low", Float3),
+            ("cloud", Float4),
+            ("cover", Float4),
+            ("mist", Float4),
+            ("mist_col", Float3),
         ];
-        let terrain_sh = shader(ctx, glsl::GROUND_VS, &glsl::terrain_fs(), &["tex", "lmap"], &ground_uniforms);
-        let water_sh = shader(ctx, glsl::GROUND_VS, &glsl::water_fs(), &["tex", "lmap"], &ground_uniforms);
+        let terrain_sh = shader(ctx, glsl::GROUND_VS, &glsl::terrain_fs(), &["tex", "lmap", "clouds"], &ground_uniforms);
+        let water_sh = shader(ctx, glsl::GROUND_VS, &glsl::water_fs(), &["tex", "lmap", "clouds"], &ground_uniforms);
+        let shade_sh = shader(ctx, glsl::SHADE_VS, &glsl::shade_fs(), &["mask"], &[("tint", Float4)]);
         let down_sh = shader(ctx, glsl::POST_VS, &glsl::down_fs(), &["src"], &[("p", Float4)]);
         let blur_sh = shader(ctx, glsl::POST_VS, &glsl::blur_fs(), &["src"], &[("p", Float4)]);
         let comp_sh = shader(
@@ -454,16 +506,46 @@ impl FxGpu {
         let down = pipe(ctx, down_sh, Comparison::Always, false, false);
         let blur = pipe(ctx, blur_sh, Comparison::Always, false, false);
         let composite = pipe(ctx, comp_sh, Comparison::Always, false, false);
+        // multiply: the frame times the shade, its alpha kept
+        let shade = ctx.new_pipeline(
+            &[BufferLayout::default()],
+            &attrs,
+            shade_sh,
+            PipelineParams {
+                depth_test: Comparison::Greater,
+                depth_write: false,
+                color_blend: Some(BlendState::new(Equation::Add, BlendFactor::Zero, BlendFactor::Value(BlendValue::SourceColor))),
+                alpha_blend: Some(BlendState::new(Equation::Add, BlendFactor::Zero, BlendFactor::One)),
+                ..Default::default()
+            },
+        );
         let v = |x: f32, y: f32| Vert::new(x, y, 0.0, (x + 1.0) * 0.5, (y + 1.0) * 0.5);
         let quad = [v(-1.0, -1.0), v(1.0, -1.0), v(1.0, 1.0), v(-1.0, -1.0), v(1.0, 1.0), v(-1.0, 1.0)];
         let quad_vb = ctx.new_buffer(BufferType::VertexBuffer, BufferUsage::Immutable, BufferSource::slice(&quad));
         let quad_ib = ctx.new_buffer(BufferType::IndexBuffer, BufferUsage::Immutable, BufferSource::slice(&[0u32, 1, 2, 3, 4, 5]));
         let no_lightmap = ctx.new_texture_from_rgba8(1, 1, &[255, 255, 255, 0]);
-        FxGpu { scaler, scaler_pm, ground_solid, ground_overlay, water, down, blur, composite, quad_vb, quad_ib, no_lightmap }
+        let clouds = crate::fx_light::cloud_texture(ctx);
+        let dot = crate::fx_ball::dot_texture(ctx);
+        FxGpu {
+            scaler,
+            scaler_pm,
+            ground_solid,
+            ground_overlay,
+            water,
+            down,
+            blur,
+            composite,
+            shade,
+            quad_vb,
+            quad_ib,
+            no_lightmap,
+            clouds,
+            dot,
+        }
     }
 }
 
-fn gpu(g: &mut Gfx) -> &FxGpu {
+pub(crate) fn gpu(g: &mut Gfx) -> &FxGpu {
     if g.fx.is_none() {
         g.fx = Some(Box::new(FxGpu::new(&mut *g.ctx)));
     }
@@ -471,6 +553,12 @@ fn gpu(g: &mut Gfx) -> &FxGpu {
 }
 
 // ---- the pixel-art scaler -----------------------------------------------------------------------------------------------------
+
+/// How a texture holds its colours, for the scaler: straight, premultiplied (Enhanced's smooth interface textures), or
+/// straight with the distance to a smoothed outline in alpha (Enhanced's smooth edges for colour-keyed art, edges.rs).
+pub const TEX_STRAIGHT: u8 = 0;
+pub const TEX_PREMUL: u8 = 1;
+pub const TEX_SDF: u8 = 2;
 
 /// Whether the scaler may take over a batch (called by Gfx::flush for the flat 2D / sprite draws).
 pub fn scaler_wanted() -> bool {
@@ -480,8 +568,9 @@ pub fn scaler_wanted() -> bool {
 
 /// Draw state for a batch of flat quads drawn with the scaler: sets the pipeline, bindings and uniforms and returns true, or
 /// returns false (the caller draws the classic way) when the picture is not magnified, is text, or the batch is not quads.
-/// The magnification is measured on the batch's first quad edge (its first two vertices). `premul`: the texture holds
-/// premultiplied colours (and the batch's vertex colours are premultiplied).
+/// The magnification is measured on the batch's first quad edge (its first two vertices). `colours`: how the texture holds
+/// its colours (TEX_STRAIGHT, TEX_PREMUL or TEX_SDF; with the last two the batch's vertex colours are premultiplied and the
+/// output is too).
 #[allow(clippy::too_many_arguments)]
 pub fn apply_scaler(
     ctx: &mut Box<dyn RenderingBackend>,
@@ -491,29 +580,14 @@ pub fn apply_scaler(
     ib: BufferId,
     tex: TextureId,
     u: &Uniforms,
-    premul: bool,
+    colours: u8,
 ) -> bool {
     if batch.len() < 6 || PLAIN.with(|p| p.borrow().contains(&tex)) {
         return false;
     }
     let (tw, th) = ctx.texture_size(tex);
-    let (sw, sh) = window::screen_size();
-    let (a, b) = (batch[0], batch[1]);
-    let clip = |p: [f32; 3]| {
-        let m = &u.mvp;
-        let x = m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12];
-        let y = m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13];
-        let w = m[3] * p[0] + m[7] * p[1] + m[11] * p[2] + m[15];
-        (x / w * sw * 0.5, y / w * sh * 0.5)
-    };
-    let (pa, pb) = (clip(a.pos), clip(b.pos));
-    let px = (pb.0 - pa.0).hypot(pb.1 - pa.1);
-    let texels = ((b.uv[0] - a.uv[0]) * tw as f32).hypot((b.uv[1] - a.uv[1]) * th as f32);
-    if texels < 0.5 {
-        return false;
-    }
-    let scale = px / texels;
-    if !scale.is_finite() || scale < 1.05 {
+    let Some(scale) = crate::gfx::batch_scale(&**ctx, batch, tex, u) else { return false };
+    if scale < 1.05 {
         return false;
     }
     // edge-directed rules need room to show; at low magnifications and on the lowest quality the sharp filter does it
@@ -522,14 +596,14 @@ pub fn apply_scaler(
         *fx = Some(Box::new(FxGpu::new(&mut **ctx)));
     }
     let Some(f) = fx.as_deref() else { return false };
-    ctx.apply_pipeline(if premul { &f.scaler_pm } else { &f.scaler });
+    ctx.apply_pipeline(if colours != TEX_STRAIGHT { &f.scaler_pm } else { &f.scaler });
     ctx.apply_bindings(&Bindings { vertex_buffers: vec![vb], index_buffer: ib, images: vec![tex] });
     ctx.apply_uniforms(UniformsSource::table(&ScalerUniforms {
         mvp: u.mvp,
         sp: [tw as f32, th as f32, scale, mode as f32],
         alpha_ref: u.alpha_ref,
         soft: if mode == SCALER_EDGE { SOFT_EDGE.with(|s| s.get()) } else { SOFT_SHARP.with(|s| s.get()) },
-        pm: premul as i32 as f32,
+        pm: colours as f32,
     }));
     true
 }
@@ -558,10 +632,22 @@ pub struct FxWorld {
     post: Option<PostTargets>,
     /// (sprite, frame) -> (the classic shadow texture it was made from, the softened one).
     shadows: HashMap<(usize, usize), (TextureId, TextureId)>,
-    time: f32,
+    pub(crate) time: f32,
     last_clock: f64,
     /// The course is being drawn offscreen this frame (fx_world_begin .. fx_world_end).
     post_on: bool,
+    /// The pass the course is being drawn into this frame (the frame's own, or the post-processing's scene).
+    pub(crate) pass_now: Option<RenderPass>,
+    /// This frame's sun, sky and weather (fx_light.rs).
+    pub(crate) atmos: crate::fx_light::Atmos,
+    /// The low ground's height and depth for the mist (world units), from the last light map.
+    pub(crate) mist_level: (f32, f32),
+    /// The sun the light map's shadows were marched towards (quantised), with the time of day on.
+    lm_sun: (i32, i32),
+    /// Cast shadows (fx_shadow.rs): the mask target and the silhouettes.
+    pub(crate) cast: crate::fx_shadow::CastState,
+    /// Ball trails and impacts (fx_ball.rs).
+    pub(crate) balls: crate::fx_ball::BallState,
 }
 
 impl FxWorld {
@@ -583,17 +669,26 @@ pub fn water_on() -> bool {
 }
 
 /// The rotation of the view (eye from world), as render_world builds it.
-fn view_rotation(app: &App) -> [f32; 16] {
+pub(crate) fn view_rotation(app: &App) -> [f32; 16] {
     Mat4::rotate(crate::app::pitch_for(app.draw_w, app.draw_h), 1.0, 0.0, 0.0).mul(&Mat4::rotate((45.0 + app.rot) as f64, 0.0, 1.0, 0.0)).0
 }
 
 /// An eye-space direction in world space (the view's rotation transposed).
-fn to_world(m: &[f32; 16], e: [f32; 3]) -> [f32; 3] {
+pub(crate) fn to_world(m: &[f32; 16], e: [f32; 3]) -> [f32; 3] {
     let mut w = [0.0; 3];
     for (c, o) in w.iter_mut().enumerate() {
         *o = (0..3).map(|r| m[c * 4 + r] * e[r]).sum();
     }
     w
+}
+
+/// A world-space direction in eye space (the view's rotation).
+pub(crate) fn to_eye(m: &[f32; 16], w: [f32; 3]) -> [f32; 3] {
+    let mut e = [0.0; 3];
+    for (r, o) in e.iter_mut().enumerate() {
+        *o = (0..3).map(|c| m[c * 4 + r] * w[c]).sum();
+    }
+    e
 }
 
 impl App {
@@ -607,10 +702,28 @@ impl App {
         if !s.enabled {
             return;
         }
-        let need = s.shadows || s.occlusion || s.water;
+        self.fx.mist_level = mist_level(&self.terrain);
+        self.fx_lightmap(g, false);
+    }
+
+    /// Makes the light map when the ground, the view's turn or (with the time of day) the sun changed. `sun_moved`: only
+    /// the sun may have moved (the ground's key is kept).
+    pub(crate) fn fx_lightmap(&mut self, g: &mut Gfx, sun_moved: bool) {
+        let s = settings();
+        let need = s.shadows || s.occlusion || s.water || s.mist;
         let n = [2usize, 4, 8][s.quality.min(2) as usize];
-        let light_w = to_world(&view_rotation(self), sg_core::terrain::light_direction());
-        let key = lightmap_key(&self.terrain, n, (self.rot.round() as i32).rem_euclid(360), s);
+        let mut light_w = to_world(&view_rotation(self), sg_core::terrain::light_direction());
+        let mut sun_q = (0, 0);
+        if s.time_of_day {
+            light_w = self.fx.atmos.sun_w;
+            sun_q = crate::fx_light::sun_step(light_w);
+        }
+        if sun_moved && sun_q == self.fx.lm_sun {
+            return;
+        }
+        self.fx.lm_sun = sun_q;
+        let key =
+            lightmap_key(&self.terrain, n, (self.rot.round() as i32).rem_euclid(360), s) ^ (sun_q.0 as u64) << 40 ^ (sun_q.1 as u64) << 52;
         if !need {
             return;
         }
@@ -661,7 +774,7 @@ impl App {
         }
     }
 
-    fn look(&self) -> &'static Look {
+    pub(crate) fn look(&self) -> &'static Look {
         &LOOKS[self.exe_theme().min(3) as usize]
     }
 
@@ -669,16 +782,34 @@ impl App {
     /// effects' light, and the water.
     pub fn fx_draw_ground(&mut self, g: &mut Gfx, proj: &Mat4, mv: &Mat4, lit: &Uniforms, overlay: &Uniforms) {
         let s = settings();
-        let look = self.look();
         let dt = (self.clock - self.fx.last_clock).clamp(0.0, 0.1) as f32;
         self.fx.last_clock = self.clock;
         self.fx.time += dt;
-        if s.sky {
-            self.fx_sky(g, look);
+        // the sun, sky and weather of this moment (fx_light.rs): the classic midday unless the time of day or rain is on
+        let atm = self.fx_atmos();
+        self.fx.atmos = atm;
+        if s.time_of_day && s.shadows {
+            self.fx_lightmap(g, true);
         }
-        let terrain_fx = s.lighting || s.occlusion || s.shadows;
+        let (mut lit, mut overlay) = (*lit, *overlay);
+        if atm.tinted {
+            for l in [&mut lit, &mut overlay] {
+                for k in 0..3 {
+                    l.light_amb[k] *= atm.amb[k];
+                    l.light_dif[k] *= atm.sun[k];
+                    l.light_spec[k] *= atm.sun[k];
+                }
+                l.light_dir = atm.sun_e;
+            }
+        }
+        let (lit, overlay) = (&lit, &overlay);
+        if s.sky {
+            self.fx_sky(g, &atm);
+        }
+        let terrain_fx = s.lighting || s.occlusion || s.shadows || atm.cloud > 0.0 || atm.mist > 0.0;
         let rot = view_rotation(self);
         let lm = self.fx.lightmap.unwrap_or_else(|| gpu(g).no_lightmap);
+        let clouds = gpu(g).clouds;
         let has_lm = self.fx.lightmap.is_some();
         let u = GroundUniforms {
             mvp: proj.mul(mv).0,
@@ -690,33 +821,37 @@ impl App {
             lm_rect: if has_lm { self.fx.lm_rect } else { [0.0, 0.0, 0.0, 0.0] },
             params: [
                 s.lighting as i32 as f32,
-                if s.shadows && has_lm { 0.62 } else { 0.0 },
+                if s.shadows && has_lm { 0.62 * atm.shadow } else { 0.0 },
                 if s.occlusion && has_lm { 1.0 } else { 0.0 },
                 -1.0,
             ],
             water: [self.fx.time, 0.22, 1.0, 0.55],
             eye_w: [rot[2], rot[6], rot[10]],
-            light_w: to_world(&rot, sg_core::terrain::light_direction()),
-            sky_top: look.sky_top,
-            sky_low: look.sky_low,
+            light_w: if atm.tinted { atm.sun_w } else { to_world(&rot, sg_core::terrain::light_direction()) },
+            sky_top: atm.sky_top,
+            sky_low: atm.sky_low,
+            cloud: [atm.cloud, crate::fx_light::CLOUD_REPEAT, atm.cloud_off[0], atm.cloud_off[1]],
+            cover: [atm.cover, atm.cover + 0.22, 0.0, 0.0],
+            mist: [atm.mist, self.fx.mist_level.0, 1.0 / self.fx.mist_level.1.max(1.0), self.fx.time.rem_euclid(10000.0)],
+            mist_col: atm.mist_col,
         };
         g.flush();
         let p = *gpu(g);
         for b in self.batches.iter().chain(&self.wall_batches) {
             if terrain_fx {
-                g.draw_mesh_with(&p.ground_solid, &b.mesh, &[b.tex, lm], UniformsSource::table(&u));
+                g.draw_mesh_with(&p.ground_solid, &b.mesh, &[b.tex, lm, clouds], UniformsSource::table(&u));
             } else {
                 g.draw_mesh(Mode::Solid, &b.mesh, b.tex, lit);
             }
         }
         for b in &self.fx.water {
-            g.draw_mesh_with(&p.water, &b.mesh, &[b.tex, lm], UniformsSource::table(&u));
+            g.draw_mesh_with(&p.water, &b.mesh, &[b.tex, lm, clouds], UniformsSource::table(&u));
         }
         let mut uo = u;
         uo.params[3] = overlay.alpha_ref;
         for b in self.path_batches.iter().chain(&self.mud_batches) {
             if terrain_fx {
-                g.draw_mesh_with(&p.ground_overlay, &b.mesh, &[b.tex, lm], UniformsSource::table(&uo));
+                g.draw_mesh_with(&p.ground_overlay, &b.mesh, &[b.tex, lm, clouds], UniformsSource::table(&uo));
             } else {
                 g.draw_mesh(Mode::Overlay, &b.mesh, b.tex, overlay);
             }
@@ -725,7 +860,7 @@ impl App {
 
     /// The sky behind the course: its colour at the top of the screen fading to the horizon's haze, then to the haze below
     /// the map at the bottom.
-    fn fx_sky(&self, g: &mut Gfx, look: &Look) {
+    fn fx_sky(&self, g: &mut Gfx, look: &crate::fx_light::Atmos) {
         let u = Uniforms::flat(&Mat4::identity(), &Mat4::identity());
         let c = |rgb: [f32; 3]| [rgb[0], rgb[1], rgb[2], 1.0];
         let (top, mid, low) = (c(look.sky_top), c(look.sky_low), c(look.below));
@@ -754,7 +889,9 @@ impl App {
     }
 
     /// Before the course is drawn: with post-processing on, moves the drawing to the offscreen scene target and returns true.
-    pub fn fx_world_begin(&mut self, g: &mut Gfx) -> bool {
+    /// `target` is the frame's own pass (where the course is drawn without post-processing).
+    pub fn fx_world_begin(&mut self, g: &mut Gfx, target: Option<RenderPass>) -> bool {
+        self.fx.pass_now = target;
         let s = settings();
         if !wants_post(&s) {
             return false;
@@ -772,8 +909,9 @@ impl App {
             self.fx.post = Some(make_post(g, size, div));
         }
         let Some(p) = &self.fx.post else { return false };
-        let b = self.look().below;
+        let b = if s.time_of_day || s.rain { crate::fx_light::below_now(self) } else { self.look().below };
         g.ctx.begin_pass(Some(p.pass), PassAction::clear_color(b[0], b[1], b[2], 1.0));
+        self.fx.pass_now = Some(p.pass);
         self.fx.post_on = true;
         true
     }
@@ -1152,4 +1290,16 @@ mod tests {
         assert_eq!(s.matches("c = corner(").count(), 4);
         assert_eq!(s.matches(" = T(cell").count(), 21);
     }
+}
+
+/// The low ground's height for the mist: a little above the lowest quarter of the corners, and the depth over which the mist
+/// thins out (world units).
+fn mist_level(t: &Terrain) -> (f32, f32) {
+    let mut c: Vec<i32> = (0..=t.h).flat_map(|y| (0..=t.w).map(move |x| (x, y))).map(|(x, y)| t.corner_at(x, y)).collect();
+    if c.is_empty() {
+        return (0.0, 2.0 * HEIGHT_STEP);
+    }
+    c.sort_unstable();
+    let q = c[c.len() / 4] as f32 * HEIGHT_STEP;
+    (q + 1.0 * HEIGHT_STEP, 2.5 * HEIGHT_STEP)
 }

@@ -31,7 +31,8 @@ pub struct Settings {
     pub enabled: bool,
     /// Text rasterised from the TrueType fonts at the screen's pixel size (layout unchanged).
     pub native_text: bool,
-    /// Interface and sprite art with premultiplied alpha and mipmaps (clean edges at any scale).
+    /// Interface and sprite art with premultiplied alpha and mipmaps, colour-keyed art with smoothed outlines (edges.rs):
+    /// clean edges at any scale.
     pub smooth_ui: bool,
     /// On windows wider (or taller) than 4:3 the HUD goes to the window's corners and edges; full-screen pages are
     /// framed.
@@ -63,6 +64,24 @@ pub struct Settings {
     pub fx_grading: bool,
     /// Bloom on the brightest highlights.
     pub fx_bloom: bool,
+    /// The effects' quality: 0 low, 1 medium, 2 high.
+    pub fx_quality: u8,
+    /// Buildings, trees and the like cast shadows along the sun (fx_shadow.rs).
+    pub fx_cast_shadows: bool,
+    /// A soft fading trail behind balls in flight (fx_ball.rs).
+    pub fx_ball_trail: bool,
+    /// A puff of sand, a splash ring or a flick of grass where a ball lands (fx_ball.rs).
+    pub fx_ball_impacts: bool,
+    /// Morning, midday, sunset and dusk light following the game's clock (fx_light.rs).
+    pub fx_time_of_day: bool,
+    /// Drifting cloud shadows (fx_light.rs).
+    pub fx_clouds: bool,
+    /// Distance haze towards the top of the screen.
+    pub fx_haze: bool,
+    /// Light rain and darker light on some days.
+    pub fx_rain: bool,
+    /// Mist pooling in low ground in the morning.
+    pub fx_mist: bool,
 }
 
 impl Settings {
@@ -85,6 +104,16 @@ impl Settings {
         fx_tilt_shift: false,
         fx_grading: true,
         fx_bloom: true,
+        fx_quality: 1,
+        fx_cast_shadows: true,
+        fx_ball_trail: true,
+        fx_ball_impacts: true,
+        fx_clouds: true,
+        fx_haze: true,
+        // the three that change the mood most are offered, not on by default
+        fx_time_of_day: false,
+        fx_rain: false,
+        fx_mist: false,
     };
 }
 
@@ -119,6 +148,11 @@ pub fn native_text() -> bool {
 pub fn smooth_ui() -> bool {
     on(|s| s.smooth_ui)
 }
+/// Colour-keyed art (interface pictures, sprites) with smooth outlines at any size (edges.rs): part of the smooth interface
+/// art option.
+pub fn smooth_edges() -> bool {
+    smooth_ui()
+}
 pub fn widescreen() -> bool {
     on(|s| s.widescreen)
 }
@@ -144,119 +178,80 @@ pub enum Reload {
     Art,
 }
 
+/// The pages of the Enhanced graphics screen (tabs along its top), by text key.
+pub const PAGES: [&str; 3] = ["STR_ENHANCED_PAGE_DISPLAY", "STR_ENHANCED_PAGE_EFFECTS", "STR_ENHANCED_PAGE_ATMOSPHERE"];
+pub const DISPLAY: u8 = 0;
+pub const EFFECTS: u8 = 1;
+pub const ATMOSPHERE: u8 = 2;
+
 /// One line of the Enhanced graphics screen.
 pub struct OptionEntry {
     /// The settings.json field (for docs and tests).
     pub key: &'static str,
-    /// The line's text key (lang/en.txt); the text starts with a space, as every option line of a pop-up box does.
+    /// The line's text key (lang/en.txt); the text starts with a space, as every option line of a pop-up box does. A
+    /// setting with choices has a {VALUE} in it.
     pub label: &'static str,
-    pub get: fn(&Settings) -> bool,
-    pub set: fn(&mut Settings, bool),
+    /// The page (tab) it is on: DISPLAY, EFFECTS or ATMOSPHERE.
+    pub page: u8,
+    /// The text keys of a setting's values when it has more than on and off (a click steps to the next); empty for a tick.
+    pub choices: &'static [&'static str],
+    pub get: fn(&Settings) -> u8,
+    pub set: fn(&mut Settings, u8),
     pub reload: Reload,
 }
 
-/// The options under the master switch, in the order the Enhanced graphics screen lists them.
+macro_rules! tick {
+    ($key:literal, $label:literal, $page:expr, $field:ident, $reload:expr) => {
+        OptionEntry {
+            key: $key,
+            label: $label,
+            page: $page,
+            choices: &[],
+            get: |s| s.$field as u8,
+            set: |s, v| s.$field = v != 0,
+            reload: $reload,
+        }
+    };
+    ($key:literal, $label:literal, $page:expr, $field:ident) => {
+        tick!($key, $label, $page, $field, Reload::Nothing)
+    };
+}
+
+/// The options under the master switch, in the order the Enhanced graphics screen lists them on their pages.
 pub const OPTIONS: &[OptionEntry] = &[
+    tick!("native_text", "STR_ENHANCED_NATIVE_TEXT", DISPLAY, native_text),
+    tick!("smooth_ui", "STR_ENHANCED_SMOOTH_UI", DISPLAY, smooth_ui, Reload::Art),
+    tick!("widescreen", "STR_ENHANCED_WIDESCREEN", DISPLAY, widescreen),
+    tick!("terrain_filter", "STR_ENHANCED_TERRAIN_FILTER", DISPLAY, terrain_filter, Reload::Art),
+    tick!("msaa", "STR_ENHANCED_MSAA", DISPLAY, msaa),
+    tick!("smooth_camera", "STR_ENHANCED_SMOOTH_CAMERA", DISPLAY, smooth_camera),
+    tick!("smooth_motion", "STR_ENHANCED_SMOOTH_MOTION", DISPLAY, smooth_motion),
+    tick!("fx_scaler", "STR_ENHANCED_FX_SCALER", EFFECTS, fx_scaler),
+    tick!("fx_scaler_sharp", "STR_ENHANCED_FX_SCALER_SHARP", EFFECTS, fx_scaler_sharp),
+    tick!("fx_water", "STR_ENHANCED_FX_WATER", EFFECTS, fx_water),
+    tick!("fx_terrain_light", "STR_ENHANCED_FX_TERRAIN_LIGHT", EFFECTS, fx_terrain_light),
+    tick!("fx_sprite_shadows", "STR_ENHANCED_FX_SPRITE_SHADOWS", EFFECTS, fx_sprite_shadows),
+    tick!("fx_cast_shadows", "STR_ENHANCED_FX_CAST_SHADOWS", EFFECTS, fx_cast_shadows),
+    tick!("fx_ball_trail", "STR_ENHANCED_FX_BALL_TRAIL", EFFECTS, fx_ball_trail),
+    tick!("fx_ball_impacts", "STR_ENHANCED_FX_BALL_IMPACTS", EFFECTS, fx_ball_impacts),
     OptionEntry {
-        key: "native_text",
-        label: "STR_ENHANCED_NATIVE_TEXT",
-        get: |s| s.native_text,
-        set: |s, v| s.native_text = v,
+        key: "fx_quality",
+        label: "STR_ENHANCED_FX_QUALITY",
+        page: EFFECTS,
+        choices: &["STR_FX_QUALITY_LOW", "STR_FX_QUALITY_MEDIUM", "STR_FX_QUALITY_HIGH"],
+        get: |s| s.fx_quality.min(2),
+        set: |s, v| s.fx_quality = v.min(2),
         reload: Reload::Nothing,
     },
-    OptionEntry {
-        key: "smooth_ui",
-        label: "STR_ENHANCED_SMOOTH_UI",
-        get: |s| s.smooth_ui,
-        set: |s, v| s.smooth_ui = v,
-        reload: Reload::Art,
-    },
-    OptionEntry {
-        key: "widescreen",
-        label: "STR_ENHANCED_WIDESCREEN",
-        get: |s| s.widescreen,
-        set: |s, v| s.widescreen = v,
-        reload: Reload::Nothing,
-    },
-    OptionEntry {
-        key: "terrain_filter",
-        label: "STR_ENHANCED_TERRAIN_FILTER",
-        get: |s| s.terrain_filter,
-        set: |s, v| s.terrain_filter = v,
-        reload: Reload::Art,
-    },
-    OptionEntry { key: "msaa", label: "STR_ENHANCED_MSAA", get: |s| s.msaa, set: |s, v| s.msaa = v, reload: Reload::Nothing },
-    OptionEntry {
-        key: "smooth_camera",
-        label: "STR_ENHANCED_SMOOTH_CAMERA",
-        get: |s| s.smooth_camera,
-        set: |s, v| s.smooth_camera = v,
-        reload: Reload::Nothing,
-    },
-    OptionEntry {
-        key: "smooth_motion",
-        label: "STR_ENHANCED_SMOOTH_MOTION",
-        get: |s| s.smooth_motion,
-        set: |s, v| s.smooth_motion = v,
-        reload: Reload::Nothing,
-    },
-    OptionEntry {
-        key: "fx_scaler",
-        label: "STR_ENHANCED_FX_SCALER",
-        get: |s| s.fx_scaler,
-        set: |s, v| s.fx_scaler = v,
-        reload: Reload::Nothing,
-    },
-    OptionEntry {
-        key: "fx_scaler_sharp",
-        label: "STR_ENHANCED_FX_SCALER_SHARP",
-        get: |s| s.fx_scaler_sharp,
-        set: |s, v| s.fx_scaler_sharp = v,
-        reload: Reload::Nothing,
-    },
-    OptionEntry {
-        key: "fx_water",
-        label: "STR_ENHANCED_FX_WATER",
-        get: |s| s.fx_water,
-        set: |s, v| s.fx_water = v,
-        reload: Reload::Nothing,
-    },
-    OptionEntry {
-        key: "fx_terrain_light",
-        label: "STR_ENHANCED_FX_TERRAIN_LIGHT",
-        get: |s| s.fx_terrain_light,
-        set: |s, v| s.fx_terrain_light = v,
-        reload: Reload::Nothing,
-    },
-    OptionEntry {
-        key: "fx_sprite_shadows",
-        label: "STR_ENHANCED_FX_SPRITE_SHADOWS",
-        get: |s| s.fx_sprite_shadows,
-        set: |s, v| s.fx_sprite_shadows = v,
-        reload: Reload::Nothing,
-    },
-    OptionEntry { key: "fx_sky", label: "STR_ENHANCED_FX_SKY", get: |s| s.fx_sky, set: |s, v| s.fx_sky = v, reload: Reload::Nothing },
-    OptionEntry {
-        key: "fx_tilt_shift",
-        label: "STR_ENHANCED_FX_TILT_SHIFT",
-        get: |s| s.fx_tilt_shift,
-        set: |s, v| s.fx_tilt_shift = v,
-        reload: Reload::Nothing,
-    },
-    OptionEntry {
-        key: "fx_grading",
-        label: "STR_ENHANCED_FX_GRADING",
-        get: |s| s.fx_grading,
-        set: |s, v| s.fx_grading = v,
-        reload: Reload::Nothing,
-    },
-    OptionEntry {
-        key: "fx_bloom",
-        label: "STR_ENHANCED_FX_BLOOM",
-        get: |s| s.fx_bloom,
-        set: |s, v| s.fx_bloom = v,
-        reload: Reload::Nothing,
-    },
+    tick!("fx_sky", "STR_ENHANCED_FX_SKY", ATMOSPHERE, fx_sky),
+    tick!("fx_time_of_day", "STR_ENHANCED_FX_TIME_OF_DAY", ATMOSPHERE, fx_time_of_day),
+    tick!("fx_clouds", "STR_ENHANCED_FX_CLOUDS", ATMOSPHERE, fx_clouds),
+    tick!("fx_haze", "STR_ENHANCED_FX_HAZE", ATMOSPHERE, fx_haze),
+    tick!("fx_rain", "STR_ENHANCED_FX_RAIN", ATMOSPHERE, fx_rain),
+    tick!("fx_mist", "STR_ENHANCED_FX_MIST", ATMOSPHERE, fx_mist),
+    tick!("fx_tilt_shift", "STR_ENHANCED_FX_TILT_SHIFT", ATMOSPHERE, fx_tilt_shift),
+    tick!("fx_grading", "STR_ENHANCED_FX_GRADING", ATMOSPHERE, fx_grading),
+    tick!("fx_bloom", "STR_ENHANCED_FX_BLOOM", ATMOSPHERE, fx_bloom),
 ];
 
 // ---- the settings file ------------------------------------------------------------------------------------------------------
@@ -294,34 +289,77 @@ pub fn init(force: Option<bool>) {
     set(s);
     crate::fx::sync(&s);
     if s.enabled {
-        let on: Vec<&str> = OPTIONS.iter().filter(|o| (o.get)(&s)).map(|o| o.key).collect();
+        let on: Vec<&str> = OPTIONS.iter().filter(|o| (o.get)(&s) != 0).map(|o| o.key).collect();
         println!("Enhanced graphics: on ({})", on.join(", "));
     }
 }
 
 // ---- the Preferences screen -------------------------------------------------------------------------------------------------
 
-/// The lines of the Enhanced graphics checkbox box: the heading, the master switch, then every option.
-pub fn popup_lines() -> Vec<String> {
+/// The options on a page, in order.
+pub fn page_options(page: u8) -> impl Iterator<Item = &'static OptionEntry> {
+    OPTIONS.iter().filter(move |o| o.page == page)
+}
+
+/// The most option lines a page has (every page's box is made this tall, so the box keeps its size when the tab changes).
+fn most_options() -> usize {
+    (0..PAGES.len() as u8).map(|p| page_options(p).count()).max().unwrap_or(0)
+}
+
+/// An option's line as shown: its text, with the current value of a setting with choices.
+fn option_line(o: &OptionEntry, s: &Settings) -> String {
+    use sg_core::lang::{tr, trf};
+    match o.choices.get((o.get)(s) as usize) {
+        Some(v) => trf(o.label, &[("VALUE", &tr(v))]),
+        None => tr(o.label).to_string(),
+    }
+}
+
+/// Heading lines of the box above the options: the title, then two empty lines the page tabs are drawn on.
+pub const TAB_LINES: usize = 2;
+
+/// The lines of a page of the Enhanced graphics box: the heading, room for the tabs, the master switch, then the page's
+/// options, padded with empty lines to the longest page.
+pub fn popup_lines(page: u8, s: &Settings) -> Vec<String> {
     use sg_core::lang::tr;
-    let mut v = vec![tr("STR_ENHANCED_TITLE").to_string(), tr("STR_ENHANCED_MASTER").to_string()];
-    v.extend(OPTIONS.iter().map(|o| tr(o.label).to_string()));
+    let mut v = vec![tr("STR_ENHANCED_TITLE").to_string()];
+    v.extend((0..TAB_LINES).map(|_| String::new()));
+    v.push(tr("STR_ENHANCED_MASTER").to_string());
+    v.extend(page_options(page).map(|o| option_line(o, s)));
+    let n = 1 + TAB_LINES + 1 + most_options();
+    while v.len() < n {
+        v.push(String::new());
+    }
     v
 }
 
-/// The box's ticks for some settings: bit 0 the master switch, bit 1 + i option i.
-pub fn popup_checks(s: &Settings) -> u32 {
-    OPTIONS.iter().enumerate().fold(s.enabled as u32, |m, (i, o)| m | ((o.get)(s) as u32) << (i + 1))
+/// The widest line of every page (the box keeps one width whatever the page).
+pub fn popup_widest(s: &Settings) -> f32 {
+    let f = crate::popup_ui::CHOICE_FONT;
+    (0..PAGES.len() as u8).flat_map(|p| popup_lines(p, s)).map(|l| f.width(&l).round()).fold(0.0, f32::max)
 }
 
-/// The settings the box's ticks stand for.
-pub fn from_checks(m: u32) -> Settings {
-    let mut s = settings();
-    s.enabled = m & 1 != 0;
-    for (i, o) in OPTIONS.iter().enumerate() {
-        (o.set)(&mut s, m & 1 << (i + 1) != 0);
+/// The box's ticks on a page: bit 0 the master switch, bit 1 + i the page's option i.
+pub fn popup_checks(page: u8, s: &Settings) -> u32 {
+    page_options(page).enumerate().fold(s.enabled as u32, |m, (i, o)| m | (((o.get)(s) != 0) as u32) << (i + 1))
+}
+
+/// The page's lines that are settings with choices, drawn without a tick box (bit 1 + i).
+pub fn popup_plain(page: u8) -> u32 {
+    page_options(page).enumerate().filter(|(_, o)| !o.choices.is_empty()).fold(0, |m, (i, _)| m | 1 << (i + 1))
+}
+
+/// A click on option `k` of a page (0 the master switch): a tick is flipped, a setting with choices steps to the next.
+pub fn toggle(page: u8, k: usize, s: &mut Settings) {
+    if k == 0 {
+        s.enabled = !s.enabled;
+        return;
     }
-    s
+    if let Some(o) = page_options(page).nth(k - 1) {
+        let v = (o.get)(s);
+        let n = o.choices.len().max(2) as u8;
+        (o.set)(s, (v + 1) % n);
+    }
 }
 
 impl App {
@@ -338,7 +376,7 @@ impl App {
         // the shader effects follow their ticks (what the terrain's meshes depend on is rebuilt)
         self.fx_set(crate::fx::from_enhanced(&new));
         let art = |s: &Settings| {
-            let mut k: Vec<bool> = OPTIONS.iter().filter(|o| o.reload == Reload::Art).map(|o| s.enabled && (o.get)(s)).collect();
+            let mut k: Vec<bool> = OPTIONS.iter().filter(|o| o.reload == Reload::Art).map(|o| s.enabled && (o.get)(s) != 0).collect();
             k.push(s.enabled);
             k
         };
@@ -718,7 +756,7 @@ impl App {
     }
 
     /// How far the simulation is between its last tick and the next (0 to 1).
-    fn tick_fraction(&self) -> f32 {
+    pub(crate) fn tick_fraction(&self) -> f32 {
         let tick_s = sg_core::flight::TICK_MS as f64 / 1000.0;
         (self.tick_acc / tick_s).clamp(0.0, 1.0) as f32
     }
@@ -812,13 +850,30 @@ mod tests {
     use super::*;
 
     #[test]
-    fn checks_round_trip() {
+    fn pages_toggle() {
         let mut s = Settings::DEFAULT;
-        s.enabled = true;
         s.msaa = false;
-        set(s);
-        assert_eq!(from_checks(popup_checks(&s)), s);
-        set(Settings::DEFAULT);
+        // every option is on one page, and its tick is the bit the box shows
+        for p in 0..PAGES.len() as u8 {
+            for (i, o) in page_options(p).enumerate() {
+                let before = (o.get)(&s);
+                toggle(p, i + 1, &mut s);
+                assert_ne!((o.get)(&s), before, "{}", o.key);
+                if o.choices.is_empty() {
+                    assert_eq!(popup_checks(p, &s) >> (i + 1) & 1, ((o.get)(&s) != 0) as u32);
+                }
+            }
+            assert_eq!(popup_lines(p, &s).len(), popup_lines(0, &s).len());
+        }
+        toggle(ATMOSPHERE, 0, &mut s);
+        assert!(s.enabled);
+        // quality steps round its three values
+        let q = page_options(EFFECTS).position(|o| o.key == "fx_quality").unwrap() + 1;
+        let mut t = Settings::DEFAULT;
+        for want in [2, 0, 1] {
+            toggle(EFFECTS, q, &mut t);
+            assert_eq!(t.fx_quality, want);
+        }
     }
 
     #[test]

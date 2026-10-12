@@ -1,6 +1,39 @@
 # Playing the club
 
-Run `opensgolf --game "../game/Program_Files_(ENGLISH)"`. It opens on the title menu, drawn from the disc's own Interface art with the game's font: Start New Game (Standard) or Sandbox Mode opens the property chooser, and picking a property starts a course on that property's theme. A property is paid for out of the §100,000 starting funds (sandbox: unlimited). Esc goes back, and from the course returns to the menu. Continue Saved Game opens Load Previous Game (the disc's Title_LoadGame art): the saved games in a list of 16 rows with the scroll arrows, a click on a row shows its holes, par, yards, cash, ratings, theme pack, designer and course record on the left, the tick loads it, the folder deletes it after a yes/no box, the arrow goes back; saves whose names start with '&' are listed as autosaves. Select A Theme opens Select a Theme Pack (the folders under Themes with what each holds); a click on a row picks it, the tick keeps it, the arrow or a key goes back to Standard. A click on the logo shows the credits (credits.txt from the game folder over creditsbckgrd.pcx; a click or key ends them).
+## Your own SimGolf files
+
+Double-click OpenSGolf (`opensgolf.exe`, `OpenSGolf.app`, the AppImage); no options are needed. It looks for your copy of
+SimGolf in this order and plays on the first folder that holds the game's data (`Interface/TitleBASE.pcx`, `Data/Textures`,
+`Flics` and `Themes`, names in any case; a folder above it such as the copied CD with its `Program_Files_(ENGLISH)` is
+followed down up to two levels):
+
+1. `--game DIR` (for scripts and tests; it always wins);
+2. the folder you chose in the game, saved as `game_dir` in `settings.json` in the save folder, while it still holds the files;
+3. a `SimGolf` or `game` folder next to the program (and, on macOS, in `OpenSGolf.app/Contents/Resources` or beside the
+   app; beside the AppImage file);
+4. `game` in the save folder, then the usual install places: Windows `Program Files (x86)` / `Program Files` with
+   `Maxis\SimGolf`, `EA GAMES\SimGolf` or `Electronic Arts\SimGolf`, and `C:\SimGolf`; macOS `~/Games/SimGolf`, `~/SimGolf`,
+   `/Applications/SimGolf`; Linux `~/.local/share/opensgolf/game`, `~/SimGolf`, `~/Games/SimGolf` and a Wine install
+   (`~/.wine/drive_c/Program Files*/Maxis/SimGolf` or `EA GAMES/SimGolf`);
+5. `game` in the folder it was started from.
+
+With none found it plays on the free base set (opensgolf-free), and the first time the title screen says so next to its
+**Use my SimGolf files...** button (top left). That button, and the same line at the end of Preferences, opens the system's
+own folder picker (Windows and macOS dialogs, the desktop's XDG portal on Linux). A folder without the game's data is
+refused with a message naming what is not there; a good one is saved and OpenSGolf starts again on the original files (a
+real restart, so the original's art, sounds, fonts and tables load exactly as on a normal start; from Preferences during a
+game it asks first, as anything not saved is lost). On the original files the button reads **Use the free graphics**, which
+saves the free set as the base set (Preferences > Content's choice) and starts again. The browser version has its own
+picker on the page and no such button; on Android the button says which folder to copy the files to (see Android below).
+Test hook: `SG_PICK_FOLDER=DIR` takes DIR as the folder picked, right after start up (`SG_PICK_FOLDER=free` chooses the
+free graphics).
+
+A Windows release build is a windowed program (no console window); started from a console with options it writes its
+messages to that console. Screenshots (Shift+F6) go to the save folder as `opensgolf-shot.png`.
+
+## The title menu
+
+Start OpenSGolf (from a source build: `opensgolf --game "../game/Program_Files_(ENGLISH)"`). It opens on the title menu, drawn from the disc's own Interface art with the game's font: Start New Game (Standard) or Sandbox Mode opens the property chooser, and picking a property starts a course on that property's theme. A property is paid for out of the §100,000 starting funds (sandbox: unlimited). Esc goes back, and from the course returns to the menu. Continue Saved Game opens Load Previous Game (the disc's Title_LoadGame art): the saved games in a list of 16 rows with the scroll arrows, a click on a row shows its holes, par, yards, cash, ratings, theme pack, designer and course record on the left, the tick loads it, the folder deletes it after a yes/no box, the arrow goes back; saves whose names start with '&' are listed as autosaves. Select A Theme opens Select a Theme Pack (the folders under Themes with what each holds); a click on a row picks it, the tick keeps it, the arrow or a key goes back to Standard. A click on the logo shows the credits (credits.txt from the game folder over creditsbckgrd.pcx; a click or key ends them).
 
 For scripted runs (any of `--png`, `--course`, `--edit`, `--golfer`, `--sandbox`, `--follow`) the game skips the menu and opens on the demo course; `--screen menu|property|play` forces a screen. Add `--theme Desert` for another look there. `--property NAME` (or 0..15) starts a new game on that property straight away, and `--clock MS` fixes the value the exe's random generator is seeded from, so the same land comes back every run.
 
@@ -22,6 +55,13 @@ On the Add Buildings panel (or b for benches, Shift+B for a home site; Tab turns
 
 The lower left of the course screen now shows the game's own dock art (Interface/3mainLowerLeft.pcx). The three big round buttons open panels along the bottom: **Build Course** (terrain brushes, paths, raise and lower, each with its cost), **Add Buildings** (the amenities for the theme) and **People** (click to hire, right click to fire a club pro, ranger, groundskeeper or soda vendor). Click an item, then click the map. The small buttons zoom, rotate, open the course report, pause, and save the course. The keys are the original's (its F8 screen lists them): g f r s t w p b pick the green/tee, fairway, rough, sand, trees, water, path and bench tools (v the ravine), e the elevation tools, = and - raise and lower the ground under the pointer (Tab steps the elevation brush), h opens the hole being built; z and x zoom between the original's three levels, PageUp and Home turn the view a quarter (0 turns it back), the arrows scroll four tiles, 1 to 9 and Shift+1 to 9 jump to holes 1 to 18; Space drops the tool; Shift+P pause, Shift+T trees, Shift+N names, Shift+R routing map, Shift+W world map, Shift+J begin a tournament, Shift+C save the course for championship play, Shift+S and Shift+L save and load. The original has no game speed control; the port's own ] cycles normal, x2 and x4.
 
+System Functions → Preferences → *Keyboard controls...* (the port's own screen) lists every key the game takes, grouped:
+moving around the course, time, building, holes and messages, reports and maps, your pro and the golfers, saving and
+loading, pictures, and the keys that work everywhere, with the browser's and the Mac's stand-ins. Its pages turn with the
+Previous and Next buttons, Left and Right (or PageUp, PageDown, Space), or a click or tap in the box; Esc, Enter, the tick
+or a click outside the box close it. (The title menu has no Preferences, as in the original.) `--screen keys` opens it for
+stills, `SG_KEYS_PAGE=N` on page N (from 0).
+
 Messages appear at the top of the screen as in the original (the message window): a translucent strip with nobody speaking, or a framed box with the speaker's ball portrait, the newly unlocked building or an icon; a new message replaces the one showing, minor ones wait until it is gone, and Repeat Last Message (Information menu) brings the last one back. On Easy, during the first year, your pro gives advice in a line over his head, in the exe's words. Paused shows at the top centre. Golfer stories play as in the original: a pair that fits a story from your Themes folder gets it at the first tee, and its lines appear at the top as the two walk together (Shift+H hides them); good moods carry it to a Happy Ending, which unlocks a landmark. Special visitors (the Corporate CEO, the County commissioner, the Wealthy heiress) come once your ratings earn them; please them and they invest, approve a land expansion (the TRACTS FOR SALE screen opens) or donate a landmark. Donated and owned landmarks can be placed with the building tool. Story text is read from your disc at run time and is not stored in this project.
 
 ## Your pro (Gary Golf)
@@ -40,7 +80,7 @@ The course empties and a shotgun field starts: two players on each hole, your pr
 
 ## Play a Championship
 
-In a game, Shift+F7 saves your course for championship play and Shift+F8 saves your pro (into a `Championship` folder next to your saves; pro files use the exe's layout, so the disc's `Themes/Championship/Gary Golf.pro` is listed too). From the title menu, **Play a Championship** lets you pick a difficulty, then a course (Select Championship Course, the Load screen's layout with the course's numbers on the left) and a pro (Pick A Pro: portrait, the ten skills as +N0%, the signature saying), then plays a tournament on it straight away: $100,000 in cash, June, every preparation item taken, the event named by difficulty (SGA Qualifying School to SGA Open Championship), no wages and no accomplishments. When the results are closed you are back at the title menu; nothing is saved. Scripted runs: `--champ COURSE.sgch PRO.pro`, and `--edit "x"` saves the course.
+In a game, Shift+C (or System Functions, *Save course for Championship*) saves your course for championship play and System Functions, *Save your pro for Championship* saves your pro (into a `Championship` folder next to your saves; pro files use the exe's layout, so the disc's `Themes/Championship/Gary Golf.pro` is listed too). From the title menu, **Play a Championship** lets you pick a difficulty, then a course (Select Championship Course, the Load screen's layout with the course's numbers on the left) and a pro (Pick A Pro: portrait, the ten skills as +N0%, the signature saying), then plays a tournament on it straight away: $100,000 in cash, June, every preparation item taken, the event named by difficulty (SGA Qualifying School to SGA Open Championship), no wages and no accomplishments. When the results are closed you are back at the title menu; nothing is saved. Scripted runs: `--champ COURSE.sgch PRO.pro`, and `--edit "x"` saves the course.
 
 ## Life on the course
 
@@ -60,7 +100,21 @@ In a game, Shift+F7 saves your course for championship play and Shift+F8 saves y
 
 ## Reports (F keys)
 
-As in the original: **F1** Course Report, **F2** Player Comments (the twenty most frequent comments over all holes, with the hole where each is heard most and how often per tee shot; recent months count more, as every hole's statistics lose an eighth each month), **F3** Histograph (skill, cash, fun and membership month by month, with the event log's highlights), **F4** Financial Report (the ledger by year: green fees, home sites, food and drink, course building, facilities, salaries, maintenance and interest, other, total), **F5** Routing Map (the course in miniature with each hole's tee-to-green line; tabs for course routing (par, yards, minutes), employees and their work areas, course aura (where golfers were happy or unhappy) and home site value), **F7** SGA Evaluation, **F8** Keyboard Shortcuts, **F9** Membership Roster, **F10** Professional Accomplishments. F6 takes a screenshot. `--screen comments|histograph|finance|routing|shortcuts` opens them for stills. On the routing map, left click selects a hole and right click moves it to another place in the order (the holes between shift, golfers follow; the exe allows this in every tab). **F6** opens the world map to move the club to another property: cash, the calendar and your pro's career go along and the new course starts afresh (Shift+F6 takes a screenshot).
+As in the original: **F1** Course Report, **F2** Player Comments (the twenty most frequent comments over all holes, with the hole where each is heard most and how often per tee shot; recent months count more, as every hole's statistics lose an eighth each month), **F3** Histograph (skill, cash, fun and membership month by month, with the event log's highlights), **F4** Financial Report (the ledger by year: green fees, home sites, food and drink, course building, facilities, salaries, maintenance and interest, other, total), **F5** Routing Map (the course in miniature with each hole's tee-to-green line; tabs for course routing (par, yards, minutes), employees and their work areas, course aura (where golfers were happy or unhappy) and home site value), **F7** SGA Evaluation, **F8** Keyboard Shortcuts, **F9** Membership Roster, **F10** Professional Accomplishments. `--screen comments|histograph|finance|routing|shortcuts` opens them for stills. On the routing map, left click selects a hole and right click moves it to another place in the order (the holes between shift, golfers follow; the exe allows this in every tab). **F6** opens the world map to move the club to another property: cash, the calendar and your pro's career go along and the new course starts afresh (Shift+F6 takes a screenshot).
+
+## Keys in the browser and on a Mac
+
+Every key of the original works in the browser too: the page keeps the browser from acting on the keys the game uses
+(F1 help, F3 and / find, F5 reload, F6 and F7, F10, Tab, Backspace, Space and the arrows, PageUp and Home scrolling the
+page), and a key pressed after the page lost the game's focus goes to the game and gives it the focus back. Cmd
+shortcuts stay the browser's; the game needs none. F11 (full screen) and F12 (developer tools) are left to the browser.
+
+The port's own stand-ins, in the browser and on the desktop: **Alt + 1 to 9 and 0** (on a Mac **Option**, ⌥) open what
+F1 to F10 open, for keyboards whose function keys need Fn (Macs, most laptops); Ctrl with a digit does the same where
+the browser lets it (on a Mac it always does; elsewhere Ctrl + digit may switch tabs). Shift goes with them as with the
+F keys (Shift + Alt + 6 is Shift+F6). A Mac keyboard has no PageUp or Home: **fn + ↑** is PageUp and **fn + ←** is Home
+(turn the view), or use the dock's turn buttons. In the browser a screenshot (Shift+F6), a SimFoto and a great shot's
+photo (F10) are downloaded; saved games and the accomplishment snapshots stay in the browser's storage.
 
 Content packs (mods, docs/MODDING.md): System Functions, Preferences, *Content packs...* lists the installed packs; switch them on or off and order the mods there (Up and Down, or PageUp and PageDown on the picked row). The choices are saved in `settings.json` at once and take effect the next time the game starts. `--screen content` opens the screen for stills.
 
@@ -92,7 +146,8 @@ Installing the APK (sideloading) is described in the README, [INSTALL.md](INSTAL
 full screen, starts on the free base set, and keeps its saves, settings, content packs and championship files in its private
 storage (`Context.getFilesDir()`, removed when the app is uninstalled). To play with your own copy of SimGolf, copy the
 game's `Program_Files_(ENGLISH)` folder to `Android/data/org.opensgolf.game/files/game/` on the device's shared storage (the
-app creates `game/` the first time it starts; the folder's contents straight in `game/` work too) and restart the app. On
+app creates `game/` the first time it starts; the folder's contents straight in `game/` work too) and restart the app (the
+title screen's **Where do my SimGolf files go?** shows the folder). On
 Android 11 and newer the phone's own file manager may hide `Android/data`; copy from a computer over USB instead.
 The back button works as Esc: it closes the screen that is open, on the course opens System Functions (save, load, quit),
 on the title screens goes back to the title menu, and on the title menu leaves the game. Sound goes through the phone's
@@ -103,12 +158,16 @@ assets and read player packs from the external files folder).
 
 ## Enhanced graphics
 
-System Functions → Preferences → *Enhanced graphics...* (the port's own, not in the original; docs/ENHANCED.md) turns on a
-way of drawing the game for large and wide screens: sharp text, smooth interface art, the HUD at the window's corners on a
+System Functions → Preferences → the *Enhanced graphics* tick, or *Enhanced graphics settings...* for the details (the port's own, not in the original; docs/ENHANCED.md) turns on a
+way of drawing the game for large and wide screens: sharp text, smooth interface art (with smooth outlines for the colour-keyed buttons, icons and sprites instead of stair steps), the HUD at the window's corners on a
 wide window, sharper and anti-aliased course, a smooth camera and smooth motion. Each part has its own tick; Classic stays
 the default. With the smooth camera the mouse wheel and a pinch zoom continuously between the three levels (z, x and the
 zoom buttons still step to the next level), turns are animated, arrow-key scrolls glide and a dragged course coasts to a
-stop. `--enhanced` and `--classic-render` switch it for one run. Test hooks: `--edit M:5` opens the screen;
+stop. The screen has three pages, chosen with the tabs along its top (a click or a tap; Left, Right or Tab on the
+keyboard): *Display* (the master switch and the options above), *Effects* (the shader effects, cast shadows, the balls'
+trail and impacts, and the effects' quality, which a click steps through low, medium and high) and *Atmosphere* (sky, time
+of day, cloud shadows, haze, rain, mist and the post-processing). The master switch heads every page. `--enhanced` and
+`--classic-render` switch it for one run. Test hooks: `--edit M:5` opens the screen (`M:5,P` on page P, 0 to 2);
 `SG_POINTER=x,y` moves the pointer and `SG_CLICK=x,y[;x,y...]` clicks, in window pixels, after the first frame of a
 scripted still (for checking where clicks land on a wide window).
 
@@ -117,10 +176,24 @@ scripted still (for checking where clicks land on a wide window).
 The effects are ticks on the same screen; `--fx` turns on only the optional shader effects for one run (docs/ENHANCED.md, "Effects"): smoother magnified sprites and interface art,
 animated water, terrain light with occlusion and shadows, a sky beyond the map, colour grading, bloom and vignette.
 `--fx-set LIST` picks options (`scaler=off|sharp|edge`, `water`, `lighting`, `occlusion`, `shadows`, `sprite-shadows`,
-`sky`, `tilt-shift`, `grading`, `bloom`, `vignette` = on/off, `quality=low|medium|high`), `--fx-list` prints them, and
-`OPENSGOLF_FX` does the same from the environment. Without them the game looks exactly as before. Test hooks: `SG_FX_BENCH=N`
-with `--png` prints the frame time over N frames, `SG_FX_LOG=1` the light map's build time, `SG_FX_DUMP=FILE` writes the
-light map, `SG_FX_SOFT=sharp,edge` overrides the scaler's softness (texels).
+`sky`, `tilt-shift`, `grading`, `bloom`, `vignette`, `cast-shadows`, `time-of-day`, `clouds`, `haze`, `rain`, `mist`,
+`ball-trail`, `ball-impacts` = on/off, `quality=low|medium|high`), `--fx-list` prints them, and `OPENSGOLF_FX` does the
+same from the environment. Without them the game looks exactly as before. Test hooks: `SG_FX_BENCH=N` with `--png` prints
+the frame time over N frames, `SG_FX_LOG=1` the light map's build time and each ball's landing (where, on what, at which
+tick), `SG_FX_DUMP=FILE` writes the light map, `SG_FX_SOFT=sharp,edge` overrides the scaler's softness (texels),
+`SG_FX_HOUR=P` holds the time of day at phase P (0 dawn, 0.15 morning, 0.5 midday, 0.85 golden hour, 0.89 sunset, 0.95
+dusk) and `SG_FX_RAIN=1` (or `0`) makes every day wet (dry) while rain is on.
+
+### Time of day and weather
+
+With *Time of day* on, one game month is one day of light: the month opens in the morning, has a long midday in the
+original's light, a golden afternoon, a sunset and a short blue dusk, then the next month dawns. The sun swings round the
+front of the view, so shadows lengthen sideways rather than down the screen, and the course never gets darker than an
+easy-to-read dusk; the interface is not touched. *Rain* wets about one day in four (never on desert or tropical courses, more on the
+links), the same days whenever the save is loaded; the light dims and the shadows fade while it rains. *Mist* lies in
+hollows and over water, thick at dawn and gone by late morning with the time of day (a light mist all day without it).
+*Cloud shadows* drift over the course, *haze* pales the far (upper) part of the view, more when zoomed out. None of these
+changes the game: golfers play the same in rain or at dusk.
 
 ## Language
 

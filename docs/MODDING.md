@@ -227,7 +227,7 @@ scripts fail ten times is stopped for the session. The example is `packs/example
 **done** (crates/sg-core/src/index.rs, the game side in crates/simgolf/src/content.rs and net.rs). An index file
 (`index.json`, docs/CONTENT_INDEX.md) lists packs with id, name, version, kind, licence, download address, size and SHA-256
 checksum. **Preferences > Content > Find more...** reads the index at the address in `settings.json`
-(`"content_index_url"`; empty by default, and the screen says how to set it), lists the packs the player does not have (or
+(`"content_index_url"`; by default the community index at github.com/crspytopgn/opensgolf-content), lists the packs the player does not have (or
 has in an older version), and downloads the one picked into the save folder's `packs` as `<id>.zip` after checking its
 size, checksum, and that its pack.toml has the index's id and version. An older .zip of the pack there is replaced. New
 packs are off until switched on, and take effect at the next start.

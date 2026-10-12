@@ -10,6 +10,9 @@
 
 // UI drawing takes source and destination rectangles as plain numbers; index loops mirror the original's tables.
 #![allow(clippy::too_many_arguments, clippy::needless_range_loop)]
+// Windows: a release build is a windowed program, so a double-click opens no console window; started from a console with
+// options it writes its messages there (attach_console).
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 #[cfg(target_os = "android")]
 mod android;
@@ -19,15 +22,21 @@ mod champ_ui;
 mod content;
 mod cursor_ui;
 mod cust_ui;
+mod edges;
 mod enhanced;
 mod files_ui;
 mod fx;
+mod fx_ball;
 mod fx_glsl;
+mod fx_light;
+mod fx_shadow;
+mod gamefiles;
 mod gfx;
 mod hd;
 mod holemarks;
 mod hud_ui;
 mod info_ui;
+mod keys_ui;
 mod language;
 mod member_panel;
 mod message_ui;
@@ -60,6 +69,8 @@ use std::sync::Arc;
 
 struct Options {
     game_dir: PathBuf,
+    /// How the game folder was found (--game, the saved choice, a usual place, or not at all).
+    game_how: gamefiles::How,
     theme: usize,
     seed: u32,
     win_w: i32,
@@ -122,20 +133,11 @@ fn ints(s: &str) -> Vec<i32> {
     v
 }
 
-/// Where the original game's files are looked for when --game is not given. In a browser the page puts the player's game
-/// folder at "game" (web/opensgolf.js); on Android it is the app's external files folder (android.rs).
-fn default_game_dir() -> PathBuf {
-    #[cfg(target_os = "android")]
-    {
-        android::game_dir()
-    }
-    #[cfg(not(target_os = "android"))]
-    PathBuf::from(if cfg!(target_arch = "wasm32") { "game" } else { "game/Program_Files_(ENGLISH)" })
-}
-
 fn parse_args() -> Options {
+    let mut given_game = None;
     let mut o = Options {
-        game_dir: default_game_dir(),
+        game_dir: PathBuf::new(),
+        game_how: gamefiles::How::NotFound,
         theme: 0,
         seed: 7,
         win_w: 1280,
@@ -182,7 +184,7 @@ fn parse_args() -> Options {
             args.get(i).cloned().unwrap_or_default()
         };
         match a {
-            "--game" => o.game_dir = PathBuf::from(next()),
+            "--game" => given_game = Some(PathBuf::from(next())),
             "--theme" => {
                 let t = next().to_lowercase();
                 if let Some(k) = THEMES.iter().position(|n| n.to_lowercase() == t) {
@@ -247,6 +249,8 @@ fn parse_args() -> Options {
                 println!("{USAGE}");
                 std::process::exit(0);
             }
+            // older macOS hands a program started from the Finder its process serial number
+            a if a.starts_with("-psn_") => {}
             _ => {
                 eprintln!("{USAGE}");
                 std::process::exit(2);
@@ -254,6 +258,8 @@ fn parse_args() -> Options {
         }
         i += 1;
     }
+    // the player's own SimGolf files: --game, else the folder chosen in the game, else the usual places (gamefiles.rs)
+    (o.game_dir, o.game_how) = gamefiles::find(given_game);
     o
 }
 
@@ -271,6 +277,11 @@ struct Stage {
     mouse: (f32, f32),
     shift: bool,
     ctrl: bool,
+    /// A key just opened a name box (Shift+S the Save dialog): the character that key types comes next and is not the
+    /// name's (it put an "S" in front of every typed save name).
+    swallow_char: bool,
+    /// The wheel's turn not yet spent on a zoom step (in notches) and the clock of its last event.
+    wheel: (f32, f64),
     pause_toggle: bool,
     shown_version: u32,
     touch: touch::Touch,
@@ -371,6 +382,11 @@ fn open_screen(app: &mut App, screen: Option<&str>) {
         }
         Some("shortcuts") if app.ui_ok => app.screen = Screen::Shortcuts,
         Some("content") if app.ui_ok => app.open_content(),
+        // SG_KEYS_PAGE=N shows page N (from 0) of Preferences > Keyboard controls
+        Some("keys") if app.ui_ok => {
+            app.open_keys(Screen::Play);
+            app.keys_page = std::env::var("SG_KEYS_PAGE").ok().and_then(|v| v.parse().ok()).unwrap_or(0);
+        }
         Some("goals") if app.ui_ok => app.open_goals(),
         Some("content-index") if app.ui_ok => {
             app.open_content();
@@ -691,14 +707,20 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
             b'x' => app.save_championship_course(),
             b'q' => app.save_championship_pro(),
             b'A' => app.auto_aim = 1, // scripted runs: the pro aims every full shot at the pin
-            b'M' => app.open_popup(match at(0) {
-                0 => popup_ui::PopupKind::Info,
-                1 => popup_ui::PopupKind::System,
-                2 => popup_ui::PopupKind::Prefs,
-                4 => popup_ui::PopupKind::Retire,
-                5 => popup_ui::PopupKind::Enhanced,
-                _ => popup_ui::PopupKind::LandOffer,
-            }),
+            b'M' => {
+                app.open_popup(match at(0) {
+                    0 => popup_ui::PopupKind::Info,
+                    1 => popup_ui::PopupKind::System,
+                    2 => popup_ui::PopupKind::Prefs,
+                    4 => popup_ui::PopupKind::Retire,
+                    5 => popup_ui::PopupKind::Enhanced,
+                    _ => popup_ui::PopupKind::LandOffer,
+                });
+                // M:5,P opens the Enhanced graphics box on page P
+                if let Some(p) = app.popup.as_mut().filter(|_| v.len() >= 2) {
+                    p.set_page(at(1).clamp(0, enhanced::PAGES.len() as i32 - 1) as u8);
+                }
+            }
             b'm' if v.len() >= 2 => app.move_hole(at(0) as usize, at(1) as usize),
             b'a' if v.len() >= 3 => {
                 // test hook: an animal of kind v[2] and a follower at x,y
@@ -772,11 +794,19 @@ impl Stage {
         let mut g = Gfx::new();
         // the content packs first: their art, sounds and data replace the game's before anything is read (an App deals
         // its first property offer from the data when it is made)
-        let content = content::startup(&o.game_dir, o.base.as_deref());
+        gamefiles::set_headless(o.png_out.is_some());
+        let mut content = content::startup(&o.game_dir, o.base.as_deref());
         let mut app = match o.clock {
             Some(c) => App::with_clock(o.game_dir.clone(), c),
             None => App::new(o.game_dir.clone()),
         };
+        println!("game folder: {} ({:?})", o.game_dir.display(), o.game_how);
+        // nothing found anywhere (no --game): no complaint about a folder the player never named, but once a friendly hint
+        // on the title screen of how to use the original files (gamefiles.rs)
+        if o.game_how != gamefiles::How::Given && content.forced_base.is_some() && cfg!(not(target_arch = "wasm32")) {
+            content.notice = None;
+            app.free_hint = cfg!(not(target_os = "android")) && gamefiles::take_hint();
+        }
         app.content = content;
         app.theme = o.theme;
         app.seed = o.seed;
@@ -988,6 +1018,15 @@ impl Stage {
         if let Some(msg) = app.content.notice.take() {
             app.show_toast(&msg);
         }
+        // the program started again on the graphics the player chose (gamefiles.rs)
+        if let Some(msg) = gamefiles::take_notice() {
+            app.show_toast(&msg);
+        }
+        // test hook: SG_PICK_FOLDER=DIR takes DIR as the folder picked in "Use my SimGolf files..." ("free": Use the free
+        // graphics), as if chosen on the title screen
+        if std::env::var_os(gamefiles::PICK_ENV).is_some() {
+            app.choose_game_folder();
+        }
         Stage {
             g,
             app,
@@ -1003,6 +1042,8 @@ impl Stage {
             mouse: (0.0, 0.0),
             shift: false,
             ctrl: false,
+            swallow_char: false,
+            wheel: (0.0, 0.0),
             pause_toggle: false,
             shown_version: 0,
         }
@@ -1030,6 +1071,8 @@ impl Stage {
         if k == usize::MAX {
             return; // refused or toggled: the popup stays
         }
+        // the Enhanced graphics box's ticks, across its pages
+        let enh = self.app.popup.as_ref().map(|p| p.enh).unwrap_or_else(enhanced::settings);
         self.app.close_popup();
         use popup_ui::PopupKind;
         match kind {
@@ -1089,7 +1132,7 @@ impl Stage {
             },
             // Preferences > Enhanced graphics: the ticks become the settings (enhanced.rs)
             PopupKind::Enhanced => {
-                if self.app.apply_enhanced(&mut self.g, enhanced::from_checks(k as u32)) {
+                if self.app.apply_enhanced(&mut self.g, enh) {
                     self.app.ui_ok &= load_art(&mut self.app, &mut self.g);
                 }
             }
@@ -1115,8 +1158,19 @@ impl Stage {
                 if self.app.switch_hd(&mut self.g, m & 16 != 0) {
                     self.app.ui_ok &= load_art(&mut self.app, &mut self.g);
                 }
+                // the port's own Enhanced graphics tick: its master switch, the options under it kept
+                let mut enh = enhanced::settings();
+                enh.enabled = m & 1 << popup_ui::PREFS_ENHANCED_ON != 0;
+                if self.app.apply_enhanced(&mut self.g, enh) {
+                    self.app.ui_ok &= load_art(&mut self.app, &mut self.g);
+                }
                 if m & 1 << popup_ui::PREFS_ENHANCED != 0 && m & 1 << popup_ui::PREFS_CONTENT == 0 {
                     self.app.open_popup(PopupKind::Enhanced);
+                }
+                // the port's own Keyboard controls line (keys_ui.rs)
+                if m & 1 << popup_ui::PREFS_KEYS != 0 {
+                    let back = self.app.screen;
+                    self.app.open_keys(back);
                 }
                 let sound = m & 8 != 0;
                 if sound == self.app.mute {
@@ -1129,6 +1183,12 @@ impl Stage {
                         self.app.title_music = -1;
                     }
                     self.app.music_screen = None;
+                }
+                // the port's own "Use my SimGolf files..." line, after the ticks are kept (gamefiles.rs)
+                if m & 1 << popup_ui::PREFS_FILES_FLAG != 0 {
+                    if let Some((a, _)) = self.app.files_option() {
+                        self.app.files_action_in_game(a);
+                    }
                 }
             }
         }
@@ -1264,6 +1324,12 @@ impl Stage {
             if hit < 0 && Rect::new(168.0, 198.0, 472.0, 176.0).has(vx, vy) {
                 hit = 6;
             }
+            // the port's own: "Use my SimGolf files..." / "Use the free graphics" (gamefiles.rs)
+            if let Some((_, label)) = app.files_option() {
+                if gamefiles::files_button_rect(label).has(vx, vy) {
+                    hit = gamefiles::FILES_HOVER;
+                }
+            }
         } else {
             hit = app.world_hit(vx, vy);
         }
@@ -1308,7 +1374,13 @@ impl Stage {
                 }
                 3 => app.open_themes(),
                 6 => app.open_credits(),
-                _ => window::order_quit(),
+                gamefiles::FILES_HOVER => {
+                    if let Some((a, _)) = app.files_option() {
+                        app.hover = -1;
+                        app.files_action(a);
+                    }
+                }
+                _ => quit_game(),
             }
         } else {
             app.world_click(&mut self.g, hit);
@@ -1407,7 +1479,11 @@ impl Stage {
                     app.tool = 4;
                     app.build_idx = sg_core::land::K_HOME_SITE as usize;
                 }
-                KeyCode::F6 if self.screenshot(&PathBuf::from("opensgolf-shot.png")) => println!("saved opensgolf-shot.png"),
+                // into the save folder: an app started from the Finder or a desktop icon has "/" or a read-only folder
+                // as its working directory
+                KeyCode::F6 if self.screenshot(&save_dir().join("opensgolf-shot.png")) => {
+                    println!("saved {}", save_dir().join("opensgolf-shot.png").display())
+                }
                 _ => {}
             }
             return;
@@ -1420,7 +1496,7 @@ impl Stage {
                     app.open_popup(popup_ui::PopupKind::System);
                     app.hover = -1;
                 } else {
-                    window::order_quit();
+                    quit_game();
                 }
             }
             // Space drops the tool and the selected golfer
@@ -1554,6 +1630,7 @@ impl Stage {
         self.g.ctx.begin_pass(target, clear);
         enhanced::begin_frame();
         app.camera_frame(app.clock);
+        app.count_exe_frames();
         // the title screens set Klepto ITC (difficulty, the file lists and Pick A Pro, the theme packs); the rest of the game
         // draws in Manual SSi and Arial
         let title = app.ui_ok && matches!(app.screen, Screen::Menu | Screen::Difficulty | Screen::Files | Screen::Themes);
@@ -1601,7 +1678,7 @@ impl Stage {
             app.draw_scenarios(&mut self.g);
         } else {
             // with the effects' post-processing the course is drawn offscreen and composited before the interface (fx.rs)
-            let post = fx::active() && app.fx_world_begin(&mut self.g);
+            let post = fx::active() && app.fx_world_begin(&mut self.g, target);
             app.render_world(&mut self.g);
             if post {
                 app.fx_world_end(&mut self.g, target);
@@ -1650,6 +1727,7 @@ impl Stage {
                 Screen::Routing => app.draw_routing(&mut self.g),
                 Screen::Shortcuts => app.draw_shortcuts(&mut self.g),
                 Screen::Content => app.draw_content(&mut self.g),
+                Screen::Keys => app.draw_keys(&mut self.g),
                 Screen::Goals => app.draw_goals(&mut self.g),
                 Screen::HoleStats => app.draw_hole_stats(&mut self.g),
                 Screen::BestScores => app.draw_best_scores(&mut self.g),
@@ -1659,6 +1737,7 @@ impl Stage {
             }
             app.draw_analysis(&mut self.g);
         }
+        self.app.draw_notice(&mut self.g);
         self.draw_touch_buttons();
         self.g.flush();
         self.g.ctx.end_render_pass();
@@ -2022,7 +2101,19 @@ impl EventHandler for Stage {
         self.mouse = (x, y);
         self.app.info.pointer = self.app.view.to_virtual(x, y);
         let (vx, vy) = self.app.view.to_virtual(x, y);
+        if self.app.notice.is_some() {
+            self.app.notice_pointer(vx, vy, false);
+            return;
+        }
         self.app.card_pointer(vx, vy);
+        if self.app.screen != Screen::Play {
+            // the pointer has left the dock and the panel for another screen (the Information menu, a report, a question):
+            // the button it was on is no longer lit and its tooltip not shown, which otherwise stayed at the old pointer
+            // over the report or under the menu
+            self.app.dock_hover = -1;
+            self.app.pstate.mouse = (-1000.0, -1000.0);
+            self.app.panel_hover = -1;
+        }
         if self.app.screen == Screen::Land {
             let (vx, vy) = self.app.view.to_virtual(x, y);
             self.app.land_pointer(vx, vy);
@@ -2068,17 +2159,41 @@ impl EventHandler for Stage {
 
     fn mouse_wheel_event(&mut self, _x: f32, y: f32) {
         if (self.app.screen == Screen::Play || !self.app.ui_ok) && y != 0.0 && self.app.great_shot.is_none() {
+            // y is in notches (the browser's pixels are turned into notches by web/opensgolf.js); a trackpad sends many
+            // small turns
             if enhanced::smooth_camera() {
                 // Enhanced: a notch is a quarter of a doubling, between the original's closest and farthest levels
                 self.app.zoom_by((y * 0.25).clamp(-0.5, 0.5));
             } else {
-                self.app.zoom_step(y > 0.0);
+                // a step to the next of the original's three levels for the first turn of a gesture (a pause of a quarter
+                // second or a change of direction starts one), and another for each further notch's worth: a mouse
+                // notch is a step as before, and a trackpad's stream of small turns no longer runs through every level
+                let t = self.app.clock;
+                let (acc, last) = self.wheel;
+                if t - last > 0.25 || (acc != 0.0 && (acc > 0.0) != (y > 0.0)) {
+                    self.app.zoom_step(y > 0.0);
+                    self.wheel = (0.0, t);
+                } else {
+                    let acc = acc + y;
+                    if acc.abs() >= 1.0 {
+                        self.app.zoom_step(acc > 0.0);
+                        self.wheel = (0.0, t);
+                    } else {
+                        self.wheel = (acc, t);
+                    }
+                }
             }
         }
     }
 
     fn mouse_button_down_event(&mut self, button: MouseButton, x: f32, y: f32) {
         self.mouse = (x, y);
+        // a notice (gamefiles.rs) takes the click
+        if self.app.notice.is_some() {
+            let (vx, vy) = self.app.view.to_virtual(x, y);
+            self.app.notice_pointer(vx, vy, button == MouseButton::Left);
+            return;
+        }
         if self.app.great_shot_dismiss() || self.app.simfoto_dismiss() {
             return;
         }
@@ -2127,6 +2242,9 @@ impl EventHandler for Stage {
                 if button == MouseButton::Left {
                     self.app.content_click(vx, vy);
                 }
+            } else if self.app.screen == Screen::Keys {
+                let (vx, vy) = self.app.view.to_virtual(x, y);
+                self.app.keys_click(vx, vy, button == MouseButton::Right);
             } else if self.app.screen == Screen::Scenarios {
                 let (vx, vy) = self.app.view.to_virtual(x, y);
                 if button == MouseButton::Left {
@@ -2219,9 +2337,45 @@ impl EventHandler for Stage {
         // Android's back button (miniquad hands it over as Back): Esc, which closes a screen, goes back to the menu and
         // on the menu quits, as the back button does in Android apps
         let k = if k == KeyCode::Back { KeyCode::Escape } else { k };
+        // the port's own: Alt (Option on a Mac) or Ctrl with 1 to 9 and 0 stand for F1 to F10, for keyboards whose function
+        // keys need Fn (Macs, laptops) or act on the browser
+        let k = if mods.alt || mods.ctrl { fkey_of_digit(k).unwrap_or(k) } else { k };
         self.shift = mods.shift || k == KeyCode::LeftShift || k == KeyCode::RightShift;
         self.app.shift_held = self.shift;
         self.ctrl = mods.ctrl || k == KeyCode::LeftControl || k == KeyCode::RightControl;
+        let typing = self.app.typing();
+        self.key_down(k);
+        self.swallow_char = !typing && self.app.typing();
+    }
+
+    fn char_event(&mut self, c: char, _mods: KeyMods, _repeat: bool) {
+        if std::mem::take(&mut self.swallow_char) {
+            return;
+        }
+        self.app.rename_char(c);
+        self.app.save_char(c);
+        self.app.cust_char(c);
+    }
+
+    fn touch_event(&mut self, phase: TouchPhase, id: u64, x: f32, y: f32) {
+        self.touch(phase, id, x, y);
+    }
+
+    fn key_up_event(&mut self, k: KeyCode, mods: KeyMods) {
+        self.shift = mods.shift && k != KeyCode::LeftShift && k != KeyCode::RightShift;
+        self.app.shift_held = self.shift;
+        self.ctrl = mods.ctrl && k != KeyCode::LeftControl && k != KeyCode::RightControl;
+    }
+}
+
+impl Stage {
+    /// A key pressed (key_down_event after the modifiers and the stand-in keys).
+    fn key_down(&mut self, k: KeyCode) {
+        // a notice (gamefiles.rs) takes the keys until it is closed
+        if self.app.notice.is_some() {
+            self.app.notice_key(k);
+            return;
+        }
         if self.app.great_shot.is_some() {
             // the photo's wait (0x45c0c0) ends on any key; F10 first saves it
             if k == KeyCode::F10 {
@@ -2273,6 +2427,8 @@ impl EventHandler for Stage {
                 app.close_info();
             } else if app.screen == Screen::Content {
                 app.content_key(k);
+            } else if app.screen == Screen::Keys {
+                app.keys_key(k);
             } else if app.screen == Screen::Skills {
                 if k == KeyCode::Enter || k == KeyCode::Escape {
                     app.skills_key(k == KeyCode::Enter);
@@ -2283,7 +2439,12 @@ impl EventHandler for Stage {
                 app.tourney_key(k);
             } else if k == KeyCode::Escape {
                 if app.screen == Screen::Menu {
-                    window::order_quit();
+                    quit_game();
+                } else if app.screen == Screen::Land || (app.screen == Screen::Property && app.world_move) {
+                    // TRACTS FOR SALE and the world map opened from a game (F6) go back to the course, as their cancel
+                    // buttons do; Esc used to drop the game for the title menu
+                    app.world_move = false;
+                    app.screen = Screen::Play;
                 } else {
                     app.screen = Screen::Menu;
                 }
@@ -2293,22 +2454,40 @@ impl EventHandler for Stage {
         }
         self.play_key(k);
     }
+}
 
-    fn char_event(&mut self, c: char, _mods: KeyMods, _repeat: bool) {
-        self.app.rename_char(c);
-        self.app.save_char(c);
-        self.app.cust_char(c);
+/// Leaves the game (the title menu's exit button, Esc there). A browser tab cannot close itself: the page goes back to its
+/// start page (web/opensgolf.js sg_quit) instead of stopping on the last frame drawn.
+fn quit_game() {
+    #[cfg(target_arch = "wasm32")]
+    {
+        #[link(wasm_import_module = "env")]
+        extern "C" {
+            fn sg_quit();
+        }
+        // SAFETY: a plain call into the page's script, no arguments
+        unsafe { sg_quit() };
     }
+    #[cfg(not(target_arch = "wasm32"))]
+    window::order_quit();
+}
 
-    fn touch_event(&mut self, phase: TouchPhase, id: u64, x: f32, y: f32) {
-        self.touch(phase, id, x, y);
-    }
-
-    fn key_up_event(&mut self, k: KeyCode, mods: KeyMods) {
-        self.shift = mods.shift && k != KeyCode::LeftShift && k != KeyCode::RightShift;
-        self.app.shift_held = self.shift;
-        self.ctrl = mods.ctrl && k != KeyCode::LeftControl && k != KeyCode::RightControl;
-    }
+/// The function key a digit stands for with Alt or Ctrl held: 1 to 9 for F1 to F9, 0 for F10.
+fn fkey_of_digit(k: KeyCode) -> Option<KeyCode> {
+    use KeyCode::*;
+    Some(match k {
+        Key1 => F1,
+        Key2 => F2,
+        Key3 => F3,
+        Key4 => F4,
+        Key5 => F5,
+        Key6 => F6,
+        Key7 => F7,
+        Key8 => F8,
+        Key9 => F9,
+        Key0 => F10,
+        _ => return None,
+    })
 }
 
 /// The window's icon (Windows' title bar and taskbar, macOS's Dock): the app icon, drawn by the free set's painter.
@@ -2321,7 +2500,30 @@ fn window_icon() -> conf::Icon {
     icon
 }
 
+/// Windows: a windowed program has no console. Started with options (a test, a script) from a console, it writes its
+/// messages to that console; output already sent to a file or a pipe is left alone.
+#[cfg(windows)]
+fn attach_console() {
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn AttachConsole(process: u32) -> i32;
+        fn GetStdHandle(which: u32) -> isize;
+    }
+    const ATTACH_PARENT_PROCESS: u32 = u32::MAX;
+    const STD_OUTPUT_HANDLE: u32 = -11i32 as u32;
+    if std::env::args_os().len() > 1 {
+        // SAFETY: plain Win32 calls without pointers
+        unsafe {
+            if GetStdHandle(STD_OUTPUT_HANDLE) == 0 {
+                AttachConsole(ATTACH_PARENT_PROCESS);
+            }
+        }
+    }
+}
+
 fn main() {
+    #[cfg(windows)]
+    attach_console();
     #[cfg(target_os = "android")]
     android::init();
     let o = parse_args();

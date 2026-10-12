@@ -255,6 +255,8 @@ pub enum Screen {
     Scenarios,
     /// Information > Scenario goals: the goals of the game and how they stand.
     Goals,
+    /// Preferences > Keyboard controls: every key of the game (the port's own screen, keys_ui.rs).
+    Keys,
 }
 
 /// Where saved games, championship courses and pros, accomplishment snapshots, packs and settings go. The browser keeps them
@@ -518,6 +520,9 @@ pub struct App {
     pub popup: Option<crate::popup_ui::Popup>,
     /// The content packs found and loaded (docs/MODDING.md), for Preferences > Content.
     pub content: crate::content::ContentState,
+    /// Preferences > Keyboard controls (keys_ui.rs): the page shown and the screen to go back to.
+    pub keys_page: usize,
+    pub keys_back: Screen,
     /// The scenario's goals and the packs' scripts of the game in progress (scenario_ui).
     pub scen: crate::scenario_ui::ScenarioState,
     pub last_message: String,
@@ -594,6 +599,10 @@ pub struct App {
     pub sandbox_choice: bool,
     pub toast: String,
     pub toast_until: f64,
+    /// A message in the game's box over the screen, with an OK or a question's two options (gamefiles.rs).
+    pub notice: Option<crate::gamefiles::Notice>,
+    /// The title screen says that the free graphics are in use and how to use the original files (once, gamefiles.rs).
+    pub free_hint: bool,
     /// Camera follows the golfer.
     pub follow: bool,
     // Course editing
@@ -657,7 +666,15 @@ pub struct App {
     pub music_idx: usize,
     /// Wall clock (seconds) used for toasts and the story timer.
     pub clock: f64,
+    /// The exe's frames (one per 87 ms game tick) that have passed on the wall clock since the last drawn frame, and the
+    /// count they are taken from. The exe drew one frame per tick, so its hover delays and blinks count these; our frames
+    /// come at the display's refresh rate (60 to 144 a second), which would run them two to five times too fast.
+    pub exe_steps: u32,
+    pub exe_frame: u64,
 }
+
+/// The exe's frame: one per game tick (sg_core::flight::TICK_MS).
+pub const EXE_FRAME_S: f64 = sg_core::flight::TICK_MS as f64 / 1000.0;
 
 pub fn now() -> f64 {
     miniquad::date::now()
@@ -747,6 +764,8 @@ impl App {
             float_next: 0,
             popup: None,
             content: Default::default(),
+            keys_page: 0,
+            keys_back: Screen::Play,
             scen: Default::default(),
             last_message: String::new(),
             ticker: Default::default(),
@@ -819,6 +838,8 @@ impl App {
             sandbox_choice: false,
             toast: String::new(),
             toast_until: 0.0,
+            notice: None,
+            free_hint: false,
             follow: false,
             edit: false,
             tool: 0,
@@ -856,7 +877,16 @@ impl App {
             music: -1,
             music_idx: 0,
             clock: 0.0,
+            exe_steps: 0,
+            exe_frame: 0,
         }
+    }
+
+    /// Counts the exe's frames that have passed since the last drawn frame (exe_steps), for the per-frame delays and blinks.
+    pub fn count_exe_frames(&mut self) {
+        let f = (self.clock / EXE_FRAME_S) as u64;
+        self.exe_steps = if self.exe_frame == 0 { 0 } else { f.saturating_sub(self.exe_frame).min(1000) as u32 };
+        self.exe_frame = f;
     }
 
     /// A file in the game folder, matched case-insensitively.
@@ -2040,6 +2070,10 @@ impl App {
             self.tick_acc -= tick_s;
             if !self.econ.game_over {
                 self.club_tick();
+            }
+            // Enhanced graphics only: the balls' trails and impacts read the simulation after its tick (fx_ball.rs)
+            if crate::fx::active() {
+                self.fx_ball_tick();
             }
             self.ticker.step();
             self.staff_tick();

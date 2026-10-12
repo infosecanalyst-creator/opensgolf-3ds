@@ -629,7 +629,36 @@ impl Screen {
         let Some(tex) = im.tex else { return };
         let (dx, dy, dw, dh) = dst;
         let (sx, sy, sw, sh) = src;
-        let (u0, v0, u1, v1) = (sx / im.w, sy / im.h, (sx + sw) / im.w, (sy + sh) / im.h);
+        let (mut u0, mut v0, mut u1, mut v1) = (sx / im.w, sy / im.h, (sx + sw) / im.w, (sy + sh) / im.h);
+        // A piece cut from a sheet and magnified (any window other than 800x600, and every Retina screen) is smoothed with
+        // the texels round it, so the neighbouring piece's edge or the sheet's guide line showed along the cut, or its
+        // edge went part transparent and showed what lies under it (the green guide line in the comments report's header
+        // piece, under the first row). The texture coordinates of a cut inside the sheet are moved in by half a texel,
+        // so no sample reaches past the piece's outer texel centres. At 1:1 (and smaller) nothing moves.
+        let (tw, th) = g.ctx.texture_size(tex);
+        // the inset as a fraction of the piece: dst is its size on screen in 800x600 units, texels its size in the texture
+        let inset = |dst: f32, texels: f32| {
+            let per_texel = dst * self.view.scale / texels.max(1e-3);
+            if per_texel > 1.001 && texels > 2.0 {
+                0.5 / texels
+            } else {
+                0.0
+            }
+        };
+        let (texels_x, texels_y) = (sw * tw as f32 / im.w, sh * th as f32 / im.h);
+        let (ix, iy) = (inset(dw, texels_x) * sw / im.w, inset(dh, texels_y) * sh / im.h);
+        if sx > 0.0 {
+            u0 += ix;
+        }
+        if sx + sw < im.w {
+            u1 -= ix;
+        }
+        if sy > 0.0 {
+            v0 += iy;
+        }
+        if sy + sh < im.h {
+            v1 -= iy;
+        }
         self.emit(
             g,
             Some(tex),

@@ -42,8 +42,15 @@ uniform float alpha_ref;
 uniform float soft;
 uniform float pm;
 
-// a texel, premultiplied (textures made by Enhanced's smooth interface option are premultiplied already: pm 1)
-vec4 P(vec4 c) { return pm > 0.5 ? c : vec4(c.rgb * c.a, c.a); }
+// a texel, premultiplied (textures made by Enhanced's smooth interface option are premultiplied already: pm 1; pm 2: a
+// colour-keyed picture with the distance to its smoothed outline in alpha (edges.rs), taken here as the original key)
+vec4 P(vec4 c) {
+    if (pm > 1.5) {
+        float k = step(0.5, c.a);
+        return vec4(c.rgb * k, k);
+    }
+    return pm > 0.5 ? c : vec4(c.rgb * c.a, c.a);
+}
 vec4 T(vec2 cell) { return P(texture2D(tex, (cell + 0.5) / sp.xy)); }
 float df(vec4 a, vec4 b) {
     vec4 d = abs(a - b);
@@ -107,6 +114,14 @@ void main() {
         r#"    }
     // straight colours out for the classic blending; premultiplied ones (and the vertex colour premultiplied) for pm
     vec4 o = pm > 0.5 ? c : (c.a > 0.0 ? vec4(c.rgb / c.a, c.a) : vec4(0.0));
+    if (pm > 1.5) {
+        // the outline from the distance field, one output pixel wide (edges.rs: 8 texels over alpha 0..1); the colour the
+        // scaler found, else (just outside the keyed texels) the colour under them
+        vec4 t = texture2D(tex, uv);
+        float a = clamp((t.a - 0.5) * 8.0 * sp.z + 0.5, 0.0, 1.0);
+        vec3 rgb = c.a > 0.004 ? c.rgb / c.a : t.rgb;
+        o = vec4(rgb * a, a);
+    }
     o *= color;
     if (o.a <= alpha_ref) discard;
     gl_FragColor = o;
@@ -159,6 +174,9 @@ void main() {
 /// Uniforms after the vertex shader's: `lmap` the light map (r sun, g ambient occlusion, b signed distance to the shore, a
 /// water); params = (per-pixel light 0/1, shadow strength, occlusion strength, alpha test); water = (time, reflection, sparkle,
 /// foam); eye_w and light_w are towards the viewer and the light in world space; sky colours for the reflections.
+/// The atmosphere (fx_light.rs): `clouds` a tiling noise; clouds = (shadow strength, 0: none; texture repeats per world unit;
+/// drift x, z in world units); cover = (the noise's cloud edge from, to, 0, 0); mist = (density, 0: none; the low ground's
+/// height; 1 / its depth; time) and mist_col its colour.
 const GROUND_FS_HEAD: &str = r#"varying lowp vec4 color;
 varying highp vec2 uv;
 varying highp vec2 lm_uv;
@@ -177,10 +195,31 @@ uniform vec3 eye_w;
 uniform vec3 light_w;
 uniform vec3 sky_top;
 uniform vec3 sky_low;
+uniform sampler2D clouds;
+uniform vec4 cloud;
+uniform vec4 cover;
+uniform vec4 mist;
+uniform vec3 mist_col;
+
+// how much of the sun the drifting clouds let through
+float cloud_sun() {
+    if (cloud.x <= 0.0) return 1.0;
+    float n = texture2D(clouds, (w_pos.xz + cloud.zw) * cloud.y).r;
+    return 1.0 - cloud.x * smoothstep(cover.x, cover.y, n);
+}
+
+// mist lying in low ground, in hollows (the occlusion) and over water, drifting
+vec3 misty(vec3 c, vec4 lm) {
+    if (mist.x <= 0.0) return c;
+    float low = clamp((mist.y - w_pos.y) * mist.z + 0.5, 0.0, 1.0);
+    float n = texture2D(clouds, w_pos.xz * 0.00045 + vec2(mist.w * 0.0021, mist.w * 0.0013)).r;
+    float d = mist.x * clamp(0.08 + 0.3 * low + 1.2 * (1.0 - lm.g) + 0.25 * lm.a, 0.0, 1.0) * (0.35 + 0.9 * n);
+    return mix(c, mist_col, clamp(d, 0.0, 0.55));
+}
 
 // the decoded light, per pixel or as the vertex computed it, with the sun's visibility and the occlusion applied
 vec3 light(vec4 lm) {
-    float sun = mix(1.0, lm.r, params.y);
+    float sun = mix(1.0, lm.r, params.y) * cloud_sun();
     float ao = mix(1.0, lm.g, params.z);
     vec3 dir = v_dir;
     if (params.x > 0.5) {
@@ -207,6 +246,7 @@ pub fn terrain_fs() -> String {
     vec4 c = texture2D(tex, uv) * color;
     if (c.a <= params.w) discard;
     c.rgb *= light(lm);
+    c.rgb = misty(c.rgb, lm);
     gl_FragColor = c;
 }
 "#
@@ -255,7 +295,7 @@ void main() {
     vec3 sky = mix(sky_low, sky_top, clamp((r.y - 0.62) * 2.5, 0.0, 1.0));
     float fres = clamp(1.0 - dot(n, eye_w), 0.0, 1.0);
     float refl = water.y * (0.55 + 0.9 * fres * fres);
-    float sun = mix(1.0, lm.r, params.y);
+    float sun = mix(1.0, lm.r, params.y) * cloud_sun();
     c.rgb = mix(c.rgb, sky, refl * wet);
     // sparkle: the decoded light's highlight. The sun is never behind the water in this view, so a mirror highlight would not
     // show; instead the facets that the waves turn towards the half vector (more than calm water is) glint, broken up by noise
@@ -271,6 +311,7 @@ void main() {
     float foam = band * smoothstep(0.45, 0.95, wash * (0.6 + 0.6 * noise(w_pos.xz * 0.12 + t * 0.2)));
     float wetfoam = 1.0 - smoothstep(0.14, 0.40, length(tc.rgb - ref));
     c.rgb = mix(c.rgb, vec3(0.94, 0.97, 1.0) * light(lm), foam * water.w * wetfoam * step(0.0, sd));
+    c.rgb = misty(c.rgb, lm);
     gl_FragColor = c;
 }
 "#
@@ -364,6 +405,34 @@ void main() {
         c *= 1.0 - glow.y * smoothstep(0.35, 1.05, length(q));
     }
     gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
+}
+"#
+    )
+}
+
+/// The cast shadows' composite's full-screen quad, at the far end of the depth range: drawn with the depth test "greater",
+/// it shades only where the ground was drawn (not the sky or the black beyond the map).
+pub const SHADE_VS: &str = r#"#version 100
+attribute vec3 in_pos;
+attribute vec2 in_uv;
+varying highp vec2 uv;
+void main() {
+    gl_Position = vec4(in_pos.xy, 0.9999, 1.0);
+    uv = in_uv;
+}
+"#;
+
+/// The cast shadows' composite (fx_shadow.rs): the frame multiplied by the shadow mask (`mask` holds the light left: white
+/// where nothing casts, darker under the silhouettes), the shade tinted by `tint` (the colour of full shadow).
+pub fn shade_fs() -> String {
+    format!(
+        "{FRAG_HEAD}{}",
+        r#"varying highp vec2 uv;
+uniform sampler2D mask;
+uniform vec4 tint;
+void main() {
+    float m = texture2D(mask, uv).r;
+    gl_FragColor = vec4(mix(tint.rgb, vec3(1.0), m), 1.0);
 }
 "#
     )

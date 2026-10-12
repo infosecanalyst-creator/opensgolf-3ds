@@ -3,7 +3,7 @@
 **Build the golf resort of your dreams.** A free game that plays like Sid Meier's SimGolf (2002), on any computer, phone or
 tablet.
 
-## ▶ [Play now in your browser](https://crspytopgn.github.io/simgolf-native/)
+## ▶ [Play now in your browser](https://crspytopgn.github.io/opensgolf/)
 
 Click the link, then **Play with free graphics**. That's it. Nothing to install.
 
@@ -11,11 +11,11 @@ Click the link, then **Play with free graphics**. That's it. Nothing to install.
 
 | Your device | Download | Then |
 |---|---|---|
-| 🍎 **Mac** | [OpenSGolf for Mac](https://github.com/crspytopgn/simgolf-native/releases/latest/download/opensgolf-macos.zip) | Unzip, then **right-click OpenSGolf → Open** (first time only) |
-| 🪟 **Windows** | [OpenSGolf for Windows](https://github.com/crspytopgn/simgolf-native/releases/latest/download/opensgolf-windows.zip) | Unzip, double-click **opensgolf**. If Windows warns: **More info → Run anyway** |
-| 🐧 **Linux** | [OpenSGolf for Linux](https://github.com/crspytopgn/simgolf-native/releases/latest/download/opensgolf-linux-x86_64.AppImage) | Right-click → Properties → allow running as a program, then double-click |
-| 🤖 **Android** | [OpenSGolf for Android](https://github.com/crspytopgn/simgolf-native/releases/latest/download/opensgolf-android.apk) | Open the file on your phone and tap **Install** |
-| 📱 **iPhone / iPad** | [Play in the browser](https://crspytopgn.github.io/simgolf-native/) | Works by touch in Safari |
+| 🍎 **Mac** | [OpenSGolf for Mac](https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-macos.zip) | Unzip, then **right-click OpenSGolf → Open** (first time only) |
+| 🪟 **Windows** | [OpenSGolf for Windows](https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-windows.zip) | Unzip, double-click **opensgolf**. If Windows warns: **More info → Run anyway** |
+| 🐧 **Linux** | [OpenSGolf for Linux](https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-linux-x86_64.AppImage) | Right-click → Properties → allow running as a program, then double-click |
+| 🤖 **Android** | [OpenSGolf for Android](https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-android.apk) | Open the file on your phone and tap **Install** |
+| 📱 **iPhone / iPad** | [Play in the browser](https://crspytopgn.github.io/opensgolf/) | Works by touch in Safari |
 
 The warnings on Mac and Windows appear because OpenSGolf is a free project without a paid signing certificate; they show
 once.
@@ -35,7 +35,7 @@ Nothing is uploaded anywhere: the game reads your files on your own device.
 * **How to play, keys and touch:** [docs/PLAYING.md](docs/PLAYING.md)
 * **Install details for each system:** [docs/INSTALL.md](docs/INSTALL.md)
 * **Prettier graphics on big screens:** turn on **Preferences → Enhanced graphics** in the game
-* **Something wrong?** [Report a problem](https://github.com/crspytopgn/simgolf-native/issues/new/choose)
+* **Something wrong?** [Report a problem](https://github.com/crspytopgn/opensgolf/issues/new/choose)
 
 ---
 
@@ -154,7 +154,7 @@ the screen's own resolution, interface art with premultiplied alpha and mipmaps,
 (full-screen pages framed), anisotropic filtering and 4× anti-aliasing for the course, a smooth camera (continuous zoom,
 animated turns, panning with inertia) and golfers, balls, animals and fly-overs moving smoothly between the simulation's
 ticks. It is not part of the original, and **Classic stays the default and byte-identical** with it off. Turn it on in
-System Functions → Preferences → *Enhanced graphics...*, or with `--enhanced` / `--classic-render` for one run. It combines
+System Functions → Preferences → the *Enhanced graphics* tick (details under *Enhanced graphics settings...*), or with `--enhanced` / `--classic-render` for one run. It combines
 with HD. See [docs/ENHANCED.md](docs/ENHANCED.md).
 Its shader **effects** (a pixel-art scaler for sprites and interface art, animated water with reflections, sparkle and
 shore foam, per-pixel terrain light with ambient occlusion and soft relief shadows, softened sprite shadows, a sky beyond

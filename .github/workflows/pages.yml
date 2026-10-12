@@ -1,6 +1,6 @@
 name: pages
 
-# Publishes the browser version to GitHub Pages: https://crspytopgn.github.io/simgolf-native/
+# Publishes the browser version to GitHub Pages: https://crspytopgn.github.io/opensgolf/
 # One-time setup in the repository: Settings > Pages > Build and deployment > Source: "GitHub Actions".
 on:
   push:
