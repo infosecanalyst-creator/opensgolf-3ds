@@ -58,6 +58,56 @@ pub fn write_png(path: impl AsRef<std::path::Path>, img: &Rgba) -> bool {
 /// filter. Covers the accomplishment snapshots `encode_png` writes, the HD packs' pictures (docs/HD.md) and the PNG art of
 /// content packs (docs/MODDING.md). Anything else gives None.
 pub fn decode_png(d: &[u8]) -> Option<Rgba> {
+    let r = png_raw(d)?;
+    let (w, h, ch) = (r.w, r.h, r.ch);
+    let mut out = Rgba::new(w as u32, h as u32);
+    for (i, o) in out.px.chunks_exact_mut(4).enumerate() {
+        let s = &r.px[i * ch..i * ch + ch];
+        let px = match r.ct {
+            0 => [s[0], s[0], s[0], 255],
+            2 => [s[0], s[1], s[2], 255],
+            3 => {
+                let k = s[0] as usize;
+                let c = r.pal.get(k * 3..k * 3 + 3)?;
+                [c[0], c[1], c[2], r.trns.get(k).copied().unwrap_or(255)]
+            }
+            4 => [s[0], s[0], s[0], s[1]],
+            _ => [s[0], s[1], s[2], s[3]],
+        };
+        o.copy_from_slice(&px);
+    }
+    Some(out)
+}
+
+/// An 8-bit palette picture: width, height, the colour indices and the palette.
+pub type IndexedPng = (u32, u32, Vec<u8>, [[u8; 3]; 256]);
+
+/// Decodes an 8-bit palette PNG to its colour indices and its palette (missing entries black): the free set's sprite
+/// sheets (crate::freeset), which keep the palette slots the engine recolours. None for any other kind of PNG.
+pub fn decode_png_indexed(d: &[u8]) -> Option<IndexedPng> {
+    let r = png_raw(d)?;
+    if r.ct != 3 {
+        return None;
+    }
+    let mut pal = [[0u8; 3]; 256];
+    for (i, c) in r.pal.chunks_exact(3).take(256).enumerate() {
+        pal[i] = [c[0], c[1], c[2]];
+    }
+    Some((r.w as u32, r.h as u32, r.px, pal))
+}
+
+/// A PNG's pixels after the row filters, `ch` bytes each, with its colour type, palette and transparency.
+struct Raw {
+    w: usize,
+    h: usize,
+    ct: u8,
+    ch: usize,
+    pal: Vec<u8>,
+    trns: Vec<u8>,
+    px: Vec<u8>,
+}
+
+fn png_raw(d: &[u8]) -> Option<Raw> {
     if d.len() < 8 || d[..8] != [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A] {
         return None;
     }
@@ -103,12 +153,12 @@ pub fn decode_png(d: &[u8]) -> Option<Rgba> {
     if raw.len() < (stride + 1) * h {
         return None;
     }
-    let mut cur = vec![0u8; stride];
+    let mut px = vec![0u8; stride * h];
     let mut prev = vec![0u8; stride];
-    let mut out = Rgba::new(w as u32, h as u32);
     for y in 0..h {
         let line = &raw[y * (stride + 1)..(y + 1) * (stride + 1)];
         let f = line[0];
+        let cur = &mut px[y * stride..(y + 1) * stride];
         for i in 0..stride {
             let x = line[i + 1];
             let a = if i >= ch { cur[i - ch] } else { 0 };
@@ -133,25 +183,9 @@ pub fn decode_png(d: &[u8]) -> Option<Rgba> {
                 _ => return None,
             };
         }
-        let row = &mut out.px[y * w * 4..(y + 1) * w * 4];
-        for (x, o) in row.chunks_exact_mut(4).enumerate() {
-            let s = &cur[x * ch..x * ch + ch];
-            let px = match ct {
-                0 => [s[0], s[0], s[0], 255],
-                2 => [s[0], s[1], s[2], 255],
-                3 => {
-                    let i = s[0] as usize;
-                    let c = pal.get(i * 3..i * 3 + 3)?;
-                    [c[0], c[1], c[2], trns.get(i).copied().unwrap_or(255)]
-                }
-                4 => [s[0], s[0], s[0], s[1]],
-                _ => [s[0], s[1], s[2], s[3]],
-            };
-            o.copy_from_slice(&px);
-        }
-        std::mem::swap(&mut cur, &mut prev);
+        prev.copy_from_slice(cur);
     }
-    Some(out)
+    Some(Raw { w, h, ct, ch, pal, trns, px })
 }
 
 #[cfg(test)]

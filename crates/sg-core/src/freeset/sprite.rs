@@ -100,7 +100,7 @@ fn put_ramp(p: &mut [[u8; 3]; 256], m: Mat, c: Col) {
     for i in 0..m.n {
         let t = i as f32 / (m.n - 1).max(1) as f32;
         // dark shadow to a light highlight around the colour
-        let k = if t < 0.6 { -0.62 * (1.0 - t / 0.6) } else { (t - 0.6) / 0.4 * 0.45 };
+        let k = if t < 0.6 { -0.62 * (1.0 - t / 0.6) } else { (t - 0.6) / 0.4 * 0.32 };
         let col = shade(c, k);
         p[(m.base + i) as usize] = [col[0] as u8, col[1] as u8, col[2] as u8];
     }
@@ -142,13 +142,130 @@ pub fn palette(swap: usize, female: bool, variant: u32) -> [[u8; 3]; 256] {
 }
 
 /// Shadows: three darknesses (by the red channel, crate::sprites) and the key.
-fn shadow_palette() -> [[u8; 3]; 256] {
+pub(crate) fn shadow_palette() -> [[u8; 3]; 256] {
     let mut p = [[255u8, 255, 255]; 256];
     p[1] = [170, 230, 170];
     p[2] = [90, 200, 90];
     p[3] = [0, 160, 0];
     p[KEY as usize] = [255, 0, 255];
     p
+}
+
+/// The leaf colour of a tree palette file by its name (lower case): the colour variants the game picks for its trees.
+fn tree_leaf(name: &str) -> Option<Col> {
+    let n = name.trim_end_matches(".pcx");
+    let k = n.chars().rev().find(|c| c.is_ascii_digit()).and_then(|c| c.to_digit(10)).unwrap_or(1).max(1) as usize - 1;
+    let pick = |v: [Col; 4]| Some(v[k.min(3)]);
+    const TABLE: [(&str, Col); 31] = [
+        ("greenmaple", rgb(84, 134, 52)),
+        ("redmaple", rgb(128, 80, 58)),
+        ("brownmaple", rgb(112, 122, 56)),
+        ("bluemaple", rgb(64, 114, 80)),
+        ("pineblue", rgb(60, 102, 104)),
+        ("pinedarkgreen", rgb(38, 82, 50)),
+        ("pineoriginal", rgb(56, 102, 56)),
+        ("pineyellow", rgb(108, 128, 54)),
+        ("greenpalm", rgb(70, 142, 56)),
+        ("bluepalm", rgb(62, 126, 104)),
+        ("orangepalm", rgb(150, 142, 62)),
+        ("originalpalm", rgb(76, 140, 58)),
+        ("plumpalm", rgb(112, 122, 62)),
+        ("tallpalmdesert", rgb(108, 134, 70)),
+        ("tallpalm", rgb(78, 138, 60)),
+        ("cactusapal", rgb(86, 128, 70)),
+        ("cactusbpal", rgb(92, 134, 74)),
+        ("cactuscpal", rgb(104, 146, 82)),
+        ("greenercactus", rgb(70, 138, 66)),
+        ("orangecactus", rgb(146, 132, 70)),
+        ("originalcactus", rgb(86, 128, 70)),
+        ("yellercactus", rgb(132, 142, 70)),
+        ("joshua", rgb(96, 120, 70)),
+        ("palcerc", rgb(190, 104, 160)),
+        ("paldrac", rgb(70, 120, 60)),
+        ("willowgreen", rgb(118, 156, 74)),
+        ("willowlemon", rgb(170, 178, 82)),
+        ("willowpink", rgb(204, 140, 172)),
+        ("willowwhite", rgb(222, 222, 204)),
+        ("tropbrush", rgb(56, 128, 56)),
+        ("scotspine", rgb(58, 104, 62)),
+    ];
+    const SCENIC: [(&str, Col); 22] = [
+        ("aspenpal", rgb(196, 170, 64)),
+        ("blackpinepal", rgb(52, 92, 60)),
+        ("bougainvilleapal", rgb(64, 120, 52)),
+        ("cypresspal", rgb(44, 86, 54)),
+        ("dogwoodpal", rgb(80, 130, 60)),
+        ("japanesemaple_greenpal", rgb(100, 150, 60)),
+        ("japanesemaple_orgpal", rgb(220, 120, 50)),
+        ("japanesemaple_redpal", rgb(190, 56, 48)),
+        ("japanesemaple_yelpal", rgb(220, 190, 70)),
+        ("japanesetreepal", rgb(56, 100, 60)),
+        ("mangrovepal", rgb(66, 110, 60)),
+        ("mesquitepal", rgb(112, 130, 72)),
+        ("peachtreepal", rgb(90, 136, 60)),
+        ("plumpal", rgb(120, 70, 96)),
+        ("rhodypal", rgb(50, 100, 50)),
+        ("scenic_treepal", rgb(78, 130, 56)),
+        ("scenicelmpal", rgb(70, 124, 54)),
+        ("heatherpal", rgb(146, 92, 146)),
+        ("scenic_ograsspal", rgb(150, 166, 86)),
+        ("cattailspal", rgb(110, 140, 70)),
+        ("bamboopal", rgb(120, 164, 72)),
+        ("vineyardpal", rgb(84, 130, 56)),
+    ];
+    if let Some((_, c)) = SCENIC.iter().find(|(k, _)| n.starts_with(k)) {
+        return Some(*c);
+    }
+    if n.starts_with("cactusgroup") || n.starts_with("oasispal") {
+        return Some(rgb(88, 130, 72));
+    }
+    if n.starts_with("tropbrushpal") {
+        return pick([rgb(56, 128, 56), rgb(82, 142, 48), rgb(46, 112, 74), rgb(56, 128, 56)]);
+    }
+    if n.starts_with("linkspinepal") {
+        return pick([rgb(56, 102, 56), rgb(46, 92, 64), rgb(72, 106, 56), rgb(60, 96, 72)]);
+    }
+    if n.starts_with("linkstree3pal") {
+        return pick([rgb(96, 132, 62), rgb(122, 132, 58), rgb(154, 112, 52), rgb(86, 124, 70)]);
+    }
+    if n.starts_with("linkstree4pal") {
+        return pick([rgb(74, 120, 60), rgb(100, 130, 56), rgb(140, 100, 50), rgb(66, 110, 72)]);
+    }
+    if n.starts_with("scotspinepal") {
+        return pick([rgb(58, 104, 62), rgb(50, 94, 70), rgb(74, 108, 58), rgb(62, 98, 76)]);
+    }
+    TABLE.iter().find(|(k, _)| n.contains(k)).map(|(_, c)| *c)
+}
+
+/// The uniform of a member of staff by their palette file's name (lower case): shirt, trousers or skirt, skin, hat, the
+/// men's hands or the women's hair, the women's hands.
+fn staff_colours(name: &str) -> Option<[Col; 6]> {
+    let skin = rgb(232, 190, 150);
+    let n = name.trim_end_matches(".pcx");
+    Some(match n {
+        "gkpal" => [rgb(70, 124, 62), rgb(170, 150, 108), skin, rgb(70, 124, 62), skin, skin],
+        "golfcelebpal" => [rgb(242, 204, 66), rgb(60, 62, 72), skin, rgb(244, 244, 240), skin, skin],
+        "greeterpal" => [rgb(170, 44, 54), rgb(48, 50, 62), skin, rgb(170, 44, 54), skin, skin],
+        "lawntechpal" => [rgb(232, 124, 44), rgb(78, 92, 116), skin, rgb(232, 124, 44), skin, skin],
+        "marshallpal" => [rgb(42, 62, 112), rgb(186, 176, 146), skin, rgb(206, 186, 126), skin, skin],
+        "rangerpal" => [rgb(150, 142, 92), rgb(112, 100, 72), skin, rgb(124, 100, 62), skin, skin],
+        "sodavendorpal" => [rgb(244, 244, 240), rgb(200, 52, 52), skin, rgb(200, 52, 52), skin, skin],
+        "traygirlpal" => [rgb(240, 150, 182), rgb(246, 246, 242), skin, rgb(240, 150, 182), rgb(110, 70, 40), skin],
+        "bev_walkpal" | "bev_incartpal" => [rgb(80, 170, 170), rgb(246, 246, 242), skin, rgb(246, 246, 242), rgb(222, 186, 110), skin],
+        _ => return None,
+    })
+}
+
+/// The flower colour of a flowering scenic plant's palette file (lower case name).
+fn scenic_flower(name: &str) -> Option<Col> {
+    const F: [(&str, Col); 5] = [
+        ("bougainvilleapal", rgb(214, 60, 150)),
+        ("dogwoodpal", rgb(240, 236, 226)),
+        ("peachtreepal", rgb(244, 166, 186)),
+        ("plumpal", rgb(226, 150, 206)),
+        ("rhodypal", rgb(222, 92, 170)),
+    ];
+    F.iter().find(|(k, _)| name.starts_with(k)).map(|(_, c)| *c)
 }
 
 /// A palette file (a PCX the engine reads for its palette): golfer swap palettes by their number, the others turn the
@@ -160,6 +277,25 @@ pub fn palette_file(low: &str, w: u32, h: u32) -> Vec<u8> {
     let pal = if name.contains("swap") || name.contains("baspal") || name.contains("basepal") {
         let n = digits.parse::<usize>().unwrap_or(1).max(1) - 1;
         palette(n, female, 0)
+    } else if let Some(c) = staff_colours(name) {
+        // the staff's uniforms (their sprites are drawn in the golfer slots, baked.rs)
+        let mut p = palette(0, false, 0);
+        for (m, col) in [SHIRT, PANTS, SKIN, HAT, ALT, HANDS_F].into_iter().zip(c) {
+            put_ramp(&mut p, m, col);
+        }
+        p
+    } else if let Some(leaf) = tree_leaf(name) {
+        // the colour variants of the trees (the baked trees keep their leaves in the LEAF ramp, baked.rs), and the
+        // flowers of the flowering scenic plants in the RED ramp
+        let mut p = palette(0, false, 0);
+        put_ramp(&mut p, LEAF, leaf);
+        if let Some(f) = scenic_flower(name) {
+            put_ramp(&mut p, RED, f);
+        }
+        if name.contains("palm") {
+            put_ramp(&mut p, BARK, rgb(150, 120, 86));
+        }
+        p
     } else {
         let mut v = hash(name) % 36;
         // the flower and willow colour palettes by their colour name

@@ -16,6 +16,9 @@ game/
 !crates/simgolf/fonts/LiberationSans-Bold.ttf
 # the Android launcher icon is our own drawing (tools/make_icons.sh)
 !crates/simgolf/android/res/**/*.png
+# the free base set's art, rendered from our own models by tools/freeset_art (packs/opensgolf-free/CREDITS.md)
+!packs/opensgolf-free/art/**/*.png
+__pycache__/
 spec/
 .DS_Store
 target/

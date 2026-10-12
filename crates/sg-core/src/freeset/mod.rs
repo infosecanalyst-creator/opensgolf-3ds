@@ -5,12 +5,15 @@
 //! OpenTTD; `sgtool freeset DIR` writes them all to a folder. Every file has the name, size and layout the engine expects of
 //! the original's file (the same picture sizes, the same places for the pieces the engine cuts out of a sheet, the same
 //! sprite views, frame counts and anchors), so everything lands where the engine puts the original's art. Those numbers
-//! are the only thing taken from the original: they are in `manifest.txt`, measured by tools/freeset_layout.py. The art is
-//! simple flat-shaded drawing (paint.rs), the sounds are synthesised (sound.rs), the text is our own (text.rs) and the two
-//! fonts are Liberation Sans Bold (SIL Open Font License).
+//! are the only thing taken from the original: they are in `manifest.txt`, measured by tools/freeset_layout.py. The trees,
+//! buildings and golfers are sprite sheets rendered offline from our own models, and the sounds are made from CC0
+//! recordings and synthesis, by tools/freeset_art (baked.rs, packs/opensgolf-free/art); everything else is drawn here at
+//! run time (paint.rs, tex.rs, sprite.rs, sound.rs), the text is our own (text.rs) and the two fonts are Liberation Sans
+//! Bold (SIL Open Font License).
 //!
 //! Pictures are PNG files named after the original's PCX, TGA or BMP (the engine takes a PNG for any of those, crate::vfs),
 //! except where the engine lists a folder by file type (terrain textures, heads) or reads a palette: those are BMP and PCX.
+mod baked;
 mod enc;
 mod icon;
 mod paint;
@@ -252,13 +255,21 @@ fn make(m: &Manifest, i: usize) -> Option<Vec<u8>> {
     let e = &m.entries[i];
     let low = e.path.to_lowercase();
     match &e.item {
-        Item::Pic { .. } => ui::picture(e, &low),
-        Item::Alpha { of, .. } => ui::alpha(&m.entries[*of], &low),
+        // the interface pictures drawn by tools/freeset_art/ui.py, else drawn here
+        Item::Pic { .. } => baked::get(&pack_path(e)).map(<[u8]>::to_vec).or_else(|| ui::picture(e, &low)),
+        Item::Alpha { of, .. } => baked::get(&pack_path(e)).map(<[u8]>::to_vec).or_else(|| ui::alpha(&m.entries[*of], &low)),
         Item::Pal { w, h } => Some(sprite::palette_file(&low, *w, *h)),
-        Item::Flc(head) => Some(sprite::flc(&low, head)),
+        Item::Flc(head) => {
+            let shadow = low.ends_with("shadow.flc").then(sprite::shadow_palette);
+            baked::flc(&e.path, head, shadow.as_ref()).or_else(|| Some(sprite::flc(&low, head)))
+        }
         Item::Tex => Some(tex::texture(&e.path)),
         Item::Overlay { w, h } => Some(tex::overlay(&low, *w, *h)),
-        Item::Wav(secs) => Some(sound::make(&low, *secs)),
+        Item::Wav(secs) => {
+            // the recorded and generated sounds of tools/freeset_art (Ogg Vorbis, which the engine takes for a WAV)
+            let stem = &e.path[..e.path.rfind('.').unwrap_or(e.path.len())];
+            baked::get(&format!("{stem}.ogg")).map(<[u8]>::to_vec).or_else(|| Some(sound::make(&low, *secs)))
+        }
         Item::Keys(keys) => Some(text::terrain_text(&low, keys)),
     }
 }
@@ -340,7 +351,7 @@ mod tests {
         assert_eq!(crate::assets::decode_bmp(&tex).map(|i| (i.w, i.h)), Ok((64, 64)));
         let f = crate::flc::decode_flc(&read("gfx/Flics/Male/MaleKLS_NormalWalk.flc").unwrap()).unwrap();
         assert_eq!((f.views, f.frames.len()), (8, 8 * f.frames_per_view as usize));
-        let w = crate::assets::decode_wav(&read("sfx/Sounds/Applause.wav").unwrap()).unwrap();
+        let w = crate::assets::decode_sound(&read("sfx/Sounds/Applause.wav").unwrap()).unwrap();
         assert!(!w.pcm.is_empty());
         assert!(read("text/Themes/Standard/progolfers.dta").is_some());
     }
