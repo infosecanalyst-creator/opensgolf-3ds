@@ -121,6 +121,10 @@ impl App {
 
     /// The exe's zoom (1, 2 or 4).
     pub(crate) fn exe_zoom(&self) -> f32 {
+        if crate::enhanced::smooth_camera() {
+            // Enhanced's continuous zoom: the rules and the sizes keyed to the zoom take the nearest of the three levels
+            return (self.zoom / ZOOM_UNIT).log2().round().clamp(0.0, 2.0).exp2();
+        }
         (self.zoom / ZOOM_UNIT).max(1.0)
     }
 

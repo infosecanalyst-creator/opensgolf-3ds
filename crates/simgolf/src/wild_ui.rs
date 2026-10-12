@@ -90,7 +90,7 @@ impl App {
         // animals
         let animals = self.club.wildlife.animals.clone();
         if self.club.wildlife.enabled {
-            for a in animals.iter().filter(|a| a.kind >= 0) {
+            for (ai, a) in animals.iter().enumerate().filter(|(_, a)| a.kind >= 0) {
                 let (body, shadow) = self.animal_sprite(a.kind, a.clip());
                 let n = self.frames_of(body);
                 let (x, z) = self.units_to_world(a.x, a.y);
@@ -108,12 +108,13 @@ impl App {
                     facing: (a.heading / 2) & 3,
                     scale: a.scale() as f32 / 4.0,
                     lift,
+                    track: 0x4000_0000 | ai as u32,
                     ..Default::default()
                 });
             }
         }
         // fly-overs
-        for f in self.club.wildlife.flyers {
+        for (fi, f) in self.club.wildlife.flyers.into_iter().enumerate() {
             if !f.active || self.course.oob(f.x >> 10, f.y >> 10) {
                 continue;
             }
@@ -143,6 +144,7 @@ impl App {
                 heading: DY[k].atan2(DX[k]).to_degrees(),
                 facing: (f.heading / 2) & 3,
                 lift,
+                track: 0x5000_0000 | fi as u32,
                 ..Default::default()
             });
         }

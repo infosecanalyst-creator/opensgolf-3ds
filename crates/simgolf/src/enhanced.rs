@@ -1,0 +1,765 @@
+//! Enhanced graphics (docs/ENHANCED.md): an optional, non-original way of drawing the game for today's large and wide
+//! screens, without changing any art. Text drawn from the TrueType fonts at the screen's own pixel size, interface art
+//! with premultiplied alpha and mipmaps, the HUD held to the window's corners on wide windows, anisotropic filtering and
+//! multisampling for the course, a smooth camera (continuous zoom, animated turns, panning with inertia) and the golfers,
+//! balls, animals and fly-overs moved smoothly between the simulation's 87 ms ticks.
+//!
+//! Classic is the default and stays exactly as it is: every hook elsewhere asks one of this module's switches first
+//! ([`native_text`], [`smooth_ui`], [`widescreen`], ...), which are all false while the master switch is off, so with
+//! Enhanced off none of the new code runs and every frame is the same, pixel for pixel, as before Enhanced existed.
+//! Nothing here touches the simulation: saves, the random generator and the game's rules are the same either way (the
+//! rules that depend on the zoom read the nearest of the original's three levels, `App::exe_zoom`).
+//!
+//! Adding an option: give [`Settings`] a field (with `#[serde(default)]` it reads old settings files), add an
+//! [`OptionEntry`] to [`OPTIONS`] with a text key in lang/en.txt, and ask for it through a switch like [`smooth_ui`]. The
+//! Preferences screen (System Functions, Preferences, *Enhanced graphics...*) lists every entry of [`OPTIONS`] in order.
+use crate::app::App;
+use crate::gfx::Gfx;
+use crate::ui::{rgba, Screen as Ui};
+use serde::{Deserialize, Serialize};
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
+
+/// The settings.json key of the Enhanced settings.
+pub const SETTINGS_KEY: &str = "enhanced";
+
+/// The Enhanced settings: the master switch and the options under it. An option only counts while `enabled` is on.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Settings {
+    /// The master switch (off: Classic).
+    pub enabled: bool,
+    /// Text rasterised from the TrueType fonts at the screen's pixel size (layout unchanged).
+    pub native_text: bool,
+    /// Interface and sprite art with premultiplied alpha and mipmaps (clean edges at any scale).
+    pub smooth_ui: bool,
+    /// On windows wider (or taller) than 4:3 the HUD goes to the window's corners and edges; full-screen pages are
+    /// framed.
+    pub widescreen: bool,
+    /// Anisotropic filtering of the course's textures (where the graphics driver offers it).
+    pub terrain_filter: bool,
+    /// 4x multisampling of the frame (desktop).
+    pub msaa: bool,
+    /// Continuous zoom, animated quarter turns, panning with inertia.
+    pub smooth_camera: bool,
+    /// Golfers, balls, animals, carts and fly-overs moved smoothly between the simulation's ticks.
+    pub smooth_motion: bool,
+}
+
+impl Settings {
+    /// Enhanced off, every option ready for when it is turned on.
+    pub const DEFAULT: Settings = Settings {
+        enabled: false,
+        native_text: true,
+        smooth_ui: true,
+        widescreen: true,
+        terrain_filter: true,
+        msaa: true,
+        smooth_camera: true,
+        smooth_motion: true,
+    };
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Settings::DEFAULT
+    }
+}
+
+thread_local! {
+    static SETTINGS: Cell<Settings> = const { Cell::new(Settings::DEFAULT) };
+}
+
+/// The settings in use.
+pub fn settings() -> Settings {
+    SETTINGS.with(|s| s.get())
+}
+
+/// Puts settings in use (not saved; see `App::apply_enhanced`).
+pub fn set(s: Settings) {
+    SETTINGS.with(|c| c.set(s));
+}
+
+fn on(f: impl Fn(&Settings) -> bool) -> bool {
+    let s = settings();
+    s.enabled && f(&s)
+}
+
+pub fn native_text() -> bool {
+    on(|s| s.native_text)
+}
+pub fn smooth_ui() -> bool {
+    on(|s| s.smooth_ui)
+}
+pub fn widescreen() -> bool {
+    on(|s| s.widescreen)
+}
+pub fn terrain_filter() -> bool {
+    on(|s| s.terrain_filter)
+}
+pub fn msaa() -> bool {
+    on(|s| s.msaa)
+}
+pub fn smooth_camera() -> bool {
+    on(|s| s.smooth_camera)
+}
+pub fn smooth_motion() -> bool {
+    on(|s| s.smooth_motion)
+}
+
+/// What a change of an option needs before it shows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Reload {
+    /// Nothing: the option is read every frame.
+    Nothing,
+    /// The art is made again (textures carry the option).
+    Art,
+}
+
+/// One line of the Enhanced graphics screen.
+pub struct OptionEntry {
+    /// The settings.json field (for docs and tests).
+    pub key: &'static str,
+    /// The line's text key (lang/en.txt); the text starts with a space, as every option line of a pop-up box does.
+    pub label: &'static str,
+    pub get: fn(&Settings) -> bool,
+    pub set: fn(&mut Settings, bool),
+    pub reload: Reload,
+}
+
+/// The options under the master switch, in the order the Enhanced graphics screen lists them.
+pub const OPTIONS: &[OptionEntry] = &[
+    OptionEntry {
+        key: "native_text",
+        label: "STR_ENHANCED_NATIVE_TEXT",
+        get: |s| s.native_text,
+        set: |s, v| s.native_text = v,
+        reload: Reload::Nothing,
+    },
+    OptionEntry {
+        key: "smooth_ui",
+        label: "STR_ENHANCED_SMOOTH_UI",
+        get: |s| s.smooth_ui,
+        set: |s, v| s.smooth_ui = v,
+        reload: Reload::Art,
+    },
+    OptionEntry {
+        key: "widescreen",
+        label: "STR_ENHANCED_WIDESCREEN",
+        get: |s| s.widescreen,
+        set: |s, v| s.widescreen = v,
+        reload: Reload::Nothing,
+    },
+    OptionEntry {
+        key: "terrain_filter",
+        label: "STR_ENHANCED_TERRAIN_FILTER",
+        get: |s| s.terrain_filter,
+        set: |s, v| s.terrain_filter = v,
+        reload: Reload::Art,
+    },
+    OptionEntry { key: "msaa", label: "STR_ENHANCED_MSAA", get: |s| s.msaa, set: |s, v| s.msaa = v, reload: Reload::Nothing },
+    OptionEntry {
+        key: "smooth_camera",
+        label: "STR_ENHANCED_SMOOTH_CAMERA",
+        get: |s| s.smooth_camera,
+        set: |s, v| s.smooth_camera = v,
+        reload: Reload::Nothing,
+    },
+    OptionEntry {
+        key: "smooth_motion",
+        label: "STR_ENHANCED_SMOOTH_MOTION",
+        get: |s| s.smooth_motion,
+        set: |s, v| s.smooth_motion = v,
+        reload: Reload::Nothing,
+    },
+];
+
+// ---- the settings file ------------------------------------------------------------------------------------------------------
+
+fn settings_json() -> serde_json::Value {
+    sg_core::fsutil::read_file(crate::app::save_dir().join(crate::hd::SETTINGS_FILE))
+        .and_then(|d| serde_json::from_slice::<serde_json::Value>(&d).ok())
+        .filter(|v| v.is_object())
+        .unwrap_or_else(|| serde_json::json!({}))
+}
+
+/// The settings saved in settings.json (Enhanced off when there are none).
+pub fn saved() -> Settings {
+    serde_json::from_value(settings_json()[SETTINGS_KEY].clone()).unwrap_or_default()
+}
+
+/// Saves the settings into settings.json, keeping its other keys.
+pub fn save(s: &Settings) {
+    let mut v = settings_json();
+    if let Ok(e) = serde_json::to_value(s) {
+        v[SETTINGS_KEY] = e;
+    }
+    if let Ok(t) = serde_json::to_string_pretty(&v) {
+        sg_core::fsutil::write_file(crate::app::save_dir().join(crate::hd::SETTINGS_FILE), t.as_bytes());
+    }
+}
+
+/// At start up, before any art is loaded: the saved settings, with the master switch from `--enhanced` or
+/// `--classic-render` for this run when given (not saved).
+pub fn init(force: Option<bool>) {
+    let mut s = saved();
+    if let Some(on) = force {
+        s.enabled = on;
+    }
+    set(s);
+    if s.enabled {
+        let on: Vec<&str> = OPTIONS.iter().filter(|o| (o.get)(&s)).map(|o| o.key).collect();
+        println!("Enhanced graphics: on ({})", on.join(", "));
+    }
+}
+
+// ---- the Preferences screen -------------------------------------------------------------------------------------------------
+
+/// The lines of the Enhanced graphics checkbox box: the heading, the master switch, then every option.
+pub fn popup_lines() -> Vec<String> {
+    use sg_core::lang::tr;
+    let mut v = vec![tr("STR_ENHANCED_TITLE").to_string(), tr("STR_ENHANCED_MASTER").to_string()];
+    v.extend(OPTIONS.iter().map(|o| tr(o.label).to_string()));
+    v
+}
+
+/// The box's ticks for some settings: bit 0 the master switch, bit 1 + i option i.
+pub fn popup_checks(s: &Settings) -> u32 {
+    OPTIONS.iter().enumerate().fold(s.enabled as u32, |m, (i, o)| m | ((o.get)(s) as u32) << (i + 1))
+}
+
+/// The settings the box's ticks stand for.
+pub fn from_checks(m: u32) -> Settings {
+    let mut s = settings();
+    s.enabled = m & 1 != 0;
+    for (i, o) in OPTIONS.iter().enumerate() {
+        (o.set)(&mut s, m & 1 << (i + 1) != 0);
+    }
+    s
+}
+
+impl App {
+    /// The player's choice from the Enhanced graphics screen: puts the settings in use, saves them, and makes the art
+    /// again when an option the textures carry changed. Returns true when the caller has to load the interface art again
+    /// (main.rs, load_art).
+    pub fn apply_enhanced(&mut self, g: &mut Gfx, new: Settings) -> bool {
+        let old = settings();
+        if new == old {
+            return false;
+        }
+        set(new);
+        save(&new);
+        let art = |s: &Settings| {
+            let mut k: Vec<bool> = OPTIONS.iter().filter(|o| o.reload == Reload::Art).map(|o| s.enabled && (o.get)(s)).collect();
+            k.push(s.enabled);
+            k
+        };
+        if art(&old) == art(&new) {
+            return false;
+        }
+        self.reload_textures(g);
+        true
+    }
+
+    /// Drops the course's and the sprites' textures so they are made again with the current settings (the interface art is
+    /// loaded again by the caller).
+    pub fn reload_textures(&mut self, g: &mut Gfx) {
+        crate::hd::free_tracked(g);
+        for t in self.textures.drain().filter_map(|(_, t)| t) {
+            g.ctx.delete_texture(t);
+        }
+        self.rebuild_batches(g);
+        for s in self.sprites.iter_mut() {
+            for t in s.tex.iter_mut().filter_map(Option::take) {
+                g.ctx.delete_texture(t);
+            }
+        }
+        for (_, t) in self.red_tex.drain() {
+            g.ctx.delete_texture(t);
+        }
+        for (_, t) in self.outfit_tex.drain() {
+            g.ctx.delete_texture(t);
+        }
+    }
+}
+
+// ---- widescreen: the HUD at the window's edges ------------------------------------------------------------------------------
+
+/// Where a piece of the 800 x 600 interface goes on a window of another shape (Enhanced widescreen only; Classic keeps
+/// everything in the centred 800 x 600).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(dead_code)] // every edge is offered, not every one is used yet
+pub enum Anchor {
+    Centre,
+    Top,
+    Bottom,
+    Left,
+    Right,
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
+impl Anchor {
+    /// How far (in 800 x 600 units) the anchor moves the interface, for the window's visible area `ext` (left, top, right,
+    /// bottom in the same units; the centred 800 x 600 is 0, 0, 800, 600).
+    pub fn shift(self, ext: (f32, f32, f32, f32)) -> (f32, f32) {
+        use Anchor::*;
+        let (l, t, r, b) = ext;
+        let x = match self {
+            Left | TopLeft | BottomLeft => l,
+            Right | TopRight | BottomRight => r - 800.0,
+            _ => 0.0,
+        };
+        let y = match self {
+            Top | TopLeft | TopRight => t,
+            Bottom | BottomLeft | BottomRight => b - 600.0,
+            _ => 0.0,
+        };
+        (x, y)
+    }
+}
+
+/// A rectangle drawn this frame (in 800 x 600 units as it shows on the window) and the shift it was drawn with.
+#[derive(Clone, Copy, Debug)]
+struct Region {
+    x0: f32,
+    y0: f32,
+    x1: f32,
+    y1: f32,
+    dx: f32,
+    dy: f32,
+}
+
+thread_local! {
+    /// The interface rectangles of the frame being drawn and of the last whole frame, in drawing order.
+    static REGIONS: RefCell<(Vec<Region>, Vec<Region>)> = const { RefCell::new((Vec::new(), Vec::new())) };
+}
+
+/// Starts a frame's list of interface rectangles.
+pub fn begin_frame() {
+    REGIONS.with(|r| r.borrow_mut().0.clear());
+}
+
+/// Ends a frame: its rectangles become the ones the pointer is tested against until the next frame ends.
+pub fn end_frame() {
+    REGIONS.with(|r| {
+        let mut r = r.borrow_mut();
+        let (cur, last) = &mut *r;
+        std::mem::swap(cur, last);
+    });
+}
+
+/// Remembers an interface rectangle drawn with a shift (widescreen only).
+pub fn record(x0: f32, y0: f32, x1: f32, y1: f32, shift: (f32, f32)) {
+    let (x0, x1) = (x0.min(x1), x0.max(x1));
+    let (y0, y1) = (y0.min(y1), y0.max(y1));
+    REGIONS.with(|r| {
+        let v = &mut r.borrow_mut().0;
+        // a run of pieces with the same shift that touch is kept as one rectangle (a panel's many cuts)
+        if let Some(l) = v.last_mut() {
+            if l.dx == shift.0 && l.dy == shift.1 && x0 >= l.x0 && x1 <= l.x1 && y0 >= l.y0 && y1 <= l.y1 {
+                return;
+            }
+        }
+        if v.len() < 20000 {
+            v.push(Region { x0, y0, x1, y1, dx: shift.0, dy: shift.1 });
+        }
+    });
+}
+
+/// The 800 x 600 point a pointer at (vx, vy) (centred 800 x 600 units) means: under a piece of the interface drawn at a
+/// window edge, the point in that piece's own layout; elsewhere the point itself. The topmost piece (drawn last) wins.
+pub fn unshift(vx: f32, vy: f32) -> (f32, f32) {
+    REGIONS.with(|r| {
+        let r = r.borrow();
+        r.1.iter().rev().find(|g| vx >= g.x0 && vx < g.x1 && vy >= g.y0 && vy < g.y1).map(|g| (vx - g.dx, vy - g.dy)).unwrap_or((vx, vy))
+    })
+}
+
+/// The frame round a full-screen 800 x 600 page on a wider (or taller) window: a dark green gradient in the bars (over the
+/// course, translucent so the course shows dimly through) and a soft shadow along the page's edges.
+pub fn backdrop(g: &mut Gfx, s: &Ui, over_world: bool) {
+    let (l, t, r, b) = s.extent();
+    if l > -0.5 && t > -0.5 && r < 800.5 && b < 600.5 {
+        return;
+    }
+    let a = if over_world { 0.86 } else { 1.0 };
+    let top = rgba(0.09, 0.15, 0.11, a);
+    let bottom = rgba(0.02, 0.04, 0.03, a);
+    let mut bar = |x: f32, y: f32, w: f32, h: f32| {
+        if w <= 0.0 || h <= 0.0 {
+            return;
+        }
+        // the gradient runs down the whole window
+        let k0 = (y - t) / (b - t).max(1.0);
+        let k1 = (y + h - t) / (b - t).max(1.0);
+        let mix = |k: f32| {
+            let mut c = [0.0; 4];
+            for i in 0..4 {
+                c[i] = top[i] + (bottom[i] - top[i]) * k;
+            }
+            c
+        };
+        s.gradient(g, x, y, w, h, mix(k0), mix(k1));
+    };
+    bar(l, t, -l, b - t);
+    bar(800.0, t, r - 800.0, b - t);
+    bar(0.0, t, 800.0, -t);
+    bar(0.0, 600.0, 800.0, b - 600.0);
+    // the page's shadow: 16 units fading out from its edges
+    for i in 0..8 {
+        let k = i as f32 * 2.0;
+        let c = rgba(0.0, 0.0, 0.0, 0.07 * (8 - i) as f32 / 8.0 * a);
+        if l < -0.5 {
+            s.fill(g, -k - 2.0, 0.0, 2.0, 600.0, c);
+            s.fill(g, 800.0 + k, 0.0, 2.0, 600.0, c);
+        }
+        if t < -0.5 {
+            s.fill(g, 0.0, -k - 2.0, 800.0, 2.0, c);
+            s.fill(g, 0.0, 600.0 + k, 800.0, 2.0, c);
+        }
+    }
+}
+
+// ---- the smooth camera and smooth motion ------------------------------------------------------------------------------------
+
+/// Where a golfer, animal or fly-over was at the last two simulation ticks.
+#[derive(Clone, Copy, Debug)]
+struct Track {
+    prev: [f32; 3],
+    cur: [f32; 3],
+    seen: u32,
+}
+
+/// The App's Enhanced state: the camera as shown, and the positions of the moving things at the last two ticks.
+#[derive(Default)]
+pub struct EnhState {
+    /// The zoom as shown (eases towards `App::zoom`); 0 until the first frame.
+    pub view_zoom: f32,
+    /// Degrees still to turn to reach `App::rot` (an animated quarter turn).
+    pub rot_left: f32,
+    /// The pan still to make (right, up in world units) from an arrow key.
+    pub pan_left: (f32, f32),
+    /// The drag's speed (right, up in world units per second), carried on after the button is let go.
+    pub pan_vel: (f32, f32),
+    pub dragging: bool,
+    last_drag: f64,
+    last_frame: f64,
+    /// The tick the tracks were taken at.
+    tick: u32,
+    tracks: HashMap<u32, Track>,
+    balls: Vec<Option<Track>>,
+}
+
+/// Seconds for an eased move to get about two thirds of the way.
+const EASE: f32 = 0.09;
+
+fn ease(dt: f32) -> f32 {
+    1.0 - (-dt / EASE).exp()
+}
+
+impl App {
+    /// The zoom the course is drawn at: the eased one with the smooth camera, else the zoom itself.
+    pub fn view_zoom(&self) -> f32 {
+        if smooth_camera() && self.enh.view_zoom > 0.0 {
+            self.enh.view_zoom
+        } else {
+            self.zoom
+        }
+    }
+
+    /// The camera's turn as drawn (degrees): part way through an animated quarter turn with the smooth camera.
+    pub fn view_rot(&self) -> f32 {
+        if smooth_camera() {
+            self.rot - self.enh.rot_left
+        } else {
+            self.rot
+        }
+    }
+
+    /// Moves the shown camera towards the real one, once a frame (smooth camera only).
+    pub fn camera_frame(&mut self, now: f64) {
+        let dt = if self.enh.last_frame > 0.0 { (now - self.enh.last_frame).clamp(0.0, 0.1) as f32 } else { 0.0 };
+        self.enh.last_frame = now;
+        if !smooth_camera() {
+            self.enh.view_zoom = self.zoom;
+            self.enh.rot_left = 0.0;
+            self.enh.pan_left = (0.0, 0.0);
+            self.enh.pan_vel = (0.0, 0.0);
+            return;
+        }
+        let k = ease(dt);
+        // zoom: eased in log space, so each doubling takes the same time
+        if self.enh.view_zoom <= 0.0 {
+            self.enh.view_zoom = self.zoom;
+        }
+        let (a, b) = (self.enh.view_zoom.ln(), self.zoom.ln());
+        self.enh.view_zoom = if (a - b).abs() < 1e-3 { self.zoom } else { (a + (b - a) * k).exp() };
+        // the turn
+        self.enh.rot_left -= self.enh.rot_left * k;
+        if self.enh.rot_left.abs() < 0.05 {
+            self.enh.rot_left = 0.0;
+        }
+        // an arrow key's scroll
+        let (pr, pu) = self.enh.pan_left;
+        if pr != 0.0 || pu != 0.0 {
+            let (sr, su) = (pr * k, pu * k);
+            self.pan(sr, su);
+            self.enh.pan_left = (pr - sr, pu - su);
+            if (pr - sr).hypot(pu - su) < 0.05 {
+                self.pan(pr - sr, pu - su);
+                self.enh.pan_left = (0.0, 0.0);
+            }
+        }
+        // the drag's inertia, once let go
+        if !self.enh.dragging {
+            let (vr, vu) = self.enh.pan_vel;
+            if vr != 0.0 || vu != 0.0 {
+                self.pan(vr * dt, vu * dt);
+                let f = (-dt * 4.0).exp();
+                self.enh.pan_vel = (vr * f, vu * f);
+                if self.enh.pan_vel.0.hypot(self.enh.pan_vel.1) < 2.0 {
+                    self.enh.pan_vel = (0.0, 0.0);
+                }
+            }
+        }
+    }
+
+    /// A drag of the course by (right, up) world units: panned at once, its speed kept for the inertia.
+    pub fn drag_pan(&mut self, right: f32, up: f32, now: f64) {
+        self.pan(right, up);
+        if !smooth_camera() {
+            return;
+        }
+        let dt = (now - self.enh.last_drag).max(1e-3) as f32;
+        self.enh.last_drag = now;
+        if dt > 0.1 {
+            self.enh.pan_vel = (0.0, 0.0);
+            return;
+        }
+        let v = (right / dt, up / dt);
+        // smoothed over the last few motion events
+        self.enh.pan_vel = (self.enh.pan_vel.0 * 0.5 + v.0 * 0.5, self.enh.pan_vel.1 * 0.5 + v.1 * 0.5);
+    }
+
+    /// The drag starts (true) or ends (false); a drag that stopped before it ended carries no inertia.
+    pub fn drag_state(&mut self, down: bool, now: f64) {
+        self.enh.dragging = down;
+        if down || now - self.enh.last_drag > 0.08 {
+            self.enh.pan_vel = (0.0, 0.0);
+        }
+    }
+
+    /// An arrow key's scroll: eased with the smooth camera, at once otherwise.
+    pub fn key_pan(&mut self, right: f32, up: f32) {
+        if smooth_camera() {
+            self.enh.pan_left.0 += right;
+            self.enh.pan_left.1 += up;
+        } else {
+            self.pan(right, up);
+        }
+    }
+
+    /// A quarter turn has just been made: the shown camera starts from where it was.
+    pub fn turned(&mut self, degrees: f32) {
+        if smooth_camera() {
+            // the short way round
+            self.enh.rot_left = (self.enh.rot_left + degrees + 180.0).rem_euclid(360.0) - 180.0;
+        }
+    }
+
+    /// The mouse wheel or a pinch with the smooth camera: the zoom moves continuously between the original's closest and
+    /// farthest levels (a wheel notch is a quarter of a doubling).
+    pub fn zoom_by(&mut self, doublings: f32) {
+        use crate::app::ZOOM_UNIT;
+        self.zoom = (self.zoom * doublings.exp2()).clamp(ZOOM_UNIT, ZOOM_UNIT * 4.0);
+    }
+
+    /// The simulation advanced: the positions at this tick become the newest of the two kept (smooth motion only). Called
+    /// after `update_props` has pointed the props at the simulation.
+    pub fn track_motion(&mut self) {
+        if !smooth_motion() {
+            self.enh.tracks.clear();
+            self.enh.balls.clear();
+            return;
+        }
+        let tick = self.game_tick;
+        let advanced = tick != self.enh.tick;
+        self.enh.tick = tick;
+        // a jump of more than two tiles in a tick is a move to a new place, not a walk
+        let far = 2.0 * sg_core::terrain::TILE_SIZE;
+        let mut seen = HashMap::with_capacity(self.enh.tracks.len());
+        for p in &self.props {
+            let Some(key) = track_key(p) else { continue };
+            if p.hidden {
+                continue;
+            }
+            let now = [p.x, p.z, p.lift];
+            let t = match self.enh.tracks.get(&key) {
+                Some(t) if advanced => {
+                    let jump = (now[0] - t.cur[0]).hypot(now[1] - t.cur[1]);
+                    Track { prev: if jump > far { now } else { t.cur }, cur: now, seen: tick }
+                }
+                Some(t) => Track { cur: now, ..*t },
+                None => Track { prev: now, cur: now, seen: tick },
+            };
+            seen.insert(key, t);
+        }
+        self.enh.tracks = seen;
+        // the balls, by golfer (in the simulation's units: x, y along the ground and the height)
+        let n = self.club.g.len();
+        self.enh.balls.resize(n, None);
+        for i in 0..n {
+            let gl = &self.club.g[i];
+            if gl.bx == 0 || gl.hole <= 0 || gl.hole >= 19 {
+                self.enh.balls[i] = None;
+                continue;
+            }
+            let now = [gl.bx as f32, gl.by as f32, gl.bz as f32];
+            self.enh.balls[i] = Some(match self.enh.balls[i] {
+                Some(t) if advanced => {
+                    let jump = (now[0] - t.cur[0]).hypot(now[1] - t.cur[1]);
+                    Track { prev: if jump > 8.0 * 1024.0 { now } else { t.cur }, cur: now, seen: tick }
+                }
+                Some(t) => Track { cur: now, ..t },
+                None => Track { prev: now, cur: now, seen: tick },
+            });
+        }
+    }
+
+    /// How far the simulation is between its last tick and the next (0 to 1).
+    fn tick_fraction(&self) -> f32 {
+        let tick_s = sg_core::flight::TICK_MS as f64 / 1000.0;
+        (self.tick_acc / tick_s).clamp(0.0, 1.0) as f32
+    }
+
+    /// Where a prop is drawn: between its places at the last two ticks with smooth motion, else where it is.
+    pub fn shown_at(&self, p: &crate::app::Prop) -> (f32, f32, f32) {
+        if smooth_motion() {
+            if let Some(t) = track_key(p).and_then(|k| self.enh.tracks.get(&k)) {
+                let f = self.tick_fraction();
+                let l = |i: usize| t.prev[i] + (t.cur[i] - t.prev[i]) * f;
+                return (l(0), l(1), l(2));
+            }
+        }
+        (p.x, p.z, p.lift)
+    }
+
+    /// Where golfer `i`'s ball is drawn, in the simulation's units (x, y, height).
+    pub fn shown_ball(&self, i: usize) -> Option<(f32, f32, f32)> {
+        let t = self.enh.balls.get(i).copied().flatten().filter(|_| smooth_motion())?;
+        let f = self.tick_fraction();
+        let l = |k: usize| t.prev[k] + (t.cur[k] - t.prev[k]) * f;
+        let _ = t.seen;
+        Some((l(0), l(1), l(2)))
+    }
+}
+
+/// The identity a moving prop keeps from tick to tick: its golfer, employee, resident, or the ambient animal or fly-over
+/// it was made for.
+fn track_key(p: &crate::app::Prop) -> Option<u32> {
+    if let Some(g) = p.golfer {
+        Some(0x1000_0000 | g as u32)
+    } else if let Some(e) = p.employee {
+        Some(0x2000_0000 | e as u32)
+    } else if let Some(r) = p.resident {
+        Some(0x3000_0000 | r as u32)
+    } else if p.track != 0 {
+        Some(p.track)
+    } else {
+        None
+    }
+}
+
+// ---- texture filtering ------------------------------------------------------------------------------------------------------
+
+/// Turns on anisotropic filtering (up to 8x) for a mipmapped texture where the driver has GL_EXT_texture_filter_anisotropic
+/// (or OpenGL 4.6). Skipped in browsers and on phones, and wherever the driver does not know the setting.
+pub fn anisotropy(g: &mut Gfx, tex: miniquad::TextureId) {
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android", target_os = "ios")))]
+    {
+        use miniquad::gl;
+        const TEXTURE_2D: u32 = 0x0DE1;
+        const TEXTURE_BINDING_2D: u32 = 0x8069;
+        const MAX_ANISOTROPY: u32 = 0x84FE;
+        const MAX_MAX_ANISOTROPY: u32 = 0x84FF;
+        thread_local! {
+            static MAX: Cell<i32> = const { Cell::new(-1) };
+        }
+        #[allow(irrefutable_let_patterns)]
+        let miniquad::RawId::OpenGl(id) = (unsafe { g.ctx.texture_raw_id(tex) }) else {
+            return;
+        };
+        unsafe {
+            let mut max = MAX.with(|m| m.get());
+            if max < 0 {
+                while gl::glGetError() != 0 {}
+                let mut v = 0;
+                gl::glGetIntegerv(MAX_MAX_ANISOTROPY, &mut v);
+                max = if gl::glGetError() == 0 { v } else { 0 };
+                MAX.with(|m| m.set(max));
+                if max > 1 {
+                    println!("Enhanced graphics: anisotropic filtering {}x", max.min(8));
+                }
+            }
+            if max <= 1 {
+                return;
+            }
+            // miniquad keeps track of the bound texture: put back what was bound
+            let mut prev = 0;
+            gl::glGetIntegerv(TEXTURE_BINDING_2D, &mut prev);
+            gl::glBindTexture(TEXTURE_2D, id);
+            gl::glTexParameterf(TEXTURE_2D, MAX_ANISOTROPY, max.min(8) as f32);
+            gl::glBindTexture(TEXTURE_2D, prev as u32);
+        }
+    }
+    #[cfg(any(target_arch = "wasm32", target_os = "android", target_os = "ios"))]
+    let _ = (g, tex);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn checks_round_trip() {
+        let mut s = Settings::DEFAULT;
+        s.enabled = true;
+        s.msaa = false;
+        set(s);
+        assert_eq!(from_checks(popup_checks(&s)), s);
+        set(Settings::DEFAULT);
+    }
+
+    #[test]
+    fn off_means_every_option_off() {
+        set(Settings::DEFAULT);
+        assert!(!native_text() && !smooth_ui() && !widescreen() && !terrain_filter() && !msaa());
+        assert!(!smooth_camera() && !smooth_motion());
+    }
+
+    #[test]
+    fn anchors_reach_the_edges() {
+        // 16:9 at 1920 x 1080: the visible area is 133.3 units wider each side
+        let ext = (-133.0, 0.0, 933.0, 600.0);
+        assert_eq!(Anchor::TopLeft.shift(ext), (-133.0, 0.0));
+        assert_eq!(Anchor::BottomRight.shift(ext), (133.0, 0.0));
+        assert_eq!(Anchor::Top.shift(ext), (0.0, 0.0));
+    }
+
+    #[test]
+    fn option_keys_are_settings_fields() {
+        let v = serde_json::to_value(Settings::DEFAULT).unwrap();
+        for o in OPTIONS {
+            assert!(v.get(o.key).is_some(), "{}", o.key);
+        }
+    }
+
+    #[test]
+    fn old_settings_files_read() {
+        let s: Settings = serde_json::from_str(r#"{"enabled": true}"#).unwrap();
+        assert!(s.enabled && s.native_text);
+    }
+}

@@ -298,12 +298,19 @@ impl App {
     /// The exe's HUD over the course, before the dock (which covers the face strip while a panel is open).
     pub fn draw_exe_hud(&mut self, g: &mut Gfx, s: &Ui) {
         // a tournament hides the strip and the badge (game flag 0x200000)
+        // Enhanced widescreen: the strip along the bottom from the dock, the badge in the top left corner, the pills in the
+        // top right (Screen::anchor; nothing in Classic)
+        use crate::enhanced::Anchor;
         if self.club.game & game::TOURNAMENT == 0 {
+            s.anchor(Anchor::BottomLeft);
             self.draw_face_strip(g, s);
+            s.anchor(Anchor::TopLeft);
             self.draw_badge(g, s);
         } else {
             self.hud.strip.clear();
         }
+        s.anchor(Anchor::TopRight);
         self.draw_pills(g, s);
+        s.anchor(Anchor::Centre);
     }
 }
