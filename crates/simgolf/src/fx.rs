@@ -807,7 +807,7 @@ impl App {
         if !(s.after_rain || s.seasons || s.lighting) {
             return;
         }
-        let n = [4usize, 4, 8][s.quality.min(2) as usize];
+        let n = [4usize, 8, 8][s.quality.min(2) as usize];
         let key = lightmap_key(&self.terrain, n, 0, FxSettings::default()) ^ 0x5d;
         if self.fx.detail.is_some() && self.fx.detail_key == key {
             return;
@@ -956,7 +956,12 @@ impl App {
                 if s.occlusion && has_lm { 1.0 } else { 0.0 },
                 -1.0,
             ],
-            water: [self.fx.time, 0.22, if s.reflections { 1.0 + 1.8 * atm.golden } else { 1.0 }, 0.55],
+            water: [
+                self.fx.time,
+                if s.reflections { 0.22 + 0.2 * atm.golden } else { 0.22 },
+                if s.reflections { 1.0 + 1.8 * atm.golden } else { 1.0 },
+                0.55,
+            ],
             eye_w: [rot[2], rot[6], rot[10]],
             light_w: if atm.tinted { atm.sun_w } else { to_world(&rot, sg_core::terrain::light_direction()) },
             sky_top: atm.sky_top,
@@ -965,10 +970,10 @@ impl App {
             cover: [atm.cover, atm.cover + 0.22, 1.0 / self.draw_w.max(1.0), 1.0 / self.draw_h.max(1.0)],
             mist: [atm.mist, self.fx.mist_level.0, 1.0 / self.fx.mist_level.1.max(1.0), self.fx.time.rem_euclid(10000.0)],
             mist_col: atm.mist_col,
-            fx1: [atm.wet, 1.02 - 0.45 * atm.puddles, atm.rain, self.fx.time.rem_euclid(1000.0)],
+            fx1: [atm.wet, 1.02 - 0.5 * atm.puddles, atm.rain, self.fx.time.rem_euclid(1000.0)],
             fx2: [atm.season.fresh * 0.8, atm.season.autumn, atm.season.frost, atm.season.dew],
             fx3: [
-                if reflt.is_some() { 0.85 } else { 0.0 },
+                if reflt.is_some() { 1.0 } else { 0.0 },
                 // the smooth ground normals (SG_FX_FACETED=1: the tiles' flat faces, as before, for comparisons)
                 if s.lighting && self.fx.detail.is_some() && std::env::var_os("SG_FX_FACETED").is_none() { 1.0 } else { 0.0 },
                 if s.reflections { 1.0 } else { 0.0 },

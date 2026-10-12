@@ -170,23 +170,48 @@ The effects are ticks on the same screen; `--fx` turns on only the optional shad
 animated water, terrain light with occlusion and shadows, a sky beyond the map, colour grading, bloom and vignette.
 `--fx-set LIST` picks options (`scaler=off|sharp|edge`, `water`, `lighting`, `occlusion`, `shadows`, `sprite-shadows`,
 `sky`, `tilt-shift`, `grading`, `bloom`, `vignette`, `cast-shadows`, `time-of-day`, `clouds`, `haze`, `rain`, `mist`,
-`ball-trail`, `ball-impacts` = on/off, `quality=low|medium|high`), `--fx-list` prints them, and `OPENSGOLF_FX` does the
+`ball-trail`, `ball-impacts`, `reflections`, `wind`, `evening-lights`, `seasons`, `after-rain`, `lightning` = on/off,
+`quality=low|medium|high`, `day-length=short|normal|long`), `--fx-list` prints them, and `OPENSGOLF_FX` does the
 same from the environment. Without them the game looks exactly as before. Test hooks: `SG_FX_BENCH=N` with `--png` prints
 the frame time over N frames, `SG_FX_LOG=1` the light map's build time and each ball's landing (where, on what, at which
 tick), `SG_FX_DUMP=FILE` writes the light map, `SG_FX_SOFT=sharp,edge` overrides the scaler's softness (texels),
 `SG_FX_HOUR=P` holds the time of day at phase P (0 dawn, 0.15 morning, 0.5 midday, 0.85 golden hour, 0.89 sunset, 0.95
-dusk) and `SG_FX_RAIN=1` (or `0`) makes every day wet (dry) while rain is on.
+dusk) and `SG_FX_RAIN=1` (or `0`) makes every day wet (dry) while rain is on. For stills of the newer effects:
+`SG_FX_MONTH=M` holds the calendar month (3 March .. 10.99 late October, fractions allowed: 4.5 is mid April),
+`SG_FX_WIND=S` or `S,DEG` fixes the wind's strength (0 calm .. 1 a strong breeze) and its direction (degrees from the
+screen's right towards its top), `SG_FX_WET=W` makes the ground that wet with its puddles that far spread,
+`SG_FX_RAINBOW=K` shows a rainbow, `SG_FX_LIGHTNING=K` a lightning flash of that brightness, and `SG_FX_FACETED=1` lights
+the ground with the tiles' flat faces as before the smooth normals (for comparisons).
 
 ### Time of day and weather
 
-With *Time of day* on, one game month is one day of light: the month opens in the morning, has a long midday in the
+With *Time of day* on, a day of light lasts three game months (about four and a half minutes at normal speed; *Day
+length* on the Atmosphere page picks short, one month as in the first versions, normal, or long, six months): the day
+opens in the morning, has a long midday in the
 original's light, a golden afternoon, a sunset and a short blue dusk, then the next month dawns. The sun swings round the
 front of the view, so shadows lengthen sideways rather than down the screen, and the course never gets darker than an
 easy-to-read dusk; the interface is not touched. *Rain* wets about one day in four (never on desert or tropical courses, more on the
 links), the same days whenever the save is loaded; the light dims and the shadows fade while it rains. *Mist* lies in
 hollows and over water, thick at dawn and gone by late morning with the time of day (a light mist all day without it).
 *Cloud shadows* drift over the course, *haze* pales the far (upper) part of the view, more when zoomed out. None of these
-changes the game: golfers play the same in rain or at dusk.
+changes the game: golfers play the same in rain or at dusk. Rain spells, the cloud cover and the wind last a whole day of
+light and blend into the next day's over the first and last eighth of it, so the weather comes and goes gently (the short
+day length keeps the first versions' sudden changes).
+
+The **Weather** page and the newer Atmosphere options (docs/ENHANCED.md has the details):
+
+- *Reflections and sun glitter on the water* (on): trees, buildings and golfers standing near water are mirrored in it,
+  rippling with the waves; the sun's glitter grows warm and strong at golden hour; the water laps at the shore.
+- *Wind* (on): each day has its wind; trees, palms, bushes and tall grasses lean and sway in gusts, flags fly downwind, the
+  rain slants and the clouds drift with it.
+- *Lit windows, lamps and fireflies at dusk* (on, with the time of day): from sunset the buildings' windows glow, lamps
+  light up beside the buildings and along the paths, and fireflies drift over the rough on parkland and tropical courses.
+- *Seasons* (on): blossom on the trees and fresh greens in March and April, autumn colours in September and October, frost
+  and dew on spring and autumn mornings (with the time of day). Palms, cacti and conifers barely change.
+- *Wet ground, puddles and rainbows* (on, with rain): during a rainy day and drying through the next the ground is darker
+  and glossy, puddles fill on level fairway and rough and shrink as they dry, and about every other time the sun comes out
+  after rain a rainbow stands in the sky.
+- *Lightning in heavy rain* (off): flashes and distant flicker in the heaviest rain on parkland and links courses.
 
 ## Language
 

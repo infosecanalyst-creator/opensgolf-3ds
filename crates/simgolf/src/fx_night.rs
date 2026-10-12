@@ -120,7 +120,9 @@ pub fn window_glow(img: &Rgba, salt: u32) -> Option<Rgba> {
         }
         let (x0, x1) = pts.iter().map(|k| k % w).fold((usize::MAX, 0), |(a, b), x| (a.min(x), b.max(x)));
         let (y0, y1) = pts.iter().map(|k| k / w).fold((usize::MAX, 0), |(a, b), y| (a.min(y), b.max(y)));
-        if pts.len() > 80 || x1 - x0 > 16 || y1 - y0 > 16 {
+        // a pane is a compact patch: thin streaks (roof edges, gutters, the outlines of a dark trim) are not windows
+        let area = ((x1 - x0 + 1) * (y1 - y0 + 1)) as f32;
+        if pts.len() > 80 || x1 - x0 > 16 || y1 - y0 > 16 || (pts.len() > 2 && (pts.len() as f32) < 0.4 * area) {
             continue;
         }
         let lit = unit(hash(&[salt, x0 as u32, y0 as u32])) < 0.82;

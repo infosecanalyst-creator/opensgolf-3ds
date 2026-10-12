@@ -283,7 +283,9 @@ vec3 wetted(vec3 c, float pot, vec4 lm) {
     float land = 1.0 - lm.a;
     float wet = fx1.x * land;
     land *= smoothstep(0.6, 0.85, up_n);
-    float pud = smoothstep(fx1.y, fx1.y + 0.05, pot) * land;
+    // the map's potential, its edge broken up by a finer noise so the puddles' outlines are round and irregular
+    pot += (noise(w_pos.xz * 0.09) - 0.5) * 0.10 + (noise(w_pos.xz * 0.23) - 0.5) * 0.04;
+    float pud = smoothstep(fx1.y, fx1.y + 0.035, pot) * land;
     vec3 n = vec3((noise(w_pos.xz * 0.05) - 0.5) * 0.08, 1.0, (noise(w_pos.xz * 0.05 + 9.0) - 0.5) * 0.08);
     if (fx1.z > 0.0 && pud > 0.0) {
         vec2 q = w_pos.xz * 0.06;

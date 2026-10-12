@@ -248,8 +248,8 @@ impl App {
                 }
             }
         };
-        bow(big * 0.90, big * 0.95, 0.16 * k, false);
-        bow(big * 1.03, big * 1.075, 0.06 * k, true);
+        bow(big * 0.90, big * 0.95, 0.24 * k, false);
+        bow(big * 1.03, big * 1.075, 0.08 * k, true);
         g.tris(Mode::Flat, None, u, &v);
         // the sky inside a rainbow is a little brighter
         g.flush();

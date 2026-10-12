@@ -97,9 +97,9 @@ impl App {
             return None;
         }
         items.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-        // the target: half the frame's size (high quality: full)
+        // the target: half the frame's size (low quality: a third, high: full)
         let s = crate::fx::settings();
-        let div = if s.quality >= 2 { 1.0 } else { 2.0 };
+        let div = [3.0, 2.0, 1.0][s.quality.min(2) as usize];
         let size = ((self.draw_w / div).ceil().max(1.0) as u32, (self.draw_h / div).ceil().max(1.0) as u32);
         if self.fx.reflect.is_some_and(|r| r.2 != size) {
             if let Some((t, p, _)) = self.fx.reflect.take() {
@@ -155,8 +155,8 @@ impl App {
             for q in crate::fx_nature::strips(l, r, t, b, bend) {
                 let v = q.map(|(cx, cy, tu, tv)| {
                     // fainter towards the top, a little darker than the thing itself
-                    let a = 0.95 * (1.0 - 0.4 * (cy / t.max(1e-3)).clamp(0.0, 1.0));
-                    let c = [tint[0] * 0.86, tint[1] * 0.88, tint[2] * 0.92, a];
+                    let a = 0.95 * (1.0 - 0.3 * (cy / t.max(1e-3)).clamp(0.0, 1.0));
+                    let c = [tint[0] * 0.95, tint[1] * 0.95, tint[2] * 0.97, a];
                     Vert::new(bx + rx * cx - ux * cy, by + ry * cx - uy * cy, bz + rz * cx - uz * cy, tu, tv).col(c)
                 });
                 g.quad(Mode::Flat, Some(tex), &u, v);
