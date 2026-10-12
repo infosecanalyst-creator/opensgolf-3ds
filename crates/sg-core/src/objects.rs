@@ -1,6 +1,7 @@
 //! What the exe draws for objects on the map (docs/PUBLISHER_EXE_NOTES.md, "Drawing objects"). The exe registers each building
 //! sprite under a number at start-up, loading a different file per theme for the same number; its object drawing routine then
-//! picks numbers by object kind and building level (level 2 once the course has more than 10 holes). Landmarks are numbered
+//! picks numbers by object kind and building level (the building's upgrade level; for the snack bar, more than 10 holes on
+//! the course). Landmarks are numbered
 //! 0x168 + their type. File names are the exe's, relative to Flics/, without ".flc".
 
 /// Landmark art by landmark type (sprite 0x168 + type).

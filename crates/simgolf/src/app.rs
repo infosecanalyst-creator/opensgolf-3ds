@@ -3656,8 +3656,13 @@ impl App {
                 self.props[n].bed = Some((d.sprite, d.pal, a, b));
             }
         }
-        let level = (self.hole_numbers.len() > 10) as u16;
+        let big_course = self.hole_numbers.len() > 10;
         for (oi, o) in land.objects.iter().enumerate().filter(|(_, o)| o.kind >= 0) {
+            // The art level the exe's object drawing (0x463180) gets: the number built of the kind less one (0x5a8c38, one
+            // more for an upgraded building, i.e. the object's upgrade level), except the snack bar, which takes its second
+            // art once the course has more than 10 holes. The hole count used for every kind here made the art change
+            // whenever the objects were redrawn on a course of 11+ holes (a tournament placing its TV towers, after a load).
+            let level = if o.kind == land::K_SNACK_BAR { big_course as u16 } else { o.sub.clamp(0, 1) as u16 };
             // land outside the property is not drawn, nor what stands on it (an obstacle placed before the border was
             // taken away shows again when the tract is bought)
             if self.terrain.type_at(o.a, o.b) == 20 {
