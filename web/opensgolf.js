@@ -495,7 +495,7 @@ async function sgInit() {
     }
     const stored = await sgLoadStored();
     if (stored.length > 0) {
-        document.getElementById("again").style.display = "block";
+        document.getElementById("again").style.display = "";
         document.getElementById("playstored").onclick = () => {
             sgStatus("Starting...");
             for (const [path, bytes] of stored) sgAddFile(path, bytes);

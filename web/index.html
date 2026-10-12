@@ -3,68 +3,217 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0f3d24">
+<meta name="description" content="OpenSGolf: a free golf course management game that plays like Sid Meier's SimGolf, right in your browser.">
 <title>OpenSGolf</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%232f8f4e'/%3E%3Crect x='30' y='12' width='3' height='34' fill='%23fff'/%3E%3Cpath d='M33 12l16 6-16 6z' fill='%23e8423b'/%3E%3Ccircle cx='24' cy='46' r='6' fill='%23fff'/%3E%3C/svg%3E">
 <style>
-  html, body { margin: 0; padding: 0; height: 100%; background: #0b0f1a; color: #e8e8f0; font-family: system-ui, sans-serif; overflow: hidden; }
-  #glcanvas { display: none; width: 100vw; height: 100vh; outline: none; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
-  #picker { max-width: 640px; margin: 12vh auto 0; padding: 0 16px; }
-  #picker h1 { font-weight: 600; }
-  #picker label { margin-right: 8px;  display: inline-block; margin-top: 12px; padding: 10px 18px; background: #3b4a8a; border-radius: 6px; cursor: pointer; }
-  #picker input { display: none; }
-  a { color: #9fb4ff; }
-  code { color: #d8dcff; }
-  #status { margin-top: 16px; color: #b8c0e0; min-height: 1.5em; }
-  .note { color: #9098b8; font-size: 14px; line-height: 1.5; }
+  :root {
+    --bg: #0c2416;
+    --bg2: #12331f;
+    --card: rgba(255, 255, 255, 0.06);
+    --card-border: rgba(255, 255, 255, 0.12);
+    --text: #f1f6ef;
+    --muted: #a9c2ae;
+    --accent: #f4d35e;
+    --green: #3fae5f;
+    --green-dark: #2b8a46;
+    --flag: #e8423b;
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); }
+  html, body { margin: 0; padding: 0; min-height: 100%; }
+  body {
+    min-height: 100vh;
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+    line-height: 1.5;
+    background:
+      radial-gradient(1200px 600px at 50% -10%, rgba(120, 220, 140, 0.18), transparent 60%),
+      repeating-linear-gradient(135deg, rgba(255,255,255,0.025) 0 40px, rgba(0,0,0,0.025) 40px 80px),
+      linear-gradient(180deg, var(--bg2), var(--bg));
+  }
+  /* the game: fixed over the whole window once it starts (the page below is hidden then) */
+  #glcanvas { display: none; position: fixed; inset: 0; width: 100vw; height: 100vh; outline: none; touch-action: none;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; background: #000; }
+
+  #picker { max-width: 980px; margin: 0 auto; padding: 32px 16px 48px; }
+  header { display: flex; align-items: center; gap: 18px; margin: 8px 0 28px; }
+  header svg { flex: 0 0 auto; width: 72px; height: 72px; filter: drop-shadow(0 6px 14px rgba(0,0,0,0.35)); }
+  h1 { margin: 0; font-size: clamp(30px, 6vw, 46px); letter-spacing: -0.5px; line-height: 1.1; }
+  h1 span { color: var(--accent); }
+  .tagline { margin: 4px 0 0; color: var(--muted); font-size: clamp(15px, 2.4vw, 18px); }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 16px; }
+  .card { background: var(--card); border: 1px solid var(--card-border); border-radius: var(--radius); padding: 22px;
+    backdrop-filter: blur(6px); display: flex; flex-direction: column; gap: 10px; }
+  .card h2 { margin: 0; font-size: 20px; display: flex; align-items: center; gap: 10px; }
+  .card h2 .icon { font-size: 22px; }
+  .card p { margin: 0; color: var(--muted); font-size: 15px; }
+  .card .actions { margin-top: auto; display: flex; flex-wrap: wrap; gap: 10px; padding-top: 8px; }
+  .card.primary { border-color: rgba(244, 211, 94, 0.5); box-shadow: 0 0 0 1px rgba(244, 211, 94, 0.15), 0 18px 40px rgba(0,0,0,0.25); }
+  #again { border-color: rgba(63, 174, 95, 0.7); }
+
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 46px; padding: 0 20px;
+    border-radius: 999px; font-weight: 600; font-size: 15px; cursor: pointer; border: 1px solid transparent; color: #10240f;
+    background: var(--accent); transition: transform 0.08s ease, filter 0.15s ease; text-decoration: none;
+    -webkit-tap-highlight-color: transparent; }
+  .btn:hover { filter: brightness(1.07); }
+  .btn:active { transform: translateY(1px); }
+  .btn:focus-within, .btn:focus-visible { outline: 3px solid rgba(244, 211, 94, 0.55); outline-offset: 2px; }
+  .btn.green { background: var(--green); color: #fff; }
+  .btn.ghost { background: transparent; color: var(--text); border-color: var(--card-border); }
+  .btn input { display: none; }
+  .linkish { color: var(--muted); font-size: 14px; background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; }
+
+  .remember { display: flex; align-items: center; gap: 10px; margin: 18px 2px 0; color: var(--muted); font-size: 14px; cursor: pointer; }
+  .remember input { width: 18px; height: 18px; accent-color: var(--green); }
+  #status { margin: 14px 0 0; min-height: 1.5em; font-weight: 600; color: var(--accent); }
+  #status:empty { display: none; }
+
+  details { margin-top: 14px; background: var(--card); border: 1px solid var(--card-border); border-radius: var(--radius); }
+  details > summary { cursor: pointer; padding: 16px 20px; font-weight: 600; list-style: none; display: flex; align-items: center; gap: 10px; }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary::after { content: "+"; margin-left: auto; font-size: 20px; color: var(--muted); }
+  details[open] > summary::after { content: "–"; }
+  details .body { padding: 0 20px 18px; color: var(--muted); font-size: 14px; }
+  details .body p { margin: 0 0 12px; }
+  details .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  #hdstatus, #packstatus { margin-top: 10px; color: var(--text); }
+
+  .help { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-top: 28px; }
+  .help h3 { margin: 0 0 8px; font-size: 16px; }
+  .help ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 14px; }
+  kbd { background: rgba(255,255,255,0.1); border: 1px solid var(--card-border); border-bottom-width: 2px; border-radius: 6px;
+    padding: 0 6px; font-size: 12px; font-family: inherit; color: var(--text); }
+  code { color: #e6f0d0; background: rgba(255,255,255,0.08); padding: 0 5px; border-radius: 5px; font-size: 13px; }
+  a { color: var(--accent); }
+  footer { margin-top: 32px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--card-border); padding-top: 16px; }
+  footer p { margin: 0 0 8px; }
+
+  @media (max-width: 520px) {
+    #picker { padding-top: 20px; }
+    header svg { width: 56px; height: 56px; }
+    .btn { flex: 1 1 auto; }
+  }
 </style>
 </head>
 <body>
 <div id="picker">
-  <h1>Sid Meier's SimGolf</h1>
-  <p>A native port of SimGolf that runs in your browser, using the game files from <b>your own copy</b> of SimGolf.</p>
-  <ol class="note">
-    <li>Click the button below.</li>
-    <li>Pick your SimGolf game folder: the one that contains <code>Flics</code>, <code>Sounds</code> and <code>Data</code>
-      (on Windows usually <code>C:\Program Files\Maxis\SimGolf</code> or similar). Picking a folder above it works too.</li>
-    <li>Your browser may ask to confirm reading the folder ("upload" in its wording): the files are only read inside this tab,
-      nothing is sent anywhere.</li>
-  </ol>
-  <div id="again" style="display:none">
-    <p><b>Your game files are already in this browser.</b></p>
-    <label id="playstored">Play</label>
-    <a href="#" onclick="sgForget(); return false;" class="note" style="margin-left:12px">Forget my game files</a>
-    <p class="note">Or load them again:</p>
+  <header>
+    <svg viewBox="0 0 64 64" aria-hidden="true">
+      <circle cx="32" cy="32" r="30" fill="#2f8f4e"/>
+      <ellipse cx="32" cy="47" rx="20" ry="7" fill="#58c27a"/>
+      <rect x="30.5" y="11" width="3" height="36" rx="1.5" fill="#fff"/>
+      <path d="M33.5 11l17 6.5-17 6.5z" fill="#e8423b"/>
+      <circle cx="22" cy="46" r="5.5" fill="#fff"/>
+      <circle cx="20.5" cy="44.5" r="0.9" fill="#d5dcd6"/><circle cx="23.5" cy="45" r="0.9" fill="#d5dcd6"/>
+      <circle cx="21.5" cy="47.5" r="0.9" fill="#d5dcd6"/>
+    </svg>
+    <div>
+      <h1>Open<span>S</span>Golf</h1>
+      <p class="tagline">Build the golf resort of your dreams. A free remake that plays like Sid Meier's SimGolf, right in your browser.</p>
+    </div>
+  </header>
+
+  <div class="cards">
+    <section class="card" id="again" style="display:none">
+      <h2><span class="icon">⛳</span> Welcome back</h2>
+      <p>Your game files are already saved in this browser. Jump straight in.</p>
+      <div class="actions">
+        <button class="btn green" id="playstored">Continue playing</button>
+        <button class="linkish" onclick="sgForget(); return false;">Forget my game files</button>
+      </div>
+    </section>
+
+    <section class="card primary">
+      <h2><span class="icon">🏌️</span> Play with your SimGolf</h2>
+      <p>Pick the folder of your installed copy of SimGolf (the one holding <code>Data</code>, <code>Flics</code> and
+        <code>Sounds</code>, often <code>C:\Program Files\Maxis\SimGolf</code>). The files are read in this tab only; nothing
+        is uploaded.</p>
+      <div class="actions">
+        <label class="btn">Choose game folder<input id="folder" type="file" webkitdirectory directory multiple></label>
+        <label class="btn ghost">Or a .zip<input id="zip" type="file" accept=".zip"></label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2><span class="icon">✨</span> Play free right now</h2>
+      <p>No game files? Start straight away with OpenSGolf's own free graphics, sounds and text, made by the engine itself.</p>
+      <div class="actions">
+        <button class="btn green" id="playfree">Play with free graphics</button>
+      </div>
+    </section>
   </div>
-  <label>Choose your SimGolf game folder<input id="folder" type="file" webkitdirectory directory multiple></label>
-  <label>Or a .zip of it<input id="zip" type="file" accept=".zip"></label>
-  <label id="playfree" title="No game files needed: OpenSGolf's own free art, sounds and text (docs/MODDING.md)">Play with the free OpenSGolf graphics</label>
-  <p class="note"><input type="checkbox" id="remember" checked style="display:inline"> Keep the files in this browser so next time it starts at once</p>
-  <div id="status"></div>
-  <details class="note">
-    <summary>Optional: HD graphics from an art pack you made yourself</summary>
-    <p>HD mode draws the game's art upscaled (with an AI upscaler such as Real-ESRGAN). The pack is made on your computer from
-      your own copy of the game with <code>tools/hd_pack</code> (see docs/HD.md in the source); it is never downloaded from
-      anywhere and must not be shared. Pick the pack's folder (the one with <code>manifest.json</code>) or a .zip of it.
-      Classic graphics stay the default; the game's Preferences switch between the two.</p>
-    <label>Choose your HD pack folder<input id="hdfolder" type="file" webkitdirectory directory multiple></label>
-    <label>Or a .zip of it<input id="hdzip" type="file" accept=".zip"></label>
-    <a href="#" onclick="sgForgetHd(); return false;" style="margin-left:12px">Forget my HD pack</a>
-    <div id="hdstatus"></div>
+
+  <label class="remember"><input type="checkbox" id="remember" checked> Keep my files in this browser so next time starts at once</label>
+  <div id="status" role="status" aria-live="polite"></div>
+
+  <details>
+    <summary>🖼️ HD graphics (optional)</summary>
+    <div class="body">
+      <p>Add an AI-upscaled art pack you made yourself from your own copy (see <code>docs/HD.md</code>). Pick the pack's folder
+        (with <code>manifest.json</code>) or a .zip. It never leaves your browser and must not be shared. Switch between HD and
+        Classic in the game's Preferences.</p>
+      <div class="actions">
+        <label class="btn ghost">Choose HD pack folder<input id="hdfolder" type="file" webkitdirectory directory multiple></label>
+        <label class="btn ghost">Or a .zip<input id="hdzip" type="file" accept=".zip"></label>
+        <button class="linkish" onclick="sgForgetHd(); return false;">Forget my HD pack</button>
+      </div>
+      <div id="hdstatus"></div>
+    </div>
   </details>
-  <details class="note">
-    <summary>Optional: content packs (mods)</summary>
-    <p>Content packs change the game's data, art or sounds (see docs/MODDING.md in the source). Pick a pack's folder (the one
-      with <code>pack.toml</code>) or a .zip of it. Added packs start switched off: switch them on in the game under System
-      Functions, Preferences, Content packs, and reload the page.</p>
-    <label>Add a content pack folder<input id="packfolder" type="file" webkitdirectory directory multiple></label>
-    <label>Or a .zip of it<input id="packzip" type="file" accept=".zip"></label>
-    <a href="#" onclick="sgForgetPacks(); return false;" style="margin-left:12px">Forget my content packs</a>
-    <div id="packstatus"></div>
+
+  <details>
+    <summary>🧩 Mods and content packs (optional)</summary>
+    <div class="body">
+      <p>Content packs change the game's data, art, sounds, text or add scenarios (see <code>docs/MODDING.md</code>). Pick a
+        pack's folder (with <code>pack.toml</code>) or a .zip. New packs start switched off: turn them on in the game under
+        System Functions → Preferences → Content packs, then reload this page.</p>
+      <div class="actions">
+        <label class="btn ghost">Add a pack folder<input id="packfolder" type="file" webkitdirectory directory multiple></label>
+        <label class="btn ghost">Or a .zip<input id="packzip" type="file" accept=".zip"></label>
+        <button class="linkish" onclick="sgForgetPacks(); return false;">Forget my content packs</button>
+      </div>
+      <div id="packstatus"></div>
+    </div>
   </details>
-  <p class="note">The game's art, sounds and data belong to Electronic Arts and are not included here, which is why the page
-  asks for your copy. Without one, <b>Play with the free OpenSGolf graphics</b> starts the game on its own free base set
-  (simple drawn art, synthesised sounds and new text, made by the engine itself). Works in desktop Chrome, Edge and Firefox, and on phones and tablets by touch: tap to click, drag to scroll, hold
-  for a right click, pinch to zoom, twist two fingers to turn the view. Sound starts after your first click or tap. Saved courses stay in this
-  browser. Source and notes: <a href="https://github.com/crspytopgn/simgolf-native">github.com/crspytopgn/simgolf-native</a>.</p>
+
+  <div class="help">
+    <section class="card">
+      <h3>⌨️ Mouse and keys</h3>
+      <ul>
+        <li>Click to build, drag to scroll, right click to undo or close</li>
+        <li><kbd>PgUp</kbd> / <kbd>Home</kbd> turn the view, wheel zooms</li>
+        <li><kbd>H</kbd> opens a hole, <kbd>Esc</kbd> for the menu</li>
+        <li>Sharper 4K and widescreen: Preferences → Enhanced graphics</li>
+      </ul>
+    </section>
+    <section class="card">
+      <h3>👆 Touch</h3>
+      <ul>
+        <li>Tap to click, drag to scroll, hold for a right click</li>
+        <li>Pinch to zoom, twist two fingers to turn the view</li>
+        <li>On-screen buttons for open hole, turn, speed and messages</li>
+      </ul>
+    </section>
+    <section class="card">
+      <h3>💡 Good to know</h3>
+      <ul>
+        <li>Works in Chrome, Edge and Firefox on desktop, and on phones and tablets</li>
+        <li>Sound starts after your first click or tap</li>
+        <li>Saved courses stay in this browser</li>
+      </ul>
+    </section>
+  </div>
+
+  <footer>
+    <p>OpenSGolf is free software (GPL-2.0-or-later). Source, desktop and Android downloads, and docs:
+      <a href="https://github.com/crspytopgn/simgolf-native">github.com/crspytopgn/simgolf-native</a>.</p>
+    <p>Not affiliated with Electronic Arts or Firaxis. SimGolf's art, sounds and data belong to Electronic Arts and are not
+      included; the page reads them from your own copy.</p>
+  </footer>
 </div>
 <canvas id="glcanvas" tabindex="1"></canvas>
 <script src="gl.js"></script>
