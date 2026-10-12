@@ -327,7 +327,23 @@ fn post_supported() -> bool {
 }
 
 fn wants_post(s: &FxSettings) -> bool {
-    s.enabled && post_supported() && (s.tilt_shift || s.grading || s.bloom || s.vignette)
+    // photo mode always composites (its looks, focus blur and vignette; photo.rs), in the browser too
+    s.enabled && ((post_supported() && (s.tilt_shift || s.grading || s.bloom || s.vignette)) || crate::photo::post().is_some())
+}
+
+thread_local! {
+    /// The size of the target being drawn when it is not the window (photo mode's larger photos, photo.rs).
+    static RENDER_SIZE: Cell<Option<(f32, f32)>> = const { Cell::new(None) };
+}
+
+/// Drawing into a target of this size instead of the window (None: the window again), for the scaler's magnification.
+pub fn set_render_size(size: Option<(f32, f32)>) {
+    RENDER_SIZE.with(|r| r.set(size));
+}
+
+/// The size of the target being drawn when it is not the window (None: the window).
+pub fn render_size() -> Option<(f32, f32)> {
+    RENDER_SIZE.with(|r| r.get())
 }
 
 // ---- theme looks --------------------------------------------------------------------------------------------------------------
@@ -612,6 +628,12 @@ pub(crate) fn gpu(g: &mut Gfx) -> &FxGpu {
 
 // ---- the pixel-art scaler -----------------------------------------------------------------------------------------------------
 
+/// How a texture holds its colours, for the scaler: straight, premultiplied (Enhanced's smooth interface textures), or
+/// straight with the distance to a smoothed outline in alpha (Enhanced's smooth edges for colour-keyed art, edges.rs).
+pub const TEX_STRAIGHT: u8 = 0;
+pub const TEX_PREMUL: u8 = 1;
+pub const TEX_SDF: u8 = 2;
+
 /// Whether the scaler may take over a batch (called by Gfx::flush for the flat 2D / sprite draws).
 pub fn scaler_wanted() -> bool {
     let s = settings();
@@ -630,8 +652,9 @@ pub(crate) fn pause_scaler(on: bool) {
 
 /// Draw state for a batch of flat quads drawn with the scaler: sets the pipeline, bindings and uniforms and returns true, or
 /// returns false (the caller draws the classic way) when the picture is not magnified, is text, or the batch is not quads.
-/// The magnification is measured on the batch's first quad edge (its first two vertices). `premul`: the texture holds
-/// premultiplied colours (and the batch's vertex colours are premultiplied).
+/// The magnification is measured on the batch's first quad edge (its first two vertices). `colours`: how the texture holds
+/// its colours (TEX_STRAIGHT, TEX_PREMUL or TEX_SDF; with the last two the batch's vertex colours are premultiplied and the
+/// output is too).
 #[allow(clippy::too_many_arguments)]
 pub fn apply_scaler(
     ctx: &mut Box<dyn RenderingBackend>,
@@ -641,29 +664,14 @@ pub fn apply_scaler(
     ib: BufferId,
     tex: TextureId,
     u: &Uniforms,
-    premul: bool,
+    colours: u8,
 ) -> bool {
     if batch.len() < 6 || PLAIN.with(|p| p.borrow().contains(&tex)) {
         return false;
     }
     let (tw, th) = ctx.texture_size(tex);
-    let (sw, sh) = window::screen_size();
-    let (a, b) = (batch[0], batch[1]);
-    let clip = |p: [f32; 3]| {
-        let m = &u.mvp;
-        let x = m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12];
-        let y = m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13];
-        let w = m[3] * p[0] + m[7] * p[1] + m[11] * p[2] + m[15];
-        (x / w * sw * 0.5, y / w * sh * 0.5)
-    };
-    let (pa, pb) = (clip(a.pos), clip(b.pos));
-    let px = (pb.0 - pa.0).hypot(pb.1 - pa.1);
-    let texels = ((b.uv[0] - a.uv[0]) * tw as f32).hypot((b.uv[1] - a.uv[1]) * th as f32);
-    if texels < 0.5 {
-        return false;
-    }
-    let scale = px / texels;
-    if !scale.is_finite() || scale < 1.05 {
+    let Some(scale) = crate::gfx::batch_scale(&**ctx, batch, tex, u) else { return false };
+    if scale < 1.05 {
         return false;
     }
     // edge-directed rules need room to show; at low magnifications and on the lowest quality the sharp filter does it
@@ -672,14 +680,14 @@ pub fn apply_scaler(
         *fx = Some(Box::new(FxGpu::new(&mut **ctx)));
     }
     let Some(f) = fx.as_deref() else { return false };
-    ctx.apply_pipeline(if premul { &f.scaler_pm } else { &f.scaler });
+    ctx.apply_pipeline(if colours != TEX_STRAIGHT { &f.scaler_pm } else { &f.scaler });
     ctx.apply_bindings(&Bindings { vertex_buffers: vec![vb], index_buffer: ib, images: vec![tex] });
     ctx.apply_uniforms(UniformsSource::table(&ScalerUniforms {
         mvp: u.mvp,
         sp: [tw as f32, th as f32, scale, mode as f32],
         alpha_ref: u.alpha_ref,
         soft: if mode == SCALER_EDGE { SOFT_EDGE.with(|s| s.get()) } else { SOFT_SHARP.with(|s| s.get()) },
-        pm: premul as i32 as f32,
+        pm: colours as f32,
     }));
     true
 }
@@ -1085,22 +1093,32 @@ impl App {
             g.ctx.draw(0, 6, 1);
             g.ctx.end_render_pass();
         };
+        // a photo larger than the window (photo.rs) blurs as far across the picture as the screen shows
+        let spread = crate::photo::post().map(|ph| ph.spread).unwrap_or(1.0);
         let blur = |g: &mut Gfx, a: usize, b: usize| {
-            run(g, &f.blur, p.passes[b], p.tex[a], [1.0 / small.0, 0.0, 0.0, 0.0]);
-            run(g, &f.blur, p.passes[a], p.tex[b], [0.0, 1.0 / small.1, 0.0, 0.0]);
+            run(g, &f.blur, p.passes[b], p.tex[a], [spread / small.0, 0.0, 0.0, 0.0]);
+            run(g, &f.blur, p.passes[a], p.tex[b], [0.0, spread / small.1, 0.0, 0.0]);
         };
-        let tilt = s.tilt_shift && s.quality > 0;
+        // photo mode (photo.rs): its own focus blur, as many blur passes as its strength, and its own composite
+        let photo = crate::photo::post();
+        let tilt = (s.tilt_shift && s.quality > 0 && photo.is_none()) || photo.is_some_and(|ph| ph.blur > 0);
         let bloom = s.bloom && s.quality > 0;
         if tilt {
             run(g, &f.down, p.passes[0], p.scene, [k / full.0 * 2.0, k / full.1 * 2.0, 0.0, 0.0]);
-            blur(g, 0, 1);
-            blur(g, 0, 1);
+            for _ in 0..photo.map(|ph| ph.blur_passes()).unwrap_or(2) {
+                blur(g, 0, 1);
+            }
         }
         if bloom {
             run(g, &f.down, p.passes[2], p.scene, [k / full.0 * 2.0, k / full.1 * 2.0, 1.0, look.bloom_from]);
             blur(g, 2, 3);
         }
         g.ctx.begin_pass(target, PassAction::Nothing);
+        if let Some(ph) = photo {
+            let theme = crate::photo::ThemeGrade { contrast: look.contrast, vibrance: look.vibrance, tint: look.tint };
+            crate::photo::composite(g, &f, [p.scene, p.tex[0], p.tex[2]], ph, theme, if bloom { 0.45 } else { 0.0 }, full.0 / full.1);
+            return;
+        }
         g.ctx.apply_pipeline(&f.composite);
         g.ctx.apply_bindings(&Bindings {
             vertex_buffers: vec![f.quad_vb],
@@ -1145,6 +1163,9 @@ fn free_post(g: &mut Gfx, p: PostTargets) {
     for t in p.tex.into_iter().chain([p.scene, p.depth]).chain(p.msaa.into_iter().flatten()) {
         g.ctx.delete_texture(t);
     }
+    // miniquad keeps the deleted textures in its cache of bound textures: a new one under the same GL name would not be
+    // bound again (photo.rs); clearing the cache (what the end of a frame does) makes the next draws bind theirs
+    g.ctx.commit_frame();
 }
 
 // ---- the light map ------------------------------------------------------------------------------------------------------------

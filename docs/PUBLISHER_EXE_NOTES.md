@@ -406,12 +406,23 @@ Confidence: high. Implemented in `sg-core/src/objects.rs`.
 - At start-up the exe registers every sprite under a number. Building sprites keep their numbers across themes and load a
   different file per theme (so the Airstrip's numbers load the castle in Links, a casino in the Desert and a theme park in the
   Tropics; the Swim Club's load tennis courts in Parkland, a spa in the Desert and stables in Links).
-- The drawing routine picks numbers by object kind and level, the level being 2 once the course has more than 10 holes:
+- The drawing routine picks numbers by object kind and level (EXACT, caller 0x4131fc): the number of that kind built less one
+  (0x5a8c38[kind], which an upgrade makes 2, so the building's upgrade level), except the snack bar, whose level 2 art shows
+  once the course has more than 10 holes:
   clubhouse base 0x1f9 (0x1f8), body 0x1f6 (0x1f7), animation 0x1fa (0x1fb); hotel base 0x1e9, body 0x1e6; airstrip base
   0x1dd, body 0x1da; pro shop base 0x1e3, body 0x1e0; swim club 0x1d7/0x1d4; cart garage 0x1c5/0x1c2; marina 0x1d1/0x1ce;
   putting green 0x1f1/0x1f0; snack bar 0x1ed/0x1ec (level 2: 0x1ef/0x1ee). Some themes skip a base layer.
 - Landmarks draw as sprite 0x168 + their type (Sundial, Barn, civil war cannon, standing stones, ..., radio tower, oil pump),
   animated by the game tick, facing (their direction + the camera's quarter turn) of four views.
+- Ball washer (case 3, EXACT): sprite 0x183 `bldgs/upgrade bwasher` (the same in every theme) in palette 0x3d
+  (`bldgs/upgrade bwasherPal`), facing its way; frame 0, or while its tile has the 0x4000 flag (a golfer washing sets it with
+  the counter at 0) the tile's counter until it reaches the frame count. The port drew nothing for it before.
+- Driving range (case 10, EXACT): drawn tile by tile over its 5 + level square, its direction forced to 0. First column: the
+  shop 0x1b6 + level on the anchor tile (level 2 adds the animation 0x1bf except in the Desert) and a platform top 0x1b8
+  (0x1c0) with its flat base 0x1b9 (0x1c1) on every other tile. Other columns: fence 0x1be at the middle and the corner of
+  the tile's outer edge on the first and last rows. A target green tile (type 1) gets the flag 0x1bd in view 0, its frame
+  (column + row + tick) mod frames; tiles (2,2), (4,3), (6,4) the 100, 200, 300 yard signs 0x1ba..0x1bc (column 6 lies outside even the 6-tile range, so the 300 sign never shows). The port drew
+  only the range's terrain before (`objects::driving_range`).
 
 ## Money over time, fees and quitting (main frame 0x40f5c0, fee routine 0x427380, mood routine 0x467a00)
 
@@ -661,6 +672,10 @@ Confidence: high unless marked.
   animal one time in a hundred; out of bounds removes it.
 - Four fly-overs: a balloon (lands on open ground, burner sound), a sailboat steering along water, a bird of prey per
   theme and a blimp; each appears one time in a hundred when idle (the balloon and blimp from the second year).
+- Views (EXACT, 0x430360): an animal, the bird and a four-view sailboat moving along heading h (0 north, 2 east) take view
+  ((camera eighths - h - 2) & 7) / 2 (eight-view sprites the same without the halving); the blimp, which always flies
+  east, view (camera quarter - 2) & 3; the balloon view (row & 3) whatever the camera, its shadow (tick / 1000) & 3. The
+  port had used h / 2 for all of them, so birds and the blimp crossed the screen facing the wrong way.
 - Water depth: shore 0, next to the shore 1, open 2. Ripples on the shore below a water tile (two tiles in three),
   rocks and coral by fixed tile formulas in shallow flat water, dolphins every 64 frames on scenic open water, else a
   fountain (a rock in the desert). One splash at a time, 13 frames.
@@ -679,6 +694,27 @@ Confidence: high unless marked.
   after an award; the pro's three skill points follow it.
 - One event log entry a month (type in the high bits, a five-bit argument), shown by the year-end report with this
   year's and last year's cash, fun, skill and membership.
+- Those figures come from a 500-month history (cash 0x51b388, fun 0x53e63c, skill 0x5409ac, members 0x520640, indexed by
+  month % 500); the report compares this month's slot with the one eight months back. The main frame writes cash, fun and
+  skill at each wage charge (every 1024 / (difficulty + 2) ticks, with the member count) and again at every month start
+  (tick & 0x3ff == 0); the report itself stores the current member count in this month's slot (EXACT). The port only wrote
+  at the charges, which on Medium and Expert never fall on the month start, so a year end showed This Year all zero, red.
+
+## Help for new players: the unfinished tutorial and what the game does show (0x4604f0, 0x45fd80, 0x416305, 0x467a00)
+
+- The exe holds an unfinished tutorial (EXACT, dead code): 0x4604f0 steps a counter (0x567a18) through two camera tours of
+  a prepared course, "the SimGolf tutorial" (steps 1 to 11: what makes a hole fun, scenic terrain, doglegs, snack bars,
+  benches) and "the Sim Golf Course Tycoon tutorial" (0x15 to 0x1d: holes that test length, accuracy and imagination), each
+  step centring the view on a hole of that course and posting its text; any key steps on, Escape loads `Tutorial Save.sve`.
+  The main loop runs it only while game flag 0x8000 is set. Nothing sets that flag or starts the counter (its only writes
+  are the steps' own + 1 and resets to 0, and it lives in zeroed data, so step 0 returns at once), no menu offers it, and
+  neither the prepared course nor `Tutorial Save.sve` is on the disc. The shipped game has no tutorial; the port has none.
+- What the shipped game shows a new player, and the port with it: the property's welcome story at tick 0x20 (not in a
+  sandbox) and the design tip ("looks hard, plays easy") at tick 0x1400 (in a sandbox too), both spoken by the course
+  (0x45fd80); on Easy in the first year the advisor's line over the player's pro (0x416305: build a tee, a green, press H,
+  build more holes, paths, buildings, employees, the nearest hole's fun, practice round, tournament); the first-time
+  narration of each golfer reaction type (0x467a00's tail, Preferences bit 4, on at the start of a game); the hole opening
+  and building unlock messages (0x40e720).
 
 ## The clubhouse pair screen (0x459850)
 

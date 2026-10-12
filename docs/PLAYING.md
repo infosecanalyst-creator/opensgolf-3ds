@@ -53,7 +53,14 @@ On the Add Buildings panel (or b for benches, Shift+B for a home site; Tab turns
 
 ## In-game interface (dock, panels, advisor, stories)
 
-The lower left of the course screen now shows the game's own dock art (Interface/3mainLowerLeft.pcx). The three big round buttons open panels along the bottom: **Build Course** (terrain brushes, paths, raise and lower, each with its cost), **Add Buildings** (the amenities for the theme) and **People** (click to hire, right click to fire a club pro, ranger, groundskeeper or soda vendor). Click an item, then click the map. The small buttons zoom, rotate, open the course report, pause, and save the course. The keys are the original's (its F8 screen lists them): g f r s t w p b pick the green/tee, fairway, rough, sand, trees, water, path and bench tools (v the ravine), e the elevation tools, = and - raise and lower the ground under the pointer (Tab steps the elevation brush), h opens the hole being built; z and x zoom between the original's three levels, PageUp and Home turn the view a quarter (0 turns it back), the arrows scroll four tiles, 1 to 9 and Shift+1 to 9 jump to holes 1 to 18; Space drops the tool; Shift+P pause, Shift+T trees, Shift+N names, Shift+R routing map, Shift+W world map, Shift+J begin a tournament, Shift+C save the course for championship play, Shift+S and Shift+L save and load. The original has no game speed control; the port's own ] cycles normal, x2 and x4.
+The lower left of the course screen now shows the game's own dock art (Interface/3mainLowerLeft.pcx). The three big round buttons open panels along the bottom: **Build Course** (terrain brushes, paths, raise and lower, each with its cost), **Add Buildings** (the amenities for the theme) and **People** (click to hire, right click to fire a club pro, ranger, groundskeeper or soda vendor). Click an item, then click the map. The small buttons zoom, rotate, open the course report, pause, and save the course. The keys are the original's (its F8 screen lists them): g f r s t w p b pick the green/tee, fairway, rough, sand, trees, water, path and bench tools (v the ravine), e the elevation tools, = and - raise and lower the ground under the pointer (Tab steps the elevation brush), h opens the hole being built; z and x zoom between the original's three levels, PageUp and Home turn the view a quarter (0 turns it back), the arrows scroll four tiles, 1 to 9 and Shift+1 to 9 jump to holes 1 to 18; Space drops the tool; Shift+P pause, Shift+T trees, Shift+N names, Shift+R routing map, Shift+W world map, Shift+J begin a tournament, Shift+C save the course for championship play, Shift+S and Shift+L save and load. The original has no game speed control; the port's own ] cycles normal, x2 and x4. With Enhanced graphics on, the port's own c (a key the original leaves unused) opens photo mode (see *Photo mode* below).
+
+System Functions → Preferences → *Keyboard controls...* (the port's own screen) lists every key the game takes, grouped:
+moving around the course, time, building, holes and messages, reports and maps, your pro and the golfers, saving and
+loading, pictures, and the keys that work everywhere, with the browser's and the Mac's stand-ins. Its pages turn with the
+Previous and Next buttons, Left and Right (or PageUp, PageDown, Space), or a click or tap in the box; Esc, Enter, the tick
+or a click outside the box close it. (The title menu has no Preferences, as in the original.) `--screen keys` opens it for
+stills, `SG_KEYS_PAGE=N` on page N (from 0).
 
 Messages appear at the top of the screen as in the original (the message window): a translucent strip with nobody speaking, or a framed box with the speaker's ball portrait, the newly unlocked building or an icon; a new message replaces the one showing, minor ones wait until it is gone, and Repeat Last Message (Information menu) brings the last one back. On Easy, during the first year, your pro gives advice in a line over his head, in the exe's words. Paused shows at the top centre. Golfer stories play as in the original: a pair that fits a story from your Themes folder gets it at the first tee, and its lines appear at the top as the two walk together (Shift+H hides them); good moods carry it to a Happy Ending, which unlocks a landmark. Special visitors (the Corporate CEO, the County commissioner, the Wealthy heiress) come once your ratings earn them; please them and they invest, approve a land expansion (the TRACTS FOR SALE screen opens) or donate a landmark. Donated and owned landmarks can be placed with the building tool. Story text is read from your disc at run time and is not stored in this project.
 
@@ -152,7 +159,7 @@ assets and read player packs from the external files folder).
 ## Enhanced graphics
 
 System Functions → Preferences → the *Enhanced graphics* tick, or *Enhanced graphics settings...* for the details (the port's own, not in the original; docs/ENHANCED.md) turns on a
-way of drawing the game for large and wide screens: sharp text, smooth interface art, the HUD at the window's corners on a
+way of drawing the game for large and wide screens: sharp text, smooth interface art (with smooth outlines for the colour-keyed buttons, icons and sprites instead of stair steps), the HUD at the window's corners on a
 wide window, sharper and anti-aliased course, a smooth camera and smooth motion. Each part has its own tick; Classic stays
 the default. With the smooth camera the mouse wheel and a pinch zoom continuously between the three levels (z, x and the
 zoom buttons still step to the next level), turns are animated, arrow-key scrolls glide and a dragged course coasts to a
@@ -163,6 +170,20 @@ of day, cloud shadows, haze, rain, mist and the post-processing). The master swi
 `--classic-render` switch it for one run. Test hooks: `--edit M:5` opens the screen (`M:5,P` on page P, 0 to 2);
 `SG_POINTER=x,y` moves the pointer and `SG_CLICK=x,y[;x,y...]` clicks, in window pixels, after the first frame of a
 scripted still (for checking where clicks land on a wide window).
+
+### Photo mode
+
+With Enhanced graphics on, **C** (or the camera button under the rating pills, top right; a tap on a phone) opens photo
+mode (docs/ENHANCED.md, "Photo mode"): the interface goes, the game pauses (Space or P runs it on), and the camera is free:
+drag or the arrows to move, the wheel, a pinch, Z / X or + / - to zoom well past the usual levels, PageUp / Home to turn. A
+click or tap puts the focus there; F turns the focus blur on and off, [ and ] set its strength, L steps through the looks
+(Natural, Warm, Vivid, B&W, Vintage), V the vignette, R the size (window, twice the window, 4K), Enter takes the photo, H
+hides the hint and buttons, Esc or C leaves and puts everything back. Buttons along the bottom do the same by mouse or
+touch. Photos are PNGs in `Photos` in the save folder; the browser downloads them; on Android they go to
+`Android/data/org.opensgolf.game/files/Photos`. The Display page's *Photo mode* tick turns the key and the button off. Test
+hook: `--edit "P:LOOK,BLUR,VIGNETTE,ZOOM,HINT,SHOOT"` opens photo mode for stills (LOOK 0 to 4, BLUR 0 to 5, VIGNETTE 0 or
+1, ZOOM in percent of the closest level or 0, HINT 1 to show the hint and buttons, SHOOT 1 to 3 to take a photo at the
+window's size, twice it or 4K); `SG_CLICK=x,y` sets the focus first.
 
 ### Enhanced graphics: the effects
 

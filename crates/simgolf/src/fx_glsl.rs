@@ -42,8 +42,15 @@ uniform float alpha_ref;
 uniform float soft;
 uniform float pm;
 
-// a texel, premultiplied (textures made by Enhanced's smooth interface option are premultiplied already: pm 1)
-vec4 P(vec4 c) { return pm > 0.5 ? c : vec4(c.rgb * c.a, c.a); }
+// a texel, premultiplied (textures made by Enhanced's smooth interface option are premultiplied already: pm 1; pm 2: a
+// colour-keyed picture with the distance to its smoothed outline in alpha (edges.rs), taken here as the original key)
+vec4 P(vec4 c) {
+    if (pm > 1.5) {
+        float k = step(0.5, c.a);
+        return vec4(c.rgb * k, k);
+    }
+    return pm > 0.5 ? c : vec4(c.rgb * c.a, c.a);
+}
 vec4 T(vec2 cell) { return P(texture2D(tex, (cell + 0.5) / sp.xy)); }
 float df(vec4 a, vec4 b) {
     vec4 d = abs(a - b);
@@ -107,6 +114,14 @@ void main() {
         r#"    }
     // straight colours out for the classic blending; premultiplied ones (and the vertex colour premultiplied) for pm
     vec4 o = pm > 0.5 ? c : (c.a > 0.0 ? vec4(c.rgb / c.a, c.a) : vec4(0.0));
+    if (pm > 1.5) {
+        // the outline from the distance field, one output pixel wide (edges.rs: 8 texels over alpha 0..1); the colour the
+        // scaler found, else (just outside the keyed texels) the colour under them
+        vec4 t = texture2D(tex, uv);
+        float a = clamp((t.a - 0.5) * 8.0 * sp.z + 0.5, 0.0, 1.0);
+        vec3 rgb = c.a > 0.004 ? c.rgb / c.a : t.rgb;
+        o = vec4(rgb * a, a);
+    }
     o *= color;
     if (o.a <= alpha_ref) discard;
     gl_FragColor = o;

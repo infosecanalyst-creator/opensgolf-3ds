@@ -21,6 +21,14 @@ The game plays:
 M starts and cycles the music of the current theme (`Sounds/Music/<theme>_Music`), N mutes everything. `--mute` starts silent,
 `--sound-log` prints every sound as it plays (also with `--png` runs, which use no audio device).
 
+One buffer per slot (EXACT from the exe, DERIVED for the replay): the exe registers each sound slot as one sound object with one
+DirectSound buffer, and every play (0x40c500 -> 0x4481b0 -> 0x484940) sets that object's pitch, volume, pan and start delay and
+plays its buffer. A slot therefore never sounds twice at once: the port keeps the voice each slot last started
+(`App::slot_voices`) and a request for a slot whose clip is still sounding (or waiting for its delayed start) leaves it playing,
+as DirectSound's Play does on a buffer that is already playing. The applause after each of the pro's shots (slot 0x2e,
+`Applause.wav`, 6 s, 1 s delay; the golfers' tick, decompile line ~135031) used to start a second copy over the first whenever the pro
+shot again within six seconds, which sounded like several crowds clapping out of step.
+
 Which sound goes with which event is my choice from the file names; the original's mapping lives in golf.exe, which is not read.
 The volumes are guesses.
 
