@@ -255,8 +255,9 @@ fn make(m: &Manifest, i: usize) -> Option<Vec<u8>> {
     let e = &m.entries[i];
     let low = e.path.to_lowercase();
     match &e.item {
-        Item::Pic { .. } => ui::picture(e, &low),
-        Item::Alpha { of, .. } => ui::alpha(&m.entries[*of], &low),
+        // the interface pictures drawn by tools/freeset_art/ui.py, else drawn here
+        Item::Pic { .. } => baked::get(&pack_path(e)).map(<[u8]>::to_vec).or_else(|| ui::picture(e, &low)),
+        Item::Alpha { of, .. } => baked::get(&pack_path(e)).map(<[u8]>::to_vec).or_else(|| ui::alpha(&m.entries[*of], &low)),
         Item::Pal { w, h } => Some(sprite::palette_file(&low, *w, *h)),
         Item::Flc(head) => {
             let shadow = low.ends_with("shadow.flc").then(sprite::shadow_palette);

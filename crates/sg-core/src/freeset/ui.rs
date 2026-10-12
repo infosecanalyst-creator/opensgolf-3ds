@@ -245,7 +245,8 @@ fn draw(low: &str, name: &str, w: usize, h: usize, comps: &[Comp], full: bool) -
         }
         return c;
     }
-    for p in comps {
+    // tiny pieces are the original sheets' guide marks and stray specks, not art the engine cuts: drawing them left blobs
+    for p in comps.iter().filter(|p| p.w * p.h >= 60.0 && p.w.min(p.h) >= 4.0) {
         element(&mut c, p);
     }
     if name == "holemark.pcx" {
