@@ -265,3 +265,20 @@ Nothing from the footage is stored in the repository.
   point, within a pixel of the footage for 1, 3, 4, 6 to 9.
 - **Face strip**: the exe draws it before the dock and panels (0x40f5c0), so an open panel covers it; the port already
   did this. The footage never shows it because a panel is always open.
+
+## Browser play test (October 2026)
+
+A play test of the browser build (Chromium, 1280x800, 1920x1080 and a Retina-like device pixel ratio of 2, Classic and
+Enhanced, with the free set and with the original files) compared with the native build's stills:
+
+- **Sheet cuts magnified**: at any size but 800x600 a piece cut from a sheet was smoothed with the texels round it, so
+  guide lines and neighbouring pieces showed along cuts (a green line over the Player Comments report's first row).
+  Magnified cuts now keep their samples inside the piece (ui.rs image_scaled_tint); 800x600 is unchanged. Left: with no
+  comments recorded, the header piece's own green guide row (sheet row 124, which the exe always covers with the next
+  piece) still tints the row above it by a fraction on a magnified screen.
+- **Stale hover**: the dock's and the panel's hovered button and tooltip stayed over the reports and the System
+  Functions menu when a click had opened them; they are cleared when the course view is left.
+- **Free set's Select Difficulty**: faces moved to the original's places so the screen's cuts hold them; lit looks and the
+  back button drawn. The free set's terrain transitions (water and rough edges drawn as checkered diamonds) and the
+  course chooser's stray ovals are still the free set's own drawing, not engine faults.
+- Keys, the wheel, the quit button and pictures in the browser: docs/PLAYING.md, Keys in the browser and on a Mac.

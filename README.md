@@ -154,7 +154,7 @@ the screen's own resolution, interface art with premultiplied alpha and mipmaps,
 (full-screen pages framed), anisotropic filtering and 4× anti-aliasing for the course, a smooth camera (continuous zoom,
 animated turns, panning with inertia) and golfers, balls, animals and fly-overs moving smoothly between the simulation's
 ticks. It is not part of the original, and **Classic stays the default and byte-identical** with it off. Turn it on in
-System Functions → Preferences → *Enhanced graphics...*, or with `--enhanced` / `--classic-render` for one run. It combines
+System Functions → Preferences → the *Enhanced graphics* tick (details under *Enhanced graphics settings...*), or with `--enhanced` / `--classic-render` for one run. It combines
 with HD. See [docs/ENHANCED.md](docs/ENHANCED.md).
 Its shader **effects** (a pixel-art scaler for sprites and interface art, animated water with reflections, sparkle and
 shore foam, per-pixel terrain light with ambient occlusion and soft relief shadows, softened sprite shadows, a sky beyond

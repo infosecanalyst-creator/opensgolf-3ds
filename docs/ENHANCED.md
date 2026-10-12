@@ -29,7 +29,7 @@ is filtered, placed and animated.
 
 ## Turning it on
 
-- **In the game:** System Functions → Preferences → *Enhanced graphics...* opens a checkbox list in three pages, picked with
+- **In the game:** System Functions → Preferences → the *Enhanced graphics* tick switches it on and off; *Enhanced graphics settings...* opens a checkbox list in three pages, picked with
   the tabs along its top (click or tap a tab; Left, Right or Tab on the keyboard): **Display** (the options below),
   **Effects** (the shader effects, cast shadows, the balls' trail and impacts, and the effects' quality) and **Atmosphere**
   (sky, time of day, clouds, haze, rain, mist, tilt-shift, grading and bloom). The master switch *Enhanced graphics (off:
@@ -192,7 +192,7 @@ three quarters of its midday brightness; dusk keeps a cool light from above with
 marched towards the moving sun again when it has turned 3° or risen 2° (a few milliseconds, threaded). The water reflects
 the moment's sky, the post-processing's backdrop takes the moment's haze.
 
-Rain falls on about one day in four on parkland (8% in the desert, 22% tropical, 35% on the links). Which days is a hash of
+Rain falls on about one day in four on parkland (35% on the links; never on desert or tropical courses, which stay sunny). Which days is a hash of
 the course's name and size and the day: render-side only, the same days whenever the save is loaded, and the game's own
 random generator is never used. A wet day dims the sun by half, greys the sky and the colours, fades the shadows, thickens
 the clouds and the haze; the drops are thin slanted streaks drawn over the course (about 700 at 1920 × 1080, scaled with

@@ -607,7 +607,8 @@ impl App {
         let s = Ui::new(self.draw_w, self.draw_h);
         self.view = s.view;
         if self.hover == self.title.hover_last {
-            self.title.hover_frames += 1;
+            // the exe's frames, counted on the clock (exe_steps), not ours
+            self.title.hover_frames = self.title.hover_frames.saturating_add(self.exe_steps);
         } else {
             self.title.hover_last = self.hover;
             self.title.hover_frames = 0;

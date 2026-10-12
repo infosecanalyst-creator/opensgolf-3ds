@@ -719,14 +719,14 @@ impl App {
             self.card = None;
             return;
         }
-        // the hover id must stay for 7 frames before its tooltip shows
+        // the hover id must stay for 7 frames before its tooltip shows (the exe's frames, counted on the clock)
         let (mx, my) = self.card_ui.mouse;
         let hover = self.card_hit(gi, mx, my);
         if hover != self.card_ui.hover {
             self.card_ui.hover = hover;
             self.card_ui.frames = 0;
         } else {
-            self.card_ui.frames += 1;
+            self.card_ui.frames = self.card_ui.frames.saturating_add(self.exe_steps);
         }
         let gg = self.club.g[gi].clone();
         let id = gg.roster.max(0) as usize;
