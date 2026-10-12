@@ -152,6 +152,14 @@ runs the same code and draws the same pixels as before. The upscaled art is a de
 yourself from your own copy with `tools/hd_pack/hd_pack.py`. It is never shipped, downloaded from this project, or to be
 shared. Turn it on in Preferences (*HD graphics*), with `--hd` / `--classic`, or `--hd-pack DIR`. See [docs/HD.md](docs/HD.md).
 
+## Enhanced graphics effects (optional)
+
+Shader effects for large screens, without touching any art: a pixel-art scaler (sharp bilinear or edge-directed) for the
+sprites and interface, animated water with sky reflections, sparkle and shore foam, per-pixel terrain light with ambient
+occlusion and soft relief shadows, softened sprite shadows, a sky beyond the map, and optional tilt-shift, colour grading,
+bloom and vignette. Off by default, and with them off the game draws exactly the classic pixels. For now `--fx` (or
+`--fx-set scaler=sharp,tilt-shift=on,...`, or `OPENSGOLF_FX=1`) turns them on. See [docs/ENHANCED.md](docs/ENHANCED.md).
+
 ## Playing
 
 Keys: arrows/WASD pan, Q/E rotate, +/- or mouse wheel zoom, 1-4 themes, R new demo course, P toggle scenery, F follow the golfer,

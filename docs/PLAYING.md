@@ -101,6 +101,16 @@ falls back to a silent build) plays without it. The content packs and translatio
 the program are not inside the APK yet, and the app's packs folder is in its private storage (TODO: bundle the packs as
 assets and read player packs from the external files folder).
 
+## Enhanced graphics effects
+
+`--fx` turns on the optional shader effects (docs/ENHANCED.md, "Effects"): smoother magnified sprites and interface art,
+animated water, terrain light with occlusion and shadows, a sky beyond the map, colour grading, bloom and vignette.
+`--fx-set LIST` picks options (`scaler=off|sharp|edge`, `water`, `lighting`, `occlusion`, `shadows`, `sprite-shadows`,
+`sky`, `tilt-shift`, `grading`, `bloom`, `vignette` = on/off, `quality=low|medium|high`), `--fx-list` prints them, and
+`OPENSGOLF_FX` does the same from the environment. Without them the game looks exactly as before. Test hooks: `SG_FX_BENCH=N`
+with `--png` prints the frame time over N frames, `SG_FX_LOG=1` the light map's build time, `SG_FX_DUMP=FILE` writes the
+light map, `SG_FX_SOFT=sharp,edge` overrides the scaler's softness (texels).
+
 ## Language
 
 The game is in English unless a translation is installed (docs/TRANSLATING.md): then System Functions > Preferences has a
