@@ -239,6 +239,11 @@ Nothing from the footage is stored in the repository.
   between lines from 1 above the card's text origin, then the price; the map's tract numbers are black. Fixed in
   `draw_land`.
 - **Edge of the property** (p1 1700): a stone cliff runs along the front edges of the owned land down into the black. It is Terrain.dll's strata face (0x1000ea30), now built by `build_edge_walls`; at the default zoom the port's face matches the footage's height and shading.
+- **Steps in the ground and tree shadows** (October 2026, from Terrain.dll 0x1000f7f0 and jgl.dll 0x10013400 read with
+  REA): each tile now has its own corners as golf.exe hands them to the DLL, so a tee sits flat at its highest corner and a
+  stone RetainWallA face (CliffTest round water) closes the step to the lower neighbour, the picture stretched over the
+  step; before, the ground was one smooth surface with a floating strip. Shadows are black at 1/2 .. 1/8 by palette index
+  (0xf8..0xfb), lighter than the old 0.63 .. 0.27; p1 1700 shows the faint shadows under the trees.
 - Unchanged, matching: Top Ten Designers layout, Shot Analysis box (282..537), the trophy room's layout. The board's
   tack colours are settled from the code (0x46ed33): photo k (oldest first) takes TacksandArrow's cut at (100, 50 * ((k
   + 1) mod 3)): yellow, red, grey in turn, as p1 2320, 3020 and 4660 show.
