@@ -54,7 +54,7 @@ is filtered, placed and animated.
 | Option (settings key) | What it does |
 |---|---|
 | Sharp text at the screen's resolution (`native_text`) | Text is rasterised from the TrueType faces (Klepto, Manual SSi, Arial or its stand-in) at the size it really has on the screen (the size asked for times the window's scale), cached per face and pixel size, and drawn texel for pixel on whole pixels. The pen still advances by the classic metrics in 800×600 units, so line breaks, centring and every layout are unchanged. Classic bakes the faces once at 32 pixels and scales them. |
-| Smooth interface art at any size (`smooth_ui`) | Interface pictures, sprites, portraits and HD pack pictures are uploaded with premultiplied alpha and mipmaps (trilinear). Scaled up or down, their edges blend with what is under them without the dark or magenta fringes that straight alpha leaves; drawn smaller (a phone, a small window, the far zoom) they do not shimmer. A texture made this way is drawn with a premultiplied blend state; every other texture keeps the classic one, so the two can be mixed safely. Colour-keyed pictures (all-or-nothing alpha: the dock, the title art, the theme icons, cursors, sprites) also lose their stair-stepped outlines on a large window (edges.rs): their alpha is replaced by the distance to a smoothed outline (an exact distance transform smoothed with a Gaussian, by at most half a texel, only where the shape is at least a few texels thick, never across a texel centre), and FRAGMENT_SDF in gfx.rs (or the pixel-art scaler, `pm` 2) turns it into coverage one screen pixel wide at whatever size the picture is drawn. Thin lines, single texels and one-texel gaps keep their width; the colours are untouched (only the outline is smoothed: jagged edges drawn inside the art's colours are the pixel-art scaler's job). |
+| Smooth interface art at any size (`smooth_ui`) | Interface pictures, sprites, portraits and HD pack pictures are uploaded with premultiplied alpha and mipmaps (trilinear). Scaled up or down, their edges blend with what is under them without the dark or magenta fringes that straight alpha leaves; drawn smaller (a phone, a small window, the far zoom) they do not shimmer. A texture made this way is drawn with a premultiplied blend state; every other texture keeps the classic one, so the two can be mixed safely. Colour-keyed pictures (all-or-nothing alpha: the dock, the title art, the theme icons, cursors, sprites) also lose their stair-stepped outlines on a large window (edges.rs): their alpha is replaced by the distance to a smoothed outline (an exact distance transform smoothed with a Gaussian, by at most half a texel, only where the shape is at least a few texels thick, never across a texel centre), and FRAGMENT_SDF in gfx.rs (or the pixel-art scaler, `pm` 2) turns it into coverage one screen pixel wide at whatever size the picture is drawn. Thin lines, single texels and one-texel gaps keep their width; the colours are untouched (only the outline is smoothed: jagged edges drawn inside the art's colours are the pixel-art scaler's job, its *Smooth* filter above all). |
 | Widescreen: interface at the window's edges (`widescreen`) | On a window that is not 4:3 the course already fills the window; with this option the HUD goes to the window's edges too: the course badge in the top left corner, the rating pills in the top right, the dock, its panels and the face strip in the bottom left, the leader board top left, messages, the golfer card and *Paused* at the top centre, the aim box bottom right, the touch buttons on the right edge. Reports, dialogs and pop-ups stay centred. Full-screen pages (title screens, the trophy room, Tracts for Sale, the Routing Map, the pair chooser, Top 10, Customise) are pillarboxed: the bars get a dark green gradient (over the course, translucent so the course shows dimly) and a soft shadow along the page's edges. The pointer follows: each frame remembers the rectangles it drew and the shift each had, and a pointer over one of them is mapped back into that piece's own 800×600 layout, so every click and hover test of the game works unchanged. Tested at 16:9 (1920×1080, 3840×2160) and 21:9 (3440×1440). |
 | Sharper course textures (`terrain_filter`) | The terrain's mipmapped textures get anisotropic filtering (up to 8×) where the driver has `GL_EXT_texture_filter_anisotropic` (or OpenGL 4.6), so the course stays sharp towards the top of the screen at the steep viewing angle. Skipped in browsers and on phones (WebGL 1 / GLES 2 do not promise it) and wherever the driver does not know the setting. |
 | Anti-aliasing (`msaa`) | The frame is drawn into a 4× multisampled target and resolved (the HD mode's target): smooth terrain edges, cliffs and lines. Desktop only, where the renderer can resolve multisampled targets. |
@@ -71,7 +71,7 @@ decoded terrain light (`sg_core::terrain::Lighting`, `light_direction`) and the 
 
 | Option (key) | Default with Enhanced | What it does |
 |---|---|---|
-| Pixel-art scaling (`scaler`) | edge-directed | Sprites and interface pictures that are drawn larger than their pixels (an 800 × 600 game on a 4K screen is magnified 3.6 times) go through a scaler instead of plain bilinear blur. **Sharp bilinear** keeps every art pixel crisp and blends only a one-screen-pixel seam between them. **Edge-directed** is an xBR-style filter (levels 1 and 2: 45° and the shallow / steep 30° edges, evaluated for the four corners of each texel from its 5 × 5 neighbourhood) on a softened sharp-bilinear base: outlines and diagonals become smooth lines instead of stair steps. Colours are compared and mixed premultiplied, so the colour-keyed transparent pixels count as one colour whatever RGB they hide and sprite outlines get smooth, fringe-free edges. Text is left alone (the font atlases are marked plain), so are pictures that are not magnified (HD pack art, far zooms). |
+| Pixel-art scaling (`scaler`) | smooth | Sprites and interface pictures that are drawn larger than their pixels (an 800 × 600 game on a 4K screen is magnified 3.6 times) go through a scaler instead of plain bilinear blur, with one of three filters. **Sharp bilinear** keeps every art pixel crisp and blends only a one-screen-pixel seam between them. **Edge-directed** is an xBR-style filter (levels 1 and 2: 45° and the shallow / steep 30° edges, evaluated for the four corners of each texel from its 5 × 5 neighbourhood) on a softened sharp-bilinear base: outlines and diagonals become smooth lines instead of stair steps where the art has runs of equal colours. **Smooth (strongest)**, the default, follows the art's own edges (see *The Smooth scaler* below): the stair steps inside the art too (the dock's rings, plus and minus, turn arrows, the diagonal lines of the badges and frames, flag poles, railings, roof edges) become smooth lines at any magnification, while flat areas, soft shading and textured art keep the softened sharp-bilinear look. Colours are compared and mixed premultiplied, so the colour-keyed transparent pixels count as one colour whatever RGB they hide and sprite outlines get smooth, fringe-free edges. Text is left alone (the font atlases are marked plain), so are pictures that are not magnified (HD pack art, far zooms). |
 | Animated water (`water`) | on | Water tiles get their own shader: travelling waves bent by noise perturb the normal; the surface reflects the theme's sky (pale low down, the deeper colour only on slopes turned up), and facets the waves turn towards the decoded light's half vector glint. Shallow water foams in drifting bands along the shore (from a signed distance to the land, at the light map's resolution). The theme's own water textures stay the base, desert water swap included; where an edge piece shows its bank (rocks, grass, sand), the effects fade out by comparing each pixel with the texture's own middle colour, so the bank art is untouched. The decoded ripple, rock, dolphin, fountain and waterfall sprites still draw on top. |
 | Per-pixel terrain light (`lighting`) | on | The decoded light model (Terrain.dll's light 0, the theme's `Lighting.txt` colours, OpenGL's default material, specular 13, the port's brightness calibration) computed per pixel from the interpolated normals instead of per vertex. Same colours, smoother highlights. |
 | Ambient occlusion (`occlusion`) | on | Baked per vertex of the tile meshes' 3 × 3 grid from the height field: how much of the horizon the point sees in eight directions, plus how far it sits below the ground around it (valley floors darker). Spread to the light map bilinearly and applied to the ambient and direct light. |
@@ -100,17 +100,19 @@ premultiplied textures of Enhanced's *smooth interface art* (it blends them prem
 ### Turning it on
 
 The effects are part of Enhanced graphics: with the master switch on, System Functions → Preferences → *Enhanced
-graphics...* has a tick for each (stored in `settings.json` under `"enhanced"` as `fx_scaler`, `fx_scaler_sharp`,
+graphics...* has a tick for each (stored in `settings.json` under `"enhanced"` as `fx_scaler`, `fx_scaler_mode` (the
+filter: 0 sharp bilinear, 1 edge-directed, 2 smooth; a line that steps through them; an older file's `fx_scaler_sharp`
+still picks sharp bilinear until the filter is chosen again),
 `fx_water`, `fx_terrain_light`, `fx_sprite_shadows`, `fx_sky`, `fx_tilt_shift`, `fx_grading`, `fx_bloom`, `fx_quality`
 (0 to 2), `fx_cast_shadows`, `fx_ball_trail`, `fx_ball_impacts`, `fx_clouds`, `fx_haze`, `fx_time_of_day`, `fx_rain`,
-`fx_mist`), all on but tilt-shift, *sharp bilinear instead of edge-directed*, and the three that change the mood most:
+`fx_mist`), all on but tilt-shift, the filter *Smooth (strongest)*, and the three that change the mood most:
 time of day, rain and mist. The ticks map onto `fx::FxSettings` (`fx::sync`): *terrain light*
 stands for per-pixel light, occlusion and shadows, *colour grading* for grading and vignette.
 
 Finer control and tests, for one run:
 
 - `--fx` turns the effects on (alone, without the rest of Enhanced) with the defaults above; `--fx-set LIST` also sets
-  options, a comma separated list of `key=value` (value: `on` / `off`, a choice's number, or `sharp`, `edge`, `low`,
+  options, a comma separated list of `key=value` (value: `on` / `off`, a choice's number, or `sharp`, `edge`, `smooth`, `low`,
   `medium`, `high`), for example `--fx-set scaler=sharp,tilt-shift=on,quality=high`; the keys are those of the table above;
 - otherwise the environment variable `OPENSGOLF_FX` (`1`, or a list as above);
 - `--fx-list` prints the options, their labels and choices (`fx::options()`: key, label, choices, get, set).
@@ -154,6 +156,43 @@ a power of two, as WebGL 1 wants for repeating), haze, rain, mist and the ball e
 period of the noise so the shader's coordinates stay small where fragment shaders only have mediump. The light
 map is built on the CPU (a few milliseconds; threaded on desktop) when the ground's heights, water or the view's turn
 change, not every frame.
+
+### The Smooth scaler
+
+`crates/simgolf/src/fx_smooth.rs`, the scaler's third filter and the default. The game's art is pre-rendered and already
+anti-aliased: lines and rings are drawn with in-between colours and the sprites are softly shaded, so the edge-directed
+filter's rules, which look for runs of equal colours, rarely fire inside the art, and the stair steps of its rings, arrows
+and diagonals stay. The Smooth filter measures the direction of the art's edges instead and interpolates along them
+(steering kernel regression):
+
+1. the 4 × 4 texels around the pixel are read once (16 fetches, premultiplied, the colour key taken as transparent);
+2. the brightness gradients of the nine 2 × 2 blocks among them, weighted by a Gaussian around the pixel, give a
+   structure tensor: its main axis is the edge's normal, `(l1 - l2) / (l1 + l2)` how clearly there is one edge (corners,
+   dots and the noise of foliage or roof tiles have none) and `l1` how strong it is;
+3. the texels are weighted by a Gaussian 1.2 texels long along the edge and 0.35 across it, so a stair-stepped circle, a
+   shallow curve or a one-texel line becomes a smooth line, with no preferred angle (xBR knows 45° and 30°);
+4. the same kernel half a texel to either side of the pixel gives the edge's two colours, and the pixel's place between
+   them is steepened to a transition about one screen pixel wide: crisp without overshoot or halos. Not where the three
+   are out of order (the middle of a thin line), lie on a straight ramp (soft shading), or differ little (the steps of
+   the art's quantised gradients, which would turn into contour bands);
+5. the result is mixed with the softened sharp-bilinear base (the edge-directed filter's) by the edge measure of 2, so
+   flat areas, shading, textures and single-texel details stay as the art drew them instead of turning plastic.
+
+Transparent edges: colour-keyed pictures keep the outline of the smooth interface art (edges.rs, the distance field,
+one screen pixel wide) and take their colour from this filter, unpremultiplied, so no key colour or dark fringe shows;
+premultiplied pictures (portraits, shadows) and straight ones get their alpha from the filter itself. It works at any
+magnification from 1.2 (below that, and on quality low, the sharp filter draws), since it interpolates rather than
+deciding per texel corner. GLSL ES 1.00 as the others: no texelFetch, no loops, the exponentials clamped so mediump
+cannot underflow. The constants (kernel widths, thresholds) are at the top of the file.
+
+Checked on the dock, the rating icons, the course badge, the Course Report, Tracts for Sale, the course sprites
+(clubhouses, trees, cacti, the flag, golfers) at 1920 × 1080 and 3840 × 2160 against the edge-directed filter, crops
+magnified 2 to 5 times. Known limits: on the dark rims of the rating icons, whose art has several close shades, the
+filter leaves faint streaks along the rim at 5× and more; foliage and roof textures stay as crisp as sharp bilinear
+(the filter does not invent smoothness where the art has no edge). Classic (1920 × 1080, and a report at 3840 × 2160) and
+Enhanced with the edge-directed (3840 × 2160) or sharp (1920 × 1080) filter were rendered with the build before this
+filter and with it and compared byte for byte: identical. The browser build (headless Chromium, SwiftShader WebGL) runs
+it without errors.
 
 ### Cast shadows
 
@@ -241,6 +280,22 @@ On the CPU renderer every texture fetch is expensive, which is why the edge-dire
 these fetches in parallel from cache. The runs varied by up to 2× with other work on the machine.
 
 If a GPU struggles: quality low (no blur passes, sharp scaler), then the scaler sharp or off, then tilt-shift and bloom off.
+
+The Smooth filter (16 texture fetches and some 60 exponentials a magnified pixel, most of them only where there is an
+edge) against the others, on the played desert save with the dock open, the scaler alone (every other effect off) and
+with the default effects, the best of three alternating runs of 6 frames:
+
+| software renderer, ms a frame | 1920 × 1080 | 3840 × 2160 |
+|---|---|---|
+| Classic | 31 | 59 |
+| effects on, every option off | 37 | 96 |
+| scaler, sharp bilinear | 38 | 117 |
+| scaler, edge-directed | 134 | 419 |
+| scaler, smooth | 131 | 366 |
+| default effects with the edge-directed filter | 217 | 701 |
+| default effects with the smooth filter (the default) | 206 | 637 |
+
+So Smooth costs no more than the edge-directed filter it replaces as the default (the xBR rules fetch 22 texels a pixel).
 
 The cast shadows, time of day, weather and ball effects were measured the same way, each against the effects without
 them (the scaler off, so its cost does not drown theirs), in alternating runs because the shared machine's load moved the
