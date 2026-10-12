@@ -51,10 +51,18 @@ pub struct Actor {
     pub frame: i32,
 }
 
-/// The cells of the 4 x 4 half-tile grid a layout's house piece takes. APPROXIMATION: the piece shapes (0x4c11e0) are in a
-/// data table that is not available; the piece is taken to cover the 2 x 2 cells at its corner.
-pub fn blocked(_layout: i32, u: i32, v: i32) -> bool {
-    u < 2 && v < 2
+/// The house piece's shape in each of the six walk layouts: rows by the x cell u, a bit per y cell v. The exe keeps a 6 x 6
+/// grid per layout (0x4e6d70 + 0x74 * layout, cleared to -1 by 0x401000) and its start-up (0x401750) puts piece `layout`
+/// at (0, 0) of grid `layout` (0x401040), marking the cells its shape (0x4c11e0 + 0x27 * piece, six row masks) covers. The
+/// six house pieces all have rows 7, 7, 7, 7: the house takes x cells 0..3 and y cells 0..2, leaving the residents the
+/// strip of half-tile cells along the lot's +y side.
+const LAYOUT_ROWS: [[u8; 6]; 6] = [[7, 7, 7, 7, 0, 0]; 6];
+
+/// Whether cell (u, v) of a lot's 4 x 4 half-tile grid is taken by the house of `layout` (the exe's grid test, 0x4011e0 and
+/// 0x4017d0: grid[u * 6 + v] != -1).
+pub fn blocked(layout: i32, u: i32, v: i32) -> bool {
+    let rows = LAYOUT_ROWS[layout.clamp(0, 5) as usize];
+    (0..6).contains(&u) && (0..6).contains(&v) && rows[u as usize] & (1 << v) != 0
 }
 
 fn cell_pos(u: i32, v: i32) -> (i32, i32) {
@@ -149,6 +157,18 @@ impl Club {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn residents_keep_to_the_strip_beside_the_house() {
+        for layout in 0..6 {
+            let free: Vec<(i32, i32)> = (0..4).flat_map(|u| (0..4).map(move |v| (u, v))).filter(|&(u, v)| !blocked(layout, u, v)).collect();
+            assert_eq!(free, [(0, 3), (1, 3), (2, 3), (3, 3)]);
+        }
+        let mut c = Club::default();
+        let mut rng = ExeRng::from_clock(5);
+        c.spawn_resident(&mut rng, 0, 10, 10);
+        assert_eq!(c.residents[0].cell().1, 3);
+    }
 
     #[test]
     fn walks_one_cell_in_sixteen_steps() {
