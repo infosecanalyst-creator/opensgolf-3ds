@@ -108,7 +108,11 @@ way of drawing the game for large and wide screens: sharp text, smooth interface
 wide window, sharper and anti-aliased course, a smooth camera and smooth motion. Each part has its own tick; Classic stays
 the default. With the smooth camera the mouse wheel and a pinch zoom continuously between the three levels (z, x and the
 zoom buttons still step to the next level), turns are animated, arrow-key scrolls glide and a dragged course coasts to a
-stop. `--enhanced` and `--classic-render` switch it for one run. Test hooks: `--edit M:5` opens the screen;
+stop. The screen has three pages, chosen with the tabs along its top (a click or a tap; Left, Right or Tab on the
+keyboard): *Display* (the master switch and the options above), *Effects* (the shader effects, cast shadows, the balls'
+trail and impacts, and the effects' quality, which a click steps through low, medium and high) and *Atmosphere* (sky, time
+of day, cloud shadows, haze, rain, mist and the post-processing). The master switch heads every page. `--enhanced` and
+`--classic-render` switch it for one run. Test hooks: `--edit M:5` opens the screen (`M:5,P` on page P, 0 to 2);
 `SG_POINTER=x,y` moves the pointer and `SG_CLICK=x,y[;x,y...]` clicks, in window pixels, after the first frame of a
 scripted still (for checking where clicks land on a wide window).
 
@@ -117,10 +121,24 @@ scripted still (for checking where clicks land on a wide window).
 The effects are ticks on the same screen; `--fx` turns on only the optional shader effects for one run (docs/ENHANCED.md, "Effects"): smoother magnified sprites and interface art,
 animated water, terrain light with occlusion and shadows, a sky beyond the map, colour grading, bloom and vignette.
 `--fx-set LIST` picks options (`scaler=off|sharp|edge`, `water`, `lighting`, `occlusion`, `shadows`, `sprite-shadows`,
-`sky`, `tilt-shift`, `grading`, `bloom`, `vignette` = on/off, `quality=low|medium|high`), `--fx-list` prints them, and
-`OPENSGOLF_FX` does the same from the environment. Without them the game looks exactly as before. Test hooks: `SG_FX_BENCH=N`
-with `--png` prints the frame time over N frames, `SG_FX_LOG=1` the light map's build time, `SG_FX_DUMP=FILE` writes the
-light map, `SG_FX_SOFT=sharp,edge` overrides the scaler's softness (texels).
+`sky`, `tilt-shift`, `grading`, `bloom`, `vignette`, `cast-shadows`, `time-of-day`, `clouds`, `haze`, `rain`, `mist`,
+`ball-trail`, `ball-impacts` = on/off, `quality=low|medium|high`), `--fx-list` prints them, and `OPENSGOLF_FX` does the
+same from the environment. Without them the game looks exactly as before. Test hooks: `SG_FX_BENCH=N` with `--png` prints
+the frame time over N frames, `SG_FX_LOG=1` the light map's build time and each ball's landing (where, on what, at which
+tick), `SG_FX_DUMP=FILE` writes the light map, `SG_FX_SOFT=sharp,edge` overrides the scaler's softness (texels),
+`SG_FX_HOUR=P` holds the time of day at phase P (0 dawn, 0.15 morning, 0.5 midday, 0.85 golden hour, 0.89 sunset, 0.95
+dusk) and `SG_FX_RAIN=1` (or `0`) makes every day wet (dry) while rain is on.
+
+### Time of day and weather
+
+With *Time of day* on, one game month is one day of light: the month opens in the morning, has a long midday in the
+original's light, a golden afternoon, a sunset and a short blue dusk, then the next month dawns. The sun swings round the
+front of the view, so shadows lengthen sideways rather than down the screen, and the course never gets darker than an
+easy-to-read dusk; the interface is not touched. *Rain* wets about one day in four (fewer in the desert, more on the
+links), the same days whenever the save is loaded; the light dims and the shadows fade while it rains. *Mist* lies in
+hollows and over water, thick at dawn and gone by late morning with the time of day (a light mist all day without it).
+*Cloud shadows* drift over the course, *haze* pales the far (upper) part of the view, more when zoomed out. None of these
+changes the game: golfers play the same in rain or at dusk.
 
 ## Language
 
