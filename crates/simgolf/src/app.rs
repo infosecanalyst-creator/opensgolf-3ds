@@ -119,6 +119,8 @@ pub struct Prop {
     pub tv: Option<(i32, i32)>,
     /// An ambient animal's or fly-over's identity from tick to tick (0: none), for Enhanced smooth motion (enhanced.rs).
     pub track: u32,
+    /// Added to the game tick for an animated prop's frame (a driving range's flags wave out of step).
+    pub phase: u32,
 }
 
 impl Default for Prop {
@@ -151,6 +153,7 @@ impl Default for Prop {
             bed: None,
             tv: None,
             track: 0,
+            phase: 0,
         }
     }
 }
@@ -1568,6 +1571,17 @@ impl App {
         for i in done {
             self.staff_tiles.flags[i] &= !staff::WORKED;
         }
+        // a ball washer plays its frames while a golfer washes (0x463180 case 3: the tile's counter while the tile is
+        // flagged and the counter is short of the frame count, frame 0 otherwise)
+        for p in self.props.iter_mut().filter(|p| p.object) {
+            let (Some((a, b)), Some(bi)) = (p.grow_tile, p.body) else { continue };
+            let t = &self.staff_tiles;
+            let i = (b * t.w + a) as usize;
+            let n = self.sprites[bi].s.frames_per_view;
+            let c = t.counter.get(i).copied().unwrap_or(0) as i32;
+            let washing = a < t.w && t.flags.get(i).is_some_and(|f| f & staff::WORKED != 0);
+            p.frame = if washing && c < n { c } else { 0 };
+        }
     }
 
     pub fn refresh_trees(&mut self) {
@@ -2164,7 +2178,7 @@ impl App {
                     let n = self.sprites[b].s.frames_per_view.max(1);
                     p.frame = match p.tv {
                         Some((a, tb)) => sg_core::objects::tv_frame(self.game_tick, a, tb, n),
-                        None => (self.game_tick % n as u32) as i32,
+                        None => (self.game_tick.wrapping_add(p.phase) % n as u32) as i32,
                     };
                 }
             }
@@ -3649,6 +3663,31 @@ impl App {
             if self.terrain.type_at(o.a, o.b) == 20 {
                 continue;
             }
+            if o.kind == land::K_DRIVING_RANGE {
+                // the range is drawn tile by tile (0x463180 case 10): shop, platforms, fences, flags on its target greens
+                let green = |i: i32, j: i32| {
+                    let (ta, tb) = (o.a + i, o.b + j);
+                    (0..land::N).contains(&ta) && (0..land::N).contains(&tb) && land.ty[(ta * land::N + tb) as usize] == land::T_GREEN
+                };
+                for pc in sg_core::objects::driving_range(level, theme, &green) {
+                    let Some(body) = self.sprite_for(&format!("{}.flc", pc.file), false, None) else { continue };
+                    let shadow = if pc.flat { None } else { self.sprite_for(&format!("{}Shadow.flc", pc.file), true, None) };
+                    let (x, z) = self.units_to_world(o.a * 1024 + pc.at.0, o.b * 1024 + pc.at.1);
+                    self.props.push(Prop {
+                        x,
+                        z,
+                        body: Some(body),
+                        shadow,
+                        flat: pc.flat,
+                        animated: pc.animated,
+                        phase: pc.phase,
+                        view: pc.view,
+                        object: true,
+                        ..Default::default()
+                    });
+                }
+                continue;
+            }
             let size = sg_core::data::buildings().get(o.kind as usize).map(|b| b.1).unwrap_or(1);
             let (cx, cz) = self.terrain.tile_centre(o.a, o.b);
             let off = (size - 1) as f32 * TILE_SIZE * 0.5;
@@ -3656,6 +3695,9 @@ impl App {
             // a landmark in its own palette, 100 + type, facing its way plus the view's quarter turns (one more for type 3,
             // whose view the exe turns by the full eighth count, 0x463180 case 4)
             let (mut pal, mut facing) = (None, o.dir as i32);
+            if o.kind == land::K_WASHER {
+                pal = sg_core::decor::palette_file(0x3d, exe_theme);
+            }
             if o.kind == land::K_LANDMARK {
                 pal = sg_core::decor::palette_file(100 + o.sub.clamp(0, 18) as u8, exe_theme);
                 if o.sub == 3 {
@@ -3676,6 +3718,10 @@ impl App {
                     Some(f) => vec![(f.to_string(), false, false)],
                     None => continue,
                 }
+            } else if o.kind == land::K_WASHER {
+                // the ball washer (0x463180 case 3): sprite 0x183 "bldgs/upgrade bwasher" in palette 0x3d, in every theme,
+                // facing its way; frame 0, or while a golfer washes (the tile's 0x4000 flag) its counter (update_tree_growth)
+                vec![("bldgs/upgrade bwasher".to_string(), false, false)]
             } else if o.kind == land::K_LANDMARK {
                 match sg_core::objects::LANDMARKS.get(o.sub as usize) {
                     Some(f) => vec![(f.to_string(), false, true)],
@@ -3691,7 +3737,8 @@ impl App {
                 }
                 let shadow = if flat { None } else { self.sprite_for(&format!("{file}Shadow.flc"), true, None) };
                 let tv = (animated && matches!(o.kind, land::K_TV_TOWER | land::K_TV_BOOTH)).then_some((o.a, o.b));
-                self.props.push(Prop { x, z, body, shadow, flat, facing, animated, object: true, tv, ..Default::default() });
+                let grow_tile = (o.kind == land::K_WASHER).then_some((o.a, o.b));
+                self.props.push(Prop { x, z, body, shadow, flat, facing, animated, object: true, tv, grow_tile, ..Default::default() });
             }
         }
     }

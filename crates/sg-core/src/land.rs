@@ -334,6 +334,7 @@ pub const K_WILLOW: i32 = 16;
 pub const K_BRIDGE: i32 = 19;
 pub const K_TV_TOWER: i32 = 17;
 pub const K_TV_BOOTH: i32 = 18;
+pub const K_WASHER: i32 = 3;
 pub const K_LANDMARK: i32 = 4;
 pub const K_HOME_SITE: i32 = 5;
 pub const K_PUTTING_GREEN: i32 = 6;

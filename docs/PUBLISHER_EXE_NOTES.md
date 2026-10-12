@@ -412,6 +412,15 @@ Confidence: high. Implemented in `sg-core/src/objects.rs`.
   putting green 0x1f1/0x1f0; snack bar 0x1ed/0x1ec (level 2: 0x1ef/0x1ee). Some themes skip a base layer.
 - Landmarks draw as sprite 0x168 + their type (Sundial, Barn, civil war cannon, standing stones, ..., radio tower, oil pump),
   animated by the game tick, facing (their direction + the camera's quarter turn) of four views.
+- Ball washer (case 3, EXACT): sprite 0x183 `bldgs/upgrade bwasher` (the same in every theme) in palette 0x3d
+  (`bldgs/upgrade bwasherPal`), facing its way; frame 0, or while its tile has the 0x4000 flag (a golfer washing sets it with
+  the counter at 0) the tile's counter until it reaches the frame count. The port drew nothing for it before.
+- Driving range (case 10, EXACT): drawn tile by tile over its 5 + level square, its direction forced to 0. First column: the
+  shop 0x1b6 + level on the anchor tile (level 2 adds the animation 0x1bf except in the Desert) and a platform top 0x1b8
+  (0x1c0) with its flat base 0x1b9 (0x1c1) on every other tile. Other columns: fence 0x1be at the middle and the corner of
+  the tile's outer edge on the first and last rows. A target green tile (type 1) gets the flag 0x1bd in view 0, its frame
+  (column + row + tick) mod frames; tiles (2,2), (4,3), (6,4) the 100, 200, 300 yard signs 0x1ba..0x1bc (column 6 lies outside even the 6-tile range, so the 300 sign never shows). The port drew
+  only the range's terrain before (`objects::driving_range`).
 
 ## Money over time, fees and quitting (main frame 0x40f5c0, fee routine 0x427380, mood routine 0x467a00)
 
