@@ -81,6 +81,20 @@ pub struct Settings {
     pub fx_rain: bool,
     /// Mist pooling in low ground in the morning.
     pub fx_mist: bool,
+    /// Trees, buildings and golfers mirrored in the water, sun glitter, shore lapping (fx_reflect.rs).
+    pub fx_reflections: bool,
+    /// A wind each day: trees, palms and flags sway (fx_nature.rs).
+    pub fx_wind: bool,
+    /// Lit windows, lamps and fireflies at dusk (fx_night.rs).
+    pub fx_evening_lights: bool,
+    /// Spring blossom and autumn colours through the game's year (fx_nature.rs).
+    pub fx_seasons: bool,
+    /// Wet ground, puddles and rainbows after rain (fx_wet.rs).
+    pub fx_after_rain: bool,
+    /// Lightning in heavy rain (fx_wet.rs).
+    pub fx_lightning: bool,
+    /// How long a day of light lasts: 0 short (a game month), 1 normal (three months), 2 long (six) (fx_light.rs).
+    pub fx_day_length: u8,
 }
 
 impl Settings {
@@ -113,6 +127,14 @@ impl Settings {
         fx_time_of_day: false,
         fx_rain: false,
         fx_mist: false,
+        fx_reflections: true,
+        fx_wind: true,
+        fx_evening_lights: true,
+        fx_seasons: true,
+        fx_after_rain: true,
+        // a strong effect: offered, not on by default
+        fx_lightning: false,
+        fx_day_length: 1,
     };
 }
 
@@ -173,10 +195,12 @@ pub enum Reload {
 }
 
 /// The pages of the Enhanced graphics screen (tabs along its top), by text key.
-pub const PAGES: [&str; 3] = ["STR_ENHANCED_PAGE_DISPLAY", "STR_ENHANCED_PAGE_EFFECTS", "STR_ENHANCED_PAGE_ATMOSPHERE"];
+pub const PAGES: [&str; 4] =
+    ["STR_ENHANCED_PAGE_DISPLAY", "STR_ENHANCED_PAGE_EFFECTS", "STR_ENHANCED_PAGE_ATMOSPHERE", "STR_ENHANCED_PAGE_WEATHER"];
 pub const DISPLAY: u8 = 0;
 pub const EFFECTS: u8 = 1;
 pub const ATMOSPHERE: u8 = 2;
+pub const WEATHER: u8 = 3;
 
 /// One line of the Enhanced graphics screen.
 pub struct OptionEntry {
@@ -185,7 +209,7 @@ pub struct OptionEntry {
     /// The line's text key (lang/en.txt); the text starts with a space, as every option line of a pop-up box does. A
     /// setting with choices has a {VALUE} in it.
     pub label: &'static str,
-    /// The page (tab) it is on: DISPLAY, EFFECTS or ATMOSPHERE.
+    /// The page (tab) it is on: DISPLAY, EFFECTS, ATMOSPHERE or WEATHER.
     pub page: u8,
     /// The text keys of a setting's values when it has more than on and off (a click steps to the next); empty for a tick.
     pub choices: &'static [&'static str],
@@ -239,13 +263,28 @@ pub const OPTIONS: &[OptionEntry] = &[
     },
     tick!("fx_sky", "STR_ENHANCED_FX_SKY", ATMOSPHERE, fx_sky),
     tick!("fx_time_of_day", "STR_ENHANCED_FX_TIME_OF_DAY", ATMOSPHERE, fx_time_of_day),
+    OptionEntry {
+        key: "fx_day_length",
+        label: "STR_ENHANCED_FX_DAY_LENGTH",
+        page: ATMOSPHERE,
+        choices: &["STR_FX_DAY_SHORT", "STR_FX_DAY_NORMAL", "STR_FX_DAY_LONG"],
+        get: |s| s.fx_day_length.min(2),
+        set: |s, v| s.fx_day_length = v.min(2),
+        reload: Reload::Nothing,
+    },
+    tick!("fx_evening_lights", "STR_ENHANCED_FX_EVENING_LIGHTS", ATMOSPHERE, fx_evening_lights),
     tick!("fx_clouds", "STR_ENHANCED_FX_CLOUDS", ATMOSPHERE, fx_clouds),
     tick!("fx_haze", "STR_ENHANCED_FX_HAZE", ATMOSPHERE, fx_haze),
-    tick!("fx_rain", "STR_ENHANCED_FX_RAIN", ATMOSPHERE, fx_rain),
-    tick!("fx_mist", "STR_ENHANCED_FX_MIST", ATMOSPHERE, fx_mist),
+    tick!("fx_reflections", "STR_ENHANCED_FX_REFLECTIONS", ATMOSPHERE, fx_reflections),
     tick!("fx_tilt_shift", "STR_ENHANCED_FX_TILT_SHIFT", ATMOSPHERE, fx_tilt_shift),
     tick!("fx_grading", "STR_ENHANCED_FX_GRADING", ATMOSPHERE, fx_grading),
     tick!("fx_bloom", "STR_ENHANCED_FX_BLOOM", ATMOSPHERE, fx_bloom),
+    tick!("fx_rain", "STR_ENHANCED_FX_RAIN", WEATHER, fx_rain),
+    tick!("fx_after_rain", "STR_ENHANCED_FX_AFTER_RAIN", WEATHER, fx_after_rain),
+    tick!("fx_lightning", "STR_ENHANCED_FX_LIGHTNING", WEATHER, fx_lightning),
+    tick!("fx_mist", "STR_ENHANCED_FX_MIST", WEATHER, fx_mist),
+    tick!("fx_wind", "STR_ENHANCED_FX_WIND", WEATHER, fx_wind),
+    tick!("fx_seasons", "STR_ENHANCED_FX_SEASONS", WEATHER, fx_seasons),
 ];
 
 // ---- the settings file ------------------------------------------------------------------------------------------------------
@@ -330,7 +369,10 @@ pub fn popup_lines(page: u8, s: &Settings) -> Vec<String> {
 /// The widest line of every page (the box keeps one width whatever the page).
 pub fn popup_widest(s: &Settings) -> f32 {
     let f = crate::popup_ui::CHOICE_FONT;
-    (0..PAGES.len() as u8).flat_map(|p| popup_lines(p, s)).map(|l| f.width(&l).round()).fold(0.0, f32::max)
+    let lines = (0..PAGES.len() as u8).flat_map(|p| popup_lines(p, s)).map(|l| f.width(&l).round()).fold(0.0, f32::max);
+    // wide enough for every tab to hold its name with some room (the tabs share the box's width equally)
+    let tab = PAGES.iter().map(|k| f.width(sg_core::lang::tr(k))).fold(0.0, f32::max) + 24.0;
+    lines.max(tab * PAGES.len() as f32)
 }
 
 /// The box's ticks on a page: bit 0 the master switch, bit 1 + i the page's option i.

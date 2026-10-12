@@ -1294,9 +1294,17 @@ STR_ENHANCED_FX_CLOUDS                  : Drifting cloud shadows
 STR_ENHANCED_FX_HAZE                    : Distance haze
 STR_ENHANCED_FX_RAIN                    : Rain on some days
 STR_ENHANCED_FX_MIST                    : Morning mist in low ground
+STR_ENHANCED_FX_REFLECTIONS             : Reflections and sun glitter on the water
+STR_ENHANCED_FX_WIND                    : Wind: trees, palms and flags sway
+STR_ENHANCED_FX_EVENING_LIGHTS          : Lit windows, lamps and fireflies at dusk
+STR_ENHANCED_FX_SEASONS                 : Seasons: blossom, autumn colours, frost
+STR_ENHANCED_FX_AFTER_RAIN              : Wet ground, puddles and rainbows
+STR_ENHANCED_FX_LIGHTNING               : Lightning in heavy rain
+STR_ENHANCED_FX_DAY_LENGTH              : Day length: {VALUE}
 STR_ENHANCED_PAGE_DISPLAY               :Display
 STR_ENHANCED_PAGE_EFFECTS               :Effects
 STR_ENHANCED_PAGE_ATMOSPHERE            :Atmosphere
+STR_ENHANCED_PAGE_WEATHER               :Weather
 # Enhanced graphics > Effects (the port's own, docs/ENHANCED.md): each option's label and its choices
 STR_FX_EFFECTS                          :Effects
 STR_FX_SCALER                           :Pixel-art scaling of sprites and pictures
@@ -1319,6 +1327,16 @@ STR_FX_MIST                             :Morning mist
 STR_FX_HAZE                             :Distance haze
 STR_FX_BALL_TRAIL                       :Ball trail
 STR_FX_BALL_IMPACTS                     :Ball impacts
+STR_FX_REFLECTIONS                      :Water reflections
+STR_FX_WIND                             :Wind
+STR_FX_EVENING_LIGHTS                   :Evening lights
+STR_FX_SEASONS                          :Seasons
+STR_FX_AFTER_RAIN                       :After the rain
+STR_FX_LIGHTNING                        :Lightning
+STR_FX_DAY_LENGTH                       :Day length
+STR_FX_DAY_SHORT                        :Short (a game month)
+STR_FX_DAY_NORMAL                       :Normal (three months)
+STR_FX_DAY_LONG                         :Long (six months)
 STR_FX_OFF                              :Off
 STR_FX_ON                               :On
 STR_FX_SCALER_SHARP                     :Sharp bilinear
