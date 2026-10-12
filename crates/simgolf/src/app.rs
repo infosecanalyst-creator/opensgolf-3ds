@@ -657,6 +657,8 @@ pub struct App {
     pub music_screen: Option<bool>,
     /// The playing screen jingle and the screen it belongs to.
     pub jingle: Option<(i32, Screen)>,
+    /// The voice each sound slot last started: the exe keeps one sound buffer per slot, so a slot never sounds twice at once.
+    pub slot_voices: std::collections::HashMap<i32, i32>,
     pub music: i32,
     pub music_idx: usize,
     /// Wall clock (seconds) used for toasts and the story timer.
@@ -867,6 +869,7 @@ impl App {
             title_music: -1,
             music_screen: None,
             jingle: None,
+            slot_voices: Default::default(),
             music: -1,
             music_idx: 0,
             clock: 0.0,
@@ -939,7 +942,19 @@ impl App {
         let vol = (((sx - 400.0).abs() as i32 >> 4) + 50) as f32 / 127.0 * 1.3;
         let pan = (sx * 127.0 / 800.0 - 64.0) / 64.0;
         let (Some(m), false) = (self.mixer.clone(), self.mute) else { return -1 };
+        // One buffer per slot (0x4481b0 sets up and plays the slot's own sound object, 0x484940): a slot asked for again
+        // while its clip still sounds (or waits for its delayed start) keeps playing it rather than starting a second copy
+        // over it, as DirectSound's Play does on a buffer that is already playing. Two pros' applause, a skill rise and a
+        // Top 18 hole in one tick, or a burst of refused clicks, were otherwise heard as overlapping copies.
+        if let Some(&old) = self.slot_voices.get(&slot) {
+            if m.playing(old) {
+                return old;
+            }
+        }
         let id = m.play_at(file, vol, pan, delay_ms, false);
+        if id >= 0 {
+            self.slot_voices.insert(slot, id);
+        }
         if self.sound_log {
             println!("  sound: {file}{}", if id < 0 { "  (missing)" } else { "" });
         }
