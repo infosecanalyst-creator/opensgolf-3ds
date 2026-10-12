@@ -507,6 +507,15 @@ impl App {
             top,
             back,
         });
+        // the port's own Enhanced graphics list is long: its box is moved up so its bottom edge stays on the screen (it
+        // ran off the bottom; the original's popups keep their places)
+        if let Some(p) = self.popup.as_mut().filter(|p| p.kind == PopupKind::Enhanced) {
+            let r = p.choice_box().frame();
+            let over = r.y + r.h - 596.0;
+            if over > 0.0 {
+                p.top = (p.top - over).max(4.0);
+            }
+        }
         self.screen = Screen::Popup;
     }
 

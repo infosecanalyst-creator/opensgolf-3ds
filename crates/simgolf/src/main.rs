@@ -2024,6 +2024,14 @@ impl EventHandler for Stage {
         self.app.info.pointer = self.app.view.to_virtual(x, y);
         let (vx, vy) = self.app.view.to_virtual(x, y);
         self.app.card_pointer(vx, vy);
+        if self.app.screen != Screen::Play {
+            // the pointer has left the dock and the panel for another screen (the Information menu, a report, a question):
+            // the button it was on is no longer lit and its tooltip not shown, which otherwise stayed at the old pointer
+            // over the report or under the menu
+            self.app.dock_hover = -1;
+            self.app.pstate.mouse = (-1000.0, -1000.0);
+            self.app.panel_hover = -1;
+        }
         if self.app.screen == Screen::Land {
             let (vx, vy) = self.app.view.to_virtual(x, y);
             self.app.land_pointer(vx, vy);
