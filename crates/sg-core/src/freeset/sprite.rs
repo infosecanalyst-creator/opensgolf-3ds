@@ -237,6 +237,25 @@ fn tree_leaf(name: &str) -> Option<Col> {
     TABLE.iter().find(|(k, _)| n.contains(k)).map(|(_, c)| *c)
 }
 
+/// The uniform of a member of staff by their palette file's name (lower case): shirt, trousers or skirt, skin, hat, the
+/// men's hands or the women's hair, the women's hands.
+fn staff_colours(name: &str) -> Option<[Col; 6]> {
+    let skin = rgb(232, 190, 150);
+    let n = name.trim_end_matches(".pcx");
+    Some(match n {
+        "gkpal" => [rgb(70, 124, 62), rgb(170, 150, 108), skin, rgb(70, 124, 62), skin, skin],
+        "golfcelebpal" => [rgb(242, 204, 66), rgb(60, 62, 72), skin, rgb(244, 244, 240), skin, skin],
+        "greeterpal" => [rgb(170, 44, 54), rgb(48, 50, 62), skin, rgb(170, 44, 54), skin, skin],
+        "lawntechpal" => [rgb(232, 124, 44), rgb(78, 92, 116), skin, rgb(232, 124, 44), skin, skin],
+        "marshallpal" => [rgb(42, 62, 112), rgb(186, 176, 146), skin, rgb(206, 186, 126), skin, skin],
+        "rangerpal" => [rgb(150, 142, 92), rgb(112, 100, 72), skin, rgb(124, 100, 62), skin, skin],
+        "sodavendorpal" => [rgb(244, 244, 240), rgb(200, 52, 52), skin, rgb(200, 52, 52), skin, skin],
+        "traygirlpal" => [rgb(240, 150, 182), rgb(246, 246, 242), skin, rgb(240, 150, 182), rgb(110, 70, 40), skin],
+        "bev_walkpal" | "bev_incartpal" => [rgb(80, 170, 170), rgb(246, 246, 242), skin, rgb(246, 246, 242), rgb(222, 186, 110), skin],
+        _ => return None,
+    })
+}
+
 /// The flower colour of a flowering scenic plant's palette file (lower case name).
 fn scenic_flower(name: &str) -> Option<Col> {
     const F: [(&str, Col); 5] = [
@@ -258,6 +277,13 @@ pub fn palette_file(low: &str, w: u32, h: u32) -> Vec<u8> {
     let pal = if name.contains("swap") || name.contains("baspal") || name.contains("basepal") {
         let n = digits.parse::<usize>().unwrap_or(1).max(1) - 1;
         palette(n, female, 0)
+    } else if let Some(c) = staff_colours(name) {
+        // the staff's uniforms (their sprites are drawn in the golfer slots, baked.rs)
+        let mut p = palette(0, false, 0);
+        for (m, col) in [SHIRT, PANTS, SKIN, HAT, ALT, HANDS_F].into_iter().zip(c) {
+            put_ramp(&mut p, m, col);
+        }
+        p
     } else if let Some(leaf) = tree_leaf(name) {
         // the colour variants of the trees (the baked trees keep their leaves in the LEAF ramp, baked.rs), and the
         // flowers of the flowering scenic plants in the RED ramp

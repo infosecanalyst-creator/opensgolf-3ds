@@ -420,9 +420,133 @@ def cart_scene(rng=None):
     return s
 
 
+def prop_mower():
+    s = Scene()
+    s.add_tris(box([0, 5, 14], [16, 6, 14]), [0.5] * 3, RED)
+    s.add_tris(box([0, 9, 14], [8, 4, 7]), [0.5] * 3, DARK)
+    for x in (-8, 8):
+        for z in (8, 20):
+            s.add_tris(tube([x - 1, 2.5, z], [x + 1, 2.5, z], 2.5, 2.5, 6), [0.5] * 3, DARK)
+    s.add_tris(tube([0, 8, 8], [0, 30, -2], 0.8, 0.8, 4), [0.5] * 3, STONE)
+    s.add_tris(tube([-6, 30, -2], [6, 30, -2], 0.8, 0.8, 4), [0.5] * 3, STONE)
+    return s
+
+
+def prop_cart_vendor():
+    s = Scene()
+    s.add_tris(box([0, 14, 22], [22, 16, 16]), [0.5] * 3, WHITE)
+    s.add_tris(box([0, 22.5, 22], [23, 1.5, 17]), [0.5] * 3, RED)
+    for x in (-10, 10):
+        s.add_tris(tube([x - 1, 4, 22], [x + 1, 4, 22], 4, 4, 8), [0.5] * 3, DARK)
+    s.add_tris(tube([0, 23, 22], [0, 46, 22], 0.6, 0.6, 4), [0.5] * 3, STONE)
+    n = 8
+    for k in range(n):
+        a0, a1 = 2 * np.pi * k / n, 2 * np.pi * (k + 1) / n
+        s.add_tris(np.array([[[0, 50, 22], [np.cos(a0) * 16, 44, 22 + np.sin(a0) * 16], [np.cos(a1) * 16, 44, 22 + np.sin(a1) * 16]]]),
+                   [0.5] * 3, RED if k % 2 == 0 else WHITE)
+    return s
+
+
+def prop_tray(y=38):
+    s = Scene()
+    s.add_tris(tube([0, y, 9], [0, y + 1, 9], 7, 7, 10), [0.5] * 3, STONE)
+    for dx in (-3, 2):
+        s.add_tris(tube([dx, y + 1, 9], [dx, y + 5, 9], 1.2, 1.4, 6), [0.5] * 3, RED)
+    return s
+
+
+# staff: their body, and what their action is
+STAFF = {
+    "gk": (dict(hat="cap"), "rake"), "lawntech": (dict(hat="cap"), "mow"), "greeter": (dict(hat="none"), "wave"),
+    "ranger": (dict(hat="wide"), "point"), "marshall": (dict(hat="wide"), "point"), "sodavendor": (dict(hat="cap"), "vend"),
+    "traygirl": (dict(female=True, hat="none", legs="skirt"), "tray"), "golfceleb": (dict(hat="cap"), "swing"),
+    "bev": (dict(female=True, hat="visor", legs="skirt"), "tray"), "fatguy": (dict(build=1.35, hat="cap"), "walk"),
+}
+CELEBS = {
+    "actionstar": dict(build=1.2, hat="none", sleeves="tank"), "agingstar": dict(hat="wide", bald=True),
+    "basketball": dict(scale=1.15, legs="shorts", sleeves="tank", hat="none"), "comedian": dict(hat="none"),
+    "female": dict(female=True, legs="skirt", hat="none"), "femcomic": dict(female=True, hat="none"),
+    "fitnessfem": dict(female=True, legs="shorts", sleeves="tank", hat="visor"), "genmale": dict(hat="cap"),
+    "movieprincess": dict(female=True, legs="skirt", hat="wide"), "politician": dict(hat="none", jacket=PANTS),
+    "rockstar": dict(hat="none", sleeves="long"), "supermodel": dict(female=True, scale=1.05, legs="skirt", hat="none"),
+}
+
+
+def staff_or_celeb(name):
+    """(body, animation) of an Employee or Celebs sprite name (lower case), or None."""
+    n = name
+    for key, (kw, action) in STAFF.items():
+        if n.startswith(key):
+            rest = n[len(key):].lstrip("_")
+            if "walk" in rest or "stride" in rest:
+                a = "walk"
+            elif rest.startswith("sq"):
+                a = "sq"
+            elif "cart" in rest or "incart" in rest:
+                a = "cart"
+            else:
+                a = action
+            return Body(**kw), a
+    for key, kw in CELEBS.items():
+        if n.startswith(key):
+            rest = n[len(key):]
+            if "walk" in rest:
+                a = "walk"
+            elif "_sq" in rest:
+                a = "sq"
+            elif "dont" in rest or "dislike" in rest:
+                a = "sad"
+            elif "like" in rest:
+                a = "happy"
+            elif "interact" in rest:
+                a = "handshake"
+            else:
+                a = "celebrate"
+            return Body(**kw), a
+    return None
+
+
+def staff_anim(a, t):
+    """Poses of the staff's own actions."""
+    w = np.sin(2 * np.pi * t)
+    if a == "rake":
+        return dict(DEFAULT, sp=18, lsp=50 + 25 * w, rsp=40 + 25 * w, lsr=-20, rsr=-20, lel=20, rel=30, lkn=10, rkn=10), \
+            dict(kind="iron", hands="both", dir=[0.0, -0.75, 0.66])
+    if a == "mow":
+        return dict(DEFAULT, sp=8, lsp=40, rsp=40, lsr=-12, rsr=-12, lel=30, rel=30, lhp=14 * w, rhp=-14 * w, lkn=10, rkn=10), None
+    if a == "wave":
+        return dict(DEFAULT, rsp=150, rsr=20 + 25 * w, rel=30, hy=10), None
+    if a == "point":
+        return dict(DEFAULT, rsp=88, rsr=5, rel=4, hy=-12, sy=-10, lsp=10), None
+    if a in ("vend", "tray"):
+        return dict(DEFAULT, lsp=60, rsp=60 + 20 * max(w, 0), lsr=-15, rsr=-15, lel=80, rel=70 - 20 * max(w, 0)), None
+    if a == "celebrate":
+        return dict(DEFAULT, lsp=150 + 20 * w, rsp=150 - 20 * w, lsr=30, rsr=30, lel=20, rel=20, py=3 * abs(w), hp=-10), None
+    return None
+
+
 def person_scene(prefix, anim_name, t, view_deg):
     """The scene of a person sprite frame: the figure posed and turned to its view's heading (model +z is the heading)."""
     body = body_of(prefix) if prefix.lower().startswith(("male", "female")) else Body()
+    props = None
+    if prefix == "_staff":
+        body, anim_name = staff_or_celeb(anim_name)
+        sp = staff_anim(anim_name, t)
+        if anim_name == "mow":
+            props = prop_mower()
+        elif anim_name == "vend":
+            props = prop_cart_vendor()
+        elif anim_name == "tray":
+            props = prop_tray()
+        if sp is not None:
+            fig = figure(body, sp[0], sp[1])
+            if props is not None:
+                fig.extend(props)
+            if anim_name == "swing":
+                fig = fig.transformed(1.0, rot=ry(-90))
+            return fig
+        if anim_name == "swing":
+            anim_name = "perfectswing"
     pose, club = anim(anim_name, t, body)
     fig = figure(body, pose, club)
     if golf_frame(anim_name):

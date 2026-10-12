@@ -160,8 +160,8 @@ class Frame:
             n = np.stack([dx, dy, nz], -1)
             # leaf clusters: a grain of random tilts over the ball, coarser than a pixel
             if leafy > 0:
-                kx = np.floor(gx / max(self.ss * 1.3, 1)).astype(np.int64)
-                ky = np.floor(gy / max(self.ss * 1.3, 1)).astype(np.int64)
+                kx = np.floor(gx / max(self.ss * 2.2, 1)).astype(np.int64)
+                ky = np.floor(gy / max(self.ss * 2.2, 1)).astype(np.int64)
                 h = (kx * 73856093) ^ (ky * 19349663) ^ (i * 83492791 + seed)
                 jx = ((h & 1023) / 1023.0 - 0.5)
                 jy = (((h >> 10) & 1023) / 1023.0 - 0.5)
@@ -175,7 +175,9 @@ class Frame:
                 # the point on the ball, in eye space, against the crown's centre: inner leaves are in shade
                 p = np.stack([eye[i, 0] + dx * radii[i], eye[i, 1] + dy * radii[i], z], -1)
                 rel = np.linalg.norm(p - mc, axis=-1) / mass[1]
-                bright = bright * np.clip(0.55 + 0.5 * rel, 0.55, 1.08)
+                # and the underside of the crown is darker than its top: the crown reads as one lit mass, not a heap of balls
+                up = np.clip((p[..., 1] - mc[1]) / mass[1], -1, 1)
+                bright = bright * np.clip(0.45 + 0.6 * rel, 0.45, 1.08) * (0.86 + 0.14 * up)
             sub = self.depth[y0:y1 + 1, x0:x1 + 1]
             win = inside & (z > sub)
             if not win.any():

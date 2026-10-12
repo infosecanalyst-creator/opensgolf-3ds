@@ -36,11 +36,15 @@ def broadleaf(rng, height=100.0, crown=0.5, width=0.36, squash=1.05, leaf=c255(7
               leafiness=1.0, ball=0.34, flowers=None, flower_share=0.0, droop=0.0, lean=0.0):
     """A deciduous tree: trunk to `crown` of the height, a crown `width` of the height across (radius), made of n balls."""
     s = Scene()
-    s.leafy, s.rag = 0.38, 0.2
+    s.leafy, s.rag = 0.2, 0.16
+    # fewer, larger clumps than asked for: a crown of a few clear lobes reads as a tree at the game's size, a crown of many
+    # small balls as a heap of bubbles
+    n = max(8, int(round(n * 0.55)))
+    ball = ball * 1.3
     top = np.array([lean * height, height * crown, 0.0])
-    s.add_tris(tube([0, 0, 0], top * 0.92, height * 0.035, height * 0.022, 7), bark, BARKT)
+    s.add_tris(tube([0, 0, 0], top * 0.92, height * 0.05, height * 0.03, 8), bark, BARKT)
     cr = height * width
-    cy = height * crown + cr * squash * 0.35
+    cy = height * crown + cr * squash * 0.6
     centre = np.array([lean * height, cy, 0.0])
     s.mass = (centre, cr * 1.05)
     # a few branches reaching into the crown
@@ -48,7 +52,7 @@ def broadleaf(rng, height=100.0, crown=0.5, width=0.36, squash=1.05, leaf=c255(7
         a = rng.uniform(0, 2 * np.pi)
         end = centre + np.array([np.cos(a) * cr * 0.6, rng.uniform(-0.2, 0.4) * cr * squash, np.sin(a) * cr * 0.6])
         start = top * rng.uniform(0.7, 0.95)
-        s.add_tris(tube(start, end, height * 0.016, height * 0.008, 5), bark * 0.95, BARKT)
+        s.add_tris(tube(start, end, height * 0.022, height * 0.01, 5), bark * 0.95, BARKT)
     if leafiness <= 0.02:
         return s
     pts = []
@@ -56,14 +60,14 @@ def broadleaf(rng, height=100.0, crown=0.5, width=0.36, squash=1.05, leaf=c255(7
         # points spread through the crown, more of them near its surface
         d = rng.normal(size=3)
         d /= np.linalg.norm(d)
-        rr = rng.uniform(0.45, 1.0) ** 0.5
+        rr = rng.uniform(0.3, 0.75) ** 0.5
         p = centre + d * rr * cr * np.array([1, squash, 1])
         p[1] -= droop * cr * (np.hypot(d[0], d[2]) ** 2)
         pts.append(p)
     pts.append(centre)
     for k, p in enumerate(pts):
         r = cr * ball * rng.uniform(0.8, 1.2) * (1.6 if k == len(pts) - 1 else 1.0) * (0.35 + 0.65 * leafiness)
-        col, tag = jitter(leaf, rng, 0.07), LEAF
+        col, tag = jitter(leaf, rng, 0.03), LEAF
         if flowers is not None and rng.uniform() < flower_share:
             col, tag = jitter(flowers, rng, 0.05), RED
         s.add_ball(p, r, col, tag)

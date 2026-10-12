@@ -121,7 +121,8 @@ class Person(Recipe):
         return view_deg - 90.0
 
     def scene(self, rng, f, fpv, view_deg):
-        loop = "walk" in self.anim or self.anim in ("sq", "fidget", "sitting", "cart")
+        loop = "walk" in self.anim or "stride" in self.anim or self.anim in ("sq", "fidget", "sitting", "cart") or \
+            self.prefix == "_staff"
         t = f / fpv if loop else (f / max(fpv - 1, 1))
         return people.person_scene(self.prefix, self.anim, t, view_deg)
 
@@ -135,6 +136,9 @@ def recipe(path, name):
         rx, build = entry[0], entry[1]
         if re.search(rx, low):
             return Building(path, build, layer_of(name), family_of(low), entry[2] if len(entry) > 2 else 1.0)
+    if "/flics/employee/" in "/" + low or "/flics/celebs/" in "/" + low:
+        if people.staff_or_celeb(name) is not None:
+            return Person("_staff", name)
     if "/flics/male/" in "/" + low or "/flics/female/" in "/" + low:
         if "_" in name and not name.endswith("pal"):
             prefix, anim_name = name.split("_", 1)

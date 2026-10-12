@@ -723,17 +723,377 @@ def ok_states():
     save("Interface/infoscreens/OkStates.png", sh, key=(255, 0, 255))
 
 
+# ---- the Buildings panel (Interface/BuildingPanel.pcx and its alpha) and the lots' pictures (Interface/<theme> layout.pcx) ----
+# panels_ui.rs: the body (214, 482, 586, 118); lot i's pad at (343 + 80 i, 501) for i < 5, else (384 + 80 (i - 5), 542), cut
+# hovered at (0, 0, 74, 64) / (0, 100, 77, 58) and selected 100 pixels right; to-Elevation lit at (150, 480, 34, 34) drawn at
+# (220, 510); Undo hovered (40, 550, 34, 40) and armed (80, 550) drawn at (261, 553). Lot i's picture is the 75 x 100 cell
+# (75 i, row) of the theme's layout sheet, rows grey 0, colour 200, grey upgraded 100, colour upgraded 300, drawn at
+# (344 + 80 i, 453) or (384 + 80 (i - 5), 493).
+
+LOT_PADS = [(343 + 80 * i, 501, 74, 64) for i in range(5)] + [(384 + 80 * i, 542, 77, 58) for i in range(4)]
+
+
+def lot_pad(sh, x, y, w, h, state):
+    """The plinth a lot's picture stands on: a flat diamond with a lip."""
+    cx, cy = x + w / 2, y + h * 0.56
+    rx, ry = w * 0.46, h * 0.3
+    top = [(cx, cy - ry), (cx + rx, cy), (cx, cy + ry), (cx - rx, cy)]
+    side = [(cx - rx, cy), (cx, cy + ry), (cx + rx, cy), (cx + rx, cy + 4), (cx, cy + ry + 4), (cx - rx, cy + 4)]
+    rim = {"normal": rgb("#9fbad3"), "lit": rgb("#ffffff"), "sel": GOLD}[state]
+    sh.shadow(np.clip(sh.mask_poly(side) + sh.mask_poly(top), 0, 1), 0, 2, 2, 0.3)
+    sh.paint(sh.mask_poly(side), lighten(rim, -0.4), 0.9)
+    sh.paint(sh.mask_poly(top), rim, 0.95 if state != "normal" else 0.5)
+    k = 4
+    inner = [(cx, cy - ry + k * 0.6), (cx + rx - k, cy), (cx, cy + ry - k * 0.6), (cx - rx + k, cy)]
+    fill = {"normal": rgb("#34597a"), "lit": rgb("#5d8db8"), "sel": rgb("#6b8fb0")}[state]
+    sh.paint(sh.mask_poly(inner), sh.vgrad(lighten(fill, 0.15), fill, cy - ry, cy + ry), 0.85)
+
+
+def building_panel():
+    sh = Sheet(800, 600)
+    body = sh.mask_rrect(215, 488, 620, 140, 40)
+    sh.paint(body, sh.vgrad(rgb("#3e6588"), rgb("#1d3650"), 488, 600), 0.78)
+    sh.paint(body - sh.mask_rrect(218, 491, 620, 140, 38), rgb("#a9cdeb"), 0.8)
+    sh.paint(sh.mask_rrect(250, 493, 540, 6, 3), (1, 1, 1), 0.12)
+    for (x, y, w, h) in LOT_PADS:
+        lot_pad(sh, x, y, w, h, "normal")
+    # the tray's own buttons: the current mode (gold), to Elevation, Undo
+    glossy_disc(sh, 270, 497, 17, GOLD, g_house, glyph_col=INK)
+    glossy_disc(sh, 236, 526, 17, BLUE, g_shovel)
+    glossy_disc(sh, 277, 572, 13, rgb("#e8dcb8"), g_turn(-1), glyph_col=INK)
+    # the loose pieces
+    glossy_disc(sh, 167, 497, 17, rgb("#6fb3ee"), g_shovel, state="lit")
+    for k in range(4):
+        st = ["normal", "lit", "normal", "off"][k]
+        col = [rgb("#e8dcb8"), rgb("#f7ecc8"), GOLD, GREY][k]
+        glossy_disc(sh, 17 + 40 * k, 569, 13, col, g_turn(-1), glyph_col=INK, state=st)
+    for row, (w, h) in enumerate(((74, 64), (77, 58))):
+        lot_pad(sh, 0, 100 * row, w, h, "lit")
+        lot_pad(sh, 100, 100 * row, w, h, "sel")
+        lot_pad(sh, 200, 100 * row, w, h, "normal")
+    rgb_, a = sheet_out(sh)
+    save_pair("Interface/BuildingPanel.png", "Interface/BuildingPanel_A.png", rgb_, a, (255, 0, 255))
+
+
+# the lots in panel order (STR_LOT_*): putting green, snack bar, pro shop, swim club, driving range, cart garage, marina,
+# resort hotel, airstrip
+def lot_scene(i, style, level):
+    import buildings as bd
+    rng = np.random.default_rng(7)
+    f = [lambda: bd.putting(style, rng, level), lambda: bd.shop(style, rng, "snack", level),
+         lambda: bd.shop(style, rng, "pro", level), lambda: bd.tennis(style, rng, level),
+         lambda: bd.shop(style, rng, "range", level), lambda: bd.shop(style, rng, "garage", level),
+         lambda: bd.marina(style, rng, level), lambda: bd.hotel(style, rng, level),
+         lambda: bd.airstrip(style, rng, level)][i]
+    body, base = f()
+    body.mass = None
+    body.ambient, body.diffuse = 0.66, 0.55
+    base.ambient, base.diffuse = 0.72, 0.42
+    return body, base
+
+
+def lot_icon(i, style, level):
+    """Lot i's picture, 75 x 100 at the sheet's resolution: rgb and coverage at S times the size."""
+    from raster import UNITS_PER_PX, eye_matrix
+    body, base = lot_scene(i, style, level)
+    # the largest scale at which the whole lot fits 71 x 62 pixels, standing on the cell's pad (its bottom at y 94)
+    p = np.concatenate([body.points(), base.points()])
+    e = p @ eye_matrix(0.0).T / UNITS_PER_PX
+    x0, x1, y0, y1 = e[:, 0].min(), e[:, 0].max(), e[:, 1].min(), e[:, 1].max()
+    k = min(71 * S / (x1 - x0), 62 * S / (y1 - y0))
+    w, h = 75 * S, 100 * S
+    ax, ay = int(w / 2 - k * (x0 + x1) / 2), int(94 * S - k * y1)
+    body, base = body.transformed(k), base.transformed(k)
+    fr = Frame(w, h, ax, ay, ss=1)
+    base.render(fr, 0.0, shadow=False)
+    body.render(fr, 0.0, shadow=False)
+    col, op, _, _, _ = fr.resolve(edge_dark=0.0)
+    return col.astype(np.float32), op.astype(np.float32)
+
+
+def layout_sheet(theme, rel):
+    sh = Sheet(751, 812)
+    for i in range(9):
+        for level in (1, 2):
+            col, a = lot_icon(i, theme, level)
+            grey = col.mean(-1, keepdims=True)
+            dim = np.clip(mix(np.repeat(grey, 3, -1), rgb("#9aa8b8"), 0.35) * 0.9 + 0.05, 0, 1)
+            for row, c in ((200 if level == 1 else 300, col), (0 if level == 1 else 100, dim)):
+                sub = Sheet(75, 100)
+                sub.shadow(a, 1, 1.5, 1.5, 0.35)
+                sub.paint(a, c)
+                sh.paste(sub, 75 * i, row)
+        print("  lot", i, flush=True)
+    save(rel, sh, key=(248, 0, 248))
+
+
+# ---- the Amenities panel (Interface/AmenitiesPanel.pcx and its alpha) -------------------------------------------------------
+# panels_ui.rs AMENITIES: each slot's hit circle, where its looks are drawn and its hover cut (selected 100 right, disabled 200
+# right); the back button lit at (0, 400, 34, 34) drawn at (254, 483); the design strip's ends and middle (STRIP_*, 79 tall,
+# drawn along y 477) and its buttons (strip_button: 47 x 40 at y 350 for the even designs, 47 x 41 at y 400 for the odd ones,
+# x 300 hovered, 400 current, 600 otherwise).
+
+def g_washer(sh, cx, cy, r):
+    post = sh.mask_rrect(cx - r * 0.1, cy - r * 0.1, r * 0.2, r * 0.95, r * 0.05)
+    box = sh.mask_rrect(cx - r * 0.5, cy - r * 0.75, r * 1.0, r * 0.7, r * 0.15)
+    crank = sh.mask_line([(cx + r * 0.5, cy - r * 0.4), (cx + r * 0.85, cy - r * 0.4), (cx + r * 0.85, cy - r * 0.75)], r * 0.12)
+    foot = sh.mask_rrect(cx - r * 0.4, cy + r * 0.75, r * 0.8, r * 0.15, r * 0.05)
+    return np.maximum.reduce([post, box, crank, foot])
+
+
+def g_path(sh, cx, cy, r):
+    outer = sh.mask_line([(cx - r * 0.75, cy + r * 0.85), (cx - r * 0.1, cy), (cx + r * 0.35, cy - r * 0.85)], r * 0.55)
+    stones = sum(sh.mask_circle(cx + dx * r, cy + dy * r, r * 0.12) for dx, dy in ((-0.45, 0.45), (-0.05, -0.05), (0.2, -0.5)))
+    return np.clip(outer - np.clip(stones, 0, 1), 0, 1)
+
+
+def g_lot(sh, cx, cy, r):
+    plot = sh.mask_poly([(cx, cy - r * 0.2), (cx + r * 0.9, cy + r * 0.25), (cx, cy + r * 0.7), (cx - r * 0.9, cy + r * 0.25)])
+    inner = sh.mask_poly([(cx, cy - r * 0.02), (cx + r * 0.55, cy + r * 0.25), (cx, cy + r * 0.52), (cx - r * 0.55, cy + r * 0.25)])
+    stake = sh.mask_rrect(cx - r * 0.06, cy - r * 0.9, r * 0.12, r * 1.0, r * 0.03)
+    sign = sh.mask_rrect(cx - r * 0.45, cy - r * 0.9, r * 0.9, r * 0.45, r * 0.08)
+    return np.clip(np.maximum.reduce([plot - inner, stake, sign]), 0, 1)
+
+
+def g_bench(sh, cx, cy, r):
+    back = sh.mask_rrect(cx - r * 0.85, cy - r * 0.55, r * 1.7, r * 0.3, r * 0.08)
+    seat = sh.mask_rrect(cx - r * 0.85, cy, r * 1.7, r * 0.25, r * 0.08)
+    legs = np.maximum.reduce([sh.mask_rrect(cx + dx * r - r * 0.08, cy - r * 0.3, r * 0.16, r * 1.0, r * 0.03)
+                              for dx in (-0.6, 0.6)])
+    return np.maximum.reduce([back, seat, legs])
+
+
+def g_obelisk(sh, cx, cy, r):
+    shaft = sh.mask_poly([(cx - r * 0.3, cy + r * 0.6), (cx - r * 0.18, cy - r * 0.6), (cx, cy - r * 0.95), (cx + r * 0.18, cy - r * 0.6),
+                          (cx + r * 0.3, cy + r * 0.6)])
+    base = sh.mask_rrect(cx - r * 0.6, cy + r * 0.55, r * 1.2, r * 0.35, r * 0.06)
+    return np.maximum(shaft, base)
+
+
+def g_flower(sh, cx, cy, r):
+    m = sh.mask_circle(cx, cy - r * 0.25, r * 0.18)
+    ring = 0
+    for k in range(5):
+        a = 2 * math.pi * k / 5 - math.pi / 2
+        ring = np.maximum(ring, sh.mask_circle(cx + math.cos(a) * r * 0.38, cy - r * 0.25 + math.sin(a) * r * 0.38, r * 0.24))
+    stem = sh.mask_line([(cx, cy + r * 0.1), (cx, cy + r * 0.9)], r * 0.12)
+    leaf = sh.mask_ellipse(cx, cy + r * 0.35, r * 0.5, r * 0.22)
+    return np.clip(np.maximum.reduce([ring - m, stem, leaf]), 0, 1)
+
+
+def g_tree(sh, cx, cy, r):
+    crown = np.maximum.reduce([sh.mask_circle(cx + dx * r, cy + dy * r, rr * r)
+                               for dx, dy, rr in ((0, -0.4, 0.5), (-0.38, -0.12, 0.38), (0.38, -0.12, 0.38))])
+    trunk = sh.mask_poly([(cx - r * 0.1, cy), (cx + r * 0.1, cy), (cx + r * 0.16, cy + r * 0.9), (cx - r * 0.16, cy + r * 0.9)])
+    return np.maximum(crown, trunk)
+
+
+def g_bridge(sh, cx, cy, r):
+    arch = sh.mask_line(_arc_pts(cx, cy + r * 0.55, r * 0.95, math.radians(200), math.radians(340)), r * 0.2)
+    deck = sh.mask_line(_arc_pts(cx, cy + r * 1.1, r * 1.35, math.radians(215), math.radians(325)), r * 0.16)
+    posts = np.maximum.reduce([sh.mask_line([(cx + dx * r, cy - r * 0.05 - (0.2 - abs(dx) * 0.25) * r),
+                                             (cx + dx * r, cy + r * 0.3)], r * 0.1) for dx in (-0.5, 0, 0.5)])
+    return np.maximum.reduce([arch, deck, posts])
+
+
+def _arc_pts(cx, cy, r, a0, a1, n=24):
+    return [(cx + math.cos(a0 + (a1 - a0) * k / n) * r, cy + math.sin(a0 + (a1 - a0) * k / n) * r) for k in range(n + 1)]
+
+
+# slot: hit centre and radius, where drawn, hover cut, glyph, colour
+AMENITY_SLOTS = [
+    ((302, 563, 20), (274, 536), (0, 0, 60, 56), g_washer, rgb("#7fbfe8")),
+    ((333, 526, 20), (302, 504), (0, 100, 64, 50), g_path, rgb("#e2cf9c")),
+    ((363, 563, 20), (334, 538), (0, 200, 62, 50), g_lot, rgb("#9ad07c")),
+    ((470, 575, 18), (449, 553), (300, 0, 51, 47), g_bench, rgb("#d6a878")),
+    ((591, 575, 18), (571, 553), (300, 100, 51, 45), g_obelisk, rgb("#c7c0d8")),
+    ((652, 575, 18), (632, 553), (300, 150, 51, 47), g_flower, rgb("#f2a6c4")),
+    ((714, 575, 18), (693, 553), (300, 200, 51, 45), g_tree, rgb("#86c46a")),
+    ((248, 567, 12), (234, 553), (0, 450, 36, 36), None, rgb("#e8dcb8")),
+    ((781, 563, 15), (762, 545), (0, 500, 38, 36), g_info, rgb("#9fc8f0")),
+    ((531, 580, 12), (510, 553), (300, 50, 51, 45), g_bridge, rgb("#b8a088")),
+]
+
+
+def amenities_panel():
+    sh = Sheet(800, 600)
+    body = sh.mask_rrect(215, 488, 620, 140, 40)
+    sh.paint(body, sh.vgrad(rgb("#3e6588"), rgb("#1d3650"), 488, 600), 0.78)
+    sh.paint(body - sh.mask_rrect(218, 491, 620, 140, 38), rgb("#a9cdeb"), 0.8)
+    sh.paint(sh.mask_rrect(250, 493, 540, 6, 3), (1, 1, 1), 0.12)
+    # the tray's own buttons: the current mode (gold), back to the terrain
+    glossy_disc(sh, 237, 525, 17, GOLD, g_shovel, glyph_col=INK)
+    glossy_disc(sh, 269, 500, 15, BLUE, g_flag)
+    glossy_disc(sh, 17, 417, 15, rgb("#6fb3ee"), g_flag, state="lit")
+    for k, ((hx, hy, r), (dx, dy), cut, glyph, col) in enumerate(AMENITY_SLOTS):
+        g = glyph if glyph is not None else g_turn(-1)
+        if k != 8:
+            glossy_disc(sh, hx, hy, r, col, g, glyph_col=INK)
+        # the looks at the cut: hovered, selected, disabled
+        ox, oy = hx - dx, hy - dy
+        for j, st in enumerate(("lit", "sel", "off")):
+            c = col if st != "sel" else GOLD
+            glossy_disc(sh, cut[0] + 100 * j + ox, cut[1] + oy, r + (1 if st == "lit" else 0), c, g, glyph_col=INK,
+                        state="normal" if st == "sel" else st)
+    # the design strip: a glass shelf in pieces
+    for (x, w, left, right) in ((380, 68, True, False), (450, 47, False, False), (500, 67, False, True), (600, 67, False, True)):
+        strip_piece(sh, x, 250, w, 79, left, right)
+    for y, h in ((350, 40), (400, 41)):
+        for x, st in ((300, "lit"), (400, "sel"), (500, "normal"), (600, "normal")):
+            design_tile(sh, x, y, 47, h, st)
+    rgb_, a = sheet_out(sh)
+    save_pair("Interface/AmenitiesPanel.png", "Interface/AmenitiesPanel_A.png", rgb_, a, (248, 0, 248))
+
+
+def strip_piece(sh, x, y, w, h, left, right):
+    """One piece of the design strip: a band from y + 10 to y + h - 8, rounded at a left or right end."""
+    top, bot = y + 10, y + h - 8
+    ext_l = 0 if left else 30
+    ext_r = 0 if right else 30
+    m = sh.mask_rrect(x - ext_l, top, w + ext_l + ext_r, bot - top, 20) * sh.mask_rrect(x, y, w, h, 0)
+    sh.paint(m, sh.vgrad(rgb("#4d78a0"), rgb("#24425f"), top, bot), 0.88)
+    rim = m - sh.mask_rrect(x - ext_l + 3, top + 3, w + ext_l + ext_r - 6, bot - top - 6, 17) * sh.mask_rrect(x, y, w, h, 0)
+    sh.paint(np.clip(rim, 0, 1), rgb("#a9cdeb"), 0.85)
+
+
+def design_tile(sh, x, y, w, h, state):
+    rim = {"lit": rgb("#ffffff"), "sel": GOLD, "normal": rgb("#9fbad3")}[state]
+    m = sh.mask_rrect(x + 2, y + 2, w - 4, h - 4, 8)
+    sh.paint(m, rim, 0.95)
+    sh.paint(sh.mask_rrect(x + 4, y + 4, w - 8, h - 8, 6),
+             sh.vgrad(rgb("#e9f2fa") if state != "normal" else rgb("#c9d9e8"), rgb("#9db7cf"), y, y + h), 0.9)
+
+
+# ---- the Elevation panel (Interface/ElevationPanel.pcx and its alpha) --------------------------------------------------------
+# panels_ui.rs ELEVATION_TOOLS: vertex, square and area drawn at (312, 501), (429, 501), (546, 501), 88 x 99, hovered at
+# (0, 0), (0, 100), (0, 200) and selected 100 right; Analyze Golf Shot at (688, 501), 72 x 99, hovered (400, 0) and selected
+# (500, 0); back lit (0, 400, 41, 44) at (254, 483); Undo hovered (0, 450, 34, 40) and armed (50, 450) at (253, 546).
+
+def mini_land(sh, cx, cy, heights, tw=9.0, th=4.6, hs=1.0):
+    """A little iso patch of ground: heights is an (n+1) x (n+1) grid of vertex heights in pixels, drawn back to front."""
+    n = heights.shape[0] - 1
+    o = n / 2
+
+    def pt(i, j):
+        return (cx + (i - j) * tw, cy + (i + j - 2 * o) * th - heights[i, j] * hs)
+    # the skirt: the patch's front edges dropped to a base
+    front = [pt(n, j) for j in range(n + 1)][::-1] + [pt(i, n) for i in range(n, -1, -1)][::-1]
+    skirt = [pt(0, n), pt(n, n), pt(n, 0)]
+    base = [(x, y + 7) for x, y in skirt]
+    sh.paint(sh.mask_poly(skirt + base[::-1]), rgb("#6b5236"))
+    for i in range(n):
+        for j in range(n):
+            q = [pt(i, j), pt(i + 1, j), pt(i + 1, j + 1), pt(i, j + 1)]
+            # light from the upper left: tiles rising to the left are lit
+            slope = (heights[i + 1, j] + heights[i + 1, j + 1] - heights[i, j] - heights[i, j + 1]) + \
+                (heights[i, j + 1] + heights[i + 1, j + 1] - heights[i, j] - heights[i + 1, j])
+            k = float(np.clip(-slope * 0.025, -0.3, 0.3))
+            col = lighten(rgb("#6dbb52"), k)
+            m = sh.mask_poly(q)
+            sh.paint(m, col)
+            sh.paint(np.clip(m - sh.mask_poly(_shrink(q, 0.9)), 0, 1), lighten(col, 0.25), 0.6)
+    del front
+
+
+def _shrink(q, f):
+    cx = sum(p[0] for p in q) / len(q)
+    cy = sum(p[1] for p in q) / len(q)
+    return [(cx + (x - cx) * f, cy + (y - cy) * f) for x, y in q]
+
+
+def tool_land(kind):
+    n = 4
+    h = np.zeros((n + 1, n + 1))
+    if kind == 0:
+        h[2, 2] = 26
+    elif kind == 1:
+        h[2:4, 1:3] = 16
+    else:
+        h[1:4, 1:4] = 12
+        h[2, 2] = 14
+    return h
+
+
+def g_up(sh, cx, cy, r):
+    return np.maximum(sh.mask_poly([(cx, cy - r), (cx + r * 0.75, cy - r * 0.15), (cx - r * 0.75, cy - r * 0.15)]),
+                      sh.mask_rrect(cx - r * 0.25, cy - r * 0.3, r * 0.5, r * 1.1, r * 0.08))
+
+
+def g_target(sh, cx, cy, r):
+    ring = np.clip(sh.mask_circle(cx, cy, r * 0.9) - sh.mask_circle(cx, cy, r * 0.62), 0, 1)
+    dot = sh.mask_circle(cx, cy, r * 0.28)
+    arc = sh.mask_line(_arc_pts(cx - r * 0.2, cy + r * 0.9, r * 1.4, math.radians(200), math.radians(300)), r * 0.14)
+    return np.maximum.reduce([ring, dot, arc * 0])
+
+
+def tool_plate(sh, x, y, w, h, state):
+    if state == "normal":
+        return
+    rim = {"lit": rgb("#ffffff"), "sel": GOLD}[state]
+    m = sh.mask_rrect(x + 3, y + 22, w - 6, h - 26, 16)
+    sh.shadow(m, 1, 2, 2, 0.3)
+    sh.paint(m, rim, 0.95)
+    sh.paint(sh.mask_rrect(x + 6, y + 25, w - 12, h - 32, 13), sh.vgrad(rgb("#6d9cc6"), rgb("#355f86"), y + 25, y + h), 0.9)
+
+
+def elevation_tool(sh, x, y, kind, state):
+    w = 72 if kind == 3 else 88
+    tool_plate(sh, x, y, w, 99, state)
+    if kind == 3:
+        glossy_disc(sh, x + 27, y + 46, 16, rgb("#f2d16b") if state != "normal" else rgb("#9fc8f0"), g_target, glyph_col=INK)
+        return
+    mini_land(sh, x + 44, y + 64, tool_land(kind))
+    glossy_disc(sh, x + 70, y + 36, 10, rgb("#f7ecc8"), g_up, glyph_col=INK)
+
+
+ELEV_AT = [(312, 501), (429, 501), (546, 501), (688, 501)]
+ELEV_CUTS = [((0, 0), (100, 0)), ((0, 100), (100, 100)), ((0, 200), (100, 200)), ((400, 0), (500, 0))]
+
+
+def elevation_panel():
+    sh = Sheet(800, 600)
+    body = sh.mask_rrect(215, 488, 620, 140, 40)
+    sh.paint(body, sh.vgrad(rgb("#3e6588"), rgb("#1d3650"), 488, 600), 0.78)
+    sh.paint(body - sh.mask_rrect(218, 491, 620, 140, 38), rgb("#a9cdeb"), 0.8)
+    sh.paint(sh.mask_rrect(250, 493, 540, 6, 3), (1, 1, 1), 0.12)
+    glossy_disc(sh, 237, 525, 17, GOLD, g_shovel, glyph_col=INK)
+    glossy_disc(sh, 270, 499, 15, BLUE, g_house)
+    glossy_disc(sh, 267, 563, 12, rgb("#e8dcb8"), g_turn(-1), glyph_col=INK)
+    for k, (x, y) in enumerate(ELEV_AT):
+        elevation_tool(sh, x, y, k, "normal")
+        (hx, hy), (sx, sy) = ELEV_CUTS[k]
+        elevation_tool(sh, hx, hy, k, "lit")
+        elevation_tool(sh, sx, sy, k, "sel")
+        if k < 3:
+            elevation_tool(sh, hx + 200, hy, k, "normal")
+            elevation_tool(sh, hx + 300, hy, k, "lit")
+        else:
+            elevation_tool(sh, 600, 0, k, "normal")
+            elevation_tool(sh, 700, 0, k, "lit")
+    # back lit at (0, 400) drawn at (254, 483): its centre at (270, 499)
+    glossy_disc(sh, 16, 416, 15, rgb("#6fb3ee"), g_house, state="lit")
+    glossy_disc(sh, 66, 416, 15, BLUE, g_house)
+    for k, (st, col) in enumerate((("lit", rgb("#f7ecc8")), ("normal", GOLD), ("normal", rgb("#e8dcb8")), ("off", GREY))):
+        glossy_disc(sh, [0, 50, 101, 151][k] + 14, 465, 12, col, g_turn(-1), glyph_col=INK, state=st)
+    rgb_, a = sheet_out(sh)
+    save_pair("Interface/ElevationPanel.png", "Interface/ElevationPanel_A.png", rgb_, a, (255, 0, 255))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", default="")
     a = ap.parse_args()
     jobs = [("dock", dock), ("courseinfo", courseinfo), ("title", title), ("terrainpanel", terrain_panel),
             ("transpopups", trans_popups), ("coursereport", course_report), ("okstates", ok_states),
+            ("buildingpanel", building_panel), ("amenitiespanel", amenities_panel),
+            ("elevationpanel", elevation_panel),
             ("parklink", lambda: emblem_sheet("Interface/parklink.png", ["park", "links"])),
             ("tropdesert", lambda: emblem_sheet("Interface/tropdesert.png", ["desert", "trop"]))]
     for theme, rel in (("park", "ParkLandTerrainButtons"), ("desert", "DesertTerrainButtons"), ("trop", "TropicalTerrainButtons"),
                        ("links", "LinksTerrainButtons")):
         jobs.append((rel, lambda t=theme, r=rel: terrain_buttons(t, "Interface/%s.png" % r)))
+    for theme, rel in (("park", "parklands"), ("desert", "desert"), ("trop", "trop"), ("links", "links")):
+        jobs.append((rel + " layout", lambda t=theme, r=rel: layout_sheet(t, "Interface/%s layout.png" % r)))
     for name, f in jobs:
         if a.only and not re.search(a.only, name, re.I):
             continue

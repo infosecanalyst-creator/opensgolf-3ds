@@ -8,12 +8,14 @@ plays without any file of the original SimGolf. Licence: GPL-2.0-or-later (the f
 The set has two parts, both built into the game (nothing is downloaded at run time):
 
 * **Rendered art** in `art/` (about 9 MB): sprite sheets of the trees, bushes, cacti, palms, scenic plants, buildings and
-  golfers, rendered offline by `tools/freeset_art/build.py` from 3D models made in code (a painterly tree grower, a building
+  golfers, staff and celebrities, rendered offline by `tools/freeset_art/build.py` from 3D models made in code (a painterly tree grower, a building
   kit in each theme's style, a jointed golfer posed for every animation) with the game's own camera (pitch 38.7 degrees,
   4 or 8 views), and the sounds and music made by `tools/freeset_art/sounds.py` from CC0 recordings and our own synthesis
   (see `CREDITS.md`). `crates/sg-core/src/freeset/baked.rs` turns a sheet into the FLC the engine reads.
   Golfers are drawn in the palette slots the engine recolours, so every golfer still wears their own colours; trees use
-  the leaf ramp the colour variant palettes change.
+  the leaf ramp the colour variant palettes change. The main interface sheets (the dock, title screen, course badge,
+  the Terrain, Amenities, Buildings and Elevation panels with the theme's lot pictures, terrain buttons, dialogs and the
+  course report) are vector art drawn by `tools/freeset_art/ui.py` at the places the engine cuts them.
 * **Drawn at run time** by code in `crates/sg-core/src/freeset/` for everything else:
   * **Terrain** (`tex.rs`): each theme's surfaces painted from wrapping noise with lit relief (mowing stripes, blades and
     clumps of grass, scrub, stones, sand grain and ripples, water sheen), in the nine blend shapes the terrain renderer uses.
@@ -27,7 +29,7 @@ The set has two parts, both built into the game (nothing is downloaded at run ti
   * **Fonts**: Liberation Sans Bold (SIL Open Font License 1.1, `crates/simgolf/fonts/LiberationSans-OFL.txt`) under the two
     names the game loads, `KLEPTO__.TTF` and `manu3_.TTF`.
 
-To rebuild the rendered art: `python3 tools/freeset_art/build.py` (numpy and Pillow; `--only REGEX` for some sprites), and
+To rebuild the rendered art: `python3 tools/freeset_art/build.py` (numpy and Pillow; `--only REGEX` for some sprites), `python3 tools/freeset_art/ui.py` for the interface sheets, and
 for the sounds `python3 tools/freeset_art/fetch_sources.py DIR` then `python3 tools/freeset_art/sounds.py DIR` (ffmpeg
 with libvorbis). Both rewrite `crates/sg-core/src/freeset/baked_list.rs`, the list of files built into the game.
 
