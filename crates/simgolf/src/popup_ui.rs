@@ -47,6 +47,8 @@ pub struct Popup {
     pub top: f32,
     /// The screen the popup came from.
     pub back: Screen,
+    /// Preferences: the option of the port's "Use my SimGolf files..." line (gamefiles.rs), when it is shown.
+    pub files_line: Option<usize>,
     /// Enhanced graphics: the page (tab) shown and the settings as ticked so far (put in use by OK).
     pub page: u8,
     pub enh: crate::enhanced::Settings,
@@ -379,7 +381,7 @@ impl Popup {
             checks: matches!(self.kind, PopupKind::Prefs | PopupKind::Enhanced).then_some(self.checks),
             disabled: self.disabled,
             plain: match self.kind {
-                PopupKind::Prefs => 1 << PREFS_CONTENT | 1 << PREFS_ENHANCED | 1 << PREFS_LANGUAGE,
+                PopupKind::Prefs => 1 << PREFS_CONTENT | 1 << PREFS_ENHANCED | 1 << PREFS_LANGUAGE | self.files_line.map_or(0, |k| 1 << k),
                 PopupKind::Enhanced => crate::enhanced::popup_plain(self.page),
                 _ => 0,
             },
@@ -415,6 +417,9 @@ pub const PREFS_CONTENT: usize = 5;
 pub const PREFS_ENHANCED: usize = 6;
 /// The Preferences' option that switches the language (shown only when there is a translation to switch to).
 const PREFS_LANGUAGE: usize = 7;
+/// The bit of a Preferences result that asks for the "Use my SimGolf files..." line's action (gamefiles.rs), after the
+/// ticks are applied.
+pub const PREFS_FILES_FLAG: usize = 20;
 
 /// What a popup returned: an option index (counted from the first option line), or None when cancelled.
 pub type PopupResult = Option<usize>;
@@ -520,6 +525,12 @@ impl App {
         if languages > 1 {
             lines.push(&language);
         }
+        // the port's own: "Use my SimGolf files..." or "Use the free graphics" (gamefiles.rs), last
+        let files = if kind == PopupKind::Prefs { self.files_option().map(|(_, l)| format!(" {l}")) } else { None };
+        let files_line = files.as_ref().map(|_| lines.len() - 1);
+        if let Some(f) = &files {
+            lines.push(f);
+        }
         let enh = crate::enhanced::settings();
         // the Enhanced graphics box opens on its first page; its lines are made by refresh_enhanced below
         // the port's own: the goals of a scenario or of the packs' scripts (docs/MODDING.md 5), after the original's lines
@@ -546,6 +557,7 @@ impl App {
             cx,
             top,
             back,
+            files_line,
             page: 0,
             enh,
             tab_hover: None,
@@ -679,6 +691,10 @@ impl App {
         let p = self.popup.as_mut()?;
         let k = pick.or(p.sel).unwrap_or(0);
         if p.kind == PopupKind::Prefs {
+            // "Use my SimGolf files...": the ticks so far are kept, as with OK, then the line's action runs
+            if p.files_line.is_some_and(|f| f == k && (pick.is_some() || p.sel == Some(k))) {
+                return Some((p.checks | 1 << PREFS_FILES_FLAG) as usize);
+            }
             if pick == Some(PREFS_LANGUAGE) {
                 // the next language, at once: the box is rebuilt in it with the ticks kept
                 let checks = p.checks;

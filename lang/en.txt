@@ -2036,8 +2036,29 @@ STR_CONTENT_NEXT                        :Next
 STR_CONTENT_NOTE                        :Changes are saved at once and take effect when you restart the game.
 STR_CONTENT_NOTE_CHANGED                :Your changes are saved. They take effect when you restart the game.
 STR_CONTENT_FIND_MORE                   :Find more...
-# Shown at start up when the game folder has no SimGolf files
-STR_CONTENT_NO_GAME_FILES               :No SimGolf files found in {DIR}: playing with the free OpenSGolf graphics (use --game DIR for your own copy).
+# Shown at start up when the game folder named with --game has no SimGolf files
+STR_CONTENT_NO_GAME_FILES               :No SimGolf files found in {DIR}: playing with the free OpenSGolf graphics.
+
+# The player's own SimGolf files (the port's own, gamefiles.rs): the title screen's button and the Preferences line
+STR_GAME_FILES_USE_MINE                 :Use my SimGolf files...
+STR_GAME_FILES_USE_FREE                 :Use the free graphics
+STR_GAME_FILES_WHERE                    :Where do my SimGolf files go?
+# The title of the system's folder picker
+STR_GAME_FILES_PICK_TITLE               :Choose the folder SimGolf is installed in
+# Shown once on the title screen when no SimGolf files were found
+STR_GAME_FILES_HINT                     :Playing with OpenSGolf's free graphics. Have SimGolf? Choose 'Use my SimGolf files...'
+# The folder picked does not hold the game; {MISSING} lists what it lacks
+STR_GAME_FILES_NOT_FOUND                :The folder "{DIR}" does not hold SimGolf's game files ({MISSING} not there). Choose the folder SimGolf is installed in: the one with the Interface and Flics folders, or the CD's Program_Files_(ENGLISH).
+# Shown after the game started again on the files chosen
+STR_GAME_FILES_USING                    :Playing with your own SimGolf files.
+STR_GAME_FILES_USING_FREE               :Playing with OpenSGolf's free graphics.
+# Where to put the files (Android, or a build without a folder picker)
+STR_GAME_FILES_COPY_HERE                :Copy everything in SimGolf's Program_Files_(ENGLISH) folder (on the CD, or in the folder SimGolf is installed in) into {DIR}, then start OpenSGolf again.
+# Asked before the game starts again from Preferences during a game
+STR_GAME_FILES_ASK_RESTART              :OpenSGolf starts again to change its graphics. Anything not saved in this game is lost.
+STR_GAME_FILES_GO_ON                    :Start again now
+STR_GAME_FILES_NOT_NOW                  :Not now
+STR_GAME_FILES_RESTART                  :Your choice is saved. Start OpenSGolf again to use it.
 
 # Preferences > Content > Find more: the content index (docs/CONTENT_INDEX.md)
 STR_INDEX_TITLE                         :Find more content

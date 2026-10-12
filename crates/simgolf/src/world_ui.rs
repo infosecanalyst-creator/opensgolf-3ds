@@ -198,7 +198,10 @@ impl App {
             }
         };
         let pin = |g: &mut Gfx, x: f32, y: f32, variant: i32, state: i32| {
-            s.image_part(g, &a.tacks, x, y, 50.0 * variant as f32, 50.0 * state as f32, 20.0, 24.0);
+            // the exe cuts every pin 20 x 24, which clips the right-leaning pins (column 3 reaches x 21 in the mask);
+            // the port shows those whole, its own small departure
+            let w = if variant == 3 { 22.0 } else { 20.0 };
+            s.image_part(g, &a.tacks, x, y, 50.0 * variant as f32, 50.0 * state as f32, w, 24.0);
         };
         // the selected card goes last: its box reaches over the card below
         let sel_card = CARD_POS.iter().enumerate().position(|(k, _)| self.offer[k].property as i32 == self.hover);
@@ -212,14 +215,16 @@ impl App {
             let theme = sg_core::data::properties()[p].theme;
             let icon = &self.theme_icons[theme];
             if icon.tex.is_some() {
+                // the exe's cuts (0x46f550 loader): 59 x 49 from x 2 and 202, 182 x 73 from x 402 and 602, drawn at the
+                // card's origin; the owned piece at 300 is not cut by the exe, so it keeps its own left edge
                 let (sx, w, h) = match (sel, ok && !owned) {
-                    (true, true) => (400.0, 176.0, 66.0),
-                    (true, false) => (600.0, 176.0, 66.0),
-                    (false, _) if owned => (300.0, 60.0, 49.0),
-                    (false, true) => (200.0, 60.0, 49.0),
-                    (false, false) => (0.0, 60.0, 49.0),
+                    (true, true) => (402.0, 182.0, 73.0),
+                    (true, false) => (602.0, 182.0, 73.0),
+                    (false, _) if owned => (300.0, 59.0, 49.0),
+                    (false, true) => (202.0, 59.0, 49.0),
+                    (false, false) => (2.0, 59.0, 49.0),
                 };
-                s.image_part(g, icon, cx, cy - 2.0, sx, 0.0, w, h);
+                s.image_part(g, icon, cx + if sx == 300.0 { 0.0 } else { 2.0 }, cy, sx, 0.0, w, h);
             }
             let black = rgb(0.0, 0.0, 0.0);
             s.text_centered(g, cx + 96.0, cy + 15.0, sg_core::data::records()[p].name(), 13.0, black);

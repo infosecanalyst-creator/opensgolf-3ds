@@ -19,12 +19,20 @@ cpal = { version = "0.15", optional = true }
 # browser version downloads through the page's fetch()
 ureq = { version = "3", optional = true, default-features = false, features = ["rustls"] }
 
+# "Use my SimGolf files..." (gamefiles.rs): the system's own folder picker on Windows, macOS and Linux. On Linux it asks
+# the desktop through the XDG portal over D-Bus (no GTK, nothing extra to install to build it). Not built for the browser
+# or Android, which have their own ways in.
+[target.'cfg(not(any(target_arch = "wasm32", target_os = "android")))'.dependencies]
+rfd = { version = "0.17", optional = true, default-features = false, features = ["xdg-portal"] }
+
 [features]
-default = ["audio", "net"]
+default = ["audio", "net", "picker"]
 # Sound output through the system's audio device (CoreAudio, WASAPI, ALSA). Without it the game runs silent.
 audio = ["dep:cpal"]
 # Downloading content packs over HTTPS (desktop). Without it only file:// content indexes work.
 net = ["dep:ureq"]
+# The system folder picker of "Use my SimGolf files..." (desktop). Without it the option says where to put the files.
+picker = ["dep:rfd"]
 
 # Android only: hands miniquad's Java VM to cpal's oboe sound output (src/android.rs).
 [target.'cfg(target_os = "android")'.dependencies]

@@ -674,6 +674,8 @@ impl App {
         }
         let theme = format!("({})", THEME_PACKS.get(self.theme_pack).copied().unwrap_or("Standard"));
         s.put_centered(g, crate::ui::F_KLEPTO18, MENU_LABEL_X[1], MENU_LABEL_Y[1] + 24.0, &theme, grey);
+        // the port's own: "Use my SimGolf files..." (gamefiles.rs)
+        self.draw_files_button(g, &s);
         if !self.toast.is_empty() && self.clock < self.toast_until {
             let w = text_width(&self.toast, 18.0) + 24.0;
             s.fill(g, 400.0 - w / 2.0, 560.0, w, 30.0, rgba(0.1, 0.1, 0.3, 0.9));
@@ -822,9 +824,11 @@ impl App {
                 let (sx, sy, w, h, dx, dy) = DOCK_LIT[self.dock_hover as usize];
                 s.image_part(g, &self.dock_art, dx, dy, sx, sy, w, h);
             }
-            // while paused the Pause button blinks gold (0x5a9f5c counts the paused frames, lit while bit 2 is set)
+            // while paused the Pause button blinks gold (0x5a9f5c counts the paused frames, lit while bit 2 is set). The exe
+            // drew a frame per game tick (about 87 ms); counted in time rather than in our frames, so the blink keeps that
+            // pace at any refresh rate instead of strobing at 60-144 fps
             if self.paused {
-                self.dock_blink = self.dock_blink.wrapping_add(1);
+                self.dock_blink = (self.clock / 0.087) as u32;
                 if self.dock_blink & 4 != 0 {
                     let (sx, sy, w, h, dx, dy) = DOCK_LIT[8];
                     s.image_part(g, &self.dock_art, dx, dy, sx + 50.0, sy, w, h);

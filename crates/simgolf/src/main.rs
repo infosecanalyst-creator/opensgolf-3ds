@@ -10,6 +10,9 @@
 
 // UI drawing takes source and destination rectangles as plain numbers; index loops mirror the original's tables.
 #![allow(clippy::too_many_arguments, clippy::needless_range_loop)]
+// Windows: a release build is a windowed program, so a double-click opens no console window; started from a console with
+// options it writes its messages there (attach_console).
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 #[cfg(target_os = "android")]
 mod android;
@@ -26,6 +29,7 @@ mod fx_ball;
 mod fx_glsl;
 mod fx_light;
 mod fx_shadow;
+mod gamefiles;
 mod gfx;
 mod hd;
 mod holemarks;
@@ -63,6 +67,8 @@ use std::sync::Arc;
 
 struct Options {
     game_dir: PathBuf,
+    /// How the game folder was found (--game, the saved choice, a usual place, or not at all).
+    game_how: gamefiles::How,
     theme: usize,
     seed: u32,
     win_w: i32,
@@ -125,20 +131,11 @@ fn ints(s: &str) -> Vec<i32> {
     v
 }
 
-/// Where the original game's files are looked for when --game is not given. In a browser the page puts the player's game
-/// folder at "game" (web/opensgolf.js); on Android it is the app's external files folder (android.rs).
-fn default_game_dir() -> PathBuf {
-    #[cfg(target_os = "android")]
-    {
-        android::game_dir()
-    }
-    #[cfg(not(target_os = "android"))]
-    PathBuf::from(if cfg!(target_arch = "wasm32") { "game" } else { "game/Program_Files_(ENGLISH)" })
-}
-
 fn parse_args() -> Options {
+    let mut given_game = None;
     let mut o = Options {
-        game_dir: default_game_dir(),
+        game_dir: PathBuf::new(),
+        game_how: gamefiles::How::NotFound,
         theme: 0,
         seed: 7,
         win_w: 1280,
@@ -185,7 +182,7 @@ fn parse_args() -> Options {
             args.get(i).cloned().unwrap_or_default()
         };
         match a {
-            "--game" => o.game_dir = PathBuf::from(next()),
+            "--game" => given_game = Some(PathBuf::from(next())),
             "--theme" => {
                 let t = next().to_lowercase();
                 if let Some(k) = THEMES.iter().position(|n| n.to_lowercase() == t) {
@@ -250,6 +247,8 @@ fn parse_args() -> Options {
                 println!("{USAGE}");
                 std::process::exit(0);
             }
+            // older macOS hands a program started from the Finder its process serial number
+            a if a.starts_with("-psn_") => {}
             _ => {
                 eprintln!("{USAGE}");
                 std::process::exit(2);
@@ -257,6 +256,8 @@ fn parse_args() -> Options {
         }
         i += 1;
     }
+    // the player's own SimGolf files: --game, else the folder chosen in the game, else the usual places (gamefiles.rs)
+    (o.game_dir, o.game_how) = gamefiles::find(given_game);
     o
 }
 
@@ -781,11 +782,19 @@ impl Stage {
         let mut g = Gfx::new();
         // the content packs first: their art, sounds and data replace the game's before anything is read (an App deals
         // its first property offer from the data when it is made)
-        let content = content::startup(&o.game_dir, o.base.as_deref());
+        gamefiles::set_headless(o.png_out.is_some());
+        let mut content = content::startup(&o.game_dir, o.base.as_deref());
         let mut app = match o.clock {
             Some(c) => App::with_clock(o.game_dir.clone(), c),
             None => App::new(o.game_dir.clone()),
         };
+        println!("game folder: {} ({:?})", o.game_dir.display(), o.game_how);
+        // nothing found anywhere (no --game): no complaint about a folder the player never named, but once a friendly hint
+        // on the title screen of how to use the original files (gamefiles.rs)
+        if o.game_how != gamefiles::How::Given && content.forced_base.is_some() && cfg!(not(target_arch = "wasm32")) {
+            content.notice = None;
+            app.free_hint = cfg!(not(target_os = "android")) && gamefiles::take_hint();
+        }
         app.content = content;
         app.theme = o.theme;
         app.seed = o.seed;
@@ -997,6 +1006,15 @@ impl Stage {
         if let Some(msg) = app.content.notice.take() {
             app.show_toast(&msg);
         }
+        // the program started again on the graphics the player chose (gamefiles.rs)
+        if let Some(msg) = gamefiles::take_notice() {
+            app.show_toast(&msg);
+        }
+        // test hook: SG_PICK_FOLDER=DIR takes DIR as the folder picked in "Use my SimGolf files..." ("free": Use the free
+        // graphics), as if chosen on the title screen
+        if std::env::var_os(gamefiles::PICK_ENV).is_some() {
+            app.choose_game_folder();
+        }
         Stage {
             g,
             app,
@@ -1141,6 +1159,12 @@ impl Stage {
                     }
                     self.app.music_screen = None;
                 }
+                // the port's own "Use my SimGolf files..." line, after the ticks are kept (gamefiles.rs)
+                if m & 1 << popup_ui::PREFS_FILES_FLAG != 0 {
+                    if let Some((a, _)) = self.app.files_option() {
+                        self.app.files_action_in_game(a);
+                    }
+                }
             }
         }
     }
@@ -1275,6 +1299,12 @@ impl Stage {
             if hit < 0 && Rect::new(168.0, 198.0, 472.0, 176.0).has(vx, vy) {
                 hit = 6;
             }
+            // the port's own: "Use my SimGolf files..." / "Use the free graphics" (gamefiles.rs)
+            if let Some((_, label)) = app.files_option() {
+                if gamefiles::files_button_rect(label).has(vx, vy) {
+                    hit = gamefiles::FILES_HOVER;
+                }
+            }
         } else {
             hit = app.world_hit(vx, vy);
         }
@@ -1319,6 +1349,12 @@ impl Stage {
                 }
                 3 => app.open_themes(),
                 6 => app.open_credits(),
+                gamefiles::FILES_HOVER => {
+                    if let Some((a, _)) = app.files_option() {
+                        app.hover = -1;
+                        app.files_action(a);
+                    }
+                }
                 _ => window::order_quit(),
             }
         } else {
@@ -1418,7 +1454,11 @@ impl Stage {
                     app.tool = 4;
                     app.build_idx = sg_core::land::K_HOME_SITE as usize;
                 }
-                KeyCode::F6 if self.screenshot(&PathBuf::from("opensgolf-shot.png")) => println!("saved opensgolf-shot.png"),
+                // into the save folder: an app started from the Finder or a desktop icon has "/" or a read-only folder
+                // as its working directory
+                KeyCode::F6 if self.screenshot(&save_dir().join("opensgolf-shot.png")) => {
+                    println!("saved {}", save_dir().join("opensgolf-shot.png").display())
+                }
                 _ => {}
             }
             return;
@@ -1670,6 +1710,7 @@ impl Stage {
             }
             app.draw_analysis(&mut self.g);
         }
+        self.app.draw_notice(&mut self.g);
         self.draw_touch_buttons();
         self.g.flush();
         self.g.ctx.end_render_pass();
@@ -2033,6 +2074,10 @@ impl EventHandler for Stage {
         self.mouse = (x, y);
         self.app.info.pointer = self.app.view.to_virtual(x, y);
         let (vx, vy) = self.app.view.to_virtual(x, y);
+        if self.app.notice.is_some() {
+            self.app.notice_pointer(vx, vy, false);
+            return;
+        }
         self.app.card_pointer(vx, vy);
         if self.app.screen == Screen::Land {
             let (vx, vy) = self.app.view.to_virtual(x, y);
@@ -2090,6 +2135,12 @@ impl EventHandler for Stage {
 
     fn mouse_button_down_event(&mut self, button: MouseButton, x: f32, y: f32) {
         self.mouse = (x, y);
+        // a notice (gamefiles.rs) takes the click
+        if self.app.notice.is_some() {
+            let (vx, vy) = self.app.view.to_virtual(x, y);
+            self.app.notice_pointer(vx, vy, button == MouseButton::Left);
+            return;
+        }
         if self.app.great_shot_dismiss() || self.app.simfoto_dismiss() {
             return;
         }
@@ -2233,6 +2284,11 @@ impl EventHandler for Stage {
         self.shift = mods.shift || k == KeyCode::LeftShift || k == KeyCode::RightShift;
         self.app.shift_held = self.shift;
         self.ctrl = mods.ctrl || k == KeyCode::LeftControl || k == KeyCode::RightControl;
+        // a notice (gamefiles.rs) takes the keys until it is closed
+        if self.app.notice.is_some() {
+            self.app.notice_key(k);
+            return;
+        }
         if self.app.great_shot.is_some() {
             // the photo's wait (0x45c0c0) ends on any key; F10 first saves it
             if k == KeyCode::F10 {
@@ -2332,7 +2388,30 @@ fn window_icon() -> conf::Icon {
     icon
 }
 
+/// Windows: a windowed program has no console. Started with options (a test, a script) from a console, it writes its
+/// messages to that console; output already sent to a file or a pipe is left alone.
+#[cfg(windows)]
+fn attach_console() {
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn AttachConsole(process: u32) -> i32;
+        fn GetStdHandle(which: u32) -> isize;
+    }
+    const ATTACH_PARENT_PROCESS: u32 = u32::MAX;
+    const STD_OUTPUT_HANDLE: u32 = -11i32 as u32;
+    if std::env::args_os().len() > 1 {
+        // SAFETY: plain Win32 calls without pointers
+        unsafe {
+            if GetStdHandle(STD_OUTPUT_HANDLE) == 0 {
+                AttachConsole(ATTACH_PARENT_PROCESS);
+            }
+        }
+    }
+}
+
 fn main() {
+    #[cfg(windows)]
+    attach_console();
     #[cfg(target_os = "android")]
     android::init();
     let o = parse_args();
