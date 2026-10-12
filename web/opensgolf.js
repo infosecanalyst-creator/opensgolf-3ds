@@ -49,6 +49,8 @@ miniquad_add_plugin({
     register_plugin: function (importObject) {
         const env = importObject.env;
         env.sg_keyboard = function (show) { sgKeyboard(show !== 0); };
+        // the game's quit (the title menu's exit button): a tab cannot close itself, so back to the start page
+        env.sg_quit = function () { location.reload(); };
         env.sg_fs_size = function (ptr, len) {
             const f = sgfs.files.get(sgKey(sgStr(ptr, len)));
             return f ? f.length : -1;
@@ -60,6 +62,14 @@ miniquad_add_plugin({
         env.sg_fs_write = function (ptr, len, data, dataLen) {
             const path = sgStr(ptr, len);
             const bytes = new Uint8Array(wasm_memory.buffer, data, dataLen).slice();
+            // a picture the player took (Shift+F6 screenshot, a SimFoto, F10 on a great shot) is handed to the browser as a
+            // download: it would be out of reach (and soon over the quota) in local storage. The accomplishment snapshots
+            // the board shows (snapshots/accomp<n>.png) are kept like the saves.
+            const low = sgKey(path);
+            if (low.endsWith(".png") && !/(^|\/)accomp\d+\.png$/.test(low)) {
+                sgDownload(path.split(/[\\/]/).pop(), bytes);
+                return;
+            }
             sgAddFile(path, bytes);
             // a pack the game downloaded (Preferences > Content > Find more) or exported goes with the packs the player added
             if (sgKey(path).startsWith("packs/")) {
@@ -155,6 +165,18 @@ miniquad_add_plugin({
 });
 
 const sgnet = { next: 1, reqs: new Map() };
+
+// Hands a file to the browser as a download.
+function sgDownload(name, bytes) {
+    const url = URL.createObjectURL(new Blob([bytes], { type: name.toLowerCase().endsWith(".png") ? "image/png" : "application/octet-stream" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
 
 // Loading the player's files. The game folder is the one that holds Flics, Sounds and Data; the player may pick it, any folder
 // above it, or a .zip of it. Videos (.bik) and Windows binaries are not needed and are skipped. The files are kept in this
@@ -527,6 +549,32 @@ window.addEventListener("mousedown", sgStartAudio);
 window.addEventListener("keydown", sgStartAudio);
 window.addEventListener("touchstart", sgStartAudio, { passive: true });
 window.addEventListener("pointerdown", sgStartAudio);
+
+// The keyboard while the game runs. miniquad's gl.js sends the canvas's keys to the game and stops the browser acting on
+// Space, the arrows, F1 to F10, Tab, Backspace, ' and /. Here the rest of the original's keys are kept from the browser too:
+// PageUp and Home (turn the view; they would scroll the page), End and PageDown, and Alt or Ctrl with a digit (the port's
+// stand-ins for F1 to F10 on keyboards whose function keys need Fn; Alt+digit switches tabs in some browsers). Alt alone
+// would open Firefox's menu bar on Windows. A key pressed while the page has lost the canvas's focus (after a click on
+// the page around it, or back from another window) goes to the game and gives the canvas the focus back. The phone
+// keyboard's text box (sgKeyboard) keeps its own keys.
+function sgGameKey(e) {
+    if (e.metaKey) return false; // Cmd shortcuts stay the browser's (the game needs none)
+    if (["PageUp", "PageDown", "Home", "End", "AltLeft", "AltRight"].includes(e.code)) return true;
+    return (e.altKey || e.ctrlKey) && /^Digit[0-9]$/.test(e.code);
+}
+for (const type of ["keydown", "keyup"]) {
+    window.addEventListener(type, e => {
+        const canvas = document.getElementById("glcanvas");
+        if (!canvas || canvas.style.display !== "block" || typeof wasm_exports === "undefined") return;
+        if (sgKbd && document.activeElement === sgKbd) return;
+        if (type === "keydown" && sgGameKey(e)) e.preventDefault();
+        if (e.target !== canvas) {
+            canvas.focus();
+            const handler = type === "keydown" ? canvas.onkeydown : canvas.onkeyup;
+            if (handler) handler(e);
+        }
+    }, true);
+}
 
 // Typing on a phone: the game asks for the keyboard (sg_keyboard) while a name box is open. A hidden text box takes the
 // focus so the phone shows its keyboard, and what is typed goes to the game as key presses. The box keeps one space in it

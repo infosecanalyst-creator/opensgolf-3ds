@@ -263,6 +263,14 @@ extern "C" {
     fn sg_keyboard(show: u32);
 }
 
+/// The version of web/opensgolf.js's miniquad plugin ("simgolf_fs", version 1) this build goes with: gl.js asks for it and
+/// otherwise logs that the plugin is unused.
+#[cfg(target_arch = "wasm32")]
+#[no_mangle]
+pub extern "C" fn simgolf_fs_crate_version() -> u32 {
+    1
+}
+
 /// Raises or lowers the phone's keyboard: in a browser a hidden text box in the page, on Android the system keyboard through
 /// miniquad (its typed letters come back as char events); nothing on the desktop.
 fn show_keyboard(show: bool) {

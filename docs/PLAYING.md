@@ -40,7 +40,7 @@ The course empties and a shotgun field starts: two players on each hole, your pr
 
 ## Play a Championship
 
-In a game, Shift+F7 saves your course for championship play and Shift+F8 saves your pro (into a `Championship` folder next to your saves; pro files use the exe's layout, so the disc's `Themes/Championship/Gary Golf.pro` is listed too). From the title menu, **Play a Championship** lets you pick a difficulty, then a course (Select Championship Course, the Load screen's layout with the course's numbers on the left) and a pro (Pick A Pro: portrait, the ten skills as +N0%, the signature saying), then plays a tournament on it straight away: $100,000 in cash, June, every preparation item taken, the event named by difficulty (SGA Qualifying School to SGA Open Championship), no wages and no accomplishments. When the results are closed you are back at the title menu; nothing is saved. Scripted runs: `--champ COURSE.sgch PRO.pro`, and `--edit "x"` saves the course.
+In a game, Shift+C (or System Functions, *Save course for Championship*) saves your course for championship play and System Functions, *Save your pro for Championship* saves your pro (into a `Championship` folder next to your saves; pro files use the exe's layout, so the disc's `Themes/Championship/Gary Golf.pro` is listed too). From the title menu, **Play a Championship** lets you pick a difficulty, then a course (Select Championship Course, the Load screen's layout with the course's numbers on the left) and a pro (Pick A Pro: portrait, the ten skills as +N0%, the signature saying), then plays a tournament on it straight away: $100,000 in cash, June, every preparation item taken, the event named by difficulty (SGA Qualifying School to SGA Open Championship), no wages and no accomplishments. When the results are closed you are back at the title menu; nothing is saved. Scripted runs: `--champ COURSE.sgch PRO.pro`, and `--edit "x"` saves the course.
 
 ## Life on the course
 
@@ -60,7 +60,21 @@ In a game, Shift+F7 saves your course for championship play and Shift+F8 saves y
 
 ## Reports (F keys)
 
-As in the original: **F1** Course Report, **F2** Player Comments (the twenty most frequent comments over all holes, with the hole where each is heard most and how often per tee shot; recent months count more, as every hole's statistics lose an eighth each month), **F3** Histograph (skill, cash, fun and membership month by month, with the event log's highlights), **F4** Financial Report (the ledger by year: green fees, home sites, food and drink, course building, facilities, salaries, maintenance and interest, other, total), **F5** Routing Map (the course in miniature with each hole's tee-to-green line; tabs for course routing (par, yards, minutes), employees and their work areas, course aura (where golfers were happy or unhappy) and home site value), **F7** SGA Evaluation, **F8** Keyboard Shortcuts, **F9** Membership Roster, **F10** Professional Accomplishments. F6 takes a screenshot. `--screen comments|histograph|finance|routing|shortcuts` opens them for stills. On the routing map, left click selects a hole and right click moves it to another place in the order (the holes between shift, golfers follow; the exe allows this in every tab). **F6** opens the world map to move the club to another property: cash, the calendar and your pro's career go along and the new course starts afresh (Shift+F6 takes a screenshot).
+As in the original: **F1** Course Report, **F2** Player Comments (the twenty most frequent comments over all holes, with the hole where each is heard most and how often per tee shot; recent months count more, as every hole's statistics lose an eighth each month), **F3** Histograph (skill, cash, fun and membership month by month, with the event log's highlights), **F4** Financial Report (the ledger by year: green fees, home sites, food and drink, course building, facilities, salaries, maintenance and interest, other, total), **F5** Routing Map (the course in miniature with each hole's tee-to-green line; tabs for course routing (par, yards, minutes), employees and their work areas, course aura (where golfers were happy or unhappy) and home site value), **F7** SGA Evaluation, **F8** Keyboard Shortcuts, **F9** Membership Roster, **F10** Professional Accomplishments. `--screen comments|histograph|finance|routing|shortcuts` opens them for stills. On the routing map, left click selects a hole and right click moves it to another place in the order (the holes between shift, golfers follow; the exe allows this in every tab). **F6** opens the world map to move the club to another property: cash, the calendar and your pro's career go along and the new course starts afresh (Shift+F6 takes a screenshot).
+
+## Keys in the browser and on a Mac
+
+Every key of the original works in the browser too: the page keeps the browser from acting on the keys the game uses
+(F1 help, F3 and / find, F5 reload, F6 and F7, F10, Tab, Backspace, Space and the arrows, PageUp and Home scrolling the
+page), and a key pressed after the page lost the game's focus goes to the game and gives it the focus back. Cmd
+shortcuts stay the browser's; the game needs none. F11 (full screen) and F12 (developer tools) are left to the browser.
+
+The port's own stand-ins, in the browser and on the desktop: **Alt + 1 to 9 and 0** (on a Mac **Option**, ⌥) open what
+F1 to F10 open, for keyboards whose function keys need Fn (Macs, most laptops); Ctrl with a digit does the same where
+the browser lets it (on a Mac it always does; elsewhere Ctrl + digit may switch tabs). Shift goes with them as with the
+F keys (Shift + Alt + 6 is Shift+F6). A Mac keyboard has no PageUp or Home: **fn + ↑** is PageUp and **fn + ←** is Home
+(turn the view), or use the dock's turn buttons. In the browser a screenshot (Shift+F6), a SimFoto and a great shot's
+photo (F10) are downloaded; saved games and the accomplishment snapshots stay in the browser's storage.
 
 Content packs (mods, docs/MODDING.md): System Functions, Preferences, *Content packs...* lists the installed packs; switch them on or off and order the mods there (Up and Down, or PageUp and PageDown on the picked row). The choices are saved in `settings.json` at once and take effect the next time the game starts. `--screen content` opens the screen for stills.
 
