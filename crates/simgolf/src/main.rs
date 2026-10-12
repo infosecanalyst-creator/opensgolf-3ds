@@ -1554,6 +1554,7 @@ impl Stage {
         self.g.ctx.begin_pass(target, clear);
         enhanced::begin_frame();
         app.camera_frame(app.clock);
+        app.count_exe_frames();
         // the title screens set Klepto ITC (difficulty, the file lists and Pick A Pro, the theme packs); the rest of the game
         // draws in Manual SSi and Arial
         let title = app.ui_ok && matches!(app.screen, Screen::Menu | Screen::Difficulty | Screen::Files | Screen::Themes);

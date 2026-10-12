@@ -752,7 +752,8 @@ impl App {
             c.hover = hit;
             c.frames = 0;
         } else {
-            c.frames += 1;
+            // the exe's frames, counted on the clock (exe_steps), not ours
+            c.frames = c.frames.saturating_add(self.exe_steps);
         }
         let cg = &self.art.cg;
         // a result's piece at its position (0x4c7b90): the class toggles and traits that are on take the second piece of

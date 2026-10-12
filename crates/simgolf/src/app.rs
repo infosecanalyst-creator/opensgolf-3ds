@@ -657,7 +657,15 @@ pub struct App {
     pub music_idx: usize,
     /// Wall clock (seconds) used for toasts and the story timer.
     pub clock: f64,
+    /// The exe's frames (one per 87 ms game tick) that have passed on the wall clock since the last drawn frame, and the
+    /// count they are taken from. The exe drew one frame per tick, so its hover delays and blinks count these; our frames
+    /// come at the display's refresh rate (60 to 144 a second), which would run them two to five times too fast.
+    pub exe_steps: u32,
+    pub exe_frame: u64,
 }
+
+/// The exe's frame: one per game tick (sg_core::flight::TICK_MS).
+pub const EXE_FRAME_S: f64 = sg_core::flight::TICK_MS as f64 / 1000.0;
 
 pub fn now() -> f64 {
     miniquad::date::now()
@@ -856,7 +864,16 @@ impl App {
             music: -1,
             music_idx: 0,
             clock: 0.0,
+            exe_steps: 0,
+            exe_frame: 0,
         }
+    }
+
+    /// Counts the exe's frames that have passed since the last drawn frame (exe_steps), for the per-frame delays and blinks.
+    pub fn count_exe_frames(&mut self) {
+        let f = (self.clock / EXE_FRAME_S) as u64;
+        self.exe_steps = if self.exe_frame == 0 { 0 } else { f.saturating_sub(self.exe_frame).min(1000) as u32 };
+        self.exe_frame = f;
     }
 
     /// A file in the game folder, matched case-insensitively.

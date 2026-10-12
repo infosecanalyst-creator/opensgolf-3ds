@@ -797,7 +797,7 @@ impl App {
             // drew a frame per game tick (about 87 ms); counted in time rather than in our frames, so the blink keeps that
             // pace at any refresh rate instead of strobing at 60-144 fps
             if self.paused {
-                self.dock_blink = (self.clock / 0.087) as u32;
+                self.dock_blink = self.exe_frame as u32;
                 if self.dock_blink & 4 != 0 {
                     let (sx, sy, w, h, dx, dy) = DOCK_LIT[8];
                     s.image_part(g, &self.dock_art, dx, dy, sx + 50.0, sy, w, h);
@@ -813,9 +813,9 @@ impl App {
                 s.image_part(g, &self.dock_art, tx, ty, 300.0, 100.0 * m as f32, 214.0, 91.0);
             }
             // the tooltip bubble after 11 still frames (0x432620): a translucent black bar 6 pixels a letter wide at the
-            // pointer, the caption centred 5 pixels above it in white
+            // pointer, the caption centred 5 pixels above it in white. The exe's frames, counted on the clock (exe_steps)
             if self.dock_hover >= 0 && self.dock_hover == self.dock_tip.0 {
-                self.dock_tip.1 += 1;
+                self.dock_tip.1 = self.dock_tip.1.saturating_add(self.exe_steps);
             } else {
                 self.dock_tip = (self.dock_hover, 0);
             }

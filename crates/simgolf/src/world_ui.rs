@@ -293,7 +293,8 @@ impl App {
             s.image_part(g, wb, 732.0, 532.0, 732.0, 532.0, 68.0, 68.0);
         }
         // the buttons' names show as the hover label beside the button once the pointer has stayed more than 20 frames
-        let frames = if self.info.world_tip.0 == self.hover { self.info.world_tip.1 + 1 } else { 0 };
+        // the exe's frames, counted on the clock (exe_steps), not ours
+        let frames = if self.info.world_tip.0 == self.hover { self.info.world_tip.1.saturating_add(self.exe_steps) } else { 0 };
         self.info.world_tip = (self.hover, frames);
         let tip = match self.hover {
             WORLD_CANCEL => Some((768.0, 557.0, tr("STR_WORLD_CANCEL"))),
