@@ -1151,6 +1151,12 @@ impl Stage {
                 if self.app.switch_hd(&mut self.g, m & 16 != 0) {
                     self.app.ui_ok &= load_art(&mut self.app, &mut self.g);
                 }
+                // the port's own Enhanced graphics tick: its master switch, the options under it kept
+                let mut enh = enhanced::settings();
+                enh.enabled = m & 1 << popup_ui::PREFS_ENHANCED_ON != 0;
+                if self.app.apply_enhanced(&mut self.g, enh) {
+                    self.app.ui_ok &= load_art(&mut self.app, &mut self.g);
+                }
                 if m & 1 << popup_ui::PREFS_ENHANCED != 0 && m & 1 << popup_ui::PREFS_CONTENT == 0 {
                     self.app.open_popup(PopupKind::Enhanced);
                 }

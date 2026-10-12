@@ -1265,7 +1265,8 @@ STR_MENU_PREFS_LANGUAGE                 : Language: {LANGUAGE}
 # Preferences > Content (the port's own, docs/MODDING.md)
 STR_MENU_PREFS_CONTENT                  : Content packs...
 # Preferences > Enhanced graphics (the port's own, not in the original; docs/ENHANCED.md). The options start with a space.
-STR_MENU_PREFS_ENHANCED                 : Enhanced graphics...
+STR_MENU_PREFS_ENHANCED_ON              : Enhanced graphics (off: Classic)
+STR_MENU_PREFS_ENHANCED                 : Enhanced graphics settings...
 STR_ENHANCED_TITLE                      :Enhanced graphics (not in the original)
 STR_ENHANCED_MASTER                     : Enhanced graphics (off: Classic)
 STR_ENHANCED_NATIVE_TEXT                : Sharp text at the screen's resolution

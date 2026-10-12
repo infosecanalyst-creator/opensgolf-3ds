@@ -151,7 +151,7 @@ assets and read player packs from the external files folder).
 
 ## Enhanced graphics
 
-System Functions → Preferences → *Enhanced graphics...* (the port's own, not in the original; docs/ENHANCED.md) turns on a
+System Functions → Preferences → the *Enhanced graphics* tick, or *Enhanced graphics settings...* for the details (the port's own, not in the original; docs/ENHANCED.md) turns on a
 way of drawing the game for large and wide screens: sharp text, smooth interface art, the HUD at the window's corners on a
 wide window, sharper and anti-aliased course, a smooth camera and smooth motion. Each part has its own tick; Classic stays
 the default. With the smooth camera the mouse wheel and a pinch zoom continuously between the three levels (z, x and the
@@ -182,7 +182,7 @@ dusk) and `SG_FX_RAIN=1` (or `0`) makes every day wet (dry) while rain is on.
 With *Time of day* on, one game month is one day of light: the month opens in the morning, has a long midday in the
 original's light, a golden afternoon, a sunset and a short blue dusk, then the next month dawns. The sun swings round the
 front of the view, so shadows lengthen sideways rather than down the screen, and the course never gets darker than an
-easy-to-read dusk; the interface is not touched. *Rain* wets about one day in four (fewer in the desert, more on the
+easy-to-read dusk; the interface is not touched. *Rain* wets about one day in four (never on desert or tropical courses, more on the
 links), the same days whenever the save is loaded; the light dims and the shadows fade while it rains. *Mist* lies in
 hollows and over water, thick at dawn and gone by late morning with the time of day (a light mist all day without it).
 *Cloud shadows* drift over the course, *haze* pales the far (upper) part of the view, more when zoomed out. None of these

@@ -413,10 +413,12 @@ impl Popup {
 
 /// The option of the Preferences list that opens Preferences > Content.
 pub const PREFS_CONTENT: usize = 5;
+/// The option of the Preferences list that switches Enhanced graphics on and off (its master switch, enhanced.rs).
+pub const PREFS_ENHANCED_ON: usize = 6;
 /// The option of the Preferences list that opens Preferences > Enhanced graphics (enhanced.rs).
-pub const PREFS_ENHANCED: usize = 6;
+pub const PREFS_ENHANCED: usize = 7;
 /// The Preferences' option that switches the language (shown only when there is a translation to switch to).
-const PREFS_LANGUAGE: usize = 7;
+const PREFS_LANGUAGE: usize = 8;
 /// The bit of a Preferences result that asks for the "Use my SimGolf files..." line's action (gamefiles.rs), after the
 /// ticks are applied.
 pub const PREFS_FILES_FLAG: usize = 20;
@@ -500,7 +502,8 @@ impl App {
                     tr("STR_MENU_PREFS_HD"),
                     // the port's own: Preferences > Content (docs/MODDING.md)
                     tr("STR_MENU_PREFS_CONTENT"),
-                    // the port's own: Preferences > Enhanced graphics (docs/ENHANCED.md)
+                    // the port's own: Enhanced graphics on or off, and its settings (docs/ENHANCED.md)
+                    tr("STR_MENU_PREFS_ENHANCED_ON"),
                     tr("STR_MENU_PREFS_ENHANCED"),
                 ],
                 0,
@@ -543,6 +546,7 @@ impl App {
                 | (self.club.wildlife.enabled as u32) << 2
                 | (!self.mute as u32) << 3
                 | (self.hd.enabled as u32) << 4
+                | (crate::enhanced::settings().enabled as u32) << PREFS_ENHANCED_ON
         } else {
             0
         };

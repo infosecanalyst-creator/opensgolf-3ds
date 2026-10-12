@@ -362,13 +362,14 @@ impl App {
         (day, p.unwrap_or(t / DAY_TICKS as f32 + DAY_START).rem_euclid(1.0))
     }
 
-    /// How hard it rains on a day (0 dry): about one day in four on parkland, fewer in the desert, more on the links.
+    /// How hard it rains on a day (0 dry): about one day in four on parkland, more on the links, never in the desert or the
+    /// tropics (sunny resort courses).
     /// `SG_FX_RAIN=1` (or 0) makes every day wet (dry) for stills.
     fn fx_rain_on(&self, day: u32) -> f32 {
         if let Some(v) = std::env::var("SG_FX_RAIN").ok().and_then(|v| v.parse::<f32>().ok()) {
             return v.clamp(0.0, 1.0);
         }
-        let chance = [0.25, 0.08, 0.22, 0.35][self.exe_theme().min(3) as usize];
+        let chance = [0.25, 0.0, 0.0, 0.35][self.exe_theme().min(3) as usize];
         let h = hash(&[self.fx_seed(), day, 0x7261_696e]);
         if unit(h) < chance {
             0.6 + 0.4 * unit(hash(&[h]))
