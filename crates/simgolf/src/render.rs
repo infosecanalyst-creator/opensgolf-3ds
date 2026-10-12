@@ -793,9 +793,11 @@ impl App {
                 let (sx, sy, w, h, dx, dy) = DOCK_LIT[self.dock_hover as usize];
                 s.image_part(g, &self.dock_art, dx, dy, sx, sy, w, h);
             }
-            // while paused the Pause button blinks gold (0x5a9f5c counts the paused frames, lit while bit 2 is set)
+            // while paused the Pause button blinks gold (0x5a9f5c counts the paused frames, lit while bit 2 is set). The exe
+            // drew a frame per game tick (about 87 ms); counted in time rather than in our frames, so the blink keeps that
+            // pace at any refresh rate instead of strobing at 60-144 fps
             if self.paused {
-                self.dock_blink = self.dock_blink.wrapping_add(1);
+                self.dock_blink = (self.clock / 0.087) as u32;
                 if self.dock_blink & 4 != 0 {
                     let (sx, sy, w, h, dx, dy) = DOCK_LIT[8];
                     s.image_part(g, &self.dock_art, dx, dy, sx + 50.0, sy, w, h);
