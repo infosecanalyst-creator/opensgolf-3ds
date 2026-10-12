@@ -60,23 +60,6 @@ pub const SKILL_LABEL_KEYS: [&str; 10] = [
     "STR_SKILL_LUCK",
 ];
 
-/// Club names for the panel. APPROXIMATION: the exe's club name routine (0x40a9a0) was not decoded; these follow the
-/// club numbers 0 (longest) to 11 (shortest) the planner uses.
-pub const CLUB_NAME_KEYS: [&str; 12] = [
-    "STR_CLUB_DRIVER",
-    "STR_CLUB_3_WOOD",
-    "STR_CLUB_5_WOOD",
-    "STR_CLUB_2_IRON",
-    "STR_CLUB_3_IRON",
-    "STR_CLUB_4_IRON",
-    "STR_CLUB_5_IRON",
-    "STR_CLUB_6_IRON",
-    "STR_CLUB_7_IRON",
-    "STR_CLUB_8_IRON",
-    "STR_CLUB_9_IRON",
-    "STR_CLUB_WEDGE",
-];
-
 /// Skill k's name (`SKILL_NAME_KEYS`).
 pub fn skill_name(k: usize) -> &'static str {
     tr(SKILL_NAME_KEYS[k])
@@ -92,27 +75,18 @@ pub fn skill_label(k: usize) -> &'static str {
     tr(SKILL_LABEL_KEYS[k])
 }
 
-/// Club k's name for the panel (`CLUB_NAME_KEYS`).
+/// Club k's name for the panel: the panel (0x41b62f) prints "Club: " and the golfer's club byte (+0x1c, 0..11 as the aim
+/// picks it) through the exe's club name routine 0x40a9a0, the same table the thoughts and shot words use (Driver, 3 Wood,
+/// 4 Wood, 2 to 9 Iron, Lob Wedge, Sand Wedge, Putter).
 pub fn club_label(k: usize) -> &'static str {
-    tr(CLUB_NAME_KEYS[k])
+    crate::thoughts::club_name(k.min(13))
 }
 
-/// The lie under the ball, for the panel. APPROXIMATION: the names in the exe's terrain records are not available.
+/// The lie under the ball, for the panel: 0x41b759 prints "Lie: " and the name (+0x00) of the terrain table's record for
+/// the type under the ball (0x40bfa0, out of bounds off the map), the singular lower-case names of the static table
+/// 0x4c1a40 ("tees", "sand trap", "pot bunker", "out of bounds"); the exe's per-theme renaming of some records is not decoded.
 pub fn lie_name(ty: u8) -> &'static str {
-    use crate::course::t;
-    match ty {
-        t::TEE => tr("STR_LIE_TEE"),
-        t::GREEN => tr("STR_LIE_GREEN"),
-        t::FAIRWAY | 3 => tr("STR_LIE_FAIRWAY"),
-        t::SAND | 8 => tr("STR_LIE_SAND_TRAP"),
-        t::POT => tr("STR_LIE_POT_BUNKER"),
-        t::RAVINE => tr("STR_LIE_RAVINE"),
-        t::ROCKS => tr("STR_LIE_ROCKS"),
-        t::WATER => tr("STR_LIE_WATER"),
-        t::MARSH => tr("STR_LIE_MARSH"),
-        t::OUT => tr("STR_LIE_OUT_OF_BOUNDS"),
-        _ => tr("STR_LIE_ROUGH"),
-    }
+    crate::course::type_name(ty as i32)
 }
 
 /// Whether skill k counts for the shot being aimed (the panel draws it white, else grey).

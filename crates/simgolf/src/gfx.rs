@@ -188,6 +188,11 @@ pub struct Gfx {
     solid: Pipeline,
     overlay: Pipeline,
     flat: Pipeline,
+    /// Enhanced graphics (enhanced.rs): the overlay and flat states blending premultiplied colours, used for the textures in
+    /// `premul` (made while Enhanced's smooth interface option was on); every other texture draws as it always has.
+    overlay_pm: Pipeline,
+    flat_pm: Pipeline,
+    premul: std::collections::HashSet<TextureId>,
     pub white: TextureId,
     stream_vb: BufferId,
     stream_ib: BufferId,
@@ -255,6 +260,9 @@ impl Gfx {
         let solid = pipe(Comparison::Less, true, None);
         let overlay = pipe(Comparison::Less, false, blend);
         let flat = pipe(Comparison::Always, false, blend);
+        let pm = Some(BlendState::new(Equation::Add, BlendFactor::One, BlendFactor::OneMinusValue(BlendValue::SourceAlpha)));
+        let overlay_pm = pipe(Comparison::Less, false, pm);
+        let flat_pm = pipe(Comparison::Always, false, pm);
         let white = ctx.new_texture_from_rgba8(1, 1, &[255, 255, 255, 255]);
         let stream_cap = 4096;
         let stream_vb = ctx.new_buffer(BufferType::VertexBuffer, BufferUsage::Stream, BufferSource::empty::<Vert>(stream_cap));
@@ -264,6 +272,9 @@ impl Gfx {
             solid,
             overlay,
             flat,
+            overlay_pm,
+            flat_pm,
+            premul: Default::default(),
             white,
             stream_vb,
             stream_ib,
@@ -275,16 +286,97 @@ impl Gfx {
         }
     }
 
-    fn pipeline(&self, mode: Mode) -> &Pipeline {
+    fn pipeline(&self, mode: Mode, tex: TextureId) -> &Pipeline {
+        let pm = !self.premul.is_empty() && self.premul.contains(&tex);
         match mode {
             Mode::Solid => &self.solid,
+            Mode::Overlay if pm => &self.overlay_pm,
             Mode::Overlay => &self.overlay,
+            Mode::Flat if pm => &self.flat_pm,
             Mode::Flat => &self.flat,
         }
     }
 
+    /// Whether a texture holds premultiplied colours (Enhanced graphics' smooth interface option, enhanced.rs).
+    pub fn is_premul(&self, tex: TextureId) -> bool {
+        !self.premul.is_empty() && self.premul.contains(&tex)
+    }
+
+    /// Enhanced graphics: a texture with premultiplied colours, mipmapped (trilinear) and clamped; `aniso` adds anisotropic
+    /// filtering where the driver offers it.
+    fn texture_enhanced(&mut self, img: &Rgba, aniso: bool) -> TextureId {
+        let mut px = img.px.clone();
+        for p in px.chunks_exact_mut(4) {
+            let a = p[3] as u32;
+            if a < 255 {
+                for c in &mut p[..3] {
+                    *c = ((*c as u32 * a + 127) / 255) as u8;
+                }
+            }
+        }
+        let params = TextureParams {
+            kind: TextureKind::Texture2D,
+            width: img.w,
+            height: img.h,
+            format: TextureFormat::RGBA8,
+            wrap: TextureWrap::Clamp,
+            min_filter: FilterMode::Linear,
+            mag_filter: FilterMode::Linear,
+            mipmap_filter: MipmapFilterMode::Linear,
+            allocate_mipmaps: true,
+            sample_count: 1,
+        };
+        let id = self.ctx.new_texture(TextureAccess::Static, TextureSource::Bytes(&px), params);
+        self.ctx.texture_generate_mipmaps(id);
+        if aniso {
+            crate::enhanced::anisotropy(self, id);
+        }
+        self.premul.insert(id);
+        id
+    }
+
+    /// Enhanced graphics' text: a glyph atlas (white, the coverage in alpha) drawn texel for pixel, so neither smoothed nor
+    /// mipmapped; premultiplied when the smooth interface option is on.
+    pub fn text_atlas(&mut self, img: &Rgba) -> TextureId {
+        let pm = crate::enhanced::smooth_ui();
+        let mut px = img.px.clone();
+        if pm {
+            for p in px.chunks_exact_mut(4) {
+                p[0] = p[3];
+                p[1] = p[3];
+                p[2] = p[3];
+            }
+        }
+        let params = TextureParams {
+            kind: TextureKind::Texture2D,
+            width: img.w,
+            height: img.h,
+            format: TextureFormat::RGBA8,
+            wrap: TextureWrap::Clamp,
+            min_filter: FilterMode::Linear,
+            mag_filter: FilterMode::Linear,
+            mipmap_filter: MipmapFilterMode::None,
+            allocate_mipmaps: false,
+            sample_count: 1,
+        };
+        let id = self.ctx.new_texture(TextureAccess::Static, TextureSource::Bytes(&px), params);
+        if pm {
+            self.premul.insert(id);
+        }
+        id
+    }
+
     /// A texture from RGBA pixels. `mipmaps` for terrain textures (trilinear like the original), clamped at the edges.
     pub fn texture(&mut self, img: &Rgba, mipmaps: bool) -> TextureId {
+        self.texture_with(img, mipmaps, true)
+    }
+
+    /// `texture` the classic way whatever the Enhanced settings (the classic text atlas, which only Classic draws with).
+    pub fn texture_classic(&mut self, img: &Rgba) -> TextureId {
+        self.texture_with(img, false, false)
+    }
+
+    fn texture_with(&mut self, img: &Rgba, mipmaps: bool, enhanced: bool) -> TextureId {
         // transparent pixels still carry the art's key colour (magenta); smoothing would blend it into the edges
         let bled;
         let img = if img.px.chunks_exact(4).any(|p| p[3] == 0) {
@@ -293,6 +385,9 @@ impl Gfx {
         } else {
             img
         };
+        if enhanced && (crate::enhanced::smooth_ui() || (mipmaps && crate::enhanced::terrain_filter())) {
+            return self.texture_enhanced(img, mipmaps && crate::enhanced::terrain_filter());
+        }
         let params = TextureParams {
             kind: TextureKind::Texture2D,
             width: img.w,
@@ -315,6 +410,9 @@ impl Gfx {
     /// A texture from an HD pack picture (only used in HD mode, see hd.rs): trilinear filtered with mipmaps, since it is drawn
     /// smaller than its own resolution. The pack's pictures carry their colours under transparent pixels already.
     pub fn texture_hd(&mut self, img: &Rgba) -> TextureId {
+        if crate::enhanced::smooth_ui() {
+            return self.texture_enhanced(img, crate::enhanced::terrain_filter());
+        }
         let params = TextureParams {
             kind: TextureKind::Texture2D,
             width: img.w,
@@ -347,7 +445,7 @@ impl Gfx {
         if mesh.count == 0 {
             return;
         }
-        let p = *self.pipeline(mode);
+        let p = *self.pipeline(mode, tex);
         self.ctx.apply_pipeline(&p);
         self.ctx.apply_bindings(&Bindings { vertex_buffers: vec![mesh.vb], index_buffer: mesh.ib, images: vec![tex] });
         self.ctx.apply_uniforms(UniformsSource::table(u));
@@ -366,7 +464,19 @@ impl Gfx {
             self.batch_mode = mode;
             self.batch_uniforms = Some(*u);
         }
-        self.batch.extend_from_slice(verts);
+        if self.is_premul(tex) {
+            // premultiplied blending takes the vertex colour premultiplied too
+            self.batch.extend(verts.iter().map(|v| {
+                let mut v = *v;
+                let a = v.color[3];
+                v.color[0] *= a;
+                v.color[1] *= a;
+                v.color[2] *= a;
+                v
+            }));
+        } else {
+            self.batch.extend_from_slice(verts);
+        }
     }
 
     /// A quad given as four corners in order (two triangles).
@@ -394,7 +504,7 @@ impl Gfx {
                 self.ctx.new_buffer(BufferType::IndexBuffer, BufferUsage::Immutable, BufferSource::slice(&seq_indices(self.stream_cap)));
         }
         self.ctx.buffer_update(self.stream_vb, BufferSource::slice(&self.batch));
-        let p = *self.pipeline(self.batch_mode);
+        let p = *self.pipeline(self.batch_mode, tex);
         self.ctx.apply_pipeline(&p);
         self.ctx.apply_bindings(&Bindings { vertex_buffers: vec![self.stream_vb], index_buffer: self.stream_ib, images: vec![tex] });
         self.ctx.apply_uniforms(UniformsSource::table(&u));

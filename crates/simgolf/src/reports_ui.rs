@@ -416,7 +416,22 @@ impl App {
                 (fr.w as f32, fr.h as f32, sp.anchor_x as f32, sp.anchor_y as f32)
             };
             let tex = self.sprite_texture(g, si, view, f);
-            s.image(g, &Image { tex: Some(tex), w: w * k, h: h * k }, x - ax * k, y - ay * k);
+            let im = Image { tex: Some(tex), w, h };
+            if k == 1.0 {
+                s.image(g, &im, x - ax, y - ay);
+            } else {
+                // jgl.dll's scaled blit (the scale set through the renderer's +0x9c, 0x1003bce0: x and y numerators over one
+                // denominator, here k = zoom x global zoom / 16): the exe moves the frame's corner offset by integer
+                // division (0x4741b0: offset * num / den, towards zero), the blit adds the whole part of the scale, makes
+                // the picture (int)(w * k) by (int)(h * k) and takes source pixel floor(i / k) for each one (16.16 steps
+                // from 0, 0x1000e920 and the plain blits alike); sampling at texel centres keeps that exact
+                let (num, den) = ((k * 16.0).round() as i32, 16);
+                let off = |a: f32| ((-(a as i32)) * num / den) as f32 + k.trunc();
+                let (dw, dh) = ((w * k).trunc(), (h * k).trunc());
+                let step = 1.0 / k;
+                let src0 = 0.5 - 0.5 * step;
+                s.image_scaled(g, &im, (x + off(ax), y + off(ay), dw, dh), (src0, src0, dw * step, dh * step));
+            }
         }
         queue.clear();
     }
@@ -564,9 +579,13 @@ impl App {
             }
             s.line(g, from.0, from.1, gx, gy, 2.0, c15(0x7fff));
             // the exe passes palette 0x60 + theme here, not the flag palette 0x63 of the course and the terrain panel: on
-            // Parkland that is the house palette the theme loader keeps in 0x60, on Links the flag palette; 0x61 and 0x62
-            // are never loaded, so Desert and Tropical flags keep the file's own colours
-            if let (Some(si), shadow) = self.decor_sprite(0x189 + theme as u16, 0x60 + theme) {
+            // Parkland that is the house palette the theme loader keeps in 0x60, on Links the flag palette. 0x61 and 0x62
+            // are never loaded, so their data pointer is null, and jgl's paletted blit (+0x78, 0x100098c0) only stores a
+            // palette it is given in the sprite (+0x10) before drawing with the stored one: Desert and Tropical flags show
+            // the palette the same flag sprite was last drawn in, the flag palette 0x63 of the course's pins (DERIVED: a pin
+            // or the terrain panel's flag draws it with 0x63 before the map can open)
+            let pal = if theme == 0 { 0x60 } else { 0x63 };
+            if let (Some(si), shadow) = self.decor_sprite(0x189 + theme as u16, pal) {
                 if let Some(sh) = shadow {
                     self.draw_sprite_now(g, s, sh, 3, 0, gx, gy, 0.5);
                 }

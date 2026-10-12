@@ -639,12 +639,16 @@ impl Club {
             if p.fixed != 0 {
                 l = ((p.b23 >> 4) & 3) as i32;
             }
+            // a famous pro (slot type 0x20) takes the body of his row in the famous golfer table (0x58dd70 + 0x38 * the
+            // slot's +0xbb, the body digit of progolfers.dta), low two bits (0x414a45; the women's branch has no such step)
+            if gg.kind == 0x20 {
+                if let Some(pro) = self.pros.get(gg.famous.max(0) as usize) {
+                    l = (pro.body & 3) as i32;
+                }
+            }
             l
         };
-        if gg.kind == 0x20 {
-            // Tournament pros draw from the famous golfer table, not decoded; keep the class body.
-            look = look.clamp(0, 8);
-        }
+        look = look.clamp(0, 8);
         look
     }
 

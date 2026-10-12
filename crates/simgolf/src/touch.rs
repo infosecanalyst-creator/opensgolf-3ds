@@ -159,7 +159,13 @@ impl Stage {
             let sin_p = (pitch_for(self.app.draw_w, self.app.draw_h).to_radians()).sin() as f32;
             self.app.pan(-dx * k, dy * k / sin_p);
             let ratio = spread / self.touch.spread;
-            if !(0.74..=1.35).contains(&ratio) {
+            if crate::enhanced::smooth_camera() {
+                // Enhanced: the zoom follows the fingers continuously
+                if ratio > 0.0 && ratio.is_finite() {
+                    self.app.zoom_by(ratio.log2());
+                    self.touch.spread = spread;
+                }
+            } else if !(0.74..=1.35).contains(&ratio) {
                 self.app.zoom_step(ratio > 1.0);
                 self.touch.spread = spread;
             }
@@ -231,6 +237,8 @@ impl Stage {
             return;
         }
         let s = Ui::new(self.app.draw_w, self.app.draw_h);
+        // Enhanced widescreen: at the window's right edge (nothing in Classic)
+        s.anchor(crate::enhanced::Anchor::Right);
         let g: &mut Gfx = &mut self.g;
         for (i, &(label, _)) in BUTTONS.iter().enumerate() {
             let (x, y, w, h) = button_rect(i);

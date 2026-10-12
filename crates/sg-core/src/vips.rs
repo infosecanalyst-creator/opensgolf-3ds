@@ -173,6 +173,32 @@ pub struct Pro {
     pub skills: [u8; 12],
 }
 
+/// The pack's pro files join the famous golfer table after progolfers.dta (0x4659a0, after the .dta: every `*.pro` of
+/// `Themes\<pack>`, read through 0x437fa0, becomes the next row): the name, body (+0x23 high nibble), skin (+0x27), hat
+/// (+0x23 low nibble), shirt (+0x24) and trousers (+0x25) of its record. The exe writes the file's ten skill bytes (and
+/// their sum) one row further on, so each row takes the skills of the file before it, the first none; the row after the
+/// last stays unused. The table holds 100 rows.
+pub fn append_pro_files(pros: &mut Vec<Pro>, files: &[crate::championship::ProFile]) {
+    let mut carried = [0u8; 12];
+    for f in files {
+        if pros.len() >= 100 {
+            break;
+        }
+        let p = &f.person;
+        pros.push(Pro {
+            name: p.name.clone(),
+            body: p.b23 >> 4,
+            skin: p.skin,
+            hat: p.b23 & 0xf,
+            shirt: p.shirt,
+            pants: p.pants,
+            skills: carried,
+        });
+        carried = [0; 12];
+        carried[..10].copy_from_slice(&f.skills[..10]);
+    }
+}
+
 pub fn parse_pros(text: &str) -> Vec<Pro> {
     let mut out = Vec::new();
     for l in text.lines() {
@@ -458,6 +484,18 @@ mod tests {
         let p = parse_pros("* x\nJoe Pro,2          ,1,0,4,0,3213222241\nIron Hands Hacker,3,1,1,1,1,00A0000000\n");
         assert_eq!(p[0].skills[0], 3);
         assert_eq!(p[1].skills[2], 10);
+        // pro files: each row takes the skills of the file before it
+        let mut pros = p.clone();
+        let file = |name: &str, s: u8| {
+            let mut f = crate::championship::ProFile::default();
+            f.person.name = name.into();
+            f.person.b23 = 0x21;
+            f.skills = [s; 16];
+            f
+        };
+        append_pro_files(&mut pros, &[file("A", 3), file("B", 5)]);
+        assert_eq!((pros[2].name.as_str(), pros[2].body, pros[2].hat, pros[2].skills[0]), ("A", 2, 1, 0));
+        assert_eq!((pros[3].name.as_str(), pros[3].skills[0], pros[3].skills[10]), ("B", 3, 0));
         assert_eq!(mood_remark(5), "This course is quite nice.");
     }
 

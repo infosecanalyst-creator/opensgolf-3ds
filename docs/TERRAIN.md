@@ -81,8 +81,22 @@ second "Overgrowth" (probably a copy-paste slip in the original).
   `tex[37 types][25 sets][9 variations]`. Type 0 (Tee) uses a slightly different loop.
 * Textures are 64x64 24-bit BMPs, built with `gluBuild2DMipmaps`, linear filtering, repeat wrap.
 * Overlays loaded per theme: `Path.tga`, `PathCap.tga`, `PathInside.tga`, `PathCurve.tga`, the same
-  four with an `X` suffix, `CliffTest.bmp`, `RetainWallA.bmp`, `strata.bmp` (texture ids 35, 34 and 36; the table is at
-  0x100687f8 + id * 0x384).
+  four with an `X` suffix, `CliffTest.bmp`, `RetainWallA.bmp`, `strata.bmp` (texture ids 35, 34 and 36 in that order of the
+  loader, 0x10007e8a / 0x10007ef8 / 0x10007f66, GL_REPEAT and linear filtering; the table is at 0x100687f8 + id * 0x384, so
+  texture 34 is bound from 0x1006ff80 and 35 from 0x10070304). The disc's `RetainingWallA.bmp` is not loaded.
+* Retaining walls (0x1000f7f0, called for each drawn tile from 0x1000e95f): for each side whose wall flag is set (byte at
+  Tile+0x234 + side, side 0 N, 2 E, 4 S, 6 W as `setWall` numbers them) and whose neighbour exists, bind the style's texture
+  (int at Tile+0x210 + 4 * side: 1 gives CliffTest, anything else RetainWallA) and draw four triangles between the tile's
+  three vertices on that side (t 0) and the neighbour's three on the same spot (t 1), u 0, 0.5, 1 along the side, in the
+  order (N0 T0 T1) (N0 T1 N1) (N1 T1 T2) (N1 T2 N2). The sides run N: west to east, E: north to south, S: east to west, W:
+  south to north. The face's front looks towards this (lower) tile; GL_CULL_FACE is on (0x100034a3) so the far sides are not
+  drawn. Normal: the same per-side table as the cliff (0x10063c40 N, 0x10063c58 S, 0x10063c70 W, 0x10063c88 E, the first of
+  each pair for phases 0 and 2). golf.exe sets the flags (0x449540: `setWall(tile, side, style, true)` where 0x449330 says
+  so, the style being the terrain table's +0x28 byte of the tile's type: 1 for water, 2 for every other type in the static
+  table 0x4c1a40) and the heights: each tile's corners are raised one at a time with `elevateCorner` (the DLL keeps them per
+  tile, 0x1000c7b0 sets only that tile's corner and its edge midpoints) to the course's corner as the ground uses it
+  (0x40bfe0 with its cache 0x51b770), water tiles (type 17) left at sea level. Port: `Terrain::tile_corner`,
+  `App::sync_tile_corners`, `App::build_walls`.
 * The property's cliff (0x1000ea30): for a tile that is not type 20, each side whose neighbour exists and is type 20 gets a
   face of two triangles from the side's end vertices down to y = -75, textured once with strata (u 0..1 along the side,
   t 1 at the top), drawn only for the views that face it (N, the y - 1 side: views 1, 2; S: 0, 3; W: 0, 1; E: 2, 3), its
@@ -169,6 +183,5 @@ and -90 degrees, through the import at 0x4a4f82), and the DLL's setter (0x1000ad
 for 90, 2 for 180 and 3 otherwise. So the phase is the view's quarter turn (`Terrain::sand_phase`, EXACT); the exe's brush
 picture for sand (0x41ab87) turns the same way. The port rebuilds the ground when the view turns.
 
-Water has no texture animation in the DLL (no clock, no texture matrix). Not decoded yet: path overlays, cliffs and
-retaining walls, type 6 geometry, and how `golf.exe` stores a course (that code is in the protected
+Water has no texture animation in the DLL (no clock, no texture matrix). Not decoded yet: path overlays, type 6 geometry, and how `golf.exe` stores a course (that code is in the protected
 executable, which this project does not touch).

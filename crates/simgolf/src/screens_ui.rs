@@ -47,6 +47,8 @@ pub struct Art {
     pub cg: Image,
     pub head_select: Image,
     pub head_body: Image,
+    /// Bodies/Barrel.pcx (60 x 120, cut by 0x445860 into object 0x5787a0): drawn under a child in the preview.
+    pub barrel: Image,
     /// InfoButtons (with its alpha sheet): the generic popup's 3 x 3 frame (cuts 0x561810 at (200 + 17 col, 17 row)) and
     /// its checkboxes (cuts 0x561260 at (300 + 50 k, 0), 26 x 26).
     pub info_buttons: Image,
@@ -116,6 +118,7 @@ impl Art {
             cg: keyed(g, "Interface/CGButtons.pcx"),
             head_select: keyed(g, "Interface/HeadSelect.pcx"),
             head_body: keyed(g, "Interface/HeadBodyBck.pcx"),
+            barrel: keyed(g, "Bodies/Barrel.pcx"),
             info_buttons: alpha(g, "InfoButtons.pcx", "InfoButtons_A.pcx"),
             radio_dim: crate::ui::load_pcx_cell(g, &p("TransPopups.pcx"), &p("TransPopups_A.pcx"), (400, 300), (300, 300), 30, 30)
                 .unwrap_or_default(),

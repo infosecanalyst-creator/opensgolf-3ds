@@ -1612,6 +1612,7 @@ impl Land {
             clubhouse_y: -1,
             clubhouse_size: 0,
             sand_phase: 0,
+            tile_corner: Vec::new(),
         };
         let mut seed = crate::rng::Rng::new(0x9e37_79b9 ^ self.slot.property as u32);
         for a in 0..N {
@@ -2002,6 +2003,7 @@ mod tile_item_tests {
             clubhouse_y: -1,
             clubhouse_size: 0,
             sand_phase: 0,
+            tile_corner: Vec::new(),
         };
         Land::from_terrain(&t, 0)
     }

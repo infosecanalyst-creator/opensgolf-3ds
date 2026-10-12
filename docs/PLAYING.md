@@ -12,7 +12,7 @@ For scripted runs (any of `--png`, `--course`, `--edit`, `--golfer`, `--sandbox`
 
 - **Course Report:** press F1 on the course. It uses the disc's report art and lists every hole: yards, par, average strokes, time, fun, the +Len/+Acc/+Img scores (measured by simulating golfers with and without each skill, as the original's Shot Analysis suggests), type, average fee, revenue and profit. Yards, minutes and the profit split are placeholder scales. Esc, F1 or a click closes it. `--screen report` opens it directly.
 
-Saving: Shift+S (or System Functions, Save the current game) opens the Save dialog ("SAVE GAME, edit name then press Enter"): Enter saves the whole game (land, golfers, holes, staff, money, calendar, theme pack and the random generator, so it continues exactly) to `Saved Games/<name>.sgs` in the save folder and shows "Game Saved"; Esc cancels. Shift+L (or Load a previous game) opens Load Previous Game over the game, whose arrow goes back to it. Test hooks: `--screen load|save|themes|credits|champ|pickapro` opens these screens (with `--property` the load and save screens open over a game), `SG_HOVER=n` lights button n (0 OK, 1 back, 2 up, 3 down, 4 delete) with its tooltip, `SG_SELECT=r` selects row r and `SG_CONFIRM=1` opens the delete box. Test hooks: `--save-game F` saves after the `--time` simulation, `--load-game F` starts from a saved game. `--cash N` sets the starting cash, `--time S` simulates S seconds before taking `--png`, `--edit "t:x,y,type;o"` paints one tile through the hole tool (type 0 tee, 1 green) and opens the hole being built.
+Saving: Shift+S (or System Functions, Save the current game) opens the Save dialog ("SAVE GAME, edit name then press Enter"): Enter saves the whole game (land, golfers, holes, staff, money, calendar, theme pack and the random generator, so it continues exactly) to `Saved Games/<name>.sgs` in the save folder and shows "Game Saved"; Esc cancels. Shift+L (or Load a previous game) opens Load Previous Game over the game, whose arrow goes back to it. Test hooks: `--screen load|save|themes|credits|champ|pickapro` opens these screens (with `--property` the load and save screens open over a game), `SG_HOVER=n` lights button n (0 OK, 1 back, 2 up, 3 down, 4 delete) with its tooltip, `SG_SELECT=r` selects row r and `SG_CONFIRM=1` opens the delete box. Test hooks: `--save-game F` saves after the `--time` simulation, `--load-game F` starts from a saved game. `--cash N` sets the starting cash, `--time S` simulates S seconds before taking `--png`, `--edit "t:x,y,type;o"` paints one tile through the hole tool (type 0 tee, 1 green) and opens the hole being built, `--edit "e:x,y,n,r"` raises (or with a negative n lowers) every vertex of the square of side 2r + 1 round vertex x,y by n steps (stills of steps and retaining walls).
 
 ## Buildings and garden items
 
@@ -100,6 +100,17 @@ audio output (AAudio or OpenSL ES, through cpal's oboe backend); an APK whose so
 falls back to a silent build) plays without it. The content packs and translations that the desktop packages put next to
 the program are not inside the APK yet, and the app's packs folder is in its private storage (TODO: bundle the packs as
 assets and read player packs from the external files folder).
+
+## Enhanced graphics
+
+System Functions → Preferences → *Enhanced graphics...* (the port's own, not in the original; docs/ENHANCED.md) turns on a
+way of drawing the game for large and wide screens: sharp text, smooth interface art, the HUD at the window's corners on a
+wide window, sharper and anti-aliased course, a smooth camera and smooth motion. Each part has its own tick; Classic stays
+the default. With the smooth camera the mouse wheel and a pinch zoom continuously between the three levels (z, x and the
+zoom buttons still step to the next level), turns are animated, arrow-key scrolls glide and a dragged course coasts to a
+stop. `--enhanced` and `--classic-render` switch it for one run. Test hooks: `--edit M:5` opens the screen;
+`SG_POINTER=x,y` moves the pointer and `SG_CLICK=x,y[;x,y...]` clicks, in window pixels, after the first frame of a
+scripted still (for checking where clicks land on a wide window).
 
 ## Language
 

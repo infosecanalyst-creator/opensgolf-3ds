@@ -194,7 +194,7 @@ Idle versus hover:
 * Idle state is already printed into the background sheet, the code never redraws the idle cuts (EXACT that no restore
   draw exists in the loop).
 * Hover: the code draws one sprite at the position `DAT_004c7b90[idx]` (x, y shorts) for idx 0..19, except when the hit
-  is -1 or 20 (EXACT, 32299 to 32302). Which object: UNKNOWN. Best guess is the yellow member of the matching pair.
+  is -1 or 20 (EXACT, 32299 to 32302). The object is CGButtons object 2 x idx (0x43876e: 0x59df20 + 0x58 idx), the first of each pair: the pale cuts at x 0 for the class toggles and traits, the Load (O16) and Save (O18) highlights, the pale round tab at x 300 (O20 + 2k), the undo (O36) and OK (O38) rings (EXACT, asm). It is drawn before the trait (0x438e16) and toggle (0x438ee8) "on" pieces.
 * Clothing toggle "on" overlay: for each set bit of `DAT_00582dd1` (3 toggles) the sprite at `DAT_004c7b90[bit]` is drawn,
   and for each set bit of record byte 0x20 (5 traits) the sprite at `DAT_004c7b9c[bit]` is drawn (EXACT, 32692 and
   32730). Those two tables are the first 3 and the next 5 entries of the same position table (DERIVED from addresses).
@@ -287,7 +287,7 @@ a per head default table with entry stride 0x44 (`DAT_004D55E8`, +0 for skin, +3
 
 Per frame (EXACT, 32310 to 32384):
 
-1. If the child bit is set: draw an object at (352, 116).
+1. If the child bit (record +0x2c bit 8) is set: draw object 0x5787a0 at (352, 116), which 0x445860 cuts from `bodies\barrel.pcx` (60 x 120 at (0, 0)), before the body: the child is drawn over a barrel (EXACT, asm 0x438834).
 2. Rebuild the preview palette with `FUN_00462020(0x99)` (virtual slot 0x99, palette object index 0x199).
 3. Draw an object at (355, 116) (size matches a 90x120 head cell, so this is the head, DERIVED). Which head row (happy,
    neutral, angry): UNKNOWN.

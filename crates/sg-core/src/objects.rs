@@ -368,6 +368,18 @@ fn add(out: &mut Vec<Layer>, id: u16, theme: u8, flat: bool, animated: bool) {
     }
 }
 
+/// The frame of a TV tower's or booth's animated sprite (n frames) standing at tile (a, b) on game tick `tick` (0x463180):
+/// a step every second tick, offset by 13 a tile down and 7 a tile across, forwards through the frames, held on the last
+/// for as long, back again, and held on the first, 4n steps in all.
+pub fn tv_frame(tick: u32, a: i32, b: i32, n: i32) -> i32 {
+    let n = n.max(1);
+    let mut i = (tick as i64 / 2 + b as i64 * 13 + a as i64 * 7).rem_euclid(4 * n as i64) as i32;
+    if i >= 2 * n {
+        i = 3 * n - i - 1;
+    }
+    i.clamp(0, n - 1)
+}
+
 /// The layers the exe draws for a building of `kind` at `level` (0 or 1) in exe theme `theme`, bottom first.
 pub fn building_layers(kind: i32, level: u16, theme: u8) -> Vec<Layer> {
     let mut v = Vec::new();
@@ -441,10 +453,16 @@ pub fn building_layers(kind: i32, level: u16, theme: u8) -> Vec<Layer> {
                 add(&mut v, 0x1fa + l, theme, false, true);
             }
         }
-        // the TV tower and booth: which of the two sprites each kind draws goes through a table not decoded; the static
-        // and animated pairs are taken to belong to kinds 17 and 18 in that order
-        17 => add(&mut v, 0x247, theme, false, true),
-        18 => add(&mut v, 0x249, theme, false, true),
+        // the TV tower (kind 0x11) and booth (0x12), 0x463180: the static sprite (0x246 / 0x248, frame 0) queued in a box
+        // of 80 / 60 then the animated one (0x247 / 0x249, frame `tv_frame`) one step nearer, both in palette 0xb3
+        17 => {
+            add(&mut v, 0x246, theme, false, false);
+            add(&mut v, 0x247, theme, false, true);
+        }
+        18 => {
+            add(&mut v, 0x248, theme, false, false);
+            add(&mut v, 0x249, theme, false, true);
+        }
         _ => {}
     }
     v
@@ -453,6 +471,17 @@ pub fn building_layers(kind: i32, level: u16, theme: u8) -> Vec<Layer> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tv_frames_go_and_come_back() {
+        // 4 frames: up 0..3, held on 3, down 3..0, held on 0, a step every second tick
+        let seq: Vec<i32> = (0..16).map(|s| tv_frame(s * 2, 0, 0, 4)).collect();
+        assert_eq!(seq, [0, 1, 2, 3, 3, 3, 3, 3, 3, 2, 1, 0, 0, 0, 0, 0]);
+        // the tile offsets the phase: 13 a row, 7 a column
+        assert_eq!(tv_frame(0, 1, 0, 4), tv_frame(14, 0, 0, 4));
+        assert_eq!(tv_frame(0, 0, 1, 4), tv_frame(26, 0, 0, 4));
+        assert_eq!(building_layers(17, 0, 0).iter().map(|l| l.animated).collect::<Vec<_>>(), [false, true]);
+    }
 
     #[test]
     fn free_buildings_use_the_theme_art() {

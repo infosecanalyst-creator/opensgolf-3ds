@@ -83,11 +83,16 @@ impl App {
         }
     }
 
-    /// "Great, let the games begin!": the pro's skills first if he has none, then the field.
+    /// "Great, let the games begin!": the pro's skills first if he has none, then the field. The exe (0x41cee7) gathers the
+    /// mask of the pro's twelve skill bytes (0x4c2c9c) and, when none is set, runs the first allocation 0x4065c0 (10 points
+    /// and 3 per accomplishment, the card with its explanation box) before 0x46c970 draws the field.
     pub fn accept_tournament(&mut self) {
-        if self.club.pro_skill.iter().all(|&v| v == 0) {
+        if self.club.pro_skill[..12].iter().all(|&v| v == 0) {
             let pts = self.club.first_skill_points();
             self.open_skills(pts, None);
+            if let Some(d) = self.skill_dialog.as_mut() {
+                d.intro = true;
+            }
         }
         let Some(e) = self.employees.iter().find(|e| e.job == staff::job::OWNER).copied() else { return };
         let cash = (self.econ.cash / sg_core::economy::Economy::UNIT) as i32;

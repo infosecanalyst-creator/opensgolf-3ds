@@ -102,12 +102,23 @@ pub fn load_sprite(flc_path: &Path, shadow: bool, palette_pcx: Option<&Path>) ->
                 if ix.idx[i] == 255 {
                     continue;
                 }
-                // white = lightest density, pure green = darkest.
-                let dens = 1.0 - ix.pal[ix.idx[i] as usize * 3] as f32 / 255.0;
+                // jgl's blit (0x10013400) draws indices 0xf8..0xfc through the exe's shading tables (0x824148, built by
+                // 0x461830): 0xf8 to 0xfb scale the screen pixel's 5-bit channels by 4/8, 5/8, 6/8 and 7/8 (black at
+                // 1/2, 3/8, 1/4 and 1/8 strength here). Other indices keep the earlier ramp reading (white = lightest).
+                let alpha = match ix.idx[i] {
+                    0xf8 => 128,
+                    0xf9 => 96,
+                    0xfa => 64,
+                    0xfb => 32,
+                    k => {
+                        let dens = 1.0 - ix.pal[k as usize * 3] as f32 / 255.0;
+                        (70.0 + dens * 90.0) as u8
+                    }
+                };
                 img.px[i * 4] = 0;
                 img.px[i * 4 + 1] = 0;
                 img.px[i * 4 + 2] = 0;
-                img.px[i * 4 + 3] = (70.0 + dens * 90.0) as u8;
+                img.px[i * 4 + 3] = alpha;
             }
         }
         out.frames.push(img);

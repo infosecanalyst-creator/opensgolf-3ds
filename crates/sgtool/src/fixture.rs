@@ -270,8 +270,13 @@ pub fn write_fixture(dir: &Path, font: Option<&Path>) {
         put(dir, &format!("Data/Textures/{theme}/PathCurveX.tga"), &path(false));
         put(
             dir,
-            &format!("Data/Textures/{theme}/RetainingWallA.bmp"),
+            &format!("Data/Textures/{theme}/RetainWallA.bmp"),
             &bmp24(64, 64, |_, y| if y % 16 < 2 { [90, 80, 70] } else { [150, 140, 125] }),
+        );
+        put(
+            dir,
+            &format!("Data/Textures/{theme}/CliffTest.bmp"),
+            &bmp24(64, 64, |_, y| if y % 8 < 2 { [70, 60, 50] } else { [120, 100, 80] }),
         );
         put(dir, &format!("{theme}Lighting.txt"), b"#AMBIENT\n200 200 200\n#DIFFUSE\n240 240 240\n#SPECULAR\n255 255 255\n");
     }
