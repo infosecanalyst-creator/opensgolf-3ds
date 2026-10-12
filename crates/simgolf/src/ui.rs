@@ -153,6 +153,16 @@ pub fn load_pcx_alpha(g: &mut Gfx, path: &Path, alpha: &Path) -> Option<Image> {
     Some(Image { tex: Some(tex), w: img.w as f32, h: img.h as f32 })
 }
 
+/// A character's place in the baked glyph sets (Latin-1; anything else draws as '?').
+fn glyph_index(c: char) -> usize {
+    let cp = c as u32;
+    if (FIRST..FIRST + COUNT).contains(&cp) {
+        (cp - FIRST) as usize
+    } else {
+        ('?' as u32 - FIRST) as usize
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 struct Glyph {
     /// Atlas rectangle in pixels.
@@ -282,6 +292,23 @@ pub struct Font {
     tex: Option<TextureId>,
     glyphs: Vec<Glyph>,
     vm: VMetrics,
+    /// The typeface, kept for Enhanced graphics' text at the screen's own pixel size.
+    raw: Option<fontdue::Font>,
+}
+
+/// Enhanced graphics' text: a face's glyphs rasterised at one pixel size (the size asked for times the screen's scale).
+struct SizedFont {
+    tex: TextureId,
+    /// Atlas rectangles and offsets in pixels at that size.
+    glyphs: Vec<Glyph>,
+    /// The atlas's size in pixels.
+    w: f32,
+    h: f32,
+}
+
+thread_local! {
+    /// The sized glyph sets made so far, by face and pixel size (None: could not be made).
+    static SIZED: std::cell::RefCell<std::collections::HashMap<(usize, u32), Option<SizedFont>>> = Default::default();
 }
 
 /// The vertical metrics GDI builds its TEXTMETRIC from, in font units: units per em, the OS/2 table's usWinAscent and
@@ -393,9 +420,9 @@ impl Font {
             row_h = row_h.max(m.height);
         }
         let img = sg_core::assets::Rgba { w: ATLAS as u32, h: ATLAS as u32, px: atlas };
-        let tex = g.texture(&img, false);
+        let tex = g.texture_classic(&img);
         crate::fx::plain_texture(tex); // text is not pixel art: the effects' scaler leaves it alone
-        Some(Font { tex: Some(tex), glyphs, vm })
+        Some(Font { tex: Some(tex), glyphs, vm, raw: Some(font) })
     }
 
     /// Top of the exe's text to its baseline: tmAscent - tmInternalLeading, which is the em less tmDescent.
@@ -416,12 +443,53 @@ impl Font {
     }
 
     fn glyph(&self, c: char) -> Option<&Glyph> {
-        let cp = c as u32;
-        if (FIRST..FIRST + COUNT).contains(&cp) {
-            self.glyphs.get((cp - FIRST) as usize)
-        } else {
-            self.glyphs.get(('?' as u32 - FIRST) as usize)
+        self.glyphs.get(glyph_index(c))
+    }
+
+    /// Rasterises the Latin-1 glyphs at `px` pixels into one atlas (Enhanced graphics' text).
+    fn bake(&self, g: &mut Gfx, px: u32) -> Option<SizedFont> {
+        let font = self.raw.as_ref()?;
+        let width: usize = if px > 40 { 2048 } else { 1024 };
+        let mut cells = Vec::with_capacity(COUNT as usize);
+        let (mut x, mut y, mut row_h) = (1usize, 1usize, 0usize);
+        for cp in FIRST..FIRST + COUNT {
+            let ch = char::from_u32(cp).unwrap_or('?');
+            let (m, bmp) = font.rasterize(ch, px as f32);
+            if x + m.width + 1 >= width {
+                x = 1;
+                y += row_h + 1;
+                row_h = 0;
+            }
+            cells.push((x, y, m, bmp));
+            x += m.width + 1;
+            row_h = row_h.max(m.height);
         }
+        let height = (y + row_h + 2).next_multiple_of(4);
+        if height > 4096 {
+            return None;
+        }
+        let mut atlas = vec![0u8; width * height * 4];
+        let mut glyphs = Vec::with_capacity(cells.len());
+        for (x, y, m, bmp) in cells {
+            for j in 0..m.height {
+                for i in 0..m.width {
+                    let o = ((y + j) * width + x + i) * 4;
+                    atlas[o..o + 3].copy_from_slice(&[255, 255, 255]);
+                    atlas[o + 3] = bmp[j * m.width + i];
+                }
+            }
+            glyphs.push(Glyph {
+                ax: x as f32,
+                ay: y as f32,
+                aw: m.width as f32,
+                ah: m.height as f32,
+                xoff: m.xmin as f32,
+                yoff: -(m.ymin as f32 + m.height as f32),
+                advance: m.advance_width,
+            });
+        }
+        let img = sg_core::assets::Rgba { w: width as u32, h: height as u32, px: atlas };
+        Some(SizedFont { tex: g.text_atlas(&img), glyphs, w: width as f32, h: height as f32 })
     }
 
     pub fn width(&self, s: &str, size: f32) -> f32 {
@@ -444,7 +512,19 @@ impl Default for View {
 }
 
 impl View {
+    /// The 800x600 point under a window pixel, for the pointer: with Enhanced widescreen, in the layout of the interface
+    /// piece under it when that piece is drawn at a window edge (enhanced::unshift).
     pub fn to_virtual(self, px: f32, py: f32) -> (f32, f32) {
+        let (x, y) = self.to_virtual_raw(px, py);
+        if crate::enhanced::widescreen() {
+            crate::enhanced::unshift(x, y)
+        } else {
+            (x, y)
+        }
+    }
+
+    /// The centred 800x600 point under a window pixel (the course's places on the screen).
+    pub fn to_virtual_raw(self, px: f32, py: f32) -> (f32, f32) {
         ((px - self.ox) / self.scale, (py - self.oy) / self.scale)
     }
 }
@@ -453,6 +533,10 @@ impl View {
 pub struct Screen {
     pub view: View,
     u: Uniforms,
+    /// Enhanced widescreen: the shift of the anchor in use (0, 0 in Classic) and the window's extent in 800x600 units.
+    shift: std::cell::Cell<(f32, f32)>,
+    wide: bool,
+    draw: (f32, f32),
 }
 
 impl Screen {
@@ -461,7 +545,67 @@ impl Screen {
         let scale = (draw_w / 800.0).min(draw_h / 600.0);
         let view = View { scale, ox: (draw_w - 800.0 * scale) * 0.5, oy: (draw_h - 600.0 * scale) * 0.5 };
         let proj = Mat4::ortho(-view.ox / scale, (draw_w - view.ox) / scale, (draw_h - view.oy) / scale, -view.oy / scale, -1.0, 1.0);
-        Screen { view, u: Uniforms::flat(&proj, &Mat4::identity()) }
+        Screen {
+            view,
+            u: Uniforms::flat(&proj, &Mat4::identity()),
+            shift: std::cell::Cell::new((0.0, 0.0)),
+            wide: crate::enhanced::widescreen(),
+            draw: (draw_w, draw_h),
+        }
+    }
+
+    /// The window's visible area in 800x600 units (left, top, right, bottom; the centred 800x600 is 0, 0, 800, 600).
+    pub fn extent(&self) -> (f32, f32, f32, f32) {
+        let v = self.view;
+        (-v.ox / v.scale, -v.oy / v.scale, (self.draw.0 - v.ox) / v.scale, (self.draw.1 - v.oy) / v.scale)
+    }
+
+    /// Enhanced widescreen: what follows is laid out for the 800x600 screen and drawn at this edge of the window (whole
+    /// pixels away). Nothing in Classic.
+    pub fn anchor(&self, a: crate::enhanced::Anchor) {
+        if !self.wide {
+            return;
+        }
+        let (dx, dy) = a.shift(self.extent());
+        let k = self.view.scale;
+        self.shift.set(((dx * k).round() / k, (dy * k).round() / k));
+    }
+
+    /// One quad of the interface: corners (x0, y0) to (x1, y1) in 800x600 units, moved by the anchor in use.
+    fn emit(&self, g: &mut Gfx, tex: Option<TextureId>, q: [Vert; 4], record: bool) {
+        if !self.wide {
+            g.quad(Mode::Flat, tex, &self.u, q);
+            return;
+        }
+        let (dx, dy) = self.shift.get();
+        let q = q.map(|mut v| {
+            v.pos[0] += dx;
+            v.pos[1] += dy;
+            v
+        });
+        if record {
+            let xs = q.map(|v| v.pos[0]);
+            let ys = q.map(|v| v.pos[1]);
+            let (x0, x1) = (xs.iter().cloned().fold(f32::MAX, f32::min), xs.iter().cloned().fold(f32::MIN, f32::max));
+            let (y0, y1) = (ys.iter().cloned().fold(f32::MAX, f32::min), ys.iter().cloned().fold(f32::MIN, f32::max));
+            crate::enhanced::record(x0, y0, x1, y1, (dx, dy));
+        }
+        g.quad(Mode::Flat, tex, &self.u, q);
+    }
+
+    /// A rectangle shaded from `top` to `bottom` (Enhanced's frames).
+    pub fn gradient(&self, g: &mut Gfx, x: f32, y: f32, w: f32, h: f32, top: [f32; 4], bottom: [f32; 4]) {
+        self.emit(
+            g,
+            None,
+            [
+                Vert::new(x, y, 0.0, 0.0, 0.0).col(top),
+                Vert::new(x + w, y, 0.0, 0.0, 0.0).col(top),
+                Vert::new(x + w, y + h, 0.0, 0.0, 0.0).col(bottom),
+                Vert::new(x, y + h, 0.0, 0.0, 0.0).col(bottom),
+            ],
+            false,
+        );
     }
 
     /// Sub-rectangle (sx, sy, sw, sh) of an image at its own size, top-left at (dx, dy).
@@ -486,47 +630,47 @@ impl Screen {
         let (dx, dy, dw, dh) = dst;
         let (sx, sy, sw, sh) = src;
         let (u0, v0, u1, v1) = (sx / im.w, sy / im.h, (sx + sw) / im.w, (sy + sh) / im.h);
-        g.quad(
-            Mode::Flat,
+        self.emit(
+            g,
             Some(tex),
-            &self.u,
             [
                 Vert::new(dx, dy, 0.0, u0, v0).col(c),
                 Vert::new(dx + dw, dy, 0.0, u1, v0).col(c),
                 Vert::new(dx + dw, dy + dh, 0.0, u1, v1).col(c),
                 Vert::new(dx, dy + dh, 0.0, u0, v1).col(c),
             ],
+            true,
         );
     }
     pub fn image(&self, g: &mut Gfx, im: &Image, dx: f32, dy: f32) {
         self.image_part(g, im, dx, dy, 0.0, 0.0, im.w, im.h);
     }
     pub fn fill(&self, g: &mut Gfx, x: f32, y: f32, w: f32, h: f32, c: [f32; 4]) {
-        g.quad(
-            Mode::Flat,
+        self.emit(
+            g,
             None,
-            &self.u,
             [
                 Vert::new(x, y, 0.0, 0.0, 0.0).col(c),
                 Vert::new(x + w, y, 0.0, 0.0, 0.0).col(c),
                 Vert::new(x + w, y + h, 0.0, 0.0, 0.0).col(c),
                 Vert::new(x, y + h, 0.0, 0.0, 0.0).col(c),
             ],
+            true,
         );
     }
 
     /// A filled diamond centred on (x, y), reaching `hw` pixels left and right and `hh` up and down.
     pub fn diamond(&self, g: &mut Gfx, x: f32, y: f32, hw: f32, hh: f32, c: [f32; 4]) {
-        g.quad(
-            Mode::Flat,
+        self.emit(
+            g,
             None,
-            &self.u,
             [
                 Vert::new(x - hw, y, 0.0, 0.0, 0.0).col(c),
                 Vert::new(x, y - hh, 0.0, 0.0, 0.0).col(c),
                 Vert::new(x + hw, y, 0.0, 0.0, 0.0).col(c),
                 Vert::new(x, y + hh, 0.0, 0.0, 0.0).col(c),
             ],
+            true,
         );
     }
 
@@ -536,16 +680,16 @@ impl Screen {
         let (dx, dy) = (x1 - x0, y1 - y0);
         let l = (dx * dx + dy * dy).sqrt().max(1e-4);
         let (nx, ny) = (-dy / l * w * 0.5, dx / l * w * 0.5);
-        g.quad(
-            Mode::Flat,
+        self.emit(
+            g,
             None,
-            &self.u,
             [
                 Vert::new(x0 + nx, y0 + ny, 0.0, 0.0, 0.0).col(c),
                 Vert::new(x1 + nx, y1 + ny, 0.0, 0.0, 0.0).col(c),
                 Vert::new(x1 - nx, y1 - ny, 0.0, 0.0, 0.0).col(c),
                 Vert::new(x0 - nx, y0 - ny, 0.0, 0.0, 0.0).col(c),
             ],
+            true,
         );
     }
 
@@ -581,6 +725,9 @@ impl Screen {
     fn text_in(&self, g: &mut Gfx, face: Face, x: f32, y: f32, s: &str, size: f32, c: [f32; 4]) {
         log_text(s);
         let Some(f) = Font::get(face) else { return };
+        if crate::enhanced::native_text() && self.text_native(g, f, face, x, y, s, size, c) {
+            return;
+        }
         let Some(tex) = f.tex else { return };
         let k = size / BAKE_PX;
         let mut pen = x;
@@ -591,21 +738,75 @@ impl Screen {
                 let (x0, y0) = (pen + gl.xoff * k, y + gl.yoff * k);
                 let (x1, y1) = (x0 + gl.aw * k, y0 + gl.ah * k);
                 let (u0, v0, u1, v1) = (gl.ax / a, gl.ay / a, (gl.ax + gl.aw) / a, (gl.ay + gl.ah) / a);
-                g.quad(
-                    Mode::Flat,
+                self.emit(
+                    g,
                     Some(tex),
-                    &self.u,
                     [
                         Vert::new(x0, y0, 0.0, u0, v0).col(c),
                         Vert::new(x1, y0, 0.0, u1, v0).col(c),
                         Vert::new(x1, y1, 0.0, u1, v1).col(c),
                         Vert::new(x0, y1, 0.0, u0, v1).col(c),
                     ],
+                    false,
                 );
             }
             pen += Font::advance(gl, size);
         }
     }
+    /// Enhanced graphics' text: the glyphs rasterised at the screen's own pixel size and drawn texel for pixel, each on a
+    /// whole pixel of the window; the pen advances exactly as in `text_in`, so the layout is the same. False when the
+    /// glyphs could not be made (the caller draws the classic way).
+    fn text_native(&self, g: &mut Gfx, f: &Font, face: Face, x: f32, y: f32, s: &str, size: f32, c: [f32; 4]) -> bool {
+        let k = self.view.scale;
+        let px = (size * k).round();
+        if !(4.0..=320.0).contains(&px) {
+            return false;
+        }
+        let key = (face as usize, px as u32);
+        let (ox, oy) = (self.view.ox, self.view.oy);
+        let (dx, dy) = self.shift.get();
+        SIZED.with(|m| {
+            let mut m = m.borrow_mut();
+            if !m.contains_key(&key) {
+                // a resized window leaves old sizes behind: start afresh now and then
+                if m.len() >= 40 {
+                    for t in m.drain().filter_map(|(_, v)| v) {
+                        g.ctx.delete_texture(t.tex);
+                    }
+                }
+                let baked = f.bake(g, key.1);
+                m.insert(key, baked);
+            }
+            let Some(sf) = m.get(&key).and_then(|v| v.as_ref()) else { return false };
+            let tex = sf.tex;
+            let (aw, atlas_h) = (sf.w, sf.h);
+            let mut pen = x;
+            for ch in s.chars() {
+                let Some(gl) = f.glyph(ch) else { continue };
+                if let Some(ng) = sf.glyphs.get(glyph_index(ch)).filter(|ng| ng.aw > 0.0) {
+                    let sx = ((pen + dx) * k + ox).round() + ng.xoff;
+                    let sy = ((y + dy) * k + oy).round() + ng.yoff;
+                    let (x0, y0) = ((sx - ox) / k - dx, (sy - oy) / k - dy);
+                    let (x1, y1) = (x0 + ng.aw / k, y0 + ng.ah / k);
+                    let (u0, v0, u1, v1) = (ng.ax / aw, ng.ay / atlas_h, (ng.ax + ng.aw) / aw, (ng.ay + ng.ah) / atlas_h);
+                    self.emit(
+                        g,
+                        Some(tex),
+                        [
+                            Vert::new(x0, y0, 0.0, u0, v0).col(c),
+                            Vert::new(x1, y0, 0.0, u1, v0).col(c),
+                            Vert::new(x1, y1, 0.0, u1, v1).col(c),
+                            Vert::new(x0, y1, 0.0, u0, v1).col(c),
+                        ],
+                        false,
+                    );
+                }
+                pen += Font::advance(gl, size);
+            }
+            true
+        })
+    }
+
     pub fn text_centered(&self, g: &mut Gfx, cx: f32, y: f32, s: &str, size: f32, c: [f32; 4]) {
         // as the exe's centred call: half the width rounded down
         self.text(g, cx - (text_width(s, size) / 2.0).floor(), y, s, size, c);

@@ -152,13 +152,19 @@ runs the same code and draws the same pixels as before. The upscaled art is a de
 yourself from your own copy with `tools/hd_pack/hd_pack.py`. It is never shipped, downloaded from this project, or to be
 shared. Turn it on in Preferences (*HD graphics*), with `--hd` / `--classic`, or `--hd-pack DIR`. See [docs/HD.md](docs/HD.md).
 
-## Enhanced graphics effects (optional)
+## Enhanced graphics (optional)
 
-Shader effects for large screens, without touching any art: a pixel-art scaler (sharp bilinear or edge-directed) for the
-sprites and interface, animated water with sky reflections, sparkle and shore foam, per-pixel terrain light with ambient
-occlusion and soft relief shadows, softened sprite shadows, a sky beyond the map, and optional tilt-shift, colour grading,
-bloom and vignette. Off by default, and with them off the game draws exactly the classic pixels. For now `--fx` (or
-`--fx-set scaler=sharp,tilt-shift=on,...`, or `OPENSGOLF_FX=1`) turns them on. See [docs/ENHANCED.md](docs/ENHANCED.md).
+**Enhanced graphics** is the port's own option for 4K and widescreen monitors, without changing any art: text rasterised at
+the screen's own resolution, interface art with premultiplied alpha and mipmaps, the HUD at the corners of a wide window
+(full-screen pages framed), anisotropic filtering and 4× anti-aliasing for the course, a smooth camera (continuous zoom,
+animated turns, panning with inertia) and golfers, balls, animals and fly-overs moving smoothly between the simulation's
+ticks. It is not part of the original, and **Classic stays the default and byte-identical** with it off. Turn it on in
+System Functions → Preferences → *Enhanced graphics...*, or with `--enhanced` / `--classic-render` for one run. It combines
+with HD. See [docs/ENHANCED.md](docs/ENHANCED.md).
+Its shader **effects** (a pixel-art scaler for sprites and interface art, animated water with reflections, sparkle and
+shore foam, per-pixel terrain light with ambient occlusion and soft relief shadows, softened sprite shadows, a sky beyond
+the map, tilt-shift, colour grading, bloom and vignette) have their own ticks there; `--fx` turns just the effects on for
+one run.
 
 ## Playing
 

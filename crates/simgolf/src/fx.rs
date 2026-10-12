@@ -196,12 +196,47 @@ pub fn configure(flag: bool, spec: Option<&str>) {
     if flag || spec.is_some() {
         s.enabled = true;
     }
+    FORCED.with(|f| f.set(s.enabled && (flag || spec.is_some() || env.is_some())));
     if let Some(sp) = spec {
         if let Err(err) = apply_spec(&mut s, sp) {
             eprintln!("--fx-set: {err}");
         }
     }
     set_settings(s);
+}
+
+thread_local! {
+    /// The effects were turned on for this run by --fx / --fx-set / OPENSGOLF_FX, whatever the Enhanced master switch.
+    static FORCED: Cell<bool> = const { Cell::new(false) };
+}
+
+/// The effects as the Enhanced graphics ticks set them (on with the master switch, or when forced on for the run).
+pub fn from_enhanced(e: &crate::enhanced::Settings) -> FxSettings {
+    let mut s = settings();
+    s.enabled = e.enabled || FORCED.with(|f| f.get());
+    s.scaler = if !e.fx_scaler {
+        SCALER_OFF
+    } else if e.fx_scaler_sharp {
+        SCALER_SHARP
+    } else {
+        SCALER_EDGE
+    };
+    s.water = e.fx_water;
+    s.lighting = e.fx_terrain_light;
+    s.occlusion = e.fx_terrain_light;
+    s.shadows = e.fx_terrain_light;
+    s.soft_sprite_shadows = e.fx_sprite_shadows;
+    s.sky = e.fx_sky;
+    s.tilt_shift = e.fx_tilt_shift;
+    s.grading = e.fx_grading;
+    s.vignette = e.fx_grading;
+    s.bloom = e.fx_bloom;
+    s
+}
+
+/// Puts the Enhanced settings' effects in use (at start up, before `configure` applies the run's own switches).
+pub fn sync(e: &crate::enhanced::Settings) {
+    set_settings(from_enhanced(e));
 }
 
 /// Whether the post-processing passes run: they need a depth buffer in an offscreen target, which the browser build does not
@@ -275,6 +310,7 @@ struct ScalerUniforms {
     sp: [f32; 4],
     alpha_ref: f32,
     soft: f32,
+    pm: f32,
 }
 
 #[repr(C)]
@@ -312,6 +348,8 @@ struct CompositeUniforms {
 #[derive(Clone, Copy)]
 pub struct FxGpu {
     scaler: Pipeline,
+    /// The scaler blending premultiplied colours (Enhanced's smooth interface textures).
+    scaler_pm: Pipeline,
     ground_solid: Pipeline,
     ground_overlay: Pipeline,
     water: Pipeline,
@@ -369,7 +407,7 @@ impl FxGpu {
             glsl::SCALER_VS,
             &glsl::scaler_fs(),
             &["tex"],
-            &[("mvp", Mat4), ("sp", Float4), ("alpha_ref", Float1), ("soft", Float1)],
+            &[("mvp", Mat4), ("sp", Float4), ("alpha_ref", Float1), ("soft", Float1), ("pm", Float1)],
         );
         let ground_uniforms = [
             ("mvp", Mat4),
@@ -398,6 +436,18 @@ impl FxGpu {
             &[("tilt", Float4), ("glow", Float4), ("grade", Float4), ("tint", Float4)],
         );
         let scaler = pipe(ctx, scaler_sh, Comparison::Always, false, true);
+        let scaler_pm = ctx.new_pipeline(
+            &[BufferLayout::default()],
+            &attrs,
+            scaler_sh,
+            PipelineParams {
+                depth_test: Comparison::Always,
+                depth_write: false,
+                color_blend: alpha_blend,
+                alpha_blend,
+                ..Default::default()
+            },
+        );
         let ground_solid = pipe(ctx, terrain_sh, Comparison::Less, true, false);
         let ground_overlay = pipe(ctx, terrain_sh, Comparison::Less, false, true);
         let water = pipe(ctx, water_sh, Comparison::Less, true, false);
@@ -409,7 +459,7 @@ impl FxGpu {
         let quad_vb = ctx.new_buffer(BufferType::VertexBuffer, BufferUsage::Immutable, BufferSource::slice(&quad));
         let quad_ib = ctx.new_buffer(BufferType::IndexBuffer, BufferUsage::Immutable, BufferSource::slice(&[0u32, 1, 2, 3, 4, 5]));
         let no_lightmap = ctx.new_texture_from_rgba8(1, 1, &[255, 255, 255, 0]);
-        FxGpu { scaler, ground_solid, ground_overlay, water, down, blur, composite, quad_vb, quad_ib, no_lightmap }
+        FxGpu { scaler, scaler_pm, ground_solid, ground_overlay, water, down, blur, composite, quad_vb, quad_ib, no_lightmap }
     }
 }
 
@@ -430,7 +480,9 @@ pub fn scaler_wanted() -> bool {
 
 /// Draw state for a batch of flat quads drawn with the scaler: sets the pipeline, bindings and uniforms and returns true, or
 /// returns false (the caller draws the classic way) when the picture is not magnified, is text, or the batch is not quads.
-/// The magnification is measured on the batch's first quad edge (its first two vertices).
+/// The magnification is measured on the batch's first quad edge (its first two vertices). `premul`: the texture holds
+/// premultiplied colours (and the batch's vertex colours are premultiplied).
+#[allow(clippy::too_many_arguments)]
 pub fn apply_scaler(
     ctx: &mut Box<dyn RenderingBackend>,
     fx: &mut Option<Box<FxGpu>>,
@@ -439,6 +491,7 @@ pub fn apply_scaler(
     ib: BufferId,
     tex: TextureId,
     u: &Uniforms,
+    premul: bool,
 ) -> bool {
     if batch.len() < 6 || PLAIN.with(|p| p.borrow().contains(&tex)) {
         return false;
@@ -469,13 +522,14 @@ pub fn apply_scaler(
         *fx = Some(Box::new(FxGpu::new(&mut **ctx)));
     }
     let Some(f) = fx.as_deref() else { return false };
-    ctx.apply_pipeline(&f.scaler);
+    ctx.apply_pipeline(if premul { &f.scaler_pm } else { &f.scaler });
     ctx.apply_bindings(&Bindings { vertex_buffers: vec![vb], index_buffer: ib, images: vec![tex] });
     ctx.apply_uniforms(UniformsSource::table(&ScalerUniforms {
         mvp: u.mvp,
         sp: [tw as f32, th as f32, scale, mode as f32],
         alpha_ref: u.alpha_ref,
         soft: if mode == SCALER_EDGE { SOFT_EDGE.with(|s| s.get()) } else { SOFT_SHARP.with(|s| s.get()) },
+        pm: premul as i32 as f32,
     }));
     true
 }
@@ -598,8 +652,7 @@ impl App {
         self.fx.lm_rect = [-w * 0.5, -h * 0.5, 1.0 / w, 1.0 / h];
     }
 
-    /// Takes new settings: what the terrain's meshes depend on is rebuilt. (The hook for the Enhanced graphics preferences.)
-    #[allow(dead_code)]
+    /// Takes new settings (from the Enhanced graphics preferences): what the terrain's meshes depend on is rebuilt.
     pub fn fx_set(&mut self, s: FxSettings) {
         let old = settings();
         set_settings(s);
@@ -787,7 +840,7 @@ fn make_post(g: &mut Gfx, size: (u32, u32), div: u32) -> PostTargets {
     let scene = g.ctx.new_render_texture(params(w, h, TextureFormat::RGBA8));
     let depth = g.ctx.new_render_texture(params(w, h, TextureFormat::Depth));
     // with HD on, the course keeps its anti-aliasing: a multisampled pass resolving into the scene
-    let msaa = if crate::hd::active() { crate::hd::msaa_pass(g, scene, w, h) } else { None };
+    let msaa = if crate::hd::active() || crate::enhanced::msaa() { crate::hd::msaa_pass(g, scene, w, h) } else { None };
     let pass = msaa.map(|m| m.0).unwrap_or_else(|| g.ctx.new_render_pass(scene, Some(depth)));
     let tex = [0; 4].map(|_| g.ctx.new_render_texture(params(small.0, small.1, TextureFormat::RGBA8)));
     let passes = tex.map(|t| g.ctx.new_render_pass(t, None));

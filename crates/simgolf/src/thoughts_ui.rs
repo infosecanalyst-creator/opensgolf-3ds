@@ -21,7 +21,7 @@ impl App {
         let ey = m[1] * wx + m[5] * h + m[9] * wz + m[13];
         let sx = ex / self.upp + self.draw_w * 0.5;
         let sy = self.draw_h * 0.5 - ey / self.upp;
-        Some(self.view.to_virtual(sx, sy))
+        Some(self.view.to_virtual_raw(sx, sy))
     }
 
     /// The exe's floating thought text (0x416a15, specs thoughts.md 3.1): only at the closest zoom, `zoom * 10` pixels above

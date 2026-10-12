@@ -101,9 +101,20 @@ falls back to a silent build) plays without it. The content packs and translatio
 the program are not inside the APK yet, and the app's packs folder is in its private storage (TODO: bundle the packs as
 assets and read player packs from the external files folder).
 
-## Enhanced graphics effects
+## Enhanced graphics
 
-`--fx` turns on the optional shader effects (docs/ENHANCED.md, "Effects"): smoother magnified sprites and interface art,
+System Functions → Preferences → *Enhanced graphics...* (the port's own, not in the original; docs/ENHANCED.md) turns on a
+way of drawing the game for large and wide screens: sharp text, smooth interface art, the HUD at the window's corners on a
+wide window, sharper and anti-aliased course, a smooth camera and smooth motion. Each part has its own tick; Classic stays
+the default. With the smooth camera the mouse wheel and a pinch zoom continuously between the three levels (z, x and the
+zoom buttons still step to the next level), turns are animated, arrow-key scrolls glide and a dragged course coasts to a
+stop. `--enhanced` and `--classic-render` switch it for one run. Test hooks: `--edit M:5` opens the screen;
+`SG_POINTER=x,y` moves the pointer and `SG_CLICK=x,y[;x,y...]` clicks, in window pixels, after the first frame of a
+scripted still (for checking where clicks land on a wide window).
+
+### Enhanced graphics: the effects
+
+The effects are ticks on the same screen; `--fx` turns on only the optional shader effects for one run (docs/ENHANCED.md, "Effects"): smoother magnified sprites and interface art,
 animated water, terrain light with occlusion and shadows, a sky beyond the map, colour grading, bloom and vignette.
 `--fx-set LIST` picks options (`scaler=off|sharp|edge`, `water`, `lighting`, `occlusion`, `shadows`, `sprite-shadows`,
 `sky`, `tilt-shift`, `grading`, `bloom`, `vignette` = on/off, `quality=low|medium|high`), `--fx-list` prints them, and

@@ -40,11 +40,11 @@ uniform sampler2D tex;
 uniform vec4 sp;
 uniform float alpha_ref;
 uniform float soft;
+uniform float pm;
 
-vec4 T(vec2 cell) {
-    vec4 c = texture2D(tex, (cell + 0.5) / sp.xy);
-    return vec4(c.rgb * c.a, c.a);
-}
+// a texel, premultiplied (textures made by Enhanced's smooth interface option are premultiplied already: pm 1)
+vec4 P(vec4 c) { return pm > 0.5 ? c : vec4(c.rgb * c.a, c.a); }
+vec4 T(vec2 cell) { return P(texture2D(tex, (cell + 0.5) / sp.xy)); }
 float df(vec4 a, vec4 b) {
     vec4 d = abs(a - b);
     return dot(d, vec4(0.299, 0.587, 0.114, 0.9));
@@ -80,8 +80,7 @@ void main() {
     float rw = max(1.0 / sp.z, soft);
     float region = 0.5 - 0.5 * rw;
     vec2 g = (f - clamp(f, -region, region)) / rw + 0.5;
-    vec4 base = texture2D(tex, (cell + g) / sp.xy);
-    vec4 c = vec4(base.rgb * base.a, base.a);
+    vec4 c = P(texture2D(tex, (cell + g) / sp.xy));
     if (sp.w > 1.5) {
         float w = rw;
 "#,
@@ -106,7 +105,8 @@ void main() {
     }
     s.push_str(
         r#"    }
-    vec4 o = c.a > 0.0 ? vec4(c.rgb / c.a, c.a) : vec4(0.0);
+    // straight colours out for the classic blending; premultiplied ones (and the vertex colour premultiplied) for pm
+    vec4 o = pm > 0.5 ? c : (c.a > 0.0 ? vec4(c.rgb / c.a, c.a) : vec4(0.0));
     o *= color;
     if (o.a <= alpha_ref) discard;
     gl_FragColor = o;

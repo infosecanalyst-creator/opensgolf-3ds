@@ -132,6 +132,13 @@ fn take_tracked() -> Vec<TextureId> {
     STATE.with(|s| std::mem::take(&mut s.borrow_mut().tracked))
 }
 
+/// Deletes the interface textures made so far (before the art is loaded again).
+pub fn free_tracked(g: &mut Gfx) {
+    for t in take_tracked() {
+        g.ctx.delete_texture(t);
+    }
+}
+
 /// The manifest key of a file in the game folder: its path relative to the folder, lower case, with '/'. None for a file
 /// an enabled content pack replaces: the HD pack is the first layer over the game's art (docs/MODDING.md), so a mod's
 /// picture wins over the HD upscale of the picture it replaces, and is loaded the classic way.
@@ -254,7 +261,7 @@ pub struct MsaaTarget {
 pub fn msaa_pass(g: &mut Gfx, resolve: TextureId, w: u32, h: u32) -> Option<(miniquad::RenderPass, [TextureId; 2])> {
     use miniquad::{TextureFormat, TextureParams};
     // not in the browser: WebGL 2 refuses miniquad's depth render textures (see Stage::grab)
-    if !active() || cfg!(target_arch = "wasm32") || !g.ctx.info().features.resolve_attachments {
+    if !(active() || crate::enhanced::msaa()) || cfg!(target_arch = "wasm32") || !g.ctx.info().features.resolve_attachments {
         return None;
     }
     let p = |format| TextureParams { width: w, height: h, format, sample_count: SAMPLES, ..Default::default() };
@@ -268,7 +275,7 @@ impl App {
     /// In HD, the pass to draw the frame into (multisampled, window sized); None in Classic, which draws straight to the
     /// window as it always has.
     pub fn hd_frame_pass(&mut self, g: &mut Gfx) -> Option<miniquad::RenderPass> {
-        if !active() {
+        if !(active() || crate::enhanced::msaa()) {
             if let Some(t) = self.hd.msaa.take() {
                 free_target(g, t);
             }
