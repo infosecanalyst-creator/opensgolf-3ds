@@ -35,6 +35,7 @@ mod hd;
 mod holemarks;
 mod hud_ui;
 mod info_ui;
+mod keys_ui;
 mod language;
 mod member_panel;
 mod message_ui;
@@ -380,6 +381,11 @@ fn open_screen(app: &mut App, screen: Option<&str>) {
         }
         Some("shortcuts") if app.ui_ok => app.screen = Screen::Shortcuts,
         Some("content") if app.ui_ok => app.open_content(),
+        // SG_KEYS_PAGE=N shows page N (from 0) of Preferences > Keyboard controls
+        Some("keys") if app.ui_ok => {
+            app.open_keys(Screen::Play);
+            app.keys_page = std::env::var("SG_KEYS_PAGE").ok().and_then(|v| v.parse().ok()).unwrap_or(0);
+        }
         Some("goals") if app.ui_ok => app.open_goals(),
         Some("content-index") if app.ui_ok => {
             app.open_content();
@@ -1160,6 +1166,11 @@ impl Stage {
                 if m & 1 << popup_ui::PREFS_ENHANCED != 0 && m & 1 << popup_ui::PREFS_CONTENT == 0 {
                     self.app.open_popup(PopupKind::Enhanced);
                 }
+                // the port's own Keyboard controls line (keys_ui.rs)
+                if m & 1 << popup_ui::PREFS_KEYS != 0 {
+                    let back = self.app.screen;
+                    self.app.open_keys(back);
+                }
                 let sound = m & 8 != 0;
                 if sound == self.app.mute {
                     self.app.mute = !sound;
@@ -1715,6 +1726,7 @@ impl Stage {
                 Screen::Routing => app.draw_routing(&mut self.g),
                 Screen::Shortcuts => app.draw_shortcuts(&mut self.g),
                 Screen::Content => app.draw_content(&mut self.g),
+                Screen::Keys => app.draw_keys(&mut self.g),
                 Screen::Goals => app.draw_goals(&mut self.g),
                 Screen::HoleStats => app.draw_hole_stats(&mut self.g),
                 Screen::BestScores => app.draw_best_scores(&mut self.g),
@@ -2229,6 +2241,9 @@ impl EventHandler for Stage {
                 if button == MouseButton::Left {
                     self.app.content_click(vx, vy);
                 }
+            } else if self.app.screen == Screen::Keys {
+                let (vx, vy) = self.app.view.to_virtual(x, y);
+                self.app.keys_click(vx, vy, button == MouseButton::Right);
             } else if self.app.screen == Screen::Scenarios {
                 let (vx, vy) = self.app.view.to_virtual(x, y);
                 if button == MouseButton::Left {
@@ -2411,6 +2426,8 @@ impl Stage {
                 app.close_info();
             } else if app.screen == Screen::Content {
                 app.content_key(k);
+            } else if app.screen == Screen::Keys {
+                app.keys_key(k);
             } else if app.screen == Screen::Skills {
                 if k == KeyCode::Enter || k == KeyCode::Escape {
                     app.skills_key(k == KeyCode::Enter);
