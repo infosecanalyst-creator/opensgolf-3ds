@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = ["crates/sg-core", "crates/simgolf", "crates/sgtool", "crates/sgplay"]
+exclude = ["vendor"]
 
 [workspace.package]
 version = "0.1.6"
@@ -13,3 +14,7 @@ opt-level = 3
 # The course report simulates hundreds of rounds; keep debug builds usable.
 [profile.dev]
 opt-level = 1
+
+# miniquad 0.4.11 with one fix for 64-bit ARM Windows (vendor/miniquad/README-OPENSGOLF.md); the rest is upstream's code
+[patch.crates-io]
+miniquad = { path = "vendor/miniquad" }
