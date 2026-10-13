@@ -539,7 +539,7 @@ pub fn plan_shot(cl: &mut Club, c: &mut Course, rng: &mut ExeRng, g: usize, user
                                     celeb = c.objects[o as usize].sub;
                                 }
                             } else if o >= 0 && c.objects[o as usize].kind == 4 {
-                                if c.objects[o as usize].sub < 0x10 {
+                                if crate::objects::lovely_landmark(c.objects[o as usize].sub) {
                                     feature = pa + pb * map_n();
                                 } else {
                                     eyesore = pa + pb * map_n();

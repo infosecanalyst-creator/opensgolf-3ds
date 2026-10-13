@@ -236,8 +236,10 @@ impl App {
                 let mut pal = None;
                 let files: Vec<(String, bool)> = if kind == land::K_LANDMARK {
                     let Some(t) = self.chosen_landmark() else { return };
-                    pal = sg_core::decor::palette_file(100 + t as u8, self.exe_theme());
-                    vec![(sg_core::objects::LANDMARKS[t as usize].to_string(), false)]
+                    // (the extras' cut landmarks and animals too: sg_core::objects::landmark_art)
+                    let Some((file, p)) = sg_core::objects::landmark_art(t, self.exe_theme()) else { return };
+                    pal = p;
+                    vec![(file.to_string(), false)]
                 } else {
                     let level = self.lot_level(kind).min(1) as u16;
                     sg_core::objects::building_layers(kind, level, self.exe_theme()).iter().map(|l| (l.file.to_string(), l.flat)).collect()
@@ -496,7 +498,8 @@ impl App {
             col = c15(RED);
         }
         if kind == land::K_LANDMARK {
-            if let Some(t) = self.chosen_landmark() {
+            // (the extras' cut landmarks and animals have no reach)
+            if let Some(t) = self.chosen_landmark().filter(|&t| t < sg_core::objects::CUT_BASE) {
                 self.draw_reach_ring(g, s, a * 1024 + 512, b * 1024 + 512, (t * 5 + 40) * 5 / 4);
             }
         }

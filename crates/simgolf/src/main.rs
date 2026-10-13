@@ -20,11 +20,16 @@ mod app;
 mod audio;
 mod champ_ui;
 mod content;
+mod content_profiles;
+mod controls;
+mod controls_ui;
 mod cursor_ui;
 mod cust_ui;
 mod edges;
 mod enhanced;
+mod extras_ui;
 mod files_ui;
+mod framerate;
 mod fx;
 mod fx_ball;
 mod fx_glsl;
@@ -94,6 +99,8 @@ struct Options {
     course_size: i32,
     screen: Option<String>,
     cash: Option<f64>,
+    /// Test hook: the extras a new game starts with (sg_core::extras bits), not saved to the settings.
+    extras: Option<u32>,
     difficulty: Option<i32>,
     course: Option<PathBuf>,
     save: Option<PathBuf>,
@@ -163,6 +170,7 @@ fn parse_args() -> Options {
         course_size: sg_core::mapsize::ORIGINAL,
         screen: None,
         cash: None,
+        extras: None,
         difficulty: None,
         course: None,
         save: None,
@@ -221,7 +229,8 @@ fn parse_args() -> Options {
             "--sandbox" => o.sandbox = true,
             "--course-size" => o.course_size = sg_core::mapsize::valid(next().parse().unwrap_or(0)),
             "--screen" => o.screen = Some(next()),
-            "--cash" => o.cash = next().parse().ok(), // test hook: starting cash
+            "--cash" => o.cash = next().parse().ok(),     // test hook: starting cash
+            "--extras" => o.extras = next().parse().ok(), // test hook: the extras' bits for a new game (extras_ui)
             "--difficulty" => o.difficulty = next().parse().ok().map(|d: i32| d.clamp(0, 3)),
             "--course" => o.course = Some(PathBuf::from(next())),
             "--save" => o.save = Some(PathBuf::from(next())),
@@ -714,6 +723,35 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 app.after_object_change();
                 println!("celebrity home at {},{}: {} residents", at(0), at(1), app.club.residents.len());
             }
+            b'X' => {
+                // test hook: the game's extras (sg_core::extras bits), not saved to the settings
+                let e = sg_core::extras::Extras::from_bits(at(0) as u32);
+                app.club.extras = e;
+                app.econ.extras = e;
+                println!("extras {e:?}");
+            }
+            b'S' => {
+                // test hook: the landmark tool in hand with page P of its strip (extras_ui), and design D when given
+                // the Amenities panel (the Build Course panel's other side)
+                if app.panel != 1 {
+                    app.open_panel(1);
+                }
+                app.pstate.alt = true;
+                app.tool = 4;
+                app.edit = true;
+                app.build_idx = sg_core::land::K_LANDMARK as usize;
+                app.strip_page = at(0) as u8;
+                app.design = (v.len() >= 2).then(|| (sg_core::land::K_LANDMARK, at(1)));
+            }
+            b'T' => {
+                // test hook: the Rotate extra's Tab with the pointer on tile x,y
+                let (x, z) = app.terrain.tile_centre(at(0), at(1));
+                app.has_hit = true;
+                app.hit_x = x;
+                app.hit_z = z;
+                let done = app.extras_tab();
+                println!("extras tab at {},{}: {done}", at(0), at(1));
+            }
             b'x' => app.save_championship_course(),
             b'q' => app.save_championship_pro(),
             b'A' => app.auto_aim = 1, // scripted runs: the pro aims every full shot at the pin
@@ -724,6 +762,7 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                     2 => popup_ui::PopupKind::Prefs,
                     4 => popup_ui::PopupKind::Retire,
                     5 => popup_ui::PopupKind::Enhanced,
+                    6 => popup_ui::PopupKind::Extras,
                     _ => popup_ui::PopupKind::LandOffer,
                 });
                 // M:5,P opens the Enhanced graphics box on page P
@@ -844,6 +883,9 @@ impl Stage {
         if let Some(c) = o.cash {
             app.econ.start_cash = c;
         }
+        if let Some(b) = o.extras {
+            app.extras_next = sg_core::extras::Extras::from_bits(b);
+        }
         if let Some(name) = &o.golfer {
             // Play as a golfer from progolfers.dta (case-insensitive name match).
             let pros = sg_core::fsutil::read_file(app.game_path("Themes/Standard/progolfers.dta"))
@@ -896,6 +938,8 @@ impl Stage {
         let hd_msg = app.init_hd(o.hd.unwrap_or_else(hd::saved_choice));
         // Enhanced graphics (enhanced.rs), also before any art: the textures carry its filtering
         enhanced::init(o.enhanced);
+        // the player's keys (controls.rs)
+        controls::init();
         // the effects (fx.rs) follow Enhanced's ticks; --fx / --fx-set / OPENSGOLF_FX turn them on for this run
         fx::configure(o.fx, o.fx_set.as_deref());
         if !app.load_theme(&mut g, app.theme) {
@@ -995,6 +1039,13 @@ impl Stage {
             }
             println!("loaded game {} at tick {}", f.display(), app.game_tick);
             open_screen(&mut app, o.screen.as_deref());
+        }
+        // started again on a saved game's content packs (content_profiles.rs): that game is loaded now
+        if let Some(f) = gamefiles::take_load_after_restart() {
+            match app.load_game(&mut g, &f) {
+                Ok(()) => println!("loaded game {} at tick {}", f.display(), app.game_tick),
+                Err(e) => app.show_toast(&sg_core::lang::trf("STR_TOAST_COULD_NOT_LOAD_GAME", &[("ERROR", &e)])),
+            }
         }
         apply_edit_spec(&mut app, &o.edit_spec);
         if !o.edit_spec.is_empty() {
@@ -1184,6 +1235,8 @@ impl Stage {
                 2 => self.app.end_career(),
                 _ => {}
             },
+            // Preferences > OpenSGolf extras: the ticks become the game's extras (extras_ui.rs)
+            PopupKind::Extras => self.app.set_extras(sg_core::extras::Extras::from_bits(k as u32)),
             PopupKind::Prefs => {
                 let m = k as u32;
                 if m & 1 << popup_ui::PREFS_CONTENT != 0 {
@@ -1208,6 +1261,10 @@ impl Stage {
                 if m & 1 << popup_ui::PREFS_KEYS != 0 {
                     let back = self.app.screen;
                     self.app.open_keys(back);
+                }
+                // the port's own OpenSGolf extras line (extras_ui.rs)
+                if m & 1 << popup_ui::PREFS_EXTRAS != 0 {
+                    self.app.open_popup(PopupKind::Extras);
                 }
                 let sound = m & 8 != 0;
                 if sound == self.app.mute {
@@ -1435,13 +1492,20 @@ impl Stage {
     /// 0x41de29): lower-case letters pick tools, shifted letters open screens, digits jump to holes, arrows scroll four tiles,
     /// PageUp / Home turn the view a quarter, z / x zoom between the three levels.
     fn play_key(&mut self, k: KeyCode) {
+        // the player's keys (controls.rs): the key pressed becomes the default key of the action bound to it
+        let aiming = self.app.club.pro_aiming().is_some();
+        let Some((k, shift, act)) = controls::translate(k, self.shift, aiming) else { return };
+        // the port's own: the whole interface hidden or shown again (u; controls_ui.rs)
+        if act == Some(controls::action("hide_interface")) {
+            self.app.ctl.hud_hidden = !self.app.ctl.hud_hidden;
+            return;
+        }
         // Enhanced graphics' photo mode (photo.rs): c, a key the original leaves unused; nothing in Classic
-        if k == KeyCode::C && !self.shift {
+        if k == KeyCode::C && !shift {
             self.photo_enter();
             return;
         }
         let app = &mut self.app;
-        let shift = self.shift;
         // a terrain key picks that brush on the Build Course panel (0x40d890 with the type itself)
         let pick = |app: &mut App, ty: u8| {
             if app.panel != 1 {
@@ -1453,7 +1517,7 @@ impl Stage {
                 app.paint_idx = i;
             }
         };
-        if app.club.pro_aiming().is_some() && !shift {
+        if act.map_or(aiming && !shift, controls::is_aim) {
             // while the pro aims, s f d h l pick the shot shape instead
             let opt = match k {
                 KeyCode::S => Some(0),
@@ -1568,6 +1632,8 @@ impl Stage {
                 app.show_toast(name);
             }
             // Tab turns the next building; with the elevation tool it also steps the brush (one point, 2x2, area)
+            // the Rotate extra's Tab (extras_ui.rs) comes first; nothing when it is off
+            KeyCode::Tab if app.extras_tab() => {}
             KeyCode::Tab => {
                 app.turn = (app.turn + 1) & 3;
                 // the exe's Tab adds one to the same variable that holds the paint brush's variant (0x5a34f0)
@@ -1739,11 +1805,16 @@ impl Stage {
             if app.great_shot.is_none() {
                 app.draw_cursor_overlay(&mut self.g);
             }
-            if !app.no_hud {
-                app.draw_hud(&mut self.g);
+            if app.hud_hidden() {
+                // the interface hidden with u (controls_ui.rs): only a note on how to bring it back
+                app.draw_hud_hint(&mut self.g);
+            } else {
+                if !app.no_hud {
+                    app.draw_hud(&mut self.g);
+                }
+                // Enhanced graphics: the camera button that opens photo mode (photo.rs; nothing in Classic)
+                app.draw_photo_button(&mut self.g);
             }
-            // Enhanced graphics: the camera button that opens photo mode (photo.rs; nothing in Classic)
-            app.draw_photo_button(&mut self.g);
             if app.screen == Screen::Popup {
                 app.draw_popup(&mut self.g);
             }
@@ -1984,6 +2055,21 @@ impl Stage {
             // the pointer is tested against the interface as last drawn
             self.draw_frame(None);
         }
+        // SG_PRESS="u;Shift+F6;...": keys pressed after the clicks (names as settings.json's "controls" has them)
+        for b in std::env::var("SG_PRESS").unwrap_or_default().split(';').filter_map(controls::Binding::parse) {
+            let mods = KeyMods { shift: b.shift, ..Default::default() };
+            self.key_down_event(b.key, mods, false);
+            // a letter or Space also types its character, as a keyboard does
+            let name = b.name();
+            let ch = name.strip_prefix("Shift+").unwrap_or(&name);
+            if let Some(c) = ch.chars().next().filter(|c| ch.len() == 1 && c.is_ascii_alphanumeric()) {
+                self.char_event(if b.shift { c.to_ascii_uppercase() } else { c.to_ascii_lowercase() }, mods, false);
+            } else if b.key == KeyCode::Space {
+                self.char_event(' ', mods, false);
+            }
+            self.key_up_event(b.key, mods);
+            self.draw_frame(None);
+        }
     }
 
     fn pick_test(&mut self) {
@@ -2102,6 +2188,10 @@ impl EventHandler for Stage {
         }
         self.g.ctx.commit_frame();
         self.app.great_shot_frame();
+        // the frame rate cap (Enhanced graphics > Display; framerate.rs): the simulation keeps its own 87 ms ticks
+        if self.png_out.is_none() {
+            framerate::pace();
+        }
         if self.app.simfoto.is_some_and(|f| !f.saved && f.frames >= 2) {
             self.save_simfoto();
         }
@@ -2357,25 +2447,33 @@ impl EventHandler for Stage {
             }
             return;
         }
+        // the middle button drags the course along whatever tool is held (the port's own)
+        if button == MouseButton::Middle {
+            self.dragging = true;
+            self.app.drag_state(true, now());
+            return;
+        }
         if button != MouseButton::Left && button != MouseButton::Right {
             return;
         }
         let (vx, vy) = self.app.view.to_virtual(x, y);
+        // the interface hidden (u): a click goes to the course
+        let ui_ok = self.app.ui_ok && !self.app.hud_hidden();
         // a right click lets go of a golfer held by the card's Move/Eject (the main loop's right click clears 0x4c2e10)
         if button == MouseButton::Right && self.app.card_ui.held.take().is_some() {
             return;
         }
-        if button == MouseButton::Left && self.app.photo_button_hit(vx, vy) {
+        if ui_ok && button == MouseButton::Left && self.app.photo_button_hit(vx, vy) {
             self.photo_enter();
             return;
         }
-        if self.app.ui_ok && button == MouseButton::Left && self.app.card_click(vx, vy) {
+        if ui_ok && button == MouseButton::Left && self.app.card_click(vx, vy) {
             return;
         }
-        if self.app.ui_ok && self.dock_click(vx, vy, button == MouseButton::Right) {
+        if ui_ok && self.dock_click(vx, vy, button == MouseButton::Right) {
             return;
         }
-        if self.app.ui_ok && button == MouseButton::Left && self.app.strip_click(vx, vy) {
+        if ui_ok && button == MouseButton::Left && self.app.strip_click(vx, vy) {
             return;
         }
         if button == MouseButton::Left && self.app.club.pro_aiming().is_some() && !self.app.edit {
@@ -2439,6 +2537,7 @@ impl EventHandler for Stage {
         }
         self.app.rename_char(c);
         self.app.save_char(c);
+        self.app.profile_char(c);
         self.app.cust_char(c);
     }
 
@@ -2634,6 +2733,8 @@ fn main() {
             webgl_version: conf::WebGLVersion::WebGL2,
             // GNOME matches the window to the AppImage's opensgolf.desktop by this
             linux_wm_class: "opensgolf",
+            // v-sync (Enhanced graphics > Display; framerate.rs): on unless the player turned it off
+            swap_interval: Some(framerate::swap_interval()),
             ..Default::default()
         },
         icon: Some(window_icon()),

@@ -336,6 +336,10 @@ pub struct SaveGame {
     /// The state of each pack's scripts (`this` and the script's random generator), by pack id.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub scripts: std::collections::BTreeMap<String, sg_core::script::PackState>,
+    /// The content packs loaded when the game was saved (content_profiles.rs; a record with its own version; older saves:
+    /// none, and they load without asking).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub packs: Option<crate::content_profiles::SavedPacks>,
 }
 
 const SAVE_MAGIC: &[u8] = b"SIMGOLF-NATIVE-SAVE\n";
@@ -554,6 +558,8 @@ pub struct App {
     /// Preferences > Keyboard controls (keys_ui.rs): the page shown and the screen to go back to.
     pub keys_page: usize,
     pub keys_back: Screen,
+    /// The Change keys screen, the hidden interface and the save's content packs question (controls_ui.rs).
+    pub ctl: crate::controls_ui::CtlState,
     /// The scenario's goals and the packs' scripts of the game in progress (scenario_ui).
     pub scen: crate::scenario_ui::ScenarioState,
     pub last_message: String,
@@ -663,6 +669,9 @@ pub struct App {
     pub design: Option<(i32, i32)>,
     /// The design last under the pointer on that strip (0x5a9f50), which a click in the panel makes the design; -1 none.
     pub design_hover: i32,
+    /// The port's extras (extras_ui): what new games start with, and the landmark strip's page shown.
+    pub extras_next: sg_core::extras::Extras,
+    pub strip_page: u8,
     /// Where each golfer slot's ball was drawn last frame (the exe keeps the screen point, 0x567b34 / 0x567d94), for the
     /// sweet shot's streak.
     pub ball_trail: Vec<Option<[f32; 3]>>,
@@ -802,6 +811,7 @@ impl App {
             content: Default::default(),
             keys_page: 0,
             keys_back: Screen::Play,
+            ctl: Default::default(),
             scen: Default::default(),
             last_message: String::new(),
             ticker: Default::default(),
@@ -890,6 +900,8 @@ impl App {
             paint_variant: None,
             design: None,
             design_hover: -1,
+            extras_next: crate::extras_ui::saved(),
+            strip_page: 0,
             ball_trail: Vec::new(),
             tracts: Default::default(),
             land_hover: -1,
@@ -1644,8 +1656,8 @@ impl App {
     pub fn build_available(&self, kind: usize) -> bool {
         // The garden page (kinds up to 5, the willow and the bridge) is always open; buildings unlock with holes.
         let k = kind as i32;
-        // landmarks once the club owns a type (the property's own, donations, Happy Endings)
-        if k == land::K_LANDMARK && self.club.landmarks_owned & 0x3fff == 0 {
+        // landmarks once the club owns a type (the property's own, donations, Happy Endings), or the extras' pages are on
+        if k == land::K_LANDMARK && self.strip_pages().is_empty() {
             return false;
         }
         // home sites only while Silver and better members outnumber them (0x56d1b0)
@@ -1709,6 +1721,9 @@ impl App {
         self.club.stories = stories;
         self.club.celebrities = celebrities;
         self.club.pros = pros;
+        // the port's extras for the new game (a loaded game takes its own)
+        self.club.extras = self.extras_next;
+        self.econ.extras = self.club.extras;
         // the property's own landmark is available from the start; a sandbox has them all
         self.club.landmarks_owned = if self.econ.sandbox {
             0x3fff
@@ -2299,7 +2314,8 @@ impl App {
     pub fn offer_for(&self, prop_idx: usize) -> (i32, i32) {
         let slot = self.slot_of[prop_idx];
         let price = sg_core::mapsize::scale_money_at(self.course_size, sg_core::data::economy().offer_units[slot] as i64 * 100);
-        (self.offer[slot].acres, price as i32)
+        // the Hardcore extra's dearer land (nothing when it is off)
+        (self.offer[slot].acres, self.extras_next.land(price as f64) as i32)
     }
 
     pub fn start_game(&mut self, g: &mut Gfx, prop_idx: usize, sandbox: bool) {
@@ -2411,6 +2427,7 @@ impl App {
             bought: self.bought.clone(),
             goals: self.scen.goals.clone(),
             scripts: self.scripts_for_save(),
+            packs: self.saved_packs(),
         };
         let json = serde_json::to_vec(&save).map_err(|e| e.to_string())?;
         let mut out = SAVE_MAGIC.to_vec();
@@ -2462,6 +2479,7 @@ impl App {
         self.club.stories.tutorial = tutorial;
         self.course = s.course;
         self.econ = s.econ;
+        self.econ.extras = self.club.extras;
         self.exe_rng = s.exe_rng;
         self.noise = s.noise;
         self.employees = s.employees;
@@ -2693,7 +2711,7 @@ impl App {
         if price == 0 {
             return;
         }
-        let cost = price as f64 * Economy::UNIT;
+        let cost = self.club.extras.land(price as f64 * Economy::UNIT);
         if !self.econ.affordable(cost, self.hole_numbers.len()) {
             self.show_toast(&trf(
                 "STR_TOAST_CHANGE_COSTS",
@@ -2865,7 +2883,7 @@ impl App {
     /// The landmark the landmark tool places: the one chosen from the strip, while the club still owns it.
     pub fn chosen_landmark(&self) -> Option<i32> {
         match self.design {
-            Some((k, t)) if k == land::K_LANDMARK && self.club.landmarks_owned & (1 << t) != 0 => Some(t),
+            Some((k, t)) if k == land::K_LANDMARK && self.landmark_allowed(t) => Some(t),
             _ => None,
         }
     }
@@ -2935,6 +2953,10 @@ impl App {
             self.edit = false;
             return;
         }
+        // the Buyable animals extra's page of the landmark strip
+        if let Some(t) = self.chosen_landmark().filter(|&t| kind == land::K_LANDMARK && t >= sg_core::objects::ANIMAL_BASE) {
+            return self.buy_animal(tx, ty, t);
+        }
         if matches!(kind, land::K_PATH | land::K_BENCH | land::K_FLOWERS | land::K_WILLOW | land::K_BRIDGE) {
             self.place_tile_item(tx, ty, kind);
             return;
@@ -2969,7 +2991,19 @@ impl App {
         let landmark = self.chosen_landmark();
         if kind == land::K_LANDMARK {
             let Some(t) = landmark else { return };
-            cost = if self.club.free_landmarks & (1 << t) != 0 { 0.0 } else { ((t * 5 + 25) * 2) as f64 * Economy::UNIT };
+            cost = if t >= sg_core::objects::CUT_BASE {
+                // a cut landmark (the Cut content extra): the port's price. Tiles keep an object's index in a byte, so the
+                // extra never takes the object table past 255 records in use (the exe's placement, 0x40e000, stops at 0xff).
+                if self.land.as_ref().is_some_and(|l| l.objects.iter().filter(|o| o.kind >= 0).count() >= 255) {
+                    self.ui_sound(24);
+                    return self.show_toast(tr("STR_TOAST_NO_ROOM"));
+                }
+                App::extra_landmark_units(t) as f64 * Economy::UNIT
+            } else if self.club.free_landmarks & (1 << t) != 0 {
+                0.0
+            } else {
+                ((t * 5 + 25) * 2) as f64 * Economy::UNIT
+            };
         }
         if !self.econ.affordable(cost, holes) {
             return self
@@ -3317,6 +3351,11 @@ impl App {
 
     /// Hires an employee of kind 0..3, the experienced version (Celebrity, Marshall, Technician, Refresher) when `skilled`.
     pub fn hire_employee(&mut self, kind: usize, skilled: bool) -> bool {
+        // the club's employee limit (the original's 20; the Hardcore and Higher staff limits extras change it)
+        let hired = self.employees.iter().filter(|e| e.active && (-5..=-2).contains(&e.job)).count();
+        if hired >= crate::panels_ui::max_employees(self.club.extras.staff_limit()) {
+            return false;
+        }
         if !self.econ.hire(kind) {
             return false;
         }
@@ -3797,7 +3836,7 @@ impl App {
                 pal = sg_core::decor::palette_file(0x3d, exe_theme);
             }
             if o.kind == land::K_LANDMARK {
-                pal = sg_core::decor::palette_file(100 + o.sub.clamp(0, 18) as u8, exe_theme);
+                pal = sg_core::objects::landmark_art(o.sub, exe_theme).and_then(|a| a.1);
                 if o.sub == 3 {
                     facing += ((self.rot / 90.0).round() as i32).rem_euclid(4);
                 }
@@ -3821,8 +3860,9 @@ impl App {
                 // facing its way; frame 0, or while a golfer washes (the tile's 0x4000 flag) its counter (update_tree_growth)
                 vec![("bldgs/upgrade bwasher".to_string(), false, false)]
             } else if o.kind == land::K_LANDMARK {
-                match sg_core::objects::LANDMARKS.get(o.sub as usize) {
-                    Some(f) => vec![(f.to_string(), false, true)],
+                // the original's types and the Cut content extra's (sg_core::objects::landmark_art)
+                match sg_core::objects::landmark_art(o.sub, exe_theme).filter(|_| o.sub < sg_core::objects::ANIMAL_BASE) {
+                    Some((f, _)) => vec![(f.to_string(), false, true)],
                     None => continue,
                 }
             } else {

@@ -59,12 +59,33 @@ function sgRestoreSaves() {
     }
 }
 
+// The frame rate cap (framerate.rs). A browser draws on the display's refresh (v-sync is always on); with a cap the page
+// skips animation frames until the next frame is due, so gl.js calls the game less often. The game's simulation keeps its
+// own 87 ms ticks whatever the frame rate.
+let sgFrameCap = 0;
+let sgFrameDue = 0;
+const sgRequestFrame = window.requestAnimationFrame.bind(window);
+window.requestAnimationFrame = function (callback) {
+    const tick = t => {
+        if (sgFrameCap > 0) {
+            const period = 1000 / sgFrameCap;
+            // a millisecond early still counts, so a 60 cap on a 60 Hz display skips nothing
+            if (t < sgFrameDue - 1) return sgRequestFrame(tick);
+            sgFrameDue = t - sgFrameDue < period ? sgFrameDue + period : t + period;
+        }
+        callback(t);
+    };
+    return sgRequestFrame(tick);
+};
+
 miniquad_add_plugin({
     name: "simgolf_fs",
     version: 1,
     register_plugin: function (importObject) {
         const env = importObject.env;
         env.sg_keyboard = function (show) { sgKeyboard(show !== 0); };
+        // the frame rate cap (Enhanced graphics > Display; framerate.rs): frames a second, 0 for none
+        env.sg_frame_cap = function (fps) { sgFrameCap = fps; };
         // the game's quit (the title menu's exit button): a tab cannot close itself, so back to the start page
         env.sg_quit = function () { location.reload(); };
         env.sg_fs_size = function (ptr, len) {

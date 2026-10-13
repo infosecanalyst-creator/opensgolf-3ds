@@ -93,6 +93,44 @@ Enhanced light and detail maps use fewer texels per tile on the larger sizes (at
 
 On the Add Buildings panel (or b for benches, Shift+B for a home site; Tab turns the next building) choose: benches, flower beds, ball washers, willow trees and scenic bridges at any time, the amenities as holes unlock them. Prices, clearing charges, upgrades and the path-to-clubhouse rule follow the exe. Benches need rough ground with a free neighbour; bridges go on water near a shore. Shift-click undoes: a path, bench, flower bed, willow or bridge comes off with what it cost back, a building is demolished with no refund. Golfers use what you build: snack bars and the practice buildings earn money on every visit, tired golfers sit on benches, flower beds and landmarks cheer them up. The headless test option is `--edit "b:x,y,kind"`.
 
+## OpenSGolf extras (optional, not in the original)
+
+Preferences (System Functions, Preferences) has an **OpenSGolf extras...** line. It opens a box of optional gameplay
+changes, all off unless you tick them. With all of them off the game plays exactly as the original. What you tick applies
+to the game you are playing, is saved with that game (a save made with everything off is unchanged), and is what new
+games start with (kept in settings.json under `extras`).
+
+- **Tab turns placed buildings and the clubhouse.** With no building tool in hand, Tab turns the building under the
+  pointer a quarter: the clubhouse, putting greens, the other amenities and landmarks (the driving range and home sites
+  keep their way; the range is drawn tile by tile). Only the picture turns: footprints are square, so paths, golfer
+  routes, putting, the clubhouse door and the ratings do not change. With a garden item or the landmark tool in hand, Tab
+  steps through its designs (benches, flower beds, scenic trees, bridges, landmarks) as the strip of pictures over the
+  panel shows them. The original already turns a putting green or building you are about to place with Tab, and picks a
+  random design when you pick a flower bed, scenic tree or bridge (and the first bench); you then choose from the strip.
+- **Cut content: unused landmarks.** Fourteen pieces of art that are in the game files but that the original never loads
+  (docs/CUT_CONTENT.md) can be placed as landmarks: press the Landmark button on the Amenities panel, and press it again
+  to switch between your own landmarks, the cut ones and (with the next extra) the animals. Each costs $6,000 (the port's
+  price), golfers enjoy the sight as they enjoy a landmark's (and the course planner treats them as features), but they
+  have none of the four landmark powers. They stay for good, as landmarks do.
+- **Hardcore economy.** Tighter money and choosier golfers: by default wages 150%, hole maintenance 200%, land (the
+  property and tracts) 150%, debt interest 5% a month, at most $600 per golfer per hole in fees, every bad moment costs a
+  golfer one more mood step, and at most 12 employees. The numbers are data/economy.toml's `hardcore_*` fields (docs/MODDING.md).
+- **Higher staff limits.** The club may have 40 employees instead of the original's 20 (data/economy.toml's
+  `staff_limit_high`, at most 63: the original keeps its walkers in 64 records).
+- **Buyable animals.** The landmark strip gets a page of the theme's animals (elk and cranes in Parkland, snakes, gila
+  monsters and road runners in the Desert, flamingos, crocodiles, snakes and ducks in the Tropics, elk, sheep and ducks on
+  the Links). A click on open ground of your course buys a pair (leader and young, $2,000) that drops in as wild animals do
+  and then keeps within about three tiles of where it was set down; bought animals never wander off for good. Golfers who
+  glance at a tile next to one enjoy the sight (the scenic thought, +1 mood, as a landmark's sight gives), and scaring one
+  is the same as scaring a wild one. Up to 32 pairs. The Preferences' "Ambient animals" tick hides and stops them, as it
+  does the wild ones.
+
+Test hooks: `--extras BITS` sets the extras a new game starts with (1 Tab turns, 2 cut content, 4 hardcore, 8 higher staff
+limits, 16 animals; not saved to the settings); `--edit "X:BITS"` sets the extras of the game being played; `--edit "T:x,y"`
+presses the Tab of the first extra with the pointer on tile x,y; `--edit "S:page[,design]"` opens the Amenities panel with the
+landmark tool on strip page 0 (own), 1 (cut) or 2 (animals); `--edit "b:x,y,4,t"` places landmark type t (19..32 the cut ones,
+100 + kind an animal pair); `--edit "M:6"` opens the extras box.
+
 ## In-game interface (dock, panels, advisor, stories)
 
 The lower left of the course screen now shows the game's own dock art (Interface/3mainLowerLeft.pcx). The three big round buttons open panels along the bottom: **Build Course** (terrain brushes, paths, raise and lower, each with its cost), **Add Buildings** (the amenities for the theme) and **People** (click to hire, right click to fire a club pro, ranger, groundskeeper or soda vendor). Click an item, then click the map. The small buttons zoom, rotate, open the course report, pause, and save the course. The keys are the original's (its F8 screen lists them): g f r s t w p b pick the green/tee, fairway, rough, sand, trees, water, path and bench tools (v the ravine), e the elevation tools, = and - raise and lower the ground under the pointer (Tab steps the elevation brush), h opens the hole being built; z and x zoom between the original's three levels, PageUp and Home turn the view a quarter (0 turns it back), the arrows scroll four tiles, 1 to 9 and Shift+1 to 9 jump to holes 1 to 18; Space drops the tool; Shift+P pause, Shift+T trees, Shift+N names, Shift+R routing map, Shift+W world map, Shift+J begin a tournament, Shift+C save the course for championship play, Shift+S and Shift+L save and load. The original has no game speed control; the port's own ] cycles normal, x2 and x4. With Enhanced graphics on, the port's own c (a key the original leaves unused) opens photo mode (see *Photo mode* below).
@@ -158,7 +196,7 @@ F keys (Shift + Alt + 6 is Shift+F6). A Mac keyboard has no PageUp or Home: **fn
 (turn the view), or use the dock's turn buttons. In the browser a screenshot (Shift+F6), a SimFoto and a great shot's
 photo (F10) are downloaded; saved games and the accomplishment snapshots stay in the browser's storage.
 
-Content packs (mods, docs/MODDING.md): System Functions, Preferences, *Content packs...* lists the installed packs; switch them on or off and order the mods there (Up and Down, or PageUp and PageDown on the picked row). The choices are saved in `settings.json` at once and take effect the next time the game starts. `--screen content` opens the screen for stills.
+Content packs (mods, docs/MODDING.md): System Functions, Preferences, *Content packs...* lists the installed packs; switch them on or off and order the mods there (Up and Down, or PageUp and PageDown on the picked row). The choices are saved in `settings.json` at once and take effect the next time the game starts. `--screen content` opens the screen for stills. *Save profile...* keeps the current choices under a name and *Profiles...* lists the saved ones to load (the choices then take effect at the next start) or delete. A game saved with other packs than the ones in use asks before it loads from *Load Previous Game*: switch to the save's packs (the desktop game starts again on them and loads the save; on Android and in a browser restart or reload, then load it), load it anyway, or not load it (docs/MODDING.md 2).
 
 Scenarios (docs/MODDING.md 5): with a scenario pack installed, *Start New Game* first offers a free game (the original's
 way on: Select Difficulty, then a property) or one of the scenarios, each with its goals; a scenario that names no
@@ -171,6 +209,38 @@ Content screen shows the error. *Find more...* on the Content screen lists the p
 scenario pack (Moderate when it names no difficulty), `--screen scenarios` (from the title) and `--screen goals` or
 `--screen content-index` (with a game) open those screens, `SG_INDEX_DOWNLOAD=N` downloads offer N of the index at once,
 `SG_EXPORT_SCENARIO=1` exports the game as a scenario pack.
+
+## Changing the keys
+
+The port's own (crates/simgolf/src/controls.rs and controls_ui.rs), in the browser and on the desktop alike. With nothing
+changed every key does what it did before.
+
+* **Change keys.** System Functions → Preferences → *Keyboard controls...* → *Change keys...* lists every action of the
+  course screen with its key: the original's (tools, screens, the F keys, the shot shapes while your pro aims) and the
+  port's own (game speed, photo mode, hiding the interface). Click an action, then press its new key, with or without
+  Shift; Esc (or a click) while it waits keeps the old key. Two actions on one key are printed in red and a line says
+  which: only one of them answers (the shot shapes only clash with each other, since they count only while your pro
+  aims). *Reset to defaults* puts every key back. The digits (holes 1 to 18) and Esc cannot be given to an action. The
+  keys are saved at once under `"controls"` in `settings.json` (only the ones that differ, e.g.
+  `"controls": {"wasd": false, "keys": {"water": "Shift+Q", "zoom_in": "G"}}`; an action set to `""` has no key) and the
+  *Keyboard controls* screen prints the keys in use.
+* **WASD camera** (off by default). W, S and D are the original's water, sand and (while your pro aims) draw keys, so
+  WASD scrolling is a choice on the Change keys screen: with it on, **w a s d** scroll as the arrow keys do (the arrows
+  still work), the water tool moves to **q** and the sand tool to **k**; while your pro aims, s and d stay the straight
+  shot and the draw.
+* **Middle-button drag** (always on) drags the course whatever tool is held, as a left drag does with no tool.
+* **u** hides the whole interface (dock, panels, messages, the money and ratings) during normal play, for a clear view of
+  the course; a small note in the bottom left corner says which key brings it back. Clicks then go to the course. Photo
+  mode (Enhanced graphics) has its own view and is not affected.
+* **Frame rate.** Enhanced graphics settings → *Display* has *Frame rate cap* (30, 60, 120, 144, 240 a second or
+  uncapped, the default) and *V-sync* (on by default); both count with Enhanced graphics off too. Only how often the
+  screen is drawn changes: the game itself always runs on its 87 ms ticks. On the desktop the cap waits out the rest of
+  each frame; v-sync takes effect at the next start (macOS and Android always pace to the display). In a browser the page
+  skips animation frames to keep under the cap, and v-sync cannot be turned off: browsers always draw on the display's
+  refresh.
+
+Test hooks: `SG_PRESS="u;Shift+Q;..."` presses keys (the names `settings.json` uses) after a scripted still's first frame,
+after `SG_CLICK`; letters and Space also type their character.
 
 ## Touch (phones and tablets)
 
