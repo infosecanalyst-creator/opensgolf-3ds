@@ -8,6 +8,9 @@
 //!   command line, so `-lc++abi` resolves what oboe's objects left open.
 //! * `-z defs` makes any symbol still unresolved a link error, so a library the phone cannot load is never packed again
 //!   (tools/android_build.sh then builds the app without sound instead).
+//! * `-z max-page-size=16384` lays the library's segments out on 16 KB boundaries. Android 15 and newer phones may run
+//!   with 16 KB memory pages, and their loader refuses a library aligned for 4 KB pages (NDK r25's lld lays out x86_64
+//!   for 4 KB); 16 KB alignment also loads on 4 KB phones.
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
@@ -21,4 +24,6 @@ fn main() {
     // two arguments, which both a linker driver (clang) and the linker itself (cargo-quad-apk calls lld directly) take
     println!("cargo:rustc-link-arg=-z");
     println!("cargo:rustc-link-arg=defs");
+    println!("cargo:rustc-link-arg=-z");
+    println!("cargo:rustc-link-arg=max-page-size=16384");
 }

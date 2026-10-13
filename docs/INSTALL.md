@@ -29,7 +29,8 @@ graphics* goes back. No Terminal and no options are needed (`--game DIR` remains
   start the app again (the title screen's **Where do my SimGolf files go?** shows the folder). Saves, settings and packs are in the app's private storage (`/data/data/org.opensgolf.game/files`).
   **If the app closes right away**: version 0.1.0's APK closed the moment it was opened on every phone (its library could not
   be loaded: the C++ runtime of the sound output was missing from it); install a newer one. Should the app still close or
-  freeze, it writes what went wrong to `Android/data/org.opensgolf.game/files/crash.txt` on the device's storage (copy it to
+  freeze, the next start shows a box saying so, whose **Copy the report** button copies what went wrong (paste it into an
+  issue or a message). It also writes what went wrong to `Android/data/org.opensgolf.game/files/crash.txt` on the device's storage (copy it to
   a computer over USB, or open it with a file manager that shows `Android/data`) and to the system log under the tag
   `OpenSGolf`: with USB debugging on (Settings → About phone → tap *Build number* seven times, then Developer options → *USB
   debugging*) and the phone on a computer with the Android platform tools, `adb logcat -s OpenSGolf` shows the game's

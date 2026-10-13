@@ -248,7 +248,12 @@ pub enum Action {
     SavePacksSwitch,
     /// The same: load it with the packs in use.
     SavePacksLoad,
+    /// Copy the last run's crash report (App::show_crash_report) to the clipboard.
+    CopyCrash,
 }
+
+/// The crash report the box offers to copy.
+static CRASH_REPORT: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
 
 /// Opens the system's folder picker (blocking until the player chooses or cancels). The test hook stands in for it.
 fn pick_folder(start: Option<PathBuf>) -> Option<PathBuf> {
@@ -421,7 +426,32 @@ impl App {
                 self.show_notice(&msg);
             }
             Action::SavePacksSwitch | Action::SavePacksLoad => self.save_packs_answer(a == Action::SavePacksSwitch),
+            Action::CopyCrash => {
+                miniquad::window::clipboard_set(&CRASH_REPORT.lock().unwrap_or_else(|e| e.into_inner()));
+                self.show_notice(tr("STR_CRASH_COPIED"));
+            }
         }
+    }
+
+    /// The last run crashed (android.rs): a box saying so, with its first line, and a button that copies the whole
+    /// report for the player to send (the file it is also in is out of reach on a phone).
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    pub fn show_crash_report(&mut self, report: String) {
+        // the panic's own line (after the header lines), else the line saying how the run ended
+        let what = report
+            .lines()
+            .find(|l| l.contains("panicked"))
+            .or_else(|| report.lines().nth(1))
+            .unwrap_or("")
+            .chars()
+            .take(240)
+            .collect::<String>();
+        let mut lines = wrap(tr("STR_CRASH_LAST"), 560.0);
+        lines.extend(wrap(&what, 560.0));
+        lines.push(format!(" {}", tr("STR_CRASH_COPY")));
+        lines.push(format!(" {}", tr("STR_CRASH_CLOSE")));
+        *CRASH_REPORT.lock().unwrap_or_else(|e| e.into_inner()) = report;
+        self.notice = Some(Notice { lines, confirm: Some(Action::CopyCrash), alt: None, sel: Some(0) });
     }
 
     /// "Use my SimGolf files...": the system's folder picker, then the folder is checked; a good one is saved and the game
