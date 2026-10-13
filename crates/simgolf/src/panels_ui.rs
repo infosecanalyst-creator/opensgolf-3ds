@@ -348,7 +348,7 @@ const ELEVATION_UNDO: (Hit, Cut, Cut, f32, f32) = (hit(267, 561, 12), (0.0, 450.
 
 // ---- People: the employee panel ------------------------------------------------------------------------------------------------
 
-const MAX_EMPLOYEES: usize = 20;
+pub const MAX_EMPLOYEES: usize = 20;
 const HIRE: (Hit, f32, f32) = (hit(270, 558, 16), 254.0, 542.0);
 const HIRE_HOVER: Cut = (0.0, 500.0, 42.0, 42.0);
 const HIRE_DISABLED: Cut = (100.0, 500.0, 42.0, 42.0);
@@ -1261,7 +1261,7 @@ impl App {
             let month = tr(crate::hud_ui::MONTH_KEYS[(e.hired & 7) as usize]);
             let paid = e.paid as i64 * 100;
             let lines = [
-                (534.0, self.employee_name(&e), crate::ui::Face::Manual, 15.0),
+                (534.0, self.staff_name(ei), crate::ui::Face::Manual, 15.0),
                 (546.0, trf("STR_EMPLOYEE_HIRED", &[("MONTH", &month), ("YEAR", &(2001 + (e.hired >> 3)))]), crate::ui::Face::Arial, 10.0),
                 (
                     558.0,
@@ -1566,11 +1566,13 @@ impl App {
                 }
             }
             6 => {
-                // the port keeps no names for employees yet (placeholder for the exe's "Rename Employee..." prompt)
-                if sel.is_none() {
-                    return false;
+                let Some(i) = sel else { return false };
+                if crate::extras::people() {
+                    // the OpenSGolf extras' Rename (extras.rs), standing in for the exe's "Rename Employee..." prompt
+                    self.open_staff_rename(i);
+                } else {
+                    self.show_toast(tr("STR_TOAST_CANNOT_RENAME"));
                 }
-                self.show_toast(tr("STR_TOAST_CANNOT_RENAME"));
             }
             8..=15 => {
                 let Some(&i) = rows.get(self.pstate.emp_off + (h - 8) as usize) else { return false };

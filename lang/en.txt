@@ -1269,6 +1269,8 @@ STR_MENU_PREFS_ENHANCED_ON              : Enhanced graphics (off: Classic)
 STR_MENU_PREFS_ENHANCED                 : Enhanced graphics settings...
 # Preferences > Keyboard controls (the port's own screen listing every key)
 STR_MENU_PREFS_KEYS                     : Keyboard controls...
+# Preferences > OpenSGolf extras (the port's own additions, extras.rs)
+STR_MENU_PREFS_EXTRAS                   : OpenSGolf extras...
 STR_ENHANCED_TITLE                      :Enhanced graphics (not in the original)
 STR_ENHANCED_MASTER                     : Enhanced graphics (off: Classic)
 STR_ENHANCED_NATIVE_TEXT                : Sharp text at the screen's resolution
@@ -2329,3 +2331,130 @@ STR_SCRIPT_ERROR_TOAST                  :A script of the pack {PACK} failed: see
 STR_EXPORT_UNNAMED                      :My Course
 STR_EXPORT_DESCRIPTION                  :{COURSE}, a course by {PRO}, exported from OpenSGolf.
 STR_TOAST_EXPORTED                      :Exported as the scenario pack {PACK} (in the packs folder of the save folder).
+
+########################################################################################################################
+# OpenSGolf extras (the port's own additions, extras.rs; docs/PLAYING.md "OpenSGolf extras")
+########################################################################################################################
+# Preferences > OpenSGolf extras: the box's heading and a tick per extra (options start with a space)
+STR_EXTRAS_TITLE                        :OpenSGolf extras (not in the original)
+STR_EXTRAS_PEOPLE                       : People screen and golfer profiles (Shift+G)
+STR_EXTRAS_HISTORY                      : Message history (Shift+M, or click the ticker)
+STR_EXTRAS_NAME_TAGS                    : Name tags under the pointer (Shift+H)
+STR_EXTRAS_REPORT_TABS                  : Tabs over the F1 to F10 reports
+STR_EXTRAS_PATH_HELP                    : Path help: path view (Shift+V) and Show buttons
+# The box's last line, left empty (it keeps the OK tick clear of the options)
+STR_EXTRAS_END                          :
+# A game date: "March 3, 2001"
+STR_EXTRAS_DATE                         :{MONTH} {DAY}, {YEAR}
+# Under the Paused caption while People > Follow keeps the camera on someone
+STR_EXTRAS_FOLLOWING                    :Following {NAME} (Space stops)
+# The Information menu's extra lines (options start with a space)
+STR_MENU_INFO_PEOPLE                    : People
+STR_MENU_INFO_HISTORY                   : Message history
+STR_MENU_INFO_PATH_VIEW                 : Path view on / off
+# The message history
+STR_HISTORY_TITLE                       :Message History
+STR_HISTORY_HELP                        :Messages kept: {COUNT}, newest first. Click a message to go to the golfer or the place it is about.
+STR_HISTORY_EMPTY                       :No messages yet.
+STR_HISTORY_SHOW                        :Show
+STR_HISTORY_CLOSE                       :Up, Down, PageUp, PageDown or the wheel scroll; Esc, Enter or a click outside the box closes.
+# The ticker's button for a message about a place
+STR_TICKER_SHOW                         :Show
+# The People screen
+STR_PEOPLE_TITLE                        :People
+STR_PEOPLE_TAB_GOLFERS                  :Golfers ({COUNT})
+STR_PEOPLE_TAB_STAFF                    :Staff ({COUNT})
+STR_PEOPLE_TAB_PRO                      :Your pro
+STR_PEOPLE_COL_NAME                     :Name
+STR_PEOPLE_COL_TYPE                     :Type
+STR_PEOPLE_COL_HOLE                     :Hole
+STR_PEOPLE_COL_MOOD                     :Mood
+STR_PEOPLE_COL_HCP                      :Hcp
+STR_PEOPLE_COL_SPENT                    :Spent
+STR_PEOPLE_COL_JOB                      :Job
+STR_PEOPLE_COL_HIRED                    :Hired
+STR_PEOPLE_COL_WAGE                     :Wage
+STR_PEOPLE_COL_SERVED                   :Served
+STR_PEOPLE_COL_PAID                     :Paid
+STR_PEOPLE_MONTH_YEAR                   :{MONTH} {YEAR}
+STR_PEOPLE_GUEST                        :Guest
+STR_PEOPLE_PLATINUM                     :Platinum
+STR_PEOPLE_PRO                          :Pro
+STR_PEOPLE_VIP                          :VIP
+STR_PEOPLE_LEAVING                      :leaving
+STR_PEOPLE_NO_GOLFERS                   :Nobody is on the course.
+STR_PEOPLE_NO_STAFF                     :No employees yet: Hire takes you to the hiring dialog.
+STR_PEOPLE_LOCATE                       :Locate
+STR_PEOPLE_FOLLOW                       :Follow
+STR_PEOPLE_CARD                         :Card
+STR_PEOPLE_PROFILE                      :Profile
+STR_PEOPLE_HIRE                         :Hire...
+STR_PEOPLE_FIRE                         :Fire
+STR_PEOPLE_MOVE                         :Move
+STR_PEOPLE_RENAME                       :Rename
+STR_PEOPLE_HELP_GOLFERS                 :Click a heading to sort. Keys: Enter locate, F follow, C card, P profile, Left/Right tabs, Esc close.
+STR_PEOPLE_HELP_STAFF                   :Click a heading to sort. Keys: Enter locate, F follow, H hire, Del fire, M move, R rename, Esc close.
+STR_PEOPLE_HELP_PRO                     :Keys 1 to 5 press the buttons; Left/Right change the tab; Esc closes.
+STR_PEOPLE_PRO_RECORD                   :Skill points to spend: {POINTS}    Skill levels: {SKILLS}    Trophies: {TROPHIES}
+STR_PEOPLE_PRO_PLAYING                  :Your pro is out on the course.
+STR_PEOPLE_PRO_FREE                     :Your pro is in the clubhouse.
+STR_PEOPLE_PRO_PROFILE                  :Profile
+STR_PEOPLE_PRO_PROFILE_HELP             :Customise your pro: looks, name and bio.
+STR_PEOPLE_PRO_SKILLS                   :Skills
+STR_PEOPLE_PRO_SKILLS_HELP              :Spend skill points.
+STR_PEOPLE_PRO_PRACTICE                 :Practice round
+STR_PEOPLE_PRO_PRACTICE_HELP            :Play a practice round (needs two holes and your pro free).
+STR_PEOPLE_PRO_MATCH                    :Match
+STR_PEOPLE_PRO_MATCH_HELP               :Play a challenger's match (when one has been offered).
+STR_PEOPLE_PRO_TOURNAMENT               :Tournament
+STR_PEOPLE_PRO_TOURNAMENT_HELP          :Start the tournament the SGA has offered.
+STR_PEOPLE_PRO_NOTE                     :The same buttons are on the Player panel (the dock's People button).
+# A golfer's profile page
+STR_CARD_PROFILE                        :Profile
+STR_PROFILE_LIKES                       :Likes {LIKES}
+STR_PROFILE_RECORD                      :Rounds {ROUNDS}, best {BEST}, handicap {HCP}
+STR_PROFILE_NOW                         :{TYPE}, now on hole {HOLE}, spent {SPENT} this round
+STR_PROFILE_NOT_HERE                    :Not on the course now.
+STR_PROFILE_BIO                         :Bio
+STR_PROFILE_NO_BIO                      :No bio yet: Edit bio writes one.
+STR_PROFILE_EDIT_BIO                    :Edit bio
+STR_PROFILE_SAID                        :What {GOLFER} has said
+STR_PROFILE_NOTHING_SAID                :Nothing heard yet this game.
+STR_PROFILE_HELP                        :L locate, C card, B edit bio, Up/Down scroll; Esc, Enter or a click outside the box goes back.
+STR_RENAME_EMPLOYEE                     :Rename the employee:
+STR_RENAME_BIO                          :The golfer's bio:
+# The path view
+STR_PATHVIEW_TITLE                      :Path view (Shift+V)
+STR_PATHVIEW_JOINED                     :Path joined to the clubhouse
+STR_PATHVIEW_CUT                        :Path not joined (golfers can't use it)
+STR_PATHVIEW_MARKS                      :No path: {COUNT} places
+STR_PATHVIEW_CLOSE                      :Shift+V hides the path view.
+STR_PATHVIEW_NO_PATH                    :No path
+STR_PATHVIEW_HOLE                       :Hole {HOLE} tee
+STR_PATHVIEW_ON                         :Path view on: Shift+V hides it.
+STR_PATHVIEW_OFF                        :Path view off.
+STR_TOAST_NAME_TAGS_ON                  :Name tags under the pointer on (Shift+H).
+STR_TOAST_NAME_TAGS_OFF                 :Name tags under the pointer off (Shift+H).
+# The tabs over the F1 to F10 reports (keep them short: ten share 740 pixels)
+STR_TABS_F1                             :F1 Course
+STR_TABS_F2                             :F2 Comments
+STR_TABS_F3                             :F3 Histograph
+STR_TABS_F4                             :F4 Finance
+STR_TABS_F5                             :F5 Routing
+STR_TABS_F6                             :F6 World
+STR_TABS_F7                             :F7 SGA
+STR_TABS_F8                             :F8 Keys
+STR_TABS_F9                             :F9 Roster
+STR_TABS_F10                            :F10 Awards
+# Keyboard controls: the extras' keys
+STR_KEYS_HEAD_EXTRAS                    :OpenSGolf extras
+STR_KEYS_K_PEOPLE                       :Shift+G
+STR_KEYS_PEOPLE                         :People: golfers, staff and your pro
+STR_KEYS_K_HISTORY                      :Shift+M
+STR_KEYS_HISTORY                        :Message history (or click the ticker)
+STR_KEYS_K_TAGS                         :Shift+H
+STR_KEYS_TAGS                           :Name tags under the pointer off / on
+STR_KEYS_K_PATHVIEW                     :Shift+V
+STR_KEYS_PATHVIEW                       :Path view: paths and places without one
+STR_KEYS_K_REPORT_TABS                  :Tab
+STR_KEYS_REPORT_TABS                    :On a report: the next report's tab (Shift+Tab the one before; the F keys go straight there)

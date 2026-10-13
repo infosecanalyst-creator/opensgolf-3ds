@@ -80,6 +80,8 @@ fn two(f: &[Finger]) -> ((f32, f32), f32, f32) {
 impl Stage {
     pub(crate) fn touch(&mut self, phase: TouchPhase, id: u64, x: f32, y: f32) {
         self.touch.used = true;
+        // no pointer to hover with: the extras' name tags stay off (tags_ui)
+        self.app.xs.touched = true;
         let now = self.app.clock;
         match phase {
             TouchPhase::Started => {

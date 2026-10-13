@@ -260,6 +260,10 @@ pub enum Screen {
     Goals,
     /// Preferences > Keyboard controls: every key of the game (the port's own screen, keys_ui.rs).
     Keys,
+    /// OpenSGolf extras (extras.rs): the People screen, the message history and a golfer's profile page.
+    People,
+    History,
+    Profile,
 }
 
 /// Where saved games, championship courses and pros, accomplishment snapshots, packs and settings go. The browser keeps them
@@ -332,6 +336,9 @@ pub struct SaveGame {
     /// The state of each pack's scripts (`this` and the script's random generator), by pack id.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub scripts: std::collections::BTreeMap<String, sg_core::script::PackState>,
+    /// What the OpenSGolf extras keep (extras.rs): the message history, employees' names, what golfers said, bios.
+    #[serde(default, skip_serializing_if = "crate::extras::Kept::is_empty")]
+    pub extras: crate::extras::Kept,
 }
 
 const SAVE_MAGIC: &[u8] = b"SIMGOLF-NATIVE-SAVE\n";
@@ -528,6 +535,8 @@ pub struct App {
     /// Preferences > Keyboard controls (keys_ui.rs): the page shown and the screen to go back to.
     pub keys_page: usize,
     pub keys_back: Screen,
+    /// The OpenSGolf extras' state (extras.rs).
+    pub xs: crate::extras::State,
     /// The scenario's goals and the packs' scripts of the game in progress (scenario_ui).
     pub scen: crate::scenario_ui::ScenarioState,
     pub last_message: String,
@@ -774,6 +783,7 @@ impl App {
             content: Default::default(),
             keys_page: 0,
             keys_back: Screen::Play,
+            xs: Default::default(),
             scen: Default::default(),
             last_message: String::new(),
             ticker: Default::default(),
@@ -2011,15 +2021,17 @@ impl App {
         }
         if tick & 0x3ff == 0 && self.difficulty != 0 && !self.econ.sandbox && !self.club.championship() {
             // the monthly reminder for buildings with no path to the clubhouse
-            let cut: Vec<String> = self
+            let cut: Vec<(String, (i32, i32))> = self
                 .course
                 .objects
                 .iter()
                 .skip(1)
                 .filter(|o| (6..=14).contains(&o.kind) && o.flags & 0x40 == 0)
-                .map(|o| land::building_name(o.kind).to_string())
+                .map(|o| (land::building_name(o.kind).to_string(), (o.a * 1024 + 1024, o.b * 1024 + 1024)))
                 .collect();
-            for name in cut {
+            for (name, at) in cut {
+                // the extras' Show button and history take the building's place (extras.rs)
+                self.xs.next_place = Some(at);
                 self.show_toast(&trf("STR_TOAST_NOT_OPERATIONAL", &[("BUILDING", &name)]));
             }
         }
@@ -2040,6 +2052,9 @@ impl App {
                 }
                 golf::Event::Earn { units, column, at } => {
                     self.float_money(units, at);
+                    if crate::extras::people() {
+                        self.count_spent(units, at);
+                    }
                     let col = match column {
                         golf::Column::GreensFees => economy::LEDGER_GREEN_FEES,
                         golf::Column::FoodDrink => economy::LEDGER_FOOD_DRINK,
@@ -2076,7 +2091,10 @@ impl App {
                         hs.mood_sum = mood_sum;
                     }
                 }
-                golf::Event::Thought { g, id: 0x32, .. } => {
+                golf::Event::Thought { g, id: 0x32, arg } => {
+                    if crate::extras::people() {
+                        self.keep_thought(g, 0x32, arg);
+                    }
                     if let Some(line) = self.club.story_line(g) {
                         let story = self.club.g[g].story;
                         self.story_title = self.club.stories.title(story).trim().to_string();
@@ -2089,7 +2107,11 @@ impl App {
                         self.story_until = self.game_tick + 90;
                     }
                 }
-                golf::Event::Thought { .. } => {}
+                golf::Event::Thought { g, id, arg } => {
+                    if crate::extras::people() {
+                        self.keep_thought(g, id, arg);
+                    }
+                }
                 golf::Event::GreatShot { g, partner, text, bad, pts } => self.great_shot_event(g, partner, text, bad, &pts),
             }
         }
@@ -2292,6 +2314,7 @@ impl App {
         self.club.course_theme = self.exe_theme();
         self.bought.clear();
         self.mark_bought(prop_idx);
+        self.xs = Default::default();
         self.screen = Screen::Play;
         self.hover = -1;
         self.edit = false;
@@ -2365,6 +2388,7 @@ impl App {
             bought: self.bought.clone(),
             goals: self.scen.goals.clone(),
             scripts: self.scripts_for_save(),
+            extras: self.xs.kept.clone(),
         };
         let json = serde_json::to_vec(&save).map_err(|e| e.to_string())?;
         let mut out = SAVE_MAGIC.to_vec();
@@ -2431,6 +2455,7 @@ impl App {
         self.edit = false;
         self.dirty = true;
         self.restore_game_scripts(s.goals, &s.scripts);
+        self.xs = crate::extras::State { kept: s.extras, ..Default::default() };
         Ok(())
     }
 

@@ -25,6 +25,8 @@ pub enum PopupKind {
     CareerOver,
     /// Preferences > Enhanced graphics (the port's own, enhanced.rs): a checkbox list of the Enhanced options.
     Enhanced,
+    /// Preferences > OpenSGolf extras (the port's own, extras.rs): a checkbox list of the extras.
+    Extras,
     /// System Functions, Quit: "After a short career <pro> plans his retirement." (docs/DECODE_WORLD2.md 6.5, footage of
     /// the original at its (400, 100)).
     Retire,
@@ -378,11 +380,16 @@ impl Popup {
             lines: self.lines.clone(),
             cx: self.cx,
             top: self.top,
-            checks: matches!(self.kind, PopupKind::Prefs | PopupKind::Enhanced).then_some(self.checks),
+            checks: matches!(self.kind, PopupKind::Prefs | PopupKind::Enhanced | PopupKind::Extras).then_some(self.checks),
             disabled: self.disabled,
             plain: match self.kind {
                 PopupKind::Prefs => {
-                    1 << PREFS_CONTENT | 1 << PREFS_ENHANCED | 1 << PREFS_KEYS | 1 << PREFS_LANGUAGE | self.files_line.map_or(0, |k| 1 << k)
+                    1 << PREFS_CONTENT
+                        | 1 << PREFS_ENHANCED
+                        | 1 << PREFS_KEYS
+                        | 1 << PREFS_EXTRAS
+                        | 1 << PREFS_LANGUAGE
+                        | self.files_line.map_or(0, |k| 1 << k)
                 }
                 PopupKind::Enhanced => crate::enhanced::popup_plain(self.page),
                 _ => 0,
@@ -421,8 +428,10 @@ pub const PREFS_ENHANCED_ON: usize = 6;
 pub const PREFS_ENHANCED: usize = 7;
 /// The option of the Preferences list that opens Preferences > Keyboard controls (keys_ui.rs).
 pub const PREFS_KEYS: usize = 8;
+/// The option of the Preferences list that opens Preferences > OpenSGolf extras (extras.rs).
+pub const PREFS_EXTRAS: usize = 9;
 /// The Preferences' option that switches the language (shown only when there is a translation to switch to).
-const PREFS_LANGUAGE: usize = 9;
+const PREFS_LANGUAGE: usize = 10;
 /// The bit of a Preferences result that asks for the "Use my SimGolf files..." line's action (gamefiles.rs), after the
 /// ticks are applied.
 pub const PREFS_FILES_FLAG: usize = 20;
@@ -451,7 +460,7 @@ impl App {
         let languages = if kind == PopupKind::Prefs { crate::language::available().len() } else { 0 };
         let language =
             if languages > 1 { trf("STR_MENU_PREFS_LANGUAGE", &[("LANGUAGE", &crate::language::current_name())]) } else { String::new() };
-        let (mut lines, disabled, cx, top): (Vec<&str>, u32, f32, f32) = match kind {
+        let (mut lines, disabled, cx, mut top): (Vec<&str>, u32, f32, f32) = match kind {
             PopupKind::Retire => (
                 vec![retire[0].as_str(), retire[1].as_str(), tr("STR_RETIRE_WAIT"), tr("STR_RETIRE_SAVE_FIRST"), tr("STR_RETIRE_SO_LONG")],
                 0,
@@ -511,6 +520,8 @@ impl App {
                     tr("STR_MENU_PREFS_ENHANCED"),
                     // the port's own: Preferences > Keyboard controls (keys_ui.rs)
                     tr("STR_MENU_PREFS_KEYS"),
+                    // the port's own: Preferences > OpenSGolf extras (extras.rs)
+                    tr("STR_MENU_PREFS_EXTRAS"),
                 ],
                 0,
                 400.0,
@@ -520,6 +531,7 @@ impl App {
             // the call's pushes at 0x41e2ee and 0x41e303), texts 0x4c5d74 and 0x4c5d48
             // filled in below from enhanced::OPTIONS
             PopupKind::Enhanced => (Vec::new(), 0, 400.0, 140.0),
+            PopupKind::Extras => (crate::extras::LINES.iter().map(|k| tr(k)).collect(), 0, 400.0, 200.0),
             PopupKind::LandOffer => {
                 (vec![tr("STR_LAND_OFFER_1"), tr("STR_LAND_OFFER_2"), tr("STR_LAND_OFFER_YES"), tr("STR_LAND_OFFER_NO")], 0, 450.0, 160.0)
             }
@@ -546,6 +558,20 @@ impl App {
         if kind == PopupKind::Info && self.has_goals() {
             lines.push(tr("STR_MENU_INFO_GOALS"));
         }
+        // the OpenSGolf extras' lines (extras.rs), last
+        if kind == PopupKind::Info {
+            for (on, key) in [
+                (crate::extras::people(), "STR_MENU_INFO_PEOPLE"),
+                (crate::extras::history(), "STR_MENU_INFO_HISTORY"),
+                (crate::extras::path_help(), "STR_MENU_INFO_PATH_VIEW"),
+            ] {
+                if on {
+                    lines.push(tr(key));
+                    // the box moves up a row for each, to stay on the screen
+                    top -= 24.0;
+                }
+            }
+        }
         let checks = if kind == PopupKind::Prefs {
             self.show_thoughts as u32
                 | (self.show_advisor as u32) << 1
@@ -553,6 +579,8 @@ impl App {
                 | (!self.mute as u32) << 3
                 | (self.hd.enabled as u32) << 4
                 | (crate::enhanced::settings().enabled as u32) << PREFS_ENHANCED_ON
+        } else if kind == PopupKind::Extras {
+            crate::extras::settings().bits()
         } else {
             0
         };
@@ -646,7 +674,7 @@ impl App {
                 }
             }
             KeyCode::Enter | KeyCode::KpEnter | KeyCode::Space => {
-                if p.sel.is_none() && !matches!(p.kind, PopupKind::Prefs | PopupKind::Enhanced) {
+                if p.sel.is_none() && !matches!(p.kind, PopupKind::Prefs | PopupKind::Enhanced | PopupKind::Extras) {
                     return Some(None);
                 }
                 return Some(self.popup_accept(None));
@@ -734,6 +762,17 @@ impl App {
             if k == PREFS_KEYS && (pick.is_some() || p.sel == Some(k)) {
                 return Some((p.checks | 1 << PREFS_KEYS) as usize);
             }
+            // and the OpenSGolf extras line
+            if k == PREFS_EXTRAS && (pick.is_some() || p.sel == Some(k)) {
+                return Some((p.checks | 1 << PREFS_EXTRAS) as usize);
+            }
+            if pick.is_some() {
+                p.checks ^= 1 << k;
+                return Some(usize::MAX); // toggled, stay open
+            }
+            return Some(p.checks as usize);
+        }
+        if p.kind == PopupKind::Extras {
             if pick.is_some() {
                 p.checks ^= 1 << k;
                 return Some(usize::MAX); // toggled, stay open
@@ -768,6 +807,39 @@ impl App {
     pub fn rename_key(&mut self, k: miniquad::KeyCode) -> bool {
         use miniquad::KeyCode;
         let Some(name) = self.rename.as_mut() else { return false };
+        // the OpenSGolf extras' prompts: an employee's name, a golfer's bio (extras.rs)
+        if let Some(what) = self.xs.rename_for {
+            match k {
+                KeyCode::Escape => {
+                    self.rename = None;
+                    self.xs.rename_for = None;
+                }
+                KeyCode::Backspace => {
+                    name.pop();
+                }
+                KeyCode::Enter | KeyCode::KpEnter => {
+                    let n = name.trim().to_string();
+                    match what {
+                        crate::extras::RenameFor::Employee(i) => {
+                            if n.is_empty() {
+                                self.xs.kept.staff_names.remove(&i);
+                            } else {
+                                self.xs.kept.staff_names.insert(i, n);
+                            }
+                        }
+                        crate::extras::RenameFor::Bio(r) => {
+                            if let Some(p) = self.club.roster.get_mut(r.max(0) as usize) {
+                                p.bio = n;
+                            }
+                        }
+                    }
+                    self.rename = None;
+                    self.xs.rename_for = None;
+                }
+                _ => {}
+            }
+            return true;
+        }
         match k {
             KeyCode::Escape => self.rename = None,
             KeyCode::Backspace => {
@@ -789,8 +861,10 @@ impl App {
     }
 
     pub fn rename_char(&mut self, c: char) {
+        // an employee's name as long as the course's, a bio as long as the person record keeps (500)
+        let most = if matches!(self.xs.rename_for, Some(crate::extras::RenameFor::Bio(_))) { 500 } else { 32 };
         if let Some(name) = self.rename.as_mut() {
-            if !c.is_control() && name.chars().count() < 32 {
+            if !c.is_control() && name.chars().count() < most {
                 name.push(c);
             }
         }
@@ -802,10 +876,20 @@ impl App {
         let r = Rect::new(220.0, 240.0, 360.0, 90.0);
         s.fill(g, r.x - 3.0, r.y - 3.0, r.w + 6.0, r.h + 6.0, rgba(0.55, 0.55, 0.85, 0.95));
         s.fill(g, r.x, r.y, r.w, r.h, rgba(0.92, 0.92, 1.0, 0.97));
-        s.text_centered(g, 400.0, 268.0, tr("STR_RENAME_COURSE"), 17.0, rgb(0.15, 0.1, 0.4));
+        let title = match self.xs.rename_for {
+            Some(crate::extras::RenameFor::Employee(_)) => tr("STR_RENAME_EMPLOYEE"),
+            Some(crate::extras::RenameFor::Bio(_)) => tr("STR_RENAME_BIO"),
+            None => tr("STR_RENAME_COURSE"),
+        };
+        s.text_centered(g, 400.0, 268.0, title, 17.0, rgb(0.15, 0.1, 0.4));
         s.fill(g, r.x + 20.0, 282.0, r.w - 40.0, 28.0, rgb(1.0, 1.0, 1.0));
         let caret = if (self.clock * 2.0) as i64 % 2 == 0 { "|" } else { "" };
-        s.text(g, r.x + 26.0, 302.0, &format!("{name}{caret}"), 16.0, rgb(0.05, 0.05, 0.2));
+        // a long text (a bio) shows its end, where the typing is
+        let mut shown = format!("{name}{caret}");
+        while crate::ui::text_width(&shown, 16.0) > r.w - 52.0 && shown.chars().count() > 1 {
+            shown.remove(0);
+        }
+        s.text(g, r.x + 26.0, 302.0, &shown, 16.0, rgb(0.05, 0.05, 0.2));
         g.flush();
     }
 }
