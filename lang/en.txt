@@ -1308,6 +1308,7 @@ STR_ENHANCED_MSAA                       : Anti-aliasing
 STR_ENHANCED_SMOOTH_CAMERA              : Smooth camera: zoom, turns and panning
 STR_ENHANCED_SMOOTH_MOTION              : Smooth motion between game ticks
 STR_ENHANCED_PHOTO_MODE                 : Photo mode (the C key or the camera button)
+STR_ENHANCED_FIX_BUGS                   : Fix the original game's bugs (Classic too)
 STR_ENHANCED_FX_SCALER                  : Pixel-art scaling of sprites and pictures
 STR_ENHANCED_FX_SCALER_MODE             : Pixel-art scaler: {VALUE}
 STR_ENHANCED_FX_WATER                   : Animated water

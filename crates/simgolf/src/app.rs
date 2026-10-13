@@ -1255,7 +1255,15 @@ impl App {
         for b in 0..sg_core::course::N {
             for a in 0..sg_core::course::N {
                 out.push(if c.ty[sg_core::course::idx(a, b)] == sg_core::course::t::WATER {
-                    [0; 4]
+                    // The original's load path (0x449540) leaves water at sea level and only lifts it when it is edited,
+                    // so a stream or lake above sea level shows black slits and triangles along its banks and at its
+                    // waterfalls, where the ground's walls were made for the water's real level (course::refresh). "Fix
+                    // original bugs" (docs/FIXES.md 1) gives water its level: flat at its lowest corner, as the walls have it.
+                    if crate::enhanced::fix_bugs() {
+                        [level(a, b, 7); 4]
+                    } else {
+                        [0; 4]
+                    }
                 } else {
                     // corners 7 (-x -y), 1 (+x -y), 5 (-x +y), 3 (+x +y)
                     [level(a, b, 7), level(a, b, 1), level(a, b, 5), level(a, b, 3)]

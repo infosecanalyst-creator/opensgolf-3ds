@@ -49,6 +49,31 @@ impl App {
                 }
             }
         }
+        // a tile with water of two levels within reach: a stream stepping down a hill since "Fix original bugs" gives water its
+        // level (docs/FIXES.md 1). The reflections go into one screen-space picture that every water pixel samples, so a
+        // sprite mirrored about the upper water's surface showed as a dark wedge on the water below, over the waterfall's
+        // spray; such tiles mirror nothing
+        let mut mixed = vec![false; w * h];
+        for y in 0..h as i32 {
+            for x in 0..w as i32 {
+                let Some((_, lvl)) = near[y as usize * w + x as usize] else { continue };
+                'scan: for dy in -REACH..=REACH {
+                    for dx in -REACH..=REACH {
+                        let (nx, ny) = (x + dx, y + dy);
+                        if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 || t.type_at(nx, ny) != water {
+                            continue;
+                        }
+                        if let Some((0, l)) = near[ny as usize * w + nx as usize] {
+                            if (l - lvl).abs() > 1.0 {
+                                mixed[y as usize * w + x as usize] = true;
+                                break 'scan;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        self.fx.water_mixed = mixed;
         self.fx.water_near = near.into_iter().map(|n| n.map(|v| v.1)).collect();
         self.fx.water_near_key = (w * 1000 + h) as u64;
     }
@@ -81,6 +106,9 @@ impl App {
                 continue;
             }
             let Some(level) = self.fx.water_near.get(ty as usize * tw + tx as usize).copied().flatten() else { continue };
+            if self.fx.water_mixed.get(ty as usize * tw + tx as usize).copied().unwrap_or(false) {
+                continue;
+            }
             let gy = self.terrain.height_at(x, z) + lift;
             if gy < level - 1.0 {
                 continue;

@@ -790,6 +790,9 @@ pub struct FxWorld {
     /// Near-water tiles (fx_reflect.rs): per tile, the water's height when water is within a few tiles.
     pub(crate) water_near: Vec<Option<f32>>,
     pub(crate) water_near_key: u64,
+    /// Tiles with water of more than one level within reach (a stream stepping down a slope): nothing is mirrored there
+    /// (fx_reflect.rs), as a reflection made for one level would show on the water below it.
+    pub(crate) water_mixed: Vec<bool>,
     /// How far the clouds have drifted (fx_light.rs; world units, within one period of their noise).
     pub(crate) cloud_acc: [f32; 2],
     /// The evening lights: windows' glow per sprite frame (fx_night.rs).

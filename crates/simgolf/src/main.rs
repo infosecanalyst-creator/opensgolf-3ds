@@ -337,7 +337,13 @@ fn load_art(app: &mut App, g: &mut Gfx) -> bool {
     for (t, f) in ["parkland", "desert", "tropical", "links"].iter().enumerate() {
         app.tool_tiles[t] = ui::load_pcx(g, &app.game_path(&format!("Data/{f}.pcx")), true, None).unwrap_or_default();
     }
-    app.cliffs = ui::load_pcx(g, &app.game_path("cliffs01.pcx"), true, None).unwrap_or_default();
+    // the bank rocks: in HD with the classic picture's key (hd::load_pcx_classic_key, docs/FIXES.md 1)
+    let cliffs = app.game_path("cliffs01.pcx");
+    app.cliffs = crate::hd::active()
+        .then(|| crate::hd::load_pcx_classic_key(g, &cliffs))
+        .flatten()
+        .or_else(|| ui::load_pcx(g, &cliffs, true, None))
+        .unwrap_or_default();
     app.ui_ok = ok;
     app.art = crate::screens_ui::Art::load(g, app);
     app.register_portraits(g);
