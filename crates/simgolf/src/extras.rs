@@ -1,7 +1,7 @@
 //! OpenSGolf extras (docs/PLAYING.md, "OpenSGolf extras"): the port's own additions to the interface, none of them in the
 //! original. Each is purely additive (it adds a screen, a tag or a strip; nothing of the original's is taken away or
 //! changed), so they are on by default; Preferences > *OpenSGolf extras...* has a tick for each, kept in settings.json under
-//! "extras", and `--no-extras` turns them all off for one run (not saved).
+//! "ui_extras", and `--no-extras` turns them all off for one run (not saved).
 //!
 //! * the People screen (people_ui.rs): every golfer on the course and every employee, sortable, with Locate, Follow, the
 //!   golfer card, the golfer's profile page, and for the staff Hire, Fire, Move and Rename, and the player's pro's screens;
@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::cell::Cell;
 
 /// The settings.json key of the extras' ticks.
-pub const SETTINGS_KEY: &str = "extras";
+pub const SETTINGS_KEY: &str = "ui_extras";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -52,10 +52,12 @@ impl Default for Settings {
     }
 }
 
-/// The Extras box's lines: the heading, then one tick per extra (text keys in lang/en.txt), then an empty line that keeps
-/// the OK tick clear of the last one.
-pub const LINES: [&str; 7] = [
-    "STR_EXTRAS_TITLE",
+/// The Extras box's lines under the gameplay extras (popup_ui.rs): an empty line (a heading under options is drawn at the
+/// options' row height, so it needs the room), the heading, then one tick per extra (text keys in lang/en.txt), then an
+/// empty line that keeps the OK tick clear of the last one.
+pub const LINES: [&str; 8] = [
+    "STR_EXTRAS_END",
+    "STR_EXTRAS_UI_HEAD",
     "STR_EXTRAS_PEOPLE",
     "STR_EXTRAS_HISTORY",
     "STR_EXTRAS_NAME_TAGS",

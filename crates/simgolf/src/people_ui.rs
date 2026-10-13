@@ -275,7 +275,7 @@ impl App {
                 ("STR_PEOPLE_PROFILE", has_sel),
             ],
             Tab::Staff => vec![
-                ("STR_PEOPLE_HIRE", self.people_staff().len() < crate::panels_ui::MAX_EMPLOYEES),
+                ("STR_PEOPLE_HIRE", self.people_staff().len() < crate::panels_ui::max_employees(self.club.extras.staff_limit())),
                 ("STR_PEOPLE_FIRE", has_sel),
                 ("STR_PEOPLE_MOVE", has_sel),
                 ("STR_PEOPLE_RENAME", has_sel),
@@ -323,7 +323,7 @@ impl App {
                 None => self.ui_sound(0x18),
             },
             (Tab::Staff, "STR_PEOPLE_HIRE") => {
-                if self.people_staff().len() >= crate::panels_ui::MAX_EMPLOYEES {
+                if self.people_staff().len() >= crate::panels_ui::max_employees(self.club.extras.staff_limit()) {
                     return self.ui_sound(0x18);
                 }
                 // the original's hire dialog over the Employee panel, its rules and wages (panels_ui)
@@ -493,7 +493,10 @@ impl App {
         for (i, t) in TABS.iter().enumerate() {
             let label = match t {
                 Tab::Golfers => trf("STR_PEOPLE_TAB_GOLFERS", &[("COUNT", &counts[0])]),
-                Tab::Staff => trf("STR_PEOPLE_TAB_STAFF", &[("COUNT", &counts[1])]),
+                Tab::Staff => {
+                    let limit = crate::panels_ui::max_employees(self.club.extras.staff_limit());
+                    trf("STR_PEOPLE_TAB_STAFF", &[("COUNT", &counts[1]), ("LIMIT", &limit)])
+                }
                 Tab::Pro => tr("STR_PEOPLE_TAB_PRO").to_string(),
             };
             let r = tab_rect(i);

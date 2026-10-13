@@ -36,7 +36,22 @@ pub fn landmark_name(t: i32) -> &'static str {
         "STR_LANDMARK_LONG_ORIENTAL_HOUSE",
         "STR_LANDMARK_LONG_TARPIT",
     ];
+    if let Some(n) = extra_landmark_name(t) {
+        return n;
+    }
     tr(N.get(t as usize).copied().unwrap_or("STR_LANDMARK_FALLBACK"))
+}
+
+/// The name of one of the port's extra landmark types (sg_core::extras): a cut landmark or a buyable animal.
+fn extra_landmark_name(t: i32) -> Option<&'static str> {
+    use crate::objects::{ANIMAL_BASE, CUT_BASE, CUT_LANDMARKS};
+    if t >= ANIMAL_BASE {
+        return crate::wildlife::KINDS.get((t - ANIMAL_BASE) as usize).map(|k| k.name());
+    }
+    if t >= CUT_BASE {
+        return CUT_LANDMARKS.get((t - CUT_BASE) as usize).map(|c| tr(c.2));
+    }
+    None
 }
 
 /// A landmark's long name as the exe writes it after "a" (0x4074a0 with its second argument 1): with the "n" of "an" where
@@ -73,6 +88,9 @@ pub fn landmark_short_name(t: i32) -> &'static str {
         "STR_LANDMARK_RADIO_ANTENNA",
         "STR_LANDMARK_OIL_PUMP",
     ];
+    if let Some(n) = extra_landmark_name(t) {
+        return n;
+    }
     tr(N.get(t as usize).copied().unwrap_or("STR_LANDMARK_FALLBACK"))
 }
 

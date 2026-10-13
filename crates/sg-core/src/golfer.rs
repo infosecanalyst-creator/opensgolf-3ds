@@ -5,7 +5,7 @@
 //!
 //! The simulation is integer and tick based, like the exe's: call `Club::tick` once per game tick (87 ms).
 
-use crate::course::{f, idx, inside, t, Course, NN};
+use crate::course::{f, idx, inside, nn, t, Course};
 use crate::geom::{adiff, angle, cdir, clamp, dir8, len, tdist, DX, DY, UNIT};
 use crate::land::ExeRng;
 use crate::lang::{tr, trf};
@@ -429,6 +429,9 @@ pub struct Club {
     /// The Preferences' "Show snapshots of great shots." option (bit 2 of 0x5a5a00), set by the game before each tick.
     #[serde(skip)]
     pub show_snapshots: bool,
+    /// The port's optional gameplay changes (sg_core::extras), saved only when one is on.
+    #[serde(skip_serializing_if = "crate::extras::Extras::is_off")]
+    pub extras: crate::extras::Extras,
 }
 
 impl Default for Club {
@@ -530,6 +533,7 @@ impl Club {
             shot_recs: Vec::new(),
             view_close: true,
             show_snapshots: true,
+            extras: Default::default(),
         }
     }
 
@@ -947,6 +951,8 @@ impl Club {
                 }
             }
         }
+        // the port's Hardcore economy: bad moments cost more (sg_core::extras; nothing when it is off)
+        let d = self.extras.mood_change(d);
         self.g[g].mood = clamp(self.g[g].mood + d, -10, 10);
         let h = self.g[g].hole;
         if let Some(hr) = self.hole_rec(h) {
@@ -1046,7 +1052,16 @@ impl Club {
 
     /// Makes a golfer waiting at the clubhouse from a roster person, or returns -1 when nobody can come (0x421bc0).
     pub fn create(&mut self, c: &Course, rng: &mut ExeRng, member_only: bool) -> i32 {
-        let s = (self.create_counter.rem_euclid(SLOTS as i32)) as usize;
+        let mut s = (self.create_counter.rem_euclid(SLOTS as i32)) as usize;
+        // The exe takes the counter's slot whether or not it is free, so a slow pair still on the course is overwritten by
+        // new arrivals once the counter comes round. "Fix original bugs" (crate::fixes, docs/FIXES.md 9): a pair is made in
+        // the next two slots that are both free (the slots go in pairs, s and s ^ 1), the exe's way when none is.
+        if crate::fixes::on() && s & 1 == 0 && (self.g[s].hole != 0 || self.g[s ^ 1].hole != 0) {
+            if let Some(t) = (0..SLOTS / 2).map(|k| (s + 2 * k) % SLOTS).find(|&t| self.g[t].hole == 0 && self.g[t ^ 1].hole == 0) {
+                s = t;
+                self.create_counter = t as i32;
+            }
+        }
         self.create_counter += 1;
         self.g[s] = Golfer::default();
         let (da, db) = c.door;
@@ -1262,6 +1277,8 @@ impl Club {
             fee += if lvl != 4 { 5 } else { 2 };
             self.sound(0x19, Some((x, y)));
         }
+        // the port's Hardcore economy caps the fee (sg_core::extras)
+        let fee = self.extras.fee(fee);
         if self.game & game::TOURNAMENT == 0 {
             if self.year == 0 && self.fees_this_year == 0 {
                 // the exe's first-fee lesson (0x4c7444, 0x4c7408, 0x4c73cc, 0x4c7374, 0x4c7334)
@@ -1474,8 +1491,8 @@ struct Locals {
 
 /// Flat tile index the exe uses for neighbour reads (no bounds check; outside the map reads as out of bounds here).
 fn flat(a: i32, b: i32) -> Option<usize> {
-    let i = a * 50 + b;
-    (0..NN as i32).contains(&i).then_some(i as usize)
+    let i = a * crate::course::n() + b;
+    (0..nn() as i32).contains(&i).then_some(i as usize)
 }
 
 impl Club {
@@ -1600,7 +1617,7 @@ impl Club {
         }
         let d = ((gg.facing - 2) + rng.below(5)) & 7;
         let (na, nb) = ((gg.x >> 10) + DX[d as usize], (gg.y >> 10) + DY[d as usize]);
-        let arg = na + nb * 50;
+        let arg = na + nb * crate::course::n();
         let Some(i) = flat(na, nb) else { return };
         if c.ty[i] == t::BUILDING {
             let o = c.object_at(na, nb);
@@ -1609,9 +1626,14 @@ impl Club {
                 if ob.kind == 2 {
                     self.event(c, rng, g, 0xb, arg);
                 } else if ob.kind == 4 {
-                    self.event(c, rng, g, if ob.sub < 0x10 { 0xb } else { 0x14 }, arg);
+                    // (the port's cut landmarks, types 19 and up, are scenic too: crate::objects::lovely_landmark)
+                    self.event(c, rng, g, if crate::objects::lovely_landmark(ob.sub) { 0xb } else { 0x14 }, arg);
                 }
             }
+        }
+        // the port's Buyable animals extra: a bought animal on the tile looked at is a sight, as a landmark is
+        if self.extras.animals && self.wildlife.bought_near(na * 1024 + 512, nb * 1024 + 512) {
+            self.event(c, rng, g, 0xb, arg);
         }
         let fl = c.flags[i];
         if fl & f::FLOWERS != 0 && (self.attitude(g) == 2 || fl & f::WEED != 0) {
@@ -2457,7 +2479,9 @@ impl Club {
     /// water and out of bounds avoided; returns the heading of the cheapest neighbour, -1 when there is none.
     pub fn path_dir(&mut self, c: &Course, rng: &mut ExeRng, g: usize, to: (i32, i32), from: (i32, i32), staff_mode: bool) -> i32 {
         let direct = cdir(to.0 - from.0, to.1 - from.1);
-        let cl = |v: i32| clamp(v >> 10, 0, 0x31);
+        // (0x31: the original map's last tile)
+        let n = crate::course::n();
+        let cl = |v: i32| clamp(v >> 10, 0, n - 1);
         let (ta, tb) = (cl(to.0), cl(to.1));
         let (fa, fb) = (cl(from.0), cl(from.1));
         let pg = &self.g[g ^ 1];
@@ -2472,25 +2496,28 @@ impl Club {
         let span = len(va, vb);
         let b5 = (((((angle(va, vb) as i32) >> 28) + 1) ^ -7) >> 1) as u8;
         let prefer: u32 = (1 << (((b5 & 7) + 1) & 6)) | (1 << (b5 & 6));
-        let mut cost = vec![0u8; NN];
-        let mut qa = [0i32; 1024];
-        let mut qb = [0i32; 1024];
+        // the costs are bytes below 0x100 and the queue a ring of 1024 on the original's map (crate::mapsize::route_cap)
+        let mut cost = vec![0u16; nn()];
+        let cap = crate::mapsize::route_cap();
+        let qmask = crate::mapsize::route_queue() - 1;
+        let mut qa = vec![0i32; qmask + 1];
+        let mut qb = vec![0i32; qmask + 1];
         let (mut head, mut tail) = (0usize, 1usize);
         qa[0] = ta;
         qb[0] = tb;
         cost[idx(ta, tb)] = 1;
         let staff_rule = staff_mode || self.g[g].hole == 19;
-        let mut limit: i32 = if staff_mode { 0xa0 + 0x5a } else { 0xa0 };
+        let mut limit: i32 = crate::mapsize::scale(if staff_mode { 0xa0 + 0x5a } else { 0xa0 });
         let path_rule = (((!self.tick & 0x40) | 0x80) >> 6) as i32;
         loop {
             let (a, b) = (qa[head], qb[head]);
-            head = (head + 1) & 0x3ff;
+            head = (head + 1) & qmask;
             let here = idx(a, b);
             let cnow = cost[here] as i32;
             if cnow <= limit {
                 for k in 0..8 {
                     let (na, nb) = (a + DX[k], b + DY[k]);
-                    if !(0..50).contains(&na) || !(0..50).contains(&nb) {
+                    if !(0..n).contains(&na) || !(0..n).contains(&nb) {
                         continue;
                     }
                     let ni = idx(na, nb);
@@ -2515,11 +2542,11 @@ impl Club {
                         stepc += 0x10;
                     }
                     let total = stepc + cnow;
-                    if (old == 0 || total < old) && total < 0x100 {
-                        cost[ni] = total as u8;
+                    if (old == 0 || total < old) && total < cap {
+                        cost[ni] = total as u16;
                         qa[tail] = na;
                         qb[tail] = nb;
-                        tail = (tail + 1) & 0x3ff;
+                        tail = (tail + 1) & qmask;
                         if (na, nb) == (fa, fb) {
                             limit = total;
                         }
@@ -2538,7 +2565,7 @@ impl Club {
         for i in 0..8 {
             let k = ((i + r) & 7) as usize;
             let (na, nb) = (fa + DX[k], fb + DY[k]);
-            if !(0..50).contains(&na) || !(0..50).contains(&nb) || c.oob(na, nb) || cost[idx(na, nb)] == 0 {
+            if !(0..n).contains(&na) || !(0..n).contains(&nb) || c.oob(na, nb) || cost[idx(na, nb)] == 0 {
                 continue;
             }
             let mut v = (k as i32 & 1) + cost[idx(na, nb)] as i32 * 2;
@@ -3544,6 +3571,31 @@ mod tests {
         club.holes[19].pin = (3, 22);
         club.next_hole = 2;
         (c, club)
+    }
+
+    #[test]
+    fn new_pairs_skip_golfers_still_playing() {
+        // docs/FIXES.md 9: the counter has come round to a slot whose pair is still on the course
+        for fix in [false, true] {
+            crate::fixes::set(fix);
+            let (c, mut club) = test_course();
+            let mut rng = ExeRng { state: 5 };
+            club.g[0].hole = 7;
+            club.g[1].hole = 7;
+            club.create_counter = 0;
+            let s = club.create(&c, &mut rng, false);
+            assert!(s >= 0);
+            if fix {
+                assert_eq!(s, 2);
+                assert_eq!(club.g[0].hole, 7);
+                assert_eq!(club.create(&c, &mut rng, false), 3);
+            } else {
+                // the exe's way: the slow golfer is overwritten
+                assert_eq!(s, 0);
+                assert_eq!(club.g[0].hole, -1);
+            }
+        }
+        crate::fixes::set(false);
     }
 
     #[test]

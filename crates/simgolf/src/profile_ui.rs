@@ -34,7 +34,7 @@ fn button_rect(i: usize) -> Rect {
     Rect::new(BOX.x + 24.0 + 92.0 * i as f32, BUTTON_Y, 84.0, 20.0)
 }
 
-const BUTTONS: [&str; 3] = ["STR_PEOPLE_LOCATE", "STR_PEOPLE_CARD", "STR_PROFILE_EDIT_BIO"];
+const BUTTONS: [&str; 3] = ["STR_PEOPLE_LOCATE", "STR_PEOPLE_CARD", "STR_GPROFILE_EDIT_BIO"];
 
 /// The page's state: the golfer's person record, the newest thing said shown at the top, and the screen to go back to.
 #[derive(Default)]
@@ -153,7 +153,7 @@ impl App {
             lines.push(trf("STR_CARD_MARITAL_AGE", &[("MARITAL", &self.club.marital(gs)), ("AGE", &self.club.age(gs))]));
             let likes: Vec<&str> = (0..3).filter(|b| self.club.g[gs].class & (1 << b) != 0).map(|b| tr(CLASS_WORDS[b])).collect();
             if !likes.is_empty() {
-                lines.push(trf("STR_PROFILE_LIKES", &[("LIKES", &likes.join(tr("STR_LIST_SEPARATOR")))]));
+                lines.push(trf("STR_GPROFILE_LIKES", &[("LIKES", &likes.join(tr("STR_LIST_SEPARATOR")))]));
             }
         }
         let traits = and_list(&trait_words(p.traits));
@@ -163,7 +163,7 @@ impl App {
         if let Some(m) = self.club.members.get(id).filter(|m| m.rounds > 0) {
             let dash = |v: i32| if v <= 0 { "-".to_string() } else { v.to_string() };
             lines.push(trf(
-                "STR_PROFILE_RECORD",
+                "STR_GPROFILE_RECORD",
                 &[("ROUNDS", &m.rounds), ("BEST", &dash(m.best as i32)), ("HCP", &format!("{:+}", m.avg))],
             ));
         }
@@ -173,30 +173,30 @@ impl App {
                 let opinion = sg_core::thoughts::course_opinion(gg.mood, 0);
                 let hole = if (1..19).contains(&gg.hole) { gg.hole.to_string() } else { tr("STR_PEOPLE_LEAVING").to_string() };
                 lines.push(trf(
-                    "STR_PROFILE_NOW",
+                    "STR_GPROFILE_NOW",
                     &[("TYPE", &self.golfer_type(gs)), ("HOLE", &hole), ("SPENT", &crate::ui::money(self.spent_by(gs)))],
                 ));
                 lines.push(trf("STR_CARD_OPINION", &[("OPINION", &opinion)]));
             }
-            None => lines.push(tr("STR_PROFILE_NOT_HERE").to_string()),
+            None => lines.push(tr("STR_GPROFILE_NOT_HERE").to_string()),
         }
         for (k, l) in lines.iter().take(7).enumerate() {
             s.put(g, F_MANUAL15, x0, BOX.y + 46.0 + 17.0 * k as f32, l, navy);
         }
         // the bio
         let by = BOX.y + 170.0;
-        s.put_shadowed(g, F_MANUAL15, BOX.x + 24.0, by, tr("STR_PROFILE_BIO"), yellow, false);
+        s.put_shadowed(g, F_MANUAL15, BOX.x + 24.0, by, tr("STR_GPROFILE_BIO"), yellow, false);
         let bio = p.bio.trim();
-        let bio_lines = if bio.is_empty() { vec![tr("STR_PROFILE_NO_BIO").to_string()] } else { wrap(F_MANUAL15, bio, 600.0) };
+        let bio_lines = if bio.is_empty() { vec![tr("STR_GPROFILE_NO_BIO").to_string()] } else { wrap(F_MANUAL15, bio, 600.0) };
         for (k, l) in bio_lines.iter().take(4).enumerate() {
             s.put(g, F_MANUAL15, SAID_X - 40.0, by + LINE * k as f32, l, if bio.is_empty() { grey } else { white });
         }
         // what the golfer has said, newest first
-        s.put_shadowed(g, F_MANUAL15, BOX.x + 24.0, SAID_TOP - 20.0, &trf("STR_PROFILE_SAID", &[("GOLFER", &name)]), yellow, false);
+        s.put_shadowed(g, F_MANUAL15, BOX.x + 24.0, SAID_TOP - 20.0, &trf("STR_GPROFILE_SAID", &[("GOLFER", &name)]), yellow, false);
         s.fill(g, BOX.x + 24.0, SAID_TOP - 3.0, UP.x - BOX.x - 32.0, 1.0, rgba(0.0, 0.0, 0.3, 0.4));
         let said = self.xs.kept.said.get(&r).cloned().unwrap_or_default();
         if said.is_empty() {
-            s.put(g, F_MANUAL15, SAID_X, SAID_TOP + 4.0, tr("STR_PROFILE_NOTHING_SAID"), grey);
+            s.put(g, F_MANUAL15, SAID_X, SAID_TOP + 4.0, tr("STR_GPROFILE_NOTHING_SAID"), grey);
         }
         let mut y = SAID_TOP + 2.0;
         let mut shown = 0;
@@ -230,7 +230,7 @@ impl App {
             let ok = b == 2 || slot.is_some();
             draw_button(g, &s, rr, tr(label), ok, rr.has(px, py));
         }
-        s.put(g, F_ARIAL10, BOX.x + 24.0, BOX.y + BOX.h - 24.0, tr("STR_PROFILE_HELP"), navy);
+        s.put(g, F_ARIAL10, BOX.x + 24.0, BOX.y + BOX.h - 24.0, tr("STR_GPROFILE_HELP"), navy);
         if self.art.trans.tex.is_some() {
             let r = ok_tick();
             s.image_part(g, &self.art.trans, r.x, r.y, 350.0, 140.0, 50.0, 50.0);

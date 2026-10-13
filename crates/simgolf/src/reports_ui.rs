@@ -7,7 +7,7 @@ use crate::gfx::Gfx;
 use crate::panels_ui::COUNTERS;
 use crate::screens_ui::top;
 use crate::ui::{load_pcx_alpha, rgb, rgba, wrap_text, Image, Screen as Ui};
-use sg_core::course::{idx, N};
+use sg_core::course::{idx, n as map_n};
 use sg_core::land;
 use sg_core::lang::{tr, trf};
 use sg_core::staff;
@@ -389,8 +389,20 @@ impl App {
         }
     }
 
-    fn mini(a: f32, b: f32) -> (f32, f32) {
-        ((a + b) * 6.0 + 106.0, (b - a) * 3.0 + 441.0)
+    /// A tile's point on the routing map (0x456b70): 12 x 6 pixel diamonds from (106, 441). A larger course size
+    /// (sg_core::mapsize) shrinks the diamonds by 50 / n so the whole map keeps the original's diamond on the screen.
+    pub(crate) fn mini(a: f32, b: f32) -> (f32, f32) {
+        let k = Self::mini_scale();
+        ((a + b) * 6.0 * k + 106.0, (b - a) * 3.0 * k + 441.0)
+    }
+
+    /// The routing map's scale: 1 on the original's map, 50 / n on a larger one.
+    pub(crate) fn mini_scale() -> f32 {
+        if sg_core::mapsize::original() {
+            1.0
+        } else {
+            sg_core::mapsize::ORIGINAL as f32 / map_n() as f32
+        }
     }
 
     /// An employee as the exe draws it off the course (the panel's portraits and the routing map's list): the clip of its
@@ -520,11 +532,12 @@ impl App {
     /// (`dy` -2: 0x456b70 takes 3 off instead of adding 1 while 0x822b80 is set).
     pub(crate) fn draw_route_tiles(&mut self, g: &mut Gfx, s: &Ui, dy: f32) {
         let aura = (self.route_tab == 2).then(|| self.course.aura());
-        for a in 0..N {
-            for b in 0..N {
+        let k = Self::mini_scale();
+        for a in 0..map_n() {
+            for b in 0..map_n() {
                 let Some(c) = self.tile_colour(a, b, aura.as_ref()) else { continue };
                 let (x, y) = Self::mini(a as f32, b as f32);
-                s.diamond(g, x, y + dy, 6.0, 3.0, c);
+                s.diamond(g, x, y + dy, 6.0 * k, 3.0 * k, c);
             }
         }
     }
@@ -882,7 +895,7 @@ impl App {
         }
         self.club.next_hole = (1..=18).find(|&k| self.club.holes[k].par == 0).unwrap_or(19) as i32;
         if let Some(l) = &self.land {
-            l.write_area(&mut self.terrain, 0, 0, land::N - 1, land::N - 1);
+            l.write_area(&mut self.terrain, 0, 0, land::mn() - 1, land::mn() - 1);
         }
         self.sync_course();
         self.dirty = true;
@@ -896,6 +909,8 @@ impl App {
             return self.ui_sound(0x18);
         }
         self.world_move = true;
+        // the club moves at the size it is played at
+        self.course_size = sg_core::mapsize::n();
         self.deal_offer(self.econ.sandbox);
         self.screen = Screen::Property;
         self.hover = -1;

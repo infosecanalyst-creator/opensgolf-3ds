@@ -25,11 +25,12 @@ pub enum PopupKind {
     CareerOver,
     /// Preferences > Enhanced graphics (the port's own, enhanced.rs): a checkbox list of the Enhanced options.
     Enhanced,
-    /// Preferences > OpenSGolf extras (the port's own, extras.rs): a checkbox list of the extras.
-    Extras,
     /// System Functions, Quit: "After a short career <pro> plans his retirement." (docs/DECODE_WORLD2.md 6.5, footage of
     /// the original at its (400, 100)).
     Retire,
+    /// Preferences > OpenSGolf extras (the port's own): a checkbox list of the optional gameplay changes (sg_core::extras)
+    /// and the interface extras (extras.rs).
+    Extras,
 }
 
 #[derive(Clone, Debug)]
@@ -145,7 +146,8 @@ impl ChoiceBox {
     }
 
     /// The option (counted from the first option line) under (x, y): x strictly between the box's left and 48 short of its
-    /// right, y in the 24 pixel rows from the first option's line.
+    /// right, y in the 24 pixel rows from the first option's line. A line that is not an option among them (the port's Extras
+    /// box has a heading between its two lists) takes its row and is no option.
     pub fn option_at(&self, x: f32, y: f32) -> Option<usize> {
         let r = self.rect();
         let opts = self.options();
@@ -155,8 +157,8 @@ impl ChoiceBox {
         if x <= r.x || x >= right || y < y0 {
             return None;
         }
-        let k = ((y - y0) / 24.0) as usize;
-        (k < opts.len()).then_some(k)
+        let line = first + ((y - y0) / 24.0) as usize;
+        opts.iter().position(|&o| o == line)
     }
 
     /// The OK tick of a checkbox list: the 50 x 50 cut at (cx + w / 2 - 40, top + h - 40); a click within 20 of its
@@ -428,8 +430,10 @@ pub const PREFS_ENHANCED_ON: usize = 6;
 pub const PREFS_ENHANCED: usize = 7;
 /// The option of the Preferences list that opens Preferences > Keyboard controls (keys_ui.rs).
 pub const PREFS_KEYS: usize = 8;
-/// The option of the Preferences list that opens Preferences > OpenSGolf extras (extras.rs).
+/// The option of the Preferences list that opens Preferences > OpenSGolf extras (extras_ui.rs, extras.rs).
 pub const PREFS_EXTRAS: usize = 9;
+/// The first option of the Extras box that is an interface extra (extras.rs); the options before it are the gameplay extras.
+pub const EXTRAS_UI: usize = sg_core::extras::OPTION_KEYS.len();
 /// The Preferences' option that switches the language (shown only when there is a translation to switch to).
 const PREFS_LANGUAGE: usize = 10;
 /// The bit of a Preferences result that asks for the "Use my SimGolf files..." line's action (gamefiles.rs), after the
@@ -520,18 +524,24 @@ impl App {
                     tr("STR_MENU_PREFS_ENHANCED"),
                     // the port's own: Preferences > Keyboard controls (keys_ui.rs)
                     tr("STR_MENU_PREFS_KEYS"),
-                    // the port's own: Preferences > OpenSGolf extras (extras.rs)
+                    // the port's own: Preferences > OpenSGolf extras (extras_ui.rs, extras.rs)
                     tr("STR_MENU_PREFS_EXTRAS"),
                 ],
                 0,
                 400.0,
                 200.0,
             ),
+            // the gameplay extras (sg_core::extras, options 0..EXTRAS_UI), then the interface extras (extras.rs)
+            PopupKind::Extras => {
+                let mut v = vec![tr("STR_EXTRAS_TITLE")];
+                v.extend(sg_core::extras::OPTION_KEYS.iter().map(|k| tr(k)));
+                v.extend(crate::extras::LINES.iter().map(|k| tr(k)));
+                (v, 0, 400.0, 120.0)
+            }
             // the commissioner's approval (main routine 0x41e2a0): the two-choice box centred on x 0x1c2 from y 0xa0 (EXACT,
             // the call's pushes at 0x41e2ee and 0x41e303), texts 0x4c5d74 and 0x4c5d48
             // filled in below from enhanced::OPTIONS
             PopupKind::Enhanced => (Vec::new(), 0, 400.0, 140.0),
-            PopupKind::Extras => (crate::extras::LINES.iter().map(|k| tr(k)).collect(), 0, 400.0, 200.0),
             PopupKind::LandOffer => {
                 (vec![tr("STR_LAND_OFFER_1"), tr("STR_LAND_OFFER_2"), tr("STR_LAND_OFFER_YES"), tr("STR_LAND_OFFER_NO")], 0, 450.0, 160.0)
             }
@@ -580,7 +590,7 @@ impl App {
                 | (self.hd.enabled as u32) << 4
                 | (crate::enhanced::settings().enabled as u32) << PREFS_ENHANCED_ON
         } else if kind == PopupKind::Extras {
-            crate::extras::settings().bits()
+            self.extras_checks() | crate::extras::settings().bits() << EXTRAS_UI
         } else {
             0
         };

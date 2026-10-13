@@ -1381,7 +1381,7 @@ impl App {
         if has_tacs {
             s.image_part(g, tacs, 600.0, 350.0, 58.0, 49.0, 207.0, 178.0);
             let mut o = 0.0;
-            for id in (0..22).filter(|&i| self.club.earned[i].is_none()).take(3) {
+            for id in (0..22).filter(|&i| self.club.earned.get(i).is_none_or(Option::is_none)).take(3) {
                 let (sx, sy, w, h) = match alt(id) {
                     Some(a) => TODO_ALT[a],
                     None => TODO_LABELS[id],
@@ -1390,7 +1390,7 @@ impl App {
                 o += h - 4.0;
             }
         } else {
-            let todo: Vec<usize> = (0..22).filter(|&i| self.club.earned[i].is_none()).take(3).collect();
+            let todo: Vec<usize> = (0..22).filter(|&i| self.club.earned.get(i).is_none_or(Option::is_none)).take(3).collect();
             for (j, id) in todo.iter().enumerate() {
                 s.text(g, 616.0, 420.0 + 28.0 * j as f32, self.club.award_title(*id), 11.0, rgb(0.6, 0.0, 0.0));
             }

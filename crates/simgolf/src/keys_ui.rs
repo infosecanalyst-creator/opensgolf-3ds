@@ -50,6 +50,9 @@ const ROWS: &[Row] = &[
     Key("STR_KEYS_K_HOLES_BACK", "STR_KEYS_HOLES_BACK"),
     Key("STR_KEYS_K_SHIFT_HELD", "STR_KEYS_SHIFT_HELD"),
     Key("STR_KEYS_K_PHOTO_MODE", "STR_KEYS_PHOTO_MODE"),
+    Key("STR_KEYS_K_HIDE_INTERFACE", "STR_KEYS_HIDE_INTERFACE"),
+    Key("STR_KEYS_K_MIDDLE_DRAG", "STR_KEYS_MIDDLE_DRAG"),
+    Key("STR_KEYS_K_WASD", "STR_KEYS_WASD"),
     Head("STR_KEYS_HEAD_TIME"),
     Key("STR_KEYS_K_PAUSE", "STR_KEYS_PAUSE"),
     Key("STR_KEYS_K_SPEED", "STR_KEYS_SPEED"),
@@ -192,9 +195,14 @@ fn pages() -> Vec<Vec<Placed>> {
     pages
 }
 
+/// A row's key as printed: the keys the player chose when they moved it (controls.rs), else the row's own text.
+fn key_text(k: &'static str) -> String {
+    crate::controls::row_label(k).unwrap_or_else(|| tr(k).to_string())
+}
+
 /// Where a key's description starts, from the column's left edge.
 fn desc_x(k: &'static str) -> f32 {
-    KEY_W.max(FONT.width(tr(k)) + 16.0)
+    KEY_W.max(FONT.width(&key_text(k)) + 16.0)
 }
 
 /// A key's description in lines that fit beside its label.
@@ -208,6 +216,7 @@ enum Hit {
     Prev,
     Next,
     Done,
+    Change,
 }
 
 fn prev_button() -> Rect {
@@ -243,6 +252,9 @@ impl App {
         if ok_tick().has(x, y) {
             return Some(Hit::Done);
         }
+        if crate::controls_ui::change_keys_button().has(x, y) {
+            return Some(Hit::Change);
+        }
         if pages().len() > 1 {
             if prev_button().has(x, y) {
                 return Some(Hit::Prev);
@@ -257,9 +269,13 @@ impl App {
     /// A click (or a tap): the page buttons turn the pages, the OK tick closes; elsewhere in the box a click shows the next
     /// page and on the last page closes, as does a click outside the box or a right click.
     pub fn keys_click(&mut self, x: f32, y: f32, right: bool) {
+        if self.ctl.remap.is_some() {
+            return self.remap_click(x, y, right);
+        }
         let n = pages().len();
         match self.keys_hit(x, y) {
             _ if right => self.close_keys(),
+            Some(Hit::Change) => self.open_remap(),
             Some(Hit::Done) => self.close_keys(),
             Some(Hit::Prev) => self.keys_turn(false),
             Some(Hit::Next) => self.keys_turn(true),
@@ -272,6 +288,9 @@ impl App {
     /// before.
     pub fn keys_key(&mut self, k: miniquad::KeyCode) {
         use miniquad::KeyCode;
+        if self.ctl.remap.is_some() {
+            return self.remap_key(k);
+        }
         match k {
             KeyCode::Escape | KeyCode::Enter | KeyCode::KpEnter => self.close_keys(),
             KeyCode::Right | KeyCode::Down | KeyCode::PageDown | KeyCode::Space | KeyCode::Tab => self.keys_turn(true),
@@ -281,6 +300,9 @@ impl App {
     }
 
     pub fn draw_keys(&mut self, g: &mut Gfx) {
+        if self.ctl.remap.is_some() {
+            return self.draw_remap(g);
+        }
         let s = Ui::new(self.draw_w, self.draw_h);
         self.view = s.view;
         crate::info_ui::dim(g, &s);
@@ -295,7 +317,7 @@ impl App {
             match p.key {
                 None => s.put_shadowed(g, FONT, x, p.y + 2.0, &p.lines[0], yellow, false),
                 Some(k) => {
-                    s.put(g, FONT, x + 6.0, p.y, tr(k), white);
+                    s.put(g, FONT, x + 6.0, p.y, &key_text(k), white);
                     let dx = desc_x(k);
                     for (i, l) in p.lines.iter().enumerate() {
                         s.put(g, FONT, x + dx, p.y + i as f32 * LINE, l, navy);
@@ -316,6 +338,10 @@ impl App {
             s.put(g, F_ARIAL10, BOX.x + 200.0, BOX.y + BOX.h - 48.0, &n, navy);
         }
         s.put(g, F_ARIAL10, BOX.x + 24.0, BOX.y + BOX.h - 24.0, tr("STR_KEYS_CLOSE"), navy);
+        // the port's Change keys screen (controls_ui.rs)
+        let b = crate::controls_ui::change_keys_button();
+        s.fill(g, b.x, b.y, b.w, b.h, if b.has(px, py) { rgb(0.85, 0.85, 1.0) } else { rgb(0.47, 0.47, 0.70) });
+        s.put_centered(g, F_ARIAL10, b.x + b.w / 2.0, b.y + 4.0, tr("STR_KEYS_CHANGE"), navy);
         if self.art.trans.tex.is_some() {
             let r = ok_tick();
             s.image_part(g, &self.art.trans, r.x, r.y, 350.0, 140.0, 50.0, 50.0);

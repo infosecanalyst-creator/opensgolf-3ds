@@ -489,12 +489,12 @@ impl Club {
 /// first tile (b, then a), is paired with the nearest unused cluster of two or more green tiles whose centre lies at least
 /// 2.5 tiles away; the pair is (tee tile, green tile), each the cluster's mean tile.
 pub fn painted_pairs(c: &Course) -> Vec<((i32, i32), (i32, i32))> {
-    use crate::course::N;
+    use crate::course::n;
     let clusters = |ty: u8| {
         let mut out: Vec<(f32, f32, usize)> = Vec::new();
-        let mut seen = vec![false; crate::course::NN];
-        for b in 0..N {
-            for a in 0..N {
+        let mut seen = vec![false; crate::course::nn()];
+        for b in 0..n() {
+            for a in 0..n() {
                 if seen[idx(a, b)] || c.ty[idx(a, b)] != ty {
                     continue;
                 }

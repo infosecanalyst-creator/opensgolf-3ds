@@ -2,7 +2,7 @@
 //! and route risk 0x421fa0), and the shot itself: club, launch speed, curve and the random errors of the swing (0x424120).
 //! Restated from the exe in our own words; integer behaviour, including its rounding and random draws, follows the exe.
 
-use crate::course::{t, Course};
+use crate::course::{n as map_n, nn, t, Course};
 use crate::geom::{angle, clamp, cosr, dir8, isqrt_ru, len, sinr, tdist, DX, DY};
 use crate::golfer::{flag, game, Club};
 use crate::land::ExeRng;
@@ -163,14 +163,14 @@ fn curve_draw(rng: &mut ExeRng) -> i32 {
 }
 
 fn h_at(c: &Course, a: i32, b: i32) -> i32 {
-    let i = a * 50 + b;
-    let ty = if (0..2500).contains(&i) { c.ty[i as usize] } else { t::OUT };
+    let i = a * map_n() + b;
+    let ty = if (0..nn() as i32).contains(&i) { c.ty[i as usize] } else { t::OUT };
     c.h(ty)
 }
 
 fn ty_at_point(c: &Course, x: i32, y: i32) -> u8 {
-    let i = (x >> 10) * 50 + (y >> 10);
-    if (0..2500).contains(&i) {
+    let i = (x >> 10) * map_n() + (y >> 10);
+    if (0..nn() as i32).contains(&i) {
         c.ty[i as usize]
     } else {
         t::OUT
@@ -253,7 +253,7 @@ pub fn plan_shot(cl: &mut Club, c: &mut Course, rng: &mut ExeRng, g: usize, user
         if c.oob(pa, pb) {
             break;
         }
-        let pi = (pa * 50 + pb) as usize;
+        let pi = (pa * map_n() + pb) as usize;
         let pt = c.ty[pi];
         let hz = c.h(pt);
         w[pt as usize] += (i + 1) * hz * 2;
@@ -281,7 +281,7 @@ pub fn plan_shot(cl: &mut Club, c: &mut Course, rng: &mut ExeRng, g: usize, user
         if c.oob(qa, qb) {
             acc += 4 + n * 4;
         } else {
-            let qt = c.ty[(qa * 50 + qb) as usize];
+            let qt = c.ty[(qa * map_n() + qb) as usize];
             let v = (c.h(qt) * (n + 1)) / 2;
             acc += v;
             w[qt as usize] += v;
@@ -515,10 +515,10 @@ pub fn plan_shot(cl: &mut Club, c: &mut Course, rng: &mut ExeRng, g: usize, user
                     let pb = (gy - cosr(h2, rr)) >> 10;
                     let d = dir8(h2) as usize;
                     if !c.oob(pa, pb) {
-                        let pi = (pa * 50 + pb) as usize;
+                        let pi = (pa * map_n() + pb) as usize;
                         let q_class = {
-                            let qi = (pa - DX[d]) * 50 - DY[d] + pb;
-                            if (0..2500).contains(&qi) {
+                            let qi = (pa - DX[d]) * map_n() - DY[d] + pb;
+                            if (0..nn() as i32).contains(&qi) {
                                 c.row(c.ty[qi as usize]).class
                             } else {
                                 c.row(t::OUT).class
@@ -528,21 +528,21 @@ pub fn plan_shot(cl: &mut Club, c: &mut Course, rng: &mut ExeRng, g: usize, user
                             && c.raw_corner(pa, pb) <= c.raw_corner(ba, bb) + 1
                             && q_class != 13
                         {
-                            feature = pa + pb * 50;
+                            feature = pa + pb * map_n();
                         }
                         if c.row(c.ty[pi]).group == 0x10 && q_class != 13 {
                             let o = c.object_at(pa, pb);
                             if c.ty[pi] == t::HOME {
                                 if o == -1 || c.objects[o as usize].kind != 5 || c.objects[o as usize].sub == 0 {
-                                    eyesore = pa + pb * 50;
+                                    eyesore = pa + pb * map_n();
                                 } else {
                                     celeb = c.objects[o as usize].sub;
                                 }
                             } else if o >= 0 && c.objects[o as usize].kind == 4 {
-                                if c.objects[o as usize].sub < 0x10 {
-                                    feature = pa + pb * 50;
+                                if crate::objects::lovely_landmark(c.objects[o as usize].sub) {
+                                    feature = pa + pb * map_n();
                                 } else {
-                                    eyesore = pa + pb * 50;
+                                    eyesore = pa + pb * map_n();
                                 }
                             }
                         }
@@ -686,8 +686,8 @@ pub fn plan_shot(cl: &mut Club, c: &mut Course, rng: &mut ExeRng, g: usize, user
 }
 
 fn h_index_type(c: &Course, a: i32, b: i32) -> u8 {
-    let i = a * 50 + b;
-    if (0..2500).contains(&i) {
+    let i = a * map_n() + b;
+    if (0..nn() as i32).contains(&i) {
         c.ty[i as usize]
     } else {
         t::OUT
@@ -695,8 +695,8 @@ fn h_index_type(c: &Course, a: i32, b: i32) -> u8 {
 }
 
 fn flag_at(c: &Course, a: i32, b: i32) -> u16 {
-    let i = a * 50 + b;
-    if (0..2500).contains(&i) {
+    let i = a * map_n() + b;
+    if (0..nn() as i32).contains(&i) {
         c.flags[i as usize]
     } else {
         0
@@ -1019,7 +1019,7 @@ pub fn preview(cl: &mut Club, c: &mut Course, rng: &mut ExeRng, g: usize, wx: i3
     while cl.g[g].speed != 0 && ticks < 20_000 {
         let gg = &mut cl.g[g];
         let (a, b) = (gg.bx >> 10, gg.by >> 10);
-        let lie = if c.oob(a, b) { t::OUT } else { c.ty[(a * 50 + b) as usize] };
+        let lie = if c.oob(a, b) { t::OUT } else { c.ty[(a * map_n() + b) as usize] };
         let h0 = c.ground(gg.bx, gg.by);
         let s = gg.speed / 16;
         let dx = sinr(gg.heading, s);
@@ -1171,8 +1171,8 @@ pub fn preview(cl: &mut Club, c: &mut Course, rng: &mut ExeRng, g: usize, wx: i3
 }
 
 fn flag_walls(c: &Course, a: i32, b: i32) -> u8 {
-    let i = a * 50 + b;
-    if (0..2500).contains(&i) {
+    let i = a * map_n() + b;
+    if (0..nn() as i32).contains(&i) {
         c.walls[i as usize]
     } else {
         0
@@ -1311,7 +1311,7 @@ pub fn aim_search(cl: &mut Club, c: &mut Course, rng: &mut ExeRng, g: usize) -> 
                                     acc += if c.oob(qa, qb) {
                                         c.h(t::OUT)
                                     } else {
-                                        c.h(c.ty[(qa * 50 + qb) as usize]) - (c.flags[(qa * 50 + qb) as usize] & 0x80 != 0) as i32
+                                        c.h(c.ty[(qa * map_n() + qb) as usize]) - (c.flags[(qa * map_n() + qb) as usize] & 0x80 != 0) as i32
                                     };
                                 }
                             }

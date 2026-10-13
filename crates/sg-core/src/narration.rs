@@ -80,7 +80,9 @@ impl Club {
             // the terrain table's singular name (0x578350 + 0x30 * arg), as the theme renames it
             2 | 3 | 10 | 13 => trf(key, &[("GOLFER", &name), ("TERRAIN", &type_name(arg.clamp(0, 22) as u8, c.theme, false)), ("HE", &he)]),
             // the scenery name of a tile (0x407700)
-            11 | 0x14 | 0x1c => trf(key, &[("GOLFER", &name), ("WHAT", &feature(c, arg / 50, arg % 50, c.theme))]),
+            11 | 0x14 | 0x1c => {
+                trf(key, &[("GOLFER", &name), ("WHAT", &feature(c, arg / crate::course::n(), arg % crate::course::n(), c.theme))])
+            }
             0x16 => {
                 let who = self.celebrities.get(arg.max(0) as usize).map(|p| p.name.as_str()).unwrap_or("");
                 trf(key, &[("GOLFER", &name), ("CELEBRITY", &who)])
