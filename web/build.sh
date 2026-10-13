@@ -10,7 +10,7 @@ mkdir -p web/dist
 cp target/wasm32-unknown-unknown/release/opensgolf.wasm web/dist/
 MQ=$(cargo metadata --format-version 1 | python3 -c 'import json,sys; m=json.load(sys.stdin); print([p["manifest_path"] for p in m["packages"] if p["name"]=="miniquad"][0])')
 cp "$(dirname "$MQ")/js/gl.js" web/dist/
-cp web/index.html web/opensgolf.js web/dist/
+cp web/index.html web/opensgolf.js web/start-bg.jpg web/dist/
 # the player's own art and HD packs (docs/HD.md) must never end up in the published folder
 if find web/dist -iname '*.png' -o -iname '*.pcx' -o -iname 'manifest.json' -o -iname 'HD' | grep -q .; then
     echo "web/dist contains game art or an HD pack: remove it before publishing" >&2
