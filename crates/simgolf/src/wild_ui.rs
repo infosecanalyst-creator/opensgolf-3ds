@@ -329,9 +329,15 @@ impl App {
 
     /// The screen point of a tile's centre while the tile is on the screen (0x42f940: up to 64 pixels past the sides, 42
     /// past the top and bottom).
+    /// The port's window may show more than the 800 x 600 screen (a wider or taller window shows more of the course), so the
+    /// test takes the window's visible area, never less than the 800 x 600: without that the bank rocks, glints and flower
+    /// bed colours were missing towards the sides of a wide window (docs/FIXES.md 6).
     pub(crate) fn tile_on_screen(&self, x: i32, y: i32) -> Option<(f32, f32)> {
         let (wx, wz) = self.terrain.tile_centre(x, y);
-        self.screen_of_world(wx, wz).filter(|&(sx, sy)| (-64.0..864.0).contains(&sx) && (-42.0..642.0).contains(&sy))
+        let v = self.view;
+        let (l, t) = ((-v.ox / v.scale).min(0.0), (-v.oy / v.scale).min(0.0));
+        let (r, b) = (((self.draw_w - v.ox) / v.scale).max(800.0), ((self.draw_h - v.oy) / v.scale).max(600.0));
+        self.screen_of_world(wx, wz).filter(|&(sx, sy)| (l - 64.0..r + 64.0).contains(&sx) && (t - 42.0..b + 42.0).contains(&sy))
     }
 
     /// The rocks on the water banks (sg_core::decor::bank_rocks), cuts of cliffs01.pcx stood upright at their points beside
