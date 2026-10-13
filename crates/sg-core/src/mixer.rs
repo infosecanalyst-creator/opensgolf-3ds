@@ -232,31 +232,31 @@ impl Mixer {
         }
     }
 
-    fn load(&self, s: &mut State, key: &str) -> Option<Arc<Vec<i16>>> {
-        if let Some(c) = s.clips.get(key) {
+    /// A clip, decoded the first time it is asked for. The decoding (a tenth of a second for the original's longest music)
+    /// runs without the lock, so the output device's thread goes on mixing the voices already playing meanwhile instead of
+    /// waiting for it (a gap in the sound).
+    fn load(&self, key: &str) -> Option<Arc<Vec<i16>>> {
+        if let Some(c) = self.state.lock().ok()?.clips.get(key) {
             return Some(c.clone());
         }
-        if self.all_free {
-            let c = Arc::new(self.decode_free(key)?);
-            s.clips.insert(key.to_string(), c.clone());
-            return Some(c);
-        }
-        if !self.index.contains_key(key) {
-            s.last_error = format!("unknown sound {key}");
+        let pcm = if self.all_free {
+            self.decode_free(key)?
+        } else if !self.index.contains_key(key) {
+            self.set_error(format!("unknown sound {key}"));
             return None;
-        }
-        let pcm = match self.decode_own(key) {
-            Ok(pcm) => pcm,
-            Err(e) => {
-                // said once per clip: the clip is remembered (as the free set's, or as silence) and not read again
-                eprintln!("sound: {e}");
-                s.last_error = e;
-                self.decode_free(key).unwrap_or_default()
+        } else {
+            match self.decode_own(key) {
+                Ok(pcm) => pcm,
+                Err(e) => {
+                    // said once per clip: the clip is remembered (as the free set's, or as silence) and not read again
+                    eprintln!("sound: {e}");
+                    self.set_error(e);
+                    self.decode_free(key).unwrap_or_default()
+                }
             }
         };
-        let c = Arc::new(pcm);
-        s.clips.insert(key.to_string(), c.clone());
-        Some(c)
+        let mut s = self.state.lock().ok()?;
+        Some(s.clips.entry(key.to_string()).or_insert_with(|| Arc::new(pcm)).clone())
     }
 
     /// Finds a clip by path relative to Sounds/ (case-insensitive, forward slashes) and plays it. Returns a voice id, or -1.
@@ -266,8 +266,8 @@ impl Mixer {
 
     /// Plays a clip panned (-1 left .. 1 right) and starting `delay_ms` from now. Returns a voice id, or -1.
     pub fn play_at(&self, rel: &str, volume: f32, pan: f32, delay_ms: u32, looping: bool) -> i32 {
+        let Some(clip) = self.load(&key_of(rel)) else { return -1 };
         let Ok(mut s) = self.state.lock() else { return -1 };
-        let Some(clip) = self.load(&mut s, &key_of(rel)) else { return -1 };
         if clip.is_empty() {
             return -1;
         }
