@@ -140,6 +140,9 @@ impl App {
         let level = if kind >= 6 { self.lot_level(kind) } else { 0 };
         let size = sg_core::data::buildings().get(kind as usize).map(|b| b.1).unwrap_or(1) + level;
         let clear = self.land.as_ref().and_then(|l| l.fits(a, b, size, kind, self.exe_theme()));
+        // "Fix original bugs" (docs/FIXES.md 2): a new lot on top of a standing one shows red, as edit_building refuses it
+        let clear =
+            clear.filter(|_| level > 0 || !crate::enhanced::fix_bugs() || !self.land.as_ref().is_some_and(|l| l.covers_object(a, b, size)));
         (size, clear.map(|c| if kind == 0 { c / 2 } else { c }))
     }
 

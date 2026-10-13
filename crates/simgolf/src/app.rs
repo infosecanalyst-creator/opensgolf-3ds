@@ -302,7 +302,11 @@ pub fn save_dir() -> PathBuf {
 /// generator, so a loaded game goes on exactly as it would have. Stored as JSON compressed with zlib, after a magic line.
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct SaveGame {
+    /// 1: the original's 50 x 50 map; 2: a larger course size, in `size`.
     pub version: u32,
+    /// The map's edge in tiles (sg_core::mapsize; absent in version 1 saves, which are 50).
+    #[serde(default = "original_size", skip_serializing_if = "is_original_size")]
+    pub size: i32,
     pub theme: usize,
     pub course_name: String,
     pub difficulty: i32,
@@ -340,6 +344,17 @@ pub struct SaveGame {
 
 const SAVE_MAGIC: &[u8] = b"SIMGOLF-NATIVE-SAVE\n";
 
+/// The newest save version this build reads.
+const SAVE_VERSION: u32 = 2;
+
+fn original_size() -> i32 {
+    sg_core::mapsize::ORIGINAL
+}
+
+fn is_original_size(n: &i32) -> bool {
+    *n == sg_core::mapsize::ORIGINAL
+}
+
 /// Terrain.dll's normals for the faces on a tile's sides (0x10063c40: north (y - 1), south, west, east, 0x18 bytes each), the
 /// first for views 0 and 2, the second for 1 and 3. Shared by the property's cliff and the retaining walls; not unit length.
 const EDGE_NORMALS: [[[f32; 3]; 2]; 4] = [
@@ -359,7 +374,18 @@ pub fn read_save(path: &Path) -> Result<SaveGame, String> {
 pub fn read_save_bytes(data: &[u8], name: &str) -> Result<SaveGame, String> {
     let body = data.strip_prefix(SAVE_MAGIC).ok_or_else(|| trf("STR_ERROR_NOT_A_SAVED_GAME", &[("FILE", &name)]))?;
     let json = miniz_oxide::inflate::decompress_to_vec_zlib(body).map_err(|e| format!("{name}: {e:?}"))?;
-    serde_json::from_slice(&json).map_err(|e| format!("{name}: {e}"))
+    let s: SaveGame = serde_json::from_slice(&json).map_err(|e| format!("{name}: {e}"))?;
+    // a save from a newer version, or one whose map does not match its size, is refused rather than loaded wrong
+    let n = s.size;
+    let tiles = (n * n) as usize;
+    let fits = sg_core::mapsize::valid(n) == n
+        && s.land.as_ref().is_none_or(|l| {
+            l.n == n && l.ty.len() == tiles && l.height.len() == ((n + 1) * (n + 1)) as usize && s.course.ty.len() == tiles
+        });
+    if s.version > SAVE_VERSION || !fits {
+        return Err(trf("STR_ERROR_NOT_A_SAVED_GAME", &[("FILE", &name)]));
+    }
+    Ok(s)
 }
 
 /// One texture-batched mesh of the course.
@@ -608,6 +634,8 @@ pub struct App {
     pub reset_clock: bool,
     /// The property chooser was opened from Sandbox Mode.
     pub sandbox_choice: bool,
+    /// The course size (map edge in tiles, sg_core::mapsize) the next new game is dealt and played at.
+    pub course_size: i32,
     pub toast: String,
     pub toast_until: f64,
     /// A message in the game's box over the screen, with an OK or a question's two options (gamefiles.rs).
@@ -854,6 +882,7 @@ impl App {
             theme_pack: 0,
             reset_clock: false,
             sandbox_choice: false,
+            course_size: sg_core::mapsize::ORIGINAL,
             toast: String::new(),
             toast_until: 0.0,
             notice: None,
@@ -1252,17 +1281,25 @@ impl App {
     /// from their neighbours. Without land (the demo course) the tiles share their corners.
     fn sync_tile_corners(&mut self) {
         self.terrain.tile_corner.clear();
-        if self.land.is_none() || self.terrain.w != sg_core::course::N || self.terrain.h != sg_core::course::N {
+        if self.land.is_none() || self.terrain.w != sg_core::course::n() || self.terrain.h != sg_core::course::n() {
             return;
         }
         self.sync_course();
         let c = &self.course;
         let level = |a: i32, b: i32, k: i32| (c.corner(a, b, k) - sg_core::terrain::EXE_SEA).max(0) as i8;
         let mut out = Vec::with_capacity(self.terrain.ty.len());
-        for b in 0..sg_core::course::N {
-            for a in 0..sg_core::course::N {
+        for b in 0..sg_core::course::n() {
+            for a in 0..sg_core::course::n() {
                 out.push(if c.ty[sg_core::course::idx(a, b)] == sg_core::course::t::WATER {
-                    [0; 4]
+                    // The original's load path (0x449540) leaves water at sea level and only lifts it when it is edited,
+                    // so a stream or lake above sea level shows black slits and triangles along its banks and at its
+                    // waterfalls, where the ground's walls were made for the water's real level (course::refresh). "Fix
+                    // original bugs" (docs/FIXES.md 1) gives water its level: flat at its lowest corner, as the walls have it.
+                    if crate::enhanced::fix_bugs() {
+                        [level(a, b, 7); 4]
+                    } else {
+                        [0; 4]
+                    }
                 } else {
                     // corners 7 (-x -y), 1 (+x -y), 5 (-x +y), 3 (+x +y)
                     [level(a, b, 7), level(a, b, 1), level(a, b, 5), level(a, b, 3)]
@@ -1471,9 +1508,9 @@ impl App {
         let noise = &self.noise;
         let field = |x: i32, y: i32| noise.field(x, y);
         let mut draws = Vec::new();
-        for a in 0..land::N {
-            for b in 0..land::N {
-                let i = (a * land::N + b) as usize;
+        for a in 0..land::mn() {
+            for b in 0..land::mn() {
+                let i = (a * land::mn() + b) as usize;
                 if !(13..=15).contains(&ty[i]) {
                     continue;
                 }
@@ -1870,8 +1907,8 @@ impl App {
         if t.flags.len() != (t.w * t.h) as usize {
             return;
         }
-        for a in 0..t.w.min(50) {
-            for b in 0..t.h.min(50) {
+        for a in 0..t.w.min(sg_core::course::n()) {
+            for b in 0..t.h.min(sg_core::course::n()) {
                 let si = (b * t.w + a) as usize;
                 let ci = sg_core::course::idx(a, b);
                 let bits = t.flags[si] & (staff::WEEDS | staff::WORKED);
@@ -1887,8 +1924,8 @@ impl App {
         if t.flags.len() != (t.w * t.h) as usize {
             return;
         }
-        for a in 0..t.w.min(50) {
-            for b in 0..t.h.min(50) {
+        for a in 0..t.w.min(sg_core::course::n()) {
+            for b in 0..t.h.min(sg_core::course::n()) {
                 let si = (b * t.w + a) as usize;
                 let ci = sg_core::course::idx(a, b);
                 let bits = self.course.flags[ci] & (staff::WEEDS | staff::WORKED);
@@ -2172,7 +2209,9 @@ impl App {
     pub fn update_props(&mut self) {
         let perf = crate::perf::on().then(|| (std::time::Instant::now(), self.game_tick));
         while self.sim_time < self.time && self.great_shot.is_none() {
+            let t0 = now();
             self.step_game(1.0 / 60.0);
+            tick_bench_add(now() - t0);
             self.sim_time += 1.0 / 60.0;
         }
         if let Some((t, tick)) = perf {
@@ -2296,6 +2335,8 @@ impl App {
 
     /// Deals the properties out to the offer slots for a new game, as the exe does before showing the property chooser.
     pub fn deal_offer(&mut self, sandbox: bool) {
+        // the acres follow the size the game will be played at
+        let _size = sg_core::mapsize::scoped(self.course_size);
         self.offer = land::deal_offer(&mut self.exe_rng, sandbox);
         self.slot_of = slots_of(&self.offer);
     }
@@ -2309,15 +2350,17 @@ impl App {
         }
         let other = self.offer[to].property;
         let sandbox = self.econ.sandbox;
+        let _size = sg_core::mapsize::scoped(self.course_size);
         self.offer[to] = Slot { property: k, acres: land::slot_acres(to as i32, k, sandbox) };
         self.offer[from] = Slot { property: other, acres: land::slot_acres(from as i32, other, sandbox) };
         self.slot_of = slots_of(&self.offer);
     }
 
-    /// Acres and price (in money) of a property in this game's offer.
+    /// Acres and price (in money) of a property in this game's offer. On a larger course size the price grows with the map's
+    /// edge (sg_core::mapsize::scale_money), the acres with its area.
     pub fn offer_for(&self, prop_idx: usize) -> (i32, i32) {
         let slot = self.slot_of[prop_idx];
-        let price = sg_core::data::economy().offer_units[slot] * 100;
+        let price = sg_core::mapsize::scale_money_at(self.course_size, sg_core::data::economy().offer_units[slot] as i64 * 100);
         // the Hardcore extra's dearer land (nothing when it is off)
         (self.offer[slot].acres, self.extras_next.land(price as f64) as i32)
     }
@@ -2329,11 +2372,18 @@ impl App {
             self.course_id = Some(self.exe_rng.below(0xffff));
         }
         let (acres, price) = self.offer_for(prop_idx);
+        // the map in play takes the chosen course size (sg_core::mapsize; the original's 50 x 50 by default)
+        sg_core::mapsize::set(self.course_size);
         self.econ.sandbox = sandbox;
         // The property is paid for out of the starting funds.
-        // The exe starts with 1000 units (10000 in sandbox) and takes the property's price off a normal game.
-        self.econ.start_cash =
-            if sandbox { sg_core::data::economy().sandbox_funds as f64 } else { (sg_core::data::economy().start_funds - price) as f64 };
+        // The exe starts with 1000 units (10000 in sandbox) and takes the property's price off a normal game. A larger course
+        // size starts with funds grown with the map's edge, as its prices are.
+        let funds = |f: i32| sg_core::mapsize::scale_money_at(self.course_size, f as i64);
+        self.econ.start_cash = if sandbox {
+            funds(sg_core::data::economy().sandbox_funds) as f64
+        } else {
+            (funds(sg_core::data::economy().start_funds) - price as i64) as f64
+        };
         if let Some(m) = self.scen.start_money.take() {
             // a scenario's own starting cash (docs/MODDING.md 5)
             self.econ.start_cash = m as f64;
@@ -2400,8 +2450,11 @@ impl App {
 
     /// Saves the whole game.
     pub fn save_game(&self, path: &Path) -> Result<(), String> {
+        let size = sg_core::mapsize::n();
         let save = SaveGame {
-            version: 1,
+            // version 2: a course size other than the original's, recorded in `size` (version 1 saves are all 50 x 50)
+            version: if size == sg_core::mapsize::ORIGINAL { 1 } else { 2 },
+            size,
             theme: self.theme,
             course_name: self.course_name.clone(),
             difficulty: self.difficulty,
@@ -2441,6 +2494,9 @@ impl App {
 
     /// Goes on with a game read by `read_save` (or `read_save_bytes`).
     pub fn load_save(&mut self, g: &mut Gfx, s: SaveGame) -> Result<(), String> {
+        // the save's course size (older saves: the original's), before anything reads the map
+        sg_core::mapsize::set(s.size);
+        self.course_size = sg_core::mapsize::n();
         if let Some(k) = THEME_PACKS.iter().position(|p| p.replace(' ', "_").eq_ignore_ascii_case(&s.theme_pack)) {
             self.theme_pack = k;
         }
@@ -2576,7 +2632,7 @@ impl App {
                 // obstacle or a landmark, no tee or cup taken away during a tournament
                 let old = self.terrain.ty[self.terrain.tile_index(x, y)];
                 let new = pe.ty as u8;
-                let li = (x * land::N + y) as usize;
+                let li = (x * land::mn() + y) as usize;
                 let (in_play, obstacle, on) = match self.land.as_ref() {
                     Some(l) => (l.in_play(x, y), l.flags[li] & land::flag::OBSTACLE != 0, l.object_on(x, y)),
                     None => (true, false, None),
@@ -2718,7 +2774,7 @@ impl App {
             let (a0, b0) = sg_core::tracts::origin(i);
             for a in a0..a0 + 16 {
                 for b in b0..b0 + 16 {
-                    let t = (a * land::N + b) as usize;
+                    let t = (a * land::mn() + b) as usize;
                     let o = self.terrain.tile_index(a, b);
                     if self.terrain.ty[o] == land::T_OUT {
                         self.terrain.ty[o] = land.ty[t];
@@ -2748,8 +2804,8 @@ impl App {
         self.ensure_land();
         self.retyped.push((x, y));
         if let Some(land) = self.land.as_mut() {
-            if (0..land::N).contains(&x) && (0..land::N).contains(&y) {
-                let i = (x * land::N + y) as usize;
+            if (0..land::mn()).contains(&x) && (0..land::mn()).contains(&y) {
+                let i = (x * land::mn() + y) as usize;
                 land.flags[i] &= 0xd6ff;
                 land.growth[i] = 0;
                 if land.flags[i] & 0x200 == 0 {
@@ -2907,7 +2963,7 @@ impl App {
             }
             land::Undone::Refund(r) => {
                 let i = self.terrain.tile_index(x, y);
-                let f = land.flags[(x * land::N + y) as usize];
+                let f = land.flags[(x * land::mn() + y) as usize];
                 if f & land::flag::PATH == 0 {
                     self.terrain.path_kind[i] = 0;
                 }
@@ -2972,6 +3028,10 @@ impl App {
         let Some(mut clear) = land.fits(tx, ty, size, kind, theme) else {
             return self.show_toast(tr("STR_TOAST_NO_ROOM"));
         };
+        // "Fix original bugs" (docs/FIXES.md 2): a new lot never goes on top of a standing one (the original charged again)
+        if existing.is_none() && crate::enhanced::fix_bugs() && land.covers_object(tx, ty, size) {
+            return self.show_toast(tr("STR_TOAST_NO_ROOM"));
+        }
         if kind == 0 {
             clear /= 2;
         }
@@ -3060,6 +3120,10 @@ impl App {
         if self.land.is_some() {
             return;
         }
+        // a course without land (the demo course, a course file) is played at the original's size, or at its own edge when
+        // it is a square larger than that (a course saved from a larger course size)
+        let (w, h) = (self.terrain.w, self.terrain.h);
+        sg_core::mapsize::set(if w == h && w > sg_core::mapsize::ORIGINAL { w } else { sg_core::mapsize::ORIGINAL });
         let mut land = Land::from_terrain(&self.terrain, self.exe_theme());
         if self.terrain.clubhouse_x >= 0 {
             let (a, b) = (self.terrain.clubhouse_x - 2, self.terrain.clubhouse_y - 2);
@@ -3068,8 +3132,8 @@ impl App {
             for r in 0..4 {
                 for c in 0..4 {
                     let (ta, tb) = (a + r, b + c);
-                    if (0..land::N).contains(&ta) && (0..land::N).contains(&tb) {
-                        let i = (ta * land::N + tb) as usize;
+                    if (0..land::mn()).contains(&ta) && (0..land::mn()).contains(&tb) {
+                        let i = (ta * land::mn() + tb) as usize;
                         land.flags[i] |= land::flag::FOOTPRINT;
                         land.var[i] = 0;
                     }
@@ -3256,6 +3320,30 @@ pub fn pitch_for(w: f32, h: f32) -> f64 {
     }
 }
 
+/// SG_TICK_BENCH: the simulation steps' times, (steps, total seconds, slowest), printed by `tick_bench_report`.
+static TICK_BENCH: std::sync::Mutex<(u64, f64, f64)> = std::sync::Mutex::new((0, 0.0, 0.0));
+
+fn tick_bench_add(dt: f64) {
+    if let Ok(mut b) = TICK_BENCH.lock() {
+        b.0 += 1;
+        b.1 += dt;
+        b.2 = b.2.max(dt);
+    }
+}
+
+/// Prints the simulation steps' mean and slowest time (SG_TICK_BENCH set; for measuring a course size's cost).
+pub fn tick_bench_report(app: &App) {
+    if std::env::var_os("SG_TICK_BENCH").is_none() {
+        return;
+    }
+    let (n, total, max) = TICK_BENCH.lock().map(|b| *b).unwrap_or_default();
+    let playing = app.club.g.iter().take(golf::SLOTS).filter(|g| g.hole > 0).count();
+    let (size, mean, max, holes) = (sg_core::course::n(), total * 1000.0 / n.max(1) as f64, max * 1000.0, app.club.next_hole - 1);
+    println!(
+        "tick bench: map {size}x{size}, {n} steps, {mean:.3} ms a step, slowest {max:.2} ms, {playing} golfers on the course, {holes} holes"
+    );
+}
+
 /// Milliseconds from the system clock, wrapped to 32 bits like the Windows tick count.
 pub fn clock_ms() -> u32 {
     (miniquad::date::now() * 1000.0) as u64 as u32
@@ -3289,9 +3377,9 @@ impl App {
         self.employees.clear();
         self.staff_tiles = TileState::new(self.terrain.w, self.terrain.h);
         if let Some(l) = &self.land {
-            for a in 0..land::N {
-                for b in 0..land::N {
-                    if l.flags[(a * land::N + b) as usize] & land::flag::CREEK != 0 {
+            for a in 0..land::mn() {
+                for b in 0..land::mn() {
+                    if l.flags[(a * land::mn() + b) as usize] & land::flag::CREEK != 0 {
                         let i = (b * self.terrain.w + a) as usize;
                         self.staff_tiles.flags[i] |= staff::SEEDS_WEEDS;
                     }
@@ -3316,7 +3404,7 @@ impl App {
     pub fn hire_employee(&mut self, kind: usize, skilled: bool) -> bool {
         // the club's employee limit (the original's 20; the Hardcore and Higher staff limits extras change it)
         let hired = self.employees.iter().filter(|e| e.active && (-5..=-2).contains(&e.job)).count();
-        if hired >= self.club.extras.staff_limit() {
+        if hired >= crate::panels_ui::max_employees(self.club.extras.staff_limit()) {
             return false;
         }
         if !self.econ.hire(kind) {
@@ -3682,9 +3770,9 @@ impl App {
         let noise = self.noise.clone();
         let field = |x: i32, y: i32| noise.field(x, y);
         let mut draws: Vec<(i32, i32, sg_core::decor::Draw)> = Vec::new();
-        for a in 0..land::N {
-            for b in 0..land::N {
-                let i = (a * land::N + b) as usize;
+        for a in 0..land::mn() {
+            for b in 0..land::mn() {
+                let i = (a * land::mn() + b) as usize;
                 // nothing stands on land outside the property (the generator's benches round a landmark beyond the border)
                 if land.ty[i] == land::T_OUT {
                     continue;
@@ -3695,10 +3783,10 @@ impl App {
                     let (mut path, mut dry, mut water_path) = (0u8, 0u8, false);
                     for k in 0..4 {
                         let (na, nb) = (a + sg_core::geom::DX[2 * k], b + sg_core::geom::DY[2 * k]);
-                        if !(0..land::N).contains(&na) || !(0..land::N).contains(&nb) {
+                        if !(0..land::mn()).contains(&na) || !(0..land::mn()).contains(&nb) {
                             continue;
                         }
-                        let j = (na * land::N + nb) as usize;
+                        let j = (na * land::mn() + nb) as usize;
                         if land.flags[j] & 0x20 != 0 {
                             path |= 1 << k;
                             if land.ty[j] == land::T_WATER {
@@ -3726,8 +3814,8 @@ impl App {
                 } else if f & 0x1000 != 0 && land.ty[i] != land::T_OUT {
                     let course = &self.course;
                     let bed = |a: i32, b: i32| {
-                        let j = (a * land::N + b) as usize;
-                        ((0..land::N).contains(&a) && (0..land::N).contains(&b) && land.flags[j] & 0x1000 != 0)
+                        let j = (a * land::mn() + b) as usize;
+                        ((0..land::mn()).contains(&a) && (0..land::mn()).contains(&b) && land.flags[j] & 0x1000 != 0)
                             .then(|| (land.var[j], course.level_table.get(j).copied().unwrap_or(0)))
                     };
                     let weedy = course.flags.get(i).is_some_and(|f| f & sg_core::course::f::WEED != 0);
@@ -3765,7 +3853,9 @@ impl App {
                 // the range is drawn tile by tile (0x463180 case 10): shop, platforms, fences, flags on its target greens
                 let green = |i: i32, j: i32| {
                     let (ta, tb) = (o.a + i, o.b + j);
-                    (0..land::N).contains(&ta) && (0..land::N).contains(&tb) && land.ty[(ta * land::N + tb) as usize] == land::T_GREEN
+                    (0..land::mn()).contains(&ta)
+                        && (0..land::mn()).contains(&tb)
+                        && land.ty[(ta * land::mn() + tb) as usize] == land::T_GREEN
                 };
                 for pc in sg_core::objects::driving_range(level, theme, &green) {
                     let Some(body) = self.sprite_for(&format!("{}.flc", pc.file), false, None) else { continue };

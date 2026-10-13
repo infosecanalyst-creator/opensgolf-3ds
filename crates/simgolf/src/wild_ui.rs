@@ -184,12 +184,12 @@ impl App {
         }
         // water effects
         let depth = &self.water_depth;
-        if depth.len() == (sg_core::course::N * sg_core::course::N) as usize {
+        if depth.len() == (sg_core::course::n() * sg_core::course::n()) as usize {
             let water = |a: i32, b: i32| inside(a, b) && self.course.ty[idx(a, b)] == sg_core::course::t::WATER;
             let wpal = format!("Water/{}.pcx", WATER_PALS[theme]);
             let mut items: Vec<(i32, i32, String, i32, i32, bool)> = Vec::new();
-            for a in 0..sg_core::course::N {
-                for b in 0..sg_core::course::N {
+            for a in 0..sg_core::course::n() {
+                for b in 0..sg_core::course::n() {
                     let i = idx(a, b);
                     if depth[i] == 255 {
                         continue;
@@ -264,8 +264,8 @@ impl App {
                 1
             };
             let k = ez / z as f32;
-            for a in 0..sg_core::course::N {
-                for b in 0..sg_core::course::N {
+            for a in 0..sg_core::course::n() {
+                for b in 0..sg_core::course::n() {
                     for f in sg_core::decor::waterfalls(&self.course, a, b, rot, z) {
                         let Some(file) = sg_core::decor::fall_file(f.sprite, theme as u8) else { continue };
                         let body = self.sprite_for(&format!("{file}.flc"), false, Some(&wpal));
@@ -329,9 +329,15 @@ impl App {
 
     /// The screen point of a tile's centre while the tile is on the screen (0x42f940: up to 64 pixels past the sides, 42
     /// past the top and bottom).
+    /// The port's window may show more than the 800 x 600 screen (a wider or taller window shows more of the course), so the
+    /// test takes the window's visible area, never less than the 800 x 600: without that the bank rocks, glints and flower
+    /// bed colours were missing towards the sides of a wide window (docs/FIXES.md 6).
     pub(crate) fn tile_on_screen(&self, x: i32, y: i32) -> Option<(f32, f32)> {
         let (wx, wz) = self.terrain.tile_centre(x, y);
-        self.screen_of_world(wx, wz).filter(|&(sx, sy)| (-64.0..864.0).contains(&sx) && (-42.0..642.0).contains(&sy))
+        let v = self.view;
+        let (l, t) = ((-v.ox / v.scale).min(0.0), (-v.oy / v.scale).min(0.0));
+        let (r, b) = (((self.draw_w - v.ox) / v.scale).max(800.0), ((self.draw_h - v.oy) / v.scale).max(600.0));
+        self.screen_of_world(wx, wz).filter(|&(sx, sy)| (l - 64.0..r + 64.0).contains(&sx) && (t - 42.0..b + 42.0).contains(&sy))
     }
 
     /// The rocks on the water banks (sg_core::decor::bank_rocks), cuts of cliffs01.pcx stood upright at their points beside
@@ -357,8 +363,8 @@ impl App {
         let (fx, fz) = (mv[2], mv[10]);
         let down = -(mv[1] * fx + mv[9] * fz);
         let key_per_down = if down.abs() > 1e-6 { (fx * fx + fz * fz) / down } else { 0.0 };
-        for a in 0..sg_core::course::N {
-            for b in 0..sg_core::course::N {
+        for a in 0..sg_core::course::n() {
+            for b in 0..sg_core::course::n() {
                 let i = idx(a, b);
                 if self.course.ty[i] != sg_core::course::t::WATER || self.course.walls[i] == 0 || self.tile_on_screen(a, b).is_none() {
                     continue;

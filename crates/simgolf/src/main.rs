@@ -3,7 +3,7 @@
 //!   opensgolf --game "<dir>/Program_Files_(ENGLISH)" [--theme parkland|links|desert|tropical] [--seed N] [--size WxH] [--zoom Z]
 //!           [--rot DEG] [--center TX,TY] [--time SECONDS] [--follow] [--png out.png] [--golfer NAME] [--sandbox] [--cash N]
 //!           [--screen menu|property|play|report] [--course FILE] [--save FILE] [--edit SPEC] [--panel N] [--mute] [--sound-log]
-//!           [--hd | --classic] [--hd-pack DIR]
+//!           [--hd | --classic] [--hd-pack DIR] [--course-size N]
 //!
 //! Keys: arrows/WASD pan, Q/E rotate, +/- or mouse wheel zoom, 1-4 theme, R new demo course, P toggle scenery, F follow the golfer,
 //! F6 screenshot, F1-F10 reports, M music, N mute, H open the new hole, Shift+H advisor, Tab edit mode, Esc menu. Left-drag pans.
@@ -98,6 +98,8 @@ struct Options {
     mute: bool,
     sound_log: bool,
     sandbox: bool,
+    /// --course-size N: the map edge in tiles of a new game (sg_core::mapsize; default the original's 50).
+    course_size: i32,
     screen: Option<String>,
     cash: Option<f64>,
     /// Test hook: the extras a new game starts with (sg_core::extras bits), not saved to the settings.
@@ -130,7 +132,7 @@ struct Options {
 }
 
 const USAGE: &str = "usage: opensgolf [--game DIR] [--theme T] [--seed N] [--size WxH] [--zoom Z] [--rot DEG] [--center TX,TY] [--png FILE] \
-[--time S] [--follow] [--golfer NAME] [--sandbox] [--cash N] [--difficulty 0-3] [--screen menu|property|play|report] [--course FILE] [--save FILE] \
+[--time S] [--follow] [--golfer NAME] [--sandbox] [--course-size N] [--cash N] [--difficulty 0-3] [--screen menu|property|play|report] [--course FILE] [--save FILE] \
 [--edit SPEC] [--panel N] [--mute] [--sound-log] [--clock MS] [--property N|NAME] [--hd | --classic] [--hd-pack DIR] \
 [--enhanced | --classic-render] [--fx] [--fx-set LIST] \
 [--lang CODE] [--lang-file FILE] [--base original|opensgolf-free|ID] [--scenario ID]";
@@ -168,6 +170,7 @@ fn parse_args() -> Options {
         mute: false,
         sound_log: false,
         sandbox: false,
+        course_size: sg_core::mapsize::ORIGINAL,
         screen: None,
         cash: None,
         extras: None,
@@ -228,6 +231,7 @@ fn parse_args() -> Options {
             "--perf" => perf::enable(5.0), // the performance log (perf.rs)
             "--sound-log" => o.sound_log = true,
             "--sandbox" => o.sandbox = true,
+            "--course-size" => o.course_size = sg_core::mapsize::valid(next().parse().unwrap_or(0)),
             "--screen" => o.screen = Some(next()),
             "--cash" => o.cash = next().parse().ok(),     // test hook: starting cash
             "--extras" => o.extras = next().parse().ok(), // test hook: the extras' bits for a new game (extras_ui)
@@ -345,7 +349,13 @@ fn load_art(app: &mut App, g: &mut Gfx) -> bool {
     for (t, f) in ["parkland", "desert", "tropical", "links"].iter().enumerate() {
         app.tool_tiles[t] = ui::load_pcx(g, &app.game_path(&format!("Data/{f}.pcx")), true, None).unwrap_or_default();
     }
-    app.cliffs = ui::load_pcx(g, &app.game_path("cliffs01.pcx"), true, None).unwrap_or_default();
+    // the bank rocks: in HD with the classic picture's key (hd::load_pcx_classic_key, docs/FIXES.md 1)
+    let cliffs = app.game_path("cliffs01.pcx");
+    app.cliffs = crate::hd::active()
+        .then(|| crate::hd::load_pcx_classic_key(g, &cliffs))
+        .flatten()
+        .or_else(|| ui::load_pcx(g, &cliffs, true, None))
+        .unwrap_or_default();
     app.ui_ok = ok;
     app.art = crate::screens_ui::Art::load(g, app);
     app.register_portraits(g);
@@ -876,6 +886,7 @@ impl Stage {
         app.mute = o.mute;
         app.sound_log = o.sound_log;
         app.econ.sandbox = o.sandbox;
+        app.course_size = o.course_size;
         if let Some(d) = o.difficulty {
             app.difficulty = d;
         }
@@ -988,6 +999,7 @@ impl Stage {
                 eprintln!("error: unknown property {name}");
                 std::process::exit(1)
             };
+            app.course_size = o.course_size;
             app.deal_offer(o.sandbox);
             if !o.sandbox {
                 // the chooser only sells what the starting money covers: move the property into a cheap slot (slot 0 is
@@ -1430,6 +1442,13 @@ impl Stage {
             return;
         }
         if app.screen == Screen::Difficulty {
+            if hit == render::COURSE_SIZE_HIT {
+                if app.course_size_choosable() {
+                    app.next_course_size();
+                    app.ui_sound(0x18);
+                }
+                return;
+            }
             if hit == 100 || hit < 0 {
                 // the back button, or a click on nothing, goes back (0x43a400 returns -1)
                 app.screen = Screen::Menu;
@@ -1594,6 +1613,9 @@ impl Stage {
         }
         match k {
             KeyCode::Escape if app.pstate.hire_open => app.pstate.hire_open = false,
+            // the original's Esc opened the pause menu over an open golfer card; "Fix original bugs" closes the card
+            // (docs/FIXES.md 7)
+            KeyCode::Escape if app.card.is_some() && enhanced::fix_bugs() => app.card = None,
             KeyCode::Escape => {
                 if app.ui_ok {
                     // the pause menu: System Functions over the stopped game
@@ -2133,10 +2155,14 @@ impl EventHandler for Stage {
             }
         }
         if app.dirty {
+            let t0 = now();
             app.rebuild_batches(&mut self.g);
             app.refresh_trees();
             app.dirty = false;
             app.report_course(false);
+            if std::env::var_os("SG_TICK_BENCH").is_some() {
+                println!("rebuild: {:.1} ms for a {}x{} map", (now() - t0) * 1000.0, app.terrain.w, app.terrain.h);
+            }
         }
         if app.econ.version != self.shown_version {
             self.shown_version = app.econ.version;
@@ -2239,6 +2265,7 @@ impl EventHandler for Stage {
                 if let Some(n) = std::env::var("SG_FX_BENCH").ok().and_then(|v| v.parse::<u32>().ok()) {
                     self.bench(n.max(1));
                 }
+                app::tick_bench_report(&self.app);
                 // let the first frame settle
                 if !self.screenshot(&out) {
                     eprintln!("could not write {}", out.display());

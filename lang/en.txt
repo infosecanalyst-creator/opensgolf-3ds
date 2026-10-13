@@ -30,6 +30,15 @@ STR_DIFFICULTY_MODERATE                 :Moderate
 STR_DIFFICULTY_DIFFICULT                :Difficult
 STR_DIFFICULTY_IMPOSSIBLE               :Impossible
 
+# The course size choice on Select Difficulty (the port's own: docs/PLAYING.md, "Course size"). {SIZE} is a size name below,
+# {TILES} the map's edge in tiles, {YARDS} the edge in yards (25 a tile)
+STR_COURSE_SIZE                         :Course size: {SIZE}
+STR_COURSE_SIZE_DETAIL                  :{TILES} x {TILES} tiles, {YARDS} yards a side. Click to change.
+STR_COURSE_SIZE_ORIGINAL                :Original
+STR_COURSE_SIZE_LARGE                   :Large
+STR_COURSE_SIZE_HUGE                    :Huge
+STR_COURSE_SIZE_GIANT                   :Giant
+
 ########################################################################################################################
 # Title screens: Load Previous Game, Select Championship Course, Pick A Pro, Select a Theme Pack
 ########################################################################################################################
@@ -1308,6 +1317,7 @@ STR_ENHANCED_MSAA                       : Anti-aliasing
 STR_ENHANCED_SMOOTH_CAMERA              : Smooth camera: zoom, turns and panning
 STR_ENHANCED_SMOOTH_MOTION              : Smooth motion between game ticks
 STR_ENHANCED_PHOTO_MODE                 : Photo mode (the C key or the camera button)
+STR_ENHANCED_FIX_BUGS                   : Fix the original game's bugs (Classic too)
 STR_ENHANCED_FX_SCALER                  : Pixel-art scaling of sprites and pictures
 STR_ENHANCED_FX_SCALER_MODE             : Pixel-art scaler: {VALUE}
 STR_ENHANCED_FX_WATER                   : Animated water

@@ -348,6 +348,11 @@ const ELEVATION_UNDO: (Hit, Cut, Cut, f32, f32) = (hit(267, 561, 12), (0.0, 450.
 
 // ---- People: the employee panel ------------------------------------------------------------------------------------------------
 
+/// The most employees the club may have: the extras' limit (20 in the original); a larger course size allows more in
+/// proportion to its area (limit x n^2 / 2500), at most sg_core::extras::MAX_STAFF.
+pub(crate) fn max_employees(limit: usize) -> usize {
+    (sg_core::mapsize::scale_area(limit as i32).max(0) as usize).clamp(limit, limit.max(sg_core::extras::MAX_STAFF))
+}
 const HIRE: (Hit, f32, f32) = (hit(270, 558, 16), 254.0, 542.0);
 const HIRE_HOVER: Cut = (0.0, 500.0, 42.0, 42.0);
 const HIRE_DISABLED: Cut = (100.0, 500.0, 42.0, 42.0);
@@ -698,8 +703,12 @@ impl App {
     fn lot_buildable(&self, i: usize) -> bool {
         let kind = 6 + i as i32;
         let level = self.lot_level(kind);
+        // EXACT (DECODE_PANELS, Building panel): the exe's picture tests id < unlock - level, so an upgrade looked locked
+        // until the next kind unlocked although its click (0x434140) only tests unlock <= id; "Fix original bugs"
+        // (docs/FIXES.md 8) offers the upgrade as soon as the building itself is unlocked
+        let held = if crate::enhanced::fix_bugs() { 0 } else { level };
         self.build_available(kind as usize)
-            && kind + level < self.unlocked()
+            && kind + held < self.unlocked()
             && level < 2
             && (level == 0 || economy::rank(self.hole_numbers.len()) >= 2)
     }
@@ -1240,7 +1249,7 @@ impl App {
                 }
             }
             // the club's employee limit (20 in the original; sg_core::extras changes it)
-            if n >= self.club.extras.staff_limit() {
+            if n >= max_employees(self.club.extras.staff_limit()) {
                 blit(g, s, im, HIRE_DISABLED, HIRE.1, HIRE.2);
             } else if h == 0 {
                 blit(g, s, im, HIRE_HOVER, HIRE.1, HIRE.2);
@@ -1582,7 +1591,7 @@ impl App {
         let sel = self.pstate.emp_sel;
         match h {
             0 => {
-                if rows.len() >= self.club.extras.staff_limit() {
+                if rows.len() >= max_employees(self.club.extras.staff_limit()) {
                     self.ui_sound(0x18);
                 } else {
                     self.pstate.hire_open = true;
