@@ -254,8 +254,11 @@ public class MainActivity extends Activity {
 
     private QuadSurface view;
 
+    // OpenSGolf: the game's library by its own name. cargo-quad-apk puts the last part of the package name here
+    // (org.opensgolf.game: "game"), but the library is named after the crate (libopensgolf.so), so the app closed at
+    // once with "dlopen failed: library libgame.so not found" (README-OPENSGOLF.md).
     static {
-        System.loadLibrary("LIBRARY_NAME");
+        System.loadLibrary("opensgolf");
     }
 
     @Override

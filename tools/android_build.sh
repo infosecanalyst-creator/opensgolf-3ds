@@ -66,5 +66,18 @@ if ! cargo quad-apk build $rel -p opensgolf; then
 fi
 mkdir -p "$out"
 apk=$(find "target/android-artifacts/$profile/apk" -name '*.apk' | head -1)
+# the library the activity loads must be the one packed: cargo-quad-apk names the first after the package name's last part,
+# the second after the crate (vendor/miniquad/README-OPENSGOLF.md); a mismatch closes the app at start on every phone
+activity=$(find "target/android-artifacts/$profile" -name MainActivity.java | head -1)
+lib=$(sed -n 's/.*System.loadLibrary("\([^"]*\)").*/\1/p' "${activity:-/dev/null}" | head -1)
+if command -v unzip >/dev/null; then files=$(unzip -Z1 "$apk"); else files=$(jar tf "$apk"); fi
+for t in $targets; do
+    case "$t" in aarch64*) abi=arm64-v8a ;; armv7*) abi=armeabi-v7a ;; x86_64*) abi=x86_64 ;; *) abi=x86 ;; esac
+    if ! echo "$files" | grep -qx "lib/$abi/lib$lib.so"; then
+        echo "error: the app loads lib$lib.so, which is not in the APK for $abi:" >&2
+        echo "$files" | grep "^lib/" >&2
+        exit 1
+    fi
+done
 cp "$apk" "$out/opensgolf-$profile.apk"
 echo "built $out/opensgolf-$profile.apk"

@@ -2420,6 +2420,11 @@ STR_GAME_FILES_ASK_RESTART              :OpenSGolf starts again to change its gr
 STR_GAME_FILES_GO_ON                    :Start again now
 STR_GAME_FILES_NOT_NOW                  :Not now
 STR_GAME_FILES_RESTART                  :Your choice is saved. Start OpenSGolf again to use it.
+# Android: shown at start when the last run crashed; the report can be copied and sent
+STR_CRASH_LAST                          :Sorry, OpenSGolf closed unexpectedly last time. A report of what went wrong is ready: copy it and send it to the developers (an issue on OpenSGolf's GitHub page, or a message) to help fix it.
+STR_CRASH_COPY                          :Copy the report
+STR_CRASH_CLOSE                         :Close
+STR_CRASH_COPIED                        :The report is copied. Paste it into an issue on OpenSGolf's GitHub page or a message to the developers. Thank you!
 
 # Preferences > Content > Find more: the content index (docs/CONTENT_INDEX.md)
 STR_INDEX_TITLE                         :Find more content

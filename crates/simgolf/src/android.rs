@@ -13,6 +13,10 @@
 //!   [`init`] passes both to the system log under the tag "OpenSGolf" (`adb logcat -s OpenSGolf`), and a panic is written
 //!   there and to `crash.txt` in the external files folder (`Android/data/org.opensgolf.game/files/crash.txt`), which a
 //!   player can send without any developer tools (docs/INSTALL.md, "Android").
+//! * Since Android 11 a file manager no longer shows that folder, so the panic is also kept in the internal data folder
+//!   (`last_crash.txt`), and the next start shows it in a box with a button that copies it ([`take_crash_report`],
+//!   App::show_crash_report). A crash in native code (no panic) is found there through Android's record of how the
+//!   app's last run ended (`ApplicationExitInfo`, Android 11 and newer).
 //!
 //! Everything else here is plain JNI calls on miniquad's activity (miniquad's own `quad_native` Java glue).
 
@@ -73,6 +77,9 @@ fn redirect_output() {
 /// Where a panic is written for the player to send: the external files folder, which a file manager or a USB cable shows.
 static CRASH_FILE: OnceLock<Option<PathBuf>> = OnceLock::new();
 
+/// The panic kept for the next start to show (the internal data folder, which needs no file manager).
+static PENDING_FILE: OnceLock<PathBuf> = OnceLock::new();
+
 /// Logs a panic (message, place and backtrace) and writes it to `crash.txt`, then closes the app: a panic on the game's
 /// thread would otherwise leave a frozen picture. A panic in the download thread (net.rs) only ends the download.
 fn install_panic_hook() {
@@ -86,6 +93,9 @@ fn install_panic_hook() {
             std::backtrace::Backtrace::force_capture()
         );
         log(LOG_FATAL, &text);
+        if let Some(path) = PENDING_FILE.get() {
+            let _ = std::fs::write(path, &text);
+        }
         if let Some(Some(path)) = CRASH_FILE.get() {
             match std::fs::write(path, &text) {
                 Ok(()) => log(LOG_FATAL, &format!("written to {}", path.display())),
@@ -177,6 +187,7 @@ pub fn init() {
     install_panic_hook();
     let dirs = dirs();
     let _ = CRASH_FILE.set(dirs.external.as_ref().map(|d| d.join("crash.txt")));
+    let _ = PENDING_FILE.set(files_dir().join("last_crash.txt"));
     println!("OpenSGolf {} starting: data folder {:?}, external folder {:?}", env!("CARGO_PKG_VERSION"), dirs.files, dirs.external);
     unsafe {
         let activity = android::ACTIVITY;
@@ -189,4 +200,131 @@ pub fn init() {
             ndk_context::initialize_android_context(vm as *mut _, activity as *mut _);
         }
     }
+}
+
+extern "C" {
+    fn __system_property_get(name: *const c_char, value: *mut c_char) -> c_int;
+}
+
+/// A system property (`ro.build.version.sdk` ...), empty when not set.
+fn property(name: &CStr) -> String {
+    // PROP_VALUE_MAX is 92
+    let mut buf = [0 as c_char; 96];
+    let n = unsafe { __system_property_get(name.as_ptr(), buf.as_mut_ptr()) };
+    if n <= 0 {
+        return String::new();
+    }
+    unsafe { CStr::from_ptr(buf.as_ptr()) }.to_string_lossy().into_owned()
+}
+
+/// The phone, for a report: maker, model, chip and Android version.
+fn device() -> String {
+    format!(
+        "{} {} ({}), Android {} (API {}), {}",
+        property(c"ro.product.manufacturer"),
+        property(c"ro.product.model"),
+        property(c"ro.soc.model"),
+        property(c"ro.build.version.release"),
+        property(c"ro.build.version.sdk"),
+        std::env::consts::ARCH
+    )
+}
+
+/// How the app's last run ended, when that was a crash (Android 11 and newer): Android's `ApplicationExitInfo` of the
+/// last exit, as (its time in ms, a few lines for the report). None on older Android or after a normal end.
+fn last_exit_crash() -> Option<(i64, String)> {
+    const REASON_CRASH: i32 = 4;
+    const REASON_CRASH_NATIVE: i32 = 5;
+    if property(c"ro.build.version.sdk").parse::<i32>().unwrap_or(0) < 30 {
+        return None;
+    }
+    unsafe {
+        let activity = android::ACTIVITY;
+        if activity.is_null() {
+            return None;
+        }
+        let env = android::attach_jni_env();
+        let failed = || {
+            if (**env).ExceptionCheck.unwrap()(env) != 0 {
+                (**env).ExceptionClear.unwrap()(env);
+                true
+            } else {
+                false
+            }
+        };
+        let name = (**env).NewStringUTF.unwrap()(env, c"activity".as_ptr());
+        let am = miniquad::call_object_method!(env, activity, "getSystemService", "(Ljava/lang/String;)Ljava/lang/Object;", name);
+        if failed() || am.is_null() {
+            return None;
+        }
+        let null: ndk_sys::jobject = std::ptr::null_mut();
+        let list = miniquad::call_object_method!(
+            env,
+            am,
+            "getHistoricalProcessExitReasons",
+            "(Ljava/lang/String;II)Ljava/util/List;",
+            null,
+            0 as c_int,
+            1 as c_int
+        );
+        if failed() || list.is_null() {
+            return None;
+        }
+        let n = miniquad::call_int_method!(env, list, "size", "()I");
+        if failed() || n < 1 {
+            return None;
+        }
+        let info = miniquad::call_object_method!(env, list, "get", "(I)Ljava/lang/Object;", 0 as c_int);
+        if failed() || info.is_null() {
+            return None;
+        }
+        let reason = miniquad::call_int_method!(env, info, "getReason", "()I");
+        let status = miniquad::call_int_method!(env, info, "getStatus", "()I");
+        let time: i64 = miniquad::call_method!(CallLongMethod, env, info, "getTimestamp", "()J");
+        if failed() || (reason != REASON_CRASH && reason != REASON_CRASH_NATIVE) {
+            return None;
+        }
+        let jdesc = miniquad::call_object_method!(env, info, "getDescription", "()Ljava/lang/String;");
+        let desc = if failed() || jdesc.is_null() {
+            String::new()
+        } else {
+            let chars = (**env).GetStringUTFChars.unwrap()(env, jdesc, std::ptr::null_mut());
+            let d = CStr::from_ptr(chars).to_string_lossy().into_owned();
+            (**env).ReleaseStringUTFChars.unwrap()(env, jdesc, chars);
+            d
+        };
+        let kind = if reason == REASON_CRASH_NATIVE { format!("native crash (signal {status})") } else { "crash".to_string() };
+        Some((
+            time,
+            format!(
+                "last run ended by a {kind} at {time} ms (Unix time){}",
+                if desc.is_empty() { String::new() } else { format!(": {desc}") }
+            ),
+        ))
+    }
+}
+
+/// The report of a crash in the last run, once: the panic the hook kept (taken, so it is shown once), or else Android's
+/// record of a crash without a panic (shown once per crash, by its time in settings.json). None after a normal end.
+pub fn take_crash_report() -> Option<String> {
+    let exit = last_exit_crash().filter(|(time, _)| crate::gamefiles::take_once("last_crash_seen", &time.to_string()));
+    let panic = PENDING_FILE.get().and_then(|p| {
+        let text = std::fs::read_to_string(p).ok();
+        let _ = std::fs::remove_file(p);
+        text
+    });
+    if panic.is_none() && exit.is_none() {
+        return None;
+    }
+    let mut text = format!("OpenSGolf {} on {}\n", env!("CARGO_PKG_VERSION"), device());
+    if let Some((_, e)) = exit {
+        text += &e;
+        text.push('\n');
+    }
+    if let Some(p) = panic {
+        text.push('\n');
+        text += &p;
+    }
+    println!("crash report from the last run:\n{text}");
+    Some(text)
 }
