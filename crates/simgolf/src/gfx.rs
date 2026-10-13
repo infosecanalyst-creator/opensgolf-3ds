@@ -242,6 +242,8 @@ pub struct Gfx {
     batch_uniforms: Option<Uniforms>,
     /// The Enhanced graphics effects' pipelines (fx.rs), made on first use; None in Classic.
     pub fx: Option<Box<crate::fx::FxGpu>>,
+    /// The batches drawn since the renderer was last used for anything else, sent to the GPU together (`Deferred`).
+    queue: std::rc::Rc<std::cell::RefCell<Queue>>,
 }
 
 fn seq_indices(n: usize) -> Vec<u32> {
@@ -250,7 +252,9 @@ fn seq_indices(n: usize) -> Vec<u32> {
 
 impl Gfx {
     pub fn new() -> Gfx {
-        let mut ctx = window::new_rendering_backend();
+        let ctx = window::new_rendering_backend();
+        let queue = std::rc::Rc::new(std::cell::RefCell::new(Queue::default()));
+        let mut ctx: Box<dyn RenderingBackend> = Box::new(Deferred::new(ctx, queue.clone()));
         let shader = ctx
             .new_shader(
                 ShaderSource::Glsl { vertex: VERTEX, fragment: FRAGMENT },
@@ -353,6 +357,7 @@ impl Gfx {
             batch_mode: Mode::Flat,
             batch_uniforms: None,
             fx: None,
+            queue,
         }
     }
 
@@ -615,44 +620,262 @@ impl Gfx {
             self.batch.clear();
             return;
         };
-        if self.batch.len() > self.stream_cap {
-            while self.stream_cap < self.batch.len() {
-                self.stream_cap *= 2;
-            }
-            self.ctx.delete_buffer(self.stream_vb);
-            self.ctx.delete_buffer(self.stream_ib);
-            self.stream_vb =
-                self.ctx.new_buffer(BufferType::VertexBuffer, BufferUsage::Stream, BufferSource::empty::<Vert>(self.stream_cap));
-            self.stream_ib =
-                self.ctx.new_buffer(BufferType::IndexBuffer, BufferUsage::Immutable, BufferSource::slice(&seq_indices(self.stream_cap)));
-        }
-        self.ctx.buffer_update(self.stream_vb, BufferSource::slice(&self.batch));
-        // Enhanced graphics only (fx.rs): magnified sprites and interface pictures through the pixel-art scaler
         let sdf = self.is_sdf(tex);
-        let colours = if sdf {
-            crate::fx::TEX_SDF
-        } else if self.is_premul(tex) {
-            crate::fx::TEX_PREMUL
-        } else {
-            crate::fx::TEX_STRAIGHT
-        };
-        let scaled = self.batch_mode == Mode::Flat
-            && tex != self.white
-            && crate::fx::scaler_wanted()
-            && crate::fx::apply_scaler(&mut self.ctx, &mut self.fx, &self.batch, self.stream_vb, self.stream_ib, tex, &u, colours);
-        if !scaled {
-            let p = *self.pipeline(self.batch_mode, tex);
-            self.ctx.apply_pipeline(&p);
-            self.ctx.apply_bindings(&Bindings { vertex_buffers: vec![self.stream_vb], index_buffer: self.stream_ib, images: vec![tex] });
-            if sdf {
-                let edge = batch_scale(&*self.ctx, &self.batch, tex, &u).unwrap_or(1.0);
-                self.ctx.apply_uniforms(UniformsSource::table(&SdfUniforms { u, edge }));
-            } else {
-                self.ctx.apply_uniforms(UniformsSource::table(&u));
+        // Enhanced graphics only (fx.rs): magnified sprites and interface pictures through the pixel-art scaler, drawn at once
+        if self.batch_mode == Mode::Flat && tex != self.white && crate::fx::scaler_wanted() {
+            if self.batch.len() > self.stream_cap {
+                while self.stream_cap < self.batch.len() {
+                    self.stream_cap *= 2;
+                }
+                self.ctx.delete_buffer(self.stream_vb);
+                self.ctx.delete_buffer(self.stream_ib);
+                self.stream_vb =
+                    self.ctx.new_buffer(BufferType::VertexBuffer, BufferUsage::Stream, BufferSource::empty::<Vert>(self.stream_cap));
+                self.stream_ib = self.ctx.new_buffer(
+                    BufferType::IndexBuffer,
+                    BufferUsage::Immutable,
+                    BufferSource::slice(&seq_indices(self.stream_cap)),
+                );
             }
+            let colours = if sdf {
+                crate::fx::TEX_SDF
+            } else if self.is_premul(tex) {
+                crate::fx::TEX_PREMUL
+            } else {
+                crate::fx::TEX_STRAIGHT
+            };
+            if crate::fx::apply_scaler(&mut self.ctx, &mut self.fx, &self.batch, self.stream_vb, self.stream_ib, tex, &u, colours) {
+                // uploaded only once the batch is known to be scaled (the queue has nothing waiting here: the scaler's state
+                // has just drawn it)
+                self.ctx.buffer_update(self.stream_vb, BufferSource::slice(&self.batch));
+                self.ctx.draw(0, self.batch.len() as i32, 1);
+                self.batch.clear();
+                return;
+            }
+            // not scaled after all: queued below like any other batch (the queue has its own buffer)
         }
-        self.ctx.draw(0, self.batch.len() as i32, 1);
+        // every other batch waits in the queue, to go to the GPU with the ones after it in one upload (`Deferred`)
+        let uniforms = if sdf {
+            let edge = batch_scale(&*self.ctx, &self.batch, tex, &u).unwrap_or(1.0);
+            Queued::Sdf(SdfUniforms { u, edge })
+        } else {
+            Queued::Plain(u)
+        };
+        let pipeline = *self.pipeline(self.batch_mode, tex);
+        let mut q = self.queue.borrow_mut();
+        let start = q.verts.len() as i32;
+        q.verts.extend_from_slice(&self.batch);
+        q.items.push(Item { pipeline, tex, uniforms, start, count: self.batch.len() as i32 });
+        drop(q);
         self.batch.clear();
+    }
+}
+
+/// Batches waiting for the GPU: their vertices one after another, and how to draw each.
+#[derive(Default)]
+struct Queue {
+    verts: Vec<Vert>,
+    items: Vec<Item>,
+}
+
+struct Item {
+    pipeline: Pipeline,
+    tex: TextureId,
+    uniforms: Queued,
+    start: i32,
+    count: i32,
+}
+
+enum Queued {
+    Plain(Uniforms),
+    Sdf(SdfUniforms),
+}
+
+/// The renderer the game draws through: miniquad's own, except that the batcher's draws (`Gfx::flush`) wait until the
+/// renderer is next used for anything else, which first sends all of them in one vertex upload and draws them in order.
+///
+/// The draws, their order, states and vertices are exactly those of drawing each batch at once, only from one buffer
+/// instead of rewriting the same small buffer before every draw (hundreds of times a frame on a busy course, one per
+/// sprite). macOS's OpenGL is slow at that (a buffer rewritten while an earlier draw of the frame still needs it is
+/// synchronised or copied by the driver), which grew with every golfer and weed on the course and made the Classic
+/// picture lag; one upload per run of batches keeps the frame's cost flat.
+struct Deferred {
+    inner: Box<dyn RenderingBackend>,
+    queue: std::rc::Rc<std::cell::RefCell<Queue>>,
+    vb: BufferId,
+    ib: BufferId,
+    cap: usize,
+}
+
+impl Deferred {
+    fn new(mut inner: Box<dyn RenderingBackend>, queue: std::rc::Rc<std::cell::RefCell<Queue>>) -> Deferred {
+        let cap = 16384;
+        let vb = inner.new_buffer(BufferType::VertexBuffer, BufferUsage::Stream, BufferSource::empty::<Vert>(cap));
+        let ib = inner.new_buffer(BufferType::IndexBuffer, BufferUsage::Immutable, BufferSource::slice(&seq_indices(cap)));
+        Deferred { inner, queue, vb, ib, cap }
+    }
+
+    /// Draws the waiting batches (before anything else reaches the renderer).
+    fn submit(&mut self) {
+        let mut q = self.queue.borrow_mut();
+        if q.items.is_empty() {
+            return;
+        }
+        let n = q.verts.len();
+        if n > self.cap {
+            while self.cap < n {
+                self.cap *= 2;
+            }
+            self.inner.delete_buffer(self.vb);
+            self.inner.delete_buffer(self.ib);
+            self.vb = self.inner.new_buffer(BufferType::VertexBuffer, BufferUsage::Stream, BufferSource::empty::<Vert>(self.cap));
+            self.ib = self.inner.new_buffer(BufferType::IndexBuffer, BufferUsage::Immutable, BufferSource::slice(&seq_indices(self.cap)));
+        }
+        self.inner.buffer_update(self.vb, BufferSource::slice(&q.verts));
+        for it in q.items.drain(..) {
+            self.inner.apply_pipeline(&it.pipeline);
+            self.inner.apply_bindings(&Bindings { vertex_buffers: vec![self.vb], index_buffer: self.ib, images: vec![it.tex] });
+            match &it.uniforms {
+                Queued::Plain(u) => self.inner.apply_uniforms(UniformsSource::table(u)),
+                Queued::Sdf(u) => self.inner.apply_uniforms(UniformsSource::table(u)),
+            }
+            self.inner.draw(it.start, it.count, 1);
+        }
+        q.verts.clear();
+    }
+}
+
+impl RenderingBackend for Deferred {
+    fn info(&self) -> ContextInfo {
+        self.inner.info()
+    }
+    fn new_shader(&mut self, shader: ShaderSource, meta: ShaderMeta) -> Result<ShaderId, ShaderError> {
+        self.submit();
+        self.inner.new_shader(shader, meta)
+    }
+    fn new_texture(&mut self, access: TextureAccess, data: TextureSource, params: TextureParams) -> TextureId {
+        self.submit();
+        self.inner.new_texture(access, data, params)
+    }
+    fn texture_params(&self, texture: TextureId) -> TextureParams {
+        self.inner.texture_params(texture)
+    }
+    unsafe fn texture_raw_id(&self, texture: TextureId) -> RawId {
+        self.inner.texture_raw_id(texture)
+    }
+    fn texture_set_min_filter(&mut self, texture: TextureId, filter: FilterMode, mipmap_filter: MipmapFilterMode) {
+        self.submit();
+        self.inner.texture_set_min_filter(texture, filter, mipmap_filter)
+    }
+    fn texture_set_mag_filter(&mut self, texture: TextureId, filter: FilterMode) {
+        self.submit();
+        self.inner.texture_set_mag_filter(texture, filter)
+    }
+    fn texture_set_wrap(&mut self, texture: TextureId, wrap_x: TextureWrap, wrap_y: TextureWrap) {
+        self.submit();
+        self.inner.texture_set_wrap(texture, wrap_x, wrap_y)
+    }
+    fn texture_generate_mipmaps(&mut self, texture: TextureId) {
+        self.submit();
+        self.inner.texture_generate_mipmaps(texture)
+    }
+    fn texture_resize(&mut self, texture: TextureId, width: u32, height: u32, bytes: Option<&[u8]>) {
+        self.submit();
+        self.inner.texture_resize(texture, width, height, bytes)
+    }
+    fn texture_read_pixels(&mut self, texture: TextureId, bytes: &mut [u8]) {
+        self.submit();
+        self.inner.texture_read_pixels(texture, bytes)
+    }
+    fn texture_update_part(&mut self, texture: TextureId, x: i32, y: i32, w: i32, h: i32, bytes: &[u8]) {
+        self.submit();
+        self.inner.texture_update_part(texture, x, y, w, h, bytes)
+    }
+    fn new_render_pass_mrt(&mut self, color: &[TextureId], resolve: Option<&[TextureId]>, depth: Option<TextureId>) -> RenderPass {
+        self.submit();
+        self.inner.new_render_pass_mrt(color, resolve, depth)
+    }
+    fn render_pass_color_attachments(&self, render_pass: RenderPass) -> &[TextureId] {
+        self.inner.render_pass_color_attachments(render_pass)
+    }
+    fn delete_render_pass(&mut self, render_pass: RenderPass) {
+        self.submit();
+        self.inner.delete_render_pass(render_pass)
+    }
+    fn new_pipeline(&mut self, layout: &[BufferLayout], attrs: &[VertexAttribute], shader: ShaderId, p: PipelineParams) -> Pipeline {
+        self.submit();
+        self.inner.new_pipeline(layout, attrs, shader, p)
+    }
+    fn apply_pipeline(&mut self, pipeline: &Pipeline) {
+        self.submit();
+        self.inner.apply_pipeline(pipeline)
+    }
+    fn delete_pipeline(&mut self, pipeline: Pipeline) {
+        self.submit();
+        self.inner.delete_pipeline(pipeline)
+    }
+    fn new_buffer(&mut self, type_: BufferType, usage: BufferUsage, data: BufferSource) -> BufferId {
+        self.submit();
+        self.inner.new_buffer(type_, usage, data)
+    }
+    fn buffer_update(&mut self, buffer: BufferId, data: BufferSource) {
+        self.submit();
+        self.inner.buffer_update(buffer, data)
+    }
+    fn buffer_size(&mut self, buffer: BufferId) -> usize {
+        self.inner.buffer_size(buffer)
+    }
+    fn delete_buffer(&mut self, buffer: BufferId) {
+        self.submit();
+        self.inner.delete_buffer(buffer)
+    }
+    fn delete_texture(&mut self, texture: TextureId) {
+        self.submit();
+        self.inner.delete_texture(texture)
+    }
+    fn delete_shader(&mut self, program: ShaderId) {
+        self.submit();
+        self.inner.delete_shader(program)
+    }
+    fn apply_viewport(&mut self, x: i32, y: i32, w: i32, h: i32) {
+        self.submit();
+        self.inner.apply_viewport(x, y, w, h)
+    }
+    fn apply_scissor_rect(&mut self, x: i32, y: i32, w: i32, h: i32) {
+        self.submit();
+        self.inner.apply_scissor_rect(x, y, w, h)
+    }
+    fn apply_bindings_from_slice(&mut self, vertex_buffers: &[BufferId], index_buffer: BufferId, textures: &[TextureId]) {
+        self.submit();
+        self.inner.apply_bindings_from_slice(vertex_buffers, index_buffer, textures)
+    }
+    fn apply_uniforms_from_bytes(&mut self, uniform_ptr: *const u8, size: usize) {
+        self.submit();
+        self.inner.apply_uniforms_from_bytes(uniform_ptr, size)
+    }
+    fn clear(&mut self, color: Option<(f32, f32, f32, f32)>, depth: Option<f32>, stencil: Option<i32>) {
+        self.submit();
+        self.inner.clear(color, depth, stencil)
+    }
+    fn begin_default_pass(&mut self, action: PassAction) {
+        self.submit();
+        self.inner.begin_default_pass(action)
+    }
+    fn begin_pass(&mut self, pass: Option<RenderPass>, action: PassAction) {
+        self.submit();
+        self.inner.begin_pass(pass, action)
+    }
+    fn end_render_pass(&mut self) {
+        self.submit();
+        self.inner.end_render_pass()
+    }
+    fn commit_frame(&mut self) {
+        self.submit();
+        self.inner.commit_frame()
+    }
+    fn draw(&self, base_element: i32, num_elements: i32, num_instances: i32) {
+        // every draw from outside follows an apply_*, which has drawn the queue already
+        self.inner.draw(base_element, num_elements, num_instances)
     }
 }
 
