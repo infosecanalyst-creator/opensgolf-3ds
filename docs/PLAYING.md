@@ -116,7 +116,7 @@ F keys (Shift + Alt + 6 is Shift+F6). A Mac keyboard has no PageUp or Home: **fn
 (turn the view), or use the dock's turn buttons. In the browser a screenshot (Shift+F6), a SimFoto and a great shot's
 photo (F10) are downloaded; saved games and the accomplishment snapshots stay in the browser's storage.
 
-Content packs (mods, docs/MODDING.md): System Functions, Preferences, *Content packs...* lists the installed packs; switch them on or off and order the mods there (Up and Down, or PageUp and PageDown on the picked row). The choices are saved in `settings.json` at once and take effect the next time the game starts. `--screen content` opens the screen for stills.
+Content packs (mods, docs/MODDING.md): System Functions, Preferences, *Content packs...* lists the installed packs; switch them on or off and order the mods there (Up and Down, or PageUp and PageDown on the picked row). The choices are saved in `settings.json` at once and take effect the next time the game starts. `--screen content` opens the screen for stills. *Save profile...* keeps the current choices under a name and *Profiles...* lists the saved ones to load (the choices then take effect at the next start) or delete. A game saved with other packs than the ones in use asks before it loads from *Load Previous Game*: switch to the save's packs (the desktop game starts again on them and loads the save; on Android and in a browser restart or reload, then load it), load it anyway, or not load it (docs/MODDING.md 2).
 
 Scenarios (docs/MODDING.md 5): with a scenario pack installed, *Start New Game* first offers a free game (the original's
 way on: Select Difficulty, then a property) or one of the scenarios, each with its goals; a scenario that names no
@@ -129,6 +129,38 @@ Content screen shows the error. *Find more...* on the Content screen lists the p
 scenario pack (Moderate when it names no difficulty), `--screen scenarios` (from the title) and `--screen goals` or
 `--screen content-index` (with a game) open those screens, `SG_INDEX_DOWNLOAD=N` downloads offer N of the index at once,
 `SG_EXPORT_SCENARIO=1` exports the game as a scenario pack.
+
+## Changing the keys
+
+The port's own (crates/simgolf/src/controls.rs and controls_ui.rs), in the browser and on the desktop alike. With nothing
+changed every key does what it did before.
+
+* **Change keys.** System Functions → Preferences → *Keyboard controls...* → *Change keys...* lists every action of the
+  course screen with its key: the original's (tools, screens, the F keys, the shot shapes while your pro aims) and the
+  port's own (game speed, photo mode, hiding the interface). Click an action, then press its new key, with or without
+  Shift; Esc (or a click) while it waits keeps the old key. Two actions on one key are printed in red and a line says
+  which: only one of them answers (the shot shapes only clash with each other, since they count only while your pro
+  aims). *Reset to defaults* puts every key back. The digits (holes 1 to 18) and Esc cannot be given to an action. The
+  keys are saved at once under `"controls"` in `settings.json` (only the ones that differ, e.g.
+  `"controls": {"wasd": false, "keys": {"water": "Shift+Q", "zoom_in": "G"}}`; an action set to `""` has no key) and the
+  *Keyboard controls* screen prints the keys in use.
+* **WASD camera** (off by default). W, S and D are the original's water, sand and (while your pro aims) draw keys, so
+  WASD scrolling is a choice on the Change keys screen: with it on, **w a s d** scroll as the arrow keys do (the arrows
+  still work), the water tool moves to **q** and the sand tool to **k**; while your pro aims, s and d stay the straight
+  shot and the draw.
+* **Middle-button drag** (always on) drags the course whatever tool is held, as a left drag does with no tool.
+* **u** hides the whole interface (dock, panels, messages, the money and ratings) during normal play, for a clear view of
+  the course; a small note in the bottom left corner says which key brings it back. Clicks then go to the course. Photo
+  mode (Enhanced graphics) has its own view and is not affected.
+* **Frame rate.** Enhanced graphics settings → *Display* has *Frame rate cap* (30, 60, 120, 144, 240 a second or
+  uncapped, the default) and *V-sync* (on by default); both count with Enhanced graphics off too. Only how often the
+  screen is drawn changes: the game itself always runs on its 87 ms ticks. On the desktop the cap waits out the rest of
+  each frame; v-sync takes effect at the next start (macOS and Android always pace to the display). In a browser the page
+  skips animation frames to keep under the cap, and v-sync cannot be turned off: browsers always draw on the display's
+  refresh.
+
+Test hooks: `SG_PRESS="u;Shift+Q;..."` presses keys (the names `settings.json` uses) after a scripted still's first frame,
+after `SG_CLICK`; letters and Space also type their character.
 
 ## Touch (phones and tablets)
 

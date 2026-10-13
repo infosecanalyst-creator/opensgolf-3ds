@@ -74,6 +74,20 @@ The player's choices (which packs are on, the mods' order, the base set and the 
 starts**: the packs are mounted once, before any art, sound or data is read, so a game in progress never changes under the
 player. A mod that was never switched on is off: new packs start switched off and go to the end of the order.
 
+**Profiles** (**done**; crates/simgolf/src/content_profiles.rs): *Save profile...* on the Content screen keeps the
+current choices (base set, mods with their order and switches, translation) under a name, under `"content_profiles"` in
+`settings.json`; *Profiles...* lists them, and *Load* makes a profile's choices the saved ones (from the next start, as
+every change there). Packs a profile names that are not installed are left out, and the screen says which.
+
+**Saved games record their packs** (**done**): a save keeps the packs loaded when it was saved, in load order with their
+versions and kinds, in its own versioned field (`"packs": {"version": 1, "packs": [{"id": "original", "version": "1.0.0",
+"kind": "base"}, ...]}`). Loading a save from *Load Previous Game* while other packs (or other versions) are loaded asks
+first: *switch to the save's packs* (the choices are set to exactly that set, other mods switched off, and the desktop
+game starts again and loads the save; on Android and in a browser the player restarts or reloads and loads it again),
+*load it with the packs in use*, or *do not load it*. When a pack of the save is not installed, switching is not offered.
+Saves made before the record existed load without the question. (Saves loaded by `--load-game`, Play a Championship and
+the world map are not asked about.)
+
 Problems never stop the game. A pack with a bad `pack.toml`, a missing or switched off requirement, a requirement loaded
 after it, a version that does not match, or a conflict with a loaded pack is not loaded, and the Content screen shows why
 (packs that need it are then not loaded either). A data entry with a bad value is left out with a warning on the pack's
