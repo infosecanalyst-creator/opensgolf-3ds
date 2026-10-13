@@ -4,36 +4,20 @@ A short handoff note so work can be picked up in a fresh session.
 
 ## Released
 
-- **v0.1.5** is the latest release (`main`). It has the Android start fix, the Firefox black-screen fix (#9), the sound
-  fixes for other WAV formats and OGG (#10), the Mac lag fix and the browser sound fix (AudioWorklet).
+- **v0.2.1** is the latest release (`main`): all of 0.2 (course sizes, controls, mod profiles, original-bug fixes,
+  gameplay and interface extras) plus the Windows on ARM fix (patched miniquad in `vendor/miniquad`, see its
+  `README-OPENSGOLF.md`; drop it once miniquad fixes `GWLP_USERDATA` on aarch64).
 - The browser version at <https://crspytopgn.github.io/opensgolf/> deploys automatically from `main`.
 - Releases are made by running the `release.yml` workflow on `main` with `version: vX.Y.Z`. Bump `version` in
   `Cargo.toml` and `version_code` / `version_name` in `crates/simgolf/Cargo.toml` first.
+- CI: checks run once per PR (and on pushes to `main`); the Android check builds arm64 only with a cached build;
+  releases build every target.
 
-## 0.2 (not released yet)
+## Next: 0.3
 
-**On `claude/v02-ui-extras`** (all of 0.2 so far: `v02-work` merged into the UI extras; builds, all tests pass):
-
-- Course sizes: Original 50, Large 74, Huge 98, Giant 128 (`sg_core::mapsize`, use `land::mn()` instead of 50).
-- Gameplay extras, off by default (Preferences, "OpenSGolf extras"): turning buildings (Tab), cut-content landmarks,
-  Hardcore economy, staff limits (`Extras::staff_limit`), buyable animals. See `docs/CUT_CONTENT.md`.
-- Controls: remappable keys, optional WASD camera, middle-drag pan, U hides the interface, frame-rate cap and v-sync,
-  mod profiles, packs recorded in saves.
-- "Fix the original game's bugs" setting (on by default): waterfalls, double charges, upgrades and golfer slots. See
-  `docs/FIXES.md`.
-- `--perf` performance log.
-- UI extras, on by default (merged): the People screen, golfer profiles, message history, name tags, report tabs and
-  path help (`extras.rs`; settings.json `"ui_extras"`, `--no-extras` turns them off for a run). Preferences >
-  OpenSGolf extras lists the gameplay extras, then the interface extras. Their keys (Shift+G, Shift+M, Shift+H,
-  Shift+V) are remappable actions in `controls.rs`; People's staff limit is `max_employees(Extras::staff_limit())`.
-- The web build no longer stops at its first frame (`perf::frame_begin` read the clock with the log off).
-
-## To ship 0.2.0
-
-1. Merge `claude/v02-ui-extras` into `claude/magical-tesla-d1thkl` (which since has v0.1.6, the Windows on ARM
-   download button and the PR #17 merge).
-2. Run the checks below, play through each new feature, and check the browser build in Chromium.
-3. Bump to 0.2.0, open a PR to `main`, wait for CI to pass, merge, then run `release.yml` with `v0.2.0`.
+See "Roadmap: 0.3" in the README. The rule: the original game is always one click away; everything new is optional
+and off by default, except fixes for the original's own bugs. Planned: a one-click Original/Extras switch on the New
+Game screen, course sharing and challenges, undo, autosave and save slots with pictures, controller support.
 
 ## Checks before every commit
 
