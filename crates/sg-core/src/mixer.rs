@@ -42,7 +42,27 @@ struct State {
 pub struct Mixer {
     /// lower-case relative path (forward slashes) -> real path
     index: BTreeMap<String, PathBuf>,
+    /// The free base set's sounds (crate::freeset), by the same keys -> path in that set: played for a clip of the
+    /// player's copy that cannot be decoded, or for every clip when the copy has no sounds at all ([`Mixer::with_fallback`]).
+    free: BTreeMap<String, String>,
+    /// True when the copy had no sounds at all, so every clip comes from `free`.
+    all_free: bool,
     state: Mutex<State>,
+}
+
+/// The index key of a sound file found in a folder, or None for a file that is not a sound. A copy whose sounds were
+/// converted to OGG Vorbis (`Applause.ogg`) is read as the WAVs the game asks for, as content packs are (crate::vfs).
+fn sound_key(rel: &Path) -> Option<(String, bool)> {
+    let key = key_of(&rel.components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect::<Vec<_>>().join("/"));
+    // macOS keeps resource forks in "._" files next to the real ones on drives that are not its own
+    if key.rsplit('/').next().is_some_and(|n| n.starts_with("._")) {
+        return None;
+    }
+    if key.ends_with(".wav") {
+        Some((key, true))
+    } else {
+        key.strip_suffix(".ogg").map(|stem| (format!("{stem}.wav"), false))
+    }
 }
 
 /// Converts PCM (8-bit unsigned or 16-bit signed, mono or stereo, any rate) to 44.1 kHz interleaved stereo i16, with linear
@@ -84,41 +104,124 @@ pub fn to_stereo_44k(channels: u16, bits: u16, rate: u32, pcm: &[u8]) -> Option<
 impl Mixer {
     /// Indexes every .wav under `sounds_dir` (recursively).
     pub fn new(sounds_dir: &Path) -> Mixer {
-        let mut index = BTreeMap::new();
-        for p in crate::fsutil::walk(sounds_dir) {
-            if let Ok(rel) = p.strip_prefix(sounds_dir) {
-                let key = key_of(&rel.components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect::<Vec<_>>().join("/"));
-                if key.ends_with(".wav") {
-                    index.insert(key, p.clone());
-                }
-            }
+        let mut m = Mixer {
+            index: BTreeMap::new(),
+            free: BTreeMap::new(),
+            all_free: false,
+            state: Mutex::new(State { clips: BTreeMap::new(), voices: Vec::new(), next_id: 1, master: 0.8, last_error: String::new() }),
+        };
+        m.add_dir("", sounds_dir);
+        if m.index.is_empty() {
+            m.set_error(format!("no sounds found in {}", sounds_dir.display()));
         }
-        let last_error = if index.is_empty() { format!("no sounds found in {}", sounds_dir.display()) } else { String::new() };
-        Mixer { index, state: Mutex::new(State { clips: BTreeMap::new(), voices: Vec::new(), next_id: 1, master: 0.8, last_error }) }
+        m
     }
 
-    /// Also indexes every .wav under `dir`, keyed under `prefix/` (the exe reads its Sims voice clips from SimsFX).
+    fn set_error(&self, e: String) {
+        if let Ok(mut s) = self.state.lock() {
+            s.last_error = e;
+        }
+    }
+
+    /// Also indexes every sound under `dir` (.wav, or .ogg standing for one), keyed under `prefix/` (the exe reads its Sims
+    /// voice clips from SimsFX). A WAV wins over an OGG of the same name.
     pub fn add_dir(&mut self, prefix: &str, dir: &Path) {
+        let prefix = if prefix.is_empty() { String::new() } else { format!("{}/", key_of(prefix)) };
         for p in crate::fsutil::walk(dir) {
-            if let Ok(rel) = p.strip_prefix(dir) {
-                let key = key_of(&rel.components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect::<Vec<_>>().join("/"));
-                if key.ends_with(".wav") {
-                    self.index.insert(format!("{}/{key}", key_of(prefix)), p.clone());
-                }
+            let Some((key, wav)) = p.strip_prefix(dir).ok().and_then(sound_key) else { continue };
+            let key = format!("{prefix}{key}");
+            if wav {
+                self.index.insert(key, p.clone());
+            } else {
+                self.index.entry(key).or_insert(p.clone());
             }
         }
     }
 
+    /// Lets the free base set's sounds (crate::freeset) stand in where the player's copy fails: for a clip that cannot be
+    /// decoded, and for every clip when the copy holds no sounds at all. The original's 1:1 sound stays as it is wherever
+    /// its own file plays (a clip the original lacks stays silent).
+    pub fn with_fallback(&mut self) {
+        for f in crate::freeset::files() {
+            let low = f.to_lowercase();
+            let key = if let Some(r) = low.strip_prefix("sfx/sounds/") {
+                key_of(r)
+            } else if let Some(r) = low.strip_prefix("sfx/simsfx/") {
+                format!("simsfx/{}", key_of(r))
+            } else {
+                continue;
+            };
+            self.free.insert(key, f);
+        }
+        self.all_free = self.index.is_empty() && !self.free.is_empty();
+    }
+
+    /// True when every clip comes from the free set (the player's copy has no sounds).
+    pub fn all_free(&self) -> bool {
+        self.all_free
+    }
+
+    /// Decodes a few of the game's most used clips and says whether the player's own sounds play: Err names what failed.
+    /// Used once at start to tell the player when their copy's sounds cannot be played (an unreadable coding, no files).
+    pub fn check(&self) -> Result<(), String> {
+        if self.all_free || self.index.is_empty() {
+            return Err(self.last_error());
+        }
+        let Ok(mut s) = self.state.lock() else { return Ok(()) };
+        let probe: Vec<String> = ["golfambience122.wav", "applause.wav", "golf sfx/drive with ball.wav"]
+            .iter()
+            .map(|k| k.to_string())
+            .filter(|k| self.index.contains_key(k))
+            .chain(self.index.keys().take(3).cloned())
+            .collect();
+        let mut err = String::new();
+        for k in probe {
+            match self.decode_own(&k) {
+                Ok(pcm) => {
+                    s.clips.insert(k, Arc::new(pcm));
+                    return Ok(());
+                }
+                Err(e) => err = e,
+            }
+        }
+        Err(err)
+    }
+
+    /// The player's own file of a clip, decoded to 44.1 kHz stereo.
+    fn decode_own(&self, key: &str) -> Result<Vec<i16>, String> {
+        let path = self.index.get(key).ok_or_else(|| format!("unknown sound {key}"))?;
+        crate::fsutil::read_file(path)
+            .ok_or_else(|| "cannot read".to_string())
+            .and_then(|d| decode_sound(&d))
+            .and_then(|w| to_stereo_44k(w.channels, w.bits, w.sample_rate, &w.pcm).ok_or_else(|| "unsupported PCM layout".to_string()))
+            .map_err(|e| format!("cannot load {}: {e}", path.display()))
+    }
+
+    /// The free set's clip for a key, decoded.
+    fn decode_free(&self, key: &str) -> Option<Vec<i16>> {
+        let w = decode_sound(&crate::freeset::read(self.free.get(key)?)?).ok()?;
+        to_stereo_44k(w.channels, w.bits, w.sample_rate, &w.pcm)
+    }
+
+    /// The clips the game can play: the player's, or the free set's when they have none.
+    fn keys(&self) -> Box<dyn Iterator<Item = &String> + '_> {
+        if self.all_free {
+            Box::new(self.free.keys())
+        } else {
+            Box::new(self.index.keys())
+        }
+    }
     pub fn is_empty(&self) -> bool {
-        self.index.is_empty()
+        self.keys().next().is_none()
     }
     pub fn known(&self, rel: &str) -> bool {
-        self.index.contains_key(&key_of(rel))
+        let k = key_of(rel);
+        self.index.contains_key(&k) || (self.all_free && self.free.contains_key(&k))
     }
     /// Relative paths under a folder (lower case), sorted.
     pub fn list(&self, folder_prefix: &str) -> Vec<String> {
         let p = key_of(folder_prefix);
-        self.index.keys().filter(|k| k.starts_with(&p)).cloned().collect()
+        self.keys().filter(|k| k.starts_with(&p)).cloned().collect()
     }
     pub fn last_error(&self) -> String {
         self.state.lock().map(|s| s.last_error.clone()).unwrap_or_default()
@@ -133,25 +236,27 @@ impl Mixer {
         if let Some(c) = s.clips.get(key) {
             return Some(c.clone());
         }
-        let Some(path) = self.index.get(key) else {
+        if self.all_free {
+            let c = Arc::new(self.decode_free(key)?);
+            s.clips.insert(key.to_string(), c.clone());
+            return Some(c);
+        }
+        if !self.index.contains_key(key) {
             s.last_error = format!("unknown sound {key}");
             return None;
-        };
-        let clip = crate::fsutil::read_file(path)
-            .ok_or_else(|| "cannot read".to_string())
-            .and_then(|d| decode_sound(&d))
-            .and_then(|w| to_stereo_44k(w.channels, w.bits, w.sample_rate, &w.pcm).ok_or_else(|| "unsupported PCM layout".to_string()));
-        match clip {
-            Ok(pcm) => {
-                let c = Arc::new(pcm);
-                s.clips.insert(key.to_string(), c.clone());
-                Some(c)
-            }
-            Err(e) => {
-                s.last_error = format!("cannot load {}: {e}", path.display());
-                None
-            }
         }
+        let pcm = match self.decode_own(key) {
+            Ok(pcm) => pcm,
+            Err(e) => {
+                // said once per clip: the clip is remembered (as the free set's, or as silence) and not read again
+                eprintln!("sound: {e}");
+                s.last_error = e;
+                self.decode_free(key).unwrap_or_default()
+            }
+        };
+        let c = Arc::new(pcm);
+        s.clips.insert(key.to_string(), c.clone());
+        Some(c)
     }
 
     /// Finds a clip by path relative to Sounds/ (case-insensitive, forward slashes) and plays it. Returns a voice id, or -1.

@@ -116,6 +116,16 @@ pub fn take_hint() -> bool {
     true
 }
 
+/// True when `text` differs from what settings.json records under `key` (and records it): a message shown once until it
+/// changes.
+pub fn take_once(key: &str, text: &str) -> bool {
+    if read_settings()[key].as_str() == Some(text) {
+        return false;
+    }
+    write_setting(key, serde_json::Value::from(text));
+    true
+}
+
 // ---- finding the folder at start up -------------------------------------------------------------------------------------------
 
 /// How the game folder was found.

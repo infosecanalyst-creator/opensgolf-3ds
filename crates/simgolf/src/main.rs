@@ -856,6 +856,12 @@ impl Stage {
 
         let mut mixer = Mixer::new(&app.game_path("Sounds"));
         mixer.add_dir("simsfx", &app.game_path("SimsFX"));
+        // the free set's sounds stand in for a copy whose own cannot be played; the player is told once (sound_note)
+        mixer.with_fallback();
+        let sound_note = mixer.check().err().filter(|_| content::has_original(&app.game_dir)).map(|e| {
+            eprintln!("sound: the game's own sounds cannot be played ({e}); playing the free set's sounds");
+            sg_core::lang::trf("STR_SOUND_CANNOT_PLAY", &[("WHY", &e)])
+        });
         if mixer.is_empty() {
             eprintln!("sound: {}", mixer.last_error());
         } else {
@@ -1030,6 +1036,14 @@ impl Stage {
         // the program started again on the graphics the player chose (gamefiles.rs)
         if let Some(msg) = gamefiles::take_notice() {
             app.show_toast(&msg);
+        }
+        // the player's copy has sounds the game cannot play: said in a box once (until the reason changes), in the
+        // ticker on every start
+        if let Some(msg) = sound_note {
+            app.show_toast(&msg);
+            if o.png_out.is_none() && gamefiles::take_once("sound_problem_shown", &msg) {
+                app.show_notice(&msg);
+            }
         }
         // test hook: SG_PICK_FOLDER=DIR takes DIR as the folder picked in "Use my SimGolf files..." ("free": Use the free
         // graphics), as if chosen on the title screen
