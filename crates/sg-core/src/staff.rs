@@ -136,7 +136,14 @@ pub fn approx_dist(x: i32, y: i32) -> i32 {
 }
 
 /// Euclidean distance with the exe's guard against overflow (legs above 0x4000 are divided by 8 first).
+///
+/// The exe multiplies its scale by 8 for each long leg, so when both legs are above 0x4000 (16 tiles) the result comes out 8
+/// times too long, and with one long leg the short one counts 8 times over. The original's map keeps that bug (it is part of
+/// how its golfers and staff behave); on a larger map, where such distances are common, the length is the true one.
 pub fn true_dist(x: i32, y: i32) -> i32 {
+    if !crate::mapsize::original() {
+        return ((x as i64 * x as i64 + y as i64 * y as i64) as f64).sqrt() as i32;
+    }
     let (mut x, mut y, mut s) = (x, y, 1);
     if x.abs() > 0x4000 {
         x /= 8;
@@ -273,19 +280,22 @@ pub fn path_step(t: &Terrain, to: (i32, i32), from: (i32, i32), avoid: Option<(i
     let b5 = b5 as u8;
     let prefer: u32 = (1 << (((b5 & 7) + 1) & 6)) | (1 << (b5 & 6));
     let n = (w * h) as usize;
-    let mut cost = vec![0u8; n];
+    // the costs are bytes below 0x100 and the queue a ring of 1024 on the original's map (crate::mapsize::route_cap)
+    let mut cost = vec![0u16; n];
     let idx = |a: i32, b: i32| (b * w + a) as usize;
-    let mut qa = [0i32; 1024];
-    let mut qb = [0i32; 1024];
+    let cap = crate::mapsize::route_cap();
+    let qmask = crate::mapsize::route_queue() - 1;
+    let mut qa = vec![0i32; qmask + 1];
+    let mut qb = vec![0i32; qmask + 1];
     let (mut head, mut tail) = (0usize, 1usize);
     qa[0] = ta;
     qb[0] = tb;
     cost[idx(ta, tb)] = 1;
-    let mut limit = 160 + 90;
+    let mut limit = crate::mapsize::scale(160 + 90);
     let path_rule = ((!tick & 0x40) | 0x80) >> 6;
     loop {
         let (a, b) = (qa[head], qb[head]);
-        head = (head + 1) & 0x3ff;
+        head = (head + 1) & qmask;
         let c = cost[idx(a, b)] as i32;
         if c <= limit {
             for k in 0..8 {
@@ -313,11 +323,11 @@ pub fn path_step(t: &Terrain, to: (i32, i32), from: (i32, i32), avoid: Option<(i
                     step += 16;
                 }
                 let total = step + c;
-                if (old == 0 || total < old) && total < 0x100 {
-                    cost[ni] = total as u8;
+                if (old == 0 || total < old) && total < cap {
+                    cost[ni] = total as u16;
                     qa[tail] = na;
                     qb[tail] = nb;
-                    tail = (tail + 1) & 0x3ff;
+                    tail = (tail + 1) & qmask;
                     if (na, nb) == (fa, fb) {
                         limit = total;
                     }
@@ -759,12 +769,19 @@ fn walk(
 /// Weeds: every tick on which (tick & 3) <= difficulty, one random tile may sprout a weed. It needs a weed on one side and a
 /// tee, green or fairway tile on another (and at most three weeds around), or it is a creek or garden tile (then a one in
 /// three chance that falls as the neighbouring weeds grow). Only fairways and rough- or tree-class tiles take weeds.
+/// A larger map tries one tile per original map's worth of area (n^2 / 2500, rounded), so weeds keep their pace per acre.
 pub fn spread_weeds(t: &Terrain, tiles: &mut TileState, tick: u32, difficulty: i32, rng: &mut ExeRng, out: &mut Vec<StaffEvent>) {
     if (tick & 3) as i32 > difficulty {
         return;
     }
-    let a = rng.below(50);
-    let b = rng.below(50);
+    for _ in 0..crate::mapsize::scale_area(1).max(1) {
+        spread_weed(t, tiles, rng, out);
+    }
+}
+
+fn spread_weed(t: &Terrain, tiles: &mut TileState, rng: &mut ExeRng, out: &mut Vec<StaffEvent>) {
+    let a = rng.below(crate::mapsize::n());
+    let b = rng.below(crate::mapsize::n());
     if !t.inside(a, b) {
         return;
     }

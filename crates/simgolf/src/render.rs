@@ -37,7 +37,10 @@ impl App {
         // the zoom and turn as shown: eased by Enhanced's smooth camera, else the camera's own (enhanced.rs)
         let upp = 2.0 / (self.view_zoom() * vscale);
         let (hw, hh) = (self.draw_w * upp * 0.5, self.draw_h * upp * 0.5);
-        let proj = Mat4::ortho(-hw, hw, -hh, hh, -DEPTH_RANGE, DEPTH_RANGE);
+        // a map larger than the original's (sg_core::mapsize) gets a depth range grown with its edge, so its far corners stay
+        // inside it when zoomed out (the original's +-5000 on 50 x 50 and smaller)
+        let depth = DEPTH_RANGE * (self.terrain.w.max(self.terrain.h) as f32 / sg_core::mapsize::ORIGINAL as f32).max(1.0);
+        let proj = Mat4::ortho(-hw, hw, -hh, hh, -depth, depth);
         let mv = Mat4::rotate(pitch_for(self.draw_w, self.draw_h), 1.0, 0.0, 0.0)
             .mul(&Mat4::rotate((45.0 + self.view_rot()) as f64, 0.0, 1.0, 0.0))
             .mul(&Mat4::translate(-self.cam_x, 0.0, -self.cam_z));
@@ -504,10 +507,18 @@ pub fn oct_dist(dx: f32, dy: f32) -> f32 {
     a.max(b) + a.min(b) / 2.0
 }
 
-/// Which Select Difficulty item a point is on: 0..3, 100 the back button, -1 nothing.
+/// The course size button on Select Difficulty (the port's own, docs/PLAYING.md "Course size"): a box in the bottom left.
+pub const COURSE_SIZE_RECT: Rect = Rect::new(14.0, 548.0, 300.0, 44.0);
+/// Its hover code.
+pub const COURSE_SIZE_HIT: i32 = 101;
+
+/// Which Select Difficulty item a point is on: 0..3, 100 the back button, 101 the course size, -1 nothing.
 pub fn difficulty_hit(vx: f32, vy: f32) -> i32 {
     if oct_dist(vx - 767.0, vy - 557.0) < 25.0 {
         return 100;
+    }
+    if COURSE_SIZE_RECT.has(vx, vy) {
+        return COURSE_SIZE_HIT;
     }
     DIFF_CENTRES.iter().position(|&(cx, cy)| oct_dist((vx - cx) / 2.0, vy - cy) < 80.0).map(|i| i as i32).unwrap_or(-1)
 }
@@ -747,7 +758,30 @@ impl App {
                 s.put_centered(g, k24, x, y + 2.0, tr(DIFFICULTY_KEYS[i]), crate::info_ui::c15(0x4210));
             }
         }
+        // the course size (the port's own; not for a championship or a scenario, which bring their own course)
+        if self.course_size_choosable() {
+            let r = COURSE_SIZE_RECT;
+            let lit = self.hover == COURSE_SIZE_HIT;
+            s.fill(g, r.x, r.y, r.w, r.h, if lit { rgba(0.15, 0.2, 0.45, 0.9) } else { rgba(0.08, 0.1, 0.3, 0.8) });
+            let n = self.course_size;
+            let name = trf("STR_COURSE_SIZE", &[("SIZE", &sg_core::mapsize::name(n))]);
+            s.text(g, r.x + 10.0, r.y + 19.0, &name, 17.0, if lit { rgb(1.0, 1.0, 0.6) } else { rgb(1.0, 1.0, 1.0) });
+            let detail = trf("STR_COURSE_SIZE_DETAIL", &[("TILES", &n), ("YARDS", &(n * 25))]);
+            s.text(g, r.x + 10.0, r.y + 37.0, &detail, 12.0, rgb(0.85, 0.85, 1.0));
+        }
         g.flush();
+    }
+
+    /// Whether Select Difficulty offers the course size: for a new game or a sandbox, not a championship or a scenario.
+    pub fn course_size_choosable(&self) -> bool {
+        self.scen.chosen.is_none() && !self.title.champ_pending
+    }
+
+    /// The next course size on Select Difficulty (they go round).
+    pub fn next_course_size(&mut self) {
+        let sizes = sg_core::mapsize::SIZES;
+        let k = sizes.iter().position(|s| s.0 == self.course_size).map(|k| (k + 1) % sizes.len()).unwrap_or(0);
+        self.course_size = sizes[k].0;
     }
 
     /// Heads-up display over the course: the exe's face strip, badge and rating pills (hud_ui), then the dock, advisor and

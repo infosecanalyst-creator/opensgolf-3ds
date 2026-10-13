@@ -866,7 +866,7 @@ impl App {
         if !(s.after_rain || s.seasons || s.lighting) {
             return;
         }
-        let n = [4usize, 8, 8][s.quality.min(2) as usize];
+        let n = per_tile([4usize, 8, 8][s.quality.min(2) as usize], &self.terrain);
         let key = lightmap_key(&self.terrain, n, 0, FxSettings::default()) ^ 0x5d;
         if self.fx.detail.is_some() && self.fx.detail_key == key {
             return;
@@ -888,7 +888,7 @@ impl App {
     pub(crate) fn fx_lightmap(&mut self, g: &mut Gfx, sun_moved: bool) {
         let s = settings();
         let need = s.shadows || s.occlusion || s.water || s.mist;
-        let n = [2usize, 4, 8][s.quality.min(2) as usize];
+        let n = per_tile([2usize, 4, 8][s.quality.min(2) as usize], &self.terrain);
         let mut light_w = to_world(&view_rotation(self), sg_core::terrain::light_direction());
         let mut sun_q = (0, 0);
         if s.time_of_day {
@@ -1273,6 +1273,12 @@ impl Heights {
 /// The light map, `n` texels a tile: r = sun visibility (soft shadows of the relief, marched towards the decoded light), g =
 /// ambient occlusion (baked per vertex of the tile meshes' 3 x 3 grid from the height field's horizon, valleys darker, spread
 /// to the texels bilinearly), b = signed distance to the shore (0.5 at the shore, +-1 tile to 1 / 0), a = water.
+/// Texels per tile for the light and detail maps: the quality's count, fewer on a larger course size so a map keeps at most
+/// about 400 texels a side (the original's 50 tiles at 8), which bounds the maps' build time and memory (2 at the least).
+fn per_tile(n: usize, t: &Terrain) -> usize {
+    n.min((400 / t.w.max(t.h).max(1) as usize).max(2))
+}
+
 fn build_lightmap(t: &Terrain, n: usize, light_w: [f32; 3], shadows: bool, occlusion: bool) -> Rgba {
     let hs = Heights::new(t);
     let (tw, th) = (hs.w, hs.h);
