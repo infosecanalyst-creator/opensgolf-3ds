@@ -4,6 +4,7 @@ name: release
 # OpenSGolf for every platform and publishes a GitHub release with the packages. The file names carry no version, so the
 # README's links to releases/latest/download/<name> always give the newest release:
 #   Linux    opensgolf-linux-x86_64.tar.gz and opensgolf-linux-x86_64.AppImage
+#   ARM64    opensgolf-linux-arm64.tar.gz and opensgolf-linux-arm64.AppImage (64-bit ARM Linux, Raspberry Pi 4/5)
 #   macOS    opensgolf-macos.zip (OpenSGolf.app, Apple silicon and Intel)
 #   Windows  opensgolf-windows.zip
 #   Android  opensgolf-android.apk (signed with a debug key, for sideloading)
@@ -29,7 +30,13 @@ env:
 
 jobs:
   linux:
-    runs-on: ubuntu-latest
+    # x86_64 PCs, and 64-bit ARM (Raspberry Pi 4/5, ARM laptops) on GitHub's ARM runners
+    strategy:
+      matrix:
+        include:
+          - { os: ubuntu-latest, name: x86_64, appimage: x86_64 }
+          - { os: ubuntu-24.04-arm, name: arm64, appimage: aarch64 }
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -41,7 +48,7 @@ jobs:
         run: target/release/sgtool icon icons 256
       - name: tar.gz
         run: |
-          out="opensgolf-linux-x86_64"
+          out="opensgolf-linux-${{ matrix.name }}"
           mkdir -p "$out"
           cp target/release/opensgolf target/release/sgtool "$out/"
           cp LICENSE README.md docs/PLAYING.md docs/MODDING.md packaging/linux/opensgolf.desktop "$out/"
@@ -60,12 +67,12 @@ jobs:
           cp icons/icon_256.png "$app/usr/share/icons/hicolor/256x256/apps/opensgolf.png"
           printf '#!/bin/sh\nexec "$(dirname "$(readlink -f "$0")")/usr/bin/opensgolf" "$@"\n' > "$app/AppRun"
           chmod +x "$app/AppRun"
-          curl -fsSL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          curl -fsSL -o appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${{ matrix.appimage }}.AppImage
           chmod +x appimagetool
-          ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool "$app" "opensgolf-linux-x86_64.AppImage"
+          ARCH=${{ matrix.appimage }} APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool "$app" "opensgolf-linux-${{ matrix.name }}.AppImage"
       - uses: actions/upload-artifact@v4
         with:
-          name: linux-x86_64
+          name: linux-${{ matrix.name }}
           path: |
             opensgolf-*.tar.gz
             opensgolf-*.AppImage

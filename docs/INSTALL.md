@@ -13,7 +13,7 @@ graphics* goes back. No Terminal and no options are needed (`--game DIR` remains
 * **macOS** (Apple silicon and Intel): unzip `opensgolf-macos.zip` and move `OpenSGolf.app` to Applications. It is not
   notarised, so the first time right-click it and choose *Open* (or allow it under System Settings, Privacy & Security). Saves
   go to `~/Library/Application Support/OpenSGolf`.
-* **Linux** (x86_64): the AppImage (allow running it as a program in its Properties, or `chmod +x`, then double-click it), or
+* **Linux** (x86_64, and 64-bit ARM such as a Raspberry Pi 4/5: the `-arm64` files): the AppImage (allow running it as a program in its Properties, or `chmod +x`, then double-click it), or
   unpack the `.tar.gz` and run `opensgolf` in its folder (`opensgolf.desktop` and `opensgolf.png` in it are for a menu entry).
   The folder picker asks the desktop through the XDG portal (GNOME, KDE and most desktops have it). Sound goes through ALSA
   (PulseAudio and PipeWire provide it). Saves go to `~/.local/share/opensgolf`.
