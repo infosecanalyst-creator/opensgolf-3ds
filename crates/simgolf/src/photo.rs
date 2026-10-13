@@ -200,16 +200,9 @@ fn look_grade(look: usize, t: &ThemeGrade) -> ([f32; 4], [f32; 3], f32, f32) {
 /// copy and its bloom.
 pub(crate) fn composite(g: &mut Gfx, f: &FxGpu, images: [TextureId; 3], p: PhotoPost, theme: ThemeGrade, bloom: f32, aspect: f32) {
     let pipe = PIPE.with(|c| c.get()).unwrap_or_else(|| {
-        let meta = ShaderMeta {
-            images: ["scene", "blurred", "bloom"].iter().map(|s| s.to_string()).collect(),
-            uniforms: UniformBlockLayout {
-                uniforms: ["focus", "glow", "grade", "tint", "tone"].iter().map(|n| UniformDesc::new(n, UniformType::Float4)).collect(),
-            },
-        };
-        let sh = match g.ctx.new_shader(ShaderSource::Glsl { vertex: crate::fx_glsl::POST_VS, fragment: COMPOSITE_FS }, meta) {
-            Ok(s) => s,
-            Err(e) => panic!("photo mode shader: {e:?}"),
-        };
+        // a GPU that refuses it turns the effects off (fx::shader) rather than closing the game
+        let uniforms = ["focus", "glow", "grade", "tint", "tone"].map(|n| (n, UniformType::Float4));
+        let sh = crate::fx::shader(&mut *g.ctx, crate::fx_glsl::POST_VS, COMPOSITE_FS, &["scene", "blurred", "bloom"], &uniforms);
         let attrs = [
             VertexAttribute::new("in_pos", VertexFormat::Float3),
             VertexAttribute::new("in_uv", VertexFormat::Float2),
