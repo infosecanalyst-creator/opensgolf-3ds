@@ -641,7 +641,6 @@ impl Gfx {
                     BufferSource::slice(&seq_indices(self.stream_cap)),
                 );
             }
-            self.ctx.buffer_update(self.stream_vb, BufferSource::slice(&self.batch));
             let colours = if sdf {
                 crate::fx::TEX_SDF
             } else if self.is_premul(tex) {
@@ -650,6 +649,9 @@ impl Gfx {
                 crate::fx::TEX_STRAIGHT
             };
             if crate::fx::apply_scaler(&mut self.ctx, &mut self.fx, &self.batch, self.stream_vb, self.stream_ib, tex, &u, colours) {
+                // uploaded only once the batch is known to be scaled (the queue has nothing waiting here: the scaler's state
+                // has just drawn it)
+                self.ctx.buffer_update(self.stream_vb, BufferSource::slice(&self.batch));
                 self.ctx.draw(0, self.batch.len() as i32, 1);
                 self.batch.clear();
                 return;
