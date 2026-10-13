@@ -30,6 +30,15 @@ STR_DIFFICULTY_MODERATE                 :Moderate
 STR_DIFFICULTY_DIFFICULT                :Difficult
 STR_DIFFICULTY_IMPOSSIBLE               :Impossible
 
+# The course size choice on Select Difficulty (the port's own: docs/PLAYING.md, "Course size"). {SIZE} is a size name below,
+# {TILES} the map's edge in tiles, {YARDS} the edge in yards (25 a tile)
+STR_COURSE_SIZE                         :Course size: {SIZE}
+STR_COURSE_SIZE_DETAIL                  :{TILES} x {TILES} tiles, {YARDS} yards a side. Click to change.
+STR_COURSE_SIZE_ORIGINAL                :Original
+STR_COURSE_SIZE_LARGE                   :Large
+STR_COURSE_SIZE_HUGE                    :Huge
+STR_COURSE_SIZE_GIANT                   :Giant
+
 ########################################################################################################################
 # Title screens: Load Previous Game, Select Championship Course, Pick A Pro, Select a Theme Pack
 ########################################################################################################################

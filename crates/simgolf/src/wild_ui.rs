@@ -184,12 +184,12 @@ impl App {
         }
         // water effects
         let depth = &self.water_depth;
-        if depth.len() == (sg_core::course::N * sg_core::course::N) as usize {
+        if depth.len() == (sg_core::course::n() * sg_core::course::n()) as usize {
             let water = |a: i32, b: i32| inside(a, b) && self.course.ty[idx(a, b)] == sg_core::course::t::WATER;
             let wpal = format!("Water/{}.pcx", WATER_PALS[theme]);
             let mut items: Vec<(i32, i32, String, i32, i32, bool)> = Vec::new();
-            for a in 0..sg_core::course::N {
-                for b in 0..sg_core::course::N {
+            for a in 0..sg_core::course::n() {
+                for b in 0..sg_core::course::n() {
                     let i = idx(a, b);
                     if depth[i] == 255 {
                         continue;
@@ -264,8 +264,8 @@ impl App {
                 1
             };
             let k = ez / z as f32;
-            for a in 0..sg_core::course::N {
-                for b in 0..sg_core::course::N {
+            for a in 0..sg_core::course::n() {
+                for b in 0..sg_core::course::n() {
                     for f in sg_core::decor::waterfalls(&self.course, a, b, rot, z) {
                         let Some(file) = sg_core::decor::fall_file(f.sprite, theme as u8) else { continue };
                         let body = self.sprite_for(&format!("{file}.flc"), false, Some(&wpal));
@@ -357,8 +357,8 @@ impl App {
         let (fx, fz) = (mv[2], mv[10]);
         let down = -(mv[1] * fx + mv[9] * fz);
         let key_per_down = if down.abs() > 1e-6 { (fx * fx + fz * fz) / down } else { 0.0 };
-        for a in 0..sg_core::course::N {
-            for b in 0..sg_core::course::N {
+        for a in 0..sg_core::course::n() {
+            for b in 0..sg_core::course::n() {
                 let i = idx(a, b);
                 if self.course.ty[i] != sg_core::course::t::WATER || self.course.walls[i] == 0 || self.tile_on_screen(a, b).is_none() {
                     continue;

@@ -349,6 +349,12 @@ const ELEVATION_UNDO: (Hit, Cut, Cut, f32, f32) = (hit(267, 561, 12), (0.0, 450.
 // ---- People: the employee panel ------------------------------------------------------------------------------------------------
 
 const MAX_EMPLOYEES: usize = 20;
+
+/// The most employees the club may have: 20 on the original's map; a larger course size allows more in proportion to its area
+/// (20 x n^2 / 2500), at most 64.
+fn max_employees() -> usize {
+    (sg_core::mapsize::scale_area(MAX_EMPLOYEES as i32) as usize).clamp(MAX_EMPLOYEES, 64)
+}
 const HIRE: (Hit, f32, f32) = (hit(270, 558, 16), 254.0, 542.0);
 const HIRE_HOVER: Cut = (0.0, 500.0, 42.0, 42.0);
 const HIRE_DISABLED: Cut = (100.0, 500.0, 42.0, 42.0);
@@ -1209,7 +1215,7 @@ impl App {
                     }
                 }
             }
-            if n >= MAX_EMPLOYEES {
+            if n >= max_employees() {
                 blit(g, s, im, HIRE_DISABLED, HIRE.1, HIRE.2);
             } else if h == 0 {
                 blit(g, s, im, HIRE_HOVER, HIRE.1, HIRE.2);
@@ -1544,7 +1550,7 @@ impl App {
         let sel = self.pstate.emp_sel;
         match h {
             0 => {
-                if rows.len() >= MAX_EMPLOYEES {
+                if rows.len() >= max_employees() {
                     self.ui_sound(0x18);
                 } else {
                     self.pstate.hire_open = true;

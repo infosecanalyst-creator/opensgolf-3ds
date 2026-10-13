@@ -244,7 +244,7 @@ fn tile_ty(c: &Course, a: i32, b: i32) -> u8 {
 
 /// The water depth of each tile (0x42f1c0): 0 at the shore, 1 next to it, 2 in open water; 255 off the water.
 pub fn water_depth(c: &Course) -> Vec<u8> {
-    let n = crate::course::N;
+    let n = crate::course::n();
     let water = |a: i32, b: i32| inside(a, b) && crate::data::row(c.ty[idx(a, b)]).class == 17;
     let mut d = vec![255u8; (n * n) as usize];
     for a in 0..n {
@@ -481,7 +481,8 @@ impl Club {
 
     /// The four fly-overs (second half of 0x430360). `sail_frames` is the sailboat clip's frame count.
     pub fn flyers_tick(&mut self, c: &Course, rng: &mut ExeRng, tick: u32) {
-        let max = 0xcc00;
+        // 0xcc00 on the original map: one tile past its far edge
+        let max = (crate::course::n() + 1) << 10;
         let water = |a: i32, b: i32| inside(a, b) && crate::data::row(c.ty[idx(a, b)]).class == 17;
         for i in 0..4 {
             let mut f = self.wildlife.flyers[i];
@@ -493,7 +494,7 @@ impl Club {
                                 kind: f.kind,
                                 active: true,
                                 x: 0,
-                                y: rng.below(50) << 10,
+                                y: rng.below(crate::course::n()) << 10,
                                 h: if f.kind == BALLOON { 40 } else { 80 },
                                 heading: 2,
                             };
@@ -543,7 +544,7 @@ impl Club {
                 SAILBOAT => {
                     if !f.active {
                         if rng.below(100) == 0 {
-                            let r = rng.below(50);
+                            let r = rng.below(crate::course::n());
                             if water(r, 0) {
                                 f = Flyer { kind: SAILBOAT, active: true, x: r * 1024 + 512, y: 512, h: 0, heading: 4 };
                             }
@@ -578,12 +579,12 @@ impl Club {
                 _ => {
                     if !f.active {
                         if rng.below(100) == 0 {
-                            let r = rng.below(50) << 10;
+                            let r = rng.below(crate::course::n()) << 10;
                             let (x, y, h) = match rng.below(4) {
                                 0 => (0, r, 2),
                                 1 => (r, 0, 4),
-                                2 => (0xc800, r, 6),
-                                _ => (r, 0xc800, 0),
+                                2 => (crate::course::n() << 10, r, 6),
+                                _ => (r, crate::course::n() << 10, 0),
                             };
                             f = Flyer { kind: BIRD, active: true, x, y, h: 0, heading: h };
                         }

@@ -5,7 +5,7 @@
 //! along b (8, 5), so a screen offset (dx, dy) in zoom units is (dx / 8 - dy / 5) / 2 tiles along a and (dx / 8 + dy / 5) / 2
 //! along b.
 
-use crate::course::N;
+use crate::course::n;
 use crate::geom::{DX, DY};
 
 /// One sprite to draw on a tile.
@@ -30,8 +30,8 @@ fn screen(dx: f32, dy: f32) -> (f32, f32) {
 
 /// Tile type at (a, b); off the map counts as out of bounds.
 fn ty_at(ty: &[u8], a: i32, b: i32) -> u8 {
-    if (0..N).contains(&a) && (0..N).contains(&b) {
-        ty[(a * N + b) as usize]
+    if (0..n()).contains(&a) && (0..n()).contains(&b) {
+        ty[(a * n() + b) as usize]
     } else {
         crate::course::t::OUT
     }
@@ -662,7 +662,7 @@ pub fn palette_file(pal: u8, theme: u8) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::course::NN;
+    use crate::course::{n, nn};
 
     #[test]
     fn rock_cuts_follow_the_sheet() {
@@ -677,11 +677,11 @@ mod tests {
 
     #[test]
     fn woods_sizes() {
-        let mut ty = vec![4u8; NN];
+        let mut ty = vec![4u8; nn()];
         // a pine wood: the inner tile has pines all round, the edge one only on some axes
         for a in 10..15 {
             for b in 10..15 {
-                ty[(a * N + b) as usize] = 14;
+                ty[(a * n() + b) as usize] = 14;
             }
         }
         let flat = |_: i32, _: i32| 0;
@@ -691,18 +691,18 @@ mod tests {
         let corner = trees(&ty, 0, false, 10, 10, 0, true, &flat);
         assert_eq!(corner[0].sprite, 0x193);
         // a lone pine stands tall; one with woods on one side of every axis is two small ones
-        let mut lone = vec![4u8; NN];
-        lone[(5 * N + 5) as usize] = 14;
+        let mut lone = vec![4u8; nn()];
+        lone[(5 * n() + 5) as usize] = 14;
         assert_eq!(trees(&lone, 0, false, 5, 5, 0, true, &flat)[0].sprite, 0x194);
         let mut edge = lone.clone();
         for (a, b) in [(5, 4), (6, 4), (6, 5), (6, 6)] {
-            edge[(a * N + b) as usize] = 14;
+            edge[(a * n() + b) as usize] = 14;
         }
         let d = trees(&edge, 0, false, 5, 5, 0, true, &flat);
         assert_eq!(d.len(), 2);
         assert!(d.iter().all(|d| d.sprite == 0x192));
         // a lone broadleaf in Parkland is a scenic elm
-        lone[(5 * N + 5) as usize] = 13;
+        lone[(5 * n() + 5) as usize] = 13;
         assert_eq!(trees(&lone, 0, false, 5, 5, 0, true, &flat)[0].sprite, 0x131);
         assert_eq!(trees(&lone, 0, false, 5, 5, 1, true, &flat)[0].sprite, 0x19d);
     }

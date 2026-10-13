@@ -32,6 +32,7 @@ pub mod land;
 pub mod lang;
 #[cfg(test)]
 mod lang_golden;
+pub mod mapsize;
 pub mod mixer;
 pub mod mood;
 pub mod narration;
