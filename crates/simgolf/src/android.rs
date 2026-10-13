@@ -9,12 +9,95 @@
 //! * cpal's Android sound output (oboe) asks Java for buffer sizes through `ndk_context`, which miniquad does not set up:
 //!   [`init`] hands it miniquad's Java VM and activity before the sound device is opened.
 //!
+//! * Nothing the game prints would otherwise be seen (Android sends a native program's stdout and stderr nowhere):
+//!   [`init`] passes both to the system log under the tag "OpenSGolf" (`adb logcat -s OpenSGolf`), and a panic is written
+//!   there and to `crash.txt` in the external files folder (`Android/data/org.opensgolf.game/files/crash.txt`), which a
+//!   player can send without any developer tools (docs/INSTALL.md, "Android").
+//!
 //! Everything else here is plain JNI calls on miniquad's activity (miniquad's own `quad_native` Java glue).
 
 use miniquad::native::android::{self, ndk_sys};
-use std::ffi::CStr;
+use std::ffi::{c_char, c_int, CStr, CString};
+use std::io::{BufRead, BufReader};
+use std::os::fd::FromRawFd;
 use std::path::PathBuf;
 use std::sync::OnceLock;
+
+/// The tag of everything the game writes to the system log.
+const TAG: &CStr = c"OpenSGolf";
+const LOG_INFO: c_int = 4;
+const LOG_FATAL: c_int = 7;
+
+#[link(name = "log")]
+extern "C" {
+    fn __android_log_write(prio: c_int, tag: *const c_char, text: *const c_char) -> c_int;
+}
+
+extern "C" {
+    fn pipe(fds: *mut c_int) -> c_int;
+    fn dup2(old: c_int, new: c_int) -> c_int;
+}
+
+/// One message to the system log (logcat cuts an entry at about 4 KB: long text goes line by line).
+fn log(prio: c_int, text: &str) {
+    for line in text.lines() {
+        let c = CString::new(line.replace('\0', " ")).unwrap_or_default();
+        unsafe {
+            __android_log_write(prio, TAG.as_ptr(), c.as_ptr());
+        }
+    }
+}
+
+/// stdout and stderr into the system log: a pipe in their place, read by a thread that logs each line.
+fn redirect_output() {
+    let mut fds = [0 as c_int; 2];
+    if unsafe { pipe(fds.as_mut_ptr()) } != 0 {
+        return;
+    }
+    unsafe {
+        dup2(fds[1], 1);
+        dup2(fds[1], 2);
+    }
+    // SAFETY: fds[0] is the pipe's read end, owned by the reader from here on
+    let read = unsafe { std::fs::File::from_raw_fd(fds[0]) };
+    let _ = std::thread::Builder::new().name("opensgolf-log".into()).spawn(move || {
+        for line in BufReader::new(read).lines() {
+            match line {
+                Ok(l) => log(LOG_INFO, &l),
+                Err(_) => break,
+            }
+        }
+    });
+}
+
+/// Where a panic is written for the player to send: the external files folder, which a file manager or a USB cable shows.
+static CRASH_FILE: OnceLock<Option<PathBuf>> = OnceLock::new();
+
+/// Logs a panic (message, place and backtrace) and writes it to `crash.txt`, then closes the app: a panic on the game's
+/// thread would otherwise leave a frozen picture. A panic in the download thread (net.rs) only ends the download.
+fn install_panic_hook() {
+    let default = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let thread = std::thread::current();
+        let name = thread.name().unwrap_or("unnamed");
+        let text = format!(
+            "OpenSGolf {} panicked on thread '{name}': {info}\n\nbacktrace:\n{}",
+            env!("CARGO_PKG_VERSION"),
+            std::backtrace::Backtrace::force_capture()
+        );
+        log(LOG_FATAL, &text);
+        if let Some(Some(path)) = CRASH_FILE.get() {
+            match std::fs::write(path, &text) {
+                Ok(()) => log(LOG_FATAL, &format!("written to {}", path.display())),
+                Err(e) => log(LOG_FATAL, &format!("could not write {}: {e}", path.display())),
+            }
+        }
+        default(info);
+        if name != crate::net::NET_THREAD {
+            std::process::abort();
+        }
+    }));
+}
 
 /// The two folders, looked up once.
 struct Dirs {
@@ -86,8 +169,15 @@ pub fn game_dir() -> PathBuf {
 
 /// Hands miniquad's Java VM and activity to `ndk_context` (for cpal's oboe output). Call once, from `main`, which miniquad
 /// runs on the activity's thread after setting the activity.
+///
+/// First of all it passes the game's output to the system log and sets up the panic hook, so that nothing after this can fail
+/// without a word.
 pub fn init() {
-    dirs();
+    redirect_output();
+    install_panic_hook();
+    let dirs = dirs();
+    let _ = CRASH_FILE.set(dirs.external.as_ref().map(|d| d.join("crash.txt")));
+    println!("OpenSGolf {} starting: data folder {:?}, external folder {:?}", env!("CARGO_PKG_VERSION"), dirs.files, dirs.external);
     unsafe {
         let activity = android::ACTIVITY;
         if activity.is_null() {

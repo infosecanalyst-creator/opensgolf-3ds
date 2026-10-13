@@ -45,18 +45,26 @@ pub fn get(url: &str, max: u64) -> Request {
     remote(url, max)
 }
 
+/// The download thread's name.
+#[allow(dead_code)]
+pub const NET_THREAD: &str = "opensgolf-net";
+
 #[cfg(all(not(target_arch = "wasm32"), feature = "net"))]
 fn remote(url: &str, max: u64) -> Request {
     let (tx, rx) = std::sync::mpsc::channel();
     let url = url.to_string();
-    std::thread::spawn(move || {
+    // named: a panic in it ends only the download (on Android the panic hook closes the app for any other thread, android.rs)
+    let spawned = std::thread::Builder::new().name(NET_THREAD.into()).spawn(move || {
         let r = (|| -> Reply {
             let mut resp = ureq::get(&url).call().map_err(|e| format!("{url}: {e}"))?;
             resp.body_mut().with_config().limit(max).read_to_vec().map_err(|e| format!("{url}: {e}"))
         })();
         let _ = tx.send(r);
     });
-    Request { inner: Inner::Thread(rx) }
+    match spawned {
+        Ok(_) => Request { inner: Inner::Thread(rx) },
+        Err(e) => Request { inner: Inner::Done(Some(Err(e.to_string()))) },
+    }
 }
 
 #[cfg(all(not(target_arch = "wasm32"), not(feature = "net")))]
