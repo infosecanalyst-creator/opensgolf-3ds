@@ -152,7 +152,10 @@ Android 11 and newer the phone's own file manager may hide `Android/data`; copy 
 The back button works as Esc: it closes the screen that is open, on the course opens System Functions (save, load, quit),
 on the title screens goes back to the title menu, and on the title menu leaves the game. Sound goes through the phone's
 audio output (AAudio or OpenSL ES, through cpal's oboe backend); an APK whose sound could not be built (tools/android_build.sh
-falls back to a silent build) plays without it. The content packs and translations that the desktop packages put next to
+falls back to a silent build) plays without it. Everything the game prints goes to the system log (tag `OpenSGolf`), and a
+crash is also written to `Android/data/org.opensgolf.game/files/crash.txt` (INSTALL.md says how to get either). A GPU that
+will not compile an Enhanced graphics shader turns those effects off for the run instead of closing the game, and a game
+folder without the course textures (a copy cut short) is set aside for the free base set. The content packs and translations that the desktop packages put next to
 the program are not inside the APK yet, and the app's packs folder is in its private storage (TODO: bundle the packs as
 assets and read player packs from the external files folder).
 
