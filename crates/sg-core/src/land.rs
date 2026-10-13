@@ -12,9 +12,27 @@
 use crate::lang::{tr, trf};
 use crate::terrain::Terrain;
 
-pub const N: i32 = 50;
-const NN: usize = (N * N) as usize;
-const HN: usize = 51 * 51;
+/// The map's edge in tiles for the map in play.
+#[inline]
+pub fn mn() -> i32 {
+    crate::mapsize::n()
+}
+
+#[inline]
+fn nn() -> usize {
+    crate::mapsize::tiles()
+}
+
+#[inline]
+fn hn() -> usize {
+    crate::mapsize::corners()
+}
+
+/// The corner grid's row pitch (51 on the original's map).
+#[inline]
+fn hp() -> i32 {
+    crate::mapsize::n() + 1
+}
 
 /// The exe's random number generator: a 32-bit LCG (x * 1103515245 + 12345), seeded with the Windows millisecond clock times 37.
 /// A draw takes bits 16..30 as a fraction of 1 and scales it by the (16-bit) range, truncating.
@@ -76,6 +94,17 @@ impl Noise {
         let n2 = self.sample((a >> 2) * 2, (b >> 2) * 2);
         let v = (n1 * 6 + n2 * 4) * 7;
         clamp_exe((v / 64) >> 1, 0, 0x200)
+    }
+
+    /// The field for a map larger than the original's. The 16 x 16 grid wraps every 128 tiles on hilly land (64 for its
+    /// second octave), so hills would visibly repeat; this mixes the field with a second read of the same grid, transposed,
+    /// stretched by 7/5 and shifted, whose period does not line up with the first (together they repeat only after 7 x as
+    /// far), and stretches the mix back to the field's spread around its mean (131).
+    pub fn field_wide(&self, a: i32, b: i32) -> i32 {
+        let v1 = self.field(a, b);
+        let v2 = self.field(b * 5 / 7 + 0x1d00, a * 5 / 7 + 0x0b80);
+        let mean = 131;
+        clamp_exe(mean + ((v1 + v2) / 2 - mean) * 4 / 3, 0, 0x200)
     }
 }
 
@@ -176,18 +205,19 @@ impl Slot {
 }
 
 /// The acreage property `p` comes with in offer slot `i`: (slot + 4) x 10, plus 10 (slots 0..3) or 20 (later slots) for an
-/// inland property, minus the same for an island; 250 in a sandbox game.
+/// inland property, minus the same for an island; 250 in a sandbox game. On a larger map (crate::mapsize) the deal grows with
+/// the map's area: acres x n^2 / 2500, rounded, so the property is the same share of the map.
 pub fn slot_acres(i: i32, p: usize, sandbox: bool) -> i32 {
     if sandbox {
-        return 250;
+        return crate::mapsize::scale_area(250);
     }
     let bonus = if i > 3 { 20 } else { 10 };
     let base = (i + 4) * 10;
-    match crate::data::records()[p].coast {
+    crate::mapsize::scale_area(match crate::data::records()[p].coast {
         0 => base + bonus,
         2 => base - bonus,
         _ => base,
-    }
+    })
 }
 
 /// Deals the properties out to the sixteen slots. Slots 12..15 (the dearest) get four different themes; slot 0 (the cheapest)
@@ -381,6 +411,9 @@ pub struct Object {
 /// Generated land in the exe's layout.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Land {
+    /// The map's edge in tiles (crate::mapsize); absent from saves of the original's size.
+    #[serde(default = "original_size", skip_serializing_if = "is_original_size")]
+    pub n: i32,
     pub slot_index: usize,
     pub slot: Slot,
     pub difficulty: i32,
@@ -411,11 +444,19 @@ pub struct Land {
     pub growth: Vec<u8>,
 }
 
+fn original_size() -> i32 {
+    crate::mapsize::ORIGINAL
+}
+
+fn is_original_size(n: &i32) -> bool {
+    *n == crate::mapsize::ORIGINAL
+}
+
 const DX: [i32; 8] = [0, 1, 1, 1, 0, -1, -1, -1];
 const DY: [i32; 8] = [-1, -1, 0, 1, 1, 1, 0, -1];
 
 fn idx(a: i32, b: i32) -> usize {
-    (a * N + b) as usize
+    (a * mn() + b) as usize
 }
 
 impl Land {
@@ -425,7 +466,7 @@ impl Land {
 
     /// Tile type at a flat index; reads past the map count as land (the exe reads neighbouring memory there).
     fn ty_at(&self, i: i32) -> u8 {
-        if (0..NN as i32).contains(&i) {
+        if (0..nn() as i32).contains(&i) {
             self.ty[i as usize]
         } else {
             0xff
@@ -433,14 +474,14 @@ impl Land {
     }
 
     fn set_ty(&mut self, i: i32, t: u8) {
-        if (0..NN as i32).contains(&i) {
+        if (0..nn() as i32).contains(&i) {
             self.ty[i as usize] = t;
             self.layer[i as usize] = crate::data::land_type(t).layer;
         }
     }
 
     fn h(&self, i: i32) -> u8 {
-        if (0..HN as i32).contains(&i) {
+        if (0..hn() as i32).contains(&i) {
             self.height[i as usize]
         } else {
             0
@@ -448,35 +489,36 @@ impl Land {
     }
 
     fn set_h(&mut self, i: i32, v: u8) {
-        if (0..HN as i32).contains(&i) {
+        if (0..hn() as i32).contains(&i) {
             self.height[i as usize] = v;
         }
     }
 
     fn flags_or(&mut self, i: i32, f: u16) {
-        if (0..NN as i32).contains(&i) {
+        if (0..nn() as i32).contains(&i) {
             self.flags[i as usize] |= f;
         }
     }
 
     /// 1 for tiles off the map or outside the owned land, else 0.
     fn blocked(&self, a: i32, b: i32) -> bool {
-        !(0..N).contains(&a) || !(0..N).contains(&b) || self.tile(a, b) == T_OUT
+        !(0..mn()).contains(&a) || !(0..mn()).contains(&b) || self.tile(a, b) == T_OUT
     }
 
     /// Corner height while the land is being made: from the noise, by relief and difficulty. Water corners and corners of
     /// wetlands and marsh sit at sea level.
     fn noise_height(&self, noise: &Noise, a: i32, b: i32) -> u8 {
-        if !(0..N).contains(&a) || !(0..N).contains(&b) {
+        if !(0..mn()).contains(&a) || !(0..mn()).contains(&b) {
             return 3;
         }
         let here = self.tile(a, b);
-        let next = self.ty_at(idx(a, b) as i32 + N);
+        let next = self.ty_at(idx(a, b) as i32 + mn());
         if here == T_WATER || next == T_WATER || here == T_WETLANDS || here == T_MARSH {
             return 3;
         }
         let rec = self.slot.record();
-        let mut n = if rec.relief == 2 { noise.field(a << 7, b << 7) } else { noise.field(a << 6, b << 6) };
+        let shift = if rec.relief == 2 { 7 } else { 6 };
+        let mut n = if crate::mapsize::original() { noise.field(a << shift, b << shift) } else { noise.field_wide(a << shift, b << shift) };
         if rec.theme == 1 && b < 16 {
             n -= (16 - b) * self.hill / 6;
         }
@@ -485,13 +527,13 @@ impl Land {
 
     /// Corner height once the game runs: sea level off the map and deep in the unowned land, else the stored height.
     pub fn corner(&self, a: i32, b: i32) -> u8 {
-        if !(0..N).contains(&a) || !(0..N).contains(&b) {
+        if !(0..mn()).contains(&a) || !(0..mn()).contains(&b) {
             return 3;
         }
         if self.tile(a, b) == T_OUT && self.blocked(a - 1, b) && self.blocked(a, b + 1) {
             return 3;
         }
-        self.height[(a * 51 + b) as usize]
+        self.height[(a * hp() + b) as usize]
     }
 
     fn object_at(&self, i: usize) -> Option<&Object> {
@@ -501,13 +543,18 @@ impl Land {
     /// Footprint test for an object of `kind` and edge `size` at (a, b), with a one-tile ring around it. Returns the clearing
     /// cost, or None when the spot is not allowed.
     pub fn fits(&self, a: i32, b: i32, size: i32, kind: i32, theme: u8) -> Option<i32> {
+        // A footprint tile keeps its object's index in a byte (0xff: none), so there is room for 255 objects. The exe has no
+        // check and would mix the records up past that; a larger map can get there, so the port refuses the 256th.
+        if (4..20).contains(&kind) && self.objects_full() {
+            return None;
+        }
         let mut cost = 0;
         let mut dry_ring = false;
         if size >= -1 {
             for r in -1..=size {
                 for c in -1..=size {
                     let (ta, tb) = (a + r, b + c);
-                    let i = ta * N + tb;
+                    let i = ta * mn() + tb;
                     let ring = r == -1 || c == -1 || r == size || c == size;
                     if ring {
                         if self.ty_at(i) != T_WATER {
@@ -554,6 +601,28 @@ impl Land {
         Some(cost)
     }
 
+    /// Whether the footprint of edge `size` at (a, b) covers a tile of a building or other object already standing. `fits`
+    /// lets a lot overlap an object of its own kind (the exe's 0x40db90, for an upgrade moving its building), so the original
+    /// also lets a second ball washer or landmark go down on top of the first and charges for it again; "Fix original bugs"
+    /// asks this to refuse that when the placing is not an upgrade (docs/FIXES.md 2).
+    pub fn covers_object(&self, a: i32, b: i32, size: i32) -> bool {
+        (0..size.max(0)).any(|r| {
+            (0..size.max(0)).any(|c| {
+                let (ta, tb) = (a + r, b + c);
+                if !(0..mn()).contains(&ta) || !(0..mn()).contains(&tb) {
+                    return false;
+                }
+                let i = (ta * mn() + tb) as usize;
+                (self.ty[i] == T_BUILDING || self.flags[i] & flag::FOOTPRINT != 0) && self.object_at(i).is_some()
+            })
+        })
+    }
+
+    /// Whether the object table has no free record left (255 objects: indices 0..254, 0xff is "none").
+    pub fn objects_full(&self) -> bool {
+        self.objects.len() >= 0xff && !self.objects.iter().any(|o| o.kind == -1)
+    }
+
     /// Puts down an object: flattens its corners to the anchor's height, turns its tiles into building tiles (a putting green
     /// keeps green tiles, a driving range rough, a marina water) and records it. Returns the object's index.
     pub fn place(&mut self, rng: &mut ExeRng, a: i32, b: i32, kind: i32, fl: i32, theme: u8) -> usize {
@@ -564,13 +633,13 @@ impl Land {
     #[allow(clippy::too_many_arguments)]
     pub fn place_sized(&mut self, rng: &mut ExeRng, a: i32, b: i32, kind: i32, fl: i32, theme: u8, extra: i32) -> usize {
         let size = crate::data::buildings()[kind as usize].1 + extra;
-        let anchor_h = self.h(a * 51 + b);
+        let anchor_h = self.h(a * hp() + b);
         for c in 0..size {
             for k in 0..size {
                 if k < size - 1 || c != 0 {
-                    self.set_h((c + a) * 51 + b + k, anchor_h);
+                    self.set_h((c + a) * hp() + b + k, anchor_h);
                 }
-                let i = (b + k) + (c + a) * N;
+                let i = (b + k) + (c + a) * mn();
                 let mut t = if kind != K_HOME_SITE { T_BUILDING } else { T_HOME_SITE };
                 let edge = c != 0 || k != 0;
                 if kind == K_PUTTING_GREEN && edge {
@@ -580,7 +649,7 @@ impl Land {
                 } else if kind == K_MARINA && (theme == 0 || theme == 2) && edge {
                     t = T_WATER;
                 }
-                if (0..NN as i32).contains(&i) {
+                if (0..nn() as i32).contains(&i) {
                     self.ty[i as usize] = t;
                     self.layer[i as usize] = crate::data::land_type(T_BUILDING).layer;
                     let f = self.flags[i as usize] & 0xecff;
@@ -594,8 +663,8 @@ impl Land {
             for mark in [T_GREEN, T_GREEN, T_GREEN, 7] {
                 let r1 = rng.below(span);
                 let r2 = rng.below(span);
-                let i = b + r1 + (r2 + a) * N + 51;
-                if (0..NN as i32).contains(&i) {
+                let i = b + r1 + (r2 + a) * mn() + mn() + 1;
+                if (0..nn() as i32).contains(&i) {
                     self.ty[i as usize] = mark;
                 }
             }
@@ -605,7 +674,7 @@ impl Land {
         if fl < 0 {
             return 0;
         }
-        self.flags_or(a * N + b, kind as u16 + 1);
+        self.flags_or(a * mn() + b, kind as u16 + 1);
         // The exe reuses the first free object record.
         let n = match self.objects.iter().position(|o| o.kind == -1) {
             Some(i) => {
@@ -620,8 +689,8 @@ impl Land {
         let size = crate::data::buildings()[kind as usize].1;
         for r in 0..size {
             for c in 0..size {
-                let i = (a + r) * N + b + c;
-                if (0..NN as i32).contains(&i) {
+                let i = (a + r) * mn() + b + c;
+                if (0..nn() as i32).contains(&i) {
                     self.var[i as usize] = n as u8;
                     self.flags[i as usize] = self.flags[i as usize] & 0xfeff | flag::FOOTPRINT;
                 }
@@ -632,15 +701,15 @@ impl Land {
 
     /// Water depth: every water tile starts deep (2); next to land it is shallow (0); next to shallow water it is middling (1).
     fn water_depth(&mut self) {
-        for i in 0..NN {
+        for i in 0..nn() {
             if crate::data::land_type(self.ty[i]).class == 17 {
                 self.var[i] = 2;
             }
         }
         loop {
             let mut changed = false;
-            for a in 0..N {
-                for b in 0..N {
+            for a in 0..mn() {
+                for b in 0..mn() {
                     let i = idx(a, b);
                     if crate::data::land_type(self.ty[i]).class != 17 {
                         continue;
@@ -716,14 +785,15 @@ pub fn generate(slot_index: usize, slot: Slot, difficulty: i32, sandbox: bool, r
         }
     }
     let mut land = Land {
+        n: mn(),
         slot_index,
         slot,
         difficulty,
-        ty: vec![base; NN],
-        flags: vec![0; NN],
-        layer: vec![crate::data::land_type(base).layer; NN],
-        var: vec![0; NN],
-        height: vec![0; HN],
+        ty: vec![base; nn()],
+        flags: vec![0; nn()],
+        layer: vec![crate::data::land_type(base).layer; nn()],
+        var: vec![0; nn()],
+        height: vec![0; hn()],
         original: Vec::new(),
         objects: Vec::new(),
         clubhouse: (-1, -1),
@@ -731,94 +801,103 @@ pub fn generate(slot_index: usize, slot: Slot, difficulty: i32, sandbox: bool, r
         view: (-1, -1),
         margin: 0,
         hill,
-        undo: vec![UNDO_NONE; NN],
-        refund: vec![0; NN],
-        growth: vec![0; NN],
+        undo: vec![UNDO_NONE; nn()],
+        refund: vec![0; nn()],
+        growth: vec![0; nn()],
     };
 
-    // Streaks of trees (and rocks, brush or deep rough, by theme), each a random walk. Up to 1250 tiles in all.
-    let mut limit = 5000;
-    let mut total = 0;
-    let mut n = 0;
-    loop {
-        let mut a = rng.below(50);
-        let mut b = rng.below(50);
-        let odd = n & 1 == 1;
-        let t: u8 = match theme {
-            0 => {
-                if prop == 9 || b >= 25 {
-                    T_PINE
-                } else {
-                    T_TREE
-                }
-            }
-            1 => {
-                if odd {
-                    T_ROCKS
-                } else {
-                    T_PINE
-                }
-            }
-            2 => {
-                if !odd {
-                    T_PINE
-                } else if n & 2 != 0 {
-                    T_TREE
-                } else {
-                    T_ROCKS
-                }
-            }
-            _ => {
-                if odd {
-                    T_BRUSH
-                } else {
-                    T_DEEP_ROUGH
-                }
-            }
-        };
-        let mut len = 0;
+    // Streaks of trees (and rocks, brush or deep rough, by theme), each a random walk. Up to 1250 tiles in all. A larger map
+    // runs the exe's pass once per original map's worth of area (rounds = n^2 / 2500, rounded), so the woods keep their density
+    // and their streak lengths.
+    let size = mn();
+    for _round in 0..crate::mapsize::scale_area(1).max(1) {
+        let mut limit = 5000;
+        let mut total = 0;
+        let mut n = 0;
         loop {
-            if a < 0 || b < 0 || a >= N || b >= N || len >= limit / 128 {
+            let mut a = rng.below(size);
+            let mut b = rng.below(size);
+            let odd = n & 1 == 1;
+            let t: u8 = match theme {
+                0 => {
+                    if prop == 9 || b >= size / 2 {
+                        T_PINE
+                    } else {
+                        T_TREE
+                    }
+                }
+                1 => {
+                    if odd {
+                        T_ROCKS
+                    } else {
+                        T_PINE
+                    }
+                }
+                2 => {
+                    if !odd {
+                        T_PINE
+                    } else if n & 2 != 0 {
+                        T_TREE
+                    } else {
+                        T_ROCKS
+                    }
+                }
+                _ => {
+                    if odd {
+                        T_BRUSH
+                    } else {
+                        T_DEEP_ROUGH
+                    }
+                }
+            };
+            let mut len = 0;
+            loop {
+                if a < 0 || b < 0 || a >= size || b >= size || len >= limit / 128 {
+                    break;
+                }
+                let i = idx(a, b);
+                len += 1;
+                land.ty[i] = t;
+                if len == 48 {
+                    land.flags[i] |= flag::STREAK_48;
+                }
+                land.layer[i] = crate::data::land_type(t).layer;
+                if rng.below(64) == 0 {
+                    land.flags[i] |= flag::SPOT;
+                } else {
+                    land.flags[i] &= !flag::SPOT;
+                }
+                a += rng.below(3) - 1;
+                b += rng.below(3) - 1;
+                if a < 0 {
+                    break;
+                }
+            }
+            total += len;
+            if total > 1250 {
                 break;
             }
-            let i = idx(a, b);
-            len += 1;
-            land.ty[i] = t;
-            if len == 48 {
-                land.flags[i] |= flag::STREAK_48;
-            }
-            land.layer[i] = crate::data::land_type(t).layer;
-            if rng.below(64) == 0 {
-                land.flags[i] |= flag::SPOT;
-            } else {
-                land.flags[i] &= !flag::SPOT;
-            }
-            a += rng.below(3) - 1;
-            b += rng.below(3) - 1;
-            if a < 0 {
+            limit += 2500;
+            n += 1;
+            if limit >= 45000 {
                 break;
             }
-        }
-        total += len;
-        if total > 1250 {
-            break;
-        }
-        limit += 2500;
-        n += 1;
-        if limit >= 45000 {
-            break;
         }
     }
 
-    // A creek from the far edge (b = 49) that runs downhill, with banks of waste bunker or rocks (ravine in the desert).
-    if rec.coast != 2 {
+    // A creek from the far edge (b = 49) that runs downhill, with banks of waste bunker or rocks (ravine in the desert). A larger
+    // map gets one creek per original map's edge (n / 50 of them), each starting in its own share of the far edge at
+    // share * k + share / 3 + random(16 * share / 50).
+    let creeks = (size / crate::mapsize::ORIGINAL).max(1);
+    for k in 0..if rec.coast != 2 { creeks } else { 0 } {
+        let share = size / creeks;
         let creek_t = if desert { T_BRUSH } else { T_WATER };
-        let mut a = 50 / 3 + rng.below(16);
-        let mut b = 49;
+        let mut a = share * k + share / 3 + rng.below(16 * share / crate::mapsize::ORIGINAL);
+        let mut b = size - 1;
         let mut prev_dir: i32 = 0;
         let mut dir: i32 = 0;
-        while (0..N).contains(&a) {
-            let i = a * N + b;
+        while (0..mn()).contains(&a) {
+            let i = a * mn() + b;
             land.set_ty(i, creek_t);
             land.flags[i as usize] = land.flags[i as usize] & 0xfeff | flag::CREEK;
             if rng.below(64) == 0 {
@@ -827,7 +906,7 @@ pub fn generate(slot_index: usize, slot: Slot, difficulty: i32, sandbox: bool, r
             let mut nb = b + 1;
             let mut best = 999;
             let side = a + if rng.below(2) != 0 { 1 } else { -1 };
-            let bank = side * N + b + 1;
+            let bank = side * mn() + b + 1;
             let mut na = side;
             if land.ty_at(bank) != T_WATER && land.noise_height(noise, side, b + 1) == 3 {
                 let v = if desert { T_RAVINE } else { (!((side + b + 1) * 2) & 4 | 8) as u8 };
@@ -852,7 +931,7 @@ pub fn generate(slot_index: usize, slot: Slot, difficulty: i32, sandbox: bool, r
                 na = a;
             }
             prev_dir = dir;
-            if land.ty_at(na * N + nb) == T_WATER || nb < 0 {
+            if land.ty_at(na * mn() + nb) == T_WATER || nb < 0 {
                 break;
             }
             a = na;
@@ -861,9 +940,11 @@ pub fn generate(slot_index: usize, slot: Slot, difficulty: i32, sandbox: bool, r
     }
 
     // The sea along the b = 0 side of a coastal property, 2..12 tiles wide; the first tile of each row is out of bounds.
+    // A larger map's sea is wider in proportion (5, 2 and 12 scaled by n / 50).
     if rec.coast == 1 {
-        let mut w = 5;
-        for a in 0..N {
+        let (w0, w_min, w_max) = (crate::mapsize::scale(5), crate::mapsize::scale(2), crate::mapsize::scale(12));
+        let mut w = w0;
+        for a in 0..mn() {
             for b in 0..w {
                 let i = idx(a, b);
                 if land.ty[i] != T_WATER {
@@ -880,9 +961,9 @@ pub fn generate(slot_index: usize, slot: Slot, difficulty: i32, sandbox: bool, r
                 }
             }
             w += rng.below(5) - 2;
-            if w < 2 {
-                w = 2;
-            } else if w > 12 {
+            if w < w_min {
+                w = w_min;
+            } else if w > w_max {
                 w -= 1;
             }
         }
@@ -891,19 +972,22 @@ pub fn generate(slot_index: usize, slot: Slot, difficulty: i32, sandbox: bool, r
     for f in land.flags.iter_mut() {
         *f &= !flag::CREEK;
     }
-    for a in 0..51 {
-        for b in 0..51 {
+    for a in 0..hp() {
+        for b in 0..hp() {
             let v = land.noise_height(noise, a, b);
-            land.height[(a * 51 + b) as usize] = v;
+            land.height[(a * hp() + b) as usize] = v;
         }
     }
 
     // 24 patches on a 4 x 6 grid: ponds in the low ground, rocks (or sand, by theme) on the hills; the first is a wetland, and
     // on the harder difficulties more of them are.
-    for n in 0..24 {
-        let mut a = rng.below(4) + 4 + (n % 4) * 50 / 4;
-        let mut b = rng.below(4) + 4 + (n / 4 * 50) / 4;
-        let high = land.h(b + a * 51) > 3;
+    // A larger map has (4 x n / 50) x (6 x n / 50) of them on the same pitch of n / 4 per column (the original's 4 x 6, at
+    // 12.5 tiles apart); as in the exe, the last rows start past the far edge and spill into the next column's first tiles.
+    let cols = crate::mapsize::scale(4).max(4);
+    for n in 0..cols * cols * 3 / 2 {
+        let mut a = rng.below(4) + 4 + (n % cols) * size / cols;
+        let mut b = rng.below(4) + 4 + (n / cols * size) / cols;
+        let high = land.h(b + a * hp()) > 3;
         let mut t: u8 = match theme {
             0 => {
                 if high {
@@ -942,20 +1026,20 @@ pub fn generate(slot_index: usize, slot: Slot, difficulty: i32, sandbox: bool, r
         }
         let mut count = 0;
         loop {
-            let i = b + a * N;
-            let protected = (0..NN as i32).contains(&i) && land.flags[i as usize] & flag::CREEK != 0;
+            let i = b + a * mn();
+            let protected = (0..nn() as i32).contains(&i) && land.flags[i as usize] & flag::CREEK != 0;
             if !protected {
-                if (0..NN as i32).contains(&i) {
+                if (0..nn() as i32).contains(&i) {
                     land.ty[i as usize] = t;
                 }
                 if rng.below(8) == 0 && t == T_WETLANDS {
                     land.flags_or(i, flag::SPOT);
                 }
-                if (0..NN as i32).contains(&i) {
+                if (0..nn() as i32).contains(&i) {
                     land.layer[i as usize] = crate::data::land_type(land.ty[i as usize]).layer;
                 }
                 if t == T_WATER {
-                    land.set_h(b + a * 51, 3);
+                    land.set_h(b + a * hp(), 3);
                 }
             }
             if rng.below(2) == 0 {
@@ -963,7 +1047,7 @@ pub fn generate(slot_index: usize, slot: Slot, difficulty: i32, sandbox: bool, r
             } else {
                 a += if rng.below(2) != 0 { 1 } else { -1 };
             }
-            if !((0..N).contains(&a) && (0..N).contains(&b)) {
+            if !((0..size).contains(&a) && (0..size).contains(&b)) {
                 break;
             }
             count += 1;
@@ -975,11 +1059,11 @@ pub fn generate(slot_index: usize, slot: Slot, difficulty: i32, sandbox: bool, r
 
     // Sixteen spots that the next step clears again (the draws still happen), then elm trees become plain trees.
     for _ in 0..16 {
-        let r1 = rng.below(42);
-        let r2 = rng.below(42);
-        land.flags_or(r1 + r2 * N + 204, flag::SPOT);
+        let r1 = rng.below(size - 8);
+        let r2 = rng.below(size - 8);
+        land.flags_or(r1 + r2 * size + 4 * size + 4, flag::SPOT);
     }
-    for i in 0..NN {
+    for i in 0..nn() {
         land.flags[i] &= !flag::SPOT;
         if land.ty[i] == T_ELM {
             land.ty[i] = T_TREE;
@@ -990,10 +1074,10 @@ pub fn generate(slot_index: usize, slot: Slot, difficulty: i32, sandbox: bool, r
     let skip = if desert { T_BRUSH } else { T_RAVINE };
     let mut placed = 0;
     let mut tries = 0;
-    while placed < (4 - difficulty) * 9 && tries < TRIES {
+    while placed < crate::mapsize::scale_area((4 - difficulty) * 9) && tries < TRIES {
         tries += 1;
-        let a = rng.below(46) + 2;
-        let b = rng.below(46) + 2;
+        let a = rng.below(size - 4) + 2;
+        let b = rng.below(size - 4) + 2;
         if land.blocked(a, b) {
             continue;
         }
@@ -1008,25 +1092,25 @@ pub fn generate(slot_index: usize, slot: Slot, difficulty: i32, sandbox: bool, r
     // Around water and wetlands, a tile edge whose two corners are both above sea level is pulled down (from 4) or nudged.
     const RA: [i32; 5] = [0, 1, 1, 0, 0];
     const RB: [i32; 5] = [-1, -1, 0, 0, -1];
-    for a in 0..51 {
-        for b in 0..51 {
-            let t = land.ty_at(a * N + b);
+    for a in 0..hp() {
+        for b in 0..hp() {
+            let t = land.ty_at(a * mn() + b);
             if t != T_WATER && t != T_WETLANDS {
                 continue;
             }
             for k in 0..4 {
                 let va = RA[k] + a;
                 let vb = RB[k] + b;
-                if !((0..N).contains(&va) && (0..N).contains(&vb)) {
+                if !((0..mn()).contains(&va) && (0..mn()).contains(&vb)) {
                     continue;
                 }
-                let nbr = land.ty_at(b + DY[2 * k] + (DX[2 * k] + a) * N);
+                let nbr = land.ty_at(b + DY[2 * k] + (DX[2 * k] + a) * mn());
                 if nbr == T_WATER {
                     continue;
                 }
-                let vi = va * 51 + vb;
+                let vi = va * hp() + vb;
                 let v = land.h(vi);
-                let w = land.h((RA[k + 1] + a) * 51 + RB[k + 1] + b);
+                let w = land.h((RA[k + 1] + a) * hp() + RB[k + 1] + b);
                 if v > 3 && v == w {
                     if v == 4 {
                         land.set_h(vi, 3);
@@ -1039,16 +1123,18 @@ pub fn generate(slot_index: usize, slot: Slot, difficulty: i32, sandbox: bool, r
         }
     }
 
-    // The clubhouse: a random spot in the middle of the map on plain ground where its 4 x 4 footprint fits.
+    // The clubhouse: a random spot in the middle of the map on plain ground where its 4 x 4 footprint fits (anchor 15..31 on the
+    // original's map; a larger map moves that window to its middle).
     let csize = crate::data::buildings()[K_CLUBHOUSE as usize].1;
+    let mid = (size - crate::mapsize::ORIGINAL) / 2;
     let (mut ca, mut cb, mut ra, mut rb);
     let mut tries = 0;
     loop {
         loop {
             ra = rng.below(17);
-            ca = ra + 15;
+            ca = ra + 15 + mid;
             rb = rng.below(17);
-            cb = rb + 15;
+            cb = rb + 15 + mid;
             tries += 1;
             if land.ty[idx(ca, cb)] == base || tries > TRIES {
                 break;
@@ -1060,7 +1146,7 @@ pub fn generate(slot_index: usize, slot: Slot, difficulty: i32, sandbox: bool, r
     }
     let club = land.place(rng, ca, cb, K_CLUBHOUSE, 0x60, theme);
     land.objects[club].flags |= 0x40;
-    land.view = (ra + 0x15, rb + 0xb);
+    land.view = (ca + 6, cb - 4);
     land.clubhouse = (ca, cb);
     let ci = idx(ca, cb);
     land.flags[ci] &= !flag::PATH;
@@ -1078,10 +1164,10 @@ pub fn generate(slot_index: usize, slot: Slot, difficulty: i32, sandbox: bool, r
         0 | 10 => {
             let mut count = 0;
             let mut tries = 0;
-            while count < 16 && tries < TRIES {
+            while count < crate::mapsize::scale_area(16) && tries < TRIES {
                 tries += 1;
-                let a = rng.below(46) + 2;
-                let b = rng.below(46) + 2;
+                let a = rng.below(size - 4) + 2;
+                let b = rng.below(size - 4) + 2;
                 if land.blocked(a, b) {
                     continue;
                 }
@@ -1099,13 +1185,13 @@ pub fn generate(slot_index: usize, slot: Slot, difficulty: i32, sandbox: bool, r
             }
         }
         1 => {
-            for _ in 0..(8 - difficulty).max(0) {
+            for _ in 0..crate::mapsize::scale_area((8 - difficulty).max(0)) {
                 let mut i;
                 let mut tries = 0;
                 loop {
-                    let r1 = rng.below(30);
-                    let r2 = rng.below(30);
-                    i = r2 + (r1 + 10) * N;
+                    let r1 = rng.below(crate::mapsize::scale(30));
+                    let r2 = rng.below(crate::mapsize::scale(30));
+                    i = r2 + (r1 + crate::mapsize::scale(10)) * size;
                     tries += 1;
                     if land.ty[i as usize] == T_WATER || tries > TRIES {
                         break;
@@ -1117,19 +1203,19 @@ pub fn generate(slot_index: usize, slot: Slot, difficulty: i32, sandbox: bool, r
         5 | 6 | 8 | 12 | 13 | 15 => {
             let mut tries = 0;
             loop {
-                let r1 = rng.below(40);
-                let r2 = rng.below(40);
+                let r1 = rng.below(size - 10);
+                let r2 = rng.below(size - 10);
                 tries += 1;
                 if land.fits(r1 + 3, r2 + 3, 5, K_CLUBHOUSE, theme).is_some() || tries > TRIES {
                     break;
                 }
             }
-            for n in 0..(8 - difficulty).max(0) {
+            for n in 0..crate::mapsize::scale_area((8 - difficulty).max(0)) {
                 rng.below(7);
                 rng.below(7);
-                let r1 = rng.below(40);
+                let r1 = rng.below(size - 10);
                 let a = r1 + 5;
-                let r2 = rng.below(40);
+                let r2 = rng.below(size - 10);
                 let b = r2 + 5;
                 if land.fits(r1 + 4, r2 + 4, 3, 7, theme).is_none() || land.ty[idx(a, b)] == T_WATER {
                     continue;
@@ -1140,14 +1226,14 @@ pub fn generate(slot_index: usize, slot: Slot, difficulty: i32, sandbox: bool, r
         7 => {
             for n in 0..2 {
                 let r = rng.below(10);
-                let a = if n == 0 { 25 - r } else { 25 + r };
+                let a = if n == 0 { size / 2 - r } else { size / 2 + r };
                 let mut b = 0;
-                while (land.ty[idx(a, b)] == T_WATER || land.ty[idx(a, b)] == T_OUT) && b < 48 {
+                while (land.ty[idx(a, b)] == T_WATER || land.ty[idx(a, b)] == T_OUT) && b < size - 2 {
                     b += 1;
                 }
                 let o = land.place(rng, a, b, K_LANDMARK, 0, theme);
                 land.objects[o].sub = if rng.below(2) != 0 { 7 } else { 13 };
-                let hi = (b + a * 51) as usize;
+                let hi = (b + a * hp()) as usize;
                 land.height[hi] = land.height[hi].wrapping_add(2);
             }
         }
@@ -1155,13 +1241,14 @@ pub fn generate(slot_index: usize, slot: Slot, difficulty: i32, sandbox: bool, r
     }
     if let Some(kind) = free_building {
         // Beside the clubhouse, with a short path to it.
-        if !land.blocked(ca, rb + 20) {
-            land.place(rng, ra + 14, rb + 19, kind, 0, theme);
+        // (the exe writes these from the anchor less 15: ra + 14, rb + 19 and so on)
+        if !land.blocked(ca, cb + 5) {
+            land.place(rng, ca - 1, cb + 4, kind, 0, theme);
             for k in 2..=4 {
                 land.flags_or(ci as i32 + k, flag::PATH);
             }
         } else {
-            land.place(rng, ra + 14, rb + 10, kind, 0, theme);
+            land.place(rng, ca - 1, cb - 5, kind, 0, theme);
             for k in 1..=3 {
                 land.flags_or(ci as i32 - k, flag::PATH);
             }
@@ -1170,8 +1257,8 @@ pub fn generate(slot_index: usize, slot: Slot, difficulty: i32, sandbox: bool, r
             let (mut a, mut b);
             let mut tries = 0;
             loop {
-                a = rng.below(40) + 5;
-                b = rng.below(40) + 5;
+                a = rng.below(size - 10) + 5;
+                b = rng.below(size - 10) + 5;
                 tries += 1;
                 if land.fits(a, b, 2, 4, theme).is_some() || tries > TRIES {
                     break;
@@ -1182,13 +1269,14 @@ pub fn generate(slot_index: usize, slot: Slot, difficulty: i32, sandbox: bool, r
         }
     }
 
-    // Obstacles, one per difficulty step, on plain ground; ringed with brush in the desert.
-    for _ in 0..difficulty.max(0) {
+    // Obstacles, one per difficulty step (per original map's worth of area on a larger map), on plain ground; ringed with brush
+    // in the desert.
+    for _ in 0..crate::mapsize::scale_area(difficulty.max(0)) {
         let (mut a, mut b, mut i);
         let mut tries = 0;
         loop {
-            a = rng.below(39) + 5;
-            b = rng.below(39) + 5;
+            a = rng.below(size - 11) + 5;
+            b = rng.below(size - 11) + 5;
             i = idx(a, b);
             tries += 1;
             if land.ty[i] == base || tries > TRIES {
@@ -1206,17 +1294,18 @@ pub fn generate(slot_index: usize, slot: Slot, difficulty: i32, sandbox: bool, r
         land.objects[o].dir = dir;
         if desert {
             for k in 0..8 {
-                let i = b + DY[k] + (DX[k] + a) * N;
-                if (0..NN as i32).contains(&i) {
+                let i = b + DY[k] + (DX[k] + a) * mn();
+                if (0..nn() as i32).contains(&i) {
                     land.ty[i as usize] = T_BRUSH;
                 }
             }
         }
     }
 
-    // The owned land: a square of side 2r where 4r^2 tiles are about acres x 10; the rest is out of bounds.
-    let acres = slot.acres & 0xff;
-    let mut r = 25;
+    // The owned land: a square of side 2r where 4r^2 tiles are about acres x 10; the rest is out of bounds. (The exe keeps the
+    // acres in a byte; a larger map's deal can be bigger.)
+    let acres = if crate::mapsize::original() { slot.acres & 0xff } else { slot.acres };
+    let mut r = size / 2;
     let mut m = 0;
     loop {
         m += 1;
@@ -1229,27 +1318,28 @@ pub fn generate(slot_index: usize, slot: Slot, difficulty: i32, sandbox: bool, r
     land.original = land.ty.clone();
     if rec.coast != 2 {
         for i in 0..m {
-            for j in 0..N {
+            for j in 0..mn() {
                 land.unown(i, j);
                 if rec.coast == 0 {
                     land.unown(j, i);
                 }
-                land.unown(j, 49 - i);
-                land.unown(49 - i, j);
+                land.unown(j, size - 1 - i);
+                land.unown(size - 1 - i, j);
             }
         }
     } else {
-        for row in 0..N {
+        for row in 0..mn() {
             let s = rng.below(3);
-            let w = clamp_exe((row - 25).abs(), 8, 50) + (m - 1) - 11 + s;
+            // (8 and 11 shape the island's cut corners; they scale with the map)
+            let w = clamp_exe((row - size / 2).abs(), crate::mapsize::scale(8), size) + (m - 1) - crate::mapsize::scale(11) + s;
             for j in 0..w.max(0) {
-                if j >= N {
+                if j >= mn() {
                     break;
                 }
                 land.unown(j, row);
                 land.unown(row, j);
-                land.unown(row, 49 - j);
-                land.unown(49 - j, row);
+                land.unown(row, size - 1 - j);
+                land.unown(size - 1 - j, row);
             }
         }
     }
@@ -1263,25 +1353,25 @@ fn landmark(land: &mut Land, rng: &mut ExeRng, prop: i32, n: i32, a: i32, b: i32
         // Waterfall: a small pool stepped into the hillside.
         let i = idx(a, b);
         land.ty[i] = T_WATER;
-        land.set_h(b + a * 51 + 50, 6);
+        land.set_h(b + a * hp() + hp() - 1, 6);
         rng.below(4);
         for k in 0..8 {
             let ka = DX[k] + a;
             let kb = DY[k] + b;
-            let ti = ka * N + kb;
-            let corner = kb + ka * 51;
+            let ti = ka * mn() + kb;
+            let corner = kb + ka * hp();
             match k {
                 0 | 6 => {
                     land.ty[ti as usize] = T_WATER;
-                    land.set_h(corner + 50, 6);
+                    land.set_h(corner + hp() - 1, 6);
                 }
                 1 | 7 => {
                     land.ty[ti as usize] = T_DEEP_ROUGH;
-                    land.set_h(corner + 50, 6);
+                    land.set_h(corner + hp() - 1, 6);
                 }
                 2 => {
                     land.ty[ti as usize] = T_WATER;
-                    land.set_h(corner + 50, 3);
+                    land.set_h(corner + hp() - 1, 3);
                 }
                 _ => {
                     if rng.below(2) != 0 {
@@ -1303,7 +1393,7 @@ fn landmark(land: &mut Land, rng: &mut ExeRng, prop: i32, n: i32, a: i32, b: i32
         }
         land.objects[o].dir = rng.below(4) as u8;
         for k in 0..8 {
-            let i = DY[k] + (DX[k] + a) * N + b;
+            let i = DY[k] + (DX[k] + a) * mn() + b;
             let t = land.ty_at(i);
             if t == T_BUILDING || t == T_WATER {
                 continue;
@@ -1316,8 +1406,8 @@ fn landmark(land: &mut Land, rng: &mut ExeRng, prop: i32, n: i32, a: i32, b: i32
                 if prop == 15 {
                     land.ty[i as usize] = T_WATER;
                 } else if k == 0 {
-                    let v = b + a * 51;
-                    for d in [0, 51, -1, 50] {
+                    let v = b + a * hp();
+                    for d in [0, hp(), -1, hp() - 1] {
                         let hv = land.h(v + d);
                         land.set_h(v + d, hv.wrapping_add(2));
                     }
@@ -1330,7 +1420,7 @@ fn landmark(land: &mut Land, rng: &mut ExeRng, prop: i32, n: i32, a: i32, b: i32
         land.objects[o].sub = 1;
         land.objects[o].dir = rng.below(4) as u8;
         for k in 0..8 {
-            let t = land.ty_at(b + DY[k] + (DX[k] + a) * N);
+            let t = land.ty_at(b + DY[k] + (DX[k] + a) * mn());
             if t != 0xff && crate::data::land_type(t).class == 13 {
                 land.objects[o].sub = 10;
             }
@@ -1341,8 +1431,8 @@ fn landmark(land: &mut Land, rng: &mut ExeRng, prop: i32, n: i32, a: i32, b: i32
         }
         for k in 0..8 {
             let s = land.objects[o].sub;
-            let i = DY[k] + (DX[k] + a) * N + b;
-            if !(0..NN as i32).contains(&i) {
+            let i = DY[k] + (DX[k] + a) * mn() + b;
+            if !(0..nn() as i32).contains(&i) {
                 continue;
             }
             let iu = i as usize;
@@ -1362,8 +1452,8 @@ fn landmark(land: &mut Land, rng: &mut ExeRng, prop: i32, n: i32, a: i32, b: i32
         land.objects[o].sub = if n & 1 == 0 { 8 } else { 12 };
         land.objects[o].dir = rng.below(4) as u8;
         for k in 0..8 {
-            let i = DY[k] + (DX[k] + a) * N + b;
-            if !(0..NN as i32).contains(&i) {
+            let i = DY[k] + (DX[k] + a) * mn() + b;
+            if !(0..nn() as i32).contains(&i) {
                 continue;
             }
             if n & 1 == 0 {
@@ -1383,14 +1473,15 @@ impl Land {
     pub fn from_terrain(t: &Terrain, theme: u8) -> Land {
         let property = crate::data::records().iter().position(|r| r.theme == theme).unwrap_or(0);
         let mut land = Land {
+            n: mn(),
             slot_index: 0,
             slot: Slot { property, acres: 250 },
             difficulty: 1,
-            ty: vec![T_ROUGH; NN],
-            flags: vec![0; NN],
-            layer: vec![crate::data::land_type(T_ROUGH).layer; NN],
-            var: vec![0; NN],
-            height: vec![3; HN],
+            ty: vec![T_ROUGH; nn()],
+            flags: vec![0; nn()],
+            layer: vec![crate::data::land_type(T_ROUGH).layer; nn()],
+            var: vec![0; nn()],
+            height: vec![3; hn()],
             original: Vec::new(),
             objects: Vec::new(),
             clubhouse: (-1, -1),
@@ -1398,9 +1489,9 @@ impl Land {
             view: (-1, -1),
             margin: 0,
             hill: 48,
-            undo: vec![UNDO_NONE; NN],
-            refund: vec![0; NN],
-            growth: vec![0; NN],
+            undo: vec![UNDO_NONE; nn()],
+            refund: vec![0; nn()],
+            growth: vec![0; nn()],
         };
         land.sync_from_terrain(t);
         land.original = land.ty.clone();
@@ -1409,8 +1500,8 @@ impl Land {
 
     /// Takes the player's terrain edits (tile types, paths, corner heights) into the land, keeping objects and their footprints.
     pub fn sync_from_terrain(&mut self, t: &Terrain) {
-        for a in 0..N.min(t.w) {
-            for b in 0..N.min(t.h) {
+        for a in 0..mn().min(t.w) {
+            for b in 0..mn().min(t.h) {
                 let i = idx(a, b);
                 let o = t.tile_index(a, b);
                 let mut ty = t.ty[o];
@@ -1434,12 +1525,12 @@ impl Land {
                 }
             }
         }
-        for a in 0..=N.min(t.w) {
-            for b in 0..N.min(t.h) {
+        for a in 0..=mn().min(t.w) {
+            for b in 0..mn().min(t.h) {
                 // Our corner (cx, cy) is the exe's vertex (cx, cy - 1).
                 let v = t.corner[((b + 1) * (t.w + 1) + a) as usize] as i32 + 3;
-                if a < 51 {
-                    self.height[(a * 51 + b) as usize] = v.clamp(0, 255) as u8;
+                if a < hp() {
+                    self.height[(a * hp() + b) as usize] = v.clamp(0, 255) as u8;
                 }
             }
         }
@@ -1448,8 +1539,8 @@ impl Land {
     /// Writes the land's tiles and corner heights inside a rectangle back to the port's terrain (after placing or removing an
     /// object).
     pub fn write_area(&self, t: &mut Terrain, a0: i32, b0: i32, a1: i32, b1: i32) {
-        for a in a0.max(0)..=a1.min(N - 1).min(t.w - 1) {
-            for b in b0.max(0)..=b1.min(N - 1).min(t.h - 1) {
+        for a in a0.max(0)..=a1.min(mn() - 1).min(t.w - 1) {
+            for b in b0.max(0)..=b1.min(mn() - 1).min(t.h - 1) {
                 let o = t.tile_index(a, b);
                 t.ty[o] = self.ty[idx(a, b)];
                 if t.ty[o] == T_WATER {
@@ -1491,8 +1582,8 @@ impl Land {
         self.flags[ai] &= 0xfde0;
         for r in 0..size {
             for c in 0..size {
-                let t = (o.a + r) * N + o.b + c;
-                if !(0..NN as i32).contains(&t) {
+                let t = (o.a + r) * mn() + o.b + c;
+                if !(0..nn() as i32).contains(&t) {
                     continue;
                 }
                 let ty = if o.kind == K_MARINA && (theme == 0 || theme == 2) {
@@ -1520,8 +1611,9 @@ impl Land {
             .map(|o| {
                 let s = self.footprint_size(o);
                 o.kind >= 0
-                    && (0..s)
-                        .any(|r| (0..s).any(|c| (0..N).contains(&(o.a + r)) && (0..N).contains(&(o.b + c)) && seen[idx(o.a + r, o.b + c)]))
+                    && (0..s).any(|r| {
+                        (0..s).any(|c| (0..mn()).contains(&(o.a + r)) && (0..mn()).contains(&(o.b + c)) && seen[idx(o.a + r, o.b + c)])
+                    })
             })
             .collect()
     }
@@ -1530,7 +1622,7 @@ impl Land {
     /// footprint, 4-adjacent, a tee, green or fairway tile passing nothing on. The terrain renderer lays each path with this
     /// flag (layPath's third argument, wrapper 0x44a410), so a path off the flood is drawn as an unjoined one.
     pub fn joined_tiles(&self) -> Vec<bool> {
-        let mut seen = vec![false; NN];
+        let mut seen = vec![false; nn()];
         let mut stack = Vec::new();
         for o in &self.objects {
             if o.kind == K_CLUBHOUSE {
@@ -1538,8 +1630,8 @@ impl Land {
                 for r in 0..s {
                     for c in 0..s {
                         let (a, b) = (o.a + r, o.b + c);
-                        if (0..N).contains(&a)
-                            && (0..N).contains(&b)
+                        if (0..mn()).contains(&a)
+                            && (0..mn()).contains(&b)
                             && !seen[idx(a, b)]
                             && self.flags[idx(a, b)] & (flag::PATH | flag::FOOTPRINT) != 0
                         {
@@ -1557,7 +1649,7 @@ impl Land {
             }
             for k in [0usize, 2, 4, 6] {
                 let (na, nb) = (a + DX[k], b + DY[k]);
-                if !(0..N).contains(&na) || !(0..N).contains(&nb) {
+                if !(0..mn()).contains(&na) || !(0..mn()).contains(&nb) {
                     continue;
                 }
                 let i = idx(na, nb);
@@ -1597,16 +1689,16 @@ impl Land {
     /// Converts to the port's Terrain: tile (a, b) becomes (x, y) = (a, b); corner heights become levels above sea level; water
     /// depth goes into the variation byte; paths become gravel paths.
     pub fn to_terrain(&self) -> Terrain {
-        let (w, h) = (N, N);
+        let (w, h) = (mn(), mn());
         let mut t = Terrain {
             w,
             h,
-            ty: vec![0; NN],
-            variation: vec![0; NN],
-            set: vec![0; NN],
+            ty: vec![0; nn()],
+            variation: vec![0; nn()],
+            set: vec![0; nn()],
             corner: vec![0; ((w + 1) * (h + 1)) as usize],
-            path_kind: vec![0; NN],
-            wall_mask: vec![0; NN],
+            path_kind: vec![0; nn()],
+            wall_mask: vec![0; nn()],
             desert: self.slot.record().theme == 1,
             path: Vec::new(),
             clubhouse_x: -1,
@@ -1616,8 +1708,8 @@ impl Land {
             tile_corner: Vec::new(),
         };
         let mut seed = crate::rng::Rng::new(0x9e37_79b9 ^ self.slot.property as u32);
-        for a in 0..N {
-            for b in 0..N {
+        for a in 0..mn() {
+            for b in 0..mn() {
                 let i = idx(a, b);
                 let o = t.tile_index(a, b);
                 t.ty[o] = self.ty[i];
@@ -1748,7 +1840,7 @@ pub enum Undone {
 impl Land {
     /// Whether a tile belongs to the property (not out of bounds).
     pub fn in_play(&self, a: i32, b: i32) -> bool {
-        (0..N).contains(&a) && (0..N).contains(&b) && self.ty[idx(a, b)] != T_OUT
+        (0..mn()).contains(&a) && (0..mn()).contains(&b) && self.ty[idx(a, b)] != T_OUT
     }
 
     /// Price of an item placed on one tile (path, bench, flower bed, willow, scenic bridge), or a reason it cannot go there.
@@ -1778,7 +1870,7 @@ impl Land {
     /// Can a bench at (a, b) face heading d (0x407400): both tiles playable rough-or-worse ground, the neighbour in the property and
     /// free of paths and scenery.
     pub fn bench_ok(&self, a: i32, b: i32, d: i32) -> bool {
-        if !(0..N).contains(&a) || !(0..N).contains(&b) {
+        if !(0..mn()).contains(&a) || !(0..mn()).contains(&b) {
             return false;
         }
         let ty = self.ty[idx(a, b)];
@@ -1807,7 +1899,7 @@ impl Land {
                     }
                     for d in [0usize, 2, 4, 6] {
                         let (na, nb) = (a + DX[d], b + DY[d]);
-                        if !(0..N).contains(&na) || !(0..N).contains(&nb) {
+                        if !(0..mn()).contains(&na) || !(0..mn()).contains(&nb) {
                             continue;
                         }
                         let j = idx(na, nb);
@@ -1865,7 +1957,7 @@ impl Land {
     /// Takes back what was done on a tile (the exe's right-click undo, 0x40a4e0).
     /// The object whose footprint covers a tile.
     pub fn object_on(&self, a: i32, b: i32) -> Option<usize> {
-        if !(0..N).contains(&a) || !(0..N).contains(&b) || self.flags[idx(a, b)] & flag::FOOTPRINT == 0 {
+        if !(0..mn()).contains(&a) || !(0..mn()).contains(&b) || self.flags[idx(a, b)] & flag::FOOTPRINT == 0 {
             return None;
         }
         self.objects.iter().position(|o| {
@@ -1877,7 +1969,7 @@ impl Land {
     /// Records a terrain change for undo (0x41fee2): the tile's old type and the amount to give back. The exe keeps the
     /// amount in a signed byte, so very dear changes wrap (marsh to water, 150, gives back -106).
     pub fn record_paint(&mut self, a: i32, b: i32, old: u8, cost: i32) {
-        if (0..N).contains(&a) && (0..N).contains(&b) {
+        if (0..mn()).contains(&a) && (0..mn()).contains(&b) {
             let i = idx(a, b);
             self.undo[i] = old;
             self.refund[i] = cost as i8;
@@ -1990,14 +2082,14 @@ mod tile_item_tests {
 
     fn rough_land() -> Land {
         let t = Terrain {
-            w: N,
-            h: N,
-            ty: vec![T_ROUGH; NN],
-            variation: vec![0; NN],
-            set: vec![0; NN],
-            corner: vec![0; ((N + 1) * (N + 1)) as usize],
-            path_kind: vec![0; NN],
-            wall_mask: vec![0; NN],
+            w: mn(),
+            h: mn(),
+            ty: vec![T_ROUGH; nn()],
+            variation: vec![0; nn()],
+            set: vec![0; nn()],
+            corner: vec![0; ((mn() + 1) * (mn() + 1)) as usize],
+            path_kind: vec![0; nn()],
+            wall_mask: vec![0; nn()],
             desert: false,
             path: Vec::new(),
             clubhouse_x: -1,
@@ -2036,7 +2128,7 @@ mod tile_item_tests {
     fn paths_join_buildings_but_stop_on_fairway() {
         let mut l = rough_land();
         l.objects.clear();
-        let mut put = |l: &mut Land, kind: i32, a: i32, b: i32| {
+        let put = |l: &mut Land, kind: i32, a: i32, b: i32| {
             let o = Object { kind, a, b, dir: 0, flags: 0, sub: 0, val: 0 };
             let s = l.footprint_size(&o);
             for r in 0..s {
