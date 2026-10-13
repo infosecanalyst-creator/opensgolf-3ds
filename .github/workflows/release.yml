@@ -6,7 +6,7 @@ name: release
 #   Linux    opensgolf-linux-x86_64.tar.gz and opensgolf-linux-x86_64.AppImage
 #   ARM64    opensgolf-linux-arm64.tar.gz and opensgolf-linux-arm64.AppImage (64-bit ARM Linux, Raspberry Pi 4/5)
 #   macOS    opensgolf-macos.zip (OpenSGolf.app, Apple silicon and Intel)
-#   Windows  opensgolf-windows.zip
+#   Windows  opensgolf-windows.zip (x64) and opensgolf-windows-arm64.zip (Windows on ARM, e.g. Snapdragon laptops)
 #   Android  opensgolf-android.apk (signed with a debug key, for sideloading)
 #   browser  opensgolf-web.zip
 # The icon is the engine's own drawing (sg_core::freeset::app_icon, `sgtool icon`).
@@ -121,7 +121,13 @@ jobs:
           path: opensgolf-macos.zip
 
   windows:
-    runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          # the x64 package keeps its old name so existing download links keep working
+          - { os: windows-latest, name: x86_64, out: opensgolf-windows }
+          - { os: windows-11-arm, name: arm64, out: opensgolf-windows-arm64 }
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -130,7 +136,7 @@ jobs:
       - name: Package
         shell: bash
         run: |
-          out="opensgolf-windows"
+          out="${{ matrix.out }}"
           mkdir -p "$out"
           cp target/release/opensgolf.exe target/release/sgtool.exe "$out/"
           target/release/sgtool.exe icon icons 256
@@ -140,8 +146,8 @@ jobs:
           7z a "$out.zip" "$out" > /dev/null
       - uses: actions/upload-artifact@v4
         with:
-          name: windows-x86_64
-          path: opensgolf-windows.zip
+          name: windows-${{ matrix.name }}
+          path: ${{ matrix.out }}.zip
 
   android:
     runs-on: ubuntu-latest
