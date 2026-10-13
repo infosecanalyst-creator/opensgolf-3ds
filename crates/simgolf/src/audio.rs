@@ -21,6 +21,12 @@ impl Feed {
         Feed { mixer, buf: Vec::new(), idx: 0, frac: 0.0, step: RATE as f64 / device_rate.max(1) as f64 }
     }
 
+    /// Follows an output that now runs at another rate (a browser's sound context made again after it was closed).
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    pub fn set_device_rate(&mut self, device_rate: u32) {
+        self.step = RATE as f64 / device_rate.max(1) as f64;
+    }
+
     /// Next stereo frame, -1..1.
     pub fn next_frame(&mut self) -> (f32, f32) {
         while self.idx + 1 >= self.buf.len() / 2 {
@@ -101,7 +107,8 @@ mod device {
 }
 
 /// In a browser the page pulls sound through Web Audio (web/opensgolf.js): it calls `sg_audio_fill` with its output rate and a
-/// frame count and gets back interleaved stereo f32 samples.
+/// frame count and gets back interleaved stereo f32 samples. It asks a little ahead of what is playing and queues the blocks
+/// on the browser's audio thread; at its usual 44.1 kHz the samples pass through unchanged.
 #[cfg(target_arch = "wasm32")]
 mod device {
     use super::Feed;
@@ -126,6 +133,7 @@ mod device {
             *feed = Some(m(rate));
         }
         let f = feed.as_mut().unwrap();
+        f.set_device_rate(rate);
         buf.clear();
         for _ in 0..frames {
             let (l, r) = f.next_frame();

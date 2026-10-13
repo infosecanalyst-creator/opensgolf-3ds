@@ -235,8 +235,10 @@ and title screen) and keeps the stills.
 with any static web server, for example `python3 -m http.server -d web/dist`, and open it. The page asks for the folder of your
 own SimGolf copy (the one containing Flics, Sounds and Data); its files are read into the browser tab only, nothing is uploaded.
 Without one, *Play with free graphics* starts on the free base set.
-Sound starts after the first click (a browser rule). Saved courses are kept in the browser's local storage. CI builds it too
-(artifact `opensgolf-web`), and every push to `main` publishes it to GitHub Pages.
+Sound starts with the first click, key or tap anywhere on the page (a browser rule; the game shows a note while the browser
+still holds it back) and is queued on the browser's audio thread, so a slow frame does not break it up. Saved courses are
+kept in the browser's local storage. CI builds it too (artifact `opensgolf-web`), and every push to `main` publishes it to
+GitHub Pages.
 
 ### Enhanced graphics and HD
 

@@ -556,45 +556,172 @@ async function sgInit() {
     }
 }
 
-// Sound: the game mixes at 44.1 kHz; Web Audio pulls blocks from it through sg_audio_fill. Browsers only allow sound after
-// the player interacts with the page, so the output starts on the first click or key.
-let sgAudio = null;
-function sgStartAudio() {
-    // a context made before the browser counted a gesture (or suspended by it later: Safari on a phone call, Chrome's
-    // autoplay policy) stays silent until resumed inside a gesture, so every gesture resumes it
-    if (sgAudio) {
-        if (sgAudio.state !== "running") sgAudio.resume().catch(() => {});
-        return;
+// Sound. The game mixes at 44.1 kHz (sg_core::mixer) and hands out blocks through sg_audio_fill. The page mixes a little
+// ahead (SG_LEAD seconds) from a timer and queues the blocks in an AudioWorklet, which plays them on the browser's audio
+// thread: a long frame of the game (loading a theme, opening a report, a first sound read from the player's files) no longer
+// stalls the output. A ScriptProcessorNode pulled its blocks on the page's own thread, and any frame over about 70 ms came
+// out as repeated and skipped stretches (Chrome) or gaps (Firefox): the crackle and stutter some players heard.
+// The context runs at the mixer's 44.1 kHz where the browser allows it, so the browser's own resampler (not a linear one)
+// meets the device's rate (48 kHz, or 16/24 kHz on a Bluetooth headset).
+// Browsers only allow sound after the player's first gesture, so the context is made on the first click, key or touch
+// anywhere on the page (on the start page too, before the game has loaded) and resumed on every later one.
+const SG_LEAD = 0.2, SG_LEAD_MAX = 0.6, SG_LEAD_HIDDEN = 1.2;
+const SG_WORKLET = `
+class SgOut extends AudioWorkletProcessor {
+    constructor() {
+        super();
+        this.q = []; this.off = 0; this.left = 0; this.recv = 0; this.fed = false; this.dry = false; this.done = 0;
+        this.port.onmessage = e => { this.q.push(e.data); this.left += e.data.length >> 1; this.recv += e.data.length >> 1; this.fed = true; };
     }
-    if (typeof wasm_exports === "undefined" || !wasm_exports.sg_audio_fill) return;
-    let ctx;
-    try {
-        ctx = new (window.AudioContext || window.webkitAudioContext)();
-    } catch (e) {
-        console.warn("no sound: this browser gave no audio output", e);
-        sgAudio = { state: "running" }; // do not try again on every click
-        return;
+    process(inputs, outputs) {
+        const l = outputs[0][0], r = outputs[0][1] || l, n = l.length;
+        let i = 0;
+        while (i < n && this.q.length) {
+            const b = this.q[0], frames = b.length >> 1, k = Math.min(n - i, frames - this.off);
+            for (let j = 0, s = this.off * 2; j < k; j++, s += 2) { l[i + j] = b[s]; r[i + j] = b[s + 1]; }
+            i += k; this.off += k; this.done += k; this.left -= k;
+            if (this.off === frames) { this.q.shift(); this.off = 0; }
+        }
+        let under = 0;
+        if (i < n) {
+            l.fill(0, i); r.fill(0, i);
+            if (this.fed && !this.dry) under = 1;
+            this.dry = true;
+        } else this.dry = false;
+        // what is left to play as of the end of this block, for the page to reckon from the audio clock
+        if (this.done >= 1024 || under) { this.port.postMessage([this.recv, this.left, currentFrame + n, under]); this.done = 0; }
+        return true;
     }
-    const node = ctx.createScriptProcessor(2048, 0, 2);
-    node.onaudioprocess = e => {
-        const n = e.outputBuffer.length;
-        const ptr = wasm_exports.sg_audio_fill(ctx.sampleRate, n);
-        const l = e.outputBuffer.getChannelData(0), r = e.outputBuffer.getChannelData(1);
-        if (!ptr) { l.fill(0); r.fill(0); return; }
-        const src = new Float32Array(wasm_memory.buffer, ptr, n * 2);
-        for (let i = 0; i < n; i++) { l[i] = src[2 * i]; r[i] = src[2 * i + 1]; }
-    };
-    node.connect(ctx.destination);
-    if (ctx.state !== "running") ctx.resume().catch(() => {});
-    sgAudio = ctx;
 }
-// browsers only allow sound after the player's first gesture: a click, a key or a touch
-window.addEventListener("mousedown", sgStartAudio);
-window.addEventListener("keydown", sgStartAudio);
-window.addEventListener("touchstart", sgStartAudio, { passive: true });
-window.addEventListener("touchend", sgStartAudio, { passive: true });
-window.addEventListener("pointerdown", sgStartAudio);
-window.addEventListener("pointerup", sgStartAudio);
+registerProcessor("sg-out", SgOut);
+`;
+const sgSnd = { ctx: null, node: null, rate: 44100, posted: 0, rep: null, lead: SG_LEAD, calm: 0, under: 0, failed: false, shown: 0, since: 0, note: null };
+
+function sgStartAudio() {
+    const s = sgSnd;
+    // a context made before the browser counted a gesture, or suspended by it later (Safari after a call or with the
+    // tab in the background: "interrupted"), stays silent until resumed inside a gesture, so every gesture resumes it
+    if (s.ctx && s.ctx.state === "closed") { s.ctx = null; s.node = null; s.posted = 0; s.rep = null; }
+    if (s.ctx) {
+        if (s.ctx.state !== "running") s.ctx.resume().catch(() => {});
+        return;
+    }
+    if (s.failed) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    let ctx = null;
+    try {
+        ctx = new AC({ sampleRate: 44100, latencyHint: "interactive" });
+    } catch (e) {
+        try { ctx = new AC(); } catch (e2) { ctx = null; }
+    }
+    if (!ctx) {
+        console.warn("no sound: this browser gave no audio output");
+        s.failed = true; // do not try again on every click
+        return;
+    }
+    // iPhone and iPad: play through the ring/silent switch, as a game app does (Safari 16.4+)
+    try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch (e) {}
+    s.ctx = ctx;
+    s.rate = ctx.sampleRate;
+    if (ctx.state !== "running") ctx.resume().catch(() => {});
+    const scriptProcessor = () => {
+        // no AudioWorklet (Safari before 14.1, a page served over plain http from another machine): blocks pulled on this
+        // thread, with the largest buffer that keeps the latency acceptable
+        if (s.ctx !== ctx || s.node) return;
+        const node = ctx.createScriptProcessor(4096, 0, 2);
+        node.onaudioprocess = e => {
+            const n = e.outputBuffer.length;
+            const l = e.outputBuffer.getChannelData(0), r = e.outputBuffer.getChannelData(1);
+            const ptr = typeof wasm_exports !== "undefined" && wasm_exports.sg_audio_fill ? wasm_exports.sg_audio_fill(s.rate, n) : 0;
+            if (!ptr) { l.fill(0); r.fill(0); return; }
+            const src = new Float32Array(wasm_memory.buffer, ptr, n * 2);
+            for (let i = 0; i < n; i++) { l[i] = src[2 * i]; r[i] = src[2 * i + 1]; }
+        };
+        node.connect(ctx.destination);
+        s.node = node;
+    };
+    if (!ctx.audioWorklet || typeof AudioWorkletNode === "undefined") return scriptProcessor();
+    const url = URL.createObjectURL(new Blob([SG_WORKLET], { type: "application/javascript" }));
+    ctx.audioWorklet.addModule(url).then(() => {
+        if (s.ctx !== ctx) return;
+        const node = new AudioWorkletNode(ctx, "sg-out", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
+        node.port.onmessage = e => {
+            s.rep = e.data;
+            if (e.data[3]) {
+                s.under++;
+                // the game's frames are longer here than the lead covers: keep more ready for a while (not for a tab in
+                // the background, whose timers the browser slows down)
+                if (!document.hidden) s.lead = Math.min(SG_LEAD_MAX, s.lead + 0.05);
+                s.calm = performance.now();
+            } else if (s.lead > SG_LEAD && performance.now() - s.calm > 10000) {
+                // ten seconds without a gap: back towards the short lead (a click's sound follows the click sooner)
+                s.lead = Math.max(SG_LEAD, s.lead - 0.05);
+                s.calm = performance.now();
+            }
+            sgPump();
+        };
+        node.connect(ctx.destination);
+        s.node = node;
+        sgPump();
+    }).catch(e => {
+        console.warn("sound: no AudioWorklet, using a ScriptProcessorNode", e);
+        scriptProcessor();
+    }).finally(() => URL.revokeObjectURL(url));
+}
+
+// Mixes the game's sound up to the lead ahead of what the worklet has played. What it still holds is reckoned from its last
+// report and the audio clock since (its reports wait while this thread is busy, the clock does not), plus what is on the
+// way to it.
+function sgPump() {
+    const s = sgSnd;
+    if (!s.node || !s.node.port || s.ctx.state !== "running" || typeof wasm_exports === "undefined" || !wasm_exports.sg_audio_fill) return;
+    const queued = s.rep ? Math.max(0, s.posted - s.rep[0] + s.rep[1] - (s.ctx.currentTime * s.rate - s.rep[2])) : s.posted;
+    let need = Math.round((document.hidden ? SG_LEAD_HIDDEN : s.lead) * s.rate) - queued;
+    while (need >= 256) {
+        const n = Math.min(need, 4096);
+        const ptr = wasm_exports.sg_audio_fill(s.rate, n);
+        if (!ptr) return;
+        const buf = new Float32Array(n * 2);
+        buf.set(new Float32Array(wasm_memory.buffer, ptr, n * 2));
+        s.node.port.postMessage(buf, [buf.buffer]);
+        s.posted += n;
+        need -= n;
+    }
+}
+
+// Once the game runs, sound that cannot start (no gesture counted yet, a context the browser keeps suspended, no audio
+// output at all) gets one note over the game; it goes when the sound plays.
+function sgSoundNote() {
+    const s = sgSnd;
+    const canvas = document.getElementById("glcanvas");
+    const playing = s.ctx && s.ctx.state === "running";
+    if (s.note && (playing || s.shown === 2)) {
+        s.note.remove();
+        s.note = null;
+        s.shown = 2;
+    }
+    if (s.shown || playing || !canvas || canvas.style.display !== "block" || typeof wasm_exports === "undefined") return;
+    if (!s.since) s.since = performance.now();
+    if (performance.now() - s.since < 1500) return;
+    s.shown = 1;
+    s.note = document.createElement("div");
+    s.note.textContent = s.failed ? "No sound: this browser gave the page no audio output."
+        : "\u{1F507} Click anywhere or press a key to turn on the sound";
+    s.note.style.cssText = "position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:10;pointer-events:none;" +
+        "background:rgba(0,0,0,0.78);color:#fff;font:600 15px system-ui,sans-serif;padding:8px 16px;border-radius:999px";
+    document.body.appendChild(s.note);
+    if (s.failed) setTimeout(() => { s.shown = 2; }, 8000);
+}
+
+// the timer keeps a tab in the background fed; once a frame as well, as a browser busy drawing can hold timers back
+setInterval(() => { sgPump(); sgSoundNote(); }, 20);
+(function frame() { sgPump(); requestAnimationFrame(frame); })();
+for (const type of ["mousedown", "pointerdown", "pointerup", "click", "keydown", "touchend"]) window.addEventListener(type, sgStartAudio, true);
+window.addEventListener("touchstart", sgStartAudio, { passive: true, capture: true });
+document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && sgSnd.ctx && sgSnd.ctx.state !== "running" && sgSnd.ctx.state !== "closed") sgSnd.ctx.resume().catch(() => {});
+    sgPump();
+});
 
 // The keyboard while the game runs. miniquad's gl.js sends the canvas's keys to the game and stops the browser acting on
 // Space, the arrows, F1 to F10, Tab, Backspace, ' and /. Here the rest of the original's keys are kept from the browser too:
