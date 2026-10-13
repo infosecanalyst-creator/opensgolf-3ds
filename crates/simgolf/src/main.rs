@@ -2450,8 +2450,13 @@ impl EventHandler for Stage {
         self.ctrl = mods.ctrl && k != KeyCode::LeftControl && k != KeyCode::RightControl;
     }
 
+    /// The window's close button: the game never keeps the window open, so the program ends here, before the window
+    /// system tears down the OpenGL context (Mesa's D3D12 driver, the base of Windows' OpenGL compatibility pack, ended
+    /// the program with an error code in that teardown on the ARM64 test machine).
     fn quit_requested_event(&mut self) {
-        sysdiag::note("the window's close was asked for");
+        sysdiag::note("the window's close was asked for: exiting");
+        #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+        std::process::exit(0);
     }
 }
 
