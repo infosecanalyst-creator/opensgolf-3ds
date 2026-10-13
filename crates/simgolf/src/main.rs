@@ -804,6 +804,14 @@ impl Stage {
         // its first property offer from the data when it is made)
         gamefiles::set_headless(o.png_out.is_some());
         let mut content = content::startup(&o.game_dir, o.base.as_deref());
+        // a game folder with some of the original's files but not the course textures (a copy cut short, on a phone most of
+        // all): the free base set rather than closing at the first theme (load_theme below)
+        let theme_dir = |t: usize| sg_core::fsutil::resolve(&o.game_dir, &format!("Data/Textures/{}", app::THEMES[t]));
+        if o.base.is_none() && content.forced_base.is_none() && sg_core::terrain::TextureCatalog::load(&theme_dir(o.theme)).is_err() {
+            eprintln!("game folder {}: no course textures, playing the free base set", o.game_dir.display());
+            content = content::startup(&o.game_dir, Some(sg_core::packs::FREE));
+            content.forced_base = Some(sg_core::packs::FREE.to_string());
+        }
         let mut app = match o.clock {
             Some(c) => App::with_clock(o.game_dir.clone(), c),
             None => App::new(o.game_dir.clone()),

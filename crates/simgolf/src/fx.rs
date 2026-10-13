@@ -124,7 +124,17 @@ fn soft_env(i: usize, default: f32) -> f32 {
 }
 
 pub fn settings() -> FxSettings {
-    SETTINGS.with(|s| s.get())
+    let mut s = SETTINGS.with(|s| s.get());
+    // an effects shader the GPU would not compile (`shader`): the effects stay off
+    if BROKEN.with(|b| b.get()) {
+        s.enabled = false;
+    }
+    s
+}
+
+thread_local! {
+    /// Set when the GPU refused an effects shader.
+    static BROKEN: Cell<bool> = const { Cell::new(false) };
 }
 
 pub fn set_settings(s: FxSettings) {
@@ -475,15 +485,32 @@ pub struct FxGpu {
     no_reflection: TextureId,
 }
 
-fn shader(ctx: &mut dyn RenderingBackend, vs: &str, fs: &str, images: &[&str], uniforms: &[(&str, UniformType)]) -> ShaderId {
-    let meta = ShaderMeta {
+/// An effects shader. Should the GPU refuse one (a phone's GLES compiler is stricter than a desktop's), the effects are turned
+/// off for the rest of the run (`settings` then says so) and a plain stand-in takes its place, so the frame being drawn
+/// still has a pipeline and the game goes on in Classic rather than closing.
+pub(crate) fn shader(ctx: &mut dyn RenderingBackend, vs: &str, fs: &str, images: &[&str], uniforms: &[(&str, UniformType)]) -> ShaderId {
+    let meta = || ShaderMeta {
         images: images.iter().map(|s| s.to_string()).collect(),
         uniforms: UniformBlockLayout { uniforms: uniforms.iter().map(|&(n, t)| UniformDesc::new(n, t)).collect() },
     };
-    match ctx.new_shader(ShaderSource::Glsl { vertex: vs, fragment: fs }, meta) {
+    match ctx.new_shader(ShaderSource::Glsl { vertex: vs, fragment: fs }, meta()) {
         Ok(s) => s,
-        Err(e) => panic!("effects shader: {e:?}"),
+        Err(e) => {
+            eprintln!("Enhanced graphics: an effects shader does not compile on this GPU, the effects are off ({e:?})");
+            BROKEN.with(|b| b.set(true));
+            let fs = stand_in_fs(images.first().copied().unwrap_or("tex"));
+            ctx.new_shader(ShaderSource::Glsl { vertex: glsl::POST_VS, fragment: &fs }, meta())
+                .unwrap_or_else(|e| panic!("effects stand-in shader: {e:?}"))
+        }
     }
+}
+
+/// The stand-in for an effects shader the GPU refused: the first picture, as it is.
+fn stand_in_fs(image: &str) -> String {
+    format!(
+        "#version 100\nprecision mediump float;\nvarying highp vec2 uv;\nuniform sampler2D {image};\n\
+         void main() {{ gl_FragColor = texture2D({image}, uv); }}\n"
+    )
 }
 
 impl FxGpu {
