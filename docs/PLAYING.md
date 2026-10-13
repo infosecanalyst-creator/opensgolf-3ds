@@ -47,6 +47,48 @@ For scripted runs (any of `--png`, `--course`, `--edit`, `--golfer`, `--sandbox`
 
 Saving: Shift+S (or System Functions, Save the current game) opens the Save dialog ("SAVE GAME, edit name then press Enter"): Enter saves the whole game (land, golfers, holes, staff, money, calendar, theme pack and the random generator, so it continues exactly) to `Saved Games/<name>.sgs` in the save folder and shows "Game Saved"; Esc cancels. Shift+L (or Load a previous game) opens Load Previous Game over the game, whose arrow goes back to it. Test hooks: `--screen load|save|themes|credits|champ|pickapro` opens these screens (with `--property` the load and save screens open over a game), `SG_HOVER=n` lights button n (0 OK, 1 back, 2 up, 3 down, 4 delete) with its tooltip, `SG_SELECT=r` selects row r and `SG_CONFIRM=1` opens the delete box. Test hooks: `--save-game F` saves after the `--time` simulation, `--load-game F` starts from a saved game. `--cash N` sets the starting cash, `--time S` simulates S seconds before taking `--png`, `--edit "t:x,y,type;o"` paints one tile through the hole tool (type 0 tee, 1 green) and opens the hole being built, `--edit "e:x,y,n,r"` raises (or with a negative n lowers) every vertex of the square of side 2r + 1 round vertex x,y by n steps (stills of steps and retaining walls).
 
+## Course size
+
+OpenSGolf can start a game on a map larger than the original's. The choice is on Select Difficulty (Start New Game and
+Sandbox Mode), in the box at the bottom left: a click steps through the sizes. Original is the default and plays exactly as
+SimGolf does; scenarios and championships always use their own course's size.
+
+| Size | Map | Yards a side | A sandbox (all the map) | Tracts for sale |
+|------|-----|--------------|-------------------------|-----------------|
+| Original | 50 x 50 tiles | 1,250 | 250 acres | 9 of 16 x 16 tiles |
+| Large | 74 x 74 | 1,850 | 548 acres | 9 of 24 x 24 |
+| Huge | 98 x 98 | 2,450 | 960 acres | 9 of 32 x 32 |
+| Giant | 128 x 128 | 3,200 | 1,638 acres | 9 of 42 x 42 |
+
+What changes with the size (n is the map's edge in tiles, 50 on the original's map):
+
+- **The land** is made by the same generator with its counts and places scaled: the woods are laid in n^2/2500 passes, there
+  is one creek per 50 tiles of edge, the sea's width (5, between 2 and 12 tiles on the original) and the ponds' grid scale
+  with n, the wildlife spots, property landmarks and difficulty obstacles grow with the area, and the clubhouse stands in the
+  middle of the map. Hills use a mix of two readings of the original's height noise so they do not repeat across the map.
+- **The deal:** a property comes with its slot's acres times n^2/2500 (the same share of the map), and its price, the
+  starting funds and the sandbox funds are multiplied by n/50. So on Huge (n = 98) the cheapest slot costs §98,000 out of
+  §196,000 starting funds and brings about 3.8 times the acres.
+- **Buying land:** the Tracts for Sale screen still shows nine tracts on its diamond, each (n - 2)/3 tiles square. A tract's
+  price is rolled tile by tile as in the original (and still doubles with every purchase), so land costs the same per acre on
+  every size; a bigger tract costs more in proportion to its acres.
+- **Golfers and staff** walk across the whole map: the path search's cost limits scale with n. Weeds sprout n^2/2500 times as
+  often (the same pace per acre), and the club may employ 20 x n^2/2500 people (at most 64). The routing map and the tract
+  screen draw the whole map in the original's diamond, with tiles 50/n as large.
+- **One original bug is fixed on the larger sizes only:** the exe's distance function comes out 8 times too long when both
+  legs are over 16 tiles; on a larger map the distance is the true one. The original's map keeps the original behaviour.
+- **Saves** record the size: a game on a larger map is saved as version 2 with its size and loads at that size; version 1
+  saves (every save made before course sizes, and every Original game, byte for byte as before) load as before. OpenSGolf
+  0.1 does not know the size field, so open larger-size saves with 0.2 or later; this version refuses a save from a newer
+  version or one whose map does not match its size instead of loading it wrong.
+
+Scripted runs take `--course-size N` (an edge from 50 to 200 tiles) with `--property`. With `SG_TICK_BENCH=1` a scripted run
+prints the mean and slowest simulation step and the time of each terrain rebuild.
+
+Limits: the object table holds 255 buildings, landmarks and lots (as the original's byte-sized index allows; the port refuses
+the 256th), the terrain is rebuilt whole after every edit (about 80 ms on Giant against 30 ms on Original, desktop CPU), and the
+Enhanced light and detail maps use fewer texels per tile on the larger sizes (at most about 400 texels a side).
+
 ## Buildings and garden items
 
 On the Add Buildings panel (or b for benches, Shift+B for a home site; Tab turns the next building) choose: benches, flower beds, ball washers, willow trees and scenic bridges at any time, the amenities as holes unlock them. Prices, clearing charges, upgrades and the path-to-clubhouse rule follow the exe. Benches need rough ground with a free neighbour; bridges go on water near a shore. Shift-click undoes: a path, bench, flower bed, willow or bridge comes off with what it cost back, a building is demolished with no refund. Golfers use what you build: snack bars and the practice buildings earn money on every visit, tired golfers sit on benches, flower beds and landmarks cheer them up. The headless test option is `--edit "b:x,y,kind"`.

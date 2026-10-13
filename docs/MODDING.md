@@ -419,6 +419,16 @@ start_funds = 200000
 debt_interest_percent = 5
 ```
 
+#### Course size and the economy
+
+The course size (docs/PLAYING.md, "Course size") is the player's choice for a new game, not a data file setting: a pack
+cannot change the map's size. The money in `economy.toml` and `properties.toml` is the Original size's, and the engine scales
+it for a larger map with edge n (50 on the original's): `start_funds`, `sandbox_funds` and `offer_prices` are multiplied by
+n/50 (truncated), a slot's acres by n^2/2500 (rounded), and a tract's price is rolled per tile as on the original's map, so
+it grows with the tract's area. A scenario plays at the Original size unless its course is a saved game of another size.
+For engine developers: the size is `sg_core::mapsize::n()` (set by `mapsize::set` when a game starts or loads; tests use
+`mapsize::scoped`), and the per-tile arrays of `land::Land` and `course::Course` are n x n with (n + 1) x (n + 1) corners.
+
 ### For engine developers
 
 The loaders and their tests are in crates/sg-core/src: `packs.rs` (pack.toml, discovery, load order, loading), `vfs.rs`
