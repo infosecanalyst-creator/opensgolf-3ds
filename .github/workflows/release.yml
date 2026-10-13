@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to publish, e.g. v0.1.0 (empty: build the packages only, no release)"
+        description: "Version to publish, e.g. v0.1.1 (empty: build the packages only, no release)"
         required: false
 
 permissions:
