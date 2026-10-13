@@ -101,6 +101,13 @@ pub struct Settings {
     pub fx_lightning: bool,
     /// How long a day of light lasts: 0 short (a game month), 1 normal (three months), 2 long (six) (fx_light.rs).
     pub fx_day_length: u8,
+    /// Fix the original game's own bugs (docs/FIXES.md): on by default and, unlike every other option here, in Classic too
+    /// (the master switch does not gate it); off plays the original's behaviour, bugs included. Crashes are fixed either way.
+    pub fix_original_bugs: bool,
+    /// The frame rate cap (framerate.rs CAPS: 30, 60, 120, 144, 240, uncapped). Counts in Classic too.
+    pub frame_cap: u8,
+    /// V-sync (the window's swap interval, from the next start; browsers always have it). Counts in Classic too.
+    pub vsync: bool,
 }
 
 impl Settings {
@@ -143,6 +150,9 @@ impl Settings {
         // a strong effect: offered, not on by default
         fx_lightning: false,
         fx_day_length: 1,
+        fix_original_bugs: true,
+        frame_cap: crate::framerate::UNCAPPED,
+        vsync: true,
     };
 }
 
@@ -175,6 +185,8 @@ pub fn settings() -> Settings {
 /// Puts settings in use (not saved; see `App::apply_enhanced`).
 pub fn set(s: Settings) {
     SETTINGS.with(|c| c.set(s));
+    // the simulation's own fixes follow the same setting (sg_core::fixes)
+    sg_core::fixes::set(s.fix_original_bugs);
 }
 
 fn on(f: impl Fn(&Settings) -> bool) -> bool {
@@ -210,6 +222,10 @@ pub fn smooth_motion() -> bool {
 }
 pub fn photo_mode() -> bool {
     on(|s| s.photo_mode)
+}
+/// "Fix original bugs" (docs/FIXES.md): not under the master switch, so Classic gets the fixes too unless it is turned off.
+pub fn fix_bugs() -> bool {
+    settings().fix_original_bugs
 }
 
 /// What a change of an option needs before it shows.
@@ -272,6 +288,34 @@ pub const OPTIONS: &[OptionEntry] = &[
     tick!("smooth_camera", "STR_ENHANCED_SMOOTH_CAMERA", DISPLAY, smooth_camera),
     tick!("smooth_motion", "STR_ENHANCED_SMOOTH_MOTION", DISPLAY, smooth_motion),
     tick!("photo_mode", "STR_ENHANCED_PHOTO_MODE", DISPLAY, photo_mode),
+    tick!("fix_original_bugs", "STR_ENHANCED_FIX_BUGS", DISPLAY, fix_original_bugs),
+    // the port's frame rate settings (framerate.rs): they count with Enhanced graphics off too
+    OptionEntry {
+        key: "frame_cap",
+        label: "STR_ENHANCED_FRAME_CAP",
+        page: DISPLAY,
+        choices: &[
+            "STR_FRAME_CAP_30",
+            "STR_FRAME_CAP_60",
+            "STR_FRAME_CAP_120",
+            "STR_FRAME_CAP_144",
+            "STR_FRAME_CAP_240",
+            "STR_FRAME_CAP_NONE",
+        ],
+        get: |s| s.frame_cap.min(crate::framerate::UNCAPPED),
+        set: |s, v| s.frame_cap = v.min(crate::framerate::UNCAPPED),
+        reload: Reload::Nothing,
+    },
+    OptionEntry {
+        key: "vsync",
+        label: if cfg!(target_arch = "wasm32") { "STR_ENHANCED_VSYNC_BROWSER" } else { "STR_ENHANCED_VSYNC" },
+        page: DISPLAY,
+        choices: &[],
+        get: |s| s.vsync as u8,
+        // a browser always draws on the display's refresh
+        set: |s, v| s.vsync = v != 0 || cfg!(target_arch = "wasm32"),
+        reload: Reload::Nothing,
+    },
     tick!("fx_scaler", "STR_ENHANCED_FX_SCALER", EFFECTS, fx_scaler),
     OptionEntry {
         key: "fx_scaler_mode",
@@ -357,6 +401,10 @@ pub fn init(force: Option<bool>) {
     let mut s = saved();
     if let Some(on) = force {
         s.enabled = on;
+    }
+    // test hook (docs/FIXES.md): SG_ORIGINAL_BUGS=1 turns "Fix original bugs" off for this run (not saved), for stills
+    if std::env::var_os("SG_ORIGINAL_BUGS").is_some() {
+        s.fix_original_bugs = false;
     }
     set(s);
     crate::fx::sync(&s);
@@ -448,6 +496,10 @@ impl App {
         }
         set(new);
         save(&new);
+        // the water's heights follow "Fix original bugs" (docs/FIXES.md 1)
+        if old.fix_original_bugs != new.fix_original_bugs {
+            self.rebuild_batches(g);
+        }
         // the shader effects follow their ticks (what the terrain's meshes depend on is rebuilt)
         self.fx_set(crate::fx::from_enhanced(&new));
         let art = |s: &Settings| {
@@ -962,6 +1014,8 @@ mod tests {
         set(Settings::DEFAULT);
         assert!(!native_text() && !smooth_ui() && !widescreen() && !terrain_filter() && !msaa());
         assert!(!smooth_camera() && !smooth_motion());
+        // the bug fixes are not under the master switch
+        assert!(fix_bugs());
     }
 
     #[test]

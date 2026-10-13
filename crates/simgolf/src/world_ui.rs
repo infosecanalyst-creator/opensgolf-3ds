@@ -37,7 +37,9 @@ impl App {
     /// The property shown on card k (offer slot k), its acres and price in money.
     fn card(&self, k: usize) -> (usize, i32, i32) {
         let s = self.offer[k];
-        (s.property, s.acres, sg_core::data::economy().offer_units[k] * 100)
+        // (the Hardcore extra's dearer land: offer_for; a larger course size's prices: sg_core::mapsize::scale_money_at)
+        let price = sg_core::mapsize::scale_money_at(self.course_size, sg_core::data::economy().offer_units[k] as i64 * 100);
+        (s.property, s.acres, self.extras_next.land(price as f64) as i32)
     }
 
     fn world_cash(&self) -> f64 {
@@ -392,10 +394,11 @@ impl App {
             // previous tract's text origin (nothing defined for tract 1, which the port leaves unnumbered then)
             if tract.oob > 0 {
                 let (a0, b0) = sg_core::tracts::origin(i);
-                let (a, b) = (a0 + 8, b0 + 8);
-                let centre_for_sale = self.land.as_ref().is_some_and(|l| l.ty[(a * land::N + b) as usize] == land::T_OUT);
+                let half = sg_core::tracts::side() / 2;
+                let (a, b) = (a0 + half, b0 + half);
+                let centre_for_sale = self.land.as_ref().is_some_and(|l| l.ty[(a * land::mn() + b) as usize] == land::T_OUT);
                 let at = if centre_for_sale {
-                    Some(((a + b) as f32 * 6.0 + 106.0, (b - a) as f32 * 3.0 + 441.0))
+                    Some(Self::mini(a as f32, b as f32))
                 } else if i > 0 {
                     // after a tract for sale the y has moved on two text lines to its price line (the exe adds twice the
                     // face's line height; the port's 17 pitch of the tract texts stands in for it)
@@ -431,7 +434,8 @@ impl App {
             for (k, l) in lines.iter().enumerate() {
                 s.put(g, F_INFO14, tx, y0 - 1.0 + 17.0 * k as f32, l, navy);
             }
-            let price = trf("STR_TRACT_PRICE", &[("PRICE", &money(tract.price as i64 * 100))]);
+            let price = self.club.extras.land(tract.price as f64 * 100.0) as i64;
+            let price = trf("STR_TRACT_PRICE", &[("PRICE", &money(price))]);
             s.put_right(g, F_INFO14, x0 + 165.0, y0 - 1.0 + 17.0 * lines.len() as f32, &price, navy);
         }
         s.put(g, F_INFO14, 548.0, 263.0, tr("STR_TRACT_CASH_RESERVE"), black_ink());

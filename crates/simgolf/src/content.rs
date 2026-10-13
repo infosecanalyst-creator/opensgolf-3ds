@@ -45,6 +45,14 @@ pub struct ContentState {
     pub forced_base: Option<String>,
     /// Find more: the content index and its downloads (None: the list of installed packs is shown).
     pub index: Option<IndexView>,
+    /// The packs loaded at start up with their versions, as saves record them (content_profiles.rs).
+    pub stamps: Vec<crate::content_profiles::PackStamp>,
+    /// The profiles list while it is open, and the name box of a profile being saved (content_profiles.rs).
+    pub profiles: Option<crate::content_profiles::ProfilesView>,
+    pub profile_name: Option<String>,
+    /// A saved game made with other packs, waiting for the player's answer; and "load it anyway" chosen.
+    pub pending_load: Option<crate::content_profiles::PendingLoad>,
+    pub load_anyway: bool,
 }
 
 impl ContentState {
@@ -126,6 +134,11 @@ fn save_settings(s: &Settings) {
     }
 }
 
+/// Saves the content choices (content_profiles.rs loads a profile or a save's packs into them).
+pub fn save_choices(s: &Settings) {
+    save_settings(s);
+}
+
 /// Saves the base set chosen (None: the original files), keeping the other content choices; it applies from the next
 /// start (gamefiles.rs restarts the game for it).
 pub fn save_base(base: Option<&str>) {
@@ -159,6 +172,7 @@ pub fn startup(game_dir: &Path, base: Option<&str>) -> ContentState {
     let loaded = packs::load(&found, &plan);
     let warnings = loaded.warnings.clone();
     packs::attach_warnings(&mut plan, &warnings);
+    let stamps = crate::content_profiles::stamps(&plan);
     let ids = plan.active_ids();
     if ids.len() > 1 {
         println!("content packs: {}", ids.join(", "));
@@ -183,6 +197,8 @@ pub fn startup(game_dir: &Path, base: Option<&str>) -> ContentState {
         notice,
         forced_base,
         index: None,
+        stamps,
+        ..Default::default()
     }
 }
 
@@ -210,6 +226,8 @@ fn find_more_button() -> Rect {
 impl App {
     pub fn open_content(&mut self) {
         self.content.index = None;
+        self.content.profiles = None;
+        self.content.profile_name = None;
         self.content.scroll = 0;
         self.content.picked = None;
         self.replan_content();
@@ -279,6 +297,13 @@ impl App {
         if self.content.index.is_some() {
             return self.index_click(x, y);
         }
+        // profiles (content_profiles.rs)
+        if self.content.profiles.is_some() || self.content.profile_name.is_some() {
+            return self.profiles_click(x, y);
+        }
+        if self.profile_buttons_click(x, y) {
+            return;
+        }
         match self.content_hit(x, y) {
             Some(Hit::FindMore) => self.open_content_index(),
             Some(Hit::Done) => self.close_content(),
@@ -297,6 +322,12 @@ impl App {
         use miniquad::KeyCode;
         if self.content.index.is_some() {
             return self.index_key(k);
+        }
+        if self.profile_name_key(k) {
+            return;
+        }
+        if self.content.profiles.is_some() {
+            return self.profiles_key(k);
         }
         let n = self.content_rows();
         match k {
@@ -405,6 +436,10 @@ impl App {
             self.index_poll();
             return self.draw_index(g);
         }
+        if self.content.profiles.is_some() {
+            self.draw_profiles(g);
+            return self.draw_profile_name(g);
+        }
         use crate::info_ui::c15;
         let s = Ui::new(self.draw_w, self.draw_h);
         self.view = s.view;
@@ -492,10 +527,16 @@ impl App {
         let b = find_more_button();
         s.fill(g, b.x, b.y, b.w, b.h, if b.has(px, py) { rgb(0.85, 0.85, 1.0) } else { rgb(0.47, 0.47, 0.70) });
         s.put_centered(g, F_ARIAL10, b.x + b.w / 2.0, b.y + 5.0, tr("STR_CONTENT_FIND_MORE"), navy);
+        // profiles (content_profiles.rs)
+        for (b, label) in crate::content_profiles::profile_buttons().into_iter().zip(["STR_PROFILE_SAVE", "STR_PROFILE_LIST"]) {
+            s.fill(g, b.x, b.y, b.w, b.h, if b.has(px, py) { rgb(0.85, 0.85, 1.0) } else { rgb(0.47, 0.47, 0.70) });
+            s.put_centered(g, F_ARIAL10, b.x + b.w / 2.0, b.y + 4.0, tr(label), navy);
+        }
         if self.art.trans.tex.is_some() {
             s.image_part(g, &self.art.trans, BOX.x + BOX.w - 70.0, BOX.y + BOX.h - 58.0, 350.0, 140.0, 50.0, 50.0);
         }
         g.flush();
+        self.draw_profile_name(g);
     }
 }
 

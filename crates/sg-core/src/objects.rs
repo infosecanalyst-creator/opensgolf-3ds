@@ -27,6 +27,53 @@ pub const LANDMARKS: [&str; 19] = [
     "Landmarks/Red Oil Pump",
 ];
 
+/// The port's Cut content extra (docs/CUT_CONTENT.md): landmark art in the game files that the shipped game never loads or
+/// never draws, offered as landmarks of types `CUT_BASE` and up: (file, its palette, name key). The original has no price or
+/// effect for them; the port charges `crate::extras::CUT_LANDMARK_UNITS` and golfers enjoy them as they enjoy a landmark's
+/// sight (no landmark power: they are outside the type & 3 effects, which only types below 16 have).
+pub const CUT_LANDMARKS: [(&str, &str, &str); 14] = [
+    ("Scenic/CactusGroupB", "Scenic/CactusGroupBPal.pcx", "STR_CUT_CACTUS_GROUP"),
+    ("Scenic/BlackPine", "Scenic/BlackPinePal.pcx", "STR_CUT_BLACK_PINE"),
+    ("Landmarks/cathedral_ruins", "Landmarks/cathedral_ruinsPal.pcx", "STR_CUT_CATHEDRAL_RUINS"),
+    ("Landmarks/gargoyle", "Landmarks/gargoylePal.pcx", "STR_CUT_GARGOYLE"),
+    ("Scenic/Trop Boulder", "Scenic/TropBoulderPal.pcx", "STR_CUT_BOULDER"),
+    ("Landmarks/Rock Garden", "Landmarks/Rockgarden_010001.pcx", "STR_CUT_ROCK_GARDEN"),
+    ("Landmarks/SundialB", "Landmarks/sundialPal.pcx", "STR_CUT_GARDEN_SUNDIAL"),
+    ("Landmarks/Chapel", "Landmarks/chapel_Palette.pcx", "STR_CUT_CHAPEL"),
+    ("Scenic/Scenic_Cattails", "Scenic/CattailsPal.pcx", "STR_CUT_CATTAILS"),
+    ("Scenic/Koi Pond", "Scenic/KoipondPal.pcx", "STR_CUT_KOI_POND"),
+    ("Scenic/HotSpring", "Scenic/HotSpringPal.pcx", "STR_CUT_HOT_SPRING"),
+    ("Scenic/Oasis", "Scenic/OasisPal.pcx", "STR_CUT_OASIS"),
+    ("Scenic/desert fountain", "Scenic/DesertFountPal.pcx", "STR_CUT_DESERT_FOUNTAIN"),
+    ("Scenic/LinksWaterRock", "Scenic/LinksWaterRockPal.pcx", "STR_CUT_SEA_ROCK"),
+];
+
+/// The first landmark type of `CUT_LANDMARKS` (after the original's 19).
+pub const CUT_BASE: i32 = 19;
+
+/// The landmark "types" the Buyable animals extra uses for its strip and tool: `ANIMAL_BASE` + the wildlife kind (0..8).
+/// They never become landmark objects: placing one buys a pair of animals (sg_core::wildlife).
+pub const ANIMAL_BASE: i32 = 100;
+
+/// Whether golfers enjoy a landmark of type `t` (the original: types below 16; 16..18 are the eyesores). The cut landmarks
+/// are scenic too.
+pub fn lovely_landmark(t: i32) -> bool {
+    t < 16 || (CUT_BASE..CUT_BASE + CUT_LANDMARKS.len() as i32).contains(&t)
+}
+
+/// The art of a landmark type: the sprite file (under Flics, without ".flc") and the palette to draw it in (under Flics),
+/// for the original's types (palette 100 + type), the cut ones and the animals of the Buyable animals strip (the leader's
+/// standing clip in its own palette, which the clip carries).
+pub fn landmark_art(t: i32, theme: u8) -> Option<(&'static str, Option<&'static str>)> {
+    if (0..LANDMARKS.len() as i32).contains(&t) {
+        return Some((LANDMARKS[t as usize], crate::decor::palette_file(100 + t as u8, theme)));
+    }
+    if let Some(c) = CUT_LANDMARKS.get((t - CUT_BASE).max(-1) as usize) {
+        return Some((c.0, Some(c.1)));
+    }
+    crate::wildlife::STAND_FILES.get((t - ANIMAL_BASE).max(-1) as usize).map(|&f| (f, None))
+}
+
 /// Building sprites 0x1b6..0x1fb by exe theme (0 Parkland, 1 Desert, 2 Tropical, 3 Links); None where a theme loads nothing.
 const SPRITES: &[(u16, [Option<&str>; 4])] = &[
     // tournament TV tower and commentary booth (loaded by 0x442180); the same art in every theme

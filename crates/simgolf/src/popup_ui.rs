@@ -28,6 +28,8 @@ pub enum PopupKind {
     /// System Functions, Quit: "After a short career <pro> plans his retirement." (docs/DECODE_WORLD2.md 6.5, footage of
     /// the original at its (400, 100)).
     Retire,
+    /// Preferences > OpenSGolf extras (the port's own, sg_core::extras): a checkbox list of the optional gameplay changes.
+    Extras,
 }
 
 #[derive(Clone, Debug)]
@@ -378,11 +380,16 @@ impl Popup {
             lines: self.lines.clone(),
             cx: self.cx,
             top: self.top,
-            checks: matches!(self.kind, PopupKind::Prefs | PopupKind::Enhanced).then_some(self.checks),
+            checks: matches!(self.kind, PopupKind::Prefs | PopupKind::Enhanced | PopupKind::Extras).then_some(self.checks),
             disabled: self.disabled,
             plain: match self.kind {
                 PopupKind::Prefs => {
-                    1 << PREFS_CONTENT | 1 << PREFS_ENHANCED | 1 << PREFS_KEYS | 1 << PREFS_LANGUAGE | self.files_line.map_or(0, |k| 1 << k)
+                    1 << PREFS_CONTENT
+                        | 1 << PREFS_ENHANCED
+                        | 1 << PREFS_KEYS
+                        | 1 << PREFS_EXTRAS
+                        | 1 << PREFS_LANGUAGE
+                        | self.files_line.map_or(0, |k| 1 << k)
                 }
                 PopupKind::Enhanced => crate::enhanced::popup_plain(self.page),
                 _ => 0,
@@ -421,8 +428,10 @@ pub const PREFS_ENHANCED_ON: usize = 6;
 pub const PREFS_ENHANCED: usize = 7;
 /// The option of the Preferences list that opens Preferences > Keyboard controls (keys_ui.rs).
 pub const PREFS_KEYS: usize = 8;
+/// The option of the Preferences list that opens Preferences > OpenSGolf extras (extras_ui.rs).
+pub const PREFS_EXTRAS: usize = 9;
 /// The Preferences' option that switches the language (shown only when there is a translation to switch to).
-const PREFS_LANGUAGE: usize = 9;
+const PREFS_LANGUAGE: usize = 10;
 /// The bit of a Preferences result that asks for the "Use my SimGolf files..." line's action (gamefiles.rs), after the
 /// ticks are applied.
 pub const PREFS_FILES_FLAG: usize = 20;
@@ -511,11 +520,18 @@ impl App {
                     tr("STR_MENU_PREFS_ENHANCED"),
                     // the port's own: Preferences > Keyboard controls (keys_ui.rs)
                     tr("STR_MENU_PREFS_KEYS"),
+                    // the port's own: Preferences > OpenSGolf extras (extras_ui.rs)
+                    tr("STR_MENU_PREFS_EXTRAS"),
                 ],
                 0,
                 400.0,
                 200.0,
             ),
+            PopupKind::Extras => {
+                let mut v = vec![tr("STR_EXTRAS_TITLE")];
+                v.extend(sg_core::extras::OPTION_KEYS.iter().map(|k| tr(k)));
+                (v, 0, 400.0, 160.0)
+            }
             // the commissioner's approval (main routine 0x41e2a0): the two-choice box centred on x 0x1c2 from y 0xa0 (EXACT,
             // the call's pushes at 0x41e2ee and 0x41e303), texts 0x4c5d74 and 0x4c5d48
             // filled in below from enhanced::OPTIONS
@@ -553,6 +569,8 @@ impl App {
                 | (!self.mute as u32) << 3
                 | (self.hd.enabled as u32) << 4
                 | (crate::enhanced::settings().enabled as u32) << PREFS_ENHANCED_ON
+        } else if kind == PopupKind::Extras {
+            self.extras_checks()
         } else {
             0
         };
@@ -646,7 +664,7 @@ impl App {
                 }
             }
             KeyCode::Enter | KeyCode::KpEnter | KeyCode::Space => {
-                if p.sel.is_none() && !matches!(p.kind, PopupKind::Prefs | PopupKind::Enhanced) {
+                if p.sel.is_none() && !matches!(p.kind, PopupKind::Prefs | PopupKind::Enhanced | PopupKind::Extras) {
                     return Some(None);
                 }
                 return Some(self.popup_accept(None));
@@ -734,6 +752,17 @@ impl App {
             if k == PREFS_KEYS && (pick.is_some() || p.sel == Some(k)) {
                 return Some((p.checks | 1 << PREFS_KEYS) as usize);
             }
+            // and the OpenSGolf extras line
+            if k == PREFS_EXTRAS && (pick.is_some() || p.sel == Some(k)) {
+                return Some((p.checks | 1 << PREFS_EXTRAS) as usize);
+            }
+            if pick.is_some() {
+                p.checks ^= 1 << k;
+                return Some(usize::MAX); // toggled, stay open
+            }
+            return Some(p.checks as usize);
+        }
+        if p.kind == PopupKind::Extras {
             if pick.is_some() {
                 p.checks ^= 1 << k;
                 return Some(usize::MAX); // toggled, stay open
