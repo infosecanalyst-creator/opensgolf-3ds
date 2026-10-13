@@ -51,6 +51,44 @@ Saving: Shift+S (or System Functions, Save the current game) opens the Save dial
 
 On the Add Buildings panel (or b for benches, Shift+B for a home site; Tab turns the next building) choose: benches, flower beds, ball washers, willow trees and scenic bridges at any time, the amenities as holes unlock them. Prices, clearing charges, upgrades and the path-to-clubhouse rule follow the exe. Benches need rough ground with a free neighbour; bridges go on water near a shore. Shift-click undoes: a path, bench, flower bed, willow or bridge comes off with what it cost back, a building is demolished with no refund. Golfers use what you build: snack bars and the practice buildings earn money on every visit, tired golfers sit on benches, flower beds and landmarks cheer them up. The headless test option is `--edit "b:x,y,kind"`.
 
+## OpenSGolf extras (optional, not in the original)
+
+Preferences (System Functions, Preferences) has an **OpenSGolf extras...** line. It opens a box of optional gameplay
+changes, all off unless you tick them. With all of them off the game plays exactly as the original. What you tick applies
+to the game you are playing, is saved with that game (a save made with everything off is unchanged), and is what new
+games start with (kept in settings.json under `extras`).
+
+- **Tab turns placed buildings and the clubhouse.** With no building tool in hand, Tab turns the building under the
+  pointer a quarter: the clubhouse, putting greens, the other amenities and landmarks (the driving range and home sites
+  keep their way; the range is drawn tile by tile). Only the picture turns: footprints are square, so paths, golfer
+  routes, putting, the clubhouse door and the ratings do not change. With a garden item or the landmark tool in hand, Tab
+  steps through its designs (benches, flower beds, scenic trees, bridges, landmarks) as the strip of pictures over the
+  panel shows them. The original already turns a putting green or building you are about to place with Tab, and picks a
+  random design when you pick a flower bed, scenic tree or bridge (and the first bench); you then choose from the strip.
+- **Cut content: unused landmarks.** Fourteen pieces of art that are in the game files but that the original never loads
+  (docs/CUT_CONTENT.md) can be placed as landmarks: press the Landmark button on the Amenities panel, and press it again
+  to switch between your own landmarks, the cut ones and (with the next extra) the animals. Each costs $6,000 (the port's
+  price), golfers enjoy the sight as they enjoy a landmark's (and the course planner treats them as features), but they
+  have none of the four landmark powers. They stay for good, as landmarks do.
+- **Hardcore economy.** Tighter money and choosier golfers: by default wages 150%, hole maintenance 200%, land (the
+  property and tracts) 150%, debt interest 5% a month, at most $600 per golfer per hole in fees, every bad moment costs a
+  golfer one more mood step, and at most 12 employees. The numbers are data/economy.toml's `hardcore_*` fields (docs/MODDING.md).
+- **Higher staff limits.** The club may have 40 employees instead of the original's 20 (data/economy.toml's
+  `staff_limit_high`, at most 63: the original keeps its walkers in 64 records).
+- **Buyable animals.** The landmark strip gets a page of the theme's animals (elk and cranes in Parkland, snakes, gila
+  monsters and road runners in the Desert, flamingos, crocodiles, snakes and ducks in the Tropics, elk, sheep and ducks on
+  the Links). A click on open ground of your course buys a pair (leader and young, $2,000) that drops in as wild animals do
+  and then keeps within about three tiles of where it was set down; bought animals never wander off for good. Golfers who
+  glance at a tile next to one enjoy the sight (the scenic thought, +1 mood, as a landmark's sight gives), and scaring one
+  is the same as scaring a wild one. Up to 32 pairs. The Preferences' "Ambient animals" tick hides and stops them, as it
+  does the wild ones.
+
+Test hooks: `--extras BITS` sets the extras a new game starts with (1 Tab turns, 2 cut content, 4 hardcore, 8 higher staff
+limits, 16 animals; not saved to the settings); `--edit "X:BITS"` sets the extras of the game being played; `--edit "T:x,y"`
+presses the Tab of the first extra with the pointer on tile x,y; `--edit "S:page[,design]"` opens the Amenities panel with the
+landmark tool on strip page 0 (own), 1 (cut) or 2 (animals); `--edit "b:x,y,4,t"` places landmark type t (19..32 the cut ones,
+100 + kind an animal pair); `--edit "M:6"` opens the extras box.
+
 ## In-game interface (dock, panels, advisor, stories)
 
 The lower left of the course screen now shows the game's own dock art (Interface/3mainLowerLeft.pcx). The three big round buttons open panels along the bottom: **Build Course** (terrain brushes, paths, raise and lower, each with its cost), **Add Buildings** (the amenities for the theme) and **People** (click to hire, right click to fire a club pro, ranger, groundskeeper or soda vendor). Click an item, then click the map. The small buttons zoom, rotate, open the course report, pause, and save the course. The keys are the original's (its F8 screen lists them): g f r s t w p b pick the green/tee, fairway, rough, sand, trees, water, path and bench tools (v the ravine), e the elevation tools, = and - raise and lower the ground under the pointer (Tab steps the elevation brush), h opens the hole being built; z and x zoom between the original's three levels, PageUp and Home turn the view a quarter (0 turns it back), the arrows scroll four tiles, 1 to 9 and Shift+1 to 9 jump to holes 1 to 18; Space drops the tool; Shift+P pause, Shift+T trees, Shift+N names, Shift+R routing map, Shift+W world map, Shift+J begin a tournament, Shift+C save the course for championship play, Shift+S and Shift+L save and load. The original has no game speed control; the port's own ] cycles normal, x2 and x4. With Enhanced graphics on, the port's own c (a key the original leaves unused) opens photo mode (see *Photo mode* below).
