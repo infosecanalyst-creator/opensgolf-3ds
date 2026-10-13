@@ -244,6 +244,10 @@ pub enum Action {
     Free,
     /// Say where to copy the files (Android, or a build without the picker).
     Where,
+    /// A saved game made with other content packs (content_profiles.rs): switch to its packs and load it after a restart.
+    SavePacksSwitch,
+    /// The same: load it with the packs in use.
+    SavePacksLoad,
 }
 
 /// Opens the system's folder picker (blocking until the player chooses or cancels). The test hook stands in for it.
@@ -279,6 +283,25 @@ fn copy_target() -> PathBuf {
 /// On Unix the program replaces itself (same process: an AppImage stays mounted, the Dock icon stays); on Windows it starts
 /// a new one and leaves. Returns only when that failed.
 fn restart(note: &str) -> std::io::Error {
+    restart_with(note, None)
+}
+
+/// The variable that names a saved game to load once the program has started again (content_profiles.rs).
+const LOAD_ENV: &str = "OPENSGOLF_LOAD_AFTER_RESTART";
+
+/// The saved game the program was started again to load, once (the variable is cleared, so a later restart does not load it
+/// again).
+pub fn take_load_after_restart() -> Option<PathBuf> {
+    let p = std::env::var_os(LOAD_ENV).filter(|s| !s.is_empty()).map(PathBuf::from);
+    // (a browser has no environment: removing a variable there panics)
+    if p.is_some() {
+        std::env::remove_var(LOAD_ENV);
+    }
+    p
+}
+
+/// `restart`, and with `load` the saved game the new program loads once it has started.
+pub fn restart_with(note: &str, load: Option<&Path>) -> std::io::Error {
     let exe = match std::env::current_exe() {
         Ok(e) => e,
         Err(e) => return e,
@@ -286,7 +309,8 @@ fn restart(note: &str) -> std::io::Error {
     let mut args = Vec::new();
     let mut it = std::env::args_os().skip(1);
     while let Some(a) = it.next() {
-        if a == "--game" || a == "--base" {
+        // a switch of content packs keeps the game folder: only the base set is the saved choice
+        if (a == "--game" && load.is_none()) || a == "--base" {
             it.next();
             continue;
         }
@@ -295,6 +319,9 @@ fn restart(note: &str) -> std::io::Error {
     println!("restarting on the chosen graphics: {note}");
     let mut cmd = std::process::Command::new(exe);
     cmd.args(args).env(NOTICE_ENV, note).env_remove(PICK_ENV);
+    if let Some(l) = load {
+        cmd.env(LOAD_ENV, l);
+    }
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
@@ -317,6 +344,8 @@ pub struct Notice {
     pub lines: Vec<String>,
     /// A question: what the first option does.
     pub confirm: Option<Action>,
+    /// A question with three options: what the second does (the last option cancels).
+    pub alt: Option<Action>,
     /// The option lit.
     pub sel: Option<usize>,
 }
@@ -331,7 +360,7 @@ impl Notice {
 }
 
 /// Splits a message into lines that fit `width` pixels in the choice box's font.
-fn wrap(text: &str, width: f32) -> Vec<String> {
+pub fn wrap(text: &str, width: f32) -> Vec<String> {
     let f = crate::popup_ui::CHOICE_FONT;
     let mut lines = Vec::new();
     for para in text.split('\n') {
@@ -391,6 +420,7 @@ impl App {
                 let msg = trf("STR_GAME_FILES_COPY_HERE", &[("DIR", &copy_target().display())]);
                 self.show_notice(&msg);
             }
+            Action::SavePacksSwitch | Action::SavePacksLoad => self.save_packs_answer(a == Action::SavePacksSwitch),
         }
     }
 
@@ -442,14 +472,14 @@ impl App {
         let mut lines = wrap(tr("STR_GAME_FILES_ASK_RESTART"), 560.0);
         lines.push(format!(" {}", tr("STR_GAME_FILES_GO_ON")));
         lines.push(format!(" {}", tr("STR_GAME_FILES_NOT_NOW")));
-        self.notice = Some(Notice { lines, confirm: Some(a), sel: None });
+        self.notice = Some(Notice { lines, confirm: Some(a), alt: None, sel: None });
     }
 
     /// A message in the game's own box (the generic popup's frame) with an OK, over whatever screen is up.
     pub fn show_notice(&mut self, msg: &str) {
         let mut lines = wrap(msg, 560.0);
         lines.push(format!(" {}", tr("STR_OK")));
-        self.notice = Some(Notice { lines, confirm: None, sel: Some(0) });
+        self.notice = Some(Notice { lines, confirm: None, alt: None, sel: Some(0) });
     }
 
     /// The notice, when one is up: the choice box centred on the screen.
@@ -482,9 +512,12 @@ impl App {
         if hit.is_none() && b.frame().has(vx, vy) {
             return;
         }
+        let alt = n.alt;
         self.notice = None;
-        if hit == Some(0) {
-            self.files_action(a);
+        match (hit, alt) {
+            (Some(0), _) => self.files_action(a),
+            (Some(1), Some(b)) => self.files_action(b),
+            _ => {}
         }
     }
 
@@ -492,12 +525,17 @@ impl App {
     pub fn notice_key(&mut self, k: miniquad::KeyCode) {
         use miniquad::KeyCode;
         let Some(n) = self.notice.as_mut() else { return };
+        let last = 1 + n.alt.is_some() as usize;
         match k {
-            KeyCode::Up => n.sel = Some(0),
-            KeyCode::Down if n.confirm.is_some() => n.sel = Some(1),
+            KeyCode::Up => n.sel = Some(n.sel.map_or(0, |s| s.saturating_sub(1))),
+            KeyCode::Down if n.confirm.is_some() => n.sel = Some(n.sel.map_or(0, |s| (s + 1).min(last))),
             KeyCode::Escape => self.notice = None,
             KeyCode::Enter | KeyCode::KpEnter | KeyCode::Space => {
-                let go = n.confirm.filter(|_| n.sel == Some(0));
+                let go = match n.sel {
+                    Some(0) => n.confirm,
+                    Some(1) => n.alt,
+                    _ => None,
+                };
                 self.notice = None;
                 if let Some(a) = go {
                     self.files_action(a);

@@ -327,7 +327,7 @@ impl Club {
             }
             0x0b => {
                 tone = Tone::Good;
-                let what = feature(c, arg / 50, arg % 50, theme);
+                let what = feature(c, arg / crate::course::n(), arg % crate::course::n(), theme);
                 let adj = if arg & 0x100 != 0 { tr("STR_THOUGHT_0B_NICE") } else { tr("STR_THOUGHT_0B_BEAUTIFUL") };
                 if rel == 1 {
                     trf("STR_THOUGHT_0B_LOOK_AT_THIS", &[("ADJ", &adj), ("WHAT", &what), ("PET", &Self::pet(p))])
@@ -420,7 +420,7 @@ impl Club {
             }
             0x14 => {
                 tone = Tone::Bad;
-                trf("STR_THOUGHT_14_UGLY", &[("WHAT", &feature(c, arg / 50, arg % 50, theme))])
+                trf("STR_THOUGHT_14_UGLY", &[("WHAT", &feature(c, arg / crate::course::n(), arg % crate::course::n(), theme))])
             }
             0x15 => {
                 tone = Tone::Bad;
@@ -460,7 +460,7 @@ impl Club {
             }
             0x1c => {
                 tone = Tone::Good;
-                let what = feature(c, arg / 50, arg % 50, theme);
+                let what = feature(c, arg / crate::course::n(), arg % crate::course::n(), theme);
                 match rel {
                     1 => trf("STR_THOUGHT_1C_LOVELY_PET", &[("WHAT", &what), ("PET", &Self::pet(p))]),
                     3 | 5 => trf("STR_THOUGHT_1C_LOVELY_PARTNER", &[("WHAT", &what), ("PARTNER", &partner)]),

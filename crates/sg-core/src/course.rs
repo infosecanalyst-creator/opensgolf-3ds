@@ -5,8 +5,23 @@
 use crate::geom::{len, DX, DY, UNIT};
 use crate::land::{Land, Object};
 
-pub const N: i32 = 50;
-pub const NN: usize = 2500;
+/// The map's edge in tiles (50 on the original's map; see crate::mapsize).
+#[inline]
+pub fn n() -> i32 {
+    crate::mapsize::n()
+}
+
+/// Tiles on the map.
+#[inline]
+pub fn nn() -> usize {
+    crate::mapsize::tiles()
+}
+
+/// Index of corner (a, b) in the (n + 1) x (n + 1) height grid.
+#[inline]
+pub fn hidx(a: i32, b: i32) -> usize {
+    (a * (n() + 1) + b) as usize
+}
 
 /// The exe's height step (the int at 0x4c2e00): screen pixels per corner level per zoom step, used as `level * step * zoom
 /// / 4` for the ground and in the ball, balloon and waterfall lifts. Nothing writes it, so its value is the one in the
@@ -129,11 +144,11 @@ pub const TYPES: [TypeRow; 23] = [
 ];
 
 pub fn idx(a: i32, b: i32) -> usize {
-    (a * N + b) as usize
+    (a * n() + b) as usize
 }
 
 pub fn inside(a: i32, b: i32) -> bool {
-    (0..N).contains(&a) && (0..N).contains(&b)
+    (0..n()).contains(&a) && (0..n()).contains(&b)
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -176,13 +191,13 @@ pub struct Course {
 impl Default for Course {
     fn default() -> Self {
         Course {
-            ty: vec![t::ROUGH; NN],
-            flags: vec![0; NN],
-            obj: vec![0; NN],
-            walk: vec![2; NN],
-            height: vec![3; 51 * 51],
-            level_table: vec![0; NN],
-            walls: vec![0; NN],
+            ty: vec![t::ROUGH; nn()],
+            flags: vec![0; nn()],
+            obj: vec![0; nn()],
+            walk: vec![2; nn()],
+            height: vec![3; crate::mapsize::corners()],
+            level_table: vec![0; nn()],
+            walls: vec![0; nn()],
             objects: Vec::new(),
             hazard: std::array::from_fn(|i| crate::data::get().rows[i].hazard),
             theme: 0,
@@ -190,10 +205,10 @@ impl Default for Course {
             slot_index: 0,
             level: [0; 20],
             oper: [0; 20],
-            landing: vec![0; NN],
-            growth: vec![0; NN],
-            happy: vec![0; NN],
-            unhappy: vec![0; NN],
+            landing: vec![0; nn()],
+            growth: vec![0; nn()],
+            happy: vec![0; nn()],
+            unhappy: vec![0; nn()],
             editor: false,
         }
     }
@@ -206,9 +221,9 @@ impl Course {
     /// divided by the cheap distance of three times the tile offset plus 2, onto in-bounds tiles that are not out of bounds,
     /// each byte clamped to 0..255. Returns (happy, unhappy).
     pub fn aura(&self) -> (Vec<u8>, Vec<u8>) {
-        let mut happy = vec![0u8; NN];
-        let mut unhappy = vec![0u8; NN];
-        let total: i32 = self.landing.iter().take(NN).map(|&v| v as u8 as i32).sum();
+        let mut happy = vec![0u8; nn()];
+        let mut unhappy = vec![0u8; nn()];
+        let total: i32 = self.landing.iter().take(nn()).map(|&v| v as u8 as i32).sum();
         if total <= 9 {
             return (happy, unhappy);
         }
@@ -231,8 +246,8 @@ impl Course {
                 }
             }
         };
-        for a in 0..N {
-            for b in 0..N {
+        for a in 0..n() {
+            for b in 0..n() {
                 let i = idx(a, b);
                 let h = self.happy.get(i).copied().unwrap_or(0) as i32;
                 if h != 0 {
@@ -250,14 +265,21 @@ impl Course {
     /// Takes tiles, flags, heights and objects from the land, keeping the per-tile counters, then rebuilds levels and walls.
     /// `all_joined`: difficulty 0 and sandbox games treat every building as joined to the clubhouse.
     pub fn sync(&mut self, land: &Land, all_joined: bool) {
+        if self.ty.len() != land.ty.len() || self.height.len() != land.height.len() {
+            // a map of another size (a new game or a load at another course size): fresh per-tile counters at the land's size
+            let _size = crate::mapsize::scoped(land.n);
+            let editor = self.editor;
+            *self = Course::default();
+            self.editor = editor;
+        }
         self.ty.copy_from_slice(&land.ty);
         // Weed bits belong to the staff routines; keep the ones already here.
-        for i in 0..NN {
+        for i in 0..nn() {
             let keep = self.flags[i] & (f::WEED | f::GROWING);
             self.flags[i] = (land.flags[i] & !(f::WEED | f::GROWING)) | keep;
         }
         self.obj.copy_from_slice(&land.var);
-        for i in 0..NN {
+        for i in 0..nn() {
             self.walk[i] = land.layer[i] as i32;
         }
         self.height.copy_from_slice(&land.height);
@@ -345,7 +367,7 @@ impl Course {
         if self.ty[idx(a, b)] == t::OUT && self.oob(a - 1, b) && self.oob(a, b + 1) {
             return 3;
         }
-        self.height[(a * 51 + b) as usize] as i32
+        self.height[hidx(a, b)] as i32
     }
 
     /// Highest and lowest of a tile's four raw corners (0x42f4b0).
@@ -384,8 +406,8 @@ impl Course {
         for v in self.level_table.iter_mut() {
             *v = 0;
         }
-        for a in 0..N {
-            for b in 0..N {
+        for a in 0..n() {
+            for b in 0..n() {
                 let i = idx(a, b);
                 let fl = self.row(self.ty[i]).flags;
                 if fl & 6 != 0 {
@@ -401,8 +423,8 @@ impl Course {
         }
         loop {
             let mut changed = false;
-            for a in 0..N {
-                for b in 0..N {
+            for a in 0..n() {
+                for b in 0..n() {
                     let i = idx(a, b);
                     let r = *self.row(self.ty[i]);
                     if r.flags & 1 == 0 {
@@ -432,8 +454,8 @@ impl Course {
                 break;
             }
         }
-        for a in 0..N {
-            for b in 0..N {
+        for a in 0..n() {
+            for b in 0..n() {
                 let mut w = 0u8;
                 for d in [0i32, 2, 4, 6] {
                     let (na, nb) = (a + DX[d as usize], b + DY[d as usize]);

@@ -140,6 +140,9 @@ impl App {
         let level = if kind >= 6 { self.lot_level(kind) } else { 0 };
         let size = sg_core::data::buildings().get(kind as usize).map(|b| b.1).unwrap_or(1) + level;
         let clear = self.land.as_ref().and_then(|l| l.fits(a, b, size, kind, self.exe_theme()));
+        // "Fix original bugs" (docs/FIXES.md 2): a new lot on top of a standing one shows red, as edit_building refuses it
+        let clear =
+            clear.filter(|_| level > 0 || !crate::enhanced::fix_bugs() || !self.land.as_ref().is_some_and(|l| l.covers_object(a, b, size)));
         (size, clear.map(|c| if kind == 0 { c / 2 } else { c }))
     }
 
@@ -236,8 +239,10 @@ impl App {
                 let mut pal = None;
                 let files: Vec<(String, bool)> = if kind == land::K_LANDMARK {
                     let Some(t) = self.chosen_landmark() else { return };
-                    pal = sg_core::decor::palette_file(100 + t as u8, self.exe_theme());
-                    vec![(sg_core::objects::LANDMARKS[t as usize].to_string(), false)]
+                    // (the extras' cut landmarks and animals too: sg_core::objects::landmark_art)
+                    let Some((file, p)) = sg_core::objects::landmark_art(t, self.exe_theme()) else { return };
+                    pal = p;
+                    vec![(file.to_string(), false)]
                 } else {
                     let level = self.lot_level(kind).min(1) as u16;
                     sg_core::objects::building_layers(kind, level, self.exe_theme()).iter().map(|l| (l.file.to_string(), l.flat)).collect()
@@ -496,7 +501,8 @@ impl App {
             col = c15(RED);
         }
         if kind == land::K_LANDMARK {
-            if let Some(t) = self.chosen_landmark() {
+            // (the extras' cut landmarks and animals have no reach)
+            if let Some(t) = self.chosen_landmark().filter(|&t| t < sg_core::objects::CUT_BASE) {
                 self.draw_reach_ring(g, s, a * 1024 + 512, b * 1024 + 512, (t * 5 + 40) * 5 / 4);
             }
         }

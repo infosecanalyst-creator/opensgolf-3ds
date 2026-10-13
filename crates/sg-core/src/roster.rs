@@ -411,6 +411,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn every_head_byte_is_safe() {
+        // the 1.03 patch fixed a crash picking female heads (docs/PATCHES.md, docs/FIXES.md 3): every head byte a file can
+        // carry, either gender, looks up its defaults without reading past the table
+        for h in 0..=255u8 {
+            for female in [false, true] {
+                let d = head_defaults(h, female);
+                assert_eq!(d.is_some(), h < 0x13);
+                let _ = crate::thoughts::signature_saying(h, female);
+            }
+        }
+    }
+
+    #[test]
     fn fallback_shape() {
         let r = fallback();
         assert_eq!(r.len(), PEOPLE);

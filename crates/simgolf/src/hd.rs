@@ -349,6 +349,51 @@ pub fn load_pcx(g: &mut Gfx, path: &Path, magenta_key: bool, key_rgb: Option<u32
     Some(finish(g, &img, w, h))
 }
 
+/// ui::load_pcx with the magenta key from the pack, its transparency taken from the classic picture: an HD pixel is clear
+/// exactly where its classic pixel is the key, opaque elsewhere, and an HD pixel the upscaler left see-through or tinted by
+/// the key inside the classic outline takes the classic pixel's colour. For cliffs01.pcx (the water banks' rocks), whose
+/// upscaled cuts came out with pink rims and see-through holes in the rock that showed as dark blobs at the cliff corners
+/// (docs/FIXES.md 1).
+pub fn load_pcx_classic_key(g: &mut Gfx, path: &Path) -> Option<Image> {
+    let p = pack()?;
+    let (mut img, w, h) = p.image(&key_of(path)?)?;
+    let low = decode_pcx(&sg_core::fsutil::read_file(path)?).ok()?;
+    if low.w != w || low.h != h || img.w != w * p.scale || img.h != h * p.scale {
+        return None;
+    }
+    let (s, pw, wu, hu) = (p.scale as usize, img.w as usize, w as usize, h as usize);
+    let key = |k: usize| low.px[k * 4..k * 4 + 3] == [255, 0, 255];
+    // the colour a clear pixel carries: a neighbouring opaque pixel's, so the filtering of the HD texture blends the rock's
+    // edge with its own colour instead of the magenta key (the pink rims)
+    let bleed: Vec<[u8; 3]> = (0..wu * hu)
+        .map(|k| {
+            let (x, y) = ((k % wu) as i32, (k / wu) as i32);
+            (-1..=1)
+                .flat_map(|dy| (-1..=1).map(move |dx| (x + dx, y + dy)))
+                .filter(|&(nx, ny)| nx >= 0 && ny >= 0 && nx < wu as i32 && ny < hu as i32)
+                .map(|(nx, ny)| ny as usize * wu + nx as usize)
+                .find(|&n| !key(n))
+                .map_or([128, 128, 128], |n| [low.px[n * 4], low.px[n * 4 + 1], low.px[n * 4 + 2]])
+        })
+        .collect();
+    // how far a colour leans to the magenta key: red and blue above green
+    let pink = |q: &[u8]| q[0].min(q[2]) as i32 - q[1] as i32;
+    for (i, q) in img.px.chunks_exact_mut(4).enumerate() {
+        let k = i / pw / s * wu + i % pw / s;
+        let c = &low.px[k * 4..k * 4 + 3];
+        if key(k) {
+            q[..3].copy_from_slice(&bleed[k]);
+            q[3] = 0;
+        } else if q[3] < 250 || pink(q) > pink(c) + 24 {
+            q[..3].copy_from_slice(c);
+            q[3] = 255;
+        } else {
+            q[3] = 255;
+        }
+    }
+    Some(finish(g, &img, w, h))
+}
+
 /// ui::load_pcx_alpha from the pack: the picture's own key, then the upscaled alpha sheet (white opaque, black clear).
 pub fn load_pcx_alpha(g: &mut Gfx, path: &Path, alpha: &Path) -> Option<Image> {
     let p = pack()?;
