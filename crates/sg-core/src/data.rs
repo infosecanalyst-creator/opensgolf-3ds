@@ -322,6 +322,54 @@ pub struct EconomyDef {
     pub debt_interest_percent: i64,
     /// Holes needed for the course ranks Daily Fee, Country Club and Championship (below the first: Municipal).
     pub rank_holes: Vec<i64>,
+    /// The port's extras (sg_core::extras, all off by default): the employee limit (the original's 20), the limit with
+    /// the higher staff limits option, and the hardcore economy's numbers.
+    #[serde(default = "d_staff_limit")]
+    pub staff_limit: i64,
+    #[serde(default = "d_staff_limit_high")]
+    pub staff_limit_high: i64,
+    #[serde(default = "d_hardcore_staff_limit")]
+    pub hardcore_staff_limit: i64,
+    #[serde(default = "d_hardcore_wage_percent")]
+    pub hardcore_wage_percent: i64,
+    #[serde(default = "d_hardcore_maintenance_percent")]
+    pub hardcore_maintenance_percent: i64,
+    #[serde(default = "d_hardcore_land_percent")]
+    pub hardcore_land_percent: i64,
+    #[serde(default = "d_hardcore_interest_percent")]
+    pub hardcore_interest_percent: i64,
+    #[serde(default = "d_hardcore_fee_cap")]
+    pub hardcore_fee_cap: i64,
+    #[serde(default = "d_hardcore_mood_penalty")]
+    pub hardcore_mood_penalty: i64,
+}
+
+fn d_staff_limit() -> i64 {
+    20
+}
+fn d_staff_limit_high() -> i64 {
+    40
+}
+fn d_hardcore_staff_limit() -> i64 {
+    12
+}
+fn d_hardcore_wage_percent() -> i64 {
+    150
+}
+fn d_hardcore_maintenance_percent() -> i64 {
+    200
+}
+fn d_hardcore_land_percent() -> i64 {
+    150
+}
+fn d_hardcore_interest_percent() -> i64 {
+    5
+}
+fn d_hardcore_fee_cap() -> i64 {
+    600
+}
+fn d_hardcore_mood_penalty() -> i64 {
+    1
 }
 
 impl EconomyDef {
@@ -340,6 +388,16 @@ impl EconomyDef {
         if self.rank_holes.len() != 3 || !self.rank_holes.windows(2).all(|w| w[0] < w[1]) || self.rank_holes[0] < 1 {
             return Err("rank_holes needs three hole counts going up, e.g. [6, 10, 18]".into());
         }
+        let max = crate::extras::MAX_STAFF as i64;
+        in_range(self.staff_limit, 1, max, "staff_limit")?;
+        in_range(self.staff_limit_high, 1, max, "staff_limit_high")?;
+        in_range(self.hardcore_staff_limit, 1, max, "hardcore_staff_limit")?;
+        in_range(self.hardcore_wage_percent, 0, 1000, "hardcore_wage_percent")?;
+        in_range(self.hardcore_maintenance_percent, 0, 1000, "hardcore_maintenance_percent")?;
+        in_range(self.hardcore_land_percent, 0, 1000, "hardcore_land_percent")?;
+        in_range(self.hardcore_interest_percent, 0, 100, "hardcore_interest_percent")?;
+        units(self.hardcore_fee_cap, "hardcore_fee_cap")?;
+        in_range(self.hardcore_mood_penalty, 0, 10, "hardcore_mood_penalty")?;
         Ok(())
     }
 }
@@ -438,6 +496,15 @@ impl Tables {
             hole_maintenance: Economy::UNIT as i64,
             debt_interest_percent: 2,
             rank_holes: vec![6, 10, 18],
+            staff_limit: d_staff_limit(),
+            staff_limit_high: d_staff_limit_high(),
+            hardcore_staff_limit: d_hardcore_staff_limit(),
+            hardcore_wage_percent: d_hardcore_wage_percent(),
+            hardcore_maintenance_percent: d_hardcore_maintenance_percent(),
+            hardcore_land_percent: d_hardcore_land_percent(),
+            hardcore_interest_percent: d_hardcore_interest_percent(),
+            hardcore_fee_cap: d_hardcore_fee_cap(),
+            hardcore_mood_penalty: d_hardcore_mood_penalty(),
         };
         Tables { terrain, buildings, amenities, staff, properties, economy }
     }
@@ -621,6 +688,16 @@ pub struct EconomyData {
     pub maintenance_units: i32,
     pub interest_percent: i32,
     pub rank_holes: [usize; 3],
+    /// The extras' numbers (sg_core::extras); the fee cap in units.
+    pub staff_limit: usize,
+    pub staff_limit_high: usize,
+    pub hardcore_staff_limit: usize,
+    pub hardcore_wage_percent: i32,
+    pub hardcore_maintenance_percent: i32,
+    pub hardcore_land_percent: i32,
+    pub hardcore_interest_percent: i32,
+    pub hardcore_fee_cap: i32,
+    pub hardcore_mood_penalty: i32,
 }
 
 fn leak(s: &str) -> &'static str {
@@ -748,6 +825,15 @@ impl Data {
                 maintenance_units: u(e.hole_maintenance),
                 interest_percent: e.debt_interest_percent as i32,
                 rank_holes: std::array::from_fn(|i| e.rank_holes[i] as usize),
+                staff_limit: e.staff_limit as usize,
+                staff_limit_high: e.staff_limit_high as usize,
+                hardcore_staff_limit: e.hardcore_staff_limit as usize,
+                hardcore_wage_percent: e.hardcore_wage_percent as i32,
+                hardcore_maintenance_percent: e.hardcore_maintenance_percent as i32,
+                hardcore_land_percent: e.hardcore_land_percent as i32,
+                hardcore_interest_percent: e.hardcore_interest_percent as i32,
+                hardcore_fee_cap: u(e.hardcore_fee_cap),
+                hardcore_mood_penalty: e.hardcore_mood_penalty as i32,
             },
         };
         (data, warn)
@@ -915,6 +1001,16 @@ pub fn file_header(file: &str) -> &'static str {
 #   hole_maintenance       maintenance per active hole, charged with the wages every 1024 / (difficulty + 2) ticks
 #   debt_interest_percent  interest on debt at each month start
 #   rank_holes             holes for Daily Fee, Country Club, Championship (fewer than the first: Municipal)
+# The port's extras (all off by default; docs/PLAYING.md, OpenSGolf extras):
+#   staff_limit                   most employees (the original's 20)
+#   staff_limit_high              most employees with Higher staff limits (at most 63)
+#   hardcore_staff_limit          most employees with Hardcore economy (Higher staff limits wins over it)
+#   hardcore_wage_percent         wages under Hardcore, in percent of the normal wage
+#   hardcore_maintenance_percent  hole maintenance under Hardcore, in percent
+#   hardcore_land_percent         prices of properties and tracts under Hardcore, in percent
+#   hardcore_interest_percent     interest on debt at each month start under Hardcore
+#   hardcore_fee_cap              the most a golfer pays for a hole under Hardcore
+#   hardcore_mood_penalty         what every bad moment costs a golfer's mood on top under Hardcore
 "
         }
     }

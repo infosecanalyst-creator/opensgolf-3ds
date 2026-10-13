@@ -429,6 +429,9 @@ pub struct Club {
     /// The Preferences' "Show snapshots of great shots." option (bit 2 of 0x5a5a00), set by the game before each tick.
     #[serde(skip)]
     pub show_snapshots: bool,
+    /// The port's optional gameplay changes (sg_core::extras), saved only when one is on.
+    #[serde(skip_serializing_if = "crate::extras::Extras::is_off")]
+    pub extras: crate::extras::Extras,
 }
 
 impl Default for Club {
@@ -530,6 +533,7 @@ impl Club {
             shot_recs: Vec::new(),
             view_close: true,
             show_snapshots: true,
+            extras: Default::default(),
         }
     }
 
@@ -947,6 +951,8 @@ impl Club {
                 }
             }
         }
+        // the port's Hardcore economy: bad moments cost more (sg_core::extras; nothing when it is off)
+        let d = self.extras.mood_change(d);
         self.g[g].mood = clamp(self.g[g].mood + d, -10, 10);
         let h = self.g[g].hole;
         if let Some(hr) = self.hole_rec(h) {
@@ -1262,6 +1268,8 @@ impl Club {
             fee += if lvl != 4 { 5 } else { 2 };
             self.sound(0x19, Some((x, y)));
         }
+        // the port's Hardcore economy caps the fee (sg_core::extras)
+        let fee = self.extras.fee(fee);
         if self.game & game::TOURNAMENT == 0 {
             if self.year == 0 && self.fees_this_year == 0 {
                 // the exe's first-fee lesson (0x4c7444, 0x4c7408, 0x4c73cc, 0x4c7374, 0x4c7334)
@@ -1609,9 +1617,14 @@ impl Club {
                 if ob.kind == 2 {
                     self.event(c, rng, g, 0xb, arg);
                 } else if ob.kind == 4 {
-                    self.event(c, rng, g, if ob.sub < 0x10 { 0xb } else { 0x14 }, arg);
+                    // (the port's cut landmarks, types 19 and up, are scenic too: crate::objects::lovely_landmark)
+                    self.event(c, rng, g, if crate::objects::lovely_landmark(ob.sub) { 0xb } else { 0x14 }, arg);
                 }
             }
+        }
+        // the port's Buyable animals extra: a bought animal on the tile looked at is a sight, as a landmark is
+        if self.extras.animals && self.wildlife.bought_near(na * 1024 + 512, nb * 1024 + 512) {
+            self.event(c, rng, g, 0xb, arg);
         }
         let fl = c.flags[i];
         if fl & f::FLOWERS != 0 && (self.attitude(g) == 2 || fl & f::WEED != 0) {

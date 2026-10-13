@@ -18,6 +18,7 @@ pub mod course;
 pub mod data;
 pub mod decor;
 pub mod economy;
+pub mod extras;
 pub mod flc;
 pub mod flight;
 pub mod formats;
