@@ -226,6 +226,8 @@ pub struct Gfx {
     overlay_sdf: Pipeline,
     flat_sdf: Pipeline,
     sdf: std::collections::HashSet<TextureId>,
+    /// False when the GPU would not compile FRAGMENT_SDF: no smooth edges then.
+    sdf_ok: bool,
     pub white: TextureId,
     stream_vb: BufferId,
     stream_ib: BufferId,
@@ -265,7 +267,8 @@ impl Gfx {
                     },
                 },
             )
-            .expect("shader");
+            // the one shader everything draws with: without it there is no picture at all (the panic hook says why, android.rs)
+            .unwrap_or_else(|e| panic!("the game's shader does not compile on this GPU: {e:?}"));
         let sdf_uniforms = vec![
             UniformDesc::new("mvp", UniformType::Mat4),
             UniformDesc::new("mv", UniformType::Mat4),
@@ -277,12 +280,17 @@ impl Gfx {
             UniformDesc::new("light_dir", UniformType::Float3),
             UniformDesc::new("edge", UniformType::Float1),
         ];
-        let sdf_shader = ctx
-            .new_shader(
-                ShaderSource::Glsl { vertex: VERTEX, fragment: FRAGMENT_SDF },
-                ShaderMeta { images: vec!["tex".to_string()], uniforms: UniformBlockLayout { uniforms: sdf_uniforms } },
-            )
-            .expect("shader");
+        // Enhanced's smooth edges: should a GPU refuse this shader, the plain one stands in and colour-keyed art is drawn as
+        // ever (texture_sdf is then never used)
+        let sdf_shader = ctx.new_shader(
+            ShaderSource::Glsl { vertex: VERTEX, fragment: FRAGMENT_SDF },
+            ShaderMeta { images: vec!["tex".to_string()], uniforms: UniformBlockLayout { uniforms: sdf_uniforms } },
+        );
+        let sdf_ok = sdf_shader.is_ok();
+        let sdf_shader = sdf_shader.unwrap_or_else(|e| {
+            eprintln!("Enhanced graphics: the smooth edges shader does not compile here, smooth edges off ({e:?})");
+            shader
+        });
         let attrs = [
             VertexAttribute::new("in_pos", VertexFormat::Float3),
             VertexAttribute::new("in_uv", VertexFormat::Float2),
@@ -332,6 +340,7 @@ impl Gfx {
             overlay_sdf,
             flat_sdf,
             sdf: Default::default(),
+            sdf_ok,
             white,
             stream_vb,
             stream_ib,
@@ -476,7 +485,7 @@ impl Gfx {
             img
         };
         // a colour-keyed picture (interface art, sprites): smooth outlines at any size (edges.rs)
-        if enhanced && !mipmaps && crate::enhanced::smooth_edges() {
+        if enhanced && !mipmaps && self.sdf_ok && crate::enhanced::smooth_edges() {
             if let Some(soft) = crate::edges::soft_edges(img) {
                 return self.texture_sdf(&soft);
             }
