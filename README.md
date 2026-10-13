@@ -34,6 +34,7 @@ No copy of SimGolf? **Play with free graphics** to try it (an early beta, still 
 |---|---|---|
 | 🍎 **Mac** | [OpenSGolf for Mac](https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-macos.zip) | Unzip, then **right-click OpenSGolf → Open** (first time only) |
 | 🪟 **Windows** | [OpenSGolf for Windows](https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-windows.zip) | Unzip, double-click **opensgolf**. If Windows warns: **More info → Run anyway** |
+| 💻 **Windows on ARM** (Snapdragon laptops, Surface Pro X) | [OpenSGolf for Windows on ARM](https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-windows-arm64.zip) | The same as Windows |
 | 🐧 **Linux** | [OpenSGolf for Linux](https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-linux-x86_64.AppImage) | Right-click → Properties → allow running as a program, then double-click |
 | 🍓 **Linux on ARM** (Raspberry Pi 4/5, ARM laptops) | [OpenSGolf for ARM Linux](https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-linux-arm64.AppImage) | The same as Linux. 64-bit systems only |
 | 🤖 **Android** | [OpenSGolf for Android](https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-android.apk) | Open the file on your phone and tap **Install** |
