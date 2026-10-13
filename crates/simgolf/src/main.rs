@@ -18,6 +18,8 @@
 mod android;
 mod app;
 mod audio;
+#[cfg(target_os = "macos")]
+mod autorelease;
 mod champ_ui;
 mod content;
 mod cursor_ui;
@@ -1996,6 +1998,9 @@ impl Stage {
 
 impl EventHandler for Stage {
     fn update(&mut self) {
+        // macOS: the last frame's autoreleased Cocoa objects go (autorelease.rs)
+        #[cfg(target_os = "macos")]
+        autorelease::next_frame();
         let t = now();
         self.app.clock = t;
         self.touch_update();
