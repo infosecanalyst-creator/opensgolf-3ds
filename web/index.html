@@ -133,6 +133,18 @@
     .btn { flex: 1 1 auto; }
   }
 </style>
+<!-- Visit counter: GoatCounter (no cookies, no personal data); counts page visits and which start button is used -->
+<script data-goatcounter="https://opensgolf.goatcounter.com/count" async src="https://gc.zgo.at/count.js"></script>
+<script>
+  // counts which way people start the game (free graphics, a folder or a zip); does nothing if the counter is blocked
+  addEventListener('DOMContentLoaded', function () {
+    function count(path) { try { if (window.goatcounter && window.goatcounter.count) window.goatcounter.count({ path: path, title: path, event: true }); } catch (e) {} }
+    var free = document.getElementById('playfree'), folder = document.getElementById('folder'), zip = document.getElementById('zip');
+    if (free) free.addEventListener('click', function () { count('start-free-graphics'); });
+    if (folder) folder.addEventListener('change', function () { count('start-game-folder'); });
+    if (zip) zip.addEventListener('change', function () { count('start-game-zip'); });
+  });
+</script>
 </head>
 <body>
 <div id="picker">
@@ -297,6 +309,7 @@
       <p>An unofficial fan project; not affiliated with or endorsed by Electronic Arts, Firaxis Games or Take-Two Interactive.
         SimGolf's art, sounds and data belong to Electronic Arts and are not included; the page reads them from your own copy.
         The picture at the top is from the game running with the original SimGolf files.</p>
+      <p>Visits are counted with <a href="https://www.goatcounter.com">GoatCounter</a>: no cookies and no personal data.</p>
     </footer>
   </main>
 </div>
