@@ -386,36 +386,9 @@ pub struct Wav {
     pub pcm: Vec<u8>,
 }
 
+/// A WAV file as 8- or 16-bit PCM, whatever common coding it holds (crate::wav).
 pub fn decode_wav(d: &[u8]) -> Result<Wav, String> {
-    if d.len() < 12 || &d[0..4] != b"RIFF" || &d[8..12] != b"WAVE" {
-        return Err("not a RIFF WAVE".into());
-    }
-    let mut out = Wav::default();
-    let mut pos = 12;
-    let mut have_fmt = false;
-    while pos + 8 <= d.len() {
-        let sz = u32le(d, pos + 4) as usize;
-        let body = pos + 8;
-        let avail = d.len() - body;
-        if &d[pos..pos + 4] == b"fmt " && sz >= 16 && avail >= 16 {
-            if u16le(d, body) != 1 {
-                return Err("non-PCM WAV".into());
-            }
-            out.channels = u16le(d, body + 2);
-            out.sample_rate = u32le(d, body + 4);
-            out.bits = u16le(d, body + 14);
-            have_fmt = true;
-        } else if &d[pos..pos + 4] == b"data" {
-            if !have_fmt {
-                return Err("data before fmt".into());
-            }
-            let n = sz.min(avail);
-            out.pcm = d[body..body + n].to_vec();
-            return Ok(out);
-        }
-        pos += 8 + sz + (sz & 1);
-    }
-    Err("no data chunk".into())
+    crate::wav::decode(d)
 }
 
 /// A sound: a PCM WAV, or an OGG Vorbis file (a content pack's replacement for a WAV) decoded to 16-bit PCM.

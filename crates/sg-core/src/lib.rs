@@ -58,6 +58,7 @@ pub mod tournament;
 pub mod tracts;
 pub mod vfs;
 pub mod vips;
+pub mod wav;
 pub mod wildlife;
 pub mod zip;
 

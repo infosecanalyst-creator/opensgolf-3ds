@@ -198,6 +198,8 @@ function sgDownload(name, bytes) {
 // above it, or a .zip of it. Videos (.bik) and Windows binaries are not needed and are skipped. The files are kept in this
 // browser (IndexedDB) so the next visit starts at once; "Forget my game files" removes them.
 function sgSkip(low) {
+    // a zip made on a Mac carries the files' resource forks in __MACOSX/ and as "._" files: not game files
+    if (low.startsWith("__macosx/") || low.includes("/__macosx/") || low.startsWith("._") || low.includes("/._")) return true;
     return low.endsWith(".bik") || low.endsWith(".exe") || low.endsWith(".dll") || low.endsWith(".lib") || low.endsWith("/");
 }
 
@@ -292,6 +294,7 @@ async function sgUnzip(buf, onEntry) {
     const count = v.getUint16(e + 10, true);
     let p = v.getUint32(e + 16, true);
     const dec8 = new TextDecoder();
+    let unread = 0;
     for (let i = 0; i < count; i++) {
         const method = v.getUint16(p + 10, true);
         const csize = v.getUint32(p + 20, true);
@@ -305,9 +308,14 @@ async function sgUnzip(buf, onEntry) {
         let bytes;
         if (method === 0) bytes = data.slice();
         else if (method === 8) bytes = new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer());
-        else continue;
+        else {
+            // Deflate64, BZIP2, LZMA... (7-Zip's and Windows' stronger settings): the browser cannot unpack them
+            if (unread++ < 5) console.warn("zip: cannot unpack " + name + " (compression method " + method + ")");
+            continue;
+        }
         await onEntry(name, bytes, i, count);
     }
+    return unread;
 }
 
 // --- starting --------------------------------------------------------------------------------------------------------------
@@ -369,8 +377,9 @@ async function sgLoadZip(file) {
     if (!file) return;
     sgStatus("Opening " + file.name + "...");
     const entries = [];
+    let unread = 0;
     try {
-        await sgUnzip(await file.arrayBuffer(), async (name, bytes, i, n) => {
+        unread = await sgUnzip(await file.arrayBuffer(), async (name, bytes, i, n) => {
             entries.push([name, bytes]);
             if (i % 50 === 0) {
                 sgStatus("Unpacking your game files: " + (i + 1) + " of " + n);
@@ -380,6 +389,11 @@ async function sgLoadZip(file) {
     } catch (e) {
         sgStatus("Could not read that zip: " + e.message);
         return;
+    }
+    if (unread > 0) {
+        // the game still starts (missing sounds are replaced by the free set's), but the player should know why
+        alert(unread + " files in that zip use a compression this browser cannot unpack (they were skipped). " +
+            "If something is missing, zip the folder again with normal (Deflate) compression, or pick the folder itself.");
     }
     await sgUse(entries);
 }
@@ -546,8 +560,21 @@ async function sgInit() {
 // the player interacts with the page, so the output starts on the first click or key.
 let sgAudio = null;
 function sgStartAudio() {
-    if (sgAudio || typeof wasm_exports === "undefined" || !wasm_exports.sg_audio_fill) return;
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    // a context made before the browser counted a gesture (or suspended by it later: Safari on a phone call, Chrome's
+    // autoplay policy) stays silent until resumed inside a gesture, so every gesture resumes it
+    if (sgAudio) {
+        if (sgAudio.state !== "running") sgAudio.resume().catch(() => {});
+        return;
+    }
+    if (typeof wasm_exports === "undefined" || !wasm_exports.sg_audio_fill) return;
+    let ctx;
+    try {
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+    } catch (e) {
+        console.warn("no sound: this browser gave no audio output", e);
+        sgAudio = { state: "running" }; // do not try again on every click
+        return;
+    }
     const node = ctx.createScriptProcessor(2048, 0, 2);
     node.onaudioprocess = e => {
         const n = e.outputBuffer.length;
@@ -558,13 +585,16 @@ function sgStartAudio() {
         for (let i = 0; i < n; i++) { l[i] = src[2 * i]; r[i] = src[2 * i + 1]; }
     };
     node.connect(ctx.destination);
+    if (ctx.state !== "running") ctx.resume().catch(() => {});
     sgAudio = ctx;
 }
 // browsers only allow sound after the player's first gesture: a click, a key or a touch
 window.addEventListener("mousedown", sgStartAudio);
 window.addEventListener("keydown", sgStartAudio);
 window.addEventListener("touchstart", sgStartAudio, { passive: true });
+window.addEventListener("touchend", sgStartAudio, { passive: true });
 window.addEventListener("pointerdown", sgStartAudio);
+window.addEventListener("pointerup", sgStartAudio);
 
 // The keyboard while the game runs. miniquad's gl.js sends the canvas's keys to the game and stops the browser acting on
 // Space, the arrows, F1 to F10, Tab, Backspace, ' and /. Here the rest of the original's keys are kept from the browser too:
