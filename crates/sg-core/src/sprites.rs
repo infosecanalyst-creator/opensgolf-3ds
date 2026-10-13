@@ -31,7 +31,9 @@ impl Sprite {
     pub fn frame_index(&self, view: i32, f: i32) -> usize {
         let view = view.rem_euclid(self.views.max(1));
         let f = f.rem_euclid(self.frames_per_view.max(1));
-        (view * self.frames_per_view + f) as usize
+        // bounds-safe (docs/FIXES.md 5): a file whose header promises more views or frames than it holds (a mod's, a
+        // damaged copy's) shows its last frame instead of reading past the end
+        ((view * self.frames_per_view + f) as usize).min(self.frames.len().saturating_sub(1))
     }
 }
 
@@ -123,6 +125,9 @@ pub fn load_sprite(flc_path: &Path, shadow: bool, palette_pcx: Option<&Path>) ->
         }
         out.frames.push(img);
     }
+    if out.frames.is_empty() {
+        return Err(format!("{}: no frames", flc_path.display()));
+    }
     Ok(out)
 }
 
@@ -136,4 +141,22 @@ pub fn recolour(s: &Sprite, frame: usize, pal: &[u8; 768]) -> Option<Rgba> {
         img.px[i * 4 + 3] = if c == 255 { 0 } else { 255 };
     }
     Some(img)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn frame_index_stays_in_the_file() {
+        // a header promising 8 views of 4 frames over a file holding 3 frames (docs/FIXES.md 5)
+        let s = Sprite { views: 8, frames_per_view: 4, frames: vec![Rgba::new(1, 1); 3], ..Default::default() };
+        for v in -9..20 {
+            for f in -9..20 {
+                assert!(s.frame_index(v, f) < 3);
+            }
+        }
+        let s = Sprite { views: 2, frames_per_view: 3, frames: vec![Rgba::new(1, 1); 6], ..Default::default() };
+        assert_eq!(s.frame_index(1, 2), 5);
+    }
 }
