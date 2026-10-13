@@ -435,6 +435,12 @@ impl App {
         let Some(path) = f.sel.and_then(|i| f.files.get(i)).cloned() else { return self.files_cancel() };
         let (kind, course, pro) = (f.kind, f.course.clone(), f.pro.clone());
         match kind {
+            // a game saved with other content packs asks first (content_profiles.rs)
+            ListKind::Load if self.save_packs_question(&path) => {
+                if let Some(f) = self.title.files.as_mut() {
+                    f.loading = 0;
+                }
+            }
             ListKind::Load => match self.load_game(g, &path) {
                 Ok(()) => {
                     println!("loaded game {}", path.display());

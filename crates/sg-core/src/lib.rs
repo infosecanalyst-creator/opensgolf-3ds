@@ -18,6 +18,8 @@ pub mod course;
 pub mod data;
 pub mod decor;
 pub mod economy;
+pub mod extras;
+pub mod fixes;
 pub mod flc;
 pub mod flight;
 pub mod formats;
@@ -32,6 +34,7 @@ pub mod land;
 pub mod lang;
 #[cfg(test)]
 mod lang_golden;
+pub mod mapsize;
 pub mod mixer;
 pub mod mood;
 pub mod narration;

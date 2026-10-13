@@ -200,6 +200,8 @@ impl App {
     /// Starts scenario `k` of the list (after Select Difficulty when it was needed: `self.difficulty` is set then).
     pub fn start_scenario(&mut self, g: &mut Gfx, k: usize) {
         self.scen.chosen = None;
+        // a scenario is played on the original's map size (one with its own course takes that course's size)
+        self.course_size = sg_core::mapsize::ORIGINAL;
         let Some(e) = self.scen.list.get(k) else { return };
         let Ok(def) = e.def.clone() else { return };
         let (id, name) = (e.id.clone(), e.name.clone());
