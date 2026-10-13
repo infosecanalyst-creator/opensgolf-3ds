@@ -2933,6 +2933,10 @@ impl App {
         let Some(mut clear) = land.fits(tx, ty, size, kind, theme) else {
             return self.show_toast(tr("STR_TOAST_NO_ROOM"));
         };
+        // "Fix original bugs" (docs/FIXES.md 2): a new lot never goes on top of a standing one (the original charged again)
+        if existing.is_none() && crate::enhanced::fix_bugs() && land.covers_object(tx, ty, size) {
+            return self.show_toast(tr("STR_TOAST_NO_ROOM"));
+        }
         if kind == 0 {
             clear /= 2;
         }

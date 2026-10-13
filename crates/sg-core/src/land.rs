@@ -554,6 +554,23 @@ impl Land {
         Some(cost)
     }
 
+    /// Whether the footprint of edge `size` at (a, b) covers a tile of a building or other object already standing. `fits`
+    /// lets a lot overlap an object of its own kind (the exe's 0x40db90, for an upgrade moving its building), so the original
+    /// also lets a second ball washer or landmark go down on top of the first and charges for it again; "Fix original bugs"
+    /// asks this to refuse that when the placing is not an upgrade (docs/FIXES.md 2).
+    pub fn covers_object(&self, a: i32, b: i32, size: i32) -> bool {
+        (0..size.max(0)).any(|r| {
+            (0..size.max(0)).any(|c| {
+                let (ta, tb) = (a + r, b + c);
+                if !(0..N).contains(&ta) || !(0..N).contains(&tb) {
+                    return false;
+                }
+                let i = (ta * N + tb) as usize;
+                (self.ty[i] == T_BUILDING || self.flags[i] & flag::FOOTPRINT != 0) && self.object_at(i).is_some()
+            })
+        })
+    }
+
     /// Puts down an object: flattens its corners to the anchor's height, turns its tiles into building tiles (a putting green
     /// keeps green tiles, a driving range rough, a marina water) and records it. Returns the object's index.
     pub fn place(&mut self, rng: &mut ExeRng, a: i32, b: i32, kind: i32, fl: i32, theme: u8) -> usize {
