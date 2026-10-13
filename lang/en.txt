@@ -1304,6 +1304,11 @@ STR_ENHANCED_FX_SEASONS                 : Seasons: blossom, autumn colours, fros
 STR_ENHANCED_FX_AFTER_RAIN              : Wet ground, puddles and rainbows
 STR_ENHANCED_FX_LIGHTNING               : Lightning in heavy rain
 STR_ENHANCED_FX_DAY_LENGTH              : Day length: {VALUE}
+# Enhanced graphics > Display: the frame rate settings (the port's own, framerate.rs). They count with Enhanced graphics off
+# too. Browsers always draw on the display's refresh, so v-sync cannot be turned off there.
+STR_ENHANCED_FRAME_CAP                  : Frame rate cap: {VALUE}
+STR_ENHANCED_VSYNC                      : V-sync (from the next start)
+STR_ENHANCED_VSYNC_BROWSER              : V-sync (always on in a browser)
 STR_ENHANCED_PAGE_DISPLAY               :Display
 STR_ENHANCED_PAGE_EFFECTS               :Effects
 STR_ENHANCED_PAGE_ATMOSPHERE            :Atmosphere
@@ -1340,6 +1345,12 @@ STR_FX_DAY_LENGTH                       :Day length
 STR_FX_DAY_SHORT                        :Short (a game month)
 STR_FX_DAY_NORMAL                       :Normal (three months)
 STR_FX_DAY_LONG                         :Long (six months)
+STR_FRAME_CAP_30                        :30 a second
+STR_FRAME_CAP_60                        :60 a second
+STR_FRAME_CAP_120                       :120 a second
+STR_FRAME_CAP_144                       :144 a second
+STR_FRAME_CAP_240                       :240 a second
+STR_FRAME_CAP_NONE                      :Uncapped
 STR_FX_OFF                              :Off
 STR_FX_ON                               :On
 STR_FX_SCALER_SHARP                     :Sharp bilinear
@@ -2089,6 +2100,33 @@ STR_CONTENT_NOTE_CHANGED                :Your changes are saved. They take effec
 STR_CONTENT_FIND_MORE                   :Find more...
 # Shown at start up when the game folder named with --game has no SimGolf files
 STR_CONTENT_NO_GAME_FILES               :No SimGolf files found in {DIR}: playing with the free OpenSGolf graphics.
+
+# Preferences > Content: profiles, named sets of content choices (the port's own, content_profiles.rs). {NAME} is a
+# profile's name; STR_PROFILE_LINE sums one up ({BASE} the base set, {MODS} the mods switched on, {TRANSLATION}).
+STR_PROFILE_SAVE                        :Save profile...
+STR_PROFILE_LIST                        :Profiles...
+STR_PROFILE_TITLE                       :Content profiles
+STR_PROFILE_HELP                        :Load sets the content choices to a profile's; like every change here, it takes effect when you restart the game.
+STR_PROFILE_NONE                        :No profiles yet: use Save profile... on the list of packs.
+STR_PROFILE_LINE                        :base: {BASE}; mods: {MODS}; translation: {TRANSLATION}
+STR_PROFILE_NO_MODS                     :none
+STR_PROFILE_LOAD                        :Load
+STR_PROFILE_DELETE                      :Delete
+STR_PROFILE_NAME_PROMPT                 :Save the content choices as the profile:
+STR_PROFILE_NAME_KEYS                   :Enter saves (a profile of that name is replaced), Esc cancels
+STR_PROFILE_SAVED                       :Profile "{NAME}" saved.
+STR_PROFILE_DELETED                     :Profile "{NAME}" deleted.
+STR_PROFILE_LOADED                      :Profile "{NAME}" loaded: restart the game to play with it.
+STR_PROFILE_LOADED_MISSING              :Profile "{NAME}" loaded without the packs not installed: {MISSING}. Restart the game to play with it.
+# Loading a game saved with other content packs (content_profiles.rs). {SAVED} and {NOW} list packs as "id version".
+STR_SAVE_PACKS_DIFFER                   :This game was saved with the content packs {SAVED}; the game is now running with {NOW}. It may not play as it did.
+STR_SAVE_PACKS_MISSING                  :Not installed (or in another version): {MISSING}.
+STR_SAVE_PACKS_SWITCH                   :Switch to the save's packs (the game restarts and loads it)
+STR_SAVE_PACKS_SWITCH_LATER             :Switch to the save's packs (then restart and load it)
+STR_SAVE_PACKS_LOAD_ANYWAY              :Load it with the packs in use
+STR_SAVE_PACKS_CANCEL                   :Do not load it
+STR_SAVE_PACKS_SWITCHED                 :Switched to the saved game's content packs.
+STR_SAVE_PACKS_RESTART_YOURSELF         :The save's content packs are chosen. Restart the game (in a browser: reload the page), then load the game again.
 # Shown at start up when the sounds of the player's SimGolf copy cannot be played (missing or in a coding the game cannot
 # read); {WHY} is the first problem found, in English
 STR_SOUND_CANNOT_PLAY                   :The sounds of your SimGolf copy could not be played ({WHY}). Playing the free OpenSGolf sounds instead.
@@ -2119,6 +2157,12 @@ STR_KEYS_K_SHIFT_HELD                   :Shift (held)
 STR_KEYS_SHIFT_HELD                     :The face strip shows the back nine only
 STR_KEYS_K_PHOTO_MODE                   :c
 STR_KEYS_PHOTO_MODE                     :Photo mode (Enhanced graphics; Esc leaves)
+STR_KEYS_K_HIDE_INTERFACE               :u
+STR_KEYS_HIDE_INTERFACE                 :Hide / show the whole interface
+STR_KEYS_K_MIDDLE_DRAG                  :Middle drag
+STR_KEYS_MIDDLE_DRAG                    :Drag the course with any tool held
+STR_KEYS_K_WASD                         :w a s d
+STR_KEYS_WASD                           :Scroll, with the WASD camera on (Change keys)
 STR_KEYS_HEAD_TIME                      :Time
 STR_KEYS_K_PAUSE                        :Shift+P
 STR_KEYS_PAUSE                          :Pause / go on
@@ -2239,6 +2283,78 @@ STR_KEYS_K_BACK_BUTTON                  :Back button
 STR_KEYS_BACK_BUTTON                    :Android: the same as Esc
 STR_KEYS_K_BROWSER                      :F11 / F12
 STR_KEYS_BROWSER                        :Left to the browser (full screen, tools), as are the Cmd keys
+# The Keyboard controls screen's button to the Change keys screen
+STR_KEYS_CHANGE                         :Change keys...
+
+# Preferences > Keyboard controls > Change keys (the port's own, controls_ui.rs): the actions that can be given another key,
+# the screen's lines and buttons. {ACTION} is an action's name, {KEY} a key as printed, {ACTIONS} a list of actions.
+STR_CTL_TITLE                           :Change keys
+STR_CTL_HELP                            :Click an action, then press its new key (Shift may be held). Esc while waiting keeps the old key.
+STR_CTL_FOOT                            :Keys are saved at once. Two actions on one key are shown in red: only the first in this list answers.
+STR_CTL_WAITING                         :Press a key...
+STR_CTL_NO_KEY                          :(none)
+STR_CTL_PRESS                           :Press the new key for {ACTION}, or Esc to keep the old one.
+STR_CTL_BOUND                           :{ACTION}: {KEY}.
+STR_CTL_ALSO                            :{KEY} is also the key of: {ACTIONS}. Only one of them will answer; give one of them another key.
+STR_CTL_CLASH                           :Keys used twice: {ACTIONS}.
+STR_CTL_RESERVED                        :{KEY} cannot be given to an action (the digits jump to holes, Esc cancels).
+STR_CTL_SAVED                           :Keys saved.
+STR_CTL_WASD_ON                         :WASD camera on: w a s d scroll, the water tool moves to q and the sand tool to k.
+STR_CTL_WASD                            :WASD camera: {STATE}
+STR_CTL_ON                              :on
+STR_CTL_OFF                             :off
+STR_CTL_RESET                           :Reset to defaults
+STR_CTL_RESET_DONE                      :Every key is back to the original's.
+# Shown in the bottom left corner while the interface is hidden
+STR_CTL_HUD_HINT                        :Interface hidden: press {KEY} to show it
+STR_CTL_SCROLL_UP                       :Scroll up
+STR_CTL_SCROLL_DOWN                     :Scroll down
+STR_CTL_SCROLL_LEFT                     :Scroll left
+STR_CTL_SCROLL_RIGHT                    :Scroll right
+STR_CTL_ZOOM_IN                         :Zoom in
+STR_CTL_ZOOM_OUT                        :Zoom out
+STR_CTL_TURN_LEFT                       :Turn the view
+STR_CTL_TURN_RIGHT                      :Turn the view back
+STR_CTL_TURN_BACK                       :Turn back / clubhouse
+STR_CTL_PHOTO_MODE                      :Photo mode
+STR_CTL_HIDE_INTERFACE                  :Hide the interface
+STR_CTL_PAUSE                           :Pause
+STR_CTL_SPEED                           :Game speed
+STR_CTL_GREEN                           :Green / tee tool
+STR_CTL_FAIRWAY                         :Fairway tool
+STR_CTL_ROUGH                           :Rough tool
+STR_CTL_SAND                            :Sand trap tool
+STR_CTL_TREES                           :Trees tool
+STR_CTL_WATER                           :Water tool
+STR_CTL_RAVINE                          :Ravine tool
+STR_CTL_PATH                            :Path tool
+STR_CTL_BENCH                           :Bench tool
+STR_CTL_HOME_SITE                       :Home site tool
+STR_CTL_ELEVATION                       :Elevation tools
+STR_CTL_RAISE                           :Raise the ground
+STR_CTL_LOWER                           :Lower the ground
+STR_CTL_TURN_BUILDING                   :Turn a building
+STR_CTL_PUT_DOWN                        :Put the tool down
+STR_CTL_OPEN_HOLE                       :Open the hole
+STR_CTL_ANALYSIS                        :Shot analysis
+STR_CTL_ANALYSIS_AGAIN                  :Last shot analysis
+STR_CTL_TREES_OFF                       :Trees off / on
+STR_CTL_NAMES                           :Names off / on
+STR_CTL_MESSAGE                         :Repeat the last message
+STR_CTL_MUSIC                           :Music off / on
+STR_CTL_SHOT_STRAIGHT                   :Aiming: straight shot
+STR_CTL_SHOT_FADE                       :Aiming: fade
+STR_CTL_SHOT_DRAW                       :Aiming: draw
+STR_CTL_SHOT_HIGH                       :Aiming: high shot
+STR_CTL_SHOT_LOW                        :Aiming: low shot
+STR_CTL_CANCEL_ROUND                    :Cancel the pro's round
+STR_CTL_TOURNAMENT                      :Begin a tournament
+STR_CTL_SAVE                            :Save the game
+STR_CTL_LOAD                            :Load a game
+STR_CTL_CHAMP_COURSE                    :Save a championship course
+STR_CTL_SCREENSHOT                      :Screenshot
+STR_CTL_ROUTING                         :Routing Map
+STR_CTL_WORLD                           :World Map
 
 # The player's own SimGolf files (the port's own, gamefiles.rs): the title screen's button and the Preferences line
 STR_GAME_FILES_USE_MINE                 :Use my SimGolf files...
