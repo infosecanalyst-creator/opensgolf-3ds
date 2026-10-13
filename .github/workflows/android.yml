@@ -1,12 +1,19 @@
 name: android
 
-# Builds the Android app (a debug APK for arm64, 32-bit arm and x86_64, signed with a debug key) on every push, in the
-# notfl3/cargo-apk docker image (Android SDK, NDK, cargo-quad-apk); see tools/android_build.sh. Releases attach a release
-# build of it (release.yml).
+# Builds the Android app (a debug APK signed with a debug key) in the notfl3/cargo-apk docker image (Android SDK, NDK,
+# cargo-quad-apk); see tools/android_build.sh. To stay quick it builds for 64-bit ARM phones only and keeps the compiled
+# dependencies between runs; releases (release.yml) build all three targets (arm64, 32-bit arm, x86_64).
+# It runs on pushes to main and on pull requests (not on both for the same commit).
 
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   apk:
@@ -17,8 +24,19 @@ jobs:
         run: |
           rustup target add aarch64-linux-android
           cargo check --target aarch64-linux-android -p opensgolf --no-default-features
+      - name: Cache the Android build
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/android-build/target
+          key: android-${{ hashFiles('Cargo.lock', 'crates/*/Cargo.toml', 'tools/android_build.sh') }}
+          restore-keys: android-
       - name: Build the APK
-        run: docker run --rm -v "$PWD":/root/src -w /root/src notfl3/cargo-apk tools/android_build.sh debug /root/src/apk
+        run: |
+          mkdir -p "$RUNNER_TEMP/android-build"
+          docker run --rm -v "$PWD":/root/src -v "$RUNNER_TEMP/android-build":/tmp/opensgolf-android -w /root/src \
+            -e ANDROID_TARGETS=aarch64-linux-android notfl3/cargo-apk tools/android_build.sh debug /root/src/apk
+          # the container runs as root; let the cache step read and save the build output
+          sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/android-build"
       - uses: actions/upload-artifact@v4
         with:
           name: opensgolf-android-debug

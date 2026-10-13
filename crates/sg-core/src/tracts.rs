@@ -2,9 +2,13 @@
 //! into nine 16 x 16 tracts; a tract with out-of-bounds tiles is for sale, priced by a random roll over those tiles that doubles
 //! with every purchase, and buying it gives back the tiles the land generator had marked out of bounds.
 //!
+//! On a larger map (crate::mapsize) there are still nine tracts on the screen's 3 x 3 diamond, each (n - 2) / 3 tiles square
+//! (16 on the original's 50: 24 at 74, 32 at 98, 42 at 128). The price roll runs over every out-of-bounds tile as before, so a
+//! tract costs the same per acre on every size, and a bigger tract costs more in proportion to its land.
+//!
 //! Facts are from the publisher's golf.exe (docs/PUBLISHER_EXE_NOTES.md, "Buying land"), restated in our own words.
 
-use crate::land::{ExeRng, Land, N, T_OUT};
+use crate::land::{mn, ExeRng, Land, T_OUT};
 use crate::lang::{tr, trf};
 
 /// One tract as the screen shows it.
@@ -18,9 +22,14 @@ pub struct Tract {
     pub top: [u8; 3],
 }
 
+/// A tract's edge in tiles: 16 on the original's map, (n - 2) / 3 on any.
+pub fn side() -> i32 {
+    (mn() - 2) / 3
+}
+
 /// First tile of tract i (0..8).
 pub fn origin(i: usize) -> (i32, i32) {
-    ((i % 3) as i32 * 16 + 1, (i / 3) as i32 * 16 + 1)
+    ((i % 3) as i32 * side() + 1, (i / 3) as i32 * side() + 1)
 }
 
 /// Rolls the nine tracts (the exe does this on every redraw of the screen, keeping the prices of the first one).
@@ -31,9 +40,9 @@ pub fn roll(land: &Land, purchases: i32, rng: &mut ExeRng) -> [Tract; 9] {
         let mut f: i32 = 5;
         let mut n = 0;
         let mut hist = [0i32; 23];
-        for db in 0..16 {
-            for da in 0..16 {
-                let t = ((a0 + da) * N + b0 + db) as usize;
+        for db in 0..side() {
+            for da in 0..side() {
+                let t = ((a0 + da) * mn() + b0 + db) as usize;
                 if land.ty[t] == T_OUT {
                     n += 1;
                     hist[(land.original[t] as usize).min(22)] += 1;
@@ -67,9 +76,9 @@ pub fn roll(land: &Land, purchases: i32, rng: &mut ExeRng) -> [Tract; 9] {
 /// Buys tract i: its out-of-bounds tiles take back their types from before the border (heights, flags and objects stay).
 pub fn buy(land: &mut Land, i: usize) {
     let (a0, b0) = origin(i);
-    for db in 0..16 {
-        for da in 0..16 {
-            let t = ((a0 + da) * N + b0 + db) as usize;
+    for db in 0..side() {
+        for da in 0..side() {
+            let t = ((a0 + da) * mn() + b0 + db) as usize;
             if land.ty[t] == T_OUT {
                 land.ty[t] = land.original[t];
                 land.layer[t] = crate::data::land_type(land.ty[t]).layer;
@@ -138,9 +147,9 @@ mod tests {
     fn prices_and_buying() {
         let mut land = Land::from_terrain(&crate::terrain::Terrain::default(), 0);
         let (a0, b0) = origin(4);
-        for da in 0..16 {
-            for db in 0..16 {
-                let t = ((a0 + da) * N + b0 + db) as usize;
+        for da in 0..side() {
+            for db in 0..side() {
+                let t = ((a0 + da) * mn() + b0 + db) as usize;
                 land.original[t] = 13;
                 land.ty[t] = T_OUT;
             }
@@ -155,7 +164,7 @@ mod tests {
         assert_eq!(tr[4].top[0], 13);
         assert!(describe(&tr[4], 4, 0).starts_with("Buy tract #5, 25 acres of trees"));
         buy(&mut land, 4);
-        assert_eq!(land.ty[(a0 * N + b0) as usize], 13);
+        assert_eq!(land.ty[(a0 * mn() + b0) as usize], 13);
         assert_eq!(roll(&land, 1, &mut rng)[4].oob, 0);
     }
 }

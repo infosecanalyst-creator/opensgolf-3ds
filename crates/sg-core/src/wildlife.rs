@@ -112,6 +112,30 @@ pub const KINDS: [Kind; 9] = [
     },
 ];
 
+/// Each kind's standing clip under Flics (the picture of the Buyable animals strip and tool, sg_core::extras).
+pub const STAND_FILES: [&str; 9] = [
+    "Animals/ELK_Sq",
+    "Animals/Crane_Sq",
+    "Animals/Flamingo_Sq",
+    "Animals/Sheep_SQ",
+    "Animals/Croc_SQ",
+    "Animals/Snake_SQ",
+    "Animals/Gila_SQ",
+    "Animals/RR_SQ",
+    "Animals/Duck_SQ",
+];
+
+/// The most animal pairs the player may buy (each pair takes two of the 128 animal records; the rest stay for the wild ones).
+pub const MAX_BOUGHT: usize = 32;
+
+/// How far (map units) a bought leader strays from where it was set down before it heads back: three tiles.
+pub const HOME_RANGE: i32 = 3 * 1024;
+
+/// The kinds the player may buy on a course of exe theme `theme`: those whose habitat is in that theme.
+pub fn buyable_kinds(theme: u8) -> Vec<i32> {
+    (0..KINDS.len() as i32).filter(|&k| (KINDS[k as usize].themes >> theme.min(3)) & 1 != 0).collect()
+}
+
 /// The drop-in offsets (times 4 pixels) over the first 20 frames: a fall from high up, then two bounces.
 pub const DROP: [i32; 20] = [-55, -54, -52, -49, -45, -40, -34, -27, -19, -10, 0, -4, -7, -8, -7, -4, 0, -2, 0, 0];
 
@@ -128,11 +152,15 @@ pub struct Animal {
     pub heading: i32,
     /// 0..8, or -1 for a free record.
     pub kind: i32,
+    /// The port's Buyable animals extra: where a bought animal was set down (map units). It stays near there and never
+    /// wanders off the course. None for the wild ones (and in saves without the extra).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub home: Option<(i32, i32)>,
 }
 
 impl Default for Animal {
     fn default() -> Self {
-        Animal { x: 0, y: 0, t: 0, leader: -1, state: STAND, frame: 0, heading: 0, kind: -1 }
+        Animal { x: 0, y: 0, t: 0, leader: -1, state: STAND, frame: 0, heading: 0, kind: -1, home: None }
     }
 }
 
@@ -244,7 +272,7 @@ fn tile_ty(c: &Course, a: i32, b: i32) -> u8 {
 
 /// The water depth of each tile (0x42f1c0): 0 at the shore, 1 next to it, 2 in open water; 255 off the water.
 pub fn water_depth(c: &Course) -> Vec<u8> {
-    let n = crate::course::N;
+    let n = crate::course::n();
     let water = |a: i32, b: i32| inside(a, b) && crate::data::row(c.ty[idx(a, b)]).class == 17;
     let mut d = vec![255u8; (n * n) as usize];
     for a in 0..n {
@@ -281,7 +309,41 @@ impl Wildlife {
         r.t = -20;
         r.kind = kind;
         r.leader = -1;
+        r.home = None;
         i as i32
+    }
+
+    /// The pairs the player has bought.
+    pub fn bought(&self) -> usize {
+        self.animals.iter().filter(|r| r.kind != -1 && r.leader == -1 && r.home.is_some()).count()
+    }
+
+    /// Buys a pair of animals of `kind` on tile (a, b) (the Buyable animals extra): a leader and a young follower drop in
+    /// there as wild ones do, and stay near the tile. Returns false when there is no room for them.
+    pub fn buy(&mut self, rng: &mut ExeRng, a: i32, b: i32, kind: i32) -> bool {
+        if !(0..KINDS.len() as i32).contains(&kind) || self.bought() >= MAX_BOUGHT {
+            return false;
+        }
+        if self.animals.iter().filter(|r| r.kind == -1).count() < 2 {
+            return false;
+        }
+        let home = (a * 1024 + 512, b * 1024 + 512);
+        let l = self.alloc(rng, a, b, kind);
+        let f = self.alloc(rng, a, b, kind);
+        self.animals[l as usize].home = Some(home);
+        self.animals[f as usize].home = Some(home);
+        self.animals[f as usize].leader = l;
+        self.animals[f as usize].x += 300;
+        self.sounds.push((143, home));
+        if let Some(s) = KINDS[kind as usize].call {
+            self.sounds.push((s, home));
+        }
+        true
+    }
+
+    /// Whether a bought animal stands within a tile of map point (x, y) (golfers enjoy the sight, as a landmark's).
+    pub fn bought_near(&self, x: i32, y: i32) -> bool {
+        self.animals.iter().any(|r| r.kind != -1 && r.home.is_some() && (r.x - x).abs() < 1536 && (r.y - y).abs() < 1536)
     }
 
     /// Puts an animal of `kind` and a follower on tile (a, b) (test hook; the game brings them through `retyped`).
@@ -379,7 +441,8 @@ impl Club {
                 let pt = ty(c, px, py);
                 if c.oob(px >> 10, py >> 10) || pt == crate::course::t::WATER || pt == crate::course::t::BUILDING {
                     a.heading = (a.heading + 1) & 7;
-                    if rng.below(100) == 0 {
+                    // a bought animal never wanders off for good
+                    if rng.below(100) == 0 && a.home.is_none() {
                         a.kind = -1;
                         self.wildlife.animals[r] = a;
                         continue;
@@ -423,7 +486,12 @@ impl Club {
                     }
                     let hab = KINDS[a.kind as usize].habitat;
                     let next = ty(c, a.x + DX[d as usize] * 1024, a.y + DY[d as usize] * 1024);
-                    if next != hab && next != crate::course::t::ROUGH && ty(c, a.x, a.y) == hab {
+                    if let Some((hx, hy)) = a.home {
+                        // a bought leader keeps near where it was set down instead of to its habitat
+                        if len(hx - a.x, hy - a.y) > HOME_RANGE {
+                            d = cdir(hx - a.x, hy - a.y);
+                        }
+                    } else if next != hab && next != crate::course::t::ROUGH && ty(c, a.x, a.y) == hab {
                         d = -1;
                     }
                     if a.t & 2 != 0 {
@@ -469,7 +537,14 @@ impl Club {
                 }
             }
             if ty(c, a.x, a.y) == crate::course::t::OUT {
-                a.kind = -1;
+                match a.home {
+                    // a bought animal that strayed off the course is set back down where it was bought
+                    Some((hx, hy)) => {
+                        a.x = hx;
+                        a.y = hy;
+                    }
+                    None => a.kind = -1,
+                }
             }
             self.wildlife.animals[r] = a;
         }
@@ -481,7 +556,8 @@ impl Club {
 
     /// The four fly-overs (second half of 0x430360). `sail_frames` is the sailboat clip's frame count.
     pub fn flyers_tick(&mut self, c: &Course, rng: &mut ExeRng, tick: u32) {
-        let max = 0xcc00;
+        // 0xcc00 on the original map: one tile past its far edge
+        let max = (crate::course::n() + 1) << 10;
         let water = |a: i32, b: i32| inside(a, b) && crate::data::row(c.ty[idx(a, b)]).class == 17;
         for i in 0..4 {
             let mut f = self.wildlife.flyers[i];
@@ -493,7 +569,7 @@ impl Club {
                                 kind: f.kind,
                                 active: true,
                                 x: 0,
-                                y: rng.below(50) << 10,
+                                y: rng.below(crate::course::n()) << 10,
                                 h: if f.kind == BALLOON { 40 } else { 80 },
                                 heading: 2,
                             };
@@ -543,7 +619,7 @@ impl Club {
                 SAILBOAT => {
                     if !f.active {
                         if rng.below(100) == 0 {
-                            let r = rng.below(50);
+                            let r = rng.below(crate::course::n());
                             if water(r, 0) {
                                 f = Flyer { kind: SAILBOAT, active: true, x: r * 1024 + 512, y: 512, h: 0, heading: 4 };
                             }
@@ -578,12 +654,12 @@ impl Club {
                 _ => {
                     if !f.active {
                         if rng.below(100) == 0 {
-                            let r = rng.below(50) << 10;
+                            let r = rng.below(crate::course::n()) << 10;
                             let (x, y, h) = match rng.below(4) {
                                 0 => (0, r, 2),
                                 1 => (r, 0, 4),
-                                2 => (0xc800, r, 6),
-                                _ => (r, 0xc800, 0),
+                                2 => (crate::course::n() << 10, r, 6),
+                                _ => (r, crate::course::n() << 10, 0),
                             };
                             f = Flyer { kind: BIRD, active: true, x, y, h: 0, heading: h };
                         }

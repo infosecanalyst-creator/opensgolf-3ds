@@ -3,7 +3,7 @@
 //!   opensgolf --game "<dir>/Program_Files_(ENGLISH)" [--theme parkland|links|desert|tropical] [--seed N] [--size WxH] [--zoom Z]
 //!           [--rot DEG] [--center TX,TY] [--time SECONDS] [--follow] [--png out.png] [--golfer NAME] [--sandbox] [--cash N]
 //!           [--screen menu|property|play|report] [--course FILE] [--save FILE] [--edit SPEC] [--panel N] [--mute] [--sound-log]
-//!           [--hd | --classic] [--hd-pack DIR]
+//!           [--hd | --classic] [--hd-pack DIR] [--course-size N]
 //!
 //! Keys: arrows/WASD pan, Q/E rotate, +/- or mouse wheel zoom, 1-4 theme, R new demo course, P toggle scenery, F follow the golfer,
 //! F6 screenshot, F1-F10 reports, M music, N mute, H open the new hole, Shift+H advisor, Tab edit mode, Esc menu. Left-drag pans.
@@ -22,11 +22,17 @@ mod audio;
 mod autorelease;
 mod champ_ui;
 mod content;
+mod content_profiles;
+mod controls;
+mod controls_ui;
 mod cursor_ui;
 mod cust_ui;
 mod edges;
 mod enhanced;
+mod extras;
+mod extras_ui;
 mod files_ui;
+mod framerate;
 mod fx;
 mod fx_ball;
 mod fx_glsl;
@@ -40,6 +46,7 @@ mod fx_wet;
 mod gamefiles;
 mod gfx;
 mod hd;
+mod history_ui;
 mod holemarks;
 mod hud_ui;
 mod info_ui;
@@ -49,14 +56,20 @@ mod member_panel;
 mod message_ui;
 mod net;
 mod panels_ui;
+mod pathview_ui;
+mod people_ui;
+mod perf;
 mod photo;
 mod player_panel;
 mod popup_ui;
 mod pro_ui;
+mod profile_ui;
 mod render;
+mod report_tabs;
 mod reports_ui;
 mod scenario_ui;
 mod screens_ui;
+mod tags_ui;
 mod thoughts_ui;
 mod touch;
 mod tourney_ui;
@@ -92,8 +105,12 @@ struct Options {
     mute: bool,
     sound_log: bool,
     sandbox: bool,
+    /// --course-size N: the map edge in tiles of a new game (sg_core::mapsize; default the original's 50).
+    course_size: i32,
     screen: Option<String>,
     cash: Option<f64>,
+    /// Test hook: the extras a new game starts with (sg_core::extras bits), not saved to the settings.
+    extras: Option<u32>,
     difficulty: Option<i32>,
     course: Option<PathBuf>,
     save: Option<PathBuf>,
@@ -112,6 +129,8 @@ struct Options {
     fx_set: Option<String>,
     /// --enhanced / --classic-render: Enhanced graphics on or off for this run (else the saved choice; enhanced.rs).
     enhanced: Option<bool>,
+    /// --no-extras: the OpenSGolf extras off for this run (extras.rs), not saved.
+    no_extras: bool,
     /// --base ID: the base set for this run (original, opensgolf-free or a base pack), not saved.
     base: Option<String>,
     /// --lang CODE: the language for this run (else the saved setting); --lang-file FILE: a translation file to try out.
@@ -122,9 +141,9 @@ struct Options {
 }
 
 const USAGE: &str = "usage: opensgolf [--game DIR] [--theme T] [--seed N] [--size WxH] [--zoom Z] [--rot DEG] [--center TX,TY] [--png FILE] \
-[--time S] [--follow] [--golfer NAME] [--sandbox] [--cash N] [--difficulty 0-3] [--screen menu|property|play|report] [--course FILE] [--save FILE] \
+[--time S] [--follow] [--golfer NAME] [--sandbox] [--course-size N] [--cash N] [--difficulty 0-3] [--screen menu|property|play|report] [--course FILE] [--save FILE] \
 [--edit SPEC] [--panel N] [--mute] [--sound-log] [--clock MS] [--property N|NAME] [--hd | --classic] [--hd-pack DIR] \
-[--enhanced | --classic-render] [--fx] [--fx-set LIST] \
+[--enhanced | --classic-render] [--no-extras] [--fx] [--fx-set LIST] \
 [--lang CODE] [--lang-file FILE] [--base original|opensgolf-free|ID] [--scenario ID]";
 
 /// Leading comma separated integers, like sscanf("%d,%d,...") (stops at the first one that does not parse).
@@ -160,8 +179,10 @@ fn parse_args() -> Options {
         mute: false,
         sound_log: false,
         sandbox: false,
+        course_size: sg_core::mapsize::ORIGINAL,
         screen: None,
         cash: None,
+        extras: None,
         difficulty: None,
         course: None,
         save: None,
@@ -178,6 +199,7 @@ fn parse_args() -> Options {
         fx: false,
         fx_set: None,
         enhanced: None,
+        no_extras: false,
         base: None,
         lang: None,
         lang_file: None,
@@ -216,10 +238,13 @@ fn parse_args() -> Options {
             "--follow" => o.follow = true,
             "--golfer" => o.golfer = Some(next()),
             "--mute" => o.mute = true,
+            "--perf" => perf::enable(5.0), // the performance log (perf.rs)
             "--sound-log" => o.sound_log = true,
             "--sandbox" => o.sandbox = true,
+            "--course-size" => o.course_size = sg_core::mapsize::valid(next().parse().unwrap_or(0)),
             "--screen" => o.screen = Some(next()),
-            "--cash" => o.cash = next().parse().ok(), // test hook: starting cash
+            "--cash" => o.cash = next().parse().ok(),     // test hook: starting cash
+            "--extras" => o.extras = next().parse().ok(), // test hook: the extras' bits for a new game (extras_ui)
             "--difficulty" => o.difficulty = next().parse().ok().map(|d: i32| d.clamp(0, 3)),
             "--course" => o.course = Some(PathBuf::from(next())),
             "--save" => o.save = Some(PathBuf::from(next())),
@@ -242,6 +267,7 @@ fn parse_args() -> Options {
             }
             "--enhanced" => o.enhanced = Some(true),
             "--classic-render" => o.enhanced = Some(false),
+            "--no-extras" => o.no_extras = true,
             "--base" => o.base = Some(next()),
             "--lang" => o.lang = Some(next()),
             "--lang-file" => o.lang_file = Some(PathBuf::from(next())),
@@ -334,7 +360,13 @@ fn load_art(app: &mut App, g: &mut Gfx) -> bool {
     for (t, f) in ["parkland", "desert", "tropical", "links"].iter().enumerate() {
         app.tool_tiles[t] = ui::load_pcx(g, &app.game_path(&format!("Data/{f}.pcx")), true, None).unwrap_or_default();
     }
-    app.cliffs = ui::load_pcx(g, &app.game_path("cliffs01.pcx"), true, None).unwrap_or_default();
+    // the bank rocks: in HD with the classic picture's key (hd::load_pcx_classic_key, docs/FIXES.md 1)
+    let cliffs = app.game_path("cliffs01.pcx");
+    app.cliffs = crate::hd::active()
+        .then(|| crate::hd::load_pcx_classic_key(g, &cliffs))
+        .flatten()
+        .or_else(|| ui::load_pcx(g, &cliffs, true, None))
+        .unwrap_or_default();
     app.ui_ok = ok;
     app.art = crate::screens_ui::Art::load(g, app);
     app.register_portraits(g);
@@ -396,6 +428,30 @@ fn open_screen(app: &mut App, screen: Option<&str>) {
             app.keys_page = std::env::var("SG_KEYS_PAGE").ok().and_then(|v| v.parse().ok()).unwrap_or(0);
         }
         Some("goals") if app.ui_ok => app.open_goals(),
+        // the OpenSGolf extras' screens (extras.rs); SG_PEOPLE_SORT=COL[,1] sorts the list by column COL (downward with 1)
+        Some(s @ ("people" | "staff" | "pro")) if app.ui_ok => {
+            app.open_people();
+            app.xs.people.tab = match s {
+                "staff" => people_ui::Tab::Staff,
+                "pro" => people_ui::Tab::Pro,
+                _ => people_ui::Tab::Golfers,
+            };
+            if let Ok(v) = std::env::var("SG_PEOPLE_SORT") {
+                let v = ints(&v);
+                let t = (s == "staff") as usize;
+                app.xs.people.sort[t] = (v.first().copied().unwrap_or(0).clamp(0, 5) as usize, v.get(1).is_some_and(|&d| d != 0));
+            }
+            app.xs.test_open = Some(s.to_string());
+        }
+        Some(s @ ("history" | "profile" | "pathview" | "tags" | "ticker" | "card")) if app.ui_ok => {
+            if s == "history" {
+                app.open_history();
+            }
+            if s == "pathview" {
+                app.xs.path_view = true;
+            }
+            app.xs.test_open = Some(s.to_string());
+        }
         Some("content-index") if app.ui_ok => {
             app.open_content();
             app.open_content_index();
@@ -712,6 +768,35 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 app.after_object_change();
                 println!("celebrity home at {},{}: {} residents", at(0), at(1), app.club.residents.len());
             }
+            b'X' => {
+                // test hook: the game's extras (sg_core::extras bits), not saved to the settings
+                let e = sg_core::extras::Extras::from_bits(at(0) as u32);
+                app.club.extras = e;
+                app.econ.extras = e;
+                println!("extras {e:?}");
+            }
+            b'S' => {
+                // test hook: the landmark tool in hand with page P of its strip (extras_ui), and design D when given
+                // the Amenities panel (the Build Course panel's other side)
+                if app.panel != 1 {
+                    app.open_panel(1);
+                }
+                app.pstate.alt = true;
+                app.tool = 4;
+                app.edit = true;
+                app.build_idx = sg_core::land::K_LANDMARK as usize;
+                app.strip_page = at(0) as u8;
+                app.design = (v.len() >= 2).then(|| (sg_core::land::K_LANDMARK, at(1)));
+            }
+            b'T' => {
+                // test hook: the Rotate extra's Tab with the pointer on tile x,y
+                let (x, z) = app.terrain.tile_centre(at(0), at(1));
+                app.has_hit = true;
+                app.hit_x = x;
+                app.hit_z = z;
+                let done = app.extras_tab();
+                println!("extras tab at {},{}: {done}", at(0), at(1));
+            }
             b'x' => app.save_championship_course(),
             b'q' => app.save_championship_pro(),
             b'A' => app.auto_aim = 1, // scripted runs: the pro aims every full shot at the pin
@@ -722,6 +807,7 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                     2 => popup_ui::PopupKind::Prefs,
                     4 => popup_ui::PopupKind::Retire,
                     5 => popup_ui::PopupKind::Enhanced,
+                    6 => popup_ui::PopupKind::Extras,
                     _ => popup_ui::PopupKind::LandOffer,
                 });
                 // M:5,P opens the Enhanced graphics box on page P
@@ -835,11 +921,15 @@ impl Stage {
         app.mute = o.mute;
         app.sound_log = o.sound_log;
         app.econ.sandbox = o.sandbox;
+        app.course_size = o.course_size;
         if let Some(d) = o.difficulty {
             app.difficulty = d;
         }
         if let Some(c) = o.cash {
             app.econ.start_cash = c;
+        }
+        if let Some(b) = o.extras {
+            app.extras_next = sg_core::extras::Extras::from_bits(b);
         }
         if let Some(name) = &o.golfer {
             // Play as a golfer from progolfers.dta (case-insensitive name match).
@@ -893,6 +983,10 @@ impl Stage {
         let hd_msg = app.init_hd(o.hd.unwrap_or_else(hd::saved_choice));
         // Enhanced graphics (enhanced.rs), also before any art: the textures carry its filtering
         enhanced::init(o.enhanced);
+        // the OpenSGolf extras' ticks (extras.rs)
+        extras::init(o.no_extras);
+        // the player's keys (controls.rs)
+        controls::init();
         // the effects (fx.rs) follow Enhanced's ticks; --fx / --fx-set / OPENSGOLF_FX turn them on for this run
         fx::configure(o.fx, o.fx_set.as_deref());
         if !app.load_theme(&mut g, app.theme) {
@@ -942,6 +1036,7 @@ impl Stage {
                 eprintln!("error: unknown property {name}");
                 std::process::exit(1)
             };
+            app.course_size = o.course_size;
             app.deal_offer(o.sandbox);
             if !o.sandbox {
                 // the chooser only sells what the starting money covers: move the property into a cheap slot (slot 0 is
@@ -991,6 +1086,13 @@ impl Stage {
             }
             println!("loaded game {} at tick {}", f.display(), app.game_tick);
             open_screen(&mut app, o.screen.as_deref());
+        }
+        // started again on a saved game's content packs (content_profiles.rs): that game is loaded now
+        if let Some(f) = gamefiles::take_load_after_restart() {
+            match app.load_game(&mut g, &f) {
+                Ok(()) => println!("loaded game {} at tick {}", f.display(), app.game_tick),
+                Err(e) => app.show_toast(&sg_core::lang::trf("STR_TOAST_COULD_NOT_LOAD_GAME", &[("ERROR", &e)])),
+            }
         }
         apply_edit_spec(&mut app, &o.edit_spec);
         if !o.edit_spec.is_empty() {
@@ -1104,11 +1206,16 @@ impl Stage {
         if k == usize::MAX {
             return; // refused or toggled: the popup stays
         }
+        // the OpenSGolf extras' lines of the Information menu go by their text (they follow the goals line when it is there)
+        let line = self.app.popup.as_ref().and_then(|p| p.lines.get(k + 1).cloned()).unwrap_or_default();
         // the Enhanced graphics box's ticks, across its pages
         let enh = self.app.popup.as_ref().map(|p| p.enh).unwrap_or_else(enhanced::settings);
         self.app.close_popup();
         use popup_ui::PopupKind;
         match kind {
+            PopupKind::Info if line == tr("STR_MENU_INFO_PEOPLE") => self.app.open_people(),
+            PopupKind::Info if line == tr("STR_MENU_INFO_HISTORY") => self.app.open_history(),
+            PopupKind::Info if line == tr("STR_MENU_INFO_PATH_VIEW") => self.app.toggle_path_view(),
             PopupKind::Info => match k {
                 0 => self.app.repeat_message(),
                 1 => self.open_report(),
@@ -1180,6 +1287,19 @@ impl Stage {
                 2 => self.app.end_career(),
                 _ => {}
             },
+            // Preferences > OpenSGolf extras: the first ticks become the game's extras (extras_ui.rs), the rest the
+            // interface extras' settings, saved (extras.rs)
+            PopupKind::Extras => {
+                let m = k as u32;
+                let ui = popup_ui::EXTRAS_UI as u32;
+                self.app.set_extras(sg_core::extras::Extras::from_bits(m & ((1 << ui) - 1)));
+                let s = extras::Settings::from_bits(m >> ui);
+                extras::set(s);
+                extras::save(&s);
+                if !s.path_help {
+                    self.app.xs.path_view = false;
+                }
+            }
             PopupKind::Prefs => {
                 let m = k as u32;
                 if m & 1 << popup_ui::PREFS_CONTENT != 0 {
@@ -1204,6 +1324,10 @@ impl Stage {
                 if m & 1 << popup_ui::PREFS_KEYS != 0 {
                     let back = self.app.screen;
                     self.app.open_keys(back);
+                }
+                // the port's own OpenSGolf extras line (extras_ui.rs, extras.rs)
+                if m & 1 << popup_ui::PREFS_EXTRAS != 0 {
+                    self.app.open_popup(PopupKind::Extras);
                 }
                 let sound = m & 8 != 0;
                 if sound == self.app.mute {
@@ -1371,6 +1495,13 @@ impl Stage {
             return;
         }
         if app.screen == Screen::Difficulty {
+            if hit == render::COURSE_SIZE_HIT {
+                if app.course_size_choosable() {
+                    app.next_course_size();
+                    app.ui_sound(0x18);
+                }
+                return;
+            }
             if hit == 100 || hit < 0 {
                 // the back button, or a click on nothing, goes back (0x43a400 returns -1)
                 app.screen = Screen::Menu;
@@ -1424,13 +1555,20 @@ impl Stage {
     /// 0x41de29): lower-case letters pick tools, shifted letters open screens, digits jump to holes, arrows scroll four tiles,
     /// PageUp / Home turn the view a quarter, z / x zoom between the three levels.
     fn play_key(&mut self, k: KeyCode) {
+        // the player's keys (controls.rs): the key pressed becomes the default key of the action bound to it
+        let aiming = self.app.club.pro_aiming().is_some();
+        let Some((k, shift, act)) = controls::translate(k, self.shift, aiming) else { return };
+        // the port's own: the whole interface hidden or shown again (u; controls_ui.rs)
+        if act == Some(controls::action("hide_interface")) {
+            self.app.ctl.hud_hidden = !self.app.ctl.hud_hidden;
+            return;
+        }
         // Enhanced graphics' photo mode (photo.rs): c, a key the original leaves unused; nothing in Classic
-        if k == KeyCode::C && !self.shift {
+        if k == KeyCode::C && !shift {
             self.photo_enter();
             return;
         }
         let app = &mut self.app;
-        let shift = self.shift;
         // a terrain key picks that brush on the Build Course panel (0x40d890 with the type itself)
         let pick = |app: &mut App, ty: u8| {
             if app.panel != 1 {
@@ -1442,7 +1580,7 @@ impl Stage {
                 app.paint_idx = i;
             }
         };
-        if app.club.pro_aiming().is_some() && !shift {
+        if act.map_or(aiming && !shift, controls::is_aim) {
             // while the pro aims, s f d h l pick the shot shape instead
             let opt = match k {
                 KeyCode::S => Some(0),
@@ -1506,6 +1644,11 @@ impl Stage {
                 KeyCode::J => app.begin_tournament(),
                 KeyCode::C => app.save_championship_course(),
                 KeyCode::N => app.show_names = !app.show_names,
+                // the OpenSGolf extras' keys (extras.rs): People, the message history, name tags, the path view
+                KeyCode::G if extras::people() => app.open_people(),
+                KeyCode::M if extras::history() => app.open_history(),
+                KeyCode::H => app.toggle_name_tags(),
+                KeyCode::V if extras::path_help() => app.toggle_path_view(),
                 // ? repeats the last message
                 KeyCode::Slash => app.repeat_message(),
                 KeyCode::B => {
@@ -1528,6 +1671,9 @@ impl Stage {
         }
         match k {
             KeyCode::Escape if app.pstate.hire_open => app.pstate.hire_open = false,
+            // the original's Esc opened the pause menu over an open golfer card; "Fix original bugs" closes the card
+            // (docs/FIXES.md 7)
+            KeyCode::Escape if app.card.is_some() && enhanced::fix_bugs() => app.card = None,
             KeyCode::Escape => {
                 if app.ui_ok {
                     // the pause menu: System Functions over the stopped game
@@ -1537,10 +1683,11 @@ impl Stage {
                     quit_game();
                 }
             }
-            // Space drops the tool and the selected golfer
+            // Space drops the tool and the selected golfer (and ends People > Follow)
             KeyCode::Space => {
                 app.edit = false;
                 app.card = None;
+                app.xs.follow = None;
             }
             // the port's own game speed (the original has none): ] cycles normal, x2 and x4
             KeyCode::RightBracket => {
@@ -1557,6 +1704,8 @@ impl Stage {
                 app.show_toast(name);
             }
             // Tab turns the next building; with the elevation tool it also steps the brush (one point, 2x2, area)
+            // the Rotate extra's Tab (extras_ui.rs) comes first; nothing when it is off
+            KeyCode::Tab if app.extras_tab() => {}
             KeyCode::Tab => {
                 app.turn = (app.turn + 1) & 3;
                 // the exe's Tab adds one to the same variable that holds the paint brush's variant (0x5a34f0)
@@ -1573,6 +1722,7 @@ impl Stage {
                 app.edit_elevation(a, b, if up { 1 } else { -1 });
             }
             KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right => {
+                app.xs.follow = None;
                 // four tiles along the view's diagonal
                 let step = 4.0 * std::f32::consts::SQRT_2 * sg_core::terrain::TILE_SIZE;
                 match k {
@@ -1667,6 +1817,8 @@ impl Stage {
         let clear = PassAction::clear_color(0.0, 0.0, 0.0, 1.0);
         self.g.ctx.begin_pass(target, clear);
         enhanced::begin_frame();
+        // OpenSGolf extras: People > Follow keeps the camera on its target (extras.rs)
+        app.follow_tick();
         app.camera_frame(app.clock);
         app.count_exe_frames();
         // the title screens set Klepto ITC (difficulty, the file lists and Pick A Pro, the theme packs); the rest of the game
@@ -1728,15 +1880,22 @@ impl Stage {
             if app.great_shot.is_none() {
                 app.draw_cursor_overlay(&mut self.g);
             }
-            if !app.no_hud {
-                app.draw_hud(&mut self.g);
+            if app.hud_hidden() {
+                // the interface hidden with u (controls_ui.rs): only a note on how to bring it back
+                app.draw_hud_hint(&mut self.g);
+            } else {
+                if !app.no_hud {
+                    app.draw_hud(&mut self.g);
+                }
+                // Enhanced graphics: the camera button that opens photo mode (photo.rs; nothing in Classic)
+                app.draw_photo_button(&mut self.g);
             }
-            // Enhanced graphics: the camera button that opens photo mode (photo.rs; nothing in Classic)
-            app.draw_photo_button(&mut self.g);
             if app.screen == Screen::Popup {
                 app.draw_popup(&mut self.g);
             }
-            app.draw_rename(&mut self.g);
+            if !matches!(app.screen, Screen::People | Screen::Profile) {
+                app.draw_rename(&mut self.g);
+            }
             app.draw_save_dialog(&mut self.g);
             // Enhanced widescreen: a full-screen page over the course is framed, the course dimmed round it
             if enhanced::widescreen()
@@ -1776,10 +1935,22 @@ impl Stage {
                 Screen::BestScores => app.draw_best_scores(&mut self.g),
                 Screen::Top10 => app.draw_top10(&mut self.g),
                 Screen::Customise => app.draw_customise(&mut self.g),
+                // the OpenSGolf extras' screens (extras.rs); the rename prompt (an employee's name, a bio) goes over them
+                Screen::People => {
+                    app.draw_people(&mut self.g);
+                    app.draw_rename(&mut self.g);
+                }
+                Screen::History => app.draw_history(&mut self.g),
+                Screen::Profile => {
+                    app.draw_profile(&mut self.g);
+                    app.draw_rename(&mut self.g);
+                }
                 _ => {}
             }
             app.draw_analysis(&mut self.g);
         }
+        // the OpenSGolf extras' tab strip over the F1 to F10 reports (report_tabs.rs)
+        self.app.draw_report_tabs(&mut self.g);
         self.app.draw_notice(&mut self.g);
         self.draw_touch_buttons();
         self.g.flush();
@@ -1959,6 +2130,8 @@ impl Stage {
     /// clicks the left button there, several clicks separated by ';' (for stills of hover looks and of where clicks land,
     /// e.g. with Enhanced widescreen).
     fn pointer_test_hook(&mut self) {
+        // the extras' stills set up after the simulated time, before the scripted clicks
+        self.app.extras_test_hook();
         let pts = |k: &str| -> Vec<(f32, f32)> {
             let v = std::env::var(k).unwrap_or_default();
             v.split(';').map(ints).filter(|v| v.len() >= 2).map(|v| (v[0] as f32, v[1] as f32)).collect()
@@ -1971,6 +2144,21 @@ impl Stage {
             self.mouse_button_down_event(MouseButton::Left, x, y);
             self.mouse_button_up_event(MouseButton::Left, x, y);
             // the pointer is tested against the interface as last drawn
+            self.draw_frame(None);
+        }
+        // SG_PRESS="u;Shift+F6;...": keys pressed after the clicks (names as settings.json's "controls" has them)
+        for b in std::env::var("SG_PRESS").unwrap_or_default().split(';').filter_map(controls::Binding::parse) {
+            let mods = KeyMods { shift: b.shift, ..Default::default() };
+            self.key_down_event(b.key, mods, false);
+            // a letter or Space also types its character, as a keyboard does
+            let name = b.name();
+            let ch = name.strip_prefix("Shift+").unwrap_or(&name);
+            if let Some(c) = ch.chars().next().filter(|c| ch.len() == 1 && c.is_ascii_alphanumeric()) {
+                self.char_event(if b.shift { c.to_ascii_uppercase() } else { c.to_ascii_lowercase() }, mods, false);
+            } else if b.key == KeyCode::Space {
+                self.char_event(' ', mods, false);
+            }
+            self.key_up_event(b.key, mods);
             self.draw_frame(None);
         }
     }
@@ -2001,6 +2189,7 @@ impl EventHandler for Stage {
         // macOS: the last frame's autoreleased Cocoa objects go (autorelease.rs)
         #[cfg(target_os = "macos")]
         autorelease::next_frame();
+        perf::frame_begin();
         let t = now();
         self.app.clock = t;
         self.touch_update();
@@ -2009,6 +2198,8 @@ impl EventHandler for Stage {
             self.pause_toggle = false;
             self.toggle_pause();
         }
+        // the --screen test hook's extras screens that need the game to have run first (extras.rs)
+        self.app.extras_test_hook();
         let app = &mut self.app;
         // the board terminated the contract: the main loop asks what next as soon as the game is back on the course
         if app.econ.game_over && app.screen == Screen::Play && app.popup.is_none() {
@@ -2044,10 +2235,14 @@ impl EventHandler for Stage {
             }
         }
         if app.dirty {
+            let t0 = now();
             app.rebuild_batches(&mut self.g);
             app.refresh_trees();
             app.dirty = false;
             app.report_course(false);
+            if std::env::var_os("SG_TICK_BENCH").is_some() {
+                println!("rebuild: {:.1} ms for a {}x{} map", (now() - t0) * 1000.0, app.terrain.w, app.terrain.h);
+            }
         }
         if app.econ.version != self.shown_version {
             self.shown_version = app.econ.version;
@@ -2071,7 +2266,7 @@ impl EventHandler for Stage {
             && app.simfoto.is_none_or(|f| f.frames < 2)
             && app.great_shot.is_none()
         {
-            app.time += dt * app.speed.max(1) as f64;
+            app.time += dt * app.speed.max(1) as f64 * perf::speed();
         }
         app.club.turbo = app.speed > 1;
         let (w, h) = window::screen_size();
@@ -2089,7 +2284,26 @@ impl EventHandler for Stage {
             None => self.draw_frame(None),
         }
         self.g.ctx.commit_frame();
+        if perf::on() {
+            perf::frame_end();
+            let app = &self.app;
+            perf::report(app.game_tick, || app.perf_sizes());
+            // a fast test run (OPENSGOLF_PERF_SPEED) plays on by itself: photos, questions and boards let go at once
+            if perf::speed() > 1.0 {
+                self.app.great_shot_dismiss();
+                self.app.close_popup();
+                self.app.notice = None;
+                if self.app.ui_ok && self.app.screen != Screen::Play && self.app.photo.is_none() {
+                    self.app.screen = Screen::Play;
+                }
+                self.app.paused = false;
+            }
+        }
         self.app.great_shot_frame();
+        // the frame rate cap (Enhanced graphics > Display; framerate.rs): the simulation keeps its own 87 ms ticks
+        if self.png_out.is_none() {
+            framerate::pace();
+        }
         if self.app.simfoto.is_some_and(|f| !f.saved && f.frames >= 2) {
             self.save_simfoto();
         }
@@ -2131,6 +2345,7 @@ impl EventHandler for Stage {
                 if let Some(n) = std::env::var("SG_FX_BENCH").ok().and_then(|v| v.parse::<u32>().ok()) {
                     self.bench(n.max(1));
                 }
+                app::tick_bench_report(&self.app);
                 // let the first frame settle
                 if !self.screenshot(&out) {
                     eprintln!("could not write {}", out.display());
@@ -2218,6 +2433,14 @@ impl EventHandler for Stage {
             self.photo_wheel(y);
             return;
         }
+        if y != 0.0 {
+            match self.app.screen {
+                Screen::People => return self.app.people_wheel(y),
+                Screen::History => return self.app.history_wheel(y),
+                Screen::Profile => return self.app.profile_wheel(y),
+                _ => {}
+            }
+        }
         if (self.app.screen == Screen::Play || !self.app.ui_ok) && y != 0.0 && self.app.great_shot.is_none() {
             // y is in notches (the browser's pixels are turned into notches by web/opensgolf.js); a trackpad sends many
             // small turns
@@ -2284,8 +2507,27 @@ impl EventHandler for Stage {
             }
             return;
         }
+        if self.app.screen != Screen::Play && self.app.ui_ok && button == MouseButton::Left {
+            // the OpenSGolf extras' report tabs (report_tabs.rs)
+            let (vx, vy) = self.app.view.to_virtual(x, y);
+            if self.app.report_tabs_click(vx, vy) {
+                return;
+            }
+        }
         if self.app.screen != Screen::Play && self.app.ui_ok {
-            if self.app.screen == Screen::Report {
+            if matches!(self.app.screen, Screen::People | Screen::History | Screen::Profile) {
+                let (vx, vy) = self.app.view.to_virtual(x, y);
+                let right = button == MouseButton::Right;
+                if self.app.rename.is_some() {
+                    // the rename prompt over the screen takes nothing from the pointer
+                } else if self.app.screen == Screen::People {
+                    self.app.people_click(vx, vy, right);
+                } else if self.app.screen == Screen::History {
+                    self.app.history_click(vx, vy, right);
+                } else {
+                    self.app.profile_click(vx, vy, right);
+                }
+            } else if self.app.screen == Screen::Report {
                 let (vx, vy) = self.app.view.to_virtual(x, y);
                 self.app.report_click(vx, vy);
             } else if self.app.screen == Screen::HoleStats {
@@ -2344,25 +2586,37 @@ impl EventHandler for Stage {
             }
             return;
         }
+        // the middle button drags the course along whatever tool is held (the port's own)
+        if button == MouseButton::Middle {
+            self.dragging = true;
+            self.app.drag_state(true, now());
+            return;
+        }
         if button != MouseButton::Left && button != MouseButton::Right {
             return;
         }
         let (vx, vy) = self.app.view.to_virtual(x, y);
+        // the interface hidden (u): a click goes to the course
+        let ui_ok = self.app.ui_ok && !self.app.hud_hidden();
         // a right click lets go of a golfer held by the card's Move/Eject (the main loop's right click clears 0x4c2e10)
         if button == MouseButton::Right && self.app.card_ui.held.take().is_some() {
             return;
         }
-        if button == MouseButton::Left && self.app.photo_button_hit(vx, vy) {
+        if ui_ok && button == MouseButton::Left && self.app.photo_button_hit(vx, vy) {
             self.photo_enter();
             return;
         }
-        if self.app.ui_ok && button == MouseButton::Left && self.app.card_click(vx, vy) {
+        // OpenSGolf extras: the ticker's Show button and the message history (extras.rs)
+        if ui_ok && button == MouseButton::Left && self.app.ticker_click(vx, vy) {
             return;
         }
-        if self.app.ui_ok && self.dock_click(vx, vy, button == MouseButton::Right) {
+        if ui_ok && button == MouseButton::Left && self.app.card_click(vx, vy) {
             return;
         }
-        if self.app.ui_ok && button == MouseButton::Left && self.app.strip_click(vx, vy) {
+        if ui_ok && self.dock_click(vx, vy, button == MouseButton::Right) {
+            return;
+        }
+        if ui_ok && button == MouseButton::Left && self.app.strip_click(vx, vy) {
             return;
         }
         if button == MouseButton::Left && self.app.club.pro_aiming().is_some() && !self.app.edit {
@@ -2384,6 +2638,8 @@ impl EventHandler for Stage {
             self.app.apply_tool(self.shift, false);
         } else {
             self.dragging = true;
+            // a drag of the view ends People > Follow
+            self.app.xs.follow = None;
             self.app.drag_state(true, now());
             if button == MouseButton::Left {
                 if let Some((hx, hz)) = self.app.pick_ground(x, y) {
@@ -2426,6 +2682,7 @@ impl EventHandler for Stage {
         }
         self.app.rename_char(c);
         self.app.save_char(c);
+        self.app.profile_char(c);
         self.app.cust_char(c);
     }
 
@@ -2474,8 +2731,19 @@ impl Stage {
             return;
         }
         if self.app.screen != Screen::Play && self.app.ui_ok {
+            let shift = self.shift;
             let app = &mut self.app;
-            if app.screen == Screen::Report {
+            // the OpenSGolf extras' report tabs: Tab, Shift+Tab and the other reports' keys (report_tabs.rs)
+            if app.report_tabs_key(k, shift) {
+                return;
+            }
+            if app.screen == Screen::People {
+                app.people_key(k);
+            } else if app.screen == Screen::History {
+                app.history_key(k);
+            } else if app.screen == Screen::Profile {
+                app.profile_key(k);
+            } else if app.screen == Screen::Report {
                 if k == KeyCode::Escape || k == KeyCode::F1 {
                     app.screen = Screen::Play;
                     app.hover = -1;
@@ -2621,6 +2889,8 @@ fn main() {
             webgl_version: conf::WebGLVersion::WebGL2,
             // GNOME matches the window to the AppImage's opensgolf.desktop by this
             linux_wm_class: "opensgolf",
+            // v-sync (Enhanced graphics > Display; framerate.rs): on unless the player turned it off
+            swap_interval: Some(framerate::swap_interval()),
             ..Default::default()
         },
         icon: Some(window_icon()),

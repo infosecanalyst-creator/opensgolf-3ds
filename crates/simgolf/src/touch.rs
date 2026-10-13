@@ -80,6 +80,8 @@ fn two(f: &[Finger]) -> ((f32, f32), f32, f32) {
 impl Stage {
     pub(crate) fn touch(&mut self, phase: TouchPhase, id: u64, x: f32, y: f32) {
         self.touch.used = true;
+        // no pointer to hover with: the extras' name tags stay off (tags_ui)
+        self.app.xs.touched = true;
         let now = self.app.clock;
         match phase {
             TouchPhase::Started => {
@@ -253,7 +255,10 @@ impl Stage {
 impl App {
     /// Whether a name is being typed (rename, save, Customise Golfer).
     pub fn typing(&self) -> bool {
-        self.rename.is_some() || self.title.save_name.is_some() || self.cust.as_ref().is_some_and(|c| c.typing.is_some())
+        self.rename.is_some()
+            || self.title.save_name.is_some()
+            || self.content.profile_name.is_some()
+            || self.cust.as_ref().is_some_and(|c| c.typing.is_some())
     }
 }
 

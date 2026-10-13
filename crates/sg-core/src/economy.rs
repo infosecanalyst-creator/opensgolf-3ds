@@ -62,6 +62,9 @@ pub struct Economy {
     pub wages_paid: f64,
     /// One record per year since the start (index 0 is 2001 in the exe's report), in dollars per ledger column.
     pub ledger: Vec<[f64; LEDGER_COLUMNS]>,
+    /// The club's extras (sg_core::extras), set by the game from the club record (where they are saved).
+    #[serde(skip)]
+    pub extras: crate::extras::Extras,
 }
 
 impl Default for Economy {
@@ -81,6 +84,7 @@ impl Default for Economy {
             staff: [0; STAFF_KINDS],
             wages_paid: 0.0,
             ledger: Vec::new(),
+            extras: Default::default(),
         }
     }
 }
@@ -285,7 +289,7 @@ impl Economy {
         }
         let interval = 1024 / (difficulty.clamp(0, 3) as u32 + 2);
         if tick.is_multiple_of(interval) {
-            let upkeep = crate::data::economy().maintenance_units as f64 * Self::UNIT;
+            let upkeep = self.extras.maintenance(crate::data::economy().maintenance_units as f64 * Self::UNIT);
             for _ in 0..active_holes {
                 self.spend_to(LEDGER_MAINTENANCE, upkeep);
                 self.upkeep_paid += upkeep;
@@ -294,7 +298,7 @@ impl Economy {
             for (p, paid) in staff.iter().zip(paid.iter_mut()) {
                 if rng.below(4 - difficulty.clamp(0, 3)) <= r {
                     let units = crate::data::wages()[p.kind.min(3)][p.experienced as usize];
-                    let w = units as f64 * Self::UNIT;
+                    let w = self.extras.wage(units as f64 * Self::UNIT);
                     self.spend_to(LEDGER_SALARIES, w);
                     self.wages_paid += w;
                     *paid = units;
@@ -305,7 +309,7 @@ impl Economy {
             // 2% a month on debt (data/economy.toml), in whole units, truncated toward zero: units x 2 / 100 is the
             // exe's units / 50 exactly
             let units = (self.cash / Self::UNIT).trunc() as i64;
-            let interest = (units * crate::data::economy().interest_percent as i64 / 100) as f64 * Self::UNIT;
+            let interest = (units * self.extras.interest_percent() as i64 / 100) as f64 * Self::UNIT;
             self.earn(interest);
             self.book(LEDGER_MAINTENANCE, interest);
         }

@@ -822,6 +822,11 @@ impl App {
             let sx = if bid == hover { 600.0 } else { 500.0 };
             s.image_part(g, &art.stats, ix, iy, sx, 50.0 * row as f32, 57.0, 50.0);
         }
+        // OpenSGolf extras (extras.rs): the Profile button under the card, to the golfer's profile page
+        if let Some(r) = self.card_profile_button(gi) {
+            let (px, py) = self.card_ui.mouse;
+            crate::extras::draw_button(g, s, r, tr("STR_CARD_PROFILE"), true, r.has(px, py));
+        }
         if hover >= 0 && self.card_ui.frames >= 7 {
             let tip = match hover {
                 0 => tr("STR_CARD_CUSTOMIZE"),
@@ -938,6 +943,15 @@ impl App {
         }
     }
 
+    /// The extras' Profile button under the card (none with the People extra off).
+    pub fn card_profile_button(&self, gi: usize) -> Option<Rect> {
+        if !crate::extras::people() || self.club.g[gi].roster < 0 {
+            return None;
+        }
+        let page = self.club.g[gi].story != -1 && self.card_ui.story;
+        Some(Rect::new(560.0, if page { 326.0 } else { 290.0 }, 70.0, 14.0))
+    }
+
     /// Where the pointer is, for the card's buttons.
     pub fn card_pointer(&mut self, vx: f32, vy: f32) {
         self.card_ui.mouse = (vx, vy);
@@ -946,6 +960,11 @@ impl App {
     /// A click while the card is open: its buttons, or anywhere on it (kept open). A click elsewhere goes on to the course.
     pub fn card_click(&mut self, vx: f32, vy: f32) -> bool {
         let Some(gi) = self.card else { return false };
+        if self.card_profile_button(gi).is_some_and(|r| r.has(vx, vy)) {
+            let r = self.club.g[gi].roster;
+            self.open_profile(r);
+            return true;
+        }
         let hit = self.card_hit(gi, vx, vy);
         let p = (self.club.g[gi].partner.clamp(0, SLOTS as i32 - 1)) as usize;
         match hit {
@@ -1362,7 +1381,7 @@ impl App {
         if has_tacs {
             s.image_part(g, tacs, 600.0, 350.0, 58.0, 49.0, 207.0, 178.0);
             let mut o = 0.0;
-            for id in (0..22).filter(|&i| self.club.earned[i].is_none()).take(3) {
+            for id in (0..22).filter(|&i| self.club.earned.get(i).is_none_or(Option::is_none)).take(3) {
                 let (sx, sy, w, h) = match alt(id) {
                     Some(a) => TODO_ALT[a],
                     None => TODO_LABELS[id],
@@ -1371,7 +1390,7 @@ impl App {
                 o += h - 4.0;
             }
         } else {
-            let todo: Vec<usize> = (0..22).filter(|&i| self.club.earned[i].is_none()).take(3).collect();
+            let todo: Vec<usize> = (0..22).filter(|&i| self.club.earned.get(i).is_none_or(Option::is_none)).take(3).collect();
             for (j, id) in todo.iter().enumerate() {
                 s.text(g, 616.0, 420.0 + 28.0 * j as f32, self.club.award_title(*id), 11.0, rgb(0.6, 0.0, 0.0));
             }

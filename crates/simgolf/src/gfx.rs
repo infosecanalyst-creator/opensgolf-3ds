@@ -252,7 +252,11 @@ fn seq_indices(n: usize) -> Vec<u32> {
 
 impl Gfx {
     pub fn new() -> Gfx {
-        let ctx = window::new_rendering_backend();
+        let mut ctx = window::new_rendering_backend();
+        if crate::perf::on() {
+            // the performance log counts the GPU objects and draws (perf.rs)
+            ctx = Box::new(crate::perf::Counting(ctx));
+        }
         let queue = std::rc::Rc::new(std::cell::RefCell::new(Queue::default()));
         let mut ctx: Box<dyn RenderingBackend> = Box::new(Deferred::new(ctx, queue.clone()));
         let shader = ctx
@@ -732,6 +736,9 @@ impl Deferred {
             self.ib = self.inner.new_buffer(BufferType::IndexBuffer, BufferUsage::Immutable, BufferSource::slice(&seq_indices(self.cap)));
         }
         self.inner.buffer_update(self.vb, BufferSource::slice(&q.verts));
+        if crate::perf::on() {
+            crate::perf::vb_upload(std::mem::size_of_val(&q.verts[..]));
+        }
         for it in q.items.drain(..) {
             self.inner.apply_pipeline(&it.pipeline);
             self.inner.apply_bindings(&Bindings { vertex_buffers: vec![self.vb], index_buffer: self.ib, images: vec![it.tex] });
