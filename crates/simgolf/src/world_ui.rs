@@ -37,7 +37,8 @@ impl App {
     /// The property shown on card k (offer slot k), its acres and price in money.
     fn card(&self, k: usize) -> (usize, i32, i32) {
         let s = self.offer[k];
-        (s.property, s.acres, sg_core::data::economy().offer_units[k] * 100)
+        // (the Hardcore extra's dearer land: offer_for)
+        (s.property, s.acres, self.extras_next.land((sg_core::data::economy().offer_units[k] * 100) as f64) as i32)
     }
 
     fn world_cash(&self) -> f64 {
@@ -431,7 +432,8 @@ impl App {
             for (k, l) in lines.iter().enumerate() {
                 s.put(g, F_INFO14, tx, y0 - 1.0 + 17.0 * k as f32, l, navy);
             }
-            let price = trf("STR_TRACT_PRICE", &[("PRICE", &money(tract.price as i64 * 100))]);
+            let price = self.club.extras.land(tract.price as f64 * 100.0) as i64;
+            let price = trf("STR_TRACT_PRICE", &[("PRICE", &money(price))]);
             s.put_right(g, F_INFO14, x0 + 165.0, y0 - 1.0 + 17.0 * lines.len() as f32, &price, navy);
         }
         s.put(g, F_INFO14, 548.0, 263.0, tr("STR_TRACT_CASH_RESERVE"), black_ink());

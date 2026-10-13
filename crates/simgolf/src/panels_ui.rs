@@ -348,7 +348,6 @@ const ELEVATION_UNDO: (Hit, Cut, Cut, f32, f32) = (hit(267, 561, 12), (0.0, 450.
 
 // ---- People: the employee panel ------------------------------------------------------------------------------------------------
 
-const MAX_EMPLOYEES: usize = 20;
 const HIRE: (Hit, f32, f32) = (hit(270, 558, 16), 254.0, 542.0);
 const HIRE_HOVER: Cut = (0.0, 500.0, 42.0, 42.0);
 const HIRE_DISABLED: Cut = (100.0, 500.0, 42.0, 42.0);
@@ -930,9 +929,28 @@ impl App {
         }
         let kind = self.build_idx as i32;
         let st = design_strip(kind)?;
+        if kind == land::K_LANDMARK {
+            // the extras' pages of the landmark strip (extras_ui): the cut landmarks or the animals, all shown
+            let page = self.strip_page_shown()?;
+            if page != crate::extras_ui::PAGE_OWNED {
+                let n = self.extra_page_types(page).len() as i32;
+                let scale = if page == crate::extras_ui::PAGE_ANIMALS { 1.0 } else { 0.5 };
+                return Some((kind, Strip { dx: 0, count: n, scale }, 0));
+            }
+        }
         let mask = if kind == land::K_LANDMARK { self.club.landmarks_owned & 0x3fff } else { 0 };
         // the landmark strip only opens once the club owns one
         (kind != land::K_LANDMARK || mask != 0).then_some((kind, st, mask))
+    }
+
+    /// The design of strip button i: the button itself, or on the extras' pages of the landmark strip the landmark type.
+    fn strip_design(&self, kind: i32, i: i32) -> i32 {
+        match self.strip_page_shown() {
+            Some(p) if kind == land::K_LANDMARK && p != crate::extras_ui::PAGE_OWNED && i >= 0 => {
+                self.extra_page_types(p).get(i as usize).copied().unwrap_or(-1)
+            }
+            _ => i,
+        }
     }
 
     /// The strip of designs (0x432200), drawn with the panel every frame; the design under the pointer becomes the one a
@@ -953,7 +971,7 @@ impl App {
         let current = self.design.filter(|d| d.0 == kind).map(|d| d.1).unwrap_or(-1);
         for i in (0..st.count).filter(|&i| mask == 0 || mask & (1 << i) != 0) {
             let (cx, cy) = st.at(i);
-            let state = if current == i {
+            let state = if current == self.strip_design(kind, i) {
                 1
             } else if hot == i {
                 0
@@ -962,9 +980,9 @@ impl App {
             };
             blit(g, s, &art, strip_button(i, state), (cx - 22) as f32, (cy - 20) as f32);
             let si = if kind == land::K_LANDMARK {
-                // in the landmark's palette, 100 + type
-                let pal = sg_core::decor::palette_file(strip_sprite(kind, i).1, self.exe_theme());
-                sg_core::objects::LANDMARKS.get(i as usize).and_then(|f| self.sprite_for(&format!("{f}.flc"), false, pal))
+                // in the landmark's palette, 100 + type (the extras' pages: their own art, sg_core::objects::landmark_art)
+                let art = sg_core::objects::landmark_art(self.strip_design(kind, i), self.exe_theme());
+                art.and_then(|(f, pal)| self.sprite_for(&format!("{f}.flc"), false, pal))
             } else {
                 let (id, pal) = strip_sprite(kind, i);
                 if kind == land::K_FLOWERS {
@@ -978,14 +996,26 @@ impl App {
             let f = sp.frames_per_view - 1;
             let (w, h, ax, ay) = (sp.w as f32, sp.h as f32, sp.anchor_x as f32, sp.anchor_y as f32);
             let tex = self.sprite_texture(g, si, 0, f);
-            let k = st.scale;
+            // the extras' pages fit each picture to the strip's height (their art comes in any size)
+            let extra_page = kind == land::K_LANDMARK && self.strip_page_shown().is_some_and(|p| p != crate::extras_ui::PAGE_OWNED);
+            let k = if extra_page { st.scale.min(44.0 / h.max(1.0)) } else { st.scale };
             let im = Image { tex: Some(tex), w, h };
             s.image_scaled(g, &im, (cx as f32 - ax * k, cy as f32 - ay * k, w * k, h * k), (0.0, 0.0, w, h));
         }
         if hot == -1 {
             return;
         }
+        let hot = self.strip_design(kind, hot);
         self.design_hover = hot;
+        if kind == land::K_LANDMARK && hot >= sg_core::objects::CUT_BASE {
+            // the extras' cut landmarks and animals: name and the port's price
+            let name = capitalised(sg_core::vips::landmark_short_name(hot));
+            let price = (App::extra_landmark_units(hot) * 100).to_string();
+            tip_bar(g, s, &trf("STR_LANDMARK_TIP", &[("LANDMARK", &name), ("PRICE", &price)]), mx, my - 7.0);
+            let what = if hot >= sg_core::objects::ANIMAL_BASE { "STR_EXTRAS_ANIMAL_EFFECT" } else { "STR_EXTRAS_CUT_EFFECT" };
+            tip_bar(g, s, tr(what), mx, my + 3.0);
+            return;
+        }
         if kind == land::K_LANDMARK {
             let name = sg_core::vips::landmark_short_name(hot);
             let mut ch = name.chars();
@@ -1209,7 +1239,8 @@ impl App {
                     }
                 }
             }
-            if n >= MAX_EMPLOYEES {
+            // the club's employee limit (20 in the original; sg_core::extras changes it)
+            if n >= self.club.extras.staff_limit() {
                 blit(g, s, im, HIRE_DISABLED, HIRE.1, HIRE.2);
             } else if h == 0 {
                 blit(g, s, im, HIRE_HOVER, HIRE.1, HIRE.2);
@@ -1451,6 +1482,13 @@ impl App {
                     self.show_toast(why);
                     return true;
                 }
+                // the extras (extras_ui): the landmark button pressed again shows the strip's next page
+                let landmark_again =
+                    self.edit && self.tool == 4 && AMENITIES[slot].kind == land::K_LANDMARK && self.build_idx as i32 == land::K_LANDMARK;
+                if landmark_again && self.strip_pages().len() > 1 {
+                    self.next_strip_page();
+                    return true;
+                }
                 self.tool = 4;
                 self.build_idx = AMENITIES[slot].kind as usize;
                 self.edit = true;
@@ -1463,7 +1501,7 @@ impl App {
                     let (px, py) = self.pstate.mouse;
                     let hot = st.hit(mask, px, py);
                     if hot != -1 {
-                        self.design_hover = hot;
+                        self.design_hover = self.strip_design(kind, hot);
                     }
                     if self.design_hover != -1 || kind == land::K_LANDMARK {
                         self.design = (self.design_hover != -1).then_some((kind, self.design_hover));
@@ -1544,7 +1582,7 @@ impl App {
         let sel = self.pstate.emp_sel;
         match h {
             0 => {
-                if rows.len() >= MAX_EMPLOYEES {
+                if rows.len() >= self.club.extras.staff_limit() {
                     self.ui_sound(0x18);
                 } else {
                     self.pstate.hire_open = true;

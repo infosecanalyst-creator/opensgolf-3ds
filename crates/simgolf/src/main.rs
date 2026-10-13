@@ -24,6 +24,7 @@ mod cursor_ui;
 mod cust_ui;
 mod edges;
 mod enhanced;
+mod extras_ui;
 mod files_ui;
 mod fx;
 mod fx_ball;
@@ -92,6 +93,8 @@ struct Options {
     sandbox: bool,
     screen: Option<String>,
     cash: Option<f64>,
+    /// Test hook: the extras a new game starts with (sg_core::extras bits), not saved to the settings.
+    extras: Option<u32>,
     difficulty: Option<i32>,
     course: Option<PathBuf>,
     save: Option<PathBuf>,
@@ -160,6 +163,7 @@ fn parse_args() -> Options {
         sandbox: false,
         screen: None,
         cash: None,
+        extras: None,
         difficulty: None,
         course: None,
         save: None,
@@ -217,7 +221,8 @@ fn parse_args() -> Options {
             "--sound-log" => o.sound_log = true,
             "--sandbox" => o.sandbox = true,
             "--screen" => o.screen = Some(next()),
-            "--cash" => o.cash = next().parse().ok(), // test hook: starting cash
+            "--cash" => o.cash = next().parse().ok(),     // test hook: starting cash
+            "--extras" => o.extras = next().parse().ok(), // test hook: the extras' bits for a new game (extras_ui)
             "--difficulty" => o.difficulty = next().parse().ok().map(|d: i32| d.clamp(0, 3)),
             "--course" => o.course = Some(PathBuf::from(next())),
             "--save" => o.save = Some(PathBuf::from(next())),
@@ -710,6 +715,35 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 app.after_object_change();
                 println!("celebrity home at {},{}: {} residents", at(0), at(1), app.club.residents.len());
             }
+            b'X' => {
+                // test hook: the game's extras (sg_core::extras bits), not saved to the settings
+                let e = sg_core::extras::Extras::from_bits(at(0) as u32);
+                app.club.extras = e;
+                app.econ.extras = e;
+                println!("extras {e:?}");
+            }
+            b'S' => {
+                // test hook: the landmark tool in hand with page P of its strip (extras_ui), and design D when given
+                // the Amenities panel (the Build Course panel's other side)
+                if app.panel != 1 {
+                    app.open_panel(1);
+                }
+                app.pstate.alt = true;
+                app.tool = 4;
+                app.edit = true;
+                app.build_idx = sg_core::land::K_LANDMARK as usize;
+                app.strip_page = at(0) as u8;
+                app.design = (v.len() >= 2).then(|| (sg_core::land::K_LANDMARK, at(1)));
+            }
+            b'T' => {
+                // test hook: the Rotate extra's Tab with the pointer on tile x,y
+                let (x, z) = app.terrain.tile_centre(at(0), at(1));
+                app.has_hit = true;
+                app.hit_x = x;
+                app.hit_z = z;
+                let done = app.extras_tab();
+                println!("extras tab at {},{}: {done}", at(0), at(1));
+            }
             b'x' => app.save_championship_course(),
             b'q' => app.save_championship_pro(),
             b'A' => app.auto_aim = 1, // scripted runs: the pro aims every full shot at the pin
@@ -720,6 +754,7 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                     2 => popup_ui::PopupKind::Prefs,
                     4 => popup_ui::PopupKind::Retire,
                     5 => popup_ui::PopupKind::Enhanced,
+                    6 => popup_ui::PopupKind::Extras,
                     _ => popup_ui::PopupKind::LandOffer,
                 });
                 // M:5,P opens the Enhanced graphics box on page P
@@ -838,6 +873,9 @@ impl Stage {
         }
         if let Some(c) = o.cash {
             app.econ.start_cash = c;
+        }
+        if let Some(b) = o.extras {
+            app.extras_next = sg_core::extras::Extras::from_bits(b);
         }
         if let Some(name) = &o.golfer {
             // Play as a golfer from progolfers.dta (case-insensitive name match).
@@ -1178,6 +1216,8 @@ impl Stage {
                 2 => self.app.end_career(),
                 _ => {}
             },
+            // Preferences > OpenSGolf extras: the ticks become the game's extras (extras_ui.rs)
+            PopupKind::Extras => self.app.set_extras(sg_core::extras::Extras::from_bits(k as u32)),
             PopupKind::Prefs => {
                 let m = k as u32;
                 if m & 1 << popup_ui::PREFS_CONTENT != 0 {
@@ -1202,6 +1242,10 @@ impl Stage {
                 if m & 1 << popup_ui::PREFS_KEYS != 0 {
                     let back = self.app.screen;
                     self.app.open_keys(back);
+                }
+                // the port's own OpenSGolf extras line (extras_ui.rs)
+                if m & 1 << popup_ui::PREFS_EXTRAS != 0 {
+                    self.app.open_popup(PopupKind::Extras);
                 }
                 let sound = m & 8 != 0;
                 if sound == self.app.mute {
@@ -1555,6 +1599,8 @@ impl Stage {
                 app.show_toast(name);
             }
             // Tab turns the next building; with the elevation tool it also steps the brush (one point, 2x2, area)
+            // the Rotate extra's Tab (extras_ui.rs) comes first; nothing when it is off
+            KeyCode::Tab if app.extras_tab() => {}
             KeyCode::Tab => {
                 app.turn = (app.turn + 1) & 3;
                 // the exe's Tab adds one to the same variable that holds the paint brush's variant (0x5a34f0)

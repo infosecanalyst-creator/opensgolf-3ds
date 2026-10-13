@@ -1269,6 +1269,35 @@ STR_MENU_PREFS_ENHANCED_ON              : Enhanced graphics (off: Classic)
 STR_MENU_PREFS_ENHANCED                 : Enhanced graphics settings...
 # Preferences > Keyboard controls (the port's own screen listing every key)
 STR_MENU_PREFS_KEYS                     : Keyboard controls...
+# Preferences > OpenSGolf extras (the port's own optional gameplay changes, all off by default; docs/PLAYING.md). The
+# options start with a space.
+STR_MENU_PREFS_EXTRAS                   : OpenSGolf extras...
+STR_EXTRAS_TITLE                        :OpenSGolf extras (not in the original)
+STR_EXTRAS_ROTATE                       : Tab turns placed buildings and the clubhouse
+STR_EXTRAS_CUT_CONTENT                  : Cut content: unused landmarks
+STR_EXTRAS_HARDCORE                     : Hardcore economy
+STR_EXTRAS_MORE_STAFF                   : Higher staff limits
+STR_EXTRAS_ANIMALS                      : Buyable animals
+# The tooltip's second line over a cut landmark and over an animal on the landmark strip
+STR_EXTRAS_CUT_EFFECT                   :Scenic (cut content)
+STR_EXTRAS_ANIMAL_EFFECT                :A pair that stays nearby
+STR_TOAST_ANIMAL_NOT_HERE               :Animals need open ground on your course
+STR_TOAST_ANIMALS_FULL                  :There is no room for more animals
+# The cut landmarks' names (docs/CUT_CONTENT.md), as the landmark strip and the golfers name them
+STR_CUT_CACTUS_GROUP                    :cactus garden
+STR_CUT_BLACK_PINE                      :black pine
+STR_CUT_CATHEDRAL_RUINS                 :ruined cathedral
+STR_CUT_GARGOYLE                        :gargoyle
+STR_CUT_BOULDER                         :tropical boulder
+STR_CUT_ROCK_GARDEN                     :rock garden
+STR_CUT_GARDEN_SUNDIAL                  :garden sundial
+STR_CUT_CHAPEL                          :chapel
+STR_CUT_CATTAILS                        :cattail patch
+STR_CUT_KOI_POND                        :koi pond
+STR_CUT_HOT_SPRING                      :hot spring
+STR_CUT_OASIS                           :desert oasis
+STR_CUT_DESERT_FOUNTAIN                 :desert fountain
+STR_CUT_SEA_ROCK                        :sea rock
 STR_ENHANCED_TITLE                      :Enhanced graphics (not in the original)
 STR_ENHANCED_MASTER                     : Enhanced graphics (off: Classic)
 STR_ENHANCED_NATIVE_TEXT                : Sharp text at the screen's resolution
