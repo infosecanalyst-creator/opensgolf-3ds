@@ -117,6 +117,10 @@ impl Uniforms {
     }
 }
 
+/// The fragment shaders' uniforms (alpha_ref, edge) are not declared here: a uniform both stages declare must have the same
+/// precision there (GLSL ES 1.00, 4.5.3), and this stage's float is highp where the fragment shader's is mediump. Chrome let
+/// the mismatch link; Firefox refused it ("Uniform `alpha_ref` is not linkable between attached shaders"), and the game
+/// stopped at a black screen (issue #9). `shader_stages_agree` checks every pair of the game's shaders for it.
 const VERTEX: &str = r#"#version 100
 attribute vec3 in_pos;
 attribute vec2 in_uv;
@@ -125,7 +129,6 @@ attribute vec4 in_color;
 uniform mat4 mvp;
 uniform mat4 mv;
 uniform float lit;
-uniform float alpha_ref;
 uniform vec3 light_amb;
 uniform vec3 light_dif;
 uniform vec3 light_spec;
@@ -265,7 +268,7 @@ impl Gfx {
                     },
                 },
             )
-            .expect("shader");
+            .unwrap_or_else(|e| panic!("the game's base shader does not compile or link here: {e:?}"));
         let sdf_uniforms = vec![
             UniformDesc::new("mvp", UniformType::Mat4),
             UniformDesc::new("mv", UniformType::Mat4),
@@ -277,12 +280,16 @@ impl Gfx {
             UniformDesc::new("light_dir", UniformType::Float3),
             UniformDesc::new("edge", UniformType::Float1),
         ];
+        // Enhanced's smooth edges: never fatal, a GPU that refuses it draws those textures with the base shader
         let sdf_shader = ctx
             .new_shader(
                 ShaderSource::Glsl { vertex: VERTEX, fragment: FRAGMENT_SDF },
                 ShaderMeta { images: vec!["tex".to_string()], uniforms: UniformBlockLayout { uniforms: sdf_uniforms } },
             )
-            .expect("shader");
+            .unwrap_or_else(|e| {
+                eprintln!("smooth edges shader failed, drawing without it: {e:?}");
+                shader
+            });
         let attrs = [
             VertexAttribute::new("in_pos", VertexFormat::Float3),
             VertexAttribute::new("in_uv", VertexFormat::Float2),
@@ -647,6 +654,81 @@ impl Gfx {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The precision of each non-sampler uniform a shader stage declares: its own qualifier, else the stage's default for
+    /// floats (highp in a vertex shader, the `precision` statement's in a fragment shader; "either" when that depends on
+    /// GL_FRAGMENT_PRECISION_HIGH) and for ints (highp in a vertex shader, mediump in a fragment shader).
+    fn uniform_precisions(src: &str, vertex: bool) -> Vec<(String, String)> {
+        let float_default = if vertex {
+            "highp"
+        } else if src.contains("GL_FRAGMENT_PRECISION_HIGH") {
+            "either"
+        } else if src.contains("precision highp float") {
+            "highp"
+        } else if src.contains("precision lowp float") {
+            "lowp"
+        } else {
+            "mediump"
+        };
+        let mut out = Vec::new();
+        for line in src.lines().map(str::trim).filter(|l| l.starts_with("uniform ")) {
+            let words: Vec<&str> = line.trim_end_matches(';').split_whitespace().skip(1).collect();
+            let (prec, ty, name) = match words.as_slice() {
+                [p @ ("lowp" | "mediump" | "highp"), t, n] => (p.to_string(), *t, *n),
+                [t, n] => (String::new(), *t, *n),
+                _ => panic!("unexpected uniform line: {line}"),
+            };
+            if ty.starts_with("sampler") {
+                continue;
+            }
+            let prec = if !prec.is_empty() {
+                prec
+            } else if ty.starts_with("int") || ty.starts_with("ivec") {
+                (if vertex { "highp" } else { "mediump" }).to_string()
+            } else {
+                float_default.to_string()
+            };
+            out.push((name.split('[').next().unwrap().to_string(), prec));
+        }
+        out
+    }
+
+    /// Every vertex and fragment shader pair the game links: a uniform both stages declare has the same precision in both
+    /// (GLSL ES 1.00 4.5.3; Firefox refuses to link the pair otherwise, issue #9).
+    #[test]
+    fn shader_stages_agree() {
+        use crate::fx_glsl as g;
+        let pairs: Vec<(&str, &str, String)> = vec![
+            ("base", VERTEX, FRAGMENT.to_string()),
+            ("smooth edges", VERTEX, FRAGMENT_SDF.to_string()),
+            ("scaler", g::SCALER_VS, g::scaler_fs()),
+            ("smooth scaler", g::SCALER_VS, crate::fx_smooth::smooth_fs()),
+            ("terrain", g::GROUND_VS, g::terrain_fs()),
+            ("water", g::GROUND_VS, g::water_fs()),
+            ("shade", g::SHADE_VS, g::shade_fs()),
+            ("down", g::POST_VS, g::down_fs()),
+            ("blur", g::POST_VS, g::blur_fs()),
+            ("composite", g::POST_VS, g::composite_fs()),
+            ("photo composite", g::POST_VS, crate::photo::COMPOSITE_FS.to_string()),
+        ];
+        let mut bad = Vec::new();
+        for (name, vs, fs) in &pairs {
+            let f = uniform_precisions(fs, false);
+            for (u, pv) in uniform_precisions(vs, true) {
+                if let Some((_, pf)) = f.iter().find(|(n, _)| *n == u) {
+                    if pf != &pv || pv == "either" {
+                        bad.push(format!("{name}: uniform {u} is {pv} in the vertex shader, {pf} in the fragment shader"));
+                    }
+                }
+            }
+        }
+        assert!(bad.is_empty(), "{}", bad.join("\n"));
+        // the check itself: the pair Firefox refused
+        let old_vs = VERTEX.replace("uniform float lit;", "uniform float lit;\nuniform float alpha_ref;");
+        let f = uniform_precisions(FRAGMENT, false);
+        let v = uniform_precisions(&old_vs, true);
+        assert!(v.iter().any(|(n, p)| n == "alpha_ref" && f.iter().any(|(m, q)| m == n && q != p)));
+    }
 
     #[test]
     fn rotate_matches_gl() {

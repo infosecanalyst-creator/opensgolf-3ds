@@ -124,8 +124,16 @@ fn soft_env(i: usize, default: f32) -> f32 {
 }
 
 pub fn settings() -> FxSettings {
-    SETTINGS.with(|s| s.get())
+    let mut s = SETTINGS.with(|s| s.get());
+    if SHADER_FAILED.load(std::sync::atomic::Ordering::Relaxed) {
+        // an effects shader this GPU or browser refused: the effects stay off (Classic drawing) for the rest of the run
+        s.enabled = false;
+    }
+    s
 }
+
+/// Set when an effects shader failed to compile or link (see `shader`).
+static SHADER_FAILED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 pub fn set_settings(s: FxSettings) {
     SETTINGS.with(|c| c.set(s));
@@ -480,10 +488,27 @@ fn shader(ctx: &mut dyn RenderingBackend, vs: &str, fs: &str, images: &[&str], u
         images: images.iter().map(|s| s.to_string()).collect(),
         uniforms: UniformBlockLayout { uniforms: uniforms.iter().map(|&(n, t)| UniformDesc::new(n, t)).collect() },
     };
-    match ctx.new_shader(ShaderSource::Glsl { vertex: vs, fragment: fs }, meta) {
+    match ctx.new_shader(ShaderSource::Glsl { vertex: vs, fragment: fs }, meta.clone()) {
         Ok(s) => s,
-        Err(e) => panic!("effects shader: {e:?}"),
+        Err(e) => {
+            // never fatal: the effects are turned off (settings()) and this one gets a plain textured stand-in, so the
+            // pipelines made with it stay valid for the frame that asked for them
+            eprintln!("effects shader failed, effects turned off: {e:?}");
+            SHADER_FAILED.store(true, std::sync::atomic::Ordering::Relaxed);
+            let img = images.first().copied().unwrap_or("tex");
+            let plain = format!(
+                "#version 100\nprecision mediump float;\nvarying highp vec2 uv;\nuniform sampler2D {img};\nvoid main() {{ gl_FragColor = texture2D({img}, uv); }}\n"
+            );
+            ctx.new_shader(ShaderSource::Glsl { vertex: vs, fragment: &plain }, meta)
+                .or_else(|_| ctx.new_shader(ShaderSource::Glsl { vertex: glsl::POST_VS, fragment: &plain }, plain_meta(images)))
+                .expect("not even a plain shader compiles on this GPU")
+        }
     }
+}
+
+/// The stand-in's description when the effect's own vertex shader is the one refused: its images, no uniforms.
+fn plain_meta(images: &[&str]) -> ShaderMeta {
+    ShaderMeta { images: images.iter().map(|s| s.to_string()).collect(), uniforms: UniformBlockLayout { uniforms: Vec::new() } }
 }
 
 impl FxGpu {

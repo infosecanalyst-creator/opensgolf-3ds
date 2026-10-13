@@ -140,7 +140,7 @@ struct CompositeUniforms {
 
 /// The composite: the course, the focus blur (focus = x, y, on, the sharp radius), the bloom (glow.x), the vignette
 /// (glow.y; glow.z the aspect ratio), the grade (contrast, vibrance, saturation, lifted blacks), the tint and a sepia tone.
-const COMPOSITE_FS: &str = r#"#version 100
+pub(crate) const COMPOSITE_FS: &str = r#"#version 100
 #ifdef GL_FRAGMENT_PRECISION_HIGH
 precision highp float;
 #else
