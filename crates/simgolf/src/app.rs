@@ -332,6 +332,10 @@ pub struct SaveGame {
     /// The state of each pack's scripts (`this` and the script's random generator), by pack id.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub scripts: std::collections::BTreeMap<String, sg_core::script::PackState>,
+    /// The content packs loaded when the game was saved (content_profiles.rs; a record with its own version; older saves:
+    /// none, and they load without asking).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub packs: Option<crate::content_profiles::SavedPacks>,
 }
 
 const SAVE_MAGIC: &[u8] = b"SIMGOLF-NATIVE-SAVE\n";
@@ -528,6 +532,8 @@ pub struct App {
     /// Preferences > Keyboard controls (keys_ui.rs): the page shown and the screen to go back to.
     pub keys_page: usize,
     pub keys_back: Screen,
+    /// The Change keys screen, the hidden interface and the save's content packs question (controls_ui.rs).
+    pub ctl: crate::controls_ui::CtlState,
     /// The scenario's goals and the packs' scripts of the game in progress (scenario_ui).
     pub scen: crate::scenario_ui::ScenarioState,
     pub last_message: String,
@@ -777,6 +783,7 @@ impl App {
             content: Default::default(),
             keys_page: 0,
             keys_back: Screen::Play,
+            ctl: Default::default(),
             scen: Default::default(),
             last_message: String::new(),
             ticker: Default::default(),
@@ -2383,6 +2390,7 @@ impl App {
             bought: self.bought.clone(),
             goals: self.scen.goals.clone(),
             scripts: self.scripts_for_save(),
+            packs: self.saved_packs(),
         };
         let json = serde_json::to_vec(&save).map_err(|e| e.to_string())?;
         let mut out = SAVE_MAGIC.to_vec();

@@ -104,6 +104,10 @@ pub struct Settings {
     /// Fix the original game's own bugs (docs/FIXES.md): on by default and, unlike every other option here, in Classic too
     /// (the master switch does not gate it); off plays the original's behaviour, bugs included. Crashes are fixed either way.
     pub fix_original_bugs: bool,
+    /// The frame rate cap (framerate.rs CAPS: 30, 60, 120, 144, 240, uncapped). Counts in Classic too.
+    pub frame_cap: u8,
+    /// V-sync (the window's swap interval, from the next start; browsers always have it). Counts in Classic too.
+    pub vsync: bool,
 }
 
 impl Settings {
@@ -147,6 +151,8 @@ impl Settings {
         fx_lightning: false,
         fx_day_length: 1,
         fix_original_bugs: true,
+        frame_cap: crate::framerate::UNCAPPED,
+        vsync: true,
     };
 }
 
@@ -283,6 +289,33 @@ pub const OPTIONS: &[OptionEntry] = &[
     tick!("smooth_motion", "STR_ENHANCED_SMOOTH_MOTION", DISPLAY, smooth_motion),
     tick!("photo_mode", "STR_ENHANCED_PHOTO_MODE", DISPLAY, photo_mode),
     tick!("fix_original_bugs", "STR_ENHANCED_FIX_BUGS", DISPLAY, fix_original_bugs),
+    // the port's frame rate settings (framerate.rs): they count with Enhanced graphics off too
+    OptionEntry {
+        key: "frame_cap",
+        label: "STR_ENHANCED_FRAME_CAP",
+        page: DISPLAY,
+        choices: &[
+            "STR_FRAME_CAP_30",
+            "STR_FRAME_CAP_60",
+            "STR_FRAME_CAP_120",
+            "STR_FRAME_CAP_144",
+            "STR_FRAME_CAP_240",
+            "STR_FRAME_CAP_NONE",
+        ],
+        get: |s| s.frame_cap.min(crate::framerate::UNCAPPED),
+        set: |s, v| s.frame_cap = v.min(crate::framerate::UNCAPPED),
+        reload: Reload::Nothing,
+    },
+    OptionEntry {
+        key: "vsync",
+        label: if cfg!(target_arch = "wasm32") { "STR_ENHANCED_VSYNC_BROWSER" } else { "STR_ENHANCED_VSYNC" },
+        page: DISPLAY,
+        choices: &[],
+        get: |s| s.vsync as u8,
+        // a browser always draws on the display's refresh
+        set: |s, v| s.vsync = v != 0 || cfg!(target_arch = "wasm32"),
+        reload: Reload::Nothing,
+    },
     tick!("fx_scaler", "STR_ENHANCED_FX_SCALER", EFFECTS, fx_scaler),
     OptionEntry {
         key: "fx_scaler_mode",
