@@ -15,7 +15,7 @@
   <a href="https://crspytopgn.github.io/opensgolf/"><b>▶ Play now in your browser</b></a> &nbsp;·&nbsp;
   <a href="#download">Download</a> &nbsp;·&nbsp;
   <a href="#what-you-get">What you get</a> &nbsp;·&nbsp;
-  <a href="#coming-next-02">Coming next</a> &nbsp;·&nbsp;
+  <a href="#roadmap-03">Roadmap</a> &nbsp;·&nbsp;
   <a href="docs/PLAYING.md">How to play</a>
 </p>
 
@@ -103,20 +103,34 @@ once. All versions: [releases](https://github.com/crspytopgn/opensgolf/releases)
 * **Your course as a scenario.** Export any game as a pack to share with friends.
 * **Translations** are plain text files.
 
-## Coming next (0.2)
+## New in 0.2
 
-Already in the works for the next version:
+* **Bigger courses**: Large, Huge and Giant, up to 128 × 128 tiles. Pick the size when you start a game.
+* **Your keys, your way.** Remap every key, with optional WASD camera, middle-drag panning and **U** to hide the interface.
+* **A frame-rate cap** and v-sync switch for laptops and phones.
+* **Mod profiles**, to switch between sets of packs. Saves remember which packs they were made with.
+* **Fixes for the original's own bugs**, such as gaps at waterfalls and costs charged twice (on by default, can be turned off).
+* **OpenSGolf extras** (all off by default): Hardcore economy, turning buildings, cut content brought back as landmarks,
+  animals to buy, and higher staff limits.
+* **A People tab**, golfer profiles, message history, name tags and a path view to find unconnected buildings.
 
-* **Bigger courses**, up to 128 × 128 tiles.
-* **Your keys, your way.** Remap every key, with WASD to move the camera.
-* **A frame-rate cap** for laptops and phones.
-* **Mod profiles**, to switch between sets of packs.
-* **Fixes for the original's own bugs**, such as waterfalls and costs that were charged twice.
-* **Hardcore economy** for players who want a real challenge.
-* **Turn buildings** to face the way you want.
-* **Cut content brought back**: landmarks that were in the files but never in the game.
-* **Buy animals** for your course.
-* **A People tab** to keep track of everyone at your club.
+## Roadmap: 0.3
+
+The rule stays the same: **the original game, exactly as it was, is always one click away.** Everything new is optional
+and off by default; only fixes for the original's own bugs are on.
+
+Planned next:
+
+* **One-click "Original game" or "OpenSGolf extras"** on the New Game screen.
+* **Share your course and challenge friends**: send a course, compare ratings and profit.
+* **Undo** for building and terrain.
+* **Autosave**, and save slots with pictures.
+* **Controller support** (Steam Deck and couch play).
+
+Ideas for later: a community course gallery, scenario editor, seasons and club events, translations, an installable
+phone/tablet app, and a first look at playing together online.
+
+Got an idea? [Suggest it here](https://github.com/crspytopgn/opensgolf/issues/new/choose).
 
 Want to follow along or help? Watch the repository, or see [CONTRIBUTING.md](CONTRIBUTING.md).
 
