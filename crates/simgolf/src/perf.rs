@@ -70,8 +70,12 @@ fn with(f: impl FnOnce(&mut Counters)) {
     C.with(|c| f(&mut c.borrow_mut()));
 }
 
-/// The start of a frame (before its update).
+/// The start of a frame (before its update). Nothing with the log off: the browser build has no clock for Instant and
+/// would stop at the first frame.
 pub fn frame_begin() {
+    if !on() {
+        return;
+    }
     with(|c| c.frame_start = Some(Instant::now()));
 }
 

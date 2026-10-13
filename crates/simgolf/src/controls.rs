@@ -279,6 +279,11 @@ pub const ACTIONS: &[Action] = {
         act!("report_f8", "STR_KEYS_F8", plain(F8)),
         act!("report_f9", "STR_KEYS_F9", plain(F9)),
         act!("report_f10", "STR_KEYS_F10", plain(F10)),
+        // the OpenSGolf extras' keys (extras.rs; each does nothing while its extra is off)
+        act!("people", "STR_CTL_PEOPLE", shifted(G)),
+        act!("history", "STR_CTL_HISTORY", shifted(M)),
+        act!("name_tags", "STR_CTL_NAME_TAGS", shifted(H)),
+        act!("path_view", "STR_CTL_PATH_VIEW", shifted(V)),
     ]
 };
 
@@ -476,6 +481,10 @@ const ROW_ACTIONS: &[(&str, &[&str])] = &[
     ("STR_KEYS_K_LOAD", &["load"]),
     ("STR_KEYS_K_CHAMP_COURSE", &["champ_course"]),
     ("STR_KEYS_K_SCREENSHOT", &["screenshot"]),
+    ("STR_KEYS_K_PEOPLE", &["people"]),
+    ("STR_KEYS_K_HISTORY", &["history"]),
+    ("STR_KEYS_K_TAGS", &["name_tags"]),
+    ("STR_KEYS_K_PATHVIEW", &["path_view"]),
 ];
 
 /// The text a Keyboard controls row prints for its key: None (the row's own text) unless the player moved one of its keys.

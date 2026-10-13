@@ -12,7 +12,7 @@ A short handoff note so work can be picked up in a fresh session.
 
 ## 0.2 (not released yet)
 
-**On `claude/magical-tesla-d1thkl`** (builds, all tests pass):
+**On `claude/v02-ui-extras`** (all of 0.2 so far: `v02-work` merged into the UI extras; builds, all tests pass):
 
 - Course sizes: Original 50, Large 74, Huge 98, Giant 128 (`sg_core::mapsize`, use `land::mn()` instead of 50).
 - Gameplay extras, off by default (Preferences, "OpenSGolf extras"): turning buildings (Tab), cut-content landmarks,
@@ -22,22 +22,16 @@ A short handoff note so work can be picked up in a fresh session.
 - "Fix the original game's bugs" setting (on by default): waterfalls, double charges, upgrades and golfer slots. See
   `docs/FIXES.md`.
 - `--perf` performance log.
-
-**On `claude/v02-ui-extras`** (finished but NOT merged):
-
-- The People screen, golfer profiles, message history, name tags, report tabs and path help: commits `c5c71e5` and
-  `a8ed33a`.
-- It is based on v0.1.3 and conflicts with `claude/magical-tesla-d1thkl` in `app.rs`, `main.rs`, `panels_ui.rs`,
-  `popup_ui.rs` and `lang/en.txt`.
-- When merging, keep both sides:
-  - The name-tag key must not clash with the remappable keys.
-  - Staff counts use `Extras::staff_limit`.
-  - Map sizes use `mapsize`.
-  - Keep every new `lang/en.txt` key.
+- UI extras, on by default (merged): the People screen, golfer profiles, message history, name tags, report tabs and
+  path help (`extras.rs`; settings.json `"ui_extras"`, `--no-extras` turns them off for a run). Preferences >
+  OpenSGolf extras lists the gameplay extras, then the interface extras. Their keys (Shift+G, Shift+M, Shift+H,
+  Shift+V) are remappable actions in `controls.rs`; People's staff limit is `max_employees(Extras::staff_limit())`.
+- The web build no longer stops at its first frame (`perf::frame_begin` read the clock with the log off).
 
 ## To ship 0.2.0
 
-1. Merge `claude/v02-ui-extras` into `claude/magical-tesla-d1thkl` and resolve the conflicts above.
+1. Merge `claude/v02-ui-extras` into `claude/magical-tesla-d1thkl` (which since has v0.1.6, the Windows on ARM
+   download button and the PR #17 merge).
 2. Run the checks below, play through each new feature, and check the browser build in Chromium.
 3. Bump to 0.2.0, open a PR to `main`, wait for CI to pass, merge, then run `release.yml` with `v0.2.0`.
 

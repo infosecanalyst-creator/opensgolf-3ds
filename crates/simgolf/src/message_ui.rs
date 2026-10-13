@@ -213,6 +213,8 @@ impl App {
         if ok {
             self.last_message = text.to_string();
         }
+        // the extras' message history and the ticker's Show button (extras.rs, history_ui.rs)
+        self.keep_message(text, speaker, ok);
         ok
     }
 
@@ -234,6 +236,52 @@ impl App {
         let Some(arg) = self.ticker.frame else { return };
         let (text, speaker) = (self.ticker.text.clone(), self.ticker.speaker);
         self.message_box(g, s, X, Y, arg, &text, speaker);
+        // OpenSGolf extras (extras.rs): the Show button of a message about a place, in the box's lower right corner
+        if arg < 0 || speaker != NOBODY {
+            if let Some(b) = self.ticker_show_button() {
+                let (px, py) = self.info.pointer;
+                crate::extras::draw_button(g, s, b, tr("STR_TICKER_SHOW"), true, b.has(px, py));
+            }
+        }
+    }
+
+    /// The ticker's frame on the screen while a message is up (the box `message_box` draws).
+    pub fn ticker_rect(&self) -> Option<crate::render::Rect> {
+        if !self.ticker.showing || self.ticker.frame.is_none() {
+            return None;
+        }
+        let talk = self.ticker.speaker != NOBODY;
+        let rows = lines(&self.ticker.text, if talk { 0x25 as f32 * 8.0 } else { 0x2c as f32 * 8.0 });
+        let h0 = rows.len().saturating_sub(1) as f32 * LINE + 32.0;
+        let (x, y, h) = if talk { (X + 28.0, Y + 44.0, h0.max(96.0)) } else { (X, Y, h0) };
+        Some(crate::render::Rect::new(x - 8.0, y - 8.0, BOX_W, h + 16.0))
+    }
+
+    /// The Show button on the ticker (OpenSGolf extras): only for a message about a place, with the extras on.
+    pub fn ticker_show_button(&self) -> Option<crate::render::Rect> {
+        if !(crate::extras::path_help() || crate::extras::history()) || self.xs.ticker_place.is_none() {
+            return None;
+        }
+        let r = self.ticker_rect()?;
+        Some(crate::render::Rect::new(r.x + r.w - 62.0, r.y + r.h - 26.0, 48.0, 14.0))
+    }
+
+    /// A click on the ticker (OpenSGolf extras): its Show button takes the camera to the place the message is about, the
+    /// rest of it opens the message history. Returns true when the click was taken.
+    pub fn ticker_click(&mut self, vx: f32, vy: f32) -> bool {
+        if let Some(b) = self.ticker_show_button() {
+            if b.has(vx, vy) {
+                if let Some((_, at)) = self.xs.ticker_place {
+                    self.look_at(at);
+                }
+                return true;
+            }
+        }
+        if crate::extras::history() && self.ticker_rect().is_some_and(|r| r.has(vx, vy)) {
+            self.open_history();
+            return true;
+        }
+        false
     }
 
     /// The message box (0x40d320) at (x, y): `text` said by `speaker` (NOBODY, a golfer slot or a picture code); `arg` -1

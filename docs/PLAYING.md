@@ -182,6 +182,47 @@ In a game, Shift+C (or System Functions, *Save course for Championship*) saves y
 
 As in the original: **F1** Course Report, **F2** Player Comments (the twenty most frequent comments over all holes, with the hole where each is heard most and how often per tee shot; recent months count more, as every hole's statistics lose an eighth each month), **F3** Histograph (skill, cash, fun and membership month by month, with the event log's highlights), **F4** Financial Report (the ledger by year: green fees, home sites, food and drink, course building, facilities, salaries, maintenance and interest, other, total), **F5** Routing Map (the course in miniature with each hole's tee-to-green line; tabs for course routing (par, yards, minutes), employees and their work areas, course aura (where golfers were happy or unhappy) and home site value), **F7** SGA Evaluation, **F8** Keyboard Shortcuts, **F9** Membership Roster, **F10** Professional Accomplishments. `--screen comments|histograph|finance|routing|shortcuts` opens them for stills. On the routing map, left click selects a hole and right click moves it to another place in the order (the holes between shift, golfers follow; the exe allows this in every tab). **F6** opens the world map to move the club to another property: cash, the calendar and your pro's career go along and the new course starts afresh (Shift+F6 takes a screenshot).
 
+## OpenSGolf extras
+
+The port's own additions to the interface, none of them in the original (crates/simgolf/src/extras.rs and the modules it
+names). They only add a screen, a tag, a strip or a button, so they are on by default; System Functions, Preferences,
+*OpenSGolf extras...* has a tick for each (kept in `settings.json` under `extras`), and `--no-extras` turns them all off
+for one run. With every tick off the game draws and plays exactly as before (the stills of every report, panel and menu
+compare pixel for pixel with the build before the extras).
+
+- **People** (**Shift+G**, or *Information, People*): every golfer on the course, sortable by name, type (visitor,
+  member, silver, gold, pro, VIP), hole, mood, handicap and money spent this round (greens fees, food and drink, wagers);
+  every employee, sortable by name, job, date hired, weekly wage, golfers served and pay so far; and a *Your pro* tab with
+  the original's pro screens a click away (Customise, skills, practice round, match, tournament, under the Player panel's
+  own conditions). Click a heading to sort (again to reverse). For a golfer: *Locate* (the camera there), *Follow* (the
+  camera keeps on them until they leave, Space, an arrow key or a drag), *Card* (the golfer card) and *Profile*. For the
+  staff: *Hire...* (the original's hire dialog with its rules and wages), *Fire* (the Employee panel's, 25 units under
+  Salaries), *Move* (the next click on the course is the new post), *Rename* (also the Employee panel's Rename button, which
+  the original had and the port lacked), *Locate* and *Follow*. Keys: Left/Right or Tab the tab, Up/Down the row,
+  PageUp/PageDown, Enter locate, F follow, C card, P profile; H hire, Delete fire, M move, R rename; 1 to 5 the pro's
+  buttons; Esc closes.
+- **Golfer profile** (People's *Profile*, or the golfer card's *Profile* button): the portrait, the card's identity lines,
+  the roster's record (rounds, best, handicap), the round in progress, the golfer's bio (the person record's own, which
+  Customise's Update Bio edits; *Edit bio* or B types one here) and everything the golfer has said on the course this game,
+  newest first, good thoughts in green and bad ones in red (kept with the save, the last 60 per golfer).
+- **Message history** (**Shift+M**, *Information, Message history*, or a click on the ticker): every ticker message with
+  its date and its speaker's portrait or picture, newest first, the last thousand, saved with the game. A click on a message
+  takes the camera to the golfer it is about (and opens the card) or to the place it is about.
+- **Name tags** (**Shift+H** turns them off and on): the golfer or employee under the pointer gets a small tag with the
+  name, a golfer's face of the moment and type or an employee's job, whether the original's names (Shift+N) are on or not.
+  Not drawn while a tool is armed, over the dock and its panel, or after the screen has been touched.
+- **Tabbed reports**: over the F1 to F10 screens, a strip of ten tabs flips from one report to another without going back
+  to the course (on a window taller than 4:3 the strip sits above the page). Click or tap a tab, press Tab or Shift+Tab, or
+  another report's F key (or Alt/Ctrl with its digit); the report's own key and Esc close it as before.
+- **Path help**: **Shift+V** (or *Information, Path view on / off*) marks every path tile, green when joined to the
+  clubhouse and orange when not, and puts a *No path* marker on each building the paths do not reach (the buildings the
+  original leaves closed) and on each hole with no joined path within three tiles of its tee, with a legend in the upper
+  right. The original's monthly warning that a building is not operational gets a **Show** button on the ticker that takes
+  the camera to the building.
+
+Test hooks for stills: `--screen people|staff|pro|history|profile|pathview|tags|ticker|card` (with a game;
+`SG_PEOPLE_SORT=COL[,1]` sorts the People list by column COL, downward with 1), `--edit "M:6"` opens the extras box.
+
 ## Keys in the browser and on a Mac
 
 Every key of the original works in the browser too: the page keeps the browser from acting on the keys the game uses
