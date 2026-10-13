@@ -34,6 +34,9 @@ pub const EGL_HEIGHT: u32 = 12374;
 pub const EGL_SURFACE_TYPE: u32 = 12339;
 pub const EGL_NONE: u32 = 12344;
 pub const EGL_CONTEXT_CLIENT_VERSION: u32 = 12440;
+pub const EGL_RENDERABLE_TYPE: u32 = 12352;
+pub const EGL_OPENGL_ES2_BIT: u32 = 4;
+pub const EGL_OPENGL_ES3_BIT: u32 = 64;
 
 pub type NativeDisplayType = EGLNativeDisplayType;
 pub type NativePixmapType = EGLNativePixmapType;
@@ -164,6 +167,82 @@ impl Display for EglError {
 }
 
 impl std::error::Error for EglError {}
+
+/// OpenSGolf: the Android EGL setup. upstream's [`create_egl_context`] asks for one exact config (with the default
+/// `EGL_RENDERABLE_TYPE`, OpenGL ES 1, and `EGL_SAMPLES` at least `sample_count`), asserts that one exists and makes an
+/// OpenGL ES 2 context. A GPU driver without such a config (or one that gives exactly ES 2 for a version 2 request, as
+/// ANGLE does) closed the app at start. This tries an ES 3 context first, then ES 2, each with the upstream attributes,
+/// then without multisampling, then with any depth buffer, and says what it tried when nothing works.
+/// Returns the context, its config, the display and the ES version made.
+#[cfg(target_os = "android")]
+pub unsafe fn create_egl_context_android(
+    egl: &mut LibEgl,
+    alpha: bool,
+    sample_count: i32,
+) -> Result<(EGLContext, EGLConfig, EGLDisplay, i32), String> {
+    let display = (egl.eglGetDisplay)(null_mut());
+    if display.is_null() {
+        return Err(format!("eglGetDisplay: no display (EGL error {:#x})", (egl.eglGetError)()));
+    }
+    if (egl.eglInitialize)(display, null_mut(), null_mut()) == 0 {
+        return Err(format!("eglInitialize failed (EGL error {:#x})", (egl.eglGetError)()));
+    }
+    let alpha_size = if alpha { 8 } else { 0 };
+    let mut tried = Vec::new();
+    for (version, bit) in [(3, EGL_OPENGL_ES3_BIT), (2, EGL_OPENGL_ES2_BIT)] {
+        for (samples, depth) in [(sample_count.max(0) as u32, 16), (0, 16), (0, 0)] {
+            #[rustfmt::skip]
+            let attributes = [
+                EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+                EGL_RENDERABLE_TYPE, bit,
+                EGL_RED_SIZE, 8,
+                EGL_GREEN_SIZE, 8,
+                EGL_BLUE_SIZE, 8,
+                EGL_ALPHA_SIZE, alpha_size,
+                EGL_DEPTH_SIZE, depth,
+                EGL_STENCIL_SIZE, 0,
+                EGL_SAMPLES, samples,
+                EGL_NONE,
+            ];
+            let mut configs: Vec<EGLConfig> = vec![null_mut(); 64];
+            let mut count: EGLint = 0;
+            if (egl.eglChooseConfig)(display, attributes.as_ptr() as _, configs.as_mut_ptr(), 64, &mut count) == 0
+                || count <= 0
+            {
+                tried.push(format!("ES {version}, {samples} samples, depth {depth}: no config"));
+                continue;
+            }
+            let configs = &configs[..(count as usize).min(64)];
+            // the first 8-bit RGB config with the depth asked for (the NDK sample does not trust the sort order)
+            let attr = |c: EGLConfig, a: u32| {
+                let mut v: EGLint = 0;
+                if (egl.eglGetConfigAttrib)(display, c, a as _, &mut v) == 1 {
+                    v
+                } else {
+                    -1
+                }
+            };
+            let exact = configs.iter().copied().find(|&c| {
+                attr(c, EGL_RED_SIZE) == 8
+                    && attr(c, EGL_GREEN_SIZE) == 8
+                    && attr(c, EGL_BLUE_SIZE) == 8
+                    && (alpha_size == 0 || attr(c, EGL_ALPHA_SIZE) == alpha_size as i32)
+                    && (depth == 0 || attr(c, EGL_DEPTH_SIZE) == depth as i32)
+            });
+            let config = exact.unwrap_or(configs[0]);
+            let context_attributes = [EGL_CONTEXT_CLIENT_VERSION, version, EGL_NONE];
+            let context = (egl.eglCreateContext)(display, config, null_mut(), context_attributes.as_ptr() as _);
+            if !context.is_null() {
+                return Ok((context, config, display, version as i32));
+            }
+            tried.push(format!(
+                "ES {version}, {samples} samples, depth {depth}: eglCreateContext failed (EGL error {:#x})",
+                (egl.eglGetError)()
+            ));
+        }
+    }
+    Err(format!("no OpenGL ES context: {}", tried.join("; ")))
+}
 
 pub struct Egl {}
 

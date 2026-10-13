@@ -425,16 +425,20 @@ where
             }
         };
 
-        let (egl_context, egl_config, egl_display) = crate::native::egl::create_egl_context(
-            &mut libegl,
-            std::ptr::null_mut(), /* EGL_DEFAULT_DISPLAY */
-            conf.platform.framebuffer_alpha,
-            conf.sample_count,
-        )
-        .expect("Cant create EGL context");
-
-        assert!(!egl_display.is_null());
-        assert!(!egl_config.is_null());
+        // OpenSGolf: an ES 3 context when the driver has one, with fallbacks, and a message instead of a bare panic
+        // (egl::create_egl_context_android)
+        let (egl_context, egl_config, egl_display, gles_version) =
+            crate::native::egl::create_egl_context_android(
+                &mut libegl,
+                conf.platform.framebuffer_alpha,
+                conf.sample_count,
+            )
+            .unwrap_or_else(|e| panic!("Cant create EGL context: {e}"));
+        console_info(
+            std::ffi::CString::new(format!("miniquad: OpenGL ES {gles_version} context"))
+                .unwrap()
+                .as_ptr(),
+        );
 
         crate::native::gl::load_gl_funcs(|proc| {
             let name = std::ffi::CString::new(proc).unwrap();
@@ -447,9 +451,15 @@ where
             window as _,
             std::ptr::null_mut(),
         );
+        if surface.is_null() {
+            panic!(
+                "eglCreateWindowSurface failed (EGL error {:#x})",
+                (libegl.eglGetError)()
+            );
+        }
 
         if (libegl.eglMakeCurrent)(egl_display, surface, surface, egl_context) == 0 {
-            panic!();
+            panic!("eglMakeCurrent failed (EGL error {:#x})", (libegl.eglGetError)());
         }
 
         let clipboard = Box::new(AndroidClipboard::new());

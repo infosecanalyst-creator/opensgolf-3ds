@@ -1161,6 +1161,11 @@ impl Stage {
                 app.show_notice(&msg);
             }
         }
+        // the last run crashed: the report, to copy and send (android.rs)
+        #[cfg(target_os = "android")]
+        if let Some(report) = android::take_crash_report() {
+            app.show_crash_report(report);
+        }
         // test hook: SG_PICK_FOLDER=DIR takes DIR as the folder picked in "Use my SimGolf files..." ("free": Use the free
         // graphics), as if chosen on the title screen
         if std::env::var_os(gamefiles::PICK_ENV).is_some() {
