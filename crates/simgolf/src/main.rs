@@ -57,6 +57,7 @@ mod render;
 mod reports_ui;
 mod scenario_ui;
 mod screens_ui;
+mod sysdiag;
 mod thoughts_ui;
 mod touch;
 mod tourney_ui;
@@ -863,6 +864,9 @@ impl Stage {
         }
         let info = g.ctx.info();
         println!("GL: {:?}", info.backend);
+        // a driver that cannot run the game (Windows' OpenGL 1.1 stand-in) ends the start with a message, not a dead window
+        #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+        sysdiag::check_gl();
 
         let mut mixer = Mixer::new(&app.game_path("Sounds"));
         mixer.add_dir("simsfx", &app.game_path("SimsFX"));
@@ -2001,6 +2005,10 @@ impl EventHandler for Stage {
         // macOS: the last frame's autoreleased Cocoa objects go (autorelease.rs)
         #[cfg(target_os = "macos")]
         autorelease::next_frame();
+        if sysdiag::window_gone() {
+            sysdiag::note("the window is gone while the main loop runs: ending");
+            std::process::exit(0);
+        }
         let t = now();
         self.app.clock = t;
         self.touch_update();
@@ -2089,6 +2097,7 @@ impl EventHandler for Stage {
             None => self.draw_frame(None),
         }
         self.g.ctx.commit_frame();
+        sysdiag::frame(self.app.draw_w, self.app.draw_h);
         self.app.great_shot_frame();
         if self.app.simfoto.is_some_and(|f| !f.saved && f.frames >= 2) {
             self.save_simfoto();
@@ -2149,6 +2158,7 @@ impl EventHandler for Stage {
     }
 
     fn mouse_motion_event(&mut self, x: f32, y: f32) {
+        sysdiag::event(sysdiag::Ev::Mouse);
         let (dx, dy) = (x - self.mouse.0, y - self.mouse.1);
         self.mouse = (x, y);
         if self.app.photo.is_some() {
@@ -2247,6 +2257,7 @@ impl EventHandler for Stage {
     }
 
     fn mouse_button_down_event(&mut self, button: MouseButton, x: f32, y: f32) {
+        sysdiag::event(sysdiag::Ev::Click);
         self.mouse = (x, y);
         // a notice (gamefiles.rs) takes the click
         if self.app.notice.is_some() {
@@ -2438,6 +2449,21 @@ impl EventHandler for Stage {
         self.app.shift_held = self.shift;
         self.ctrl = mods.ctrl && k != KeyCode::LeftControl && k != KeyCode::RightControl;
     }
+
+    fn quit_requested_event(&mut self) {
+        sysdiag::note("the window's close was asked for");
+    }
+}
+
+/// The main loop has ended (the window closed, or the game quit): the program ends here at once. Dropping the game would
+/// stop the sound output first, and a sound driver's thread that does not stop must not keep the program (and its music)
+/// running without a window.
+#[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+impl Drop for Stage {
+    fn drop(&mut self) {
+        sysdiag::note("main loop ended: exiting");
+        std::process::exit(0);
+    }
 }
 
 impl Stage {
@@ -2600,6 +2626,8 @@ fn attach_console() {
 fn main() {
     #[cfg(windows)]
     attach_console();
+    sysdiag::install_panic_hook();
+    sysdiag::init();
     #[cfg(target_os = "android")]
     android::init();
     let o = parse_args();
@@ -2627,4 +2655,7 @@ fn main() {
         ..Default::default()
     };
     miniquad::start(conf, move || Box::new(Stage::new(o)));
+    // the loop has ended (a window system whose loop returns without dropping the game): end, sound and all
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+    std::process::exit(0);
 }
