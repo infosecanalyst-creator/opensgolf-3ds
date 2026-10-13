@@ -1052,7 +1052,16 @@ impl Club {
 
     /// Makes a golfer waiting at the clubhouse from a roster person, or returns -1 when nobody can come (0x421bc0).
     pub fn create(&mut self, c: &Course, rng: &mut ExeRng, member_only: bool) -> i32 {
-        let s = (self.create_counter.rem_euclid(SLOTS as i32)) as usize;
+        let mut s = (self.create_counter.rem_euclid(SLOTS as i32)) as usize;
+        // The exe takes the counter's slot whether or not it is free, so a slow pair still on the course is overwritten by
+        // new arrivals once the counter comes round. "Fix original bugs" (crate::fixes, docs/FIXES.md 9): a pair is made in
+        // the next two slots that are both free (the slots go in pairs, s and s ^ 1), the exe's way when none is.
+        if crate::fixes::on() && s & 1 == 0 && (self.g[s].hole != 0 || self.g[s ^ 1].hole != 0) {
+            if let Some(t) = (0..SLOTS / 2).map(|k| (s + 2 * k) % SLOTS).find(|&t| self.g[t].hole == 0 && self.g[t ^ 1].hole == 0) {
+                s = t;
+                self.create_counter = t as i32;
+            }
+        }
         self.create_counter += 1;
         self.g[s] = Golfer::default();
         let (da, db) = c.door;
@@ -3557,6 +3566,31 @@ mod tests {
         club.holes[19].pin = (3, 22);
         club.next_hole = 2;
         (c, club)
+    }
+
+    #[test]
+    fn new_pairs_skip_golfers_still_playing() {
+        // docs/FIXES.md 9: the counter has come round to a slot whose pair is still on the course
+        for fix in [false, true] {
+            crate::fixes::set(fix);
+            let (c, mut club) = test_course();
+            let mut rng = ExeRng { state: 5 };
+            club.g[0].hole = 7;
+            club.g[1].hole = 7;
+            club.create_counter = 0;
+            let s = club.create(&c, &mut rng, false);
+            assert!(s >= 0);
+            if fix {
+                assert_eq!(s, 2);
+                assert_eq!(club.g[0].hole, 7);
+                assert_eq!(club.create(&c, &mut rng, false), 3);
+            } else {
+                // the exe's way: the slow golfer is overwritten
+                assert_eq!(s, 0);
+                assert_eq!(club.g[0].hole, -1);
+            }
+        }
+        crate::fixes::set(false);
     }
 
     #[test]

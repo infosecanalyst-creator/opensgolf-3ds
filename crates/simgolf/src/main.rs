@@ -1576,6 +1576,9 @@ impl Stage {
         }
         match k {
             KeyCode::Escape if app.pstate.hire_open => app.pstate.hire_open = false,
+            // the original's Esc opened the pause menu over an open golfer card; "Fix original bugs" closes the card
+            // (docs/FIXES.md 7)
+            KeyCode::Escape if app.card.is_some() && enhanced::fix_bugs() => app.card = None,
             KeyCode::Escape => {
                 if app.ui_ok {
                     // the pause menu: System Functions over the stopped game

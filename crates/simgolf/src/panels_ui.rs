@@ -698,8 +698,12 @@ impl App {
     fn lot_buildable(&self, i: usize) -> bool {
         let kind = 6 + i as i32;
         let level = self.lot_level(kind);
+        // EXACT (DECODE_PANELS, Building panel): the exe's picture tests id < unlock - level, so an upgrade looked locked
+        // until the next kind unlocked although its click (0x434140) only tests unlock <= id; "Fix original bugs"
+        // (docs/FIXES.md 8) offers the upgrade as soon as the building itself is unlocked
+        let held = if crate::enhanced::fix_bugs() { 0 } else { level };
         self.build_available(kind as usize)
-            && kind + level < self.unlocked()
+            && kind + held < self.unlocked()
             && level < 2
             && (level == 0 || economy::rank(self.hole_numbers.len()) >= 2)
     }
