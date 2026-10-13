@@ -2133,11 +2133,50 @@ impl App {
         }
     }
 
+    /// The sizes of the collections that could grow over a long game, for the performance log (perf.rs).
+    pub fn perf_sizes(&self) -> String {
+        let c = &self.club;
+        let lazy: usize = self.sprites.iter().map(|s| s.tex.iter().filter(|t| t.is_some()).count()).sum();
+        format!(
+            "props={} (weeds {} ambient {} objects {} trees {} shown {}) sprite_tex={lazy} outfit_tex={} red_tex={} textures={} snapshots={} batches={}/{}/{}/{} members={} roster={} \
+             event_log={} history={} out={} shot_recs={} ledger={} hole_stats={} ball_trail={} voices={} story={}",
+            self.props.len(),
+            self.props.iter().filter(|p| p.weed).count(),
+            self.props.iter().filter(|p| p.ambient).count(),
+            self.props.iter().filter(|p| p.object).count(),
+            self.props.iter().filter(|p| p.tree).count(),
+            self.props.iter().filter(|p| !p.hidden).count(),
+            self.outfit_tex.len(),
+            self.red_tex.len(),
+            self.textures.len(),
+            self.snapshots.len(),
+            self.batches.len(),
+            self.path_batches.len(),
+            self.mud_batches.len(),
+            self.wall_batches.len(),
+            c.members.len(),
+            c.roster.len(),
+            c.event_log.len(),
+            c.history.len(),
+            c.out.len(),
+            c.shot_recs.len(),
+            self.econ.ledger.len(),
+            self.hole_stats.len(),
+            self.ball_trail.len(),
+            self.slot_voices.len(),
+            self.story_lines.len(),
+        )
+    }
+
     /// Advances the simulation to the current time and points every golfer prop at its golfer.
     pub fn update_props(&mut self) {
+        let perf = crate::perf::on().then(|| (std::time::Instant::now(), self.game_tick));
         while self.sim_time < self.time && self.great_shot.is_none() {
             self.step_game(1.0 / 60.0);
             self.sim_time += 1.0 / 60.0;
+        }
+        if let Some((t, tick)) = perf {
+            crate::perf::sim(t.elapsed().as_secs_f64() * 1000.0, self.game_tick.wrapping_sub(tick) as u64);
         }
         if self.time < self.sim_time - 1.0 {
             // clock went backwards

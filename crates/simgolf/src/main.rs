@@ -54,6 +54,7 @@ mod member_panel;
 mod message_ui;
 mod net;
 mod panels_ui;
+mod perf;
 mod photo;
 mod player_panel;
 mod popup_ui;
@@ -224,6 +225,7 @@ fn parse_args() -> Options {
             "--follow" => o.follow = true,
             "--golfer" => o.golfer = Some(next()),
             "--mute" => o.mute = true,
+            "--perf" => perf::enable(5.0), // the performance log (perf.rs)
             "--sound-log" => o.sound_log = true,
             "--sandbox" => o.sandbox = true,
             "--screen" => o.screen = Some(next()),
@@ -2087,6 +2089,7 @@ impl EventHandler for Stage {
         // macOS: the last frame's autoreleased Cocoa objects go (autorelease.rs)
         #[cfg(target_os = "macos")]
         autorelease::next_frame();
+        perf::frame_begin();
         let t = now();
         self.app.clock = t;
         self.touch_update();
@@ -2157,7 +2160,7 @@ impl EventHandler for Stage {
             && app.simfoto.is_none_or(|f| f.frames < 2)
             && app.great_shot.is_none()
         {
-            app.time += dt * app.speed.max(1) as f64;
+            app.time += dt * app.speed.max(1) as f64 * perf::speed();
         }
         app.club.turbo = app.speed > 1;
         let (w, h) = window::screen_size();
@@ -2175,6 +2178,21 @@ impl EventHandler for Stage {
             None => self.draw_frame(None),
         }
         self.g.ctx.commit_frame();
+        if perf::on() {
+            perf::frame_end();
+            let app = &self.app;
+            perf::report(app.game_tick, || app.perf_sizes());
+            // a fast test run (OPENSGOLF_PERF_SPEED) plays on by itself: photos, questions and boards let go at once
+            if perf::speed() > 1.0 {
+                self.app.great_shot_dismiss();
+                self.app.close_popup();
+                self.app.notice = None;
+                if self.app.ui_ok && self.app.screen != Screen::Play && self.app.photo.is_none() {
+                    self.app.screen = Screen::Play;
+                }
+                self.app.paused = false;
+            }
+        }
         self.app.great_shot_frame();
         // the frame rate cap (Enhanced graphics > Display; framerate.rs): the simulation keeps its own 87 ms ticks
         if self.png_out.is_none() {
