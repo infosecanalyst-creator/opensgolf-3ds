@@ -18,15 +18,21 @@ followed down up to two levels):
 5. `game` in the folder it was started from.
 
 With none found it plays on the free base set (opensgolf-free), and the first time the title screen says so next to its
-**Use my SimGolf files...** button (top left). That button, and the same line at the end of Preferences, opens the system's
-own folder picker (Windows and macOS dialogs, the desktop's XDG portal on Linux). A folder without the game's data is
-refused with a message naming what is not there; a good one is saved and OpenSGolf starts again on the original files (a
+**Use my SimGolf files...** button (top left). That button, and the same line at the end of Preferences, asks whether the
+files are a .zip of the SimGolf folder or the folder itself, then opens the system's own picker for it (Windows and macOS
+dialogs, the desktop's XDG portal on Linux, Android's file picker). A .zip is unpacked into `game` in the save folder, by the
+browser version's rules: the game folder is the one holding `Flics`, at any depth; `__MACOSX`, `._` files, videos and
+Windows programs are left out (crates/simgolf/src/import.rs). On macOS a picked folder is copied there as well (macOS's
+privacy rules for Desktop, Documents and Downloads may refuse the folder on a later start). A folder without the game's data
+is refused with a message naming what is not there, a folder the system does not let the game read with a message saying
+so; a good one is saved and OpenSGolf starts again on the original files (a
 real restart, so the original's art, sounds, fonts and tables load exactly as on a normal start; from Preferences during a
 game it asks first, as anything not saved is lost). On the original files the button reads **Use the free graphics**, which
 saves the free set as the base set (Preferences > Content's choice) and starts again. The browser version has its own
-picker on the page and no such button; on Android the button says which folder to copy the files to (see Android below).
-Test hook: `SG_PICK_FOLDER=DIR` takes DIR as the folder picked, right after start up (`SG_PICK_FOLDER=free` chooses the
-free graphics).
+picker on the page and no such button; on Android the files are copied into the app (see Android below).
+Test hook: `SG_PICK_FOLDER=DIR` takes DIR (a folder or a .zip) as picked, right after start up (`SG_PICK_FOLDER=free`
+chooses the free graphics); on Android the intent extra `sg_pick` does the same
+(`adb shell am start -n org.opensgolf.game/.MainActivity --es sg_pick PATH`).
 
 A Windows release build is a windowed program (no console window); started from a console with options it writes its
 messages to that console. Screenshots (Shift+F6) go to the save folder as `opensgolf-shot.png`.
@@ -135,7 +141,7 @@ landmark tool on strip page 0 (own), 1 (cut) or 2 (animals); `--edit "b:x,y,4,t"
 
 ## In-game interface (dock, panels, advisor, stories)
 
-The lower left of the course screen now shows the game's own dock art (Interface/3mainLowerLeft.pcx). The three big round buttons open panels along the bottom: **Build Course** (terrain brushes, paths, raise and lower, each with its cost), **Add Buildings** (the amenities for the theme) and **People** (click to hire, right click to fire a club pro, ranger, groundskeeper or soda vendor). Click an item, then click the map. The small buttons zoom, rotate, open the course report, pause, and save the course. The keys are the original's (its F8 screen lists them): g f r s t w p b pick the green/tee, fairway, rough, sand, trees, water, path and bench tools (v the ravine), e the elevation tools, = and - raise and lower the ground under the pointer (Tab steps the elevation brush), h opens the hole being built; z and x zoom between the original's three levels, PageUp and Home turn the view a quarter (0 turns it back), the arrows scroll four tiles, 1 to 9 and Shift+1 to 9 jump to holes 1 to 18; Space drops the tool; Shift+P pause, Shift+T trees, Shift+N names, Shift+R routing map, Shift+W world map, Shift+J begin a tournament, Shift+C save the course for championship play, Shift+S and Shift+L save and load. The original has no game speed control; the port's own ] cycles normal, x2 and x4. With Enhanced graphics on, the port's own c (a key the original leaves unused) opens photo mode (see *Photo mode* below).
+The lower left of the course screen now shows the game's own dock art (Interface/3mainLowerLeft.pcx). The three big round buttons open panels along the bottom: **Build Course** (terrain brushes, paths, raise and lower, each with its cost), **Add Buildings** (the amenities for the theme) and **People** (click to hire, right click to fire a club pro, ranger, groundskeeper or soda vendor). Click an item, then click the map. On a Mac, Ctrl+click is a right click (in the app and in the browser), as is a two-finger click on a trackpad with *Secondary click* on. The small buttons zoom, rotate, open the course report, pause, and save the course. The keys are the original's (its F8 screen lists them): g f r s t w p b pick the green/tee, fairway, rough, sand, trees, water, path and bench tools (v the ravine), e the elevation tools, = and - raise and lower the ground under the pointer (Tab steps the elevation brush), h opens the hole being built; z and x zoom between the original's three levels, PageUp and Home turn the view a quarter (0 turns it back), the arrows scroll four tiles, 1 to 9 and Shift+1 to 9 jump to holes 1 to 18; Space drops the tool; Shift+P pause, Shift+T trees, Shift+N names, Shift+R routing map, Shift+W world map, Shift+J begin a tournament, Shift+C save the course for championship play, Shift+S and Shift+L save and load. The original has no game speed control; the port's own ] cycles normal, x2 and x4. With Enhanced graphics on, the port's own c (a key the original leaves unused) opens photo mode (see *Photo mode* below).
 
 System Functions → Preferences → *Keyboard controls...* (the port's own screen) lists every key the game takes, grouped:
 moving around the course, time, building, holes and messages, reports and maps, your pro and the golfers, saving and
@@ -299,11 +305,12 @@ phone's keyboard (in the browser through a hidden text box on the page, on Andro
 
 Installing the APK (sideloading) is described in the README, [INSTALL.md](INSTALL.md). The app runs in landscape and
 full screen, starts on the free base set, and keeps its saves, settings, content packs and championship files in its private
-storage (`Context.getFilesDir()`, removed when the app is uninstalled). To play with your own copy of SimGolf, copy the
-game's `Program_Files_(ENGLISH)` folder to `Android/data/org.opensgolf.game/files/game/` on the device's shared storage (the
-app creates `game/` the first time it starts; the folder's contents straight in `game/` work too) and restart the app (the
-title screen's **Where do my SimGolf files go?** shows the folder). On
-Android 11 and newer the phone's own file manager may hide `Android/data`; copy from a computer over USB instead.
+storage (`Context.getFilesDir()`, removed when the app is uninstalled). To play with your own copy of SimGolf, tap **Use my
+SimGolf files...** and pick a .zip of the SimGolf folder or the folder itself in Android's file picker
+(ACTION_OPEN_DOCUMENT / ACTION_OPEN_DOCUMENT_TREE, no storage permission needed): the app copies it into
+`Android/data/org.opensgolf.game/files/game/`, showing how far it is, and starts again on it. Copying the game's
+`Program_Files_(ENGLISH)` folder there by hand works too, but Android 11 and newer hide `Android/data` from file managers and
+USB transfers (`adb push` still reaches it).
 The back button works as Esc: it closes the screen that is open, on the course opens System Functions (save, load, quit),
 on the title screens goes back to the title menu, and on the title menu leaves the game. Sound goes through the phone's
 audio output (AAudio or OpenSL ES, through cpal's oboe backend); an APK whose sound could not be built (tools/android_build.sh
