@@ -349,6 +349,9 @@ function sgStart() {
     canvas.addEventListener("contextmenu", e => e.preventDefault());
     canvas.style.display = "block";
     canvas.focus();
+    // the sound output (see sgStartAudio)
+    sgSnd.gameOn = true;
+    sgStartAudio();
     load("opensgolf.wasm");
 }
 
@@ -587,8 +590,12 @@ async function sgInit() {
 // out as repeated and skipped stretches (Chrome) or gaps (Firefox): the crackle and stutter some players heard.
 // The context runs at the mixer's 44.1 kHz where the browser allows it, so the browser's own resampler (not a linear one)
 // meets the device's rate (48 kHz, or 16/24 kHz on a Bluetooth headset).
-// Browsers only allow sound after the player's first gesture, so the context is made on the first click, key or touch
-// anywhere on the page (on the start page too, before the game has loaded) and resumed on every later one.
+// Browsers only allow sound after the player's first gesture. The context is made when the game starts (sgStart: inside the
+// click on "Play with free graphics" or "Continue playing"; after the player's folder or zip has been read, the page already
+// counts a gesture) and resumed on every later click, key or touch. It is not made on the start page: a context made there
+// by the click that opened the file picker sat silent through the picker and the reading of the files (a minute or more),
+// and in Edge on Windows the game's sound then never came out with the player's own files while free graphics played.
+// A watchdog (sgAudioWatch) also starts the output again if it stops consuming the sound, and says so in the console.
 const SG_LEAD = 0.2, SG_LEAD_MAX = 0.6, SG_LEAD_HIDDEN = 1.2;
 const SG_WORKLET = `
 class SgOut extends AudioWorkletProcessor {
@@ -619,10 +626,12 @@ class SgOut extends AudioWorkletProcessor {
 }
 registerProcessor("sg-out", SgOut);
 `;
-const sgSnd = { ctx: null, node: null, rate: 44100, posted: 0, rep: null, lead: SG_LEAD, calm: 0, under: 0, failed: false, shown: 0, since: 0, note: null };
+const sgSnd = { ctx: null, node: null, rate: 44100, posted: 0, rep: null, lead: SG_LEAD, calm: 0, under: 0, failed: false, shown: 0, since: 0, note: null,
+    gameOn: false, repAt: 0, postAt: 0, clock: -1, clockAt: 0, tick: 0, restarts: 0 };
 
 function sgStartAudio() {
     const s = sgSnd;
+    if (!s.gameOn) return; // made when the game starts (sgStart), see above
     // a context made before the browser counted a gesture, or suspended by it later (Safari after a call or with the
     // tab in the background: "interrupted"), stays silent until resumed inside a gesture, so every gesture resumes it
     if (s.ctx && s.ctx.state === "closed") { s.ctx = null; s.node = null; s.posted = 0; s.rep = null; }
@@ -647,6 +656,7 @@ function sgStartAudio() {
     try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch (e) {}
     s.ctx = ctx;
     s.rate = ctx.sampleRate;
+    s.posted = 0; s.rep = null; s.repAt = 0; s.postAt = 0; s.clock = -1;
     if (ctx.state !== "running") ctx.resume().catch(() => {});
     const scriptProcessor = () => {
         // no AudioWorklet (Safari before 14.1, a page served over plain http from another machine): blocks pulled on this
@@ -671,6 +681,7 @@ function sgStartAudio() {
         const node = new AudioWorkletNode(ctx, "sg-out", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
         node.port.onmessage = e => {
             s.rep = e.data;
+            s.repAt = performance.now();
             if (e.data[3]) {
                 s.under++;
                 // the game's frames are longer here than the lead covers: keep more ready for a while (not for a tab in
@@ -686,6 +697,7 @@ function sgStartAudio() {
         };
         node.connect(ctx.destination);
         s.node = node;
+        console.log("sound: output at " + ctx.sampleRate + " Hz (AudioWorklet), " + ctx.state);
         sgPump();
     }).catch(e => {
         console.warn("sound: no AudioWorklet, using a ScriptProcessorNode", e);
@@ -708,6 +720,7 @@ function sgPump() {
         const buf = new Float32Array(n * 2);
         buf.set(new Float32Array(wasm_memory.buffer, ptr, n * 2));
         s.node.port.postMessage(buf, [buf.buffer]);
+        if (!s.postAt) s.postAt = performance.now();
         s.posted += n;
         need -= n;
     }
@@ -737,8 +750,33 @@ function sgSoundNote() {
     if (s.failed) setTimeout(() => { s.shown = 2; }, 8000);
 }
 
+// Sound that stopped coming out with no word: a context that says "running" while its clock stands still, or a worklet
+// that takes the game's blocks and no longer plays them (reports nothing for seconds). The output is made again (the next
+// gesture resumes it if the browser wants one, with the note) and the console says so. Not while this thread was held up
+// (a long frame or a tab in the background): the worklet's reports wait for it.
+function sgAudioWatch() {
+    const s = sgSnd, now = performance.now();
+    const held = s.tick && now - s.tick > 500;
+    s.tick = now;
+    if (!s.ctx || s.ctx.state !== "running" || document.hidden || held) { s.clock = -1; return; }
+    if (s.ctx.currentTime !== s.clock) { s.clock = s.ctx.currentTime; s.clockAt = now; }
+    const stuckClock = now - s.clockAt > 3000;
+    const isWorklet = typeof AudioWorkletNode !== "undefined" && s.node instanceof AudioWorkletNode;
+    const deaf = isWorklet && s.postAt && now - Math.max(s.repAt, s.postAt) > 3000;
+    if (!stuckClock && !deaf) return;
+    if (s.restarts >= 5) return; // not forever: the note and the console have said it
+    s.restarts++;
+    console.warn("sound: the audio output stopped (" + (stuckClock ? "its clock stands still" : "it plays nothing it is given") +
+        "); starting it again");
+    const old = s.ctx;
+    s.ctx = null; s.node = null;
+    try { old.close(); } catch (e) {}
+    s.shown = 0; s.since = 0;
+    sgStartAudio();
+}
+
 // the timer keeps a tab in the background fed; once a frame as well, as a browser busy drawing can hold timers back
-setInterval(() => { sgPump(); sgSoundNote(); }, 20);
+setInterval(() => { sgPump(); sgSoundNote(); sgAudioWatch(); }, 20);
 (function frame() { sgPump(); requestAnimationFrame(frame); })();
 for (const type of ["mousedown", "pointerdown", "pointerup", "click", "keydown", "touchend"]) window.addEventListener(type, sgStartAudio, true);
 window.addEventListener("touchstart", sgStartAudio, { passive: true, capture: true });

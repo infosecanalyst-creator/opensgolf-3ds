@@ -231,6 +231,24 @@ mod device {
 
 pub use device::AudioOut;
 
+/// A line about the sound for the log, and in a browser for its console as well (the page shows nothing of the game's
+/// standard output, so a player asked "what does the console say?" could not tell why a game was silent).
+pub fn log(msg: &str) {
+    println!("{msg}");
+    #[cfg(target_arch = "wasm32")]
+    {
+        #[link(wasm_import_module = "env")]
+        extern "C" {
+            // miniquad's gl.js: console.log of a nul-terminated UTF-8 string
+            fn console_log(msg: *const std::ffi::c_char);
+        }
+        if let Ok(c) = std::ffi::CString::new(msg) {
+            // SAFETY: a valid nul-terminated string, read before the call returns
+            unsafe { console_log(c.as_ptr()) };
+        }
+    }
+}
+
 /// Opens the default output device and feeds it from the mixer. None (and silence) when there is no device; why is logged.
 #[allow(clippy::arc_with_non_send_sync)]
 pub fn open(mixer: Arc<Mixer>) -> Option<AudioOut> {
