@@ -54,15 +54,28 @@ impl Feed {
 mod device {
     use super::Feed;
     use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+    use sg_core::mixer::Mixer;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    use std::time::{Duration, Instant};
 
+    /// The stream to the default output device. It follows the system: when the default device changes (headphones or
+    /// AirPods connected, another output chosen in the system's settings) or the stream fails (the device went away),
+    /// [`AudioOut::keep_alive`] opens the new default device. A stream left on the old device played to a device the
+    /// player no longer listens to, or nowhere, with no word.
     pub struct AudioOut {
-        _stream: cpal::Stream,
+        stream: cpal::Stream,
+        mixer: Arc<Mixer>,
+        device: String,
+        failed: Arc<AtomicBool>,
+        checked: Instant,
     }
 
     fn build<T: cpal::SizedSample + cpal::FromSample<f32>>(
         dev: &cpal::Device,
         cfg: &cpal::StreamConfig,
         mut feed: Feed,
+        failed: Arc<AtomicBool>,
     ) -> Result<cpal::Stream, cpal::BuildStreamError> {
         let ch = cfg.channels as usize;
         dev.build_output_stream(
@@ -81,28 +94,86 @@ mod device {
                     }
                 }
             },
-            |e| eprintln!("sound: {e}"),
+            move |e| {
+                eprintln!("sound: the output stopped: {e}");
+                failed.store(true, Ordering::Relaxed);
+            },
             None,
         )
     }
 
-    pub fn open(make_feed: impl FnOnce(u32) -> Feed) -> Option<AudioOut> {
+    /// The default output device's name ("" when there is none).
+    fn default_name(host: &cpal::Host) -> String {
+        host.default_output_device().and_then(|d| d.name().ok()).unwrap_or_default()
+    }
+
+    /// A stream to the default output device, playing. Err says why there is none (for the log).
+    fn start(mixer: &Arc<Mixer>, failed: &Arc<AtomicBool>) -> Result<(cpal::Stream, String), String> {
         let host = cpal::default_host();
-        let dev = host.default_output_device()?;
-        let sup = dev.default_output_config().ok()?;
+        let dev = host.default_output_device().ok_or_else(|| format!("no default output device ({:?})", host.id()))?;
+        let name = dev.name().unwrap_or_default();
+        let sup = dev.default_output_config().map_err(|e| format!("{name}: no output format: {e}"))?;
         let fmt = sup.sample_format();
         let cfg: cpal::StreamConfig = sup.into();
-        let feed = make_feed(cfg.sample_rate.0);
+        let feed = Feed::new(mixer.clone(), cfg.sample_rate.0);
+        let f = failed.clone();
         let stream = match fmt {
-            cpal::SampleFormat::F32 => build::<f32>(&dev, &cfg, feed),
-            cpal::SampleFormat::I16 => build::<i16>(&dev, &cfg, feed),
-            cpal::SampleFormat::U16 => build::<u16>(&dev, &cfg, feed),
-            cpal::SampleFormat::I32 => build::<i32>(&dev, &cfg, feed),
-            _ => return None,
+            cpal::SampleFormat::F32 => build::<f32>(&dev, &cfg, feed, f),
+            cpal::SampleFormat::I16 => build::<i16>(&dev, &cfg, feed, f),
+            cpal::SampleFormat::U16 => build::<u16>(&dev, &cfg, feed, f),
+            cpal::SampleFormat::I32 => build::<i32>(&dev, &cfg, feed, f),
+            other => return Err(format!("{name}: sample format {other:?} not supported")),
         }
-        .ok()?;
-        stream.play().ok()?;
-        Some(AudioOut { _stream: stream })
+        .map_err(|e| format!("{name}: cannot open the output: {e}"))?;
+        stream.play().map_err(|e| format!("{name}: cannot start the output: {e}"))?;
+        println!("sound: playing on \"{name}\" ({} Hz, {} channels, {fmt:?})", cfg.sample_rate.0, cfg.channels);
+        Ok((stream, name))
+    }
+
+    pub fn open(mixer: Arc<Mixer>) -> Option<AudioOut> {
+        let failed = Arc::new(AtomicBool::new(false));
+        match start(&mixer, &failed) {
+            Ok((stream, device)) => Some(AudioOut { stream, mixer, device, failed, checked: Instant::now() }),
+            Err(e) => {
+                eprintln!("sound: {e}");
+                None
+            }
+        }
+    }
+
+    impl AudioOut {
+        /// Every two seconds: a stream that failed, or a default output device that changed, is opened again on the
+        /// current default device.
+        pub fn keep_alive(&mut self) {
+            if self.checked.elapsed() < Duration::from_secs(2) {
+                return;
+            }
+            self.checked = Instant::now();
+            let failed = self.failed.load(Ordering::Relaxed);
+            // (Android routes a stream to the device in use by itself: only a failed stream is opened again)
+            let now = if cfg!(target_os = "android") { self.device.clone() } else { default_name(&cpal::default_host()) };
+            if !failed && (now == self.device || now.is_empty()) {
+                return;
+            }
+            println!(
+                "sound: the output device changed (\"{}\" to \"{now}\"{}): opening it",
+                self.device,
+                if failed { ", the old one failed" } else { "" }
+            );
+            let flag = Arc::new(AtomicBool::new(false));
+            match start(&self.mixer, &flag) {
+                Ok((stream, device)) => {
+                    self.stream = stream;
+                    self.device = device;
+                    self.failed = flag;
+                }
+                Err(e) => {
+                    eprintln!("sound: {e}");
+                    // try again later, quietly, with the same name (no message every two seconds)
+                    self.device = now;
+                }
+            }
+        }
     }
 }
 
@@ -113,6 +184,9 @@ mod device {
 mod device {
     use super::Feed;
     pub struct AudioOut;
+    impl AudioOut {
+        pub fn keep_alive(&mut self) {}
+    }
     static mut FEED: Option<(Box<dyn FnOnce(u32) -> Feed>, Option<Feed>, Vec<f32>)> = None;
 
     pub fn open(make_feed: impl FnOnce(u32) -> Feed + 'static) -> Option<AudioOut> {
@@ -146,19 +220,26 @@ mod device {
 
 #[cfg(all(not(feature = "audio"), not(target_arch = "wasm32")))]
 mod device {
-    use super::Feed;
     pub struct AudioOut;
-    pub fn open(_make_feed: impl FnOnce(u32) -> Feed) -> Option<AudioOut> {
+    impl AudioOut {
+        pub fn keep_alive(&mut self) {}
+    }
+    pub fn open(_mixer: std::sync::Arc<sg_core::mixer::Mixer>) -> Option<AudioOut> {
         None
     }
 }
 
 pub use device::AudioOut;
 
-/// Opens the default output device and feeds it from the mixer. None (and silence) when there is no device.
+/// Opens the default output device and feeds it from the mixer. None (and silence) when there is no device; why is logged.
 #[allow(clippy::arc_with_non_send_sync)]
 pub fn open(mixer: Arc<Mixer>) -> Option<AudioOut> {
-    device::open(move |rate| Feed::new(mixer, rate))
+    #[cfg(target_arch = "wasm32")]
+    {
+        device::open(move |rate| Feed::new(mixer, rate))
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    device::open(mixer)
 }
 
 #[cfg(test)]

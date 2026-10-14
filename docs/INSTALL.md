@@ -22,7 +22,10 @@ graphics* goes back. No Terminal and no options are needed (`--game DIR` remains
   SimGolf folder. Either way the files are copied into `~/Library/Application Support/OpenSGolf/game`, because macOS's
   privacy rules may stop the game from reading Desktop, Documents or Downloads on a later start. When macOS asks whether
   OpenSGolf may access files in one of those folders, choose *Allow*; if you chose *Don't Allow* before, turn OpenSGolf on
-  under System Settings → Privacy & Security → Files and Folders (the game says so when it cannot read a folder).
+  under System Settings → Privacy & Security → Files and Folders (the game says so when it cannot read a folder). A right
+  click is Ctrl+click or a two-finger click. No sound? The game plays on the Mac's current output device and follows a
+  change (headphones, AirPods, another output in Control Centre) within two seconds; if it stays silent, start it from
+  Terminal with `/Applications/OpenSGolf.app/Contents/MacOS/opensgolf` and look for the lines starting with `sound:`.
 * **Linux** (x86_64, and 64-bit ARM such as a Raspberry Pi 4/5: the `-arm64` files): the AppImage (allow running it as a program in its Properties, or `chmod +x`, then double-click it), or
   unpack the `.tar.gz` and run `opensgolf` in its folder (`opensgolf.desktop` and `opensgolf.png` in it are for a menu entry).
   The folder picker asks the desktop through the XDG portal (GNOME, KDE and most desktops have it). Sound goes through ALSA

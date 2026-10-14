@@ -313,6 +313,8 @@ struct Stage {
     mouse: (f32, f32),
     shift: bool,
     ctrl: bool,
+    /// The mouse button held down was a Ctrl+click, taken as a right-click (its release is a right one too).
+    ctrl_click: bool,
     /// A key just opened a name box (Shift+S the Save dialog): the character that key types comes next and is not the
     /// name's (it put an "S" in front of every typed save name).
     swallow_char: bool,
@@ -1191,6 +1193,7 @@ impl Stage {
             mouse: (0.0, 0.0),
             shift: false,
             ctrl: false,
+            ctrl_click: false,
             swallow_char: false,
             wheel: (0.0, 0.0),
             pause_toggle: false,
@@ -2220,6 +2223,10 @@ impl EventHandler for Stage {
         self.app.extras_test_hook();
         // "Use my SimGolf files...": a .zip being unpacked or a folder being copied (gamefiles.rs)
         self.app.poll_import();
+        // the sound output follows the system's default device (audio.rs)
+        if let Some(a) = self.app.audio.as_mut() {
+            a.keep_alive();
+        }
         let app = &mut self.app;
         // the board terminated the contract: the main loop asks what next as soon as the game is back on the course
         if app.econ.game_over && app.screen == Screen::Play && app.popup.is_none() {
@@ -2492,6 +2499,10 @@ impl EventHandler for Stage {
     }
 
     fn mouse_button_down_event(&mut self, button: MouseButton, x: f32, y: f32) {
+        // Ctrl+click is a right-click, as everywhere on a Mac (a one-button mouse, a trackpad without secondary click);
+        // the original gives Ctrl no meaning with a click
+        self.ctrl_click = button == MouseButton::Left && self.ctrl;
+        let button = if self.ctrl_click { MouseButton::Right } else { button };
         sysdiag::event(sysdiag::Ev::Click);
         self.mouse = (x, y);
         // a notice (gamefiles.rs) takes the click
@@ -2673,6 +2684,7 @@ impl EventHandler for Stage {
     }
 
     fn mouse_button_up_event(&mut self, button: MouseButton, x: f32, y: f32) {
+        let button = if button == MouseButton::Left && std::mem::take(&mut self.ctrl_click) { MouseButton::Right } else { button };
         if self.app.photo.is_some() {
             self.photo_button(false, button, x, y);
             return;
