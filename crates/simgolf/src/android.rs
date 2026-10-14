@@ -207,7 +207,10 @@ pub fn init() {
         pick_test_hook();
         let env = android::attach_jni_env();
         let mut vm: *mut ndk_sys::JavaVM = std::ptr::null_mut();
-        if (**env).GetJavaVM.unwrap()(env, &mut vm) == 0 && !vm.is_null() {
+        // once per process: an activity made again in the same process (Android may do that) runs `main` again, and
+        // ndk_context panics when set twice
+        static CONTEXT_SET: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if (**env).GetJavaVM.unwrap()(env, &mut vm) == 0 && !vm.is_null() && !CONTEXT_SET.swap(true, std::sync::atomic::Ordering::SeqCst) {
             ndk_context::initialize_android_context(vm as *mut _, activity as *mut _);
         }
     }

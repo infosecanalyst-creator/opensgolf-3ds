@@ -341,9 +341,10 @@ public class MainActivity extends Activity {
     // The picker grants access to what was picked: no storage permission is needed.
     private static final int PICK_ZIP = 7301;
     private static final int PICK_TREE = 7302;
-    private volatile String importState = "";
-    private String importDest;
-    private long importFiles, importBytes;
+    // static: the copy outlives an activity that Android makes again while its picker is in front
+    private static volatile String importState = "";
+    private static String importDest;
+    private static long importFiles, importBytes;
 
     public String importState() {
         return importState;
