@@ -30,12 +30,14 @@ env:
 
 jobs:
   linux:
-    # x86_64 PCs, and 64-bit ARM (Raspberry Pi 4/5, ARM laptops) on GitHub's ARM runners
+    # x86_64 PCs, and 64-bit ARM (Raspberry Pi 4/5, ARM laptops) on GitHub's ARM runners. Built on the oldest Ubuntu LTS
+    # in standard support, because a program needs a glibc at least as new as the one it was built against: built here,
+    # the AppImage and tar.gz run on that release and anything newer.
     strategy:
       matrix:
         include:
-          - { os: ubuntu-latest, name: x86_64, appimage: x86_64 }
-          - { os: ubuntu-24.04-arm, name: arm64, appimage: aarch64 }
+          - { os: ubuntu-22.04, name: x86_64, appimage: x86_64 }
+          - { os: ubuntu-22.04-arm, name: arm64, appimage: aarch64 }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -44,6 +46,12 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev
       - name: Build
         run: cargo build --release -p opensgolf -p sgtool
+      - name: glibc check
+        # fails the release if the game needs a newer glibc than Ubuntu 22.04's (2.35)
+        run: |
+          need=$(objdump -T target/release/opensgolf | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1)
+          echo "opensgolf needs $need"
+          [ "$(printf '%s\n%s\n' "$need" GLIBC_2.35 | sort -V | tail -1)" = GLIBC_2.35 ]
       - name: Icons
         run: target/release/sgtool icon icons 256
       - name: tar.gz

@@ -4,7 +4,7 @@ A short handoff note so work can be picked up in a fresh session.
 
 ## Released
 
-- **v0.2.1** is the latest release (`main`): all of 0.2 (course sizes, controls, mod profiles, original-bug fixes,
+- **v0.2.5** is the latest release (`main`): all of 0.2 (course sizes, controls, mod profiles, original-bug fixes,
   gameplay and interface extras) plus the Windows on ARM fix (patched miniquad in `vendor/miniquad`, see its
   `README-OPENSGOLF.md`; drop it once miniquad fixes `GWLP_USERDATA` on aarch64).
 - The browser version at <https://crspytopgn.github.io/opensgolf/> deploys automatically from `main`.
