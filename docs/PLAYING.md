@@ -231,6 +231,9 @@ compare pixel for pixel with the build before the extras).
 Test hooks for stills: `--screen people|staff|pro|history|profile|pathview|tags|ticker|card` (with a game;
 `SG_PEOPLE_SORT=COL[,1]` sorts the People list by column COL, downward with 1), `--edit "M:6"` opens the extras box.
 
+On Windows, macOS and Linux, **F11** or **Alt+Enter** switches between a window and full screen (in the browser, use the
+browser's own full screen, F11).
+
 ## Keys in the browser and on a Mac
 
 Every key of the original works in the browser too: the page keeps the browser from acting on the keys the game uses
