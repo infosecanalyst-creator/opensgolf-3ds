@@ -740,6 +740,20 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 app.brush = r;
                 app.sync_course();
             }
+            b'u' if v.len() >= 2 => {
+                // test hook: the undo tool's right click on tile x,y, then the open holes and the tiles' hole numbers
+                app.sync_course();
+                app.undo_tile(at(0), at(1));
+                let numbered = app.course.flags.iter().filter(|&&f| f & 0x1f != 0 && f & 0x400 == 0).count();
+                println!(
+                    "undo {},{}: type {}, open holes {:?}, next hole {}, numbered tiles {numbered}",
+                    at(0),
+                    at(1),
+                    app.terrain.type_at(at(0), at(1)),
+                    app.hole_numbers,
+                    app.club.next_hole
+                );
+            }
             b'l' if item.len() > 2 && !v.is_empty() => {
                 // buy tract n (1..9) through the land screen
                 app.open_land_screen();

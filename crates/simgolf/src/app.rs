@@ -2966,7 +2966,30 @@ impl App {
         self.ensure_land();
         let Some(land) = self.land.as_mut() else { return };
         land.sync_from_terrain(&self.terrain);
-        match land.undo_tile(x, y) {
+        let li = (x * land::mn() + y) as usize;
+        let old = land.ty.get(li).copied().unwrap_or(land::T_ROUGH);
+        // a hole's tee or cup green undone is the same as painting over it (0x41fee2): refused during a tournament
+        let cup =
+            old == land::T_GREEN && self.course.flags.get(sg_core::course::idx(x, y)).is_some_and(|&f| f & sg_core::course::f::CUP != 0);
+        let hole_tile = old == land::T_TEE || cup;
+        if hole_tile
+            && self.club.game & golf::game::TOURNAMENT != 0
+            && land.undo.get(li).is_some_and(|&c| c < 0x7d || (c != land::UNDO_NONE && c & 0x7f == 0x10))
+        {
+            return self.ui_sound(24);
+        }
+        let undone = land.undo_tile(x, y);
+        let new = land.ty.get(li).copied().unwrap_or(old);
+        if matches!(undone, land::Undone::Refund(_)) && new != old && (old <= land::T_GREEN || new <= land::T_GREEN) {
+            // taking a tee or a green away goes through the hole tool's bookkeeping, as painting over it does: the hole it
+            // belonged to is out of play (par 0) until it is rebuilt
+            let green_next = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+                .iter()
+                .any(|&(ex, ey)| self.terrain.inside(x + ex, y + ey) && self.terrain.ty[self.terrain.tile_index(x + ex, y + ey)] == 1);
+            self.club.paint_hole_tile(&mut self.course, x, y, old, new, green_next);
+        }
+        let Some(land) = self.land.as_mut() else { return };
+        match undone {
             land::Undone::Refused => self.ui_sound(24),
             land::Undone::Building(i) => {
                 if land.objects[i].kind == land::K_CLUBHOUSE {
