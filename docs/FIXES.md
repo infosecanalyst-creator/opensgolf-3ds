@@ -26,6 +26,7 @@ their code was read). Each entry says whether the port had the bug, why, and wha
 | 7 | Esc does not close the golfer card | yes | original | setting |
 | 8 | Building upgrades look locked one unlock too early | yes | original | setting |
 | 9 | A new arrival overwrites a slow golfer still on the course | yes | original | setting |
+| 11 | A click on the zoomed-out Golfers panel list picks the wrong golfer | yes | original | setting |
 | 10 | Other checks: sprite queue cap, more than 32 golfers drawn, full accomplishment history, Shift+T, Esc in Preferences and the world map, the ball's shadow | no | | |
 
 ## 1. Water above sea level (black triangles at waterfalls and on slopes)
@@ -132,3 +133,11 @@ test `new_pairs_skip_golfers_still_playing`.
 - Esc closes Preferences (a popup) and the world map opened from a game.
 - The ball's shadow is the exe's 2 x 2 black cut of BLDG.PCX (palette index 1, not a shading index) one pixel under the
   ball's ground point; the port draws it as a flat 2 x 2 box, so no HD artefact; left as the original draws it.
+
+## 11. The zoomed-out Golfers panel list
+
+EXACT (0x435570 hit test, 0x435760 draw): below the closest zoom the Golfers panel draws its compact list, six rows of
+14 pixels to a column and columns 60 apart, but the hit test always takes the large list's cells (four rows of 21,
+columns 121 apart), so a click centred the map on another golfer than the one under the pointer, and the compact list's
+further columns could not be clicked at all. With the setting the click takes the cell as drawn:
+crates/simgolf/src/member_panel.rs:56.

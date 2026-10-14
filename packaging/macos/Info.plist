@@ -28,6 +28,16 @@
 	<string>11.0</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>OpenSGolf reads the SimGolf game files you choose with Use my SimGolf files.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>OpenSGolf reads the SimGolf game files you choose with Use my SimGolf files.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>OpenSGolf reads the SimGolf game files you choose with Use my SimGolf files.</string>
+	<key>NSRemovableVolumesUsageDescription</key>
+	<string>OpenSGolf reads the SimGolf game files you choose with Use my SimGolf files.</string>
+	<key>NSNetworkVolumesUsageDescription</key>
+	<string>OpenSGolf reads the SimGolf game files you choose with Use my SimGolf files.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>OpenSGolf contributors, GPL-2.0-or-later</string>
 </dict>

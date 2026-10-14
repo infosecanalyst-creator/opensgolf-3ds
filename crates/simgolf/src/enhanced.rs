@@ -832,7 +832,8 @@ impl App {
     /// farthest levels (a wheel notch is a quarter of a doubling); in photo mode further both ways (photo.rs).
     pub fn zoom_by(&mut self, doublings: f32) {
         use crate::app::ZOOM_UNIT;
-        let (lo, hi) = if self.photo.is_some() { crate::photo::ZOOM_RANGE } else { (ZOOM_UNIT, ZOOM_UNIT * 4.0) };
+        // a larger course size zooms further out (app::far_level)
+        let (lo, hi) = if self.photo.is_some() { crate::photo::ZOOM_RANGE } else { (crate::app::far_zoom(), ZOOM_UNIT * 4.0) };
         self.zoom = (self.zoom * doublings.exp2()).clamp(lo, hi);
     }
 

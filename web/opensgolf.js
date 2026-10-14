@@ -344,6 +344,9 @@ function sgStart() {
     sgRestoreSaves();
     document.getElementById("picker").style.display = "none";
     const canvas = document.getElementById("glcanvas");
+    // a right-click (or a Mac's Ctrl+click) is the game's: no browser menu over the canvas, which would also take the
+    // button's release
+    canvas.addEventListener("contextmenu", e => e.preventDefault());
     canvas.style.display = "block";
     canvas.focus();
     load("opensgolf.wasm");

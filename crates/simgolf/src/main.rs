@@ -49,6 +49,7 @@ mod hd;
 mod history_ui;
 mod holemarks;
 mod hud_ui;
+mod import;
 mod info_ui;
 mod keys_ui;
 mod language;
@@ -312,6 +313,8 @@ struct Stage {
     mouse: (f32, f32),
     shift: bool,
     ctrl: bool,
+    /// The mouse button held down was a Ctrl+click, taken as a right-click (its release is a right one too).
+    ctrl_click: bool,
     /// A key just opened a name box (Shift+S the Save dialog): the character that key types comes next and is not the
     /// name's (it put an "S" in front of every typed save name).
     swallow_char: bool,
@@ -740,6 +743,20 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 app.brush = r;
                 app.sync_course();
             }
+            b'u' if v.len() >= 2 => {
+                // test hook: the undo tool's right click on tile x,y, then the open holes and the tiles' hole numbers
+                app.sync_course();
+                app.undo_tile(at(0), at(1));
+                let numbered = app.course.flags.iter().filter(|&&f| f & 0x1f != 0 && f & 0x400 == 0).count();
+                println!(
+                    "undo {},{}: type {}, open holes {:?}, next hole {}, numbered tiles {numbered}",
+                    at(0),
+                    at(1),
+                    app.terrain.type_at(at(0), at(1)),
+                    app.hole_numbers,
+                    app.club.next_hole
+                );
+            }
             b'l' if item.len() > 2 && !v.is_empty() => {
                 // buy tract n (1..9) through the land screen
                 app.open_land_screen();
@@ -1152,6 +1169,10 @@ impl Stage {
         // the program started again on the graphics the player chose (gamefiles.rs)
         if let Some(msg) = gamefiles::take_notice() {
             app.show_toast(&msg);
+            // the player's files were chosen, but the game could not read them on this start: why, in a box
+            if let Some(why) = app.files_not_loaded(&msg) {
+                app.show_notice(&why);
+            }
         }
         // the player's copy has sounds the game cannot play: said in a box once (until the reason changes), in the
         // ticker on every start
@@ -1169,7 +1190,7 @@ impl Stage {
         // test hook: SG_PICK_FOLDER=DIR takes DIR as the folder picked in "Use my SimGolf files..." ("free": Use the free
         // graphics), as if chosen on the title screen
         if std::env::var_os(gamefiles::PICK_ENV).is_some() {
-            app.choose_game_folder();
+            app.choose_game_folder(false);
         }
         Stage {
             g,
@@ -1186,6 +1207,7 @@ impl Stage {
             mouse: (0.0, 0.0),
             shift: false,
             ctrl: false,
+            ctrl_click: false,
             swallow_char: false,
             wheel: (0.0, 0.0),
             pause_toggle: false,
@@ -2213,6 +2235,12 @@ impl EventHandler for Stage {
         }
         // the --screen test hook's extras screens that need the game to have run first (extras.rs)
         self.app.extras_test_hook();
+        // "Use my SimGolf files...": a .zip being unpacked or a folder being copied (gamefiles.rs)
+        self.app.poll_import();
+        // the sound output follows the system's default device (audio.rs)
+        if let Some(a) = self.app.audio.as_mut() {
+            a.keep_alive();
+        }
         let app = &mut self.app;
         // the board terminated the contract: the main loop asks what next as soon as the game is back on the course
         if app.econ.game_over && app.screen == Screen::Play && app.popup.is_none() {
@@ -2485,6 +2513,10 @@ impl EventHandler for Stage {
     }
 
     fn mouse_button_down_event(&mut self, button: MouseButton, x: f32, y: f32) {
+        // Ctrl+click is a right-click, as everywhere on a Mac (a one-button mouse, a trackpad without secondary click);
+        // the original gives Ctrl no meaning with a click
+        self.ctrl_click = button == MouseButton::Left && self.ctrl;
+        let button = if self.ctrl_click { MouseButton::Right } else { button };
         sysdiag::event(sysdiag::Ev::Click);
         self.mouse = (x, y);
         // a notice (gamefiles.rs) takes the click
@@ -2666,6 +2698,7 @@ impl EventHandler for Stage {
     }
 
     fn mouse_button_up_event(&mut self, button: MouseButton, x: f32, y: f32) {
+        let button = if button == MouseButton::Left && std::mem::take(&mut self.ctrl_click) { MouseButton::Right } else { button };
         if self.app.photo.is_some() {
             self.photo_button(false, button, x, y);
             return;

@@ -2966,7 +2966,30 @@ impl App {
         self.ensure_land();
         let Some(land) = self.land.as_mut() else { return };
         land.sync_from_terrain(&self.terrain);
-        match land.undo_tile(x, y) {
+        let li = (x * land::mn() + y) as usize;
+        let old = land.ty.get(li).copied().unwrap_or(land::T_ROUGH);
+        // a hole's tee or cup green undone is the same as painting over it (0x41fee2): refused during a tournament
+        let cup =
+            old == land::T_GREEN && self.course.flags.get(sg_core::course::idx(x, y)).is_some_and(|&f| f & sg_core::course::f::CUP != 0);
+        let hole_tile = old == land::T_TEE || cup;
+        if hole_tile
+            && self.club.game & golf::game::TOURNAMENT != 0
+            && land.undo.get(li).is_some_and(|&c| c < 0x7d || (c != land::UNDO_NONE && c & 0x7f == 0x10))
+        {
+            return self.ui_sound(24);
+        }
+        let undone = land.undo_tile(x, y);
+        let new = land.ty.get(li).copied().unwrap_or(old);
+        if matches!(undone, land::Undone::Refund(_)) && new != old && (old <= land::T_GREEN || new <= land::T_GREEN) {
+            // taking a tee or a green away goes through the hole tool's bookkeeping, as painting over it does: the hole it
+            // belonged to is out of play (par 0) until it is rebuilt
+            let green_next = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+                .iter()
+                .any(|&(ex, ey)| self.terrain.inside(x + ex, y + ey) && self.terrain.ty[self.terrain.tile_index(x + ex, y + ey)] == 1);
+            self.club.paint_hole_tile(&mut self.course, x, y, old, new, green_next);
+        }
+        let Some(land) = self.land.as_mut() else { return };
+        match undone {
             land::Undone::Refused => self.ui_sound(24),
             land::Undone::Building(i) => {
                 if land.objects[i].kind == land::K_CLUBHOUSE {
@@ -3269,18 +3292,19 @@ impl App {
     pub fn zoom_step(&mut self, inward: bool) {
         if crate::enhanced::smooth_camera() {
             // Enhanced: from a zoom between levels, the next of the three levels that way
-            let levels = [ZOOM_UNIT, ZOOM_UNIT * 2.0, ZOOM_UNIT * 4.0];
+            let levels: Vec<f32> = (far_level()..=2).map(|l| ZOOM_UNIT * (l as f32).exp2()).collect();
             let z = self.zoom;
             self.zoom = if inward {
-                levels.iter().copied().find(|&l| l > z * 1.001).unwrap_or(levels[2])
+                levels.iter().copied().find(|&l| l > z * 1.001).unwrap_or(ZOOM_UNIT * 4.0)
             } else {
                 levels.iter().rev().copied().find(|&l| l < z / 1.001).unwrap_or(levels[0])
             };
             return;
         }
-        let level = (self.zoom / ZOOM_UNIT).log2().round().clamp(0.0, 2.0) as i32;
-        let level = if inward { (level + 1).min(2) } else { (level - 1).max(0) };
-        self.zoom = ZOOM_UNIT * (1 << level) as f32;
+        let far = far_level();
+        let level = (self.zoom / ZOOM_UNIT).log2().round().clamp(far as f32, 2.0) as i32;
+        let level = if inward { (level + 1).min(2) } else { (level - 1).max(far) };
+        self.zoom = ZOOM_UNIT * (level as f32).exp2();
     }
 
     /// PageUp / Home and the Rotate Map buttons: a quarter turn of the view (the exe's rotation steps by 2 of 8).
@@ -3334,6 +3358,23 @@ pub const DESIGN_TIP: &str = "STR_MSG_DESIGN_TIP";
 
 /// Our zoom at the exe's zoom level 1 (a tile 16 pixels wide on the 800 x 600 screen); its levels are 1, 2 and 4.
 pub const ZOOM_UNIT: f32 = 0.905 / 4.0;
+
+/// The farthest zoom level as a power of two of ZOOM_UNIT: 0 (the exe's level 1) on the original's 50 x 50 map, where it
+/// shows the whole course; a larger course size (sg_core::mapsize) gets a level or two further out (1/2 up to 100 tiles,
+/// 1/4 beyond), so its whole map fits on the screen as the original's does.
+pub fn far_level() -> i32 {
+    let n = sg_core::mapsize::n().max(sg_core::mapsize::ORIGINAL);
+    let mut level = 0;
+    while sg_core::mapsize::ORIGINAL << -level < n {
+        level -= 1;
+    }
+    level
+}
+
+/// The farthest zoom (ZOOM_UNIT on the original's map, see far_level).
+pub fn far_zoom() -> f32 {
+    ZOOM_UNIT * (far_level() as f32).exp2()
+}
 
 pub fn pitch_for(w: f32, h: f32) -> f64 {
     if w == 800.0 && h == 600.0 {

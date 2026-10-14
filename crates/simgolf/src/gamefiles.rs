@@ -9,9 +9,12 @@
 //!
 //! Choosing a folder checks it for the files the game cannot start without, saves it, and starts the program again on it:
 //! the original's art, sounds, fonts and tables then load from the start exactly as they do on a normal start, which no
-//! in-place swap could promise. A browser gets its files from the page (web/opensgolf.js) and has no such option; on
-//! Android the option says which folder to copy the files to.
+//! in-place swap could promise. The player may pick a .zip of the folder instead: it is unpacked into `game` in the save
+//! folder first (import.rs), as is a folder picked on macOS (copied: macOS's privacy rules may refuse the original place on a
+//! later start). A browser gets its files from the page (web/opensgolf.js) and has no such option; on Android Android's own
+//! picker answers later (android.rs) and what was picked is copied into the app's external files folder.
 use crate::app::{save_dir, App};
+use crate::import;
 use sg_core::lang::{tr, trf};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -73,7 +76,38 @@ pub fn locate(dir: &Path) -> Result<PathBuf, Vec<&'static str>> {
         }
         level = next;
     }
+    // deeper, under any names (a zip unpacked into a folder of its own, "Downloads/SimGolf/SimGolf/..."): the first folder
+    // with a Flics folder in it, as the browser's loader looks (web/opensgolf.js), a few levels and folders at most
+    let mut level = vec![dir.to_path_buf()];
+    let mut seen = 0;
+    for _ in 0..5 {
+        let mut next = Vec::new();
+        for d in &level {
+            let mut kids: Vec<PathBuf> = sg_core::fsutil::list_dir(d).into_iter().filter(|p| sg_core::fsutil::is_dir(p)).collect();
+            kids.sort();
+            for k in kids {
+                let low = k.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+                if low == "flics" && missing(d).is_empty() {
+                    return Ok(d.clone());
+                }
+                if low != "__macosx" && !low.starts_with('.') {
+                    next.push(k);
+                }
+            }
+        }
+        seen += next.len();
+        if seen > 4000 {
+            break;
+        }
+        level = next;
+    }
     Err(top)
+}
+
+/// True when the system refuses to let the game read `dir` (macOS's privacy rules for Desktop, Documents and Downloads, a
+/// folder of another user).
+pub fn no_access(dir: &Path) -> bool {
+    !cfg!(target_arch = "wasm32") && std::fs::read_dir(dir).is_err_and(|e| e.kind() == std::io::ErrorKind::PermissionDenied)
 }
 
 // ---- settings.json ------------------------------------------------------------------------------------------------------------
@@ -238,8 +272,12 @@ pub fn take_notice() -> Option<String> {
 /// What the title button and the Preferences line do here.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Action {
-    /// Pick a folder with the system's dialog.
+    /// Ask whether the files are a folder or a .zip, then pick it with the system's dialog.
     Pick,
+    /// Pick the game folder with the system's dialog.
+    PickFolder,
+    /// Pick a .zip of the game folder with the system's dialog.
+    PickZip,
     /// Go back to the free base set.
     Free,
     /// Say where to copy the files (Android, or a build without the picker).
@@ -255,24 +293,124 @@ pub enum Action {
 /// The crash report the box offers to copy.
 static CRASH_REPORT: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
 
-/// Opens the system's folder picker (blocking until the player chooses or cancels). The test hook stands in for it.
-fn pick_folder(start: Option<PathBuf>) -> Option<PathBuf> {
+/// Opens the system's picker for the game folder, or with `zip` for a .zip of it (blocking until the player chooses or
+/// cancels). The test hook stands in for it.
+fn pick_path(start: Option<PathBuf>, zip: bool) -> Option<PathBuf> {
     if let Some(p) = std::env::var_os(PICK_ENV) {
         return Some(PathBuf::from(p));
     }
     #[cfg(all(feature = "picker", not(any(target_arch = "wasm32", target_os = "android"))))]
     {
-        let mut d = rfd::FileDialog::new().set_title(tr("STR_GAME_FILES_PICK_TITLE"));
+        let mut d = rfd::FileDialog::new().set_title(tr(if zip { "STR_GAME_FILES_PICK_ZIP_TITLE" } else { "STR_GAME_FILES_PICK_TITLE" }));
         if let Some(s) = start.filter(|s| s.is_dir()) {
             d = d.set_directory(s);
         }
-        d.pick_folder()
+        if zip {
+            d.add_filter("Zip", &["zip", "ZIP"]).pick_file()
+        } else {
+            d.pick_folder()
+        }
     }
     #[cfg(not(all(feature = "picker", not(any(target_arch = "wasm32", target_os = "android")))))]
     {
-        let _ = start;
+        let _ = (start, zip);
         None
     }
+}
+
+/// Where imported files go (a .zip unpacked, a folder copied): on Android the app's external files folder's `game`, else
+/// `game` in the save folder (both are where the game looks at start).
+fn import_target() -> PathBuf {
+    #[cfg(target_os = "android")]
+    {
+        crate::android::game_root()
+    }
+    #[cfg(not(target_os = "android"))]
+    save_dir().join("game")
+}
+
+/// What an import in progress is doing.
+enum Stage {
+    /// Android: the system's picker is up, or the app's Java side copies what was picked (android.rs).
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    Java,
+    /// Unpacking or copying on a thread; Ok is the number of zip entries skipped (compression the game cannot unpack).
+    Thread(std::thread::JoinHandle<Result<usize, String>>),
+}
+
+/// An import in progress: its stage and the line saying how far it is.
+struct Import {
+    stage: Stage,
+    note: std::sync::Arc<std::sync::Mutex<String>>,
+    shown: String,
+}
+
+static IMPORT: std::sync::Mutex<Option<Import>> = std::sync::Mutex::new(None);
+
+/// The player's message for an import that failed.
+fn import_error(e: import::Error) -> String {
+    match e {
+        import::Error::BadZip(why) => trf("STR_GAME_FILES_BAD_ZIP", &[("ERR", &why)]),
+        import::Error::NoGame => tr("STR_GAME_FILES_ZIP_NO_GAME").to_string(),
+        import::Error::Io(why) => trf("STR_GAME_FILES_IMPORT_FAILED", &[("ERR", &why)]),
+    }
+}
+
+/// Checks an unpacked or copied game folder and puts it at `dest`. Err is the player's message.
+fn finish_import(staging: &Path, dest: &Path) -> Result<(), String> {
+    let lacks = missing(staging);
+    if !lacks.is_empty() {
+        let _ = std::fs::remove_dir_all(staging);
+        return Err(trf("STR_GAME_FILES_NOT_FOUND", &[("DIR", &"SimGolf"), ("MISSING", &lacks.join(", "))]));
+    }
+    import::install(staging, dest).map_err(import_error)
+}
+
+/// Starts unpacking `zip` (or copying the game folder in `dir`, `zip` false) into the import folder on a thread.
+fn start_import(src: PathBuf, zip: bool, remove_src: bool) {
+    let note = std::sync::Arc::new(std::sync::Mutex::new(tr("STR_GAME_FILES_IMPORTING").to_string()));
+    let n = note.clone();
+    let set = move |s: String| *n.lock().unwrap_or_else(|e| e.into_inner()) = s;
+    let job = std::thread::Builder::new().name("opensgolf-import".into()).spawn(move || {
+        let dest = import_target();
+        let staging = import::staging_for(&dest);
+        println!("importing the game files from {} into {}", src.display(), dest.display());
+        let r = if zip {
+            import::unzip_game(&src, &staging, &mut |i, n| {
+                if i % 25 == 0 || i == n {
+                    set(trf("STR_GAME_FILES_UNPACKING", &[("N", &i), ("OF", &n)]));
+                }
+            })
+            .map(|u| u.unread)
+            .map_err(import_error)
+        } else {
+            let root = locate(&src).map_err(|_| tr("STR_GAME_FILES_ZIP_NO_GAME").to_string());
+            root.and_then(|root| {
+                if remove_src {
+                    // Android: the Java side's copy, on the same storage: moved, not copied again
+                    import::install(&root, &staging).map_err(import_error)
+                } else {
+                    import::copy_tree(&root, &staging, &mut |i| set(trf("STR_GAME_FILES_COPYING", &[("N", &i)])))
+                        .map_err(import_error)
+                        .map(|_| ())
+                }
+            })
+            .map(|_| 0)
+        };
+        let r = r.and_then(|unread| finish_import(&staging, &dest).map(|_| unread));
+        if remove_src {
+            let _ = if zip { std::fs::remove_file(&src) } else { std::fs::remove_dir_all(&src) };
+        }
+        r
+    });
+    let stage = match job {
+        Ok(h) => Stage::Thread(h),
+        Err(e) => {
+            eprintln!("import: {e}");
+            return;
+        }
+    };
+    *IMPORT.lock().unwrap_or_else(|e| e.into_inner()) = Some(Import { stage, note, shown: String::new() });
 }
 
 /// The folder to copy the files to when there is no picker: the app's folder on Android, else `game` in the save folder.
@@ -406,8 +544,8 @@ impl App {
             return None;
         }
         if cfg!(target_os = "android") {
-            // only while the original files are not there yet
-            return self.on_free_set().then(|| (Action::Where, tr("STR_GAME_FILES_WHERE")));
+            // only while the original files are not there yet: the system's picker, the files copied into the app
+            return self.on_free_set().then(|| (Action::Pick, tr("STR_GAME_FILES_USE_MINE")));
         }
         if !self.on_free_set() {
             return Some((Action::Free, tr("STR_GAME_FILES_USE_FREE")));
@@ -419,7 +557,20 @@ impl App {
     /// Does what the title button or the Preferences line offers.
     pub fn files_action(&mut self, a: Action) {
         match a {
-            Action::Pick => self.choose_game_folder(),
+            Action::Pick => {
+                // a .zip or the folder: the system's pickers choose one or the other (macOS greys out files in a
+                // folder picker), so the game asks first
+                if IMPORT.lock().unwrap_or_else(|e| e.into_inner()).is_some() {
+                    return;
+                }
+                let mut lines = wrap(tr("STR_GAME_FILES_ASK_KIND"), 560.0);
+                lines.push(format!(" {}", tr("STR_GAME_FILES_KIND_ZIP")));
+                lines.push(format!(" {}", tr("STR_GAME_FILES_KIND_FOLDER")));
+                lines.push(format!(" {}", tr("STR_GAME_FILES_NOT_NOW")));
+                self.notice = Some(Notice { lines, confirm: Some(Action::PickZip), alt: Some(Action::PickFolder), sel: Some(0) });
+            }
+            Action::PickFolder => self.choose_game_folder(false),
+            Action::PickZip => self.choose_game_folder(true),
             Action::Free => self.use_free_graphics(),
             Action::Where => {
                 let msg = trf("STR_GAME_FILES_COPY_HERE", &[("DIR", &copy_target().display())]);
@@ -454,13 +605,26 @@ impl App {
         self.notice = Some(Notice { lines, confirm: Some(Action::CopyCrash), alt: None, sel: Some(0) });
     }
 
-    /// "Use my SimGolf files...": the system's folder picker, then the folder is checked; a good one is saved and the game
-    /// starts again on it, a wrong one is explained.
-    pub fn choose_game_folder(&mut self) {
+    /// "Use my SimGolf files...": the system's picker for the folder (or with `zip` a .zip of it), then it is checked; a
+    /// good folder is saved and the game starts again on it, a .zip is unpacked into the game's own folder first, a wrong
+    /// one is explained. On Android the system's picker answers later (android.rs), and what was picked is always copied.
+    pub fn choose_game_folder(&mut self, zip: bool) {
+        #[cfg(target_os = "android")]
+        if std::env::var_os(PICK_ENV).is_none() {
+            if crate::android::pick_game_files(!zip) {
+                let note = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+                *IMPORT.lock().unwrap_or_else(|e| e.into_inner()) = Some(Import { stage: Stage::Java, note, shown: String::new() });
+            }
+            return;
+        }
         let start = saved_dir().or_else(|| Some(self.game_dir.clone()));
-        let Some(picked) = pick_folder(start) else { return };
+        let Some(picked) = pick_path(start, zip) else { return };
         if picked.as_os_str() == "free" {
             self.use_free_graphics();
+            return;
+        }
+        if picked.is_file() {
+            start_import(picked, true, false);
             return;
         }
         if let Err(msg) = self.use_game_folder(&picked) {
@@ -469,20 +633,114 @@ impl App {
         }
     }
 
+    /// Each frame: an import in progress shows how far it is, and once done the game starts again on the files (a failure
+    /// is explained).
+    pub fn poll_import(&mut self) {
+        let mut slot = IMPORT.lock().unwrap_or_else(|e| e.into_inner());
+        #[cfg(target_os = "android")]
+        if let Some(job @ Import { stage: Stage::Java, .. }) = slot.as_mut() {
+            let state = crate::android::import_state();
+            let (what, arg) = state.split_once(':').unwrap_or((state.as_str(), ""));
+            match what {
+                "cancelled" => *slot = None,
+                "failed" => {
+                    *slot = None;
+                    drop(slot);
+                    eprintln!("import: {arg}");
+                    self.show_notice(&trf("STR_GAME_FILES_IMPORT_FAILED", &[("ERR", &arg)]));
+                    return;
+                }
+                "copying" => {
+                    let bytes = arg.rsplit(':').next().and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
+                    *job.note.lock().unwrap_or_else(|e| e.into_inner()) = trf("STR_GAME_FILES_COPYING_MB", &[("MB", &(bytes >> 20))]);
+                }
+                "zip" | "dir" => {
+                    *slot = None;
+                    drop(slot);
+                    start_import(PathBuf::from(arg), what == "zip", true);
+                    return;
+                }
+                _ => {}
+            }
+        }
+        let Some(job) = slot.as_mut() else { return };
+        let note = job.note.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        if note != job.shown && !note.is_empty() {
+            job.shown = note.clone();
+            self.notice = Some(Notice { lines: wrap(&note, 560.0), confirm: None, alt: None, sel: None });
+        }
+        let Stage::Thread(h) = &job.stage else { return };
+        if !h.is_finished() {
+            return;
+        }
+        let Some(Import { stage: Stage::Thread(h), .. }) = slot.take() else { return };
+        drop(slot);
+        self.notice = None;
+        match h.join().unwrap_or_else(|_| Err(trf("STR_GAME_FILES_IMPORT_FAILED", &[("ERR", &"panic")]))) {
+            Ok(unread) => {
+                let dest = import_target();
+                println!("game files imported into {}", dest.display());
+                let note = if unread > 0 {
+                    trf("STR_GAME_FILES_USING_SKIPPED", &[("N", &unread)])
+                } else {
+                    tr("STR_GAME_FILES_USING").to_string()
+                };
+                crate::content::save_base(None);
+                #[cfg(target_os = "android")]
+                {
+                    let _ = note;
+                    crate::android::restart();
+                    self.show_notice(tr("STR_GAME_FILES_RESTART"));
+                }
+                #[cfg(not(target_os = "android"))]
+                {
+                    save_game_dir(&dest);
+                    let e = restart(&note);
+                    eprintln!("restart: {e}");
+                    self.show_notice(tr("STR_GAME_FILES_RESTART"));
+                }
+            }
+            Err(msg) => self.show_notice(&msg),
+        }
+    }
+
     /// Checks a chosen folder; a good one is saved, the original files become the base set, and the game starts again on
-    /// them (this returns only when that failed). Err is the message for the player.
+    /// them (this returns only when that failed). Err is the message for the player. On macOS the files are copied into
+    /// the game's own folder first: macOS's privacy rules may refuse a later start the folder the player picked in
+    /// Desktop, Documents or Downloads (the picker's permission lasts only while this program runs).
     pub fn use_game_folder(&mut self, picked: &Path) -> Result<(), String> {
+        if no_access(picked) {
+            return Err(trf("STR_GAME_FILES_NO_ACCESS", &[("DIR", &picked.display())]));
+        }
         let dir = locate(picked).map_err(|lacks| {
             let lacks: Vec<String> = lacks.iter().map(|l| l.replace('/', std::path::MAIN_SEPARATOR_STR)).collect();
             let name = picked.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| picked.display().to_string());
             trf("STR_GAME_FILES_NOT_FOUND", &[("DIR", &name), ("MISSING", &lacks.join(", "))])
         })?;
+        if cfg!(any(target_os = "macos", target_os = "android")) && !dir.starts_with(import_target()) {
+            start_import(dir, false, false);
+            return Ok(());
+        }
         save_game_dir(&dir);
         crate::content::save_base(None);
         println!("game folder: {}", dir.display());
         let e = restart(tr("STR_GAME_FILES_USING"));
         eprintln!("restart: {e}");
         Err(tr("STR_GAME_FILES_RESTART").to_string())
+    }
+
+    /// After a restart on the player's files (`note` the restart's line): None when they are the ones loaded, else what
+    /// went wrong.
+    pub fn files_not_loaded(&self, note: &str) -> Option<String> {
+        if note == tr("STR_GAME_FILES_USING_FREE") || !self.on_free_set() || cfg!(any(target_arch = "wasm32", target_os = "android")) {
+            return None;
+        }
+        let dir = saved_dir()?;
+        Some(if no_access(&dir) {
+            trf("STR_GAME_FILES_NO_ACCESS", &[("DIR", &dir.display())])
+        } else {
+            trf("STR_GAME_FILES_LOST", &[("DIR", &dir.display())])
+        })
     }
 
     /// "Use the free graphics": the free base set becomes the saved choice and the game starts again on it.
@@ -646,6 +904,12 @@ mod tests {
         }
         std::fs::write(lower.join("interface/titlebase.pcx"), b"x").unwrap();
         assert_eq!(locate(&lower).unwrap(), lower);
+        // deeper, under any names (a zip unpacked into a folder of its own), as the browser's loader finds it
+        let deep = root.join("Downloads");
+        let data = deep.join("files 2").join("unpacked").join("Sid Meier's Golf");
+        fake_game(&data);
+        std::fs::create_dir_all(deep.join("__MACOSX").join("x").join("Flics")).unwrap();
+        assert_eq!(locate(&deep).unwrap(), data);
         let _ = std::fs::remove_dir_all(&root);
     }
 

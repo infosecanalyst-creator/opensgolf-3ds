@@ -18,6 +18,11 @@
 //!   App::show_crash_report). A crash in native code (no panic) is found there through Android's record of how the
 //!   app's last run ended (`ApplicationExitInfo`, Android 11 and newer).
 //!
+//! * "Use my SimGolf files..." opens Android's own picker for a .zip of the game folder or the folder itself
+//!   ([`pick_game_files`]); the activity's Java side copies the pick into the app's folders and the game unpacks it into
+//!   `Android/data/org.opensgolf.game/files/game` (gamefiles.rs, import.rs), then starts again ([`restart`]). No
+//!   permission is needed: the picker grants access to what the player picked.
+//!
 //! Everything else here is plain JNI calls on miniquad's activity (miniquad's own `quad_native` Java glue).
 
 use miniquad::native::android::{self, ndk_sys};
@@ -162,12 +167,17 @@ pub fn files_dir() -> PathBuf {
     dirs().files.clone().unwrap_or_else(|| PathBuf::from("/data/data/org.opensgolf.game/files"))
 }
 
+/// `<external files folder>/game`: where "Use my SimGolf files..." puts the files the player picked (gamefiles.rs).
+pub fn game_root() -> PathBuf {
+    let base = dirs().external.clone().unwrap_or_else(|| PathBuf::from("/sdcard/Android/data/org.opensgolf.game/files"));
+    base.join("game")
+}
+
 /// Where a player's copy of the original game goes: `<external files folder>/game`, which may hold the game's
 /// `Program_Files_(ENGLISH)` folder (the whole installed folder copied over) or be that folder itself. The folder is
 /// created, empty, so the player finds it with a file manager.
 pub fn game_dir() -> PathBuf {
-    let base = dirs().external.clone().unwrap_or_else(|| PathBuf::from("/sdcard/Android/data/org.opensgolf.game/files"));
-    let game = base.join("game");
+    let game = game_root();
     let _ = std::fs::create_dir_all(&game);
     let inner = game.join("Program_Files_(ENGLISH)");
     if inner.is_dir() {
@@ -194,11 +204,117 @@ pub fn init() {
         if activity.is_null() {
             return;
         }
+        pick_test_hook();
         let env = android::attach_jni_env();
         let mut vm: *mut ndk_sys::JavaVM = std::ptr::null_mut();
-        if (**env).GetJavaVM.unwrap()(env, &mut vm) == 0 && !vm.is_null() {
+        // once per process: an activity made again in the same process (Android may do that) runs `main` again, and
+        // ndk_context panics when set twice
+        static CONTEXT_SET: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if (**env).GetJavaVM.unwrap()(env, &mut vm) == 0 && !vm.is_null() && !CONTEXT_SET.swap(true, std::sync::atomic::Ordering::SeqCst) {
             ndk_context::initialize_android_context(vm as *mut _, activity as *mut _);
         }
+    }
+}
+
+/// A Java string as a Rust one (None for null).
+unsafe fn rust_string(env: *mut ndk_sys::JNIEnv, s: ndk_sys::jobject) -> Option<String> {
+    if s.is_null() {
+        return None;
+    }
+    let chars = (**env).GetStringUTFChars.unwrap()(env, s, std::ptr::null_mut());
+    if chars.is_null() {
+        return None;
+    }
+    let out = CStr::from_ptr(chars).to_string_lossy().into_owned();
+    (**env).ReleaseStringUTFChars.unwrap()(env, s, chars);
+    (**env).DeleteLocalRef.unwrap()(env, s);
+    Some(out)
+}
+
+/// True when the last JNI call threw (the exception is logged and cleared).
+unsafe fn threw(env: *mut ndk_sys::JNIEnv) -> bool {
+    if (**env).ExceptionCheck.unwrap()(env) == 0 {
+        return false;
+    }
+    (**env).ExceptionDescribe.unwrap()(env);
+    (**env).ExceptionClear.unwrap()(env);
+    true
+}
+
+/// "Use my SimGolf files...": opens Android's own picker (MainActivity.pickGameFiles, vendor/miniquad/java), for the game
+/// folder (`folder`, ACTION_OPEN_DOCUMENT_TREE) or a .zip of it (ACTION_OPEN_DOCUMENT). The Java side copies what was
+/// picked into the app's folders on a thread of its own: a .zip to `import.zip` in the internal data folder, a folder to
+/// `import` in the external files folder; [`import_state`] says how far it is. False when the picker could not be asked
+/// for.
+pub fn pick_game_files(folder: bool) -> bool {
+    let dest = if folder { game_root().with_file_name("import") } else { files_dir().join("import.zip") };
+    unsafe {
+        let activity = android::ACTIVITY;
+        if activity.is_null() {
+            return false;
+        }
+        let env = android::attach_jni_env();
+        let Ok(c) = CString::new(dest.to_string_lossy().into_owned()) else { return false };
+        let jdest = (**env).NewStringUTF.unwrap()(env, c.as_ptr());
+        miniquad::call_void_method!(env, activity, "pickGameFiles", "(ZLjava/lang/String;)V", folder as c_int, jdest);
+        (**env).DeleteLocalRef.unwrap()(env, jdest);
+        println!("asked Android's picker for {}", if folder { "a folder" } else { "a .zip" });
+        !threw(env)
+    }
+}
+
+/// How the import [`pick_game_files`] started is going (MainActivity.importState): "picking" (the picker is up),
+/// "cancelled", "copying:FILES:BYTES", "zip:PATH" or "dir:PATH" (copied: the game goes on from there), "failed:WHY".
+pub fn import_state() -> String {
+    unsafe {
+        let activity = android::ACTIVITY;
+        if activity.is_null() {
+            return "failed:no activity".into();
+        }
+        let env = android::attach_jni_env();
+        let s = miniquad::call_object_method!(env, activity, "importState", "()Ljava/lang/String;");
+        if threw(env) {
+            return "failed:importState".into();
+        }
+        rust_string(env, s).unwrap_or_default()
+    }
+}
+
+/// Starts the app again (MainActivity.restartApp): the original's files load from the start on the new run, as a desktop
+/// program starts itself again (gamefiles.rs).
+pub fn restart() {
+    println!("starting the app again on the player's files");
+    unsafe {
+        let activity = android::ACTIVITY;
+        if activity.is_null() {
+            return;
+        }
+        let env = android::attach_jni_env();
+        miniquad::call_void_method!(env, activity, "restartApp", "()V");
+        threw(env);
+    }
+}
+
+/// Test hook: the intent's `sg_pick` extra (`adb shell am start -n org.opensgolf.game/.MainActivity --es sg_pick PATH`)
+/// is taken as what was picked in "Use my SimGolf files..." (a .zip or a folder the app can read), as SG_PICK_FOLDER does
+/// on a desktop (gamefiles.rs). Read once, from `init`.
+unsafe fn pick_test_hook() {
+    let activity = android::ACTIVITY;
+    let env = android::attach_jni_env();
+    let intent = miniquad::call_object_method!(env, activity, "getIntent", "()Landroid/content/Intent;");
+    if threw(env) || intent.is_null() {
+        return;
+    }
+    let key = (**env).NewStringUTF.unwrap()(env, c"sg_pick".as_ptr());
+    let v = miniquad::call_object_method!(env, intent, "getStringExtra", "(Ljava/lang/String;)Ljava/lang/String;", key);
+    (**env).DeleteLocalRef.unwrap()(env, key);
+    (**env).DeleteLocalRef.unwrap()(env, intent);
+    if threw(env) {
+        return;
+    }
+    if let Some(p) = rust_string(env, v).filter(|p| !p.is_empty()) {
+        println!("test hook: {p} taken as picked");
+        std::env::set_var(crate::gamefiles::PICK_ENV, p);
     }
 }
 

@@ -4,8 +4,8 @@
 //! and draw (0x435760) and the sheet's cuts in the interface loader (0x4477d0); footage of the original shows the same
 //! ("Mahatma", "Georgia" on hole 1, "Julie" and "Bobbie" going home, with four hearts).
 //!
-//! Hit codes: 0..15 the list cells (row + 4 * column), -2 the Golfers tab, -3 the Player tab, -4 the Employee panel, -5 and
-//! -6 the scroll arrows, -1 nothing.
+//! Hit codes: 0..15 the list cells (row + 4 * column; with the bug fix 0..47, row + 6 * column, in the compact list), -2
+//! the Golfers tab, -3 the Player tab, -4 the Employee panel, -5 and -6 the scroll arrows, -1 nothing.
 
 use crate::app::*;
 use crate::gfx::Gfx;
@@ -53,7 +53,14 @@ impl App {
         let (x, y) = (px.floor() as i32, py.floor() as i32);
         let mut h = -1;
         if x > 309 && y > 497 {
-            h = ((y - 498) / 21).clamp(0, 3) + 4 * ((x - 310) / 121).clamp(0, 3);
+            h = if self.member_compact() && crate::enhanced::fix_bugs() {
+                // "Fix original bugs" (docs/FIXES.md 11): the compact list (zoomed out) is drawn six rows of 14 to a column,
+                // columns 60 apart, but the exe tests the large layout's cells, so a click picked the wrong golfer; with the
+                // setting the click takes the cell under it as drawn
+                ((y - 498) / 14).clamp(0, 5) + 6 * ((x - 310) / 60).clamp(0, 7)
+            } else {
+                ((y - 498) / 21).clamp(0, 3) + 4 * ((x - 310) / 121).clamp(0, 3)
+            };
         }
         if TAB_GOLFERS.has(px, py) {
             h = -2;
@@ -181,8 +188,13 @@ impl App {
     /// step; the right arrow always adds and the draw takes it back while the list is shorter).
     pub fn member_click(&mut self, h: i32) -> bool {
         match h {
-            0..=15 => {
+            0..=47 => {
                 let Some(&gi) = self.member_cells.get(h as usize) else { return false };
+                // the cells are the last frame's: a golfer who has left the course since (his slot empty, at 0, 0) is not
+                // looked for
+                if !self.listed_golfers().contains(&gi) {
+                    return false;
+                }
                 let (x, z) = self.units_to_world(self.club.g[gi].x, self.club.g[gi].y);
                 self.cam_x = x;
                 self.cam_z = z;

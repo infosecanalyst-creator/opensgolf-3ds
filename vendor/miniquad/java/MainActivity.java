@@ -25,6 +25,16 @@ import android.content.res.Configuration;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 
+import android.database.Cursor;
+import android.net.Uri;
+import android.provider.DocumentsContract;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+
 import android.graphics.Color;
 import android.graphics.Insets;
 import android.view.inputmethod.InputConnection;
@@ -318,6 +328,161 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         //% MAIN_ACTIVITY_ON_ACTIVITY_RESULT
+
+        if (requestCode == PICK_ZIP || requestCode == PICK_TREE) {
+            onGameFilesPicked(requestCode == PICK_TREE, resultCode, data);
+        }
+    }
+
+    // OpenSGolf: "Use my SimGolf files..." (crates/simgolf/src/android.rs). Since Android 11 a file manager cannot reach
+    // Android/data/org.opensgolf.game, so the game asks Android's own picker for a .zip of the SimGolf folder
+    // (ACTION_OPEN_DOCUMENT) or the folder itself (ACTION_OPEN_DOCUMENT_TREE), and what the player picked is copied here,
+    // on a thread, into the app's own folders: the game reads importState() each frame and unpacks the copy (import.rs).
+    // The picker grants access to what was picked: no storage permission is needed.
+    private static final int PICK_ZIP = 7301;
+    private static final int PICK_TREE = 7302;
+    // static: the copy outlives an activity that Android makes again while its picker is in front
+    private static volatile String importState = "";
+    private static String importDest;
+    private static long importFiles, importBytes;
+
+    public String importState() {
+        return importState;
+    }
+
+    public void pickGameFiles(final boolean folder, final String dest) {
+        importState = "picking";
+        importDest = dest;
+        runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    Intent i;
+                    if (folder) {
+                        i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+                    } else {
+                        i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                        i.addCategory(Intent.CATEGORY_OPENABLE);
+                        i.setType("*/*");
+                        i.putExtra(Intent.EXTRA_MIME_TYPES, new String[] {
+                            "application/zip", "application/x-zip-compressed", "application/x-zip", "application/octet-stream"
+                        });
+                    }
+                    try {
+                        startActivityForResult(i, folder ? PICK_TREE : PICK_ZIP);
+                    } catch (Exception e) {
+                        importState = "failed:" + e;
+                    }
+                }
+            });
+    }
+
+    private void onGameFilesPicked(final boolean tree, int resultCode, Intent data) {
+        final Uri uri = data == null ? null : data.getData();
+        if (resultCode != RESULT_OK || uri == null) {
+            importState = "cancelled";
+            return;
+        }
+        Log.i("OpenSGolf", "picked " + uri);
+        importFiles = 0;
+        importBytes = 0;
+        importState = "copying:0:0";
+        new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        File dest = new File(importDest);
+                        deleteTree(dest);
+                        if (tree) {
+                            dest.mkdirs();
+                            copyTree(uri, DocumentsContract.getTreeDocumentId(uri), dest);
+                            importState = "dir:" + dest.getAbsolutePath();
+                        } else {
+                            dest.getParentFile().mkdirs();
+                            copyFile(uri, dest);
+                            importState = "zip:" + dest.getAbsolutePath();
+                        }
+                    } catch (Throwable e) {
+                        Log.e("OpenSGolf", "copying the picked files failed", e);
+                        importState = "failed:" + e.getMessage();
+                    }
+                }
+            }, "opensgolf-copy").start();
+    }
+
+    // What the game does not need (as import.rs): a Mac's resource forks, videos, Windows programs.
+    private static boolean skipName(String low) {
+        return low.equals("__macosx") || low.startsWith("._") || low.equals(".ds_store") || low.endsWith(".bik")
+            || low.endsWith(".exe") || low.endsWith(".dll") || low.endsWith(".lib");
+    }
+
+    private void copyTree(Uri tree, String docId, File dest) throws IOException {
+        Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, docId);
+        String[] cols = { DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                          DocumentsContract.Document.COLUMN_MIME_TYPE };
+        Cursor c = getContentResolver().query(children, cols, null, null, null);
+        if (c == null) {
+            throw new IOException("cannot list " + docId);
+        }
+        try {
+            while (c.moveToNext()) {
+                String id = c.getString(0), name = c.getString(1), mime = c.getString(2);
+                if (name == null || name.contains("/") || name.equals(".") || name.equals("..")
+                    || skipName(name.toLowerCase())) {
+                    continue;
+                }
+                File out = new File(dest, name);
+                if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
+                    out.mkdirs();
+                    copyTree(tree, id, out);
+                } else {
+                    copyFile(DocumentsContract.buildDocumentUriUsingTree(tree, id), out);
+                    importFiles++;
+                }
+            }
+        } finally {
+            c.close();
+        }
+    }
+
+    private void copyFile(Uri from, File to) throws IOException {
+        InputStream in = getContentResolver().openInputStream(from);
+        if (in == null) {
+            throw new IOException("cannot open " + from);
+        }
+        OutputStream out = new FileOutputStream(to);
+        try {
+            byte[] buf = new byte[1 << 16];
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                out.write(buf, 0, n);
+                importBytes += n;
+                importState = "copying:" + importFiles + ":" + importBytes;
+            }
+        } finally {
+            in.close();
+            out.close();
+        }
+    }
+
+    private static void deleteTree(File f) {
+        File[] kids = f.listFiles();
+        if (kids != null) {
+            for (File k : kids) {
+                deleteTree(k);
+            }
+        }
+        f.delete();
+    }
+
+    // OpenSGolf: starts the app again (the player's files load from the start on a new run, as on a desktop).
+    public void restartApp() {
+        runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    startActivity(Intent.makeRestartActivityTask(getComponentName()));
+                    android.os.Process.killProcess(android.os.Process.myPid());
+                }
+            });
     }
 
     public void setFullScreen(final boolean fullscreen) {

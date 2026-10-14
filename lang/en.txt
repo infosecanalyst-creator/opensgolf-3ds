@@ -2403,7 +2403,6 @@ STR_CTL_PATH_VIEW                       :Path view off / on
 # The player's own SimGolf files (the port's own, gamefiles.rs): the title screen's button and the Preferences line
 STR_GAME_FILES_USE_MINE                 :Use my SimGolf files...
 STR_GAME_FILES_USE_FREE                 :Use the free graphics
-STR_GAME_FILES_WHERE                    :Where do my SimGolf files go?
 # The title of the system's folder picker
 STR_GAME_FILES_PICK_TITLE               :Choose the folder SimGolf is installed in
 # Shown once on the title screen when no SimGolf files were found
@@ -2420,6 +2419,24 @@ STR_GAME_FILES_ASK_RESTART              :OpenSGolf starts again to change its gr
 STR_GAME_FILES_GO_ON                    :Start again now
 STR_GAME_FILES_NOT_NOW                  :Not now
 STR_GAME_FILES_RESTART                  :Your choice is saved. Start OpenSGolf again to use it.
+# "Use my SimGolf files...": a .zip of the game folder, or the folder itself
+STR_GAME_FILES_ASK_KIND                 :Where are your SimGolf files? A .zip of the SimGolf folder, or the folder itself (the one with the Flics, Interface and Data folders, or any folder above it).
+STR_GAME_FILES_KIND_ZIP                 :A .zip file
+STR_GAME_FILES_KIND_FOLDER              :A folder
+STR_GAME_FILES_PICK_ZIP_TITLE           :Choose a .zip of your SimGolf folder
+# Bringing the files into OpenSGolf's own folder (a .zip unpacked, a folder copied); {N} and {OF} count files
+STR_GAME_FILES_IMPORTING                :Getting your SimGolf files ready...
+STR_GAME_FILES_UNPACKING                :Unpacking your SimGolf files: {N} of {OF}...
+STR_GAME_FILES_COPYING                  :Copying your SimGolf files: {N} files...
+STR_GAME_FILES_COPYING_MB               :Copying your SimGolf files into OpenSGolf: {MB} MB...
+STR_GAME_FILES_BAD_ZIP                  :OpenSGolf could not read that .zip ({ERR}). Make the .zip again, or unpack it and choose the folder.
+STR_GAME_FILES_ZIP_NO_GAME              :That does not hold SimGolf's game files (no Flics folder in it). Choose a .zip of the folder SimGolf is installed in (the one with the Flics, Interface and Data folders), or of the CD's Program_Files_(ENGLISH).
+STR_GAME_FILES_IMPORT_FAILED            :Your SimGolf files could not be copied: {ERR}
+STR_GAME_FILES_USING_SKIPPED            :Playing with your own SimGolf files. {N} files in the .zip use a compression OpenSGolf cannot unpack and were left out: if something is missing, zip the folder again with normal (Deflate) compression.
+# The system does not let the game read the folder ({DIR})
+STR_GAME_FILES_NO_ACCESS                :Your computer does not let OpenSGolf read "{DIR}". On a Mac, allow OpenSGolf in System Settings > Privacy & Security > Files and Folders, or choose a .zip of the folder instead. Or move the SimGolf folder somewhere else, such as your home folder.
+# After a restart: the folder chosen ({DIR}) could not be loaded
+STR_GAME_FILES_LOST                     :OpenSGolf could not find SimGolf's game files in "{DIR}" on this start, so it plays with its free graphics. Choose 'Use my SimGolf files...' again.
 # Android: shown at start when the last run crashed; the report can be copied and sent
 STR_CRASH_LAST                          :Sorry, OpenSGolf closed unexpectedly last time. A report of what went wrong is ready: copy it and send it to the developers (an issue on OpenSGolf's GitHub page, or a message) to help fix it.
 STR_CRASH_COPY                          :Copy the report
