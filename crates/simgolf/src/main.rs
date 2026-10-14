@@ -300,6 +300,9 @@ fn parse_args() -> Options {
 }
 
 struct Stage {
+    /// the desktop window is full screen (F11 or Alt+Enter)
+    #[cfg_attr(any(target_arch = "wasm32", target_os = "android"), allow(dead_code))]
+    fullscreen: bool,
     g: Gfx,
     app: App,
     png_out: Option<PathBuf>,
@@ -1210,6 +1213,7 @@ impl Stage {
         Stage {
             g,
             app,
+            fullscreen: false,
             png_out: o.png_out,
             save_game_out: o.save_game,
             frames: 0,
@@ -2729,6 +2733,14 @@ impl EventHandler for Stage {
         // Android's back button (miniquad hands it over as Back): Esc, which closes a screen, goes back to the menu and
         // on the menu quits, as the back button does in Android apps
         let k = if k == KeyCode::Back { KeyCode::Escape } else { k };
+        // the port's own: F11 or Alt+Enter switches between a window and full screen on the desktop (the browser has its
+        // own F11; a phone is always full screen)
+        #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+        if k == KeyCode::F11 || (mods.alt && matches!(k, KeyCode::Enter | KeyCode::KpEnter)) {
+            self.fullscreen = !self.fullscreen;
+            miniquad::window::set_fullscreen(self.fullscreen);
+            return;
+        }
         // the port's own: Alt (Option on a Mac) or Ctrl with 1 to 9 and 0 stand for F1 to F10, for keyboards whose function
         // keys need Fn (Macs, laptops) or act on the browser
         let k = if mods.alt || mods.ctrl { fkey_of_digit(k).unwrap_or(k) } else { k };
