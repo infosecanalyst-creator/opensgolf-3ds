@@ -980,8 +980,23 @@ impl Stage {
         // the free set's sounds stand in for a copy whose own cannot be played; the player is told once (sound_note)
         mixer.with_fallback();
         let sound_note = mixer.check().err().filter(|_| content::has_original(&app.game_dir)).map(|e| {
-            eprintln!("sound: the game's own sounds cannot be played ({e}); playing the free set's sounds");
+            audio::log(&format!("sound: the game's own sounds cannot be played ({e}); playing the free set's sounds"));
             sg_core::lang::trf("STR_SOUND_CANNOT_PLAY", &[("WHY", &e)])
+        });
+        // what the sound plays from, in the log and in a browser's console (audio::log)
+        let own = !app.on_free_set() && content::has_original(&app.game_dir);
+        let count = mixer.list("").len();
+        audio::log(&if mixer.is_empty() {
+            format!("sound: no sounds at all ({}): the game is silent", mixer.last_error())
+        } else if own && !mixer.all_free() {
+            format!(
+                "sound: {count} sounds from your SimGolf files{}",
+                if sound_note.is_some() { " (some cannot be played: the free set's stand in)" } else { "" }
+            )
+        } else if own {
+            format!("sound: your SimGolf files hold no sounds; playing the {count} free OpenSGolf sounds")
+        } else {
+            format!("sound: {count} free OpenSGolf sounds")
         });
         if mixer.is_empty() {
             eprintln!("sound: {}", mixer.last_error());
@@ -991,7 +1006,7 @@ impl Stage {
             if !app.mute && o.png_out.is_none() {
                 app.audio = audio::open(mixer);
                 if app.audio.is_none() {
-                    eprintln!("sound: no audio device, running silent");
+                    audio::log("sound: no audio device, running silent");
                 }
             }
         }
