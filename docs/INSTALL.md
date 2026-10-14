@@ -2,8 +2,10 @@
 
 Every [release](https://github.com/crspytopgn/opensgolf/releases) has a package for each platform: unpack it and
 double-click. It starts on the free base set. Have SimGolf? Choose **Use my SimGolf files...** on the title screen (or in
-Preferences) and pick the folder SimGolf is installed in, or the CD's `Program_Files_(ENGLISH)` copied to your computer; the
-game remembers it. It also finds a usual install by itself (`Program Files\Maxis\SimGolf`, `~/SimGolf`, a Wine install, or a
+Preferences) and pick either **a .zip** of your SimGolf folder (the same .zip the browser version takes) or **the folder**
+SimGolf is installed in (or the CD's `Program_Files_(ENGLISH)` copied to your computer, or any folder above it); the game
+remembers it. A .zip is unpacked into the game's own folder (`game` in the save folder), leaving out the videos, the
+Windows programs and a Mac's `__MACOSX` files; afterwards the .zip is no longer needed. It also finds a usual install by itself (`Program Files\Maxis\SimGolf`, `~/SimGolf`, a Wine install, or a
 `SimGolf` folder next to the program; the full list is in [PLAYING.md](PLAYING.md#your-own-simgolf-files)). *Use the free
 graphics* goes back. No Terminal and no options are needed (`--game DIR` remains for scripts).
 
@@ -22,11 +24,15 @@ graphics* goes back. No Terminal and no options are needed (`--game DIR` remains
   unknown apps*); allow it and install. The app is not in an app store and is signed with a development (debug) key, so a
   newer version may refuse to install over an older one: then uninstall the old one first (that removes its saves; copy them
   out of the app first if you want them, see below). The game plays in landscape, full screen, by touch
-  ([docs/PLAYING.md, Touch](PLAYING.md#touch-phones-and-tablets)). **Your own copy of SimGolf on Android**: start the app
-  once (it creates its folder), then copy your game's `Program_Files_(ENGLISH)` folder from a computer (USB cable, file
-  transfer) into `Android/data/org.opensgolf.game/files/game/` on the device's storage, so that
-  `.../files/game/Program_Files_(ENGLISH)/Flics` exists (copying the folder's contents straight into `game/` works too), and
-  start the app again (the title screen's **Where do my SimGolf files go?** shows the folder). Saves, settings and packs are in the app's private storage (`/data/data/org.opensgolf.game/files`).
+  ([docs/PLAYING.md, Touch](PLAYING.md#touch-phones-and-tablets)). **Your own copy of SimGolf on Android**: put a .zip of
+  your SimGolf folder (or the folder itself) anywhere on the phone (Downloads, a USB stick, Google Drive...), tap **Use my
+  SimGolf files...** on the title screen, choose **A .zip file** or **A folder**, and pick it in Android's file picker
+  (for a folder, Android asks to *Allow* OpenSGolf to see it; it cannot pick the top of the storage or the Download folder
+  itself, so put the SimGolf folder in a folder of its own). The game copies the files into its own storage, showing how far
+  it is, and starts again with them; afterwards the .zip or folder you picked is no longer needed. A .zip is the quickest way
+  (Android's folder picker copies file by file). The files end up in `Android/data/org.opensgolf.game/files/game/`; copying
+  them there by hand also still works, but Android 11 and newer hide that folder from file managers and USB (only `adb push`
+  reaches it). Saves, settings and packs are in the app's private storage (`/data/data/org.opensgolf.game/files`).
   **If the app closes right away**: version 0.1.0's APK closed the moment it was opened on every phone (its library could not
   be loaded: the C++ runtime of the sound output was missing from it); install a newer one. Should the app still close or
   freeze, the next start shows a box saying so, whose **Copy the report** button copies what went wrong (paste it into an

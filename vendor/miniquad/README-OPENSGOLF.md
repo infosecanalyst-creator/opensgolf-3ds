@@ -23,4 +23,9 @@ with the last part of the Android package name (`org.opensgolf.game` gives `game
 after the crate (`libopensgolf.so`), so every build closed at start with `UnsatisfiedLinkError: dlopen failed: library
 "libgame.so" not found` (tools/android_build.sh now checks the two match).
 
+Also in `java/MainActivity.java` (OpenSGolf's own, not an upstream fix): `pickGameFiles`, `importState`,
+`onActivityResult` and `restartApp` for "Use my SimGolf files..." on Android (crates/simgolf/src/android.rs): Android's
+own picker for a .zip or a folder, the pick copied into the app's folders on a thread, and the app started again. A
+newer upstream would need these carried over.
+
 Drop this copy when an upstream release carries the fixes.

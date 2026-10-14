@@ -49,6 +49,7 @@ mod hd;
 mod history_ui;
 mod holemarks;
 mod hud_ui;
+mod import;
 mod info_ui;
 mod keys_ui;
 mod language;
@@ -1152,6 +1153,10 @@ impl Stage {
         // the program started again on the graphics the player chose (gamefiles.rs)
         if let Some(msg) = gamefiles::take_notice() {
             app.show_toast(&msg);
+            // the player's files were chosen, but the game could not read them on this start: why, in a box
+            if let Some(why) = app.files_not_loaded(&msg) {
+                app.show_notice(&why);
+            }
         }
         // the player's copy has sounds the game cannot play: said in a box once (until the reason changes), in the
         // ticker on every start
@@ -1169,7 +1174,7 @@ impl Stage {
         // test hook: SG_PICK_FOLDER=DIR takes DIR as the folder picked in "Use my SimGolf files..." ("free": Use the free
         // graphics), as if chosen on the title screen
         if std::env::var_os(gamefiles::PICK_ENV).is_some() {
-            app.choose_game_folder();
+            app.choose_game_folder(false);
         }
         Stage {
             g,
@@ -2213,6 +2218,8 @@ impl EventHandler for Stage {
         }
         // the --screen test hook's extras screens that need the game to have run first (extras.rs)
         self.app.extras_test_hook();
+        // "Use my SimGolf files...": a .zip being unpacked or a folder being copied (gamefiles.rs)
+        self.app.poll_import();
         let app = &mut self.app;
         // the board terminated the contract: the main loop asks what next as soon as the game is back on the course
         if app.econ.game_over && app.screen == Screen::Play && app.popup.is_none() {
