@@ -346,7 +346,11 @@ impl crate::app::App {
         if roster < 0 {
             return None;
         }
-        (0..sg_core::golfer::SLOTS).find(|&g| self.club.g[g].roster == roster && self.club.g[g].hole > 0 && self.club.g[g].hole < 19)
+        // on a hole, else walking off the course (hole 19): the People screen lists both
+        let find = |holes: std::ops::RangeInclusive<i32>| {
+            (0..sg_core::golfer::SLOTS).find(|&g| self.club.g[g].roster == roster && holes.contains(&self.club.g[g].hole))
+        };
+        find(1..=18).or_else(|| find(19..=19))
     }
 
     /// The camera to a map point (units).

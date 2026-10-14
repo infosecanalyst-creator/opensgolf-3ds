@@ -77,13 +77,14 @@ const GOLFER_COLS: [Col; 6] = [
     Col("STR_PEOPLE_COL_HCP", 454.0, 70.0),
     Col("STR_PEOPLE_COL_SPENT", 526.0, 100.0),
 ];
+// wide enough for the longest job ("Groundskeeper") and month ("September 2001") in the game's own font
 const STAFF_COLS: [Col; 6] = [
-    Col("STR_PEOPLE_COL_NAME", 24.0, 196.0),
-    Col("STR_PEOPLE_COL_JOB", 222.0, 110.0),
-    Col("STR_PEOPLE_COL_HIRED", 334.0, 96.0),
-    Col("STR_PEOPLE_COL_WAGE", 432.0, 70.0),
-    Col("STR_PEOPLE_COL_SERVED", 504.0, 60.0),
-    Col("STR_PEOPLE_COL_PAID", 566.0, 76.0),
+    Col("STR_PEOPLE_COL_NAME", 24.0, 160.0),
+    Col("STR_PEOPLE_COL_JOB", 186.0, 136.0),
+    Col("STR_PEOPLE_COL_HIRED", 324.0, 128.0),
+    Col("STR_PEOPLE_COL_WAGE", 454.0, 70.0),
+    Col("STR_PEOPLE_COL_SERVED", 526.0, 62.0),
+    Col("STR_PEOPLE_COL_PAID", 590.0, 82.0),
 ];
 
 /// A row of either list: the cells' text, the sort keys (a number or a text), the face to draw in the mood column, and
