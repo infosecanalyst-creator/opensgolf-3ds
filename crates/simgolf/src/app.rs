@@ -3292,18 +3292,19 @@ impl App {
     pub fn zoom_step(&mut self, inward: bool) {
         if crate::enhanced::smooth_camera() {
             // Enhanced: from a zoom between levels, the next of the three levels that way
-            let levels = [ZOOM_UNIT, ZOOM_UNIT * 2.0, ZOOM_UNIT * 4.0];
+            let levels: Vec<f32> = (far_level()..=2).map(|l| ZOOM_UNIT * (l as f32).exp2()).collect();
             let z = self.zoom;
             self.zoom = if inward {
-                levels.iter().copied().find(|&l| l > z * 1.001).unwrap_or(levels[2])
+                levels.iter().copied().find(|&l| l > z * 1.001).unwrap_or(ZOOM_UNIT * 4.0)
             } else {
                 levels.iter().rev().copied().find(|&l| l < z / 1.001).unwrap_or(levels[0])
             };
             return;
         }
-        let level = (self.zoom / ZOOM_UNIT).log2().round().clamp(0.0, 2.0) as i32;
-        let level = if inward { (level + 1).min(2) } else { (level - 1).max(0) };
-        self.zoom = ZOOM_UNIT * (1 << level) as f32;
+        let far = far_level();
+        let level = (self.zoom / ZOOM_UNIT).log2().round().clamp(far as f32, 2.0) as i32;
+        let level = if inward { (level + 1).min(2) } else { (level - 1).max(far) };
+        self.zoom = ZOOM_UNIT * (level as f32).exp2();
     }
 
     /// PageUp / Home and the Rotate Map buttons: a quarter turn of the view (the exe's rotation steps by 2 of 8).
@@ -3357,6 +3358,23 @@ pub const DESIGN_TIP: &str = "STR_MSG_DESIGN_TIP";
 
 /// Our zoom at the exe's zoom level 1 (a tile 16 pixels wide on the 800 x 600 screen); its levels are 1, 2 and 4.
 pub const ZOOM_UNIT: f32 = 0.905 / 4.0;
+
+/// The farthest zoom level as a power of two of ZOOM_UNIT: 0 (the exe's level 1) on the original's 50 x 50 map, where it
+/// shows the whole course; a larger course size (sg_core::mapsize) gets a level or two further out (1/2 up to 100 tiles,
+/// 1/4 beyond), so its whole map fits on the screen as the original's does.
+pub fn far_level() -> i32 {
+    let n = sg_core::mapsize::n().max(sg_core::mapsize::ORIGINAL);
+    let mut level = 0;
+    while sg_core::mapsize::ORIGINAL << -level < n {
+        level -= 1;
+    }
+    level
+}
+
+/// The farthest zoom (ZOOM_UNIT on the original's map, see far_level).
+pub fn far_zoom() -> f32 {
+    ZOOM_UNIT * (far_level() as f32).exp2()
+}
 
 pub fn pitch_for(w: f32, h: f32) -> f64 {
     if w == 800.0 && h == 600.0 {

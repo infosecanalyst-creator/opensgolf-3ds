@@ -123,9 +123,10 @@ impl App {
     pub(crate) fn exe_zoom(&self) -> f32 {
         if crate::enhanced::smooth_camera() {
             // Enhanced's continuous zoom: the rules and the sizes keyed to the zoom take the nearest of the three levels
-            return (self.zoom / ZOOM_UNIT).log2().round().clamp(0.0, 2.0).exp2();
+            return (self.zoom / ZOOM_UNIT).log2().round().clamp(far_level() as f32, 2.0).exp2();
         }
-        (self.zoom / ZOOM_UNIT).max(1.0)
+        // below 1 only on a course larger than the original's, which zooms further out (far_level)
+        (self.zoom / ZOOM_UNIT).max(far_zoom() / ZOOM_UNIT)
     }
 
     /// Screen point (800 x 600) of a map point in 1/1024 tile units, on the ground.

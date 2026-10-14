@@ -62,6 +62,8 @@ SimGolf does; scenarios and championships always use their own course's size.
 
 What changes with the size (n is the map's edge in tiles, 50 on the original's map):
 
+- **The view** zooms further out, so the whole map fits on the screen as the original's does at its farthest zoom: one
+  more step (half the original's farthest) on Large and Huge, two (a quarter) on Giant.
 - **The land** is made by the same generator with its counts and places scaled: the woods are laid in n^2/2500 passes, there
   is one creek per 50 tiles of edge, the sea's width (5, between 2 and 12 tiles on the original) and the ponds' grid scale
   with n, the wildlife spots, property landmarks and difficulty obstacles grow with the area, and the clubhouse stands in the
