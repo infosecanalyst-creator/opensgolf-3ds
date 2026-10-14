@@ -13,8 +13,16 @@ graphics* goes back. No Terminal and no options are needed (`--game DIR` remains
   SmartScreen may warn that the program is unknown (it is not signed): *More info*, *Run anyway*. Saves go to
   `%APPDATA%\OpenSGolf`.
 * **macOS** (Apple silicon and Intel): unzip `opensgolf-macos.zip` and move `OpenSGolf.app` to Applications. It is not
-  notarised, so the first time right-click it and choose *Open* (or allow it under System Settings, Privacy & Security). Saves
-  go to `~/Library/Application Support/OpenSGolf`.
+  notarised, so the first time right-click it and choose *Open*; on macOS 15 and newer that no longer offers *Open*:
+  double-click it once, then System Settings → Privacy & Security → *Open Anyway* (near the bottom), and confirm. If macOS
+  says the app "is damaged and can't be opened", that is the download's quarantine flag, not damage: in Terminal run
+  `xattr -dr com.apple.quarantine /Applications/OpenSGolf.app` once. Saves go to `~/Library/Application Support/OpenSGolf`.
+  **Your SimGolf files on a Mac**: choose **Use my SimGolf files...**, then **A .zip file** and pick the .zip (a folder
+  picker on a Mac greys out .zip files, which is why the game asks which one first), or **A folder** and pick the unpacked
+  SimGolf folder. Either way the files are copied into `~/Library/Application Support/OpenSGolf/game`, because macOS's
+  privacy rules may stop the game from reading Desktop, Documents or Downloads on a later start. When macOS asks whether
+  OpenSGolf may access files in one of those folders, choose *Allow*; if you chose *Don't Allow* before, turn OpenSGolf on
+  under System Settings → Privacy & Security → Files and Folders (the game says so when it cannot read a folder).
 * **Linux** (x86_64, and 64-bit ARM such as a Raspberry Pi 4/5: the `-arm64` files): the AppImage (allow running it as a program in its Properties, or `chmod +x`, then double-click it), or
   unpack the `.tar.gz` and run `opensgolf` in its folder (`opensgolf.desktop` and `opensgolf.png` in it are for a menu entry).
   The folder picker asks the desktop through the XDG portal (GNOME, KDE and most desktops have it). Sound goes through ALSA
