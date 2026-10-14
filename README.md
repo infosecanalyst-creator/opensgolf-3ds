@@ -1,177 +1,128 @@
-<p align="center">
-  <a href="https://crspytopgn.github.io/opensgolf/"><img src="docs/images/hero.jpg" alt="OpenSGolf: a busy tropical golf resort with a clubhouse, pool, palm trees, golfers, a hot-air balloon and a blimp" width="100%"></a>
-</p>
+# OpenSGolf
 
-<h1 align="center">⛳ OpenSGolf</h1>
+[![Release](https://img.shields.io/github/v/release/crspytopgn/opensgolf?label=release)](https://github.com/crspytopgn/opensgolf/releases/latest)
+[![Licence: GPL-2.0-or-later](https://img.shields.io/badge/licence-GPL--2.0--or--later-blue)](LICENSE)
+[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/crspytopgn)
 
-<h3 align="center">Sid Meier's SimGolf, remastered. Free and open source, on PC, Mac, Linux, phones and in your browser.</h3>
+OpenSGolf is an open source game engine that plays Sid Meier's SimGolf (2002). It uses the original game's files if you
+have them, or its own free graphics and sound if you don't. It runs on Windows, macOS, Linux, Android and in the browser.
 
-<p align="center">
-  Build the golf resort of your dreams, then watch your golfers love it (or grumble about it).<br>
-  <em>An unofficial, fan-made project. Not affiliated with EA or Firaxis.</em>
-</p>
+![A golf course in OpenSGolf, played with the original SimGolf files](docs/images/golfers.jpg)
 
-<p align="center">
-  <a href="https://crspytopgn.github.io/opensgolf/"><b>▶ Play now in your browser</b></a> &nbsp;·&nbsp;
-  <a href="#download">Download</a> &nbsp;·&nbsp;
-  <a href="#what-you-get">What you get</a> &nbsp;·&nbsp;
-  <a href="#roadmap-03">Roadmap</a> &nbsp;·&nbsp;
-  <a href="docs/PLAYING.md">How to play</a>
-</p>
+<sub>Screenshot taken with the original SimGolf files (not included). More pictures on the
+[website](https://crspytopgn.github.io/opensgolf/).</sub>
 
-<p align="center">
-  <a href="https://buymeacoffee.com/crspytopgn"><img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black" alt="Buy me a coffee"></a>
-</p>
+## Table of contents
 
-## ▶ [Play now in your browser](https://crspytopgn.github.io/opensgolf/)
+- [About](#about)
+- [Playing](#playing)
+- [Game files: original or free](#game-files-original-or-free)
+- [Differences from the original](#differences-from-the-original)
+- [Reporting bugs and contributing](#reporting-bugs-and-contributing)
+- [Roadmap](#roadmap)
+- [Legal](#legal)
+- [Licence](#licence)
+- [Supporting the project](#supporting-the-project)
+- [For developers](#for-developers)
 
-Click the link, then **Choose game folder** and pick your SimGolf folder (or a .zip of it). That's it. Nothing to install.
-No copy of SimGolf? **Play with free graphics** to try it (an early beta, still a work in progress).
+## About
 
-## Download
+OpenSGolf is a reimplementation of the golf course management game Sid Meier's SimGolf (Firaxis, 2002), written in Rust.
+It aims to play exactly like the original, in the same way that OpenTTD does for Transport Tycoon Deluxe: the rules and
+numbers are rebuilt from facts read out of the original game, and with every option at its default the game looks and
+plays like the 2002 release.
 
-| Your device | Download | Then |
+On top of that it adds things the original never had: it runs on today's systems and screens, saves anywhere, fixes the
+original's own bugs, and offers optional extras and mods. Everything new is optional, and the original game is always one
+click away.
+
+## Playing
+
+The quickest way to play is in the browser: [crspytopgn.github.io/opensgolf](https://crspytopgn.github.io/opensgolf/).
+Nothing needs installing.
+
+Downloads for every system ([all releases](https://github.com/crspytopgn/opensgolf/releases)):
+
+| System | Download | Notes |
 |---|---|---|
-| 🍎 **Mac** | [OpenSGolf for Mac](https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-macos.zip) | Unzip, then **right-click OpenSGolf → Open** (first time only) |
-| 🪟 **Windows** | [OpenSGolf for Windows](https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-windows.zip) | Unzip, double-click **opensgolf**. If Windows warns: **More info → Run anyway** |
-| 💻 **Windows on ARM** (Snapdragon laptops, Surface Pro X) | [OpenSGolf for Windows on ARM](https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-windows-arm64.zip) | The same as Windows |
-| 🐧 **Linux** | [OpenSGolf for Linux](https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-linux-x86_64.AppImage) | Right-click → Properties → allow running as a program, then double-click |
-| 🍓 **Linux on ARM** (Raspberry Pi 4/5, ARM laptops) | [OpenSGolf for ARM Linux](https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-linux-arm64.AppImage) | The same as Linux. 64-bit systems only |
-| 🤖 **Android** | [OpenSGolf for Android](https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-android.apk) | Open the file on your phone and tap **Install** |
-| 📱 **iPhone / iPad** | [Play in the browser](https://crspytopgn.github.io/opensgolf/) | Works by touch in Safari |
+| Windows | [opensgolf-windows.zip](https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-windows.zip) | Unzip and run `opensgolf`. If Windows warns, choose *More info*, then *Run anyway*. |
+| Windows on ARM | [opensgolf-windows-arm64.zip](https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-windows-arm64.zip) | As for Windows. |
+| macOS | [opensgolf-macos.zip](https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-macos.zip) | Unzip, then right-click *OpenSGolf* and choose *Open* the first time. |
+| Linux | [AppImage](https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-linux-x86_64.AppImage) · [tar.gz](https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-linux-x86_64.tar.gz) | Mark the AppImage as executable and run it. |
+| Linux on ARM | [AppImage](https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-linux-arm64.AppImage) · [tar.gz](https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-linux-arm64.tar.gz) | 64-bit systems, for example a Raspberry Pi 4 or 5. |
+| Android | [opensgolf-android.apk](https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-android.apk) | Open the file on the phone and install it. |
+| iPhone and iPad | [Browser version](https://crspytopgn.github.io/opensgolf/) | Works by touch in Safari. |
 
-The warnings on Mac and Windows appear because OpenSGolf is a free project without a paid signing certificate; they show
-once. All versions: [releases](https://github.com/crspytopgn/opensgolf/releases).
+The Windows and macOS warnings appear because the project has no paid code-signing certificate. Details for each system
+are in [docs/INSTALL.md](docs/INSTALL.md); how to play, keys and touch controls are in [docs/PLAYING.md](docs/PLAYING.md).
 
-## Screenshots
+## Game files: original or free
 
-<table>
-  <tr>
-    <td width="33%"><a href="docs/images/golfers.jpg"><img src="docs/images/golfers.jpg" alt="Golfers playing a tropical course, with a thought over a golfer and a message from him"></a><br><sub><b>Golfers with minds of their own.</b> They think out loud and tell you what they like.</sub></td>
-    <td width="33%"><a href="docs/images/building.jpg"><img src="docs/images/building.jpg" alt="The Build Course panel open over the course"></a><br><sub><b>Build every hole yourself.</b> Paint fairways, greens, sand, water and trees.</sub></td>
-    <td width="33%"><a href="docs/images/classic-vs-enhanced.jpg"><img src="docs/images/classic-vs-enhanced.jpg" alt="The same view side by side: Classic and Enhanced graphics"></a><br><sub><b>Classic or Enhanced.</b> The original look, or sharp, smooth and lit for today's screens.</sub></td>
-  </tr>
-  <tr>
-    <td><a href="docs/images/weather.jpg"><img src="docs/images/weather.jpg" alt="The same course in the morning, at golden hour, in the rain and at dusk"></a><br><sub><b>Time of day and weather.</b> Golden hours, rain showers and lamps that light up at dusk.</sub></td>
-    <td><a href="docs/images/photo-mode.jpg"><img src="docs/images/photo-mode.jpg" alt="Photo mode at golden hour with its buttons along the bottom"></a><br><sub><b>Photo mode.</b> Pause, frame, blur and pick a look, then save a 4K picture.</sub></td>
-    <td><a href="docs/images/routing-map.jpg"><img src="docs/images/routing-map.jpg" alt="The Routing Map report of an 18-hole course"></a><br><sub><b>All the reports.</b> Routing map, course report, finances, ratings and more.</sub></td>
-  </tr>
-</table>
+OpenSGolf needs a set of graphics, sounds and text. There are two:
 
-<sub>Screenshots taken with the original SimGolf files (not included). Without them, OpenSGolf plays with its own free graphics.</sub>
+- **The original SimGolf files.** If you own the game, point OpenSGolf at your SimGolf folder, the one containing `Data`,
+  `Flics` and `Sounds` (on Windows usually `C:\Program Files\Maxis\SimGolf`), or at a .zip of it. In the browser,
+  choose *Choose game folder*; in the app, choose *Use my SimGolf files…* on the title screen. The files are read on your
+  own device and never uploaded.
+- **opensgolf-free**, the free base set. Like OpenGFX for OpenTTD, it contains nothing from the original: art, sounds and
+  text made by the engine itself. It is used automatically when no SimGolf files are found. It is simple for now and open
+  to contributions from artists.
 
-## What you get
+## Differences from the original
 
-### 🏌️ Plays like SimGolf
-* **The game you remember.** Pick a property, build holes, hire staff, add buildings, and keep the board happy.
-* **Golfers with personalities.** They walk, chat, get hungry and tired, tell stories, and pay more when they have fun.
-* **Your own pro.** Play practice rounds and matches against famous golfers, aim every shot, and grow his skills.
-* **The whole career.** SGA tournaments, Play a Championship, celebrity homes, special visitors, wildlife, fly-overs,
-  accomplishments, year-end reports, and every report screen from F1 to F10.
-* **Faithful, like OpenTTD is to Transport Tycoon.** The rules and numbers are rebuilt from facts read out of the original game, not guessed.
-  Saves keep everything, so you can **save anywhere** and carry on exactly where you were.
-* **A bit more than the original.** Game speed ×2 and ×4, a full list of keys in the game, and keys that work on a Mac.
+With its default settings OpenSGolf plays like the original, apart from these:
 
-### ✨ Looks better than ever (optional)
-* **Enhanced graphics.** Crisp text and art at any size, 4K and widescreen with the interface at the edges, smooth zoom
-  and turns, smooth motion, anti-aliasing.
-* **Pixel-art scalers** that turn stair-stepped edges into smooth lines without blurring the art.
-* **Living water.** Waves, reflections of trees and buildings, sun glitter and foam along the shore.
-* **Light and weather.** Soft shadows, a sky beyond the map, morning to dusk, rain and puddles, mist, wind in the palms,
-  seasons, lit windows and fireflies at dusk. Each effect has its own tick.
-* **Photo mode.** Hide the interface, pause, zoom far in, pick a look (Warm, Vivid, B&W, Vintage), add focus blur and save
-  pictures up to 4K.
-* **Classic is always one click away.** With Enhanced off, the game looks exactly like the original.
+- **Fixes for the original's own bugs**, such as gaps at waterfalls, costs charged twice and the golfer list picking the
+  wrong golfer ([docs/FIXES.md](docs/FIXES.md)). On by default; they can be turned off in the preferences.
+- **Modern systems and screens:** saving anywhere, game speeds ×2 and ×4, remappable keys, touch controls and a
+  frame-rate cap.
 
-### 📱 Play anywhere
-* **Windows, Mac, Linux** (including Raspberry Pi), **Android**, and **any modern browser**, iPhone and iPad included.
-* **Made for touch.** Tap, drag, pinch to zoom, twist to turn, and on-screen buttons for the few keys a phone lacks.
-* **Nothing to set up.** The browser version keeps your files and saves on your device, and nothing is uploaded.
+Optional, and off by default:
 
-![OpenSGolf running in a phone's browser, with the touch buttons on the right](docs/images/phone.jpg)
+- **Enhanced graphics** for 4K and widescreen: sharp scaling, water, light, weather, seasons and a photo mode
+  ([docs/ENHANCED.md](docs/ENHANCED.md)).
+- **Bigger courses:** Large, Huge and Giant, up to 128 × 128 tiles.
+- **OpenSGolf extras:** a Hardcore economy, turning buildings, cut content restored as landmarks, animals to buy, higher
+  staff limits, and interface extras such as a People screen and message history.
+- **Content packs and game scripts** that change prices, buildings, terrain, golfers, text, art and sounds, add scenarios,
+  and can be downloaded from inside the game ([docs/MODDING.md](docs/MODDING.md)).
 
-### 💾 Your own SimGolf, or free graphics
-* **Have SimGolf?** Point OpenSGolf at your copy once and play with the original art, sound, music and stories.
-  It finds the usual install places by itself.
-* **No copy?** Start straight away with **opensgolf-free**: free graphics, sounds and text made by the game itself. They
-  are simple for now (an early beta), and artists can improve them one file at a time.
+How close each part is to the original is tracked in [docs/PARITY.md](docs/PARITY.md).
 
-### 🧩 Mods and community content
-* **Content packs** change prices, buildings, terrain, golfers, text, art and sounds, and can add scenarios with goals.
-* **Game scripts** react to what happens in your game, like OpenTTD's GameScripts.
-* **Find more…** in the game lists community packs and downloads them for you.
-* **Your course as a scenario.** Export any game as a pack to share with friends.
-* **Translations** are plain text files.
+## Reporting bugs and contributing
 
-## New in 0.2
+Please report bugs and suggest ideas on the [issue tracker](https://github.com/crspytopgn/opensgolf/issues/new/choose).
+Contributions of code, art for the free base set and translations are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md) and
+[docs/TRANSLATING.md](docs/TRANSLATING.md).
 
-* **Bigger courses**: Large, Huge and Giant, up to 128 × 128 tiles. Pick the size when you start a game.
-* **Your keys, your way.** Remap every key, with optional WASD camera, middle-drag panning and **U** to hide the interface.
-* **A frame-rate cap** and v-sync switch for laptops and phones.
-* **Mod profiles**, to switch between sets of packs. Saves remember which packs they were made with.
-* **Fixes for the original's own bugs**, such as gaps at waterfalls and costs charged twice (on by default, can be turned off).
-* **OpenSGolf extras** (all off by default): Hardcore economy, turning buildings, cut content brought back as landmarks,
-  animals to buy, and higher staff limits.
-* **A People tab**, golfer profiles, message history, name tags and a path view to find unconnected buildings.
+## Roadmap
 
-## Roadmap: 0.3
-
-The rule stays the same: **the original game, exactly as it was, is always one click away.** Everything new is optional
+The rule for every version: the original game, exactly as it was, is always one click away. Everything new is optional
 and off by default; only fixes for the original's own bugs are on.
 
-Planned next:
+Planned for 0.3:
 
-* **One-click "Original game" or "OpenSGolf extras"** on the New Game screen.
-* **Share your course and challenge friends**: send a course, compare ratings and profit.
-* **Undo** for building and terrain.
-* **Autosave**, and save slots with pictures.
-* **Controller support** (Steam Deck and couch play).
+- A one-click choice between "Original game" and "OpenSGolf extras" when starting a new game.
+- Sharing courses and challenging friends.
+- Undo for building and terrain.
+- Autosave, and save slots with pictures.
+- Controller support.
 
-Ideas for later: a community course gallery, scenario editor, seasons and club events, translations, an installable
-phone/tablet app, and a first look at playing together online.
+Later ideas: a community course gallery, a scenario editor, club events, more translations, an installable phone and
+tablet app, and playing together online.
 
-Got an idea? [Suggest it here](https://github.com/crspytopgn/opensgolf/issues/new/choose).
-
-Want to follow along or help? Watch the repository, or see [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## Have the original SimGolf?
-
-OpenSGolf comes with its own free graphics. If you own SimGolf, you can play with the original look and sound instead:
-
-* **In the browser:** click **Choose game folder** and pick your SimGolf folder.
-* **In the app:** choose **Use my SimGolf files…** on the title screen and pick your SimGolf folder. It remembers it.
-
-Your SimGolf folder is the one containing `Data`, `Flics` and `Sounds` (on Windows usually `C:\Program Files\Maxis\SimGolf`).
-Nothing is uploaded anywhere: the game reads your files on your own device.
-
-## Need help?
-
-* **How to play, keys and touch:** [docs/PLAYING.md](docs/PLAYING.md)
-* **Install details for each system:** [docs/INSTALL.md](docs/INSTALL.md)
-* **Prettier graphics on big screens:** turn on **Preferences → Enhanced graphics** in the game ([docs/ENHANCED.md](docs/ENHANCED.md))
-* **Mods and content packs:** [docs/MODDING.md](docs/MODDING.md)
-* **Something wrong?** [Report a problem](https://github.com/crspytopgn/opensgolf/issues/new/choose)
-
----
-
-## About OpenSGolf
-
-OpenSGolf is a free, open-source game engine written in Rust. It aims to play exactly like Sid Meier's SimGolf (Firaxis,
-2002), the way OpenTTD does for Transport Tycoon Deluxe. It runs on Windows, macOS, Linux, Android and in the browser, and
-it is built to be modded.
+## Legal
 
 OpenSGolf is an **unofficial fan project; it is not affiliated with or endorsed by Electronic Arts, Firaxis Games or
 Take-Two Interactive.** The original game's art, sounds, music and videos belong to Electronic Arts and are not part of this
 project; the game reads them from your own copy at runtime and never uploads or redistributes them. The English text of the
 original's in-game messages, which exists only inside the original program, is included in `lang/en.txt` so the game can
 read word for word like the original; it remains Electronic Arts' text. SimGolf and Sid Meier's are trademarks of their
-owners and are named here only to say which game OpenSGolf plays like and whose files it can use. "Remastered" describes
-what this fan project does; it is not an official remaster.
+owners and are named here only to say which game OpenSGolf plays and whose files it can use.
 
 The engine is a clean-room reimplementation. No code from the original is included (its message text is, see above); its
 rules are written from facts read out of the publisher-supplied golf.exe ([docs/PUBLISHER_EXE_NOTES.md](docs/PUBLISHER_EXE_NOTES.md)),
-the original manual and footage of the game, and nothing here removes or bypasses copy protection. How close each part is
-to the original: [docs/PARITY.md](docs/PARITY.md).
+the original manual and footage of the game, and nothing here removes or bypasses copy protection.
 
 ## Licence
 
@@ -180,18 +131,19 @@ OpenSGolf is free software under the **GNU General Public License, version 2 or 
 versions must stay open under the same terms. The bundled Liberation Sans font is under the SIL Open Font License. Content
 packs (mods) choose their own licence; the free base set is GPL-2.0-or-later too.
 
-## Support and thanks
+## Supporting the project
 
-OpenSGolf is made in spare time and given away free. If it brought back good memories, a coffee keeps it going:
+OpenSGolf is made in spare time and given away free, and building it has real running costs. If you enjoy it, a coffee
+helps keep it going: [buymeacoffee.com/crspytopgn](https://buymeacoffee.com/crspytopgn).
 
 [![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/crspytopgn)
 
-Thank you to everyone who reports bugs, tests on their devices, draws art for the free set and shares the game. And thank
-you to Sid Meier, Firaxis and the original SimGolf team for a game people still love twenty years on.
+Thank you to everyone who reports bugs, tests on their devices, draws art for the free set and shares the game, and to
+Sid Meier, Firaxis and the original SimGolf team for a game people still love twenty years on.
 
 ---
 
-## For developers and the curious
+## For developers
 
 ### Free base set (opensgolf-free)
 
