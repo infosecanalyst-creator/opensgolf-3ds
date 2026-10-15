@@ -746,6 +746,8 @@ impl App {
         self.draw_files_button(g, &s);
         // and "Check for updates" (update.rs)
         self.draw_update_button(g, &s);
+        // and "Course editor..." (editor.rs)
+        self.draw_editor_button(g, &s);
         if !self.toast.is_empty() && self.clock < self.toast_until {
             let w = text_width(&self.toast, 18.0) + 24.0;
             s.fill(g, 400.0 - w / 2.0, 560.0, w, 30.0, rgba(0.1, 0.1, 0.3, 0.9));

@@ -256,6 +256,7 @@ impl App {
     /// Whether a name is being typed (rename, save, Customise Golfer).
     pub fn typing(&self) -> bool {
         self.rename.is_some()
+            || self.editor_typing()
             || self.title.save_name.is_some()
             || self.content.profile_name.is_some()
             || self.cust.as_ref().is_some_and(|c| c.typing.is_some())

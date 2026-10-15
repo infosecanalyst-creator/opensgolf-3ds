@@ -905,7 +905,8 @@ impl App {
     /// F6, the world map: the property chooser, to move the club to another property. Cash, the calendar and the pro's
     /// career go along; the course starts afresh (0x407d30).
     pub fn open_world_map(&mut self) {
-        if self.club.game & sg_core::golfer::game::REPEAT != 0 {
+        // the course editor stays on its property (editor.rs)
+        if self.club.game & sg_core::golfer::game::REPEAT != 0 || self.editor.is_some() {
             return self.ui_sound(0x18);
         }
         self.world_move = true;

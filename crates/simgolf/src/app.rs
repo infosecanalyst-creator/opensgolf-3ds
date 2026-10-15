@@ -266,6 +266,8 @@ pub enum Screen {
     Profile,
     /// OpenSGolf extras: comments by hole (insight.rs).
     HoleComments,
+    /// The course editor's box over the course (editor.rs; the port's own).
+    Editor,
 }
 
 /// Where saved games, championship courses and pros, accomplishment snapshots, packs and settings go. The browser keeps them
@@ -665,6 +667,10 @@ pub struct App {
     pub reset_clock: bool,
     /// The property chooser was opened from Sandbox Mode.
     pub sandbox_choice: bool,
+    /// The course editor (editor.rs; the port's own): Some while the game in hand is the editor's, never in a normal game.
+    pub editor: Option<Box<crate::editor::Editor>>,
+    /// Select Difficulty and the property chooser were opened by the title's "Course editor..." button.
+    pub editor_start: bool,
     /// The course size (map edge in tiles, sg_core::mapsize) the next new game is dealt and played at.
     pub course_size: i32,
     pub toast: String,
@@ -931,6 +937,8 @@ impl App {
             theme_pack: 0,
             reset_clock: false,
             sandbox_choice: false,
+            editor: None,
+            editor_start: false,
             course_size: sg_core::mapsize::ORIGINAL,
             toast: String::new(),
             toast_until: 0.0,
@@ -1719,7 +1727,8 @@ impl App {
     /// Building kinds unlocked: the club's counter, never below what the open holes have earned (saves from before the counter
     /// was kept), all of them in sandbox and with the Unlock all extra (sg_core::extras).
     pub fn unlocked(&self) -> i32 {
-        if self.econ.sandbox || self.club.extras.unlock_all {
+        // the course editor has every kind (editor.rs)
+        if self.econ.sandbox || self.club.extras.unlock_all || self.econ.free {
             return 17;
         }
         self.club.unlocked.max(land::unlocked_kinds(self.hole_numbers.len(), false))
@@ -1734,7 +1743,8 @@ impl App {
         }
         // home sites only while Silver and better members outnumber them (0x56d1b0; open in sandbox, and with the Unlock all
         // extra, as there)
-        if k == land::K_HOME_SITE && self.club.homesite_demand < 1 && !self.econ.sandbox && !self.club.extras.unlock_all {
+        if k == land::K_HOME_SITE && self.club.homesite_demand < 1 && !self.econ.sandbox && !self.club.extras.unlock_all && !self.econ.free
+        {
             return false;
         }
         OFFERED_KINDS.contains(&k) && (k <= 5 || k == land::K_WILLOW || k == land::K_BRIDGE || k < self.unlocked())
@@ -2300,6 +2310,10 @@ impl App {
     /// Advances the simulation to the current time and points every golfer prop at its golfer.
     pub fn update_props(&mut self) {
         let perf = crate::perf::on().then(|| (std::time::Instant::now(), self.game_tick));
+        // no time passes in the course editor (editor.rs): no golfers, no calendar
+        if self.editor.is_some() {
+            self.sim_time = self.time;
+        }
         while self.sim_time < self.time && self.great_shot.is_none() && !self.comfort.hold {
             let t0 = now();
             self.step_game(1.0 / 60.0);
@@ -2464,6 +2478,9 @@ impl App {
 
     pub fn start_game(&mut self, g: &mut Gfx, prop_idx: usize, sandbox: bool) {
         self.undo.clear();
+        // a new game is never the course editor's (editor.rs makes it the editor's afterwards)
+        self.editor = None;
+        self.econ.free = false;
         self.autosave_due = 0.0;
         let p = sg_core::data::properties()[prop_idx];
         // a game started without the difficulty screen (scripted runs) still gets its Top 10 id
@@ -2608,6 +2625,8 @@ impl App {
     /// Goes on with a game read by `read_save` (or `read_save_bytes`).
     pub fn load_save(&mut self, g: &mut Gfx, s: SaveGame) -> Result<(), String> {
         self.undo.clear();
+        // a loaded game is never the course editor's (editor.rs makes it the editor's afterwards; undo keeps it)
+        self.editor = None;
         self.autosave_due = 0.0;
         self.load_save_with(g, s, false)
     }
@@ -2644,6 +2663,12 @@ impl App {
             return Err(tr("STR_ERROR_THEME_NOT_LOADED").into());
         }
         self.club = s.club;
+        if self.club.roster.is_empty() {
+            // a course made in the course editor (editor.rs) leaves the theme's people to the player's own files, as a
+            // new game reads them (every game saved by the game itself has them)
+            let pack = THEME_PACKS.get(self.theme_pack).copied().unwrap_or("Standard").replace(' ', "_");
+            self.club.roster = sg_core::roster::load(&self.game_dir, &pack);
+        }
         self.register_portraits(g);
         let tutorial = self.club.stories.tutorial;
         self.load_story();
@@ -2670,6 +2695,11 @@ impl App {
         self.dirty = true;
         self.restore_game_scripts(s.goals, &s.scripts);
         self.xs = crate::extras::State { kept: s.extras, ..Default::default() };
+        // an undo in the course editor stays in the editor: free building, no scripts (editor.rs)
+        self.econ.free = self.editor.is_some();
+        if self.editor.is_some() {
+            self.scen.host = Default::default();
+        }
         Ok(())
     }
 
@@ -2823,7 +2853,9 @@ impl App {
             let vb = if pe.ty == 0 { ((x * 7 + y * 13) as u32 % 5) as i32 } else { pe.vbyte };
             self.econ.spend_to(economy::LEDGER_BUILD_COURSE, cost as f64 * Economy::UNIT);
             let hb = (self.club.next_hole as usize).min(18);
-            self.club.holes[hb].build_cost += cost;
+            if !self.econ.free {
+                self.club.holes[hb].build_cost += cost;
+            }
             if old > 1 {
                 if let Some(l) = self.land.as_mut() {
                     l.record_paint(x, y, old, cost);
