@@ -732,11 +732,15 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 );
             }
             b'h' if item.len() > 2 && !v.is_empty() => {
-                let ok = app.hire_staff(at(0).clamp(0, 3) as usize);
+                // a fourth value hires the experienced version (bit 1) and arms the Employee panel's Move (bit 2)
+                let ok = app.hire_employee(at(0).clamp(0, 3) as usize, at(3) & 1 != 0);
                 if ok && v.len() >= 3 {
                     if let Some(e) = app.employees.iter_mut().rev().find(|e| e.active) {
                         e.post = Some((at(1), at(2)));
                     }
+                }
+                if ok && at(3) & 2 != 0 {
+                    app.moving_employee = app.employees.iter().rposition(|e| e.active);
                 }
                 println!("hired staff kind {}: {ok}", at(0));
             }
