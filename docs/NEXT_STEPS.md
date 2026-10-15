@@ -4,7 +4,7 @@ A short handoff note so work can be picked up in a fresh session.
 
 ## Released
 
-- **v0.3.0** is the latest release (`main`): 0.3's Original/Extras switch, undo, autosave, save pictures, course
+- **v0.3.1** is the latest release (`main`): 0.3's Original/Extras switch, undo, autosave, save pictures, course
   sharing, controllers and the Steam Deck, and the new Enhanced graphics; all of 0.2 (course sizes, controls, mod profiles, original-bug fixes,
   gameplay and interface extras) plus the Windows on ARM fix (patched miniquad in `vendor/miniquad`, see its
   `README-OPENSGOLF.md`; drop it once miniquad fixes `GWLP_USERDATA` on aarch64).
