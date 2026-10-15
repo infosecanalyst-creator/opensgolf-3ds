@@ -92,6 +92,7 @@ mod tourney_ui;
 mod ui;
 mod undo;
 mod update;
+mod views;
 mod wild_ui;
 mod world_ui;
 
@@ -1829,6 +1830,15 @@ impl Stage {
             self.app.tape_key_down(at);
             return;
         }
+        // the port's own camera bookmarks (views.rs): a view's key goes back to it, Ctrl with it keeps the view there
+        if let Some(i) = act.and_then(|a| views::ACTION_IDS.iter().position(|id| controls::action(id) == a)) {
+            if self.ctrl {
+                self.app.keep_view(i);
+            } else {
+                self.app.recall_view(i);
+            }
+            return;
+        }
         // Esc first puts the tape or a rectangle under way away
         if k == KeyCode::Escape && self.app.build_tools_cancel() {
             return;
@@ -2757,9 +2767,11 @@ impl EventHandler for Stage {
         if (self.app.screen == Screen::Play || !self.app.ui_ok) && y != 0.0 && self.app.great_shot.is_none() {
             // y is in notches (the browser's pixels are turned into notches by web/opensgolf.js); a trackpad sends many
             // small turns
+            // Zoom towards the pointer (views.rs; an OpenSGolf extra, off by default) keeps the ground under it in place
+            let at = self.mouse;
             if enhanced::smooth_camera() {
                 // Enhanced: a notch is a quarter of a doubling, between the original's closest and farthest levels
-                self.app.zoom_by((y * 0.25).clamp(-0.5, 0.5));
+                self.app.zoom_about(at, |a| a.zoom_by((y * 0.25).clamp(-0.5, 0.5)));
             } else {
                 // a step to the next of the original's three levels for the first turn of a gesture (a pause of a quarter
                 // second or a change of direction starts one), and another for each further notch's worth: a mouse
@@ -2767,12 +2779,12 @@ impl EventHandler for Stage {
                 let t = self.app.clock;
                 let (acc, last) = self.wheel;
                 if t - last > 0.25 || (acc != 0.0 && (acc > 0.0) != (y > 0.0)) {
-                    self.app.zoom_step(y > 0.0);
+                    self.app.zoom_about(at, |a| a.zoom_step(y > 0.0));
                     self.wheel = (0.0, t);
                 } else {
                     let acc = acc + y;
                     if acc.abs() >= 1.0 {
-                        self.app.zoom_step(acc > 0.0);
+                        self.app.zoom_about(at, |a| a.zoom_step(acc > 0.0));
                         self.wheel = (0.0, t);
                     } else {
                         self.wheel = (acc, t);

@@ -126,6 +126,9 @@ const ROWS: &[Row] = &[
     Key("STR_KEYS_K_QUICK_SAVE", "STR_KEYS_QUICK_SAVE"),
     Key("STR_KEYS_K_QUICK_LOAD", "STR_KEYS_QUICK_LOAD"),
     Key("STR_KEYS_K_STAFF_VIEW", "STR_KEYS_STAFF_VIEW"),
+    // the port's camera helpers (views.rs)
+    Key("STR_KEYS_K_VIEWS", "STR_KEYS_VIEWS"),
+    Key("STR_KEYS_K_VIEW_KEEP", "STR_KEYS_VIEW_KEEP"),
     Head("STR_KEYS_HEAD_OTHER"),
     Key("STR_KEYS_K_ESC", "STR_KEYS_ESC"),
     Key("STR_KEYS_K_MENU_MOVE", "STR_KEYS_MENU_MOVE"),

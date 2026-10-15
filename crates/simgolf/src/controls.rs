@@ -293,8 +293,13 @@ pub const ACTIONS: &[Action] = {
         act!("staff_view", "STR_CTL_STAFF_VIEW", shifted(A)),
         act!("landing_map", "STR_CTL_LANDING_MAP", shifted(D)),
         act!("hole_comments", "STR_CTL_HOLE_COMMENTS", shifted(I)),
-        // the history graphs (graphs.rs)
+        // the history graphs (graphs.rs), and the camera bookmarks (views.rs) on Shift+F1 to F4, which the original leaves
+        // unused (Ctrl with a bookmark's key keeps the view there)
         act!("graphs", "STR_CTL_GRAPHS", shifted(Y)),
+        act!("view_1", "STR_CTL_VIEW_1", shifted(F1)),
+        act!("view_2", "STR_CTL_VIEW_2", shifted(F2)),
+        act!("view_3", "STR_CTL_VIEW_3", shifted(F3)),
+        act!("view_4", "STR_CTL_VIEW_4", shifted(F4)),
     ]
 };
 
@@ -503,6 +508,7 @@ const ROW_ACTIONS: &[(&str, &[&str])] = &[
     ("STR_KEYS_K_LANDING_MAP", &["landing_map"]),
     ("STR_KEYS_K_HOLE_COMMENTS", &["hole_comments"]),
     ("STR_KEYS_K_GRAPHS", &["graphs"]),
+    ("STR_KEYS_K_VIEWS", &["view_1", "view_2", "view_3", "view_4"]),
 ];
 
 /// The text a Keyboard controls row prints for its key: None (the row's own text) unless the player moved one of its keys.

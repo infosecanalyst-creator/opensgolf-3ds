@@ -164,11 +164,12 @@ impl Stage {
             if crate::enhanced::smooth_camera() || self.app.photo.is_some() {
                 // Enhanced (and its photo mode): the zoom follows the fingers continuously
                 if ratio > 0.0 && ratio.is_finite() {
-                    self.app.zoom_by(ratio.log2());
+                    // Zoom towards the pointer (views.rs): the ground between the fingers keeps its place
+                    self.app.zoom_about(mid, |a| a.zoom_by(ratio.log2()));
                     self.touch.spread = spread;
                 }
             } else if !(0.74..=1.35).contains(&ratio) {
-                self.app.zoom_step(ratio > 1.0);
+                self.app.zoom_about(mid, |a| a.zoom_step(ratio > 1.0));
                 self.touch.spread = spread;
             }
             let mut turn = angle - self.touch.angle;

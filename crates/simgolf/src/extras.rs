@@ -24,6 +24,8 @@
 //!   online, which a player chooses for themselves.
 //!
 //! * history graphs (graphs.rs): the club's and each hole's months as line graphs on a page of their own (Shift+Y).
+//! * zoom towards the pointer (enhanced.rs zoom_anchor): the wheel keeps the ground under the pointer where it is. Left out
+//!   of the one-click OpenSGolf extras: it changes how the original's zoom feels.
 //!
 //! With every extra off the game draws and plays exactly as before they existed (each hook asks its switch first).
 use serde::{Deserialize, Serialize};
@@ -49,6 +51,7 @@ pub struct Settings {
     pub hole_comments: bool,
     pub update_check: bool,
     pub graphs: bool,
+    pub zoom_pointer: bool,
 }
 
 impl Settings {
@@ -69,6 +72,7 @@ impl Settings {
         hole_comments: true,
         update_check: false,
         graphs: true,
+        zoom_pointer: false,
     };
     pub const ALL_OFF: Settings = Settings {
         people: false,
@@ -85,6 +89,7 @@ impl Settings {
         hole_comments: false,
         update_check: false,
         graphs: false,
+        zoom_pointer: false,
     };
 
     /// The ticks as the Extras box's checkbox bits (in `UI_KEYS` order).
@@ -104,6 +109,7 @@ impl Settings {
             self.hole_comments,
             self.update_check,
             self.graphs,
+            self.zoom_pointer,
         ]
         .iter()
         .enumerate()
@@ -127,13 +133,14 @@ impl Settings {
             hole_comments: on(11),
             update_check: on(12),
             graphs: on(13),
+            zoom_pointer: on(14),
         }
     }
 
     /// The ticks that make the game style (extras_ui.rs GameStyle): all but the two pauses, which leave the game as it is,
-    /// and the update check, which has nothing to do with the game.
+    /// the update check, which has nothing to do with the game, and zooming towards the pointer, a matter of the mouse.
     pub fn style(&self) -> Settings {
-        Settings { pause_background: false, pause_events: false, update_check: false, ..*self }
+        Settings { pause_background: false, pause_events: false, update_check: false, zoom_pointer: false, ..*self }
     }
 }
 
@@ -145,7 +152,7 @@ impl Default for Settings {
 
 /// The interface extras' lines on the Extras box's Interface page (extras_ui.rs), one tick per extra in `Settings::bits`
 /// order (text keys in lang/en.txt).
-pub const UI_KEYS: [&str; 14] = [
+pub const UI_KEYS: [&str; 15] = [
     "STR_EXTRAS_PEOPLE",
     "STR_EXTRAS_HISTORY",
     "STR_EXTRAS_NAME_TAGS",
@@ -160,6 +167,7 @@ pub const UI_KEYS: [&str; 14] = [
     "STR_EXTRAS_HOLE_COMMENTS",
     "STR_EXTRAS_UPDATE_CHECK",
     "STR_EXTRAS_GRAPHS",
+    "STR_EXTRAS_ZOOM_POINTER",
 ];
 
 thread_local! {
@@ -216,6 +224,9 @@ pub fn update_check() -> bool {
 pub fn graphs() -> bool {
     settings().graphs
 }
+pub fn zoom_pointer() -> bool {
+    settings().zoom_pointer
+}
 
 fn settings_json() -> serde_json::Value {
     sg_core::fsutil::read_file(crate::app::save_dir().join(crate::hd::SETTINGS_FILE))
@@ -266,9 +277,13 @@ fn upgrade_off(v: &serde_json::Value, s: &mut Settings) {
     if v.get("update_check").is_none() {
         s.update_check = false;
     }
-    // the history graphs keep more with the game: off from ticks saved before them
+    // the history graphs keep more with the game, and zooming towards the pointer changes the original's zoom: both read
+    // as off from ticks saved before them
     if v.get("graphs").is_none() {
         s.graphs = false;
+    }
+    if v.get("zoom_pointer").is_none() {
+        s.zoom_pointer = false;
     }
 }
 
@@ -353,11 +368,19 @@ pub struct Kept {
     /// The history graphs' months (graphs.rs), only while their tick is on.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub graphs: Option<crate::graphs::Kept>,
+    /// The camera bookmarks (views.rs), once one has been kept.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub views: Vec<Option<crate::views::View>>,
 }
 
 impl Kept {
     pub fn is_empty(&self) -> bool {
-        self.messages.is_empty() && self.staff_names.is_empty() && self.said.is_empty() && self.insight.is_none() && self.graphs.is_none()
+        self.messages.is_empty()
+            && self.staff_names.is_empty()
+            && self.said.is_empty()
+            && self.insight.is_none()
+            && self.graphs.is_none()
+            && self.views.is_empty()
     }
 
     pub fn push_message(&mut self, m: Message) {
@@ -704,7 +727,7 @@ mod tests {
         assert_eq!(p.bits(), 0b11 << 8);
         assert_eq!(Settings::from_bits(p.bits()), p);
         assert_eq!(p.style(), Settings::ALL_OFF);
-        for m in [0, 1 << 8, 1 << 9, 1 << 10, 1 << 11, 1 << 12, 1 << 13, 0x3fff] {
+        for m in [0, 1 << 8, 1 << 9, 1 << 10, 1 << 11, 1 << 12, 1 << 13, 1 << 14, 0x7fff] {
             assert_eq!(Settings::from_bits(m).bits(), m);
         }
     }
@@ -721,11 +744,13 @@ mod tests {
         upgrade_off(&v, &mut s);
         assert!(s.landing_map && s.hole_comments);
         assert!(!s.update_check, "the update check reads as off from ticks saved before it");
-        assert!(!s.graphs, "the graphs read as off from older ticks");
-        let v: serde_json::Value = serde_json::from_str("{\"graphs\": true}").unwrap();
+        assert!(!s.graphs && !s.zoom_pointer, "the graphs and zooming to the pointer read as off from older ticks");
+        let v: serde_json::Value = serde_json::from_str("{\"graphs\": true, \"zoom_pointer\": true}").unwrap();
         let mut g: Settings = serde_json::from_value(v.clone()).unwrap();
         upgrade_off(&v, &mut g);
-        assert!(g.graphs && Settings::ALL_ON.graphs);
+        assert!(g.graphs && g.zoom_pointer);
+        assert!(!Settings::ALL_ON.zoom_pointer && Settings::ALL_ON.graphs);
+        assert_eq!(Settings { zoom_pointer: true, ..Settings::ALL_OFF }.style(), Settings::ALL_OFF);
         let v: serde_json::Value = serde_json::from_str("{\"update_check\": true}").unwrap();
         let mut s: Settings = serde_json::from_value(v.clone()).unwrap();
         upgrade_off(&v, &mut s);

@@ -606,8 +606,9 @@ impl App {
                 176.0,
             ),
             // filled in below from extras_ui's pages: the gameplay extras, the calendar and sandbox switches, the interface
-            // (a row higher since the interface page's history graphs, to keep its OK tick on an 800 x 600 screen)
-            PopupKind::Extras => (Vec::new(), 0, 400.0, 116.0),
+            // (two rows higher since the interface page's history graphs and zoom towards the pointer, to keep its OK tick on
+            // an 800 x 600 screen)
+            PopupKind::Extras => (Vec::new(), 0, 400.0, 92.0),
             // filled in below from prefs_search
             PopupKind::Search => (Vec::new(), 0, 400.0, 92.0),
             PopupKind::ResetOriginal => (

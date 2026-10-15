@@ -138,8 +138,8 @@ Select Difficulty has a **Game** box next to Course size. One click switches bet
 - **The original**: every OpenSGolf extra off and Classic graphics; the game exactly as it was (fixes for the original's
   own bugs stay on). A new player starts here.
 - **OpenSGolf extras**: the interface extras (People screen, message history, name tags, report tabs, path help, autosave,
-  save pictures, course sharing, landing map, comments by hole, history graphs; not the two pauses or the update check,
-  which you tick yourself) and the
+  save pictures, course sharing, landing map, comments by hole, history graphs; not the two pauses, the update check or
+  zooming towards the pointer, which you tick yourself) and the
   gameplay extras that do not change the game's balance (turning buildings, animals, more staff).
 
 If you ticked your own choice in Preferences, the box says "your own mix"; a click goes back to the original. The choice
@@ -395,6 +395,11 @@ compare pixel for pixel with the build before the extras).
   starts. It says nothing unless a newer version is out; then a box offers **Update now**, **Skip this version** (that
   version is not offered at start again, a newer one is; kept in `settings.json` as `update_skip`) or **Not now**. Only
   GitHub is contacted. The browser version has nothing to check.
+- **Zoom towards the pointer** (off, also with the one-click OpenSGolf extras: it changes how the original's zoom feels):
+  the mouse wheel keeps the ground under the pointer where it is on the screen as it zooms, and a two-finger pinch the
+  ground between the fingers, instead of zooming about the middle of the screen. It works at the original's three zoom
+  levels and with Enhanced graphics' smooth zoom (frame by frame as the zoom eases). z, x and the dock's zoom buttons
+  still zoom about the middle.
 
 Test hooks for stills: `--screen people|staff|pro|history|profile|pathview|tags|ticker|card` (with a game;
   Both only watch the game: the golfers play exactly the same with them on or off. Ticks saved before they existed read
@@ -422,6 +427,22 @@ The port's own keys, not in the original; nothing changes until you press them, 
   cyan Soda Vendors, grey Club Pros), and tints red every fairway, green and tee tile that no Groundskeeper's ring reaches:
   that is where the next one is wanted. A legend in the upper right counts the staff and the unkept tiles. Press Shift+A
   again to hide it. It only shows; nothing of the game changes. Test hook: `SG_STAFF_VIEW=1` shows it from the start.
+
+## Camera bookmarks and the mouse
+
+The port's own camera helpers (crates/simgolf/src/views.rs); nothing changes until you use them.
+
+- **Camera bookmarks**: **Ctrl+Shift+F1** to **Ctrl+Shift+F4** keep the view (the point in the middle of the screen, the
+  zoom and the turn) on bookmark 1 to 4, and **Shift+F1** to **Shift+F4** go back to it (keys the original leaves unused).
+  The bookmarks are kept with the game, since they are places on that course: a save holds them once one has been kept,
+  and a game without any saves exactly as before. They can be moved to other keys under *Camera bookmark 1* to *4* in
+  Change keys; Ctrl with a bookmark's key, whatever it is, keeps the view there. Without Enhanced graphics' smooth camera
+  a bookmark comes back at the nearest of the original's three zoom levels. As Alt or Ctrl with a digit stands for an F key,
+  Shift+Alt+1 to 4 go back to a bookmark and Ctrl+Shift+1 to 4 keep one (for keyboards whose F keys need Fn).
+- **Middle button drag**: dragging with the middle mouse button moves the course whatever tool is held (with the smooth
+  camera it coasts on when let go).
+- **Zoom towards the pointer**: an OpenSGolf extra (Preferences, *OpenSGolf extras...*, Interface page), off by default:
+  see *OpenSGolf extras* above.
 
 **Ctrl+Z** (Cmd+Z on a Mac) undoes the last click or drag with a building or terrain tool that changed the course:
 terrain, paths, holes, buildings and garden items. The whole game goes back to just before it, money included, as if that moment had been saved and loaded.

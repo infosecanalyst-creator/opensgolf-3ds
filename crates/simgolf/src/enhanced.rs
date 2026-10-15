@@ -718,6 +718,8 @@ pub struct EnhState {
     /// The drag's speed (right, up in world units per second), carried on after the button is let go.
     pub pan_vel: (f32, f32),
     pub dragging: bool,
+    /// Zoom towards the pointer (views.rs): the drawable pixel whose ground keeps its place while the zoom eases.
+    pub zoom_anchor: Option<(f32, f32)>,
     last_drag: f64,
     last_frame: f64,
     /// The tick the tracks were taken at.
@@ -766,6 +768,7 @@ impl App {
             self.enh.rot_left = 0.0;
             self.enh.pan_left = (0.0, 0.0);
             self.enh.pan_vel = (0.0, 0.0);
+            self.enh.zoom_anchor = None;
             return;
         }
         let k = ease(dt);
@@ -774,7 +777,9 @@ impl App {
             self.enh.view_zoom = self.zoom;
         }
         let (a, b) = (self.enh.view_zoom.ln(), self.zoom.ln());
+        let from = self.enh.view_zoom;
         self.enh.view_zoom = if (a - b).abs() < 1e-3 { self.zoom } else { (a + (b - a) * k).exp() };
+        self.zoom_anchor_frame(from, self.enh.view_zoom);
         // the turn
         self.enh.rot_left -= self.enh.rot_left * k;
         if self.enh.rot_left.abs() < 0.05 {
