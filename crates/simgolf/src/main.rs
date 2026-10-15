@@ -466,11 +466,24 @@ fn open_screen(app: &mut App, screen: Option<&str>) {
             app.xs.test_open = Some(s.to_string());
         }
         // the insight extras (insight.rs): comments by hole, and the landing map (of the first open hole until the pointer
-        // finds another)
-        Some("holecomments") if app.ui_ok => app.open_hole_comments(),
+        // finds another, or of SG_LANDING_HOLE)
+        // SG_HOLECOMMENTS=P[,N]: the period P (0 this month, 1 last month, 2 this year), scrolled N holes down
+        Some("holecomments") if app.ui_ok => {
+            app.open_hole_comments();
+            if let Ok(v) = std::env::var("SG_HOLECOMMENTS") {
+                let v = ints(&v);
+                app.xs.insight.period = v.first().copied().unwrap_or(0).clamp(0, 2) as usize;
+                app.xs.insight.off = v.get(1).copied().unwrap_or(0).clamp(0, 17) as usize;
+            }
+        }
+        // SG_LANDING_HOLE=N: hole N's map whatever the pointer is over
         Some("landing") if app.ui_ok => {
             app.xs.insight.map = true;
             app.xs.insight.hole = (1..19).find(|&h| app.club.holes[h].par != 0).unwrap_or(0);
+            if let Some(h) = std::env::var("SG_LANDING_HOLE").ok().and_then(|v| v.parse::<usize>().ok()) {
+                app.xs.insight.hole = h.clamp(1, 18);
+                app.xs.insight.fixed = true;
+            }
         }
         Some(s @ ("history" | "profile" | "pathview" | "tags" | "ticker" | "card")) if app.ui_ok => {
             if s == "history" {
@@ -2585,6 +2598,7 @@ impl EventHandler for Stage {
             match self.app.screen {
                 Screen::People => return self.app.people_wheel(y),
                 Screen::History => return self.app.history_wheel(y),
+                Screen::HoleComments => return self.app.hole_comments_wheel(y),
                 Screen::Profile => return self.app.profile_wheel(y),
                 _ => {}
             }

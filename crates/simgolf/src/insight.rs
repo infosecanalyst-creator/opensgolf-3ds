@@ -7,19 +7,19 @@
 //!   of the hole's last `MAX_SHOTS` shots. Shift+D (or the Information menu) shows them as dots on the course for the hole
 //!   under the pointer (or the last one looked at, or the one Hole Stats last showed), coloured by the shot's number, with a
 //!   legend counting where they ended up;
-//! * comments by hole: every thought a golfer has that changed the golfer's mood (as the original's comment counters count
-//!   them, golfer.rs `event`: the thought's history entry carries the change's sign) is tallied by hole for this month and
-//!   last month, and a page (Shift+I, the Information menu, or a tab after F10 on the tabbed reports) lists each hole's
-//!   most frequent ones with their counts, in the words of the Customise screen's dialogue labels or the F2 report's lines.
+//! * comments by hole: every thought a golfer has while playing a hole (the thought bubbles, golfer.rs `event`) is
+//!   tallied by hole and kind for this month, last month and this year, and a page (Shift+I, the Information menu, or a
+//!   tab after F10 on the tabbed reports) lists each hole's three most frequent with their counts, in the words of the
+//!   Customise screen's dialogue labels or the F2 report's lines and in the F2 report's colours of their tone.
 //!
 //! Both are kept with the game only while their tick is on (a save made with them off is unchanged), and cost a pass over
 //! the golfer slots per tick (a few compares each) and a counter per thought.
 use crate::app::*;
-use crate::extras::{draw_button, draw_tab};
+use crate::extras::{draw_arrow, draw_button, draw_tab};
 use crate::gfx::Gfx;
 use crate::info_ui::c15;
 use crate::render::Rect;
-use crate::ui::{rgba, Fnt, Screen as Ui, F_ARIAL10, F_MANUAL15, F_MANUAL20};
+use crate::ui::{rgba, Fnt, Screen as Ui, F_ARIAL10, F_INFO14, F_MANUAL15, F_MANUAL20};
 use serde::{Deserialize, Serialize};
 use sg_core::course::t;
 use sg_core::golfer::flag;
@@ -126,11 +126,17 @@ impl Landings {
     }
 }
 
-/// A hole's thoughts in a month: by thought id, how often, the latest argument (for the line's words) and its tone (1 a
-/// good change of mood, 2 a bad one).
-pub type HoleTally = BTreeMap<u8, (u32, i32, u8)>;
+/// A hole's thoughts in a period: by thought id, how often and the latest argument (for the line's words).
+pub type HoleTally = BTreeMap<u8, (u32, i32)>;
 
-/// The comments by hole: this month's tally (`month` the game's month count, tick >> 10) and last month's.
+/// The periods the comments page shows: this month, last month, this year.
+pub const PERIODS: usize = THIS_YEAR + 1;
+pub const THIS_MONTH: usize = 0;
+pub const LAST_MONTH: usize = 1;
+pub const THIS_YEAR: usize = 2;
+
+/// The comments by hole: this month's tally (`month` the game's month count, tick >> 10), last month's and this year's
+/// (eight months a year, tick >> 13).
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Tally {
     #[serde(default)]
@@ -139,52 +145,59 @@ pub struct Tally {
     pub now: BTreeMap<u8, HoleTally>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub last: BTreeMap<u8, HoleTally>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub year: BTreeMap<u8, HoleTally>,
 }
 
 impl Tally {
     pub fn is_empty(&self) -> bool {
-        self.now.is_empty() && self.last.is_empty()
+        self.now.is_empty() && self.last.is_empty() && self.year.is_empty()
     }
 
-    /// Moves on to `month`: this month becomes last month when it is the next one; after a longer gap (or going back, a
-    /// game loaded from earlier) nothing carries over.
+    /// Moves on to `month`: this month becomes last month when it is the next one, and the year's tally goes on within the
+    /// same year; after a longer gap (or going back, a game loaded from earlier) nothing carries over.
     pub fn roll(&mut self, month: u32) {
         if month == self.month {
             return;
         }
-        self.last = if month == self.month.wrapping_add(1) { std::mem::take(&mut self.now) } else { BTreeMap::new() };
+        let next = month == self.month.wrapping_add(1);
+        self.last = if next { std::mem::take(&mut self.now) } else { BTreeMap::new() };
         self.now.clear();
+        if month < self.month || month >> 3 != self.month >> 3 {
+            self.year.clear();
+        }
         self.month = month;
     }
 
-    pub fn add(&mut self, month: u32, hole: u8, id: u8, arg: i32, tone: u8) {
+    pub fn add(&mut self, month: u32, hole: u8, id: u8, arg: i32) {
         self.roll(month);
-        let e = self.now.entry(hole).or_default().entry(id).or_insert((0, arg, tone));
-        e.0 += 1;
-        e.1 = arg;
-        e.2 = tone;
-    }
-
-    fn months(&self, last: bool) -> &BTreeMap<u8, HoleTally> {
-        if last {
-            &self.last
-        } else {
-            &self.now
+        for m in [&mut self.now, &mut self.year] {
+            let e = m.entry(hole).or_default().entry(id).or_insert((0, arg));
+            e.0 += 1;
+            e.1 = arg;
         }
     }
 
-    /// A hole's `n` most frequent thoughts this month (or last), most frequent first (ties: the lower id first), as (id,
-    /// count, argument, tone).
-    pub fn top(&self, hole: u8, last: bool, n: usize) -> Vec<(u8, u32, i32, u8)> {
-        let mut v: Vec<_> = self.months(last).get(&hole).into_iter().flatten().map(|(&id, &(c, a, t))| (id, c, a, t)).collect();
+    fn period(&self, period: usize) -> &BTreeMap<u8, HoleTally> {
+        match period {
+            THIS_MONTH => &self.now,
+            LAST_MONTH => &self.last,
+            _ => &self.year,
+        }
+    }
+
+    /// A hole's `n` most frequent thoughts in a period, most frequent first (ties: the lower id first), as (id, count,
+    /// argument).
+    pub fn top(&self, hole: u8, period: usize, n: usize) -> Vec<(u8, u32, i32)> {
+        let mut v: Vec<_> = self.period(period).get(&hole).into_iter().flatten().map(|(&id, &(c, a))| (id, c, a)).collect();
         v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
         v.truncate(n);
         v
     }
 
-    /// All the thoughts tallied on a hole this month (or last).
-    pub fn total(&self, hole: u8, last: bool) -> u32 {
-        self.months(last).get(&hole).map(|m| m.values().map(|e| e.0).sum()).unwrap_or(0)
+    /// All the thoughts tallied on a hole in a period.
+    pub fn total(&self, hole: u8, period: usize) -> u32 {
+        self.period(period).get(&hole).map(|m| m.values().map(|e| e.0).sum()).unwrap_or(0)
     }
 }
 
@@ -230,8 +243,12 @@ pub struct State {
     pub map: bool,
     /// The hole the map shows (0 none yet).
     pub hole: usize,
-    /// The comments page shows last month.
-    pub last_month: bool,
+    /// The comments page's period (THIS_MONTH, LAST_MONTH, THIS_YEAR) and its first hole shown (an index into the open
+    /// holes).
+    pub period: usize,
+    pub off: usize,
+    /// The map keeps its hole whatever the pointer is over (the --screen landing test hook's SG_LANDING_HOLE).
+    pub fixed: bool,
 }
 
 /// What a finished shot was: a ball in play that has stopped. `pos` is the ball's place now, `left` whether the golfer has
@@ -272,18 +289,6 @@ fn seg_dist(a: f32, b: f32, p: (f32, f32), q: (f32, f32)) -> f32 {
     ((a - px - k * dx).powi(2) + (b - py - k * dy).powi(2)).sqrt()
 }
 
-/// `t` cut to `w` pixels in font `f`, with "..." when cut.
-fn fit(f: Fnt, t: &str, w: f32) -> String {
-    if f.width(t) <= w {
-        return t.to_string();
-    }
-    let mut s: String = t.to_string();
-    while !s.is_empty() && f.width(&format!("{s}...")) > w {
-        s.pop();
-    }
-    format!("{}...", s.trim_end())
-}
-
 /// The shot numbers' colours (the path view's 15-bit colours): white the tee shot, yellow the second, orange the third,
 /// red the fourth and later.
 pub const SHOT_COLOURS: [u32; SHOT_KINDS] = [0x7fff, 0x7fe0, 0x7e00, 0x7d08];
@@ -292,19 +297,41 @@ const SHOT_KEYS: [&str; SHOT_KINDS] = ["STR_LANDING_SHOT_1", "STR_LANDING_SHOT_2
 // ---- the comments page's layout (the message history's box) ------------------------------------------------------------------
 
 const BOX: Rect = Rect { x: 40.0, y: 36.0, w: 720.0, h: 528.0 };
-const HEAD_Y: f32 = BOX.y + 64.0;
-const ROWS_Y: f32 = HEAD_Y + 16.0;
-const ROW_H: f32 = 21.0;
-const CELL_X: f32 = BOX.x + 64.0;
-const CELL_W: f32 = 196.0;
-const ALL_X: f32 = BOX.x + 676.0;
+const TOP_Y: f32 = BOX.y + 66.0;
+const BOTTOM_Y: f32 = BOX.y + BOX.h - 66.0;
+/// A hole's block: the hole and its count on the left, its thoughts one a line, each count at the right edge.
+const HOLE_X: f32 = BOX.x + 24.0;
+const TEXT_X: f32 = BOX.x + 112.0;
+const COUNT_R: f32 = BOX.x + BOX.w - 58.0;
+const TEXT_W: f32 = COUNT_R - TEXT_X - 40.0;
+const LINE: f32 = 16.0;
+/// The page's font: the reports' (Manual SSi 14, as the F2 report and the other report tabs' pages print).
+const FONT: Fnt = F_INFO14;
+const UP: Rect = Rect { x: BOX.x + BOX.w - 44.0, y: TOP_Y, w: 20.0, h: 20.0 };
+const DOWN: Rect = Rect { x: BOX.x + BOX.w - 44.0, y: BOTTOM_Y - 20.0, w: 20.0, h: 20.0 };
+const PERIOD_KEYS: [&str; PERIODS] = ["STR_HOLECOMMENTS_THIS_MONTH", "STR_HOLECOMMENTS_LAST_MONTH", "STR_HOLECOMMENTS_THIS_YEAR"];
 
-fn month_tab(k: usize) -> Rect {
-    Rect::new(BOX.x + 24.0 + 214.0 * k as f32, BOX.y + 40.0, 206.0, 15.0)
+fn period_tab(k: usize) -> Rect {
+    Rect::new(BOX.x + 24.0 + 214.0 * k as f32, BOX.y + 40.0, 206.0, 18.0)
 }
 
 fn ok_tick() -> Rect {
     Rect::new(BOX.x + BOX.w - 70.0, BOX.y + BOX.h - 58.0, 50.0, 50.0)
+}
+
+/// A hole's block on the page: the hole, its top, its height, how many thoughts in all, and its thoughts' lines (the words
+/// wrapped to the width, the count on the first line, the colour of the line's tone).
+struct Block {
+    hole: usize,
+    y: f32,
+    h: f32,
+    total: u32,
+    lines: Vec<(Vec<String>, u32, [f32; 4])>,
+}
+
+/// A block's height for `lines` lines of text (at least the hole's two).
+fn block_height(lines: usize) -> f32 {
+    LINE * lines.max(2) as f32 + 8.0
 }
 
 impl App {
@@ -389,7 +416,7 @@ impl App {
         if !self.xs.insight.map || !crate::extras::landing_map() || self.screen == Screen::YearEnd {
             return;
         }
-        if self.screen == Screen::Play {
+        if self.screen == Screen::Play && !self.xs.insight.fixed {
             if let Some(h) = self.hole_near_pointer() {
                 self.xs.insight.hole = h;
             }
@@ -459,41 +486,40 @@ impl App {
 
     // ---- comments by hole -----------------------------------------------------------------------------------------------
 
-    /// A golfer's thought, tallied for its hole when it changed the golfer's mood (comments by hole on).
+    /// A golfer's thought while playing a hole, tallied for the hole (comments by hole on): every thought below 50 (as the
+    /// F2 report lists them; 50 is a story's line), good, bad or neither.
     pub fn tally_thought(&mut self, g: usize, id: u32, arg: i32) {
         if id >= MAX_ID || g >= sg_core::golfer::SLOTS {
             return;
         }
         let gg = &self.club.g[g];
-        let hole = gg.hole;
-        // the sign of the mood change the history entry carries (golfer.rs event: 0x4000 a good change, 0xc000 a bad one);
-        // a thought that changed nothing is not counted, as the original's comment counters do not count it
-        let tone = match gg.thoughts.iter().position(|&t| t as u32 == id).map(|i| gg.args[i] & 0xc000) {
-            Some(0x4000) => 1,
-            Some(0xc000) => 2,
-            _ => return,
-        };
+        // the score at a hole's end (0x13, 0x17) shows once the golfer has moved on: its hole is the thought's stamp's
+        // (hole * 11 + strokes, golfer.rs event), as thoughts.rs reads it
+        let hole = if matches!(id, 0x13 | 0x17) && gg.thought as u32 == id { gg.thought_stamp as i32 / 11 } else { gg.hole };
         if !(1..19).contains(&hole) {
             return;
         }
         let month = self.game_tick >> 10;
         let k = self.xs.kept.insight.get_or_insert_with(Default::default);
-        k.tally.add(month, hole as u8, id as u8, arg & 0x3fff, tone);
+        k.tally.add(month, hole as u8, id as u8, arg & 0x3fff);
     }
 
-    /// A thought's words for the page: the Customise screen's label of its dialogue row when it has one ("Hit into the
-    /// water"), else the line the F2 report shows for it.
-    fn thought_label(&self, id: u8, arg: i32) -> String {
+    /// A thought's words and tone for the page: the Customise screen's label of its dialogue row when it has one ("Hit into
+    /// the water"), else the line the F2 report shows for it; the tone is the F2 line's.
+    fn thought_label(&self, id: u8, arg: i32) -> (String, sg_core::thoughts::Tone) {
         use sg_core::roster::{SAYING_CODES, SAYING_LABEL_KEYS};
-        match SAYING_CODES.iter().position(|&c| c == id as u32).filter(|&r| r > 0) {
+        let line = self.club.thought(&self.course, id as u32, arg, 0x98);
+        let text = match SAYING_CODES.iter().position(|&c| c == id as u32).filter(|&r| r > 0) {
             Some(r) => tr(SAYING_LABEL_KEYS[r]).to_string(),
-            None => self.club.thought(&self.course, id as u32, arg, 0x98).text.trim().to_string(),
-        }
+            None => line.text.trim().to_string(),
+        };
+        (text, line.tone)
     }
 
     /// Shift+I, the Information menu's line or the reports' eleventh tab: the comments by hole page (closing to the course).
     pub fn open_hole_comments(&mut self) {
         self.screen = Screen::HoleComments;
+        self.xs.insight.off = 0;
         self.hover = -1;
     }
 
@@ -502,26 +528,77 @@ impl App {
         self.hover = -1;
     }
 
-    /// The page's rows: the open holes.
+    /// The page's holes: the open ones.
     fn comment_holes(&self) -> Vec<usize> {
         (1..19).filter(|&h| self.club.holes[h].par != 0).collect()
+    }
+
+    /// The tally as of now (a month that has turned since the last thought shows as its own, empty, month).
+    fn tally_now(&self) -> Tally {
+        let mut t = self.xs.kept.insight.as_ref().map(|k| k.tally.clone()).unwrap_or_default();
+        t.roll(self.game_tick >> 10);
+        t
+    }
+
+    /// The blocks on the page from the first hole shown.
+    fn comment_blocks(&self) -> Vec<Block> {
+        let (navy, good, bad) = (c15(0x0018), c15(0x01e0), c15(0x5800));
+        let tally = self.tally_now();
+        let period = self.xs.insight.period;
+        let mut out = Vec::new();
+        let mut y = TOP_Y;
+        for &h in self.comment_holes().iter().skip(self.xs.insight.off) {
+            let mut lines = Vec::new();
+            for (id, n, arg) in tally.top(h as u8, period, TOP) {
+                let (text, tone) = self.thought_label(id, arg);
+                if text.is_empty() {
+                    continue;
+                }
+                // the F2 report's colours, darkened for the box's blue as the golfer profile has them
+                let c = match tone {
+                    sg_core::thoughts::Tone::Good => good,
+                    sg_core::thoughts::Tone::Bad => bad,
+                    _ => navy,
+                };
+                lines.push((crate::extras::wrap(FONT, &text, TEXT_W), n, c));
+            }
+            let h_px = block_height(lines.iter().map(|l| l.0.len()).sum());
+            if y + h_px > BOTTOM_Y && !out.is_empty() {
+                break;
+            }
+            out.push(Block { hole: h, y, h: h_px, total: tally.total(h as u8, period), lines });
+            y += h_px;
+        }
+        out
+    }
+
+    fn hole_comments_scroll(&mut self, d: i32) {
+        let n = self.comment_holes().len() as i32;
+        self.xs.insight.off = (self.xs.insight.off as i32 + d).clamp(0, (n - 1).max(0)) as usize;
+    }
+
+    pub fn hole_comments_wheel(&mut self, y: f32) {
+        self.hole_comments_scroll(if y > 0.0 { -1 } else { 1 });
     }
 
     pub fn hole_comments_click(&mut self, x: f32, y: f32, right: bool) {
         if right || ok_tick().has(x, y) || !BOX.has(x, y) {
             return self.close_hole_comments();
         }
-        for k in 0..2 {
-            if month_tab(k).has(x, y) {
-                self.xs.insight.last_month = k == 1;
-                return;
-            }
+        if let Some(k) = (0..PERIODS).find(|&k| period_tab(k).has(x, y)) {
+            self.xs.insight.period = k;
+            return;
         }
-        let holes = self.comment_holes();
-        let row = ((y - ROWS_Y) / ROW_H).floor();
-        if y >= ROWS_Y && (row as usize) < holes.len() && crate::extras::landing_map() {
-            // a hole's row: its landing map
-            let h = holes[row as usize];
+        if UP.has(x, y) {
+            return self.hole_comments_scroll(-1);
+        }
+        if DOWN.has(x, y) {
+            return self.hole_comments_scroll(1);
+        }
+        let blocks = self.comment_blocks();
+        if let Some(b) = blocks.iter().find(|b| (b.y..b.y + b.h).contains(&y) && x < UP.x).filter(|_| crate::extras::landing_map()) {
+            // a hole's block: its landing map
+            let h = b.hole;
             self.close_hole_comments();
             self.xs.insight.hole = h;
             self.xs.insight.map = true;
@@ -532,8 +609,17 @@ impl App {
 
     pub fn hole_comments_key(&mut self, k: miniquad::KeyCode) {
         use miniquad::KeyCode;
+        let page = self.comment_blocks().len().max(1) as i32;
+        let p = &mut self.xs.insight.period;
         match k {
-            KeyCode::Left | KeyCode::Right => self.xs.insight.last_month = !self.xs.insight.last_month,
+            KeyCode::Left => *p = (*p + PERIODS - 1) % PERIODS,
+            KeyCode::Right => *p = (*p + 1) % PERIODS,
+            KeyCode::Up => self.hole_comments_scroll(-1),
+            KeyCode::Down => self.hole_comments_scroll(1),
+            KeyCode::PageUp => self.hole_comments_scroll(-page),
+            KeyCode::PageDown | KeyCode::Space => self.hole_comments_scroll(page),
+            KeyCode::Home => self.xs.insight.off = 0,
+            KeyCode::End => self.hole_comments_scroll(18),
             KeyCode::I if self.shift_held => self.close_hole_comments(),
             KeyCode::Escape | KeyCode::Enter | KeyCode::KpEnter => self.close_hole_comments(),
             _ => {}
@@ -549,54 +635,57 @@ impl App {
         s.put_shadowed(g, F_MANUAL20, 400.0, BOX.y + 14.0, tr("STR_HOLECOMMENTS_TITLE"), yellow, true);
         let (px, py) = self.info.pointer;
         let month = self.game_tick >> 10;
-        let last = self.xs.insight.last_month;
-        for k in 0..2 {
-            let m = month.wrapping_sub(k as u32);
+        for (k, key) in PERIOD_KEYS.iter().enumerate() {
+            let m = month.wrapping_sub((k == LAST_MONTH) as u32);
             let name = tr(crate::hud_ui::MONTH_KEYS[(m & 7) as usize]);
-            let label = trf(if k == 0 { "STR_HOLECOMMENTS_THIS_MONTH" } else { "STR_HOLECOMMENTS_LAST_MONTH" }, &[("MONTH", &name)]);
-            let r = month_tab(k);
-            draw_tab(g, &s, r, F_ARIAL10, &label, last == (k == 1), r.has(px, py));
+            let label = trf(key, &[("MONTH", &name), ("YEAR", &(2001 + (month >> 3)))]);
+            let r = period_tab(k);
+            draw_tab(g, &s, r, FONT, &label, self.xs.insight.period == k, r.has(px, py));
         }
-        s.put(g, F_ARIAL10, BOX.x + 24.0, HEAD_Y, tr("STR_HOLECOMMENTS_HOLE"), navy);
-        s.put(g, F_ARIAL10, CELL_X, HEAD_Y, tr("STR_HOLECOMMENTS_MOST"), navy);
-        s.put_centered(g, F_ARIAL10, ALL_X, HEAD_Y, tr("STR_HOLECOMMENTS_ALL"), navy);
-        let empty = Default::default();
-        let tally = self.xs.kept.insight.as_ref().map(|k| &k.tally).unwrap_or(&empty);
-        // the tally as of now: a month that has turned since the last thought shows as its own (empty) month
-        let mut shown = tally.clone();
-        shown.roll(month);
         let holes = self.comment_holes();
         if holes.is_empty() {
-            s.put_centered(g, F_MANUAL15, 400.0, 280.0, tr("STR_HOLECOMMENTS_NO_HOLES"), white);
+            s.put_centered(g, FONT, 400.0, 280.0, tr("STR_HOLECOMMENTS_NO_HOLES"), white);
         }
+        let blocks = self.comment_blocks();
         let clickable = crate::extras::landing_map();
-        for (i, &h) in holes.iter().enumerate() {
-            let y = ROWS_Y + ROW_H * i as f32;
-            if clickable && (y..y + ROW_H).contains(&py) && (BOX.x + 16.0..BOX.x + BOX.w - 16.0).contains(&px) {
-                s.fill(g, BOX.x + 16.0, y - 1.0, BOX.w - 32.0, ROW_H - 1.0, rgba(1.0, 1.0, 1.0, 0.18));
+        for b in &blocks {
+            if clickable && (b.y..b.y + b.h).contains(&py) && (BOX.x..UP.x).contains(&px) {
+                s.fill(g, BOX.x + 16.0, b.y - 2.0, UP.x - BOX.x - 24.0, b.h - 2.0, rgba(1.0, 1.0, 1.0, 0.18));
             }
-            s.put(g, F_MANUAL15, BOX.x + 30.0, y + 2.0, &h.to_string(), white);
-            let top = shown.top(h as u8, last, TOP);
-            if top.is_empty() {
-                s.put(g, F_ARIAL10, CELL_X, y + 5.0, tr("STR_HOLECOMMENTS_NOTHING"), grey);
+            s.put(g, FONT, HOLE_X, b.y, &trf("STR_HOLECOMMENTS_HOLE", &[("HOLE", &b.hole)]), white);
+            s.put(g, FONT, HOLE_X, b.y + LINE, &trf("STR_HOLECOMMENTS_HEARD", &[("COUNT", &b.total)]), navy);
+            if b.lines.is_empty() {
+                s.put(g, FONT, TEXT_X, b.y, tr("STR_HOLECOMMENTS_NOTHING"), grey);
             }
-            for (k, &(id, n, arg, tone)) in top.iter().enumerate() {
-                // the golfer profile's colours: green a good thought, red a bad one
-                let c = if tone == 1 { c15(0x01e0) } else { c15(0x5800) };
-                let count = format!(" ({n})");
-                let w = CELL_W - 8.0 - F_MANUAL15.width(&count);
-                let text = fit(F_MANUAL15, &self.thought_label(id, arg), w) + count.as_str();
-                s.put(g, F_MANUAL15, CELL_X + CELL_W * k as f32, y + 2.0, &text, c);
+            let mut y = b.y;
+            for (words, n, c) in &b.lines {
+                let count = n.to_string();
+                s.put(g, FONT, COUNT_R - FONT.width(&count), y, &count, *c);
+                for w in words {
+                    s.put(g, FONT, TEXT_X, y, w, *c);
+                    y += LINE;
+                }
             }
-            let all = shown.total(h as u8, last);
-            if all > 0 {
-                s.put_centered(g, F_MANUAL15, ALL_X, y + 2.0, &all.to_string(), white);
-            }
-            s.fill(g, BOX.x + 20.0, y + ROW_H - 2.0, BOX.w - 40.0, 1.0, rgba(0.0, 0.0, 0.3, 0.25));
+            s.fill(g, BOX.x + 20.0, b.y + b.h - 5.0, UP.x - BOX.x - 32.0, 1.0, rgba(0.0, 0.0, 0.3, 0.25));
+        }
+        // the scroll arrows and where the page is among the holes (the message history's)
+        let n = holes.len();
+        let can_up = self.xs.insight.off > 0;
+        let can_down = blocks.last().is_some_and(|b| holes.last() != Some(&b.hole));
+        for (r, up, ok) in [(UP, true, can_up), (DOWN, false, can_down)] {
+            draw_button(g, &s, r, "", ok, r.has(px, py));
+            draw_arrow(g, &s, r.x + r.w / 2.0, r.y + r.h / 2.0, up, if ok { navy } else { grey });
+        }
+        if n > 0 {
+            let track = DOWN.y - UP.y - UP.h - 8.0;
+            let th = (track * blocks.len().max(1) as f32 / n as f32).max(8.0).min(track);
+            let ty =
+                UP.y + UP.h + 4.0 + (track - th) * (self.xs.insight.off as f32 / n.saturating_sub(blocks.len()).max(1) as f32).min(1.0);
+            s.fill(g, UP.x + 7.0, ty, 6.0, th, white);
         }
         let help = if clickable { "STR_HOLECOMMENTS_HELP_MAP" } else { "STR_HOLECOMMENTS_HELP" };
-        s.put(g, F_ARIAL10, BOX.x + 24.0, BOX.y + BOX.h - 38.0, tr("STR_HOLECOMMENTS_COUNTED"), navy);
-        s.put(g, F_ARIAL10, BOX.x + 24.0, BOX.y + BOX.h - 24.0, tr(help), navy);
+        s.put(g, FONT, BOX.x + 24.0, BOX.y + BOX.h - 46.0, tr("STR_HOLECOMMENTS_COUNTED"), navy);
+        s.put(g, FONT, BOX.x + 24.0, BOX.y + BOX.h - 28.0, tr(help), navy);
         if self.art.trans.tex.is_some() {
             let r = ok_tick();
             s.image_part(g, &self.art.trans, r.x, r.y, 350.0, 140.0, 50.0, 50.0);
@@ -676,38 +765,54 @@ mod tests {
     }
 
     #[test]
-    fn the_tally_keeps_this_month_and_last() {
+    fn the_tally_keeps_this_month_last_month_and_the_year() {
         let mut t = Tally::default();
-        t.add(5, 1, 0x0d, 17, 2);
-        t.add(5, 1, 0x0d, 17, 2);
-        t.add(5, 1, 0x1c, 0, 1);
-        t.add(5, 1, 0x04, 0, 2);
-        t.add(5, 1, 0x04, 0, 2);
-        t.add(5, 1, 0x04, 0, 2);
-        t.add(5, 2, 0x1c, 0, 1);
-        assert_eq!(t.top(1, false, 3).iter().map(|e| (e.0, e.1)).collect::<Vec<_>>(), [(0x04, 3), (0x0d, 2), (0x1c, 1)]);
-        assert_eq!(t.top(1, false, 2).len(), 2);
-        assert_eq!(t.total(1, false), 6);
-        assert_eq!(t.total(2, false), 1);
-        // the next month: this month becomes last month
-        t.add(6, 1, 0x1c, 0, 1);
-        assert_eq!(t.total(1, true), 6);
-        assert_eq!(t.total(1, false), 1);
-        assert_eq!(t.top(2, true, 3), [(0x1c, 1, 0, 1)]);
+        t.add(5, 1, 0x0d, 17);
+        t.add(5, 1, 0x0d, 17);
+        t.add(5, 1, 0x1c, 0);
+        for _ in 0..3 {
+            t.add(5, 1, 0x04, 0);
+        }
+        t.add(5, 2, 0x1c, 0);
+        let ids = |v: Vec<(u8, u32, i32)>| v.iter().map(|e| (e.0, e.1)).collect::<Vec<_>>();
+        assert_eq!(ids(t.top(1, THIS_MONTH, 3)), [(0x04, 3), (0x0d, 2), (0x1c, 1)]);
+        assert_eq!(t.top(1, THIS_MONTH, 2).len(), 2);
+        assert_eq!(t.total(1, THIS_MONTH), 6);
+        assert_eq!(t.total(2, THIS_MONTH), 1);
+        // the next month: this month becomes last month, the year goes on
+        t.add(6, 1, 0x1c, 0);
+        assert_eq!(t.total(1, LAST_MONTH), 6);
+        assert_eq!(t.total(1, THIS_MONTH), 1);
+        assert_eq!(t.total(1, THIS_YEAR), 7);
+        assert_eq!(ids(t.top(1, THIS_YEAR, 1)), [(0x04, 3)]);
+        assert_eq!(t.top(2, LAST_MONTH, 3), [(0x1c, 1, 0)]);
+        // a new year (month 8 is March of the second year): the year starts afresh, last month carries over
+        t.roll(7);
+        t.add(8, 3, 0x10, 0);
+        assert_eq!(t.total(1, THIS_YEAR), 0);
+        assert_eq!(t.total(3, THIS_YEAR), 1);
         // a gap of more than a month: nothing carries over
-        t.roll(9);
+        t.roll(20);
         assert!(t.is_empty());
         // ties: the lower id first
-        t.add(9, 4, 9, 0, 2);
-        t.add(9, 4, 2, 0, 2);
-        assert_eq!(t.top(4, false, 3)[0].0, 2);
+        t.add(20, 4, 9, 0);
+        t.add(20, 4, 2, 0);
+        assert_eq!(t.top(4, THIS_MONTH, 3)[0].0, 2);
+    }
+
+    #[test]
+    fn blocks_hold_the_holes_lines() {
+        assert_eq!(block_height(0), block_height(2));
+        assert_eq!(block_height(3), LINE * 3.0 + 8.0);
+        // eighteen holes need more than one page: the list scrolls
+        assert!(block_height(3) * 18.0 > BOTTOM_Y - TOP_Y);
     }
 
     #[test]
     fn a_save_keeps_only_what_is_on() {
         let mut k = Kept::default();
         k.landings.push(1, [0; 4], Shot::new((0, 0), (0, 0), 1, FAIRWAY));
-        k.tally.add(0, 1, 4, 0, 2);
+        k.tally.add(0, 1, 4, 0);
         let k = Some(k);
         assert_eq!(Kept::for_save(&k, false, false), None);
         assert_eq!(Kept::for_save(&None, true, true), None);

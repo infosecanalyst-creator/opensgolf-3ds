@@ -280,18 +280,21 @@ compare pixel for pixel with the build before the extras).
   extra is on; building the hole again with its tee or cup elsewhere starts it afresh. Kept with the save while the
   extra is on.
 - **Comments by hole** (**Shift+I**, *Information, Comments by hole*, or the *By hole* tab after F10 on the tabbed
-  reports): a page listing, for each open hole, the three thoughts golfers had there most often this month or last month
-  (Left/Right or the tabs at the top), with how many times, and how many in all. Counted are the thoughts that changed a
-  golfer's mood, as the F2 report counts its comments: green ones cheered the golfer up ("Made good shot", "Notices
-  scenic improvement"), red ones put the golfer out ("Hit into the water", "Too easy shot", "Long wait at tee"). The
-  words are the Customise screen's dialogue labels where a thought has one, else the F2 report's line. With the landing
-  map on too, a click on a hole's row shows its landing map. Kept with the save while the extra is on.
+  reports): a page with a block for each open hole: the three thoughts golfers had most often while playing it, each on
+  its own line with how many times, and how many thoughts in all. Every thought counts (each bubble over a golfer on the
+  hole), grouped by kind, in the F2 report's colours: green ones cheered the golfer up ("Made good shot", "Notices
+  scenic improvement"), red ones put the golfer out ("Hit into the water", "Too easy shot", "Long wait at tee"), the rest
+  are plain. The tabs at the top (or Left/Right) show this month, last month or this year; Up/Down, PageUp/PageDown or
+  the wheel scroll through the holes. The words are the Customise screen's dialogue labels where a thought has one, else
+  the F2 report's line. With the landing map on too, a click on a hole's block shows its landing map. Kept with the
+  save while the extra is on.
 
   Both only watch the game: the golfers play exactly the same with them on or off. Ticks saved before they existed read
   as off (choose them in the extras box).
 
 Test hooks for stills: `--screen people|staff|pro|history|profile|pathview|tags|ticker|card|landing|holecomments` (with a game;
-`landing` shows the landing map of the first open hole;
+`landing` shows the landing map of the first open hole, or of hole N with `SG_LANDING_HOLE=N`; `SG_HOLECOMMENTS=P[,N]` shows comments by hole for period P, 0 this
+month, 1 last month, 2 this year, scrolled N holes down;
 `SG_PEOPLE_SORT=COL[,1]` sorts the People list by column COL, downward with 1), `--edit "M:6"` opens the extras box.
 
 **Ctrl+Z** (Cmd+Z on a Mac) undoes the last click or drag with a building or terrain tool that changed the course:
