@@ -36,6 +36,7 @@ mod files_ui;
 mod framerate;
 mod fx;
 mod fx_ball;
+mod fx_crowd;
 mod fx_glsl;
 mod fx_life;
 mod fx_light;

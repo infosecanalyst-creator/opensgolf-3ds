@@ -101,7 +101,7 @@ decoded terrain light (`sg_core::terrain::Lighting`, `light_direction`) and the 
 | After the rain (`after-rain`) | on | With rain: wet, glossy ground and puddles during and after a rainy day, now and then a rainbow (see *After the rain*). |
 | Lightning (`lightning`) | off | Flashes and distant flicker in heavy rain on parkland and links courses. |
 | Winter (`winter`) | on | Early March and late October bring frost, a light snow cover that melts in the sun, snow instead of rain on cold days and icy pond edges, on parkland and links courses (see *Winter*). |
-| Tournament crowds (`crowds`) | on | During a tournament, spectators along the holes in play and round the greens, a grandstand by the last green, fireworks when a championship is won (see *Tournament atmosphere*). |
+| Tournament crowds (`crowds`) | on | During a tournament or a championship, spectators (the game's own golfer sprites) round the greens and along the fairways of the holes in play, cheering now and then (see *Tournament atmosphere*). |
 | Life on the course (`life`) | on | Flocks of birds crossing the sky with their shadows, butterflies over flower beds in summer, leaves falling from the trees in autumn (see *Life on the course*). |
 | Quality (`quality`) | medium | Low: light map 2 texels a tile, no blur passes (no tilt-shift, no bloom), sharp-bilinear scaling only, the cast shadows' mask at half the resolution. Medium: 4 texels a tile, blurs at a quarter of the resolution, the mask at half. High: 8 texels a tile, blurs at half the resolution, the mask at full. On the Effects page since this version. |
 
@@ -370,6 +370,15 @@ original art is drawn as a few crisp pixels at the art's pixel size, lit like th
   time, tumbling and drifting with the wind, more as the autumn colours deepen.
 
 Test hooks: `SG_FX_BIRDS=1` keeps two birds of prey over the middle of the view; `SG_FX_MONTH` picks the month.
+
+### Tournament atmosphere
+
+During an SGA tournament or Play a Championship, spectators gather round the green and along both sides of the fairway
+of each hole being played, about twenty a hole, facing the pin. They are the game's own golfer sprites in the usual
+random colours, most standing, some fidgeting, and every so often a hole's crowd cheers (the golfers' *Happy* clip) for a
+moment. They stand only on grass and rough on the club's land, never on greens, tees, sand, water, woods or buildings.
+They are drawn only: the golfers and the simulation do not see them. The original has no grandstand or fireworks art, so
+there are none, to keep to the original's look.
 
 ### Performance
 

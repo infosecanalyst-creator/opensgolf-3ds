@@ -45,7 +45,7 @@ impl App {
         (body, shadow)
     }
 
-    fn frames_of(&self, s: Option<usize>) -> i32 {
+    pub(crate) fn frames_of(&self, s: Option<usize>) -> i32 {
         s.map(|s| self.sprites[s].s.frames_per_view).unwrap_or(1)
     }
 
@@ -199,6 +199,10 @@ impl App {
                     ..Default::default()
                 });
             }
+        }
+        // Enhanced graphics' tournament crowds (fx_crowd.rs)
+        if crate::fx::active() && crate::fx::settings().crowds {
+            add.extend(self.fx_spectators());
         }
         // the splash
         if let Some((sx, sy, n)) = self.club.wildlife.splash {
