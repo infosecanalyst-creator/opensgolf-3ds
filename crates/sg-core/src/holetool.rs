@@ -54,7 +54,7 @@ impl Club {
                     go = false;
                 } else if cup {
                     let k = (old_flags & f::LOW) as usize;
-                    self.holes[k].par = 0;
+                    self.holes[k].close();
                     self.holes[k].pin.0 = 0;
                 }
                 self.holes[hu].back = (a, b);
@@ -76,7 +76,7 @@ impl Club {
             if self.holes[hu].pin.0 == 0 && a != 0 && (!green_next || self.holes[hu].back.0 != 0) {
                 if old == t::TEE {
                     let k = (c.flags[i] & f::LOW) as usize;
-                    self.holes[k].par = 0;
+                    self.holes[k].close();
                     self.holes[k].back.0 = 0;
                 } else if cup {
                     return false;
@@ -110,13 +110,13 @@ impl Club {
                         self.holes[ku].back.0 = 0;
                     }
                 }
-                self.holes[ku].par = 0;
+                self.holes[ku].close();
                 if !(new == t::GREEN && c.flags[i] & f::CUP != 0) {
                     c.flags[i] &= !f::LOW;
                 }
             } else if old == t::GREEN {
                 self.next_hole = self.next_hole.min(k);
-                self.holes[ku].par = 0;
+                self.holes[ku].close();
                 self.holes[ku].pin.0 = 0;
                 if new != t::TEE {
                     c.flags[i] &= !f::LOW;
@@ -162,6 +162,7 @@ impl Club {
         if eff > 300 {
             eff -= 25 * level10;
         }
+        hr.game_par = 0;
         hr.par = match eff {
             e if e > 625 => 6,
             e if e > 474 => 5,

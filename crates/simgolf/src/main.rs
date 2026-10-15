@@ -802,6 +802,15 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 app.after_object_change();
                 println!("celebrity home at {},{}: {} residents", at(0), at(1), app.club.residents.len());
             }
+            b'R' => {
+                // test hook: the Set par extra asks for par N on the Hole Stats' hole (its confirmation box); "R:N,1" sets it
+                if at(1) != 0 {
+                    let ok = app.club.set_par(app.info.stats_hole.clamp(1, 18), at(0));
+                    println!("set par {}: {ok}", at(0));
+                } else {
+                    app.ask_par(at(0));
+                }
+            }
             b'X' => {
                 // test hook: the game's extras (sg_core::extras bits), not saved to the settings
                 let e = sg_core::extras::Extras::from_bits(at(0) as u32);
@@ -1306,6 +1315,12 @@ impl Stage {
             PopupKind::LandOffer => {
                 if k == 0 {
                     self.app.open_land_screen();
+                }
+            }
+            // the Set par extra's confirmation (extras_ui.rs): Yes changes the par, back on Hole Stats either way
+            PopupKind::SetPar => {
+                if k == 0 {
+                    self.app.confirm_par();
                 }
             }
             PopupKind::CareerOver => {
@@ -1961,6 +1976,12 @@ impl Stage {
                 app.draw_photo_button(&mut self.g);
             }
             if app.screen == Screen::Popup {
+                // the Set par extra's confirmation stays over the Hole Stats it came from (extras_ui.rs)
+                if app.ui_ok && app.popup.as_ref().is_some_and(|p| p.kind == popup_ui::PopupKind::SetPar) {
+                    ui::set_face(Some(ui::Face::Info));
+                    app.draw_hole_stats(&mut self.g);
+                    ui::set_face(title.then_some(ui::Face::Klepto));
+                }
                 app.draw_popup(&mut self.g);
             }
             if !matches!(app.screen, Screen::People | Screen::Profile) {
@@ -2625,7 +2646,11 @@ impl EventHandler for Stage {
                 let (vx, vy) = self.app.view.to_virtual(x, y);
                 self.app.report_click(vx, vy);
             } else if self.app.screen == Screen::HoleStats {
-                self.app.screen = Screen::Report;
+                // the Set par extra's buttons (extras_ui.rs), else the original's close on any click
+                let (vx, vy) = self.app.view.to_virtual(x, y);
+                if !(button == MouseButton::Left && self.app.hole_stats_click(vx, vy)) {
+                    self.app.screen = Screen::Report;
+                }
             } else if matches!(self.app.screen, Screen::Files | Screen::Themes | Screen::Credits) {
                 let (vx, vy) = self.app.view.to_virtual(x, y);
                 if button == MouseButton::Left {
@@ -2904,7 +2929,10 @@ impl Stage {
                     app.hover = -1;
                 }
             } else if app.screen == Screen::HoleStats {
-                app.screen = Screen::Report;
+                // the Set par extra's minus and plus (extras_ui.rs), else the original's close on any key
+                if !app.hole_stats_key(k) {
+                    app.screen = Screen::Report;
+                }
             } else if matches!(app.screen, Screen::Files | Screen::Themes | Screen::Credits) {
                 app.title_key(k);
             } else if app.screen == Screen::Pair {

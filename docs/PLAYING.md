@@ -145,9 +145,18 @@ games start with (kept in settings.json under `extras`).
   glance at a tile next to one enjoy the sight (the scenic thought, +1 mood, as a landmark's sight gives), and scaring one
   is the same as scaring a wild one. Up to 32 pairs. The Preferences' "Ambient animals" tick hides and stops them, as it
   does the wild ones.
+- **Set par.** The game gives each hole its par from its length when it opens, and sometimes judges a hole too hard or
+  too easy for it. With this on, Hole Stats (click a hole on the Course Report) shows **-** and **+** buttons beside the
+  par (or press minus and plus there); after a confirmation the hole's par is one less or one more, from 2 to 6. A par you
+  set is shown in blue and counts everywhere par does: golfers' scores and their moods over them, birdies and eagles, the
+  hole's hard and easy marks and its name, the reports and the best rounds. It is saved with the game and moves with the
+  hole on the Routing screen. Rebuilding the hole (painting over its tee or cup green and opening it again) gives it the
+  game's par anew, a tournament's checklist sets its own pars, and switching the extra off puts every hole back to the
+  game's par. Pars cannot be changed during a tournament.
 
 Test hooks: `--extras BITS` sets the extras a new game starts with (1 Tab turns, 2 cut content, 4 hardcore, 8 higher staff
-limits, 16 animals; not saved to the settings); `--edit "X:BITS"` sets the extras of the game being played; `--edit "T:x,y"`
+limits, 16 animals, 32 set par; not saved to the settings); `--edit "R:N"` asks for par N on the Hole Stats' hole (its
+confirmation box; `R:N,1` sets it at once); `--edit "X:BITS"` sets the extras of the game being played; `--edit "T:x,y"`
 presses the Tab of the first extra with the pointer on tile x,y; `--edit "S:page[,design]"` opens the Amenities panel with the
 landmark tool on strip page 0 (own), 1 (cut) or 2 (animals); `--edit "b:x,y,4,t"` places landmark type t (19..32 the cut ones,
 100 + kind an animal pair); `--edit "M:6"` opens the extras box.
