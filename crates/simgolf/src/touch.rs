@@ -259,6 +259,7 @@ impl App {
             || self.title.save_name.is_some()
             || self.content.profile_name.is_some()
             || self.cust.as_ref().is_some_and(|c| c.typing.is_some())
+            || self.popup.as_ref().is_some_and(|p| p.kind == crate::popup_ui::PopupKind::Search)
     }
 }
 

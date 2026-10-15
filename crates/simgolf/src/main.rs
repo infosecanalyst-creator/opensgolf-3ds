@@ -68,6 +68,7 @@ mod perf;
 mod photo;
 mod player_panel;
 mod popup_ui;
+mod prefs_search;
 mod pro_ui;
 mod profile_ui;
 mod render;
@@ -412,9 +413,10 @@ fn open_screen(app: &mut App, screen: Option<&str>) {
         Some("board") if app.ui_ok => {
             // SG_BOARD_AWARDS="id,id,..": accomplishments marked earned (a month apart, no snapshot) for a still
             if let Ok(ids) = std::env::var("SG_BOARD_AWARDS") {
+                let date = app.club.date();
                 for (k, id) in ints(&ids).into_iter().enumerate() {
                     if let Some(e) = app.club.earned.get_mut(id.max(0) as usize) {
-                        let tick = app.club.tick + 1024 * k as u32;
+                        let tick = date + 1024 * k as u32;
                         *e = Some(sg_core::records::Earned { tick, course: app.club.course_name.clone() });
                     }
                 }
@@ -424,7 +426,7 @@ fn open_screen(app: &mut App, screen: Option<&str>) {
         // the report as the coming year end will show it (the season in progress), whatever the date: the real report opens
         // only on the tick that ends a season
         Some("yearend") if app.ui_ok => {
-            app.year_end_tick = (app.club.tick | 0x1fff) + 1;
+            app.year_end_tick = (app.club.date() | 0x1fff) + 1;
             app.screen = Screen::YearEnd;
         }
         Some("roster") if app.ui_ok => {
@@ -854,18 +856,30 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
             b'q' => app.save_championship_pro(),
             b'A' => app.auto_aim = 1, // scripted runs: the pro aims every full shot at the pin
             b'M' => {
-                app.open_popup(match at(0) {
+                let kind = match at(0) {
                     0 => popup_ui::PopupKind::Info,
                     1 => popup_ui::PopupKind::System,
                     2 => popup_ui::PopupKind::Prefs,
                     4 => popup_ui::PopupKind::Retire,
                     5 => popup_ui::PopupKind::Enhanced,
                     6 => popup_ui::PopupKind::Extras,
+                    // M:7 the Preferences' search box (SG_PREFS_SEARCH="words" types them, SG_PREFS_CHANGED=1 shows only
+                    // what changed)
+                    7 => {
+                        app.pref_query = std::env::var("SG_PREFS_SEARCH").unwrap_or_default();
+                        popup_ui::PopupKind::Search
+                    }
+                    8 => popup_ui::PopupKind::ResetOriginal,
                     _ => popup_ui::PopupKind::LandOffer,
-                });
-                // M:5,P opens the Enhanced graphics box on page P
+                };
+                app.open_popup(kind);
+                // M:5,P opens the Enhanced graphics box on page P, M:6,P the Extras box
                 if let Some(p) = app.popup.as_mut().filter(|_| v.len() >= 2) {
-                    p.set_page(at(1).clamp(0, enhanced::PAGES.len() as i32 - 1) as u8);
+                    p.set_page(at(1).clamp(0, p.page_count() as i32 - 1) as u8);
+                }
+                if let Some(p) = app.popup.as_mut().filter(|p| p.kind == popup_ui::PopupKind::Search) {
+                    p.changed_only = std::env::var_os("SG_PREFS_CHANGED").is_some();
+                    p.refresh();
                 }
             }
             b'm' if v.len() >= 2 => app.move_hole(at(0) as usize, at(1) as usize),
@@ -1295,8 +1309,9 @@ impl Stage {
         }
         // the OpenSGolf extras' lines of the Information menu go by their text (they follow the goals line when it is there)
         let line = self.app.popup.as_ref().and_then(|p| p.lines.get(k + 1).cloned()).unwrap_or_default();
-        // the Enhanced graphics box's ticks, across its pages
-        let enh = self.app.popup.as_ref().map(|p| p.enh).unwrap_or_else(enhanced::settings);
+        // the Enhanced graphics, Extras and search boxes' ticks, across their pages
+        let pref = self.app.popup.as_ref().map(|p| p.pref.clone());
+        let query = self.app.popup.as_ref().map(|p| p.query.clone()).unwrap_or_default();
         self.app.close_popup();
         use popup_ui::PopupKind;
         match kind {
@@ -1366,9 +1381,36 @@ impl Stage {
             },
             // Preferences > Enhanced graphics: the ticks become the settings (enhanced.rs)
             PopupKind::Enhanced => {
-                if self.app.apply_enhanced(&mut self.g, enh) {
-                    self.app.ui_ok &= load_art(&mut self.app, &mut self.g);
+                if let Some(p) = pref {
+                    if self.app.apply_enhanced(&mut self.g, p.enh) {
+                        self.app.ui_ok &= load_art(&mut self.app, &mut self.g);
+                    }
                 }
+            }
+            // Preferences > Search (prefs_search.rs): OK puts what was ticked in use; a key found opens Change keys on it, and
+            // Reset to original asks first (the ticks so far kept either way)
+            PopupKind::Search => {
+                if let Some(p) = &pref {
+                    self.apply_prefs(p);
+                }
+                if k == popup_ui::SEARCH_RESET {
+                    self.app.pref_query = query;
+                    self.app.open_popup(PopupKind::ResetOriginal);
+                } else if k >= popup_ui::SEARCH_KEY {
+                    // Change keys with the action found waiting for its new key
+                    let back = self.app.screen;
+                    self.app.open_keys(back);
+                    self.app.open_remap_on(k - popup_ui::SEARCH_KEY);
+                }
+            }
+            // the search box's Reset to original: Yes puts everything back as in the original game; the search box opens
+            // again either way, on the words typed
+            PopupKind::ResetOriginal => {
+                if k == 0 {
+                    println!("preferences reset to the original game");
+                    self.apply_prefs(&prefs_search::Prefs::original());
+                }
+                self.app.open_popup(PopupKind::Search);
             }
             // the ordinary quit leaves the way the career's end does (DECODE_WORLD2 6.5); EXACT (main loop after
             // 0x420b4e): "save first" runs the Save dialog (0x405b10) and then quits whether or not a game was saved,
@@ -1381,17 +1423,11 @@ impl Stage {
                 2 => self.app.end_career(),
                 _ => {}
             },
-            // Preferences > OpenSGolf extras: the first ticks become the game's extras (extras_ui.rs), the rest the
+            // Preferences > OpenSGolf extras: the gameplay ticks become the game's extras (extras_ui.rs), the interface ones the
             // interface extras' settings, saved (extras.rs)
             PopupKind::Extras => {
-                let m = k as u32;
-                let ui = popup_ui::EXTRAS_UI as u32;
-                self.app.set_extras(sg_core::extras::Extras::from_bits(m & ((1 << ui) - 1)));
-                let s = extras::Settings::from_bits(m >> ui);
-                extras::set(s);
-                extras::save(&s);
-                if !s.path_help {
-                    self.app.xs.path_view = false;
+                if let Some(p) = pref {
+                    self.apply_extras(p.ex, p.ui);
                 }
             }
             PopupKind::Prefs => {
@@ -1423,6 +1459,11 @@ impl Stage {
                 if m & 1 << popup_ui::PREFS_EXTRAS != 0 {
                     self.app.open_popup(PopupKind::Extras);
                 }
+                // the port's own Search line (prefs_search.rs), on no words
+                if m & 1 << popup_ui::PREFS_SEARCH != 0 {
+                    self.app.pref_query.clear();
+                    self.app.open_popup(PopupKind::Search);
+                }
                 let sound = m & 8 != 0;
                 if sound == self.app.mute {
                     self.app.mute = !sound;
@@ -1442,6 +1483,28 @@ impl Stage {
                     }
                 }
             }
+        }
+    }
+
+    /// The OpenSGolf extras chosen in Preferences: the gameplay ones become the game's (and the next game's) extras, the
+    /// interface ones are put in use; both are saved.
+    fn apply_extras(&mut self, ex: sg_core::extras::Extras, ui: extras::Settings) {
+        self.app.set_extras(ex);
+        extras::set(ui);
+        extras::save(&ui);
+        if !ui.path_help {
+            self.app.xs.path_view = false;
+        }
+    }
+
+    /// The search box's settings put in use and saved (prefs_search.rs): Enhanced graphics, the extras, the keys.
+    fn apply_prefs(&mut self, p: &prefs_search::Prefs) {
+        if self.app.apply_enhanced(&mut self.g, p.enh) {
+            self.app.ui_ok &= load_art(&mut self.app, &mut self.g);
+        }
+        self.apply_extras(p.ex, p.ui);
+        if p.keys != controls::settings() {
+            controls::save(p.keys.clone());
         }
     }
 
@@ -2862,6 +2925,7 @@ impl EventHandler for Stage {
             return;
         }
         self.app.rename_char(c);
+        self.app.search_char(c);
         self.app.save_char(c);
         self.app.profile_char(c);
         self.app.cust_char(c);

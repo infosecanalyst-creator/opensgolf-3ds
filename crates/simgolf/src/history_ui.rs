@@ -233,7 +233,8 @@ impl App {
         let roster = golfer.map(|g| self.club.g[g].roster).unwrap_or(-1);
         let face = golfer.map(|g| self.club.attitude(g) as u8).unwrap_or(0);
         let at = place.or(golfer.map(|g| (self.club.g[g].x, self.club.g[g].y)));
-        let tick = self.game_tick;
+        // the date it was said on (the extras' calendar, sg_core::extras::Calendar)
+        let tick = self.date();
         // the same message again at once (a monthly reminder for each building, a refused repeat) is kept once
         if self.xs.kept.messages.last().is_some_and(|m| m.text == text && tick.saturating_sub(m.tick) < 40 && m.at == at) {
             return;

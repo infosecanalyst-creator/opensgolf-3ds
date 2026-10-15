@@ -285,7 +285,7 @@ impl App {
             let text = format!("\u{a7}{}{}", if units < 0 { "-" } else { "" }, group(units.unsigned_abs() * 100));
             if units >= 0 {
                 shadowed(s, g, 708.0, 35.0, &text, c15(0x23e8));
-            } else if self.econ.tick & 4 != 0 {
+            } else if self.game_tick & 4 != 0 {
                 shadowed(s, g, 708.0, 35.0, &text, c15(0x7d08));
             }
         }

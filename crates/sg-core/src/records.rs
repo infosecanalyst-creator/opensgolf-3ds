@@ -74,8 +74,9 @@ impl Club {
         if !self.award(id) {
             return false;
         }
+        let date = self.date();
         if let Some(e) = self.earned.get_mut(id as usize) {
-            *e = Some(Earned { tick: self.tick, course: self.course_name.clone() });
+            *e = Some(Earned { tick: date, course: self.course_name.clone() });
         }
         self.award_pending = id as i32;
         self.award_point = at;
@@ -91,7 +92,7 @@ impl Club {
         if self.event_log.len() != 500 {
             self.event_log = vec![0; 500];
         }
-        let i = ((self.tick >> 10) % 500) as usize;
+        let i = ((self.date() >> 10) % 500) as usize;
         self.event_log[i] = ty | (arg as u16 & 0x1f);
     }
 
@@ -133,7 +134,7 @@ impl Club {
         if self.history.len() != 500 {
             self.history = vec![[0; 4]; 500];
         }
-        let i = ((self.tick >> 10) % 500) as usize;
+        let i = ((self.date() >> 10) % 500) as usize;
         self.history[i] = [cash, self.ratings.fun, self.ratings.skill, members];
     }
 

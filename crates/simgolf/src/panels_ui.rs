@@ -947,7 +947,7 @@ impl App {
                 return Some((kind, Strip { dx: 0, count: n, scale }, 0));
             }
         }
-        let mask = if kind == land::K_LANDMARK { self.club.landmarks_owned & 0x3fff } else { 0 };
+        let mask = if kind == land::K_LANDMARK { self.club.landmarks_shown() & 0x3fff } else { 0 };
         // the landmark strip only opens once the club owns one
         (kind != land::K_LANDMARK || mask != 0).then_some((kind, st, mask))
     }

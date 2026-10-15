@@ -496,7 +496,8 @@ impl App {
         if let Some(m) = std::env::var("SG_FX_MONTH").ok().and_then(|v| v.parse::<f32>().ok()) {
             return m.clamp(3.0, 10.999);
         }
-        let t = self.econ.tick as f32 + self.tick_fraction();
+        // the date (sg_core::extras::Calendar), moving between ticks at the calendar's own pace
+        let t = self.date() as f32 + self.tick_fraction() * sg_core::extras::Calendar::rate(&self.club.extras);
         3.0 + (t / crate::fx_light::DAY_TICKS as f32).rem_euclid(8.0)
     }
 

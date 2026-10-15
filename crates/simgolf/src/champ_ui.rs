@@ -63,6 +63,8 @@ impl App {
         self.game_tick = 0x2c00;
         self.econ.tick = 0x2c00;
         self.club.tick = 0x2c00;
+        // a championship keeps the original's calendar (the extras' slower one would lag behind its fixed date)
+        self.club.cal = Default::default();
         self.club.start_championship(&self.course, &mut self.exe_rng, pro, 1000);
         self.register_portraits(g);
         self.show_player_panel();

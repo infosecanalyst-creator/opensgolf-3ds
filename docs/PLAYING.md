@@ -125,10 +125,12 @@ is saved and is what new games start with.
 
 ## OpenSGolf extras (optional, not in the original)
 
-Preferences (System Functions, Preferences) has an **OpenSGolf extras...** line. It opens a box of optional gameplay
-changes, all off unless you tick them. With all of them off the game plays exactly as the original. What you tick applies
-to the game you are playing, is saved with that game (a save made with everything off is unchanged), and is what new
-games start with (kept in settings.json under `extras`).
+Preferences (System Functions, Preferences) has an **OpenSGolf extras...** line. It opens a box of optional changes,
+all off unless you tick them, on three pages (tabs along its top; a click on a tab, Left and Right or Tab turn them):
+**Gameplay**, **Time & sandbox** and **Interface** (the interface extras, see *OpenSGolf extras* further down). With all
+of them off the game plays exactly as the original. What you tick on the first two pages applies to the game you are
+playing, is saved with that game (a save made with everything off is unchanged), and is what new games start with (kept
+in settings.json under `extras`).
 
 - **Tab turns placed buildings and the clubhouse.** With no building tool in hand, Tab turns the building under the
   pointer a quarter: the clubhouse, putting greens, the other amenities and landmarks (the driving range and home sites
@@ -163,12 +165,65 @@ games start with (kept in settings.json under `extras`).
   game's par anew, a tournament's checklist sets its own pars, and switching the extra off puts every hole back to the
   game's par. Pars cannot be changed during a tournament.
 
+On the **Time & sandbox** page:
+
+- **Slower seasons: the calendar at 1x / 1/2x / 1/4x.** A click steps the speed (1x is the original). The month and year
+  move on at half or a quarter of the original's pace while everything that happens by the game's own clock keeps its
+  pace: golfers arrive, play and pay as before, staff work, weeds grow, and wages and hole maintenance are charged as
+  often as ever (the original charges them every 1024/(difficulty+2) game ticks, not by the month). So a year holds two or
+  four times as much golf, and two or four times as much income and as many wage and upkeep bills. What goes by the
+  calendar waits for it: the month's start (2% interest on debt, the monthly reminders about buildings off the paths, the
+  month's entry in the history the year-end report and the Histograph draw, the holes' statistics easing by an eighth, the
+  scripts' month hook and the goals' checks), the year end (the board's look at the cash, the year-end report, the Top 10,
+  the Financial Report's year, the goals' deadlines), the SGA's mid-year tournament offer (once a year, so at 1/2x half as
+  often in play time), every date the game shows (the dock, SimFotos, the message history, accomplishments, hiring dates)
+  and Enhanced graphics' seasons (spring blossom and autumn colours, winter snow and its snowy years). Enhanced graphics'
+  days of light and weather stay on the game's own clock, so a month holds two or four days of light at the slower
+  speeds. Things that measure how long you have played rather than the time of year also stay on the game's clock: the
+  course's welcome story and design tip, the advisor's first year on Easy, the opening story pair and the famous golfers'
+  challenges (from the second year of play). Switching the speed in the middle of a game carries on from the date
+  reached; a championship always keeps the original calendar.
+- **Sandbox: pause the calendar.** The time of year never moves on (it wins over the speed above): golfers keep coming
+  and paying, wages and upkeep keep being charged, but no month starts and no year ends, so there is no interest, no
+  board, no year-end report and no SGA tournament offer while it is on, and the season stays as it is. Untick it to let
+  the calendar go on from where it stood.
+- **Sandbox: freeze golfer happiness.** No golfer's mood ever drops: a bad moment, fatigue at the end of a hole, a sad
+  story beat are all undone, while good moments still lift moods. A pair's mood is still set at the first tee from how
+  well the two get on (their starting mood). Nobody leaves unhappy.
+- **Sandbox: unlock all buildings and landmarks.** Every building kind, home sites whatever the members' demand and all
+  fourteen landmarks of the theme are on the panels from the start, as in Sandbox Mode; the unlock announcements are not
+  made. Upgrading a building still needs a Country Club course (10 holes), as in Sandbox Mode. Unticking it takes back only
+  what the course has not earned; landmarks the club owns stay.
+
+The three "Sandbox:" switches are what a Sandbox Mode game (unlimited money) is most often wanted with, but each works in
+a normal game too.
+
 Test hooks: `--extras BITS` sets the extras a new game starts with (1 Tab turns, 2 cut content, 4 hardcore, 8 higher staff
-limits, 16 animals, 32 set par; not saved to the settings); `--edit "R:N"` asks for par N on the Hole Stats' hole (its
+limits, 16 animals, 32 set par, 64 or 128 the calendar at 1/2x or 1/4x, 256 pause the calendar, 512 freeze golfer
+happiness, 1024 unlock all; not saved to the settings); `--edit "R:N"` asks for par N on the Hole Stats' hole (its
 confirmation box; `R:N,1` sets it at once); `--edit "X:BITS"` sets the extras of the game being played; `--edit "T:x,y"`
 presses the Tab of the first extra with the pointer on tile x,y; `--edit "S:page[,design]"` opens the Amenities panel with the
 landmark tool on strip page 0 (own), 1 (cut) or 2 (animals); `--edit "b:x,y,4,t"` places landmark type t (19..32 the cut ones,
-100 + kind an animal pair); `--edit "M:6"` opens the extras box.
+100 + kind an animal pair); `--edit "M:6"` opens the extras box (`M:6,P` on page P: 0 Gameplay, 1 Time & sandbox, 2
+Interface).
+
+## Searching the Preferences
+
+Preferences has a **Search options...** line, and typing a letter or digit while Preferences is open does the same: a
+box that finds an option on any of the Preferences' pages by its words. Type to narrow the list (each word you type must
+start a word of the option or of its page's name, in any order and any case; Backspace takes back a letter); it shows up
+to ten options at once with the page each is on (an Enhanced graphics page, an extras page, *Graphics* for Enhanced
+graphics itself, *Keys* for the keyboard controls), and how many more there are. A click on a found option ticks or
+unticks it, or steps a setting with choices, as on its own page; a click on a key opens Change keys with that action
+waiting for its new key. **Show only what differs from the original game** keeps the options that are not as a new player
+has them. **Reset everything to the original game...** asks first, then puts every option back: every gameplay and
+interface extra off, Enhanced graphics off with all its options at their defaults (the bug fixes on, as they are by
+default and as the "Original game" choice of Select Difficulty keeps them), and every key back to the original's. The
+search box opens again afterwards on the same words. As in the other Preferences boxes nothing changes until its OK
+(Enter, or the tick); Esc leaves everything as it was.
+
+Test hooks: `--edit "M:7"` opens the search box (`SG_PREFS_SEARCH="words"` types them first, `SG_PREFS_CHANGED=1` ticks
+*Show only what differs*), `--edit "M:8"` its reset question.
 
 ## In-game interface (dock, panels, advisor, stories)
 
@@ -226,7 +281,7 @@ As in the original: **F1** Course Report, **F2** Player Comments (the twenty mos
 The port's own additions to the interface, none of them in the original (crates/simgolf/src/extras.rs and the modules it
 names). They only add a screen, a tag, a strip, a button or a save. A new player starts with them off; the Game box on Select
 Difficulty turns them on in one click, and System Functions, Preferences,
-*OpenSGolf extras...* has a tick for each (kept in `settings.json` under `extras`), and `--no-extras` turns them all off
+*OpenSGolf extras...* has a tick for each on its Interface page (kept in `settings.json` under `ui_extras`), and `--no-extras` turns them all off
 for one run. With every tick off the game draws and plays exactly as before (the stills of every report, panel and menu
 compare pixel for pixel with the build before the extras).
 

@@ -35,6 +35,92 @@ fn save(e: &Extras) {
     }
 }
 
+// ---- the Extras box (Preferences > OpenSGolf extras) ------------------------------------------------------------------------
+
+/// The Extras box's pages (tabs along its top, drawn as the Enhanced graphics box's): the gameplay extras, the calendar and
+/// sandbox switches, the interface extras. (One list grew too tall for an 800 x 600 screen once the calendar and sandbox
+/// switches came.)
+pub const PAGES: [&str; 3] = ["STR_EXTRAS_PAGE_GAMEPLAY", "STR_EXTRAS_PAGE_TIME", "STR_EXTRAS_PAGE_INTERFACE"];
+
+/// What an option line of the Extras box is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExtrasLine {
+    /// Option i of sg_core::extras::OPTION_KEYS.
+    Game(usize),
+    /// Interface extra i (crate::extras::LINES' ticks, bit i of their Settings).
+    Ui(usize),
+}
+
+/// The option lines of a page, in order.
+pub fn page_lines(page: u8) -> Vec<ExtrasLine> {
+    match page {
+        0 => (0..sg_core::extras::SEASON_SPEED).map(ExtrasLine::Game).collect(),
+        1 => (sg_core::extras::SEASON_SPEED..sg_core::extras::OPTION_KEYS.len()).map(ExtrasLine::Game).collect(),
+        _ => (0..crate::extras::UI_KEYS.len()).map(ExtrasLine::Ui).collect(),
+    }
+}
+
+/// The most option lines a page has (every page is drawn that tall).
+fn most_lines() -> usize {
+    (0..PAGES.len() as u8).map(|p| page_lines(p).len()).max().unwrap_or(0)
+}
+
+/// A line's text (with its value for the calendar speed) and whether it is on.
+pub fn line_text(l: ExtrasLine, e: &Extras, ui: &crate::extras::Settings) -> (String, bool) {
+    use sg_core::lang::{tr, trf};
+    match l {
+        ExtrasLine::Game(i) if i == sg_core::extras::SEASON_SPEED => {
+            let v = e.option(i);
+            (trf(sg_core::extras::OPTION_KEYS[i], &[("VALUE", &tr(sg_core::extras::SPEED_KEYS[v as usize]))]), v != 0)
+        }
+        ExtrasLine::Game(i) => (tr(sg_core::extras::OPTION_KEYS[i]).to_string(), e.option(i) != 0),
+        ExtrasLine::Ui(i) => (tr(crate::extras::UI_KEYS[i]).to_string(), ui.bits() & 1 << i != 0),
+    }
+}
+
+/// A click on a line: a tick flips, the calendar speed steps on.
+pub fn toggle_line(l: ExtrasLine, e: &mut Extras, ui: &mut crate::extras::Settings) {
+    match l {
+        ExtrasLine::Game(i) => e.step_option(i),
+        ExtrasLine::Ui(i) => *ui = crate::extras::Settings::from_bits(ui.bits() ^ 1 << i),
+    }
+}
+
+/// The lines of a page of the Extras box: the title, room for the tabs, the page's options, padded with empty lines to the
+/// longest page, and an empty line that keeps the OK tick clear of the last option.
+pub fn popup_lines(page: u8, e: &Extras, ui: &crate::extras::Settings) -> Vec<String> {
+    let mut v = vec![sg_core::lang::tr("STR_EXTRAS_TITLE").to_string()];
+    v.extend((0..crate::enhanced::TAB_LINES).map(|_| String::new()));
+    v.extend(page_lines(page).into_iter().map(|l| line_text(l, e, ui).0));
+    let n = 1 + crate::enhanced::TAB_LINES + most_lines() + 1;
+    while v.len() < n {
+        v.push(String::new());
+    }
+    v
+}
+
+/// The box's ticks on a page (bit i the page's option i).
+pub fn popup_checks(page: u8, e: &Extras, ui: &crate::extras::Settings) -> u32 {
+    page_lines(page).into_iter().enumerate().fold(0, |m, (i, l)| m | (line_text(l, e, ui).1 as u32) << i)
+}
+
+/// The page's lines drawn without a tick box: the calendar speed, which has three values.
+pub fn popup_plain(page: u8) -> u32 {
+    page_lines(page)
+        .into_iter()
+        .enumerate()
+        .filter(|&(_, l)| l == ExtrasLine::Game(sg_core::extras::SEASON_SPEED))
+        .fold(0, |m, (i, _)| m | 1 << i)
+}
+
+/// The widest line of every page, and room for the tabs (the box keeps one width whatever the page).
+pub fn popup_widest(e: &Extras, ui: &crate::extras::Settings) -> f32 {
+    let f = crate::popup_ui::CHOICE_FONT;
+    let lines = (0..PAGES.len() as u8).flat_map(|p| popup_lines(p, e, ui)).map(|l| f.width(&l).round()).fold(0.0, f32::max);
+    let tab = PAGES.iter().map(|k| f.width(sg_core::lang::tr(k))).fold(0.0, f32::max) + 24.0;
+    lines.max(tab * PAGES.len() as f32)
+}
+
 /// Pages of the landmark strip: the club's own landmarks (the original's strip), the cut ones, the animals.
 pub const PAGE_OWNED: u8 = 0;
 pub const PAGE_CUT: u8 = 1;
@@ -58,6 +144,12 @@ pub enum GameStyle {
 }
 
 impl App {
+    /// The date now: the game tick, or with the Slower seasons and Pause the calendar extras the calendar's tick
+    /// (sg_core::extras::Calendar).
+    pub fn date(&self) -> u32 {
+        self.club.cal.date(self.game_tick)
+    }
+
     /// The game style of what the next game starts with.
     pub fn game_style(&self) -> GameStyle {
         let ui = crate::extras::settings();
@@ -175,13 +267,12 @@ impl App {
         }
     }
 
-    /// The extras box's ticks, one bit per option.
-    pub fn extras_checks(&self) -> u32 {
-        // in a game, its own extras; on the title screens, what the next game starts with
+    /// The gameplay extras the extras box shows: in a game, its own; on the title screens, what the next game starts with.
+    pub fn extras_shown(&self) -> Extras {
         if self.land.is_some() {
-            self.club.extras.bits()
+            self.club.extras
         } else {
-            self.extras_next.bits()
+            self.extras_next
         }
     }
 
@@ -230,7 +321,7 @@ impl App {
     /// as their extras are on.
     pub fn strip_pages(&self) -> Vec<u8> {
         let mut v = Vec::new();
-        if self.club.landmarks_owned & 0x3fff != 0 {
+        if self.club.landmarks_shown() & 0x3fff != 0 {
             v.push(PAGE_OWNED);
         }
         if self.club.extras.cut_content {
@@ -281,7 +372,7 @@ impl App {
             land::K_FLOWERS => (0..15).collect(),
             land::K_WILLOW => (0..7).collect(),
             land::K_LANDMARK => match self.strip_page_shown() {
-                Some(PAGE_OWNED) => (0..14).filter(|&t| self.club.landmarks_owned & (1 << t) != 0).collect(),
+                Some(PAGE_OWNED) => (0..14).filter(|&t| self.club.landmarks_shown() & (1 << t) != 0).collect(),
                 Some(p) => self.extra_page_types(p),
                 None => Vec::new(),
             },
@@ -289,11 +380,11 @@ impl App {
         }
     }
 
-    /// Whether landmark type `t` may be placed: the club owns it (the original), or it is a cut landmark or an animal and
-    /// that extra is on.
+    /// Whether landmark type `t` may be placed: the club owns it (the original) or the Unlock all extra is on, or it is a cut
+    /// landmark or an animal and that extra is on.
     pub fn landmark_allowed(&self, t: i32) -> bool {
         if (0..CUT_BASE).contains(&t) {
-            return self.club.landmarks_owned & (1 << t) != 0;
+            return self.club.landmarks_shown() & (1 << t) != 0;
         }
         if (CUT_BASE..CUT_BASE + CUT_LANDMARKS.len() as i32).contains(&t) {
             return self.club.extras.cut_content;

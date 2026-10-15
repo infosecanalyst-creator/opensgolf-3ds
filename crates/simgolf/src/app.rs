@@ -702,6 +702,8 @@ pub struct App {
     pub extras_next: sg_core::extras::Extras,
     /// The Set par extra's change waiting for its confirmation box: hole and new par (extras_ui.rs).
     pub par_change: Option<(usize, i32)>,
+    /// The words the Preferences' search box opens on (prefs_search.rs).
+    pub pref_query: String,
     /// Undo for building and terrain (undo.rs).
     pub undo: crate::undo::Undo,
     /// Seconds of play since the last autosave, and the clock at the last frame (autosave.rs).
@@ -943,6 +945,7 @@ impl App {
             design_hover: -1,
             extras_next: crate::extras_ui::saved(),
             par_change: None,
+            pref_query: String::new(),
             undo: Default::default(),
             autosave_due: 0.0,
             autosave_clock: 0.0,
@@ -1706,9 +1709,9 @@ impl App {
 
     /// Whether the building tool may place this kind now: unlocked by the course's holes (sandbox: all).
     /// Building kinds unlocked: the club's counter, never below what the open holes have earned (saves from before the counter
-    /// was kept), all of them in sandbox.
+    /// was kept), all of them in sandbox and with the Unlock all extra (sg_core::extras).
     pub fn unlocked(&self) -> i32 {
-        if self.econ.sandbox {
+        if self.econ.sandbox || self.club.extras.unlock_all {
             return 17;
         }
         self.club.unlocked.max(land::unlocked_kinds(self.hole_numbers.len(), false))
@@ -1721,8 +1724,9 @@ impl App {
         if k == land::K_LANDMARK && self.strip_pages().is_empty() {
             return false;
         }
-        // home sites only while Silver and better members outnumber them (0x56d1b0)
-        if k == land::K_HOME_SITE && self.club.homesite_demand < 1 && !self.econ.sandbox {
+        // home sites only while Silver and better members outnumber them (0x56d1b0; open in sandbox, and with the Unlock all
+        // extra, as there)
+        if k == land::K_HOME_SITE && self.club.homesite_demand < 1 && !self.econ.sandbox && !self.club.extras.unlock_all {
             return false;
         }
         OFFERED_KINDS.contains(&k) && (k <= 5 || k == land::K_WILLOW || k == land::K_BRIDGE || k < self.unlocked())
@@ -2110,11 +2114,13 @@ impl App {
         // the month's history entry (the year-end report reads it): written at each charge and again at every month start
         // (the main frame's tick & 0x3ff == 0 block, 0x40f5c0); on Medium and Expert the charge interval (341, 204 ticks)
         // never lands on a month start, so without the second write the year-end slot stayed empty (all zero, in red)
-        if tick.is_multiple_of(1024 / (self.difficulty.clamp(0, 3) as u32 + 2)) || tick & 0x3ff == 0 {
+        // (the month start goes by the date, sg_core::extras::Calendar; the charges by the game tick)
+        let (new_month, new_year) = (self.club.cal.new_month(tick), self.club.cal.new_year(tick));
+        if tick.is_multiple_of(1024 / (self.difficulty.clamp(0, 3) as u32 + 2)) || new_month {
             let members = self.club.member_count();
             self.club.record_history(self.club.cash, members);
         }
-        if tick & 0x3ff == 0 && self.difficulty != 0 && !self.econ.sandbox && !self.club.championship() {
+        if new_month && self.difficulty != 0 && !self.econ.sandbox && !self.club.championship() {
             // the monthly reminder for buildings with no path to the clubhouse
             let cut: Vec<(String, (i32, i32))> = self
                 .course
@@ -2130,8 +2136,8 @@ impl App {
                 self.show_toast(&trf("STR_TOAST_NOT_OPERATIONAL", &[("BUILDING", &name)]));
             }
         }
-        if tick > 0 && tick & 0x1fff == 0 && !self.club.championship() {
-            println!("[{:6.1}s] end of year {}", self.sim_time, 2000 + (tick >> 13));
+        if new_year && !self.club.championship() {
+            println!("[{:6.1}s] end of year {}", self.sim_time, 2000 + (self.club.date() >> 13));
             self.open_year_end();
             self.top10_year_end();
         }
@@ -3538,7 +3544,7 @@ impl App {
         }
         let club = self.club_anchor();
         let i = staff::hire(&mut self.employees, kind, skilled, club, &mut self.exe_rng);
-        self.employees[i].hired = (self.club.tick >> 10) as i32;
+        self.employees[i].hired = (self.club.date() >> 10) as i32;
         true
     }
 
@@ -3571,6 +3577,9 @@ impl App {
     /// One game tick of staff work and weeds.
     fn staff_tick(&mut self) {
         self.game_tick = self.game_tick.wrapping_add(1);
+        // the date moves with the game tick, or slower with the Slower seasons and Pause the calendar extras (sg_core::extras)
+        let extras = self.club.extras;
+        self.club.cal.step(self.game_tick, &extras);
         // no wages in a championship
         let staffed: Vec<usize> = (0..self.employees.len())
             .filter(|&i| {
@@ -3586,8 +3595,8 @@ impl App {
             })
             .collect();
         let holes = self.hole_numbers.len();
-        let paid = self.econ.on_tick(self.game_tick, self.difficulty, holes, &payroll, &mut self.exe_rng);
-        if self.game_tick > 0 && self.game_tick & 0x1fff == 0 {
+        let paid = self.econ.on_tick_dated(self.game_tick, &self.club.cal, self.difficulty, holes, &payroll, &mut self.exe_rng);
+        if self.club.cal.new_year(self.game_tick) {
             // the year's debt lines for the year-end report (none when the cash is not negative)
             self.year_notice = std::mem::take(&mut self.econ.notice);
             if !self.year_notice.is_empty() {

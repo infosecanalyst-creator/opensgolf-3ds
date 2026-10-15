@@ -97,6 +97,12 @@ impl App {
         self.hover = -1;
     }
 
+    /// Change keys on action `i`'s page with the action waiting for its new key (the Preferences' search, prefs_search.rs).
+    pub fn open_remap_on(&mut self, i: usize) {
+        self.ctl.remap = Some(Remap { page: place(i).0, capture: Some(i), status: None });
+        self.hover = -1;
+    }
+
     /// A click on the Change keys screen.
     pub fn remap_click(&mut self, x: f32, y: f32, right: bool) {
         let Some(r) = self.ctl.remap.as_mut() else { return };

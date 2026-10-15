@@ -56,7 +56,7 @@ impl Settings {
         sharing: false,
     };
 
-    /// The ticks as the Extras box's checkbox bits (in `LINES` order).
+    /// The ticks as the Extras box's checkbox bits (in `UI_KEYS` order).
     pub fn bits(&self) -> u32 {
         [self.people, self.history, self.name_tags, self.report_tabs, self.path_help, self.autosave, self.save_pictures, self.sharing]
             .iter()
@@ -85,12 +85,9 @@ impl Default for Settings {
     }
 }
 
-/// The Extras box's lines under the gameplay extras (popup_ui.rs): an empty line (a heading under options is drawn at the
-/// options' row height, so it needs the room), the heading, then one tick per extra (text keys in lang/en.txt), then an
-/// empty line that keeps the OK tick clear of the last one.
-pub const LINES: [&str; 11] = [
-    "STR_EXTRAS_END",
-    "STR_EXTRAS_UI_HEAD",
+/// The interface extras' lines on the Extras box's Interface page (extras_ui.rs), one tick per extra in `Settings::bits`
+/// order (text keys in lang/en.txt).
+pub const UI_KEYS: [&str; 8] = [
     "STR_EXTRAS_PEOPLE",
     "STR_EXTRAS_HISTORY",
     "STR_EXTRAS_NAME_TAGS",
@@ -99,7 +96,6 @@ pub const LINES: [&str; 11] = [
     "STR_EXTRAS_AUTOSAVE",
     "STR_EXTRAS_SAVE_PICTURES",
     "STR_EXTRAS_SHARING",
-    "STR_EXTRAS_END",
 ];
 
 thread_local! {
@@ -566,7 +562,7 @@ impl crate::app::App {
             Some(0xc000) => 2,
             _ => 0,
         };
-        let tick = self.game_tick;
+        let tick = self.date();
         self.xs.kept.push_said(roster, Said { tick, text, tone });
     }
 }
