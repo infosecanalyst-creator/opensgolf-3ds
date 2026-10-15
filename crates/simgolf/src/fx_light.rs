@@ -98,6 +98,9 @@ pub struct Atmos {
     pub fireflies: f32,
     /// How low and warm the sun is (0 midday .. 1 sunset): the water's glitter grows with it (fx_reflect.rs).
     pub golden: f32,
+    /// Winter (fx_winter.rs): the snow lying on level ground (0 none .. 1) and snow falling (0 none .. 1, instead of rain).
+    pub snow: f32,
+    pub snowfall: f32,
 }
 
 impl Default for Atmos {
@@ -133,6 +136,8 @@ impl Default for Atmos {
             night: 0.0,
             fireflies: 0.0,
             golden: 0.0,
+            snow: 0.0,
+            snowfall: 0.0,
         }
     }
 }
@@ -438,7 +443,8 @@ impl App {
         if let Some(v) = std::env::var("SG_FX_RAIN").ok().and_then(|v| v.parse::<f32>().ok()) {
             return v.clamp(0.0, 1.0);
         }
-        let chance = [0.25, 0.0, 0.0, 0.35][self.exe_theme().min(3) as usize];
+        // the place's climate (fx_winter.rs), wetter or drier from one year to the next
+        let chance = self.fx_climate().rain * self.fx_wet_year();
         let h = hash(&[self.fx_seed(), day, 0x7261_696e]);
         if unit(h) < chance {
             0.6 + 0.4 * unit(hash(&[h]))
@@ -573,6 +579,9 @@ impl App {
         if s.evening_lights && s.time_of_day {
             crate::fx_night::evening(&mut a, phase, self.exe_theme(), s.seasons.then(|| self.fx_month()));
         }
+        if s.winter {
+            self.fx_winter(&mut a, day, s.time_of_day.then_some(phase));
+        }
         a
     }
 
@@ -605,7 +614,7 @@ impl App {
     /// Over the course once the sprites are drawn: the haze in the distance and the rain.
     pub(crate) fn fx_overlay(&mut self, g: &mut Gfx) {
         let a = self.fx.atmos;
-        if a.haze <= 0.0 && a.rain <= 0.0 && a.rainbow <= 0.0 && a.fireflies <= 0.0 && a.flash <= 0.0 {
+        if a.haze <= 0.0 && a.rain <= 0.0 && a.rainbow <= 0.0 && a.fireflies <= 0.0 && a.flash <= 0.0 && a.snowfall <= 0.0 {
             return;
         }
         let u = Uniforms::flat(&Mat4::identity(), &Mat4::identity());
@@ -633,6 +642,10 @@ impl App {
         }
         if a.rain > 0.0 {
             self.fx_rain_draw(g, &u, a.rain);
+        }
+        if a.snowfall > 0.0 {
+            // winter (fx_winter.rs)
+            self.fx_snow_draw(g, &u, a.snowfall);
         }
         if a.fireflies > 0.0 {
             // dusk over the rough and the water (fx_night.rs)

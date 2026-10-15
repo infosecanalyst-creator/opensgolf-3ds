@@ -285,9 +285,18 @@ vec3 frosty(vec3 c, float grass, vec4 lm) {
     // level ground only (not the cliffs and walls)
     float gm = grass * (1.0 - lm.a) * smoothstep(0.6, 0.85, up_n);
     float patchy = noise(w_pos.xz * 0.012) * 0.6 + noise(w_pos.xz * 0.05) * 0.4 + 0.3 * (1.0 - lm.g);
-    float f = fx2.z * gm * smoothstep(0.12, 0.8, patchy);
+    // above 1 the frost's slot carries the snow (fx_winter.rs): 1 + 2 x snow
+    float snow = max(fx2.z - 1.0, 0.0) * 0.5;
+    float f = min(fx2.z, 1.0) * gm * smoothstep(0.12, 0.8, patchy);
     float l = dot(c, vec3(0.299, 0.587, 0.114));
     c = mix(c, vec3(0.84, 0.88, 0.92) * (0.55 + 0.6 * l), f * 0.42);
+    if (snow > 0.0) {
+        // snow on all level ground (not the cliffs and walls, thinner on slopes), in patches that grow with the cover,
+        // keeping the ground's shading so the course still reads
+        float lv = (1.0 - lm.a) * smoothstep(0.55, 0.9, up_n);
+        float cov = lv * smoothstep(0.55 - 0.5 * snow, 0.75 - 0.4 * snow, patchy);
+        c = mix(c, vec3(0.92, 0.94, 0.98) * (0.62 + 0.5 * l), cov * min(snow * 1.4, 0.92));
+    }
     float h = hash(floor(vec2(w_pos.x + w_pos.y * 1.37, w_pos.z - w_pos.y * 0.71) * fx3.w));
     float tw = 0.5 + 0.5 * sin(fx1.w * 2.6 + h * 40.0);
     float sp = step(0.991, h) * tw * min(fx2.w + fx2.z, 1.0) * gm * cloud_sun();
@@ -472,8 +481,8 @@ void main() {
 }
 
 /// The composite: the course, the tilt-shift blur by screen height (tilt = strength, focus centre, focus half height, 0),
-/// the bloom (glow.x), the colour grade (grade = contrast, vibrance, 0, 0; tint multiplies) and the vignette (glow.y; glow.z
-/// the aspect ratio).
+/// the bloom (glow.x), the colour grade (grade = contrast, vibrance, texel w, texel h; tint multiplies), the vignette
+/// (glow.y; glow.z the aspect ratio) and the contrast-adaptive sharpening (glow.w its strength, 0 off).
 pub fn composite_fs() -> String {
     format!(
         "{FRAG_HEAD}{}",
@@ -487,6 +496,19 @@ uniform vec4 grade;
 uniform vec4 tint;
 void main() {
     vec3 c = texture2D(scene, uv).rgb;
+    if (glow.w > 0.0) {
+        // contrast-adaptive sharpening (after AMD's CAS): the four neighbours pulled away, less where the local contrast is
+        // already high, so edges get no halo and flat areas no noise
+        vec3 n = texture2D(scene, uv + vec2(0.0, grade.w)).rgb;
+        vec3 s = texture2D(scene, uv - vec2(0.0, grade.w)).rgb;
+        vec3 e = texture2D(scene, uv + vec2(grade.z, 0.0)).rgb;
+        vec3 w = texture2D(scene, uv - vec2(grade.z, 0.0)).rgb;
+        vec3 mn = min(c, min(min(n, s), min(e, w)));
+        vec3 mx = max(c, max(max(n, s), max(e, w)));
+        vec3 amp = sqrt(clamp(min(mn, 1.0 - mx) / max(mx, vec3(0.0001)), 0.0, 1.0));
+        vec3 wt = -amp * mix(0.08, 0.2, glow.w);
+        c = clamp((c + (n + s + e + w) * wt) / (1.0 + 4.0 * wt), mn, mx);
+    }
     if (tilt.x > 0.0) {
         // uv.y runs up the screen in a render target
         float k = smoothstep(tilt.z, tilt.z + 0.28, abs(uv.y - tilt.y)) * tilt.x;

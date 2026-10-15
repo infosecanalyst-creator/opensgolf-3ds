@@ -68,6 +68,16 @@ pub struct FxSettings {
     pub after_rain: bool,
     /// Lightning in heavy rain on parkland and links courses (fx_wet.rs).
     pub lightning: bool,
+    /// Tiny tufts of grass standing up from the rough, swaying in the wind (fx_life.rs).
+    pub grass: bool,
+    /// Contrast-adaptive sharpening of the finished picture (the composite in fx_glsl.rs).
+    pub sharpen: bool,
+    /// Snow cover, falling snow and icy ponds early and late in the year (fx_winter.rs).
+    pub winter: bool,
+    /// Spectators, a grandstand and fireworks at tournaments (fx_crowd.rs).
+    pub crowds: bool,
+    /// Birds overhead, butterflies over flower beds, autumn leaves falling (fx_life.rs).
+    pub life: bool,
     /// How long a day of light lasts (fx_light.rs DAY_MONTHS): 0 short (one game month), 1 normal (three), 2 long (six).
     pub day_length: u8,
 }
@@ -105,6 +115,11 @@ impl Default for FxSettings {
             after_rain: true,
             // a strong effect: offered, not on by default
             lightning: false,
+            grass: true,
+            sharpen: true,
+            winter: true,
+            crowds: true,
+            life: true,
             day_length: 1,
         }
     }
@@ -169,7 +184,7 @@ macro_rules! flag {
     };
 }
 
-static OPTIONS: [FxOption; 28] = [
+static OPTIONS: [FxOption; 33] = [
     FxOption { key: "effects", label: "STR_FX_EFFECTS", choices: ON_OFF, get: |s| s.enabled as usize, set: |s, v| s.enabled = v != 0 },
     FxOption {
         key: "scaler",
@@ -209,6 +224,11 @@ static OPTIONS: [FxOption; 28] = [
     flag!("seasons", "STR_FX_SEASONS", seasons),
     flag!("after-rain", "STR_FX_AFTER_RAIN", after_rain),
     flag!("lightning", "STR_FX_LIGHTNING", lightning),
+    flag!("grass", "STR_FX_GRASS", grass),
+    flag!("sharpen", "STR_FX_SHARPEN", sharpen),
+    flag!("winter", "STR_FX_WINTER", winter),
+    flag!("crowds", "STR_FX_CROWDS", crowds),
+    flag!("life", "STR_FX_LIFE", life),
     FxOption {
         key: "day-length",
         label: "STR_FX_DAY_LENGTH",
@@ -318,6 +338,11 @@ pub fn from_enhanced(e: &crate::enhanced::Settings) -> FxSettings {
     s.seasons = e.fx_seasons;
     s.after_rain = e.fx_after_rain;
     s.lightning = e.fx_lightning;
+    s.grass = e.fx_grass;
+    s.sharpen = e.fx_sharpen;
+    s.winter = e.fx_winter;
+    s.crowds = e.fx_crowds;
+    s.life = e.fx_life;
     s.day_length = e.fx_day_length.min(2);
     s
 }
@@ -335,7 +360,7 @@ fn post_supported() -> bool {
 
 fn wants_post(s: &FxSettings) -> bool {
     // photo mode always composites (its looks, focus blur and vignette; photo.rs), in the browser too
-    s.enabled && ((post_supported() && (s.tilt_shift || s.grading || s.bloom || s.vignette)) || crate::photo::post().is_some())
+    s.enabled && ((post_supported() && (s.tilt_shift || s.grading || s.bloom || s.vignette || s.sharpen)) || crate::photo::post().is_some())
 }
 
 thread_local! {
@@ -988,7 +1013,7 @@ impl App {
         if s.sky {
             self.fx_sky(g, &atm);
         }
-        let season_on = atm.season.fresh + atm.season.autumn + atm.season.frost + atm.season.dew > 0.0;
+        let season_on = atm.season.fresh + atm.season.autumn + atm.season.frost + atm.season.dew + atm.snow > 0.0;
         let terrain_fx = s.lighting || s.occlusion || s.shadows || atm.cloud > 0.0 || atm.mist > 0.0 || atm.wet > 0.0 || season_on;
         let rot = view_rotation(self);
         let lm = self.fx.lightmap.unwrap_or_else(|| gpu(g).no_lightmap);
@@ -1030,7 +1055,13 @@ impl App {
             mist: [atm.mist, self.fx.mist_level.0, 1.0 / self.fx.mist_level.1.max(1.0), self.fx.time.rem_euclid(10000.0)],
             mist_col: atm.mist_col,
             fx1: [atm.wet, 1.02 - 0.5 * atm.puddles, atm.rain, self.fx.time.rem_euclid(1000.0)],
-            fx2: [atm.season.fresh * 0.8, atm.season.autumn, atm.season.frost, atm.season.dew],
+            // the frost's slot carries the snow above 1 (fx_winter.rs): 1 + 2 x snow, the frost full under snow
+            fx2: [
+                atm.season.fresh * 0.8,
+                atm.season.autumn,
+                if atm.snow > 0.0 { 1.0 + 2.0 * atm.snow.min(1.0) } else { atm.season.frost.min(1.0) },
+                atm.season.dew,
+            ],
             fx3: [
                 if reflt.is_some() { 1.0 } else { 0.0 },
                 // the smooth ground normals (SG_FX_FACETED=1: the tiles' flat faces, as before, for comparisons)
@@ -1179,8 +1210,9 @@ impl App {
         let gr = |on: bool, v: f32| if on { v } else { 0.0 };
         g.ctx.apply_uniforms(UniformsSource::table(&CompositeUniforms {
             tilt: [gr(tilt, 1.0), 0.5, 0.16, 0.0],
-            glow: [gr(bloom, 0.45), gr(s.vignette, 0.28), full.0 / full.1, 0.0],
-            grade: [gr(s.grading, look.contrast), look.vibrance, 0.0, 0.0],
+            glow: [gr(bloom, 0.45), gr(s.vignette, 0.28), full.0 / full.1, gr(s.sharpen, 0.6)],
+            // z, w: the scene's texel for the sharpening
+            grade: [gr(s.grading, look.contrast), look.vibrance, 1.0 / full.0, 1.0 / full.1],
             tint: [look.tint[0], look.tint[1], look.tint[2], 1.0],
         }));
         g.ctx.draw(0, 6, 1);

@@ -166,8 +166,8 @@ impl App {
             }
         }
         if s.lightning {
-            let theme = self.exe_theme();
-            if rain >= 0.7 && (theme == 0 || theme == 3) {
+            // storms where the climate is wet (the tropics' thunderstorms too), never in the desert
+            if rain >= 0.7 && self.exe_theme() != 1 && self.fx_climate().rain >= 0.2 {
                 a.flash = self.fx_lightning_now(rain);
             }
             if let Some(v) = env("SG_FX_LIGHTNING") {

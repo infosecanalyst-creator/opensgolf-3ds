@@ -26,6 +26,10 @@ pub const OPTION_KEYS: [&str; 5] =
     ["STR_EXTRAS_ROTATE", "STR_EXTRAS_CUT_CONTENT", "STR_EXTRAS_HARDCORE", "STR_EXTRAS_MORE_STAFF", "STR_EXTRAS_ANIMALS"];
 
 impl Extras {
+    /// The gameplay extras of the "OpenSGolf extras" choice on Select Difficulty: the ones that add to the game without
+    /// changing its balance (not Hardcore, not the unfinished cut content).
+    pub const OPENSGOLF: Extras = Extras { rotate: true, cut_content: false, hardcore: false, more_staff: true, animals: true };
+
     /// Everything off (the original game).
     pub fn is_off(&self) -> bool {
         *self == Extras::default()

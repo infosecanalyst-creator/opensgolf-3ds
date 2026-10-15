@@ -38,6 +38,12 @@ STR_COURSE_SIZE_ORIGINAL                :Original
 STR_COURSE_SIZE_LARGE                   :Large
 STR_COURSE_SIZE_HUGE                    :Huge
 STR_COURSE_SIZE_GIANT                   :Giant
+STR_STYLE_ORIGINAL                      :Game: the original
+STR_STYLE_ORIGINAL_DETAIL               :Exactly as it was. Click for extras.
+STR_STYLE_EXTRAS                        :Game: OpenSGolf extras
+STR_STYLE_EXTRAS_DETAIL                 :Extras on. Click for the original.
+STR_STYLE_MIX                           :Game: your own mix
+STR_STYLE_MIX_DETAIL                    :From Preferences. Click for the original.
 
 ########################################################################################################################
 # Title screens: Load Previous Game, Select Championship Course, Pick A Pro, Select a Theme Pack
@@ -1342,6 +1348,11 @@ STR_ENHANCED_FX_EVENING_LIGHTS          : Lit windows, lamps and fireflies at du
 STR_ENHANCED_FX_SEASONS                 : Seasons: blossom, autumn colours, frost
 STR_ENHANCED_FX_AFTER_RAIN              : Wet ground, puddles and rainbows
 STR_ENHANCED_FX_LIGHTNING               : Lightning in heavy rain
+STR_ENHANCED_FX_GRASS                   : Grass tufts in the rough
+STR_ENHANCED_FX_SHARPEN                 : Sharper art: contrast-adaptive sharpening
+STR_ENHANCED_FX_WINTER                  : Late-winter frost and snow in early March
+STR_ENHANCED_FX_CROWDS                  : Crowds at tournaments and championships
+STR_ENHANCED_FX_LIFE                    : Birds, butterflies and falling leaves
 STR_ENHANCED_FX_DAY_LENGTH              : Day length: {VALUE}
 # Enhanced graphics > Display: the frame rate settings (the port's own, framerate.rs). They count with Enhanced graphics off
 # too. Browsers always draw on the display's refresh, so v-sync cannot be turned off there.
@@ -1380,6 +1391,11 @@ STR_FX_EVENING_LIGHTS                   :Evening lights
 STR_FX_SEASONS                          :Seasons
 STR_FX_AFTER_RAIN                       :After the rain
 STR_FX_LIGHTNING                        :Lightning
+STR_FX_GRASS                            :Grass tufts
+STR_FX_SHARPEN                          :Sharpen
+STR_FX_WINTER                           :Winter
+STR_FX_CROWDS                           :Tournament crowds
+STR_FX_LIFE                             :Life on the course
 STR_FX_DAY_LENGTH                       :Day length
 STR_FX_DAY_SHORT                        :Short (a game month)
 STR_FX_DAY_NORMAL                       :Normal (three months)
@@ -2516,12 +2532,22 @@ STR_TOAST_EXPORTED                      :Exported as the scenario pack {PACK} (i
 # OpenSGolf extras (the port's own additions, extras.rs; docs/PLAYING.md "OpenSGolf extras")
 ########################################################################################################################
 # Preferences > OpenSGolf extras, second part (under the gameplay extras): the interface extras' heading and a tick per extra
-STR_EXTRAS_UI_HEAD                      :Interface extras (on by default)
+STR_EXTRAS_UI_HEAD                      :Interface extras
 STR_EXTRAS_PEOPLE                       : People screen and golfer profiles (Shift+G)
 STR_EXTRAS_HISTORY                      : Message history (Shift+M, or click the ticker)
 STR_EXTRAS_NAME_TAGS                    : Name tags under the pointer (Shift+H)
 STR_EXTRAS_REPORT_TABS                  : Tabs over the F1 to F10 reports
 STR_EXTRAS_PATH_HELP                    : Path help: path view (Shift+V) and Show buttons
+STR_EXTRAS_AUTOSAVE                     : Autosave every five minutes
+STR_EXTRAS_SAVE_PICTURES                : A map of the course beside each saved game
+STR_EXTRAS_SHARING                      : Course sharing: course codes and challenges (Ctrl+V pastes one)
+STR_MENU_SYSTEM_SHARE                   : Share course (copy a course code)
+STR_FILES_PASTE_CODE                    :Paste a course code
+STR_FILES_CHALLENGE                     :Challenge: beat {DESIGNER}'s record of {SCORE}
+STR_TOAST_SHARE_COPIED                  :Course code for {COURSE} copied. Paste it to a friend: in OpenSGolf they press Ctrl+V, or Paste a course code in Play a Championship.
+STR_TOAST_SHARE_NO_CODE                 :No course code on the clipboard. Copy the whole code, then paste again.
+STR_TOAST_SHARE_COURSE_ADDED            :{COURSE} added to Play a Championship. Beat the course record!
+STR_TOAST_SHARE_GAME_ADDED              :{COURSE} added to Load Previous Game.
 # An empty line: before the interface extras' heading, and the box's last line (it keeps the OK tick clear of the options)
 STR_EXTRAS_END                          :
 # A game date: "March 3, 2001"

@@ -45,6 +45,9 @@ if [ -n "$ANDROID_TARGETS" ]; then
     list=$(for t in $targets; do printf '"%s", ' "$t"; done)
     sed -i "s/^build_targets = .*/build_targets = [${list%, }]/" crates/simgolf/Cargo.toml
 fi
+# the desktop's controller library (gamepad.rs) is not built for Android, and its uuid wants a newer js-sys than the old
+# Cargo below can have: left out of the manifest here
+sed -i -e '/^gilrs = /d' -e 's/^gamepad = \["dep:gilrs"\]/gamepad = []/' crates/simgolf/Cargo.toml
 rm -f Cargo.lock
 CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback cargo generate-lockfile
 # the wasm-bindgen family (cpal's browser side, not built here) as of 2024: the newer ones declare features the old Cargo

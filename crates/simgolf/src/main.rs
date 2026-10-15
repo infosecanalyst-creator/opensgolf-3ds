@@ -20,6 +20,7 @@ mod app;
 mod audio;
 #[cfg(target_os = "macos")]
 mod autorelease;
+mod autosave;
 mod champ_ui;
 mod content;
 mod content_profiles;
@@ -35,7 +36,9 @@ mod files_ui;
 mod framerate;
 mod fx;
 mod fx_ball;
+mod fx_crowd;
 mod fx_glsl;
+mod fx_life;
 mod fx_light;
 mod fx_nature;
 mod fx_night;
@@ -43,7 +46,9 @@ mod fx_reflect;
 mod fx_shadow;
 mod fx_smooth;
 mod fx_wet;
+mod fx_winter;
 mod gamefiles;
+mod gamepad;
 mod gfx;
 mod hd;
 mod history_ui;
@@ -70,12 +75,14 @@ mod report_tabs;
 mod reports_ui;
 mod scenario_ui;
 mod screens_ui;
+mod share;
 mod sysdiag;
 mod tags_ui;
 mod thoughts_ui;
 mod touch;
 mod tourney_ui;
 mod ui;
+mod undo;
 mod wild_ui;
 mod world_ui;
 
@@ -133,6 +140,8 @@ struct Options {
     enhanced: Option<bool>,
     /// --no-extras: the OpenSGolf extras off for this run (extras.rs), not saved.
     no_extras: bool,
+    /// --fullscreen, or Steam's Game Mode (the Steam Deck): start full screen.
+    fullscreen: bool,
     /// --base ID: the base set for this run (original, opensgolf-free or a base pack), not saved.
     base: Option<String>,
     /// --lang CODE: the language for this run (else the saved setting); --lang-file FILE: a translation file to try out.
@@ -145,7 +154,7 @@ struct Options {
 const USAGE: &str = "usage: opensgolf [--game DIR] [--theme T] [--seed N] [--size WxH] [--zoom Z] [--rot DEG] [--center TX,TY] [--png FILE] \
 [--time S] [--follow] [--golfer NAME] [--sandbox] [--course-size N] [--cash N] [--difficulty 0-3] [--screen menu|property|play|report] [--course FILE] [--save FILE] \
 [--edit SPEC] [--panel N] [--mute] [--sound-log] [--clock MS] [--property N|NAME] [--hd | --classic] [--hd-pack DIR] \
-[--enhanced | --classic-render] [--no-extras] [--fx] [--fx-set LIST] \
+[--enhanced | --classic-render] [--no-extras] [--fullscreen] [--fx] [--fx-set LIST] \
 [--lang CODE] [--lang-file FILE] [--base original|opensgolf-free|ID] [--scenario ID]";
 
 /// Leading comma separated integers, like sscanf("%d,%d,...") (stops at the first one that does not parse).
@@ -202,6 +211,7 @@ fn parse_args() -> Options {
         fx_set: None,
         enhanced: None,
         no_extras: false,
+        fullscreen: false,
         base: None,
         lang: None,
         lang_file: None,
@@ -270,6 +280,7 @@ fn parse_args() -> Options {
             "--enhanced" => o.enhanced = Some(true),
             "--classic-render" => o.enhanced = Some(false),
             "--no-extras" => o.no_extras = true,
+            "--fullscreen" => o.fullscreen = true,
             "--base" => o.base = Some(next()),
             "--lang" => o.lang = Some(next()),
             "--lang-file" => o.lang_file = Some(PathBuf::from(next())),
@@ -300,6 +311,8 @@ fn parse_args() -> Options {
 }
 
 struct Stage {
+    /// A controller (gamepad.rs).
+    pad: gamepad::Pad,
     /// the desktop window is full screen (F11 or Alt+Enter)
     #[cfg_attr(any(target_arch = "wasm32", target_os = "android"), allow(dead_code))]
     fullscreen: bool,
@@ -1213,7 +1226,8 @@ impl Stage {
         Stage {
             g,
             app,
-            fullscreen: false,
+            fullscreen: o.fullscreen,
+            pad: Default::default(),
             png_out: o.png_out,
             save_game_out: o.save_game,
             frames: 0,
@@ -1318,6 +1332,7 @@ impl Stage {
                 5 => self.app.open_popup(PopupKind::Prefs),
                 6 => self.app.save_championship_course(),
                 7 => self.app.open_popup(PopupKind::Retire),
+                8 if extras::sharing() => self.app.share_course(),
                 _ => {}
             },
             // Preferences > Enhanced graphics: the ticks become the settings (enhanced.rs)
@@ -1550,6 +1565,11 @@ impl Stage {
                     app.next_course_size();
                     app.ui_sound(0x18);
                 }
+                return;
+            }
+            if hit == render::STYLE_HIT {
+                app.next_game_style(&mut self.g);
+                app.ui_sound(0x18);
                 return;
             }
             if hit == 100 || hit < 0 {
@@ -2003,6 +2023,7 @@ impl Stage {
         self.app.draw_report_tabs(&mut self.g);
         self.app.draw_notice(&mut self.g);
         self.draw_touch_buttons();
+        self.draw_gamepad_pointer();
         self.g.flush();
         self.g.ctx.end_render_pass();
         enhanced::end_frame();
@@ -2256,6 +2277,11 @@ impl EventHandler for Stage {
         self.app.extras_test_hook();
         // "Use my SimGolf files...": a .zip being unpacked or a folder being copied (gamefiles.rs)
         self.app.poll_import();
+        // the Autosave extra (autosave.rs) and a course code being pasted (share.rs)
+        self.app.autosave_tick(t);
+        self.app.share_tick(t);
+        // a controller's sticks and buttons (gamepad.rs)
+        self.gamepad_update(t);
         // the sound output follows the system's default device (audio.rs)
         if let Some(a) = self.app.audio.as_mut() {
             a.keep_alive();
@@ -2426,6 +2452,7 @@ impl EventHandler for Stage {
 
     fn mouse_motion_event(&mut self, x: f32, y: f32) {
         sysdiag::event(sysdiag::Ev::Mouse);
+        self.gamepad_mouse_moved(x, y);
         let (dx, dy) = (x - self.mouse.0, y - self.mouse.1);
         self.mouse = (x, y);
         if self.app.photo.is_some() {
@@ -2693,6 +2720,10 @@ impl EventHandler for Stage {
             self.app.aim_click();
             return;
         }
+        // the port's own undo: the game as it is before a click on the course (undo.rs)
+        if button == MouseButton::Left && self.app.screen == Screen::Play && self.app.edit {
+            self.app.undo_press();
+        }
         if self.app.edit && button == MouseButton::Left {
             self.editing = true;
             self.app.last_cell = -1;
@@ -2727,6 +2758,7 @@ impl EventHandler for Stage {
         }
         self.dragging = false;
         self.editing = false;
+        self.app.undo_release();
     }
 
     fn key_down_event(&mut self, k: KeyCode, mods: KeyMods, _repeat: bool) {
@@ -2741,6 +2773,18 @@ impl EventHandler for Stage {
             miniquad::window::set_fullscreen(self.fullscreen);
             return;
         }
+        // the port's own Course sharing: Ctrl+V (Cmd+V on a Mac) pastes a course code (share.rs)
+        if k == KeyCode::V && (mods.ctrl || mods.logo) && extras::sharing() {
+            self.app.paste_course();
+            return;
+        }
+        // the port's own: Ctrl+Z (Cmd+Z on a Mac) undoes the last click that changed the course (undo.rs)
+        if k == KeyCode::Z && (mods.ctrl || mods.logo) && self.app.screen == Screen::Play && !self.editing {
+            if self.app.undo_step(&mut self.g) {
+                self.app.ui_sound(0x18);
+            }
+            return;
+        }
         // the port's own: Alt (Option on a Mac) or Ctrl with 1 to 9 and 0 stand for F1 to F10, for keyboards whose function
         // keys need Fn (Macs, laptops) or act on the browser
         let k = if mods.alt || mods.ctrl { fkey_of_digit(k).unwrap_or(k) } else { k };
@@ -2750,6 +2794,21 @@ impl EventHandler for Stage {
         let typing = self.app.typing();
         self.key_down(k);
         self.swallow_char = !typing && self.app.typing();
+    }
+
+    fn files_dropped_event(&mut self) {
+        // the port's own Course sharing: shared courses, saved games and course codes dropped on the window (share.rs)
+        if !extras::sharing() {
+            return;
+        }
+        for i in 0..miniquad::window::dropped_file_count() {
+            let path = miniquad::window::dropped_file_path(i);
+            let name = path.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            let bytes = miniquad::window::dropped_file_bytes(i).or_else(|| path.and_then(sg_core::fsutil::read_file));
+            if let Some(b) = bytes {
+                self.app.import_dropped(&name, &b);
+            }
+        }
     }
 
     fn char_event(&mut self, c: char, _mods: KeyMods, _repeat: bool) {
@@ -2968,20 +3027,23 @@ fn main() {
     sysdiag::init();
     #[cfg(target_os = "android")]
     android::init();
-    let o = parse_args();
+    let mut o = parse_args();
     // the text's language first: the window's title is already text
     match &o.lang_file {
         Some(f) => _ = language::apply_file(f),
         None => _ = language::apply(&o.lang.clone().unwrap_or_else(language::saved)),
     }
+    let steam_ui = ["SteamDeck", "SteamGamepadUI"].iter().any(|k| std::env::var(k).is_ok_and(|v| !v.is_empty() && v != "0"));
+    o.fullscreen |= steam_ui && cfg!(target_os = "linux");
     let conf = conf::Conf {
         window_title: tr("STR_WINDOW_TITLE").to_string(),
         window_width: o.win_w,
         window_height: o.win_h,
         high_dpi: true,
         window_resizable: true,
-        // a phone or tablet: the whole screen (the manifest keeps it landscape, Cargo.toml)
-        fullscreen: cfg!(target_os = "android"),
+        // a phone or tablet: the whole screen (the manifest keeps it landscape, Cargo.toml); on the desktop with
+        // --fullscreen, and in Steam's Game Mode (a Steam Deck, or Big Picture), which sets SteamDeck or SteamGamepadUI
+        fullscreen: cfg!(target_os = "android") || o.fullscreen,
         // 32-bit mesh indices need WebGL 2 in a browser.
         platform: conf::Platform {
             webgl_version: conf::WebGLVersion::WebGL2,

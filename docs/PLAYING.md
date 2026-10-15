@@ -101,6 +101,19 @@ Enhanced light and detail maps use fewer texels per tile on the larger sizes (at
 
 On the Add Buildings panel (or b for benches, Shift+B for a home site; Tab turns the next building) choose: benches, flower beds, ball washers, willow trees and scenic bridges at any time, the amenities as holes unlock them. Prices, clearing charges, upgrades and the path-to-clubhouse rule follow the exe. Benches need rough ground with a free neighbour; bridges go on water near a shore. Shift-click undoes: a path, bench, flower bed, willow or bridge comes off with what it cost back, a building is demolished with no refund. Golfers use what you build: snack bars and the practice buildings earn money on every visit, tired golfers sit on benches, flower beds and landmarks cheer them up. The headless test option is `--edit "b:x,y,kind"`.
 
+## Original game or OpenSGolf extras
+
+Select Difficulty has a **Game** box next to Course size. One click switches between:
+
+- **The original**: every OpenSGolf extra off and Classic graphics; the game exactly as it was (fixes for the original's
+  own bugs stay on). A new player starts here.
+- **OpenSGolf extras**: the interface extras (People screen, message history, name tags, report tabs, path help, autosave,
+  save pictures, course sharing) and the
+  gameplay extras that do not change the game's balance (turning buildings, animals, more staff).
+
+If you ticked your own choice in Preferences, the box says "your own mix"; a click goes back to the original. The choice
+is saved and is what new games start with.
+
 ## OpenSGolf extras (optional, not in the original)
 
 Preferences (System Functions, Preferences) has an **OpenSGolf extras...** line. It opens a box of optional gameplay
@@ -193,7 +206,8 @@ As in the original: **F1** Course Report, **F2** Player Comments (the twenty mos
 ## OpenSGolf extras
 
 The port's own additions to the interface, none of them in the original (crates/simgolf/src/extras.rs and the modules it
-names). They only add a screen, a tag, a strip or a button, so they are on by default; System Functions, Preferences,
+names). They only add a screen, a tag, a strip, a button or a save. A new player starts with them off; the Game box on Select
+Difficulty turns them on in one click, and System Functions, Preferences,
 *OpenSGolf extras...* has a tick for each (kept in `settings.json` under `extras`), and `--no-extras` turns them all off
 for one run. With every tick off the game draws and plays exactly as before (the stills of every report, panel and menu
 compare pixel for pixel with the build before the extras).
@@ -227,9 +241,25 @@ compare pixel for pixel with the build before the extras).
   original leaves closed) and on each hole with no joined path within three tiles of its tee, with a legend in the upper
   right. The original's monthly warning that a building is not operational gets a **Show** button on the ticker that takes
   the camera to the building.
+- **Autosave**: every five minutes of play (time on the course, not in reports or menus) the game is saved to Saved Games
+  as *autosave (Latest)*, overwriting the last one, so a crash or a closed tab loses at most five minutes. Test hook:
+  `SG_AUTOSAVE_SECS=N` saves every N seconds of play instead. Load it from Load Previous Game like any save.
+- **Save pictures**: Load Previous Game draws a map of the selected save's course in the list's top right corner: fairways,
+  greens, sand, water, woods, paths and buildings, with the land the club does not own darker. It reads the save itself, so
+  older saves get a picture too.
+- **Course sharing**: System Functions, *Share course (copy a course code)* copies a code for your course (it starts
+  `OPENSGOLF-COURSE-1:`) and saves the course for championship play. Send the code to a friend in a message or a text
+  file. They press **Ctrl+V** (Cmd+V on a Mac) anywhere in OpenSGolf, or click *Paste a course code* on Play a
+  Championship's course list, and the course joins their championship courses. Dropping a shared `.sgch` course, a saved
+  game (`.sgs`) or a text file holding a code on the window brings it in too. The challenge: your course record travels
+  with the course, and the course list shows it to your friend as the score to beat.
 
 Test hooks for stills: `--screen people|staff|pro|history|profile|pathview|tags|ticker|card` (with a game;
 `SG_PEOPLE_SORT=COL[,1]` sorts the People list by column COL, downward with 1), `--edit "M:6"` opens the extras box.
+
+**Ctrl+Z** (Cmd+Z on a Mac) undoes the last click or drag with a building or terrain tool that changed the course:
+terrain, paths, holes, buildings and garden items. The whole game goes back to just before it, money included, as if that moment had been saved and loaded.
+Up to 30 steps are kept; the list starts empty with each game and is not saved. (The port's own; not in the original.)
 
 On Windows, macOS and Linux, **F11** or **Alt+Enter** switches between a window and full screen (in the browser, use the
 browser's own full screen, F11).
@@ -293,6 +323,33 @@ changed every key does what it did before.
 
 Test hooks: `SG_PRESS="u;Shift+Q;..."` presses keys (the names `settings.json` uses) after a scripted still's first frame,
 after `SG_CLICK`; letters and Space also type their character.
+
+## Controllers and the Steam Deck
+
+An Xbox, PlayStation, Switch Pro or Steam Deck controller plays the whole game (the port's own; on Windows, macOS, Linux
+and in the browser, not in the Android app yet):
+
+| Control | Does |
+|---|---|
+| Left stick | moves the pointer (the game draws it while the controller is in use; moving the mouse gives it back) |
+| Right stick | scrolls the course |
+| A | click; hold to drag or paint |
+| B | on the course a right click (undo, remove); on other screens Esc (close, back) |
+| X | Tab (turn a building, or the next design) |
+| Y | game speed (]) |
+| LB / RB | turn the view |
+| LT / RT | zoom out / in |
+| D-pad | the arrow keys (scroll, lists) |
+| Start | Esc (System Functions: save, load, quit) |
+| Back / Select | pause |
+| Left stick click | open a hole (h) |
+| Right stick click | the last message again (?) |
+
+**Steam Deck:** download the Linux AppImage (`opensgolf-linux-x86_64.AppImage`) in Desktop Mode, make it executable
+(Properties, Permissions, "Is executable"), then in Steam use *Games, Add a Non-Steam Game to My Library* and pick it.
+In Game Mode the game starts full screen and the Deck's controls work as above (pick the *Gamepad* controller layout if
+Steam offers another). The trackpads move the mouse as usual. To name a course or a save, press Steam + X for Steam's
+keyboard. `--fullscreen` starts full screen on any computer (F11 or Alt+Enter switches while playing).
 
 ## Touch (phones and tablets)
 
@@ -359,7 +416,7 @@ The effects are ticks on the same screen; `--fx` turns on only the optional shad
 animated water, terrain light with occlusion and shadows, a sky beyond the map, colour grading, bloom and vignette.
 `--fx-set LIST` picks options (`scaler=off|sharp|edge`, `water`, `lighting`, `occlusion`, `shadows`, `sprite-shadows`,
 `sky`, `tilt-shift`, `grading`, `bloom`, `vignette`, `cast-shadows`, `time-of-day`, `clouds`, `haze`, `rain`, `mist`,
-`ball-trail`, `ball-impacts`, `reflections`, `wind`, `evening-lights`, `seasons`, `after-rain`, `lightning` = on/off,
+`ball-trail`, `ball-impacts`, `reflections`, `wind`, `evening-lights`, `seasons`, `after-rain`, `lightning`, `life`, `crowds`, `winter`, `sharpen`, `grass` = on/off,
 `quality=low|medium|high`, `day-length=short|normal|long`), `--fx-list` prints them, and `OPENSGOLF_FX` does the
 same from the environment. Without them the game looks exactly as before. Test hooks: `SG_FX_BENCH=N` with `--png` prints
 the frame time over N frames, `SG_FX_LOG=1` the light map's build time and each ball's landing (where, on what, at which
@@ -379,8 +436,9 @@ length* on the Atmosphere page picks short, one month as in the first versions, 
 opens in the morning, has a long midday in the
 original's light, a golden afternoon, a sunset and a short blue dusk, then the next month dawns. The sun swings round the
 front of the view, so shadows lengthen sideways rather than down the screen, and the course never gets darker than an
-easy-to-read dusk; the interface is not touched. *Rain* wets about one day in four (never on desert or tropical courses, more on the
-links), the same days whenever the save is loaded; the light dims and the shadows fade while it rains. *Mist* lies in
+easy-to-read dusk; the interface is not touched. *Rain* follows the property's climate
+(rarely in the desert, often in Ireland, Scotland and Wales) and each year is wetter or drier than usual, the same days
+whenever the save is loaded; the light dims and the shadows fade while it rains. *Mist* lies in
 hollows and over water, thick at dawn and gone by late morning with the time of day (a light mist all day without it).
 *Cloud shadows* drift over the course, *haze* pales the far (upper) part of the view, more when zoomed out. None of these
 changes the game: golfers play the same in rain or at dusk. Rain spells, the cloud cover and the wind last a whole day of

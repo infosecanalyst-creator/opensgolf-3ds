@@ -51,8 +51,11 @@ Downloads for every system ([all releases](https://github.com/crspytopgn/opensgo
 | Linux | [AppImage](https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-linux-x86_64.AppImage) · [tar.gz](https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-linux-x86_64.tar.gz) | Mark the AppImage as executable and run it. |
 | Linux on ARM | [AppImage](https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-linux-arm64.AppImage) · [tar.gz](https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-linux-arm64.tar.gz) | 64-bit systems, for example a Raspberry Pi 4 or 5. |
 | Android | [opensgolf-android.apk](https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-android.apk) | Open the file on the phone and install it. |
+| Steam Deck | [Linux AppImage](https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-linux-x86_64.AppImage) | Add it to Steam as a non-Steam game; it starts full screen in Game Mode and plays with the Deck's controls. |
 | iPhone and iPad | [Browser version](https://crspytopgn.github.io/opensgolf/) | Works by touch in Safari. |
 
+Every download is a real app that runs offline; the browser version is there for devices without one (iPhone and iPad)
+or for a quick try. Controllers (Xbox, PlayStation, Switch, Steam Deck) work on Windows, macOS, Linux and in the browser.
 The Windows and macOS warnings appear because the project has no paid code-signing certificate. Details for each system
 are in [docs/INSTALL.md](docs/INSTALL.md); how to play, keys and touch controls are in [docs/PLAYING.md](docs/PLAYING.md).
 
@@ -74,16 +77,18 @@ With its default settings OpenSGolf plays like the original, apart from these:
 
 - **Fixes for the original's own bugs**, such as gaps at waterfalls, costs charged twice and the golfer list picking the
   wrong golfer ([docs/FIXES.md](docs/FIXES.md)). On by default; they can be turned off in the preferences.
-- **Modern systems and screens:** saving anywhere, game speeds ×2 and ×4, remappable keys, touch controls and a
-  frame-rate cap.
+- **Modern systems and screens:** saving anywhere, undo for building and terrain (Ctrl+Z), full screen (F11), game
+  speeds ×2 and ×4, remappable keys, touch controls, controllers and a frame-rate cap.
 
-Optional, and off by default:
+Optional, and off by default (Start New Game has a one-click switch between *the original* and *OpenSGolf extras*):
 
-- **Enhanced graphics** for 4K and widescreen: sharp scaling, water, light, weather, seasons and a photo mode
+- **Enhanced graphics** for 4K and widescreen: sharp scaling, water, light, weather by each place's climate, seasons,
+  late-winter snow, birds of prey, butterflies and falling leaves, grass tufts, tournament crowds and a photo mode
   ([docs/ENHANCED.md](docs/ENHANCED.md)).
 - **Bigger courses:** Large, Huge and Giant, up to 128 × 128 tiles.
 - **OpenSGolf extras:** a Hardcore economy, turning buildings, cut content restored as landmarks, animals to buy, higher
-  staff limits, and interface extras such as a People screen and message history.
+  staff limits, and interface extras such as a People screen, message history, autosave, a map of each saved course,
+  and course sharing: copy a course code, a friend pastes it and tries to beat your course record.
 - **Content packs and game scripts** that change prices, buildings, terrain, golfers, text, art and sounds, add scenarios,
   and can be downloaded from inside the game ([docs/MODDING.md](docs/MODDING.md)).
 
@@ -100,15 +105,11 @@ Contributions of code, art for the free base set and translations are welcome; s
 The rule for every version: the original game, exactly as it was, is always one click away. Everything new is optional
 and off by default; only fixes for the original's own bugs are on.
 
-Planned for 0.3:
+0.3 brought the one-click choice between the original game and the OpenSGolf extras, undo, autosave, save pictures,
+course sharing with challenges, controllers and the Steam Deck, and new Enhanced graphics (weather by place and year,
+wildlife, crowds, winter, grass, sharpening).
 
-- A one-click choice between "Original game" and "OpenSGolf extras" when starting a new game.
-- Sharing courses and challenging friends.
-- Undo for building and terrain.
-- Autosave, and save slots with pictures.
-- Controller support.
-
-Later ideas: a community course gallery, a scenario editor, club events, more translations, an installable phone and
+Ideas for later: a community course gallery, a scenario editor, club events, more translations, an installable phone and
 tablet app, and playing together online.
 
 ## Legal

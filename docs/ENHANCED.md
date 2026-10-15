@@ -99,7 +99,12 @@ decoded terrain light (`sg_core::terrain::Lighting`, `light_direction`) and the 
 | Evening lights (`evening-lights`) | on | With the time of day: lit windows, lamps with pools of light and fireflies at dusk (see *Evening lights*). |
 | Seasons (`seasons`) | on | Blossom and fresh greens in spring, autumn colours in September and October, frost and dew on spring and autumn mornings (see *Seasons*). |
 | After the rain (`after-rain`) | on | With rain: wet, glossy ground and puddles during and after a rainy day, now and then a rainbow (see *After the rain*). |
-| Lightning (`lightning`) | off | Flashes and distant flicker in heavy rain on parkland and links courses. |
+| Grass tufts (`grass`) | on | Tiny tufts of grass, a few pixels at the art's own pixel size, standing up from the rough and the deep rough and swaying in the wind; none on fairways, greens or tees. Only at the closest zoom level. |
+| Lightning (`lightning`) | off | Flashes and distant flicker in heavy rain where the climate is wet (see *Climate*), never in the desert. |
+| Sharpen (`sharpen`) | on | Contrast-adaptive sharpening of the finished picture: the art's own detail (the grass, the trees' leaves, the roofs) comes out crisper on large screens, strongest where the picture is soft and never past its own colours, so no halos. Desktop only, with the other post-processing. |
+| Winter (`winter`) | on | The first days of March on parkland and links courses: full morning frost, snow showers instead of rain, and some mornings a light dusting that melts by mid-morning (see *Winter*). |
+| Tournament crowds (`crowds`) | on | During a tournament or a championship, spectators (the game's own golfer sprites) round the greens and along the fairways of the holes in play, cheering now and then (see *Tournament atmosphere*). |
+| Life on the course (`life`) | on | Flocks of birds crossing the sky with their shadows, butterflies over flower beds in summer, leaves falling from the trees in autumn (see *Life on the course*). |
 | Quality (`quality`) | medium | Low: light map 2 texels a tile, no blur passes (no tilt-shift, no bloom), sharp-bilinear scaling only, the cast shadows' mask at half the resolution. Medium: 4 texels a tile, blurs at a quarter of the resolution, the mask at half. High: 8 texels a tile, blurs at half the resolution, the mask at full. On the Effects page since this version. |
 
 The post-processing (tilt-shift, grading, bloom, vignette) draws the course into an offscreen target, then composites it
@@ -254,7 +259,7 @@ three quarters of its midday brightness; dusk keeps a cool light from above with
 marched towards the moving sun again when it has turned 3° or risen 2° (a few milliseconds, threaded). The water reflects
 the moment's sky, the post-processing's backdrop takes the moment's haze.
 
-Rain falls on about one day in four on parkland (35% on the links; never on desert or tropical courses, which stay sunny). Which days is a hash of
+Rain falls as often as the property's climate says (see *Climate*), more or less from one year to the next. Which days is a hash of
 the course's name and size and the day: render-side only, the same days whenever the save is loaded, and the game's own
 random generator is never used. With the normal or long day length the rain, the cloud cover and the wind blend with the
 neighbouring day's over the first and last eighth of each day (half way at the boundary), so a spell of rain comes and
@@ -351,6 +356,51 @@ now has come down. The trail is a ribbon through those places up to the ball as 
 with age. An impact is drawn by what the tile is: sand traps, waste and pot bunkers throw a pale dust cloud and darker
 grains; water spreads two rings and throws drops (next to the original's own splash sprite); anything else flicks a few
 blades of grass. A bounce makes a smaller one. What varies between impacts comes from a hash of the impact.
+
+### Life on the course
+
+Everything here keeps to the original art's look: the birds are the original's own fly-over sprites, and what has no
+original art is drawn as a few crisp pixels at the art's pixel size, lit like the sprites, never as smooth shapes.
+
+- **Birds of prey**: now and then one or two of the theme's bird (eagle on parkland, vulture in the desert, pelican in the
+  tropics, hawk on links courses) wheel in wide circles over the course for a while, with the original fly-over's sprite
+  and wingbeat. They are drawn only: the game's own fly-overs, their timing and their sounds are untouched. Not in the
+  dark or the rain. The free graphics have no bird sprites, so they show with the player's SimGolf files.
+- **Butterflies**: from May to September, over some of the flower beds, a dark body pixel and two coloured wing pixels
+  that open and close as they flit about. Not in the dark or the rain.
+- **Falling leaves**: in September and October, with *Seasons*, leaves drop from broadleaf trees one pixel or two at a
+  time, tumbling and drifting with the wind, more as the autumn colours deepen.
+
+Test hooks: `SG_FX_BIRDS=1` keeps two birds of prey circling round the middle of the view (the fly-over sprite flies high above its ground point, so `SG_FX_BIRDS_AT=-1,5` moves the circle that many tiles to bring the bird to the screen's middle); `SG_FX_MONTH` picks the month.
+
+### Tournament atmosphere
+
+During an SGA tournament or Play a Championship, spectators gather round the green and along both sides of the fairway
+of each hole being played, about twenty a hole, watching the ball while one is in the air there and the green the rest of the time. They are the game's own golfer sprites in the usual
+random colours, standing, and every so often a hole's crowd cheers (the golfers' *Happy* clip) for a
+moment. They stand only on grass and rough on the club's land, never on greens, tees, sand, water, woods or buildings.
+They are drawn only: the golfers and the simulation do not see them. The original has no grandstand or fireworks art, so
+there are none, to keep to the original's look.
+
+### Climate
+
+Each of the sixteen properties has its own weather, by where it is on the world map: rain on about 45 days in a hundred in
+Ireland, Scotland and Wales, about a third in Nova Scotia, the Northeast and Florida, a few in a hundred in Las Vegas and
+Phoenix (a rare desert shower), and tropical showers in Hawaii, Oahu and Jamaica. Each game year is also wetter or drier
+than the place's usual (from half as many rainy days to half as many again), so no two years are alike. A property a mod
+adds takes its theme's climate.
+
+### Winter
+
+The game's year runs from March to October, so its winter is only a tail at the start, and it is not there every year:
+each year rolls whether it ends with a cold snap, more likely in the Rocky Mountains, Nova Scotia and the Northeast,
+sometimes in Scotland, Wales, Ireland and Carolina, rarely in Spain, and never on a desert or tropical course or in
+California and Florida. In a year with a cold snap, the first days of March have full morning frost and, with *Rain* on,
+snow showers instead of rain (small square flakes drifting with the wind, and no puddles); with *Time of day* on, about a
+third of those days also start with a light dusting on the level ground that melts away by mid-morning, so the course
+reads clearly while it is being built. Late October has its frosty mornings (*Seasons*) but no snow. Drawing only:
+golfers play as ever. Test hook: `SG_FX_SNOW=S` lays that much snow (0 to 0.67) whatever the hour or the year, with
+`SG_FX_MONTH` in the first days of March (e.g. 3.05).
 
 ### Performance
 
