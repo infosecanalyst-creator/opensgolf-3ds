@@ -17,6 +17,8 @@
 //!   or when a VIP arrives, a famous golfer challenges, the SGA offers a tournament, the board warns or cash goes below
 //!   zero. These two are left out of the one-click OpenSGolf extras (`ALL_ON`): some players leave the game running in
 //!   the background on purpose.
+//! * the landing map (insight.rs): where golfers' tee shots and approaches on a hole come to rest, as dots on the course;
+//! * comments by hole (insight.rs): each hole's most frequent thoughts this month and last month, on a page of their own.
 //!
 //! With every extra off the game draws and plays exactly as before they existed (each hook asks its switch first).
 use serde::{Deserialize, Serialize};
@@ -38,6 +40,8 @@ pub struct Settings {
     pub sharing: bool,
     pub pause_background: bool,
     pub pause_events: bool,
+    pub landing_map: bool,
+    pub hole_comments: bool,
 }
 
 impl Settings {
@@ -54,6 +58,8 @@ impl Settings {
         sharing: true,
         pause_background: false,
         pause_events: false,
+        landing_map: true,
+        hole_comments: true,
     };
     pub const ALL_OFF: Settings = Settings {
         people: false,
@@ -66,6 +72,8 @@ impl Settings {
         sharing: false,
         pause_background: false,
         pause_events: false,
+        landing_map: false,
+        hole_comments: false,
     };
 
     /// The ticks as the Extras box's checkbox bits (in `UI_KEYS` order).
@@ -81,6 +89,8 @@ impl Settings {
             self.sharing,
             self.pause_background,
             self.pause_events,
+            self.landing_map,
+            self.hole_comments,
         ]
         .iter()
         .enumerate()
@@ -100,6 +110,8 @@ impl Settings {
             sharing: on(7),
             pause_background: on(8),
             pause_events: on(9),
+            landing_map: on(10),
+            hole_comments: on(11),
         }
     }
 
@@ -117,7 +129,7 @@ impl Default for Settings {
 
 /// The interface extras' lines on the Extras box's Interface page (extras_ui.rs), one tick per extra in `Settings::bits`
 /// order (text keys in lang/en.txt).
-pub const UI_KEYS: [&str; 10] = [
+pub const UI_KEYS: [&str; 12] = [
     "STR_EXTRAS_PEOPLE",
     "STR_EXTRAS_HISTORY",
     "STR_EXTRAS_NAME_TAGS",
@@ -128,6 +140,8 @@ pub const UI_KEYS: [&str; 10] = [
     "STR_EXTRAS_SHARING",
     "STR_EXTRAS_PAUSE_BACKGROUND",
     "STR_EXTRAS_PAUSE_EVENTS",
+    "STR_EXTRAS_LANDING_MAP",
+    "STR_EXTRAS_HOLE_COMMENTS",
 ];
 
 thread_local! {
@@ -172,6 +186,12 @@ pub fn pause_background() -> bool {
 pub fn pause_events() -> bool {
     settings().pause_events
 }
+pub fn landing_map() -> bool {
+    settings().landing_map
+}
+pub fn hole_comments() -> bool {
+    settings().hole_comments
+}
 
 fn settings_json() -> serde_json::Value {
     sg_core::fsutil::read_file(crate::app::save_dir().join(crate::hd::SETTINGS_FILE))
@@ -204,7 +224,20 @@ pub fn saved() -> Settings {
     if v.get("pause_events").is_none() {
         s.pause_events = false;
     }
+    // ticks saved before the landing map and comments by hole existed: those start off (they keep a little more with the
+    // game, so a player who had the extras on chooses them anew)
+    upgrade_off(&v, &mut s);
     s
+}
+
+/// The extras added in 0.4 read as off from ticks saved before them.
+fn upgrade_off(v: &serde_json::Value, s: &mut Settings) {
+    if v.is_object() && v.get("landing_map").is_none() {
+        s.landing_map = false;
+    }
+    if v.is_object() && v.get("hole_comments").is_none() {
+        s.hole_comments = false;
+    }
 }
 
 /// Saves the ticks into settings.json, keeping its other keys.
@@ -282,11 +315,14 @@ pub struct Kept {
     /// What each golfer said, by person record (the bios are the person records' own, as Customise's Update Bio edits).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub said: BTreeMap<i32, Vec<Said>>,
+    /// The landing map's shots and the comments by hole (insight.rs), only while one of them is on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub insight: Option<crate::insight::Kept>,
 }
 
 impl Kept {
     pub fn is_empty(&self) -> bool {
-        self.messages.is_empty() && self.staff_names.is_empty() && self.said.is_empty()
+        self.messages.is_empty() && self.staff_names.is_empty() && self.said.is_empty() && self.insight.is_none()
     }
 
     pub fn push_message(&mut self, m: Message) {
@@ -353,6 +389,8 @@ pub struct State {
     /// The screen has been touched (touch.rs): no pointer to hover with, so no name tags.
     pub touched: bool,
     pub path_marks: Option<crate::pathview_ui::Marks>,
+    /// The landing map's balls in play, the map and the comments page (insight.rs).
+    pub insight: crate::insight::State,
 }
 
 // ---- drawing pieces shared by the extras' screens ---------------------------------------------------------------------------
@@ -629,5 +667,24 @@ mod tests {
         assert_eq!(p.bits(), 0b11 << 8);
         assert_eq!(Settings::from_bits(p.bits()), p);
         assert_eq!(p.style(), Settings::ALL_OFF);
+        for m in [0, 1 << 8, 1 << 9, 1 << 10, 1 << 11, 0xfff] {
+            assert_eq!(Settings::from_bits(m).bits(), m);
+        }
+    }
+
+    #[test]
+    fn ticks_saved_before_the_insight_extras_read_them_as_off() {
+        let v: serde_json::Value = serde_json::from_str("{\"people\": true, \"autosave\": true, \"sharing\": true}").unwrap();
+        let mut s: Settings = serde_json::from_value(v.clone()).unwrap();
+        upgrade_off(&v, &mut s);
+        assert!(s.people && s.sharing && !s.landing_map && !s.hole_comments);
+        // ticks saved with them keep them
+        let v: serde_json::Value = serde_json::from_str("{\"landing_map\": true, \"hole_comments\": true}").unwrap();
+        let mut s: Settings = serde_json::from_value(v.clone()).unwrap();
+        upgrade_off(&v, &mut s);
+        assert!(s.landing_map && s.hole_comments);
+        // a save with nothing of theirs is the same as before
+        assert!(Kept::default().is_empty());
+        assert_eq!(serde_json::to_string(&Kept::default()).unwrap(), "{}");
     }
 }

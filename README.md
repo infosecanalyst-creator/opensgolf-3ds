@@ -96,6 +96,8 @@ Optional, and off by default (Start New Game has a one-click switch between *the
   your course record.
 - **Quick save and quick load** (Shift+F5, Shift+F9) and a **staff areas** view (Shift+A) that shows every employee's
   work ring and the fairways and greens no groundskeeper reaches.
+- **Golfer insight** (interface extras): a landing map of where golfers' shots on each hole end up (Shift+D), and each
+  hole's most frequent golfer comments this month, last month and this year (Shift+I).
 - **Content packs and game scripts** that change prices, buildings, terrain, golfers, text, art and sounds, add scenarios,
   and can be downloaded from inside the game ([docs/MODDING.md](docs/MODDING.md)).
 

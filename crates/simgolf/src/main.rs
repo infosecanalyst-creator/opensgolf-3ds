@@ -58,6 +58,7 @@ mod holemarks;
 mod hud_ui;
 mod import;
 mod info_ui;
+mod insight;
 mod keys_ui;
 mod language;
 mod member_panel;
@@ -470,6 +471,26 @@ fn open_screen(app: &mut App, screen: Option<&str>) {
                 app.xs.people.sort[t] = (v.first().copied().unwrap_or(0).clamp(0, 5) as usize, v.get(1).is_some_and(|&d| d != 0));
             }
             app.xs.test_open = Some(s.to_string());
+        }
+        // the insight extras (insight.rs): comments by hole, and the landing map (of the first open hole until the pointer
+        // finds another, or of SG_LANDING_HOLE)
+        // SG_HOLECOMMENTS=P[,N]: the period P (0 this month, 1 last month, 2 this year), scrolled N holes down
+        Some("holecomments") if app.ui_ok => {
+            app.open_hole_comments();
+            if let Ok(v) = std::env::var("SG_HOLECOMMENTS") {
+                let v = ints(&v);
+                app.xs.insight.period = v.first().copied().unwrap_or(0).clamp(0, 2) as usize;
+                app.xs.insight.off = v.get(1).copied().unwrap_or(0).clamp(0, 17) as usize;
+            }
+        }
+        // SG_LANDING_HOLE=N: hole N's map whatever the pointer is over
+        Some("landing") if app.ui_ok => {
+            app.xs.insight.map = true;
+            app.xs.insight.hole = (1..19).find(|&h| app.club.holes[h].par != 0).unwrap_or(0);
+            if let Some(h) = std::env::var("SG_LANDING_HOLE").ok().and_then(|v| v.parse::<usize>().ok()) {
+                app.xs.insight.hole = h.clamp(1, 18);
+                app.xs.insight.fixed = true;
+            }
         }
         Some(s @ ("history" | "profile" | "pathview" | "tags" | "ticker" | "card")) if app.ui_ok => {
             if s == "history" {
@@ -1358,6 +1379,8 @@ impl Stage {
             PopupKind::Info if line == tr("STR_MENU_INFO_PEOPLE") => self.app.open_people(),
             PopupKind::Info if line == tr("STR_MENU_INFO_HISTORY") => self.app.open_history(),
             PopupKind::Info if line == tr("STR_MENU_INFO_PATH_VIEW") => self.app.toggle_path_view(),
+            PopupKind::Info if line == tr("STR_MENU_INFO_LANDING_MAP") => self.app.toggle_landing_map(),
+            PopupKind::Info if line == tr("STR_MENU_INFO_HOLE_COMMENTS") => self.app.open_hole_comments(),
             PopupKind::Info => match k {
                 0 => self.app.repeat_message(),
                 1 => self.open_report(),
@@ -1539,6 +1562,9 @@ impl Stage {
         extras::save(&ui);
         if !ui.path_help {
             self.app.xs.path_view = false;
+        }
+        if !ui.landing_map {
+            self.app.xs.insight.map = false;
         }
     }
 
@@ -1875,6 +1901,9 @@ impl Stage {
                 KeyCode::F5 => app.quick_save(),
                 KeyCode::F9 => app.ask_quick_load(),
                 KeyCode::A => app.toggle_staff_view(),
+                // the insight extras (insight.rs): the landing map and comments by hole
+                KeyCode::D if extras::landing_map() => app.toggle_landing_map(),
+                KeyCode::I if extras::hole_comments() => app.open_hole_comments(),
                 // ? repeats the last message
                 KeyCode::Slash => app.repeat_message(),
                 KeyCode::B => {
@@ -2173,6 +2202,7 @@ impl Stage {
                     app.draw_rename(&mut self.g);
                 }
                 Screen::History => app.draw_history(&mut self.g),
+                Screen::HoleComments => app.draw_hole_comments(&mut self.g),
                 Screen::Profile => {
                     app.draw_profile(&mut self.g);
                     app.draw_rename(&mut self.g);
@@ -2686,6 +2716,7 @@ impl EventHandler for Stage {
             match self.app.screen {
                 Screen::People => return self.app.people_wheel(y),
                 Screen::History => return self.app.history_wheel(y),
+                Screen::HoleComments => return self.app.hole_comments_wheel(y),
                 Screen::Profile => return self.app.profile_wheel(y),
                 _ => {}
             }
@@ -2781,6 +2812,9 @@ impl EventHandler for Stage {
                 } else {
                     self.app.profile_click(vx, vy, right);
                 }
+            } else if self.app.screen == Screen::HoleComments {
+                let (vx, vy) = self.app.view.to_virtual(x, y);
+                self.app.hole_comments_click(vx, vy, button == MouseButton::Right);
             } else if self.app.screen == Screen::Report {
                 let (vx, vy) = self.app.view.to_virtual(x, y);
                 self.app.report_click(vx, vy);
@@ -3106,6 +3140,8 @@ impl Stage {
                 app.history_key(k);
             } else if app.screen == Screen::Profile {
                 app.profile_key(k);
+            } else if app.screen == Screen::HoleComments {
+                app.hole_comments_key(k);
             } else if app.screen == Screen::Report {
                 if k == KeyCode::Escape || k == KeyCode::F1 {
                     app.screen = Screen::Play;

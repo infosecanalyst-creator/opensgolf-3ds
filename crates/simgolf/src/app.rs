@@ -264,6 +264,8 @@ pub enum Screen {
     People,
     History,
     Profile,
+    /// OpenSGolf extras: comments by hole (insight.rs).
+    HoleComments,
 }
 
 /// Where saved games, championship courses and pros, accomplishment snapshots, packs and settings go. The browser keeps them
@@ -2218,6 +2220,9 @@ impl App {
                     if crate::extras::people() {
                         self.keep_thought(g, id, arg);
                     }
+                    if crate::extras::hole_comments() {
+                        self.tally_thought(g, id, arg);
+                    }
                 }
                 golf::Event::GreatShot { g, partner, text, bad, pts } => self.great_shot_event(g, partner, text, bad, &pts),
             }
@@ -2242,6 +2247,10 @@ impl App {
             // Enhanced graphics only: the balls' trails and impacts read the simulation after its tick (fx_ball.rs)
             if crate::fx::active() {
                 self.fx_ball_tick();
+            }
+            // the OpenSGolf extras' landing map reads the balls after the tick too (insight.rs)
+            if crate::extras::landing_map() {
+                self.insight_tick();
             }
             self.ticker.step();
             self.staff_tick();
@@ -2575,7 +2584,15 @@ impl App {
             bought: self.bought.clone(),
             goals: self.scen.goals.clone(),
             scripts: self.scripts_for_save(),
-            extras: self.xs.kept.clone(),
+            extras: crate::extras::Kept {
+                // the insight extras' part only while their ticks are on (insight.rs)
+                insight: crate::insight::Kept::for_save(
+                    &self.xs.kept.insight,
+                    crate::extras::landing_map(),
+                    crate::extras::hole_comments(),
+                ),
+                ..self.xs.kept.clone()
+            },
             packs: self.saved_packs(),
             shared: false,
         };

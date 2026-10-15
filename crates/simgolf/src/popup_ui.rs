@@ -660,6 +660,8 @@ impl App {
                 (crate::extras::people(), "STR_MENU_INFO_PEOPLE"),
                 (crate::extras::history(), "STR_MENU_INFO_HISTORY"),
                 (crate::extras::path_help(), "STR_MENU_INFO_PATH_VIEW"),
+                (crate::extras::landing_map(), "STR_MENU_INFO_LANDING_MAP"),
+                (crate::extras::hole_comments(), "STR_MENU_INFO_HOLE_COMMENTS"),
             ] {
                 if on {
                     lines.push(tr(key));

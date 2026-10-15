@@ -1,7 +1,8 @@
 //! OpenSGolf extras: tabbed reports (extras.rs). Over the F1 to F10 screens a strip of ten tabs, one per report, flips
 //! from one to the next without going back to the course; each report keeps its exact look under it (the strip takes the
 //! top 15 pixels of the page, or the room above it on a taller window). A click or a tap on a tab, Tab and Shift+Tab, or
-//! the report's own F key (or Alt or Ctrl with its digit) change the report; Esc and the reports' own ways close it.
+//! the report's own F key (or Alt or Ctrl with its digit) change the report; Esc and the reports' own ways close it. With
+//! comments by hole on (insight.rs) an eleventh tab after F10 opens its page.
 use crate::app::*;
 use crate::extras::draw_tab;
 use crate::gfx::Gfx;
@@ -22,8 +23,23 @@ pub const TABS: [&str; 10] = [
     "STR_TABS_F9",
     "STR_TABS_F10",
 ];
-const TAB_W: f32 = 74.0;
 const TAB_H: f32 = 14.0;
+/// The eleventh tab: comments by hole (insight.rs).
+const HOLES_TAB: &str = "STR_TABS_HOLES";
+
+/// How many tabs the strip has: ten, and comments by hole's when that extra is on.
+fn tab_count() -> usize {
+    10 + crate::extras::hole_comments() as usize
+}
+
+/// A tab's width: ten share 740 pixels, eleven 792.
+fn tab_w() -> f32 {
+    if tab_count() == 10 {
+        74.0
+    } else {
+        72.0
+    }
+}
 
 impl App {
     /// The report on the screen as a tab (0 for F1 to 9 for F10), None when no report is up or the tabs are off.
@@ -42,6 +58,7 @@ impl App {
             Screen::Shortcuts => 7,
             Screen::Roster => 8,
             Screen::Board => 9,
+            Screen::HoleComments if crate::extras::hole_comments() => 10,
             _ => return None,
         })
     }
@@ -69,6 +86,7 @@ impl App {
             5 => self.open_world_map(),
             6 => self.sga_report(),
             7 => self.open_report_screen(Screen::Shortcuts),
+            10 => self.open_hole_comments(),
             8 => {
                 self.roster_offset = 0;
                 self.screen = Screen::Roster;
@@ -92,7 +110,8 @@ impl App {
     }
 
     fn tab_rect(&self, i: usize) -> Rect {
-        Rect::new(400.0 - TAB_W * 5.0 + TAB_W * i as f32 + 1.0, self.tabs_top() + 1.0, TAB_W - 2.0, TAB_H - 1.0)
+        let (n, w) = (tab_count() as f32, tab_w());
+        Rect::new(400.0 - w * n / 2.0 + w * i as f32 + 1.0, self.tabs_top() + 1.0, w - 2.0, TAB_H - 1.0)
     }
 
     /// A click on the strip: the tab's report. Returns true when the click was on the strip.
@@ -100,7 +119,7 @@ impl App {
         if self.report_tab().is_none() {
             return false;
         }
-        match (0..10).find(|&i| self.tab_rect(i).has(vx, vy)) {
+        match (0..tab_count()).find(|&i| self.tab_rect(i).has(vx, vy)) {
             Some(i) => {
                 self.open_report_tab(i);
                 true
@@ -114,9 +133,10 @@ impl App {
     pub fn report_tabs_key(&mut self, k: miniquad::KeyCode, shift: bool) -> bool {
         use miniquad::KeyCode::*;
         let Some(cur) = self.report_tab() else { return false };
+        let n = tab_count();
         let to = match k {
-            Tab if shift => (cur + 9) % 10,
-            Tab => (cur + 1) % 10,
+            Tab if shift => (cur + n - 1) % n,
+            Tab => (cur + 1) % n,
             F1 => 0,
             F2 => 1,
             F3 => 2,
@@ -143,10 +163,11 @@ impl App {
         let (px, py) = self.info.pointer;
         crate::ui::set_face(None);
         let top = self.tabs_top();
-        s.fill(g, 400.0 - TAB_W * 5.0 - 1.0, top - 1.0, TAB_W * 10.0 + 2.0, TAB_H + 2.0, crate::info_ui::c15(0x0008));
-        for i in 0..10 {
+        let (n, w) = (tab_count(), tab_w());
+        s.fill(g, 400.0 - w * n as f32 / 2.0 - 1.0, top - 1.0, w * n as f32 + 2.0, TAB_H + 2.0, crate::info_ui::c15(0x0008));
+        for i in 0..n {
             let r = self.tab_rect(i);
-            draw_tab(g, &s, r, F_ARIAL10, tr(TABS[i]), i == cur, r.has(px, py));
+            draw_tab(g, &s, r, F_ARIAL10, tr(TABS.get(i).copied().unwrap_or(HOLES_TAB)), i == cur, r.has(px, py));
         }
         g.flush();
     }

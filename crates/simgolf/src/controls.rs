@@ -291,6 +291,8 @@ pub const ACTIONS: &[Action] = {
         act!("quick_save", "STR_CTL_QUICK_SAVE", shifted(F5)),
         act!("quick_load", "STR_CTL_QUICK_LOAD", shifted(F9)),
         act!("staff_view", "STR_CTL_STAFF_VIEW", shifted(A)),
+        act!("landing_map", "STR_CTL_LANDING_MAP", shifted(D)),
+        act!("hole_comments", "STR_CTL_HOLE_COMMENTS", shifted(I)),
     ]
 };
 
@@ -496,6 +498,8 @@ const ROW_ACTIONS: &[(&str, &[&str])] = &[
     ("STR_KEYS_K_QUICK_SAVE", &["quick_save"]),
     ("STR_KEYS_K_QUICK_LOAD", &["quick_load"]),
     ("STR_KEYS_K_STAFF_VIEW", &["staff_view"]),
+    ("STR_KEYS_K_LANDING_MAP", &["landing_map"]),
+    ("STR_KEYS_K_HOLE_COMMENTS", &["hole_comments"]),
 ];
 
 /// The text a Keyboard controls row prints for its key: None (the row's own text) unless the player moved one of its keys.

@@ -118,6 +118,7 @@ Select Difficulty has a **Game** box next to Course size. One click switches bet
   own bugs stay on). A new player starts here.
 - **OpenSGolf extras**: the interface extras (People screen, message history, name tags, report tabs, path help, autosave,
   save pictures, course sharing; not the two pauses, which you tick yourself) and the
+  save pictures, course sharing, landing map, comments by hole) and the
   gameplay extras that do not change the game's balance (turning buildings, animals, more staff).
 
 If you ticked your own choice in Preferences, the box says "your own mix"; a click goes back to the original. The choice
@@ -328,6 +329,23 @@ compare pixel for pixel with the build before the extras).
   Championship's course list, and the course joins their championship courses. Dropping a shared `.sgch` course, a saved
   game (`.sgs`) or a text file holding a code on the window brings it in too. The challenge: your course record travels
   with the course, and the course list shows it to your friend as the score to beat.
+- **Landing map** (**Shift+D**, or *Information, Landing map on / off*): where the golfers' shots on a hole come to rest,
+  as small dots on the course for the hole under the pointer (or the last one pointed at, or the one Hole Stats showed
+  last): white the tee shots, yellow the second shots, orange the third, red the fourth and later, with a fainter pip
+  where each first came down. Putts are left out. A legend in the upper right counts where the hole's last shots ended:
+  fairway, rough, sand, water (a ball taken back for a drop is marked where it went in), green (holed shots count here)
+  and anything else (trees, rocks, a ravine, out of bounds). Each hole keeps its last 200 shots from the moment the
+  extra is on; building the hole again with its tee or cup elsewhere starts it afresh. Kept with the save while the
+  extra is on.
+- **Comments by hole** (**Shift+I**, *Information, Comments by hole*, or the *By hole* tab after F10 on the tabbed
+  reports): a page with a block for each open hole: the three thoughts golfers had most often while playing it, each on
+  its own line with how many times, and how many thoughts in all. Every thought counts (each bubble over a golfer on the
+  hole), grouped by kind, in the F2 report's colours: green ones cheered the golfer up ("Made good shot", "Notices
+  scenic improvement"), red ones put the golfer out ("Hit into the water", "Too easy shot", "Long wait at tee"), the rest
+  are plain. The tabs at the top (or Left/Right) show this month, last month or this year; Up/Down, PageUp/PageDown or
+  the wheel scroll through the holes. The words are the Customise screen's dialogue labels where a thought has one, else
+  the F2 report's line. With the landing map on too, a click on a hole's block shows its landing map. Kept with the
+  save while the extra is on.
 
 - **Pause in the background** (off, also with the one-click OpenSGolf extras: some players leave the game running in the
   background on purpose): the game pauses when its window goes to the background (another window takes the focus, the
@@ -341,6 +359,12 @@ compare pixel for pixel with the build before the extras).
   under the Paused caption. Unpause as usual (Shift+P or the dock's pause button).
 
 Test hooks for stills: `--screen people|staff|pro|history|profile|pathview|tags|ticker|card` (with a game;
+  Both only watch the game: the golfers play exactly the same with them on or off. Ticks saved before they existed read
+  as off (choose them in the extras box).
+
+Test hooks for stills: `--screen people|staff|pro|history|profile|pathview|tags|ticker|card|landing|holecomments` (with a game;
+`landing` shows the landing map of the first open hole, or of hole N with `SG_LANDING_HOLE=N`; `SG_HOLECOMMENTS=P[,N]` shows comments by hole for period P, 0 this
+month, 1 last month, 2 this year, scrolled N holes down;
 `SG_PEOPLE_SORT=COL[,1]` sorts the People list by column COL, downward with 1), `--edit "M:6"` opens the extras box.
 
 ## Quick save and staff areas
