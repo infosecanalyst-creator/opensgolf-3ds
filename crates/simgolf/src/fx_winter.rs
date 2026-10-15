@@ -1,6 +1,6 @@
 //! Enhanced graphics' winter (docs/ENHANCED.md, "Winter"): the game's year runs from March to October, and on parkland and
-//! links courses its first and last weeks are cold: the rain falls as snow and the morning frost is full, and on some days
-//! of the last week a light snow lies on the level ground (thinning in the midday sun with the time of day). Drawing only: what varies
+//! links courses its first days are the tail of winter: the rain falls as snow, the morning frost is full, and on some days
+//! a light dusting lies at dawn and melts by mid-morning (with the time of day). Drawing only: what varies
 //! comes from hashes of the course and the day, never from the game's random generator; golfers play as ever.
 use crate::app::App;
 use crate::fx_light::Atmos;
@@ -19,13 +19,15 @@ fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
 
-/// How cold month `m` (3.0 the start of March .. 11.0 the end of October) is: 1 in the first and last week of the year.
+/// How wintry month `m` (3.0 the start of March .. 11.0 the end of October) is: 1 in the first week of March, nothing by
+/// the end of the month's first half (a late cold snap; late October is cold mornings, not snow).
 pub fn cold(m: f32) -> f32 {
-    (1.0 - smoothstep(3.15, 3.6, m)).max(smoothstep(10.4, 10.85, m))
+    1.0 - smoothstep(3.15, 3.6, m)
 }
 
 impl App {
-    /// The day's winter weather into the atmosphere: snow cover, snow instead of rain, full frost.
+    /// The day's late-winter weather into the atmosphere, in early March only (late October keeps its frosty mornings,
+    /// fx_nature.rs): the rain falls as snow, and on some days a light dusting lies at dawn and melts by mid-morning.
     pub(crate) fn fx_winter(&self, a: &mut Atmos, day: u32, phase: Option<f32>) {
         let theme = self.exe_theme();
         if theme != 0 && theme != 3 {
@@ -35,20 +37,19 @@ impl App {
         if k <= 0.0 {
             return;
         }
-        // snow lies only at the year's end: a new game starts in early March, and its first holes are built on a course
-        // that has to read clearly (March keeps the frost and the odd snow shower)
-        let end = self.fx_month() > 10.0;
-        // SG_FX_SNOW=S (stills): that much snow lying whatever the day
+        // SG_FX_SNOW=S (stills): that much snow lying whatever the hour
         let forced = std::env::var("SG_FX_SNOW").ok().and_then(|v| v.parse::<f32>().ok());
-        // about half the cold days have snow lying
-        let lying =
-            forced.unwrap_or_else(|| if hash(self.fx_seed() ^ 0x5a0, day) < 0.55 { 0.5 + 0.5 * hash(self.fx_seed(), day) } else { 0.0 });
-        // thinner when the sun is up
-        let sun = phase.map(|p| 1.0 - 0.45 * smoothstep(0.25, 0.55, p) * (1.0 - smoothstep(0.75, 0.95, p))).unwrap_or(1.0);
-        // at most two thirds cover, so the fairways, greens and paths always show through
-        a.snow = if end || forced.is_some() { (k * lying * sun * 0.67).clamp(0.0, 0.67) } else { 0.0 };
+        // a dusting on about a third of the cold days, only with the time of day: from dawn, gone by mid-morning, so the
+        // course reads clearly while it is built
+        let dusting = hash(self.fx_seed() ^ 0x5a0, day) < 0.35;
+        let morning = phase.map(|p| if p > 0.95 { smoothstep(0.95, 1.0, p) } else { 1.0 - smoothstep(0.06, 0.22, p) }).unwrap_or(0.0);
+        a.snow = match forced {
+            Some(f) => f.clamp(0.0, 0.67),
+            None if dusting => (k * morning * (0.35 + 0.25 * hash(self.fx_seed(), day))).clamp(0.0, 0.6),
+            None => 0.0,
+        };
         // the rain falls as snow, and the ground is not wet
-        a.snowfall = (a.rain * k).max(if forced.is_some() && a.rain > 0.0 { a.rain } else { 0.0 });
+        a.snowfall = a.rain * k;
         a.rain *= 1.0 - k;
         a.wet *= 1.0 - k;
         a.puddles *= 1.0 - k;
@@ -94,6 +95,7 @@ mod tests {
     fn cold_weeks() {
         assert_eq!(cold(3.0), 1.0);
         assert_eq!(cold(6.0), 0.0);
-        assert_eq!(cold(10.95), 1.0);
+        // no snow at the end of October
+        assert_eq!(cold(10.95), 0.0);
     }
 }
