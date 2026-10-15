@@ -76,9 +76,9 @@ impl App {
         }
     }
 
-    /// The game year now (0 the first): March to October is one year.
+    /// The game year now (0 the first): March to October is one year (by the date, sg_core::extras::Calendar).
     fn fx_year(&self) -> u32 {
-        self.econ.tick / (crate::fx_light::DAY_TICKS * 8)
+        self.date() / (crate::fx_light::DAY_TICKS * 8)
     }
 
     /// How wet this year is against the place's usual: from half as many rainy days to half as many again.

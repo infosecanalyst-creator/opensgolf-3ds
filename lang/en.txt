@@ -1297,6 +1297,22 @@ STR_MENU_PREFS_KEYS                     : Keyboard controls...
 # Preferences > OpenSGolf extras (the port's own optional gameplay changes, all off by default; docs/PLAYING.md). The
 # options start with a space.
 STR_MENU_PREFS_EXTRAS                   : OpenSGolf extras...
+# Preferences > Search (the port's own, prefs_search.rs): find an option on any page of the Preferences by its words
+STR_MENU_PREFS_SEARCH                   : Search options...
+STR_SEARCH_TITLE                        :Search the Preferences (type to find)
+STR_SEARCH_FIND                         :Find: {QUERY}
+STR_SEARCH_CHANGED                      : Show only what differs from the original game
+# A found option: "{page}: {option}"; the pages of Enhanced graphics' master switch and of the keys
+STR_SEARCH_PLACE_ENHANCED               :Graphics
+STR_SEARCH_PLACE_KEYS                   :Keys
+STR_SEARCH_KEY                          :{ACTION} ({KEY})
+STR_SEARCH_NONE                         :Nothing found.
+STR_SEARCH_MORE                         :{N} more: type more to narrow the list.
+STR_SEARCH_RESET                        : Reset everything to the original game...
+STR_RESET_ORIGINAL_1                    :Put every option back as in the original game?
+STR_RESET_ORIGINAL_2                    :All extras and Enhanced graphics off, every key as it was.
+STR_RESET_ORIGINAL_YES                  : Yes, back to the original game.
+STR_RESET_ORIGINAL_NO                   : No, keep my choices.
 STR_EXTRAS_TITLE                        :OpenSGolf extras (not in the original)
 STR_EXTRAS_ROTATE                       : Tab turns placed buildings and the clubhouse
 STR_EXTRAS_CUT_CONTENT                  : Cut content: unused landmarks
@@ -1304,6 +1320,18 @@ STR_EXTRAS_HARDCORE                     : Hardcore economy
 STR_EXTRAS_MORE_STAFF                   : Higher staff limits
 STR_EXTRAS_ANIMALS                      : Buyable animals
 STR_EXTRAS_SET_PAR                      : Set par: change a hole's par on its Hole Stats
+# The extras box's pages (tabs): the gameplay extras, the calendar and sandbox switches, the interface extras
+STR_EXTRAS_PAGE_GAMEPLAY                :Gameplay
+STR_EXTRAS_PAGE_TIME                    :Time & sandbox
+STR_EXTRAS_PAGE_INTERFACE               :Interface
+# Slower seasons: a click steps the calendar's speed (1x is the original's)
+STR_EXTRAS_SEASON_SPEED                 : Slower seasons: the calendar at {VALUE}
+STR_EXTRAS_SPEED_1                      :1x (original)
+STR_EXTRAS_SPEED_HALF                   :1/2x
+STR_EXTRAS_SPEED_QUARTER                :1/4x
+STR_EXTRAS_PAUSE_CALENDAR               : Sandbox: pause the calendar
+STR_EXTRAS_FREEZE_MOODS                 : Sandbox: freeze golfer happiness
+STR_EXTRAS_UNLOCK_ALL                   : Sandbox: unlock all buildings and landmarks
 STR_SET_PAR_1                           :Change hole {HOLE} from par {OLD} to par {NEW}?
 STR_SET_PAR_2                           :Golfers will be scored against the new par.
 STR_SET_PAR_YES                         : Yes, change the par.
@@ -2560,8 +2588,7 @@ STR_TOAST_EXPORTED                      :Exported as the scenario pack {PACK} (i
 ########################################################################################################################
 # OpenSGolf extras (the port's own additions, extras.rs; docs/PLAYING.md "OpenSGolf extras")
 ########################################################################################################################
-# Preferences > OpenSGolf extras, second part (under the gameplay extras): the interface extras' heading and a tick per extra
-STR_EXTRAS_UI_HEAD                      :Interface extras
+# Preferences > OpenSGolf extras, Interface page: a tick per interface extra
 STR_EXTRAS_PEOPLE                       : People screen and golfer profiles (Shift+G)
 STR_EXTRAS_HISTORY                      : Message history (Shift+M, or click the ticker)
 STR_EXTRAS_NAME_TAGS                    : Name tags under the pointer (Shift+H)
@@ -2579,8 +2606,6 @@ STR_TOAST_SHARE_COPIED                  :Course code for {COURSE} copied. Paste 
 STR_TOAST_SHARE_NO_CODE                 :No course code on the clipboard. Copy the whole code, then paste again.
 STR_TOAST_SHARE_COURSE_ADDED            :{COURSE} added to Play a Championship. Beat the course record!
 STR_TOAST_SHARE_GAME_ADDED              :{COURSE} added to Load Previous Game.
-# An empty line: before the interface extras' heading, and the box's last line (it keeps the OK tick clear of the options)
-STR_EXTRAS_END                          :
 # A game date: "March 3, 2001"
 STR_EXTRAS_DATE                         :{MONTH} {DAY}, {YEAR}
 # Under the Paused caption while People > Follow keeps the camera on someone

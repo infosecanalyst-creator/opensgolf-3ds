@@ -447,7 +447,7 @@ fn most_options() -> usize {
 }
 
 /// An option's line as shown: its text, with the current value of a setting with choices.
-fn option_line(o: &OptionEntry, s: &Settings) -> String {
+pub fn option_line(o: &OptionEntry, s: &Settings) -> String {
     use sg_core::lang::{tr, trf};
     match o.choices.get((o.get)(s) as usize) {
         Some(v) => trf(o.label, &[("VALUE", &tr(v))]),

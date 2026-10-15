@@ -464,14 +464,14 @@ fn rank_text(step: usize) -> String {
 
 impl Club {
     /// What opening hole `h` adds to its announcement: the rank upgrade at 6, 10 and 18 holes, otherwise the next building
-    /// kind while the course is growing (the counter only ever rises).
+    /// kind while the course is growing (the counter only ever rises; not with the Unlock all extra, which has them all).
     fn unlock_text(&mut self, h: i32) -> String {
         let mut s = String::new();
         if h == 6 {
             s += &rank_text(0);
         } else if h == 10 {
             s += &rank_text(1);
-        } else if h > self.unlocked - 5 && self.unlocked <= 14 && !self.sandbox {
+        } else if h > self.unlocked - 5 && self.unlocked <= 14 && !self.sandbox && !self.extras.unlock_all {
             s += if h & 1 == 0 { tr("STR_UNLOCK_NEW_FACILITIES") } else { tr("STR_UNLOCK_NEW_PLAYERS") };
             let k = self.unlocked;
             let name = crate::land::building_name(k);

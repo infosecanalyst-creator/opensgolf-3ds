@@ -45,7 +45,8 @@ pub struct Economy {
     pub cash: f64,
     /// Sandbox mode: actions are never refused for lack of money and the board never ends the game. Costs are still paid.
     pub sandbox: bool,
-    /// The game tick the economy last ran on.
+    /// The date the economy last ran on: the game tick, or with the Slower seasons and Pause the calendar extras the
+    /// calendar's tick (sg_core::extras::Calendar).
     pub tick: u32,
     pub holes_played: i32,
     /// Negative year ends in a row (the exe's debt stage); the game ends when it passes 2.
@@ -282,7 +283,21 @@ impl Economy {
     /// One game tick: maintenance and wages every 1024/(difficulty+2) ticks, debt interest at month start, the board at year end.
     /// Returns the wage units paid to each entry of `staff` this tick (the exe adds them to the employee's total paid, +0x14).
     pub fn on_tick(&mut self, tick: u32, difficulty: i32, active_holes: usize, staff: &[Payroll], rng: &mut ExeRng) -> Vec<i32> {
-        self.tick = tick;
+        self.on_tick_dated(tick, &crate::extras::Calendar::default(), difficulty, active_holes, staff, rng)
+    }
+
+    /// `on_tick` with the calendar of the Slower seasons and Pause the calendar extras: the maintenance and wages go by the
+    /// game tick (so they keep their pace per game day), the interest, the board and the ledger's year by the date.
+    pub fn on_tick_dated(
+        &mut self,
+        tick: u32,
+        cal: &crate::extras::Calendar,
+        difficulty: i32,
+        active_holes: usize,
+        staff: &[Payroll],
+        rng: &mut ExeRng,
+    ) -> Vec<i32> {
+        self.tick = cal.date(tick);
         let mut paid = vec![0; staff.len()];
         if self.game_over {
             return paid;
@@ -305,7 +320,7 @@ impl Economy {
                 }
             }
         }
-        if tick & 0x3ff == 0 && self.cash < 0.0 {
+        if cal.new_month(tick) && self.cash < 0.0 {
             // 2% a month on debt (data/economy.toml), in whole units, truncated toward zero: units x 2 / 100 is the
             // exe's units / 50 exactly
             let units = (self.cash / Self::UNIT).trunc() as i64;
@@ -313,7 +328,7 @@ impl Economy {
             self.earn(interest);
             self.book(LEDGER_MAINTENANCE, interest);
         }
-        if tick & 0x1fff == 0 && tick > 0 {
+        if cal.new_year(tick) {
             self.year_end();
         }
         paid

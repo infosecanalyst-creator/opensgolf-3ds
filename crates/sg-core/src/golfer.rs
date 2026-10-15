@@ -448,6 +448,10 @@ pub struct Club {
     /// The port's optional gameplay changes (sg_core::extras), saved only when one is on.
     #[serde(skip_serializing_if = "crate::extras::Extras::is_off")]
     pub extras: crate::extras::Extras,
+    /// The calendar under the Slower seasons and Pause the calendar extras (sg_core::extras::Calendar), saved only when it
+    /// has fallen behind the game tick.
+    #[serde(default, skip_serializing_if = "crate::extras::Calendar::is_zero")]
+    pub cal: crate::extras::Calendar,
 }
 
 impl Default for Club {
@@ -550,6 +554,7 @@ impl Club {
             view_close: true,
             show_snapshots: true,
             extras: Default::default(),
+            cal: Default::default(),
         }
     }
 
@@ -1520,15 +1525,26 @@ impl Club {
     /// One game tick for the golfers: arrivals, the animation pass of the drawing routine, then every golfer's update.
     pub fn tick(&mut self, c: &mut Course, rng: &mut ExeRng, tick: u32) {
         self.tick = tick;
-        if tick > 0 && tick & 0x3ff == 0 {
+        // the month start goes by the date (sg_core::extras::Calendar; the game tick itself with the extras off)
+        if self.date() > 0 && self.cal.new_month(tick) {
             self.month_decay();
         }
         self.arrivals(c, rng);
         for g in 0..SLOTS {
             self.animate(rng, g);
         }
+        // the Freeze golfer happiness extra (the port's own): whatever lowered a mood this tick is undone (a pair's mood
+        // set at the first tee from its compatibility, in `arrivals` above, is its starting mood)
+        let moods: Option<Vec<i32>> = self.extras.freeze_moods.then(|| self.g.iter().take(SLOTS).map(|g| g.mood).collect());
         for g in 0..SLOTS {
             self.update(c, rng, g);
+        }
+        if let Some(m) = moods {
+            for (g, &before) in self.g.iter_mut().take(SLOTS).zip(m.iter()) {
+                if g.hole != 0 && g.mood < before {
+                    g.mood = before;
+                }
+            }
         }
         // The main frame clears the aim-search lock once per frame.
         self.plan_busy = false;
@@ -3668,6 +3684,43 @@ mod tests {
         println!("holes finished {holed}, fees {fees}, cards {strokes:?}");
         assert!(holed >= 4, "golfers should finish the hole: {holed}");
         assert!(strokes.iter().all(|&s| (2..=10).contains(&s)), "{strokes:?}");
+    }
+
+    /// The Freeze golfer happiness extra (sg_core::extras): on a hard setting, where moods fall, no golfer's mood ever drops
+    /// from one tick to the next, and nobody leaves unhappy; without it, moods do fall on the same run.
+    #[test]
+    fn frozen_moods_never_drop() {
+        let run = |freeze: bool| {
+            let (mut c, mut club) = test_course();
+            club.difficulty = 3;
+            club.extras.freeze_moods = freeze;
+            let mut rng = ExeRng { state: 4242 };
+            club.new_game(&mut rng);
+            let mut drops = 0;
+            let mut quits = 0;
+            for tick in 1..12_000u32 {
+                for g in club.g.iter_mut().take(SLOTS) {
+                    g.sx = 400;
+                    g.sy = 300;
+                }
+                let before: Vec<(i32, i32, i32)> = club.g.iter().take(SLOTS).map(|g| (g.hole, g.roster, g.mood)).collect();
+                club.tick(&mut c, &mut rng, tick);
+                for (g, &(hole, roster, mood)) in club.g.iter().take(SLOTS).zip(before.iter()) {
+                    // the same golfer still out on the course (the tee sets a pair's mood afresh from the pair's
+                    // compatibility: a start, not a drop)
+                    if hole > 0 && g.hole > 0 && g.roster == roster && g.mood < mood {
+                        drops += 1;
+                    }
+                }
+                club.out.clear();
+                quits += club.g.iter().take(SLOTS).filter(|g| g.hole != 0 && g.mood < 0).count();
+            }
+            (drops, quits)
+        };
+        let (drops, quits) = run(true);
+        assert_eq!((drops, quits), (0, 0));
+        let (drops, _) = run(false);
+        assert!(drops > 0, "moods fall on this run without the extra");
     }
 }
 

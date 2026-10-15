@@ -217,9 +217,10 @@ impl Club {
     }
 
     /// The mid-year offer (main frame 0x418000): at the start of the fifth month of each year, when the pro is not out and no
-    /// tournament runs. Returns true when the SGA made an offer.
+    /// tournament runs. Returns true when the SGA made an offer. (The month goes by the date, sg_core::extras::Calendar: once
+    /// a year whatever the calendar's speed, never while it is paused.)
     pub fn tournament_offer(&mut self, facilities: i32, course_name: &str) -> bool {
-        if self.tick % 0x2000 != 0x1000 || self.gary != -1 || self.game & game::TOURNAMENT != 0 || self.sandbox {
+        if self.date() % 0x2000 != 0x1000 || self.cal.held || self.gary != -1 || self.game & game::TOURNAMENT != 0 || self.sandbox {
             return false;
         }
         self.purse = 0;

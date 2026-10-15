@@ -412,11 +412,12 @@ impl App {
     }
 
     /// The day (one game month) and the phase of its light (0..1, 0 dawn, 0.4..0.6 midday, 0.9 sunset). `SG_FX_HOUR`
-    /// fixes the phase for stills.
+    /// fixes the phase for stills. The light goes by the game tick, the golfers' pace, so with the extras' slower calendar
+    /// (sg_core::extras::Calendar) a month holds two or four days of light; the seasons go by the date (`fx_month`).
     pub(crate) fn fx_day(&self) -> (u32, f32) {
         let dt = day_ticks();
-        let t = self.econ.tick as f32 + self.tick_fraction();
-        let day = self.econ.tick / dt;
+        let t = self.game_tick as f32 + self.tick_fraction();
+        let day = self.game_tick / dt;
         let p = std::env::var("SG_FX_HOUR").ok().and_then(|v| v.parse::<f32>().ok());
         (day, p.unwrap_or(t / dt as f32 + DAY_START).rem_euclid(1.0))
     }
@@ -424,7 +425,7 @@ impl App {
     /// How far through its day (0..1) the game's clock is.
     pub(crate) fn fx_day_fraction(&self) -> f32 {
         let dt = day_ticks();
-        ((self.econ.tick % dt) as f32 + self.tick_fraction()) / dt as f32
+        ((self.game_tick % dt) as f32 + self.tick_fraction()) / dt as f32
     }
 
     /// Whether the weather eases from day to day (any day length but the first versions' short one, which is kept as it
