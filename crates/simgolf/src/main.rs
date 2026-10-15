@@ -781,9 +781,14 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 app.land_click(false);
             }
             b'j' => {
-                // the pro's round: j:0 practice, j:1 the match; scripted runs aim every full shot at the pin
+                // the pro's round: j:0 practice, j:1 the match; scripted runs aim every full shot at the pin (j:0,1 only
+                // shows the aim; j:0,3 leaves the aiming to the player)
                 let ui = std::mem::replace(&mut app.ui_ok, false);
-                app.auto_aim = if v.len() > 1 && at(1) == 1 { 2 } else { 1 };
+                app.auto_aim = match v.get(1).map(|_| at(1)) {
+                    Some(1) => 2,
+                    Some(3) => 0,
+                    _ => 1,
+                };
                 app.pro_button(if at(0) == 1 { 1 } else { 0 });
                 app.ui_ok = ui;
                 println!("pro round requested: game flags {:#x}, skills {:?}", app.club.game, &app.club.pro_skill[..10]);

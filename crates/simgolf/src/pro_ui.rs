@@ -321,6 +321,16 @@ impl App {
     /// After the club's tick: the pro's employee stands where the playing pro is, ready for when the round ends (4.1); and
     /// skill points won by an accomplishment are handed out.
     pub fn pro_after_tick(&mut self) {
+        // the port's own (issue #30): when the pro's shot comes up, a tool armed between shots is dropped and the
+        // building panels give way to the Player panel, so the click aims the shot instead of building
+        let aiming = self.club.pro_aiming().is_some();
+        if aiming && !self.was_aiming {
+            self.edit = false;
+            if self.panel == 1 || self.panel == 2 {
+                self.show_player_panel();
+            }
+        }
+        self.was_aiming = aiming;
         let gary = self.club.gary;
         if gary == -1 && self.pro_slot >= 0 {
             let gg = &self.club.g[self.pro_slot as usize];
