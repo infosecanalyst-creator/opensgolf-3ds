@@ -41,13 +41,22 @@ messages to that console. Screenshots (Shift+F6) go to the save folder as `opens
 
 Start OpenSGolf (from a source build: `opensgolf --game "../game/Program_Files_(ENGLISH)"`). It opens on the title menu, drawn from the disc's own Interface art with the game's font: Start New Game (Standard) or Sandbox Mode opens the property chooser, and picking a property starts a course on that property's theme. A property is paid for out of the §100,000 starting funds (sandbox: unlimited). Esc goes back, and from the course returns to the menu. Continue Saved Game opens Load Previous Game (the disc's Title_LoadGame art): the saved games in a list of 16 rows with the scroll arrows, a click on a row shows its holes, par, yards, cash, ratings, theme pack, designer and course record on the left, the tick loads it, the folder deletes it after a yes/no box, the arrow goes back; saves whose names start with '&' are listed as autosaves. Select A Theme opens Select a Theme Pack (the folders under Themes with what each holds); a click on a row picks it, the tick keeps it, the arrow or a key goes back to Standard. A click on the logo shows the credits (credits.txt from the game folder over creditsbckgrd.pcx; a click or key ends them).
 
+**Check for updates** (the port's own button, top right of the title menu, on Windows, macOS, Linux and Android) asks
+GitHub for OpenSGolf's newest release and says whether you have it. When a newer version is out, **Open the download
+page** opens its release page (https://github.com/crspytopgn/opensgolf/releases/latest) in the system's browser, where you
+download and install it as the first time; the game never downloads or replaces itself. Privacy: nothing goes online until
+you click the button, and then only one request to `api.github.com` (GitHub sees your IP address and
+`OpenSGolf/<version>` as the program asking, as for any web page); nothing about you or your games is sent. The browser
+version is always the newest, so it has no such button, nor has a build without the `net` feature. Test hook:
+`SG_UPDATE_URL=file:///path/latest.json` checks at start against a saved answer (`{"tag_name":"v0.4.0"}`) instead of GitHub.
+
 For scripted runs (any of `--png`, `--course`, `--edit`, `--golfer`, `--sandbox`, `--follow`) the game skips the menu and opens on the demo course; `--screen menu|property|play` forces a screen. Add `--theme Desert` for another look there. `--property NAME` (or 0..15) starts a new game on that property straight away, and `--clock MS` fixes the value the exe's random generator is seeded from, so the same land comes back every run.
 
 - **Holes** are built one at a time with the exe's rules (docs/GAMELOGIC.md): paint one Tee tile (G twice, or the Paint tool) and a Putting Green, then press H or click the cup green to open the hole. Its par comes from its planned length. Painting over a hole's tee or cup closes that hole until it is rebuilt. Courses made outside the tool (the demo course, saved terrain) have their tee and green pairs turned into holes when they load. Shift+H hides the story lines.
 - **Golfers** follow the exe's rules (docs/GAMELOGIC.md): invited members come in pairs, walk and play every hole, use the amenities, pay a green fee equal to their mood at the end of each hole, and quit for good when their mood falls below zero. Happy members upgrade their membership and bring friends.
 - **Fun** sums each hole's mood changes the way the exe does. Happy golfers pay more, unhappy ones less.
 - **Money:** you start with §100,000 (confirmed from the publisher's golf.exe and the property screen). The green fee defaults to 1000 per hole, from the scale seen in course reports. Upkeep and wages are charged every game day (120 seconds). When cash stays below zero the board sends warnings and then ends the game, in four steps (the days are placeholders). Sandbox mode never charges.
-- **The land** of a new game is built the way the exe builds it: each game deals the properties into sixteen offer slots (which set the acreage and price shown on the chooser), and the land generator lays out trees, creek, coast, ponds and rocks, wildlife spots, the clubhouse, the property's own feature and the difficulty's obstacles, and leaves the land beyond the purchased acreage out of bounds (not drawn) or, on an island, under water. Landmarks, obstacles and free buildings are drawn with the exe's art for the theme. Your own pro starts at the clubhouse and, until the first hole opens, follows the pointer as the exe's pro does; hired staff (People button) work around their post the way the exe's staff do: the Soda Vendor sells drinks to thirsty golfers, the Club Pro chats to golfers, the Ranger hurries them, the Groundskeeper pulls weeds. Click an employee on the course, then click where they should work, to move their post (the scripted hook `--edit "h:KIND,X,Y"` hires one with a post). Weeds grow and golfers complain about grown ones (-2 mood). The console prints events (strokes, fees, board messages).
+- **The land** of a new game is built the way the exe builds it: each game deals the properties into sixteen offer slots (which set the acreage and price shown on the chooser), and the land generator lays out trees, creek, coast, ponds and rocks, wildlife spots, the clubhouse, the property's own feature and the difficulty's obstacles, and leaves the land beyond the purchased acreage out of bounds (not drawn) or, on an island, under water. Landmarks, obstacles and free buildings are drawn with the exe's art for the theme. Your own pro starts at the clubhouse and, until the first hole opens, follows the pointer as the exe's pro does; hired staff (People button) work around their post the way the exe's staff do: the Soda Vendor sells drinks to thirsty golfers, the Club Pro chats to golfers, the Ranger hurries them, the Groundskeeper pulls weeds. Click an employee on the course, then click where they should work, to move their post (the scripted hook `--edit "h:KIND,X,Y[,F]"` hires one with a post; F bit 1 the experienced version, bit 2 arms Move). Weeds grow and golfers complain about grown ones (-2 mood). The console prints events (strokes, fees, board messages).
 
 - **Course Report:** press F1 on the course. It uses the disc's report art and lists every hole: yards, par, average strokes, time, fun, the +Len/+Acc/+Img scores (measured by simulating golfers with and without each skill, as the original's Shot Analysis suggests), type, average fee, revenue and profit. Yards, minutes and the profit split are placeholder scales. Esc, F1 or a click closes it. `--screen report` opens it directly.
 
@@ -145,9 +154,18 @@ games start with (kept in settings.json under `extras`).
   glance at a tile next to one enjoy the sight (the scenic thought, +1 mood, as a landmark's sight gives), and scaring one
   is the same as scaring a wild one. Up to 32 pairs. The Preferences' "Ambient animals" tick hides and stops them, as it
   does the wild ones.
+- **Set par.** The game gives each hole its par from its length when it opens, and sometimes judges a hole too hard or
+  too easy for it. With this on, Hole Stats (click a hole on the Course Report) shows **-** and **+** buttons beside the
+  par (or press minus and plus there); after a confirmation the hole's par is one less or one more, from 2 to 6. A par you
+  set is shown in blue and counts everywhere par does: golfers' scores and their moods over them, birdies and eagles, the
+  hole's hard and easy marks and its name, the reports and the best rounds. It is saved with the game and moves with the
+  hole on the Routing screen. Rebuilding the hole (painting over its tee or cup green and opening it again) gives it the
+  game's par anew, a tournament's checklist sets its own pars, and switching the extra off puts every hole back to the
+  game's par. Pars cannot be changed during a tournament.
 
 Test hooks: `--extras BITS` sets the extras a new game starts with (1 Tab turns, 2 cut content, 4 hardcore, 8 higher staff
-limits, 16 animals; not saved to the settings); `--edit "X:BITS"` sets the extras of the game being played; `--edit "T:x,y"`
+limits, 16 animals, 32 set par; not saved to the settings); `--edit "R:N"` asks for par N on the Hole Stats' hole (its
+confirmation box; `R:N,1` sets it at once); `--edit "X:BITS"` sets the extras of the game being played; `--edit "T:x,y"`
 presses the Tab of the first extra with the pointer on tile x,y; `--edit "S:page[,design]"` opens the Amenities panel with the
 landmark tool on strip page 0 (own), 1 (cut) or 2 (animals); `--edit "b:x,y,4,t"` places landmark type t (19..32 the cut ones,
 100 + kind an animal pair); `--edit "M:6"` opens the extras box.

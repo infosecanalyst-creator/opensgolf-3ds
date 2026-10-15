@@ -56,7 +56,9 @@ fn remote(url: &str, max: u64) -> Request {
     // named: a panic in it ends only the download (on Android the panic hook closes the app for any other thread, android.rs)
     let spawned = std::thread::Builder::new().name(NET_THREAD.into()).spawn(move || {
         let r = (|| -> Reply {
-            let mut resp = ureq::get(&url).call().map_err(|e| format!("{url}: {e}"))?;
+            // GitHub's API refuses requests without a User-Agent ("Check for updates", update.rs)
+            let agent = concat!("OpenSGolf/", env!("CARGO_PKG_VERSION"));
+            let mut resp = ureq::get(&url).header("User-Agent", agent).call().map_err(|e| format!("{url}: {e}"))?;
             resp.body_mut().with_config().limit(max).read_to_vec().map_err(|e| format!("{url}: {e}"))
         })();
         let _ = tx.send(r);

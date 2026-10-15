@@ -20,6 +20,8 @@
 //!   Flower beds and ball washers show only their footprint and name.
 //! * A landmark's reach (0x41a0db): a white ring two pixels wide round the tile, (type * 5 + 40) * 5 / 4 yards across
 //!   (0x407c60: 24 steps, broken where a point leaves the screen).
+//! * An employee being moved (the Employee panel's Move, 0x4c2e10; drawn with the staff at 0x403d87): the work area as a
+//!   ring in the job's colour round the tile under the pointer, and a small blinking white ring round the employee.
 //! * The Home Site (0x41a5d3): where the lot fits, a box at the right of the screen with the lot's share, the clearing, the
 //!   site preparation and the profit, and the profit again as "$N" under the footprint, green when above 0 and red otherwise.
 
@@ -28,6 +30,7 @@ use crate::gfx::{Gfx, Mode, Uniforms, Vert};
 use crate::ui::{line_rgba, rgb, Screen as Ui};
 use sg_core::land;
 use sg_core::lang::{tr, trf};
+use sg_core::staff::job;
 
 /// The exe's 15-bit colours.
 fn c15(v: u16) -> [f32; 4] {
@@ -347,8 +350,9 @@ impl App {
 
     /// The 2D part of the tool under the pointer, drawn over the course before the interface.
     pub fn draw_cursor_overlay(&mut self, g: &mut Gfx) {
-        let Some(tool) = self.cursor_tool() else { return };
         let s = Ui::new(self.draw_w, self.draw_h);
+        self.draw_staff_move(g, &s);
+        let Some(tool) = self.cursor_tool() else { return };
         match tool {
             Tool::Elevation(k) => self.draw_elevation_cursor(g, &s, k),
             Tool::Paint(ty) => self.draw_brush_cursor(g, &s, ty),
@@ -504,7 +508,7 @@ impl App {
         if kind == land::K_LANDMARK {
             // (the extras' cut landmarks and animals have no reach)
             if let Some(t) = self.chosen_landmark().filter(|&t| t < sg_core::objects::CUT_BASE) {
-                self.draw_reach_ring(g, s, a * 1024 + 512, b * 1024 + 512, (t * 5 + 40) * 5 / 4);
+                self.draw_reach_ring(g, s, a * 1024 + 512, b * 1024 + 512, (t * 5 + 40) * 5 / 4, WHITE);
             }
         }
         if kind <= 6 {
@@ -526,16 +530,43 @@ impl App {
         }
     }
 
-    /// The landmark's reach (0x407c60): a white ring 2 pixels wide at alpha 7 tenths, `yards` round a map point, in 24 steps; a step with an end
-    /// off the screen is left out.
-    fn draw_reach_ring(&self, g: &mut Gfx, s: &Ui, x: i32, y: i32, yards: i32) {
+    /// The employee being moved, in the staff loop (0x403d87): while the game is paused or on every other pair of ticks, a white
+    /// ring of 12 yards round the employee; then the work area round the tile under the pointer, a radius of 4 tiles (100
+    /// yards), 6 for a Groundskeeper and 8 for a skilled one (bit 8 at +0x12), in the job's colour: Soda Vendor 0x03ff,
+    /// Groundskeeper 0x7ff0, Ranger 0x0018, Club Pro 0x6318 (the routing map's ellipse colours).
+    fn draw_staff_move(&self, g: &mut Gfx, s: &Ui) {
+        let Some(e) = self.moving_employee.and_then(|i| self.employees.get(i)).filter(|e| e.active) else { return };
+        if self.screen != Screen::Play || self.great_shot.is_some() {
+            return;
+        }
+        if self.paused || self.club.tick & 2 != 0 {
+            self.draw_reach_ring(g, s, e.x, e.y, 12, WHITE);
+        }
+        let Some((a, b)) = self.hover_tile.filter(|&(a, b)| self.terrain.inside(a, b)) else { return };
+        let tiles = match e.job {
+            job::GROUNDSKEEPER if e.upgraded => 8,
+            job::GROUNDSKEEPER => 6,
+            _ => 4,
+        };
+        let colour = match e.job {
+            job::SODA_VENDOR => 0x03ff,
+            job::GROUNDSKEEPER => 0x7ff0,
+            job::RANGER => 0x0018,
+            _ => GREY,
+        };
+        self.draw_reach_ring(g, s, a * 1024 + 512, b * 1024 + 512, tiles * 25, colour);
+    }
+
+    /// The landmark's reach and the staff's work area (0x407c60): a ring 2 pixels wide at alpha 7 tenths, `yards` round a map
+    /// point, in 24 steps; a step with an end off the screen is left out.
+    fn draw_reach_ring(&self, g: &mut Gfx, s: &Ui, x: i32, y: i32, yards: i32, colour: u16) {
         let r = ((yards << 10) / 25) as f32;
         let mut last: Option<(f32, f32)> = None;
         for k in 0..25 {
             let t = k as f32 * std::f32::consts::TAU / 24.0;
             let p = self.screen_of(x + (t.sin() * r) as i32, y - (t.cos() * r) as i32);
             if let (Some(p0), Some(p1)) = (last, p) {
-                s.line(g, p0.0, p0.1, p1.0, p1.1, 2.0, line_rgba(WHITE as u32, 7));
+                s.line(g, p0.0, p0.1, p1.0, p1.1, 2.0, line_rgba(colour as u32, 7));
             }
             last = p;
         }

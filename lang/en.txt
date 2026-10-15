@@ -1293,6 +1293,11 @@ STR_EXTRAS_CUT_CONTENT                  : Cut content: unused landmarks
 STR_EXTRAS_HARDCORE                     : Hardcore economy
 STR_EXTRAS_MORE_STAFF                   : Higher staff limits
 STR_EXTRAS_ANIMALS                      : Buyable animals
+STR_EXTRAS_SET_PAR                      : Set par: change a hole's par on its Hole Stats
+STR_SET_PAR_1                           :Change hole {HOLE} from par {OLD} to par {NEW}?
+STR_SET_PAR_2                           :Golfers will be scored against the new par.
+STR_SET_PAR_YES                         : Yes, change the par.
+STR_SET_PAR_NO                          : No, leave it.
 # The tooltip's second line over a cut landmark and over an animal on the landmark strip
 STR_EXTRAS_CUT_EFFECT                   :Scenic (cut content)
 STR_EXTRAS_ANIMAL_EFFECT                :A pair that stays nearby
@@ -2458,6 +2463,15 @@ STR_CRASH_LAST                          :Sorry, OpenSGolf closed unexpectedly la
 STR_CRASH_COPY                          :Copy the report
 STR_CRASH_CLOSE                         :Close
 STR_CRASH_COPIED                        :The report is copied. Paste it into an issue on OpenSGolf's GitHub page or a message to the developers. Thank you!
+
+# "Check for updates" on the title menu (update.rs); {VERSION} a version number like 0.3.1, {CURRENT} this one's
+STR_UPDATE_CHECK                        :Check for updates
+STR_UPDATE_CHECKING_BUTTON              :Checking...
+STR_UPDATE_LATEST                       :You have the latest version of OpenSGolf ({VERSION}).
+STR_UPDATE_NEWER                        :OpenSGolf {VERSION} is out (you have {CURRENT}). Its page has the downloads and what is new.
+STR_UPDATE_OPEN_PAGE                    :Open the download page
+STR_UPDATE_FAILED                       :OpenSGolf could not check for updates ({ERROR}). Check the internet connection and try again later.
+STR_UPDATE_NO_BROWSER                   :No browser could be opened. The newest version is at {URL}
 
 # Preferences > Content > Find more: the content index (docs/CONTENT_INDEX.md)
 STR_INDEX_TITLE                         :Find more content

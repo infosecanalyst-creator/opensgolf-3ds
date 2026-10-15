@@ -388,7 +388,10 @@ impl App {
             s.text_centered(g, 591.0, 114.0, &value, 14.0, ink);
         }
         s.text(g, 441.0, 135.0, tr("STR_HOLESTATS_PAR"), 14.0, ink);
-        s.text_centered(g, 536.0, 135.0, &hole.par.to_string(), 14.0, ink);
+        // a par the player set (the Set par extra) in blue, with its buttons
+        let par_ink = if hole.game_par != 0 { c15(0x0018) } else { ink };
+        s.text_centered(g, 536.0, 135.0, &hole.par.to_string(), 14.0, par_ink);
+        self.draw_par_buttons(g, &s);
         s.text(g, 441.0, 156.0, tr("STR_HOLESTATS_STROKE_AVERAGE"), 14.0, ink);
         if let Some(a) = st.avg {
             s.text_centered(g, 591.0, 156.0, &hundredths(a), 14.0, ink);

@@ -31,6 +31,8 @@ pub enum PopupKind {
     /// Preferences > OpenSGolf extras (the port's own): a checkbox list of the optional gameplay changes (sg_core::extras)
     /// and the interface extras (extras.rs).
     Extras,
+    /// The Set par extra's confirmation (the port's own, extras_ui.rs): change a hole's par, yes or no.
+    SetPar,
 }
 
 #[derive(Clone, Debug)]
@@ -464,6 +466,7 @@ impl App {
         let languages = if kind == PopupKind::Prefs { crate::language::available().len() } else { 0 };
         let language =
             if languages > 1 { trf("STR_MENU_PREFS_LANGUAGE", &[("LANGUAGE", &crate::language::current_name())]) } else { String::new() };
+        let set_par_lines: [String; 2];
         let (mut lines, disabled, cx, mut top): (Vec<&str>, u32, f32, f32) = match kind {
             PopupKind::Retire => (
                 vec![retire[0].as_str(), retire[1].as_str(), tr("STR_RETIRE_WAIT"), tr("STR_RETIRE_SAVE_FIRST"), tr("STR_RETIRE_SO_LONG")],
@@ -541,12 +544,19 @@ impl App {
                 let mut v = vec![tr("STR_EXTRAS_TITLE")];
                 v.extend(sg_core::extras::OPTION_KEYS.iter().map(|k| tr(k)));
                 v.extend(crate::extras::LINES.iter().map(|k| tr(k)));
-                (v, 0, 400.0, 120.0)
+                // a row higher with the Set par line, so the box keeps clear of the bottom of the screen
+                (v, 0, 400.0, 104.0)
             }
             // the commissioner's approval (main routine 0x41e2a0): the two-choice box centred on x 0x1c2 from y 0xa0 (EXACT,
             // the call's pushes at 0x41e2ee and 0x41e303), texts 0x4c5d74 and 0x4c5d48
             // filled in below from enhanced::OPTIONS
             PopupKind::Enhanced => (Vec::new(), 0, 400.0, 140.0),
+            PopupKind::SetPar => {
+                let (h, new) = self.par_change.unwrap_or((1, 4));
+                let old = self.club.holes[h.clamp(1, 18)].par;
+                set_par_lines = [trf("STR_SET_PAR_1", &[("HOLE", &h), ("OLD", &old), ("NEW", &new)]), tr("STR_SET_PAR_2").to_string()];
+                (vec![set_par_lines[0].as_str(), set_par_lines[1].as_str(), tr("STR_SET_PAR_YES"), tr("STR_SET_PAR_NO")], 0, 400.0, 200.0)
+            }
             PopupKind::LandOffer => {
                 (vec![tr("STR_LAND_OFFER_1"), tr("STR_LAND_OFFER_2"), tr("STR_LAND_OFFER_YES"), tr("STR_LAND_OFFER_NO")], 0, 450.0, 160.0)
             }

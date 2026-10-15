@@ -83,6 +83,7 @@ mod touch;
 mod tourney_ui;
 mod ui;
 mod undo;
+mod update;
 mod wild_ui;
 mod world_ui;
 
@@ -732,11 +733,15 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 );
             }
             b'h' if item.len() > 2 && !v.is_empty() => {
-                let ok = app.hire_staff(at(0).clamp(0, 3) as usize);
+                // a fourth value hires the experienced version (bit 1) and arms the Employee panel's Move (bit 2)
+                let ok = app.hire_employee(at(0).clamp(0, 3) as usize, at(3) & 1 != 0);
                 if ok && v.len() >= 3 {
                     if let Some(e) = app.employees.iter_mut().rev().find(|e| e.active) {
                         e.post = Some((at(1), at(2)));
                     }
+                }
+                if ok && at(3) & 2 != 0 {
+                    app.moving_employee = app.employees.iter().rposition(|e| e.active);
                 }
                 println!("hired staff kind {}: {ok}", at(0));
             }
@@ -806,6 +811,15 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 }
                 app.after_object_change();
                 println!("celebrity home at {},{}: {} residents", at(0), at(1), app.club.residents.len());
+            }
+            b'R' => {
+                // test hook: the Set par extra asks for par N on the Hole Stats' hole (its confirmation box); "R:N,1" sets it
+                if at(1) != 0 {
+                    let ok = app.club.set_par(app.info.stats_hole.clamp(1, 18), at(0));
+                    println!("set par {}: {ok}", at(0));
+                } else {
+                    app.ask_par(at(0));
+                }
             }
             b'X' => {
                 // test hook: the game's extras (sg_core::extras bits), not saved to the settings
@@ -951,6 +965,10 @@ impl Stage {
             app.free_hint = cfg!(not(target_os = "android")) && gamefiles::take_hint();
         }
         app.content = content;
+        // test hook: "Check for updates" answered from a file, at once (update.rs)
+        if std::env::var_os(update::TEST_URL_ENV).is_some() {
+            app.check_for_updates();
+        }
         app.theme = o.theme;
         app.seed = o.seed;
         app.zoom = o.zoom;
@@ -1313,6 +1331,12 @@ impl Stage {
                     self.app.open_land_screen();
                 }
             }
+            // the Set par extra's confirmation (extras_ui.rs): Yes changes the par, back on Hole Stats either way
+            PopupKind::SetPar => {
+                if k == 0 {
+                    self.app.confirm_par();
+                }
+            }
             PopupKind::CareerOver => {
                 if k == 0 {
                     self.app.econ.continue_in_sandbox();
@@ -1557,6 +1581,10 @@ impl Stage {
                     hit = gamefiles::FILES_HOVER;
                 }
             }
+            // the port's own: "Check for updates" (update.rs)
+            if app.update_button().is_some_and(|r| r.has(vx, vy)) {
+                hit = update::UPDATE_HOVER;
+            }
         } else {
             hit = app.world_hit(vx, vy);
         }
@@ -1619,6 +1647,7 @@ impl Stage {
                         app.files_action(a);
                     }
                 }
+                update::UPDATE_HOVER => app.check_for_updates(),
                 _ => quit_game(),
             }
         } else {
@@ -1966,6 +1995,12 @@ impl Stage {
                 app.draw_photo_button(&mut self.g);
             }
             if app.screen == Screen::Popup {
+                // the Set par extra's confirmation stays over the Hole Stats it came from (extras_ui.rs)
+                if app.ui_ok && app.popup.as_ref().is_some_and(|p| p.kind == popup_ui::PopupKind::SetPar) {
+                    ui::set_face(Some(ui::Face::Info));
+                    app.draw_hole_stats(&mut self.g);
+                    ui::set_face(title.then_some(ui::Face::Klepto));
+                }
                 app.draw_popup(&mut self.g);
             }
             if !matches!(app.screen, Screen::People | Screen::Profile) {
@@ -2282,6 +2317,8 @@ impl EventHandler for Stage {
         self.app.extras_test_hook();
         // "Use my SimGolf files...": a .zip being unpacked or a folder being copied (gamefiles.rs)
         self.app.poll_import();
+        // "Check for updates": the answer from GitHub (update.rs)
+        self.app.poll_update_check();
         // the Autosave extra (autosave.rs) and a course code being pasted (share.rs)
         self.app.autosave_tick(t);
         self.app.share_tick(t);
@@ -2630,7 +2667,11 @@ impl EventHandler for Stage {
                 let (vx, vy) = self.app.view.to_virtual(x, y);
                 self.app.report_click(vx, vy);
             } else if self.app.screen == Screen::HoleStats {
-                self.app.screen = Screen::Report;
+                // the Set par extra's buttons (extras_ui.rs), else the original's close on any click
+                let (vx, vy) = self.app.view.to_virtual(x, y);
+                if !(button == MouseButton::Left && self.app.hole_stats_click(vx, vy)) {
+                    self.app.screen = Screen::Report;
+                }
             } else if matches!(self.app.screen, Screen::Files | Screen::Themes | Screen::Credits) {
                 let (vx, vy) = self.app.view.to_virtual(x, y);
                 if button == MouseButton::Left {
@@ -2909,7 +2950,10 @@ impl Stage {
                     app.hover = -1;
                 }
             } else if app.screen == Screen::HoleStats {
-                app.screen = Screen::Report;
+                // the Set par extra's minus and plus (extras_ui.rs), else the original's close on any key
+                if !app.hole_stats_key(k) {
+                    app.screen = Screen::Report;
+                }
             } else if matches!(app.screen, Screen::Files | Screen::Themes | Screen::Credits) {
                 app.title_key(k);
             } else if app.screen == Screen::Pair {

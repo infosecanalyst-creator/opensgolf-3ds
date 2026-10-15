@@ -288,6 +288,8 @@ pub enum Action {
     SavePacksLoad,
     /// Copy the last run's crash report (App::show_crash_report) to the clipboard.
     CopyCrash,
+    /// Open the newest release's page in the browser ("Check for updates", update.rs).
+    OpenReleases,
 }
 
 /// The crash report the box offers to copy.
@@ -581,6 +583,7 @@ impl App {
                 miniquad::window::clipboard_set(&CRASH_REPORT.lock().unwrap_or_else(|e| e.into_inner()));
                 self.show_notice(tr("STR_CRASH_COPIED"));
             }
+            Action::OpenReleases => self.open_releases_page(),
         }
     }
 
@@ -846,7 +849,9 @@ impl App {
             let hint = tr("STR_GAME_FILES_HINT");
             let x = r.x + r.w + 10.0;
             let w = crate::ui::F_ARIAL10.width(hint) + 16.0;
-            s.fill(g, x, r.y, w.min(790.0 - x), r.h, rgba(1.0, 0.98, 0.85, 0.92));
+            // up to "Check for updates" at the top right (update.rs)
+            let end = self.update_button().map_or(790.0, |u| u.x - 6.0);
+            s.fill(g, x, r.y, w.min(end - x), r.h, rgba(1.0, 0.98, 0.85, 0.92));
             s.put(g, crate::ui::F_ARIAL10, x + 8.0, r.y + 6.0, hint, rgb(0.1, 0.1, 0.2));
         }
     }

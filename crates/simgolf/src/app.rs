@@ -667,6 +667,8 @@ pub struct App {
     pub toast_until: f64,
     /// A message in the game's box over the screen, with an OK or a question's two options (gamefiles.rs).
     pub notice: Option<crate::gamefiles::Notice>,
+    /// "Check for updates" on the title menu: the request under way (update.rs).
+    pub update_check: Option<crate::net::Request>,
     /// The title screen says that the free graphics are in use and how to use the original files (once, gamefiles.rs).
     pub free_hint: bool,
     /// Camera follows the golfer.
@@ -698,6 +700,8 @@ pub struct App {
     pub design_hover: i32,
     /// The port's extras (extras_ui): what new games start with, and the landmark strip's page shown.
     pub extras_next: sg_core::extras::Extras,
+    /// The Set par extra's change waiting for its confirmation box: hole and new par (extras_ui.rs).
+    pub par_change: Option<(usize, i32)>,
     /// Undo for building and terrain (undo.rs).
     pub undo: crate::undo::Undo,
     /// Seconds of play since the last autosave, and the clock at the last frame (autosave.rs).
@@ -922,6 +926,7 @@ impl App {
             toast: String::new(),
             toast_until: 0.0,
             notice: None,
+            update_check: None,
             free_hint: false,
             follow: false,
             edit: false,
@@ -937,6 +942,7 @@ impl App {
             design: None,
             design_hover: -1,
             extras_next: crate::extras_ui::saved(),
+            par_change: None,
             undo: Default::default(),
             autosave_due: 0.0,
             autosave_clock: 0.0,
@@ -1235,6 +1241,13 @@ impl App {
                 // nothing is drawn out of bounds: a property's paths beyond the purchased land (round a landmark the
                 // land generator placed there) show once the tract is bought
                 if kind == 0 || t.type_at(tx, ty) == 20 {
+                    continue;
+                }
+                // Terrain.dll keeps a draw flag beside the path flag (Tile+0x20a beside +0x208) and clears it on tees,
+                // greens, fairways, types 7 and 9 and buildings (setPath 0x10013400, setType 0x10014020 via 0x1000d480,
+                // 0x1000d540, 0x10015230); the tile's path draw (0x100108f0) returns at once without it, so the ground
+                // shows. Neighbours still read the path flag, so their arms run up to the tile's edge.
+                if matches!(t.type_at(tx, ty), 0 | 1 | 2 | 3 | 7 | 9 | 22) {
                     continue;
                 }
                 let n = t.path_at(tx, ty - 1) != 0;

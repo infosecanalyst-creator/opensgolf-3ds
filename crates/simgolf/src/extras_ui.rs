@@ -1,9 +1,11 @@
 //! The port's optional gameplay changes (sg_core::extras; docs/PLAYING.md, "OpenSGolf extras"): the Preferences box that
 //! switches them, the default for new games kept in settings.json, and the game side of each: Tab turning a placed building
-//! or stepping through an item's designs, the extra pages of the landmark strip (cut landmarks, animals) and buying animals.
+//! or stepping through an item's designs, the extra pages of the landmark strip (cut landmarks, animals), buying animals and
+//! the Hole Stats' par buttons.
 //! Nothing here runs while the extras are off.
 
 use crate::app::App;
+use crate::render::Rect;
 use sg_core::extras::Extras;
 use sg_core::land;
 use sg_core::objects::{ANIMAL_BASE, CUT_BASE, CUT_LANDMARKS};
@@ -101,6 +103,75 @@ impl App {
         save(&e);
         if !e.cut_content && !e.animals {
             self.strip_page = PAGE_OWNED;
+        }
+        if !e.set_par {
+            self.club.restore_pars();
+        }
+    }
+
+    /// The Set par extra's buttons on Hole Stats, right of the par: the par each one offers and its rectangle (none for a par
+    /// out of `PAR_RANGE`, nothing at all when the hole's par may not be changed now).
+    pub fn par_buttons(&self) -> Vec<(i32, Rect)> {
+        let h = self.info.stats_hole.clamp(1, 18);
+        if !self.club.can_set_par(h) {
+            return Vec::new();
+        }
+        let par = self.club.holes[h].par;
+        [(par - 1, 568.0), (par + 1, 589.0)]
+            .into_iter()
+            .filter(|(p, _)| sg_core::extras::PAR_RANGE.contains(p))
+            .map(|(p, x)| (p, Rect::new(x, 122.0, 18.0, 17.0)))
+            .collect()
+    }
+
+    /// Draws the par buttons ("-" and "+", lit under the pointer).
+    pub fn draw_par_buttons(&self, g: &mut crate::gfx::Gfx, s: &crate::ui::Screen) {
+        use crate::info_ui::c15;
+        let par = self.club.holes[self.info.stats_hole.clamp(1, 18)].par;
+        let (px, py) = self.info.pointer;
+        for (p, r) in self.par_buttons() {
+            let lit = r.has(px, py);
+            s.fill(g, r.x - 1.0, r.y - 1.0, r.w + 2.0, r.h + 2.0, c15(0x0000));
+            s.fill(g, r.x, r.y, r.w, r.h, c15(if lit { 0x5ade } else { 0x3dd4 }));
+            let t = if p < par { "-" } else { "+" };
+            s.text_centered(g, r.x + r.w * 0.5, r.y + 14.0, t, 14.0, c15(if lit { 0x7fff } else { 0x0000 }));
+        }
+    }
+
+    /// A click on Hole Stats: a par button asks to confirm the change (true), anything else is the original's close.
+    pub fn hole_stats_click(&mut self, x: f32, y: f32) -> bool {
+        let Some((p, _)) = self.par_buttons().into_iter().find(|(_, r)| r.has(x, y)) else { return false };
+        self.ask_par(p);
+        true
+    }
+
+    /// The Set par extra's keys on Hole Stats: minus and plus ask for one par less or more. Returns whether the key was one.
+    pub fn hole_stats_key(&mut self, k: miniquad::KeyCode) -> bool {
+        use miniquad::KeyCode;
+        let par = self.club.holes[self.info.stats_hole.clamp(1, 18)].par;
+        let want = match k {
+            KeyCode::Minus | KeyCode::KpSubtract => par - 1,
+            KeyCode::Equal | KeyCode::KpAdd => par + 1,
+            _ => return false,
+        };
+        if !self.par_buttons().iter().any(|&(p, _)| p == want) {
+            return false;
+        }
+        self.ask_par(want);
+        true
+    }
+
+    /// The confirmation box for hole Stats' hole getting par `p`.
+    pub fn ask_par(&mut self, p: i32) {
+        self.par_change = Some((self.info.stats_hole.clamp(1, 18), p));
+        self.ui_sound(0x0b);
+        self.open_popup(crate::popup_ui::PopupKind::SetPar);
+    }
+
+    /// The confirmation box's Yes: the hole gets the par asked for.
+    pub fn confirm_par(&mut self) {
+        if let Some((h, p)) = self.par_change.take() {
+            self.club.set_par(h, p);
         }
     }
 

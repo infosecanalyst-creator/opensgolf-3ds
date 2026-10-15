@@ -31,6 +31,8 @@ Paths are an overlay on top of the terrain, one flag per tile (0 none, 1 gravel,
 stores and connects paths lives in golf.exe, which is not read. Terrain.dll only gives the artwork: `Path.tga`, `PathCurve.tga`,
 `PathCap.tga`, `PathInside.tga` and the paved `*X.tga` versions (64x64 with alpha). The game cuts a centre piece and an arm
 toward each neighbouring path tile out of the cross shaped `Path.tga`, and uses the round `PathCurve.tga` for path ends and bends.
+Like Terrain.dll (its draw flag, Tile+0x20a, docs/PARITY.md), no path is drawn on a tee, green, fairway, firm fairway, pot
+bunker or building tile: the ground shows, and the neighbouring paths' arms stop at its edge.
 `PathCap` and `PathInside` are not used yet.
 
 The game also ships texture sets for Cliff, Ravine, FlowerBed, ZenSand and GrassBunker, but their tile ids are not in Terrain.dll (the manual, p. 16, says Ravine is the Desert theme's name for the Stream hazard, and says nothing about cliffs).
