@@ -12,7 +12,9 @@
 //!   messages about a place;
 //! * autosave (autosave.rs): the game saved every five minutes of play, as "autosave (Latest)" in the Load list;
 //! * save pictures (files_ui.rs): a map of the course beside the Load list's saves;
-//! * course sharing (share.rs): course codes and shared files for Play a Championship, with the sharer's record to beat.
+//! * course sharing (share.rs): course codes and shared files for Play a Championship, with the sharer's record to beat;
+//! * the landing map (insight.rs): where golfers' tee shots and approaches on a hole come to rest, as dots on the course;
+//! * comments by hole (insight.rs): each hole's most frequent thoughts this month and last month, on a page of their own.
 //!
 //! With every extra off the game draws and plays exactly as before they existed (each hook asks its switch first).
 use serde::{Deserialize, Serialize};
@@ -32,6 +34,8 @@ pub struct Settings {
     pub autosave: bool,
     pub save_pictures: bool,
     pub sharing: bool,
+    pub landing_map: bool,
+    pub hole_comments: bool,
 }
 
 impl Settings {
@@ -44,6 +48,8 @@ impl Settings {
         autosave: true,
         save_pictures: true,
         sharing: true,
+        landing_map: true,
+        hole_comments: true,
     };
     pub const ALL_OFF: Settings = Settings {
         people: false,
@@ -54,14 +60,27 @@ impl Settings {
         autosave: false,
         save_pictures: false,
         sharing: false,
+        landing_map: false,
+        hole_comments: false,
     };
 
     /// The ticks as the Extras box's checkbox bits (in `LINES` order).
     pub fn bits(&self) -> u32 {
-        [self.people, self.history, self.name_tags, self.report_tabs, self.path_help, self.autosave, self.save_pictures, self.sharing]
-            .iter()
-            .enumerate()
-            .fold(0, |m, (i, &on)| m | (on as u32) << i)
+        [
+            self.people,
+            self.history,
+            self.name_tags,
+            self.report_tabs,
+            self.path_help,
+            self.autosave,
+            self.save_pictures,
+            self.sharing,
+            self.landing_map,
+            self.hole_comments,
+        ]
+        .iter()
+        .enumerate()
+        .fold(0, |m, (i, &on)| m | (on as u32) << i)
     }
 
     pub fn from_bits(m: u32) -> Settings {
@@ -75,6 +94,8 @@ impl Settings {
             autosave: on(5),
             save_pictures: on(6),
             sharing: on(7),
+            landing_map: on(8),
+            hole_comments: on(9),
         }
     }
 }
@@ -88,7 +109,7 @@ impl Default for Settings {
 /// The Extras box's lines under the gameplay extras (popup_ui.rs): an empty line (a heading under options is drawn at the
 /// options' row height, so it needs the room), the heading, then one tick per extra (text keys in lang/en.txt), then an
 /// empty line that keeps the OK tick clear of the last one.
-pub const LINES: [&str; 11] = [
+pub const LINES: [&str; 13] = [
     "STR_EXTRAS_END",
     "STR_EXTRAS_UI_HEAD",
     "STR_EXTRAS_PEOPLE",
@@ -99,6 +120,8 @@ pub const LINES: [&str; 11] = [
     "STR_EXTRAS_AUTOSAVE",
     "STR_EXTRAS_SAVE_PICTURES",
     "STR_EXTRAS_SHARING",
+    "STR_EXTRAS_LANDING_MAP",
+    "STR_EXTRAS_HOLE_COMMENTS",
     "STR_EXTRAS_END",
 ];
 
@@ -138,6 +161,12 @@ pub fn save_pictures() -> bool {
 pub fn sharing() -> bool {
     settings().sharing
 }
+pub fn landing_map() -> bool {
+    settings().landing_map
+}
+pub fn hole_comments() -> bool {
+    settings().hole_comments
+}
 
 fn settings_json() -> serde_json::Value {
     sg_core::fsutil::read_file(crate::app::save_dir().join(crate::hd::SETTINGS_FILE))
@@ -163,7 +192,20 @@ pub fn saved() -> Settings {
     if v.is_object() && v.get("sharing").is_none() {
         s.sharing = s.people;
     }
+    // ticks saved before the landing map and comments by hole existed: those start off (they keep a little more with the
+    // game, so a player who had the extras on chooses them anew)
+    upgrade_off(&v, &mut s);
     s
+}
+
+/// The extras added in 0.4 read as off from ticks saved before them.
+fn upgrade_off(v: &serde_json::Value, s: &mut Settings) {
+    if v.is_object() && v.get("landing_map").is_none() {
+        s.landing_map = false;
+    }
+    if v.is_object() && v.get("hole_comments").is_none() {
+        s.hole_comments = false;
+    }
 }
 
 /// Saves the ticks into settings.json, keeping its other keys.
@@ -241,11 +283,14 @@ pub struct Kept {
     /// What each golfer said, by person record (the bios are the person records' own, as Customise's Update Bio edits).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub said: BTreeMap<i32, Vec<Said>>,
+    /// The landing map's shots and the comments by hole (insight.rs), only while one of them is on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub insight: Option<crate::insight::Kept>,
 }
 
 impl Kept {
     pub fn is_empty(&self) -> bool {
-        self.messages.is_empty() && self.staff_names.is_empty() && self.said.is_empty()
+        self.messages.is_empty() && self.staff_names.is_empty() && self.said.is_empty() && self.insight.is_none()
     }
 
     pub fn push_message(&mut self, m: Message) {
@@ -312,6 +357,8 @@ pub struct State {
     /// The screen has been touched (touch.rs): no pointer to hover with, so no name tags.
     pub touched: bool,
     pub path_marks: Option<crate::pathview_ui::Marks>,
+    /// The landing map's balls in play, the map and the comments page (insight.rs).
+    pub insight: crate::insight::State,
 }
 
 // ---- drawing pieces shared by the extras' screens ---------------------------------------------------------------------------
@@ -582,5 +629,24 @@ mod tests {
         }
         let s: Settings = serde_json::from_str("{\"people\": false}").unwrap();
         assert_eq!(s, Settings { people: false, ..Settings::ALL_ON });
+        for m in [0, 1 << 8, 1 << 9, 0x3ff] {
+            assert_eq!(Settings::from_bits(m).bits(), m);
+        }
+    }
+
+    #[test]
+    fn ticks_saved_before_the_insight_extras_read_them_as_off() {
+        let v: serde_json::Value = serde_json::from_str("{\"people\": true, \"autosave\": true, \"sharing\": true}").unwrap();
+        let mut s: Settings = serde_json::from_value(v.clone()).unwrap();
+        upgrade_off(&v, &mut s);
+        assert!(s.people && s.sharing && !s.landing_map && !s.hole_comments);
+        // ticks saved with them keep them
+        let v: serde_json::Value = serde_json::from_str("{\"landing_map\": true, \"hole_comments\": true}").unwrap();
+        let mut s: Settings = serde_json::from_value(v.clone()).unwrap();
+        upgrade_off(&v, &mut s);
+        assert!(s.landing_map && s.hole_comments);
+        // a save with nothing of theirs is the same as before
+        assert!(Kept::default().is_empty());
+        assert_eq!(serde_json::to_string(&Kept::default()).unwrap(), "{}");
     }
 }

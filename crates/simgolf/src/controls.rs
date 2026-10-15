@@ -284,6 +284,8 @@ pub const ACTIONS: &[Action] = {
         act!("history", "STR_CTL_HISTORY", shifted(M)),
         act!("name_tags", "STR_CTL_NAME_TAGS", shifted(H)),
         act!("path_view", "STR_CTL_PATH_VIEW", shifted(V)),
+        act!("landing_map", "STR_CTL_LANDING_MAP", shifted(D)),
+        act!("hole_comments", "STR_CTL_HOLE_COMMENTS", shifted(I)),
     ]
 };
 
@@ -485,6 +487,8 @@ const ROW_ACTIONS: &[(&str, &[&str])] = &[
     ("STR_KEYS_K_HISTORY", &["history"]),
     ("STR_KEYS_K_TAGS", &["name_tags"]),
     ("STR_KEYS_K_PATHVIEW", &["path_view"]),
+    ("STR_KEYS_K_LANDING_MAP", &["landing_map"]),
+    ("STR_KEYS_K_HOLE_COMMENTS", &["hole_comments"]),
 ];
 
 /// The text a Keyboard controls row prints for its key: None (the row's own text) unless the player moved one of its keys.

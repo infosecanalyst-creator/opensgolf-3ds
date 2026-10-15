@@ -56,6 +56,7 @@ mod holemarks;
 mod hud_ui;
 mod import;
 mod info_ui;
+mod insight;
 mod keys_ui;
 mod language;
 mod member_panel;
@@ -463,6 +464,13 @@ fn open_screen(app: &mut App, screen: Option<&str>) {
                 app.xs.people.sort[t] = (v.first().copied().unwrap_or(0).clamp(0, 5) as usize, v.get(1).is_some_and(|&d| d != 0));
             }
             app.xs.test_open = Some(s.to_string());
+        }
+        // the insight extras (insight.rs): comments by hole, and the landing map (of the first open hole until the pointer
+        // finds another)
+        Some("holecomments") if app.ui_ok => app.open_hole_comments(),
+        Some("landing") if app.ui_ok => {
+            app.xs.insight.map = true;
+            app.xs.insight.hole = (1..19).find(|&h| app.club.holes[h].par != 0).unwrap_or(0);
         }
         Some(s @ ("history" | "profile" | "pathview" | "tags" | "ticker" | "card")) if app.ui_ok => {
             if s == "history" {
@@ -1303,6 +1311,8 @@ impl Stage {
             PopupKind::Info if line == tr("STR_MENU_INFO_PEOPLE") => self.app.open_people(),
             PopupKind::Info if line == tr("STR_MENU_INFO_HISTORY") => self.app.open_history(),
             PopupKind::Info if line == tr("STR_MENU_INFO_PATH_VIEW") => self.app.toggle_path_view(),
+            PopupKind::Info if line == tr("STR_MENU_INFO_LANDING_MAP") => self.app.toggle_landing_map(),
+            PopupKind::Info if line == tr("STR_MENU_INFO_HOLE_COMMENTS") => self.app.open_hole_comments(),
             PopupKind::Info => match k {
                 0 => self.app.repeat_message(),
                 1 => self.open_report(),
@@ -1392,6 +1402,9 @@ impl Stage {
                 extras::save(&s);
                 if !s.path_help {
                     self.app.xs.path_view = false;
+                }
+                if !s.landing_map {
+                    self.app.xs.insight.map = false;
                 }
             }
             PopupKind::Prefs => {
@@ -1753,6 +1766,9 @@ impl Stage {
                 KeyCode::M if extras::history() => app.open_history(),
                 KeyCode::H => app.toggle_name_tags(),
                 KeyCode::V if extras::path_help() => app.toggle_path_view(),
+                // the insight extras (insight.rs): the landing map and comments by hole
+                KeyCode::D if extras::landing_map() => app.toggle_landing_map(),
+                KeyCode::I if extras::hole_comments() => app.open_hole_comments(),
                 // ? repeats the last message
                 KeyCode::Slash => app.repeat_message(),
                 KeyCode::B => {
@@ -2051,6 +2067,7 @@ impl Stage {
                     app.draw_rename(&mut self.g);
                 }
                 Screen::History => app.draw_history(&mut self.g),
+                Screen::HoleComments => app.draw_hole_comments(&mut self.g),
                 Screen::Profile => {
                     app.draw_profile(&mut self.g);
                     app.draw_rename(&mut self.g);
@@ -2663,6 +2680,9 @@ impl EventHandler for Stage {
                 } else {
                     self.app.profile_click(vx, vy, right);
                 }
+            } else if self.app.screen == Screen::HoleComments {
+                let (vx, vy) = self.app.view.to_virtual(x, y);
+                self.app.hole_comments_click(vx, vy, button == MouseButton::Right);
             } else if self.app.screen == Screen::Report {
                 let (vx, vy) = self.app.view.to_virtual(x, y);
                 self.app.report_click(vx, vy);
@@ -2944,6 +2964,8 @@ impl Stage {
                 app.history_key(k);
             } else if app.screen == Screen::Profile {
                 app.profile_key(k);
+            } else if app.screen == Screen::HoleComments {
+                app.hole_comments_key(k);
             } else if app.screen == Screen::Report {
                 if k == KeyCode::Escape || k == KeyCode::F1 {
                     app.screen = Screen::Play;

@@ -824,12 +824,17 @@ impl App {
         }
         let s = Ui::new(self.draw_w, self.draw_h);
         self.view = s.view;
+        // the OpenSGolf extras' landing map (insight.rs): dots on the course, under the golfers' names
+        if self.great_shot.is_none() {
+            self.draw_landing_map(g, &s);
+        }
         // the golfers' names and thoughts belong to the course, under the HUD
         self.draw_names(g, &s);
         self.draw_thoughts(g, &s);
         // the OpenSGolf extras' path view and name tag (extras.rs), over the course and under the HUD
         if self.great_shot.is_none() {
             self.draw_path_view(g, &s);
+            self.draw_landing_legend(g, &s);
             self.draw_name_tag(g, &s);
         }
         // the great-shot SimFoto is drawn over the course alone: footage of the original shows the frozen frame without

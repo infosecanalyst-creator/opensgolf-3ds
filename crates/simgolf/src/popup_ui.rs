@@ -544,8 +544,9 @@ impl App {
                 let mut v = vec![tr("STR_EXTRAS_TITLE")];
                 v.extend(sg_core::extras::OPTION_KEYS.iter().map(|k| tr(k)));
                 v.extend(crate::extras::LINES.iter().map(|k| tr(k)));
-                // a row higher with the Set par line, so the box keeps clear of the bottom of the screen
-                (v, 0, 400.0, 104.0)
+                // a row higher with the Set par line, and two more with the landing map's and comments by hole's (insight.rs),
+                // so the box keeps clear of the bottom of the screen
+                (v, 0, 400.0, 56.0)
             }
             // the commissioner's approval (main routine 0x41e2a0): the two-choice box centred on x 0x1c2 from y 0xa0 (EXACT,
             // the call's pushes at 0x41e2ee and 0x41e303), texts 0x4c5d74 and 0x4c5d48
@@ -589,6 +590,8 @@ impl App {
                 (crate::extras::people(), "STR_MENU_INFO_PEOPLE"),
                 (crate::extras::history(), "STR_MENU_INFO_HISTORY"),
                 (crate::extras::path_help(), "STR_MENU_INFO_PATH_VIEW"),
+                (crate::extras::landing_map(), "STR_MENU_INFO_LANDING_MAP"),
+                (crate::extras::hole_comments(), "STR_MENU_INFO_HOLE_COMMENTS"),
             ] {
                 if on {
                     lines.push(tr(key));
