@@ -374,7 +374,9 @@ keyboard. `--fullscreen` starts full screen on any computer (F11 or Alt+Enter sw
 The same touch controls work in the browser and in the Android app (crates/simgolf/src/touch.rs).
 
 Tap for a click; drag one finger to scroll the course (or to paint with the selected tool); hold a finger still for half a
-second for a right click (undo, remove, close a screen). With two fingers: drag to scroll, pinch to step through the three
+second for a right click (undo, remove, close a screen). With the raise / lower tool (the Elevation panel, or =), a tap raises
+the ground and holding a finger still for half a second lowers it instead (the keyboard's Shift+click); keep the finger down
+and drag to go on lowering along the way. With two fingers: drag to scroll, pinch to step through the three
 zoom levels, twist to turn the view a quarter. Once the screen has been touched, four buttons on the right stand in for keys
 that have no button in the game: Open hole (h), Turn (Tab), Speed (]) and Message (?). Naming a course or a save raises the
 phone's keyboard (in the browser through a hidden text box on the page, on Android the system keyboard).
