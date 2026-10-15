@@ -111,6 +111,16 @@ pub struct Settings {
     pub fx_life: bool,
     /// How long a day of light lasts: 0 short (a game month), 1 normal (three months), 2 long (six) (fx_light.rs).
     pub fx_day_length: u8,
+    /// The water's own options (fx_water.rs): truer colour with depth, painterly waves, the shoreline, caustics, rain rings,
+    /// life on the water, ice in the cold snap, spray round fountains and waterfalls.
+    pub fx_water_colour: bool,
+    pub fx_waves: bool,
+    pub fx_shoreline: bool,
+    pub fx_caustics: bool,
+    pub fx_rain_rings: bool,
+    pub fx_water_life: bool,
+    pub fx_ice: bool,
+    pub fx_spray: bool,
     /// Fix the original game's own bugs (docs/FIXES.md): on by default and, unlike every other option here, in Classic too
     /// (the master switch does not gate it); off plays the original's behaviour, bugs included. Crashes are fixed either way.
     pub fix_original_bugs: bool,
@@ -165,6 +175,14 @@ impl Settings {
         fx_crowds: true,
         fx_life: true,
         fx_day_length: 1,
+        fx_water_colour: true,
+        fx_waves: true,
+        fx_shoreline: true,
+        fx_caustics: true,
+        fx_rain_rings: true,
+        fx_water_life: true,
+        fx_ice: true,
+        fx_spray: true,
         fix_original_bugs: true,
         frame_cap: crate::framerate::UNCAPPED,
         vsync: true,
@@ -253,12 +271,18 @@ pub enum Reload {
 }
 
 /// The pages of the Enhanced graphics screen (tabs along its top), by text key.
-pub const PAGES: [&str; 4] =
-    ["STR_ENHANCED_PAGE_DISPLAY", "STR_ENHANCED_PAGE_EFFECTS", "STR_ENHANCED_PAGE_ATMOSPHERE", "STR_ENHANCED_PAGE_WEATHER"];
+pub const PAGES: [&str; 5] = [
+    "STR_ENHANCED_PAGE_DISPLAY",
+    "STR_ENHANCED_PAGE_EFFECTS",
+    "STR_ENHANCED_PAGE_ATMOSPHERE",
+    "STR_ENHANCED_PAGE_WEATHER",
+    "STR_ENHANCED_PAGE_WATER",
+];
 pub const DISPLAY: u8 = 0;
 pub const EFFECTS: u8 = 1;
 pub const ATMOSPHERE: u8 = 2;
 pub const WEATHER: u8 = 3;
+pub const WATER: u8 = 4;
 
 /// One line of the Enhanced graphics screen.
 pub struct OptionEntry {
@@ -267,7 +291,7 @@ pub struct OptionEntry {
     /// The line's text key (lang/en.txt); the text starts with a space, as every option line of a pop-up box does. A
     /// setting with choices has a {VALUE} in it.
     pub label: &'static str,
-    /// The page (tab) it is on: DISPLAY, EFFECTS, ATMOSPHERE or WEATHER.
+    /// The page (tab) it is on: DISPLAY, EFFECTS, ATMOSPHERE, WEATHER or WATER.
     pub page: u8,
     /// The text keys of a setting's values when it has more than on and off (a click steps to the next); empty for a tick.
     pub choices: &'static [&'static str],
@@ -388,6 +412,14 @@ pub const OPTIONS: &[OptionEntry] = &[
     tick!("fx_mist", "STR_ENHANCED_FX_MIST", WEATHER, fx_mist),
     tick!("fx_wind", "STR_ENHANCED_FX_WIND", WEATHER, fx_wind),
     tick!("fx_seasons", "STR_ENHANCED_FX_SEASONS", WEATHER, fx_seasons),
+    tick!("fx_water_colour", "STR_ENHANCED_FX_WATER_COLOUR", WATER, fx_water_colour),
+    tick!("fx_waves", "STR_ENHANCED_FX_WAVES", WATER, fx_waves),
+    tick!("fx_shoreline", "STR_ENHANCED_FX_SHORELINE", WATER, fx_shoreline),
+    tick!("fx_caustics", "STR_ENHANCED_FX_CAUSTICS", WATER, fx_caustics),
+    tick!("fx_rain_rings", "STR_ENHANCED_FX_RAIN_RINGS", WATER, fx_rain_rings),
+    tick!("fx_water_life", "STR_ENHANCED_FX_WATER_LIFE", WATER, fx_water_life),
+    tick!("fx_ice", "STR_ENHANCED_FX_ICE", WATER, fx_ice),
+    tick!("fx_spray", "STR_ENHANCED_FX_SPRAY", WATER, fx_spray),
 ];
 
 // ---- the settings file ------------------------------------------------------------------------------------------------------

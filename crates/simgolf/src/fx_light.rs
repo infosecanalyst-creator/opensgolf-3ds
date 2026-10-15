@@ -101,6 +101,8 @@ pub struct Atmos {
     /// Winter (fx_winter.rs): the snow lying on level ground (0 none .. 1) and snow falling (0 none .. 1, instead of rain).
     pub snow: f32,
     pub snowfall: f32,
+    /// How far the water has iced over (0 none .. 1: small ponds frozen, the larger ones at their edges; fx_winter.rs).
+    pub ice: f32,
 }
 
 impl Default for Atmos {
@@ -138,6 +140,7 @@ impl Default for Atmos {
             golden: 0.0,
             snow: 0.0,
             snowfall: 0.0,
+            ice: 0.0,
         }
     }
 }
@@ -397,6 +400,15 @@ fn smoothstep(a: f32, b: f32, x: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
 
+/// How strongly the distance haze pales the top of the screen (`fx_overlay`; the water's truer colour makes up for part of
+/// it, fx_water.rs).
+pub(crate) fn haze_strength(app: &App, a: &Atmos, upp: f32) -> f32 {
+    // the camera looks down at the course from the side, so the screen's top is far: a haze growing up the screen,
+    // stronger the more of the course the view takes in
+    let depth = app.draw_h * upp / (36.0 * TILE_SIZE);
+    a.haze * depth.clamp(0.25, 1.0)
+}
+
 /// The sky colour below the map of this moment (what the post-processing's target is cleared to).
 pub fn below_now(app: &App) -> [f32; 3] {
     app.fx.atmos.below
@@ -620,10 +632,7 @@ impl App {
         }
         let u = Uniforms::flat(&Mat4::identity(), &Mat4::identity());
         if a.haze > 0.0 {
-            // the camera looks down at the course from the side, so the screen's top is far: a haze growing up the screen,
-            // stronger the more of the course the view takes in
-            let depth = self.draw_h * self.upp / (36.0 * TILE_SIZE);
-            let k = a.haze * depth.clamp(0.25, 1.0);
+            let k = haze_strength(self, &a, self.upp);
             let c = a.haze_col;
             let strips = 10;
             for i in 0..strips {

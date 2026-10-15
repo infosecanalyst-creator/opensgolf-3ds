@@ -80,6 +80,8 @@ impl App {
         // Enhanced graphics' grass tufts (fx_life.rs), on the ground and under the sprites
         if crate::fx::active() {
             self.fx_grass(g, &Uniforms::flat(&proj, &mv));
+            // and the reeds, lily pads, ducks, fish and spray on the water (fx_water.rs)
+            self.fx_water_life(g, &Uniforms::flat(&proj, &mv));
         }
         self.draw_props(g, &Uniforms::flat(&proj, &mv));
         if crate::fx::active() {

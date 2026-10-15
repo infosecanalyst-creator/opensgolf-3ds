@@ -50,6 +50,7 @@ mod fx_night;
 mod fx_reflect;
 mod fx_shadow;
 mod fx_smooth;
+mod fx_water;
 mod fx_wet;
 mod fx_winter;
 mod gamefiles;

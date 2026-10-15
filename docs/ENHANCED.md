@@ -29,11 +29,13 @@ is filtered, placed and animated.
 
 ## Turning it on
 
-- **In the game:** System Functions → Preferences → the *Enhanced graphics* tick switches it on and off; *Enhanced graphics settings...* opens a checkbox list in four pages, picked with
+- **In the game:** System Functions → Preferences → the *Enhanced graphics* tick switches it on and off; *Enhanced graphics settings...* opens a checkbox list in five pages, picked with
   the tabs along its top (click or tap a tab; Left, Right or Tab on the keyboard): **Display** (the options below),
   **Effects** (the shader effects, cast shadows, the balls' trail and impacts, and the effects' quality), **Atmosphere**
   (sky, time of day, the day's length, evening lights, clouds, haze, water reflections, tilt-shift, grading and bloom) and
-  **Weather** (rain, wet ground after it, lightning, mist, wind and the seasons). The box is wide enough for the four tabs. The master switch *Enhanced graphics (off:
+  **Weather** (rain, wet ground after it, lightning, mist, wind and the seasons) and **Water** (the water's colour, waves,
+  shoreline, caustics, rain rings, life on the water, frozen ponds and spray; see *Water*). The box is wide enough for the
+  five tabs. The master switch *Enhanced graphics (off:
   Classic)* heads every page. The box keeps one size whatever the page, so it fits an 800 × 600 window. Tick what you want
   (the quality line steps through low, medium and high on each click) and click the OK tick; what was ticked on every page
   is taken together, Esc forgets it all. The choice is saved in `settings.json` in the save folder, under `"enhanced"`:
@@ -48,7 +50,7 @@ is filtered, placed and animated.
 - **Command line:** `--enhanced` turns the master switch on for one run, `--classic-render` turns it off (neither is saved;
   the options keep their saved values). `--classic` is the HD switch (docs/HD.md), not this one.
 - **Test hook:** `--edit M:5` opens the Enhanced graphics screen, for stills (`M:5,1` on its Effects page, `M:5,2` on
-  Atmosphere, `M:5,3` on Weather).
+  Atmosphere, `M:5,3` on Weather, `M:5,4` on Water).
 
 ## The options
 
@@ -105,6 +107,14 @@ decoded terrain light (`sg_core::terrain::Lighting`, `light_direction`) and the 
 | Winter (`winter`) | on | The first days of March on parkland and links courses: full morning frost, snow showers instead of rain, and some mornings a light dusting that melts by mid-morning (see *Winter*). |
 | Tournament crowds (`crowds`) | on | During a tournament or a championship, spectators (the game's own golfer sprites) round the greens and along the fairways of the holes in play, cheering now and then (see *Tournament atmosphere*). |
 | Life on the course (`life`) | on | Flocks of birds crossing the sky with their shadows, butterflies over flower beds in summer, leaves falling from the trees in autumn (see *Life on the course*). |
+| Truer water colour (`water-colour`) | on | The theme's own water colour kept as the base and tinted by the distance from the shore: lighter (and, where the art is a deep blue, more turquoise) in the shallows, a deeper blue out in the middle, a little brighter and richer. The sky is mirrored as a brighter wash of the water's own colour, weaker, so the water no longer goes grey, and part of the distance haze is made up for so a lake keeps its blue at the top of the screen (see *Water*). |
+| Painterly waves (`waves`) | on | Soft crescents of light lying across the wind, a little darker behind, swelling, drifting downwind and fading, about 28 art pixels across at any zoom: their strength follows the day's wind and the weather (glassy at dawn and dusk with the time of day, choppy in a storm). |
+| Shoreline (`shoreline`) | on | Two lines of water lapping in and out along the shore (the near one bright), a wet sheen behind them, and the bank's own sand and grass a little darker in a narrow uneven band where the water wets it. |
+| Caustics (`caustics`) | on | Sunlight rippling in a web over the bottom of shallow water, fading with cloud shadows, rain, dusk and night. |
+| Rain rings (`rain-rings`) | on | With *Rain*: rings opening across the surface where drops fall, more of them the harder it rains. |
+| Life on the water (`water-life`) | on | Reeds at the edges of ponds and lakes, lily pads in their sheltered shallows, ducks and swans gliding on the larger lakes, and now and then a fish jumping, all as crisp pixels (see *Water*). |
+| Frozen ponds (`ice`) | on | With *Winter*: in the late-winter cold snap, small ponds ice over and larger water at its edges, a pale sheen with a white rim, thawing with the snow. |
+| Fountain and waterfall spray (`spray`) | on | Foam churning, drops falling back and rings spreading round the original's fountains, foam and rings at the foot of its waterfalls. |
 | Quality (`quality`) | medium | Low: light map 2 texels a tile, no blur passes (no tilt-shift, no bloom), sharp-bilinear scaling only, the cast shadows' mask at half the resolution. Medium: 4 texels a tile, blurs at a quarter of the resolution, the mask at half. High: 8 texels a tile, blurs at half the resolution, the mask at full. On the Effects page since this version. |
 
 The post-processing (tilt-shift, grading, bloom, vignette) draws the course into an offscreen target, then composites it
@@ -121,7 +131,8 @@ still picks sharp bilinear until the filter is chosen again),
 `fx_water`, `fx_terrain_light`, `fx_sprite_shadows`, `fx_sky`, `fx_tilt_shift`, `fx_grading`, `fx_bloom`, `fx_quality`
 (0 to 2), `fx_cast_shadows`, `fx_ball_trail`, `fx_ball_impacts`, `fx_clouds`, `fx_haze`, `fx_time_of_day`, `fx_rain`,
 `fx_mist`, `fx_reflections`, `fx_wind`, `fx_evening_lights`, `fx_seasons`, `fx_after_rain`, `fx_lightning`,
-`fx_day_length` (0 to 2, default 1)), all on but tilt-shift, lightning, and the three that change the mood most: time of
+`fx_day_length` (0 to 2, default 1), `fx_water_colour`, `fx_waves`, `fx_shoreline`, `fx_caustics`, `fx_rain_rings`,
+`fx_water_life`, `fx_ice`, `fx_spray`), all on but tilt-shift, lightning, and the three that change the mood most: time of
 day, rain and mist; the scaler's filter is *Smooth (strongest)*. The ticks map onto `fx::FxSettings` (`fx::sync`): *terrain light*
 stands for per-pixel light, occlusion and shadows, *colour grading* for grading and vignette.
 
@@ -169,6 +180,14 @@ vectors that are 0 (their code skipped) while the options are off.
 Checked by rendering the same scenes with the branch before the effects and with them off (four themes at 3840 × 2160,
 1920 × 1080, 1280 × 1024 and 800 × 600, a rotated view, a panel open, a played save, the title menu and a report) and
 comparing the PNGs: all identical.
+
+The water options (OpenSGolf 0.4) were checked the same way: Classic scenes (the demo course in the desert and tropical
+themes, three properties with water at 1280 × 800, 1920 × 1080 and 3840 × 2160, one in a turned view) rendered with the
+build before them and with them are identical (scenes whose classic frame already differs from run to run, as the water's
+glints do at the closest zoom, were left out). Their
+hooks: `render.rs` `render_world` calls `fx_water_life` after the grass tufts; the rest is inside the effects (the water
+and terrain shaders' unused uniform slots, the light map's shore distance). With Enhanced on and the new options off the
+water differs from before only by the light map's coarser shore distance (on average a third of a level in 255).
 
 ### Browser and old GPUs
 
@@ -288,6 +307,61 @@ shader already tells apart). Objects in front of the water mirror onto the land 
 reflections show where the trees and buildings stand behind the water from the camera. The same option makes the glints
 up to 2.8 times stronger as the sun gets low and warm (golden hour) and draws a thin line of water lapping in and out at
 the shore, with the wet sheen behind it. The pixel-art scaler is held off for the reflections' pass (`fx::pause_scaler`).
+
+### Water
+
+`crates/simgolf/src/fx_water.rs` and the water shader (`fx_glsl.rs`, `water_fs`), the port's own: the options on the
+*Water* page. They keep to the original's painterly, bright water: the theme's own water textures (the desert's swap
+included) stay the base, and the bank art drawn into the edge pieces is told apart by its colour as before, so the
+effects stay off it (only the shoreline's wet band darkens it, faintly, next to the water).
+
+- **Colour with depth.** The light map's signed distance to the shore (`b`) now reaches three tiles each way (it reached
+  one), so the shader knows how far out a pixel is: the shallows are lighter and the middle deeper. The original's water
+  textures already show the depth by tile (shallow, middle, deep pieces); the tint follows the same idea smoothly. The
+  older reflection mixed the theme's pale horizon colour over all the water, which made it grey; the distance haze then
+  paled it further towards the top of the screen. Now the reflected sky is the water's own colour brightened, with a
+  little of the sky's, and the water shader makes up for 60% of the haze that `fx_overlay` will draw over it (by screen
+  height, as the haze grows), so lakes keep their blue up the screen while the land still recedes.
+- **Waves.** Each wave cell (aligned with the wind) now and then shows a short bent crescent of light across the wind
+  with a slightly darker trough behind it: a painter's dab, not fine noise. Their size is set in the art's pixels, so they
+  read the same at every zoom. The strength is `wave_strength`: the day's wind (a middling breeze without *Wind*), times a
+  calm at dawn and dusk with *Time of day*, plus a little for rain; fewer crests on calm water. The older travelling waves
+  still bend the reflections and the glints, more in a stronger wind.
+- **Shoreline.** Two lapping lines from the shore distance (the second fainter and further out), a sheen behind them, the
+  bank pixels of the edge pieces darker near the water and, in the terrain shader, a narrow uneven darker band on the land
+  side (light map `b` below 0.5, within about a sixth of a tile).
+- **Caustics** are two drifting noises compared, bright where they cross, in water less than about a tile and a half from
+  the shore, scaled by how sunny it is (the sun's shadow strength, no rain, not night) and the cloud shadows.
+- **Rain rings**: three staggered layers of cells, each now and then dropping a ring that opens and fades; the share of
+  cells that do is the rain's strength.
+- **Life on the water** is drawn on the ground under the sprites (as the grass tufts are), at the art's pixel size as the
+  view draws it (one to one at the exe's closest zoom, magnified with Enhanced's closer smooth zoom), from the closest
+  zoom but one in. The course's bodies of water are found when the ground changes (`build_ponds`: 4-connected water,
+  each tile's distance from the land); a body of 450 tiles or more, or of 150 running off the map, is the sea: none of
+  this on it (a river running off the map is not the sea). Reeds stand in about a third of the shore tiles of ponds and
+  lakes, on the bank side, swaying with the wind, bulrush heads from June (papyrus tufts in the desert), browner in
+  autumn. Lily pads lie in some of the tiles one or two from the land from late April to October, a few flowers in high
+  summer. Ducks (drakes and ducks, ducklings in May and June) and, except in the tropics, swans glide in slow ovals on
+  open water (two tiles from the land and the property's edge) of lakes of 24 tiles or more, one group for every 40
+  tiles up to four, with a faint wake; never in the desert's oases, not in the dark. A fish jumps on a body of 6 tiles or
+  more now and then (a chance every 7 seconds): up and back with a splash each way and two rings spreading; not under
+  ice, in heavy rain or in the dark. Everything comes from hashes of the course, the tile and the effects' clock, so it is
+  the same every frame and every run.
+- **Frozen ponds**: `Atmos::ice` (fx_winter.rs) is the cold snap's strength times the snow lying and falling, so it
+  comes and goes with the snow and never happens where the climate has no snow. The ice reaches up to 1.4 tiles in from
+  the shore with a wobbly edge: a pond up to about three tiles across freezes over, a larger water only round its edge.
+  Under the ice there are no waves, glints, reflections, caustics or rain rings, and the ducks stay on open water.
+- **Spray**: round each fountain (where wild_ui.rs puts the theme's spray sprite) foam pixels flicker in steps as the
+  art's frames do, drops fall back round the jet and two rings spread; at each waterfall's spray (sprites 0x23b, 0x23c,
+  placed as wild_ui.rs places them) foam churns round its foot, outside the sprite, and rings spread over the pool below.
+
+The water shader takes the new settings in uniform slots it did not use, so it stays within WebGL 1's sixteen fragment
+uniform vectors: `fx1` (rain rings, waves, ice, caustics), `params.w` (the wind's heading), `fx3.w` (the waves' size,
+negative while the truer colour is off), `water.w` (the haze to make up for; the foam's 0.55 is now a constant) and
+`fx3.z` 2 for the shoreline (1 is the reflections' older lapping line, which the shoreline replaces). Test hooks: the
+weather ones above (`SG_FX_HOUR`, `SG_FX_WIND`, `SG_FX_RAIN`, `SG_FX_MONTH`, `SG_FX_SNOW`); `SG_FX_FISH=P` holds a fish on every
+lake at that point (0 to 1) of its jump and rings; `SG_FX_LOG=1` also prints the
+bodies of water (tiles, sea or not) and where the fountains and waterfalls are, for framing stills with `--center`.
 
 ### Wind
 
@@ -480,6 +554,11 @@ ground one detail-map fetch and a few noise evaluations a ground pixel; the wind
 vertices, no more pixels); the evening lights a cached glow quad per building and a few hundred small quads for lamps
 and fireflies. The recoloured trees are made on the CPU when the season moves on by an eighth (a few milliseconds, once).
 If a GPU struggles: quality low, then reflections off.
+
+The water options were measured with `SG_FX_BENCH=60` on the demo course's lake at `--zoom 1.8`, 1280 × 800, with
+Mesa's software renderer (llvmpipe), the lake about half the screen: 105 to 110 ms a frame before them, 120 to 123 ms with
+all of them on (about 12% on a renderer with no GPU; not measured on a real GPU here, where the shader's few extra noise
+lookups per water pixel are small), 2 ms of CPU either way (the life and spray are a few hundred vertices).
 
 ### Limitations
 
