@@ -33,6 +33,7 @@ mod controls_ui;
 mod cursor_ui;
 mod cust_ui;
 mod edges;
+mod editor;
 mod enhanced;
 mod extras;
 mod extras_ui;
@@ -159,13 +160,22 @@ struct Options {
     lang_file: Option<PathBuf>,
     /// --scenario ID: starts the scenario pack with that id (docs/MODDING.md 5).
     scenario: Option<String>,
+    /// The course editor's test hooks (editor.rs): --editor (with --property: the editor on that property; without: the
+    /// title's "Course editor..."), --edit-scenario ID (a scenario pack into the editor), --editor-set SPEC (the box's
+    /// settings), --heightmap FILE (imported with them), --save-scenario ID (saved as the pack ID, after --edit).
+    editor: bool,
+    edit_scenario: Option<String>,
+    editor_set: Option<String>,
+    heightmap: Option<PathBuf>,
+    save_scenario: Option<String>,
 }
 
 const USAGE: &str = "usage: opensgolf [--game DIR] [--theme T] [--seed N] [--size WxH] [--zoom Z] [--rot DEG] [--center TX,TY] [--png FILE] \
 [--time S] [--follow] [--golfer NAME] [--sandbox] [--course-size N] [--cash N] [--difficulty 0-3] [--screen menu|property|play|report] [--course FILE] [--save FILE] \
 [--edit SPEC] [--panel N] [--mute] [--sound-log] [--clock MS] [--property N|NAME] [--hd | --classic] [--hd-pack DIR] \
 [--enhanced | --classic-render] [--no-extras] [--fullscreen] [--fx] [--fx-set LIST] \
-[--lang CODE] [--lang-file FILE] [--base original|opensgolf-free|ID] [--scenario ID]";
+[--lang CODE] [--lang-file FILE] [--base original|opensgolf-free|ID] [--scenario ID] \
+[--editor] [--edit-scenario ID] [--editor-set SPEC] [--heightmap FILE] [--save-scenario ID]";
 
 /// Leading comma separated integers, like sscanf("%d,%d,...") (stops at the first one that does not parse).
 fn ints(s: &str) -> Vec<i32> {
@@ -226,6 +236,11 @@ fn parse_args() -> Options {
         lang: None,
         lang_file: None,
         scenario: None,
+        editor: false,
+        edit_scenario: None,
+        editor_set: None,
+        heightmap: None,
+        save_scenario: None,
     };
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut i = 0;
@@ -295,6 +310,11 @@ fn parse_args() -> Options {
             "--lang" => o.lang = Some(next()),
             "--lang-file" => o.lang_file = Some(PathBuf::from(next())),
             "--scenario" => o.scenario = Some(next()),
+            "--editor" => o.editor = true,
+            "--edit-scenario" => o.edit_scenario = Some(next()),
+            "--editor-set" => o.editor_set = Some(next()),
+            "--heightmap" => o.heightmap = Some(PathBuf::from(next())),
+            "--save-scenario" => o.save_scenario = Some(next()),
             "--panel" => o.panel = Some(atoi(&next())),
             "--center" => {
                 let v = ints(&next());
@@ -416,6 +436,12 @@ fn load_art(app: &mut App, g: &mut Gfx) -> bool {
 fn open_screen(app: &mut App, screen: Option<&str>) {
     match screen {
         Some("land") => app.open_land_screen(),
+        // the course editor's box and its Load scenario page (editor.rs)
+        Some("editor") => app.open_editor_box(),
+        Some("editor-load") => {
+            app.open_editor_box();
+            app.editor_load_page();
+        }
         Some("report") if app.ui_ok => app.screen = Screen::Report,
         Some("pair") if app.ui_ok => app.screen = Screen::Pair,
         // the great-shot SimFoto (0x407e00) of the player's pro, or of the first golfer on screen with the partner
@@ -1162,7 +1188,9 @@ impl Stage {
                 || o.golfer.is_some()
                 || o.sandbox
                 || o.follow
-                || o.scenario.is_some();
+                || o.scenario.is_some()
+                || o.edit_scenario.is_some()
+                || (o.editor && o.property.is_some());
             let s = o.screen.clone().unwrap_or_else(|| if scripted { "play".into() } else { "menu".into() });
             if app.ui_ok {
                 match s.as_str() {
@@ -1190,19 +1218,43 @@ impl Stage {
                 std::process::exit(1)
             };
             app.course_size = o.course_size;
-            app.deal_offer(o.sandbox);
-            if !o.sandbox {
-                // the chooser only sells what the starting money covers: move the property into a cheap slot (slot 0 is
-                // kept for Parkland) so a scripted start looks like a real one
-                app.cheap_slot(k);
+            if o.editor {
+                // the course editor on that property (editor.rs)
+                app.start_editor(&mut g, k);
+            } else {
+                app.deal_offer(o.sandbox);
+                if !o.sandbox {
+                    // the chooser only sells what the starting money covers: move the property into a cheap slot (slot 0
+                    // is kept for Parkland) so a scripted start looks like a real one
+                    app.cheap_slot(k);
+                }
+                app.start_game(&mut g, k, o.sandbox);
             }
-            app.start_game(&mut g, k, o.sandbox);
-            if let Some(c) = o.cash {
+            if let Some(c) = o.cash.filter(|_| !o.editor) {
                 // the property's price came out of the default funds; the test hook sets the cash after it
                 app.econ.start_cash = c;
                 app.econ.cash = c;
             }
             open_screen(&mut app, o.screen.as_deref());
+        }
+        if o.editor && o.property.is_none() && o.edit_scenario.is_none() && app.ui_ok {
+            // the title's "Course editor..." (editor.rs)
+            app.open_editor_start();
+        }
+        if let Some(id) = &o.edit_scenario {
+            if let Err(e) = app.load_scenario_into_editor(&mut g, id) {
+                eprintln!("error: {e}");
+                std::process::exit(1);
+            }
+            open_screen(&mut app, o.screen.as_deref());
+        }
+        if app.editor.is_some() {
+            if let Some(spec) = &o.editor_set {
+                app.editor_settings_hook(spec);
+            }
+            if let Some(f) = &o.heightmap {
+                app.import_heightmap_file(f);
+            }
         }
         if let Some(id) = &o.scenario {
             if let Err(e) = app.start_scenario_by_id(&mut g, id) {
@@ -1248,9 +1300,27 @@ impl Stage {
             }
         }
         apply_edit_spec(&mut app, &o.edit_spec);
-        if !o.edit_spec.is_empty() {
+        if !o.edit_spec.is_empty() || app.editor.is_some() {
             app.rebuild_batches(&mut g);
             app.refresh_trees();
+        }
+        // the course editor's scenario saved as the pack ID (editor.rs)
+        if let Some(id) = &o.save_scenario {
+            if let Some(e) = app.editor.as_mut() {
+                if e.pack_id.is_none() {
+                    e.pack_id = Some(sg_core::scenario::id_from_name(id));
+                }
+                if e.name.trim().is_empty() {
+                    e.name = id.clone();
+                }
+            }
+            match app.save_editor_scenario() {
+                Ok(id) => println!("scenario {id} saved: cash {}, game tick {}", app.econ.cash, app.game_tick),
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    std::process::exit(1);
+                }
+            }
         }
         // after the game is set up (starting one closes the panels)
         if let Some(p) = o.panel {
@@ -1747,6 +1817,10 @@ impl Stage {
             if app.update_button().is_some_and(|r| r.has(vx, vy)) {
                 hit = update::UPDATE_HOVER;
             }
+            // the port's own: "Course editor..." (editor.rs)
+            if editor::title_button_rect().has(vx, vy) {
+                hit = editor::EDITOR_HOVER;
+            }
         } else {
             hit = app.world_hit(vx, vy);
         }
@@ -1771,6 +1845,7 @@ impl Stage {
                 // the back button, or a click on nothing, goes back (0x43a400 returns -1)
                 app.screen = Screen::Menu;
                 app.scen.chosen = None;
+                app.editor_start = false;
             } else if let Some(k) = app.scen.chosen {
                 // a scenario that names no difficulty (scenario_ui)
                 app.difficulty = hit;
@@ -1810,6 +1885,7 @@ impl Stage {
                     }
                 }
                 update::UPDATE_HOVER => app.check_for_updates(),
+                editor::EDITOR_HOVER => app.open_editor_start(),
                 _ => quit_game(),
             }
         } else {
@@ -1921,6 +1997,8 @@ impl Stage {
             match k {
                 KeyCode::S => app.open_save(),
                 KeyCode::L => app.open_files(files_ui::ListKind::Load, true),
+                // the course editor's box (editor.rs; nothing outside the editor)
+                KeyCode::E if app.editor.is_some() => app.open_editor_box(),
                 KeyCode::P => self.toggle_pause(),
                 KeyCode::T => app.show_props = !app.show_props,
                 KeyCode::R => app.open_routing(),
@@ -2181,6 +2259,8 @@ impl Stage {
                 if !app.no_hud {
                     app.draw_hud(&mut self.g);
                 }
+                // the course editor's bar (editor.rs)
+                app.draw_editor_bar(&mut self.g);
                 // Enhanced graphics: the camera button that opens photo mode (photo.rs; nothing in Classic)
                 app.draw_photo_button(&mut self.g);
             }
@@ -2231,6 +2311,7 @@ impl Stage {
                 Screen::Content => app.draw_content(&mut self.g),
                 Screen::Keys => app.draw_keys(&mut self.g),
                 Screen::Goals => app.draw_goals(&mut self.g),
+                Screen::Editor => app.draw_editor_box(&mut self.g),
                 Screen::HoleStats => app.draw_hole_stats(&mut self.g),
                 Screen::BestScores => app.draw_best_scores(&mut self.g),
                 Screen::Top10 => app.draw_top10(&mut self.g),
@@ -2513,6 +2594,11 @@ impl EventHandler for Stage {
         self.app.poll_update_check();
         #[cfg(all(not(target_arch = "wasm32"), feature = "net"))]
         self.app.poll_update_job();
+        // the course editor: the browser's file picker, and the editor left for the title menu (editor.rs)
+        self.app.poll_editor();
+        if self.app.screen == Screen::Menu && self.app.editor.is_some() {
+            self.app.leave_editor();
+        }
         // the Autosave extra (autosave.rs) and a course code being pasted (share.rs)
         self.app.autosave_tick(t);
         self.app.share_tick(t);
@@ -2577,6 +2663,7 @@ impl EventHandler for Stage {
         self.last_tick = t;
         if self.png_out.is_none()
             && !app.paused
+            && app.editor.is_none()
             && app.screen == Screen::Play
             && app.rename.is_none()
             && app.title.save_name.is_none()
@@ -2896,6 +2983,11 @@ impl EventHandler for Stage {
                 if button == MouseButton::Left {
                     self.app.scenarios_click(&mut self.g, vx, vy);
                 }
+            } else if self.app.screen == Screen::Editor {
+                let (vx, vy) = self.app.view.to_virtual(x, y);
+                if button == MouseButton::Left {
+                    self.app.editor_click(&mut self.g, vx, vy);
+                }
             } else if self.app.screen == Screen::Roster {
                 let (vx, vy) = self.app.view.to_virtual(x, y);
                 self.app.roster_click(vx, vy, button == MouseButton::Right);
@@ -2951,6 +3043,10 @@ impl EventHandler for Stage {
             return;
         }
         if ui_ok && button == MouseButton::Left && self.app.card_click(vx, vy) {
+            return;
+        }
+        // the course editor's bar (editor.rs)
+        if ui_ok && button == MouseButton::Left && self.app.editor_bar_click(vx, vy) {
             return;
         }
         if ui_ok && self.dock_click(vx, vy, button == MouseButton::Right) {
@@ -3083,6 +3179,7 @@ impl EventHandler for Stage {
             return;
         }
         self.app.rename_char(c);
+        self.app.editor_char(c);
         self.app.search_char(c);
         self.app.save_char(c);
         self.app.profile_char(c);
@@ -3173,6 +3270,10 @@ impl Stage {
         }
         if self.app.screen == Screen::Scenarios && self.app.ui_ok {
             self.app.scenarios_key(&mut self.g, k);
+            return;
+        }
+        if self.app.screen == Screen::Editor {
+            self.app.editor_key(k);
             return;
         }
         if self.app.screen != Screen::Play && self.app.ui_ok {

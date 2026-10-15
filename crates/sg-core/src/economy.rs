@@ -66,6 +66,10 @@ pub struct Economy {
     /// The club's extras (sg_core::extras), set by the game from the club record (where they are saved).
     #[serde(skip)]
     pub extras: crate::extras::Extras,
+    /// The course editor's free building (the port's own; never saved): nothing is charged, earned or booked, and
+    /// everything is affordable.
+    #[serde(skip)]
+    pub free: bool,
 }
 
 impl Default for Economy {
@@ -86,6 +90,7 @@ impl Default for Economy {
             wages_paid: 0.0,
             ledger: Vec::new(),
             extras: Default::default(),
+            free: false,
         }
     }
 }
@@ -206,7 +211,7 @@ impl Economy {
     /// Whether an action costing `amount` dollars may go ahead: it is cheap enough, or affordable, or a sandbox game, or the
     /// course has fewer than 3 holes (the first two holes can be built on credit).
     pub fn affordable(&self, amount: f64, holes: usize) -> bool {
-        amount < Self::UNIT || amount <= self.cash || self.sandbox || holes < 3
+        amount < Self::UNIT || amount <= self.cash || self.sandbox || self.free || holes < 3
     }
 
     /// Collects a green fee (in units of 100).
@@ -261,21 +266,33 @@ impl Economy {
 
     /// Income booked to a ledger column.
     pub fn earn_to(&mut self, column: usize, amount: f64) {
+        if self.free {
+            return;
+        }
         self.earn(amount);
         self.book(column, amount);
     }
 
     /// Expense booked to a ledger column (sandbox games pay too, as in the exe).
     pub fn spend_to(&mut self, column: usize, amount: f64) {
+        if self.free {
+            return;
+        }
         self.spend(amount);
         self.book(column, -amount);
     }
 
     pub fn earn(&mut self, amount: f64) {
+        if self.free {
+            return;
+        }
         self.cash += amount;
         self.version = self.version.wrapping_add(1);
     }
     pub fn spend(&mut self, amount: f64) {
+        if self.free {
+            return;
+        }
         self.cash -= amount;
         self.version = self.version.wrapping_add(1);
     }
@@ -372,6 +389,24 @@ impl Economy {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_editors_free_building_charges_nothing() {
+        let mut e = Economy { free: true, cash: 500.0, ..Default::default() };
+        e.init();
+        let before = (e.cash, e.ledger.clone());
+        e.spend_to(LEDGER_BUILD_COURSE, 1_000_000.0);
+        e.spend(42.0);
+        e.earn_to(LEDGER_OTHER, 900.0);
+        e.earn(7.0);
+        assert_eq!((e.cash, e.ledger.clone()), before);
+        assert!(e.affordable(1e12, 18));
+        // and the flag is never saved
+        let json = serde_json::to_string(&e).unwrap();
+        assert!(!json.contains("free"));
+        let back: Economy = serde_json::from_str(&json).unwrap();
+        assert!(!back.free);
+    }
 
     #[test]
     fn money_digits_group_by_thousands() {

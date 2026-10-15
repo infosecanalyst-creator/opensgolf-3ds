@@ -965,6 +965,10 @@ impl App {
 
     /// System Functions, Save the current game (0x405b10): a name prompt over the stopped game.
     pub fn open_save(&mut self) {
+        // the course editor saves scenarios from its own box (editor.rs)
+        if self.editor.is_some() {
+            return self.open_editor_box();
+        }
         self.title.save_name = Some(self.course_name.clone());
     }
 

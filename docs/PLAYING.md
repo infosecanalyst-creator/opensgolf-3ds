@@ -127,6 +127,70 @@ Limits: the object table holds 255 buildings, landmarks and lots (as the origina
 the 256th), the terrain is rebuilt whole after every edit (about 80 ms on Giant against 30 ms on Original, desktop CPU), and the
 Enhanced light and detail maps use fewer texels per tile on the larger sizes (at most about 400 texels a side).
 
+## Course editor
+
+The port's own (crates/simgolf/src/editor.rs; not in the original): a separate mode for making scenarios to play and
+share. Nothing of it runs in a normal game.
+
+**Starting.** *Course editor...* (the button at the bottom right of the title menu, left of the exit button) opens Select
+Difficulty, with the course size (Original, Large, Huge, Giant), and then the property chooser, every property
+available: the property sets the theme (Parkland, Desert, Tropical, Links) and the land is the one a new game on it gets.
+The difficulty you pick is the scenario's (change it later in the box). It is a title button rather than a Sandbox Mode
+option so that Sandbox Mode stays exactly the original's.
+
+**Building.** Every tool of the game works as in a game: the terrain brushes (with the rectangle and fill, Shift+drag and
+Alt+click), raise and lower with the Elevation panel's brushes, the measuring tape ('), trees, water, paths, holes (tee,
+green, H to open), buildings, garden items and landmarks (all of them, whatever the number of holes). Nothing costs
+money and no time passes: the clock does not run, so no golfers come, nobody is hired by the game and the calendar stays
+at March 2001. The cash shown is the scenario's starting cash. Ctrl+Z undoes as in a game (also a heightmap import and a
+change of the land owned). Esc opens System Functions (*Quit to the title screen* leaves the editor; Save opens the editor
+box).
+
+**The editor box.** The bar at the top of the course, *Course editor: scenario settings*, or **Shift+E** (another key
+on *Change keys*) opens it, in the style of the game's other boxes:
+
+- **Name, Author, Description, Welcome text, When won, When lost**: click a field and type (Tab or Enter goes on to the
+  next field, Esc stops typing). The welcome text is shown when the scenario starts, the others when it is won or lost
+  (the game's own words when they are empty).
+- **Starting cash** (- and +, in steps of §10,000), **Difficulty** (Easy to Impossible, or *Player chooses*: Select
+  Difficulty is then shown when the scenario starts), **Sandbox game**.
+- **Land at the start**: the nine tracts as the TRACTS FOR SALE screen numbers them (1 at the top left, 2 under it).
+  Click one to change it: *owned* land is the club's at the start, land *for sale* is out of bounds until the club buys it
+  (its tiles keep their types, trees and heights for the purchase; buildings, paths, tees and greens stay owned).
+- **Heightmap**: *Import heightmap...* takes a grey PNG picture of any size (8 or 16 bits; a colour picture counts by its
+  brightness) and lays it over the whole map: it is resampled to the map's corner grid with bilinear filtering (stretched to
+  the map's square), black becomes sea level and white the top of *Heights* (Gentle 4, Rolling 7 or Hilly 10 steps, the
+  Elevation tools' highest). **Water** *up to level N* turns every tile whose four corners all lie at or under step N - 1
+  into water (shallow, middle or deep by how far under it lies), at sea level as the original keeps water; the land's old
+  water goes. **Smoothing** runs one smoothing pass first. Buildings, paths, tees and greens keep their tiles and are
+  levelled again; land for sale takes the heights (and its water waits for the purchase). Changing Heights, Water or
+  Smoothing lays the last picture again. Three samples are built in (*Valley*, *Ridge*, *Island*: the pictures are
+  `tools/heightmaps/*.png`, made by `tools/heightmaps/make_heightmaps.py`). The desktop opens the system's file picker,
+  the browser its own; on Android there is no picker, only the samples.
+- **Goals** (at most five): *Add a goal*, then click its kind to change it (Holes, Cash, Fun rating, Skill rating,
+  Members, Rank), - and + for its value and its deadline (*any time*, or by the end of a year), x removes it. Every goal
+  must be reached to win; a goal missed at its deadline loses the scenario. No goals: the scenario is a free game on your
+  course.
+- **Save scenario** writes the scenario pack into the save folder's `packs` (`<id>/pack.toml`, `scenario.toml` and
+  `course.sgs`, the course as it is, with the holes built in the editor), the id made from the name; later saves write
+  over it. It is then on *Start New Game* (docs/MODDING.md 5) and starts with `--scenario ID`. **Load scenario...** lists
+  the installed scenario packs: one is loaded into the editor (its course, or the land of its property when it has none)
+  to go on with it; a pack in the save folder's `packs` is saved back in place, any other (a downloaded .zip, an example)
+  as a copy. **Back to the course** (or Esc), **Leave the editor** (click twice; what is not saved is lost).
+
+To share a scenario, zip its folder (or send the folder) and add it to someone's packs folder, or submit it to the
+community index (docs/MODDING.md 5 and 7).
+
+Test hooks: `--editor --property P` (with `--course-size N`) starts the editor on property P (`--editor` alone opens
+Select Difficulty from the title button); `--edit-scenario ID` loads a scenario pack into it; `--editor-set
+"name=..;author=..;description=..;intro=..;win=..;lose=..;cash=N;difficulty=0-3|any;sandbox=0|1;relief=0-2;water=N;
+smooth=0|1;goal=KIND:VALUE[@YEAR];tract=N:own|sale"` sets the box's settings (KIND holes, cash, fun, skill, members or
+rank); `--heightmap FILE` imports a picture with them; `--edit` specs then paint free of charge; `--save-scenario ID`
+saves the scenario as the pack ID (printing the cash and the game tick); `--screen editor` or
+`--screen editor-load` opens the box or its Load page; `SG_PICK_PNG=FILE` answers *Import heightmap...*'s picker.
+`tools/freeset_playtest.sh` makes a scenario this way, loads it back into the editor, checks the files did not change
+and plays it.
+
 ## Buildings and garden items
 
 On the Add Buildings panel (or b for benches, Shift+B for a home site; Tab turns the next building) choose: benches, flower beds, ball washers, willow trees and scenic bridges at any time, the amenities as holes unlock them. Prices, clearing charges, upgrades and the path-to-clubhouse rule follow the exe. Benches need rough ground with a free neighbour; bridges go on water near a shore. Shift-click undoes: a path, bench, flower bed, willow or bridge comes off with what it cost back, a building is demolished with no refund. Golfers use what you build: snack bars and the practice buildings earn money on every visit, tired golfers sit on benches, flower beds and landmarks cheer them up. The headless test option is `--edit "b:x,y,kind"`.
@@ -514,7 +578,7 @@ changed every key does what it did before.
 
 * **Change keys.** System Functions → Preferences → *Keyboard controls...* → *Change keys...* lists every action of the
   course screen with its key: the original's (tools, screens, the F keys, the shot shapes while your pro aims) and the
-  port's own (game speed, photo mode, hiding the interface, the measuring tape). Click an action, then press its new key,
+  port's own (game speed, photo mode, hiding the interface, the measuring tape, the course editor's box). Click an action, then press its new key,
   with or without Shift; Esc (or a click) while it waits keeps the old key. Two actions on one key are printed in red and
   a line says which: only one of them answers (the shot shapes only clash with each other, since they count only while your pro
   aims). *Reset to defaults* puts every key back. The digits (holes 1 to 18) and Esc cannot be given to an action. The

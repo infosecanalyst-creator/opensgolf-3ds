@@ -300,6 +300,8 @@ pub const ACTIONS: &[Action] = {
         act!("view_2", "STR_CTL_VIEW_2", shifted(F2)),
         act!("view_3", "STR_CTL_VIEW_3", shifted(F3)),
         act!("view_4", "STR_CTL_VIEW_4", shifted(F4)),
+        // the course editor's box (editor.rs): a key the original leaves unused; nothing outside the editor
+        act!("editor", "STR_CTL_EDITOR", shifted(E)),
     ]
 };
 
@@ -509,6 +511,7 @@ const ROW_ACTIONS: &[(&str, &[&str])] = &[
     ("STR_KEYS_K_HOLE_COMMENTS", &["hole_comments"]),
     ("STR_KEYS_K_GRAPHS", &["graphs"]),
     ("STR_KEYS_K_VIEWS", &["view_1", "view_2", "view_3", "view_4"]),
+    ("STR_KEYS_K_EDITOR", &["editor"]),
 ];
 
 /// The text a Keyboard controls row prints for its key: None (the row's own text) unless the player moved one of its keys.

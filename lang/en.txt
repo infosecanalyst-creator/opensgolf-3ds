@@ -2471,6 +2471,7 @@ STR_CTL_VIEW_1                          :Camera bookmark 1 (Ctrl+key keeps it)
 STR_CTL_VIEW_2                          :Camera bookmark 2 (Ctrl+key keeps it)
 STR_CTL_VIEW_3                          :Camera bookmark 3 (Ctrl+key keeps it)
 STR_CTL_VIEW_4                          :Camera bookmark 4 (Ctrl+key keeps it)
+STR_CTL_EDITOR                          :Course editor: scenario settings
 
 # The player's own SimGolf files (the port's own, gamefiles.rs): the title screen's button and the Preferences line
 STR_GAME_FILES_USE_MINE                 :Use my SimGolf files...
@@ -2605,6 +2606,8 @@ STR_GOAL_COND_FUN                       :fun rating {N}
 STR_GOAL_COND_SKILL                     :skill rating {N}
 STR_GOAL_COND_MEMBERS                   :{N} members
 STR_GOAL_COND_RANK                      :{RANK} rank
+STR_GOAL_AUTO                           :Reach {GOAL}
+STR_GOAL_AUTO_BY                        :Reach {GOAL} by the end of {YEAR}
 
 # Scripts (docs/MODDING.md 6): the toast when a pack's script fails (the message is on the Content screen)
 STR_SCRIPT_ERROR_TOAST                  :A script of the pack {PACK} failed: see System Functions, Preferences, Content packs.
@@ -2840,6 +2843,8 @@ STR_KEYS_K_VIEWS                        :Shift+F1 .. F4
 STR_KEYS_VIEWS                          :Camera bookmarks: back to a kept view (centre, zoom and turn)
 STR_KEYS_K_VIEW_KEEP                    :Ctrl+bookmark key
 STR_KEYS_VIEW_KEEP                      :Keep the view on that bookmark (saved with the game)
+STR_KEYS_K_EDITOR                       :Shift+E
+STR_KEYS_EDITOR                         :Course editor only: the scenario settings box
 # Quick save and quick load (comfort.rs)
 STR_TOAST_QUICK_SAVED                   :Quick saved ({KEY} loads it).
 STR_TOAST_QUICK_NO_SAVE                 :Cannot quick save during a tournament.
@@ -2860,3 +2865,67 @@ STR_STAFF_VIEW_PROS                     :Club pros: {COUNT}
 STR_STAFF_VIEW_BARE                     :Unkept fairway, green, tee: {COUNT} tiles
 STR_STAFF_VIEW_ON                       :Staff areas on: Shift+A hides them.
 STR_STAFF_VIEW_OFF                      :Staff areas off.
+# The course editor (editor.rs; the port's own): the title button, the editor box, heightmap import, saving scenarios
+STR_EDITOR_HM_NOT_PNG                   :This is not a PNG picture OpenSGolf can read (8 or 16 bits per channel, not interlaced).
+STR_EDITOR_TITLE_BUTTON                 :Course editor...
+STR_EDITOR_TITLE                        :Course Editor
+STR_EDITOR_HELP                         :Build with the usual tools: nothing costs money and no time passes. Set up the scenario here and save it.
+STR_EDITOR_BAR                          :Course editor: scenario settings ({KEY})
+STR_EDITOR_NAME                         :Name
+STR_EDITOR_AUTHOR                       :Author
+STR_EDITOR_DESCRIPTION                  :Description
+STR_EDITOR_INTRO                        :Welcome text
+STR_EDITOR_WIN                          :When won
+STR_EDITOR_LOSE                         :When lost
+STR_EDITOR_CASH                         :Starting cash
+STR_EDITOR_DIFFICULTY                   :Difficulty
+STR_EDITOR_ANY_DIFFICULTY               :Player chooses
+STR_EDITOR_SANDBOX                      :Sandbox game
+STR_EDITOR_ON                           :On
+STR_EDITOR_OFF                          :Off
+STR_EDITOR_COURSE                       :Course
+STR_EDITOR_COURSE_TEXT                  :{PLACE}, {SIZE} ({N} x {N} tiles)
+STR_EDITOR_LAND                         :Land at the start (click a tract):
+STR_EDITOR_OWNED                        :owned
+STR_EDITOR_FOR_SALE                     :for sale
+STR_EDITOR_HM                           :Heightmap (a grey picture: black low, white high)
+STR_EDITOR_HM_RELIEF                    :Heights
+STR_EDITOR_RELIEF_GENTLE                :Gentle
+STR_EDITOR_RELIEF_ROLLING               :Rolling
+STR_EDITOR_RELIEF_HILLY                 :Hilly
+STR_EDITOR_HM_WATER                     :Water
+STR_EDITOR_HM_WATER_OFF                 :none
+STR_EDITOR_HM_WATER_LEVEL               :up to level {N}
+STR_EDITOR_HM_SMOOTH                    :Smoothing
+STR_EDITOR_HM_PICK                      :Import heightmap...
+STR_EDITOR_HM_PICKING                   :Choose a PNG picture...
+STR_EDITOR_HM_PICK_TITLE                :Import a heightmap (a grey PNG picture)
+STR_EDITOR_HM_SAMPLES                   :Samples:
+STR_EDITOR_HM_SAMPLE_VALLEY             :Valley
+STR_EDITOR_HM_SAMPLE_RIDGE              :Ridge
+STR_EDITOR_HM_SAMPLE_ISLAND             :Island
+STR_EDITOR_HM_DONE                      :{FILE}: the land takes the picture's heights; {WATER} water tiles. Ctrl+Z takes it back.
+STR_EDITOR_GOALS                        :Goals (reach them all to win):
+STR_EDITOR_NO_GOALS                     :No goals: the scenario is a free game on this course.
+STR_EDITOR_GOAL_ADD                     :Add a goal
+STR_EDITOR_GOAL_HOLES                   :Holes
+STR_EDITOR_GOAL_CASH                    :Cash
+STR_EDITOR_GOAL_FUN                     :Fun rating
+STR_EDITOR_GOAL_SKILL                   :Skill rating
+STR_EDITOR_GOAL_MEMBERS                 :Members
+STR_EDITOR_GOAL_RANK                    :Rank
+STR_EDITOR_ANY_TIME                     :any time
+STR_EDITOR_BY_YEAR                      :by {YEAR}
+STR_EDITOR_SAVE                         :Save scenario
+STR_EDITOR_LOAD                         :Load scenario...
+STR_EDITOR_BACK                         :Back to the course
+STR_EDITOR_LEAVE                        :Leave the editor
+STR_EDITOR_LEAVE_SURE                   :Click again to leave
+STR_EDITOR_SAVED                        :Saved as the scenario pack {PACK} ({DIR}). Start New Game lists it.
+STR_EDITOR_SAVE_FAILED                  :The scenario was not saved: {ERROR}
+STR_EDITOR_UNNAMED                      :My Scenario
+STR_EDITOR_DEFAULT_DESCRIPTION          :A scenario made in the OpenSGolf course editor.
+STR_EDITOR_LOAD_TITLE                   :Load a Scenario into the Editor
+STR_EDITOR_LOAD_HELP                    :Click a scenario to go on with it. Scenarios in your packs folder are saved back in place, others as a copy.
+STR_EDITOR_LOAD_NONE                    :No scenario packs are installed.
+STR_EDITOR_LOADED                       :{NAME} is in the editor.

@@ -129,6 +129,8 @@ const ROWS: &[Row] = &[
     // the port's camera helpers (views.rs)
     Key("STR_KEYS_K_VIEWS", "STR_KEYS_VIEWS"),
     Key("STR_KEYS_K_VIEW_KEEP", "STR_KEYS_VIEW_KEEP"),
+    // the course editor (editor.rs)
+    Key("STR_KEYS_K_EDITOR", "STR_KEYS_EDITOR"),
     Head("STR_KEYS_HEAD_OTHER"),
     Key("STR_KEYS_K_ESC", "STR_KEYS_ESC"),
     Key("STR_KEYS_K_MENU_MOVE", "STR_KEYS_MENU_MOVE"),

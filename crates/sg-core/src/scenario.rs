@@ -180,6 +180,22 @@ impl GoalDef {
     pub fn when(&self) -> Conditions {
         Conditions { holes: self.holes, cash: self.cash, fun: self.fun, skill: self.skill, members: self.members, rank: self.rank.clone() }
     }
+
+    /// Sets the goal's conditions (the course editor's goal rows).
+    pub fn set_when(&mut self, c: &Conditions) {
+        (self.holes, self.cash, self.fun, self.skill, self.members, self.rank) =
+            (c.holes, c.cash, c.fun, c.skill, c.members, c.rank.clone());
+    }
+
+    /// The text the course editor gives a goal it made: its conditions and deadline in words ("Reach 9 holes by the end of
+    /// 2002").
+    pub fn auto_text(&self) -> String {
+        let goal = self.when().describe();
+        match self.by_year {
+            Some(y) => crate::lang::trf("STR_GOAL_AUTO_BY", &[("GOAL", &goal), ("YEAR", &y)]),
+            None => crate::lang::trf("STR_GOAL_AUTO", &[("GOAL", &goal)]),
+        }
+    }
 }
 
 /// A whole scenario.toml.
@@ -445,14 +461,20 @@ impl Goals {
 
 /// A pack.toml for an exported scenario.
 pub fn export_manifest(id: &str, name: &str, author: &str) -> String {
+    pack_manifest(id, name, author, &format!("The course {name}, exported from OpenSGolf."), "1.0.0")
+}
+
+/// A scenario pack's pack.toml (Export as scenario, and the course editor's Save scenario with its own description and
+/// version).
+pub fn pack_manifest(id: &str, name: &str, author: &str, description: &str, version: &str) -> String {
     let m = crate::packs::Manifest {
         id: id.to_string(),
         name: name.to_string(),
-        version: "1.0.0".into(),
+        version: version.to_string(),
         kind: crate::packs::Kind::Scenario,
         authors: if author.is_empty() { Vec::new() } else { vec![author.to_string()] },
         license: "CC-BY-SA-4.0".into(),
-        description: format!("The course {name}, exported from OpenSGolf."),
+        description: description.to_string(),
         requires: Vec::new(),
         conflicts: Vec::new(),
     };
@@ -572,6 +594,37 @@ by_year = 2003
         assert_eq!(id_from_name("Ocean's Edge"), "oceans-edge");
         let m = crate::packs::Manifest::parse(&export_manifest(&id, "Sunny Pines", "Me")).unwrap();
         assert_eq!(m.kind, crate::packs::Kind::Scenario);
+    }
+
+    #[test]
+    fn written_scenarios_read_back_byte_for_byte() {
+        // what the course editor writes, read and written again, is the same bytes (a scenario saved, loaded into the
+        // editor and saved again does not change)
+        let mut s = Scenario::parse(EXAMPLE).unwrap();
+        s.scenario.description = "Rolling \"hills\"\nand a lake".into();
+        s.scenario.sandbox = true;
+        s.scenario.course = Some("course.sgs".into());
+        s.goals[0].set_when(&Conditions { members: Some(25), rank: Some("daily-fee".into()), ..Default::default() });
+        s.goals[0].text = s.goals[0].auto_text();
+        let once = s.to_toml();
+        let back = Scenario::parse(&once).unwrap();
+        assert_eq!(back, s);
+        assert_eq!(back.to_toml(), once);
+        assert_eq!(Scenario::parse(&back.to_toml()).unwrap().to_toml(), once);
+        let m = pack_manifest("my-course", "My \"Course\"", "Ann", "Hills and a lake.", "1.2.0");
+        let pm = crate::packs::Manifest::parse(&m).unwrap();
+        assert_eq!((pm.id.as_str(), pm.name.as_str(), pm.version.as_str()), ("my-course", "My \"Course\"", "1.2.0"));
+        assert_eq!(pm.authors, vec!["Ann".to_string()]);
+    }
+
+    #[test]
+    fn goal_texts_say_what_the_goal_asks() {
+        let mut g = GoalDef { text: String::new(), holes: Some(9), by_year: Some(2002), ..Default::default() };
+        assert_eq!(g.auto_text(), "Reach 9 holes by the end of 2002");
+        g.by_year = None;
+        g.set_when(&Conditions { cash: Some(150000), ..Default::default() });
+        assert_eq!(g.auto_text(), "Reach §150,000 cash");
+        assert_eq!(g.holes, None);
     }
 
     #[test]

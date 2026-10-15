@@ -198,10 +198,42 @@ miniquad_add_plugin({
             sgnet.reqs.delete(id);
             return n;
         };
+        // The course editor's "Import heightmap..." (crates/simgolf/src/editor.rs): the page's file picker for a PNG. The
+        // picture is kept under picked/ and its name handed over when the game asks (-1 until one is picked).
+        env.sg_pick_file = function () { sgPickFile(); };
+        env.sg_pick_poll = function (dst, cap) {
+            if (sgPicked === null) return -1;
+            const b = enc.encode(sgPicked);
+            sgPicked = null;
+            const n = Math.min(b.length, cap);
+            new Uint8Array(wasm_memory.buffer, dst, n).set(b.subarray(0, n));
+            return n;
+        };
     },
 });
 
 const sgnet = { next: 1, reqs: new Map() };
+
+// The course editor's heightmap picker: the name of the picture picked, until the game takes it.
+let sgPicked = null;
+function sgPickFile() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".png,image/png";
+    input.style.display = "none";
+    input.addEventListener("change", () => {
+        const f = input.files && input.files[0];
+        input.remove();
+        if (!f) return;
+        f.arrayBuffer().then(b => {
+            const name = f.name.replace(/[\\/]/g, "_");
+            sgAddFile("picked/" + name, new Uint8Array(b));
+            sgPicked = name;
+        });
+    });
+    document.body.appendChild(input);
+    input.click();
+}
 
 // Hands a file to the browser as a download.
 function sgDownload(name, bytes) {

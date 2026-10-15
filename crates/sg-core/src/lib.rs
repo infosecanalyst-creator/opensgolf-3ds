@@ -27,6 +27,7 @@ pub mod freeset;
 pub mod fsutil;
 pub mod geom;
 pub mod golfer;
+pub mod heightmap;
 pub mod holetool;
 pub mod homes;
 pub mod index;
