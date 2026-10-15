@@ -50,6 +50,10 @@ STR_STYLE_MIX_DETAIL                    :From Preferences. Click for the origina
 ########################################################################################################################
 # The title screens' file lists: Load Previous Game, Select Championship Course, Pick A Pro (docs/DECODE_PICKAPRO.md)
 STR_FILES_AUTOSAVE                      :autosave ({NAME})
+# The port's own autosaves' names in the Load list (autosave.rs, comfort.rs): the two older autosaves and the quick save
+STR_FILES_AUTOSAVE_2                    :autosave (Latest, one before)
+STR_FILES_AUTOSAVE_3                    :autosave (Latest, two before)
+STR_FILES_QUICK                         :quick save
 STR_FILES_LOAD                          :Load
 STR_FILES_CANCEL                        :Cancel
 STR_FILES_DELETE                        :Delete
@@ -2428,6 +2432,9 @@ STR_CTL_NAME_TAGS                       :Name tags off / on
 STR_CTL_PATH_VIEW                       :Path view off / on
 # the port's building tools (build_tools.rs)
 STR_CTL_TAPE                            :Measuring tape
+STR_CTL_QUICK_SAVE                      :Quick save
+STR_CTL_QUICK_LOAD                      :Quick load
+STR_CTL_STAFF_VIEW                      :Staff areas off / on
 
 # The player's own SimGolf files (the port's own, gamefiles.rs): the title screen's button and the Preferences line
 STR_GAME_FILES_USE_MINE                 :Use my SimGolf files...
@@ -2560,9 +2567,11 @@ STR_EXTRAS_HISTORY                      : Message history (Shift+M, or click the
 STR_EXTRAS_NAME_TAGS                    : Name tags under the pointer (Shift+H)
 STR_EXTRAS_REPORT_TABS                  : Tabs over the F1 to F10 reports
 STR_EXTRAS_PATH_HELP                    : Path help: path view (Shift+V) and Show buttons
-STR_EXTRAS_AUTOSAVE                     : Autosave every five minutes
+STR_EXTRAS_AUTOSAVE                     : Autosave every five minutes (the last three kept)
 STR_EXTRAS_SAVE_PICTURES                : A map of the course beside each saved game
 STR_EXTRAS_SHARING                      : Course sharing: course codes and challenges (Ctrl+V pastes one)
+STR_EXTRAS_PAUSE_BACKGROUND             : Pause while the game's window is in the background
+STR_EXTRAS_PAUSE_EVENTS                 : Pause on big news: VIPs, challenges, offers, debt
 STR_MENU_SYSTEM_SHARE                   : Share course (copy a course code)
 STR_FILES_PASTE_CODE                    :Paste a course code
 STR_FILES_CHALLENGE                     :Challenge: beat {DESIGNER}'s record of {SCORE}
@@ -2692,3 +2701,29 @@ STR_KEYS_K_AREA_RECT                    :Shift+drag
 STR_KEYS_AREA_RECT                      :With a terrain brush: paint a rectangle
 STR_KEYS_K_AREA_FILL                    :Alt+click
 STR_KEYS_AREA_FILL                      :With a terrain brush: fill the region of one type
+STR_KEYS_K_QUICK_SAVE                   :Shift+F5
+STR_KEYS_QUICK_SAVE                     :Quick save (no dialog; Load lists it as "quick save")
+STR_KEYS_K_QUICK_LOAD                   :Shift+F9
+STR_KEYS_QUICK_LOAD                     :Quick load (asks first)
+STR_KEYS_K_STAFF_VIEW                   :Shift+A
+STR_KEYS_STAFF_VIEW                     :Staff areas: every employee's ring, and the course no groundskeeper reaches
+# Quick save and quick load (comfort.rs)
+STR_TOAST_QUICK_SAVED                   :Quick saved ({KEY} loads it).
+STR_TOAST_QUICK_NO_SAVE                 :Cannot quick save during a tournament.
+STR_TOAST_QUICK_NONE                    :No quick save yet: {KEY} makes one.
+STR_QUICK_LOAD_1                        :Load the quick save?
+STR_QUICK_LOAD_2                        :Anything since it was made will be lost.
+STR_QUICK_LOAD_YES                      : Yes, load it.
+STR_QUICK_LOAD_NO                       : No, keep playing.
+# Pause on big news (comfort.rs): shown under the Paused caption
+STR_PAUSED_BACKGROUND                   :Paused while the window was in the background
+STR_PAUSED_EVENT                        :Paused for big news
+# The staff areas (Shift+A, staffview_ui.rs)
+STR_STAFF_VIEW_TITLE                    :Staff areas (Shift+A)
+STR_STAFF_VIEW_KEEPERS                  :Groundskeepers: {COUNT}
+STR_STAFF_VIEW_RANGERS                  :Rangers: {COUNT}
+STR_STAFF_VIEW_VENDORS                  :Soda vendors: {COUNT}
+STR_STAFF_VIEW_PROS                     :Club pros: {COUNT}
+STR_STAFF_VIEW_BARE                     :Unkept fairway, green, tee: {COUNT} tiles
+STR_STAFF_VIEW_ON                       :Staff areas on: Shift+A hides them.
+STR_STAFF_VIEW_OFF                      :Staff areas off.

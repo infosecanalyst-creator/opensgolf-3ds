@@ -286,6 +286,11 @@ pub const ACTIONS: &[Action] = {
         act!("path_view", "STR_CTL_PATH_VIEW", shifted(V)),
         // the port's own building tools (build_tools.rs): the measuring tape, on a key the original leaves unused
         act!("tape", "STR_CTL_TAPE", plain(Apostrophe)),
+        // the port's own comfort keys (comfort.rs, staffview_ui.rs): keys the original leaves unused (it has F5 and F9
+        // alone, and no Shift+A)
+        act!("quick_save", "STR_CTL_QUICK_SAVE", shifted(F5)),
+        act!("quick_load", "STR_CTL_QUICK_LOAD", shifted(F9)),
+        act!("staff_view", "STR_CTL_STAFF_VIEW", shifted(A)),
     ]
 };
 
@@ -488,6 +493,9 @@ const ROW_ACTIONS: &[(&str, &[&str])] = &[
     ("STR_KEYS_K_TAGS", &["name_tags"]),
     ("STR_KEYS_K_PATHVIEW", &["path_view"]),
     ("STR_KEYS_K_TAPE", &["tape"]),
+    ("STR_KEYS_K_QUICK_SAVE", &["quick_save"]),
+    ("STR_KEYS_K_QUICK_LOAD", &["quick_load"]),
+    ("STR_KEYS_K_STAFF_VIEW", &["staff_view"]),
 ];
 
 /// The text a Keyboard controls row prints for its key: None (the row's own text) unless the player moved one of its keys.
@@ -504,7 +512,12 @@ pub fn row_label(row: &str) -> Option<String> {
 
 /// The key that shows the interface again, as printed (the hint while it is hidden).
 pub fn hide_key_label() -> String {
-    settings().binding(action("hide_interface")).map(Binding::label).unwrap_or_default()
+    key_label("hide_interface")
+}
+
+/// The key of action `id` as printed ("Shift+F9"; empty when it has none).
+pub fn key_label(id: &str) -> String {
+    settings().binding(action(id)).map(Binding::label).unwrap_or_default()
 }
 
 #[cfg(test)]

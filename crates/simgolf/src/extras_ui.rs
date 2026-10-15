@@ -60,7 +60,8 @@ pub enum GameStyle {
 impl App {
     /// The game style of what the next game starts with.
     pub fn game_style(&self) -> GameStyle {
-        let ui = crate::extras::settings();
+        // the two pauses (comfort.rs) are no part of the style
+        let ui = crate::extras::settings().style();
         if self.extras_next.is_off() && ui == crate::extras::Settings::ALL_OFF && !crate::enhanced::settings().enabled {
             GameStyle::Original
         } else if self.extras_next == Extras::OPENSGOLF && ui == crate::extras::Settings::ALL_ON {
@@ -81,9 +82,12 @@ impl App {
         };
         self.extras_next = e;
         save(&e);
+        // the two pauses stay as the player ticked them
+        let now = crate::extras::settings();
+        let ui = crate::extras::Settings { pause_background: now.pause_background, pause_events: now.pause_events, ..ui };
         crate::extras::set(ui);
         crate::extras::save(&ui);
-        if ui == crate::extras::Settings::ALL_OFF {
+        if ui.style() == crate::extras::Settings::ALL_OFF {
             self.xs.path_view = false;
             let mut enh = crate::enhanced::settings();
             if enh.enabled {

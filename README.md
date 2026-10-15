@@ -89,8 +89,11 @@ Optional, and off by default (Start New Game has a one-click switch between *the
   ([docs/ENHANCED.md](docs/ENHANCED.md)).
 - **Bigger courses:** Large, Huge and Giant, up to 128 × 128 tiles.
 - **OpenSGolf extras:** a Hardcore economy, turning buildings, cut content restored as landmarks, animals to buy, higher
-  staff limits, setting a hole's par, and interface extras such as a People screen, message history, autosave, a map of each saved course,
-  and course sharing: copy a course code, a friend pastes it and tries to beat your course record.
+  staff limits, setting a hole's par, and interface extras such as a People screen, message history, autosave (the last
+  three kept), a map of each saved course, pausing in the background or on big news, and course sharing: copy a course
+  code, a friend pastes it and tries to beat your course record.
+- **Quick save and quick load** (Shift+F5, Shift+F9) and a **staff areas** view (Shift+A) that shows every employee's
+  work ring and the fairways and greens no groundskeeper reaches.
 - **Content packs and game scripts** that change prices, buildings, terrain, golfers, text, art and sounds, add scenarios,
   and can be downloaded from inside the game ([docs/MODDING.md](docs/MODDING.md)).
 

@@ -33,6 +33,8 @@ pub enum PopupKind {
     Extras,
     /// The Set par extra's confirmation (the port's own, extras_ui.rs): change a hole's par, yes or no.
     SetPar,
+    /// Quick load's confirmation (the port's own, comfort.rs): load the quick save, yes or no.
+    QuickLoad,
 }
 
 #[derive(Clone, Debug)]
@@ -544,8 +546,9 @@ impl App {
                 let mut v = vec![tr("STR_EXTRAS_TITLE")];
                 v.extend(sg_core::extras::OPTION_KEYS.iter().map(|k| tr(k)));
                 v.extend(crate::extras::LINES.iter().map(|k| tr(k)));
-                // a row higher with the Set par line, so the box keeps clear of the bottom of the screen
-                (v, 0, 400.0, 104.0)
+                // a row higher with the Set par line, and two more with the two pauses (comfort.rs), so the box keeps clear
+                // of the bottom of the screen
+                (v, 0, 400.0, 56.0)
             }
             // the commissioner's approval (main routine 0x41e2a0): the two-choice box centred on x 0x1c2 from y 0xa0 (EXACT,
             // the call's pushes at 0x41e2ee and 0x41e303), texts 0x4c5d74 and 0x4c5d48
@@ -556,6 +559,9 @@ impl App {
                 let old = self.club.holes[h.clamp(1, 18)].par;
                 set_par_lines = [trf("STR_SET_PAR_1", &[("HOLE", &h), ("OLD", &old), ("NEW", &new)]), tr("STR_SET_PAR_2").to_string()];
                 (vec![set_par_lines[0].as_str(), set_par_lines[1].as_str(), tr("STR_SET_PAR_YES"), tr("STR_SET_PAR_NO")], 0, 400.0, 200.0)
+            }
+            PopupKind::QuickLoad => {
+                (vec![tr("STR_QUICK_LOAD_1"), tr("STR_QUICK_LOAD_2"), tr("STR_QUICK_LOAD_YES"), tr("STR_QUICK_LOAD_NO")], 0, 400.0, 200.0)
             }
             PopupKind::LandOffer => {
                 (vec![tr("STR_LAND_OFFER_1"), tr("STR_LAND_OFFER_2"), tr("STR_LAND_OFFER_YES"), tr("STR_LAND_OFFER_NO")], 0, 450.0, 160.0)

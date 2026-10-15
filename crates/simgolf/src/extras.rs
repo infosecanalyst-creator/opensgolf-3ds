@@ -12,7 +12,11 @@
 //!   messages about a place;
 //! * autosave (autosave.rs): the game saved every five minutes of play, as "autosave (Latest)" in the Load list;
 //! * save pictures (files_ui.rs): a map of the course beside the Load list's saves;
-//! * course sharing (share.rs): course codes and shared files for Play a Championship, with the sharer's record to beat.
+//! * course sharing (share.rs): course codes and shared files for Play a Championship, with the sharer's record to beat;
+//! * pause in the background and pause on big events (comfort.rs): the game stops while its window is in the background,
+//!   or when a VIP arrives, a famous golfer challenges, the SGA offers a tournament, the board warns or cash goes below
+//!   zero. These two are left out of the one-click OpenSGolf extras (`ALL_ON`): some players leave the game running in
+//!   the background on purpose.
 //!
 //! With every extra off the game draws and plays exactly as before they existed (each hook asks its switch first).
 use serde::{Deserialize, Serialize};
@@ -32,9 +36,13 @@ pub struct Settings {
     pub autosave: bool,
     pub save_pictures: bool,
     pub sharing: bool,
+    pub pause_background: bool,
+    pub pause_events: bool,
 }
 
 impl Settings {
+    /// The OpenSGolf extras of Select Difficulty's one click: every extra but the two pauses (they change when the game
+    /// runs, which a player may not want; each is ticked on its own in Preferences).
     pub const ALL_ON: Settings = Settings {
         people: true,
         history: true,
@@ -44,6 +52,8 @@ impl Settings {
         autosave: true,
         save_pictures: true,
         sharing: true,
+        pause_background: false,
+        pause_events: false,
     };
     pub const ALL_OFF: Settings = Settings {
         people: false,
@@ -54,14 +64,27 @@ impl Settings {
         autosave: false,
         save_pictures: false,
         sharing: false,
+        pause_background: false,
+        pause_events: false,
     };
 
     /// The ticks as the Extras box's checkbox bits (in `LINES` order).
     pub fn bits(&self) -> u32 {
-        [self.people, self.history, self.name_tags, self.report_tabs, self.path_help, self.autosave, self.save_pictures, self.sharing]
-            .iter()
-            .enumerate()
-            .fold(0, |m, (i, &on)| m | (on as u32) << i)
+        [
+            self.people,
+            self.history,
+            self.name_tags,
+            self.report_tabs,
+            self.path_help,
+            self.autosave,
+            self.save_pictures,
+            self.sharing,
+            self.pause_background,
+            self.pause_events,
+        ]
+        .iter()
+        .enumerate()
+        .fold(0, |m, (i, &on)| m | (on as u32) << i)
     }
 
     pub fn from_bits(m: u32) -> Settings {
@@ -75,7 +98,14 @@ impl Settings {
             autosave: on(5),
             save_pictures: on(6),
             sharing: on(7),
+            pause_background: on(8),
+            pause_events: on(9),
         }
+    }
+
+    /// The ticks that make the game style (extras_ui.rs GameStyle): all but the two pauses, which leave the game as it is.
+    pub fn style(&self) -> Settings {
+        Settings { pause_background: false, pause_events: false, ..*self }
     }
 }
 
@@ -88,7 +118,7 @@ impl Default for Settings {
 /// The Extras box's lines under the gameplay extras (popup_ui.rs): an empty line (a heading under options is drawn at the
 /// options' row height, so it needs the room), the heading, then one tick per extra (text keys in lang/en.txt), then an
 /// empty line that keeps the OK tick clear of the last one.
-pub const LINES: [&str; 11] = [
+pub const LINES: [&str; 13] = [
     "STR_EXTRAS_END",
     "STR_EXTRAS_UI_HEAD",
     "STR_EXTRAS_PEOPLE",
@@ -99,6 +129,8 @@ pub const LINES: [&str; 11] = [
     "STR_EXTRAS_AUTOSAVE",
     "STR_EXTRAS_SAVE_PICTURES",
     "STR_EXTRAS_SHARING",
+    "STR_EXTRAS_PAUSE_BACKGROUND",
+    "STR_EXTRAS_PAUSE_EVENTS",
     "STR_EXTRAS_END",
 ];
 
@@ -138,6 +170,12 @@ pub fn save_pictures() -> bool {
 pub fn sharing() -> bool {
     settings().sharing
 }
+pub fn pause_background() -> bool {
+    settings().pause_background
+}
+pub fn pause_events() -> bool {
+    settings().pause_events
+}
 
 fn settings_json() -> serde_json::Value {
     sg_core::fsutil::read_file(crate::app::save_dir().join(crate::hd::SETTINGS_FILE))
@@ -162,6 +200,13 @@ pub fn saved() -> Settings {
     }
     if v.is_object() && v.get("sharing").is_none() {
         s.sharing = s.people;
+    }
+    // ticks saved before the two pauses existed: off (they are off in every preset)
+    if v.get("pause_background").is_none() {
+        s.pause_background = false;
+    }
+    if v.get("pause_events").is_none() {
+        s.pause_events = false;
     }
     s
 }
@@ -577,10 +622,16 @@ mod tests {
 
     #[test]
     fn bits_round_trip_and_old_settings_read_as_on() {
-        for m in 0..32 {
+        for m in 0..1024 {
             assert_eq!(Settings::from_bits(m).bits(), m);
         }
         let s: Settings = serde_json::from_str("{\"people\": false}").unwrap();
         assert_eq!(s, Settings { people: false, ..Settings::ALL_ON });
+        // the pauses are off unless saved on, and they come after the older ticks' bits
+        assert!(!s.pause_background && !s.pause_events);
+        let p = Settings { pause_background: true, pause_events: true, ..Settings::ALL_OFF };
+        assert_eq!(p.bits(), 0b11 << 8);
+        assert_eq!(Settings::from_bits(p.bits()), p);
+        assert_eq!(p.style(), Settings::ALL_OFF);
     }
 }
