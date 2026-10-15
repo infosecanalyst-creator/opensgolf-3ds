@@ -397,8 +397,11 @@ each year rolls whether it ends with a cold snap, more likely in the Rocky Mount
 sometimes in Scotland, Wales, Ireland and Carolina, rarely in Spain, and never on a desert or tropical course or in
 California and Florida. In a year with a cold snap, the first days of March have full morning frost and, with *Rain* on,
 snow showers instead of rain (small square flakes drifting with the wind, and no puddles); with *Time of day* on, about a
-third of those days also start with a light dusting on the level ground that melts away by mid-morning, so the course
-reads clearly while it is being built. Late October has its frosty mornings (*Seasons*) but no snow. Drawing only:
+third of those days also start with a light snowfall that melts away by mid-morning, so the course reads clearly while
+it is being built. The snow settles first in the hollows and the shade, in drifts with a fine grain at their edges, and
+the grass between them turns a dull winter green; it lies white on the tops of the trees' crowns, dusts their lit
+leaves and covers the roofs (the original sprites recoloured, as the autumn colours are). It is gone from everything
+once the cold days are over. Late October has its frosty mornings (*Seasons*) but no snow. Drawing only:
 golfers play as ever. Test hook: `SG_FX_SNOW=S` lays that much snow (0 to 0.67) whatever the hour or the year, with
 `SG_FX_MONTH` in the first days of March (e.g. 3.05).
 

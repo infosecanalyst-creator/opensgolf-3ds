@@ -121,6 +121,8 @@ impl App {
         if a.snow > 0.0 || a.snowfall > 0.0 {
             a.season.frost = a.season.frost.max(k * 0.6);
         }
+        // the same snow on the trees and roofs (fx_nature.rs)
+        a.season.snow = a.snow;
     }
 
     /// Falling snow: small square flakes drifting down the screen and swaying, pale, in the art's pixel style.

@@ -291,11 +291,22 @@ vec3 frosty(vec3 c, float grass, vec4 lm) {
     float l = dot(c, vec3(0.299, 0.587, 0.114));
     c = mix(c, vec3(0.84, 0.88, 0.92) * (0.55 + 0.6 * l), f * 0.42);
     if (snow > 0.0) {
-        // snow on all level ground (not the cliffs and walls, thinner on slopes), in patches that grow with the cover,
-        // keeping the ground's shading so the course still reads
-        float lv = (1.0 - lm.a) * smoothstep(0.55, 0.9, up_n);
-        float cov = lv * smoothstep(0.55 - 0.5 * snow, 0.75 - 0.4 * snow, patchy);
-        c = mix(c, vec3(0.92, 0.94, 0.98) * (0.62 + 0.5 * l), cov * min(snow * 1.4, 0.92));
+        // under snow the grass is a dull winter green, pale and grey
+        float lv = (1.0 - lm.a) * smoothstep(0.5, 0.85, up_n);
+        float winter = min(snow * 2.0, 1.0) * lv;
+        c = mix(c, vec3(l) * vec3(0.92, 0.98, 0.9) + vec3(0.04), winter * 0.55);
+        // snow on the level ground (not the cliffs and walls, thinner on slopes), settling first in the hollows and the
+        // shade, in drifts from smooth noise with a fine grain at their edges, spreading as it deepens
+        float drift = noise(w_pos.xz * 0.015) * 0.45 + noise(w_pos.xz * 0.045) * 0.3 + noise(w_pos.xz * 0.16) * 0.25;
+        float grain = hash(floor(w_pos.xz * 0.5));
+        float lie = drift + 0.3 * (1.0 - lm.g) + 0.15 * (1.0 - smoothstep(0.75, 0.9, up_n)) + 0.18 * (grain - 0.5);
+        float cov = lv * smoothstep(1.05 - 0.95 * snow, 1.17 - 0.95 * snow, lie);
+        // near white whatever lies under it: the course's own light and shadow on it, a little blue in the shade
+        vec3 lit = min(light(lm) * 1.12, vec3(1.0));
+        float shade = dot(lit, vec3(0.333));
+        vec3 white = mix(vec3(0.72, 0.8, 0.94), vec3(0.98, 0.99, 1.0), smoothstep(0.35, 0.9, shade)) * (0.62 + 0.45 * shade);
+        white *= 0.96 + 0.06 * grain;
+        c = mix(c, min(white, vec3(1.0)), cov * 0.97);
     }
     float h = hash(floor(vec2(w_pos.x + w_pos.y * 1.37, w_pos.z - w_pos.y * 0.71) * fx3.w));
     float tw = 0.5 + 0.5 * sin(fx1.w * 2.6 + h * 40.0);

@@ -115,7 +115,7 @@ pub struct NatureState {
     /// (sprites, sprite_index) lengths the kinds were made for.
     made_for: (usize, usize),
     /// (sprite, frame index) -> (the classic texture it was made from, the season it shows, the recoloured texture).
-    season_tex: HashMap<(usize, usize), (TextureId, [u8; 3], TextureId)>,
+    season_tex: HashMap<(usize, usize), (TextureId, [u8; 4], TextureId)>,
     /// (sprite, frame index) -> the flag's art points right of its pole.
     flag_right: HashMap<(usize, usize), bool>,
 }
@@ -142,6 +142,8 @@ pub struct Season {
     pub frost: f32,
     /// Dew sparkle (early mornings, with the time of day).
     pub dew: f32,
+    /// Snow lying on the trees and roofs (fx_winter.rs).
+    pub snow: f32,
 }
 
 /// How a sprite is bent this frame: its top moved `lean` times its height along the screen's right (the bend grows as
@@ -234,7 +236,7 @@ pub fn season_at(m: f32, theme: u8, phase: Option<f32>) -> Season {
     let fresh = 1.0 - smoothstep(4.6, 5.8, m);
     let blossom = smoothstep(2.9, 3.25, m) * (1.0 - smoothstep(4.3, 5.0, m));
     let autumn = smoothstep(8.7, 10.3, m);
-    let mut s = Season { fresh: fresh * kf, blossom: blossom * kb, autumn: autumn * ka, frost: 0.0, dew: 0.0 };
+    let mut s = Season { fresh: fresh * kf, blossom: blossom * kb, autumn: autumn * ka, frost: 0.0, dew: 0.0, snow: 0.0 };
     if let Some(p) = phase {
         // early morning: from dawn to about mid morning
         let morning = if p > 0.95 { smoothstep(0.95, 1.0, p) } else { 1.0 - smoothstep(0.07, 0.2, p) };
@@ -246,13 +248,91 @@ pub fn season_at(m: f32, theme: u8, phase: Option<f32>) -> Season {
     s
 }
 
-/// The season as cache keys of eighths: (fresh, blossom, autumn), for a tree frame of `kind`.
-fn season_key(s: &Season, kind: Kind) -> [u8; 3] {
+/// The season as cache keys of eighths: (fresh, blossom, autumn, snow), for a frame of `kind`.
+fn season_key(s: &Season, kind: Kind) -> [u8; 4] {
     let q = |v: f32| (v.clamp(0.0, 1.0) * 8.0).round() as u8;
     match kind {
-        Kind::Deciduous | Kind::Blossom => [q(s.fresh), q(s.blossom), q(s.autumn)],
-        Kind::Conifer => [q(s.fresh * 0.5), 0, 0],
-        _ => [0; 3],
+        Kind::Deciduous | Kind::Blossom => [q(s.fresh), q(s.blossom), q(s.autumn), q(s.snow)],
+        Kind::Conifer => [q(s.fresh * 0.5), 0, 0, q(s.snow)],
+        Kind::Bush | Kind::Building => [0, 0, 0, q(s.snow)],
+        _ => [0; 4],
+    }
+}
+
+/// Snow on a frame (`snow` 0..1): every column's top pixels turn white (a cap on a crown, a ridge on a roof), deeper with
+/// more snow, and on trees a dusting over the lit, upper part of the foliage. White keeps the art's own shading, a little
+/// blue in its darker pixels, so the sprite still reads.
+fn snow_on(img: &mut Rgba, kind: Kind, snow: f32, salt: u32) {
+    if snow <= 0.0 {
+        return;
+    }
+    let (w, h) = (img.w as usize, img.h as usize);
+    let tree = matches!(kind, Kind::Deciduous | Kind::Blossom | Kind::Conifer | Kind::Bush);
+    let depth = (1.0 + snow * if tree { 3.0 } else { 2.0 }).round() as usize;
+    let whiten = |p: &mut [u8], k: f32| {
+        let l = (0.299 * p[0] as f32 + 0.587 * p[1] as f32 + 0.114 * p[2] as f32) / 255.0;
+        let v = (0.62 + 0.55 * l).min(1.0);
+        let c = [0.93 + 0.07 * l, 0.95 + 0.05 * l, 1.0];
+        for i in 0..3 {
+            p[i] = (p[i] as f32 + (c[i] * v * 255.0 - p[i] as f32) * k).round().clamp(0.0, 255.0) as u8;
+        }
+    };
+    // the top of each column, and of each run of pixels below a gap (the tiers of a pine, a roof's lower eaves)
+    for x in 0..w {
+        let mut run = 0usize;
+        let mut above_clear = true;
+        for y in 0..h {
+            let k = (y * w + x) * 4;
+            if img.px[k + 3] == 0 {
+                above_clear = true;
+                run = 0;
+                continue;
+            }
+            if above_clear {
+                run = depth;
+                above_clear = false;
+            }
+            if run > 0 {
+                let edge = if run == depth { 1.0 } else { 0.85 };
+                whiten(&mut img.px[k..k + 4], edge * snow.clamp(0.6, 1.0));
+                run -= 1;
+            }
+        }
+    }
+    // roofs: the art paints them in darker, greyer or browner shades than the light walls; in the upper part of the
+    // building those pixels take the snow, as do the tops of each column (the ridges, spires and eaves)
+    if kind == Kind::Building {
+        let limit = h * 55 / 100;
+        for y in 0..limit {
+            for x in 0..w {
+                let k = (y * w + x) * 4;
+                if img.px[k + 3] == 0 {
+                    continue;
+                }
+                let (r, g, b) = (img.px[k] as f32 / 255.0, img.px[k + 1] as f32 / 255.0, img.px[k + 2] as f32 / 255.0);
+                let (_, sat, v) = rgb_to_hsv(r, g, b);
+                if v < 0.62 && sat < 0.5 {
+                    let k2 = (1.0 - v / 0.62).min(0.6) + 0.4;
+                    whiten(&mut img.px[k..k + 4], (0.9 * snow.clamp(0.5, 1.0) * k2).min(0.9));
+                }
+            }
+        }
+    }
+    // a dusting over the upper two thirds of a tree's lit foliage
+    if tree {
+        for y in 0..h * 2 / 3 {
+            for x in 0..w {
+                let k = (y * w + x) * 4;
+                if img.px[k + 3] == 0 {
+                    continue;
+                }
+                let l = (0.299 * img.px[k] as f32 + 0.587 * img.px[k + 1] as f32 + 0.114 * img.px[k + 2] as f32) / 255.0;
+                let hp = unit(hash3(x as u32 >> 1, y as u32, salt ^ 0x5a0));
+                if l > 0.32 && hp < snow * 0.45 {
+                    whiten(&mut img.px[k..k + 4], 0.8);
+                }
+            }
+        }
     }
 }
 
@@ -290,7 +370,13 @@ fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (f32, f32, f32) {
 
 /// A tree frame in the season `key` (eighths of freshness, blossom and autumn); `salt` varies the colours between kinds of
 /// tree. Only foliage (green hues) changes; trunks, shadows and the transparent key stay.
-pub fn recolour(img: &Rgba, kind: Kind, key: [u8; 3], salt: u32) -> Rgba {
+pub fn recolour(img: &Rgba, kind: Kind, key: [u8; 4], salt: u32) -> Rgba {
+    let mut out = recolour_leaves(img, kind, [key[0], key[1], key[2]], salt);
+    snow_on(&mut out, kind, key[3] as f32 / 8.0, salt);
+    out
+}
+
+fn recolour_leaves(img: &Rgba, kind: Kind, key: [u8; 3], salt: u32) -> Rgba {
     let (fresh, blossom, autumn) = (key[0] as f32 / 8.0, key[1] as f32 / 8.0, key[2] as f32 / 8.0);
     let tsalt = unit(hash3(salt, 3, 9));
     let mut out = img.clone();
@@ -465,7 +551,8 @@ impl App {
     ) -> (TextureId, Option<Bend>, Option<(TextureId, f32)>) {
         let s = crate::fx::settings();
         let fi = self.sprites[si].s.frame_index(view, p.frame);
-        let tex2 = if s.seasons && p.outfit.is_none() { self.fx_season_texture(g, si, fi, tex).unwrap_or(tex) } else { tex };
+        let seasonal = s.seasons || self.fx.atmos.season.snow > 0.0;
+        let tex2 = if seasonal && p.outfit.is_none() { self.fx_season_texture(g, si, fi, tex).unwrap_or(tex) } else { tex };
         let bend = if s.wind { self.fx_sway(si, fi, p.x, p.z) } else { None };
         let night = self.fx.atmos.night;
         let glow = if s.evening_lights && night > 0.0 { self.fx_window_glow(g, si, fi, tex).map(|t| (t, night)) } else { None };
@@ -483,7 +570,7 @@ impl App {
         }
         let kind = self.fx_kind(si);
         let key = season_key(&season, kind);
-        if key == [0; 3] {
+        if key == [0; 4] {
             return None;
         }
         if let Some(&(src, k, t)) = self.fx.nature.season_tex.get(&(si, frame_index)) {
@@ -559,7 +646,7 @@ mod tests {
     fn autumn_turns_green_leaves_only() {
         let mut img = Rgba::new(4, 1);
         img.px.copy_from_slice(&[40, 120, 30, 255, 120, 80, 40, 255, 40, 120, 30, 0, 50, 140, 40, 255]);
-        let o = recolour(&img, Kind::Deciduous, [0, 0, 8], 1);
+        let o = recolour(&img, Kind::Deciduous, [0, 0, 8, 0], 1);
         // the leaf is now warm, the trunk and the transparent pixel untouched
         assert!(o.px[0] > o.px[1]);
         assert_eq!(&o.px[4..12], &img.px[4..12]);
