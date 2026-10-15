@@ -14,8 +14,6 @@ const SOAR_SHARE: f32 = 0.55;
 /// The most butterflies and leafy trees drawn.
 const MAX_BUTTERFLIES: usize = 40;
 const MAX_LEAF_TREES: usize = 80;
-/// An art pixel at the closest zoom, in the 800 x 600 screen's pixels times the view's units (Dots::pixel).
-const ART_PX: f32 = 4.0;
 
 fn hash(a: u32, b: u32) -> f32 {
     let mut h = a.wrapping_mul(0x9e37_79b9) ^ b.wrapping_mul(0x85eb_ca6b);
@@ -103,8 +101,8 @@ impl App {
         let t = self.fx.time;
         let mv = self.mv;
         let vscale = (self.draw_w / 800.0).min(self.draw_h / 600.0);
-        // sizes below are in the art's pixels at the closest zoom (the exe's 4); they shrink with the view like the art
-        let z = ART_PX;
+        // sizes below are in the art's pixels: drawn one to one at the closest zoom (the exe's 4), smaller further out
+        let z = self.exe_zoom() / 4.0;
         let tint = self.fx_sprite_tint(0.0, 0.0, false).map(|t| [t[0], t[1], t[2]]).unwrap_or([1.0; 3]);
         let mut d = Dots { v: Vec::new(), axes: [mv[0], mv[4], mv[8], mv[1], mv[5], mv[9]], px: self.upp * vscale };
         let seed = self.fx_seed();
@@ -198,16 +196,16 @@ impl App {
     }
 
     /// Grass tufts: a few blades of a pixel each standing up from the rough round the view, the tips swaying with the wind.
-    /// Only at the two closer zoom levels.
+    /// Only at the closest zoom level, where the art is drawn one to one.
     pub(crate) fn fx_grass(&mut self, g: &mut Gfx, u: &Uniforms) {
-        if !crate::fx::settings().grass || self.land.is_none() || self.exe_zoom() < 2.0 {
+        if !crate::fx::settings().grass || self.land.is_none() || self.exe_zoom() < 3.0 {
             return;
         }
         let a = self.fx.atmos;
         let t = self.fx.time;
         let mv = self.mv;
         let vscale = (self.draw_w / 800.0).min(self.draw_h / 600.0);
-        let z = ART_PX;
+        let z = self.exe_zoom() / 4.0;
         let tint = self.fx_sprite_tint(0.0, 0.0, false).map(|t| [t[0], t[1], t[2]]).unwrap_or([1.0; 3]);
         let mut d = Dots { v: Vec::new(), axes: [mv[0], mv[4], mv[8], mv[1], mv[5], mv[9]], px: self.upp * vscale };
         let seed = self.fx_seed();
