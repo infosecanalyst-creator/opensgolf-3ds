@@ -1234,6 +1234,13 @@ impl App {
                 if kind == 0 || t.type_at(tx, ty) == 20 {
                     continue;
                 }
+                // Terrain.dll keeps a draw flag beside the path flag (Tile+0x20a beside +0x208) and clears it on tees,
+                // greens, fairways, types 7 and 9 and buildings (setPath 0x10013400, setType 0x10014020 via 0x1000d480,
+                // 0x1000d540, 0x10015230); the tile's path draw (0x100108f0) returns at once without it, so the ground
+                // shows. Neighbours still read the path flag, so their arms run up to the tile's edge.
+                if matches!(t.type_at(tx, ty), 0 | 1 | 2 | 3 | 7 | 9 | 22) {
+                    continue;
+                }
                 let n = t.path_at(tx, ty - 1) != 0;
                 let s = t.path_at(tx, ty + 1) != 0;
                 let w = t.path_at(tx - 1, ty) != 0;
