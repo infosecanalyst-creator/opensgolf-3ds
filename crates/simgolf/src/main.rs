@@ -83,6 +83,7 @@ mod touch;
 mod tourney_ui;
 mod ui;
 mod undo;
+mod update;
 mod wild_ui;
 mod world_ui;
 
@@ -964,6 +965,10 @@ impl Stage {
             app.free_hint = cfg!(not(target_os = "android")) && gamefiles::take_hint();
         }
         app.content = content;
+        // test hook: "Check for updates" answered from a file, at once (update.rs)
+        if std::env::var_os(update::TEST_URL_ENV).is_some() {
+            app.check_for_updates();
+        }
         app.theme = o.theme;
         app.seed = o.seed;
         app.zoom = o.zoom;
@@ -1576,6 +1581,10 @@ impl Stage {
                     hit = gamefiles::FILES_HOVER;
                 }
             }
+            // the port's own: "Check for updates" (update.rs)
+            if app.update_button().is_some_and(|r| r.has(vx, vy)) {
+                hit = update::UPDATE_HOVER;
+            }
         } else {
             hit = app.world_hit(vx, vy);
         }
@@ -1638,6 +1647,7 @@ impl Stage {
                         app.files_action(a);
                     }
                 }
+                update::UPDATE_HOVER => app.check_for_updates(),
                 _ => quit_game(),
             }
         } else {
@@ -2307,6 +2317,8 @@ impl EventHandler for Stage {
         self.app.extras_test_hook();
         // "Use my SimGolf files...": a .zip being unpacked or a folder being copied (gamefiles.rs)
         self.app.poll_import();
+        // "Check for updates": the answer from GitHub (update.rs)
+        self.app.poll_update_check();
         // the Autosave extra (autosave.rs) and a course code being pasted (share.rs)
         self.app.autosave_tick(t);
         self.app.share_tick(t);

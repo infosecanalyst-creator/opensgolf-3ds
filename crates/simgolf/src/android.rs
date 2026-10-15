@@ -295,6 +295,54 @@ pub fn restart() {
     }
 }
 
+/// "Check for updates" (update.rs): opens `url` in the phone's browser (`startActivity` with an ACTION_VIEW intent for
+/// it). False when that failed (no browser, or a JNI call threw).
+pub fn open_url(url: &str) -> bool {
+    unsafe {
+        let activity = android::ACTIVITY;
+        if activity.is_null() {
+            return false;
+        }
+        let env = android::attach_jni_env();
+        let Ok(c) = CString::new(url) else { return false };
+        let f = &**env;
+        let uri_class = f.FindClass.unwrap()(env, c"android/net/Uri".as_ptr());
+        if threw(env) || uri_class.is_null() {
+            return false;
+        }
+        let parse = f.GetStaticMethodID.unwrap()(env, uri_class, c"parse".as_ptr(), c"(Ljava/lang/String;)Landroid/net/Uri;".as_ptr());
+        if threw(env) || parse.is_null() {
+            return false;
+        }
+        let jurl = f.NewStringUTF.unwrap()(env, c.as_ptr());
+        let uri = f.CallStaticObjectMethod.unwrap()(env, uri_class, parse, jurl);
+        f.DeleteLocalRef.unwrap()(env, jurl);
+        if threw(env) || uri.is_null() {
+            return false;
+        }
+        let intent_class = f.FindClass.unwrap()(env, c"android/content/Intent".as_ptr());
+        if threw(env) || intent_class.is_null() {
+            return false;
+        }
+        let init = f.GetMethodID.unwrap()(env, intent_class, c"<init>".as_ptr(), c"(Ljava/lang/String;Landroid/net/Uri;)V".as_ptr());
+        if threw(env) || init.is_null() {
+            return false;
+        }
+        let action = f.NewStringUTF.unwrap()(env, c"android.intent.action.VIEW".as_ptr());
+        let intent = f.NewObject.unwrap()(env, intent_class, init, action, uri);
+        f.DeleteLocalRef.unwrap()(env, action);
+        f.DeleteLocalRef.unwrap()(env, uri);
+        if threw(env) || intent.is_null() {
+            return false;
+        }
+        miniquad::call_void_method!(env, activity, "startActivity", "(Landroid/content/Intent;)V", intent);
+        let ok = !threw(env);
+        f.DeleteLocalRef.unwrap()(env, intent);
+        println!("opening {url} in the browser: {}", if ok { "asked" } else { "failed" });
+        ok
+    }
+}
+
 /// Test hook: the intent's `sg_pick` extra (`adb shell am start -n org.opensgolf.game/.MainActivity --es sg_pick PATH`)
 /// is taken as what was picked in "Use my SimGolf files..." (a .zip or a folder the app can read), as SG_PICK_FOLDER does
 /// on a desktop (gamefiles.rs). Read once, from `init`.

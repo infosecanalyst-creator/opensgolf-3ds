@@ -667,6 +667,8 @@ pub struct App {
     pub toast_until: f64,
     /// A message in the game's box over the screen, with an OK or a question's two options (gamefiles.rs).
     pub notice: Option<crate::gamefiles::Notice>,
+    /// "Check for updates" on the title menu: the request under way (update.rs).
+    pub update_check: Option<crate::net::Request>,
     /// The title screen says that the free graphics are in use and how to use the original files (once, gamefiles.rs).
     pub free_hint: bool,
     /// Camera follows the golfer.
@@ -924,6 +926,7 @@ impl App {
             toast: String::new(),
             toast_until: 0.0,
             notice: None,
+            update_check: None,
             free_hint: false,
             follow: false,
             edit: false,

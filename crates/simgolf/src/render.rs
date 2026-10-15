@@ -744,6 +744,8 @@ impl App {
         s.put_centered(g, crate::ui::F_KLEPTO18, MENU_LABEL_X[1], MENU_LABEL_Y[1] + 24.0, &theme, grey);
         // the port's own: "Use my SimGolf files..." (gamefiles.rs)
         self.draw_files_button(g, &s);
+        // and "Check for updates" (update.rs)
+        self.draw_update_button(g, &s);
         if !self.toast.is_empty() && self.clock < self.toast_until {
             let w = text_width(&self.toast, 18.0) + 24.0;
             s.fill(g, 400.0 - w / 2.0, 560.0, w, 30.0, rgba(0.1, 0.1, 0.3, 0.9));
