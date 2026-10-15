@@ -2459,6 +2459,15 @@ STR_CRASH_COPY                          :Copy the report
 STR_CRASH_CLOSE                         :Close
 STR_CRASH_COPIED                        :The report is copied. Paste it into an issue on OpenSGolf's GitHub page or a message to the developers. Thank you!
 
+# "Check for updates" on the title menu (update.rs); {VERSION} a version number like 0.3.1, {CURRENT} this one's
+STR_UPDATE_CHECK                        :Check for updates
+STR_UPDATE_CHECKING_BUTTON              :Checking...
+STR_UPDATE_LATEST                       :You have the latest version of OpenSGolf ({VERSION}).
+STR_UPDATE_NEWER                        :OpenSGolf {VERSION} is out (you have {CURRENT}). Its page has the downloads and what is new.
+STR_UPDATE_OPEN_PAGE                    :Open the download page
+STR_UPDATE_FAILED                       :OpenSGolf could not check for updates ({ERROR}). Check the internet connection and try again later.
+STR_UPDATE_NO_BROWSER                   :No browser could be opened. The newest version is at {URL}
+
 # Preferences > Content > Find more: the content index (docs/CONTENT_INDEX.md)
 STR_INDEX_TITLE                         :Find more content
 STR_INDEX_SOURCE                        :Content index: {URL}
