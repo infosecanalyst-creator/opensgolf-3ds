@@ -188,7 +188,9 @@ pub fn fit(s: &str) -> String {
 /// line that keeps the OK tick clear.
 pub fn popup_lines(query: &str, caret: bool, hits: &[Hit], p: &Prefs) -> Vec<String> {
     let mut v = vec![tr("STR_SEARCH_TITLE").to_string()];
-    v.push(trf("STR_SEARCH_FIND", &[("QUERY", &format!("{query}{}", if caret { "|" } else { " " }))]));
+    // an empty search shows a hint after the caret, so it is plain where the typing goes
+    let hint = if query.is_empty() { tr("STR_SEARCH_HINT").to_string() } else { String::new() };
+    v.push(trf("STR_SEARCH_FIND", &[("QUERY", &format!("{query}{}{hint}", if caret { "|" } else { " " }))]));
     v.push(tr("STR_SEARCH_CHANGED").to_string());
     for &h in hits.iter().take(MAX_HITS) {
         v.push(fit(&format!(" {}: {}", place(h), text(h, p).0)));

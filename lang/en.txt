@@ -1301,6 +1301,7 @@ STR_MENU_PREFS_EXTRAS                   : OpenSGolf extras...
 STR_MENU_PREFS_SEARCH                   : Search options...
 STR_SEARCH_TITLE                        :Search the Preferences (type to find)
 STR_SEARCH_FIND                         :Find: {QUERY}
+STR_SEARCH_HINT                         :(type a word, e.g. snow, pause or par)
 STR_SEARCH_CHANGED                      : Show only what differs from the original game
 # A found option: "{page}: {option}"; the pages of Enhanced graphics' master switch and of the keys
 STR_SEARCH_PLACE_ENHANCED               :Graphics
