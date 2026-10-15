@@ -26,7 +26,8 @@ be modded. Code, art, sound, text, translations, courses, testing and bug report
 
 Layout: `crates/sg-core` is the game rules and file formats (no window, unit tested); `crates/simgolf` is the game
 (miniquad); `crates/sgtool` inspects and converts assets; `web/` is the browser build; `docs/` holds the notes on the
-original's formats and rules.
+original's formats and rules. Releases, and the key that signs them for the game's Update now:
+[docs/RELEASING.md](docs/RELEASING.md).
 
 ## Art, sound and text for the free base set
 
