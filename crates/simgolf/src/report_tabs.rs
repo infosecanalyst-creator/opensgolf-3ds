@@ -2,7 +2,8 @@
 //! from one to the next without going back to the course; each report keeps its exact look under it (the strip takes the
 //! top 15 pixels of the page, or the room above it on a taller window). A click or a tap on a tab, Tab and Shift+Tab, or
 //! the report's own F key (or Alt or Ctrl with its digit) change the report; Esc and the reports' own ways close it. With
-//! comments by hole on (insight.rs) an eleventh tab after F10 opens its page.
+//! comments by hole on (insight.rs) an eleventh tab after F10 opens its page, and with the history graphs on (graphs.rs)
+//! one more after that opens theirs.
 use crate::app::*;
 use crate::extras::draw_tab;
 use crate::gfx::Gfx;
@@ -24,20 +25,46 @@ pub const TABS: [&str; 10] = [
     "STR_TABS_F10",
 ];
 const TAB_H: f32 = 14.0;
-/// The eleventh tab: comments by hole (insight.rs).
-const HOLES_TAB: &str = "STR_TABS_HOLES";
-
-/// How many tabs the strip has: ten, and comments by hole's when that extra is on.
-fn tab_count() -> usize {
-    10 + crate::extras::hole_comments() as usize
+/// The tabs after F10, each while its extra is on: comments by hole (insight.rs), the history graphs (graphs.rs).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum After {
+    Holes,
+    Graphs,
 }
 
-/// A tab's width: ten share 740 pixels, eleven 792.
+fn after_tabs() -> Vec<After> {
+    let mut v = Vec::new();
+    if crate::extras::hole_comments() {
+        v.push(After::Holes);
+    }
+    if crate::extras::graphs() {
+        v.push(After::Graphs);
+    }
+    v
+}
+
+/// How many tabs the strip has: ten, and the extras' after them.
+fn tab_count() -> usize {
+    10 + after_tabs().len()
+}
+
+/// A tab's label (text key).
+fn tab_label(i: usize) -> &'static str {
+    match TABS.get(i) {
+        Some(k) => k,
+        None => match after_tabs().get(i - 10) {
+            Some(After::Graphs) => "STR_TABS_GRAPHS",
+            _ => "STR_TABS_HOLES",
+        },
+    }
+}
+
+/// A tab's width: ten share 740 pixels, eleven 792, twelve 792.
 fn tab_w() -> f32 {
-    if tab_count() == 10 {
-        74.0
-    } else {
-        72.0
+    match tab_count() {
+        10 => 74.0,
+        11 => 72.0,
+        _ => 66.0,
     }
 }
 
@@ -59,6 +86,7 @@ impl App {
             Screen::Roster => 8,
             Screen::Board => 9,
             Screen::HoleComments if crate::extras::hole_comments() => 10,
+            Screen::Graphs if crate::extras::graphs() => 10 + after_tabs().iter().position(|&a| a == After::Graphs).unwrap_or(0),
             _ => return None,
         })
     }
@@ -86,6 +114,7 @@ impl App {
             5 => self.open_world_map(),
             6 => self.sga_report(),
             7 => self.open_report_screen(Screen::Shortcuts),
+            i if i >= 10 && after_tabs().get(i - 10) == Some(&After::Graphs) => self.open_graphs(),
             10 => self.open_hole_comments(),
             8 => {
                 self.roster_offset = 0;
@@ -167,7 +196,10 @@ impl App {
         s.fill(g, 400.0 - w * n as f32 / 2.0 - 1.0, top - 1.0, w * n as f32 + 2.0, TAB_H + 2.0, crate::info_ui::c15(0x0008));
         for i in 0..n {
             let r = self.tab_rect(i);
-            draw_tab(g, &s, r, F_ARIAL10, tr(TABS.get(i).copied().unwrap_or(HOLES_TAB)), i == cur, r.has(px, py));
+            // twelve tabs are narrow: a label too wide drops its key ("Histograph" for "F3 Histograph")
+            let label = tr(tab_label(i));
+            let label = if F_ARIAL10.width(label) > r.w - 2.0 { label.split_once(' ').map_or(label, |l| l.1) } else { label };
+            draw_tab(g, &s, r, F_ARIAL10, label, i == cur, r.has(px, py));
         }
         g.flush();
     }

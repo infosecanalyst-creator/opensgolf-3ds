@@ -23,6 +23,8 @@
 //!   something only when a newer version is out. Left out of the one-click OpenSGolf extras like the pauses: it goes
 //!   online, which a player chooses for themselves.
 //!
+//! * history graphs (graphs.rs): the club's and each hole's months as line graphs on a page of their own (Shift+Y).
+//!
 //! With every extra off the game draws and plays exactly as before they existed (each hook asks its switch first).
 use serde::{Deserialize, Serialize};
 use std::cell::Cell;
@@ -46,6 +48,7 @@ pub struct Settings {
     pub landing_map: bool,
     pub hole_comments: bool,
     pub update_check: bool,
+    pub graphs: bool,
 }
 
 impl Settings {
@@ -65,6 +68,7 @@ impl Settings {
         landing_map: true,
         hole_comments: true,
         update_check: false,
+        graphs: true,
     };
     pub const ALL_OFF: Settings = Settings {
         people: false,
@@ -80,6 +84,7 @@ impl Settings {
         landing_map: false,
         hole_comments: false,
         update_check: false,
+        graphs: false,
     };
 
     /// The ticks as the Extras box's checkbox bits (in `UI_KEYS` order).
@@ -98,6 +103,7 @@ impl Settings {
             self.landing_map,
             self.hole_comments,
             self.update_check,
+            self.graphs,
         ]
         .iter()
         .enumerate()
@@ -120,6 +126,7 @@ impl Settings {
             landing_map: on(10),
             hole_comments: on(11),
             update_check: on(12),
+            graphs: on(13),
         }
     }
 
@@ -138,7 +145,7 @@ impl Default for Settings {
 
 /// The interface extras' lines on the Extras box's Interface page (extras_ui.rs), one tick per extra in `Settings::bits`
 /// order (text keys in lang/en.txt).
-pub const UI_KEYS: [&str; 13] = [
+pub const UI_KEYS: [&str; 14] = [
     "STR_EXTRAS_PEOPLE",
     "STR_EXTRAS_HISTORY",
     "STR_EXTRAS_NAME_TAGS",
@@ -152,6 +159,7 @@ pub const UI_KEYS: [&str; 13] = [
     "STR_EXTRAS_LANDING_MAP",
     "STR_EXTRAS_HOLE_COMMENTS",
     "STR_EXTRAS_UPDATE_CHECK",
+    "STR_EXTRAS_GRAPHS",
 ];
 
 thread_local! {
@@ -205,6 +213,9 @@ pub fn hole_comments() -> bool {
 pub fn update_check() -> bool {
     settings().update_check
 }
+pub fn graphs() -> bool {
+    settings().graphs
+}
 
 fn settings_json() -> serde_json::Value {
     sg_core::fsutil::read_file(crate::app::save_dir().join(crate::hd::SETTINGS_FILE))
@@ -254,6 +265,10 @@ fn upgrade_off(v: &serde_json::Value, s: &mut Settings) {
     // the update check goes online: off unless ticked
     if v.get("update_check").is_none() {
         s.update_check = false;
+    }
+    // the history graphs keep more with the game: off from ticks saved before them
+    if v.get("graphs").is_none() {
+        s.graphs = false;
     }
 }
 
@@ -335,11 +350,14 @@ pub struct Kept {
     /// The landing map's shots and the comments by hole (insight.rs), only while one of them is on.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub insight: Option<crate::insight::Kept>,
+    /// The history graphs' months (graphs.rs), only while their tick is on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub graphs: Option<crate::graphs::Kept>,
 }
 
 impl Kept {
     pub fn is_empty(&self) -> bool {
-        self.messages.is_empty() && self.staff_names.is_empty() && self.said.is_empty() && self.insight.is_none()
+        self.messages.is_empty() && self.staff_names.is_empty() && self.said.is_empty() && self.insight.is_none() && self.graphs.is_none()
     }
 
     pub fn push_message(&mut self, m: Message) {
@@ -408,6 +426,8 @@ pub struct State {
     pub path_marks: Option<crate::pathview_ui::Marks>,
     /// The landing map's balls in play, the map and the comments page (insight.rs).
     pub insight: crate::insight::State,
+    /// The Graphs page's choices (graphs.rs).
+    pub graphs: crate::graphs::State,
 }
 
 // ---- drawing pieces shared by the extras' screens ---------------------------------------------------------------------------
@@ -684,7 +704,7 @@ mod tests {
         assert_eq!(p.bits(), 0b11 << 8);
         assert_eq!(Settings::from_bits(p.bits()), p);
         assert_eq!(p.style(), Settings::ALL_OFF);
-        for m in [0, 1 << 8, 1 << 9, 1 << 10, 1 << 11, 1 << 12, 0x1fff] {
+        for m in [0, 1 << 8, 1 << 9, 1 << 10, 1 << 11, 1 << 12, 1 << 13, 0x3fff] {
             assert_eq!(Settings::from_bits(m).bits(), m);
         }
     }
@@ -701,6 +721,11 @@ mod tests {
         upgrade_off(&v, &mut s);
         assert!(s.landing_map && s.hole_comments);
         assert!(!s.update_check, "the update check reads as off from ticks saved before it");
+        assert!(!s.graphs, "the graphs read as off from older ticks");
+        let v: serde_json::Value = serde_json::from_str("{\"graphs\": true}").unwrap();
+        let mut g: Settings = serde_json::from_value(v.clone()).unwrap();
+        upgrade_off(&v, &mut g);
+        assert!(g.graphs && Settings::ALL_ON.graphs);
         let v: serde_json::Value = serde_json::from_str("{\"update_check\": true}").unwrap();
         let mut s: Settings = serde_json::from_value(v.clone()).unwrap();
         upgrade_off(&v, &mut s);

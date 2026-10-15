@@ -293,6 +293,8 @@ pub const ACTIONS: &[Action] = {
         act!("staff_view", "STR_CTL_STAFF_VIEW", shifted(A)),
         act!("landing_map", "STR_CTL_LANDING_MAP", shifted(D)),
         act!("hole_comments", "STR_CTL_HOLE_COMMENTS", shifted(I)),
+        // the history graphs (graphs.rs)
+        act!("graphs", "STR_CTL_GRAPHS", shifted(Y)),
     ]
 };
 
@@ -500,6 +502,7 @@ const ROW_ACTIONS: &[(&str, &[&str])] = &[
     ("STR_KEYS_K_STAFF_VIEW", &["staff_view"]),
     ("STR_KEYS_K_LANDING_MAP", &["landing_map"]),
     ("STR_KEYS_K_HOLE_COMMENTS", &["hole_comments"]),
+    ("STR_KEYS_K_GRAPHS", &["graphs"]),
 ];
 
 /// The text a Keyboard controls row prints for its key: None (the row's own text) unless the player moved one of its keys.
@@ -536,7 +539,7 @@ mod tests {
             assert_eq!((k, sh), (a.default.key, a.default.shift), "{}", a.id);
         }
         // keys no action owns: holes, the keypad, a free letter
-        for k in [KeyCode::Key1, KeyCode::KpAdd, KeyCode::Y] {
+        for k in [KeyCode::Key1, KeyCode::KpAdd, KeyCode::O] {
             assert_eq!(s.translate(k, false, false), Some((k, false, None)));
             assert_eq!(s.translate(k, true, false), Some((k, true, None)));
         }

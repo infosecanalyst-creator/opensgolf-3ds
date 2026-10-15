@@ -266,6 +266,8 @@ pub enum Screen {
     Profile,
     /// OpenSGolf extras: comments by hole (insight.rs).
     HoleComments,
+    /// OpenSGolf extras: history graphs (graphs.rs).
+    Graphs,
 }
 
 /// Where saved games, championship courses and pros, accomplishment snapshots, packs and settings go. The browser keeps them
@@ -2195,6 +2197,9 @@ impl App {
                 }
                 golf::Event::HoleDone { g, hole, strokes, mood, fee } => {
                     self.script_hole_done(g, hole, strokes);
+                    if crate::extras::graphs() {
+                        self.graphs_hole_done(hole, strokes, mood, fee);
+                    }
                     if self.hole_stats.len() != self.hole_numbers.len() {
                         self.hole_stats = vec![HoleStat::default(); self.hole_numbers.len()];
                     }
@@ -2237,6 +2242,10 @@ impl App {
                 }
                 golf::Event::GreatShot { g, partner, text, bad, pts } => self.great_shot_event(g, partner, text, bad, &pts),
             }
+        }
+        // the OpenSGolf extras' history graphs move on to a new month with the date (graphs.rs)
+        if crate::extras::graphs() {
+            self.graphs_tick();
         }
         // the scenario's goals and the packs' scripts (docs/MODDING.md 5 and 6)
         self.scenario_tick(tick);
@@ -2602,6 +2611,8 @@ impl App {
                     crate::extras::landing_map(),
                     crate::extras::hole_comments(),
                 ),
+                // the history graphs' months only while their tick is on (graphs.rs)
+                graphs: self.xs.kept.graphs.clone().filter(|k| crate::extras::graphs() && !k.is_empty()),
                 ..self.xs.kept.clone()
             },
             packs: self.saved_packs(),

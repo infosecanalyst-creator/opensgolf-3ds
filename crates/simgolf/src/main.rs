@@ -54,6 +54,7 @@ mod fx_winter;
 mod gamefiles;
 mod gamepad;
 mod gfx;
+mod graphs;
 mod hd;
 mod history_ui;
 mod holemarks;
@@ -483,6 +484,18 @@ fn open_screen(app: &mut App, screen: Option<&str>) {
                 let v = ints(&v);
                 app.xs.insight.period = v.first().copied().unwrap_or(0).clamp(0, 2) as usize;
                 app.xs.insight.off = v.get(1).copied().unwrap_or(0).clamp(0, 17) as usize;
+            }
+        }
+        // the history graphs (graphs.rs); SG_GRAPHS=S,M[,C]: series S (0 the club, 1 to 18 a hole), measure M, and the
+        // values of month C (from 0) held up as a tap holds them
+        Some("graphs") if app.ui_ok => {
+            app.open_graphs();
+            if let Ok(v) = std::env::var("SG_GRAPHS") {
+                let v = ints(&v);
+                app.xs.graphs.series = v.first().copied().unwrap_or(0).clamp(0, 18) as usize;
+                app.xs.graphs.measure = v.get(1).copied().unwrap_or(0).max(0) as usize;
+                app.xs.graphs.cursor = v.get(2).map(|&c| c.max(0) as usize);
+                app.graphs_clamp();
             }
         }
         // SG_LANDING_HOLE=N: hole N's map whatever the pointer is over
@@ -1394,6 +1407,7 @@ impl Stage {
             PopupKind::Info if line == tr("STR_MENU_INFO_PATH_VIEW") => self.app.toggle_path_view(),
             PopupKind::Info if line == tr("STR_MENU_INFO_LANDING_MAP") => self.app.toggle_landing_map(),
             PopupKind::Info if line == tr("STR_MENU_INFO_HOLE_COMMENTS") => self.app.open_hole_comments(),
+            PopupKind::Info if line == tr("STR_MENU_INFO_GRAPHS") => self.app.open_graphs(),
             PopupKind::Info => match k {
                 0 => self.app.repeat_message(),
                 1 => self.open_report(),
@@ -1917,6 +1931,8 @@ impl Stage {
                 // the insight extras (insight.rs): the landing map and comments by hole
                 KeyCode::D if extras::landing_map() => app.toggle_landing_map(),
                 KeyCode::I if extras::hole_comments() => app.open_hole_comments(),
+                // the history graphs (graphs.rs)
+                KeyCode::Y if extras::graphs() => app.open_graphs(),
                 // ? repeats the last message
                 KeyCode::Slash => app.repeat_message(),
                 KeyCode::B => {
@@ -2216,6 +2232,7 @@ impl Stage {
                 }
                 Screen::History => app.draw_history(&mut self.g),
                 Screen::HoleComments => app.draw_hole_comments(&mut self.g),
+                Screen::Graphs => app.draw_graphs(&mut self.g),
                 Screen::Profile => {
                     app.draw_profile(&mut self.g);
                     app.draw_rename(&mut self.g);
@@ -2732,6 +2749,7 @@ impl EventHandler for Stage {
                 Screen::People => return self.app.people_wheel(y),
                 Screen::History => return self.app.history_wheel(y),
                 Screen::HoleComments => return self.app.hole_comments_wheel(y),
+                Screen::Graphs => return self.app.graphs_wheel(y),
                 Screen::Profile => return self.app.profile_wheel(y),
                 _ => {}
             }
@@ -2830,6 +2848,9 @@ impl EventHandler for Stage {
             } else if self.app.screen == Screen::HoleComments {
                 let (vx, vy) = self.app.view.to_virtual(x, y);
                 self.app.hole_comments_click(vx, vy, button == MouseButton::Right);
+            } else if self.app.screen == Screen::Graphs {
+                let (vx, vy) = self.app.view.to_virtual(x, y);
+                self.app.graphs_click(vx, vy, button == MouseButton::Right);
             } else if self.app.screen == Screen::Report {
                 let (vx, vy) = self.app.view.to_virtual(x, y);
                 self.app.report_click(vx, vy);
@@ -3157,6 +3178,8 @@ impl Stage {
                 app.profile_key(k);
             } else if app.screen == Screen::HoleComments {
                 app.hole_comments_key(k);
+            } else if app.screen == Screen::Graphs {
+                app.graphs_key(k);
             } else if app.screen == Screen::Report {
                 if k == KeyCode::Escape || k == KeyCode::F1 {
                     app.screen = Screen::Play;

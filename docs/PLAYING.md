@@ -138,8 +138,8 @@ Select Difficulty has a **Game** box next to Course size. One click switches bet
 - **The original**: every OpenSGolf extra off and Classic graphics; the game exactly as it was (fixes for the original's
   own bugs stay on). A new player starts here.
 - **OpenSGolf extras**: the interface extras (People screen, message history, name tags, report tabs, path help, autosave,
-  save pictures, course sharing; not the two pauses, which you tick yourself) and the
-  save pictures, course sharing, landing map, comments by hole) and the
+  save pictures, course sharing, landing map, comments by hole, history graphs; not the two pauses or the update check,
+  which you tick yourself) and the
   gameplay extras that do not change the game's balance (turning buildings, animals, more staff).
 
 If you ticked your own choice in Preferences, the box says "your own mix"; a click goes back to the original. The choice
@@ -367,6 +367,18 @@ compare pixel for pixel with the build before the extras).
   the wheel scroll through the holes. The words are the Customise screen's dialogue labels where a thought has one, else
   the F2 report's line. With the landing map on too, a click on a hole's block shows its landing map. Kept with the
   save while the extra is on.
+- **History graphs** (**Shift+Y**, *Information, History graphs*, or the *Graphs* tab after the others on the tabbed
+  reports): from the moment the extra is on, every game month is recorded for the club (rounds finished, holes played,
+  revenue and costs as the F4 Financial Report's ledger books them, profit, cash at the month's end, golfer happiness
+  (their mood as each hole ends), the fun and skill ratings, members) and for each hole (times played, strokes over par,
+  happiness after it, greens fees taken). The page draws one of them as a line over the months on the F3 Histograph's
+  page, in its fonts and colours: the tabs at the top choose the club or a hole and the measure (or Up/Down for the
+  measure, PageUp/PageDown for the club and the holes, the wheel for the measure), the months along the bottom follow the
+  game calendar (with *Slower seasons* a point is still one month of the calendar), and the month under the pointer
+  shows its exact value in a box (Left/Right, Home/End, or a click or tap on the plot hold a month up without a pointer).
+  The month in progress is drawn paler, as it stands so far. The last 80 months (ten game years) are kept with the save
+  while the extra is on; nothing from before it was switched on is shown. Esc, Enter, a right click, the tick or Shift+Y
+  close it.
 
 - **Pause in the background** (off, also with the one-click OpenSGolf extras: some players leave the game running in the
   background on purpose): the game pauses when its window goes to the background (another window takes the focus, the
@@ -388,7 +400,9 @@ Test hooks for stills: `--screen people|staff|pro|history|profile|pathview|tags|
   Both only watch the game: the golfers play exactly the same with them on or off. Ticks saved before they existed read
   as off (choose them in the extras box).
 
-Test hooks for stills: `--screen people|staff|pro|history|profile|pathview|tags|ticker|card|landing|holecomments` (with a game;
+Test hooks for stills: `--screen people|staff|pro|history|profile|pathview|tags|ticker|card|landing|holecomments|graphs` (with a game;
+`graphs` with `SG_GRAPHS=S,M[,C]` shows series S (0 the club, 1 to 18 a hole), measure M (its tab, from 0) and holds
+month C (from 0) up as a tap would;
 `landing` shows the landing map of the first open hole, or of hole N with `SG_LANDING_HOLE=N`; `SG_HOLECOMMENTS=P[,N]` shows comments by hole for period P, 0 this
 month, 1 last month, 2 this year, scrolled N holes down;
 `SG_PEOPLE_SORT=COL[,1]` sorts the People list by column COL, downward with 1), `--edit "M:6"` opens the extras box.

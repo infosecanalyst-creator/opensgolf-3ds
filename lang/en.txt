@@ -2466,6 +2466,7 @@ STR_CTL_QUICK_LOAD                      :Quick load
 STR_CTL_STAFF_VIEW                      :Staff areas off / on
 STR_CTL_LANDING_MAP                     :Landing map off / on
 STR_CTL_HOLE_COMMENTS                   :Comments by hole
+STR_CTL_GRAPHS                          :History graphs
 
 # The player's own SimGolf files (the port's own, gamefiles.rs): the title screen's button and the Preferences line
 STR_GAME_FILES_USE_MINE                 :Use my SimGolf files...
@@ -2626,6 +2627,7 @@ STR_EXTRAS_PAUSE_EVENTS                 : Pause on big news: VIPs, challenges, o
 STR_EXTRAS_LANDING_MAP                  : Landing map: where shots on a hole end up (Shift+D)
 STR_EXTRAS_HOLE_COMMENTS                : Comments by hole, this month and last (Shift+I)
 STR_EXTRAS_UPDATE_CHECK                 : Check for updates when the game starts (online)
+STR_EXTRAS_GRAPHS                       : History graphs: the club and each hole month by month (Shift+Y)
 STR_MENU_SYSTEM_SHARE                   : Share course (copy a course code)
 STR_FILES_PASTE_CODE                    :Paste a course code
 STR_FILES_CHALLENGE                     :Challenge: beat {DESIGNER}'s record of {SCORE}
@@ -2643,6 +2645,7 @@ STR_MENU_INFO_HISTORY                   : Message history
 STR_MENU_INFO_PATH_VIEW                 : Path view on / off
 STR_MENU_INFO_LANDING_MAP               : Landing map on / off
 STR_MENU_INFO_HOLE_COMMENTS             : Comments by hole
+STR_MENU_INFO_GRAPHS                    : History graphs
 # The message history
 STR_HISTORY_TITLE                       :Message History
 STR_HISTORY_HELP                        :Messages kept: {COUNT}, newest first. Click a message to go to the golfer or the place it is about.
@@ -2753,6 +2756,32 @@ STR_HOLECOMMENTS_NO_HOLES               :No holes are open yet.
 STR_HOLECOMMENTS_COUNTED                :Each hole's three most frequent thoughts and how often: green cheered golfers up, red put them out.
 STR_HOLECOMMENTS_HELP                   :Left/Right: the period. Up/Down or the wheel scroll. Esc or a click outside closes.
 STR_HOLECOMMENTS_HELP_MAP               :Left/Right: the period. Up/Down or the wheel scroll. Click a hole for its landing map.
+# History graphs (graphs.rs)
+STR_GRAPHS_TITLE                        :HISTORY GRAPHS
+STR_GRAPHS_CLUB                         :Club
+STR_GRAPHS_ROUNDS                       :Rounds
+STR_GRAPHS_PLAYS                        :Holes played
+STR_GRAPHS_REVENUE                      :Revenue
+STR_GRAPHS_COSTS                        :Costs
+STR_GRAPHS_PROFIT                       :Profit
+STR_GRAPHS_CASH                         :Cash
+STR_GRAPHS_HAPPINESS                    :Happiness
+STR_GRAPHS_FUN                          :Fun rating
+STR_GRAPHS_SKILL                        :Skill rating
+STR_GRAPHS_MEMBERS                      :Members
+STR_GRAPHS_HOLE_PLAYS                   :Times played
+STR_GRAPHS_OVER_PAR                     :Strokes over par
+STR_GRAPHS_HOLE_FEES                    :Greens fees
+STR_GRAPHS_HOLE_TITLE                   :Hole {HOLE}: {MEASURE}
+STR_GRAPHS_MONTH                        :{MONTH} {YEAR}
+STR_GRAPHS_SO_FAR                       :{MONTH} (so far)
+STR_GRAPHS_NO_VALUE                     :Not played this month
+STR_GRAPHS_FROM_PLAYS                   :From {COUNT} holes played
+STR_GRAPHS_EMPTY                        :No months yet: the graphs fill in month by month from now on.
+STR_GRAPHS_HELP                         :Left/Right: a month. Up/Down: the measure. PageUp/PageDown: club or hole.
+STR_GRAPHS_HOLE                         :Hole {HOLE}
+STR_GRAPHS_LATEST                       :Now: {VALUE}
+STR_GRAPHS_MONTHS                       :{COUNT} months
 # The tabs over the F1 to F10 reports (keep them short: ten share 740 pixels)
 STR_TABS_F1                             :F1 Course
 STR_TABS_F2                             :F2 Comments
@@ -2766,6 +2795,8 @@ STR_TABS_F9                             :F9 Roster
 STR_TABS_F10                            :F10 Awards
 # the eleventh tab, with comments by hole on (eleven share 792 pixels)
 STR_TABS_HOLES                          :By hole
+# the tab of the history graphs (twelve share 792 pixels)
+STR_TABS_GRAPHS                         :Graphs
 # Keyboard controls: the extras' keys
 STR_KEYS_HEAD_EXTRAS                    :OpenSGolf extras
 STR_KEYS_K_PEOPLE                       :Shift+G
@@ -2780,6 +2811,8 @@ STR_KEYS_K_LANDING_MAP                  :Shift+D
 STR_KEYS_LANDING_MAP                    :Landing map: where shots on the hole under the pointer end up
 STR_KEYS_K_HOLE_COMMENTS                :Shift+I
 STR_KEYS_HOLE_COMMENTS                  :Comments by hole: each hole's most frequent thoughts
+STR_KEYS_K_GRAPHS                       :Shift+Y
+STR_KEYS_GRAPHS                         :History graphs: the club and each hole month by month
 STR_KEYS_K_REPORT_TABS                  :Tab
 STR_KEYS_REPORT_TABS                    :On a report: the next report's tab (Shift+Tab the one before; the F keys go straight there)
 STR_KEYS_K_TAPE                         :'
