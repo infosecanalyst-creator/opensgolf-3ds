@@ -370,13 +370,13 @@ original art is drawn as a few crisp pixels at the art's pixel size, lit like th
 - **Falling leaves**: in September and October, with *Seasons*, leaves drop from broadleaf trees one pixel or two at a
   time, tumbling and drifting with the wind, more as the autumn colours deepen.
 
-Test hooks: `SG_FX_BIRDS=1` keeps two birds of prey over the middle of the view; `SG_FX_MONTH` picks the month.
+Test hooks: `SG_FX_BIRDS=1` keeps two birds of prey circling round the middle of the view (the fly-over sprite flies high above its ground point, so `SG_FX_BIRDS_AT=-1,5` moves the circle that many tiles to bring the bird to the screen's middle); `SG_FX_MONTH` picks the month.
 
 ### Tournament atmosphere
 
 During an SGA tournament or Play a Championship, spectators gather round the green and along both sides of the fairway
 of each hole being played, about twenty a hole, facing the pin. They are the game's own golfer sprites in the usual
-random colours, most standing, some fidgeting, and every so often a hole's crowd cheers (the golfers' *Happy* clip) for a
+random colours, standing, and every so often a hole's crowd cheers (the golfers' *Happy* clip) for a
 moment. They stand only on grass and rough on the club's land, never on greens, tees, sand, water, woods or buildings.
 They are drawn only: the golfers and the simulation do not see them. The original has no grandstand or fireworks art, so
 there are none, to keep to the original's look.

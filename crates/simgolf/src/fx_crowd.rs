@@ -6,9 +6,8 @@
 use crate::app::{App, Prop, GOLFER_BODIES};
 use sg_core::terrain::*;
 
-/// The golfer clips spectators use (bases of app::GOLFER_CLIPS): standing, fidgeting, cheering.
+/// The golfer clips spectators use (bases of app::GOLFER_CLIPS): standing and cheering.
 const SQ: i32 = 0x0a;
-const FIDGET: i32 = 0x14;
 const HAPPY: i32 = 0x1e;
 /// Spectators round a green and along a fairway.
 const ROUND_GREEN: u32 = 14;
@@ -99,13 +98,8 @@ impl App {
                 let bodies: Vec<usize> = (0..GOLFER_BODIES.len()).filter(|&b| !GOLFER_BODIES[b].is_empty()).collect();
                 let body = bodies[(hash(k, 1) * bodies.len() as f32) as usize % bodies.len()];
                 let r = hash(k, 2);
-                let clip = if cheering && r < 0.8 {
-                    HAPPY
-                } else if r < 0.3 {
-                    FIDGET
-                } else {
-                    SQ
-                };
+                // standing, or cheering with the hole's crowd (the golfers' fidget swings a club: not for spectators)
+                let clip = if cheering && r < 0.8 { HAPPY } else { SQ };
                 let (Some(b), shadow) = self.golfer_clip(clip + body as i32) else { continue };
                 let n = self.frames_of(Some(b));
                 let frame = if clip == SQ { 0 } else { (tick / 2 + (hash(k, 3) * 40.0) as i32).rem_euclid(n.max(1)) };

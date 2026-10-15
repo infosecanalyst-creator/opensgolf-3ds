@@ -68,7 +68,10 @@ impl App {
             // units_to_world's inverse
             let (x0, z0) = self.units_to_world(0, 0);
             let k = TILE_SIZE / sg_core::staff::UNIT as f32;
-            ((self.cam_x - x0) / k, (self.cam_z - z0) / k)
+            // the fly-over sprite flies high above its ground point: SG_FX_BIRDS_AT=dx,dy (tiles) moves the circle
+            let off: Vec<f32> = std::env::var("SG_FX_BIRDS_AT").unwrap_or_default().split(',').filter_map(|v| v.parse().ok()).collect();
+            let (ox, oy) = (off.first().copied().unwrap_or(0.0) * 1024.0, off.get(1).copied().unwrap_or(0.0) * 1024.0);
+            ((self.cam_x - x0) / k + ox, (self.cam_z - z0) / k + oy)
         } else {
             (n * (0.25 + 0.5 * hash(ks, 2)), n * (0.25 + 0.5 * hash(ks, 3)))
         };
