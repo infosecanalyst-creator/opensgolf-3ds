@@ -84,8 +84,9 @@ With its default settings OpenSGolf plays like the original, apart from these:
 
 Optional, and off by default (Start New Game has a one-click switch between *the original* and *OpenSGolf extras*):
 
-- **Enhanced graphics** for 4K and widescreen: sharp scaling, water, light, weather by each place's climate, seasons,
-  late-winter snow, birds of prey, butterflies and falling leaves, grass tufts, tournament crowds and a photo mode
+- **Enhanced graphics** for 4K and widescreen: sharp scaling, water (depth, waves with the wind, shorelines, rain rings,
+  reeds, ducks, swans, jumping fish, frozen ponds), light, weather by each place's climate, seasons, late-winter snow,
+  birds of prey, butterflies and falling leaves, grass tufts, tournament crowds and a photo mode
   ([docs/ENHANCED.md](docs/ENHANCED.md)).
 - **Bigger courses:** Large, Huge and Giant, up to 128 × 128 tiles.
 - **OpenSGolf extras:** a Hardcore economy, turning buildings, cut content restored as landmarks, animals to buy, higher
