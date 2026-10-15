@@ -48,8 +48,8 @@ ndk-context = "0.1"
 [package.metadata.android]
 package_name = "org.opensgolf.game"
 label = "OpenSGolf"
-version_code = 18
-version_name = "0.3.3"
+version_code = 19
+version_name = "0.3.4"
 min_sdk_version = 26
 target_sdk_version = 33
 build_targets = ["aarch64-linux-android", "armv7-linux-androideabi", "x86_64-linux-android"]
