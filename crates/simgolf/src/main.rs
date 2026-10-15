@@ -45,6 +45,7 @@ mod fx_shadow;
 mod fx_smooth;
 mod fx_wet;
 mod gamefiles;
+mod gamepad;
 mod gfx;
 mod hd;
 mod history_ui;
@@ -136,6 +137,8 @@ struct Options {
     enhanced: Option<bool>,
     /// --no-extras: the OpenSGolf extras off for this run (extras.rs), not saved.
     no_extras: bool,
+    /// --fullscreen, or Steam's Game Mode (the Steam Deck): start full screen.
+    fullscreen: bool,
     /// --base ID: the base set for this run (original, opensgolf-free or a base pack), not saved.
     base: Option<String>,
     /// --lang CODE: the language for this run (else the saved setting); --lang-file FILE: a translation file to try out.
@@ -148,7 +151,7 @@ struct Options {
 const USAGE: &str = "usage: opensgolf [--game DIR] [--theme T] [--seed N] [--size WxH] [--zoom Z] [--rot DEG] [--center TX,TY] [--png FILE] \
 [--time S] [--follow] [--golfer NAME] [--sandbox] [--course-size N] [--cash N] [--difficulty 0-3] [--screen menu|property|play|report] [--course FILE] [--save FILE] \
 [--edit SPEC] [--panel N] [--mute] [--sound-log] [--clock MS] [--property N|NAME] [--hd | --classic] [--hd-pack DIR] \
-[--enhanced | --classic-render] [--no-extras] [--fx] [--fx-set LIST] \
+[--enhanced | --classic-render] [--no-extras] [--fullscreen] [--fx] [--fx-set LIST] \
 [--lang CODE] [--lang-file FILE] [--base original|opensgolf-free|ID] [--scenario ID]";
 
 /// Leading comma separated integers, like sscanf("%d,%d,...") (stops at the first one that does not parse).
@@ -205,6 +208,7 @@ fn parse_args() -> Options {
         fx_set: None,
         enhanced: None,
         no_extras: false,
+        fullscreen: false,
         base: None,
         lang: None,
         lang_file: None,
@@ -273,6 +277,7 @@ fn parse_args() -> Options {
             "--enhanced" => o.enhanced = Some(true),
             "--classic-render" => o.enhanced = Some(false),
             "--no-extras" => o.no_extras = true,
+            "--fullscreen" => o.fullscreen = true,
             "--base" => o.base = Some(next()),
             "--lang" => o.lang = Some(next()),
             "--lang-file" => o.lang_file = Some(PathBuf::from(next())),
@@ -303,6 +308,8 @@ fn parse_args() -> Options {
 }
 
 struct Stage {
+    /// A controller (gamepad.rs).
+    pad: gamepad::Pad,
     /// the desktop window is full screen (F11 or Alt+Enter)
     #[cfg_attr(any(target_arch = "wasm32", target_os = "android"), allow(dead_code))]
     fullscreen: bool,
@@ -1216,7 +1223,8 @@ impl Stage {
         Stage {
             g,
             app,
-            fullscreen: false,
+            fullscreen: o.fullscreen,
+            pad: Default::default(),
             png_out: o.png_out,
             save_game_out: o.save_game,
             frames: 0,
@@ -2012,6 +2020,7 @@ impl Stage {
         self.app.draw_report_tabs(&mut self.g);
         self.app.draw_notice(&mut self.g);
         self.draw_touch_buttons();
+        self.draw_gamepad_pointer();
         self.g.flush();
         self.g.ctx.end_render_pass();
         enhanced::end_frame();
@@ -2268,6 +2277,8 @@ impl EventHandler for Stage {
         // the Autosave extra (autosave.rs) and a course code being pasted (share.rs)
         self.app.autosave_tick(t);
         self.app.share_tick(t);
+        // a controller's sticks and buttons (gamepad.rs)
+        self.gamepad_update(t);
         // the sound output follows the system's default device (audio.rs)
         if let Some(a) = self.app.audio.as_mut() {
             a.keep_alive();
@@ -2438,6 +2449,7 @@ impl EventHandler for Stage {
 
     fn mouse_motion_event(&mut self, x: f32, y: f32) {
         sysdiag::event(sysdiag::Ev::Mouse);
+        self.gamepad_mouse_moved(x, y);
         let (dx, dy) = (x - self.mouse.0, y - self.mouse.1);
         self.mouse = (x, y);
         if self.app.photo.is_some() {
@@ -3012,20 +3024,23 @@ fn main() {
     sysdiag::init();
     #[cfg(target_os = "android")]
     android::init();
-    let o = parse_args();
+    let mut o = parse_args();
     // the text's language first: the window's title is already text
     match &o.lang_file {
         Some(f) => _ = language::apply_file(f),
         None => _ = language::apply(&o.lang.clone().unwrap_or_else(language::saved)),
     }
+    let steam_ui = ["SteamDeck", "SteamGamepadUI"].iter().any(|k| std::env::var(k).is_ok_and(|v| !v.is_empty() && v != "0"));
+    o.fullscreen |= steam_ui && cfg!(target_os = "linux");
     let conf = conf::Conf {
         window_title: tr("STR_WINDOW_TITLE").to_string(),
         window_width: o.win_w,
         window_height: o.win_h,
         high_dpi: true,
         window_resizable: true,
-        // a phone or tablet: the whole screen (the manifest keeps it landscape, Cargo.toml)
-        fullscreen: cfg!(target_os = "android"),
+        // a phone or tablet: the whole screen (the manifest keeps it landscape, Cargo.toml); on the desktop with
+        // --fullscreen, and in Steam's Game Mode (a Steam Deck, or Big Picture), which sets SteamDeck or SteamGamepadUI
+        fullscreen: cfg!(target_os = "android") || o.fullscreen,
         // 32-bit mesh indices need WebGL 2 in a browser.
         platform: conf::Platform {
             webgl_version: conf::WebGLVersion::WebGL2,

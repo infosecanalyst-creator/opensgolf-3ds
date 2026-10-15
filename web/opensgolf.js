@@ -863,3 +863,23 @@ function sgKeyboard(show) {
         document.getElementById("glcanvas").focus();
     }
 }
+
+// Controllers (crates/simgolf/src/gamepad.rs): each frame the first connected gamepad's buttons (standard mapping, as
+// bits) and sticks go to the game; a controller that goes away is let go once with everything released.
+let sgPadWas = false;
+function sgPadPoll() {
+    requestAnimationFrame(sgPadPoll);
+    if (typeof wasm_exports === "undefined" || !wasm_exports.sg_gamepad || !navigator.getGamepads) return;
+    const p = Array.from(navigator.getGamepads()).find(g => g && g.connected);
+    if (!p) {
+        if (sgPadWas) wasm_exports.sg_gamepad(0, 0, 0, 0, 0);
+        sgPadWas = false;
+        return;
+    }
+    sgPadWas = true;
+    let b = 0;
+    for (let i = 0; i < 16 && i < p.buttons.length; i++) if (p.buttons[i].pressed) b |= 1 << i;
+    const a = p.axes;
+    wasm_exports.sg_gamepad(b, a[0] || 0, a[1] || 0, a[2] || 0, a[3] || 0);
+}
+requestAnimationFrame(sgPadPoll);

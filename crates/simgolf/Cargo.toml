@@ -24,15 +24,20 @@ ureq = { version = "3", optional = true, default-features = false, features = ["
 # or Android, which have their own ways in.
 [target.'cfg(not(any(target_arch = "wasm32", target_os = "android")))'.dependencies]
 rfd = { version = "0.17", optional = true, default-features = false, features = ["xdg-portal"] }
+# Controllers (gamepad.rs): Xbox, PlayStation, Switch and Steam Deck controllers on Windows, macOS and Linux (on Linux it
+# needs libudev to build, the libudev-dev package). The browser reads them through the page.
+gilrs = { version = "0.11", optional = true }
 
 [features]
-default = ["audio", "net", "picker"]
+default = ["audio", "net", "picker", "gamepad"]
 # Sound output through the system's audio device (CoreAudio, WASAPI, ALSA). Without it the game runs silent.
 audio = ["dep:cpal"]
 # Downloading content packs over HTTPS (desktop). Without it only file:// content indexes work.
 net = ["dep:ureq"]
 # The system folder picker of "Use my SimGolf files..." (desktop). Without it the option says where to put the files.
 picker = ["dep:rfd"]
+# Controllers on the desktop (gamepad.rs). Without it only the browser reads controllers.
+gamepad = ["dep:gilrs"]
 
 # Android only: hands miniquad's Java VM to cpal's oboe sound output (src/android.rs).
 [target.'cfg(target_os = "android")'.dependencies]

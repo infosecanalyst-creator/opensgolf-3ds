@@ -323,6 +323,33 @@ changed every key does what it did before.
 Test hooks: `SG_PRESS="u;Shift+Q;..."` presses keys (the names `settings.json` uses) after a scripted still's first frame,
 after `SG_CLICK`; letters and Space also type their character.
 
+## Controllers and the Steam Deck
+
+An Xbox, PlayStation, Switch Pro or Steam Deck controller plays the whole game (the port's own; on Windows, macOS, Linux
+and in the browser, not in the Android app yet):
+
+| Control | Does |
+|---|---|
+| Left stick | moves the pointer (the game draws it while the controller is in use; moving the mouse gives it back) |
+| Right stick | scrolls the course |
+| A | click; hold to drag or paint |
+| B | on the course a right click (undo, remove); on other screens Esc (close, back) |
+| X | Tab (turn a building, or the next design) |
+| Y | game speed (]) |
+| LB / RB | turn the view |
+| LT / RT | zoom out / in |
+| D-pad | the arrow keys (scroll, lists) |
+| Start | Esc (System Functions: save, load, quit) |
+| Back / Select | pause |
+| Left stick click | open a hole (h) |
+| Right stick click | the last message again (?) |
+
+**Steam Deck:** download the Linux AppImage (`opensgolf-linux-x86_64.AppImage`) in Desktop Mode, make it executable
+(Properties, Permissions, "Is executable"), then in Steam use *Games, Add a Non-Steam Game to My Library* and pick it.
+In Game Mode the game starts full screen and the Deck's controls work as above (pick the *Gamepad* controller layout if
+Steam offers another). The trackpads move the mouse as usual. To name a course or a save, press Steam + X for Steam's
+keyboard. `--fullscreen` starts full screen on any computer (F11 or Alt+Enter switches while playing).
+
 ## Touch (phones and tablets)
 
 The same touch controls work in the browser and in the Android app (crates/simgolf/src/touch.rs).
