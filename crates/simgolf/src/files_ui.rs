@@ -41,6 +41,8 @@ pub enum ListKind {
 pub struct SaveInfo {
     /// The course's map for the Save pictures extra: its side in cells and a colour per cell, rows first.
     pub map: (usize, Vec<[f32; 4]>),
+    /// Shared by course code or file (share.rs): the course record is a challenge.
+    pub shared: bool,
     /// Open holes: number, par, yards.
     pub holes: Vec<(usize, i32, i32)>,
     pub par: i32,
@@ -65,6 +67,7 @@ impl SaveInfo {
         let theme = if s.theme_pack.is_empty() { "Standard".to_string() } else { s.theme_pack.replace('_', " ") };
         SaveInfo {
             map: course_map(&s.terrain, s.land.as_ref()),
+            shared: s.shared,
             par: holes.iter().map(|h| h.1).sum(),
             yards: holes.iter().map(|h| h.2).sum(),
             holes,
@@ -90,6 +93,8 @@ pub struct FileList {
     /// Opened from a game in progress (System Functions, Shift+L): Cancel goes back to it.
     pub from_game: bool,
     pub info: Option<SaveInfo>,
+    /// The pointer is on the paste button (share.rs).
+    pub paste_lit: bool,
     pub pro: Option<ProFile>,
     portrait_px: Option<Rgba>,
     portrait: Option<Image>,
@@ -197,6 +202,9 @@ fn top(s: &Ui, g: &mut Gfx, x: f32, y: f32, t: &str, size: f32, c: [f32; 4]) {
 fn top_c(s: &Ui, g: &mut Gfx, x: f32, y: f32, t: &str, size: f32, c: [f32; 4]) {
     s.put_centered(g, font(size), x, y, t, c);
 }
+
+/// The Course sharing extra's *Paste a course code* button on the championship course list (share.rs).
+const PASTE_RECT: Rect = Rect::new(390.0, 520.0, 200.0, 36.0);
 
 /// The Save pictures extra's map of a course: one cell per tile (a cell per 2 x 2 tiles, or more, on large maps), coloured
 /// by the tile's terrain, paths over it, and the land the club does not own darker.
@@ -597,6 +605,15 @@ impl App {
             }
             return;
         }
+        // the Course sharing extra's paste button on the championship course list (share.rs)
+        if f.kind == ListKind::Course && crate::extras::sharing() && PASTE_RECT.has(vx, vy) {
+            f.paste_lit = true;
+            if click {
+                self.paste_course();
+            }
+            return;
+        }
+        f.paste_lit = false;
         let hit = list_hit(vx, vy);
         self.hover = hit;
         if !click {
@@ -759,6 +776,11 @@ impl App {
                 }
             }
         }
+        if f.kind == ListKind::Course && crate::extras::sharing() {
+            let r = PASTE_RECT;
+            s.fill(g, r.x, r.y, r.w, r.h, if f.paste_lit { rgba(0.15, 0.2, 0.45, 0.95) } else { rgba(0.08, 0.1, 0.3, 0.85) });
+            s.text_centered(g, r.x + r.w / 2.0, r.y + 24.0, tr("STR_FILES_PASTE_CODE"), 15.0, rgb(1.0, 1.0, 1.0));
+        }
         let go = f.loading == 2;
         if f.loading == 1 {
             f.loading = 2;
@@ -820,7 +842,11 @@ impl App {
         }
         top(s, g, 388.0, 442.0, &trf("STR_FILES_THEME", &[("THEME", &i.theme)]), 13.0, WHITE);
         top(s, g, 388.0, 458.0, &trf("STR_FILES_DESIGNED_BY", &[("DESIGNER", &i.designer)]), 13.0, WHITE);
-        if i.record > 0 {
+        if i.record > 0 && i.shared {
+            // the Course sharing extra: the sharer's record is the one to beat (share.rs)
+            let t = trf("STR_FILES_CHALLENGE", &[("DESIGNER", &i.designer), ("SCORE", &i.record)]);
+            top(s, g, 388.0, 474.0, &t, 13.0, rgb(1.0, 0.9, 0.4));
+        } else if i.record > 0 {
             // the port keeps the best rounds but not who played them
             top(s, g, 388.0, 474.0, &trf("STR_FILES_COURSE_RECORD", &[("SCORE", &i.record)]), 13.0, WHITE);
         }

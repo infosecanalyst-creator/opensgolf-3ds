@@ -108,7 +108,7 @@ Select Difficulty has a **Game** box next to Course size. One click switches bet
 - **The original**: every OpenSGolf extra off and Classic graphics; the game exactly as it was (fixes for the original's
   own bugs stay on). A new player starts here.
 - **OpenSGolf extras**: the interface extras (People screen, message history, name tags, report tabs, path help, autosave,
-  save pictures) and the
+  save pictures, course sharing) and the
   gameplay extras that do not change the game's balance (turning buildings, animals, more staff).
 
 If you ticked your own choice in Preferences, the box says "your own mix"; a click goes back to the original. The choice
@@ -246,6 +246,12 @@ compare pixel for pixel with the build before the extras).
 - **Save pictures**: Load Previous Game draws a map of the selected save's course in the list's top right corner: fairways,
   greens, sand, water, woods, paths and buildings, with the land the club does not own darker. It reads the save itself, so
   older saves get a picture too.
+- **Course sharing**: System Functions, *Share course (copy a course code)* copies a code for your course (it starts
+  `OPENSGOLF-COURSE-1:`) and saves the course for championship play. Send the code to a friend in a message or a text
+  file. They press **Ctrl+V** (Cmd+V on a Mac) anywhere in OpenSGolf, or click *Paste a course code* on Play a
+  Championship's course list, and the course joins their championship courses. Dropping a shared `.sgch` course, a saved
+  game (`.sgs`) or a text file holding a code on the window brings it in too. The challenge: your course record travels
+  with the course, and the course list shows it to your friend as the score to beat.
 
 Test hooks for stills: `--screen people|staff|pro|history|profile|pathview|tags|ticker|card` (with a game;
 `SG_PEOPLE_SORT=COL[,1]` sorts the People list by column COL, downward with 1), `--edit "M:6"` opens the extras box.

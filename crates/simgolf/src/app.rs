@@ -343,6 +343,9 @@ pub struct SaveGame {
     /// What the OpenSGolf extras keep (extras.rs): the message history, employees' names, what golfers said, bios.
     #[serde(default, skip_serializing_if = "crate::extras::Kept::is_empty")]
     pub extras: crate::extras::Kept,
+    /// A course shared by course code or file (share.rs): its course record is the challenge to beat.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub shared: bool,
     /// The content packs loaded when the game was saved (content_profiles.rs; a record with its own version; older saves:
     /// none, and they load without asking).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -378,6 +381,19 @@ pub fn read_save(path: &Path) -> Result<SaveGame, String> {
 }
 
 /// Reads a whole game from the bytes of a save file (`name` for the messages): a scenario pack's course may be in a zip.
+/// A save as a saved file's bytes: the magic line, then the JSON compressed with zlib at `level`.
+pub fn encode_save(save: &SaveGame, level: u8) -> Result<Vec<u8>, String> {
+    let json = serde_json::to_vec(save).map_err(|e| e.to_string())?;
+    let mut out = SAVE_MAGIC.to_vec();
+    out.extend(miniz_oxide::deflate::compress_to_vec_zlib(&json, level));
+    Ok(out)
+}
+
+/// Whether bytes start as a saved game does.
+pub fn is_save(data: &[u8]) -> bool {
+    data.starts_with(SAVE_MAGIC)
+}
+
 pub fn read_save_bytes(data: &[u8], name: &str) -> Result<SaveGame, String> {
     let body = data.strip_prefix(SAVE_MAGIC).ok_or_else(|| trf("STR_ERROR_NOT_A_SAVED_GAME", &[("FILE", &name)]))?;
     let json = miniz_oxide::inflate::decompress_to_vec_zlib(body).map_err(|e| format!("{name}: {e:?}"))?;
@@ -684,6 +700,8 @@ pub struct App {
     pub undo: crate::undo::Undo,
     /// When the next autosave is due (autosave.rs; 0: not counting).
     pub autosave_due: f64,
+    /// Until when a pasted course code is waited for (share.rs; 0: not waiting).
+    pub paste_wait: f64,
     pub strip_page: u8,
     /// Where each golfer slot's ball was drawn last frame (the exe keeps the screen point, 0x567b34 / 0x567d94), for the
     /// sweet shot's streak.
@@ -917,6 +935,7 @@ impl App {
             extras_next: crate::extras_ui::saved(),
             undo: Default::default(),
             autosave_due: 0.0,
+            paste_wait: 0.0,
             strip_page: 0,
             ball_trail: Vec::new(),
             tracts: Default::default(),
@@ -2516,11 +2535,9 @@ impl App {
             scripts: self.scripts_for_save(),
             extras: self.xs.kept.clone(),
             packs: self.saved_packs(),
+            shared: false,
         };
-        let json = serde_json::to_vec(&save).map_err(|e| e.to_string())?;
-        let mut out = SAVE_MAGIC.to_vec();
-        out.extend(miniz_oxide::deflate::compress_to_vec_zlib(&json, level));
-        Ok(out)
+        encode_save(&save, level)
     }
 
     /// Loads a whole game saved by `save_game` and goes on from where it was.

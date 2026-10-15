@@ -11,7 +11,8 @@
 //! * path help (pathview_ui.rs): a path view marking buildings and holes the paths do not reach, and a Show button on
 //!   messages about a place;
 //! * autosave (autosave.rs): the game saved every five minutes of play, as "autosave (Latest)" in the Load list;
-//! * save pictures (files_ui.rs): a map of the course beside the Load list's saves.
+//! * save pictures (files_ui.rs): a map of the course beside the Load list's saves;
+//! * course sharing (share.rs): course codes and shared files for Play a Championship, with the sharer's record to beat.
 //!
 //! With every extra off the game draws and plays exactly as before they existed (each hook asks its switch first).
 use serde::{Deserialize, Serialize};
@@ -30,11 +31,20 @@ pub struct Settings {
     pub path_help: bool,
     pub autosave: bool,
     pub save_pictures: bool,
+    pub sharing: bool,
 }
 
 impl Settings {
-    pub const ALL_ON: Settings =
-        Settings { people: true, history: true, name_tags: true, report_tabs: true, path_help: true, autosave: true, save_pictures: true };
+    pub const ALL_ON: Settings = Settings {
+        people: true,
+        history: true,
+        name_tags: true,
+        report_tabs: true,
+        path_help: true,
+        autosave: true,
+        save_pictures: true,
+        sharing: true,
+    };
     pub const ALL_OFF: Settings = Settings {
         people: false,
         history: false,
@@ -43,11 +53,12 @@ impl Settings {
         path_help: false,
         autosave: false,
         save_pictures: false,
+        sharing: false,
     };
 
     /// The ticks as the Extras box's checkbox bits (in `LINES` order).
     pub fn bits(&self) -> u32 {
-        [self.people, self.history, self.name_tags, self.report_tabs, self.path_help, self.autosave, self.save_pictures]
+        [self.people, self.history, self.name_tags, self.report_tabs, self.path_help, self.autosave, self.save_pictures, self.sharing]
             .iter()
             .enumerate()
             .fold(0, |m, (i, &on)| m | (on as u32) << i)
@@ -63,6 +74,7 @@ impl Settings {
             path_help: on(4),
             autosave: on(5),
             save_pictures: on(6),
+            sharing: on(7),
         }
     }
 }
@@ -76,7 +88,7 @@ impl Default for Settings {
 /// The Extras box's lines under the gameplay extras (popup_ui.rs): an empty line (a heading under options is drawn at the
 /// options' row height, so it needs the room), the heading, then one tick per extra (text keys in lang/en.txt), then an
 /// empty line that keeps the OK tick clear of the last one.
-pub const LINES: [&str; 10] = [
+pub const LINES: [&str; 11] = [
     "STR_EXTRAS_END",
     "STR_EXTRAS_UI_HEAD",
     "STR_EXTRAS_PEOPLE",
@@ -86,6 +98,7 @@ pub const LINES: [&str; 10] = [
     "STR_EXTRAS_PATH_HELP",
     "STR_EXTRAS_AUTOSAVE",
     "STR_EXTRAS_SAVE_PICTURES",
+    "STR_EXTRAS_SHARING",
     "STR_EXTRAS_END",
 ];
 
@@ -122,6 +135,9 @@ pub fn autosave() -> bool {
 pub fn save_pictures() -> bool {
     settings().save_pictures
 }
+pub fn sharing() -> bool {
+    settings().sharing
+}
 
 fn settings_json() -> serde_json::Value {
     sg_core::fsutil::read_file(crate::app::save_dir().join(crate::hd::SETTINGS_FILE))
@@ -138,10 +154,14 @@ pub fn saved() -> Settings {
     }
     let v = settings_json()[SETTINGS_KEY].clone();
     let mut s: Settings = serde_json::from_value(v.clone()).unwrap_or_default();
-    // ticks saved before autosave and save pictures existed: those two follow the People screen's tick (all on or all off)
+    // ticks saved before autosave, save pictures and sharing existed: those follow the People screen's tick (all on or
+    // all off)
     if v.is_object() && v.get("autosave").is_none() {
         s.autosave = s.people;
         s.save_pictures = s.people;
+    }
+    if v.is_object() && v.get("sharing").is_none() {
+        s.sharing = s.people;
     }
     s
 }

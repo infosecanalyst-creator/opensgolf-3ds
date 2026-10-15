@@ -71,6 +71,7 @@ mod report_tabs;
 mod reports_ui;
 mod scenario_ui;
 mod screens_ui;
+mod share;
 mod sysdiag;
 mod tags_ui;
 mod thoughts_ui;
@@ -1320,6 +1321,7 @@ impl Stage {
                 5 => self.app.open_popup(PopupKind::Prefs),
                 6 => self.app.save_championship_course(),
                 7 => self.app.open_popup(PopupKind::Retire),
+                8 if extras::sharing() => self.app.share_course(),
                 _ => {}
             },
             // Preferences > Enhanced graphics: the ticks become the settings (enhanced.rs)
@@ -2263,8 +2265,9 @@ impl EventHandler for Stage {
         self.app.extras_test_hook();
         // "Use my SimGolf files...": a .zip being unpacked or a folder being copied (gamefiles.rs)
         self.app.poll_import();
-        // the Autosave extra (autosave.rs)
+        // the Autosave extra (autosave.rs) and a course code being pasted (share.rs)
         self.app.autosave_tick(t);
+        self.app.share_tick(t);
         // the sound output follows the system's default device (audio.rs)
         if let Some(a) = self.app.audio.as_mut() {
             a.keep_alive();
@@ -2755,6 +2758,11 @@ impl EventHandler for Stage {
             miniquad::window::set_fullscreen(self.fullscreen);
             return;
         }
+        // the port's own Course sharing: Ctrl+V (Cmd+V on a Mac) pastes a course code (share.rs)
+        if k == KeyCode::V && (mods.ctrl || mods.logo) && extras::sharing() {
+            self.app.paste_course();
+            return;
+        }
         // the port's own: Ctrl+Z (Cmd+Z on a Mac) undoes the last click that changed the course (undo.rs)
         if k == KeyCode::Z && (mods.ctrl || mods.logo) && self.app.screen == Screen::Play && !self.editing {
             if self.app.undo_step(&mut self.g) {
@@ -2771,6 +2779,21 @@ impl EventHandler for Stage {
         let typing = self.app.typing();
         self.key_down(k);
         self.swallow_char = !typing && self.app.typing();
+    }
+
+    fn files_dropped_event(&mut self) {
+        // the port's own Course sharing: shared courses, saved games and course codes dropped on the window (share.rs)
+        if !extras::sharing() {
+            return;
+        }
+        for i in 0..miniquad::window::dropped_file_count() {
+            let path = miniquad::window::dropped_file_path(i);
+            let name = path.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            let bytes = miniquad::window::dropped_file_bytes(i).or_else(|| path.and_then(sg_core::fsutil::read_file));
+            if let Some(b) = bytes {
+                self.app.import_dropped(&name, &b);
+            }
+        }
     }
 
     fn char_event(&mut self, c: char, _mods: KeyMods, _repeat: bool) {
