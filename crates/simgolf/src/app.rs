@@ -698,8 +698,9 @@ pub struct App {
     pub extras_next: sg_core::extras::Extras,
     /// Undo for building and terrain (undo.rs).
     pub undo: crate::undo::Undo,
-    /// When the next autosave is due (autosave.rs; 0: not counting).
+    /// Seconds of play since the last autosave, and the clock at the last frame (autosave.rs).
     pub autosave_due: f64,
+    pub autosave_clock: f64,
     /// Until when a pasted course code is waited for (share.rs; 0: not waiting).
     pub paste_wait: f64,
     pub strip_page: u8,
@@ -935,6 +936,7 @@ impl App {
             extras_next: crate::extras_ui::saved(),
             undo: Default::default(),
             autosave_due: 0.0,
+            autosave_clock: 0.0,
             paste_wait: 0.0,
             strip_page: 0,
             ball_trail: Vec::new(),
@@ -2414,6 +2416,7 @@ impl App {
 
     pub fn start_game(&mut self, g: &mut Gfx, prop_idx: usize, sandbox: bool) {
         self.undo.clear();
+        self.autosave_due = 0.0;
         let p = sg_core::data::properties()[prop_idx];
         // a game started without the difficulty screen (scripted runs) still gets its Top 10 id
         if self.course_id.is_none() {
@@ -2549,6 +2552,7 @@ impl App {
     /// Goes on with a game read by `read_save` (or `read_save_bytes`).
     pub fn load_save(&mut self, g: &mut Gfx, s: SaveGame) -> Result<(), String> {
         self.undo.clear();
+        self.autosave_due = 0.0;
         self.load_save_with(g, s, false)
     }
 

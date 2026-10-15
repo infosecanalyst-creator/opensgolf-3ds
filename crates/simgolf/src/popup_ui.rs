@@ -509,7 +509,7 @@ impl App {
                 .chain(crate::extras::sharing().then(|| tr("STR_MENU_SYSTEM_SHARE")))
                 .chain([tr("STR_MENU_SYSTEM_BACK")])
                 .collect(),
-                if tour || pro_out { 0 } else { 1 << 2 } | if tour { 1 << 6 } else { 0 },
+                if tour || pro_out { 0 } else { 1 << 2 } | if tour { 1 << 6 | 1 << 8 } else { 0 },
                 250.0,
                 // one line higher with the sharing line, so the box stays on the screen
                 if crate::extras::sharing() { 308.0 } else { 340.0 },

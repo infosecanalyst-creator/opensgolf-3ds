@@ -4,7 +4,8 @@ A short handoff note so work can be picked up in a fresh session.
 
 ## Released
 
-- **v0.2.6** is the latest release (`main`): all of 0.2 (course sizes, controls, mod profiles, original-bug fixes,
+- **v0.3.0** is the latest release (`main`): 0.3's Original/Extras switch, undo, autosave, save pictures, course
+  sharing, controllers and the Steam Deck, and the new Enhanced graphics; all of 0.2 (course sizes, controls, mod profiles, original-bug fixes,
   gameplay and interface extras) plus the Windows on ARM fix (patched miniquad in `vendor/miniquad`, see its
   `README-OPENSGOLF.md`; drop it once miniquad fixes `GWLP_USERDATA` on aarch64).
 - The browser version at <https://crspytopgn.github.io/opensgolf/> deploys automatically from `main`.
@@ -13,11 +14,11 @@ A short handoff note so work can be picked up in a fresh session.
 - CI: checks run once per PR (and on pushes to `main`); the Android check builds arm64 only with a cached build;
   releases build every target.
 
-## Next: 0.3
+## Next
 
-See "Roadmap: 0.3" in the README. The rule: the original game is always one click away; everything new is optional
-and off by default, except fixes for the original's own bugs. Planned: a one-click Original/Extras switch on the New
-Game screen, course sharing and challenges, undo, autosave and save slots with pictures, controller support.
+See "Roadmap" in the README. The rule: the original game is always one click away; everything new is optional and off
+by default, except fixes for the original's own bugs. Not yet done from 0.3: controllers in the Android app; tested only
+with a simulated controller (browser) so far.
 
 ## Checks before every commit
 

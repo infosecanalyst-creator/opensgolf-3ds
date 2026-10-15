@@ -2721,7 +2721,7 @@ impl EventHandler for Stage {
             return;
         }
         // the port's own undo: the game as it is before a click on the course (undo.rs)
-        if button == MouseButton::Left && self.app.screen == Screen::Play {
+        if button == MouseButton::Left && self.app.screen == Screen::Play && self.app.edit {
             self.app.undo_press();
         }
         if self.app.edit && button == MouseButton::Left {

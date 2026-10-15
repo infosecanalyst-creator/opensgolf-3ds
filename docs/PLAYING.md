@@ -241,8 +241,9 @@ compare pixel for pixel with the build before the extras).
   original leaves closed) and on each hole with no joined path within three tiles of its tee, with a legend in the upper
   right. The original's monthly warning that a building is not operational gets a **Show** button on the ticker that takes
   the camera to the building.
-- **Autosave**: every five minutes of play the game is saved to Saved Games as *autosave (Latest)*, overwriting the last
-  one, so a crash or a closed tab loses at most five minutes. Load it from Load Previous Game like any save.
+- **Autosave**: every five minutes of play (time on the course, not in reports or menus) the game is saved to Saved Games
+  as *autosave (Latest)*, overwriting the last one, so a crash or a closed tab loses at most five minutes. Test hook:
+  `SG_AUTOSAVE_SECS=N` saves every N seconds of play instead. Load it from Load Previous Game like any save.
 - **Save pictures**: Load Previous Game draws a map of the selected save's course in the list's top right corner: fairways,
   greens, sand, water, woods, paths and buildings, with the land the club does not own darker. It reads the save itself, so
   older saves get a picture too.
@@ -256,8 +257,8 @@ compare pixel for pixel with the build before the extras).
 Test hooks for stills: `--screen people|staff|pro|history|profile|pathview|tags|ticker|card` (with a game;
 `SG_PEOPLE_SORT=COL[,1]` sorts the People list by column COL, downward with 1), `--edit "M:6"` opens the extras box.
 
-**Ctrl+Z** (Cmd+Z on a Mac) undoes the last click or drag that changed the course: terrain, paths, holes, buildings and
-garden items. The whole game goes back to just before it, money included, as if that moment had been saved and loaded.
+**Ctrl+Z** (Cmd+Z on a Mac) undoes the last click or drag with a building or terrain tool that changed the course:
+terrain, paths, holes, buildings and garden items. The whole game goes back to just before it, money included, as if that moment had been saved and loaded.
 Up to 30 steps are kept; the list starts empty with each game and is not saved. (The port's own; not in the original.)
 
 On Windows, macOS and Linux, **F11** or **Alt+Enter** switches between a window and full screen (in the browser, use the

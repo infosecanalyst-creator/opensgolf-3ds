@@ -520,7 +520,8 @@ pub const COURSE_SIZE_HIT: i32 = 101;
 
 /// The game style button on Select Difficulty (the port's own, docs/PLAYING.md "Original game or OpenSGolf extras"):
 /// a box right of the course size.
-pub const STYLE_RECT: Rect = Rect::new(324.0, 548.0, 330.0, 44.0);
+/// It starts right of x 472, where the Impossible face's hit area (DIFF_CENTRES[3]) ends at this height.
+pub const STYLE_RECT: Rect = Rect::new(480.0, 548.0, 255.0, 44.0);
 /// Its hover code.
 pub const STYLE_HIT: i32 = 102;
 

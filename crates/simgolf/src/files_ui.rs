@@ -204,7 +204,7 @@ fn top_c(s: &Ui, g: &mut Gfx, x: f32, y: f32, t: &str, size: f32, c: [f32; 4]) {
 }
 
 /// The Course sharing extra's *Paste a course code* button on the championship course list (share.rs).
-const PASTE_RECT: Rect = Rect::new(390.0, 520.0, 200.0, 36.0);
+const PASTE_RECT: Rect = Rect::new(414.0, 520.0, 176.0, 36.0);
 
 /// The Save pictures extra's map of a course: one cell per tile (a cell per 2 x 2 tiles, or more, on large maps), coloured
 /// by the tile's terrain, paths over it, and the land the club does not own darker.
@@ -829,9 +829,9 @@ impl App {
                 top_c(s, g, X[k], y, &v.to_string(), 13.0, BLACK);
             }
         }
-        // the Save pictures extra: the course's map in the list's top right corner
+        // the Save pictures extra: the course's map under the list, left of the theme panel
         if crate::extras::save_pictures() && i.map.0 > 0 {
-            let (n, (x, y, size)) = (i.map.0, (606.0, 120.0, 150.0));
+            let (n, (x, y, size)) = (i.map.0, (304.0, 492.0, 100.0));
             let c = size / n as f32;
             s.fill(g, x - 2.0, y - 2.0, size + 4.0, size + 4.0, rgba(0.2, 0.2, 0.3, 0.9));
             for (k, col) in i.map.1.iter().enumerate() {

@@ -59,6 +59,12 @@ impl App {
         if self.land.is_none() {
             return;
         }
+        // as Save course for Championship: not during a tournament
+        if self.club.game & sg_core::golfer::game::TOURNAMENT != 0 {
+            self.ui_sound(24);
+            return self.show_toast(tr("STR_TOAST_CHAMP_NO_SAVE_IN_TOURNAMENT"));
+        }
+        let own = self.save_bytes(9);
         let shared = self.save_bytes(1).and_then(|b| read_save_bytes(&b, "share")).and_then(|mut s| {
             s.shared = true;
             // the message history and the golfers' words stay with the sharer
@@ -69,8 +75,11 @@ impl App {
             Ok(b) => {
                 let code = format!("{PREFIX}{}", base64(&b));
                 miniquad::window::clipboard_set(&code);
-                let path = self.championship_dir().join(format!("{}.{}", self.course_name, crate::champ_ui::COURSE_EXT));
-                sg_core::fsutil::write_file(&path, &b);
+                // the sharer's own copy for championship play, without the challenge mark
+                if let Ok(own) = own {
+                    let path = self.championship_dir().join(format!("{}.{}", self.course_name, crate::champ_ui::COURSE_EXT));
+                    sg_core::fsutil::write_file(&path, &own);
+                }
                 self.show_toast(&trf("STR_TOAST_SHARE_COPIED", &[("COURSE", &self.course_name)]));
             }
             Err(e) => self.show_toast(&trf("STR_TOAST_COULD_NOT_SAVE", &[("ERROR", &e)])),
@@ -118,13 +127,32 @@ impl App {
             Ok(s) => s,
             Err(e) => return self.show_toast(&e),
         };
-        let clean = |n: &str| n.chars().map(|c| if "\\/:*?\"<>|".contains(c) || c.is_control() { '_' } else { c }).collect::<String>();
+        // a safe file name: no path characters, and not an autosave's leading '&'
+        let clean = |n: &str| {
+            let s: String = n.chars().map(|c| if "\\/:*?\"<>|".contains(c) || c.is_control() { '_' } else { c }).collect();
+            let s = s.trim_start_matches(['&', '.']).trim().to_string();
+            if s.is_empty() {
+                "Shared".to_string()
+            } else {
+                s
+            }
+        };
+        // never over a file that is there already: "Name (2)", "Name (3)"...
+        let unique = |dir: std::path::PathBuf, stem: String, ext: &str| {
+            let mut p = dir.join(format!("{stem}.{ext}"));
+            let mut n = 2;
+            while sg_core::fsutil::read_file(&p).is_some() && n < 100 {
+                p = dir.join(format!("{stem} ({n}).{ext}"));
+                n += 1;
+            }
+            p
+        };
         let game = dropped.is_some_and(|n| n.to_ascii_lowercase().ends_with(".sgs"));
         let path = if game {
             let stem = dropped.and_then(|n| std::path::Path::new(n).file_stem()).map(|s| s.to_string_lossy().to_string());
-            crate::files_ui::saved_games_dir().join(format!("{}.sgs", clean(&stem.unwrap_or_else(|| s.course_name.clone()))))
+            unique(crate::files_ui::saved_games_dir(), clean(&stem.unwrap_or_else(|| s.course_name.clone())), "sgs")
         } else {
-            self.championship_dir().join(format!("{}.{}", clean(&s.course_name), crate::champ_ui::COURSE_EXT))
+            unique(self.championship_dir(), clean(&s.course_name), crate::champ_ui::COURSE_EXT)
         };
         if !sg_core::fsutil::write_file(&path, b) {
             return self.show_toast(&trf("STR_ERROR_COULD_NOT_WRITE", &[("FILE", &path.display())]));
@@ -132,11 +160,13 @@ impl App {
         let key = if game { "STR_TOAST_SHARE_GAME_ADDED" } else { "STR_TOAST_SHARE_COURSE_ADDED" };
         self.show_toast(&trf(key, &[("COURSE", &s.course_name)]));
         // an open list shows it at once
-        if let Some(kind) = self.title.files.as_ref().map(|f| f.kind) {
+        if let Some((kind, from_game, course)) = self.title.files.as_ref().map(|f| (f.kind, f.from_game, f.course.clone())) {
             if self.screen == Screen::Files {
-                let in_game = self.land.is_some();
                 self.title.files = None;
-                self.open_files(kind, in_game);
+                self.open_files(kind, from_game);
+                if let Some(f) = self.title.files.as_mut() {
+                    f.course = course;
+                }
             }
         }
     }

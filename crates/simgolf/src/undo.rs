@@ -26,11 +26,19 @@ impl Undo {
 }
 
 impl App {
-    /// A fingerprint of the course: what building and terrain tools change.
+    /// A fingerprint of the course: what building and terrain tools change (not what the simulation changes as time goes
+    /// by: growth, weeds, the undo records).
     fn course_fingerprint(&self) -> u64 {
         let mut h = std::collections::hash_map::DefaultHasher::new();
-        if let Ok(v) = serde_json::to_vec(&(&self.terrain, &self.land, &self.course)) {
-            v.hash(&mut h);
+        self.terrain.ty.hash(&mut h);
+        self.terrain.corner.hash(&mut h);
+        self.terrain.path_kind.hash(&mut h);
+        if let Some(l) = &self.land {
+            l.ty.hash(&mut h);
+            l.height.hash(&mut h);
+            if let Ok(v) = serde_json::to_vec(&l.objects) {
+                v.hash(&mut h);
+            }
         }
         h.finish()
     }
@@ -64,6 +72,7 @@ impl App {
         let steps = std::mem::take(&mut self.undo.steps);
         let (panel, alt, edit, tool) = (self.panel, self.pstate.alt, self.edit, self.tool);
         if self.load_save_with(g, s, true).is_err() {
+            self.undo.steps = steps;
             return false;
         }
         self.undo.steps = steps;

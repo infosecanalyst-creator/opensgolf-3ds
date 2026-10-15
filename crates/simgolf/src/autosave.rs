@@ -10,16 +10,24 @@ pub const INTERVAL: f64 = 300.0;
 pub const FILE: &str = "&Latest.sgs";
 
 impl App {
-    /// Each frame, with the clock `t` in seconds: saves the game when the time comes (only while a game is on screen).
+    /// Each frame, with the clock `t` in seconds: counts the time spent playing (the course on screen, not the reports,
+    /// menus or other screens) and saves the game each time it reaches the interval. Loading or starting a game starts
+    /// the count again.
     pub fn autosave_tick(&mut self, t: f64) {
-        if !crate::extras::autosave() || self.screen != Screen::Play || self.land.is_none() {
+        let dt = if self.autosave_clock > 0.0 { (t - self.autosave_clock).clamp(0.0, 1.0) } else { 0.0 };
+        self.autosave_clock = t;
+        if !crate::extras::autosave() || self.land.is_none() {
             self.autosave_due = 0.0;
             return;
         }
-        if self.autosave_due == 0.0 {
-            self.autosave_due = t + INTERVAL;
-        } else if t >= self.autosave_due {
-            self.autosave_due = t + INTERVAL;
+        if self.screen != Screen::Play {
+            return;
+        }
+        self.autosave_due += dt;
+        // SG_AUTOSAVE_SECS=N (tests): every N seconds of play instead
+        let every = std::env::var("SG_AUTOSAVE_SECS").ok().and_then(|v| v.parse::<f64>().ok()).unwrap_or(INTERVAL);
+        if self.autosave_due >= every {
+            self.autosave_due = 0.0;
             let path = crate::files_ui::saved_games_dir().join(FILE);
             match self.save_game(&path) {
                 Ok(()) => println!("autosaved {}", path.display()),

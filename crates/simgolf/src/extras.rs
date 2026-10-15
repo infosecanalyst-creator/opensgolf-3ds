@@ -179,7 +179,14 @@ pub fn save(s: &Settings) {
 
 /// At start up: the saved ticks, or all off for this run with `--no-extras`.
 pub fn init(off: bool) {
-    set(if off { Settings::ALL_OFF } else { saved() });
+    let first = sg_core::fsutil::read_file(crate::app::save_dir().join(crate::hd::SETTINGS_FILE)).is_none();
+    let s = if off { Settings::ALL_OFF } else { saved() };
+    // a first start writes its choice down at once, so later files written without this key (HD, language, keys) do not
+    // read as an older player's settings (all on)
+    if first && !off {
+        save(&s);
+    }
+    set(s);
 }
 
 // ---- what the extras keep with the game -----------------------------------------------------------------------------------

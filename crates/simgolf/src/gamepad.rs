@@ -43,17 +43,15 @@ pub struct State {
 }
 
 /// The buttons that stand for a key, and the key.
-const KEYS: [(u32, KeyCode); 10] = [
+const KEYS: [(u32, KeyCode); 8] = [
     (btn::X, KeyCode::Tab),
     (btn::Y, KeyCode::RightBracket),
     (btn::LB, KeyCode::Home),
     (btn::RB, KeyCode::PageUp),
     (btn::LT, KeyCode::X),
     (btn::RT, KeyCode::Z),
-    (btn::BACK, KeyCode::P),
     (btn::START, KeyCode::Escape),
     (btn::LS, KeyCode::H),
-    (btn::RS, KeyCode::Slash),
 ];
 /// The d-pad: the arrow keys, repeating while held.
 const DPAD: [(u32, KeyCode); 4] =
@@ -183,12 +181,15 @@ impl Stage {
         let none = KeyMods::default();
         // the left stick moves the pointer
         let (lx, ly) = shape(s.left);
-        if (lx != 0.0 || ly != 0.0 || pressed != 0) && !self.pad.active {
+        // the controller takes the pointer on a button or a stick being moved, not a stick resting off centre (a flight
+        // stick's or a worn pad's)
+        let moved = (s.left.0 - prev.left.0).abs() + (s.left.1 - prev.left.1).abs() > 0.02;
+        if ((moved && (lx != 0.0 || ly != 0.0)) || pressed != 0) && !self.pad.active {
             self.pad.active = true;
             self.pad.pointer = self.mouse;
             miniquad::window::show_mouse(false);
         }
-        if lx != 0.0 || ly != 0.0 {
+        if self.pad.active && (lx != 0.0 || ly != 0.0) {
             let v = POINTER_SPEED * h * dt;
             let p = &mut self.pad.pointer;
             p.0 = (p.0 + lx * v).clamp(0.0, w - 1.0);
@@ -224,6 +225,13 @@ impl Stage {
             if released & b != 0 {
                 self.mouse_button_up_event(button, x, y);
             }
+        }
+        // pause and the last message again: Shift+P and Shift+/ on the keyboard, so called directly
+        if pressed & btn::BACK != 0 {
+            self.toggle_pause();
+        }
+        if pressed & btn::RS != 0 {
+            self.app.repeat_message();
         }
         for &(b, k) in &KEYS {
             if pressed & b != 0 {
