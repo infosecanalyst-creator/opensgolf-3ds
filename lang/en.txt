@@ -38,6 +38,12 @@ STR_COURSE_SIZE_ORIGINAL                :Original
 STR_COURSE_SIZE_LARGE                   :Large
 STR_COURSE_SIZE_HUGE                    :Huge
 STR_COURSE_SIZE_GIANT                   :Giant
+STR_STYLE_ORIGINAL                      :Game: the original
+STR_STYLE_ORIGINAL_DETAIL               :Exactly as it was. Click for the OpenSGolf extras.
+STR_STYLE_EXTRAS                        :Game: OpenSGolf extras
+STR_STYLE_EXTRAS_DETAIL                 :People screen, turning buildings, animals and more. Click for the original.
+STR_STYLE_MIX                           :Game: your own mix of extras
+STR_STYLE_MIX_DETAIL                    :Set in Preferences. Click for the original game.
 
 ########################################################################################################################
 # Title screens: Load Previous Game, Select Championship Course, Pick A Pro, Select a Theme Pack

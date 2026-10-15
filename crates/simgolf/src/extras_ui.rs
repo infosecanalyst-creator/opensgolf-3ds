@@ -44,7 +44,55 @@ fn turnable(kind: i32) -> bool {
     kind == land::K_LANDMARK || (6..=15).contains(&kind) && kind != land::K_DRIVING_RANGE
 }
 
+/// The game style Select Difficulty shows (docs/PLAYING.md, "Original game or OpenSGolf extras").
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GameStyle {
+    /// Every extra off and Classic graphics: the game exactly as it was (fixes for the original's own bugs stay on).
+    Original,
+    /// The interface extras and the gameplay extras of `Extras::OPENSGOLF`.
+    Extras,
+    /// Anything else the player ticked in Preferences.
+    Mix,
+}
+
 impl App {
+    /// The game style of what the next game starts with.
+    pub fn game_style(&self) -> GameStyle {
+        let ui = crate::extras::settings();
+        if self.extras_next.is_off() && ui == crate::extras::Settings::ALL_OFF && !crate::enhanced::settings().enabled {
+            GameStyle::Original
+        } else if self.extras_next == Extras::OPENSGOLF && ui == crate::extras::Settings::ALL_ON {
+            GameStyle::Extras
+        } else {
+            GameStyle::Mix
+        }
+    }
+
+    /// A click on the game style: the original game becomes the OpenSGolf extras, anything else the original game. The
+    /// choice is saved like the Preferences ticks it sets; the extras leave the graphics as they are, the original game
+    /// turns Enhanced graphics off.
+    pub fn next_game_style(&mut self, g: &mut crate::gfx::Gfx) {
+        let (e, ui) = if self.game_style() == GameStyle::Original {
+            (Extras::OPENSGOLF, crate::extras::Settings::ALL_ON)
+        } else {
+            (Extras::default(), crate::extras::Settings::ALL_OFF)
+        };
+        self.extras_next = e;
+        save(&e);
+        crate::extras::set(ui);
+        crate::extras::save(&ui);
+        if ui == crate::extras::Settings::ALL_OFF {
+            self.xs.path_view = false;
+            let mut enh = crate::enhanced::settings();
+            if enh.enabled {
+                enh.enabled = false;
+                if self.apply_enhanced(g, enh) {
+                    self.ui_ok &= crate::load_art(self, g);
+                }
+            }
+        }
+    }
+
     /// The Extras box's OK: the game being played takes the ticked extras, and they become the default for new games.
     pub fn set_extras(&mut self, e: Extras) {
         self.club.extras = e;

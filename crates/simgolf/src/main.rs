@@ -1552,6 +1552,11 @@ impl Stage {
                 }
                 return;
             }
+            if hit == render::STYLE_HIT {
+                app.next_game_style(&mut self.g);
+                app.ui_sound(0x18);
+                return;
+            }
             if hit == 100 || hit < 0 {
                 // the back button, or a click on nothing, goes back (0x43a400 returns -1)
                 app.screen = Screen::Menu;

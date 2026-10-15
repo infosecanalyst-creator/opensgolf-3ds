@@ -512,13 +512,23 @@ pub const COURSE_SIZE_RECT: Rect = Rect::new(14.0, 548.0, 300.0, 44.0);
 /// Its hover code.
 pub const COURSE_SIZE_HIT: i32 = 101;
 
-/// Which Select Difficulty item a point is on: 0..3, 100 the back button, 101 the course size, -1 nothing.
+/// The game style button on Select Difficulty (the port's own, docs/PLAYING.md "Original game or OpenSGolf extras"):
+/// a box right of the course size.
+pub const STYLE_RECT: Rect = Rect::new(324.0, 548.0, 330.0, 44.0);
+/// Its hover code.
+pub const STYLE_HIT: i32 = 102;
+
+/// Which Select Difficulty item a point is on: 0..3, 100 the back button, 101 the course size, 102 the game style, -1
+/// nothing.
 pub fn difficulty_hit(vx: f32, vy: f32) -> i32 {
     if oct_dist(vx - 767.0, vy - 557.0) < 25.0 {
         return 100;
     }
     if COURSE_SIZE_RECT.has(vx, vy) {
         return COURSE_SIZE_HIT;
+    }
+    if STYLE_RECT.has(vx, vy) {
+        return STYLE_HIT;
     }
     DIFF_CENTRES.iter().position(|&(cx, cy)| oct_dist((vx - cx) / 2.0, vy - cy) < 80.0).map(|i| i as i32).unwrap_or(-1)
 }
@@ -768,6 +778,19 @@ impl App {
             s.text(g, r.x + 10.0, r.y + 19.0, &name, 17.0, if lit { rgb(1.0, 1.0, 0.6) } else { rgb(1.0, 1.0, 1.0) });
             let detail = trf("STR_COURSE_SIZE_DETAIL", &[("TILES", &n), ("YARDS", &(n * 25))]);
             s.text(g, r.x + 10.0, r.y + 37.0, &detail, 12.0, rgb(0.85, 0.85, 1.0));
+        }
+        // the game style (the port's own): the original game or the OpenSGolf extras, one click apart
+        {
+            let r = STYLE_RECT;
+            let lit = self.hover == STYLE_HIT;
+            s.fill(g, r.x, r.y, r.w, r.h, if lit { rgba(0.15, 0.2, 0.45, 0.9) } else { rgba(0.08, 0.1, 0.3, 0.8) });
+            let (name, detail) = match self.game_style() {
+                crate::extras_ui::GameStyle::Original => ("STR_STYLE_ORIGINAL", "STR_STYLE_ORIGINAL_DETAIL"),
+                crate::extras_ui::GameStyle::Extras => ("STR_STYLE_EXTRAS", "STR_STYLE_EXTRAS_DETAIL"),
+                crate::extras_ui::GameStyle::Mix => ("STR_STYLE_MIX", "STR_STYLE_MIX_DETAIL"),
+            };
+            s.text(g, r.x + 10.0, r.y + 19.0, tr(name), 17.0, if lit { rgb(1.0, 1.0, 0.6) } else { rgb(1.0, 1.0, 1.0) });
+            s.text(g, r.x + 10.0, r.y + 37.0, tr(detail), 12.0, rgb(0.85, 0.85, 1.0));
         }
         g.flush();
     }

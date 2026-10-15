@@ -101,6 +101,18 @@ Enhanced light and detail maps use fewer texels per tile on the larger sizes (at
 
 On the Add Buildings panel (or b for benches, Shift+B for a home site; Tab turns the next building) choose: benches, flower beds, ball washers, willow trees and scenic bridges at any time, the amenities as holes unlock them. Prices, clearing charges, upgrades and the path-to-clubhouse rule follow the exe. Benches need rough ground with a free neighbour; bridges go on water near a shore. Shift-click undoes: a path, bench, flower bed, willow or bridge comes off with what it cost back, a building is demolished with no refund. Golfers use what you build: snack bars and the practice buildings earn money on every visit, tired golfers sit on benches, flower beds and landmarks cheer them up. The headless test option is `--edit "b:x,y,kind"`.
 
+## Original game or OpenSGolf extras
+
+Select Difficulty has a **Game** box next to Course size. One click switches between:
+
+- **The original**: every OpenSGolf extra off and Classic graphics; the game exactly as it was (fixes for the original's
+  own bugs stay on). A new player starts here.
+- **OpenSGolf extras**: the interface extras (People screen, message history, name tags, report tabs, path help) and the
+  gameplay extras that do not change the game's balance (turning buildings, animals, more staff).
+
+If you ticked your own choice in Preferences, the box says "your own mix"; a click goes back to the original. The choice
+is saved and is what new games start with.
+
 ## OpenSGolf extras (optional, not in the original)
 
 Preferences (System Functions, Preferences) has an **OpenSGolf extras...** line. It opens a box of optional gameplay
@@ -193,7 +205,8 @@ As in the original: **F1** Course Report, **F2** Player Comments (the twenty mos
 ## OpenSGolf extras
 
 The port's own additions to the interface, none of them in the original (crates/simgolf/src/extras.rs and the modules it
-names). They only add a screen, a tag, a strip or a button, so they are on by default; System Functions, Preferences,
+names). They only add a screen, a tag, a strip or a button. A new player starts with them off; the Game box on Select
+Difficulty turns them on in one click, and System Functions, Preferences,
 *OpenSGolf extras...* has a tick for each (kept in `settings.json` under `extras`), and `--no-extras` turns them all off
 for one run. With every tick off the game draws and plays exactly as before (the stills of every report, panel and menu
 compare pixel for pixel with the build before the extras).

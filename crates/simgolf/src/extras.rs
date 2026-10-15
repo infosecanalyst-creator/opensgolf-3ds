@@ -1,6 +1,6 @@
 //! OpenSGolf extras (docs/PLAYING.md, "OpenSGolf extras"): the port's own additions to the interface, none of them in the
 //! original. Each is purely additive (it adds a screen, a tag or a strip; nothing of the original's is taken away or
-//! changed), so they are on by default; Preferences > *OpenSGolf extras...* has a tick for each, kept in settings.json under
+//! changed); a new player starts with them off (the original game) and Select Difficulty turns them all on in one click; Preferences > *OpenSGolf extras...* has a tick for each, kept in settings.json under
 //! "ui_extras", and `--no-extras` turns them all off for one run (not saved).
 //!
 //! * the People screen (people_ui.rs): every golfer on the course and every employee, sortable, with Locate, Follow, the
@@ -101,8 +101,12 @@ fn settings_json() -> serde_json::Value {
         .unwrap_or_else(|| serde_json::json!({}))
 }
 
-/// The ticks saved in settings.json (all on when there are none).
+/// The ticks saved in settings.json: all on for a player whose settings predate them, all off on a first start (a new
+/// player starts with the original game; Select Difficulty switches to the extras in one click).
 pub fn saved() -> Settings {
+    if sg_core::fsutil::read_file(crate::app::save_dir().join(crate::hd::SETTINGS_FILE)).is_none() {
+        return Settings::ALL_OFF;
+    }
     serde_json::from_value(settings_json()[SETTINGS_KEY].clone()).unwrap_or_default()
 }
 
