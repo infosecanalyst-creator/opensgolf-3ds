@@ -698,6 +698,7 @@ impl App {
                 #[cfg(not(target_os = "android"))]
                 {
                     save_game_dir(&dest);
+                    self.release_audio();
                     let e = restart(&note);
                     eprintln!("restart: {e}");
                     self.show_notice(tr("STR_GAME_FILES_RESTART"));
@@ -727,6 +728,7 @@ impl App {
         save_game_dir(&dir);
         crate::content::save_base(None);
         println!("game folder: {}", dir.display());
+        self.release_audio();
         let e = restart(tr("STR_GAME_FILES_USING"));
         eprintln!("restart: {e}");
         Err(tr("STR_GAME_FILES_RESTART").to_string())
@@ -746,9 +748,27 @@ impl App {
         })
     }
 
+    /// Before the program starts itself again: the sound output is closed first. On macOS and Linux the restart replaces the
+    /// program in the same process (`restart_with`), and a CoreAudio output left open across that left the restarted game
+    /// silent until it was quit and opened again (a player's report: no sound after choosing their SimGolf .zip on a Mac).
+    pub fn release_audio(&mut self) {
+        // (a browser and Android start again their own way, with the output kept)
+        if cfg!(any(target_arch = "wasm32", target_os = "android")) {
+            return;
+        }
+        if let Some(m) = &self.mixer {
+            m.stop_all();
+        }
+        if self.audio.take().is_some() {
+            // the output's own thread stops with the stream; give the system a moment to let go of the device
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    }
+
     /// "Use the free graphics": the free base set becomes the saved choice and the game starts again on it.
     pub fn use_free_graphics(&mut self) {
         crate::content::save_base(Some(sg_core::packs::FREE));
+        self.release_audio();
         let e = restart(tr("STR_GAME_FILES_USING_FREE"));
         eprintln!("restart: {e}");
         self.show_notice(tr("STR_GAME_FILES_RESTART"));

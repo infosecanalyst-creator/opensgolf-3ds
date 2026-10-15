@@ -447,6 +447,7 @@ impl App {
             self.show_notice(tr("STR_SAVE_PACKS_RESTART_YOURSELF"));
             return;
         }
+        self.release_audio();
         let e = crate::gamefiles::restart_with(tr("STR_SAVE_PACKS_SWITCHED"), Some(&p.path));
         eprintln!("restart: {e}");
         self.show_notice(tr("STR_GAME_FILES_RESTART"));
