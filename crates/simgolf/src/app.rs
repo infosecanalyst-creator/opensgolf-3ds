@@ -505,6 +505,8 @@ pub struct App {
     /// The pro's skill dialog while open, and the shot preview while he waits for the player's aim.
     pub skill_dialog: Option<crate::pro_ui::SkillDialog>,
     pub aim: Option<sg_core::pro::AimPreview>,
+    /// The pro was waiting for the player's aim at the last tick (a new shot drops an armed tool, pro_after_tick).
+    pub was_aiming: bool,
     /// The first 'n' while the pro plays asks; a second one within this game tick cancels the round.
     pub cancel_until: u32,
     /// Scripted runs: 1 the pro aims each full shot at the pin by himself, 2 he only shows that aim (for stills).
@@ -825,6 +827,7 @@ impl App {
             analysis_hole: 0,
             skill_dialog: None,
             aim: None,
+            was_aiming: false,
             cancel_until: 0,
             auto_aim: 0,
             pro_slot: -1,

@@ -134,8 +134,8 @@ packs (mods) choose their own licence; the free base set is GPL-2.0-or-later too
 
 ## Supporting the project
 
-OpenSGolf is made in spare time and given away free, and building it has real running costs. If you enjoy it, a coffee
-helps keep it going: [buymeacoffee.com/crspytopgn](https://buymeacoffee.com/crspytopgn).
+OpenSGolf is free and always will be. If you enjoy it and feel like buying me a coffee, that's always nice:
+[buymeacoffee.com/crspytopgn](https://buymeacoffee.com/crspytopgn).
 
 [![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/crspytopgn)
 
