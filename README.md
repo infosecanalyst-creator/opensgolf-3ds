@@ -100,6 +100,9 @@ Optional, and off by default (Start New Game has a one-click switch between *the
   hole's most frequent golfer comments this month, last month and this year (Shift+I).
 - **Content packs and game scripts** that change prices, buildings, terrain, golfers, text, art and sounds, add scenarios,
   and can be downloaded from inside the game ([docs/MODDING.md](docs/MODDING.md)).
+- **A course editor** (*Course editor...* on the title menu): build a course free of charge with the game's own tools,
+  import a heightmap picture, choose the land owned at the start, the starting cash, the difficulty and goals, and save it
+  as a scenario to play and share ([docs/PLAYING.md](docs/PLAYING.md#course-editor)).
 
 How close each part is to the original is tracked in [docs/PARITY.md](docs/PARITY.md).
 
@@ -118,7 +121,7 @@ and off by default; only fixes for the original's own bugs are on.
 course sharing with challenges, controllers and the Steam Deck, and new Enhanced graphics (weather by place and year,
 wildlife, crowds, winter, grass, sharpening).
 
-Ideas for later: a community course gallery, a scenario editor, club events, more translations, an installable phone and
+Ideas for later: a community course gallery, club events, more translations, an installable phone and
 tablet app, and playing together online.
 
 ## Legal

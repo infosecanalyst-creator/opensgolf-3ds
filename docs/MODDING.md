@@ -167,6 +167,24 @@ the save folder's `packs` (`<id>/pack.toml`, `scenario.toml` and `course.sgs`, t
 typed. Its scenario starts from the saved game with the game's cash and difficulty and keeps the goals of the scenario it
 was played from; add `[[goal]]` tables to make it a challenge. The example is `packs/example-scenario-desert-challenge`.
 
+**The course editor** (**done**; crates/simgolf/src/editor.rs, docs/PLAYING.md "Course editor") makes scenario packs
+without writing any TOML: *Course editor...* on the title menu starts it on a property and course size of your choice.
+Build the course with the game's tools (free of charge, with no golfers and the calendar stopped), import a heightmap
+(sg_core::heightmap: a grey PNG resampled to the map's corners, black sea level, optional water and smoothing; samples in
+`tools/heightmaps`), set the tracts owned at the start and those for sale, and fill in the editor box: name, author,
+description, welcome, win and lose texts, starting cash, difficulty, sandbox, and up to five goals of the kinds above,
+each with an optional deadline. *Save scenario* writes `<id>/pack.toml` (the name, author and description, licence
+CC-BY-SA-4.0, version 1.0.0), `scenario.toml` (with `course = "course.sgs"`, `start_money` and the goals) and `course.sgs`
+(the course as built, holes included, with the scenario's cash and difficulty) into the save folder's `packs`. *Load
+scenario...* takes any scenario pack back into the editor; saving it again without changes writes the same bytes, so a
+scenario under version control only changes where you changed it.
+
+To share a scenario made in the editor: zip its folder (`<id>/` with the three files; edit `version`, `license` or
+`authors` in pack.toml if you like) and give it to others to put in their packs folder, or submit it to the community
+index at github.com/crspytopgn/opensgolf-content with a pull request (section 7: a free licence, no material from the
+original game; the course.sgs holds only your course and the game's numbers). Players then find it under Preferences >
+Content > *Find more...*.
+
 ```toml
 [scenario]
 name = "Desert Challenge"            # none: the pack's name
@@ -273,6 +291,7 @@ packs must have a free licence and must not contain material from the original g
 | Free set: hand-made art replacing the drawn pieces, music, more stories | planned |
 | Packs' `lang/` text (mods and translation packs) | done |
 | Scenario packs, Start New Game choice, goals report, Export as scenario (`packs/example-scenario-desert-challenge`) | done |
+| Course editor: scenarios made in the game, heightmap import (`tools/heightmaps`) | done |
 | Rhai scripts (`packs/example-script-bonus`) | done |
 | Content index and in-game downloader (Preferences > Content > Find more) | done; a public index is not set up yet |
 
