@@ -100,7 +100,7 @@ decoded terrain light (`sg_core::terrain::Lighting`, `light_direction`) and the 
 | Seasons (`seasons`) | on | Blossom and fresh greens in spring, autumn colours in September and October, frost and dew on spring and autumn mornings (see *Seasons*). |
 | After the rain (`after-rain`) | on | With rain: wet, glossy ground and puddles during and after a rainy day, now and then a rainbow (see *After the rain*). |
 | Lightning (`lightning`) | off | Flashes and distant flicker in heavy rain on parkland and links courses. |
-| Winter (`winter`) | on | Early March and late October bring frost, a light snow cover that melts in the sun, snow instead of rain on cold days and icy pond edges, on parkland and links courses (see *Winter*). |
+| Winter (`winter`) | on | In the first and last weeks of the year, on parkland and links courses: frost, a light snow cover that thins in the sun, and snow instead of rain (see *Winter*). |
 | Tournament crowds (`crowds`) | on | During a tournament or a championship, spectators (the game's own golfer sprites) round the greens and along the fairways of the holes in play, cheering now and then (see *Tournament atmosphere*). |
 | Life on the course (`life`) | on | Flocks of birds crossing the sky with their shadows, butterflies over flower beds in summer, leaves falling from the trees in autumn (see *Life on the course*). |
 | Quality (`quality`) | medium | Low: light map 2 texels a tile, no blur passes (no tilt-shift, no bloom), sharp-bilinear scaling only, the cast shadows' mask at half the resolution. Medium: 4 texels a tile, blurs at a quarter of the resolution, the mask at half. High: 8 texels a tile, blurs at half the resolution, the mask at full. On the Effects page since this version. |
@@ -379,6 +379,15 @@ random colours, most standing, some fidgeting, and every so often a hole's crowd
 moment. They stand only on grass and rough on the club's land, never on greens, tees, sand, water, woods or buildings.
 They are drawn only: the golfers and the simulation do not see them. The original has no grandstand or fireworks art, so
 there are none, to keep to the original's look.
+
+### Winter
+
+The game's year runs from March to October. On parkland and links courses its first and last weeks are cold: on about
+half of those days a light snow lies on the level ground in patches (thinning in the midday sun with *Time of day*), the
+morning frost is full, and with *Rain* on, the rain days bring falling snow instead (small square flakes drifting with
+the wind) and no puddles. The snow keeps the ground's own shading, so the course still reads underneath. Desert and
+tropical courses never see it. Drawing only: golfers play as ever. Test hook: `SG_FX_SNOW=S` lays that much snow (0 to 1)
+whatever the day, with `SG_FX_MONTH` in a cold week (e.g. 3.05).
 
 ### Performance
 

@@ -46,6 +46,7 @@ mod fx_reflect;
 mod fx_shadow;
 mod fx_smooth;
 mod fx_wet;
+mod fx_winter;
 mod gamefiles;
 mod gamepad;
 mod gfx;

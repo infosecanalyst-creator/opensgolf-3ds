@@ -1003,7 +1003,7 @@ impl App {
         if s.sky {
             self.fx_sky(g, &atm);
         }
-        let season_on = atm.season.fresh + atm.season.autumn + atm.season.frost + atm.season.dew > 0.0;
+        let season_on = atm.season.fresh + atm.season.autumn + atm.season.frost + atm.season.dew + atm.snow > 0.0;
         let terrain_fx = s.lighting || s.occlusion || s.shadows || atm.cloud > 0.0 || atm.mist > 0.0 || atm.wet > 0.0 || season_on;
         let rot = view_rotation(self);
         let lm = self.fx.lightmap.unwrap_or_else(|| gpu(g).no_lightmap);
@@ -1045,7 +1045,13 @@ impl App {
             mist: [atm.mist, self.fx.mist_level.0, 1.0 / self.fx.mist_level.1.max(1.0), self.fx.time.rem_euclid(10000.0)],
             mist_col: atm.mist_col,
             fx1: [atm.wet, 1.02 - 0.5 * atm.puddles, atm.rain, self.fx.time.rem_euclid(1000.0)],
-            fx2: [atm.season.fresh * 0.8, atm.season.autumn, atm.season.frost, atm.season.dew],
+            // the frost's slot carries the snow above 1 (fx_winter.rs): 1 + 2 x snow, the frost full under snow
+            fx2: [
+                atm.season.fresh * 0.8,
+                atm.season.autumn,
+                if atm.snow > 0.0 { 1.0 + 2.0 * atm.snow.min(1.0) } else { atm.season.frost.min(1.0) },
+                atm.season.dew,
+            ],
             fx3: [
                 if reflt.is_some() { 1.0 } else { 0.0 },
                 // the smooth ground normals (SG_FX_FACETED=1: the tiles' flat faces, as before, for comparisons)

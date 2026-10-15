@@ -285,9 +285,18 @@ vec3 frosty(vec3 c, float grass, vec4 lm) {
     // level ground only (not the cliffs and walls)
     float gm = grass * (1.0 - lm.a) * smoothstep(0.6, 0.85, up_n);
     float patchy = noise(w_pos.xz * 0.012) * 0.6 + noise(w_pos.xz * 0.05) * 0.4 + 0.3 * (1.0 - lm.g);
-    float f = fx2.z * gm * smoothstep(0.12, 0.8, patchy);
+    // above 1 the frost's slot carries the snow (fx_winter.rs): 1 + 2 x snow
+    float snow = max(fx2.z - 1.0, 0.0) * 0.5;
+    float f = min(fx2.z, 1.0) * gm * smoothstep(0.12, 0.8, patchy);
     float l = dot(c, vec3(0.299, 0.587, 0.114));
     c = mix(c, vec3(0.84, 0.88, 0.92) * (0.55 + 0.6 * l), f * 0.42);
+    if (snow > 0.0) {
+        // snow on all level ground (not the cliffs and walls, thinner on slopes), in patches that grow with the cover,
+        // keeping the ground's shading so the course still reads
+        float lv = (1.0 - lm.a) * smoothstep(0.55, 0.9, up_n);
+        float cov = lv * smoothstep(0.55 - 0.5 * snow, 0.75 - 0.4 * snow, patchy);
+        c = mix(c, vec3(0.92, 0.94, 0.98) * (0.62 + 0.5 * l), cov * min(snow * 1.4, 0.92));
+    }
     float h = hash(floor(vec2(w_pos.x + w_pos.y * 1.37, w_pos.z - w_pos.y * 0.71) * fx3.w));
     float tw = 0.5 + 0.5 * sin(fx1.w * 2.6 + h * 40.0);
     float sp = step(0.991, h) * tw * min(fx2.w + fx2.z, 1.0) * gm * cloud_sun();
