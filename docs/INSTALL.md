@@ -56,6 +56,9 @@ graphics* goes back. No Terminal and no options are needed (`--game DIR` remains
   Android version.
   Building the APK yourself: `docker run --rm -v "$(pwd)":/root/src -w /root/src notfl3/cargo-apk tools/android_build.sh`
   (see the script; CI builds a debug APK on every push, artifact `opensgolf-android-debug`).
+* **If the game crashes** on Windows, macOS or Linux, it writes what went wrong to `crash.txt` in its save folder:
+  `%APPDATA%\OpenSGolf` on Windows, `~/Library/Application Support/OpenSGolf` on a Mac (Finder: Go → Go to Folder…), and
+  `~/.local/share/opensgolf` on Linux. Please attach it to a report on the issue tracker, with what you clicked just before.
 * **Browser**: nothing to install, see [Play in your browser](https://crspytopgn.github.io/opensgolf/); `opensgolf-web.zip` is the
   same page to host yourself.
 * **From source**: see [Build and run](../README.md#build-and-run).

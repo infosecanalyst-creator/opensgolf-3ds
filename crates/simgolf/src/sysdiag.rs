@@ -176,7 +176,30 @@ pub fn fatal(msg: &str) -> ! {
 
 /// Windows: a panic before or during start (miniquad's "WGL: ..." when the driver has no usable OpenGL) shows a message box
 /// instead of a window that silently vanishes, and ends the program (sound included).
+///
+/// On every desktop the panic (message, place, backtrace) is also written to `crash.txt` in the save folder (app.rs
+/// `save_dir`), as Android writes its own: a game started from Finder or a desktop menu has nowhere to show its standard
+/// error, so a player reporting a crash had nothing to send.
 pub fn install_panic_hook() {
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+    {
+        let default = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            let name = std::thread::current().name().unwrap_or("unnamed").to_string();
+            let text = format!(
+                "OpenSGolf {} ({}) panicked on thread '{name}': {info}\n\nbacktrace:\n{}",
+                env!("CARGO_PKG_VERSION"),
+                std::env::consts::OS,
+                std::backtrace::Backtrace::force_capture()
+            );
+            let dir = crate::app::save_dir();
+            let path = dir.join("crash.txt");
+            if std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&path, &text)).is_ok() {
+                eprintln!("the crash is written to {}", path.display());
+            }
+            default(info);
+        }));
+    }
     #[cfg(windows)]
     {
         let default = std::panic::take_hook();
