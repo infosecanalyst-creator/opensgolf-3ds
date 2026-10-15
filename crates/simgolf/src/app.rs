@@ -585,6 +585,8 @@ pub struct App {
     pub keys_back: Screen,
     /// The OpenSGolf extras' state (extras.rs).
     pub xs: crate::extras::State,
+    /// Quick save and load, the comfort pauses and the staff areas (comfort.rs).
+    pub comfort: crate::comfort::State,
     /// The Change keys screen, the hidden interface and the save's content packs question (controls_ui.rs).
     pub ctl: crate::controls_ui::CtlState,
     /// The scenario's goals and the packs' scripts of the game in progress (scenario_ui).
@@ -851,6 +853,7 @@ impl App {
             keys_page: 0,
             keys_back: Screen::Play,
             xs: Default::default(),
+            comfort: Default::default(),
             ctl: Default::default(),
             scen: Default::default(),
             last_message: String::new(),
@@ -2219,8 +2222,11 @@ impl App {
         self.tick_acc += dt as f64;
         let tick_s = sg_core::flight::TICK_MS as f64 / 1000.0;
         // the great-shot SimFoto holds the game where it is (0x407e00 waits for a click inside the golfers' tick)
-        while self.tick_acc >= tick_s && self.great_shot.is_none() {
+        while self.tick_acc >= tick_s && self.great_shot.is_none() && !self.comfort.hold {
             self.tick_acc -= tick_s;
+            // the Pause on big news extra (comfort.rs) compares the club before and after the tick (the money's own tick
+            // is the staff's)
+            let before = (crate::extras::pause_events() && self.ui_ok).then(|| self.news());
             if !self.econ.game_over {
                 self.club_tick();
             }
@@ -2232,6 +2238,9 @@ impl App {
             self.staff_tick();
             self.staff_animate();
             self.resident_tick();
+            if before.is_some_and(|b| crate::comfort::big_news(&b, &self.news())) {
+                self.pause_for_news();
+            }
         }
     }
 
@@ -2273,11 +2282,16 @@ impl App {
     /// Advances the simulation to the current time and points every golfer prop at its golfer.
     pub fn update_props(&mut self) {
         let perf = crate::perf::on().then(|| (std::time::Instant::now(), self.game_tick));
-        while self.sim_time < self.time && self.great_shot.is_none() {
+        while self.sim_time < self.time && self.great_shot.is_none() && !self.comfort.hold {
             let t0 = now();
             self.step_game(1.0 / 60.0);
             tick_bench_add(now() - t0);
             self.sim_time += 1.0 / 60.0;
+        }
+        // paused for news (comfort.rs): the time not played yet is let go, so the game goes on from that tick
+        if std::mem::take(&mut self.comfort.hold) {
+            self.time = self.sim_time;
+            self.tick_acc = 0.0;
         }
         if let Some((t, tick)) = perf {
             crate::perf::sim(t.elapsed().as_secs_f64() * 1000.0, self.game_tick.wrapping_sub(tick) as u64);

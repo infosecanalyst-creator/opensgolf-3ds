@@ -245,9 +245,16 @@ fn course_map(t: &sg_core::terrain::Terrain, land: Option<&sg_core::land::Land>)
     (side, v)
 }
 
-/// A row's name: the file name without its extension; names starting with '&' are autosaves.
+/// A row's name: the file name without its extension; names starting with '&' are autosaves (the port's own two older
+/// autosaves and the quick save have names of their own, autosave.rs and comfort.rs).
 pub fn row_name(p: &Path) -> String {
     let n = p.file_stem().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    match n.as_str() {
+        "&Latest-2" => return tr("STR_FILES_AUTOSAVE_2").to_string(),
+        "&Latest-3" => return tr("STR_FILES_AUTOSAVE_3").to_string(),
+        "&Quick" => return tr("STR_FILES_QUICK").to_string(),
+        _ => {}
+    }
     match n.strip_prefix('&') {
         Some(rest) => trf("STR_FILES_AUTOSAVE", &[("NAME", &rest)]),
         None => n,
@@ -262,7 +269,19 @@ fn list(dir: &Path, ext: &str) -> Vec<PathBuf> {
         .filter(|p| p.file_name().map(|n| n.to_string_lossy()).is_some_and(|n| !n.contains("Shadow") && !n.contains("While Browsing")))
         .collect();
     v.sort_by_key(|p| p.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default());
+    order_autosaves(&mut v);
     v
+}
+
+/// The port's own: the kept autosaves (autosave.rs) newest first, together where the first of them sorted
+/// ("&Latest-2.sgs" sorts before "&Latest.sgs" by name).
+fn order_autosaves(v: &mut Vec<PathBuf>) {
+    let at = |p: &PathBuf| p.file_name().and_then(|n| crate::autosave::KEPT.iter().position(|k| n.eq_ignore_ascii_case(*k)));
+    let Some(first) = v.iter().position(|p| at(p).is_some()) else { return };
+    let mut kept: Vec<PathBuf> = v.iter().filter(|p| at(p).is_some()).cloned().collect();
+    kept.sort_by_key(|p| at(p));
+    v.retain(|p| at(p).is_none());
+    v.splice(first..first, kept);
 }
 
 // The list screen's buttons (index = the exe's button number): centre, radius, the art's cut (top-left), its size, tooltip.
@@ -1055,6 +1074,23 @@ mod tests {
     fn autosave_rows() {
         assert_eq!(row_name(Path::new("Saved Games/&Year 2002.sgs")), "autosave (Year 2002)");
         assert_eq!(row_name(Path::new("Saved Games/My Club.sgs")), "My Club");
+        assert_eq!(row_name(Path::new("Saved Games/&Latest.sgs")), "autosave (Latest)");
+        assert_eq!(row_name(Path::new("Saved Games/&Latest-2.sgs")), "autosave (Latest, one before)");
+        assert_eq!(row_name(Path::new("Saved Games/&Quick.sgs")), "quick save");
+    }
+
+    #[test]
+    fn kept_autosaves_newest_first() {
+        let mut v: Vec<PathBuf> =
+            ["&Latest-2.sgs", "&Latest-3.sgs", "&Latest.sgs", "&Quick.sgs", "Club.sgs"].iter().map(PathBuf::from).collect();
+        order_autosaves(&mut v);
+        let names: Vec<_> = v.iter().map(|p| p.to_string_lossy().into_owned()).collect();
+        assert_eq!(names, ["&Latest.sgs", "&Latest-2.sgs", "&Latest-3.sgs", "&Quick.sgs", "Club.sgs"]);
+        // a list without them is left alone
+        let mut w: Vec<PathBuf> = ["&Year 2002.sgs", "Club.sgs"].iter().map(PathBuf::from).collect();
+        let before = w.clone();
+        order_autosaves(&mut w);
+        assert_eq!(w, before);
     }
 
     #[test]

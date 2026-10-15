@@ -22,6 +22,7 @@ mod audio;
 mod autorelease;
 mod autosave;
 mod champ_ui;
+mod comfort;
 mod content;
 mod content_profiles;
 mod controls;
@@ -76,6 +77,7 @@ mod reports_ui;
 mod scenario_ui;
 mod screens_ui;
 mod share;
+mod staffview_ui;
 mod sysdiag;
 mod tags_ui;
 mod thoughts_ui;
@@ -1198,6 +1200,10 @@ impl Stage {
         if std::env::var_os("SG_PAUSED").is_some() {
             app.paused = true;
         }
+        // SG_STAFF_VIEW=1 shows the staff areas (Shift+A, staffview_ui.rs), for stills
+        if std::env::var_os("SG_STAFF_VIEW").is_some() {
+            app.comfort.staff_view = true;
+        }
         if let Some(f) = &o.save {
             if let Err(e) = app.terrain.save(f) {
                 eprintln!("error: {e}");
@@ -1274,6 +1280,8 @@ impl Stage {
     fn toggle_pause(&mut self) {
         let t = now();
         self.app.paused = !self.app.paused;
+        // the player's own pause or unpause: no longer one the comfort pauses made (comfort.rs)
+        self.app.comfort.paused_for = None;
         if self.app.paused {
             self.pause_start = t;
         } else {
@@ -1335,6 +1343,11 @@ impl Stage {
             PopupKind::SetPar => {
                 if k == 0 {
                     self.app.confirm_par();
+                }
+            }
+            PopupKind::QuickLoad => {
+                if k == 0 {
+                    self.app.quick_load(&mut self.g);
                 }
             }
             PopupKind::CareerOver => {
@@ -1753,6 +1766,10 @@ impl Stage {
                 KeyCode::M if extras::history() => app.open_history(),
                 KeyCode::H => app.toggle_name_tags(),
                 KeyCode::V if extras::path_help() => app.toggle_path_view(),
+                // the port's own comfort keys (comfort.rs, staffview_ui.rs): quick save, quick load, the staff areas
+                KeyCode::F5 => app.quick_save(),
+                KeyCode::F9 => app.ask_quick_load(),
+                KeyCode::A => app.toggle_staff_view(),
                 // ? repeats the last message
                 KeyCode::Slash => app.repeat_message(),
                 KeyCode::B => {
@@ -2884,6 +2901,17 @@ impl EventHandler for Stage {
         sysdiag::note("the window's close was asked for: exiting");
         #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
         std::process::exit(0);
+    }
+
+    /// The window went to the background (focus out on X11, Windows and macOS, the page hidden or blurred in the browser,
+    /// the app paused on Android): the Pause in the background extra pauses the game (comfort.rs).
+    fn window_minimized_event(&mut self) {
+        self.app.window_hidden();
+    }
+
+    /// The window is back: the pause the extra made ends.
+    fn window_restored_event(&mut self) {
+        self.app.window_shown();
     }
 }
 

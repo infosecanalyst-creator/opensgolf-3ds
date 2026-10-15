@@ -117,7 +117,7 @@ Select Difficulty has a **Game** box next to Course size. One click switches bet
 - **The original**: every OpenSGolf extra off and Classic graphics; the game exactly as it was (fixes for the original's
   own bugs stay on). A new player starts here.
 - **OpenSGolf extras**: the interface extras (People screen, message history, name tags, report tabs, path help, autosave,
-  save pictures, course sharing) and the
+  save pictures, course sharing; not the two pauses, which you tick yourself) and the
   gameplay extras that do not change the game's balance (turning buildings, animals, more staff).
 
 If you ticked your own choice in Preferences, the box says "your own mix"; a click goes back to the original. The choice
@@ -226,7 +226,7 @@ As in the original: **F1** Course Report, **F2** Player Comments (the twenty mos
 The port's own additions to the interface, none of them in the original (crates/simgolf/src/extras.rs and the modules it
 names). They only add a screen, a tag, a strip, a button or a save. A new player starts with them off; the Game box on Select
 Difficulty turns them on in one click, and System Functions, Preferences,
-*OpenSGolf extras...* has a tick for each (kept in `settings.json` under `extras`), and `--no-extras` turns them all off
+*OpenSGolf extras...* has a tick for each (kept in `settings.json` under `ui_extras`; a tick missing there, as in settings from before it existed, reads as off for the two pauses), and `--no-extras` turns them all off
 for one run. With every tick off the game draws and plays exactly as before (the stills of every report, panel and menu
 compare pixel for pixel with the build before the extras).
 
@@ -260,8 +260,10 @@ compare pixel for pixel with the build before the extras).
   right. The original's monthly warning that a building is not operational gets a **Show** button on the ticker that takes
   the camera to the building.
 - **Autosave**: every five minutes of play (time on the course, not in reports or menus) the game is saved to Saved Games
-  as *autosave (Latest)*, overwriting the last one, so a crash or a closed tab loses at most five minutes. Test hook:
-  `SG_AUTOSAVE_SECS=N` saves every N seconds of play instead. Load it from Load Previous Game like any save.
+  as *autosave (Latest)*, so a crash or a closed tab loses at most five minutes. The two autosaves before it are kept too,
+  as *autosave (Latest, one before)* and *autosave (Latest, two before)* (files `&Latest.sgs`, `&Latest-2.sgs`,
+  `&Latest-3.sgs`; each autosave moves them one along and the oldest goes), listed together, newest first. Test hook:
+  `SG_AUTOSAVE_SECS=N` saves every N seconds of play instead. Load them from Load Previous Game like any save.
 - **Save pictures**: Load Previous Game draws a map of the selected save's course in the list's top right corner: fairways,
   greens, sand, water, woods, paths and buildings, with the land the club does not own darker. It reads the save itself, so
   older saves get a picture too.
@@ -272,8 +274,35 @@ compare pixel for pixel with the build before the extras).
   game (`.sgs`) or a text file holding a code on the window brings it in too. The challenge: your course record travels
   with the course, and the course list shows it to your friend as the score to beat.
 
+- **Pause in the background** (off, also with the one-click OpenSGolf extras: some players leave the game running in the
+  background on purpose): the game pauses when its window goes to the background (another window takes the focus, the
+  window is minimised, the browser tab is hidden or the page loses the focus, the Android app is put away) and goes on when
+  it comes back. A pause you made yourself stays, and pausing or unpausing in between makes the pause yours. A line under
+  the Paused caption says why the game stopped.
+- **Pause on big news** (off, also with the one-click OpenSGolf extras): the game pauses right after a VIP (the CEO, the
+  county commissioner, the heiress) arrives, a famous golfer challenges your pro, the SGA offers a tournament, the board
+  warns about debt at the end of the year (the year-end report follows when the game goes on), or the cash goes below
+  zero (not in Sandbox Mode). The news is where the original puts it, on the ticker or the report; *Paused for big news*
+  under the Paused caption. Unpause as usual (Shift+P or the dock's pause button).
+
 Test hooks for stills: `--screen people|staff|pro|history|profile|pathview|tags|ticker|card` (with a game;
 `SG_PEOPLE_SORT=COL[,1]` sorts the People list by column COL, downward with 1), `--edit "M:6"` opens the extras box.
+
+## Quick save and staff areas
+
+The port's own keys, not in the original; nothing changes until you press them, and both can be moved to other keys
+(Change keys).
+
+- **Quick save (Shift+F5)** saves the game at once, without the Save dialog, to Saved Games as *quick save* (the file
+  `&Quick.sgs`, replaced each time); the ticker says "Quick saved". As with the championship course, there is no quick
+  save during a tournament. **Quick load (Shift+F9)** asks "Load the quick save?" first (anything played since is lost)
+  and then loads it; Load Previous Game lists it too. In the browser the quick save stays in the browser's storage with the
+  other saves; Shift+F5 and Shift+F9 are kept from the browser (no reload), and Shift + Alt + 5 / 9 work as well.
+- **Staff areas (Shift+A)** shows every employee's work ring at once, as the original draws the ring of an employee being
+  moved (4 tiles, 6 for a Groundskeeper, 8 for a skilled one, in the job's colour: yellow Groundskeepers, blue Rangers,
+  cyan Soda Vendors, grey Club Pros), and tints red every fairway, green and tee tile that no Groundskeeper's ring reaches:
+  that is where the next one is wanted. A legend in the upper right counts the staff and the unkept tiles. Press Shift+A
+  again to hide it. It only shows; nothing of the game changes. Test hook: `SG_STAFF_VIEW=1` shows it from the start.
 
 **Ctrl+Z** (Cmd+Z on a Mac) undoes the last click or drag with a building or terrain tool that changed the course:
 terrain, paths, holes, buildings and garden items. The whole game goes back to just before it, money included, as if that moment had been saved and loaded.

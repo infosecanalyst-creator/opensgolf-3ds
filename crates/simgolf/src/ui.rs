@@ -703,6 +703,11 @@ impl Screen {
         );
     }
 
+    /// A filled four-sided shape through four points in order (a map tile's corners on the screen).
+    pub fn quad(&self, g: &mut Gfx, p: [(f32, f32); 4], c: [f32; 4]) {
+        self.emit(g, None, p.map(|(x, y)| Vert::new(x, y, 0.0, 0.0, 0.0).col(c)), true);
+    }
+
     /// A straight line `w` pixels wide.
     #[allow(clippy::too_many_arguments)]
     pub fn line(&self, g: &mut Gfx, x0: f32, y0: f32, x1: f32, y1: f32, w: f32, c: [f32; 4]) {

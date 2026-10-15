@@ -543,23 +543,12 @@ impl App {
             self.draw_reach_ring(g, s, e.x, e.y, 12, WHITE);
         }
         let Some((a, b)) = self.hover_tile.filter(|&(a, b)| self.terrain.inside(a, b)) else { return };
-        let tiles = match e.job {
-            job::GROUNDSKEEPER if e.upgraded => 8,
-            job::GROUNDSKEEPER => 6,
-            _ => 4,
-        };
-        let colour = match e.job {
-            job::SODA_VENDOR => 0x03ff,
-            job::GROUNDSKEEPER => 0x7ff0,
-            job::RANGER => 0x0018,
-            _ => GREY,
-        };
-        self.draw_reach_ring(g, s, a * 1024 + 512, b * 1024 + 512, tiles * 25, colour);
+        self.draw_reach_ring(g, s, a * 1024 + 512, b * 1024 + 512, work_tiles(e) * 25, work_colour(e.job));
     }
 
     /// The landmark's reach and the staff's work area (0x407c60): a ring 2 pixels wide at alpha 7 tenths, `yards` round a map
     /// point, in 24 steps; a step with an end off the screen is left out.
-    fn draw_reach_ring(&self, g: &mut Gfx, s: &Ui, x: i32, y: i32, yards: i32, colour: u16) {
+    pub(crate) fn draw_reach_ring(&self, g: &mut Gfx, s: &Ui, x: i32, y: i32, yards: i32, colour: u16) {
         let r = ((yards << 10) / 25) as f32;
         let mut last: Option<(f32, f32)> = None;
         for k in 0..25 {
@@ -586,6 +575,25 @@ impl App {
         s.line(g, 688.0, 450.5, 784.0, 450.5, 1.0, c15(GREY));
         label(g, s, 736.0, 455.0, &trf("STR_CURSOR_PROFIT", &[("MONEY", &(profit * 100))]), BODY, c15(GREEN));
         label(g, s, sx, sy + 8.0, &format!("${}", profit * 100), BODY, c15(if profit > 0 { GREEN } else { RED }));
+    }
+}
+
+/// An employee's work area while being moved (0x403d87): a radius of 4 tiles, 6 for a Groundskeeper and 8 for a skilled one.
+pub(crate) fn work_tiles(e: &sg_core::staff::Employee) -> i32 {
+    match e.job {
+        job::GROUNDSKEEPER if e.upgraded => 8,
+        job::GROUNDSKEEPER => 6,
+        _ => 4,
+    }
+}
+
+/// The work area's colour by job (0x403d87; the routing map's ellipse colours).
+pub(crate) fn work_colour(j: i8) -> u16 {
+    match j {
+        job::SODA_VENDOR => 0x03ff,
+        job::GROUNDSKEEPER => 0x7ff0,
+        job::RANGER => 0x0018,
+        _ => GREY,
     }
 }
 

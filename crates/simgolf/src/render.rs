@@ -830,6 +830,7 @@ impl App {
         // the OpenSGolf extras' path view and name tag (extras.rs), over the course and under the HUD
         if self.great_shot.is_none() {
             self.draw_path_view(g, &s);
+            self.draw_staff_view(g, &s);
             self.draw_name_tag(g, &s);
         }
         // the great-shot SimFoto is drawn over the course alone: footage of the original shows the frozen frame without
@@ -884,6 +885,7 @@ impl App {
         self.draw_paused(g, &s);
         s.anchor(Anchor::Bottom);
         self.draw_following(g, &s);
+        self.draw_pause_reason(g, &s);
         s.anchor(Anchor::Top);
         // the ticker goes over the golfer card, as in the exe's frame
         self.draw_ticker(g, &s);
