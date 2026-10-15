@@ -79,6 +79,8 @@ With its default settings OpenSGolf plays like the original, apart from these:
   wrong golfer ([docs/FIXES.md](docs/FIXES.md)). On by default; they can be turned off in the preferences.
 - **Modern systems and screens:** saving anywhere, undo for building and terrain (Ctrl+Z), full screen (F11), game
   speeds ×2 and ×4, remappable keys, touch controls, controllers and a frame-rate cap.
+- **Building tools:** a measuring tape in yards (the ' key) and, with a terrain brush, Shift+drag for a rectangle and
+  Alt+click to fill a region, with the cost shown before you commit.
 
 Optional, and off by default (Start New Game has a one-click switch between *the original* and *OpenSGolf extras*):
 

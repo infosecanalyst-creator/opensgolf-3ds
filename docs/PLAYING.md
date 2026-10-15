@@ -279,6 +279,34 @@ Test hooks for stills: `--screen people|staff|pro|history|profile|pathview|tags|
 terrain, paths, holes, buildings and garden items. The whole game goes back to just before it, money included, as if that moment had been saved and loaded.
 Up to 30 steps are kept; the list starts empty with each game and is not saved. (The port's own; not in the original.)
 
+### Building tools
+
+The port's own (crates/simgolf/src/build_tools.rs), always there and doing nothing until used: they only show a distance
+or save clicks, and paint exactly what the plain brush would.
+
+- **Measuring tape** (**'**, the apostrophe; another key on *Change keys*): hold the key and move the pointer to measure
+  from where the pointer was when you pressed it, then let go to leave the reading on the course; or tap the key, move
+  the pointer and click to set the far end down. A white line joins the two points with the straight distance in yards
+  at its middle, counted as the game counts a hole's length (25 yards a tile, as the hole tool's line from the tee).
+  Started on a hole's tee, it also shows the carry from that hole's tee point (*From hole 3's tee: 212 yards*). Esc, a
+  right click, a click or the key again put it away. It works at every zoom and turn of the view.
+- **Rectangle**: with a terrain brush armed on the Build Course panel, **Shift+drag** paints the rectangle from the tile
+  where you pressed to the tile where you let go. While you drag, the rectangle is outlined, the tiles that will change are
+  lit and the total cost shows under the pointer (red when the club cannot afford it; a sandbox shows the tile count).
+  Esc or a right click before letting go cancels it. A Shift+click without moving paints the one tile, as a click does.
+- **Fill**: with a terrain brush armed, **Alt+click** (Option+click on a Mac) paints the whole region of the tile type
+  under the pointer, the tiles joined to it edge to edge, up to the edge of the club's land. Holding Alt over the course
+  shows the region and its cost before you click.
+
+Both go through the brush's own paint, one tile at a time: the same prices (clearing included) and the same rules (land
+the club does not own, obstacles, landmarks and buildings, tees and cups during a tournament, the hole tool's tees and
+greens), tiles already of that type are free, and when the money runs out the rest is left as it is. An area is at most
+2,500 tiles (the original's whole map); a larger one is refused. Each rectangle or fill is one Ctrl+Z.
+
+Test hooks: `SG_TAPE="x0,y0,x1,y1"` (tiles, fractions allowed) sets a tape down; `SG_AREA="r,x,y"` holds a rectangle from
+tile x,y to the pointer (`SG_CURSOR_TILE`) and `SG_AREA=f` holds Alt (with `SG_PAINT=type`, for stills of the previews);
+`--edit "B:x0,y0,x1,y1,type"` paints a rectangle and `--edit "L:x,y,type"` fills, printing the tiles, the cost and the cash.
+
 On Windows, macOS and Linux, **F11** or **Alt+Enter** switches between a window and full screen (in the browser, use the
 browser's own full screen, F11).
 
@@ -317,9 +345,9 @@ changed every key does what it did before.
 
 * **Change keys.** System Functions → Preferences → *Keyboard controls...* → *Change keys...* lists every action of the
   course screen with its key: the original's (tools, screens, the F keys, the shot shapes while your pro aims) and the
-  port's own (game speed, photo mode, hiding the interface). Click an action, then press its new key, with or without
-  Shift; Esc (or a click) while it waits keeps the old key. Two actions on one key are printed in red and a line says
-  which: only one of them answers (the shot shapes only clash with each other, since they count only while your pro
+  port's own (game speed, photo mode, hiding the interface, the measuring tape). Click an action, then press its new key,
+  with or without Shift; Esc (or a click) while it waits keeps the old key. Two actions on one key are printed in red and
+  a line says which: only one of them answers (the shot shapes only clash with each other, since they count only while your pro
   aims). *Reset to defaults* puts every key back. The digits (holes 1 to 18) and Esc cannot be given to an action. The
   keys are saved at once under `"controls"` in `settings.json` (only the ones that differ, e.g.
   `"controls": {"wasd": false, "keys": {"water": "Shift+Q", "zoom_in": "G"}}`; an action set to `""` has no key) and the

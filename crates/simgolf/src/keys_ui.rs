@@ -116,6 +116,10 @@ const ROWS: &[Row] = &[
     Key("STR_KEYS_K_TAGS", "STR_KEYS_TAGS"),
     Key("STR_KEYS_K_PATHVIEW", "STR_KEYS_PATHVIEW"),
     Key("STR_KEYS_K_REPORT_TABS", "STR_KEYS_REPORT_TABS"),
+    // the port's building tools (build_tools.rs)
+    Key("STR_KEYS_K_TAPE", "STR_KEYS_TAPE"),
+    Key("STR_KEYS_K_AREA_RECT", "STR_KEYS_AREA_RECT"),
+    Key("STR_KEYS_K_AREA_FILL", "STR_KEYS_AREA_FILL"),
     Head("STR_KEYS_HEAD_OTHER"),
     Key("STR_KEYS_K_ESC", "STR_KEYS_ESC"),
     Key("STR_KEYS_K_MENU_MOVE", "STR_KEYS_MENU_MOVE"),

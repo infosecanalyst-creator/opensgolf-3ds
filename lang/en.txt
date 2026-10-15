@@ -901,6 +901,12 @@ STR_CURSOR_LOT_VALUE                    :Lot value: {MONEY}
 STR_CURSOR_SITE_CLEAR                   :Site clear: {MONEY}
 STR_CURSOR_SITE_PREP                    :Site prep.: {MONEY}
 STR_CURSOR_PROFIT                       :Profit: {MONEY}
+# the port's building tools (build_tools.rs): the tape's carry from a hole's tee, the brush's rectangle and fill
+STR_TAPE_CARRY                          :From hole {HOLE}'s tee: {YARDS} yards
+STR_AREA_COST                           :{TILES} tiles: {MONEY}
+STR_AREA_TILES                          :{TILES} tiles
+STR_AREA_TOO_LARGE                      :Too large: at most {MAX} tiles
+STR_TOAST_AREA_TOO_LARGE                :That area is too large to paint at once (at most {MAX} tiles).
 
 # Shot Analysis: the four kinds of golfer (0x40d760's labels) and the figure beside each ({SIGN} is + when positive)
 STR_ANALYSIS_NO_LENGTH                  :no Length skill
@@ -2420,6 +2426,8 @@ STR_CTL_PEOPLE                          :People screen
 STR_CTL_HISTORY                         :Message history
 STR_CTL_NAME_TAGS                       :Name tags off / on
 STR_CTL_PATH_VIEW                       :Path view off / on
+# the port's building tools (build_tools.rs)
+STR_CTL_TAPE                            :Measuring tape
 
 # The player's own SimGolf files (the port's own, gamefiles.rs): the title screen's button and the Preferences line
 STR_GAME_FILES_USE_MINE                 :Use my SimGolf files...
@@ -2678,3 +2686,9 @@ STR_KEYS_K_PATHVIEW                     :Shift+V
 STR_KEYS_PATHVIEW                       :Path view: paths and places without one
 STR_KEYS_K_REPORT_TABS                  :Tab
 STR_KEYS_REPORT_TABS                    :On a report: the next report's tab (Shift+Tab the one before; the F keys go straight there)
+STR_KEYS_K_TAPE                         :'
+STR_KEYS_TAPE                           :Measuring tape: hold and move, or press and click (Esc puts it away)
+STR_KEYS_K_AREA_RECT                    :Shift+drag
+STR_KEYS_AREA_RECT                      :With a terrain brush: paint a rectangle
+STR_KEYS_K_AREA_FILL                    :Alt+click
+STR_KEYS_AREA_FILL                      :With a terrain brush: fill the region of one type

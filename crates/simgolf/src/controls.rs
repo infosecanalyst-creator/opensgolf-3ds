@@ -284,6 +284,8 @@ pub const ACTIONS: &[Action] = {
         act!("history", "STR_CTL_HISTORY", shifted(M)),
         act!("name_tags", "STR_CTL_NAME_TAGS", shifted(H)),
         act!("path_view", "STR_CTL_PATH_VIEW", shifted(V)),
+        // the port's own building tools (build_tools.rs): the measuring tape, on a key the original leaves unused
+        act!("tape", "STR_CTL_TAPE", plain(Apostrophe)),
     ]
 };
 
@@ -485,6 +487,7 @@ const ROW_ACTIONS: &[(&str, &[&str])] = &[
     ("STR_KEYS_K_HISTORY", &["history"]),
     ("STR_KEYS_K_TAGS", &["name_tags"]),
     ("STR_KEYS_K_PATHVIEW", &["path_view"]),
+    ("STR_KEYS_K_TAPE", &["tape"]),
 ];
 
 /// The text a Keyboard controls row prints for its key: None (the row's own text) unless the player moved one of its keys.

@@ -33,11 +33,11 @@ use sg_core::lang::{tr, trf};
 use sg_core::staff::job;
 
 /// The exe's 15-bit colours.
-fn c15(v: u16) -> [f32; 4] {
+pub(crate) fn c15(v: u16) -> [f32; 4] {
     rgb(((v >> 10) & 31) as f32 / 31.0, ((v >> 5) & 31) as f32 / 31.0, (v & 31) as f32 / 31.0)
 }
-const WHITE: u16 = 0x7fff;
-const RED: u16 = 0x7d08;
+pub(crate) const WHITE: u16 = 0x7fff;
+pub(crate) const RED: u16 = 0x7d08;
 const GREEN: u16 = 0x23e8;
 const PURPLE: u16 = 0x6090;
 const GREY: u16 = 0x6318;
@@ -133,7 +133,7 @@ impl App {
     }
 
     /// Screen point (800 x 600) of a map point in 1/1024 tile units, on the ground.
-    fn screen_units(&self, x: i32, y: i32) -> (f32, f32) {
+    pub(crate) fn screen_units(&self, x: i32, y: i32) -> (f32, f32) {
         let (wx, wz) = self.units_to_world(x, y);
         self.screen_of_world(wx, wz).unwrap_or((-1000.0, -1000.0))
     }
@@ -352,10 +352,15 @@ impl App {
     pub fn draw_cursor_overlay(&mut self, g: &mut Gfx) {
         let s = Ui::new(self.draw_w, self.draw_h);
         self.draw_staff_move(g, &s);
+        // the port's own measuring tape (build_tools.rs)
+        self.draw_tape(g, &s);
         let Some(tool) = self.cursor_tool() else { return };
         match tool {
             Tool::Elevation(k) => self.draw_elevation_cursor(g, &s, k),
-            Tool::Paint(ty) => self.draw_brush_cursor(g, &s, ty),
+            Tool::Paint(ty) => {
+                self.draw_brush_cursor(g, &s, ty);
+                self.draw_area_preview(g, &s);
+            }
             Tool::Undo => {
                 let (a, b) = self.cursor_tile();
                 if !self.cursor_tile_ok(a, b) {
@@ -590,14 +595,14 @@ impl App {
 }
 
 /// Centred text placed by its top, as the exe's text calls place it (ours draw from the baseline).
-fn top_text(g: &mut Gfx, s: &Ui, cx: f32, top: f32, text: &str, size: f32, c: [f32; 4]) {
+pub(crate) fn top_text(g: &mut Gfx, s: &Ui, cx: f32, top: f32, text: &str, size: f32, c: [f32; 4]) {
     if !text.is_empty() {
         s.text(g, cx - (crate::ui::text_width(text, size) / 2.0).floor(), crate::ui::top(top, size), text, size, c);
     }
 }
 
 /// Text through 0x404bc0: centred, placed by its top, with the palette's black one pixel below.
-fn label(g: &mut Gfx, s: &Ui, cx: f32, top: f32, text: &str, size: f32, c: [f32; 4]) {
+pub(crate) fn label(g: &mut Gfx, s: &Ui, cx: f32, top: f32, text: &str, size: f32, c: [f32; 4]) {
     top_text(g, s, cx, top + 1.0, text, size, [0.0, 0.0, 0.0, c[3]]);
     top_text(g, s, cx, top, text, size, c);
 }

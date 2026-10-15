@@ -21,6 +21,7 @@ mod audio;
 #[cfg(target_os = "macos")]
 mod autorelease;
 mod autosave;
+mod build_tools;
 mod champ_ui;
 mod content;
 mod content_profiles;
@@ -330,6 +331,8 @@ struct Stage {
     mouse: (f32, f32),
     shift: bool,
     ctrl: bool,
+    /// Alt (Option on a Mac) is held: a click with the terrain brush fills (build_tools.rs).
+    alt: bool,
     /// The mouse button held down was a Ctrl+click, taken as a right-click (its release is a right one too).
     ctrl_click: bool,
     /// A key just opened a name box (Shift+S the Save dialog): the character that key types comes next and is not the
@@ -651,6 +654,13 @@ fn cursor_pin() -> Option<(f32, f32)> {
     })
 }
 
+/// The ground point SG_CURSOR_TILE holds the pointer on, as a world point.
+fn pin_world(app: &App) -> Option<(f32, f32)> {
+    let (x, y) = cursor_pin()?;
+    let t = sg_core::terrain::TILE_SIZE;
+    Some((x * t - app.terrain.w as f32 * t * 0.5, y * t - app.terrain.h as f32 * t * 0.5))
+}
+
 fn apply_edit_spec(app: &mut App, spec: &str) {
     for item in spec.split(';').filter(|s| !s.is_empty()) {
         let (kind, rest) = (item.as_bytes()[0], item.get(2..).unwrap_or(""));
@@ -918,6 +928,25 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
             b'D' if item.len() > 2 && v.len() >= 2 => {
                 app.econ.debt_stage = at(0);
                 app.econ.cash = at(1) as f64 * sg_core::economy::Economy::UNIT;
+            }
+            b'B' | b'L' if item.len() > 2 && v.len() >= 3 => {
+                // the terrain brush of type `type` (sg_core::terrain) over a rectangle B:x0,y0,x1,y1,type or the fill
+                // L:x,y,type, through the brush's own paint (build_tools.rs), then what it cost
+                let ty = if kind == b'B' { at(4) } else { at(2) };
+                app.paint_idx = PAINT.iter().position(|p| p.ty == ty && p.vbyte == 0).unwrap_or(app.paint_idx);
+                app.sync_course();
+                let area = if kind == b'B' { app.rect_area((at(0), at(1)), (at(2), at(3))) } else { app.fill_area((at(0), at(1))) };
+                let (n, cost) = build_tools::area_cost(&area.tiles, |x, y| app.paint_cost_at(x, y));
+                let cash = app.econ.cash;
+                app.paint_area(&area);
+                app.sync_course();
+                println!(
+                    "area {item}: {} tiles, {n} to change for {} units, too large {}, cash {cash} -> {}",
+                    area.tiles.len(),
+                    cost,
+                    area.too_large,
+                    app.econ.cash
+                );
             }
             b'o' => {
                 let ok = app.open_hole();
@@ -1198,6 +1227,8 @@ impl Stage {
         if std::env::var_os("SG_PAUSED").is_some() {
             app.paused = true;
         }
+        // SG_TAPE and SG_AREA: the measuring tape and the brush's rectangle and fill, for stills (build_tools.rs)
+        build_tools::test_hooks(&mut app);
         if let Some(f) = &o.save {
             if let Err(e) = app.terrain.save(f) {
                 eprintln!("error: {e}");
@@ -1263,6 +1294,7 @@ impl Stage {
             mouse: (0.0, 0.0),
             shift: false,
             ctrl: false,
+            alt: false,
             ctrl_click: false,
             swallow_char: false,
             wheel: (0.0, 0.0),
@@ -1662,6 +1694,16 @@ impl Stage {
         // the player's keys (controls.rs): the key pressed becomes the default key of the action bound to it
         let aiming = self.app.club.pro_aiming().is_some();
         let Some((k, shift, act)) = controls::translate(k, self.shift, aiming) else { return };
+        // the port's own measuring tape (build_tools.rs)
+        if act == Some(controls::action("tape")) {
+            let at = self.pointer_ground();
+            self.app.tape_key_down(at);
+            return;
+        }
+        // Esc first puts the tape or a rectangle under way away
+        if k == KeyCode::Escape && self.app.build_tools_cancel() {
+            return;
+        }
         // the port's own: the whole interface hidden or shown again (u; controls_ui.rs)
         if act == Some(controls::action("hide_interface")) {
             self.app.ctl.hud_hidden = !self.app.ctl.hud_hidden;
@@ -2337,6 +2379,8 @@ impl EventHandler for Stage {
         if app.screen == Screen::Play {
             let hit = app.pick_ground(self.mouse.0, self.mouse.1);
             app.hover_tile = hit.map(|(x, z)| app.terrain.tile_of(x, z));
+            // the measuring tape's far end follows the pointer (build_tools.rs)
+            app.tape_pointer(pin_world(app).or(hit));
             let (vx, vy) = app.view.to_virtual(self.mouse.0, self.mouse.1);
             match hit {
                 _ if app.auto_aim != 0 => {}
@@ -2349,13 +2393,7 @@ impl EventHandler for Stage {
             }
         }
         if app.edit {
-            let hit = match cursor_pin() {
-                Some((x, y)) => {
-                    let t = sg_core::terrain::TILE_SIZE;
-                    Some((x * t - app.terrain.w as f32 * t * 0.5, y * t - app.terrain.h as f32 * t * 0.5))
-                }
-                None => app.pick_ground(self.mouse.0, self.mouse.1),
-            };
+            let hit = pin_world(app).or_else(|| app.pick_ground(self.mouse.0, self.mouse.1));
             app.has_hit = hit.is_some();
             if let Some((x, z)) = hit {
                 app.hit_x = x;
@@ -2759,6 +2797,13 @@ impl EventHandler for Stage {
         if ui_ok && button == MouseButton::Left && self.app.strip_click(vx, vy) {
             return;
         }
+        // the measuring tape takes a click on the course; a right click ends a rectangle under way (build_tools.rs)
+        if self.app.screen == Screen::Play && self.app.tape_click(button == MouseButton::Left) {
+            return;
+        }
+        if button == MouseButton::Right && self.app.bt.rect_from.take().is_some() {
+            return;
+        }
         if button == MouseButton::Left && self.app.club.pro_aiming().is_some() && !self.app.edit {
             if let Some((hx, hz)) = self.app.pick_ground(x, y) {
                 self.app.aim_pointer(hx, hz);
@@ -2779,7 +2824,12 @@ impl EventHandler for Stage {
                 self.app.hit_x = hx;
                 self.app.hit_z = hz;
             }
-            self.app.apply_tool(self.shift, false);
+            // the terrain brush's rectangle (Shift) and fill (Alt), the port's own (build_tools.rs)
+            match self.app.brush_area_press(self.shift, self.alt) {
+                build_tools::AreaPress::None => self.app.apply_tool(self.shift, false),
+                build_tools::AreaPress::Rect => {}
+                build_tools::AreaPress::Filled => self.editing = false,
+            }
         } else {
             self.dragging = true;
             // a drag of the view ends People > Follow
@@ -2798,6 +2848,13 @@ impl EventHandler for Stage {
         if self.app.photo.is_some() {
             self.photo_button(false, button, x, y);
             return;
+        }
+        // a rectangle under way ends with the left button only; it is painted before the undo step is kept
+        if button != MouseButton::Left && self.app.bt.rect_from.is_some() {
+            return;
+        }
+        if button == MouseButton::Left {
+            self.app.brush_area_release();
         }
         if self.dragging {
             self.app.drag_state(false, now());
@@ -2837,6 +2894,8 @@ impl EventHandler for Stage {
         self.shift = mods.shift || k == KeyCode::LeftShift || k == KeyCode::RightShift;
         self.app.shift_held = self.shift;
         self.ctrl = mods.ctrl || k == KeyCode::LeftControl || k == KeyCode::RightControl;
+        self.alt = mods.alt || k == KeyCode::LeftAlt || k == KeyCode::RightAlt;
+        self.app.bt.alt = self.alt;
         let typing = self.app.typing();
         self.key_down(k);
         self.swallow_char = !typing && self.app.typing();
@@ -2875,6 +2934,12 @@ impl EventHandler for Stage {
         self.shift = mods.shift && k != KeyCode::LeftShift && k != KeyCode::RightShift;
         self.app.shift_held = self.shift;
         self.ctrl = mods.ctrl && k != KeyCode::LeftControl && k != KeyCode::RightControl;
+        self.alt = mods.alt && k != KeyCode::LeftAlt && k != KeyCode::RightAlt;
+        self.app.bt.alt = self.alt;
+        // the measuring tape's key let go (build_tools.rs)
+        if self.app.screen == Screen::Play && controls::settings().binding(controls::action("tape")).is_some_and(|b| b.key == k) {
+            self.app.tape_key_up();
+        }
     }
 
     /// The window's close button: the game never keeps the window open, so the program ends here, before the window
@@ -2899,6 +2964,11 @@ impl Drop for Stage {
 }
 
 impl Stage {
+    /// The ground point under the pointer (or where SG_CURSOR_TILE holds it), None off the course.
+    fn pointer_ground(&self) -> Option<(f32, f32)> {
+        pin_world(&self.app).or_else(|| self.app.pick_ground(self.mouse.0, self.mouse.1))
+    }
+
     /// A key pressed (key_down_event after the modifiers and the stand-in keys).
     fn key_down(&mut self, k: KeyCode) {
         // a notice (gamefiles.rs) takes the keys until it is closed
