@@ -6,7 +6,7 @@
 use crate::app::App;
 use crate::fx_nature::Kind;
 use crate::gfx::{Gfx, Mode, Uniforms, Vert};
-use sg_core::terrain::{TILE_SIZE, TT_FLOWER_BED};
+use sg_core::terrain::{TILE_SIZE, TT_DEEP_ROUGH, TT_FLOWER_BED, TT_ROUGH};
 
 /// Seconds between the birds of prey wheeling over, and the share of that time they are up.
 const SOAR_EVERY: f32 = 70.0;
@@ -14,6 +14,8 @@ const SOAR_SHARE: f32 = 0.55;
 /// The most butterflies and leafy trees drawn.
 const MAX_BUTTERFLIES: usize = 40;
 const MAX_LEAF_TREES: usize = 80;
+/// An art pixel at the closest zoom, in the 800 x 600 screen's pixels times the view's units (Dots::pixel).
+const ART_PX: f32 = 4.0;
 
 fn hash(a: u32, b: u32) -> f32 {
     let mut h = a.wrapping_mul(0x9e37_79b9) ^ b.wrapping_mul(0x85eb_ca6b);
@@ -101,8 +103,8 @@ impl App {
         let t = self.fx.time;
         let mv = self.mv;
         let vscale = (self.draw_w / 800.0).min(self.draw_h / 600.0);
-        // sizes below are in the art's pixels: the exe's zoom (1, 2 or 4) magnifies them
-        let z = self.exe_zoom().max(0.5);
+        // sizes below are in the art's pixels at the closest zoom (the exe's 4); they shrink with the view like the art
+        let z = ART_PX;
         let tint = self.fx_sprite_tint(0.0, 0.0, false).map(|t| [t[0], t[1], t[2]]).unwrap_or([1.0; 3]);
         let mut d = Dots { v: Vec::new(), axes: [mv[0], mv[4], mv[8], mv[1], mv[5], mv[9]], px: self.upp * vscale };
         let seed = self.fx_seed();
@@ -190,6 +192,67 @@ impl App {
             }
         }
 
+        if !d.v.is_empty() {
+            g.tris(Mode::Flat, None, u, &d.v);
+        }
+    }
+
+    /// Grass tufts: a few blades of a pixel each standing up from the rough round the view, the tips swaying with the wind.
+    /// Only at the two closer zoom levels.
+    pub(crate) fn fx_grass(&mut self, g: &mut Gfx, u: &Uniforms) {
+        if !crate::fx::settings().grass || self.land.is_none() || self.exe_zoom() < 2.0 {
+            return;
+        }
+        let a = self.fx.atmos;
+        let t = self.fx.time;
+        let mv = self.mv;
+        let vscale = (self.draw_w / 800.0).min(self.draw_h / 600.0);
+        let z = ART_PX;
+        let tint = self.fx_sprite_tint(0.0, 0.0, false).map(|t| [t[0], t[1], t[2]]).unwrap_or([1.0; 3]);
+        let mut d = Dots { v: Vec::new(), axes: [mv[0], mv[4], mv[8], mv[1], mv[5], mv[9]], px: self.upp * vscale };
+        let seed = self.fx_seed();
+        let desert = self.exe_theme() == 1;
+        // the tiles round the view
+        let (cx, cy) = self.terrain.tile_of(self.cam_x, self.cam_z);
+        let reach = ((self.draw_w.max(self.draw_h) * self.upp / TILE_SIZE) * 0.75).ceil() as i32 + 1;
+        let (dark, light) = if desert { ([0.42, 0.40, 0.22], [0.58, 0.55, 0.32]) } else { ([0.20, 0.36, 0.12], [0.36, 0.55, 0.20]) };
+        let snow = a.snow;
+        for ty in (cy - reach).max(0)..(cy + reach).min(self.terrain.h) {
+            for tx in (cx - reach).max(0)..(cx + reach).min(self.terrain.w) {
+                let n = match self.terrain.ty[self.terrain.tile_index(tx, ty)] {
+                    TT_ROUGH => 3,
+                    TT_DEEP_ROUGH => 6,
+                    _ => continue,
+                };
+                let (mx, mz) = self.terrain.tile_centre(tx, ty);
+                for k in 0..n {
+                    let hs = ((tx as u32) << 16 | ty as u32) ^ seed;
+                    let (ox, oz) = (hash(hs, 1 + k) - 0.5, hash(hs, 20 + k) - 0.5);
+                    let (x, zz) = (mx + ox * TILE_SIZE * 0.9, mz + oz * TILE_SIZE * 0.9);
+                    let c = [x, self.terrain.height_at(x, zz), zz];
+                    let sway = (a.wind.k * a.wind.screen_x * 1.6 + 0.6 * (t * 2.3 + hash(hs, 40 + k) * 6.3).sin() * a.wind.k).round();
+                    // five blades fanning out from the root: (where, height, which way the tip leans)
+                    let size = 0.7 + 0.5 * hash(hs, 80 + k);
+                    for (b, &(bx, h, lean)) in
+                        [(-2.0f32, 3.0f32, -1.0f32), (-1.0, 4.0, 0.0), (0.0, 5.0, 0.0), (1.0, 4.0, 0.0), (2.0, 3.0, 1.0)].iter().enumerate()
+                    {
+                        let h = (h * size).round().max(2.0);
+                        let shade = hash(hs, 60 + k * 5 + b as u32);
+                        let base = if b % 2 == 0 { dark } else { light };
+                        let m = 0.85 + 0.3 * shade;
+                        let mut col = [base[0] * m * tint[0], base[1] * m * tint[1], base[2] * m * tint[2], 0.95];
+                        if snow > 0.0 {
+                            let w = snow * 0.5;
+                            col = [col[0] + (0.9 - col[0]) * w, col[1] + (0.92 - col[1]) * w, col[2] + (0.95 - col[2]) * w, col[3]];
+                        }
+                        // the blade's lower part straight, the top two pixels leaning out and with the wind
+                        d.pixel(c, bx, 0.0, 1.0, h - 2.0, z, col);
+                        d.pixel(c, bx + (lean * 0.5).round(), h - 2.0, 1.0, 1.0, z, col);
+                        d.pixel(c, bx + lean + sway, h - 1.0, 1.0, 1.0, z, col);
+                    }
+                }
+            }
+        }
         if !d.v.is_empty() {
             g.tris(Mode::Flat, None, u, &d.v);
         }

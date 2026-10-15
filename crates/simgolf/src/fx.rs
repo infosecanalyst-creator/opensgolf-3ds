@@ -68,6 +68,8 @@ pub struct FxSettings {
     pub after_rain: bool,
     /// Lightning in heavy rain on parkland and links courses (fx_wet.rs).
     pub lightning: bool,
+    /// Tiny tufts of grass standing up from the rough, swaying in the wind (fx_life.rs).
+    pub grass: bool,
     /// Contrast-adaptive sharpening of the finished picture (the composite in fx_glsl.rs).
     pub sharpen: bool,
     /// Snow cover, falling snow and icy ponds early and late in the year (fx_winter.rs).
@@ -113,6 +115,7 @@ impl Default for FxSettings {
             after_rain: true,
             // a strong effect: offered, not on by default
             lightning: false,
+            grass: true,
             sharpen: true,
             winter: true,
             crowds: true,
@@ -181,7 +184,7 @@ macro_rules! flag {
     };
 }
 
-static OPTIONS: [FxOption; 32] = [
+static OPTIONS: [FxOption; 33] = [
     FxOption { key: "effects", label: "STR_FX_EFFECTS", choices: ON_OFF, get: |s| s.enabled as usize, set: |s, v| s.enabled = v != 0 },
     FxOption {
         key: "scaler",
@@ -221,6 +224,7 @@ static OPTIONS: [FxOption; 32] = [
     flag!("seasons", "STR_FX_SEASONS", seasons),
     flag!("after-rain", "STR_FX_AFTER_RAIN", after_rain),
     flag!("lightning", "STR_FX_LIGHTNING", lightning),
+    flag!("grass", "STR_FX_GRASS", grass),
     flag!("sharpen", "STR_FX_SHARPEN", sharpen),
     flag!("winter", "STR_FX_WINTER", winter),
     flag!("crowds", "STR_FX_CROWDS", crowds),
@@ -334,6 +338,7 @@ pub fn from_enhanced(e: &crate::enhanced::Settings) -> FxSettings {
     s.seasons = e.fx_seasons;
     s.after_rain = e.fx_after_rain;
     s.lightning = e.fx_lightning;
+    s.grass = e.fx_grass;
     s.sharpen = e.fx_sharpen;
     s.winter = e.fx_winter;
     s.crowds = e.fx_crowds;

@@ -99,6 +99,7 @@ decoded terrain light (`sg_core::terrain::Lighting`, `light_direction`) and the 
 | Evening lights (`evening-lights`) | on | With the time of day: lit windows, lamps with pools of light and fireflies at dusk (see *Evening lights*). |
 | Seasons (`seasons`) | on | Blossom and fresh greens in spring, autumn colours in September and October, frost and dew on spring and autumn mornings (see *Seasons*). |
 | After the rain (`after-rain`) | on | With rain: wet, glossy ground and puddles during and after a rainy day, now and then a rainbow (see *After the rain*). |
+| Grass tufts (`grass`) | on | Tiny tufts of grass, a few pixels at the art's own pixel size, standing up from the rough and the deep rough and swaying in the wind; none on fairways, greens or tees. Only at the two closer zoom levels. |
 | Lightning (`lightning`) | off | Flashes and distant flicker in heavy rain where the climate is wet (see *Climate*), never in the desert. |
 | Sharpen (`sharpen`) | on | Contrast-adaptive sharpening of the finished picture: the art's own detail (the grass, the trees' leaves, the roofs) comes out crisper on large screens, strongest where the picture is soft and never past its own colours, so no halos. Desktop only, with the other post-processing. |
 | Winter (`winter`) | on | The first days of March on parkland and links courses: full morning frost, snow showers instead of rain, and some mornings a light dusting that melts by mid-morning (see *Winter*). |

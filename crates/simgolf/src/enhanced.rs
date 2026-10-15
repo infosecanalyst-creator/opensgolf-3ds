@@ -99,6 +99,8 @@ pub struct Settings {
     pub fx_after_rain: bool,
     /// Lightning in heavy rain (fx_wet.rs).
     pub fx_lightning: bool,
+    /// Tiny tufts of grass standing up from the rough, swaying in the wind (fx_life.rs).
+    pub fx_grass: bool,
     /// Contrast-adaptive sharpening of the finished picture (the composite in fx_glsl.rs).
     pub fx_sharpen: bool,
     /// Snow cover, falling snow and icy ponds early and late in the year (fx_winter.rs).
@@ -157,6 +159,7 @@ impl Settings {
         fx_after_rain: true,
         // a strong effect: offered, not on by default
         fx_lightning: false,
+        fx_grass: true,
         fx_sharpen: true,
         fx_winter: true,
         fx_crowds: true,
@@ -377,6 +380,7 @@ pub const OPTIONS: &[OptionEntry] = &[
     tick!("fx_rain", "STR_ENHANCED_FX_RAIN", WEATHER, fx_rain),
     tick!("fx_after_rain", "STR_ENHANCED_FX_AFTER_RAIN", WEATHER, fx_after_rain),
     tick!("fx_lightning", "STR_ENHANCED_FX_LIGHTNING", WEATHER, fx_lightning),
+    tick!("fx_grass", "STR_ENHANCED_FX_GRASS", EFFECTS, fx_grass),
     tick!("fx_sharpen", "STR_ENHANCED_FX_SHARPEN", EFFECTS, fx_sharpen),
     tick!("fx_winter", "STR_ENHANCED_FX_WINTER", WEATHER, fx_winter),
     tick!("fx_crowds", "STR_ENHANCED_FX_CROWDS", EFFECTS, fx_crowds),

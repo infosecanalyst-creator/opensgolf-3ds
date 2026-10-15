@@ -77,6 +77,10 @@ impl App {
         self.upp = upp;
         // the water's glints go onto the frame in the tile loop (0x411574), before the queued sprites
         self.draw_water_glints(g);
+        // Enhanced graphics' grass tufts (fx_life.rs), on the ground and under the sprites
+        if crate::fx::active() {
+            self.fx_grass(g, &Uniforms::flat(&proj, &mv));
+        }
         self.draw_props(g, &Uniforms::flat(&proj, &mv));
         if crate::fx::active() {
             // Enhanced graphics (fx_light.rs): the haze in the distance and the rain, over the course

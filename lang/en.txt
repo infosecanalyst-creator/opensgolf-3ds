@@ -1348,6 +1348,7 @@ STR_ENHANCED_FX_EVENING_LIGHTS          : Lit windows, lamps and fireflies at du
 STR_ENHANCED_FX_SEASONS                 : Seasons: blossom, autumn colours, frost
 STR_ENHANCED_FX_AFTER_RAIN              : Wet ground, puddles and rainbows
 STR_ENHANCED_FX_LIGHTNING               : Lightning in heavy rain
+STR_ENHANCED_FX_GRASS                   : Grass tufts in the rough
 STR_ENHANCED_FX_SHARPEN                 : Sharper art: contrast-adaptive sharpening
 STR_ENHANCED_FX_WINTER                  : Late-winter frost and snow in early March
 STR_ENHANCED_FX_CROWDS                  : Crowds at tournaments and championships
@@ -1390,6 +1391,7 @@ STR_FX_EVENING_LIGHTS                   :Evening lights
 STR_FX_SEASONS                          :Seasons
 STR_FX_AFTER_RAIN                       :After the rain
 STR_FX_LIGHTNING                        :Lightning
+STR_FX_GRASS                            :Grass tufts
 STR_FX_SHARPEN                          :Sharpen
 STR_FX_WINTER                           :Winter
 STR_FX_CROWDS                           :Tournament crowds
