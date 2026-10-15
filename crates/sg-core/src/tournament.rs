@@ -399,6 +399,8 @@ impl Club {
             if new != hole.par {
                 p.par_changes.push((h, hole.par, new));
                 hole.par = new;
+                // a par the player set (the Set par extra) gives way to the tournament's, which the exe leaves in place
+                hole.game_par = 0;
             }
         }
         self.tourney_opts = -2;

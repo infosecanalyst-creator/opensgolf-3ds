@@ -1293,6 +1293,11 @@ STR_EXTRAS_CUT_CONTENT                  : Cut content: unused landmarks
 STR_EXTRAS_HARDCORE                     : Hardcore economy
 STR_EXTRAS_MORE_STAFF                   : Higher staff limits
 STR_EXTRAS_ANIMALS                      : Buyable animals
+STR_EXTRAS_SET_PAR                      : Set par: change a hole's par on its Hole Stats
+STR_SET_PAR_1                           :Change hole {HOLE} from par {OLD} to par {NEW}?
+STR_SET_PAR_2                           :Golfers will be scored against the new par.
+STR_SET_PAR_YES                         : Yes, change the par.
+STR_SET_PAR_NO                          : No, leave it.
 # The tooltip's second line over a cut landmark and over an animal on the landmark strip
 STR_EXTRAS_CUT_EFFECT                   :Scenic (cut content)
 STR_EXTRAS_ANIMAL_EFFECT                :A pair that stays nearby

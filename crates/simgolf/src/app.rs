@@ -698,6 +698,8 @@ pub struct App {
     pub design_hover: i32,
     /// The port's extras (extras_ui): what new games start with, and the landmark strip's page shown.
     pub extras_next: sg_core::extras::Extras,
+    /// The Set par extra's change waiting for its confirmation box: hole and new par (extras_ui.rs).
+    pub par_change: Option<(usize, i32)>,
     /// Undo for building and terrain (undo.rs).
     pub undo: crate::undo::Undo,
     /// Seconds of play since the last autosave, and the clock at the last frame (autosave.rs).
@@ -937,6 +939,7 @@ impl App {
             design: None,
             design_hover: -1,
             extras_next: crate::extras_ui::saved(),
+            par_change: None,
             undo: Default::default(),
             autosave_due: 0.0,
             autosave_clock: 0.0,

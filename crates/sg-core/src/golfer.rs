@@ -228,6 +228,22 @@ pub struct Hole {
     pub flags: u32,
     /// The three yardage markers in map units ((-1, -1) none; 0x59ae80 + h*24)
     pub markers: [(i32, i32); 3],
+    /// The port's Set par extra (sg_core::extras): the par the game gave the hole while the player has set another one in
+    /// `par` (0: the par is the game's own). Saved only when set.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub game_par: i32,
+}
+
+fn is_zero(v: &i32) -> bool {
+    *v == 0
+}
+
+impl Hole {
+    /// Takes the hole out of play (no par) until it is opened again, which gives it the game's par anew.
+    pub fn close(&mut self) {
+        self.par = 0;
+        self.game_par = 0;
+    }
 }
 
 /// Membership record per roster person (0x2c bytes at 0x5849e0).
