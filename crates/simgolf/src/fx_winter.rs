@@ -1,9 +1,47 @@
-//! Enhanced graphics' winter (docs/ENHANCED.md, "Winter"): the game's year runs from March to October, and on parkland and
-//! links courses its first days are the tail of winter: the rain falls as snow, the morning frost is full, and on some days
-//! a light dusting lies at dawn and melts by mid-morning (with the time of day). Drawing only: what varies
+//! Enhanced graphics' climates and winter (docs/ENHANCED.md, "Climate" and "Winter"): each property has its own weather
+//! (how often it rains, how likely a snowy end of winter), and each year rolls its own: wetter or drier, with a cold snap or
+//! without. The game's year runs from March to October, so winter is only its first days: in a year with a cold snap, where
+//! the place gets snow, the rain falls as snow, the morning frost is full, and on some days a light dusting lies at dawn
+//! and melts by mid-morning (with the time of day). Drawing only: what varies
 //! comes from hashes of the course and the day, never from the game's random generator; golfers play as ever.
 use crate::app::App;
 use crate::fx_light::Atmos;
+
+/// A property's weather: how many days in a hundred it rains, and how likely a year is to end its winter with a snowy cold
+/// snap in early March. By the place on the world map (land::RECORDS order); a property a mod adds takes its theme's.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Climate {
+    pub rain: f32,
+    pub snow: f32,
+}
+
+const fn cl(rain: f32, snow: f32) -> Climate {
+    Climate { rain, snow }
+}
+
+/// Monterey, San Diego, Rocky Mtns., Las Vegas, Phoenix, Hawaii, Oahu, Nova Scotia, Northeast, Carolina, Ireland, Scotland,
+/// Wales, Spain, Florida, Jamaica. Deserts and the tropics never see snow; the desert's rain is a rare shower.
+pub const CLIMATES: [Climate; 16] = [
+    cl(0.20, 0.0),
+    cl(0.12, 0.0),
+    cl(0.25, 0.7),
+    cl(0.04, 0.0),
+    cl(0.05, 0.0),
+    cl(0.30, 0.0),
+    cl(0.30, 0.0),
+    cl(0.35, 0.7),
+    cl(0.30, 0.6),
+    cl(0.28, 0.15),
+    cl(0.45, 0.2),
+    cl(0.45, 0.4),
+    cl(0.45, 0.25),
+    cl(0.12, 0.05),
+    cl(0.33, 0.0),
+    cl(0.28, 0.0),
+];
+
+/// By theme (the exe's order: parkland, desert, tropical, links), for a property not in the table.
+const THEME_CLIMATES: [Climate; 4] = [cl(0.25, 0.3), cl(0.04, 0.0), cl(0.30, 0.0), cl(0.40, 0.3)];
 use crate::gfx::{Gfx, Mode, Uniforms, Vert};
 
 fn hash(a: u32, b: u32) -> f32 {
@@ -26,19 +64,46 @@ pub fn cold(m: f32) -> f32 {
 }
 
 impl App {
+    /// The course's climate: its property's, else its theme's.
+    pub(crate) fn fx_climate(&self) -> Climate {
+        let theme = self.exe_theme().min(3) as usize;
+        let c = self.land.as_ref().and_then(|l| CLIMATES.get(l.slot.property)).copied().unwrap_or(THEME_CLIMATES[theme]);
+        // never snow in the desert or the tropics, whatever a property says
+        if theme == 1 || theme == 2 {
+            Climate { snow: 0.0, ..c }
+        } else {
+            c
+        }
+    }
+
+    /// The game year now (0 the first): March to October is one year.
+    fn fx_year(&self) -> u32 {
+        self.econ.tick / (crate::fx_light::DAY_TICKS * 8)
+    }
+
+    /// How wet this year is against the place's usual: from half as many rainy days to half as many again.
+    pub(crate) fn fx_wet_year(&self) -> f32 {
+        0.5 + hash(self.fx_seed() ^ 0x7e7, self.fx_year())
+    }
+
+    /// Whether this year ends its winter with a snowy cold snap (the place's chance, a fresh roll each year).
+    pub(crate) fn fx_snowy_year(&self) -> bool {
+        hash(self.fx_seed() ^ 0x5e0, self.fx_year()) < self.fx_climate().snow
+    }
+
     /// The day's late-winter weather into the atmosphere, in early March only (late October keeps its frosty mornings,
     /// fx_nature.rs): the rain falls as snow, and on some days a light dusting lies at dawn and melts by mid-morning.
     pub(crate) fn fx_winter(&self, a: &mut Atmos, day: u32, phase: Option<f32>) {
-        let theme = self.exe_theme();
-        if theme != 0 && theme != 3 {
-            return;
-        }
         let k = cold(self.fx_month());
         if k <= 0.0 {
             return;
         }
-        // SG_FX_SNOW=S (stills): that much snow lying whatever the hour
+        // SG_FX_SNOW=S (stills): that much snow lying whatever the hour or the year
         let forced = std::env::var("SG_FX_SNOW").ok().and_then(|v| v.parse::<f32>().ok());
+        // only in a year with a cold snap, where the place gets snow at all; other years keep the frosty mornings
+        if forced.is_none() && !self.fx_snowy_year() {
+            return;
+        }
         // a dusting on about a third of the cold days, only with the time of day: from dawn, gone by mid-morning, so the
         // course reads clearly while it is built
         let dusting = hash(self.fx_seed() ^ 0x5a0, day) < 0.35;

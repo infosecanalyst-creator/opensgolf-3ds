@@ -443,7 +443,8 @@ impl App {
         if let Some(v) = std::env::var("SG_FX_RAIN").ok().and_then(|v| v.parse::<f32>().ok()) {
             return v.clamp(0.0, 1.0);
         }
-        let chance = [0.25, 0.0, 0.0, 0.35][self.exe_theme().min(3) as usize];
+        // the place's climate (fx_winter.rs), wetter or drier from one year to the next
+        let chance = self.fx_climate().rain * self.fx_wet_year();
         let h = hash(&[self.fx_seed(), day, 0x7261_696e]);
         if unit(h) < chance {
             0.6 + 0.4 * unit(hash(&[h]))

@@ -435,8 +435,9 @@ length* on the Atmosphere page picks short, one month as in the first versions, 
 opens in the morning, has a long midday in the
 original's light, a golden afternoon, a sunset and a short blue dusk, then the next month dawns. The sun swings round the
 front of the view, so shadows lengthen sideways rather than down the screen, and the course never gets darker than an
-easy-to-read dusk; the interface is not touched. *Rain* wets about one day in four (never on desert or tropical courses, more on the
-links), the same days whenever the save is loaded; the light dims and the shadows fade while it rains. *Mist* lies in
+easy-to-read dusk; the interface is not touched. *Rain* follows the property's climate
+(rarely in the desert, often in Ireland, Scotland and Wales) and each year is wetter or drier than usual, the same days
+whenever the save is loaded; the light dims and the shadows fade while it rains. *Mist* lies in
 hollows and over water, thick at dawn and gone by late morning with the time of day (a light mist all day without it).
 *Cloud shadows* drift over the course, *haze* pales the far (upper) part of the view, more when zoomed out. None of these
 changes the game: golfers play the same in rain or at dusk. Rain spells, the cloud cover and the wind last a whole day of
