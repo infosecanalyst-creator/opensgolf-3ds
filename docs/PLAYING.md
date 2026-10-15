@@ -244,6 +244,10 @@ compare pixel for pixel with the build before the extras).
 Test hooks for stills: `--screen people|staff|pro|history|profile|pathview|tags|ticker|card` (with a game;
 `SG_PEOPLE_SORT=COL[,1]` sorts the People list by column COL, downward with 1), `--edit "M:6"` opens the extras box.
 
+**Ctrl+Z** (Cmd+Z on a Mac) undoes the last click or drag that changed the course: terrain, paths, holes, buildings and
+garden items. The whole game goes back to just before it, money included, as if that moment had been saved and loaded.
+Up to 30 steps are kept; the list starts empty with each game and is not saved. (The port's own; not in the original.)
+
 On Windows, macOS and Linux, **F11** or **Alt+Enter** switches between a window and full screen (in the browser, use the
 browser's own full screen, F11).
 

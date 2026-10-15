@@ -76,6 +76,7 @@ mod thoughts_ui;
 mod touch;
 mod tourney_ui;
 mod ui;
+mod undo;
 mod wild_ui;
 mod world_ui;
 
@@ -2698,6 +2699,10 @@ impl EventHandler for Stage {
             self.app.aim_click();
             return;
         }
+        // the port's own undo: the game as it is before a click on the course (undo.rs)
+        if button == MouseButton::Left && self.app.screen == Screen::Play {
+            self.app.undo_press();
+        }
         if self.app.edit && button == MouseButton::Left {
             self.editing = true;
             self.app.last_cell = -1;
@@ -2732,6 +2737,7 @@ impl EventHandler for Stage {
         }
         self.dragging = false;
         self.editing = false;
+        self.app.undo_release();
     }
 
     fn key_down_event(&mut self, k: KeyCode, mods: KeyMods, _repeat: bool) {
@@ -2744,6 +2750,13 @@ impl EventHandler for Stage {
         if k == KeyCode::F11 || (mods.alt && matches!(k, KeyCode::Enter | KeyCode::KpEnter)) {
             self.fullscreen = !self.fullscreen;
             miniquad::window::set_fullscreen(self.fullscreen);
+            return;
+        }
+        // the port's own: Ctrl+Z (Cmd+Z on a Mac) undoes the last click that changed the course (undo.rs)
+        if k == KeyCode::Z && (mods.ctrl || mods.logo) && self.app.screen == Screen::Play && !self.editing {
+            if self.app.undo_step(&mut self.g) {
+                self.app.ui_sound(0x18);
+            }
             return;
         }
         // the port's own: Alt (Option on a Mac) or Ctrl with 1 to 9 and 0 stand for F1 to F10, for keyboards whose function

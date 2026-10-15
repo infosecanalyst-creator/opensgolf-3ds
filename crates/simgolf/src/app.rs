@@ -680,6 +680,8 @@ pub struct App {
     pub design_hover: i32,
     /// The port's extras (extras_ui): what new games start with, and the landmark strip's page shown.
     pub extras_next: sg_core::extras::Extras,
+    /// Undo for building and terrain (undo.rs).
+    pub undo: crate::undo::Undo,
     pub strip_page: u8,
     /// Where each golfer slot's ball was drawn last frame (the exe keeps the screen point, 0x567b34 / 0x567d94), for the
     /// sweet shot's streak.
@@ -911,6 +913,7 @@ impl App {
             design: None,
             design_hover: -1,
             extras_next: crate::extras_ui::saved(),
+            undo: Default::default(),
             strip_page: 0,
             ball_trail: Vec::new(),
             tracts: Default::default(),
@@ -2388,6 +2391,7 @@ impl App {
     }
 
     pub fn start_game(&mut self, g: &mut Gfx, prop_idx: usize, sandbox: bool) {
+        self.undo.clear();
         let p = sg_core::data::properties()[prop_idx];
         // a game started without the difficulty screen (scripted runs) still gets its Top 10 id
         if self.course_id.is_none() {
@@ -2473,6 +2477,16 @@ impl App {
 
     /// Saves the whole game.
     pub fn save_game(&self, path: &Path) -> Result<(), String> {
+        let out = self.save_bytes(6)?;
+        if sg_core::fsutil::write_file(path, &out) {
+            Ok(())
+        } else {
+            Err(trf("STR_ERROR_COULD_NOT_WRITE", &[("FILE", &path.display())]))
+        }
+    }
+
+    /// The whole game as a saved file's bytes, compressed at zlib `level` (undo.rs keeps them in memory at a fast level).
+    pub fn save_bytes(&self, level: u8) -> Result<Vec<u8>, String> {
         let size = sg_core::mapsize::n();
         let save = SaveGame {
             // version 2: a course size other than the original's, recorded in `size` (version 1 saves are all 50 x 50)
@@ -2502,12 +2516,8 @@ impl App {
         };
         let json = serde_json::to_vec(&save).map_err(|e| e.to_string())?;
         let mut out = SAVE_MAGIC.to_vec();
-        out.extend(miniz_oxide::deflate::compress_to_vec_zlib(&json, 6));
-        if sg_core::fsutil::write_file(path, &out) {
-            Ok(())
-        } else {
-            Err(trf("STR_ERROR_COULD_NOT_WRITE", &[("FILE", &path.display())]))
-        }
+        out.extend(miniz_oxide::deflate::compress_to_vec_zlib(&json, level));
+        Ok(out)
     }
 
     /// Loads a whole game saved by `save_game` and goes on from where it was.
@@ -2518,6 +2528,13 @@ impl App {
 
     /// Goes on with a game read by `read_save` (or `read_save_bytes`).
     pub fn load_save(&mut self, g: &mut Gfx, s: SaveGame) -> Result<(), String> {
+        self.undo.clear();
+        self.load_save_with(g, s, false)
+    }
+
+    /// `load_save`; with `keep_art` (undo.rs) a save of the theme already loaded keeps its textures and only rebuilds the
+    /// course's meshes and props.
+    pub fn load_save_with(&mut self, g: &mut Gfx, s: SaveGame, keep_art: bool) -> Result<(), String> {
         // the save's course size (older saves: the original's), before anything reads the map
         sg_core::mapsize::set(s.size);
         self.course_size = sg_core::mapsize::n();
@@ -2540,7 +2557,10 @@ impl App {
             }
         }
         self.adopt_holes = false;
-        if !self.load_theme(g, s.theme) {
+        if keep_art && s.theme == self.theme {
+            self.rebuild_batches(g);
+            self.populate_props();
+        } else if !self.load_theme(g, s.theme) {
             return Err(tr("STR_ERROR_THEME_NOT_LOADED").into());
         }
         self.club = s.club;
