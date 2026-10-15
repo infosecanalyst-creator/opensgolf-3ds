@@ -1,6 +1,6 @@
 //! Enhanced graphics' winter (docs/ENHANCED.md, "Winter"): the game's year runs from March to October, and on parkland and
-//! links courses its first and last weeks are cold. Some of those days a light snow lies on the level ground (thinning in
-//! the midday sun with the time of day), the rain falls as snow, and the morning frost is full. Drawing only: what varies
+//! links courses its first and last weeks are cold: the rain falls as snow and the morning frost is full, and on some days
+//! of the last week a light snow lies on the level ground (thinning in the midday sun with the time of day). Drawing only: what varies
 //! comes from hashes of the course and the day, never from the game's random generator; golfers play as ever.
 use crate::app::App;
 use crate::fx_light::Atmos;
@@ -35,6 +35,9 @@ impl App {
         if k <= 0.0 {
             return;
         }
+        // snow lies only at the year's end: a new game starts in early March, and its first holes are built on a course
+        // that has to read clearly (March keeps the frost and the odd snow shower)
+        let end = self.fx_month() > 10.0;
         // SG_FX_SNOW=S (stills): that much snow lying whatever the day
         let forced = std::env::var("SG_FX_SNOW").ok().and_then(|v| v.parse::<f32>().ok());
         // about half the cold days have snow lying
@@ -42,7 +45,8 @@ impl App {
             forced.unwrap_or_else(|| if hash(self.fx_seed() ^ 0x5a0, day) < 0.55 { 0.5 + 0.5 * hash(self.fx_seed(), day) } else { 0.0 });
         // thinner when the sun is up
         let sun = phase.map(|p| 1.0 - 0.45 * smoothstep(0.25, 0.55, p) * (1.0 - smoothstep(0.75, 0.95, p))).unwrap_or(1.0);
-        a.snow = (k * lying * sun).clamp(0.0, 1.0);
+        // at most two thirds cover, so the fairways, greens and paths always show through
+        a.snow = if end || forced.is_some() { (k * lying * sun * 0.67).clamp(0.0, 0.67) } else { 0.0 };
         // the rain falls as snow, and the ground is not wet
         a.snowfall = (a.rain * k).max(if forced.is_some() && a.rain > 0.0 { a.rain } else { 0.0 });
         a.rain *= 1.0 - k;

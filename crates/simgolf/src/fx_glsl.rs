@@ -481,8 +481,8 @@ void main() {
 }
 
 /// The composite: the course, the tilt-shift blur by screen height (tilt = strength, focus centre, focus half height, 0),
-/// the bloom (glow.x), the colour grade (grade = contrast, vibrance, 0, 0; tint multiplies) and the vignette (glow.y; glow.z
-/// the aspect ratio).
+/// the bloom (glow.x), the colour grade (grade = contrast, vibrance, texel w, texel h; tint multiplies), the vignette
+/// (glow.y; glow.z the aspect ratio) and the contrast-adaptive sharpening (glow.w its strength, 0 off).
 pub fn composite_fs() -> String {
     format!(
         "{FRAG_HEAD}{}",
@@ -496,6 +496,19 @@ uniform vec4 grade;
 uniform vec4 tint;
 void main() {
     vec3 c = texture2D(scene, uv).rgb;
+    if (glow.w > 0.0) {
+        // contrast-adaptive sharpening (after AMD's CAS): the four neighbours pulled away, less where the local contrast is
+        // already high, so edges get no halo and flat areas no noise
+        vec3 n = texture2D(scene, uv + vec2(0.0, grade.w)).rgb;
+        vec3 s = texture2D(scene, uv - vec2(0.0, grade.w)).rgb;
+        vec3 e = texture2D(scene, uv + vec2(grade.z, 0.0)).rgb;
+        vec3 w = texture2D(scene, uv - vec2(grade.z, 0.0)).rgb;
+        vec3 mn = min(c, min(min(n, s), min(e, w)));
+        vec3 mx = max(c, max(max(n, s), max(e, w)));
+        vec3 amp = sqrt(clamp(min(mn, 1.0 - mx) / max(mx, vec3(0.0001)), 0.0, 1.0));
+        vec3 wt = -amp * mix(0.08, 0.2, glow.w);
+        c = clamp((c + (n + s + e + w) * wt) / (1.0 + 4.0 * wt), mn, mx);
+    }
     if (tilt.x > 0.0) {
         // uv.y runs up the screen in a render target
         float k = smoothstep(tilt.z, tilt.z + 0.28, abs(uv.y - tilt.y)) * tilt.x;

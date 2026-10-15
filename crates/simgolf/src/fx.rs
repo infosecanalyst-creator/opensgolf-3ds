@@ -68,6 +68,8 @@ pub struct FxSettings {
     pub after_rain: bool,
     /// Lightning in heavy rain on parkland and links courses (fx_wet.rs).
     pub lightning: bool,
+    /// Contrast-adaptive sharpening of the finished picture (the composite in fx_glsl.rs).
+    pub sharpen: bool,
     /// Snow cover, falling snow and icy ponds early and late in the year (fx_winter.rs).
     pub winter: bool,
     /// Spectators, a grandstand and fireworks at tournaments (fx_crowd.rs).
@@ -111,6 +113,7 @@ impl Default for FxSettings {
             after_rain: true,
             // a strong effect: offered, not on by default
             lightning: false,
+            sharpen: true,
             winter: true,
             crowds: true,
             life: true,
@@ -178,7 +181,7 @@ macro_rules! flag {
     };
 }
 
-static OPTIONS: [FxOption; 31] = [
+static OPTIONS: [FxOption; 32] = [
     FxOption { key: "effects", label: "STR_FX_EFFECTS", choices: ON_OFF, get: |s| s.enabled as usize, set: |s, v| s.enabled = v != 0 },
     FxOption {
         key: "scaler",
@@ -218,6 +221,7 @@ static OPTIONS: [FxOption; 31] = [
     flag!("seasons", "STR_FX_SEASONS", seasons),
     flag!("after-rain", "STR_FX_AFTER_RAIN", after_rain),
     flag!("lightning", "STR_FX_LIGHTNING", lightning),
+    flag!("sharpen", "STR_FX_SHARPEN", sharpen),
     flag!("winter", "STR_FX_WINTER", winter),
     flag!("crowds", "STR_FX_CROWDS", crowds),
     flag!("life", "STR_FX_LIFE", life),
@@ -330,6 +334,7 @@ pub fn from_enhanced(e: &crate::enhanced::Settings) -> FxSettings {
     s.seasons = e.fx_seasons;
     s.after_rain = e.fx_after_rain;
     s.lightning = e.fx_lightning;
+    s.sharpen = e.fx_sharpen;
     s.winter = e.fx_winter;
     s.crowds = e.fx_crowds;
     s.life = e.fx_life;
@@ -350,7 +355,7 @@ fn post_supported() -> bool {
 
 fn wants_post(s: &FxSettings) -> bool {
     // photo mode always composites (its looks, focus blur and vignette; photo.rs), in the browser too
-    s.enabled && ((post_supported() && (s.tilt_shift || s.grading || s.bloom || s.vignette)) || crate::photo::post().is_some())
+    s.enabled && ((post_supported() && (s.tilt_shift || s.grading || s.bloom || s.vignette || s.sharpen)) || crate::photo::post().is_some())
 }
 
 thread_local! {
@@ -1200,8 +1205,9 @@ impl App {
         let gr = |on: bool, v: f32| if on { v } else { 0.0 };
         g.ctx.apply_uniforms(UniformsSource::table(&CompositeUniforms {
             tilt: [gr(tilt, 1.0), 0.5, 0.16, 0.0],
-            glow: [gr(bloom, 0.45), gr(s.vignette, 0.28), full.0 / full.1, 0.0],
-            grade: [gr(s.grading, look.contrast), look.vibrance, 0.0, 0.0],
+            glow: [gr(bloom, 0.45), gr(s.vignette, 0.28), full.0 / full.1, gr(s.sharpen, 0.6)],
+            // z, w: the scene's texel for the sharpening
+            grade: [gr(s.grading, look.contrast), look.vibrance, 1.0 / full.0, 1.0 / full.1],
             tint: [look.tint[0], look.tint[1], look.tint[2], 1.0],
         }));
         g.ctx.draw(0, 6, 1);
