@@ -1348,6 +1348,9 @@ STR_ENHANCED_FX_EVENING_LIGHTS          : Lit windows, lamps and fireflies at du
 STR_ENHANCED_FX_SEASONS                 : Seasons: blossom, autumn colours, frost
 STR_ENHANCED_FX_AFTER_RAIN              : Wet ground, puddles and rainbows
 STR_ENHANCED_FX_LIGHTNING               : Lightning in heavy rain
+STR_ENHANCED_FX_WINTER                  : Frost and snow at the start and end of the year
+STR_ENHANCED_FX_CROWDS                  : Crowds and fireworks at tournaments
+STR_ENHANCED_FX_LIFE                    : Birds, butterflies and falling leaves
 STR_ENHANCED_FX_DAY_LENGTH              : Day length: {VALUE}
 # Enhanced graphics > Display: the frame rate settings (the port's own, framerate.rs). They count with Enhanced graphics off
 # too. Browsers always draw on the display's refresh, so v-sync cannot be turned off there.
@@ -1386,6 +1389,9 @@ STR_FX_EVENING_LIGHTS                   :Evening lights
 STR_FX_SEASONS                          :Seasons
 STR_FX_AFTER_RAIN                       :After the rain
 STR_FX_LIGHTNING                        :Lightning
+STR_FX_WINTER                           :Winter
+STR_FX_CROWDS                           :Tournament crowds
+STR_FX_LIFE                             :Life on the course
 STR_FX_DAY_LENGTH                       :Day length
 STR_FX_DAY_SHORT                        :Short (a game month)
 STR_FX_DAY_NORMAL                       :Normal (three months)

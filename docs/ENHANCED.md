@@ -100,6 +100,9 @@ decoded terrain light (`sg_core::terrain::Lighting`, `light_direction`) and the 
 | Seasons (`seasons`) | on | Blossom and fresh greens in spring, autumn colours in September and October, frost and dew on spring and autumn mornings (see *Seasons*). |
 | After the rain (`after-rain`) | on | With rain: wet, glossy ground and puddles during and after a rainy day, now and then a rainbow (see *After the rain*). |
 | Lightning (`lightning`) | off | Flashes and distant flicker in heavy rain on parkland and links courses. |
+| Winter (`winter`) | on | Early March and late October bring frost, a light snow cover that melts in the sun, snow instead of rain on cold days and icy pond edges, on parkland and links courses (see *Winter*). |
+| Tournament crowds (`crowds`) | on | During a tournament, spectators along the holes in play and round the greens, a grandstand by the last green, fireworks when a championship is won (see *Tournament atmosphere*). |
+| Life on the course (`life`) | on | Flocks of birds crossing the sky with their shadows, butterflies over flower beds in summer, leaves falling from the trees in autumn (see *Life on the course*). |
 | Quality (`quality`) | medium | Low: light map 2 texels a tile, no blur passes (no tilt-shift, no bloom), sharp-bilinear scaling only, the cast shadows' mask at half the resolution. Medium: 4 texels a tile, blurs at a quarter of the resolution, the mask at half. High: 8 texels a tile, blurs at half the resolution, the mask at full. On the Effects page since this version. |
 
 The post-processing (tilt-shift, grading, bloom, vignette) draws the course into an offscreen target, then composites it
@@ -351,6 +354,22 @@ now has come down. The trail is a ribbon through those places up to the ball as 
 with age. An impact is drawn by what the tile is: sand traps, waste and pot bunkers throw a pale dust cloud and darker
 grains; water spreads two rings and throws drops (next to the original's own splash sprite); anything else flicks a few
 blades of grass. A bounce makes a smaller one. What varies between impacts comes from a hash of the impact.
+
+### Life on the course
+
+Everything here keeps to the original art's look: the birds are the original's own fly-over sprites, and what has no
+original art is drawn as a few crisp pixels at the art's pixel size, lit like the sprites, never as smooth shapes.
+
+- **Birds of prey**: now and then one or two of the theme's bird (eagle on parkland, vulture in the desert, pelican in the
+  tropics, hawk on links courses) wheel in wide circles over the course for a while, with the original fly-over's sprite
+  and wingbeat. They are drawn only: the game's own fly-overs, their timing and their sounds are untouched. Not in the
+  dark or the rain. The free graphics have no bird sprites, so they show with the player's SimGolf files.
+- **Butterflies**: from May to September, over some of the flower beds, a dark body pixel and two coloured wing pixels
+  that open and close as they flit about. Not in the dark or the rain.
+- **Falling leaves**: in September and October, with *Seasons*, leaves drop from broadleaf trees one pixel or two at a
+  time, tumbling and drifting with the wind, more as the autumn colours deepen.
+
+Test hooks: `SG_FX_BIRDS=1` keeps two birds of prey over the middle of the view; `SG_FX_MONTH` picks the month.
 
 ### Performance
 

@@ -68,6 +68,12 @@ pub struct FxSettings {
     pub after_rain: bool,
     /// Lightning in heavy rain on parkland and links courses (fx_wet.rs).
     pub lightning: bool,
+    /// Snow cover, falling snow and icy ponds early and late in the year (fx_winter.rs).
+    pub winter: bool,
+    /// Spectators, a grandstand and fireworks at tournaments (fx_crowd.rs).
+    pub crowds: bool,
+    /// Birds overhead, butterflies over flower beds, autumn leaves falling (fx_life.rs).
+    pub life: bool,
     /// How long a day of light lasts (fx_light.rs DAY_MONTHS): 0 short (one game month), 1 normal (three), 2 long (six).
     pub day_length: u8,
 }
@@ -105,6 +111,9 @@ impl Default for FxSettings {
             after_rain: true,
             // a strong effect: offered, not on by default
             lightning: false,
+            winter: true,
+            crowds: true,
+            life: true,
             day_length: 1,
         }
     }
@@ -169,7 +178,7 @@ macro_rules! flag {
     };
 }
 
-static OPTIONS: [FxOption; 28] = [
+static OPTIONS: [FxOption; 31] = [
     FxOption { key: "effects", label: "STR_FX_EFFECTS", choices: ON_OFF, get: |s| s.enabled as usize, set: |s, v| s.enabled = v != 0 },
     FxOption {
         key: "scaler",
@@ -209,6 +218,9 @@ static OPTIONS: [FxOption; 28] = [
     flag!("seasons", "STR_FX_SEASONS", seasons),
     flag!("after-rain", "STR_FX_AFTER_RAIN", after_rain),
     flag!("lightning", "STR_FX_LIGHTNING", lightning),
+    flag!("winter", "STR_FX_WINTER", winter),
+    flag!("crowds", "STR_FX_CROWDS", crowds),
+    flag!("life", "STR_FX_LIFE", life),
     FxOption {
         key: "day-length",
         label: "STR_FX_DAY_LENGTH",
@@ -318,6 +330,9 @@ pub fn from_enhanced(e: &crate::enhanced::Settings) -> FxSettings {
     s.seasons = e.fx_seasons;
     s.after_rain = e.fx_after_rain;
     s.lightning = e.fx_lightning;
+    s.winter = e.fx_winter;
+    s.crowds = e.fx_crowds;
+    s.life = e.fx_life;
     s.day_length = e.fx_day_length.min(2);
     s
 }

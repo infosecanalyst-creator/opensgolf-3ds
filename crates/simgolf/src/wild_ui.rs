@@ -176,6 +176,30 @@ impl App {
                 ..Default::default()
             });
         }
+        // Enhanced graphics' life on the course (fx_life.rs): now and then the theme's bird of prey wheels over the course in
+        // ones and twos, the original's own sprite and wingbeat; drawing only, the fly-over slots are not touched
+        if crate::fx::active() && crate::fx::settings().life {
+            for (i, (mx, my, k)) in self.fx_soarers().into_iter().enumerate() {
+                let (x, z) = self.units_to_world(mx, my);
+                let bird = wildlife::BIRDS[theme];
+                let t = tick + 13 * i as i32;
+                let flap = t.rem_euclid(48) < 2 * 8;
+                let body = self.sprite_for(&format!("Scenic/{bird}_{}.flc", if flap { "Fidget" } else { "SQ" }), false, None);
+                let n = self.frames_of(body);
+                const DX: [f32; 8] = [0.0, 1.0, 1.0, 1.0, 0.0, -1.0, -1.0, -1.0];
+                const DY: [f32; 8] = [-1.0, -1.0, 0.0, 1.0, 1.0, 1.0, 0.0, -1.0];
+                add.push(Prop {
+                    x,
+                    z,
+                    body,
+                    frame: t.rem_euclid(n.max(1)),
+                    heading: DY[k].atan2(DX[k]).to_degrees(),
+                    facing: four_view_facing(k as i32),
+                    track: 0x5100_0000 | i as u32,
+                    ..Default::default()
+                });
+            }
+        }
         // the splash
         if let Some((sx, sy, n)) = self.club.wildlife.splash {
             let body = self.sprite_for("Scenic/Splash.flc", false, None);

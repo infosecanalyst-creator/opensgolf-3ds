@@ -445,6 +445,8 @@ impl App {
         // Enhanced graphics only: sand, water or grass thrown up where balls came down (fx_ball.rs)
         if crate::fx::active() {
             self.fx_ball_impacts(g, u);
+            // and the birds, butterflies and falling leaves (fx_life.rs)
+            self.fx_life(g, u);
         }
     }
 
