@@ -69,6 +69,42 @@ fn remote(url: &str, max: u64) -> Request {
     }
 }
 
+/// Fetches `url` on the calling thread (a worker's: "Update now", autoupdate.rs), at most `max` bytes, calling
+/// `progress(bytes so far, the whole size when the server says it)` as the data comes in.
+#[cfg(all(not(target_arch = "wasm32"), feature = "net"))]
+pub fn fetch(url: &str, max: u64, progress: &dyn Fn(u64, Option<u64>)) -> Reply {
+    use std::io::Read;
+    if sg_core::index::is_local(url) {
+        let d = sg_core::index::read_local(url)?;
+        if d.len() as u64 > max {
+            return Err(sg_core::lang::trf("STR_NET_TOO_BIG", &[("URL", &url)]));
+        }
+        progress(d.len() as u64, Some(d.len() as u64));
+        return Ok(d);
+    }
+    let agent = concat!("OpenSGolf/", env!("CARGO_PKG_VERSION"));
+    let mut resp = ureq::get(url).header("User-Agent", agent).call().map_err(|e| format!("{url}: {e}"))?;
+    let total = resp.headers().get("content-length").and_then(|v| v.to_str().ok()).and_then(|v| v.trim().parse::<u64>().ok());
+    if total.is_some_and(|t| t > max) {
+        return Err(sg_core::lang::trf("STR_NET_TOO_BIG", &[("URL", &url)]));
+    }
+    let mut r = resp.body_mut().with_config().limit(max).reader();
+    let mut out = Vec::with_capacity(total.unwrap_or(0).min(max) as usize);
+    let mut buf = vec![0u8; 1 << 16];
+    loop {
+        let n = r.read(&mut buf).map_err(|e| format!("{url}: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        out.extend_from_slice(&buf[..n]);
+        progress(out.len() as u64, total);
+    }
+    if total.is_some_and(|t| t != out.len() as u64) {
+        return Err(format!("{url}: the download stopped"));
+    }
+    Ok(out)
+}
+
 #[cfg(all(not(target_arch = "wasm32"), not(feature = "net")))]
 fn remote(url: &str, _max: u64) -> Request {
     Request { inner: Inner::Done(Some(Err(sg_core::lang::trf("STR_NET_NOT_BUILT", &[("URL", &url)])))) }

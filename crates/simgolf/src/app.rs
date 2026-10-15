@@ -673,6 +673,13 @@ pub struct App {
     pub notice: Option<crate::gamefiles::Notice>,
     /// "Check for updates" on the title menu: the request under way (update.rs).
     pub update_check: Option<crate::net::Request>,
+    /// The check was the start up one (the interface extra): it speaks only of a newer version (update.rs).
+    pub update_auto: bool,
+    /// The newest release the last check found, with its files (update.rs).
+    pub update_release: Option<crate::update::Release>,
+    /// "Update now": the download, check and install under way (autoupdate.rs).
+    #[cfg(all(not(target_arch = "wasm32"), feature = "net"))]
+    pub update_job: Option<crate::autoupdate::Job>,
     /// The title screen says that the free graphics are in use and how to use the original files (once, gamefiles.rs).
     pub free_hint: bool,
     /// Camera follows the golfer.
@@ -936,6 +943,10 @@ impl App {
             toast_until: 0.0,
             notice: None,
             update_check: None,
+            update_auto: false,
+            update_release: None,
+            #[cfg(all(not(target_arch = "wasm32"), feature = "net"))]
+            update_job: None,
             free_hint: false,
             follow: false,
             edit: false,

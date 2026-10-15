@@ -19,6 +19,9 @@
 //!   the background on purpose.
 //! * the landing map (insight.rs): where golfers' tee shots and approaches on a hole come to rest, as dots on the course;
 //! * comments by hole (insight.rs): each hole's most frequent thoughts this month and last month, on a page of their own.
+//! * check for updates when the game starts (update.rs): the title menu's Check for updates, once at start, saying
+//!   something only when a newer version is out. Left out of the one-click OpenSGolf extras like the pauses: it goes
+//!   online, which a player chooses for themselves.
 //!
 //! With every extra off the game draws and plays exactly as before they existed (each hook asks its switch first).
 use serde::{Deserialize, Serialize};
@@ -42,6 +45,7 @@ pub struct Settings {
     pub pause_events: bool,
     pub landing_map: bool,
     pub hole_comments: bool,
+    pub update_check: bool,
 }
 
 impl Settings {
@@ -60,6 +64,7 @@ impl Settings {
         pause_events: false,
         landing_map: true,
         hole_comments: true,
+        update_check: false,
     };
     pub const ALL_OFF: Settings = Settings {
         people: false,
@@ -74,6 +79,7 @@ impl Settings {
         pause_events: false,
         landing_map: false,
         hole_comments: false,
+        update_check: false,
     };
 
     /// The ticks as the Extras box's checkbox bits (in `UI_KEYS` order).
@@ -91,6 +97,7 @@ impl Settings {
             self.pause_events,
             self.landing_map,
             self.hole_comments,
+            self.update_check,
         ]
         .iter()
         .enumerate()
@@ -112,12 +119,14 @@ impl Settings {
             pause_events: on(9),
             landing_map: on(10),
             hole_comments: on(11),
+            update_check: on(12),
         }
     }
 
-    /// The ticks that make the game style (extras_ui.rs GameStyle): all but the two pauses, which leave the game as it is.
+    /// The ticks that make the game style (extras_ui.rs GameStyle): all but the two pauses, which leave the game as it is,
+    /// and the update check, which has nothing to do with the game.
     pub fn style(&self) -> Settings {
-        Settings { pause_background: false, pause_events: false, ..*self }
+        Settings { pause_background: false, pause_events: false, update_check: false, ..*self }
     }
 }
 
@@ -129,7 +138,7 @@ impl Default for Settings {
 
 /// The interface extras' lines on the Extras box's Interface page (extras_ui.rs), one tick per extra in `Settings::bits`
 /// order (text keys in lang/en.txt).
-pub const UI_KEYS: [&str; 12] = [
+pub const UI_KEYS: [&str; 13] = [
     "STR_EXTRAS_PEOPLE",
     "STR_EXTRAS_HISTORY",
     "STR_EXTRAS_NAME_TAGS",
@@ -142,6 +151,7 @@ pub const UI_KEYS: [&str; 12] = [
     "STR_EXTRAS_PAUSE_EVENTS",
     "STR_EXTRAS_LANDING_MAP",
     "STR_EXTRAS_HOLE_COMMENTS",
+    "STR_EXTRAS_UPDATE_CHECK",
 ];
 
 thread_local! {
@@ -192,6 +202,9 @@ pub fn landing_map() -> bool {
 pub fn hole_comments() -> bool {
     settings().hole_comments
 }
+pub fn update_check() -> bool {
+    settings().update_check
+}
 
 fn settings_json() -> serde_json::Value {
     sg_core::fsutil::read_file(crate::app::save_dir().join(crate::hd::SETTINGS_FILE))
@@ -237,6 +250,10 @@ fn upgrade_off(v: &serde_json::Value, s: &mut Settings) {
     }
     if v.is_object() && v.get("hole_comments").is_none() {
         s.hole_comments = false;
+    }
+    // the update check goes online: off unless ticked
+    if v.get("update_check").is_none() {
+        s.update_check = false;
     }
 }
 
@@ -667,7 +684,7 @@ mod tests {
         assert_eq!(p.bits(), 0b11 << 8);
         assert_eq!(Settings::from_bits(p.bits()), p);
         assert_eq!(p.style(), Settings::ALL_OFF);
-        for m in [0, 1 << 8, 1 << 9, 1 << 10, 1 << 11, 0xfff] {
+        for m in [0, 1 << 8, 1 << 9, 1 << 10, 1 << 11, 1 << 12, 0x1fff] {
             assert_eq!(Settings::from_bits(m).bits(), m);
         }
     }
@@ -683,6 +700,13 @@ mod tests {
         let mut s: Settings = serde_json::from_value(v.clone()).unwrap();
         upgrade_off(&v, &mut s);
         assert!(s.landing_map && s.hole_comments);
+        assert!(!s.update_check, "the update check reads as off from ticks saved before it");
+        let v: serde_json::Value = serde_json::from_str("{\"update_check\": true}").unwrap();
+        let mut s: Settings = serde_json::from_value(v.clone()).unwrap();
+        upgrade_off(&v, &mut s);
+        assert!(s.update_check);
+        assert!(!Settings::ALL_ON.update_check, "not in the one-click extras");
+        assert_eq!(Settings { update_check: true, ..Settings::ALL_OFF }.style(), Settings::ALL_OFF);
         // a save with nothing of theirs is the same as before
         assert!(Kept::default().is_empty());
         assert_eq!(serde_json::to_string(&Kept::default()).unwrap(), "{}");

@@ -21,6 +21,8 @@ mod audio;
 #[cfg(target_os = "macos")]
 mod autorelease;
 mod autosave;
+#[cfg(all(not(target_arch = "wasm32"), feature = "net"))]
+mod autoupdate;
 mod build_tools;
 mod champ_ui;
 mod comfort;
@@ -1031,10 +1033,6 @@ impl Stage {
             app.free_hint = cfg!(not(target_os = "android")) && gamefiles::take_hint();
         }
         app.content = content;
-        // test hook: "Check for updates" answered from a file, at once (update.rs)
-        if std::env::var_os(update::TEST_URL_ENV).is_some() {
-            app.check_for_updates();
-        }
         app.theme = o.theme;
         app.seed = o.seed;
         app.zoom = o.zoom;
@@ -1312,6 +1310,21 @@ impl Stage {
         #[cfg(target_os = "android")]
         if let Some(report) = android::take_crash_report() {
             app.show_crash_report(report);
+        }
+        // "Update now" started this version: the old files it kept are removed, and it says so (autoupdate.rs)
+        #[cfg(all(not(target_arch = "wasm32"), feature = "net"))]
+        if let Some(v) = autoupdate::finish_after_restart(&app::save_dir(), update::VERSION) {
+            app.show_toast(&sg_core::lang::trf("STR_UPDATE_DONE", &[("VERSION", &v)]));
+        }
+        #[cfg(target_os = "android")]
+        let _ = std::fs::remove_dir_all(android::files_dir().join("update"));
+        // the interface extra "Check for updates when the game starts" (update.rs), not for scripted runs; test hook:
+        // SG_UPDATE_URL answers "Check for updates" from a file, at once (as the extra's check when it is ticked)
+        let test_url = std::env::var_os(update::TEST_URL_ENV).is_some();
+        if test_url && !extras::update_check() {
+            app.check_for_updates();
+        } else if o.png_out.is_none() || test_url {
+            app.check_for_updates_at_start();
         }
         // test hook: SG_PICK_FOLDER=DIR takes DIR as the folder picked in "Use my SimGolf files..." ("free": Use the free
         // graphics), as if chosen on the title screen
@@ -2469,8 +2482,10 @@ impl EventHandler for Stage {
         self.app.extras_test_hook();
         // "Use my SimGolf files...": a .zip being unpacked or a folder being copied (gamefiles.rs)
         self.app.poll_import();
-        // "Check for updates": the answer from GitHub (update.rs)
+        // "Check for updates": the answer from GitHub (update.rs), and "Update now" under way (autoupdate.rs)
         self.app.poll_update_check();
+        #[cfg(all(not(target_arch = "wasm32"), feature = "net"))]
+        self.app.poll_update_job();
         // the Autosave extra (autosave.rs) and a course code being pasted (share.rs)
         self.app.autosave_tick(t);
         self.app.share_tick(t);

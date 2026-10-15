@@ -174,9 +174,14 @@ impl App {
         };
         self.extras_next = e;
         save(&e);
-        // the two pauses stay as the player ticked them
+        // the two pauses and the update check stay as the player ticked them
         let now = crate::extras::settings();
-        let ui = crate::extras::Settings { pause_background: now.pause_background, pause_events: now.pause_events, ..ui };
+        let ui = crate::extras::Settings {
+            pause_background: now.pause_background,
+            pause_events: now.pause_events,
+            update_check: now.update_check,
+            ..ui
+        };
         crate::extras::set(ui);
         crate::extras::save(&ui);
         if ui.style() == crate::extras::Settings::ALL_OFF {

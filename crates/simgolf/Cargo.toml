@@ -18,6 +18,9 @@ cpal = { version = "0.15", optional = true }
 # Preferences > Content > Find more (docs/MODDING.md 7): a small HTTPS client in pure Rust (rustls), desktop only; the
 # browser version downloads through the page's fetch()
 ureq = { version = "3", optional = true, default-features = false, features = ["rustls"] }
+# "Update now" (autoupdate.rs): the release's SHA256SUMS is checked against OpenSGolf's ed25519 signing key before anything
+# downloaded is installed. A small pure-Rust implementation with no dependencies of its own.
+ed25519-compact = { version = "2", optional = true, default-features = false }
 
 # "Use my SimGolf files..." (gamefiles.rs): the system's own folder picker on Windows, macOS and Linux. On Linux it asks
 # the desktop through the XDG portal over D-Bus (no GTK, nothing extra to install to build it). Not built for the browser
@@ -32,8 +35,9 @@ gilrs = { version = "0.11", optional = true }
 default = ["audio", "net", "picker", "gamepad"]
 # Sound output through the system's audio device (CoreAudio, WASAPI, ALSA). Without it the game runs silent.
 audio = ["dep:cpal"]
-# Downloading content packs over HTTPS (desktop). Without it only file:// content indexes work.
-net = ["dep:ureq"]
+# Downloading content packs over HTTPS (desktop), Check for updates and Update now. Without it only file:// content
+# indexes work.
+net = ["dep:ureq", "dep:ed25519-compact"]
 # The system folder picker of "Use my SimGolf files..." (desktop). Without it the option says where to put the files.
 picker = ["dep:rfd"]
 # Controllers on the desktop (gamepad.rs). Without it only the browser reads controllers.
@@ -59,8 +63,11 @@ opengles_version_minor = 0
 # the launcher icon: sg_core::freeset::app_icon, written by `sgtool icon` (tools/make_icons.sh)
 res = "android/res"
 icon = "@mipmap/ic_launcher"
-# no permissions: the app reads and writes only its own folders (its internal data folder and
-# Android/data/org.opensgolf.game/files, which need none)
+# The app reads and writes only its own folders (its internal data folder and Android/data/org.opensgolf.game/files, which
+# need no permission). Its one permission: "Update now" hands a downloaded, signature-checked APK to Android's installer
+# (src/autoupdate.rs, MainActivity.installApk); Android still asks the player before installing anything.
+[[package.metadata.android.permission]]
+name = "android.permission.REQUEST_INSTALL_PACKAGES"
 
 [package.metadata.android.activity_attributes]
 "android:screenOrientation" = "sensorLandscape"

@@ -290,6 +290,10 @@ pub enum Action {
     CopyCrash,
     /// Open the newest release's page in the browser ("Check for updates", update.rs).
     OpenReleases,
+    /// Download, check and install the newest release (autoupdate.rs).
+    UpdateNow,
+    /// Do not offer the newest release at start again (update.rs).
+    SkipVersion,
 }
 
 /// The crash report the box offers to copy.
@@ -584,6 +588,8 @@ impl App {
                 self.show_notice(tr("STR_CRASH_COPIED"));
             }
             Action::OpenReleases => self.open_releases_page(),
+            Action::UpdateNow => self.update_now(),
+            Action::SkipVersion => self.skip_update(),
         }
     }
 

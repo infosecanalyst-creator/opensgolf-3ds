@@ -98,6 +98,9 @@ Optional, and off by default (Start New Game has a one-click switch between *the
   work ring and the fairways and greens no groundskeeper reaches.
 - **Golfer insight** (interface extras): a landing map of where golfers' shots on each hole end up (Shift+D), and each
   hole's most frequent golfer comments this month, last month and this year (Shift+I).
+- **Updates from the title menu:** *Check for updates*, then *Update now* downloads the new version, checks its signature
+  and installs it in place (Windows, macOS, Linux, Android); an interface extra checks once at each start. Only GitHub is
+  contacted, and only then.
 - **Content packs and game scripts** that change prices, buildings, terrain, golfers, text, art and sounds, add scenarios,
   and can be downloaded from inside the game ([docs/MODDING.md](docs/MODDING.md)).
 

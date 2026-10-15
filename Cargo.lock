@@ -940,6 +940,7 @@ name = "opensgolf"
 version = "0.4.0"
 dependencies = [
  "cpal",
+ "ed25519-compact",
  "fontdue",
  "gilrs",
  "miniquad",

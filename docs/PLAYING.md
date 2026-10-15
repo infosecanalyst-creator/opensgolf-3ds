@@ -42,13 +42,34 @@ messages to that console. Screenshots (Shift+F6) go to the save folder as `opens
 Start OpenSGolf (from a source build: `opensgolf --game "../game/Program_Files_(ENGLISH)"`). It opens on the title menu, drawn from the disc's own Interface art with the game's font: Start New Game (Standard) or Sandbox Mode opens the property chooser, and picking a property starts a course on that property's theme. A property is paid for out of the §100,000 starting funds (sandbox: unlimited). Esc goes back, and from the course returns to the menu. Continue Saved Game opens Load Previous Game (the disc's Title_LoadGame art): the saved games in a list of 16 rows with the scroll arrows, a click on a row shows its holes, par, yards, cash, ratings, theme pack, designer and course record on the left, the tick loads it, the folder deletes it after a yes/no box, the arrow goes back; saves whose names start with '&' are listed as autosaves. Select A Theme opens Select a Theme Pack (the folders under Themes with what each holds); a click on a row picks it, the tick keeps it, the arrow or a key goes back to Standard. A click on the logo shows the credits (credits.txt from the game folder over creditsbckgrd.pcx; a click or key ends them).
 
 **Check for updates** (the port's own button, top right of the title menu, on Windows, macOS, Linux and Android) asks
-GitHub for OpenSGolf's newest release and says whether you have it. When a newer version is out, **Open the download
-page** opens its release page (https://github.com/crspytopgn/opensgolf/releases/latest) in the system's browser, where you
-download and install it as the first time; the game never downloads or replaces itself. Privacy: nothing goes online until
-you click the button, and then only one request to `api.github.com` (GitHub sees your IP address and
-`OpenSGolf/<version>` as the program asking, as for any web page); nothing about you or your games is sent. The browser
-version is always the newest, so it has no such button, nor has a build without the `net` feature. Test hook:
-`SG_UPDATE_URL=file:///path/latest.json` checks at start against a saved answer (`{"tag_name":"v0.4.0"}`) instead of GitHub.
+GitHub for OpenSGolf's newest release and says whether you have it. When a newer version is out, the box offers:
+
+- **Update now**: the game downloads the new version's package for your system, checks it, installs it in place of the
+  one you are running and starts it (a box shows how far the download is). On Windows and with the Linux `.tar.gz` the
+  new files replace the old ones in the game's folder (the old ones are kept as `NAME.old` until the new version has
+  started, then deleted); with the Linux AppImage the AppImage file is replaced; on a Mac the whole `OpenSGolf.app` is
+  replaced (the old one is kept as `OpenSGolf.app.old` until the new one starts). On Android the new APK goes to
+  Android's installer, which asks you to confirm (and, the first time, to allow OpenSGolf to install apps); the game
+  closes while it installs. **Integrity**: every release carries `SHA256SUMS` and its ed25519 signature
+  `SHA256SUMS.sig`; the game checks the signature against OpenSGolf's key built into it, then the package's SHA-256
+  against the signed list, before it touches a single file. A release without a signature, a signature that is not
+  OpenSGolf's or a download that does not match is refused, and so is every release while the build carries no key yet:
+  the box then says why and offers the download page. Anything else that goes wrong (no internet, a folder the game may
+  not write to such as `/Applications` for a standard user, a copy not installed from a release package) leaves your
+  version as it was and offers the download page too.
+- **Open the download page**: the release page (https://github.com/crspytopgn/opensgolf/releases/latest) in the system's
+  browser, to download and install it as the first time.
+- **Not now**.
+
+Privacy: only GitHub is contacted, and only when you click the button (or with the *Check for updates when the game
+starts* extra ticked, once at start): one request to `api.github.com` for the newest release, and with Update now the
+downloads of `SHA256SUMS`, its signature and the package from GitHub's release files. GitHub sees your IP address and
+`OpenSGolf/<version>` as the program asking, as for any web page; nothing about you or your games is sent. The browser
+version is always the newest, so it has no such button, nor has a build without the `net` feature. Test hooks:
+`SG_UPDATE_URL=file:///path/latest.json` checks at start against a saved answer (`{"tag_name":"v0.4.0"}`, with an
+`assets` list of `name` and `browser_download_url` for Update now; `file://` and local `http://` addresses work) instead
+of GitHub; `SG_UPDATE_KEY=HEX` checks signatures against that public key instead of the built-in one; `SG_UPDATE_NOW=1`
+chooses Update now as soon as a newer version is found.
 
 For scripted runs (any of `--png`, `--course`, `--edit`, `--golfer`, `--sandbox`, `--follow`) the game skips the menu and opens on the demo course; `--screen menu|property|play` forces a screen. Add `--theme Desert` for another look there. `--property NAME` (or 0..15) starts a new game on that property straight away, and `--clock MS` fixes the value the exe's random generator is seeded from, so the same land comes back every run.
 
@@ -282,7 +303,7 @@ As in the original: **F1** Course Report, **F2** Player Comments (the twenty mos
 The port's own additions to the interface, none of them in the original (crates/simgolf/src/extras.rs and the modules it
 names). They only add a screen, a tag, a strip, a button or a save. A new player starts with them off; the Game box on Select
 Difficulty turns them on in one click, and System Functions, Preferences,
-*OpenSGolf extras...* has a tick for each on its Interface page (kept in `settings.json` under `ui_extras`; a tick missing there, as in settings from before it existed, reads as off for the two pauses), and `--no-extras` turns them all off
+*OpenSGolf extras...* has a tick for each on its Interface page (kept in `settings.json` under `ui_extras`; a tick missing there, as in settings from before it existed, reads as off for the two pauses and the update check), and `--no-extras` turns them all off
 for one run. With every tick off the game draws and plays exactly as before (the stills of every report, panel and menu
 compare pixel for pixel with the build before the extras).
 
@@ -357,6 +378,11 @@ compare pixel for pixel with the build before the extras).
   warns about debt at the end of the year (the year-end report follows when the game goes on), or the cash goes below
   zero (not in Sandbox Mode). The news is where the original puts it, on the ticker or the report; *Paused for big news*
   under the Paused caption. Unpause as usual (Shift+P or the dock's pause button).
+- **Check for updates when the game starts** (off, also with the one-click OpenSGolf extras: it goes online, which is
+  yours to choose): the title menu's *Check for updates* (see *The title menu*), once in the background when the game
+  starts. It says nothing unless a newer version is out; then a box offers **Update now**, **Skip this version** (that
+  version is not offered at start again, a newer one is; kept in `settings.json` as `update_skip`) or **Not now**. Only
+  GitHub is contacted. The browser version has nothing to check.
 
 Test hooks for stills: `--screen people|staff|pro|history|profile|pathview|tags|ticker|card` (with a game;
   Both only watch the game: the golfers play exactly the same with them on or off. Ticks saved before they existed read

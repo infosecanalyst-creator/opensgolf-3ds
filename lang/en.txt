@@ -2518,6 +2518,27 @@ STR_UPDATE_NEWER                        :OpenSGolf {VERSION} is out (you have {C
 STR_UPDATE_OPEN_PAGE                    :Open the download page
 STR_UPDATE_FAILED                       :OpenSGolf could not check for updates ({ERROR}). Check the internet connection and try again later.
 STR_UPDATE_NO_BROWSER                   :No browser could be opened. The newest version is at {URL}
+STR_UPDATE_NOW                          :Update now
+STR_UPDATE_SKIP                         :Skip this version
+STR_UPDATE_STAGE_SUMS                   :Getting OpenSGolf {VERSION}'s signed checksums...
+STR_UPDATE_STAGE_DOWNLOAD               :Downloading OpenSGolf {VERSION}: {DONE} of {TOTAL} MB
+STR_UPDATE_STAGE_DOWNLOAD_MB            :Downloading OpenSGolf {VERSION}: {DONE} MB
+STR_UPDATE_STAGE_VERIFY                 :Checking the download against the signed checksums...
+STR_UPDATE_STAGE_INSTALL                :Installing OpenSGolf {VERSION}...
+STR_UPDATE_DONE                         :Updated to OpenSGolf {VERSION}.
+STR_UPDATE_RESTART_FAILED               :OpenSGolf {VERSION} is installed, but it could not be started. Close the game and start it again.
+STR_UPDATE_NOT_SET_UP                   :This version of OpenSGolf cannot update itself: it has no key to check that a download really comes from OpenSGolf, and it installs nothing it cannot check. Download the new version from its page instead.
+STR_UPDATE_REFUSED                      :The update was not installed: {WHY} Your version is unchanged. You can download the new version from its page.
+STR_UPDATE_WHY_NO_FILE                  :the release has no package for this system ({FILE}).
+STR_UPDATE_WHY_UNSIGNED                 :the release is not signed (it has no SHA256SUMS and SHA256SUMS.sig).
+STR_UPDATE_WHY_BAD_SIGNATURE            :its signature is not OpenSGolf's.
+STR_UPDATE_WHY_NOT_LISTED               :the signed checksums do not list {FILE}.
+STR_UPDATE_WHY_HASH                     :the download of {FILE} does not match its signed checksum.
+STR_UPDATE_NOT_PACKAGED                 :OpenSGolf cannot update itself here ({DIR}): this copy was not installed from a release package. Download the new version from its page.
+STR_UPDATE_NO_ACCESS                    :OpenSGolf may not change the files in {DIR}, so it cannot update itself there. Download the new version from its page and install it as the first time.
+STR_UPDATE_INSTALL_FAILED               :The update could not be installed ({ERROR}). Your version is unchanged. You can download the new version from its page.
+STR_UPDATE_ANDROID_CONFIRM              :Android asks you to confirm the update (the first time, it asks to allow OpenSGolf to install apps). The game closes while it installs; open it again afterwards.
+STR_UPDATE_ANDROID_FAILED               :Android did not install the update ({ERROR}). Your version is unchanged. You can download the new version from its page.
 
 # Preferences > Content > Find more: the content index (docs/CONTENT_INDEX.md)
 STR_INDEX_TITLE                         :Find more content
@@ -2604,6 +2625,7 @@ STR_EXTRAS_PAUSE_BACKGROUND             : Pause while the game's window is in th
 STR_EXTRAS_PAUSE_EVENTS                 : Pause on big news: VIPs, challenges, offers, debt
 STR_EXTRAS_LANDING_MAP                  : Landing map: where shots on a hole end up (Shift+D)
 STR_EXTRAS_HOLE_COMMENTS                : Comments by hole, this month and last (Shift+I)
+STR_EXTRAS_UPDATE_CHECK                 : Check for updates when the game starts (online)
 STR_MENU_SYSTEM_SHARE                   : Share course (copy a course code)
 STR_FILES_PASTE_CODE                    :Paste a course code
 STR_FILES_CHALLENGE                     :Challenge: beat {DESIGNER}'s record of {SCORE}
