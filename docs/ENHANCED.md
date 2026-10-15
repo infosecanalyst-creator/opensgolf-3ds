@@ -375,7 +375,7 @@ Test hooks: `SG_FX_BIRDS=1` keeps two birds of prey circling round the middle of
 ### Tournament atmosphere
 
 During an SGA tournament or Play a Championship, spectators gather round the green and along both sides of the fairway
-of each hole being played, about twenty a hole, facing the pin. They are the game's own golfer sprites in the usual
+of each hole being played, about twenty a hole, watching the ball while one is in the air there and the green the rest of the time. They are the game's own golfer sprites in the usual
 random colours, standing, and every so often a hole's crowd cheers (the golfers' *Happy* clip) for a
 moment. They stand only on grass and rough on the club's land, never on greens, tees, sand, water, woods or buildings.
 They are drawn only: the golfers and the simulation do not see them. The original has no grandstand or fireworks art, so

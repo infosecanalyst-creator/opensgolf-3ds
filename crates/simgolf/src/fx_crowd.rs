@@ -1,6 +1,6 @@
 //! Enhanced graphics' tournament crowds (docs/ENHANCED.md, "Tournament atmosphere"): during a tournament or a championship,
-//! spectators stand round the green and along the fairway of each hole being played, facing the pin, now and then
-//! cheering. They are the game's own golfer sprites in the usual random colours, drawn only: nothing in the simulation
+//! spectators stand round the green and along the fairway of each hole being played, watching the ball while one is in
+//! the air there and the green otherwise, now and then cheering. They are the game's own golfer sprites in the usual random colours, drawn only: nothing in the simulation
 //! knows about them, golfers walk through them as through scenery, and what varies comes from hashes of the hole, never
 //! from the game's random generator.
 use crate::app::{App, Prop, GOLFER_BODIES};
@@ -47,6 +47,9 @@ impl App {
                 continue;
             }
             let (pin, tee) = (hr.pin, hr.back);
+            // what the crowd watches: a ball in the air on this hole, else the green (in tiles)
+            let ball = self.club.g.iter().find(|g| g.hole == h as i32 && g.bz > 0).map(|g| (g.bx as f32 / 1024.0, g.by as f32 / 1024.0));
+            let look = ball.unwrap_or((pin.0 as f32 + 0.5, pin.1 as f32 + 0.5));
             let hs = seed ^ (h as u32).wrapping_mul(0x51ed);
             let cheering = (t + hash(hs, 99) * CHEER_EVERY).rem_euclid(CHEER_EVERY) < CHEER_FOR;
             // places in tiles (fractions allowed): a ring round the green, then both sides of the fairway
@@ -103,10 +106,11 @@ impl App {
                 let (Some(b), shadow) = self.golfer_clip(clip + body as i32) else { continue };
                 let n = self.frames_of(Some(b));
                 let frame = if clip == SQ { 0 } else { (tick / 2 + (hash(k, 3) * 40.0) as i32).rem_euclid(n.max(1)) };
-                // facing the pin, to the nearest of the eight ways
-                let (vx, vy) = (pin.0 as f32 + 0.5 - sx, pin.1 as f32 + 0.5 - sy);
+                // facing what the crowd watches: the eight-view clips (the original's) take the exact heading, the four-view
+                // ones (the free set's) the nearest quarter, whose views run the other way round from the compass
+                let (vx, vy) = (look.0 - sx, look.1 - sy);
+                let heading = vy.atan2(vx).to_degrees();
                 let d0 = (0..8).max_by(|&a, &c| (DX[a] * vx + DY[a] * vy).total_cmp(&(DX[c] * vx + DY[c] * vy))).unwrap_or(0);
-                // the sprites' views run the other way round from the fly-overs' compass
                 let d = (d0 + 4) % 8;
                 let id = (k >> 4) % 997;
                 let female = body >= 5;
@@ -127,7 +131,7 @@ impl App {
                     body: Some(b),
                     shadow,
                     frame,
-                    heading: DY[d].atan2(DX[d]).to_degrees(),
+                    heading,
                     facing: -((d as i32 + 2 + (d as i32 & 1)) / 2),
                     outfit: Some(outfit),
                     track: 0x5200_0000 | (h as u32) << 8 | i as u32,
