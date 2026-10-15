@@ -123,6 +123,9 @@ impl App {
         }
         // the same snow on the trees and roofs (fx_nature.rs)
         a.season.snow = a.snow;
+        // the water ices over in the cold snap (the port's own, fx_water.rs): with the snow lying or falling, thawing as it
+        // melts
+        a.ice = (k * (1.6 * a.snow + 0.8 * a.snowfall)).clamp(0.0, 1.0);
     }
 
     /// Falling snow: small square flakes drifting down the screen and swaying, pale, in the art's pixel style.
