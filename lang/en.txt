@@ -2522,12 +2522,14 @@ STR_TOAST_EXPORTED                      :Exported as the scenario pack {PACK} (i
 # OpenSGolf extras (the port's own additions, extras.rs; docs/PLAYING.md "OpenSGolf extras")
 ########################################################################################################################
 # Preferences > OpenSGolf extras, second part (under the gameplay extras): the interface extras' heading and a tick per extra
-STR_EXTRAS_UI_HEAD                      :Interface extras (on by default)
+STR_EXTRAS_UI_HEAD                      :Interface extras
 STR_EXTRAS_PEOPLE                       : People screen and golfer profiles (Shift+G)
 STR_EXTRAS_HISTORY                      : Message history (Shift+M, or click the ticker)
 STR_EXTRAS_NAME_TAGS                    : Name tags under the pointer (Shift+H)
 STR_EXTRAS_REPORT_TABS                  : Tabs over the F1 to F10 reports
 STR_EXTRAS_PATH_HELP                    : Path help: path view (Shift+V) and Show buttons
+STR_EXTRAS_AUTOSAVE                     : Autosave every five minutes
+STR_EXTRAS_SAVE_PICTURES                : A map of the course beside each saved game
 # An empty line: before the interface extras' heading, and the box's last line (it keeps the OK tick clear of the options)
 STR_EXTRAS_END                          :
 # A game date: "March 3, 2001"

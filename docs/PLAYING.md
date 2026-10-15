@@ -107,7 +107,8 @@ Select Difficulty has a **Game** box next to Course size. One click switches bet
 
 - **The original**: every OpenSGolf extra off and Classic graphics; the game exactly as it was (fixes for the original's
   own bugs stay on). A new player starts here.
-- **OpenSGolf extras**: the interface extras (People screen, message history, name tags, report tabs, path help) and the
+- **OpenSGolf extras**: the interface extras (People screen, message history, name tags, report tabs, path help, autosave,
+  save pictures) and the
   gameplay extras that do not change the game's balance (turning buildings, animals, more staff).
 
 If you ticked your own choice in Preferences, the box says "your own mix"; a click goes back to the original. The choice
@@ -205,7 +206,7 @@ As in the original: **F1** Course Report, **F2** Player Comments (the twenty mos
 ## OpenSGolf extras
 
 The port's own additions to the interface, none of them in the original (crates/simgolf/src/extras.rs and the modules it
-names). They only add a screen, a tag, a strip or a button. A new player starts with them off; the Game box on Select
+names). They only add a screen, a tag, a strip, a button or a save. A new player starts with them off; the Game box on Select
 Difficulty turns them on in one click, and System Functions, Preferences,
 *OpenSGolf extras...* has a tick for each (kept in `settings.json` under `extras`), and `--no-extras` turns them all off
 for one run. With every tick off the game draws and plays exactly as before (the stills of every report, panel and menu
@@ -240,6 +241,11 @@ compare pixel for pixel with the build before the extras).
   original leaves closed) and on each hole with no joined path within three tiles of its tee, with a legend in the upper
   right. The original's monthly warning that a building is not operational gets a **Show** button on the ticker that takes
   the camera to the building.
+- **Autosave**: every five minutes of play the game is saved to Saved Games as *autosave (Latest)*, overwriting the last
+  one, so a crash or a closed tab loses at most five minutes. Load it from Load Previous Game like any save.
+- **Save pictures**: Load Previous Game draws a map of the selected save's course in the list's top right corner: fairways,
+  greens, sand, water, woods, paths and buildings, with the land the club does not own darker. It reads the save itself, so
+  older saves get a picture too.
 
 Test hooks for stills: `--screen people|staff|pro|history|profile|pathview|tags|ticker|card` (with a game;
 `SG_PEOPLE_SORT=COL[,1]` sorts the People list by column COL, downward with 1), `--edit "M:6"` opens the extras box.

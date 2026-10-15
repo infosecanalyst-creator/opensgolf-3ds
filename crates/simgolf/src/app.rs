@@ -682,6 +682,8 @@ pub struct App {
     pub extras_next: sg_core::extras::Extras,
     /// Undo for building and terrain (undo.rs).
     pub undo: crate::undo::Undo,
+    /// When the next autosave is due (autosave.rs; 0: not counting).
+    pub autosave_due: f64,
     pub strip_page: u8,
     /// Where each golfer slot's ball was drawn last frame (the exe keeps the screen point, 0x567b34 / 0x567d94), for the
     /// sweet shot's streak.
@@ -914,6 +916,7 @@ impl App {
             design_hover: -1,
             extras_next: crate::extras_ui::saved(),
             undo: Default::default(),
+            autosave_due: 0.0,
             strip_page: 0,
             ball_trail: Vec::new(),
             tracts: Default::default(),

@@ -20,6 +20,7 @@ mod app;
 mod audio;
 #[cfg(target_os = "macos")]
 mod autorelease;
+mod autosave;
 mod champ_ui;
 mod content;
 mod content_profiles;
@@ -2262,6 +2263,8 @@ impl EventHandler for Stage {
         self.app.extras_test_hook();
         // "Use my SimGolf files...": a .zip being unpacked or a folder being copied (gamefiles.rs)
         self.app.poll_import();
+        // the Autosave extra (autosave.rs)
+        self.app.autosave_tick(t);
         // the sound output follows the system's default device (audio.rs)
         if let Some(a) = self.app.audio.as_mut() {
             a.keep_alive();

@@ -39,6 +39,8 @@ pub enum ListKind {
 /// The left panel of a saved game or course: what the exe reads from the previewed save.
 #[derive(Clone, Debug, Default)]
 pub struct SaveInfo {
+    /// The course's map for the Save pictures extra: its side in cells and a colour per cell, rows first.
+    pub map: (usize, Vec<[f32; 4]>),
     /// Open holes: number, par, yards.
     pub holes: Vec<(usize, i32, i32)>,
     pub par: i32,
@@ -62,6 +64,7 @@ impl SaveInfo {
         let r = &s.club.ratings;
         let theme = if s.theme_pack.is_empty() { "Standard".to_string() } else { s.theme_pack.replace('_', " ") };
         SaveInfo {
+            map: course_map(&s.terrain, s.land.as_ref()),
             par: holes.iter().map(|h| h.1).sum(),
             yards: holes.iter().map(|h| h.2).sum(),
             holes,
@@ -193,6 +196,45 @@ fn top(s: &Ui, g: &mut Gfx, x: f32, y: f32, t: &str, size: f32, c: [f32; 4]) {
 }
 fn top_c(s: &Ui, g: &mut Gfx, x: f32, y: f32, t: &str, size: f32, c: [f32; 4]) {
     s.put_centered(g, font(size), x, y, t, c);
+}
+
+/// The Save pictures extra's map of a course: one cell per tile (a cell per 2 x 2 tiles, or more, on large maps), coloured
+/// by the tile's terrain, paths over it, and the land the club does not own darker.
+fn course_map(t: &sg_core::terrain::Terrain, land: Option<&sg_core::land::Land>) -> (usize, Vec<[f32; 4]>) {
+    use sg_core::terrain::*;
+    let (w, h) = (t.w.max(1) as usize, t.h.max(1) as usize);
+    let step = w.max(h).div_ceil(100);
+    let side = w.max(h).div_ceil(step);
+    let mut v = vec![[0.0; 4]; side * side];
+    for cy in 0..side {
+        for cx in 0..side {
+            let (x, y) = (cx * step, cy * step);
+            if x >= w || y >= h {
+                continue;
+            }
+            let i = y * w + x;
+            let ty = t.ty.get(i).copied().unwrap_or(TT_ROUGH);
+            let c = match ty {
+                _ if t.path_kind.get(i).is_some_and(|&p| p != 0) => [0.85, 0.8, 0.65],
+                TT_TEE => [0.45, 0.85, 0.4],
+                TT_PUTTING_GREEN | TT_TRICKY_GREEN => [0.5, 0.95, 0.45],
+                TT_FAIRWAY | TT_FIRM_FAIRWAY => [0.4, 0.75, 0.3],
+                TT_ROUGH => [0.28, 0.55, 0.22],
+                TT_DEEP_ROUGH | TT_OVERGROWTH | TT_OVERGROWTH2 | TT_BRUSH | TT_MARSH => [0.22, 0.42, 0.18],
+                TT_WOODS => [0.1, 0.3, 0.12],
+                TT_SAND | TT_GRASSY_SAND | TT_POT_SAND_BUNKER | TT_SAND_BUNKER1 | TT_ZEN_SAND => [0.93, 0.87, 0.65],
+                TT_WATER_SHALLOW | TT_WATER_MIDDLE | TT_WATER_DEEP | TT_WATER_SHALLOW_DESERT => [0.25, 0.45, 0.85],
+                TT_BUILDING => [0.75, 0.3, 0.25],
+                TT_ROCK | TT_CLIFF | TT_RAVINE => [0.5, 0.48, 0.45],
+                TT_FLOWER_BED => [0.9, 0.5, 0.7],
+                _ => [0.3, 0.5, 0.25],
+            };
+            let out = land.is_some_and(|l| l.ty.get(i) == Some(&sg_core::land::T_OUT));
+            let k = if out { 0.45 } else { 1.0 };
+            v[cy * side + cx] = [c[0] * k, c[1] * k, c[2] * k, 1.0];
+        }
+    }
+    (side, v)
 }
 
 /// A row's name: the file name without its extension; names starting with '&' are autosaves.
@@ -763,6 +805,17 @@ impl App {
             let y = 286.0 + 17.0 * r as f32;
             for (k, v) in [h as i32, par, yards].iter().enumerate() {
                 top_c(s, g, X[k], y, &v.to_string(), 13.0, BLACK);
+            }
+        }
+        // the Save pictures extra: the course's map in the list's top right corner
+        if crate::extras::save_pictures() && i.map.0 > 0 {
+            let (n, (x, y, size)) = (i.map.0, (606.0, 120.0, 150.0));
+            let c = size / n as f32;
+            s.fill(g, x - 2.0, y - 2.0, size + 4.0, size + 4.0, rgba(0.2, 0.2, 0.3, 0.9));
+            for (k, col) in i.map.1.iter().enumerate() {
+                if col[3] > 0.0 {
+                    s.fill(g, x + c * (k % n) as f32, y + c * (k / n) as f32, c + 0.5, c + 0.5, *col);
+                }
             }
         }
         top(s, g, 388.0, 442.0, &trf("STR_FILES_THEME", &[("THEME", &i.theme)]), 13.0, WHITE);
