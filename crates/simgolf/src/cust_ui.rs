@@ -277,7 +277,28 @@ impl App {
         let snapshot = p.clone();
         self.cust = Some(Customise { record, slot, pro_mode, snapshot, toggles, hover: -1, ..Default::default() });
         self.screen = Screen::Customise;
-        self.ui_sound(0x2d);
+        self.cust_music(true);
+    }
+
+    /// The Customise screen's music (0x43864a on entry, 0x43a2f3 on leaving, EXACT): the course ambience stops and Music
+    /// Idea (slot 0x80) plays once, or New Age (0x7d) for a woman; leaving stops it and starts the ambience again.
+    fn cust_music(&mut self, enter: bool) {
+        let slot = if self.cust_person().female() { 0x7d } else { 0x80 };
+        let Some(m) = self.mixer.clone() else { return };
+        if enter {
+            if self.ambience >= 0 {
+                m.stop(self.ambience);
+                self.ambience = -1;
+            }
+            self.ui_sound(slot);
+        } else {
+            for s in [0x7d, 0x80] {
+                if let Some(&v) = self.slot_voices.get(&s) {
+                    m.stop(v);
+                }
+            }
+            self.start_ambience();
+        }
     }
 
     fn cust_person(&self) -> Person {
@@ -627,9 +648,9 @@ impl App {
             gg.class = (gg.class & 0xf8) | c.toggles;
             gg.looks = b21 as i8 as i16 as u16;
         }
+        self.cust_music(false);
         self.cust = None;
         self.screen = Screen::Play;
-        self.ui_sound(0x2d);
     }
 
     /// Typing a name or profession (the exe's one-line box, 16 long: 15 characters), a dialogue line (48: 47) or the

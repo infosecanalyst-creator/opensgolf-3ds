@@ -22,6 +22,10 @@ struct Voice {
     /// Volume lost per sample while fading out (0: not fading); the voice ends at zero.
     fade: f32,
     looping: bool,
+    /// Playback rate (1 = as recorded); the exe sets a pitch offset in cents on every positional play.
+    rate: f64,
+    /// Position in frames while `rate` is not 1 (`pos` follows it in samples).
+    fpos: f64,
 }
 
 /// The index key of a path under Sounds/: lower case, forward slashes, and underscores read as spaces (the exe asks for
@@ -43,6 +47,15 @@ fn loose_key(key: &str) -> String {
     name_key(key).chars().filter(|c| !c.is_ascii_digit()).collect()
 }
 
+/// The playback rate of a pitch offset in cents, clamped to the exe's -1200..1200.
+fn cents_rate(cents: i32) -> f64 {
+    if cents == 0 {
+        1.0
+    } else {
+        2f64.powf(cents.clamp(-1200, 1200) as f64 / 1200.0)
+    }
+}
+
 struct State {
     clips: BTreeMap<String, Arc<Vec<i16>>>,
     voices: Vec<Voice>,
@@ -55,6 +68,8 @@ struct State {
     aliased: Vec<(String, String)>,
     /// Clips the free set stood in for, missing or undecodable.
     stand_ins: usize,
+    /// Clips of the player's copy that could not be decoded, with the reason (for the sound report).
+    unreadable: Vec<(String, String)>,
 }
 
 pub struct Mixer {
@@ -141,6 +156,7 @@ impl Mixer {
                 missing: Vec::new(),
                 aliased: Vec::new(),
                 stand_ins: 0,
+                unreadable: Vec::new(),
             }),
         };
         m.add_dir("", sounds_dir);
@@ -223,6 +239,9 @@ impl Mixer {
         }
         for (a, b) in &s.aliased {
             r += &format!("found elsewhere: {a} -> {b}\n");
+        }
+        for (a, e) in &s.unreadable {
+            r += &format!("cannot be read: {a} ({e})\n");
         }
         if !s.last_error.is_empty() {
             r += &format!("last error: {}\n", s.last_error);
@@ -337,6 +356,9 @@ impl Mixer {
                     // said once per clip: the clip is remembered (as the free set's, or as silence) and not read again
                     if let Some(Err(e)) = failed {
                         eprintln!("sound: {e}");
+                        if let Ok(mut st) = self.state.lock() {
+                            st.unreadable.push((key.to_string(), e.clone()));
+                        }
                         self.set_error(e);
                     }
                     let free = self.decode_free(key);
@@ -360,6 +382,11 @@ impl Mixer {
 
     /// Plays a clip panned (-1 left .. 1 right) and starting `delay_ms` from now. Returns a voice id, or -1.
     pub fn play_at(&self, rel: &str, volume: f32, pan: f32, delay_ms: u32, looping: bool) -> i32 {
+        self.play_pitched(rel, volume, pan, delay_ms, 0, looping)
+    }
+
+    /// `play_at` with a pitch offset in cents (100 a semitone; the exe clamps it to -1200..1200).
+    pub fn play_pitched(&self, rel: &str, volume: f32, pan: f32, delay_ms: u32, cents: i32, looping: bool) -> i32 {
         let Some(clip) = self.load(&key_of(rel)) else { return -1 };
         let Ok(mut s) = self.state.lock() else { return -1 };
         if clip.is_empty() {
@@ -373,8 +400,24 @@ impl Mixer {
         let id = s.next_id;
         s.next_id += 1;
         let delay = (delay_ms as usize * RATE as usize / 1000) * 2;
-        s.voices.push(Voice { id, clip, pos: 0, vol: volume, pan: pan.clamp(-1.0, 1.0), delay, fade: 0.0, looping });
+        let rate = cents_rate(cents);
+        s.voices.push(Voice { id, clip, pos: 0, vol: volume, pan: pan.clamp(-1.0, 1.0), delay, fade: 0.0, looping, rate, fpos: 0.0 });
         id
+    }
+
+    /// Sets a sounding voice's volume, pan and pitch, as the exe's play does on a slot whose buffer is still playing (its
+    /// setters run on the playing buffer, which keeps playing at the new pitch).
+    pub fn retune(&self, voice: i32, volume: f32, pan: f32, cents: i32) {
+        if let Ok(mut s) = self.state.lock() {
+            for v in s.voices.iter_mut().filter(|v| v.id == voice && v.fade == 0.0) {
+                if v.rate == 1.0 {
+                    v.fpos = (v.pos / 2) as f64;
+                }
+                v.vol = volume;
+                v.pan = pan.clamp(-1.0, 1.0);
+                v.rate = cents_rate(cents);
+            }
+        }
     }
 
     /// Fades a voice out over `ms` milliseconds, then stops it.
@@ -418,6 +461,36 @@ impl Mixer {
                 let mut i = v.delay.min(acc.len()) & !1;
                 v.delay -= i;
                 let (pl, pr) = ((1.0 - v.pan).min(1.0), (1.0 + v.pan).min(1.0));
+                if v.rate != 1.0 {
+                    // resampled with linear interpolation, one output frame at a time
+                    let frames = total / 2;
+                    while i < acc.len() {
+                        if v.fpos + 1.0 >= frames as f64 {
+                            if v.looping && frames > 1 {
+                                v.fpos = 0.0;
+                            } else {
+                                v.fpos = frames as f64;
+                                break;
+                            }
+                        }
+                        if v.fade > 0.0 && v.vol <= 0.0 {
+                            break;
+                        }
+                        let f = v.fpos as usize;
+                        let t = (v.fpos - f as f64) as f32;
+                        let at = |c: usize| v.clip[2 * f + c] as f32 * (1.0 - t) + v.clip[2 * f + 2 + c] as f32 * t;
+                        let g = v.vol * master;
+                        acc[i] += (at(0) * g * pl) as i32;
+                        acc[i + 1] += (at(1) * g * pr) as i32;
+                        if v.fade > 0.0 {
+                            v.vol = (v.vol - v.fade * 2.0).max(0.0);
+                        }
+                        v.fpos += v.rate;
+                        i += 2;
+                    }
+                    v.pos = (v.fpos as usize * 2).min(total);
+                    continue;
+                }
                 while i < acc.len() {
                     if v.pos >= total {
                         if v.looping {
@@ -493,6 +566,26 @@ mod tests {
         assert_eq!(out.len(), 200 * 2);
         assert_eq!(out[0], out[1]); // mono goes to both channels
         assert_eq!(out[2 * 2], 100); // frame 2 at 44.1k is source frame 1
+    }
+
+    #[test]
+    fn an_octave_up_plays_in_half_the_time() {
+        let d = std::env::temp_dir().join(format!("sg_mixer_pitch_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("t.wav"), tone_wav(2205)).unwrap(); // 0.1 s, 4410 frames at 44.1 kHz
+        let m = Mixer::new(&d);
+        let up = m.play_pitched("t.wav", 1.0, 0.0, 0, 1200, false);
+        let plain = m.play("t.wav", 1.0, false);
+        let mut buf = vec![0i16; 2300 * 2];
+        m.mix(&mut buf);
+        assert!(!m.playing(up) && m.playing(plain));
+        assert!(buf[2000 * 2] != 0);
+        // retuning a sounding voice keeps it going at the new rate
+        m.retune(plain, 1.0, 0.0, -1200);
+        m.mix(&mut buf);
+        assert!(m.playing(plain));
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

@@ -8,6 +8,8 @@ license.workspace = true
 [dependencies]
 fontdue = "0.9"
 lewton = "0.10"
+# no SIMD (`wide`): its edition 2024 manifest is more than the Android build's older Cargo reads
+nanomp3 = { version = "0.2", default-features = false, features = ["std", "layer12"] }
 miniz_oxide = "0.8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
