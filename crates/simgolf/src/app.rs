@@ -3680,7 +3680,8 @@ impl App {
                 tiles: &mut self.staff_tiles,
                 golfers: &mut self.staff_golfers,
                 club,
-                clicked: if self.club.holes[1].par == 0 { self.hover_tile } else { None },
+                clicked: self.hover_tile,
+                follow_pointer: self.club.holes[1].par == 0,
                 tick: self.game_tick,
                 difficulty: self.difficulty,
                 weed_frames,
@@ -4187,23 +4188,31 @@ impl App {
             if let Some(e) = self.employees.get_mut(i) {
                 e.post = Some(t);
                 e.steps = 0;
-                let name = staff_title((-2 - e.job as i32).clamp(0, 3) as usize, e.upgraded);
+                let name = if e.job == staff::job::OWNER {
+                    None
+                } else {
+                    Some(staff_title((-2 - e.job as i32).clamp(0, 3) as usize, e.upgraded).to_string())
+                };
+                let name = name.unwrap_or_else(|| self.pro_name());
                 self.show_toast(&trf("STR_TOAST_EMPLOYEE_POSTED", &[("EMPLOYEE", &name)]));
             }
             return;
         }
         let mut pick = None;
         for (i, e) in self.employees.iter().enumerate() {
-            if !e.active || e.job == staff::job::OWNER {
+            // any employee record, the player's pro included (0x41eff5), but not while he is out playing a round
+            if !e.active || (e.job == staff::job::OWNER && self.club.gary != -1) {
                 continue;
             }
             let (ex, ez) = self.units_to_world(e.x, e.y);
             if (ex - wx).hypot(ez - wz) < 70.0 {
-                pick = Some((i, staff_title((-2 - e.job as i32).clamp(0, 3) as usize, e.upgraded)));
+                let owner = e.job == staff::job::OWNER;
+                pick = Some((i, (!owner).then(|| staff_title((-2 - e.job as i32).clamp(0, 3) as usize, e.upgraded).to_string())));
                 break;
             }
         }
         if let Some((i, name)) = pick {
+            let name = name.unwrap_or_else(|| self.pro_name());
             self.moving_employee = Some(i);
             self.show_toast(&trf("STR_TOAST_EMPLOYEE_CLICK", &[("EMPLOYEE", &name)]));
             return;

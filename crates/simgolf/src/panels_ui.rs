@@ -261,16 +261,25 @@ impl Strip {
         (self.left() + 0x2c + 47 * i / 2, 500 + if i & 1 != 0 { 27 } else { 0 })
     }
 
-    /// The design under a point (the last one whose octagon, squashed to half height, is within 20), shown designs only.
+    /// The design under a point, shown designs only: within the box its pad (47 x 40 round the anchor) and its picture
+    /// (up to 44 px above the anchor) cover, the one whose picture centre is nearest (the two rows overlap). The hover picks the design, so a box
+    /// smaller than the picture (an octagon squashed to half height, within 20) left the pick on a neighbour the pointer
+    /// had crossed on its way to the picture.
     fn hit(&self, mask: u32, px: f32, py: f32) -> i32 {
-        let mut found = -1;
+        let (px, py) = (px.floor() as i32, py.floor() as i32);
+        let mut best = (-1, i32::MAX);
         for i in (0..self.count).filter(|&i| mask == 0 || mask & (1 << i) != 0) {
             let (cx, cy) = self.at(i);
-            if (Hit { cx, cy, r: 20, xs: 1, ys: 2 }).has(px, py) {
-                found = i;
+            let (dx, dy) = (px - cx, py - cy);
+            if (-23..24).contains(&dx) && (-44..21).contains(&dy) {
+                // nearest picture centre (a 40 px picture stands on its anchor)
+                let d = dx * dx + (dy + 18) * (dy + 18);
+                if d < best.1 {
+                    best = (i, d);
+                }
             }
         }
-        found
+        best.0
     }
 }
 
@@ -1677,13 +1686,28 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_strip_picture_picks_its_own_design() {
+        let st = Strip { dx: 0, count: 6, scale: 1.0 };
+        for i in 0..6 {
+            let (cx, cy) = st.at(i);
+            // the pad, and the picture standing above the anchor
+            assert_eq!(st.hit(0, cx as f32, cy as f32), i);
+            assert_eq!(st.hit(0, cx as f32 + 8.0, cy as f32 - 30.0), i, "picture of {i}");
+            assert_eq!(st.hit(0, cx as f32 - 3.0, cy as f32 - 18.0), i, "middle of {i}");
+        }
+        // hidden designs are never picked; far away nothing is
+        assert_eq!(st.hit(0b111101, st.at(1).0 as f32, st.at(1).1 as f32 - 30.0) == 1, false);
+        assert_eq!(st.hit(0, 10.0, 10.0), -1);
+    }
+
+    #[test]
     fn design_strips() {
         // benches: five designs from x 402, the odd ones a row lower
         let st = design_strip(land::K_BENCH).unwrap();
         assert_eq!(st.left(), 402);
         assert_eq!((st.at(0), st.at(1)), ((446, 500), (469, 527)));
         assert_eq!(st.hit(0, 469.0, 527.0), 1);
-        assert_eq!(st.hit(0, 469.0, 516.0), -1);
+        assert_eq!(st.hit(0, 469.0, 510.0), 1);
         // landmarks show only the club's
         let st = design_strip(land::K_LANDMARK).unwrap();
         assert_eq!(st.hit(1 << 3, st.at(3).0 as f32, st.at(3).1 as f32), 3);

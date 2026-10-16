@@ -17,6 +17,7 @@ import android.view.SurfaceView;
 import android.view.SurfaceHolder;
 import android.view.MotionEvent;
 import android.view.KeyEvent;
+import android.view.InputDevice;
 import android.view.inputmethod.InputMethodManager;
 
 import android.content.Context;
@@ -160,6 +161,18 @@ class QuadSurface
     @SuppressWarnings("deprecation")
     @Override
     public boolean onKey(View v, int keyCode, KeyEvent event) {
+        // a game controller's face, shoulder and stick buttons go to the game's controller code (gamepad.rs) as the bits
+        // of the W3C standard gamepad; the d-pad stays the arrow keys
+        int bit = padBit(keyCode);
+        if (bit >= 0) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                padButtons |= 1 << bit;
+            } else if (event.getAction() == KeyEvent.ACTION_UP) {
+                padButtons &= ~(1 << bit);
+            }
+            sendPad();
+            return true;
+        }
         if (event.getAction() == KeyEvent.ACTION_DOWN && keyCode != 0) {
             QuadNative.surfaceOnKeyDown(keyCode);
         }
@@ -183,6 +196,59 @@ class QuadSurface
         }
 
         return true;
+    }
+
+    private int padButtons = 0;
+    private float padLx, padLy, padRx, padRy;
+
+    private static int padBit(int keyCode) {
+        switch (keyCode) {
+        case KeyEvent.KEYCODE_BUTTON_A: return 0;
+        case KeyEvent.KEYCODE_BUTTON_B: return 1;
+        case KeyEvent.KEYCODE_BUTTON_X: return 2;
+        case KeyEvent.KEYCODE_BUTTON_Y: return 3;
+        case KeyEvent.KEYCODE_BUTTON_L1: return 4;
+        case KeyEvent.KEYCODE_BUTTON_R1: return 5;
+        case KeyEvent.KEYCODE_BUTTON_L2: return 6;
+        case KeyEvent.KEYCODE_BUTTON_R2: return 7;
+        case KeyEvent.KEYCODE_BUTTON_SELECT: return 8;
+        case KeyEvent.KEYCODE_BUTTON_START: return 9;
+        case KeyEvent.KEYCODE_BUTTON_THUMBL: return 10;
+        case KeyEvent.KEYCODE_BUTTON_THUMBR: return 11;
+        default: return -1;
+        }
+    }
+
+    private void sendPad() {
+        QuadNative.surfaceOnGamepad(padButtons, padLx, padLy, padRx, padRy);
+    }
+
+    // a controller's sticks, analogue triggers and hat (a d-pad some controllers report as axes)
+    @Override
+    public boolean onGenericMotionEvent(MotionEvent e) {
+        if ((e.getSource() & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK
+                && e.getAction() == MotionEvent.ACTION_MOVE) {
+            padLx = e.getAxisValue(MotionEvent.AXIS_X);
+            padLy = e.getAxisValue(MotionEvent.AXIS_Y);
+            padRx = e.getAxisValue(MotionEvent.AXIS_Z);
+            padRy = e.getAxisValue(MotionEvent.AXIS_RZ);
+            float lt = Math.max(e.getAxisValue(MotionEvent.AXIS_LTRIGGER), e.getAxisValue(MotionEvent.AXIS_BRAKE));
+            float rt = Math.max(e.getAxisValue(MotionEvent.AXIS_RTRIGGER), e.getAxisValue(MotionEvent.AXIS_GAS));
+            float hx = e.getAxisValue(MotionEvent.AXIS_HAT_X), hy = e.getAxisValue(MotionEvent.AXIS_HAT_Y);
+            // analogue triggers and the hat set the bits their buttons would (LT 6, RT 7, d-pad 12..15)
+            int axisBits = (1 << 6) | (1 << 7) | (0xf << 12);
+            int b = padButtons & ~axisBits;
+            if (lt > 0.5f) b |= 1 << 6;
+            if (rt > 0.5f) b |= 1 << 7;
+            if (hy < -0.5f) b |= 1 << 12;
+            if (hy > 0.5f) b |= 1 << 13;
+            if (hx < -0.5f) b |= 1 << 14;
+            if (hx > 0.5f) b |= 1 << 15;
+            padButtons = b;
+            sendPad();
+            return true;
+        }
+        return super.onGenericMotionEvent(e);
     }
 
     // There is an Android bug when screen is in landscape,

@@ -427,8 +427,10 @@ pub struct World<'a> {
     pub golfers: &'a mut [StaffGolfer],
     /// Clubhouse anchor tile.
     pub club: (i32, i32),
-    /// Last tile the player clicked (the player's pro walks there), or None.
+    /// The tile under the pointer (the player's pro walks there until hole 1 opens), or None.
     pub clicked: Option<(i32, i32)>,
+    /// Hole 1 has no par yet: the player's pro follows the pointer instead of working (0x40311b, EXACT).
+    pub follow_pointer: bool,
     pub tick: u32,
     pub difficulty: i32,
     /// Frames in the theme's weed animation (a weed being worked on starts its counter at this minus 3).
@@ -561,7 +563,9 @@ fn decide(list: &mut [Employee], i: usize, w: &mut World, rng: &mut ExeRng, out:
             found = -1;
         }
     }
-    if jb == job::OWNER {
+    // the player's pro follows the pointer only while hole 1 has no par; afterwards the target found above (a weed near
+    // his post, a golfer, or the post itself) stands, as for any employee (0x40311b..0x40317d)
+    if jb == job::OWNER && w.follow_pointer {
         match w.clicked {
             Some((a, b)) if w.tick & 0x200 == 0 && w.terrain.type_at(a, b) != 17 => {
                 tx = a * UNIT + 0x200;
@@ -895,8 +899,17 @@ mod tests {
         let mut out = Vec::new();
         let mut sold = false;
         for tick in 1..4000u32 {
-            let mut world =
-                World { terrain: &t, tiles: &mut tiles, golfers: &mut golfers, club, clicked: None, tick, difficulty: 1, weed_frames: 8 };
+            let mut world = World {
+                terrain: &t,
+                tiles: &mut tiles,
+                golfers: &mut golfers,
+                club,
+                clicked: None,
+                follow_pointer: false,
+                tick,
+                difficulty: 1,
+                weed_frames: 8,
+            };
             tick_all(&mut staff, &mut world, &mut rng, &mut out);
             if out.iter().any(|e| matches!(e, StaffEvent::DrinkSold { .. })) {
                 sold = true;
@@ -905,6 +918,49 @@ mod tests {
         }
         assert!(sold, "no drink sold; vendor at {:?}", (staff[v].x >> 10, staff[v].y >> 10));
         assert_eq!(golfers[0].thirst, 0);
+    }
+
+    /// Once hole 1 is open the player's pro works like an employee: from wherever a round left him he walks to a weed
+    /// near his post and pulls it, the pointer notwithstanding.
+    #[test]
+    fn the_players_pro_works_after_hole_one_opens() {
+        let t = flat(50);
+        let mut tiles = TileState::new(50, 50);
+        let mut rng = ExeRng::from_clock(7);
+        let mut staff = Vec::new();
+        let club = (20, 20);
+        let p = create(&mut staff, job::OWNER, club, &mut rng);
+        staff[p].post = Some(club);
+        // left on a green 8 tiles away by his round
+        staff[p].x = 28 * UNIT + 512;
+        staff[p].y = 20 * UNIT + 512;
+        let weed = (club.0 - 3, club.1 + 2);
+        let wi = tiles.i(weed.0, weed.1);
+        tiles.flags[wi] |= WEEDS;
+        let mut golfers = vec![StaffGolfer::default(); 2];
+        let mut out = Vec::new();
+        let mut pulled = false;
+        for tick in 1..6000u32 {
+            let mut world = World {
+                terrain: &t,
+                tiles: &mut tiles,
+                golfers: &mut golfers,
+                club,
+                clicked: Some((28, 20)),
+                follow_pointer: false,
+                tick,
+                difficulty: 0,
+                weed_frames: 8,
+            };
+            tick_all(&mut staff, &mut world, &mut rng, &mut out);
+            if out.iter().any(|e| matches!(e, StaffEvent::WeedPulled { a, b } if (*a, *b) == weed)) {
+                pulled = true;
+                break;
+            }
+        }
+        let at = (staff[p].x >> 10, staff[p].y >> 10);
+        assert!(pulled, "weed not pulled; pro at {at:?}");
+        assert!((at.0 - weed.0).abs() <= 1 && (at.1 - weed.1).abs() <= 1, "pulled from {at:?}, not beside the weed");
     }
 
     fn tick_all(staff: &mut [Employee], w: &mut World, rng: &mut ExeRng, out: &mut Vec<StaffEvent>) {
