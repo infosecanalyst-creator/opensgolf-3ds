@@ -1143,6 +1143,8 @@ impl Stage {
         audio::log(&format!("sound: looking in {} and {}", app.game_path("Sounds").display(), app.game_path("SimsFX").display()));
         // the free set's sounds stand in for a copy whose own cannot be played; the player is told once (sound_note)
         mixer.with_fallback();
+        // (mutable for the no-device note below, which the browser build leaves out)
+        #[cfg_attr(target_arch = "wasm32", allow(unused_mut))]
         let mut sound_note = mixer.check().err().filter(|_| content::has_original(&app.game_dir)).map(|e| {
             audio::log(&format!("sound: the game's own sounds cannot be played ({e}); playing the free set's sounds"));
             sg_core::lang::trf("STR_SOUND_CANNOT_PLAY", &[("WHY", &e)])
