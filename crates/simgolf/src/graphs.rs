@@ -253,6 +253,13 @@ pub fn scale(lo: f64, hi: f64, whole: bool) -> (f64, f64, usize) {
 
 /// The plot inside the art's ruled paper (about 82 to 718 by 48 to 522), the scale's figures to its left.
 const PLOT: Rect = Rect { x: 150.0, y: 116.0, w: 550.0, h: 354.0 };
+/// The months' names under the plot, the keys' line under them and the histograph's legend row (its labels' tops at 542,
+/// 0x455ed0): fixed rows, whatever the pointer is over, so the keys never run into the legend.
+const MONTHS_Y: f32 = PLOT.y + PLOT.h + 8.0;
+const HELP_Y: f32 = PLOT.y + PLOT.h + 26.0;
+const LEGEND_Y: f32 = 542.0;
+// a line of Arial 10 is 12 high; the keys keep clear of the months above and the legend's art row below
+const _: () = assert!(MONTHS_Y + 12.0 <= HELP_Y && HELP_Y + 12.0 <= LEGEND_Y - 8.0);
 const SERIES_Y: f32 = 52.0;
 const MEASURE_Y: f32 = 74.0;
 /// The tabs' row on the paper.
@@ -531,7 +538,7 @@ impl App {
                 let w = F_ARIAL10.width(&label);
                 let lx = (x - w / 2.0).clamp(PLOT.x - 20.0, PLOT.x + PLOT.w + 20.0 - w);
                 if lx > right_edge + 6.0 {
-                    s.put(g, F_ARIAL10, lx, PLOT.y + PLOT.h + 8.0, &label, black);
+                    s.put(g, F_ARIAL10, lx, MONTHS_Y, &label, black);
                     right_edge = lx + w;
                 }
             }
@@ -598,9 +605,9 @@ impl App {
         let series_name = if series == 0 { tr("STR_GRAPHS_CLUB").to_string() } else { trf("STR_GRAPHS_HOLE", &[("HOLE", &series)]) };
         let months = trf("STR_GRAPHS_MONTHS", &[("COUNT", &points.len())]);
         for (x, t) in [(177.0, series_name), (332.0, tr(m.key).to_string()), (488.0, latest.unwrap_or_default()), (644.0, months)] {
-            s.put_centered(g, F_INFO14, x, 542.0, &t, black);
+            s.put_centered(g, F_INFO14, x, LEGEND_Y, &t, black);
         }
-        s.put_centered(g, F_ARIAL10, PLOT.x + PLOT.w / 2.0 - 25.0, PLOT.y + PLOT.h + 26.0, tr("STR_GRAPHS_HELP"), grey);
+        s.put_centered(g, F_ARIAL10, PLOT.x + PLOT.w / 2.0 - 25.0, HELP_Y, tr("STR_GRAPHS_HELP"), grey);
         self.ok_tick(g, &s, OK.0, OK.1, false);
         g.flush();
     }
