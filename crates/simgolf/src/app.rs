@@ -744,6 +744,8 @@ pub struct App {
     pub jingle: Option<(i32, Screen)>,
     /// The voice each sound slot last started: the exe keeps one sound buffer per slot, so a slot never sounds twice at once.
     pub slot_voices: std::collections::HashMap<i32, i32>,
+    /// The painting tune's note counter (0x5a9cdc): counts up for every fairway tile painted on screen, never reset.
+    pub tune_note: i32,
     pub music: i32,
     pub music_idx: usize,
     /// Wall clock (seconds) used for toasts and the story timer.
@@ -970,6 +972,7 @@ impl App {
             music_screen: None,
             jingle: None,
             slot_voices: Default::default(),
+            tune_note: 0,
             music: -1,
             music_idx: 0,
             clock: 0.0,
@@ -1031,27 +1034,84 @@ impl App {
     }
 
     pub fn slot_sound_after(&mut self, slot: i32, at: Option<(f32, f32)>, delay_ms: u32) -> i32 {
+        self.slot_play(slot, at, delay_ms, false)
+    }
+
+    /// The sound of a painted tile (0x420660, right after the tile's growth byte is set): by the terrain's class byte
+    /// (record +0x26 of the table at 0x4c1a40) tee and green play slot 0x105 (Test 2), fairway and firm fairway 0x101
+    /// (Test 7) as the next note of the painting tune, the rough class 0x100 (Test 9) or 0x102 (Place Rocks 1) for rocks,
+    /// the sand class 0x104 (Test 10), water 0x103 (Place Water); trees play their own sound when they start growing and
+    /// buildings nothing. EXACT. The port's own brushes past the exe's 23 terrain ids keep their earlier sounds.
+    pub fn paint_sound(&mut self, ty: u8, x: i32, y: i32) {
+        let at = Some(self.units_to_world(x * 1024 + 512, y * 1024 + 512));
+        let slot = match ty {
+            0 | 1 => 0x105,
+            2 | 3 => {
+                self.slot_play(0x101, at, 0, true);
+                return;
+            }
+            12 => 0x102,
+            4 | 5 | 6 | 10 | 11 | 18 | 19 => 0x100,
+            7..=9 => 0x104,
+            17 => 0x103,
+            13..=16 | 20..=22 => return,
+            31 | 32 => 0x100,
+            34 | 35 => 0x104,
+            33 => {
+                self.snd("Effects/Flower Bed.wav", 0.7, false);
+                return;
+            }
+            _ => 0x100,
+        };
+        self.slot_play(slot, at, 0, false);
+    }
+
+    /// The exe's play of a slot (0x40c500 for a world point, else a centred interface play). A positional play sets a
+    /// random pitch of -299..300 cents (`300 - rand(600)` from the generator at 0x822d9c), or with `tune` the next note
+    /// of the painting tune: a counter that only ever counts up (0x5a9cdc) picks one of 36 notes (the table at 0x4c2fa4,
+    /// "Jesu, Joy of Man's Desiring"), `(note - 5) * 100` cents, at volume sy / 12 + 50. EXACT.
+    fn slot_play(&mut self, slot: i32, at: Option<(f32, f32)>, delay_ms: u32, tune: bool) -> i32 {
+        const TUNE: [i8; 36] =
+            [0, 2, 4, 7, 5, 5, 9, 7, 7, 12, 11, 12, 7, 4, 0, 2, 4, 5, 7, 9, 7, 5, 4, 2, 4, 0, -1, 0, 2, -5, -1, 2, 5, 4, 2, 4];
         let Some(file) = sg_core::sounds::slot_file(slot) else { return -1 };
-        let sx = match at {
+        let (sx, sy) = match at {
             Some((x, z)) => match self.screen_of_world(x, z) {
-                Some((vx, vy)) if (0.0..800.0).contains(&vx) && (0.0..=500.0).contains(&vy) => vx,
+                Some((vx, vy)) if (0.0..800.0).contains(&vx) && (0.0..=500.0).contains(&vy) => (vx, vy),
                 _ => return -1,
             },
-            None => 400.0,
+            None => (400.0, 300.0),
         };
-        let vol = (((sx - 400.0).abs() as i32 >> 4) + 50) as f32 / 127.0 * 1.3;
+        let mut vol = (((sx - 400.0).abs() as i32 >> 4) + 50) as f32 / 127.0 * 1.3;
         let pan = (sx * 127.0 / 800.0 - 64.0) / 64.0;
+        let cents = if tune {
+            let note = TUNE[(self.tune_note % 36) as usize] as i32;
+            self.tune_note = self.tune_note.wrapping_add(1) & 0x7fff_ffff;
+            vol = ((sy as i32 / 12) + 50) as f32 / 127.0 * 1.3;
+            (note - 5) * 100
+        } else if at.is_some() {
+            300 - self.look_rng.below(600)
+        } else {
+            0
+        };
         let (Some(m), false) = (self.mixer.clone(), self.mute) else { return -1 };
         // One buffer per slot (0x4481b0 sets up and plays the slot's own sound object, 0x484940): a slot asked for again
         // while its clip still sounds (or waits for its delayed start) keeps playing it rather than starting a second copy
-        // over it, as DirectSound's Play does on a buffer that is already playing. Two pros' applause, a skill rise and a
-        // Top 18 hole in one tick, or a burst of refused clicks, were otherwise heard as overlapping copies.
+        // over it, as DirectSound's Play does on a buffer that is already playing; the pitch, volume and pan set before
+        // the play still change the sounding buffer. Two pros' applause, a skill rise and a Top 18 hole in one tick, or a
+        // burst of refused clicks, were otherwise heard as overlapping copies.
         if let Some(&old) = self.slot_voices.get(&slot) {
             if m.playing(old) {
-                return old;
+                if tune {
+                    // the painting tune restarts its note so each painted tile is heard as one note of the tune
+                    // (DERIVED: the sound object's play is in sound.dll, not read)
+                    m.stop(old);
+                } else {
+                    m.retune(old, vol, pan, cents);
+                    return old;
+                }
             }
         }
-        let id = m.play_at(file, vol, pan, delay_ms, false);
+        let id = m.play_pitched(file, vol, pan, delay_ms, cents, false);
         if id >= 0 {
             self.slot_voices.insert(slot, id);
         }
@@ -2793,17 +2853,6 @@ impl App {
         // one "already has its tee" message per stroke, not per tile
         self.club.out.dedup();
         self.dirty = true;
-        let s = match pe.ty {
-            2 | 3 => "Interface/Place Fairway.wav",
-            0 | 1 => "Interface/Place GreenTee.wav",
-            7 | 9 | 34 | 35 => "Interface/Place Bunker.wav",
-            17 => "Interface/Place Water.wav",
-            12 | 31 | 32 => "Interface/Place Rocks.wav",
-            22 => "Interface/Building.wav",
-            33 => "Effects/Flower Bed.wav",
-            _ => "Interface/Place Rough.wav",
-        };
-        self.snd(s, 0.7, false);
     }
 
     /// Opens the land screen (after the County Commissioner approves an expansion and the player says yes).
@@ -2911,6 +2960,7 @@ impl App {
                 t.counter[i] = 0;
             }
         }
+        self.paint_sound(new, x, y);
         if let Some((slot, _)) = sg_core::decor::tree_sound(new) {
             self.ui_sound(slot);
         }

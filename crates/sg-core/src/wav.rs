@@ -92,7 +92,8 @@ fn to_pcm(f: &[u8], data: &[u8], frames_total: Option<usize>) -> Result<Wav, Str
             }
             data.chunks(align).flat_map(|b| ima_adpcm_block(b, ch)).collect()
         }
-        (MP3, _) => return Err("MP3 inside a WAV is not supported (convert it to PCM WAV or OGG)".into()),
+        // MPEG layer 3 inside a WAV (copies repacked to save space): decoded whole; its own frames give the rate
+        (MP3, _) => return mp3(data),
         _ => return Err(format!("unsupported WAV coding (format 0x{tag:04x}, {bits} bits)")),
     };
     let mut pcm = Vec::with_capacity(samples.len() / ch * out_ch * 2);
@@ -106,6 +107,23 @@ fn to_pcm(f: &[u8], data: &[u8], frames_total: Option<usize>) -> Result<Wav, Str
         pcm.truncate(n * out_ch * 2);
     }
     Ok(Wav { channels: out_ch as u16, bits: 16, sample_rate: rate, pcm })
+}
+
+/// An MPEG audio stream (the data of a format 0x55 WAV, or a bare .mp3) as 16-bit PCM.
+pub fn mp3(data: &[u8]) -> Result<Wav, String> {
+    let d = nanomp3::decode_all::<i16>(data);
+    let ch = match d.channels {
+        Some(c) => c.num() as u16,
+        None => return Err("MP3 inside a WAV: no audio frames found".into()),
+    };
+    if d.sample_rate == 0 || d.samples.is_empty() {
+        return Err("MP3 inside a WAV: no audio frames found".into());
+    }
+    let mut pcm = Vec::with_capacity(d.samples.len() * 2);
+    for v in d.samples {
+        pcm.extend_from_slice(&v.to_le_bytes());
+    }
+    Ok(Wav { channels: ch, bits: 16, sample_rate: d.sample_rate, pcm })
 }
 
 /// G.711 A-law.
@@ -269,7 +287,18 @@ mod tests {
         // three channels keep the first two
         let w = decode(&riff(&fmt(PCM, 3, 8000, 6, 16, &[]), None, &[1, 0, 2, 0, 3, 0])).unwrap();
         assert_eq!((w.channels, i16s(&w)), (2, vec![1, 2]));
-        assert!(decode(&riff(&fmt(MP3, 1, 8000, 1, 0, &[]), None, &[0])).unwrap_err().contains("MP3"));
+        assert!(decode(&riff(&fmt(MP3, 1, 8000, 1, 0, &[]), None, &[0])).unwrap_err().contains("no audio frames"));
+    }
+
+    #[test]
+    fn mp3_inside_a_wav_is_decoded() {
+        // half a second of a 440 Hz tone, 22.05 kHz mono, as ffmpeg writes MP3 into a WAV (format 0x55)
+        let w = decode(include_bytes!("../tests/data/tone_mp3.wav")).unwrap();
+        assert_eq!((w.channels, w.bits, w.sample_rate), (1, 16, 22050));
+        let n = w.pcm.len() / 2;
+        assert!((10000..13000).contains(&n), "{n} samples");
+        let peak = w.pcm.chunks_exact(2).map(|s| i16::from_le_bytes([s[0], s[1]]).unsigned_abs()).max().unwrap();
+        assert!((3000..4500).contains(&peak), "peak {peak}"); // ffmpeg's sine source is at 1/8 of full scale
     }
 
     #[test]
