@@ -2372,6 +2372,7 @@ impl Stage {
         self.app.draw_report_tabs(&mut self.g);
         self.app.draw_notice(&mut self.g);
         self.draw_touch_buttons();
+        self.draw_osk();
         self.draw_gamepad_pointer();
         self.g.flush();
         self.g.ctx.end_render_pass();

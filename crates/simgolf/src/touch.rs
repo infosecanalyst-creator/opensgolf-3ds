@@ -60,6 +60,54 @@ pub struct Touch {
     queued: Option<(MouseButton, f32, f32, u8)>,
     /// A long press lowering the ground: the Shift it holds down is let go with the finger.
     lowering: bool,
+    /// The on-screen keyboard's Shift (capitals for the next letter).
+    osk_shift: bool,
+}
+
+/// The on-screen keyboard (browser on a touch screen, while a name is typed; issue #50): Safari on an iPad raises its own
+/// keyboard only for some taps, and a name box closes only with Enter or Esc. Rows of keys across the bottom of the
+/// 800 x 600 screen, below every name box.
+const OSK_ROWS: [&str; 4] = ["1234567890", "qwertyuiop", "asdfghjkl'", "zxcvbnm,.-"];
+const OSK_TOP: f32 = 420.0;
+const OSK_H: f32 = 30.0;
+const OSK_GAP: f32 = 4.0;
+
+/// What an on-screen key does.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum OskKey {
+    Char(char),
+    Shift,
+    Back,
+    Space,
+    Cancel,
+    Ok,
+}
+
+/// Every key and its box in virtual pixels.
+fn osk_keys() -> Vec<(OskKey, (f32, f32, f32, f32))> {
+    let mut v = Vec::new();
+    let w = 66.0;
+    for (r, row) in OSK_ROWS.iter().enumerate() {
+        let y = OSK_TOP + r as f32 * (OSK_H + OSK_GAP);
+        let n = row.chars().count() as f32;
+        let x0 = 400.0 - (n * (w + OSK_GAP) - OSK_GAP) * 0.5 - if r == 3 { 40.0 } else { 0.0 };
+        for (i, c) in row.chars().enumerate() {
+            v.push((OskKey::Char(c), (x0 + i as f32 * (w + OSK_GAP), y, w, OSK_H)));
+        }
+        if r == 3 {
+            v.push((OskKey::Back, (x0 + n * (w + OSK_GAP), y, 76.0, OSK_H)));
+        }
+    }
+    let y = OSK_TOP + 4.0 * (OSK_H + OSK_GAP);
+    v.push((OskKey::Shift, (30.0, y, 110.0, OSK_H)));
+    v.push((OskKey::Cancel, (146.0, y, 110.0, OSK_H)));
+    v.push((OskKey::Space, (262.0, y, 276.0, OSK_H)));
+    v.push((OskKey::Ok, (544.0, y, 226.0, OSK_H)));
+    v
+}
+
+fn osk_hit(vx: f32, vy: f32) -> Option<OskKey> {
+    osk_keys().into_iter().find(|(_, (x, y, w, h))| vx >= *x && vx < x + w && vy >= *y && vy < y + h).map(|(k, _)| k)
 }
 
 /// The touch buttons: label (a text key) and the key each one presses.
@@ -93,7 +141,7 @@ impl Stage {
                 self.touch.fingers.push((id, (x, y), (x, y)));
                 match self.touch.fingers.len() {
                     1 => {
-                        if self.touch_button(x, y) {
+                        if self.osk_press(x, y) || self.touch_button(x, y) {
                             self.touch.mode = Mode::Spent;
                         } else {
                             self.touch.mode = Mode::Pending;
@@ -262,6 +310,71 @@ impl Stage {
         false
     }
 
+    fn osk_shown(&self) -> bool {
+        cfg!(target_arch = "wasm32") && self.touch.used && self.app.typing()
+    }
+
+    /// A press on the on-screen keyboard: a letter typed, or Backspace, Enter (OK) or Esc (Cancel) pressed.
+    fn osk_press(&mut self, x: f32, y: f32) -> bool {
+        if !self.osk_shown() {
+            return false;
+        }
+        let (vx, vy) = self.app.view.to_virtual(x, y);
+        let Some(k) = osk_hit(vx, vy) else {
+            // the keyboard's band takes every press, so a miss between keys does not reach the screen under it
+            return vy >= OSK_TOP - OSK_GAP;
+        };
+        let none = KeyMods::default();
+        let mut key = |me: &mut Self, code| {
+            me.key_down_event(code, none, false);
+            me.key_up_event(code, none);
+        };
+        match k {
+            OskKey::Char(c) => {
+                let c = if std::mem::take(&mut self.touch.osk_shift) { c.to_ascii_uppercase() } else { c };
+                self.char_event(c, none, false);
+            }
+            OskKey::Space => self.char_event(' ', none, false),
+            OskKey::Shift => self.touch.osk_shift = !self.touch.osk_shift,
+            OskKey::Back => key(self, KeyCode::Backspace),
+            OskKey::Ok => key(self, KeyCode::Enter),
+            OskKey::Cancel => key(self, KeyCode::Escape),
+        }
+        true
+    }
+
+    pub(crate) fn draw_osk(&mut self) {
+        if !self.osk_shown() {
+            return;
+        }
+        let s = Ui::new(self.app.draw_w, self.app.draw_h);
+        let g: &mut Gfx = &mut self.g;
+        let shift = self.touch.osk_shift;
+        s.fill(g, 0.0, OSK_TOP - 8.0, 800.0, 600.0 - OSK_TOP + 8.0, rgba(0.05, 0.05, 0.15, 0.85));
+        for (k, (x, y, w, h)) in osk_keys() {
+            let lit = k == OskKey::Shift && shift;
+            let fill = match k {
+                OskKey::Ok => rgba(0.15, 0.45, 0.2, 0.95),
+                OskKey::Cancel => rgba(0.45, 0.15, 0.15, 0.95),
+                _ if lit => rgba(0.4, 0.4, 0.8, 0.95),
+                _ => rgba(0.2, 0.2, 0.35, 0.95),
+            };
+            s.fill(g, x, y, w, h, fill);
+            s.fill(g, x, y, w, 1.0, rgba(0.7, 0.7, 1.0, 0.8));
+            let label = match k {
+                OskKey::Char(c) if shift => c.to_ascii_uppercase().to_string(),
+                OskKey::Char(c) => c.to_string(),
+                OskKey::Shift => tr("STR_OSK_SHIFT").to_string(),
+                OskKey::Back => tr("STR_OSK_BACK").to_string(),
+                OskKey::Space => tr("STR_OSK_SPACE").to_string(),
+                OskKey::Cancel => tr("STR_OSK_CANCEL").to_string(),
+                OskKey::Ok => tr("STR_OSK_OK").to_string(),
+            };
+            s.text_centered(g, x + w * 0.5, y + h * 0.5 + 5.0, &label, 15.0, rgb(1.0, 1.0, 1.0));
+        }
+        g.flush();
+    }
+
     fn touch_buttons_shown(&self) -> bool {
         self.touch.used && self.app.ui_ok && self.app.screen == Screen::Play && self.app.photo.is_none()
     }
@@ -321,4 +434,29 @@ fn show_keyboard(show: bool) {
     miniquad::window::show_keyboard(show);
     #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
     let _ = show;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn osk_keys_fit_the_screen_below_the_name_boxes_and_do_not_overlap() {
+        let keys = osk_keys();
+        for (i, (k, (x, y, w, h))) in keys.iter().enumerate() {
+            assert!(*x >= 0.0 && x + w <= 800.0 && *y >= 400.0 && y + h <= 600.0, "{k:?} off the screen");
+            for (k2, (x2, y2, w2, h2)) in &keys[i + 1..] {
+                let apart = x + w <= *x2 || x2 + w2 <= *x || y + h <= *y2 || y2 + h2 <= *y;
+                assert!(apart, "{k:?} overlaps {k2:?}");
+            }
+            assert_eq!(osk_hit(x + w * 0.5, y + h * 0.5), Some(*k));
+        }
+        // every letter and digit is there, and the keys that close a box
+        for c in "abcdefghijklmnopqrstuvwxyz0123456789".chars() {
+            assert!(keys.iter().any(|(k, _)| *k == OskKey::Char(c)), "{c}");
+        }
+        assert!(keys.iter().any(|(k, _)| *k == OskKey::Ok) && keys.iter().any(|(k, _)| *k == OskKey::Cancel));
+        // the rename box (240..330) and the save box stay clear of the keyboard
+        assert!(keys.iter().all(|(_, (_, y, _, _))| *y > 340.0));
+    }
 }

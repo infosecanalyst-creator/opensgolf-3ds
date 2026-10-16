@@ -680,7 +680,10 @@ the ground and holding a finger still for half a second lowers it instead (the k
 and drag to go on lowering along the way. With two fingers: drag to scroll, pinch to step through the three
 zoom levels, twist to turn the view a quarter. Once the screen has been touched, four buttons on the right stand in for keys
 that have no button in the game: Open hole (h), Turn (Tab), Speed (]) and Message (?). Naming a course or a save raises the
-phone's keyboard (in the browser through a hidden text box on the page, on Android the system keyboard).
+phone's keyboard (in the browser through a hidden text box on the page, on Android the system keyboard). In the browser
+the game also draws its own keyboard across the bottom of the screen while a name is typed, with **OK** (Enter) and
+**Cancel** (Esc), because Safari on an iPad raises its keyboard only for some taps and a name box closes only with those
+keys (issue #50).
 
 ### Android
 

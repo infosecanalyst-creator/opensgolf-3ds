@@ -940,6 +940,12 @@ STR_TOUCH_OPEN_HOLE                     :Open hole
 STR_TOUCH_TURN                          :Turn
 STR_TOUCH_SPEED                         :Speed
 STR_TOUCH_MESSAGE                       :Message
+# The on-screen keyboard (browser on a touch screen, while a name is typed)
+STR_OSK_SHIFT                           :Shift
+STR_OSK_BACK                            :Delete
+STR_OSK_SPACE                           :Space
+STR_OSK_CANCEL                          :Cancel
+STR_OSK_OK                              :OK
 
 ########################################################################################################################
 # The course badge (0x40daa0) and the date
