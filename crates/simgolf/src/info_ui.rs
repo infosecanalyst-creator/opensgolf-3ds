@@ -155,6 +155,34 @@ impl App {
         (1..19).filter(|&h| self.club.holes[h].par != 0).collect()
     }
 
+    /// A click on the course over an open hole's flag (the pin's pole standing up from the cup, its height growing with the
+    /// zoom): that hole's Hole Stats, as the original opens it (issue #44). The nearest flag wins.
+    pub fn flag_click(&mut self, vx: f32, vy: f32) -> bool {
+        let z = self.exe_zoom();
+        let tall = 10.0 + 12.0 * z;
+        let mut best: Option<(f32, usize)> = None;
+        for h in 1..19 {
+            if self.club.holes[h].par == 0 {
+                continue;
+            }
+            // the pin is a tile; the cup stands at its centre (staff units)
+            let (pa, pb) = self.club.holes[h].pin;
+            let u = sg_core::staff::UNIT;
+            let Some((sx, sy)) = self.screen_of(pa * u + u / 2, pb * u + u / 2) else { continue };
+            if (vx - sx).abs() <= 4.0 + 2.0 * z && vy <= sy + 4.0 && vy >= sy - tall {
+                let d = (vx - sx).abs() + (vy - (sy - tall * 0.5)).abs() * 0.2;
+                if best.is_none_or(|(bd, _)| d < bd) {
+                    best = Some((d, h));
+                }
+            }
+        }
+        let Some((_, h)) = best else { return false };
+        self.info.stats_hole = h;
+        self.screen = Screen::HoleStats;
+        self.ui_sound(0x38);
+        true
+    }
+
     /// A click on the Course Report: a hole's row opens its Hole Stats, anything else closes the report.
     pub fn report_click(&mut self, vx: f32, vy: f32) {
         let holes = self.report_holes();

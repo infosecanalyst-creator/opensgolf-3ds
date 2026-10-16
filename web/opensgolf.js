@@ -829,6 +829,17 @@ window.addEventListener("wheel", e => {
 // focus so the phone shows its keyboard, and what is typed goes to the game as key presses. The box keeps one space in it
 // so a backspace always has something to delete and can be seen.
 let sgKbd = null;
+// The game wants the keyboard (a name box is open). iPhone and iPad Safari only raise it for a focus made inside a tap, and
+// the game asks a frame after the tap, so a tap on the game while a name box is open focuses the box there (issue #45).
+let sgKbdWanted = false;
+for (const type of ["touchend", "pointerup"]) {
+    window.addEventListener(type, () => {
+        if (sgKbdWanted && sgKbd && document.activeElement !== sgKbd) {
+            sgKbd.value = " ";
+            sgKbd.focus();
+        }
+    }, true);
+}
 function sgKeyTap(code) {
     wasm_exports.key_down(code, 0, false);
     wasm_exports.key_up(code, 0);
@@ -855,6 +866,7 @@ function sgKeyboard(show) {
             else if (e.key === "Escape") { sgKeyTap(256); e.preventDefault(); }
         });
     }
+    sgKbdWanted = show;
     if (show) {
         sgKbd.value = " ";
         sgKbd.focus();

@@ -90,6 +90,8 @@ STR_THEMES_TITLE                        :Select a Theme Pack
 
 STR_SAVE_PROMPT                         :SAVE GAME, edit name then press Enter
 # The Save dialog's button for the port's Export as scenario (docs/MODDING.md 5)
+STR_SAVE_OK                             :Save
+STR_SAVE_CANCEL                         :Cancel
 STR_SAVE_EXPORT_SCENARIO                :Export as scenario pack (Tab)
 
 STR_OK                                  :OK
