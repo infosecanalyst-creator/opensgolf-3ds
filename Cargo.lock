@@ -931,7 +931,7 @@ dependencies = [
 
 [[package]]
 name = "opensgolf"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "cpal",
  "fontdue",
@@ -1227,7 +1227,7 @@ dependencies = [
 
 [[package]]
 name = "sg-core"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "fontdue",
  "image-webp",
@@ -1242,7 +1242,7 @@ dependencies = [
 
 [[package]]
 name = "sgplay"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "cpal",
  "miniquad",
@@ -1251,7 +1251,7 @@ dependencies = [
 
 [[package]]
 name = "sgtool"
-version = "0.3.5"
+version = "0.3.6"
 dependencies = [
  "sg-core",
 ]

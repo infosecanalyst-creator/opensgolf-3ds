@@ -2768,6 +2768,17 @@ impl EventHandler for Stage {
         if ui_ok && button == MouseButton::Left && self.app.strip_click(vx, vy) {
             return;
         }
+        // a click on an open hole's flag shows its Hole Stats, as in the original (issue #44)
+        if ui_ok
+            && button == MouseButton::Left
+            && !self.app.edit
+            && self.app.screen == Screen::Play
+            && self.app.card_ui.held.is_none()
+            && self.app.club.pro_aiming().is_none()
+            && self.app.flag_click(vx, vy)
+        {
+            return;
+        }
         if button == MouseButton::Left && self.app.club.pro_aiming().is_some() && !self.app.edit {
             if let Some((hx, hz)) = self.app.pick_ground(x, y) {
                 self.app.aim_pointer(hx, hz);
