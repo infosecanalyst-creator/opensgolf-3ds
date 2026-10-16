@@ -1364,7 +1364,7 @@ impl Heights {
 /// The light map, `n` texels a tile: r = sun visibility (soft shadows of the relief, marched towards the decoded light), g =
 /// ambient occlusion (baked per vertex of the tile meshes' 3 x 3 grid from the height field's horizon, valleys darker, spread
 /// to the texels bilinearly), b = signed distance to the shore (0.5 at the shore, +-3 tiles to 1 / 0: fx_water.rs SHORE_TILES),
-/// a = water.
+/// a = water (254 inside a small pond: `small_ponds`).
 /// Texels per tile for the light and detail maps: the quality's count, fewer on a larger course size so a map keeps at most
 /// about 400 texels a side (the original's 50 tiles at 8), which bounds the maps' build time and memory (2 at the least).
 fn per_tile(n: usize, t: &Terrain) -> usize {
@@ -1464,6 +1464,7 @@ fn build_lightmap(t: &Terrain, n: usize, light_w: [f32; 3], shadows: bool, occlu
     let water: Vec<bool> = class.iter().map(|&c| c == 1).collect();
     let to_land = chamfer(&class, w, h, 0);
     let to_water = chamfer(&class, w, h, 1);
+    let pond = small_ponds(&water, &to_land, w, h, n);
     for k in 0..w * h {
         let (i, j) = (k % w, k / w);
         // occlusion: bilinear between the vertex grid's values
@@ -1478,9 +1479,63 @@ fn build_lightmap(t: &Terrain, n: usize, light_w: [f32; 3], shadows: bool, occlu
         p[0] = (sun[k] * 255.0).round() as u8;
         p[1] = (occ * 255.0).round() as u8;
         p[2] = ((0.5 + sd * 0.5).clamp(0.0, 1.0) * 255.0).round() as u8;
-        p[3] = if water[k] { 255 } else { 0 };
+        p[3] = if pond[k] {
+            254
+        } else if water[k] {
+            255
+        } else {
+            0
+        };
     }
     img
+}
+
+/// The water texels inside a small pond, one no more than about three tiles across (its middle at most 1.6 tiles from the
+/// shore), which freezes over in a cold snap where a larger water only ices at its rim (fx_glsl.rs `water_fs`; the port's
+/// own). Only texels two or more in from the shore are marked, so the land's bilinear look-ups never reach them.
+fn small_ponds(water: &[bool], to_land: &[f32], w: usize, h: usize, n: usize) -> Vec<bool> {
+    let mut out = vec![false; w * h];
+    let mut seen = vec![false; w * h];
+    let mut stack = Vec::new();
+    let mut body = Vec::new();
+    for start in 0..w * h {
+        if !water[start] || seen[start] {
+            continue;
+        }
+        seen[start] = true;
+        stack.push(start);
+        body.clear();
+        let mut deepest = 0.0f32;
+        while let Some(k) = stack.pop() {
+            body.push(k);
+            deepest = deepest.max(to_land[k]);
+            let (i, j) = (k % w, k / w);
+            let mut go = |m: usize| {
+                if water[m] && !seen[m] {
+                    seen[m] = true;
+                    stack.push(m);
+                }
+            };
+            if i > 0 {
+                go(k - 1);
+            }
+            if i + 1 < w {
+                go(k + 1);
+            }
+            if j > 0 {
+                go(k - w);
+            }
+            if j + 1 < h {
+                go(k + w);
+            }
+        }
+        if deepest <= 1.6 * n as f32 + 0.5 {
+            for &k in &body {
+                out[k] = to_land[k] >= 2.0;
+            }
+        }
+    }
+    out
 }
 
 /// Distance in texels (a chamfer transform, 1 and sqrt 2 steps) from each texel to the nearest texel whose class is `target`;
@@ -1601,6 +1656,31 @@ mod tests {
         let class = [1, 0, 2, 0];
         let d = chamfer(&class, 4, 1, 1);
         assert_eq!(d, vec![0.0, 1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn small_ponds_freeze_over_lakes_do_not() {
+        // 2 texels a tile: a 3 x 3 tile pond (6 x 6 texels) and a 12 x 12 tile lake (24 x 24) on a 40 x 30 texel map
+        let (w, h, n) = (40, 30, 2);
+        let mut class = vec![0u8; w * h];
+        for j in 2..8 {
+            for i in 2..8 {
+                class[j * w + i] = 1;
+            }
+        }
+        for j in 3..27 {
+            for i in 12..36 {
+                class[j * w + i] = 1;
+            }
+        }
+        let water: Vec<bool> = class.iter().map(|&c| c == 1).collect();
+        let to_land = chamfer(&class, w, h, 0);
+        let pond = small_ponds(&water, &to_land, w, h, n);
+        // the pond's inner texels are marked, its shore texels not (the land's look-ups never meet the mark)
+        assert!(pond[4 * w + 4] && pond[5 * w + 5]);
+        assert!(!pond[2 * w + 2] && !pond[4 * w + 2]);
+        // nothing of the lake
+        assert!((0..w * h).filter(|&k| k % w >= 12).all(|k| !pond[k]));
     }
 
     #[test]

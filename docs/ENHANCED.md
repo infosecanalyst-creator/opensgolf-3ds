@@ -113,7 +113,7 @@ decoded terrain light (`sg_core::terrain::Lighting`, `light_direction`) and the 
 | Caustics (`caustics`) | on | Sunlight rippling in a web over the bottom of shallow water, fading with cloud shadows, rain, dusk and night. |
 | Rain rings (`rain-rings`) | on | With *Rain*: rings opening across the surface where drops fall, more of them the harder it rains. |
 | Life on the water (`water-life`) | on | Reeds at the edges of ponds and lakes, lily pads in their sheltered shallows, ducks and swans gliding on the larger lakes, and now and then a fish jumping, all as crisp pixels (see *Water*). |
-| Frozen ponds (`ice`) | on | With *Winter*: in the late-winter cold snap, small ponds ice over and larger water at its edges, a pale sheen with a white rim, thawing with the snow. |
+| Frozen ponds (`ice`) | on | With *Winter*: in the late-winter cold snap, small ponds ice over (pale, see-through ice with cracks, clear patches and a sheen) and larger water gets a thin, broken rim of ice at its edges, thawing with the snow. |
 | Fountain and waterfall spray (`spray`) | on | Foam churning, drops falling back and rings spreading round the original's fountains, foam and rings at the foot of its waterfalls. |
 | Quality (`quality`) | medium | Low: light map 2 texels a tile, no blur passes (no tilt-shift, no bloom), sharp-bilinear scaling only, the cast shadows' mask at half the resolution. Medium: 4 texels a tile, blurs at a quarter of the resolution, the mask at half. High: 8 texels a tile, blurs at half the resolution, the mask at full. On the Effects page since this version. |
 
@@ -348,9 +348,12 @@ effects stay off it (only the shoreline's wet band darkens it, faintly, next to 
   ice, in heavy rain or in the dark. Everything comes from hashes of the course, the tile and the effects' clock, so it is
   the same every frame and every run.
 - **Frozen ponds**: `Atmos::ice` (fx_winter.rs) is the cold snap's strength times the snow lying and falling, so it
-  comes and goes with the snow and never happens where the climate has no snow. The ice reaches up to 1.4 tiles in from
-  the shore with a wobbly edge: a pond up to about three tiles across freezes over, a larger water only round its edge.
-  Under the ice there are no waves, glints, reflections, caustics or rain rings, and the ducks stay on open water.
+  comes and goes with the snow and never happens where the climate has no snow. A pond up to about three tiles across
+  (marked in the light map's alpha, fx.rs `small_ponds`) freezes over from its shore inwards, up to 1.6 tiles; a larger
+  water gets a thin rim, under half a tile, with a notched edge, a few loose plates beyond it and a broken lip of light.
+  The ice is see-through, whiter towards the bank, with patches of clear dark ice and of dusted snow, a broad sheen and a
+  few wandering cracks. Under the ice there are no waves, glints, reflections, caustics or rain rings, and the ducks stay
+  on open water.
 - **Spray**: round each fountain (where wild_ui.rs puts the theme's spray sprite) foam pixels flicker in steps as the
   art's frames do, drops fall back round the jet and two rings spread; at each waterfall's spray (sprites 0x23b, 0x23c,
   placed as wild_ui.rs places them) foam churns round its foot, outside the sprite, and rings spread over the pool below.

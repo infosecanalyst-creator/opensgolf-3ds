@@ -447,11 +447,19 @@ void main() {
     vec2 g = waves(w_pos.xz, t);
     float wk = fx1.y;
     float ice = 0.0;
+    float reach = 0.0;
+    float edge = 0.0;
     if (fx1.z > 0.0) {
-        // the ice reaches in from the shore: a small pond freezes over, a larger one at its edges
-        float reach = fx1.z * 1.4;
-        float edge = sd + (noise(w_pos.xz * 0.018) - 0.5) * 0.55 + (noise(w_pos.xz * 0.07) - 0.5) * 0.18;
-        ice = 1.0 - smoothstep(reach - 0.10, reach, edge);
+        // the ice reaches in from the shore: a small pond (the light map's alpha just under 1, fx.rs `small_ponds`) freezes
+        // over as the cold snap deepens; a larger water gets a thin rim, under half a tile, its edge notched and broken into
+        // loose plates
+        bool pond = lm.a < 0.999;
+        reach = fx1.z * (pond ? 1.6 : 0.42);
+        edge = sd + (noise(w_pos.xz * 0.022) - 0.5) * (pond ? 0.5 : 0.26) + (noise(w_pos.xz * 0.09) - 0.5) * 0.14
+             + (noise(w_pos.xz * 0.23) - 0.5) * 0.06;
+        ice = 1.0 - smoothstep(reach - 0.025, reach, edge);
+        float floe = smoothstep(0.64, 0.67, noise(w_pos.xz * 0.075 + 3.7)) * (1.0 - smoothstep(reach, reach + 0.22, edge));
+        ice = max(ice, floe * step(0.05, reach));
     }
     float hi = 0.0;
     float lo = 0.0;
@@ -557,14 +565,31 @@ void main() {
         c.rgb += (1.0 - smoothstep(0.0, lw, sd)) * on * 0.07 * fx3.z;
     }
     if (ice > 0.0) {
-        // ice: a pale sheen with faint streaks, a white rim at its edge and frost along the bank
-        float streak = noise(w_pos.xz * 0.03) * 0.6 + noise(w_pos.xz * vec2(0.012, 0.05)) * 0.4;
-        vec3 pale = vec3(0.84, 0.90, 0.95) * (0.95 + 0.08 * streak) * min(light(lm) * 1.15, vec3(1.0));
-        float reach = fx1.z * 1.4;
-        float edge = sd + (noise(w_pos.xz * 0.018) - 0.5) * 0.55 + (noise(w_pos.xz * 0.07) - 0.5) * 0.18;
-        float rim = smoothstep(reach - 0.24, reach - 0.10, edge) + (1.0 - smoothstep(0.02, 0.12, sd));
-        vec3 iced = mix(c.rgb, pale, 0.78);
-        iced = mix(iced, vec3(0.97, 0.99, 1.0) * min(light(lm) * 1.15, vec3(1.0)), clamp(rim, 0.0, 1.0) * 0.7);
+        // ice: pale and see-through, thicker and whiter towards the bank, patches of clear dark ice and of a dusting of
+        // snow, a broad sheen, a few cracks, and a thin broken lip of light where it meets the open water
+        vec3 lit = min(light(lm) * 1.2 + 0.08, vec3(1.0));
+        float thick = clamp((reach - edge) / max(reach, 0.3), 0.0, 1.0);
+        float dust = smoothstep(0.45, 0.8, noise(w_pos.xz * 0.035 + 9.1) * 0.7 + noise(w_pos.xz * 0.11) * 0.3);
+        float clear = smoothstep(0.55, 0.75, noise(w_pos.xz * 0.016 + 2.3)) * (1.0 - dust);
+        float streak = noise(w_pos.xz * vec2(0.012, 0.05)) * 0.6 + noise(w_pos.xz * 0.03) * 0.4;
+        vec3 pale = vec3(0.86, 0.92, 0.97) * (0.94 + 0.10 * streak);
+        vec3 iced = mix(c.rgb, pale * lit, 0.52 + 0.26 * thick + 0.18 * dust - 0.26 * clear);
+        // the sheen: a soft band of the sky's light lying across the ice
+        float sheen_i = smoothstep(0.55, 0.85, noise(w_pos.xz * vec2(0.007, 0.022) + vec2(t * 0.002, 0.0)));
+        iced = mix(iced, mix(sky_low, vec3(1.0), 0.5) * lit, sheen_i * 0.22 * (1.0 - dust));
+        // cracks: wandering dark lines where the water shows through, with a pale edge beside them
+        float r1 = abs(noise(w_pos.xz * 0.028 + 5.3) - 0.5);
+        float r2 = abs(noise(w_pos.xz * 0.075 + 1.7) - 0.5);
+        float gate = smoothstep(0.4, 0.6, noise(w_pos.xz * 0.013 + 4.4));
+        float crack = (1.0 - smoothstep(0.0, 0.018, r1)) * gate
+                    + (1.0 - smoothstep(0.0, 0.012, r2)) * 0.6 * smoothstep(0.5, 0.7, noise(w_pos.xz * 0.02 + 8.2));
+        float crack_lit = smoothstep(0.018, 0.03, r1) * (1.0 - smoothstep(0.03, 0.045, r1)) * gate;
+        iced = mix(iced, c.rgb * 0.88, clamp(crack, 0.0, 1.0) * 0.55 * (1.0 - dust * 0.6));
+        iced = mix(iced, vec3(0.97, 0.99, 1.0) * lit, crack_lit * 0.25);
+        // the lip of the ice at the open water, broken, and frost along the bank
+        float lip = smoothstep(reach - 0.09, reach - 0.02, edge) * smoothstep(0.35, 0.6, noise(w_pos.xz * 0.06 + 6.6));
+        float frost = 1.0 - smoothstep(0.01, 0.07, sd);
+        iced = mix(iced, vec3(0.97, 0.99, 1.0) * lit, clamp(lip * 0.6 + frost * 0.45, 0.0, 0.8));
         c.rgb = mix(c.rgb, iced, ice * wetfoam);
     }
     if (truer && water.w > 0.0) {
