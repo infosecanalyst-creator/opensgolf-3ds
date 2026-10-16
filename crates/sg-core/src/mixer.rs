@@ -31,12 +31,30 @@ fn key_of(rel: &str) -> String {
     rel.to_lowercase().replace('\\', "/").replace('_', " ")
 }
 
+/// A sound's bare file name for matching across folder layouts: the last part of the key, without spaces, underscores and
+/// hyphens ("Golf sfx/Ball In Hole.wav" and "sounds/BallInHole.wav" match).
+fn name_key(key: &str) -> String {
+    key.rsplit('/').next().unwrap_or(key).chars().filter(|c| !matches!(c, ' ' | '_' | '-')).collect()
+}
+
+/// `name_key` without its digits: a copy whose files are numbered differently ("GolfAmbience22.wav" for the
+/// "GolfAmbience122.wav" the game asks for) still plays its own sound.
+fn loose_key(key: &str) -> String {
+    name_key(key).chars().filter(|c| !c.is_ascii_digit()).collect()
+}
+
 struct State {
     clips: BTreeMap<String, Arc<Vec<i16>>>,
     voices: Vec<Voice>,
     next_id: i32,
     master: f32,
     last_error: String,
+    /// Clips the player's copy has no file for, in the order first asked (for the sound report).
+    missing: Vec<String>,
+    /// Clips found under another folder of the player's copy: (asked for, file used).
+    aliased: Vec<(String, String)>,
+    /// Clips the free set stood in for, missing or undecodable.
+    stand_ins: usize,
 }
 
 pub struct Mixer {
@@ -47,6 +65,10 @@ pub struct Mixer {
     free: BTreeMap<String, String>,
     /// True when the copy had no sounds at all, so every clip comes from `free`.
     all_free: bool,
+    /// The player's files by bare name (`name_key`), for a clip asked for under a folder the copy lays out differently.
+    by_name: BTreeMap<String, Vec<String>>,
+    /// The same without digits (`loose_key`), for a copy that numbers its files differently.
+    by_loose: BTreeMap<String, Vec<String>>,
     state: Mutex<State>,
 }
 
@@ -108,7 +130,18 @@ impl Mixer {
             index: BTreeMap::new(),
             free: BTreeMap::new(),
             all_free: false,
-            state: Mutex::new(State { clips: BTreeMap::new(), voices: Vec::new(), next_id: 1, master: 0.8, last_error: String::new() }),
+            by_name: BTreeMap::new(),
+            by_loose: BTreeMap::new(),
+            state: Mutex::new(State {
+                clips: BTreeMap::new(),
+                voices: Vec::new(),
+                next_id: 1,
+                master: 0.8,
+                last_error: String::new(),
+                missing: Vec::new(),
+                aliased: Vec::new(),
+                stand_ins: 0,
+            }),
         };
         m.add_dir("", sounds_dir);
         if m.index.is_empty() {
@@ -154,6 +187,47 @@ impl Mixer {
             self.free.insert(key, f);
         }
         self.all_free = self.index.is_empty() && !self.free.is_empty();
+        self.by_name.clear();
+        self.by_loose.clear();
+        for k in self.index.keys() {
+            self.by_name.entry(name_key(k)).or_default().push(k.clone());
+            self.by_loose.entry(loose_key(k)).or_default().push(k.clone());
+        }
+    }
+
+    /// The player's file for a clip the copy has under another folder (the same name, its spaces, underscores and hyphens
+    /// aside): the one in a folder of the same name if there is one, else the first.
+    /// Failing that, a file whose name differs only in its digits.
+    fn alias_of(&self, key: &str) -> Option<&String> {
+        let found = self.by_name.get(&name_key(key)).or_else(|| self.by_loose.get(&loose_key(key)).filter(|_| loose_key(key).len() > 4))?;
+        let parent = |k: &str| k.rsplit('/').nth(1).map(|p| p.replace(' ', ""));
+        found.iter().find(|k| parent(k) == parent(key)).or_else(|| found.first())
+    }
+
+    /// What the sound is made of, for the player to send with a report (sound.txt in the save folder, and the log): the
+    /// player's files, the clips found under another folder, the clips the free set stood in for and the last error.
+    pub fn report(&self) -> String {
+        let Ok(s) = self.state.lock() else { return String::new() };
+        let mut r = if self.all_free {
+            format!("sounds: the free set ({} clips); the player's copy has none\n", self.free.len())
+        } else {
+            format!(
+                "sounds: {} files from the player's copy, the free set's {} standing in where needed\n",
+                self.index.len(),
+                self.free.len()
+            )
+        };
+        r += &format!("clips the free set stood in for so far: {}\n", s.stand_ins);
+        if !s.missing.is_empty() {
+            r += &format!("not in the player's copy ({}): {}\n", s.missing.len(), s.missing.join(", "));
+        }
+        for (a, b) in &s.aliased {
+            r += &format!("found elsewhere: {a} -> {b}\n");
+        }
+        if !s.last_error.is_empty() {
+            r += &format!("last error: {}\n", s.last_error);
+        }
+        r
     }
 
     /// True when every clip comes from the free set (the player's copy has no sounds).
@@ -241,17 +315,37 @@ impl Mixer {
         }
         let pcm = if self.all_free {
             self.decode_free(key)?
-        } else if !self.index.contains_key(key) {
-            self.set_error(format!("unknown sound {key}"));
-            return None;
         } else {
-            match self.decode_own(key) {
-                Ok(pcm) => pcm,
-                Err(e) => {
+            // a copy laid out or named a little differently (another version, a partial install) still plays its own
+            // file; a clip it lacks altogether is the free set's rather than silence (players heard nothing at all)
+            let own = if self.index.contains_key(key) {
+                Some(key.to_string())
+            } else if let Some(a) = self.alias_of(key).cloned() {
+                if let Ok(mut s) = self.state.lock() {
+                    s.aliased.push((key.to_string(), a.clone()));
+                }
+                Some(a)
+            } else {
+                if let Ok(mut s) = self.state.lock() {
+                    s.missing.push(key.to_string());
+                }
+                None
+            };
+            match own.map(|k| self.decode_own(&k)) {
+                Some(Ok(pcm)) => pcm,
+                failed => {
                     // said once per clip: the clip is remembered (as the free set's, or as silence) and not read again
-                    eprintln!("sound: {e}");
-                    self.set_error(e);
-                    self.decode_free(key).unwrap_or_default()
+                    if let Some(Err(e)) = failed {
+                        eprintln!("sound: {e}");
+                        self.set_error(e);
+                    }
+                    let free = self.decode_free(key);
+                    if free.is_some() {
+                        if let Ok(mut s) = self.state.lock() {
+                            s.stand_ins += 1;
+                        }
+                    }
+                    free.unwrap_or_default()
                 }
             }
         };
@@ -370,6 +464,28 @@ impl Mixer {
 mod tests {
     use super::*;
 
+    /// A 16-bit mono 22.05 kHz WAV of `n` samples of a square wave.
+    fn tone_wav(n: u32) -> Vec<u8> {
+        let mut w = Vec::new();
+        let data = n * 2;
+        w.extend_from_slice(b"RIFF");
+        w.extend_from_slice(&(36 + data).to_le_bytes());
+        w.extend_from_slice(b"WAVEfmt ");
+        w.extend_from_slice(&16u32.to_le_bytes());
+        w.extend_from_slice(&1u16.to_le_bytes());
+        w.extend_from_slice(&1u16.to_le_bytes());
+        w.extend_from_slice(&22050u32.to_le_bytes());
+        w.extend_from_slice(&44100u32.to_le_bytes());
+        w.extend_from_slice(&2u16.to_le_bytes());
+        w.extend_from_slice(&16u16.to_le_bytes());
+        w.extend_from_slice(b"data");
+        w.extend_from_slice(&data.to_le_bytes());
+        for i in 0..n {
+            w.extend_from_slice(&(if i % 20 < 10 { 8000i16 } else { -8000 }).to_le_bytes());
+        }
+        w
+    }
+
     #[test]
     fn mono_22k_doubles_in_length() {
         let pcm: Vec<u8> = (0..100i16).flat_map(|v| (v * 100).to_le_bytes()).collect();
@@ -383,6 +499,50 @@ mod tests {
     fn underscores_read_as_spaces() {
         assert_eq!(key_of("Golf sfx/Ball In Hole.wav"), key_of("Golf_Sfx/Ball_In_Hole.wav"));
         assert_eq!(key_of("music/Tropical Music/x.wav"), "music/tropical music/x.wav");
+    }
+
+    #[test]
+    fn a_clip_under_another_folder_is_found_by_its_name() {
+        let d = std::env::temp_dir().join(format!("sg_mixer_alias_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("Sfx")).unwrap();
+        std::fs::create_dir_all(d.join("Golf_Sfx")).unwrap();
+        let wav = tone_wav(200);
+        std::fs::write(d.join("Sfx/BallInHole.wav"), &wav).unwrap();
+        std::fs::write(d.join("Golf_Sfx/Putt.wav"), &wav).unwrap();
+        let mut m = Mixer::new(&d);
+        m.with_fallback();
+        // the exact path, a path under another folder, and a name with its spaces taken out
+        assert!(m.play("Golf sfx/Putt.wav", 1.0, false) > 0);
+        assert!(m.play("Other/Putt.wav", 1.0, false) > 0);
+        assert!(m.play("Golf sfx/Ball In Hole.wav", 1.0, false) > 0);
+        // numbered differently: the game's GolfAmbience122.wav from a copy's GolfAmbience22.wav
+        std::fs::write(d.join("GolfAmbience22.wav"), tone_wav(200)).unwrap();
+        let mut m2 = Mixer::new(&d);
+        m2.with_fallback();
+        assert!(m2.play("GolfAmbience122.wav", 1.0, true) > 0);
+        assert!(m2.report().contains("golfambience122.wav -> golfambience22.wav"), "{}", m2.report());
+        let r = m.report();
+        assert!(r.contains("found elsewhere: golf sfx/ball in hole.wav -> sfx/ballinhole.wav"), "{r}");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_clip_the_copy_lacks_is_the_free_sets() {
+        let d = std::env::temp_dir().join(format!("sg_mixer_lack_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("Something.wav"), tone_wav(200)).unwrap();
+        let mut m = Mixer::new(&d);
+        m.with_fallback();
+        assert!(!m.all_free());
+        // a clip of the free set that this copy does not have plays the free set's instead of nothing
+        let k = m.free.keys().next().cloned().expect("the free set has sounds");
+        assert!(m.play(&k, 1.0, false) > 0, "{k}");
+        let r = m.report();
+        assert!(r.contains("not in the player's copy (1)"), "{r}");
+        assert!(r.contains("stood in for so far: 1"), "{r}");
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

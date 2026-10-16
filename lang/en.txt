@@ -2189,6 +2189,7 @@ STR_SAVE_PACKS_SWITCHED                 :Switched to the saved game's content pa
 STR_SAVE_PACKS_RESTART_YOURSELF         :The save's content packs are chosen. Restart the game (in a browser: reload the page), then load the game again.
 # Shown at start up when the sounds of the player's SimGolf copy cannot be played (missing or in a coding the game cannot
 # read); {WHY} is the first problem found, in English
+STR_SOUND_NO_DEVICE                     :No sound: the computer gave OpenSGolf no audio output. Check the volume and the output chosen in your system's sound settings, then start the game again. What the game saw is in sound.txt in {DIR}.
 STR_SOUND_CANNOT_PLAY                   :The sounds of your SimGolf copy could not be played ({WHY}). Playing the free OpenSGolf sounds instead.
 
 # Preferences > Keyboard controls (the port's own screen, keys_ui.rs). STR_KEYS_HEAD_* are the group headings,
