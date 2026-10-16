@@ -375,7 +375,8 @@ in `sg-core/src/staff.rs`.
   by a measure that counts distance from both the post and the employee. The others look at every golfer standing on neither
   a tee nor a building and within 4 tiles of the post: the Ranger takes golfers not yet hurried and not busy, the Club Pro golfers
   he has not just talked to, the Soda Vendor golfers whose thirst is above 4 (above 0 for the Refresher). Gary takes whichever
-  applies, and walks to the tile the player last clicked (except every other 512 ticks).
+  applies; while hole 1 has no par he walks to the tile under the pointer instead (except every other 512 ticks;
+  0x40311b). A click on the course picks up any employee record, Gary included (0x41eff5), and the next click posts it.
 - Walking: one path decision per tile from a weighted flood out of the target tile (walking cost per ground type, diagonals +1,
   water and out of bounds +16 near the target, paths cost 0 or 1 when the target is a few tiles away, staff pay +1 on greens,
   fairways, tees and sand and half elsewhere, a tile next to another walker +2). Speed per tick is 6 minus the ground's walking

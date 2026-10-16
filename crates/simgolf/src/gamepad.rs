@@ -1,7 +1,7 @@
 //! Controllers (the port's own; docs/PLAYING.md "Controllers and the Steam Deck"): an Xbox, PlayStation, Switch or Steam
 //! Deck controller plays the game through the mouse and keys it already has. On Windows, macOS and Linux the controller is
 //! read through gilrs; in the browser the page reads the Gamepad API (web/opensgolf.js) and hands each frame's state to
-//! `sg_gamepad`. Not on Android yet.
+//! `sg_gamepad`; on Android the activity's view hands it over through JNI (vendor/miniquad/java, `surfaceOnGamepad`).
 //!
 //! * left stick: the pointer (drawn by the game while the controller is in use); right stick: scrolls the course;
 //! * A: click (hold to drag or paint); B: on the course a right click (undo, remove), elsewhere Esc (close, back);
@@ -85,8 +85,25 @@ pub struct Pad {
     b_esc: bool,
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", target_os = "android"))]
 static WEB_STATE: std::sync::Mutex<Option<State>> = std::sync::Mutex::new(None);
+
+/// Android's controller, from the activity's view (MainActivity.java `sendPad`): buttons as `btn` bits, sticks -1..1.
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "C" fn Java_quad_1native_QuadNative_surfaceOnGamepad(
+    _env: *mut std::ffi::c_void,
+    _class: *mut std::ffi::c_void,
+    buttons: i32,
+    lx: f32,
+    ly: f32,
+    rx: f32,
+    ry: f32,
+) {
+    if let Ok(mut s) = WEB_STATE.lock() {
+        *s = Some(State { buttons: buttons as u32, left: (lx, ly), right: (rx, ry) });
+    }
+}
 
 /// The page's controller each frame (web/opensgolf.js): the buttons as `btn` bits and the two sticks.
 #[cfg(target_arch = "wasm32")]
@@ -111,7 +128,7 @@ fn shape(v: (f32, f32)) -> (f32, f32) {
 impl Pad {
     /// This frame's state of the first controller, if there is one.
     fn read(&mut self) -> Option<State> {
-        #[cfg(target_arch = "wasm32")]
+        #[cfg(any(target_arch = "wasm32", target_os = "android"))]
         {
             WEB_STATE.lock().ok().and_then(|s| *s)
         }
@@ -161,7 +178,7 @@ impl Pad {
                 right: (axis(Axis::RightStickX), -axis(Axis::RightStickY)),
             })
         }
-        #[cfg(not(any(target_arch = "wasm32", all(feature = "gamepad", not(target_os = "android")))))]
+        #[cfg(not(any(target_arch = "wasm32", target_os = "android", feature = "gamepad")))]
         {
             None
         }

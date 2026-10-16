@@ -721,6 +721,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "nanomp3"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "acd9a8d0592a17ee5211aae2f976e6dc2f6846135d1f49665b3f19a7afd23435"
+dependencies = [
+ "nanomp3-core",
+]
+
+[[package]]
+name = "nanomp3-core"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "63fa2238e662d3d3c1a71168b3278f23422cf9bf76f6943ee6b1c2581d74eb5c"
+
+[[package]]
 name = "ndk"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -931,7 +946,7 @@ dependencies = [
 
 [[package]]
 name = "opensgolf"
-version = "0.3.6"
+version = "0.3.7"
 dependencies = [
  "cpal",
  "fontdue",
@@ -1227,12 +1242,13 @@ dependencies = [
 
 [[package]]
 name = "sg-core"
-version = "0.3.6"
+version = "0.3.7"
 dependencies = [
  "fontdue",
  "image-webp",
  "lewton",
  "miniz_oxide",
+ "nanomp3",
  "rhai",
  "serde",
  "serde_json",
@@ -1242,7 +1258,7 @@ dependencies = [
 
 [[package]]
 name = "sgplay"
-version = "0.3.6"
+version = "0.3.7"
 dependencies = [
  "cpal",
  "miniquad",
@@ -1251,7 +1267,7 @@ dependencies = [
 
 [[package]]
 name = "sgtool"
-version = "0.3.6"
+version = "0.3.7"
 dependencies = [
  "sg-core",
 ]

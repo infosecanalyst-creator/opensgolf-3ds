@@ -21,4 +21,6 @@ public class QuadNative {
     public native static void surfaceOnKeyDown(int keycode);
     public native static void surfaceOnKeyUp(int keycode);
     public native static void surfaceOnCharacter(int character);
+    // a game controller's state (OpenSGolf: buttons as the W3C standard gamepad's bits, sticks -1..1)
+    public native static void surfaceOnGamepad(int buttons, float lx, float ly, float rx, float ry);
 }

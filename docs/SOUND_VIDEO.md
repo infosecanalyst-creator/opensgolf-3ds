@@ -6,9 +6,9 @@ All 241 sound effects, voices and music tracks under `Sounds/` are ordinary PCM 
 so the original needs no decoder. Copies of the game that went through other tools do not always keep them that way, and a
 copy whose sounds the old WAV reader refused played no sound at all, browser and desktop alike (issue #10). So
 `crates/sg-core/src/wav.rs` reads every common WAV coding (8/16/24/32-bit PCM, 32/64-bit float, A-law, mu-law, Microsoft
-ADPCM, IMA ADPCM, WAVE_FORMAT_EXTENSIBLE; more than two channels keep the first two; checked against ffmpeg's decoding of
+ADPCM, IMA ADPCM, MP3 inside a WAV, WAVE_FORMAT_EXTENSIBLE; more than two channels keep the first two; checked against ffmpeg's decoding of
 the same files), a copy whose sounds were converted to `.ogg` is read as the `.wav` names the game asks for, and macOS
-`._` resource-fork files are ignored. MP3 inside a WAV is not read. Where the player's copy still fails (no `Sounds` folder,
+`._` resource-fork files are ignored. Where the player's copy still fails (no `Sounds` folder,
 or a clip in a coding not read) the free base set's sound of that name plays instead, the failure is logged once per
 clip on stderr (`sound: cannot load ...`), and the title screen says once in a box what went wrong
 (`STR_SOUND_CANNOT_PLAY`; settings.json `sound_problem_shown` keeps it from repeating). A clip the original itself lacks
@@ -27,7 +27,7 @@ The game plays:
 | tee shot / later shots / putt | `Golf_Sfx/Drive With Ball`, `Iron`, `Putt` |
 | ball lands: fairway, sand, water, out of bounds | `Ball Drop Fairway`, `Ball Drop Sand`, `Ball Water`, `Ball Tree` |
 | holed out | `Ball In Hole`, `ApplauseGood` (5 strokes or fewer) or `Applause`, `Effects/cash` |
-| painting terrain | `Interface/Place Fairway / GreenTee / Bunker / Water / Rocks / Rough`, `Building`, `Effects/Flower Bed` |
+| painting terrain, per tile (EXACT, below) | tee, green `Interface/Test 2`; fairway the painting tune on `Test 7`; rough class `Test 9` (rocks `Place Rocks 1`); sand `Test 10`; water `Place Water`; trees their growing sound |
 | path, wall, raise, lower, save | `Interface/Path`, `Place Rocks Generic`, `Bass Up 2`, `Bass Down 2`, `Button1` |
 | always | `GolfAmbience122` at low volume, looped |
 
@@ -42,7 +42,14 @@ as DirectSound's Play does on a buffer that is already playing. The applause aft
 `Applause.wav`, 6 s, 1 s delay; the golfers' tick, decompile line ~135031) used to start a second copy over the first whenever the pro
 shot again within six seconds, which sounded like several crowds clapping out of step.
 
-Which sound goes with which event is my choice from the file names; the original's mapping lives in golf.exe, which is not read.
+Painting (EXACT, 0x420660 and 0x40c500): each painted tile plays a slot chosen by its terrain's class byte. A positional
+play gets a random pitch of -299..300 cents; a fairway tile instead plays the next note of a 36-note tune ("Jesu, Joy of
+Man's Desiring", table 0x4c2fa4, `(note - 5) * 100` cents, from a counter that is never reset), so painting fairway plays
+the tune note by note. The note restarts on each tile (DERIVED: the play itself is inside sound.dll).
+
+The title menu plays slot 0x80 (`Music Idea.wav`) when it opens (0x40f5c0, EXACT).
+
+Which sound goes with which other event is my choice from the file names; the original's mapping lives in golf.exe, which is not read.
 The volumes are guesses.
 
 ## Video
