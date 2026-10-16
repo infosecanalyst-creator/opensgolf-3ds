@@ -40,6 +40,8 @@ pub enum PopupKind {
     Search,
     /// The search box's "Reset to original..." confirmation (the port's own): yes or no.
     ResetOriginal,
+    /// The hidden Cheats box (the port's own, cheats_ui.rs): a list of cheats, open until Done.
+    Cheats,
 }
 
 #[derive(Clone, Debug)]
@@ -530,6 +532,7 @@ impl App {
         let language =
             if languages > 1 { trf("STR_MENU_PREFS_LANGUAGE", &[("LANGUAGE", &crate::language::current_name())]) } else { String::new() };
         let set_par_lines: [String; 2];
+        let cheat_lines: Vec<String>;
         let (mut lines, disabled, cx, mut top): (Vec<&str>, u32, f32, f32) = match kind {
             PopupKind::Retire => (
                 vec![retire[0].as_str(), retire[1].as_str(), tr("STR_RETIRE_WAIT"), tr("STR_RETIRE_SAVE_FIRST"), tr("STR_RETIRE_SO_LONG")],
@@ -626,6 +629,12 @@ impl App {
                 let old = self.club.holes[h.clamp(1, 18)].par;
                 set_par_lines = [trf("STR_SET_PAR_1", &[("HOLE", &h), ("OLD", &old), ("NEW", &new)]), tr("STR_SET_PAR_2").to_string()];
                 (vec![set_par_lines[0].as_str(), set_par_lines[1].as_str(), tr("STR_SET_PAR_YES"), tr("STR_SET_PAR_NO")], 0, 400.0, 200.0)
+            }
+            // the port's own Cheats box: below the dock's top, clear of the course's middle
+            PopupKind::Cheats => {
+                let (l, disabled) = self.cheat_lines();
+                cheat_lines = l;
+                (cheat_lines.iter().map(|l| l.as_str()).collect(), disabled, 400.0, 120.0)
             }
             PopupKind::QuickLoad => {
                 (vec![tr("STR_QUICK_LOAD_1"), tr("STR_QUICK_LOAD_2"), tr("STR_QUICK_LOAD_YES"), tr("STR_QUICK_LOAD_NO")], 0, 400.0, 200.0)
@@ -940,6 +949,16 @@ impl App {
         }
         if p.disabled & (1 << k) != 0 {
             self.ui_sound(0x18);
+            return Some(usize::MAX);
+        }
+        if p.kind == PopupKind::Cheats && k != crate::cheats_ui::DONE {
+            // a cheat is used and the box stays open, rebuilt (the switches' states, what is greyed), the lit line kept
+            let (sel, keyed) = (p.sel, p.keyed);
+            self.use_cheat(k);
+            self.open_popup(PopupKind::Cheats);
+            if let Some(p) = self.popup.as_mut() {
+                (p.sel, p.keyed) = (sel, keyed);
+            }
             return Some(usize::MAX);
         }
         Some(k)

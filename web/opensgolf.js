@@ -821,12 +821,13 @@ document.addEventListener("visibilitychange", () => {
 // Space, the arrows, F1 to F10, Tab, Backspace, ' and /. Here the rest of the original's keys are kept from the browser too:
 // PageUp and Home (turn the view; they would scroll the page), End and PageDown, and Alt or Ctrl with a digit (the port's
 // stand-ins for F1 to F10 on keyboards whose function keys need Fn; Alt+digit switches tabs in some browsers). Alt alone
-// would open Firefox's menu bar on Windows. The apostrophe (the measuring tape) opens Firefox's quick find. A key pressed while the page has lost the canvas's focus (after a click on
+// would open Firefox's menu bar on Windows. The apostrophe (the measuring tape) opens Firefox's quick find, and Ctrl+Shift+C (the Cheats box) the inspector. A key pressed while the page has lost the canvas's focus (after a click on
 // the page around it, or back from another window) goes to the game and gives the canvas the focus back. The phone
 // keyboard's text box (sgKeyboard) keeps its own keys.
 function sgGameKey(e) {
     if (e.metaKey) return false; // Cmd shortcuts stay the browser's (the game needs none)
     if (["PageUp", "PageDown", "Home", "End", "AltLeft", "AltRight", "Quote"].includes(e.code)) return true;
+    if (e.ctrlKey && e.shiftKey && e.code === "KeyC") return true; // the hidden Cheats box (Chrome's inspector key)
     return (e.altKey || e.ctrlKey) && /^Digit[0-9]$/.test(e.code);
 }
 for (const type of ["keydown", "keyup"]) {

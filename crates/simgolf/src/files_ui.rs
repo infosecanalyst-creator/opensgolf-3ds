@@ -43,6 +43,8 @@ pub struct SaveInfo {
     pub map: (usize, Vec<[f32; 4]>),
     /// Shared by course code or file (share.rs): the course record is a challenge.
     pub shared: bool,
+    /// Cheats were used in the game (the port's Cheats box, cheats_ui.rs): noted, and its record is no challenge.
+    pub cheated: bool,
     /// Open holes: number, par, yards.
     pub holes: Vec<(usize, i32, i32)>,
     pub par: i32,
@@ -68,6 +70,7 @@ impl SaveInfo {
         SaveInfo {
             map: course_map(&s.terrain, s.land.as_ref()),
             shared: s.shared,
+            cheated: s.club.cheated,
             par: holes.iter().map(|h| h.1).sum(),
             yards: holes.iter().map(|h| h.2).sum(),
             holes,
@@ -859,9 +862,14 @@ impl App {
                 }
             }
         }
+        if i.cheated {
+            // the port's Cheats box (cheats_ui.rs) was used in this game: a note at the right of the theme's line
+            let t = tr("STR_FILES_CHEATED");
+            top(s, g, 756.0 - text_width(t, 13.0), 442.0, t, 13.0, rgb(1.0, 0.55, 0.45));
+        }
         top(s, g, 388.0, 442.0, &trf("STR_FILES_THEME", &[("THEME", &i.theme)]), 13.0, WHITE);
         top(s, g, 388.0, 458.0, &trf("STR_FILES_DESIGNED_BY", &[("DESIGNER", &i.designer)]), 13.0, WHITE);
-        if i.record > 0 && i.shared {
+        if i.record > 0 && i.shared && !i.cheated {
             // the Course sharing extra: the sharer's record is the one to beat (share.rs)
             let t = trf("STR_FILES_CHALLENGE", &[("DESIGNER", &i.designer), ("SCORE", &i.record)]);
             top(s, g, 388.0, 474.0, &t, 13.0, rgb(1.0, 0.9, 0.4));

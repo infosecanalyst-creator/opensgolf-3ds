@@ -289,9 +289,15 @@ impl Club {
         let v = (p2 / 2) % 6;
         let diff = self.difficulty;
         let k = self.ceo_count;
-        let ceo = v == 1 && present & 4 == 0 && k < 8 && self.par(2 + 2 * k) != 0;
-        let comm = v == 3 && present & 2 == 0 && !self.island && (self.purchases + 2) * (diff + 2) * 50 < rating;
-        let heir = v == 5 && present & 4 == 0 && (self.donations + 1) * (self.donations + 1) * 25 < rating && self.landmarks_owned < 0xffff;
+        let mut ceo = v == 1 && present & 4 == 0 && k < 8 && self.par(2 + 2 * k) != 0;
+        let mut comm = v == 3 && present & 2 == 0 && !self.island && (self.purchases + 2) * (diff + 2) * 50 < rating;
+        let mut heir =
+            v == 5 && present & 4 == 0 && (self.donations + 1) * (self.donations + 1) * 25 < rating && self.landmarks_owned < 0xffff;
+        // the port's Cheats box, "Force a VIP visit now" (cheats.rs): this pair brings a visitor whatever its number and the
+        // ratings, the first of the three this pair's number points at that can come (a sandbox game's visitors too)
+        if std::mem::take(&mut self.vip_forced) {
+            (ceo, comm, heir) = crate::cheats::forced_vip(self, v);
+        }
         if !(ceo || comm || heir) {
             return;
         }

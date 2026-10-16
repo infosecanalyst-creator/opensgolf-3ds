@@ -13,6 +13,7 @@ pub mod bink;
 pub mod bodies;
 pub mod celebs;
 pub mod championship;
+pub mod cheats;
 pub mod clubhouse;
 pub mod course;
 pub mod data;

@@ -293,6 +293,35 @@ landmark tool on strip page 0 (own), 1 (cut) or 2 (animals); `--edit "b:x,y,4,t"
 100 + kind an animal pair); `--edit "M:6"` opens the extras box (`M:6,P` on page P: 0 Gameplay, 1 Time & sandbox, 2
 Interface).
 
+## Cheats (not in the original)
+
+A hidden key on the course, **Ctrl+Shift+C** (it can be moved on the Change keys screen, where it is called *Cheats
+box*), opens a **Cheats** box in the style of the game's own menus. Nothing changes until you pick a line; the box stays
+open for more until *Done* or Esc:
+
+- **Add §10,000**, **Add §100,000** and **Take away §10,000.** The cash changes at once; the Financial Report's income
+  and costs are not touched.
+- **Force a VIP visit now.** The next pair to tee off brings a visitor, whatever the ratings the game asks for and
+  whichever pair it is (a Sandbox Mode game too): the Corporate CEO, the County Commissioner or the Wealthy Heiress, the
+  next one whose turn it is that can come. They play and judge the round as ever, so a pleased commissioner still offers
+  land and a pleased heiress still donates a landmark. Greyed while no hole is open, during a tournament, or while one is
+  already on the way.
+- **Buy all the land.** Every tract of the property still for sale (as the Land screen shows them) becomes yours, for
+  nothing (it does not count as a purchase, so it does not raise the price of land later). Greyed when there is none left.
+- **Sandbox: pause the calendar / freeze golfer happiness / unlock all buildings and landmarks**, each with its state:
+  the same three switches as on the extras box's *Time & sandbox* page (see above), there in a click.
+
+Using any of the first five marks the game for good ("cheats used", saved with it; the sandbox switches are extras, not
+cheats, and do not). The Load Previous Game list then says **Cheats used** beside the course's theme, and a course shared
+from such a game (System Functions, *Share course*) carries no challenge: the friend's list shows its course record but
+not as one to beat. A game in which no cheat was used saves exactly as before.
+
+In the browser some browsers keep Ctrl+Shift+C for their developer tools' inspector; the page asks them not to, and
+where one insists, give the box another key on the Change keys screen.
+
+Test hooks: `--edit "C:N"` uses line N of the box (0 add §10,000, 1 add §100,000, 2 take away §10,000, 3 a VIP, 4 the
+land, 5 to 7 the sandbox switches), `--edit "C:0,1"` opens it; `SG_PRESS="Ctrl+Shift+C"` presses its key.
+
 ## Searching the Preferences
 
 Preferences has a **Search options...** line, and typing a letter or digit while Preferences is open does the same: a
@@ -578,9 +607,9 @@ changed every key does what it did before.
 
 * **Change keys.** System Functions → Preferences → *Keyboard controls...* → *Change keys...* lists every action of the
   course screen with its key: the original's (tools, screens, the F keys, the shot shapes while your pro aims) and the
-  port's own (game speed, photo mode, hiding the interface, the measuring tape, the course editor's box). Click an action, then press its new key,
-  with or without Shift; Esc (or a click) while it waits keeps the old key. Two actions on one key are printed in red and
-  a line says which: only one of them answers (the shot shapes only clash with each other, since they count only while your pro
+  port's own (game speed, photo mode, hiding the interface, the measuring tape, the course editor's box, the hidden Cheats
+  box). Click an action, then press its new key, with or without Shift (and Ctrl); Esc (or a click) while it waits keeps
+  the old key. Two actions on one key are printed in red and a line says which: only one of them answers (the shot shapes only clash with each other, since they count only while your pro
   aims). *Reset to defaults* puts every key back. The digits (holes 1 to 18) and Esc cannot be given to an action. The
   keys are saved at once under `"controls"` in `settings.json` (only the ones that differ, e.g.
   `"controls": {"wasd": false, "keys": {"water": "Shift+Q", "zoom_in": "G"}}`; an action set to `""` has no key) and the

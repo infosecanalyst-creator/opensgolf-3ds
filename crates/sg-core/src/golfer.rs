@@ -452,6 +452,14 @@ pub struct Club {
     /// has fallen behind the game tick.
     #[serde(default, skip_serializing_if = "crate::extras::Calendar::is_zero")]
     pub cal: crate::extras::Calendar,
+    /// The port's Cheats box (docs/PLAYING.md, "Cheats"): a cheat has been used in this game, for good (the Load list and
+    /// shared challenges show it); saved only when set.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub cheated: bool,
+    /// The Cheats box's "Force a VIP visit now": the next pair to tee off brings a visitor (`vip_check`); saved only while
+    /// it waits.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub vip_forced: bool,
 }
 
 impl Default for Club {
@@ -555,6 +563,8 @@ impl Club {
             show_snapshots: true,
             extras: Default::default(),
             cal: Default::default(),
+            cheated: false,
+            vip_forced: false,
         }
     }
 

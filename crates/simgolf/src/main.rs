@@ -25,6 +25,7 @@ mod autosave;
 mod autoupdate;
 mod build_tools;
 mod champ_ui;
+mod cheats_ui;
 mod comfort;
 mod content;
 mod content_profiles;
@@ -906,6 +907,14 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 app.econ.extras = e;
                 println!("extras {e:?}");
             }
+            b'C' => {
+                // test hook: uses cheat N of the Cheats box (cheats_ui), or with C:N,1 opens the box
+                if at(1) == 1 {
+                    app.open_cheats();
+                } else {
+                    app.use_cheat(at(0) as usize);
+                }
+            }
             b'S' => {
                 // test hook: the landmark tool in hand with page P of its strip (extras_ui), and design D when given
                 // the Amenities panel (the Build Course panel's other side)
@@ -1514,6 +1523,8 @@ impl Stage {
                     self.app.confirm_par();
                 }
             }
+            // the Cheats box's Done (cheats_ui.rs; the cheats themselves are used while it stays open)
+            PopupKind::Cheats => {}
             PopupKind::QuickLoad => {
                 if k == 0 {
                     self.app.quick_load(&mut self.g);
@@ -1900,7 +1911,12 @@ impl Stage {
     fn play_key(&mut self, k: KeyCode) {
         // the player's keys (controls.rs): the key pressed becomes the default key of the action bound to it
         let aiming = self.app.club.pro_aiming().is_some();
-        let Some((k, shift, act)) = controls::translate(k, self.shift, aiming) else { return };
+        let Some((k, shift, act)) = controls::translate(k, self.shift, self.ctrl, aiming) else { return };
+        // the port's hidden Cheats box (cheats_ui.rs; Ctrl+Shift+C)
+        if act == Some(controls::action("cheats")) {
+            self.app.open_cheats();
+            return;
+        }
         // the port's own measuring tape (build_tools.rs)
         if act == Some(controls::action("tape")) {
             let at = self.pointer_ground();
@@ -2533,14 +2549,14 @@ impl Stage {
         }
         // SG_PRESS="u;Shift+F6;...": keys pressed after the clicks (names as settings.json's "controls" has them)
         for b in std::env::var("SG_PRESS").unwrap_or_default().split(';').filter_map(controls::Binding::parse) {
-            let mods = KeyMods { shift: b.shift, ..Default::default() };
+            let mods = KeyMods { shift: b.shift, ctrl: b.ctrl, ..Default::default() };
             self.key_down_event(b.key, mods, false);
-            // a letter or Space also types its character, as a keyboard does
+            // a letter or Space also types its character, as a keyboard does (not with Ctrl)
             let name = b.name();
             let ch = name.strip_prefix("Shift+").unwrap_or(&name);
-            if let Some(c) = ch.chars().next().filter(|c| ch.len() == 1 && c.is_ascii_alphanumeric()) {
+            if let Some(c) = ch.chars().next().filter(|c| !b.ctrl && ch.len() == 1 && c.is_ascii_alphanumeric()) {
                 self.char_event(if b.shift { c.to_ascii_uppercase() } else { c.to_ascii_lowercase() }, mods, false);
-            } else if b.key == KeyCode::Space {
+            } else if b.key == KeyCode::Space && !b.ctrl {
                 self.char_event(' ', mods, false);
             }
             self.key_up_event(b.key, mods);
@@ -3153,6 +3169,7 @@ impl EventHandler for Stage {
         self.shift = mods.shift || k == KeyCode::LeftShift || k == KeyCode::RightShift;
         self.app.shift_held = self.shift;
         self.ctrl = mods.ctrl || k == KeyCode::LeftControl || k == KeyCode::RightControl;
+        self.app.ctrl_held = self.ctrl;
         self.alt = mods.alt || k == KeyCode::LeftAlt || k == KeyCode::RightAlt;
         self.app.bt.alt = self.alt;
         let typing = self.app.typing();
@@ -3195,6 +3212,7 @@ impl EventHandler for Stage {
         self.shift = mods.shift && k != KeyCode::LeftShift && k != KeyCode::RightShift;
         self.app.shift_held = self.shift;
         self.ctrl = mods.ctrl && k != KeyCode::LeftControl && k != KeyCode::RightControl;
+        self.app.ctrl_held = self.ctrl;
         self.alt = mods.alt && k != KeyCode::LeftAlt && k != KeyCode::RightAlt;
         self.app.bt.alt = self.alt;
         // the measuring tape's key let go (build_tools.rs)

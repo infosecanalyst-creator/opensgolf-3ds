@@ -641,6 +641,8 @@ pub struct App {
     pub hud: crate::hud_ui::HudArt,
     /// Shift is held (the face strip then shows the back nine only).
     pub shift_held: bool,
+    /// Ctrl is held (the Change keys screen takes it with the key it waits for).
+    pub ctrl_held: bool,
     /// The Select Difficulty art: the screen and the sheet of its lit items.
     pub diff_base: Image,
     pub diff_mo: Image,
@@ -927,6 +929,7 @@ impl App {
             hud_art: Image::default(),
             hud: Default::default(),
             shift_held: false,
+            ctrl_held: false,
             diff_base: Image::default(),
             diff_mo: Image::default(),
             theme_icons: [Image::default(); 4],
