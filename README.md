@@ -90,11 +90,11 @@ Optional, and off by default (Start New Game has a one-click switch between *the
   ([docs/ENHANCED.md](docs/ENHANCED.md)).
 - **Bigger courses:** Large, Huge and Giant, up to 128 × 128 tiles.
 - **OpenSGolf extras:** a Hardcore economy, turning buildings, cut content restored as landmarks, animals to buy, higher
-  staff limits, setting a hole's par, slower seasons (the calendar at 1/2x or 1/4x), sandbox switches (pause the calendar,
-  freeze golfer happiness, unlock everything), a search over every Preferences option with a reset to the original, and
-  interface extras such as a People screen, message history, autosave (the last three kept), a map of each saved course,
-  pausing in the background or on big news, and course sharing: copy a course code, a friend pastes it and tries to beat
-  your course record.
+  staff limits, setting a hole's par, left-handed golfers (and a left-handed pro), slower seasons (the calendar at 1/2x or
+  1/4x), sandbox switches (pause the calendar, freeze golfer happiness, unlock everything), a search over every
+  Preferences option with a reset to the original, and interface extras such as a People screen, message history,
+  autosave (the last three kept), a map of each saved course, pausing in the background or on big news, and course
+  sharing: copy a course code, a friend pastes it and tries to beat your course record.
 - **A hidden Cheats box** (Ctrl+Shift+C): add or take away money, force a VIP visit, buy all the land, the sandbox
   switches. A game in which a cheat was used says so on the Load list, and its course record is no shared challenge.
 - **Quick save and quick load** (Shift+F5, Shift+F9) and a **staff areas** view (Shift+A) that shows every employee's

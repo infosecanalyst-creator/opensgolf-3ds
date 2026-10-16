@@ -1333,6 +1333,8 @@ STR_EXTRAS_SPEED_QUARTER                :1/4x
 STR_EXTRAS_PAUSE_CALENDAR               : Sandbox: pause the calendar
 STR_EXTRAS_FREEZE_MOODS                 : Sandbox: freeze golfer happiness
 STR_EXTRAS_UNLOCK_ALL                   : Sandbox: unlock all buildings and landmarks
+# Left-handed golfers (sg_core::extras): about one golfer in ten, and a tick for your pro on Customise Golfer
+STR_EXTRAS_LEFTIES                      : Left-handed golfers
 STR_SET_PAR_1                           :Change hole {HOLE} from par {OLD} to par {NEW}?
 STR_SET_PAR_2                           :Golfers will be scored against the new par.
 STR_SET_PAR_YES                         : Yes, change the par.
@@ -2965,3 +2967,5 @@ STR_TOAST_CHEAT_LAND                    :Cheat: all the land is yours.
 STR_CTL_CHEATS                          :Cheats box
 # the Load list's note on a game in which cheats were used
 STR_FILES_CHEATED                       :Cheats used
+# Customise Golfer, your pro, with the Left-handed golfers extra on
+STR_CUST_LEFT_HANDED                    :Left-handed

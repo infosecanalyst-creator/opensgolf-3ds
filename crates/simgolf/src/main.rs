@@ -907,6 +907,16 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 app.econ.extras = e;
                 println!("extras {e:?}");
             }
+            b'H' => {
+                // test hook: golfer slots N,M,... are left-handed (-1 the player's pro), for the Left-handed golfers extra
+                for &g in &v {
+                    if g < 0 {
+                        app.club.pro_left = true;
+                    } else if let Some(gg) = app.club.g.get_mut(g as usize) {
+                        gg.left = true;
+                    }
+                }
+            }
             b'C' => {
                 // test hook: uses cheat N of the Cheats box (cheats_ui), or with C:N,1 opens the box
                 if at(1) == 1 {

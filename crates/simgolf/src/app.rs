@@ -121,6 +121,9 @@ pub struct Prop {
     pub track: u32,
     /// Added to the game tick for an animated prop's frame (a driving range's flags wave out of step).
     pub phase: u32,
+    /// Drawn mirrored left to right about its anchor (a left-handed golfer's swing, the Left-handed golfers extra): an 8 view
+    /// sprite then takes the view whose mirror image faces the prop's heading (`prop_view`).
+    pub mirror: bool,
 }
 
 impl Default for Prop {
@@ -154,6 +157,7 @@ impl Default for Prop {
             tv: None,
             track: 0,
             phase: 0,
+            mirror: false,
         }
     }
 }
@@ -2389,10 +2393,14 @@ impl App {
                 continue;
             };
             // The exe draws the swing clips one view round from the golfer's facing (not the putt); the bench clips have four
-            // views and take half the eight-way view.
+            // views and take half the eight-way view. A left-hander (the Left-handed golfers extra) is drawn mirrored while
+            // he addresses the ball and swings, as the mirror image about the line to his target: the swing's facing is a
+            // quarter turn round from the target (golfer.rs, the shot's start), so his view is three round where a
+            // right-hander's is one; the putt and the address face the target and stay as they are.
+            let mirror = (anim < 7 || anim == sg_core::golfer::anim::ADDRESS) && self.club.left_handed(gi);
             let mut d = facing & 7;
             if anim < 7 && clip != 0x5a {
-                d = (d - 1) & 7;
+                d = (d - if mirror { 3 } else { 1 }) & 7;
             }
             let (wx, wz) = self.units_to_world(x, y);
             let outfit = self.club.outfit(gi);
@@ -2406,6 +2414,7 @@ impl App {
             p.heading = DY[d as usize].atan2(DX[d as usize]).to_degrees();
             p.facing = -((d + 2 + (d & 1)) / 2);
             p.outfit = Some(outfit);
+            p.mirror = mirror;
         }
         self.update_staff_props();
         self.update_resident_props();

@@ -250,6 +250,16 @@ in settings.json under `extras`).
   hole on the Routing screen. Rebuilding the hole (painting over its tee or cup green and opening it again) gives it the
   game's par anew, a tournament's checklist sets its own pars, and switching the extra off puts every hole back to the
   game's par. Pars cannot be changed during a tournament.
+- **Left-handed golfers.** About one golfer in ten who arrives from now on is left-handed (decided by the game's own
+  random draws when the golfer is made, and kept with the saved game). A left-hander is drawn as the mirror image of a
+  right-hander while addressing the ball, swinging and following through, still facing the shot's target; walking,
+  waiting and everything else look as before. His shots bend the other way: his draw curves from left to right and his
+  fade from right to left, and his random hooks and slices are mirrored too, so the course's doglegs suit left- and
+  right-handers differently (the golfers' own shot planning knows it). Your pro gets a **Left-handed** tick under his
+  skills on Customise Golfer (the Player panel's Customize); with it his practice rounds and matches are played
+  left-handed, the aim line bending the left-hander's way for a draw or fade (the shot keys keep their names: D is still
+  his draw). Switching the extra off puts everyone back to right-handed; switching it on again brings the left-handers
+  back.
 
 On the **Time & sandbox** page:
 
@@ -286,7 +296,8 @@ a normal game too.
 
 Test hooks: `--extras BITS` sets the extras a new game starts with (1 Tab turns, 2 cut content, 4 hardcore, 8 higher staff
 limits, 16 animals, 32 set par, 64 or 128 the calendar at 1/2x or 1/4x, 256 pause the calendar, 512 freeze golfer
-happiness, 1024 unlock all; not saved to the settings); `--edit "R:N"` asks for par N on the Hole Stats' hole (its
+happiness, 1024 unlock all, 2048 left-handed golfers; not saved to the settings); `--edit "H:N,M,..."` makes golfer slots
+N, M... left-handed (-1 your pro); `--edit "R:N"` asks for par N on the Hole Stats' hole (its
 confirmation box; `R:N,1` sets it at once); `--edit "X:BITS"` sets the extras of the game being played; `--edit "T:x,y"`
 presses the Tab of the first extra with the pointer on tile x,y; `--edit "S:page[,design]"` opens the Amenities panel with the
 landmark tool on strip page 0 (own), 1 (cut) or 2 (animals); `--edit "b:x,y,4,t"` places landmark type t (19..32 the cut ones,

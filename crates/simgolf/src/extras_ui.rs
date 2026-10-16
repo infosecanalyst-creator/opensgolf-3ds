@@ -51,11 +51,12 @@ pub enum ExtrasLine {
     Ui(usize),
 }
 
-/// The option lines of a page, in order.
+/// The option lines of a page, in order: Left-handed golfers, which came after the sandbox switches, ends the gameplay page.
 pub fn page_lines(page: u8) -> Vec<ExtrasLine> {
+    use sg_core::extras::{LEFTIES, SEASON_SPEED};
     match page {
-        0 => (0..sg_core::extras::SEASON_SPEED).map(ExtrasLine::Game).collect(),
-        1 => (sg_core::extras::SEASON_SPEED..sg_core::extras::OPTION_KEYS.len()).map(ExtrasLine::Game).collect(),
+        0 => (0..SEASON_SPEED).chain([LEFTIES]).map(ExtrasLine::Game).collect(),
+        1 => (SEASON_SPEED..LEFTIES).map(ExtrasLine::Game).collect(),
         _ => (0..crate::extras::UI_KEYS.len()).map(ExtrasLine::Ui).collect(),
     }
 }
