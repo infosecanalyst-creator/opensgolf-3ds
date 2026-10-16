@@ -95,7 +95,7 @@ mod device {
                 }
             },
             move |e| {
-                eprintln!("sound: the output stopped: {e}");
+                super::log(&format!("sound: the output stopped: {e}"));
                 failed.store(true, Ordering::Relaxed);
             },
             None,
@@ -126,7 +126,7 @@ mod device {
         }
         .map_err(|e| format!("{name}: cannot open the output: {e}"))?;
         stream.play().map_err(|e| format!("{name}: cannot start the output: {e}"))?;
-        println!("sound: playing on \"{name}\" ({} Hz, {} channels, {fmt:?})", cfg.sample_rate.0, cfg.channels);
+        super::log(&format!("sound: playing on \"{name}\" ({} Hz, {} channels, {fmt:?})", cfg.sample_rate.0, cfg.channels));
         Ok((stream, name))
     }
 
@@ -135,7 +135,7 @@ mod device {
         match start(&mixer, &failed) {
             Ok((stream, device)) => Some(AudioOut { stream, mixer, device, failed, checked: Instant::now() }),
             Err(e) => {
-                eprintln!("sound: {e}");
+                super::log(&format!("sound: {e}"));
                 None
             }
         }
@@ -231,21 +231,76 @@ mod device {
 
 pub use device::AudioOut;
 
+/// The sound's lines so far, for the sound report (`write_report`).
+static LINES: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
 /// A line about the sound for the log, and in a browser for its console as well (the page shows nothing of the game's
-/// standard output, so a player asked "what does the console say?" could not tell why a game was silent).
+/// standard output, so a player asked "what does the console say?" could not tell why a game was silent). The lines also
+/// go into the sound report.
 pub fn log(msg: &str) {
     println!("{msg}");
+    if let Ok(mut l) = LINES.lock() {
+        if l.len() < 50 {
+            l.push(msg.to_string());
+        }
+    }
     #[cfg(target_arch = "wasm32")]
+    log_console(msg);
+}
+
+#[cfg(target_arch = "wasm32")]
+fn log_console(msg: &str) {
+    #[link(wasm_import_module = "env")]
+    extern "C" {
+        // miniquad's gl.js: console.log of a nul-terminated UTF-8 string
+        fn console_log(msg: *const std::ffi::c_char);
+    }
+    if let Ok(c) = std::ffi::CString::new(msg) {
+        // SAFETY: a valid nul-terminated string, read before the call returns
+        unsafe { console_log(c.as_ptr()) };
+    }
+}
+
+/// The sound report: what the sound plays from and on, and the clips the player's copy lacked (Mixer::report). Written to
+/// `sound.txt` in the save folder on the desktop and Android, and to the console in a browser, for a player to send with a
+/// "no sound" report (several came in, all from copies other than the one the port is tested with).
+pub fn write_report(mixer: Option<&Mixer>, muted: bool) {
+    let mut r = format!("OpenSGolf {} ({}) sound report\n", env!("CARGO_PKG_VERSION"), std::env::consts::OS);
+    if muted {
+        r += "sound is switched off (Preferences or --mute)\n";
+    }
+    if let Ok(l) = LINES.lock() {
+        for line in l.iter() {
+            r += line;
+            r += "\n";
+        }
+    }
+    match mixer {
+        Some(m) => r += &m.report(),
+        None => r += "no sounds loaded\n",
+    }
+    #[cfg(target_arch = "wasm32")]
+    for line in r.lines() {
+        log_console(line);
+    }
+    #[cfg(not(target_arch = "wasm32"))]
     {
-        #[link(wasm_import_module = "env")]
-        extern "C" {
-            // miniquad's gl.js: console.log of a nul-terminated UTF-8 string
-            fn console_log(msg: *const std::ffi::c_char);
-        }
-        if let Ok(c) = std::ffi::CString::new(msg) {
-            // SAFETY: a valid nul-terminated string, read before the call returns
-            unsafe { console_log(c.as_ptr()) };
-        }
+        let dir = crate::app::save_dir();
+        let _ = std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(dir.join("sound.txt"), &r));
+    }
+}
+
+/// Called every frame: the sound report is written 20 seconds after the start (when the first sounds have been asked for),
+/// then every two minutes, so a report holds the clips a game has asked for so far.
+pub fn report_tick(clock: f64, mixer: Option<&Mixer>, muted: bool) {
+    static NEXT: std::sync::Mutex<f64> = std::sync::Mutex::new(-1.0);
+    let Ok(mut next) = NEXT.lock() else { return };
+    if *next < 0.0 {
+        *next = clock + 20.0;
+    } else if clock >= *next {
+        *next = clock + 120.0;
+        drop(next);
+        write_report(mixer, muted);
     }
 }
 
@@ -263,6 +318,60 @@ pub fn open(mixer: Arc<Mixer>) -> Option<AudioOut> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A mixer playing one looping square wave from a WAV written to a temp folder.
+    fn tone_mixer(tag: &str) -> Arc<Mixer> {
+        let d = std::env::temp_dir().join(format!("sg_feed_{tag}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let n = 22050u32;
+        let mut w = Vec::new();
+        w.extend_from_slice(b"RIFF");
+        w.extend_from_slice(&(36 + n * 2).to_le_bytes());
+        w.extend_from_slice(b"WAVEfmt ");
+        for v in [16u32] {
+            w.extend_from_slice(&v.to_le_bytes());
+        }
+        for v in [1u16, 1] {
+            w.extend_from_slice(&v.to_le_bytes());
+        }
+        w.extend_from_slice(&22050u32.to_le_bytes());
+        w.extend_from_slice(&44100u32.to_le_bytes());
+        for v in [2u16, 16] {
+            w.extend_from_slice(&v.to_le_bytes());
+        }
+        w.extend_from_slice(b"data");
+        w.extend_from_slice(&(n * 2).to_le_bytes());
+        for i in 0..n {
+            w.extend_from_slice(&(if i % 50 < 25 { 12000i16 } else { -12000 }).to_le_bytes());
+        }
+        std::fs::write(d.join("tone.wav"), w).unwrap();
+        let mut m = Mixer::new(&d);
+        m.with_fallback();
+        let m = Arc::new(m);
+        assert!(m.play("tone.wav", 1.0, true) > 0);
+        m
+    }
+
+    #[test]
+    fn feed_plays_at_every_device_rate() {
+        // the rates output devices really run at (Windows and Macs mostly 48 kHz, some 96 kHz; browsers follow the device)
+        for rate in [22050u32, 32000, 44100, 48000, 88200, 96000, 192000] {
+            let mut f = Feed::new(tone_mixer(&rate.to_string()), rate);
+            let frames = rate as usize * 2;
+            let (mut loud, mut peak) = (0usize, 0f32);
+            for _ in 0..frames {
+                let (l, r) = f.next_frame();
+                assert!(l.is_finite() && r.is_finite());
+                peak = peak.max(l.abs()).max(r.abs());
+                if l.abs() > 0.05 {
+                    loud += 1;
+                }
+            }
+            assert!(peak > 0.2, "{rate} Hz: peak {peak}");
+            assert!(loud > frames * 8 / 10, "{rate} Hz: only {loud} of {frames} frames sound");
+        }
+    }
 
     #[test]
     fn feed_resamples_silence() {

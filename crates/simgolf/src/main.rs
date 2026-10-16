@@ -1016,9 +1016,10 @@ impl Stage {
 
         let mut mixer = Mixer::new(&app.game_path("Sounds"));
         mixer.add_dir("simsfx", &app.game_path("SimsFX"));
+        audio::log(&format!("sound: looking in {} and {}", app.game_path("Sounds").display(), app.game_path("SimsFX").display()));
         // the free set's sounds stand in for a copy whose own cannot be played; the player is told once (sound_note)
         mixer.with_fallback();
-        let sound_note = mixer.check().err().filter(|_| content::has_original(&app.game_dir)).map(|e| {
+        let mut sound_note = mixer.check().err().filter(|_| content::has_original(&app.game_dir)).map(|e| {
             audio::log(&format!("sound: the game's own sounds cannot be played ({e}); playing the free set's sounds"));
             sg_core::lang::trf("STR_SOUND_CANNOT_PLAY", &[("WHY", &e)])
         });
@@ -1046,6 +1047,12 @@ impl Stage {
                 app.audio = audio::open(mixer);
                 if app.audio.is_none() {
                     audio::log("sound: no audio device, running silent");
+                    // said to the player too (it was only in the log, which a game started from a desktop never shows)
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        let dir = app::save_dir().display().to_string();
+                        sound_note = Some(sg_core::lang::trf("STR_SOUND_NO_DEVICE", &[("DIR", &dir)]));
+                    }
                 }
             }
         }
@@ -2313,6 +2320,8 @@ impl EventHandler for Stage {
             self.pause_toggle = false;
             self.toggle_pause();
         }
+        // the sound report (sound.txt in the save folder, the console in a browser): 20 seconds in, then every two minutes
+        audio::report_tick(t, self.app.mixer.as_deref(), self.app.mute);
         // the --screen test hook's extras screens that need the game to have run first (extras.rs)
         self.app.extras_test_hook();
         // "Use my SimGolf files...": a .zip being unpacked or a folder being copied (gamefiles.rs)
