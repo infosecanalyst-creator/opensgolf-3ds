@@ -1,5 +1,5 @@
-//! Bringing the player's SimGolf files into a folder of the game's own (gamefiles.rs): a .zip of the game folder is
-//! unpacked, a folder is copied. The same rules as the browser version's loader (web/opensgolf.js): the game folder is the
+//! Bringing the player's SimGolf files into a folder of the game's own (gamefiles.rs): a ZIP or ISO (iso.rs) is unpacked,
+//! a folder is copied. The same filtering rules as the browser version's loader (web/opensgolf.js): the game folder is the
 //! one that holds `Flics`, at any depth (a zip of the folder above it, of the CD, of an install folder); names are matched
 //! without case; a Mac's `__MACOSX` folder and `._` files, the videos (.bik) and the Windows programs are left out.
 //!
@@ -15,6 +15,8 @@ use std::path::{Path, PathBuf};
 pub enum Error {
     /// Not a zip file, or a damaged one (what is wrong).
     BadZip(String),
+    /// Invalid or unsupported disc image or installer archive.
+    BadDisc(String),
     /// No `Flics` folder anywhere in it: not a SimGolf game folder.
     NoGame,
     /// Reading or writing failed (the system's message).
@@ -47,7 +49,7 @@ pub fn root_of<'a>(paths: impl IntoIterator<Item = &'a str>) -> Option<String> {
 }
 
 /// A zip entry's name as a relative path, or None when it is unsafe (absolute, `..`) or empty.
-fn safe_rel(name: &str) -> Option<PathBuf> {
+pub(crate) fn safe_rel(name: &str) -> Option<PathBuf> {
     let mut p = PathBuf::new();
     for c in name.split('/') {
         match c {
@@ -161,6 +163,62 @@ pub struct Unzipped {
     pub files: usize,
     /// Files skipped because their compression method is not stored or deflate, or they are encrypted.
     pub unread: usize,
+}
+
+/// Imports a ZIP, an ISO, or a ZIP containing one ISO. ISO detection uses the file's contents so Android's temporary
+/// filename need not preserve the extension. All output is staged and validated by gamefiles before installation.
+pub fn unpack_game(source: &Path, dest: &Path, progress: &mut dyn FnMut(usize, usize)) -> Result<Unzipped, Error> {
+    let mut file = File::open(source)?;
+    let mut signature = [0; 2];
+    file.read_exact(&mut signature)?;
+    if signature != *b"PK" {
+        return crate::iso::unpack(source, dest, progress);
+    }
+    let all = entries(&mut file)?;
+    if root_of(all.iter().filter(|e| !skip(&e.name.to_lowercase())).map(|e| e.name.as_str())).is_some() {
+        return unzip_game(source, dest, progress);
+    }
+    let images: Vec<_> = all.iter().filter(|e| !skip(&e.name.to_lowercase()) && e.name.to_lowercase().ends_with(".iso")).collect();
+    if images.len() != 1 {
+        return Err(if images.is_empty() {
+            Error::NoGame
+        } else {
+            Error::BadDisc("ZIP contains several ISOs; choose the SimGolf disc ISO itself".into())
+        });
+    }
+    let image = images[0];
+    if image.flags & 1 != 0 || ![0, 8].contains(&image.method) {
+        return Err(Error::BadZip("the ISO is encrypted or uses unsupported compression".into()));
+    }
+    let work = crate::iso::Workspace::new(dest)?;
+    let head = read_at(&mut file, image.local, 30)?;
+    if head[..4] != [0x50, 0x4b, 3, 4] || image.size > 8 * 1024 * 1024 * 1024 {
+        return Err(Error::BadZip("invalid ISO entry".into()));
+    }
+    file.seek(SeekFrom::Start(image.local + 30 + u16le(&head, 26) + u16le(&head, 28)))?;
+    let input = file.take(image.csize);
+    let mut reader: Box<dyn Read> = if image.method == 8 { Box::new(flate2::read::DeflateDecoder::new(input)) } else { Box::new(input) };
+    let path = work.path.join("disc.iso");
+    let mut output = File::create(&path)?;
+    let mut copied = 0u64;
+    let mut buffer = [0; 65536];
+    loop {
+        let n = reader.read(&mut buffer).map_err(|e| Error::BadZip(e.to_string()))?;
+        if n == 0 {
+            break;
+        }
+        copied += n as u64;
+        if copied > image.size {
+            return Err(Error::BadZip("ISO exceeds its declared size".into()));
+        }
+        std::io::Write::write_all(&mut output, &buffer[..n])?;
+        progress((copied / 1048576) as usize, image.size.div_ceil(1048576) as usize);
+    }
+    if copied != image.size {
+        return Err(Error::BadZip("ISO entry is cut short".into()));
+    }
+    drop(output);
+    crate::iso::unpack(&path, dest, progress)
 }
 
 /// Unpacks the game folder in `zip` into `dest` (made empty first): the files under the folder that holds `Flics`, that

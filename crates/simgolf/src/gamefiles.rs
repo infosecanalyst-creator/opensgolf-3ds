@@ -308,7 +308,7 @@ fn pick_path(start: Option<PathBuf>, zip: bool) -> Option<PathBuf> {
             d = d.set_directory(s);
         }
         if zip {
-            d.add_filter("Zip", &["zip", "ZIP"]).pick_file()
+            d.add_filter("SimGolf archives", &["zip", "ZIP", "iso", "ISO"]).pick_file()
         } else {
             d.pick_folder()
         }
@@ -353,6 +353,7 @@ static IMPORT: std::sync::Mutex<Option<Import>> = std::sync::Mutex::new(None);
 fn import_error(e: import::Error) -> String {
     match e {
         import::Error::BadZip(why) => trf("STR_GAME_FILES_BAD_ZIP", &[("ERR", &why)]),
+        import::Error::BadDisc(why) => trf("STR_GAME_FILES_BAD_DISC", &[("ERR", &why)]),
         import::Error::NoGame => tr("STR_GAME_FILES_ZIP_NO_GAME").to_string(),
         import::Error::Io(why) => trf("STR_GAME_FILES_IMPORT_FAILED", &[("ERR", &why)]),
     }
@@ -377,8 +378,12 @@ fn start_import(src: PathBuf, zip: bool, remove_src: bool) {
         let dest = import_target();
         let staging = import::staging_for(&dest);
         println!("importing the game files from {} into {}", src.display(), dest.display());
+        // A cancelled or failed import must not contribute files to the next disc or ZIP.
+        if staging.exists() {
+            std::fs::remove_dir_all(&staging).map_err(|e| import_error(e.into()))?;
+        }
         let r = if zip {
-            import::unzip_game(&src, &staging, &mut |i, n| {
+            import::unpack_game(&src, &staging, &mut |i, n| {
                 if i % 25 == 0 || i == n {
                     set(trf("STR_GAME_FILES_UNPACKING", &[("N", &i), ("OF", &n)]));
                 }
@@ -400,6 +405,9 @@ fn start_import(src: PathBuf, zip: bool, remove_src: bool) {
             .map(|_| 0)
         };
         let r = r.and_then(|unread| finish_import(&staging, &dest).map(|_| unread));
+        if r.is_err() {
+            let _ = std::fs::remove_dir_all(&staging);
+        }
         if remove_src {
             let _ = if zip { std::fs::remove_file(&src) } else { std::fs::remove_dir_all(&src) };
         }

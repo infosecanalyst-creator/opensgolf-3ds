@@ -56,6 +56,7 @@ mod holemarks;
 mod hud_ui;
 mod import;
 mod info_ui;
+mod iso;
 mod keys_ui;
 mod language;
 mod member_panel;
