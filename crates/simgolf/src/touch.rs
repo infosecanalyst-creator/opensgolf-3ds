@@ -2,7 +2,9 @@
 //! own layer: it turns touches into the mouse clicks and keys the game already understands.
 //!
 //! * One finger: a tap is a left click; dragging pans the course (or paints with the current tool); holding still for half a
-//!   second is a right click (undo, remove, close a screen).
+//!   second is a right click (undo, remove, close a screen). With the raise / lower tool armed, holding still over the course
+//!   lowers the ground instead (the desktop's Shift+click, which a tablet has no key for), and dragging on from there keeps
+//!   lowering.
 //! * Two fingers: dragging pans, pinching steps through the three zoom levels, twisting turns the view a quarter.
 //! * A few touch buttons down the right edge stand in for keys the screen has no button for (open the hole, turn the
 //!   building, game speed, repeat the last message); they show only once the screen has been touched.
@@ -56,6 +58,8 @@ pub struct Touch {
     /// A click waiting for the pointer's move to reach the screens (they act on what is under the pointer as of the last
     /// frame): the button, where, and frames left.
     queued: Option<(MouseButton, f32, f32, u8)>,
+    /// A long press lowering the ground: the Shift it holds down is let go with the finger.
+    lowering: bool,
 }
 
 /// The touch buttons: label (a text key) and the key each one presses.
@@ -141,6 +145,10 @@ impl Stage {
                     Mode::Mouse => self.mouse_button_up_event(MouseButton::Left, x, y),
                     _ => {}
                 }
+                if self.touch.lowering && was == Mode::Mouse {
+                    self.touch.lowering = false;
+                    self.shift = false;
+                }
                 if last || self.touch.fingers.is_empty() {
                     self.touch.mode = Mode::Idle;
                 } else if was == Mode::Gesture {
@@ -190,11 +198,24 @@ impl Stage {
     /// Called every frame: a finger held still long enough becomes a right click; the phone keyboard follows the name boxes.
     pub(crate) fn touch_update(&mut self) {
         if self.touch.mode == Mode::Pending && self.app.clock - self.touch.started > LONG_PRESS {
-            if let Some(&(_, p, _)) = self.touch.fingers.first() {
-                self.mouse_motion_event(p.0, p.1);
-                self.touch.queued = Some((MouseButton::Right, p.0, p.1, 2));
+            let p = self.touch.fingers.first().map(|f| f.1);
+            match p {
+                // the raise / lower tool over the course: the press lowers, as Shift+click does (issue #39), and the finger
+                // drags on lowering until it lifts
+                Some(p) if self.lowers_here(p) => {
+                    self.mouse_motion_event(p.0, p.1);
+                    self.shift = true;
+                    self.touch.lowering = true;
+                    self.mouse_button_down_event(MouseButton::Left, p.0, p.1);
+                    self.touch.mode = Mode::Mouse;
+                }
+                Some(p) => {
+                    self.mouse_motion_event(p.0, p.1);
+                    self.touch.queued = Some((MouseButton::Right, p.0, p.1, 2));
+                    self.touch.mode = Mode::Spent;
+                }
+                None => self.touch.mode = Mode::Spent,
             }
-            self.touch.mode = Mode::Spent;
         }
         if let Some((b, x, y, n)) = self.touch.queued {
             if n > 0 {
@@ -210,6 +231,16 @@ impl Stage {
             self.touch.keyboard = typing;
             show_keyboard(typing);
         }
+    }
+
+    /// Whether a long press at this drawable-pixel point lowers the ground: the raise / lower tool is armed and the point is
+    /// on the course, not on the dock or its panel.
+    fn lowers_here(&self, p: (f32, f32)) -> bool {
+        if self.app.screen != Screen::Play || !self.app.edit || self.app.tool != 1 || self.app.popup.is_some() {
+            return false;
+        }
+        let (vx, vy) = self.app.view.to_virtual(p.0, p.1);
+        vy < 452.0 && !(self.app.ui_ok && crate::render::dock_hit(vx, vy) >= 0)
     }
 
     /// A press on one of the touch buttons: its key, as if typed.

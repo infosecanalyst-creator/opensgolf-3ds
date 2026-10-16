@@ -1025,12 +1025,17 @@ impl App {
         }
     }
 
-    /// A click while the Save dialog is open: its Export as scenario button. Returns false when the dialog is not open.
+    /// A click while the Save dialog is open: its Save, Cancel and Export as scenario buttons (the port's own: Save and
+    /// Cancel are Enter and Esc, for a tablet with no keyboard, issue #45). Returns false when the dialog is not open.
     pub fn save_dialog_click(&mut self, x: f32, y: f32) -> bool {
         if self.title.save_name.is_none() {
             return false;
         }
-        if save_export_button().has(x, y) {
+        if save_ok_button().has(x, y) {
+            self.save_key(KeyCode::Enter);
+        } else if save_cancel_button().has(x, y) {
+            self.save_key(KeyCode::Escape);
+        } else if save_export_button().has(x, y) {
             self.save_dialog_export();
         }
         true
@@ -1049,25 +1054,38 @@ impl App {
         let s = Ui::new(self.draw_w, self.draw_h);
         let head = tr("STR_SAVE_PROMPT");
         let w = (text_width(head, 17.0) + 60.0).max(360.0);
-        // (the port's Export as scenario button makes it 30 taller than the original's)
-        let (x, y, h) = (400.0 - w / 2.0, 240.0, 120.0);
+        // (the port's Save / Cancel and Export as scenario buttons make it 60 taller than the original's)
+        let (x, y, h) = (400.0 - w / 2.0, 240.0, 150.0);
         s.fill(g, x - 3.0, y - 3.0, w + 6.0, h + 6.0, rgba(0.55, 0.55, 0.85, 0.95));
         s.fill(g, x, y, w, h, rgba(0.92, 0.92, 1.0, 0.97));
         s.text_centered(g, 400.0, y + 28.0, head, 17.0, rgb(0.15, 0.1, 0.4));
         s.fill(g, x + 20.0, y + 42.0, w - 40.0, 28.0, WHITE);
         let caret = if (self.clock * 2.0) as i64 % 2 == 0 { "|" } else { "" };
         s.text(g, x + 26.0, y + 62.0, &format!("{name}{caret}"), 16.0, rgb(0.05, 0.05, 0.2));
-        let b = save_export_button();
         let (px, py) = self.info.pointer;
-        s.fill(g, b.x, b.y, b.w, b.h, if b.has(px, py) { rgba(0.85, 0.85, 1.0, 1.0) } else { rgba(0.66, 0.66, 0.84, 1.0) });
-        s.text_centered(g, 400.0, b.y + 16.0, tr("STR_SAVE_EXPORT_SCENARIO"), 13.0, rgb(0.15, 0.1, 0.4));
+        for (b, label) in [
+            (save_ok_button(), "STR_SAVE_OK"),
+            (save_cancel_button(), "STR_SAVE_CANCEL"),
+            (save_export_button(), "STR_SAVE_EXPORT_SCENARIO"),
+        ] {
+            s.fill(g, b.x, b.y, b.w, b.h, if b.has(px, py) { rgba(0.85, 0.85, 1.0, 1.0) } else { rgba(0.66, 0.66, 0.84, 1.0) });
+            s.text_centered(g, b.x + b.w / 2.0, b.y + 16.0, tr(label), 13.0, rgb(0.15, 0.1, 0.4));
+        }
         g.flush();
     }
 }
 
+/// The Save dialog's Save and Cancel buttons (the port's own, as Enter and Esc).
+fn save_ok_button() -> Rect {
+    Rect::new(290.0, 324.0, 105.0, 24.0)
+}
+fn save_cancel_button() -> Rect {
+    Rect::new(405.0, 324.0, 105.0, 24.0)
+}
+
 /// The Save dialog's Export as scenario button (the port's own).
 fn save_export_button() -> Rect {
-    Rect::new(280.0, 324.0, 240.0, 22.0)
+    Rect::new(280.0, 356.0, 240.0, 22.0)
 }
 
 #[cfg(test)]
