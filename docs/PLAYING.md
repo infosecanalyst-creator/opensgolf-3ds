@@ -250,6 +250,16 @@ in settings.json under `extras`).
   hole on the Routing screen. Rebuilding the hole (painting over its tee or cup green and opening it again) gives it the
   game's par anew, a tournament's checklist sets its own pars, and switching the extra off puts every hole back to the
   game's par. Pars cannot be changed during a tournament.
+- **Left-handed golfers.** About one golfer in ten who arrives from now on is left-handed (decided by the game's own
+  random draws when the golfer is made, and kept with the saved game). A left-hander is drawn as the mirror image of a
+  right-hander while addressing the ball, swinging and following through, still facing the shot's target; walking,
+  waiting and everything else look as before. His shots bend the other way: his draw curves from left to right and his
+  fade from right to left, and his random hooks and slices are mirrored too, so the course's doglegs suit left- and
+  right-handers differently (the golfers' own shot planning knows it). Your pro gets a **Left-handed** tick under his
+  skills on Customise Golfer (the Player panel's Customize); with it his practice rounds and matches are played
+  left-handed, the aim line bending the left-hander's way for a draw or fade (the shot keys keep their names: D is still
+  his draw). Switching the extra off puts everyone back to right-handed; switching it on again brings the left-handers
+  back.
 
 On the **Time & sandbox** page:
 
@@ -286,12 +296,42 @@ a normal game too.
 
 Test hooks: `--extras BITS` sets the extras a new game starts with (1 Tab turns, 2 cut content, 4 hardcore, 8 higher staff
 limits, 16 animals, 32 set par, 64 or 128 the calendar at 1/2x or 1/4x, 256 pause the calendar, 512 freeze golfer
-happiness, 1024 unlock all; not saved to the settings); `--edit "R:N"` asks for par N on the Hole Stats' hole (its
+happiness, 1024 unlock all, 2048 left-handed golfers; not saved to the settings); `--edit "H:N,M,..."` makes golfer slots
+N, M... left-handed (-1 your pro); `--edit "R:N"` asks for par N on the Hole Stats' hole (its
 confirmation box; `R:N,1` sets it at once); `--edit "X:BITS"` sets the extras of the game being played; `--edit "T:x,y"`
 presses the Tab of the first extra with the pointer on tile x,y; `--edit "S:page[,design]"` opens the Amenities panel with the
 landmark tool on strip page 0 (own), 1 (cut) or 2 (animals); `--edit "b:x,y,4,t"` places landmark type t (19..32 the cut ones,
 100 + kind an animal pair); `--edit "M:6"` opens the extras box (`M:6,P` on page P: 0 Gameplay, 1 Time & sandbox, 2
 Interface).
+
+## Cheats (not in the original)
+
+A hidden key on the course, **Ctrl+Shift+C** (it can be moved on the Change keys screen, where it is called *Cheats
+box*), opens a **Cheats** box in the style of the game's own menus. Nothing changes until you pick a line; the box stays
+open for more until *Done* or Esc:
+
+- **Add §10,000**, **Add §100,000** and **Take away §10,000.** The cash changes at once; the Financial Report's income
+  and costs are not touched.
+- **Force a VIP visit now.** The next pair to tee off brings a visitor, whatever the ratings the game asks for and
+  whichever pair it is (a Sandbox Mode game too): the Corporate CEO, the County Commissioner or the Wealthy Heiress, the
+  next one whose turn it is that can come. They play and judge the round as ever, so a pleased commissioner still offers
+  land and a pleased heiress still donates a landmark. Greyed while no hole is open, during a tournament, or while one is
+  already on the way.
+- **Buy all the land.** Every tract of the property still for sale (as the Land screen shows them) becomes yours, for
+  nothing (it does not count as a purchase, so it does not raise the price of land later). Greyed when there is none left.
+- **Sandbox: pause the calendar / freeze golfer happiness / unlock all buildings and landmarks**, each with its state:
+  the same three switches as on the extras box's *Time & sandbox* page (see above), there in a click.
+
+Using any of the first five marks the game for good ("cheats used", saved with it; the sandbox switches are extras, not
+cheats, and do not). The Load Previous Game list then says **Cheats used** beside the course's theme, and a course shared
+from such a game (System Functions, *Share course*) carries no challenge: the friend's list shows its course record but
+not as one to beat. A game in which no cheat was used saves exactly as before.
+
+In the browser some browsers keep Ctrl+Shift+C for their developer tools' inspector; the page asks them not to, and
+where one insists, give the box another key on the Change keys screen.
+
+Test hooks: `--edit "C:N"` uses line N of the box (0 add §10,000, 1 add §100,000, 2 take away §10,000, 3 a VIP, 4 the
+land, 5 to 7 the sandbox switches), `--edit "C:0,1"` opens it; `SG_PRESS="Ctrl+Shift+C"` presses its key.
 
 ## Searching the Preferences
 
@@ -578,9 +618,9 @@ changed every key does what it did before.
 
 * **Change keys.** System Functions → Preferences → *Keyboard controls...* → *Change keys...* lists every action of the
   course screen with its key: the original's (tools, screens, the F keys, the shot shapes while your pro aims) and the
-  port's own (game speed, photo mode, hiding the interface, the measuring tape, the course editor's box). Click an action, then press its new key,
-  with or without Shift; Esc (or a click) while it waits keeps the old key. Two actions on one key are printed in red and
-  a line says which: only one of them answers (the shot shapes only clash with each other, since they count only while your pro
+  port's own (game speed, photo mode, hiding the interface, the measuring tape, the course editor's box, the hidden Cheats
+  box). Click an action, then press its new key, with or without Shift (and Ctrl); Esc (or a click) while it waits keeps
+  the old key. Two actions on one key are printed in red and a line says which: only one of them answers (the shot shapes only clash with each other, since they count only while your pro
   aims). *Reset to defaults* puts every key back. The digits (holes 1 to 18) and Esc cannot be given to an action. The
   keys are saved at once under `"controls"` in `settings.json` (only the ones that differ, e.g.
   `"controls": {"wasd": false, "keys": {"water": "Shift+Q", "zoom_in": "G"}}`; an action set to `""` has no key) and the

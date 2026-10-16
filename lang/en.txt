@@ -1335,6 +1335,8 @@ STR_EXTRAS_SPEED_QUARTER                :1/4x
 STR_EXTRAS_PAUSE_CALENDAR               : Sandbox: pause the calendar
 STR_EXTRAS_FREEZE_MOODS                 : Sandbox: freeze golfer happiness
 STR_EXTRAS_UNLOCK_ALL                   : Sandbox: unlock all buildings and landmarks
+# Left-handed golfers (sg_core::extras): about one golfer in ten, and a tick for your pro on Customise Golfer
+STR_EXTRAS_LEFTIES                      : Left-handed golfers
 STR_SET_PAR_1                           :Change hole {HOLE} from par {OLD} to par {NEW}?
 STR_SET_PAR_2                           :Golfers will be scored against the new par.
 STR_SET_PAR_YES                         : Yes, change the par.
@@ -2950,3 +2952,23 @@ STR_EDITOR_LOAD_TITLE                   :Load a Scenario into the Editor
 STR_EDITOR_LOAD_HELP                    :Click a scenario to go on with it. Scenarios in your packs folder are saved back in place, others as a copy.
 STR_EDITOR_LOAD_NONE                    :No scenario packs are installed.
 STR_EDITOR_LOADED                       :{NAME} is in the editor.
+# The Cheats box (cheats_ui.rs; a hidden key, Ctrl+Shift+C): options start with a space
+STR_CHEATS_TITLE                        :Cheats
+STR_CHEATS_NOTE                         :Any cheat you use is noted with the saved game.
+STR_CHEATS_ADD                          : Add {MONEY}
+STR_CHEATS_TAKE                         : Take away {MONEY}
+STR_CHEATS_VIP                          : Force a VIP visit now
+STR_CHEATS_LAND                         : Buy all the land
+# a Sandbox switch of the Extras box: its name (STR_EXTRAS_PAUSE_CALENDAR...) and on or off
+STR_CHEATS_SWITCH                       : {SWITCH}: {STATE}
+STR_CHEATS_ON                           :on
+STR_CHEATS_OFF                          :off
+STR_CHEATS_DONE                         : Done
+STR_TOAST_CHEAT_MONEY                   :Cheat: {MONEY}. Cash: {CASH}.
+STR_TOAST_CHEAT_VIP                     :Cheat: a VIP comes with the next pair to tee off.
+STR_TOAST_CHEAT_LAND                    :Cheat: all the land is yours.
+STR_CTL_CHEATS                          :Cheats box
+# the Load list's note on a game in which cheats were used
+STR_FILES_CHEATED                       :Cheats used
+# Customise Golfer, your pro, with the Left-handed golfers extra on
+STR_CUST_LEFT_HANDED                    :Left-handed

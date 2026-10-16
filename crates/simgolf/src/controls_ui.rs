@@ -182,7 +182,7 @@ impl App {
             r.status = None;
             return;
         }
-        let b = Binding { key: k, shift };
+        let b = Binding { key: k, shift, ctrl: self.ctrl_held };
         if controls::reserved(b) {
             r.status = Some((trf("STR_CTL_RESERVED", &[("KEY", &b.label())]), true));
             self.ui_sound(0x18);

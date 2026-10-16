@@ -233,7 +233,17 @@ impl DialogBox {
     }
 }
 
+/// The Left-handed golfers extra's tick for the player's pro: the row under the ten skills (box and words).
+fn left_tick_rect() -> crate::render::Rect {
+    crate::render::Rect::new(498.0, 61.0 + 16.0 * 10.0 - 3.0, 160.0, 14.0)
+}
+
 impl App {
+    /// Whether Customise Golfer shows the pro's Left-handed tick: on the player's own record with the extra on.
+    fn left_tick_shown(&self, c: &Customise) -> bool {
+        c.record == 0 && c.pro_mode && self.club.extras.lefties
+    }
+
     /// The golfer card's Customize: the editor on golfer `slot`'s person record (0x41ea4f).
     pub fn open_customise(&mut self, slot: usize) {
         let Some(gg) = self.club.g.get(slot) else { return };
@@ -324,6 +334,13 @@ impl App {
         }
         if let Some(page) = c.picker {
             self.cust_picker_click(&mut c, page, vx, vy, right);
+            self.cust = Some(c);
+            return;
+        }
+        // the Left-handed golfers extra: the pro's own tick under his skills
+        if self.left_tick_shown(&c) && left_tick_rect().has(vx, vy) {
+            self.club.pro_left = !self.club.pro_left;
+            self.ui_sound(0x0b);
             self.cust = Some(c);
             return;
         }
@@ -835,6 +852,20 @@ impl App {
                     s.text(g, 501.0, top(y, SMALL), &format!("+{}%", v as i32 * 10), SMALL, rgb(0.0, 0.0, 0.0));
                 }
                 s.text(g, 546.0, top(y, SMALL), sg_core::pro::skill_name(i), SMALL, if v != 0 { rgb(0.0, 0.0, 0.0) } else { c15(0x4210) });
+            }
+            // the Left-handed golfers extra (the port's own): a tick for the player's pro, a row under the skills drawn as
+            // they are, lit when he is left-handed
+            if self.left_tick_shown(&c) {
+                let r = left_tick_rect();
+                let on = self.club.pro_left;
+                let y = r.y + 3.0;
+                s.fill(g, 498.0, y - 3.0, 42.0, 14.0, rgb(0.0, 0.0, 0.0));
+                s.fill(g, 499.0, y - 2.0, 40.0, 12.0, c15(if on { 0x7d08 } else { 0x21e8 }));
+                if on {
+                    s.text_centered(g, 519.0, top(y, SMALL), "L", SMALL, rgb(0.0, 0.0, 0.0));
+                }
+                let col = if on { rgb(0.0, 0.0, 0.0) } else { c15(0x4210) };
+                s.text(g, 546.0, top(y, SMALL), tr("STR_CUST_LEFT_HANDED"), SMALL, col);
             }
         } else {
             self.draw_cust_member(g, &s, &p, c.record, hit);

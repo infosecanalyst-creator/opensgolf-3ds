@@ -252,7 +252,7 @@ mod tests {
         p.ex.season_speed = 2;
         p.enh.fx_rain = true;
         p.ui.people = true;
-        p.keys.bind(controls::action("zoom_in"), Some(controls::Binding { key: miniquad::KeyCode::Q, shift: false }));
+        p.keys.bind(controls::action("zoom_in"), Some(controls::Binding { key: miniquad::KeyCode::Q, shift: false, ctrl: false }));
         let c = search("", true, &p);
         assert_eq!(c.len(), 5, "{c:?}");
         assert!(c.contains(&Hit::Extra(ExtrasLine::Game(sg_core::extras::SEASON_SPEED))));

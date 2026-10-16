@@ -352,6 +352,10 @@ pub fn plan_shot(cl: &mut Club, c: &mut Course, rng: &mut ExeRng, g: usize, user
     if mode < 2 {
         cv = curve_draw(rng) * 0x50000;
     }
+    // the port's Left-handed golfers extra (sg_core::extras): a left-hander's hook and slice, draw and fade bend the other
+    // way (`bend` is the shape as it curves; `shape` stays what was chosen, for the skills and thoughts)
+    let hand = if cl.left_handed(g) { -1 } else { 1 };
+    cv *= hand;
     if mode == 1 {
         cv /= 3;
     }
@@ -437,9 +441,10 @@ pub fn plan_shot(cl: &mut Club, c: &mut Course, rng: &mut ExeRng, g: usize, user
         }
     }
     let mut h_shape = cl.g[g].heading;
-    if shape == 1 {
+    let bend = shape * hand;
+    if bend == 1 {
         h_shape = h_shape.wrapping_add(0x1555_5554);
-    } else if shape == -1 {
+    } else if bend == -1 {
         h_shape = h_shape.wrapping_sub(0x1555_5554);
     }
     if cl.g[g].club != 13 {
@@ -560,13 +565,14 @@ pub fn plan_shot(cl: &mut Club, c: &mut Course, rng: &mut ExeRng, g: usize, user
     let mut extra = 0;
     let mut cap = max_speed;
     if shape == 1 || shape == -1 {
+        let bend = shape * hand;
         let base = cl.g[g].heading;
         let turn: i32 = if cl.g[g].flags & flag::BACKSPIN != 0 { 0x0fff_ffff } else { 0x1555_5554 };
-        cl.g[g].heading = base.wrapping_add((turn * shape) as u32);
-        if g as i32 == gary && ((shape == 1 && cv > 0) || (shape == -1 && cv < 0)) {
+        cl.g[g].heading = base.wrapping_add((turn * bend) as u32);
+        if g as i32 == gary && ((bend == 1 && cv > 0) || (bend == -1 && cv < 0)) {
             cv /= 2;
         }
-        extra = -0x239_a955 * shape;
+        extra = -0x239_a955 * bend;
         let sp = cl.g[g].speed;
         cl.g[g].speed = if dist < 300 {
             if dist < 0xfa {

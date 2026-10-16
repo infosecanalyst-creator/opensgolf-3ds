@@ -106,7 +106,8 @@ impl App {
         let gg = &self.club.g[gi];
         let ball = (gg.bx, gg.by);
         let opt = self.club.planner.option;
-        let line = sg_core::pro::aim_line(ball, &p, opt);
+        // a left-handed pro's draw and fade bend the other way (the Left-handed golfers extra)
+        let line = sg_core::pro::aim_line(ball, &p, self.club.hand_bend(gi, opt));
         let zoom = self.exe_zoom();
         let lifts = sg_core::pro::aim_lifts(p.distance, opt, zoom);
         let mv = self.mv;
@@ -248,7 +249,10 @@ impl App {
             let s = s * p.scale;
             let (l, r) = (-ax * s, (w - ax) * s);
             let (t, b) = (ay * s, -(h - ay) * s); // up is positive
+                                                  // a mirrored prop (a left-handed golfer's swing) is flipped left to right about its anchor
+            let flip = if p.mirror { -1.0 } else { 1.0 };
             let c = |cx: f32, cy: f32, tu: f32, tv: f32| {
+                let cx = cx * flip;
                 let v = Vert::new(p.x + rx * cx + ux * cy, y + ry * cx + uy * cy, p.z + rz * cx + uz * cy, tu, tv);
                 match tint {
                     Some(t) => v.col(t),
@@ -370,6 +374,12 @@ impl App {
         }
         if let Some(v) = p.view {
             view = v.rem_euclid(views.max(1));
+        }
+        if p.mirror && views >= 8 {
+            // a mirrored prop (a left-handed golfer's swing): the view whose mirror image faces the same way on the screen.
+            // Views 3 and 7 face straight down and up the screen (the people's clips: each mirrors into itself), so view k
+            // mirrors into view 6 - k.
+            view = (6 - view).rem_euclid(8);
         }
         view
     }

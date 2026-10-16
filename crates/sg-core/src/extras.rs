@@ -15,8 +15,13 @@
 //! * `unlock_all`: Sandbox: unlock all buildings and landmarks, as a Sandbox Mode game has them (`Club::landmarks_shown`;
 //!   the building counter in the game, app.rs `unlocked`).
 //!
-//! The last three are named "Sandbox: ..." in the Extras box as they are what a sandbox player wants most, but each works in
-//! a normal game too.
+//! * `lefties`: Left-handed golfers: about one new golfer in ten is left-handed (`Golfer::left`, drawn from the game's
+//!   generator when the golfer is made), and the player's pro may be (`Club::pro_left`, a tick on Customise Golfer). A
+//!   left-hander is drawn mirrored while addressing the ball and swinging, and his shots bend the other way: his draw goes
+//!   left to right and his fade, hook and slice are mirrored too (`Club::left_handed`, planner.rs).
+//!
+//! Pause the calendar, Freeze happiness and Unlock all are named "Sandbox: ..." in the Extras box as they are what a sandbox
+//! player wants most, but each works in a normal game too.
 
 use serde::{Deserialize, Serialize};
 
@@ -35,11 +40,13 @@ pub struct Extras {
     pub pause_calendar: bool,
     pub freeze_moods: bool,
     pub unlock_all: bool,
+    pub lefties: bool,
 }
 
 /// The options in the order the Extras box lists them (text keys of their lines). Option 6 has three values (a line with
 /// {VALUE}, `SPEED_KEYS`), the others are ticks; `Extras::option` and `Extras::set_option` read and set them by index.
-pub const OPTION_KEYS: [&str; 10] = [
+/// Left-handed golfers (10) came after the sandbox switches and is shown on the Gameplay page (extras_ui.rs `page_lines`).
+pub const OPTION_KEYS: [&str; 11] = [
     "STR_EXTRAS_ROTATE",
     "STR_EXTRAS_CUT_CONTENT",
     "STR_EXTRAS_HARDCORE",
@@ -50,7 +57,11 @@ pub const OPTION_KEYS: [&str; 10] = [
     "STR_EXTRAS_PAUSE_CALENDAR",
     "STR_EXTRAS_FREEZE_MOODS",
     "STR_EXTRAS_UNLOCK_ALL",
+    "STR_EXTRAS_LEFTIES",
 ];
+
+/// The option of `OPTION_KEYS` that is Left-handed golfers.
+pub const LEFTIES: usize = 10;
 
 /// The option of `OPTION_KEYS` that is the calendar speed.
 pub const SEASON_SPEED: usize = 6;
@@ -72,6 +83,7 @@ impl Extras {
         pause_calendar: false,
         freeze_moods: false,
         unlock_all: false,
+        lefties: false,
     };
 
     /// Everything off (the original game).
@@ -80,7 +92,7 @@ impl Extras {
     }
 
     /// The options as bits (the `X:` test hook and `--extras`): one bit per tick in `OPTION_KEYS` order, except that the
-    /// calendar speed takes two (bits 6 and 7), so the ticks after it sit one bit further on (8, 9, 10). The first six
+    /// calendar speed takes two (bits 6 and 7), so the ticks after it sit one bit further on (8, 9, 10, 11). The first six
     /// keep the bits they always had.
     pub fn bits(&self) -> u32 {
         self.rotate as u32
@@ -93,6 +105,7 @@ impl Extras {
             | (self.pause_calendar as u32) << 8
             | (self.freeze_moods as u32) << 9
             | (self.unlock_all as u32) << 10
+            | (self.lefties as u32) << 11
     }
 
     pub fn from_bits(b: u32) -> Extras {
@@ -107,6 +120,7 @@ impl Extras {
             pause_calendar: b & 1 << 8 != 0,
             freeze_moods: b & 1 << 9 != 0,
             unlock_all: b & 1 << 10 != 0,
+            lefties: b & 1 << 11 != 0,
         }
     }
 
@@ -123,6 +137,7 @@ impl Extras {
             7 => self.pause_calendar as u8,
             8 => self.freeze_moods as u8,
             9 => self.unlock_all as u8,
+            LEFTIES => self.lefties as u8,
             _ => 0,
         }
     }
@@ -141,6 +156,7 @@ impl Extras {
             7 => self.pause_calendar = on,
             8 => self.freeze_moods = on,
             9 => self.unlock_all = on,
+            LEFTIES => self.lefties = on,
             _ => {}
         }
     }
@@ -316,6 +332,22 @@ impl crate::golfer::Club {
             self.landmarks_owned | 0x3fff
         } else {
             self.landmarks_owned
+        }
+    }
+
+    /// The Left-handed golfers extra: whether golfer slot `g` is left-handed (never while the extra is off, so switching it
+    /// off puts every golfer back to the original). The player's pro goes by `pro_left`, whoever holds his slot.
+    pub fn left_handed(&self, g: usize) -> bool {
+        self.extras.lefties && if g as i32 == self.gary { self.pro_left } else { self.g.get(g).is_some_and(|x| x.left) }
+    }
+
+    /// A shot shape's bend as golfer `g` swings it: a left-hander's draw (1) bends as a right-hander's fade (-1) and the
+    /// other way round; straight and the other shots (0, 3, 4) are not bent.
+    pub fn hand_bend(&self, g: usize, shape: i32) -> i32 {
+        if self.left_handed(g) && shape.abs() == 1 {
+            -shape
+        } else {
+            shape
         }
     }
 
