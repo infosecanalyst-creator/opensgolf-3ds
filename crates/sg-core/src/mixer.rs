@@ -68,6 +68,8 @@ struct State {
     aliased: Vec<(String, String)>,
     /// Clips the free set stood in for, missing or undecodable.
     stand_ins: usize,
+    /// Clips of the player's copy that could not be decoded, with the reason (for the sound report).
+    unreadable: Vec<(String, String)>,
 }
 
 pub struct Mixer {
@@ -154,6 +156,7 @@ impl Mixer {
                 missing: Vec::new(),
                 aliased: Vec::new(),
                 stand_ins: 0,
+                unreadable: Vec::new(),
             }),
         };
         m.add_dir("", sounds_dir);
@@ -236,6 +239,9 @@ impl Mixer {
         }
         for (a, b) in &s.aliased {
             r += &format!("found elsewhere: {a} -> {b}\n");
+        }
+        for (a, e) in &s.unreadable {
+            r += &format!("cannot be read: {a} ({e})\n");
         }
         if !s.last_error.is_empty() {
             r += &format!("last error: {}\n", s.last_error);
@@ -350,6 +356,9 @@ impl Mixer {
                     // said once per clip: the clip is remembered (as the free set's, or as silence) and not read again
                     if let Some(Err(e)) = failed {
                         eprintln!("sound: {e}");
+                        if let Ok(mut st) = self.state.lock() {
+                            st.unreadable.push((key.to_string(), e.clone()));
+                        }
                         self.set_error(e);
                     }
                     let free = self.decode_free(key);
