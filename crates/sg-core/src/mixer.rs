@@ -72,6 +72,17 @@ struct State {
     unreadable: Vec<(String, String)>,
 }
 
+/// What the player's copy lacks of the game's sounds ([`Mixer::shortfall`]); the free set's sounds stand in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Shortfall {
+    /// No sound files at all (empty or missing Sounds and SimsFX folders).
+    NoneAtAll,
+    /// Nothing under Sounds; only the Sims' voice clips in SimsFX.
+    NoSoundsFolder { voices: usize },
+    /// More than a quarter of the game's sounds are not in the copy.
+    Missing { missing: usize, of: usize },
+}
+
 pub struct Mixer {
     /// lower-case relative path (forward slashes) -> real path
     index: BTreeMap<String, PathBuf>,
@@ -98,7 +109,8 @@ fn sound_key(rel: &Path) -> Option<(String, bool)> {
     if key.ends_with(".wav") {
         Some((key, true))
     } else {
-        key.strip_suffix(".ogg").map(|stem| (format!("{stem}.wav"), false))
+        // (an .mp3 likewise: copies repacked to save space; assets::decode_sound tells the codings apart by their bytes)
+        key.strip_suffix(".ogg").or_else(|| key.strip_suffix(".mp3")).map(|stem| (format!("{stem}.wav"), false))
     }
 }
 
@@ -252,6 +264,35 @@ impl Mixer {
     /// True when every clip comes from the free set (the player's copy has no sounds).
     pub fn all_free(&self) -> bool {
         self.all_free
+    }
+
+    /// The player's own sound files: (under Sounds, under SimsFX).
+    pub fn own_counts(&self) -> (usize, usize) {
+        let voices = self.index.keys().filter(|k| k.starts_with("simsfx/")).count();
+        (self.index.len() - voices, voices)
+    }
+
+    /// How much of the game's sound the free set has to make up for (the port's own check, said to the player once at
+    /// start): None when the player's copy has its sounds. A copy whose Sounds and SimsFX folders are empty (some
+    /// downloaded copies leave them out, and a zip's Deflate64 sounds were left out before crate::inflate64) used to play
+    /// the free set's sounds with nothing said, and one that kept only SimsFX even logged its 76 voice clips as "sounds
+    /// from your SimGolf files".
+    pub fn shortfall(&self) -> Option<Shortfall> {
+        if self.free.is_empty() {
+            return None;
+        }
+        let (sounds, voices) = self.own_counts();
+        if sounds + voices == 0 {
+            return Some(Shortfall::NoneAtAll);
+        }
+        if sounds == 0 {
+            return Some(Shortfall::NoSoundsFolder { voices });
+        }
+        // the free set mirrors the original's Sounds folder clip for clip: the ones the copy has no file for, not even
+        // under another folder or name (alias_of)
+        let wanted: Vec<&String> = self.free.keys().filter(|k| !k.starts_with("simsfx/")).collect();
+        let missing = wanted.iter().filter(|k| !self.index.contains_key(k.as_str()) && self.alias_of(k).is_none()).count();
+        (missing * 4 > wanted.len()).then_some(Shortfall::Missing { missing, of: wanted.len() })
     }
 
     /// Decodes a few of the game's most used clips and says whether the player's own sounds play: Err names what failed.
@@ -635,6 +676,40 @@ mod tests {
         let r = m.report();
         assert!(r.contains("not in the player's copy (1)"), "{r}");
         assert!(r.contains("stood in for so far: 1"), "{r}");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_trimmed_copy_says_what_it_lacks() {
+        let d = std::env::temp_dir().join(format!("sg_mixer_trim_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("Sounds")).unwrap();
+        std::fs::create_dir_all(d.join("SimsFX")).unwrap();
+        let mixer = || {
+            let mut m = Mixer::new(&d.join("Sounds"));
+            m.add_dir("simsfx", &d.join("SimsFX"));
+            m.with_fallback();
+            m
+        };
+        // both folders empty (some downloaded copies)
+        assert_eq!(mixer().shortfall(), Some(Shortfall::NoneAtAll));
+        assert!(mixer().all_free());
+        // only the Sims' voices kept
+        std::fs::write(d.join("SimsFX/Hello.wav"), tone_wav(100)).unwrap();
+        assert_eq!(mixer().shortfall(), Some(Shortfall::NoSoundsFolder { voices: 1 }));
+        // a few sounds, an .mp3 among them
+        std::fs::write(d.join("Sounds/Applause.wav"), tone_wav(100)).unwrap();
+        std::fs::write(d.join("Sounds/Putt.mp3"), [0xff, 0xfb, 0x90, 0]).unwrap();
+        let m = mixer();
+        assert_eq!(m.own_counts(), (2, 1));
+        assert!(matches!(m.shortfall(), Some(Shortfall::Missing { missing, of }) if missing + 2 >= of && of > 100));
+        // every clip of the game there (as the free set names them): nothing to say
+        for k in m.free.keys().filter(|k| !k.starts_with("simsfx/")) {
+            let p = d.join("Sounds").join(k);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, tone_wav(10)).unwrap();
+        }
+        assert_eq!(mixer().shortfall(), None);
         let _ = std::fs::remove_dir_all(&d);
     }
 

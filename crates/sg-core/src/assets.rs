@@ -396,6 +396,10 @@ pub fn decode_sound(d: &[u8]) -> Result<Wav, String> {
     if d.len() >= 4 && &d[0..4] == b"OggS" {
         return decode_ogg(d);
     }
+    // a bare MP3 (an ID3 tag, or an MPEG frame's sync bits), whatever the file is called: copies repacked to save space
+    if d.len() >= 4 && (&d[0..3] == b"ID3" || (d[0] == 0xff && d[1] & 0xe0 == 0xe0)) {
+        return crate::wav::mp3(d);
+    }
     decode_wav(d)
 }
 

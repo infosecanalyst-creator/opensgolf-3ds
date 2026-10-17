@@ -39,8 +39,25 @@ how to make a .cdr instead. **The CD as a folder**: a folder that is the mounted
 Windows), a copy of its files, or a folder above either (names in any case), with no installed game in it, is imported
 as its image would be: the `data1.hdr` and `data*.cab` found there are unpacked in place (crates/simgolf/src/iso.rs
 `unpack_folder`). A folder with neither the installed game nor the CD's installer is refused with a message saying so.
-Other disc formats (BIN/CUE, MDF and UDF) and older InstallShield archives are not supported. The browser page continues
-to accept folders and ordinary game ZIPs (a CD, image or .dmg there gets a message pointing to the desktop version).
+Other disc formats (BIN/CUE, MDF and UDF) and older InstallShield archives are not supported. The browser page takes
+the same: an .iso or .cdr (picked as a .zip is, or inside a .zip), a .zip of the CD's files, or the CD picked as a folder.
+It reads the image a part at a time from the picked file (never whole: iPad Safari could not hold it with the game's
+files) and unpacks the installer there, with the same reading as iso.rs ported to the page (web/opensgolf.js, "the SimGolf
+CD in the browser"; the page unpacks before the game's WebAssembly starts), showing "Unpacking the CD: N of M files"; the
+files are the desktop import's byte for byte. A .dmg gets the message on making a .cdr; .7z and RAR archives are refused
+with a message (unpack them on a computer first).
+
+**Sounds the copy lacks.** The original's own sound plays wherever the player's copy has the clip; a clip it lacks or
+cannot decode (WAV in PCM, float, A-law, mu-law, MS or IMA ADPCM or MP3, or an .ogg or .mp3 file in its place) is the
+free set's, clip by clip. When the copy has no sounds at all (empty `Sounds` and `SimsFX` folders: some downloaded
+copies leave them out), only the Sims' voices in `SimsFX`, or lacks more than a quarter of the game's sounds, a box says so once
+when the game starts and the ticker on every start (sg_core::mixer `shortfall`; the console or log has a `sound:` line
+with the counts). The browser page also sums up what it found after loading the files ("Found in your files: art ✓,
+sounds: N files (music: N), Sims' voices: N"), over the game for a few seconds (longer when something is missing), and
+names files a zip holds in a compression it cannot unpack (BZIP2, LZMA...; the app's importer says how many too).
+Deflate64, which Windows' own zipper uses for big files such as the sounds (and which iPad's Files app cannot unpack: it
+shows such folders empty), is read by the browser, desktop and Android alike (sg_core::inflate64; issue #10). Sound folders a zip has
+beside the game folder rather than in it are used as if they were in it.
 
 Test hook: `SG_PICK_FOLDER=DIR` takes DIR (a folder, the CD as a folder, a .zip, .iso or .cdr) as picked, right after
 start up (`SG_PICK_FOLDER=free` chooses the free graphics; with `--png` the still waits for the import and the restart); on Android the intent extra `sg_pick` does the same
@@ -869,6 +886,10 @@ keyboard. `--fullscreen` starts full screen on any computer (F11 or Alt+Enter sw
 ## Touch (phones and tablets)
 
 The same touch controls work in the browser and in the Android app (crates/simgolf/src/touch.rs).
+
+In a browser the game covers what can be seen of the page (the visual viewport), and follows Safari's address, tab and
+bottom bars as they show and hide and the device as it turns: on an iPad or iPhone the bottom of the game (the dock, a
+panel's lower row) used to sit under the bars (web/opensgolf.js `sgFitCanvas`).
 
 Tap for a click; drag one finger to scroll the course (or to paint with the selected tool); hold a finger still for half a
 second for a right click (undo, remove, close a screen). With the raise / lower tool (the Elevation panel, or =), a tap raises

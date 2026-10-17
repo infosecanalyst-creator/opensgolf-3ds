@@ -65,9 +65,11 @@ OpenSGolf needs a set of graphics, sounds and text. There are two:
 
 - **The original SimGolf files.** If you own the game, point OpenSGolf at your SimGolf folder, the one containing `Data`,
   `Flics` and `Sounds` (on Windows usually `C:\Program Files\Maxis\SimGolf`), or at a .zip of it. In the browser,
-  choose *Choose game folder*; in the app, choose *Use my SimGolf files…* on the title screen. The app also takes the
-  SimGolf CD itself, or an image of it (.iso, or a Mac's .cdr), with nothing to install ([INSTALL.md](docs/INSTALL.md)). The files are read on your
-  own device and never uploaded.
+  choose *Choose game folder*; in the app, choose *Use my SimGolf files…* on the title screen. The app and the
+  browser also take the SimGolf CD itself, or an image of it (.iso, or a Mac's .cdr), with nothing to install ([INSTALL.md](docs/INSTALL.md)). The files are read on your
+  own device and never uploaded. If your copy's `Sounds` and `SimsFX` folders are empty (some downloaded copies leave the
+  sounds out), the game still plays, with the free OpenSGolf sounds, and says so; a full installed copy or the CD has the
+  original's. Zips made by Windows (Deflate64 for big files) are read too.
 - **opensgolf-free**, the free base set. Like OpenGFX for OpenTTD, it contains nothing from the original: art, sounds and
   text made by the engine itself. It is used automatically when no SimGolf files are found. It is simple for now and open
   to contributions from artists.
@@ -232,7 +234,9 @@ and title screen) and keeps the stills.
 
 `web/build.sh` builds the browser version into `web/dist` (needs `rustup target add wasm32-unknown-unknown`). Serve that folder
 with any static web server, for example `python3 -m http.server -d web/dist`, and open it. The page asks for the folder of your
-own SimGolf copy (the one containing Flics, Sounds and Data); its files are read into the browser tab only, nothing is uploaded.
+own SimGolf copy (the one containing Flics, Sounds and Data), a .zip of it, or the SimGolf CD (an .iso or a Mac's .cdr, a
+.zip of either, or the CD picked as a folder: the page unpacks the installer's cabinets itself); its files are read into the
+browser tab only, nothing is uploaded.
 Without one, *Play with free graphics* starts on the free base set.
 Sound starts with the first click, key or tap anywhere on the page (a browser rule; the game shows a note while the browser
 still holds it back) and is queued on the browser's audio thread, so a slow frame does not break it up. Saved games are

@@ -1,5 +1,5 @@
 //! A small reader for .zip files, enough for content packs (docs/MODDING.md): the central directory, and entries that are
-//! stored or deflated. The whole archive is kept in memory (packs are small, and in a browser it is already in memory).
+//! stored, deflated or Deflate64 (crate::inflate64). The whole archive is kept in memory (packs are small, and in a browser it is already in memory).
 use std::collections::BTreeMap;
 
 pub struct Zip {
@@ -69,8 +69,8 @@ impl Zip {
         self.modes.get(name).copied()
     }
 
-    /// The contents of an entry, by its exact name. None when it is missing, uses a method other than stored or deflate,
-    /// or is damaged.
+    /// The contents of an entry, by its exact name. None when it is missing, uses a method other than stored, deflate or
+    /// Deflate64, or is damaged.
     pub fn read(&self, name: &str) -> Option<Vec<u8>> {
         let &(method, csize, size, local) = self.entries.get(name)?;
         if self.data.get(local..local + 4)? != [0x50, 0x4b, 0x03, 0x04] {
@@ -81,6 +81,8 @@ impl Zip {
         match method {
             0 => Some(body.to_vec()),
             8 => miniz_oxide::inflate::decompress_to_vec_with_limit(body, size.max(1) * 2 + 1024).ok(),
+            // Deflate64 (Windows' zipper for big files)
+            9 => crate::inflate64::inflate(body, size, true).ok(),
             _ => None,
         }
     }

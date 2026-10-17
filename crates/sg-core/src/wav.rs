@@ -299,6 +299,13 @@ mod tests {
         assert!((10000..13000).contains(&n), "{n} samples");
         let peak = w.pcm.chunks_exact(2).map(|s| i16::from_le_bytes([s[0], s[1]]).unsigned_abs()).max().unwrap();
         assert!((3000..4500).contains(&peak), "peak {peak}"); // ffmpeg's sine source is at 1/8 of full scale
+                                                              // the same stream as a bare .mp3 (or a .wav that is one): told apart by its bytes
+        let d = include_bytes!("../tests/data/tone_mp3.wav");
+        let at = d.windows(4).position(|w| w == b"data").unwrap() + 8;
+        let bare = crate::assets::decode_sound(&d[at..]).unwrap();
+        assert_eq!(bare.sample_rate, 22050);
+        // (within a frame or two of the WAV's: the bytes after its data chunk end the stream differently)
+        assert!(bare.pcm.len().abs_diff(w.pcm.len()) <= 2 * 1152 * 2, "{} {}", bare.pcm.len(), w.pcm.len());
     }
 
     #[test]
