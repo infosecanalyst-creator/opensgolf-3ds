@@ -80,6 +80,8 @@ impl App {
         // Enhanced graphics' grass tufts (fx_life.rs), on the ground and under the sprites
         if crate::fx::active() {
             self.fx_grass(g, &Uniforms::flat(&proj, &mv));
+            // and the reeds, lily pads, ducks, fish and spray on the water (fx_water.rs)
+            self.fx_water_life(g, &Uniforms::flat(&proj, &mv));
         }
         self.draw_props(g, &Uniforms::flat(&proj, &mv));
         if crate::fx::active() {
@@ -104,7 +106,8 @@ impl App {
         let gg = &self.club.g[gi];
         let ball = (gg.bx, gg.by);
         let opt = self.club.planner.option;
-        let line = sg_core::pro::aim_line(ball, &p, opt);
+        // a left-handed pro's draw and fade bend the other way (the Left-handed golfers extra)
+        let line = sg_core::pro::aim_line(ball, &p, self.club.hand_bend(gi, opt));
         let zoom = self.exe_zoom();
         let lifts = sg_core::pro::aim_lifts(p.distance, opt, zoom);
         let mv = self.mv;
@@ -246,7 +249,10 @@ impl App {
             let s = s * p.scale;
             let (l, r) = (-ax * s, (w - ax) * s);
             let (t, b) = (ay * s, -(h - ay) * s); // up is positive
+                                                  // a mirrored prop (a left-handed golfer's swing) is flipped left to right about its anchor
+            let flip = if p.mirror { -1.0 } else { 1.0 };
             let c = |cx: f32, cy: f32, tu: f32, tv: f32| {
+                let cx = cx * flip;
                 let v = Vert::new(p.x + rx * cx + ux * cy, y + ry * cx + uy * cy, p.z + rz * cx + uz * cy, tu, tv);
                 match tint {
                     Some(t) => v.col(t),
@@ -368,6 +374,12 @@ impl App {
         }
         if let Some(v) = p.view {
             view = v.rem_euclid(views.max(1));
+        }
+        if p.mirror && views >= 8 {
+            // a mirrored prop (a left-handed golfer's swing): the view whose mirror image faces the same way on the screen.
+            // Views 3 and 7 face straight down and up the screen (the people's clips: each mirrors into itself), so view k
+            // mirrors into view 6 - k.
+            view = (6 - view).rem_euclid(8);
         }
         view
     }
@@ -746,6 +758,8 @@ impl App {
         self.draw_files_button(g, &s);
         // and "Check for updates" (update.rs)
         self.draw_update_button(g, &s);
+        // and "Course editor..." (editor.rs)
+        self.draw_editor_button(g, &s);
         if !self.toast.is_empty() && self.clock < self.toast_until {
             let w = text_width(&self.toast, 18.0) + 24.0;
             s.fill(g, 400.0 - w / 2.0, 560.0, w, 30.0, rgba(0.1, 0.1, 0.3, 0.9));
@@ -824,12 +838,18 @@ impl App {
         }
         let s = Ui::new(self.draw_w, self.draw_h);
         self.view = s.view;
+        // the OpenSGolf extras' landing map (insight.rs): dots on the course, under the golfers' names
+        if self.great_shot.is_none() {
+            self.draw_landing_map(g, &s);
+        }
         // the golfers' names and thoughts belong to the course, under the HUD
         self.draw_names(g, &s);
         self.draw_thoughts(g, &s);
         // the OpenSGolf extras' path view and name tag (extras.rs), over the course and under the HUD
         if self.great_shot.is_none() {
             self.draw_path_view(g, &s);
+            self.draw_staff_view(g, &s);
+            self.draw_landing_legend(g, &s);
             self.draw_name_tag(g, &s);
         }
         // the great-shot SimFoto is drawn over the course alone: footage of the original shows the frozen frame without
@@ -884,6 +904,7 @@ impl App {
         self.draw_paused(g, &s);
         s.anchor(Anchor::Bottom);
         self.draw_following(g, &s);
+        self.draw_pause_reason(g, &s);
         s.anchor(Anchor::Top);
         // the ticker goes over the golfer card, as in the exe's frame
         self.draw_ticker(g, &s);

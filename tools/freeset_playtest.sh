@@ -4,6 +4,8 @@
 #   2. starts a new game, builds a hole and hires a groundskeeper, lets golfers play for about three in-game months and saves,
 #   3. loads the save and opens every report screen,
 #   4. starts the example scenario with the example script pack on, saves, and opens its goals report,
+#   5. makes a scenario in the course editor on a sample heightmap, loads it back into the editor and saves it again (the
+#      files must not change), then plays it,
 # each step on a virtual display, failing on a crash, a non-zero exit or any missing-file or decode error in the output.
 #
 # usage: tools/freeset_playtest.sh [OUT_DIR]      (run from the repository root after cargo build --release)
@@ -76,6 +78,30 @@ step scenario-start --screen scenarios --time 2
 step scenario-play --scenario example-scenario-desert-challenge --time 60 --save-game "$OUT/save/scenario.sgs"
 grep -E "scenario|scripts:" "$OUT/scenario-play.log" | sed 's/^/     /'
 step scenario-goals --load-game "$OUT/save/scenario.sgs" --screen goals --time 2
+
+echo "== the course editor: a scenario made on a heightmap, saved, loaded back unchanged, and played"
+# a minute in the editor: no time passes, no golfers come, and building and painting cost nothing (the cash stays 75000)
+step editor-make --editor --property 0 --clock 4242 --heightmap tools/heightmaps/valley.png \
+    --editor-set "name=Valley Test;author=CI;cash=75000;difficulty=1;water=2;goal=holes:1@2003;goal=members:5;tract=1:own" \
+    --edit "t:16,30,0;t:32,24,1;p:20,29,2,0,1;p:24,28,2,0,1;p:28,26,2,0,1;o;B:40,40,44,44,2" \
+    --save-scenario valley-test --screen editor --time 60 --save-game "$OUT/editor.sgs"
+grep -E "editor|saved" "$OUT/editor-make.log" | sed 's/^/     /'
+if ! grep -q "scenario valley-test saved: cash 75000, game tick 0" "$OUT/editor-make.log" ||
+    ! grep -q "editor.sgs at tick 0, cash 75000" "$OUT/editor-make.log"; then
+    echo "FAIL editor-make: the editor charged money or ran the game"
+    fail=1
+fi
+cp -r "$OUT/save/packs/valley-test" "$OUT/valley-test-first"
+step editor-load --edit-scenario valley-test --save-scenario valley-test --time 2
+for f in pack.toml scenario.toml course.sgs; do
+    if ! cmp -s "$OUT/valley-test-first/$f" "$OUT/save/packs/valley-test/$f"; then
+        echo "FAIL editor-load: $f changed when the scenario was loaded into the editor and saved again"
+        fail=1
+    fi
+done
+step editor-play --scenario valley-test --time 30 --save-game "$OUT/save/valley.sgs"
+grep -E "scenario|course:" "$OUT/editor-play.log" | sed 's/^/     /'
+step editor-goals --load-game "$OUT/save/valley.sgs" --screen goals --time 2
 
 if [ $fail -ne 0 ]; then
     echo "free set play test: FAILED (logs and stills in $OUT)"

@@ -178,6 +178,10 @@ pub struct Golfer {
     pub curve: i32,
     /// +0xf0 special skill levels
     pub skills: [u8; 12],
+    /// The Left-handed golfers extra (sg_core::extras; not in the exe's record): drawn when the golfer is made, saved only
+    /// when set.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub left: bool,
 }
 
 impl Golfer {
@@ -448,6 +452,22 @@ pub struct Club {
     /// The port's optional gameplay changes (sg_core::extras), saved only when one is on.
     #[serde(skip_serializing_if = "crate::extras::Extras::is_off")]
     pub extras: crate::extras::Extras,
+    /// The calendar under the Slower seasons and Pause the calendar extras (sg_core::extras::Calendar), saved only when it
+    /// has fallen behind the game tick.
+    #[serde(default, skip_serializing_if = "crate::extras::Calendar::is_zero")]
+    pub cal: crate::extras::Calendar,
+    /// The Left-handed golfers extra (sg_core::extras): the player's pro is left-handed (a tick on Customise Golfer); saved
+    /// only when set.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pro_left: bool,
+    /// The port's Cheats box (docs/PLAYING.md, "Cheats"): a cheat has been used in this game, for good (the Load list and
+    /// shared challenges show it); saved only when set.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub cheated: bool,
+    /// The Cheats box's "Force a VIP visit now": the next pair to tee off brings a visitor (`vip_check`); saved only while
+    /// it waits.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub vip_forced: bool,
 }
 
 impl Default for Club {
@@ -550,6 +570,10 @@ impl Club {
             view_close: true,
             show_snapshots: true,
             extras: Default::default(),
+            cal: Default::default(),
+            pro_left: false,
+            cheated: false,
+            vip_forced: false,
         }
     }
 
@@ -1123,6 +1147,10 @@ impl Club {
                 self.g[s].level = r % 3;
                 self.g[s].hole = -1;
                 self.g[s].anim = anim::STAND;
+                // the port's Left-handed golfers extra: about one in ten, from the game's own generator (no draw when off)
+                if self.extras.lefties {
+                    self.g[s].left = rng.below(10) == 0;
+                }
                 self.g[s].hole_tick = self.tick;
                 let mut mood = rng.below(3) + 3;
                 if self.difficulty == 0 {
@@ -1520,15 +1548,26 @@ impl Club {
     /// One game tick for the golfers: arrivals, the animation pass of the drawing routine, then every golfer's update.
     pub fn tick(&mut self, c: &mut Course, rng: &mut ExeRng, tick: u32) {
         self.tick = tick;
-        if tick > 0 && tick & 0x3ff == 0 {
+        // the month start goes by the date (sg_core::extras::Calendar; the game tick itself with the extras off)
+        if self.date() > 0 && self.cal.new_month(tick) {
             self.month_decay();
         }
         self.arrivals(c, rng);
         for g in 0..SLOTS {
             self.animate(rng, g);
         }
+        // the Freeze golfer happiness extra (the port's own): whatever lowered a mood this tick is undone (a pair's mood
+        // set at the first tee from its compatibility, in `arrivals` above, is its starting mood)
+        let moods: Option<Vec<i32>> = self.extras.freeze_moods.then(|| self.g.iter().take(SLOTS).map(|g| g.mood).collect());
         for g in 0..SLOTS {
             self.update(c, rng, g);
+        }
+        if let Some(m) = moods {
+            for (g, &before) in self.g.iter_mut().take(SLOTS).zip(m.iter()) {
+                if g.hole != 0 && g.mood < before {
+                    g.mood = before;
+                }
+            }
         }
         // The main frame clears the aim-search lock once per frame.
         self.plan_busy = false;
@@ -3668,6 +3707,127 @@ mod tests {
         println!("holes finished {holed}, fees {fees}, cards {strokes:?}");
         assert!(holed >= 4, "golfers should finish the hole: {holed}");
         assert!(strokes.iter().all(|&s| (2..=10).contains(&s)), "{strokes:?}");
+    }
+
+    /// The Left-handed golfers extra (sg_core::extras): about one new golfer in ten is left-handed, drawn from the game's
+    /// generator; with the extra off nobody is and the generator is not drawn from.
+    #[test]
+    fn about_one_golfer_in_ten_is_left_handed() {
+        let make = |lefties: bool| {
+            let (c, mut club) = test_course();
+            club.extras.lefties = lefties;
+            let mut rng = ExeRng { state: 99 };
+            let mut left = 0;
+            let mut made = 0;
+            for _ in 0..3000 {
+                let s = club.create(&c, &mut rng, false);
+                if s >= 0 {
+                    made += 1;
+                    left += club.g[s as usize].left as i32;
+                    club.g[s as usize].hole = 0;
+                }
+            }
+            (made, left)
+        };
+        let (made, left) = make(true);
+        assert!(made > 2500, "{made}");
+        let share = left as f64 / made as f64;
+        assert!((0.08..0.12).contains(&share), "{left} of {made}");
+        let (_, left_off) = make(false);
+        assert_eq!(left_off, 0);
+        let (_, mut club) = test_course();
+        // the pro goes by his own tick, and only while the extra is on
+        club.gary = 4;
+        club.g[4].left = true;
+        club.pro_left = false;
+        club.extras.lefties = true;
+        assert!(!club.left_handed(4));
+        club.pro_left = true;
+        assert!(club.left_handed(4));
+        club.extras.lefties = false;
+        assert!(!club.left_handed(4));
+    }
+
+    /// A left-hander's shot bends the other way: the same swing (the same draws from the generator) aimed the same way
+    /// leaves with its heading and curve mirrored about the line to the target, for a draw, a fade and a straight shot.
+    #[test]
+    fn a_left_handers_shots_are_mirrored() {
+        let shoot = |left: bool, shape: i32| {
+            let (mut c, mut club) = test_course();
+            club.extras.lefties = true;
+            let g = 2;
+            club.g[g].hole = 1;
+            club.g[g].roster = 5;
+            club.g[g].class = 7;
+            club.g[g].left = left;
+            club.g[g].momentum = 2;
+            let (bx, by) = (10 * 1024 + 512, 25 * 1024 + 512);
+            (club.g[g].x, club.g[g].y, club.g[g].bx, club.g[g].by) = (bx, by, bx, by);
+            let mut rng = ExeRng { state: 4321 };
+            // straight down the fairway, 18 tiles
+            let (tx, ty) = (28 * 1024 + 512, 25 * 1024 + 512);
+            crate::planner::plan_shot(&mut club, &mut c, &mut rng, g, false, tx, ty, shape);
+            let h0 = crate::geom::angle(tx - bx, ty - by);
+            (club.g[g].heading.wrapping_sub(h0) as i32, club.g[g].curve, club.g[g].shot_type)
+        };
+        for shape in [1, -1, 0] {
+            let (rh, rc, rt) = shoot(false, shape);
+            let (lh, lc, lt) = shoot(true, shape);
+            assert_eq!((lh, lc), (-rh, -rc), "shape {shape}");
+            assert_eq!(lt, rt, "the shot type stays what was chosen");
+            if shape != 0 {
+                assert_ne!(rc, 0, "shape {shape} curves");
+            }
+        }
+    }
+
+    #[test]
+    fn left_handed_golfers_are_saved_only_when_left_handed() {
+        let mut g = Golfer::default();
+        let plain = serde_json::to_string(&g).unwrap();
+        assert!(!plain.contains("\"left\""));
+        let back: Golfer = serde_json::from_str(&plain).unwrap();
+        assert!(!back.left);
+        g.left = true;
+        let back: Golfer = serde_json::from_str(&serde_json::to_string(&g).unwrap()).unwrap();
+        assert!(back.left);
+    }
+
+    /// The Freeze golfer happiness extra (sg_core::extras): on a hard setting, where moods fall, no golfer's mood ever drops
+    /// from one tick to the next, and nobody leaves unhappy; without it, moods do fall on the same run.
+    #[test]
+    fn frozen_moods_never_drop() {
+        let run = |freeze: bool| {
+            let (mut c, mut club) = test_course();
+            club.difficulty = 3;
+            club.extras.freeze_moods = freeze;
+            let mut rng = ExeRng { state: 4242 };
+            club.new_game(&mut rng);
+            let mut drops = 0;
+            let mut quits = 0;
+            for tick in 1..12_000u32 {
+                for g in club.g.iter_mut().take(SLOTS) {
+                    g.sx = 400;
+                    g.sy = 300;
+                }
+                let before: Vec<(i32, i32, i32)> = club.g.iter().take(SLOTS).map(|g| (g.hole, g.roster, g.mood)).collect();
+                club.tick(&mut c, &mut rng, tick);
+                for (g, &(hole, roster, mood)) in club.g.iter().take(SLOTS).zip(before.iter()) {
+                    // the same golfer still out on the course (the tee sets a pair's mood afresh from the pair's
+                    // compatibility: a start, not a drop)
+                    if hole > 0 && g.hole > 0 && g.roster == roster && g.mood < mood {
+                        drops += 1;
+                    }
+                }
+                club.out.clear();
+                quits += club.g.iter().take(SLOTS).filter(|g| g.hole != 0 && g.mood < 0).count();
+            }
+            (drops, quits)
+        };
+        let (drops, quits) = run(true);
+        assert_eq!((drops, quits), (0, 0));
+        let (drops, _) = run(false);
+        assert!(drops > 0, "moods fall on this run without the extra");
     }
 }
 

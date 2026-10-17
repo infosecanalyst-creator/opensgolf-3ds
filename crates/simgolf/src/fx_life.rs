@@ -15,7 +15,7 @@ const SOAR_SHARE: f32 = 0.55;
 const MAX_BUTTERFLIES: usize = 40;
 const MAX_LEAF_TREES: usize = 80;
 
-fn hash(a: u32, b: u32) -> f32 {
+pub(crate) fn hash(a: u32, b: u32) -> f32 {
     let mut h = a.wrapping_mul(0x9e37_79b9) ^ b.wrapping_mul(0x85eb_ca6b);
     h ^= h >> 15;
     h = h.wrapping_mul(0x2c1b_3c6d);
@@ -25,16 +25,16 @@ fn hash(a: u32, b: u32) -> f32 {
 
 /// Crisp squares facing the camera, in the art's pixels: a world point, then art pixels to the right and up (snapped to
 /// whole art pixels, as the sprites are drawn).
-struct Dots {
-    v: Vec<Vert>,
-    axes: [f32; 6],
-    px: f32,
+pub(crate) struct Dots {
+    pub(crate) v: Vec<Vert>,
+    pub(crate) axes: [f32; 6],
+    pub(crate) px: f32,
 }
 
 impl Dots {
     /// A block `w` x `h` art pixels whose bottom left is `side`, `up` art pixels from a world point; `z` art pixel size.
     #[allow(clippy::too_many_arguments)]
-    fn pixel(&mut self, c: [f32; 3], side: f32, up: f32, w: f32, h: f32, z: f32, col: [f32; 4]) {
+    pub(crate) fn pixel(&mut self, c: [f32; 3], side: f32, up: f32, w: f32, h: f32, z: f32, col: [f32; 4]) {
         let [rx, ry, rz, ux, uy, uz] = self.axes;
         let px = self.px * z;
         let (x0, y0) = (side.round(), up.round());

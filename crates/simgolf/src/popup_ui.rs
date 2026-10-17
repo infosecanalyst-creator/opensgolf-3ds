@@ -33,6 +33,15 @@ pub enum PopupKind {
     Extras,
     /// The Set par extra's confirmation (the port's own, extras_ui.rs): change a hole's par, yes or no.
     SetPar,
+    /// Quick load's confirmation (the port's own, comfort.rs): load the quick save, yes or no.
+    QuickLoad,
+    /// Preferences > Search (the port's own, prefs_search.rs): find an option on any page, show only the changed ones,
+    /// reset to the original.
+    Search,
+    /// The search box's "Reset to original..." confirmation (the port's own): yes or no.
+    ResetOriginal,
+    /// The hidden Cheats box (the port's own, cheats_ui.rs): a list of cheats, open until Done.
+    Cheats,
 }
 
 #[derive(Clone, Debug)]
@@ -54,21 +63,42 @@ pub struct Popup {
     pub back: Screen,
     /// Preferences: the option of the port's "Use my SimGolf files..." line (gamefiles.rs), when it is shown.
     pub files_line: Option<usize>,
-    /// Enhanced graphics: the page (tab) shown and the settings as ticked so far (put in use by OK).
+    /// Enhanced graphics and the OpenSGolf extras: the page (tab) shown. Those boxes and the search box keep the settings as
+    /// ticked so far in `pref` (put in use by OK).
     pub page: u8,
-    pub enh: crate::enhanced::Settings,
+    pub pref: crate::prefs_search::Prefs,
     /// The tab under the pointer.
     pub tab_hover: Option<u8>,
+    /// The search box: the words typed, "Show only changed", and the options found.
+    pub query: String,
+    pub changed_only: bool,
+    pub hits: Vec<crate::prefs_search::Hit>,
 }
 
 impl Popup {
-    /// Shows another page of the Enhanced graphics box (what was ticked is kept).
+    /// Shows another page of the Enhanced graphics or Extras box (what was ticked is kept).
     pub fn set_page(&mut self, page: u8) {
-        if page != self.page {
+        if page != self.page && (page as usize) < self.page_count() {
             self.page = page;
             self.sel = None;
-            self.refresh_enhanced();
+            self.refresh();
         }
+    }
+
+    /// The pages (tabs) of the box: the Enhanced graphics and Extras boxes have them, the others one page.
+    pub fn page_count(&self) -> usize {
+        match self.kind {
+            PopupKind::Enhanced => crate::enhanced::PAGES.len(),
+            PopupKind::Extras => crate::extras_ui::PAGES.len(),
+            _ => 1,
+        }
+    }
+
+    /// A page's name (its tab).
+    fn page_name(&self, page: u8) -> &'static str {
+        let key =
+            if self.kind == PopupKind::Extras { crate::extras_ui::PAGES[page as usize] } else { crate::enhanced::PAGES[page as usize] };
+        sg_core::lang::tr(key)
     }
 }
 
@@ -384,7 +414,8 @@ impl Popup {
             lines: self.lines.clone(),
             cx: self.cx,
             top: self.top,
-            checks: matches!(self.kind, PopupKind::Prefs | PopupKind::Enhanced | PopupKind::Extras).then_some(self.checks),
+            checks: matches!(self.kind, PopupKind::Prefs | PopupKind::Enhanced | PopupKind::Extras | PopupKind::Search)
+                .then_some(self.checks),
             disabled: self.disabled,
             plain: match self.kind {
                 PopupKind::Prefs => {
@@ -392,28 +423,58 @@ impl Popup {
                         | 1 << PREFS_ENHANCED
                         | 1 << PREFS_KEYS
                         | 1 << PREFS_EXTRAS
+                        | 1 << PREFS_SEARCH
                         | 1 << PREFS_LANGUAGE
                         | self.files_line.map_or(0, |k| 1 << k)
                 }
                 PopupKind::Enhanced => crate::enhanced::popup_plain(self.page),
+                PopupKind::Extras => crate::extras_ui::popup_plain(self.page),
+                PopupKind::Search => crate::prefs_search::popup_plain(&self.hits),
                 _ => 0,
             },
-            min_w: if self.kind == PopupKind::Enhanced { crate::enhanced::popup_widest(&self.enh) } else { 0.0 },
+            min_w: match self.kind {
+                PopupKind::Enhanced => crate::enhanced::popup_widest(&self.pref.enh),
+                PopupKind::Extras => crate::extras_ui::popup_widest(&self.pref.ex, &self.pref.ui),
+                PopupKind::Search => crate::prefs_search::LINE_W,
+                _ => 0.0,
+            },
         }
     }
 
-    /// The Enhanced graphics box: its lines and ticks for the page shown and the settings ticked so far.
-    fn refresh_enhanced(&mut self) {
-        self.lines = crate::enhanced::popup_lines(self.page, &self.enh);
-        self.checks = crate::enhanced::popup_checks(self.page, &self.enh);
+    /// The Enhanced graphics, Extras and search boxes: their lines and ticks for the page shown and the settings ticked so
+    /// far (the search box: for the words typed).
+    pub fn refresh(&mut self) {
+        match self.kind {
+            PopupKind::Enhanced => {
+                self.lines = crate::enhanced::popup_lines(self.page, &self.pref.enh);
+                self.checks = crate::enhanced::popup_checks(self.page, &self.pref.enh);
+            }
+            PopupKind::Extras => {
+                self.lines = crate::extras_ui::popup_lines(self.page, &self.pref.ex, &self.pref.ui);
+                self.checks = crate::extras_ui::popup_checks(self.page, &self.pref.ex, &self.pref.ui);
+            }
+            PopupKind::Search => {
+                self.hits = crate::prefs_search::search(&self.query, self.changed_only, &self.pref);
+                self.lines = crate::prefs_search::popup_lines(&self.query, true, &self.hits, &self.pref);
+                self.checks = crate::prefs_search::popup_checks(self.changed_only, &self.hits, &self.pref);
+                // the lit line stays on the box's options
+                let n = self.options().len();
+                self.sel = self.sel.filter(|&k| k < n);
+            }
+            _ => {}
+        }
     }
 
-    /// The Enhanced graphics box's page tabs: (page, rectangle), side by side on the two lines under the title.
-    pub fn enhanced_tabs(&self) -> Vec<(u8, Rect)> {
+    /// The page tabs of the Enhanced graphics and Extras boxes: (page, rectangle), side by side on the two lines under the
+    /// title (none for the other boxes).
+    pub fn tabs(&self) -> Vec<(u8, Rect)> {
+        let n = self.page_count();
+        if n < 2 {
+            return Vec::new();
+        }
         let b = self.choice_box();
         let r = b.rect();
         let tops = b.line_tops();
-        let n = crate::enhanced::PAGES.len();
         let (x0, x1) = (r.x + 16.0, r.x + r.w - 16.0);
         let w = (x1 - x0) / n as f32;
         let y = tops[1] + 2.0;
@@ -434,10 +495,14 @@ pub const PREFS_ENHANCED: usize = 7;
 pub const PREFS_KEYS: usize = 8;
 /// The option of the Preferences list that opens Preferences > OpenSGolf extras (extras_ui.rs, extras.rs).
 pub const PREFS_EXTRAS: usize = 9;
-/// The first option of the Extras box that is an interface extra (extras.rs); the options before it are the gameplay extras.
-pub const EXTRAS_UI: usize = sg_core::extras::OPTION_KEYS.len();
+/// The option of the Preferences list that opens Preferences > Search (prefs_search.rs).
+pub const PREFS_SEARCH: usize = 10;
 /// The Preferences' option that switches the language (shown only when there is a translation to switch to).
-const PREFS_LANGUAGE: usize = 10;
+const PREFS_LANGUAGE: usize = 11;
+/// What the search box returns: OK; a found key (its action after this) to change on Change keys; Reset to original.
+pub const SEARCH_OK: usize = 0;
+pub const SEARCH_RESET: usize = 1;
+pub const SEARCH_KEY: usize = 2;
 /// The bit of a Preferences result that asks for the "Use my SimGolf files..." line's action (gamefiles.rs), after the
 /// ticks are applied.
 pub const PREFS_FILES_FLAG: usize = 20;
@@ -467,6 +532,7 @@ impl App {
         let language =
             if languages > 1 { trf("STR_MENU_PREFS_LANGUAGE", &[("LANGUAGE", &crate::language::current_name())]) } else { String::new() };
         let set_par_lines: [String; 2];
+        let cheat_lines: Vec<String>;
         let (mut lines, disabled, cx, mut top): (Vec<&str>, u32, f32, f32) = match kind {
             PopupKind::Retire => (
                 vec![retire[0].as_str(), retire[1].as_str(), tr("STR_RETIRE_WAIT"), tr("STR_RETIRE_SAVE_FIRST"), tr("STR_RETIRE_SO_LONG")],
@@ -534,19 +600,26 @@ impl App {
                     tr("STR_MENU_PREFS_KEYS"),
                     // the port's own: Preferences > OpenSGolf extras (extras_ui.rs, extras.rs)
                     tr("STR_MENU_PREFS_EXTRAS"),
+                    // the port's own: Preferences > Search (prefs_search.rs)
+                    tr("STR_MENU_PREFS_SEARCH"),
                 ],
+                0,
+                400.0,
+                // a row higher with the Search line, so the box keeps clear of the bottom of the screen
+                176.0,
+            ),
+            // filled in below from extras_ui's pages: the gameplay extras, the calendar and sandbox switches, the interface
+            // (two rows higher since the interface page's history graphs and zoom towards the pointer, to keep its OK tick on
+            // an 800 x 600 screen)
+            PopupKind::Extras => (Vec::new(), 0, 400.0, 92.0),
+            // filled in below from prefs_search
+            PopupKind::Search => (Vec::new(), 0, 400.0, 92.0),
+            PopupKind::ResetOriginal => (
+                vec![tr("STR_RESET_ORIGINAL_1"), tr("STR_RESET_ORIGINAL_2"), tr("STR_RESET_ORIGINAL_YES"), tr("STR_RESET_ORIGINAL_NO")],
                 0,
                 400.0,
                 200.0,
             ),
-            // the gameplay extras (sg_core::extras, options 0..EXTRAS_UI), then the interface extras (extras.rs)
-            PopupKind::Extras => {
-                let mut v = vec![tr("STR_EXTRAS_TITLE")];
-                v.extend(sg_core::extras::OPTION_KEYS.iter().map(|k| tr(k)));
-                v.extend(crate::extras::LINES.iter().map(|k| tr(k)));
-                // a row higher with the Set par line, so the box keeps clear of the bottom of the screen
-                (v, 0, 400.0, 104.0)
-            }
             // the commissioner's approval (main routine 0x41e2a0): the two-choice box centred on x 0x1c2 from y 0xa0 (EXACT,
             // the call's pushes at 0x41e2ee and 0x41e303), texts 0x4c5d74 and 0x4c5d48
             // filled in below from enhanced::OPTIONS
@@ -556,6 +629,15 @@ impl App {
                 let old = self.club.holes[h.clamp(1, 18)].par;
                 set_par_lines = [trf("STR_SET_PAR_1", &[("HOLE", &h), ("OLD", &old), ("NEW", &new)]), tr("STR_SET_PAR_2").to_string()];
                 (vec![set_par_lines[0].as_str(), set_par_lines[1].as_str(), tr("STR_SET_PAR_YES"), tr("STR_SET_PAR_NO")], 0, 400.0, 200.0)
+            }
+            // the port's own Cheats box: below the dock's top, clear of the course's middle
+            PopupKind::Cheats => {
+                let (l, disabled) = self.cheat_lines();
+                cheat_lines = l;
+                (cheat_lines.iter().map(|l| l.as_str()).collect(), disabled, 400.0, 120.0)
+            }
+            PopupKind::QuickLoad => {
+                (vec![tr("STR_QUICK_LOAD_1"), tr("STR_QUICK_LOAD_2"), tr("STR_QUICK_LOAD_YES"), tr("STR_QUICK_LOAD_NO")], 0, 400.0, 200.0)
             }
             PopupKind::LandOffer => {
                 (vec![tr("STR_LAND_OFFER_1"), tr("STR_LAND_OFFER_2"), tr("STR_LAND_OFFER_YES"), tr("STR_LAND_OFFER_NO")], 0, 450.0, 160.0)
@@ -578,7 +660,7 @@ impl App {
             lines.push(f);
         }
         let enh = crate::enhanced::settings();
-        // the Enhanced graphics box opens on its first page; its lines are made by refresh_enhanced below
+        // the Enhanced graphics box opens on its first page; its lines are made by refresh below
         // the port's own: the goals of a scenario or of the packs' scripts (docs/MODDING.md 5), after the original's lines
         if kind == PopupKind::Info && self.has_goals() {
             lines.push(tr("STR_MENU_INFO_GOALS"));
@@ -589,6 +671,9 @@ impl App {
                 (crate::extras::people(), "STR_MENU_INFO_PEOPLE"),
                 (crate::extras::history(), "STR_MENU_INFO_HISTORY"),
                 (crate::extras::path_help(), "STR_MENU_INFO_PATH_VIEW"),
+                (crate::extras::landing_map(), "STR_MENU_INFO_LANDING_MAP"),
+                (crate::extras::hole_comments(), "STR_MENU_INFO_HOLE_COMMENTS"),
+                (crate::extras::graphs(), "STR_MENU_INFO_GRAPHS"),
             ] {
                 if on {
                     lines.push(tr(key));
@@ -604,8 +689,6 @@ impl App {
                 | (!self.mute as u32) << 3
                 | (self.hd.enabled as u32) << 4
                 | (crate::enhanced::settings().enabled as u32) << PREFS_ENHANCED_ON
-        } else if kind == PopupKind::Extras {
-            self.extras_checks() | crate::extras::settings().bits() << EXTRAS_UI
         } else {
             0
         };
@@ -622,11 +705,22 @@ impl App {
             back,
             files_line,
             page: 0,
-            enh,
+            pref: crate::prefs_search::Prefs {
+                enh,
+                ex: self.extras_shown(),
+                ui: crate::extras::settings(),
+                keys: crate::controls::settings(),
+            },
             tab_hover: None,
+            query: self.pref_query.clone(),
+            changed_only: false,
+            hits: Vec::new(),
         });
+        if let Some(p) = self.popup.as_mut().filter(|p| matches!(p.kind, PopupKind::Extras | PopupKind::Search)) {
+            p.refresh();
+        }
         if let Some(p) = self.popup.as_mut().filter(|p| p.kind == PopupKind::Enhanced) {
-            p.refresh_enhanced();
+            p.refresh();
             // the port's own box: moved up when a page would run off the bottom of the screen (the original's popups keep
             // their places)
             let r = p.choice_box().frame();
@@ -649,25 +743,29 @@ impl App {
         let s = Ui::new(self.draw_w, self.draw_h);
         self.view = s.view;
         // footage of the original: the screen under the box is not dimmed
-        self.draw_choice_box(g, &s, &p.choice_box(), p.sel);
-        if p.kind == PopupKind::Enhanced {
-            self.draw_enhanced_tabs(g, &s, &p);
+        let mut b = p.choice_box();
+        if p.kind == PopupKind::Search {
+            // the typed words' caret blinks (as the rename prompt's)
+            let caret = (self.clock * 2.0) as i64 % 2 == 0;
+            b.lines = crate::prefs_search::popup_lines(&p.query, caret, &p.hits, &p.pref);
         }
+        self.draw_choice_box(g, &s, &b, p.sel);
+        self.draw_page_tabs(g, &s, &p);
         g.flush();
     }
 
-    /// The Enhanced graphics box's tabs (the port's own): the page shown lit white on the box's paler blue, the others
-    /// teal on a darker blue; a tab under the pointer is outlined.
-    fn draw_enhanced_tabs(&self, g: &mut Gfx, s: &Ui, p: &Popup) {
+    /// The Enhanced graphics and Extras boxes' tabs (the port's own): the page shown lit white on the box's paler blue, the
+    /// others teal on a darker blue; a tab under the pointer is outlined.
+    fn draw_page_tabs(&self, g: &mut Gfx, s: &Ui, p: &Popup) {
         use crate::info_ui::c15;
         let f = CHOICE_FONT;
-        for (page, r) in p.enhanced_tabs() {
+        for (page, r) in p.tabs() {
             let on = page == p.page;
             let hover = p.tab_hover == Some(page);
             let edge = if on || hover { c15(0x7fff) } else { c15(0x2d6b) };
             s.fill(g, r.x - 1.0, r.y - 1.0, r.w + 2.0, r.h + 2.0, edge);
             s.fill(g, r.x, r.y, r.w, r.h, if on { c15(0x5ade) } else { c15(0x3dd4) });
-            let label = sg_core::lang::tr(crate::enhanced::PAGES[page as usize]);
+            let label = p.page_name(page);
             let x = r.x + (r.w - f.width(label)) * 0.5;
             if on {
                 s.put_shadowed(g, f, x, r.y + 5.0, label, c15(0x7fff), false);
@@ -698,16 +796,22 @@ impl App {
                     _ => {}
                 }
             }
+            // the search box: Space is typed (char_event), Backspace takes back the last character
+            KeyCode::Space if p.kind == PopupKind::Search => {}
+            KeyCode::Backspace if p.kind == PopupKind::Search => {
+                p.query.pop();
+                p.refresh();
+            }
             KeyCode::Enter | KeyCode::KpEnter | KeyCode::Space => {
-                if p.sel.is_none() && !matches!(p.kind, PopupKind::Prefs | PopupKind::Enhanced | PopupKind::Extras) {
+                if p.sel.is_none() && !matches!(p.kind, PopupKind::Prefs | PopupKind::Enhanced | PopupKind::Extras | PopupKind::Search) {
                     return Some(None);
                 }
                 return Some(self.popup_accept(None));
             }
             KeyCode::Escape => return Some(None),
-            // the Enhanced graphics box's pages (the port's own): Left and Right, or Tab, change the page
-            KeyCode::Left | KeyCode::Right | KeyCode::Tab if p.kind == PopupKind::Enhanced => {
-                let n = crate::enhanced::PAGES.len() as u8;
+            // the Enhanced graphics and Extras boxes' pages (the port's own): Left and Right, or Tab, change the page
+            KeyCode::Left | KeyCode::Right | KeyCode::Tab if p.page_count() > 1 => {
+                let n = p.page_count() as u8;
                 let page = if k == KeyCode::Left { (p.page + n - 1) % n } else { (p.page + 1) % n };
                 p.set_page(page);
             }
@@ -720,9 +824,9 @@ impl App {
     /// outside the box cancels.
     pub fn popup_pointer(&mut self, vx: f32, vy: f32, click: bool) -> Option<PopupResult> {
         let p = self.popup.as_mut()?;
-        if p.kind == PopupKind::Enhanced {
+        if p.page_count() > 1 {
             // the page tabs (a tap is a click here too)
-            p.tab_hover = p.enhanced_tabs().into_iter().find(|t| t.1.has(vx, vy)).map(|t| t.0);
+            p.tab_hover = p.tabs().into_iter().find(|t| t.1.has(vx, vy)).map(|t| t.0);
             if let Some(page) = p.tab_hover {
                 if click {
                     p.set_page(page);
@@ -791,6 +895,10 @@ impl App {
             if k == PREFS_EXTRAS && (pick.is_some() || p.sel == Some(k)) {
                 return Some((p.checks | 1 << PREFS_EXTRAS) as usize);
             }
+            // and the Search line
+            if k == PREFS_SEARCH && (pick.is_some() || p.sel == Some(k)) {
+                return Some((p.checks | 1 << PREFS_SEARCH) as usize);
+            }
             if pick.is_some() {
                 p.checks ^= 1 << k;
                 return Some(usize::MAX); // toggled, stay open
@@ -798,16 +906,42 @@ impl App {
             return Some(p.checks as usize);
         }
         if p.kind == PopupKind::Extras {
-            if pick.is_some() {
-                p.checks ^= 1 << k;
+            if let Some(l) = pick.and_then(|k| crate::extras_ui::page_lines(p.page).get(k).copied()) {
+                crate::extras_ui::toggle_line(l, &mut p.pref.ex, &mut p.pref.ui);
+                p.refresh();
                 return Some(usize::MAX); // toggled, stay open
             }
-            return Some(p.checks as usize);
+            // OK: the caller takes the ticked extras from `pref`
+            return Some(0);
+        }
+        if p.kind == PopupKind::Search {
+            let Some(k) = pick else { return Some(SEARCH_OK) };
+            let n = p.hits.len().min(crate::prefs_search::MAX_HITS);
+            if k == 0 {
+                p.changed_only = !p.changed_only;
+            } else if k <= n {
+                let h = p.hits[k - 1];
+                if let crate::prefs_search::Hit::Key(i) = h {
+                    return Some(SEARCH_KEY + i);
+                }
+                crate::prefs_search::toggle(h, &mut p.pref);
+            } else {
+                return Some(SEARCH_RESET);
+            }
+            // the list stays as it was found while options are ticked (only the words and "Show only changed" search
+            // again), so a line does not leave the box under the pointer
+            if k == 0 {
+                p.refresh();
+            } else {
+                p.lines = crate::prefs_search::popup_lines(&p.query, true, &p.hits, &p.pref);
+                p.checks = crate::prefs_search::popup_checks(p.changed_only, &p.hits, &p.pref);
+            }
+            return Some(usize::MAX);
         }
         if p.kind == PopupKind::Enhanced {
             if pick.is_some() {
-                crate::enhanced::toggle(p.page, k, &mut p.enh);
-                p.refresh_enhanced();
+                crate::enhanced::toggle(p.page, k, &mut p.pref.enh);
+                p.refresh();
                 return Some(usize::MAX); // toggled, stay open
             }
             // OK: the caller takes the ticked settings from `enh`
@@ -815,6 +949,16 @@ impl App {
         }
         if p.disabled & (1 << k) != 0 {
             self.ui_sound(0x18);
+            return Some(usize::MAX);
+        }
+        if p.kind == PopupKind::Cheats && k != crate::cheats_ui::DONE {
+            // a cheat is used and the box stays open, rebuilt (the switches' states, what is greyed), the lit line kept
+            let (sel, keyed) = (p.sel, p.keyed);
+            self.use_cheat(k);
+            self.open_popup(PopupKind::Cheats);
+            if let Some(p) = self.popup.as_mut() {
+                (p.sel, p.keyed) = (sel, keyed);
+            }
             return Some(usize::MAX);
         }
         Some(k)

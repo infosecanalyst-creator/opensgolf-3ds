@@ -45,7 +45,8 @@ pub struct Economy {
     pub cash: f64,
     /// Sandbox mode: actions are never refused for lack of money and the board never ends the game. Costs are still paid.
     pub sandbox: bool,
-    /// The game tick the economy last ran on.
+    /// The date the economy last ran on: the game tick, or with the Slower seasons and Pause the calendar extras the
+    /// calendar's tick (sg_core::extras::Calendar).
     pub tick: u32,
     pub holes_played: i32,
     /// Negative year ends in a row (the exe's debt stage); the game ends when it passes 2.
@@ -65,6 +66,10 @@ pub struct Economy {
     /// The club's extras (sg_core::extras), set by the game from the club record (where they are saved).
     #[serde(skip)]
     pub extras: crate::extras::Extras,
+    /// The course editor's free building (the port's own; never saved): nothing is charged, earned or booked, and
+    /// everything is affordable.
+    #[serde(skip)]
+    pub free: bool,
 }
 
 impl Default for Economy {
@@ -85,6 +90,7 @@ impl Default for Economy {
             wages_paid: 0.0,
             ledger: Vec::new(),
             extras: Default::default(),
+            free: false,
         }
     }
 }
@@ -205,7 +211,7 @@ impl Economy {
     /// Whether an action costing `amount` dollars may go ahead: it is cheap enough, or affordable, or a sandbox game, or the
     /// course has fewer than 3 holes (the first two holes can be built on credit).
     pub fn affordable(&self, amount: f64, holes: usize) -> bool {
-        amount < Self::UNIT || amount <= self.cash || self.sandbox || holes < 3
+        amount < Self::UNIT || amount <= self.cash || self.sandbox || self.free || holes < 3
     }
 
     /// Collects a green fee (in units of 100).
@@ -260,21 +266,33 @@ impl Economy {
 
     /// Income booked to a ledger column.
     pub fn earn_to(&mut self, column: usize, amount: f64) {
+        if self.free {
+            return;
+        }
         self.earn(amount);
         self.book(column, amount);
     }
 
     /// Expense booked to a ledger column (sandbox games pay too, as in the exe).
     pub fn spend_to(&mut self, column: usize, amount: f64) {
+        if self.free {
+            return;
+        }
         self.spend(amount);
         self.book(column, -amount);
     }
 
     pub fn earn(&mut self, amount: f64) {
+        if self.free {
+            return;
+        }
         self.cash += amount;
         self.version = self.version.wrapping_add(1);
     }
     pub fn spend(&mut self, amount: f64) {
+        if self.free {
+            return;
+        }
         self.cash -= amount;
         self.version = self.version.wrapping_add(1);
     }
@@ -282,7 +300,21 @@ impl Economy {
     /// One game tick: maintenance and wages every 1024/(difficulty+2) ticks, debt interest at month start, the board at year end.
     /// Returns the wage units paid to each entry of `staff` this tick (the exe adds them to the employee's total paid, +0x14).
     pub fn on_tick(&mut self, tick: u32, difficulty: i32, active_holes: usize, staff: &[Payroll], rng: &mut ExeRng) -> Vec<i32> {
-        self.tick = tick;
+        self.on_tick_dated(tick, &crate::extras::Calendar::default(), difficulty, active_holes, staff, rng)
+    }
+
+    /// `on_tick` with the calendar of the Slower seasons and Pause the calendar extras: the maintenance and wages go by the
+    /// game tick (so they keep their pace per game day), the interest, the board and the ledger's year by the date.
+    pub fn on_tick_dated(
+        &mut self,
+        tick: u32,
+        cal: &crate::extras::Calendar,
+        difficulty: i32,
+        active_holes: usize,
+        staff: &[Payroll],
+        rng: &mut ExeRng,
+    ) -> Vec<i32> {
+        self.tick = cal.date(tick);
         let mut paid = vec![0; staff.len()];
         if self.game_over {
             return paid;
@@ -305,7 +337,7 @@ impl Economy {
                 }
             }
         }
-        if tick & 0x3ff == 0 && self.cash < 0.0 {
+        if cal.new_month(tick) && self.cash < 0.0 {
             // 2% a month on debt (data/economy.toml), in whole units, truncated toward zero: units x 2 / 100 is the
             // exe's units / 50 exactly
             let units = (self.cash / Self::UNIT).trunc() as i64;
@@ -313,7 +345,7 @@ impl Economy {
             self.earn(interest);
             self.book(LEDGER_MAINTENANCE, interest);
         }
-        if tick & 0x1fff == 0 && tick > 0 {
+        if cal.new_year(tick) {
             self.year_end();
         }
         paid
@@ -357,6 +389,24 @@ impl Economy {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_editors_free_building_charges_nothing() {
+        let mut e = Economy { free: true, cash: 500.0, ..Default::default() };
+        e.init();
+        let before = (e.cash, e.ledger.clone());
+        e.spend_to(LEDGER_BUILD_COURSE, 1_000_000.0);
+        e.spend(42.0);
+        e.earn_to(LEDGER_OTHER, 900.0);
+        e.earn(7.0);
+        assert_eq!((e.cash, e.ledger.clone()), before);
+        assert!(e.affordable(1e12, 18));
+        // and the flag is never saved
+        let json = serde_json::to_string(&e).unwrap();
+        assert!(!json.contains("free"));
+        let back: Economy = serde_json::from_str(&json).unwrap();
+        assert!(!back.free);
+    }
 
     #[test]
     fn money_digits_group_by_thousands() {

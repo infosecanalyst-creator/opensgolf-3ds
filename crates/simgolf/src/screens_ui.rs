@@ -1092,7 +1092,7 @@ impl App {
 
     /// The SimFoto's date stamp: month, day and year joined by apostrophes (month (tick >> 10 & 7) + 3, day as the board's).
     pub fn simfoto_date(&self) -> String {
-        let t = self.game_tick;
+        let t = self.date();
         format!("{}'{}'{}", ((t & 0x1fff) >> 10) + 3, (((t & 0x3ff) * 30) >> 10) + 1, 2001 + self.econ.year_index())
     }
 
@@ -1438,7 +1438,7 @@ impl App {
     // ---- the year-end report ------------------------------------------------------------------------------------------
 
     pub fn open_year_end(&mut self) {
-        self.year_end_tick = self.club.tick;
+        self.year_end_tick = self.club.date();
         if self.ui_ok && self.screen == Screen::Play {
             self.screen = Screen::YearEnd;
             self.screen_jingle(0x7f, Screen::YearEnd);

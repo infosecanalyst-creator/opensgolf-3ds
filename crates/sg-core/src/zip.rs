@@ -6,6 +6,8 @@ pub struct Zip {
     data: Vec<u8>,
     /// Entry name (as stored, forward slashes) -> (method, compressed size, uncompressed size, local header offset).
     entries: BTreeMap<String, (u16, usize, usize, usize)>,
+    /// Entry name -> its Unix permission bits, for entries made on a Unix system (a Mac's `ditto`, Info-ZIP).
+    modes: BTreeMap<String, u32>,
 }
 
 fn u16le(d: &[u8], o: usize) -> Option<usize> {
@@ -30,6 +32,7 @@ impl Zip {
         let count = u16le(&data, eocd + 10).ok_or("bad zip")?;
         let mut p = u32le(&data, eocd + 16).ok_or("bad zip")?;
         let mut entries = BTreeMap::new();
+        let mut modes = BTreeMap::new();
         for _ in 0..count {
             if data.get(p..p + 4) != Some(&[0x50, 0x4b, 0x01, 0x02]) {
                 return Err("bad zip central directory".into());
@@ -42,17 +45,28 @@ impl Zip {
                 (u16le(&data, p + 28).ok_or_else(bad)?, u16le(&data, p + 30).ok_or_else(bad)?, u16le(&data, p + 32).ok_or_else(bad)?);
             let local = u32le(&data, p + 42).ok_or_else(bad)?;
             let name = String::from_utf8_lossy(data.get(p + 46..p + 46 + nlen).ok_or_else(bad)?).replace('\\', "/");
+            // "version made by"'s high byte 3: Unix, whose mode is the external attributes' high half
+            let unix = u16le(&data, p + 4).ok_or_else(bad)? >> 8 == 3;
+            let mode = (u32le(&data, p + 38).ok_or_else(bad)? >> 16) as u32 & 0o7777;
             p += 46 + nlen + xlen + clen;
             if !name.ends_with('/') {
+                if unix && mode != 0 {
+                    modes.insert(name.clone(), mode);
+                }
                 entries.insert(name, (method, csize, usize_, local));
             }
         }
-        Ok(Zip { data, entries })
+        Ok(Zip { data, entries, modes })
     }
 
     /// The names of the files in the archive (folders are left out), sorted.
     pub fn names(&self) -> impl Iterator<Item = &str> {
         self.entries.keys().map(String::as_str)
+    }
+
+    /// An entry's Unix permission bits (0o755 for a program), when the archive was made on a Unix system.
+    pub fn unix_mode(&self, name: &str) -> Option<u32> {
+        self.modes.get(name).copied()
     }
 
     /// The contents of an entry, by its exact name. None when it is missing, uses a method other than stored or deflate,
@@ -139,5 +153,19 @@ mod tests {
         assert_eq!(zip.read("a/gfx/x.png").unwrap(), vec![7u8; 300]);
         assert!(zip.read("missing").is_none());
         assert!(super::Zip::open(b"not a zip at all, sorry, no".to_vec()).is_err());
+    }
+
+    #[test]
+    fn unix_modes_are_read() {
+        let mut z = super::write(&[("app/run", b"#!/bin/sh"), ("app/notes.txt", b"hi")]);
+        assert_eq!(super::Zip::open(z.clone()).unwrap().unix_mode("app/run"), None, "made on no Unix system");
+        // the first central entry made on Unix (version made by 0x0314) with mode 0o100755
+        let cd = u32::from_le_bytes(z[z.len() - 6..z.len() - 2].try_into().unwrap()) as usize;
+        z[cd + 4..cd + 6].copy_from_slice(&0x0314u16.to_le_bytes());
+        z[cd + 38..cd + 42].copy_from_slice(&(0o100755u32 << 16).to_le_bytes());
+        let zip = super::Zip::open(z).unwrap();
+        assert_eq!(zip.unix_mode("app/run"), Some(0o755));
+        assert_eq!(zip.unix_mode("app/notes.txt"), None);
+        assert_eq!(zip.read("app/run").unwrap(), b"#!/bin/sh");
     }
 }

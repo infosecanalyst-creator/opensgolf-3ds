@@ -165,8 +165,10 @@ impl App {
             let alpha = if atm.cloud > 0.0 { self.fx_cloud_sun(x, z) } else { 1.0 };
             let col = [1.0, 1.0, 1.0, alpha];
             let (tw, th) = (w + 2.0 * pad, h + 2.0 * pad);
+            // a mirrored prop (a left-handed golfer's swing) casts its shadow mirrored too
+            let flip = if p.mirror { -1.0 } else { 1.0 };
             let at = |px_x: f32, px_y: f32| {
-                let c = (px_x - ax) * k;
+                let c = (px_x - ax) * k * flip;
                 let up = (ay - px_y) * k;
                 let (dx, dz) = if up > 0.0 { (sx * up, sz * up) } else { (gx * up, gz * up) };
                 Vert::new(bx + rx * c + dx, y, bz + rz * c + dz, (px_x + pad) / tw, (px_y + pad) / th).col(col)

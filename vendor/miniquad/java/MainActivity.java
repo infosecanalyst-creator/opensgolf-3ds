@@ -4,6 +4,7 @@ import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
 
 import android.app.Activity;
+import android.app.PendingIntent;
 import android.os.Bundle;
 import android.os.Build;
 import android.util.Log;
@@ -25,12 +26,14 @@ import android.content.Intent;
 import android.content.res.Configuration;
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.pm.PackageInstaller;
 
 import android.database.Cursor;
 import android.net.Uri;
 import android.provider.DocumentsContract;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -538,6 +541,89 @@ public class MainActivity extends Activity {
             }
         }
         f.delete();
+    }
+
+    // OpenSGolf: "Update now" (crates/simgolf/src/android.rs install_apk, autoupdate.rs). The game has downloaded the new
+    // APK and checked its signature and checksum; it is written into a PackageInstaller session (so no file:// or
+    // content:// address has to be shared, and no FileProvider is needed), and Android asks the player to confirm: the
+    // session's status comes back to this activity (onNewIntent), which shows Android's box. Needs the
+    // REQUEST_INSTALL_PACKAGES permission (crates/simgolf/Cargo.toml); Android asks the player once to allow OpenSGolf to
+    // install apps, and installs an update only when it is signed with the same key as the installed app.
+    private static final String INSTALL_STATUS = "org.opensgolf.game.INSTALL_STATUS";
+    private static volatile String installState = "";
+
+    public String installState() {
+        return installState;
+    }
+
+    public void installApk(final String path) {
+        installState = "installing";
+        new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        PackageInstaller pi = getPackageManager().getPackageInstaller();
+                        PackageInstaller.SessionParams params =
+                            new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+                        int id = pi.createSession(params);
+                        PackageInstaller.Session session = pi.openSession(id);
+                        try {
+                            File apk = new File(path);
+                            InputStream in = new FileInputStream(apk);
+                            OutputStream out = session.openWrite("opensgolf.apk", 0, apk.length());
+                            try {
+                                byte[] buf = new byte[1 << 16];
+                                int n;
+                                while ((n = in.read(buf)) > 0) {
+                                    out.write(buf, 0, n);
+                                }
+                                session.fsync(out);
+                            } finally {
+                                in.close();
+                                out.close();
+                            }
+                            Intent i = new Intent(MainActivity.this, MainActivity.class);
+                            i.setAction(INSTALL_STATUS);
+                            i.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                            // Android 12 wants the mutability said; the installer fills in the status, so mutable
+                            int flags = PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 31 ? 0x02000000 : 0);
+                            PendingIntent pending = PendingIntent.getActivity(MainActivity.this, 7303, i, flags);
+                            session.commit(pending.getIntentSender());
+                        } finally {
+                            session.close();
+                        }
+                        installState = "waiting";
+                    } catch (Throwable e) {
+                        Log.e("OpenSGolf", "installing the update failed", e);
+                        installState = "failed:" + e.getMessage();
+                    }
+                }
+            }, "opensgolf-install").start();
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        if (intent == null || !INSTALL_STATUS.equals(intent.getAction())) {
+            return;
+        }
+        int status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE);
+        if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
+            Intent confirm = (Intent) intent.getParcelableExtra(Intent.EXTRA_INTENT);
+            try {
+                if (confirm != null) {
+                    startActivity(confirm);
+                }
+                installState = "confirm";
+            } catch (Exception e) {
+                installState = "failed:" + e;
+            }
+        } else if (status == PackageInstaller.STATUS_SUCCESS) {
+            installState = "done";
+        } else {
+            String msg = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE);
+            installState = "failed:" + (msg != null ? msg : "status " + status);
+        }
     }
 
     // OpenSGolf: starts the app again (the player's files load from the start on a new run, as on a desktop).

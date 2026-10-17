@@ -180,8 +180,11 @@ impl App {
             let gy = self.terrain.height_at(x, z) + lift;
             let (ox, oy) = (p.shift.0 * px, -p.shift.1 * px);
             let (bx, by, bz) = (x + rx * ox - ux * oy, 2.0 * level - gy + ry * ox - uy * oy, z + rz * ox - uz * oy);
+            // a mirrored prop (a left-handed golfer's swing) is reflected mirrored
+            let flip = if p.mirror { -1.0 } else { 1.0 };
             for q in crate::fx_nature::strips(l, r, t, b, bend) {
                 let v = q.map(|(cx, cy, tu, tv)| {
+                    let cx = cx * flip;
                     // fainter towards the top, a little darker than the thing itself
                     let a = 0.95 * (1.0 - 0.3 * (cy / t.max(1e-3)).clamp(0.0, 1.0));
                     let c = [tint[0] * 0.95, tint[1] * 0.95, tint[2] * 0.97, a];

@@ -79,18 +79,41 @@ With its default settings OpenSGolf plays like the original, apart from these:
   wrong golfer ([docs/FIXES.md](docs/FIXES.md)). On by default; they can be turned off in the preferences.
 - **Modern systems and screens:** saving anywhere, undo for building and terrain (Ctrl+Z), full screen (F11), game
   speeds ×2 and ×4, remappable keys, touch controls, controllers and a frame-rate cap.
+- **Building tools:** a measuring tape in yards (the ' key) and, with a terrain brush, Shift+drag for a rectangle and
+  Alt+click to fill a region, with the cost shown before you commit.
 
 Optional, and off by default (Start New Game has a one-click switch between *the original* and *OpenSGolf extras*):
 
-- **Enhanced graphics** for 4K and widescreen: sharp scaling, water, light, weather by each place's climate, seasons,
-  late-winter snow, birds of prey, butterflies and falling leaves, grass tufts, tournament crowds and a photo mode
+- **Enhanced graphics** for 4K and widescreen: sharp scaling, water (depth, waves with the wind, shorelines, rain rings,
+  reeds, ducks, swans, jumping fish, frozen ponds), light, weather by each place's climate, seasons, late-winter snow,
+  birds of prey, butterflies and falling leaves, grass tufts, tournament crowds and a photo mode
   ([docs/ENHANCED.md](docs/ENHANCED.md)).
 - **Bigger courses:** Large, Huge and Giant, up to 128 × 128 tiles.
 - **OpenSGolf extras:** a Hardcore economy, turning buildings, cut content restored as landmarks, animals to buy, higher
-  staff limits, setting a hole's par, and interface extras such as a People screen, message history, autosave, a map of each saved course,
-  and course sharing: copy a course code, a friend pastes it and tries to beat your course record.
+  staff limits, setting a hole's par, left-handed golfers (and a left-handed pro), slower seasons (the calendar at 1/2x or
+  1/4x), sandbox switches (pause the calendar, freeze golfer happiness, unlock everything), a search over every
+  Preferences option with a reset to the original, and interface extras such as a People screen, message history,
+  autosave (the last three kept), a map of each saved course, pausing in the background or on big news, and course
+  sharing: copy a course code, a friend pastes it and tries to beat your course record.
+- **A hidden Cheats box** (Ctrl+Shift+C): add or take away money, force a VIP visit, buy all the land, the sandbox
+  switches. A game in which a cheat was used says so on the Load list, and its course record is no shared challenge.
+- **Quick save and quick load** (Shift+F5, Shift+F9) and a **staff areas** view (Shift+A) that shows every employee's
+  work ring and the fairways and greens no groundskeeper reaches.
+- **Golfer insight** (interface extras): a landing map of where golfers' shots on each hole end up (Shift+D), and each
+  hole's most frequent golfer comments this month, last month and this year (Shift+I).
+- **History graphs** (interface extra): the club's and each hole's months as line graphs on the Histograph's page:
+  rounds, revenue, costs, profit, cash, happiness, ratings and members, and each hole's plays, strokes over par,
+  happiness and fees (Shift+Y).
+- **Camera bookmarks and modern mouse controls:** four kept views of the course (Ctrl+Shift+F1..F4 keep, Shift+F1..F4
+  return), dragging with the middle button, and an interface extra that zooms towards the pointer.
+- **Updates from the title menu:** *Check for updates*, then *Update now* downloads the new version, checks its signature
+  and installs it in place (Windows, macOS, Linux, Android); an interface extra checks once at each start. Only GitHub is
+  contacted, and only then.
 - **Content packs and game scripts** that change prices, buildings, terrain, golfers, text, art and sounds, add scenarios,
   and can be downloaded from inside the game ([docs/MODDING.md](docs/MODDING.md)).
+- **A course editor** (*Course editor...* on the title menu): build a course free of charge with the game's own tools,
+  import a heightmap picture, choose the land owned at the start, the starting cash, the difficulty and goals, and save it
+  as a scenario to play and share ([docs/PLAYING.md](docs/PLAYING.md#course-editor)).
 
 How close each part is to the original is tracked in [docs/PARITY.md](docs/PARITY.md).
 
@@ -109,7 +132,7 @@ and off by default; only fixes for the original's own bugs are on.
 course sharing with challenges, controllers and the Steam Deck, and new Enhanced graphics (weather by place and year,
 wildlife, crowds, winter, grass, sharpening).
 
-Ideas for later: a community course gallery, a scenario editor, club events, more translations, an installable phone and
+Ideas for later: a community course gallery, club events, more translations, an installable phone and
 tablet app, and playing together online.
 
 ## Legal

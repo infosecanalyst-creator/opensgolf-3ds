@@ -173,6 +173,9 @@ impl App {
                 self.info.world_go = None;
                 if self.world_move {
                     self.move_to_property(g, p);
+                } else if self.editor_start {
+                    // the title's "Course editor..." (editor.rs)
+                    self.start_editor(g, p);
                 } else {
                     self.start_game(g, p, self.sandbox_choice);
                 }

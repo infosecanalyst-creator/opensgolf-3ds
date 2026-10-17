@@ -198,10 +198,42 @@ miniquad_add_plugin({
             sgnet.reqs.delete(id);
             return n;
         };
+        // The course editor's "Import heightmap..." (crates/simgolf/src/editor.rs): the page's file picker for a PNG. The
+        // picture is kept under picked/ and its name handed over when the game asks (-1 until one is picked).
+        env.sg_pick_file = function () { sgPickFile(); };
+        env.sg_pick_poll = function (dst, cap) {
+            if (sgPicked === null) return -1;
+            const b = enc.encode(sgPicked);
+            sgPicked = null;
+            const n = Math.min(b.length, cap);
+            new Uint8Array(wasm_memory.buffer, dst, n).set(b.subarray(0, n));
+            return n;
+        };
     },
 });
 
 const sgnet = { next: 1, reqs: new Map() };
+
+// The course editor's heightmap picker: the name of the picture picked, until the game takes it.
+let sgPicked = null;
+function sgPickFile() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".png,image/png";
+    input.style.display = "none";
+    input.addEventListener("change", () => {
+        const f = input.files && input.files[0];
+        input.remove();
+        if (!f) return;
+        f.arrayBuffer().then(b => {
+            const name = f.name.replace(/[\\/]/g, "_");
+            sgAddFile("picked/" + name, new Uint8Array(b));
+            sgPicked = name;
+        });
+    });
+    document.body.appendChild(input);
+    input.click();
+}
 
 // Hands a file to the browser as a download.
 function sgDownload(name, bytes) {
@@ -789,12 +821,13 @@ document.addEventListener("visibilitychange", () => {
 // Space, the arrows, F1 to F10, Tab, Backspace, ' and /. Here the rest of the original's keys are kept from the browser too:
 // PageUp and Home (turn the view; they would scroll the page), End and PageDown, and Alt or Ctrl with a digit (the port's
 // stand-ins for F1 to F10 on keyboards whose function keys need Fn; Alt+digit switches tabs in some browsers). Alt alone
-// would open Firefox's menu bar on Windows. A key pressed while the page has lost the canvas's focus (after a click on
+// would open Firefox's menu bar on Windows. The apostrophe (the measuring tape) opens Firefox's quick find, and Ctrl+Shift+C (the Cheats box) the inspector. A key pressed while the page has lost the canvas's focus (after a click on
 // the page around it, or back from another window) goes to the game and gives the canvas the focus back. The phone
 // keyboard's text box (sgKeyboard) keeps its own keys.
 function sgGameKey(e) {
     if (e.metaKey) return false; // Cmd shortcuts stay the browser's (the game needs none)
-    if (["PageUp", "PageDown", "Home", "End", "AltLeft", "AltRight"].includes(e.code)) return true;
+    if (["PageUp", "PageDown", "Home", "End", "AltLeft", "AltRight", "Quote"].includes(e.code)) return true;
+    if (e.ctrlKey && e.shiftKey && e.code === "KeyC") return true; // the hidden Cheats box (Chrome's inspector key)
     return (e.altKey || e.ctrlKey) && /^Digit[0-9]$/.test(e.code);
 }
 for (const type of ["keydown", "keyup"]) {

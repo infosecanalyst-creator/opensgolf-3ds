@@ -4,7 +4,7 @@ members = ["crates/sg-core", "crates/simgolf", "crates/sgtool", "crates/sgplay"]
 exclude = ["vendor"]
 
 [workspace.package]
-version = "0.3.8"
+version = "0.4.0"
 edition = "2021"
 license = "GPL-2.0-or-later"
 

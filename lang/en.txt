@@ -50,6 +50,10 @@ STR_STYLE_MIX_DETAIL                    :From Preferences. Click for the origina
 ########################################################################################################################
 # The title screens' file lists: Load Previous Game, Select Championship Course, Pick A Pro (docs/DECODE_PICKAPRO.md)
 STR_FILES_AUTOSAVE                      :autosave ({NAME})
+# The port's own autosaves' names in the Load list (autosave.rs, comfort.rs): the two older autosaves and the quick save
+STR_FILES_AUTOSAVE_2                    :autosave (Latest, one before)
+STR_FILES_AUTOSAVE_3                    :autosave (Latest, two before)
+STR_FILES_QUICK                         :quick save
 STR_FILES_LOAD                          :Load
 STR_FILES_CANCEL                        :Cancel
 STR_FILES_DELETE                        :Delete
@@ -903,6 +907,12 @@ STR_CURSOR_LOT_VALUE                    :Lot value: {MONEY}
 STR_CURSOR_SITE_CLEAR                   :Site clear: {MONEY}
 STR_CURSOR_SITE_PREP                    :Site prep.: {MONEY}
 STR_CURSOR_PROFIT                       :Profit: {MONEY}
+# the port's building tools (build_tools.rs): the tape's carry from a hole's tee, the brush's rectangle and fill
+STR_TAPE_CARRY                          :From hole {HOLE}'s tee: {YARDS} yards
+STR_AREA_COST                           :{TILES} tiles: {MONEY}
+STR_AREA_TILES                          :{TILES} tiles
+STR_AREA_TOO_LARGE                      :Too large: at most {MAX} tiles
+STR_TOAST_AREA_TOO_LARGE                :That area is too large to paint at once (at most {MAX} tiles).
 
 # Shot Analysis: the four kinds of golfer (0x40d760's labels) and the figure beside each ({SIGN} is + when positive)
 STR_ANALYSIS_NO_LENGTH                  :no Length skill
@@ -1295,6 +1305,23 @@ STR_MENU_PREFS_KEYS                     : Keyboard controls...
 # Preferences > OpenSGolf extras (the port's own optional gameplay changes, all off by default; docs/PLAYING.md). The
 # options start with a space.
 STR_MENU_PREFS_EXTRAS                   : OpenSGolf extras...
+# Preferences > Search (the port's own, prefs_search.rs): find an option on any page of the Preferences by its words
+STR_MENU_PREFS_SEARCH                   : Search options...
+STR_SEARCH_TITLE                        :Search the Preferences (type to find)
+STR_SEARCH_FIND                         :Find: {QUERY}
+STR_SEARCH_HINT                         :(type a word, e.g. snow, pause or par)
+STR_SEARCH_CHANGED                      : Show only what differs from the original game
+# A found option: "{page}: {option}"; the pages of Enhanced graphics' master switch and of the keys
+STR_SEARCH_PLACE_ENHANCED               :Graphics
+STR_SEARCH_PLACE_KEYS                   :Keys
+STR_SEARCH_KEY                          :{ACTION} ({KEY})
+STR_SEARCH_NONE                         :Nothing found.
+STR_SEARCH_MORE                         :{N} more: type more to narrow the list.
+STR_SEARCH_RESET                        : Reset everything to the original game...
+STR_RESET_ORIGINAL_1                    :Put every option back as in the original game?
+STR_RESET_ORIGINAL_2                    :All extras and Enhanced graphics off, every key as it was.
+STR_RESET_ORIGINAL_YES                  : Yes, back to the original game.
+STR_RESET_ORIGINAL_NO                   : No, keep my choices.
 STR_EXTRAS_TITLE                        :OpenSGolf extras (not in the original)
 STR_EXTRAS_ROTATE                       : Tab turns placed buildings and the clubhouse
 STR_EXTRAS_CUT_CONTENT                  : Cut content: unused landmarks
@@ -1302,6 +1329,20 @@ STR_EXTRAS_HARDCORE                     : Hardcore economy
 STR_EXTRAS_MORE_STAFF                   : Higher staff limits
 STR_EXTRAS_ANIMALS                      : Buyable animals
 STR_EXTRAS_SET_PAR                      : Set par: change a hole's par on its Hole Stats
+# The extras box's pages (tabs): the gameplay extras, the calendar and sandbox switches, the interface extras
+STR_EXTRAS_PAGE_GAMEPLAY                :Gameplay
+STR_EXTRAS_PAGE_TIME                    :Time & sandbox
+STR_EXTRAS_PAGE_INTERFACE               :Interface
+# Slower seasons: a click steps the calendar's speed (1x is the original's)
+STR_EXTRAS_SEASON_SPEED                 : Slower seasons: the calendar at {VALUE}
+STR_EXTRAS_SPEED_1                      :1x (original)
+STR_EXTRAS_SPEED_HALF                   :1/2x
+STR_EXTRAS_SPEED_QUARTER                :1/4x
+STR_EXTRAS_PAUSE_CALENDAR               : Sandbox: pause the calendar
+STR_EXTRAS_FREEZE_MOODS                 : Sandbox: freeze golfer happiness
+STR_EXTRAS_UNLOCK_ALL                   : Sandbox: unlock all buildings and landmarks
+# Left-handed golfers (sg_core::extras): about one golfer in ten, and a tick for your pro on Customise Golfer
+STR_EXTRAS_LEFTIES                      : Left-handed golfers
 STR_SET_PAR_1                           :Change hole {HOLE} from par {OLD} to par {NEW}?
 STR_SET_PAR_2                           :Golfers will be scored against the new par.
 STR_SET_PAR_YES                         : Yes, change the par.
@@ -1376,6 +1417,16 @@ STR_ENHANCED_PAGE_DISPLAY               :Display
 STR_ENHANCED_PAGE_EFFECTS               :Effects
 STR_ENHANCED_PAGE_ATMOSPHERE            :Atmosphere
 STR_ENHANCED_PAGE_WEATHER               :Weather
+STR_ENHANCED_PAGE_WATER                 :Water
+# Enhanced graphics > Water (the port's own, docs/ENHANCED.md "Water")
+STR_ENHANCED_FX_WATER_COLOUR            : Truer water colour: light shallows, deep middle
+STR_ENHANCED_FX_WAVES                   : Waves that follow the wind and the weather
+STR_ENHANCED_FX_SHORELINE               : Water lapping at the shore, a wet bank
+STR_ENHANCED_FX_CAUSTICS                : Sunlight rippling on the bottom of shallows
+STR_ENHANCED_FX_RAIN_RINGS              : Raindrop rings on the water
+STR_ENHANCED_FX_WATER_LIFE              : Reeds, lily pads, ducks, swans and fish
+STR_ENHANCED_FX_ICE                     : Ponds icing over in a late-winter cold snap
+STR_ENHANCED_FX_SPRAY                   : Spray at fountains and waterfalls
 # Enhanced graphics > Effects (the port's own, docs/ENHANCED.md): each option's label and its choices
 STR_FX_EFFECTS                          :Effects
 STR_FX_SCALER                           :Pixel-art scaling of sprites and pictures
@@ -1409,6 +1460,14 @@ STR_FX_SHARPEN                          :Sharpen
 STR_FX_WINTER                           :Winter
 STR_FX_CROWDS                           :Tournament crowds
 STR_FX_LIFE                             :Life on the course
+STR_FX_WATER_COLOUR                     :Truer water colour
+STR_FX_WAVES                            :Painterly waves
+STR_FX_SHORELINE                        :Shoreline
+STR_FX_CAUSTICS                         :Caustics
+STR_FX_RAIN_RINGS                       :Rain rings
+STR_FX_WATER_LIFE                       :Life on the water
+STR_FX_ICE                              :Frozen ponds
+STR_FX_SPRAY                            :Fountain and waterfall spray
 STR_FX_DAY_LENGTH                       :Day length
 STR_FX_DAY_SHORT                        :Short (a game month)
 STR_FX_DAY_NORMAL                       :Normal (three months)
@@ -2429,6 +2488,19 @@ STR_CTL_PEOPLE                          :People screen
 STR_CTL_HISTORY                         :Message history
 STR_CTL_NAME_TAGS                       :Name tags off / on
 STR_CTL_PATH_VIEW                       :Path view off / on
+# the port's building tools (build_tools.rs)
+STR_CTL_TAPE                            :Measuring tape
+STR_CTL_QUICK_SAVE                      :Quick save
+STR_CTL_QUICK_LOAD                      :Quick load
+STR_CTL_STAFF_VIEW                      :Staff areas off / on
+STR_CTL_LANDING_MAP                     :Landing map off / on
+STR_CTL_HOLE_COMMENTS                   :Comments by hole
+STR_CTL_GRAPHS                          :History graphs
+STR_CTL_VIEW_1                          :Camera bookmark 1 (Ctrl+key keeps it)
+STR_CTL_VIEW_2                          :Camera bookmark 2 (Ctrl+key keeps it)
+STR_CTL_VIEW_3                          :Camera bookmark 3 (Ctrl+key keeps it)
+STR_CTL_VIEW_4                          :Camera bookmark 4 (Ctrl+key keeps it)
+STR_CTL_EDITOR                          :Course editor: scenario settings
 
 # The player's own SimGolf files (the port's own, gamefiles.rs): the title screen's button and the Preferences line
 STR_GAME_FILES_USE_MINE                 :Use my SimGolf files...
@@ -2481,6 +2553,27 @@ STR_UPDATE_NEWER                        :OpenSGolf {VERSION} is out (you have {C
 STR_UPDATE_OPEN_PAGE                    :Open the download page
 STR_UPDATE_FAILED                       :OpenSGolf could not check for updates ({ERROR}). Check the internet connection and try again later.
 STR_UPDATE_NO_BROWSER                   :No browser could be opened. The newest version is at {URL}
+STR_UPDATE_NOW                          :Update now
+STR_UPDATE_SKIP                         :Skip this version
+STR_UPDATE_STAGE_SUMS                   :Getting OpenSGolf {VERSION}'s signed checksums...
+STR_UPDATE_STAGE_DOWNLOAD               :Downloading OpenSGolf {VERSION}: {DONE} of {TOTAL} MB
+STR_UPDATE_STAGE_DOWNLOAD_MB            :Downloading OpenSGolf {VERSION}: {DONE} MB
+STR_UPDATE_STAGE_VERIFY                 :Checking the download against the signed checksums...
+STR_UPDATE_STAGE_INSTALL                :Installing OpenSGolf {VERSION}...
+STR_UPDATE_DONE                         :Updated to OpenSGolf {VERSION}.
+STR_UPDATE_RESTART_FAILED               :OpenSGolf {VERSION} is installed, but it could not be started. Close the game and start it again.
+STR_UPDATE_NOT_SET_UP                   :This version of OpenSGolf cannot update itself: it has no key to check that a download really comes from OpenSGolf, and it installs nothing it cannot check. Download the new version from its page instead.
+STR_UPDATE_REFUSED                      :The update was not installed: {WHY} Your version is unchanged. You can download the new version from its page.
+STR_UPDATE_WHY_NO_FILE                  :the release has no package for this system ({FILE}).
+STR_UPDATE_WHY_UNSIGNED                 :the release is not signed (it has no SHA256SUMS and SHA256SUMS.sig).
+STR_UPDATE_WHY_BAD_SIGNATURE            :its signature is not OpenSGolf's.
+STR_UPDATE_WHY_NOT_LISTED               :the signed checksums do not list {FILE}.
+STR_UPDATE_WHY_HASH                     :the download of {FILE} does not match its signed checksum.
+STR_UPDATE_NOT_PACKAGED                 :OpenSGolf cannot update itself here ({DIR}): this copy was not installed from a release package. Download the new version from its page.
+STR_UPDATE_NO_ACCESS                    :OpenSGolf may not change the files in {DIR}, so it cannot update itself there. Download the new version from its page and install it as the first time.
+STR_UPDATE_INSTALL_FAILED               :The update could not be installed ({ERROR}). Your version is unchanged. You can download the new version from its page.
+STR_UPDATE_ANDROID_CONFIRM              :Android asks you to confirm the update (the first time, it asks to allow OpenSGolf to install apps). The game closes while it installs; open it again afterwards.
+STR_UPDATE_ANDROID_FAILED               :Android did not install the update ({ERROR}). Your version is unchanged. You can download the new version from its page.
 
 # Preferences > Content > Find more: the content index (docs/CONTENT_INDEX.md)
 STR_INDEX_TITLE                         :Find more content
@@ -2542,6 +2635,8 @@ STR_GOAL_COND_FUN                       :fun rating {N}
 STR_GOAL_COND_SKILL                     :skill rating {N}
 STR_GOAL_COND_MEMBERS                   :{N} members
 STR_GOAL_COND_RANK                      :{RANK} rank
+STR_GOAL_AUTO                           :Reach {GOAL}
+STR_GOAL_AUTO_BY                        :Reach {GOAL} by the end of {YEAR}
 
 # Scripts (docs/MODDING.md 6): the toast when a pack's script fails (the message is on the Content screen)
 STR_SCRIPT_ERROR_TOAST                  :A script of the pack {PACK} failed: see System Functions, Preferences, Content packs.
@@ -2554,16 +2649,22 @@ STR_TOAST_EXPORTED                      :Exported as the scenario pack {PACK} (i
 ########################################################################################################################
 # OpenSGolf extras (the port's own additions, extras.rs; docs/PLAYING.md "OpenSGolf extras")
 ########################################################################################################################
-# Preferences > OpenSGolf extras, second part (under the gameplay extras): the interface extras' heading and a tick per extra
-STR_EXTRAS_UI_HEAD                      :Interface extras
+# Preferences > OpenSGolf extras, Interface page: a tick per interface extra
 STR_EXTRAS_PEOPLE                       : People screen and golfer profiles (Shift+G)
 STR_EXTRAS_HISTORY                      : Message history (Shift+M, or click the ticker)
 STR_EXTRAS_NAME_TAGS                    : Name tags under the pointer (Shift+H)
 STR_EXTRAS_REPORT_TABS                  : Tabs over the F1 to F10 reports
 STR_EXTRAS_PATH_HELP                    : Path help: path view (Shift+V) and Show buttons
-STR_EXTRAS_AUTOSAVE                     : Autosave every five minutes
+STR_EXTRAS_AUTOSAVE                     : Autosave every five minutes (the last three kept)
 STR_EXTRAS_SAVE_PICTURES                : A map of the course beside each saved game
 STR_EXTRAS_SHARING                      : Course sharing: course codes and challenges (Ctrl+V pastes one)
+STR_EXTRAS_PAUSE_BACKGROUND             : Pause while the game's window is in the background
+STR_EXTRAS_PAUSE_EVENTS                 : Pause on big news: VIPs, challenges, offers, debt
+STR_EXTRAS_LANDING_MAP                  : Landing map: where shots on a hole end up (Shift+D)
+STR_EXTRAS_HOLE_COMMENTS                : Comments by hole, this month and last (Shift+I)
+STR_EXTRAS_UPDATE_CHECK                 : Check for updates when the game starts (online)
+STR_EXTRAS_GRAPHS                       : History graphs: the club and each hole month by month (Shift+Y)
+STR_EXTRAS_ZOOM_POINTER                 : Zoom towards the pointer (the wheel keeps the ground under it)
 STR_MENU_SYSTEM_SHARE                   : Share course (copy a course code)
 STR_FILES_PASTE_CODE                    :Paste a course code
 STR_FILES_CHALLENGE                     :Challenge: beat {DESIGNER}'s record of {SCORE}
@@ -2571,8 +2672,6 @@ STR_TOAST_SHARE_COPIED                  :Course code for {COURSE} copied. Paste 
 STR_TOAST_SHARE_NO_CODE                 :No course code on the clipboard. Copy the whole code, then paste again.
 STR_TOAST_SHARE_COURSE_ADDED            :{COURSE} added to Play a Championship. Beat the course record!
 STR_TOAST_SHARE_GAME_ADDED              :{COURSE} added to Load Previous Game.
-# An empty line: before the interface extras' heading, and the box's last line (it keeps the OK tick clear of the options)
-STR_EXTRAS_END                          :
 # A game date: "March 3, 2001"
 STR_EXTRAS_DATE                         :{MONTH} {DAY}, {YEAR}
 # Under the Paused caption while People > Follow keeps the camera on someone
@@ -2581,6 +2680,9 @@ STR_EXTRAS_FOLLOWING                    :Following {NAME} (Space stops)
 STR_MENU_INFO_PEOPLE                    : People
 STR_MENU_INFO_HISTORY                   : Message history
 STR_MENU_INFO_PATH_VIEW                 : Path view on / off
+STR_MENU_INFO_LANDING_MAP               : Landing map on / off
+STR_MENU_INFO_HOLE_COMMENTS             : Comments by hole
+STR_MENU_INFO_GRAPHS                    : History graphs
 # The message history
 STR_HISTORY_TITLE                       :Message History
 STR_HISTORY_HELP                        :Messages kept: {COUNT}, newest first. Click a message to go to the golfer or the place it is about.
@@ -2664,6 +2766,63 @@ STR_PATHVIEW_ON                         :Path view on: Shift+V hides it.
 STR_PATHVIEW_OFF                        :Path view off.
 STR_TOAST_NAME_TAGS_ON                  :Name tags under the pointer on (Shift+H).
 STR_TOAST_NAME_TAGS_OFF                 :Name tags under the pointer off (Shift+H).
+# The landing map (insight.rs): the legend in the upper right
+STR_LANDING_TITLE                       :Landing map (Shift+D)
+STR_LANDING_TITLE_HOLE                  :Landing map: hole {HOLE}
+STR_LANDING_SHOT_1                      :Tee shot
+STR_LANDING_SHOT_2                      :Second shot
+STR_LANDING_SHOT_3                      :Third shot
+STR_LANDING_SHOT_4                      :Fourth and later
+STR_LANDING_SHOTS                       :The last {COUNT} shots ended in:
+STR_LANDING_GROUNDS_1                   :Fairway {FAIRWAY}   Rough {ROUGH}   Sand {SAND}
+STR_LANDING_GROUNDS_2                   :Water {WATER}   Green {GREEN}   Other {OTHER}
+STR_LANDING_NONE                        :No shots seen on this hole yet.
+STR_LANDING_POINT                       :Point at a hole to see its shots.
+STR_LANDING_CLOSE                       :Shift+D hides the landing map.
+STR_LANDING_ON                          :Landing map on: point at a hole. Shift+D hides it.
+STR_LANDING_OFF                         :Landing map off.
+# Comments by hole (insight.rs)
+STR_HOLECOMMENTS_TITLE                  :Comments by Hole
+STR_HOLECOMMENTS_THIS_MONTH             :This month ({MONTH})
+STR_HOLECOMMENTS_LAST_MONTH             :Last month ({MONTH})
+STR_HOLECOMMENTS_THIS_YEAR              :This year ({YEAR})
+STR_HOLECOMMENTS_HOLE                   :Hole {HOLE}
+STR_HOLECOMMENTS_HEARD                  :{COUNT} in all
+STR_HOLECOMMENTS_NOTHING                :Nothing heard yet.
+STR_HOLECOMMENTS_NO_HOLES               :No holes are open yet.
+STR_HOLECOMMENTS_COUNTED                :Each hole's three most frequent thoughts and how often: green cheered golfers up, red put them out.
+STR_HOLECOMMENTS_HELP                   :Left/Right: the period. Up/Down or the wheel scroll. Esc or a click outside closes.
+STR_HOLECOMMENTS_HELP_MAP               :Left/Right: the period. Up/Down or the wheel scroll. Click a hole for its landing map.
+# History graphs (graphs.rs)
+STR_GRAPHS_TITLE                        :HISTORY GRAPHS
+STR_GRAPHS_CLUB                         :Club
+STR_GRAPHS_ROUNDS                       :Rounds
+STR_GRAPHS_PLAYS                        :Holes played
+STR_GRAPHS_REVENUE                      :Revenue
+STR_GRAPHS_COSTS                        :Costs
+STR_GRAPHS_PROFIT                       :Profit
+STR_GRAPHS_CASH                         :Cash
+STR_GRAPHS_HAPPINESS                    :Happiness
+STR_GRAPHS_FUN                          :Fun rating
+STR_GRAPHS_SKILL                        :Skill rating
+STR_GRAPHS_MEMBERS                      :Members
+STR_GRAPHS_HOLE_PLAYS                   :Times played
+STR_GRAPHS_OVER_PAR                     :Strokes over par
+STR_GRAPHS_HOLE_FEES                    :Greens fees
+STR_GRAPHS_HOLE_TITLE                   :Hole {HOLE}: {MEASURE}
+STR_GRAPHS_MONTH                        :{MONTH} {YEAR}
+STR_GRAPHS_SO_FAR                       :{MONTH} (so far)
+STR_GRAPHS_NO_VALUE                     :Not played this month
+STR_GRAPHS_FROM_PLAYS                   :From {COUNT} holes played
+STR_GRAPHS_EMPTY                        :No months yet: the graphs fill in month by month from now on.
+STR_GRAPHS_HELP                         :Left/Right: a month. Up/Down: the measure. PageUp/PageDown: club or hole.
+STR_GRAPHS_HOLE                         :Hole {HOLE}
+STR_GRAPHS_LATEST                       :Now: {VALUE}
+STR_GRAPHS_MONTHS                       :{COUNT} months
+# Camera bookmarks (views.rs)
+STR_TOAST_VIEW_KEPT                     :View {SLOT} kept: {KEY} comes back to it.
+STR_TOAST_VIEW                          :View {SLOT}
+STR_TOAST_VIEW_NONE                     :No view {SLOT} yet: Ctrl+{KEY} keeps the view there.
 # The tabs over the F1 to F10 reports (keep them short: ten share 740 pixels)
 STR_TABS_F1                             :F1 Course
 STR_TABS_F2                             :F2 Comments
@@ -2675,6 +2834,10 @@ STR_TABS_F7                             :F7 SGA
 STR_TABS_F8                             :F8 Keys
 STR_TABS_F9                             :F9 Roster
 STR_TABS_F10                            :F10 Awards
+# the eleventh tab, with comments by hole on (eleven share 792 pixels)
+STR_TABS_HOLES                          :By hole
+# the tab of the history graphs (twelve share 792 pixels)
+STR_TABS_GRAPHS                         :Graphs
 # Keyboard controls: the extras' keys
 STR_KEYS_HEAD_EXTRAS                    :OpenSGolf extras
 STR_KEYS_K_PEOPLE                       :Shift+G
@@ -2685,5 +2848,133 @@ STR_KEYS_K_TAGS                         :Shift+H
 STR_KEYS_TAGS                           :Name tags under the pointer off / on
 STR_KEYS_K_PATHVIEW                     :Shift+V
 STR_KEYS_PATHVIEW                       :Path view: paths and places without one
+STR_KEYS_K_LANDING_MAP                  :Shift+D
+STR_KEYS_LANDING_MAP                    :Landing map: where shots on the hole under the pointer end up
+STR_KEYS_K_HOLE_COMMENTS                :Shift+I
+STR_KEYS_HOLE_COMMENTS                  :Comments by hole: each hole's most frequent thoughts
+STR_KEYS_K_GRAPHS                       :Shift+Y
+STR_KEYS_GRAPHS                         :History graphs: the club and each hole month by month
 STR_KEYS_K_REPORT_TABS                  :Tab
 STR_KEYS_REPORT_TABS                    :On a report: the next report's tab (Shift+Tab the one before; the F keys go straight there)
+STR_KEYS_K_TAPE                         :'
+STR_KEYS_TAPE                           :Measuring tape: hold and move, or press and click (Esc puts it away)
+STR_KEYS_K_AREA_RECT                    :Shift+drag
+STR_KEYS_AREA_RECT                      :With a terrain brush: paint a rectangle
+STR_KEYS_K_AREA_FILL                    :Alt+click
+STR_KEYS_AREA_FILL                      :With a terrain brush: fill the region of one type
+STR_KEYS_K_QUICK_SAVE                   :Shift+F5
+STR_KEYS_QUICK_SAVE                     :Quick save (no dialog; Load lists it as "quick save")
+STR_KEYS_K_QUICK_LOAD                   :Shift+F9
+STR_KEYS_QUICK_LOAD                     :Quick load (asks first)
+STR_KEYS_K_STAFF_VIEW                   :Shift+A
+STR_KEYS_STAFF_VIEW                     :Staff areas: every employee's ring, and the course no groundskeeper reaches
+STR_KEYS_K_VIEWS                        :Shift+F1 .. F4
+STR_KEYS_VIEWS                          :Camera bookmarks: back to a kept view (centre, zoom and turn)
+STR_KEYS_K_VIEW_KEEP                    :Ctrl+bookmark key
+STR_KEYS_VIEW_KEEP                      :Keep the view on that bookmark (saved with the game)
+STR_KEYS_K_EDITOR                       :Shift+E
+STR_KEYS_EDITOR                         :Course editor only: the scenario settings box
+# Quick save and quick load (comfort.rs)
+STR_TOAST_QUICK_SAVED                   :Quick saved ({KEY} loads it).
+STR_TOAST_QUICK_NO_SAVE                 :Cannot quick save during a tournament.
+STR_TOAST_QUICK_NONE                    :No quick save yet: {KEY} makes one.
+STR_QUICK_LOAD_1                        :Load the quick save?
+STR_QUICK_LOAD_2                        :Anything since it was made will be lost.
+STR_QUICK_LOAD_YES                      : Yes, load it.
+STR_QUICK_LOAD_NO                       : No, keep playing.
+# Pause on big news (comfort.rs): shown under the Paused caption
+STR_PAUSED_BACKGROUND                   :Paused while the window was in the background
+STR_PAUSED_EVENT                        :Paused for big news
+# The staff areas (Shift+A, staffview_ui.rs)
+STR_STAFF_VIEW_TITLE                    :Staff areas (Shift+A)
+STR_STAFF_VIEW_KEEPERS                  :Groundskeepers: {COUNT}
+STR_STAFF_VIEW_RANGERS                  :Rangers: {COUNT}
+STR_STAFF_VIEW_VENDORS                  :Soda vendors: {COUNT}
+STR_STAFF_VIEW_PROS                     :Club pros: {COUNT}
+STR_STAFF_VIEW_BARE                     :Unkept fairway, green, tee: {COUNT} tiles
+STR_STAFF_VIEW_ON                       :Staff areas on: Shift+A hides them.
+STR_STAFF_VIEW_OFF                      :Staff areas off.
+# The course editor (editor.rs; the port's own): the title button, the editor box, heightmap import, saving scenarios
+STR_EDITOR_HM_NOT_PNG                   :This is not a PNG picture OpenSGolf can read (8 or 16 bits per channel, not interlaced).
+STR_EDITOR_TITLE_BUTTON                 :Course editor...
+STR_EDITOR_TITLE                        :Course Editor
+STR_EDITOR_HELP                         :Build with the usual tools: nothing costs money and no time passes. Set up the scenario here and save it.
+STR_EDITOR_BAR                          :Course editor: scenario settings ({KEY})
+STR_EDITOR_NAME                         :Name
+STR_EDITOR_AUTHOR                       :Author
+STR_EDITOR_DESCRIPTION                  :Description
+STR_EDITOR_INTRO                        :Welcome text
+STR_EDITOR_WIN                          :When won
+STR_EDITOR_LOSE                         :When lost
+STR_EDITOR_CASH                         :Starting cash
+STR_EDITOR_DIFFICULTY                   :Difficulty
+STR_EDITOR_ANY_DIFFICULTY               :Player chooses
+STR_EDITOR_SANDBOX                      :Sandbox game
+STR_EDITOR_ON                           :On
+STR_EDITOR_OFF                          :Off
+STR_EDITOR_COURSE                       :Course
+STR_EDITOR_COURSE_TEXT                  :{PLACE}, {SIZE} ({N} x {N} tiles)
+STR_EDITOR_LAND                         :Land at the start (click a tract):
+STR_EDITOR_OWNED                        :owned
+STR_EDITOR_FOR_SALE                     :for sale
+STR_EDITOR_HM                           :Heightmap (a grey picture: black low, white high)
+STR_EDITOR_HM_RELIEF                    :Heights
+STR_EDITOR_RELIEF_GENTLE                :Gentle
+STR_EDITOR_RELIEF_ROLLING               :Rolling
+STR_EDITOR_RELIEF_HILLY                 :Hilly
+STR_EDITOR_HM_WATER                     :Water
+STR_EDITOR_HM_WATER_OFF                 :none
+STR_EDITOR_HM_WATER_LEVEL               :up to level {N}
+STR_EDITOR_HM_SMOOTH                    :Smoothing
+STR_EDITOR_HM_PICK                      :Import heightmap...
+STR_EDITOR_HM_PICKING                   :Choose a PNG picture...
+STR_EDITOR_HM_PICK_TITLE                :Import a heightmap (a grey PNG picture)
+STR_EDITOR_HM_SAMPLES                   :Samples:
+STR_EDITOR_HM_SAMPLE_VALLEY             :Valley
+STR_EDITOR_HM_SAMPLE_RIDGE              :Ridge
+STR_EDITOR_HM_SAMPLE_ISLAND             :Island
+STR_EDITOR_HM_DONE                      :{FILE}: the land takes the picture's heights; {WATER} water tiles. Ctrl+Z takes it back.
+STR_EDITOR_GOALS                        :Goals (reach them all to win):
+STR_EDITOR_NO_GOALS                     :No goals: the scenario is a free game on this course.
+STR_EDITOR_GOAL_ADD                     :Add a goal
+STR_EDITOR_GOAL_HOLES                   :Holes
+STR_EDITOR_GOAL_CASH                    :Cash
+STR_EDITOR_GOAL_FUN                     :Fun rating
+STR_EDITOR_GOAL_SKILL                   :Skill rating
+STR_EDITOR_GOAL_MEMBERS                 :Members
+STR_EDITOR_GOAL_RANK                    :Rank
+STR_EDITOR_ANY_TIME                     :any time
+STR_EDITOR_BY_YEAR                      :by {YEAR}
+STR_EDITOR_SAVE                         :Save scenario
+STR_EDITOR_LOAD                         :Load scenario...
+STR_EDITOR_BACK                         :Back to the course
+STR_EDITOR_LEAVE                        :Leave the editor
+STR_EDITOR_LEAVE_SURE                   :Click again to leave
+STR_EDITOR_SAVED                        :Saved as the scenario pack {PACK} ({DIR}). Start New Game lists it.
+STR_EDITOR_SAVE_FAILED                  :The scenario was not saved: {ERROR}
+STR_EDITOR_UNNAMED                      :My Scenario
+STR_EDITOR_DEFAULT_DESCRIPTION          :A scenario made in the OpenSGolf course editor.
+STR_EDITOR_LOAD_TITLE                   :Load a Scenario into the Editor
+STR_EDITOR_LOAD_HELP                    :Click a scenario to go on with it. Scenarios in your packs folder are saved back in place, others as a copy.
+STR_EDITOR_LOAD_NONE                    :No scenario packs are installed.
+STR_EDITOR_LOADED                       :{NAME} is in the editor.
+# The Cheats box (cheats_ui.rs; a hidden key, Ctrl+Shift+C): options start with a space
+STR_CHEATS_TITLE                        :Cheats
+STR_CHEATS_NOTE                         :Any cheat you use is noted with the saved game.
+STR_CHEATS_ADD                          : Add {MONEY}
+STR_CHEATS_TAKE                         : Take away {MONEY}
+STR_CHEATS_VIP                          : Force a VIP visit now
+STR_CHEATS_LAND                         : Buy all the land
+# a Sandbox switch of the Extras box: its name (STR_EXTRAS_PAUSE_CALENDAR...) and on or off
+STR_CHEATS_SWITCH                       : {SWITCH}: {STATE}
+STR_CHEATS_ON                           :on
+STR_CHEATS_OFF                          :off
+STR_CHEATS_DONE                         : Done
+STR_TOAST_CHEAT_MONEY                   :Cheat: {MONEY}. Cash: {CASH}.
+STR_TOAST_CHEAT_VIP                     :Cheat: a VIP comes with the next pair to tee off.
+STR_TOAST_CHEAT_LAND                    :Cheat: all the land is yours.
+STR_CTL_CHEATS                          :Cheats box
+# the Load list's note on a game in which cheats were used
+STR_FILES_CHEATED                       :Cheats used
+# Customise Golfer, your pro, with the Left-handed golfers extra on
+STR_CUST_LEFT_HANDED                    :Left-handed

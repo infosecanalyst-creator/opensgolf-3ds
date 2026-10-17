@@ -295,6 +295,43 @@ pub fn restart() {
     }
 }
 
+/// "Update now" (autoupdate.rs): hands the downloaded APK, its signature and checksum checked, to Android's package
+/// installer (MainActivity.installApk: a PackageInstaller session, so no file needs sharing through a FileProvider).
+/// Android asks the player to confirm, and installs it only over an app signed with the same key. False when the Java
+/// call failed.
+pub fn install_apk(path: &std::path::Path) -> bool {
+    unsafe {
+        let activity = android::ACTIVITY;
+        if activity.is_null() {
+            return false;
+        }
+        let env = android::attach_jni_env();
+        let Ok(c) = CString::new(path.to_string_lossy().into_owned()) else { return false };
+        let jpath = (**env).NewStringUTF.unwrap()(env, c.as_ptr());
+        miniquad::call_void_method!(env, activity, "installApk", "(Ljava/lang/String;)V", jpath);
+        (**env).DeleteLocalRef.unwrap()(env, jpath);
+        println!("handed {} to Android's installer", path.display());
+        !threw(env)
+    }
+}
+
+/// How the install [`install_apk`] started is going (MainActivity.installState): "installing", "waiting", "confirm"
+/// (Android's box is up), "done", or "failed:WHY".
+pub fn install_state() -> String {
+    unsafe {
+        let activity = android::ACTIVITY;
+        if activity.is_null() {
+            return "failed:no activity".into();
+        }
+        let env = android::attach_jni_env();
+        let s = miniquad::call_object_method!(env, activity, "installState", "()Ljava/lang/String;");
+        if threw(env) {
+            return "failed:installState".into();
+        }
+        rust_string(env, s).unwrap_or_default()
+    }
+}
+
 /// "Check for updates" (update.rs): opens `url` in the phone's browser (`startActivity` with an ACTION_VIEW intent for
 /// it). False when that failed (no browser, or a JNI call threw).
 pub fn open_url(url: &str) -> bool {

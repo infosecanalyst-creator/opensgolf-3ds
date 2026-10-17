@@ -252,7 +252,7 @@ impl App {
             let n = if k <= 5 { 10 * cdiv * k } else { cdiv * (50 * k - 200) };
             s.put_centered(g, F_INFO14, 727.0, y, &format!("\u{a7}{n}k"), black());
         }
-        let months = (self.club.tick >> 10) as usize;
+        let months = (self.club.date() >> 10) as usize;
         let step = (600 / (months as i32 + 1)).clamp(1, 4);
         let h = &self.club.history;
         // each plot line runs from last month's height to this month's (0x478b80 lines), inside the clip rectangle the exe
@@ -905,7 +905,8 @@ impl App {
     /// F6, the world map: the property chooser, to move the club to another property. Cash, the calendar and the pro's
     /// career go along; the course starts afresh (0x407d30).
     pub fn open_world_map(&mut self) {
-        if self.club.game & sg_core::golfer::game::REPEAT != 0 {
+        // the course editor stays on its property (editor.rs)
+        if self.club.game & sg_core::golfer::game::REPEAT != 0 || self.editor.is_some() {
             return self.ui_sound(0x18);
         }
         self.world_move = true;
@@ -941,6 +942,7 @@ impl App {
         self.game_tick = tick;
         let k = &mut self.club;
         k.tick = tick;
+        k.cal = c.cal;
         k.pro_skill = c.pro_skill;
         k.pro_mask = c.pro_mask;
         k.skill_points = c.skill_points;

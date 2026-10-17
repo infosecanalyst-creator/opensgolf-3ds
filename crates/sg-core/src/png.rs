@@ -58,7 +58,7 @@ pub fn write_png(path: impl AsRef<std::path::Path>, img: &Rgba) -> bool {
 /// filter. Covers the accomplishment snapshots `encode_png` writes, the HD packs' pictures (docs/HD.md) and the PNG art of
 /// content packs (docs/MODDING.md). Anything else gives None.
 pub fn decode_png(d: &[u8]) -> Option<Rgba> {
-    let r = png_raw(d)?;
+    let r = png_raw(d).filter(|r| r.depth == 8)?;
     let (w, h, ch) = (r.w, r.h, r.ch);
     let mut out = Rgba::new(w as u32, h as u32);
     for (i, o) in out.px.chunks_exact_mut(4).enumerate() {
@@ -86,7 +86,7 @@ pub type IndexedPng = (u32, u32, Vec<u8>, [[u8; 3]; 256]);
 /// sheets (crate::freeset), which keep the palette slots the engine recolours. None for any other kind of PNG.
 pub fn decode_png_indexed(d: &[u8]) -> Option<IndexedPng> {
     let r = png_raw(d)?;
-    if r.ct != 3 {
+    if r.ct != 3 || r.depth != 8 {
         return None;
     }
     let mut pal = [[0u8; 3]; 256];
@@ -96,11 +96,41 @@ pub fn decode_png_indexed(d: &[u8]) -> Option<IndexedPng> {
     Some((r.w as u32, r.h as u32, r.px, pal))
 }
 
-/// A PNG's pixels after the row filters, `ch` bytes each, with its colour type, palette and transparency.
+/// A grey picture of any size, from a PNG of 8 or 16 bits per channel (the course editor's heightmaps, crate::heightmap):
+/// each pixel's brightness from 0.0 (black) to 1.0 (white), rows top to bottom. A colour picture is read as its luma.
+pub fn decode_png_grey(d: &[u8]) -> Option<(usize, usize, Vec<f32>)> {
+    let r = png_raw(d)?;
+    let bytes = (r.depth / 8) as usize;
+    let max = if bytes == 2 { 65535.0 } else { 255.0 };
+    // channel k of pixel i, 0..1
+    let at = |i: usize, k: usize| -> f32 {
+        let o = (i * r.ch + k) * bytes;
+        let v = if bytes == 2 { u16::from_be_bytes([r.px[o], r.px[o + 1]]) as f32 } else { r.px[o] as f32 };
+        v / max
+    };
+    let luma = |c: [f32; 3]| 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
+    let mut v = Vec::with_capacity(r.w * r.h);
+    for i in 0..r.w * r.h {
+        v.push(match r.ct {
+            0 | 4 => at(i, 0),
+            2 | 6 => luma([at(i, 0), at(i, 1), at(i, 2)]),
+            _ => {
+                let k = r.px[i] as usize;
+                let c = r.pal.get(k * 3..k * 3 + 3)?;
+                luma([c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0])
+            }
+        });
+    }
+    Some((r.w, r.h, v))
+}
+
+/// A PNG's pixels after the row filters, `ch` channels of `depth` bits each, with its colour type, palette and transparency.
 struct Raw {
     w: usize,
     h: usize,
     ct: u8,
+    /// Bits per channel: 8, or 16 (big-endian; only read by `decode_png_grey`).
+    depth: u8,
     ch: usize,
     pal: Vec<u8>,
     trns: Vec<u8>,
@@ -112,7 +142,7 @@ fn png_raw(d: &[u8]) -> Option<Raw> {
         return None;
     }
     let be = |o: usize| u32::from_be_bytes([d[o], d[o + 1], d[o + 2], d[o + 3]]);
-    let (mut w, mut h, mut ct) = (0usize, 0usize, 0u8);
+    let (mut w, mut h, mut ct, mut depth) = (0usize, 0usize, 0u8, 8u8);
     let mut pal: Vec<u8> = Vec::new();
     let mut trns: Vec<u8> = Vec::new();
     let mut idat = Vec::new();
@@ -123,9 +153,10 @@ fn png_raw(d: &[u8]) -> Option<Raw> {
         let body = d.get(p + 8..p + 8 + len)?;
         match ty {
             b"IHDR" => {
-                if len < 13 || body[8] != 8 || body[12] != 0 {
-                    return None; // only 8 bits per channel, not interlaced
+                if len < 13 || !(body[8] == 8 || body[8] == 16 && body[9] != 3) || body[12] != 0 {
+                    return None; // only 8 (or 16) bits per channel, not interlaced
                 }
+                depth = body[8];
                 w = u32::from_be_bytes(body[0..4].try_into().ok()?) as usize;
                 h = u32::from_be_bytes(body[4..8].try_into().ok()?) as usize;
                 ct = body[9];
@@ -149,7 +180,9 @@ fn png_raw(d: &[u8]) -> Option<Raw> {
         return None;
     }
     let raw = miniz_oxide::inflate::decompress_to_vec_zlib(&idat).ok()?;
-    let stride = w * ch;
+    // the filters work on whole pixels: `bpp` bytes back
+    let bpp = ch * depth as usize / 8;
+    let stride = w * bpp;
     if raw.len() < (stride + 1) * h {
         return None;
     }
@@ -161,9 +194,9 @@ fn png_raw(d: &[u8]) -> Option<Raw> {
         let cur = &mut px[y * stride..(y + 1) * stride];
         for i in 0..stride {
             let x = line[i + 1];
-            let a = if i >= ch { cur[i - ch] } else { 0 };
+            let a = if i >= bpp { cur[i - bpp] } else { 0 };
             let b = prev[i];
-            let c = if i >= ch { prev[i - ch] } else { 0 };
+            let c = if i >= bpp { prev[i - bpp] } else { 0 };
             cur[i] = match f {
                 0 => x,
                 1 => x.wrapping_add(a),
@@ -185,7 +218,7 @@ fn png_raw(d: &[u8]) -> Option<Raw> {
         }
         prev.copy_from_slice(cur);
     }
-    Some(Raw { w, h, ct, ch, pal, trns, px })
+    Some(Raw { w, h, ct, depth, ch, pal, trns, px })
 }
 
 #[cfg(test)]

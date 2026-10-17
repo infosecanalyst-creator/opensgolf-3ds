@@ -442,17 +442,19 @@ impl App {
         }
     }
 
-    /// The calendar side of a game tick: the month and year hooks, the goal checks, and the queued messages.
+    /// The calendar side of a game tick: the month and year hooks, the goal checks, and the queued messages. The month and
+    /// year go by the date (sg_core::extras::Calendar: the game tick itself unless the calendar is slowed or paused).
     pub fn scenario_tick(&mut self, tick: u32) {
-        let year_end = tick > 0 && tick & 0x1fff == 0;
-        if tick > 0 && tick & 0x3ff == 0 {
+        let date = self.club.cal.date(tick);
+        let year_end = self.club.cal.new_year(tick);
+        if date > 0 && self.club.cal.new_month(tick) {
             if year_end {
                 self.script_hook(Hook::YearEnd);
             } else {
                 self.script_hook(Hook::Month);
             }
             // the goals are checked at each month start, and their deadlines at each year end
-            let year_ended = year_end.then_some(2000 + (tick >> 13) as i32);
+            let year_ended = year_end.then_some(2000 + (date >> 13) as i32);
             self.check_goals(year_ended);
         }
         self.run_script_hooks();

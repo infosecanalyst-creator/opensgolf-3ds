@@ -64,6 +64,20 @@ impl App {
         }
     }
 
+    /// A step on the undo list made by something other than a click on the course (the course editor's heightmap and
+    /// land, editor.rs): the game as it is now.
+    pub fn undo_checkpoint(&mut self) {
+        if self.land.is_none() {
+            return;
+        }
+        if let Ok(b) = self.save_bytes(1) {
+            self.undo.steps.push(b);
+            if self.undo.steps.len() > MAX_STEPS {
+                self.undo.steps.remove(0);
+            }
+        }
+    }
+
     /// Ctrl+Z: back to the game as it was before the last click that changed the course. Returns false with nothing to undo.
     pub fn undo_step(&mut self, g: &mut Gfx) -> bool {
         let Some(b) = self.undo.steps.pop() else { return false };

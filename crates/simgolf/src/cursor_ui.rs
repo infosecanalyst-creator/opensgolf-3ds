@@ -33,11 +33,11 @@ use sg_core::lang::{tr, trf};
 use sg_core::staff::job;
 
 /// The exe's 15-bit colours.
-fn c15(v: u16) -> [f32; 4] {
+pub(crate) fn c15(v: u16) -> [f32; 4] {
     rgb(((v >> 10) & 31) as f32 / 31.0, ((v >> 5) & 31) as f32 / 31.0, (v & 31) as f32 / 31.0)
 }
-const WHITE: u16 = 0x7fff;
-const RED: u16 = 0x7d08;
+pub(crate) const WHITE: u16 = 0x7fff;
+pub(crate) const RED: u16 = 0x7d08;
 const GREEN: u16 = 0x23e8;
 const PURPLE: u16 = 0x6090;
 const GREY: u16 = 0x6318;
@@ -133,7 +133,7 @@ impl App {
     }
 
     /// Screen point (800 x 600) of a map point in 1/1024 tile units, on the ground.
-    fn screen_units(&self, x: i32, y: i32) -> (f32, f32) {
+    pub(crate) fn screen_units(&self, x: i32, y: i32) -> (f32, f32) {
         let (wx, wz) = self.units_to_world(x, y);
         self.screen_of_world(wx, wz).unwrap_or((-1000.0, -1000.0))
     }
@@ -352,10 +352,15 @@ impl App {
     pub fn draw_cursor_overlay(&mut self, g: &mut Gfx) {
         let s = Ui::new(self.draw_w, self.draw_h);
         self.draw_staff_move(g, &s);
+        // the port's own measuring tape (build_tools.rs)
+        self.draw_tape(g, &s);
         let Some(tool) = self.cursor_tool() else { return };
         match tool {
             Tool::Elevation(k) => self.draw_elevation_cursor(g, &s, k),
-            Tool::Paint(ty) => self.draw_brush_cursor(g, &s, ty),
+            Tool::Paint(ty) => {
+                self.draw_brush_cursor(g, &s, ty);
+                self.draw_area_preview(g, &s);
+            }
             Tool::Undo => {
                 let (a, b) = self.cursor_tile();
                 if !self.cursor_tile_ok(a, b) {
@@ -543,23 +548,12 @@ impl App {
             self.draw_reach_ring(g, s, e.x, e.y, 12, WHITE);
         }
         let Some((a, b)) = self.hover_tile.filter(|&(a, b)| self.terrain.inside(a, b)) else { return };
-        let tiles = match e.job {
-            job::GROUNDSKEEPER if e.upgraded => 8,
-            job::GROUNDSKEEPER => 6,
-            _ => 4,
-        };
-        let colour = match e.job {
-            job::SODA_VENDOR => 0x03ff,
-            job::GROUNDSKEEPER => 0x7ff0,
-            job::RANGER => 0x0018,
-            _ => GREY,
-        };
-        self.draw_reach_ring(g, s, a * 1024 + 512, b * 1024 + 512, tiles * 25, colour);
+        self.draw_reach_ring(g, s, a * 1024 + 512, b * 1024 + 512, work_tiles(e) * 25, work_colour(e.job));
     }
 
     /// The landmark's reach and the staff's work area (0x407c60): a ring 2 pixels wide at alpha 7 tenths, `yards` round a map
     /// point, in 24 steps; a step with an end off the screen is left out.
-    fn draw_reach_ring(&self, g: &mut Gfx, s: &Ui, x: i32, y: i32, yards: i32, colour: u16) {
+    pub(crate) fn draw_reach_ring(&self, g: &mut Gfx, s: &Ui, x: i32, y: i32, yards: i32, colour: u16) {
         let r = ((yards << 10) / 25) as f32;
         let mut last: Option<(f32, f32)> = None;
         for k in 0..25 {
@@ -589,15 +583,34 @@ impl App {
     }
 }
 
+/// An employee's work area while being moved (0x403d87): a radius of 4 tiles, 6 for a Groundskeeper and 8 for a skilled one.
+pub(crate) fn work_tiles(e: &sg_core::staff::Employee) -> i32 {
+    match e.job {
+        job::GROUNDSKEEPER if e.upgraded => 8,
+        job::GROUNDSKEEPER => 6,
+        _ => 4,
+    }
+}
+
+/// The work area's colour by job (0x403d87; the routing map's ellipse colours).
+pub(crate) fn work_colour(j: i8) -> u16 {
+    match j {
+        job::SODA_VENDOR => 0x03ff,
+        job::GROUNDSKEEPER => 0x7ff0,
+        job::RANGER => 0x0018,
+        _ => GREY,
+    }
+}
+
 /// Centred text placed by its top, as the exe's text calls place it (ours draw from the baseline).
-fn top_text(g: &mut Gfx, s: &Ui, cx: f32, top: f32, text: &str, size: f32, c: [f32; 4]) {
+pub(crate) fn top_text(g: &mut Gfx, s: &Ui, cx: f32, top: f32, text: &str, size: f32, c: [f32; 4]) {
     if !text.is_empty() {
         s.text(g, cx - (crate::ui::text_width(text, size) / 2.0).floor(), crate::ui::top(top, size), text, size, c);
     }
 }
 
 /// Text through 0x404bc0: centred, placed by its top, with the palette's black one pixel below.
-fn label(g: &mut Gfx, s: &Ui, cx: f32, top: f32, text: &str, size: f32, c: [f32; 4]) {
+pub(crate) fn label(g: &mut Gfx, s: &Ui, cx: f32, top: f32, text: &str, size: f32, c: [f32; 4]) {
     top_text(g, s, cx, top + 1.0, text, size, [0.0, 0.0, 0.0, c[3]]);
     top_text(g, s, cx, top, text, size, c);
 }

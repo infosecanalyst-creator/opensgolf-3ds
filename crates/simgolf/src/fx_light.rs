@@ -101,6 +101,8 @@ pub struct Atmos {
     /// Winter (fx_winter.rs): the snow lying on level ground (0 none .. 1) and snow falling (0 none .. 1, instead of rain).
     pub snow: f32,
     pub snowfall: f32,
+    /// How far the water has iced over (0 none .. 1: small ponds frozen, the larger ones at their edges; fx_winter.rs).
+    pub ice: f32,
 }
 
 impl Default for Atmos {
@@ -138,6 +140,7 @@ impl Default for Atmos {
             golden: 0.0,
             snow: 0.0,
             snowfall: 0.0,
+            ice: 0.0,
         }
     }
 }
@@ -397,6 +400,15 @@ fn smoothstep(a: f32, b: f32, x: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
 
+/// How strongly the distance haze pales the top of the screen (`fx_overlay`; the water's truer colour makes up for part of
+/// it, fx_water.rs).
+pub(crate) fn haze_strength(app: &App, a: &Atmos, upp: f32) -> f32 {
+    // the camera looks down at the course from the side, so the screen's top is far: a haze growing up the screen,
+    // stronger the more of the course the view takes in
+    let depth = app.draw_h * upp / (36.0 * TILE_SIZE);
+    a.haze * depth.clamp(0.25, 1.0)
+}
+
 /// The sky colour below the map of this moment (what the post-processing's target is cleared to).
 pub fn below_now(app: &App) -> [f32; 3] {
     app.fx.atmos.below
@@ -412,11 +424,12 @@ impl App {
     }
 
     /// The day (one game month) and the phase of its light (0..1, 0 dawn, 0.4..0.6 midday, 0.9 sunset). `SG_FX_HOUR`
-    /// fixes the phase for stills.
+    /// fixes the phase for stills. The light goes by the game tick, the golfers' pace, so with the extras' slower calendar
+    /// (sg_core::extras::Calendar) a month holds two or four days of light; the seasons go by the date (`fx_month`).
     pub(crate) fn fx_day(&self) -> (u32, f32) {
         let dt = day_ticks();
-        let t = self.econ.tick as f32 + self.tick_fraction();
-        let day = self.econ.tick / dt;
+        let t = self.game_tick as f32 + self.tick_fraction();
+        let day = self.game_tick / dt;
         let p = std::env::var("SG_FX_HOUR").ok().and_then(|v| v.parse::<f32>().ok());
         (day, p.unwrap_or(t / dt as f32 + DAY_START).rem_euclid(1.0))
     }
@@ -424,7 +437,7 @@ impl App {
     /// How far through its day (0..1) the game's clock is.
     pub(crate) fn fx_day_fraction(&self) -> f32 {
         let dt = day_ticks();
-        ((self.econ.tick % dt) as f32 + self.tick_fraction()) / dt as f32
+        ((self.game_tick % dt) as f32 + self.tick_fraction()) / dt as f32
     }
 
     /// Whether the weather eases from day to day (any day length but the first versions' short one, which is kept as it
@@ -619,10 +632,7 @@ impl App {
         }
         let u = Uniforms::flat(&Mat4::identity(), &Mat4::identity());
         if a.haze > 0.0 {
-            // the camera looks down at the course from the side, so the screen's top is far: a haze growing up the screen,
-            // stronger the more of the course the view takes in
-            let depth = self.draw_h * self.upp / (36.0 * TILE_SIZE);
-            let k = a.haze * depth.clamp(0.25, 1.0);
+            let k = haze_strength(self, &a, self.upp);
             let c = a.haze_col;
             let strips = 10;
             for i in 0..strips {

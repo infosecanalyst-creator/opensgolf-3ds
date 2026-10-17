@@ -9,6 +9,8 @@
 //!   sgtool fixture <dir> [font.ttf]    write a stand-in game folder with placeholder art (for tests)
 //!   sgtool dump-data <dir>             write the built-in data tables as data/*.toml (a template for content packs)
 //!   sgtool freeset <dir>               write the free base set (opensgolf-free) as a pack folder, every file drawn anew
+//!   sgtool update-keygen               print a new ed25519 key pair for signing releases (docs/RELEASING.md)
+//!   sgtool update-sign <file>          sign <file> (SHA256SUMS) with the key in $OPENSGOLF_UPDATE_KEY: <file>.sig
 mod fixture;
 
 use sg_core::assets::{decode_bmp, decode_pcx, decode_sound, decode_tga, to_rgba, Rgba};
@@ -25,6 +27,28 @@ fn read(p: &str) -> Vec<u8> {
         eprintln!("error: cannot read {p}: {e}");
         exit(1)
     })
+}
+
+fn hex(b: &[u8]) -> String {
+    b.iter().map(|x| format!("{x:02x}")).collect()
+}
+
+fn unhex(s: &str) -> Option<Vec<u8>> {
+    if !s.len().is_multiple_of(2) || !s.is_ascii() {
+        return None;
+    }
+    (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).ok()).collect()
+}
+
+/// 32 bytes from the system's random source (/dev/urandom; on Windows run it in WSL, or use the openssl commands in
+/// docs/RELEASING.md).
+fn random_seed() -> [u8; 32] {
+    use std::io::Read;
+    let mut seed = [0u8; 32];
+    match std::fs::File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut seed)) {
+        Ok(()) if seed != [0; 32] => seed,
+        _ => fail("no /dev/urandom here: run sgtool update-keygen on Linux, macOS or WSL".into()),
+    }
 }
 
 fn fail(e: String) -> ! {
@@ -182,12 +206,32 @@ fn main() {
             }
             println!("wrote the icon to {}", a[2]);
         }
+        // "Update now" (crates/simgolf/src/autoupdate.rs): the release key. The private half (the 32-byte seed) goes into
+        // the GitHub Actions secret OPENSGOLF_UPDATE_KEY, the public half into autoupdate.rs's PUBLIC_KEY_HEX.
+        ("update-keygen", _) => {
+            let kp = ed25519_compact::KeyPair::from_seed(ed25519_compact::Seed::new(random_seed()));
+            println!("public key (crates/simgolf/src/autoupdate.rs PUBLIC_KEY_HEX):\n{}", hex(&kp.pk[..]));
+            println!("private key (the GitHub Actions secret OPENSGOLF_UPDATE_KEY; keep it secret, never commit it):");
+            println!("{}", hex(&kp.sk.seed()[..]));
+        }
+        ("update-sign", n) if n >= 3 => {
+            let key = std::env::var("OPENSGOLF_UPDATE_KEY").unwrap_or_default();
+            let seed = unhex(key.trim()).and_then(|b| <[u8; 32]>::try_from(b).ok());
+            let Some(seed) = seed else { fail("OPENSGOLF_UPDATE_KEY must hold the 64 hex digits update-keygen printed".into()) };
+            let kp = ed25519_compact::KeyPair::from_seed(ed25519_compact::Seed::new(seed));
+            let sig = kp.sk.sign(read(&a[2]), None);
+            let out = format!("{}.sig", a[2]);
+            if let Err(e) = std::fs::write(&out, &sig[..]) {
+                fail(format!("{out}: {e}"));
+            }
+            println!("wrote {out} (public key {})", hex(&kp.pk[..]));
+        }
         ("fixture", n) if n >= 3 => {
             fixture::write_fixture(Path::new(&a[2]), a.get(3).map(Path::new));
             println!("wrote a placeholder game folder to {}", a[2]);
         }
         _ => {
-            eprintln!("usage: sgtool check|png|sheet|chr|top10|dta|story|fixture|freeset|icon|dump-data ...");
+            eprintln!("usage: sgtool check|png|sheet|chr|top10|dta|story|fixture|freeset|icon|dump-data|update-keygen|update-sign ...");
             exit(2);
         }
     }

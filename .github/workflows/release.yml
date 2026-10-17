@@ -9,6 +9,8 @@ name: release
 #   Windows  opensgolf-windows.zip (x64) and opensgolf-windows-arm64.zip (Windows on ARM, e.g. Snapdragon laptops)
 #   Android  opensgolf-android.apk (signed with a debug key, for sideloading)
 #   browser  opensgolf-web.zip
+# and SHA256SUMS with SHA256SUMS.sig, its ed25519 signature, which the game's "Update now" checks before installing a
+# package (crates/simgolf/src/autoupdate.rs; the key is the secret OPENSGOLF_UPDATE_KEY, docs/RELEASING.md).
 # The icon is the engine's own drawing (sg_core::freeset::app_icon, `sgtool icon`).
 
 on:
@@ -204,6 +206,30 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      - name: Sign the packages (SHA256SUMS, SHA256SUMS.sig)
+        # "Update now" (crates/simgolf/src/autoupdate.rs) installs only a package whose SHA-256 is in SHA256SUMS, signed
+        # with the key in the OPENSGOLF_UPDATE_KEY secret (the private key `sgtool update-keygen` prints: 64 hex digits,
+        # docs/RELEASING.md). Without the secret the release is still published, unsigned, with a warning; the game then
+        # refuses Update now for it and offers the download page.
+        env:
+          OPENSGOLF_UPDATE_KEY: ${{ secrets.OPENSGOLF_UPDATE_KEY }}
+        run: |
+          cd dist
+          sha256sum opensgolf-* > SHA256SUMS
+          cat SHA256SUMS
+          if [ -z "$OPENSGOLF_UPDATE_KEY" ]; then
+            echo "::warning::The OPENSGOLF_UPDATE_KEY secret is not set: SHA256SUMS is not signed, so the game's Update now refuses this release (docs/RELEASING.md)"
+            exit 0
+          fi
+          umask 077
+          key="$RUNNER_TEMP/update.der"
+          # the 32-byte ed25519 seed as a PKCS#8 key for openssl (the fixed DER header of an Ed25519 private key)
+          python3 -c 'import os, sys; k = os.environ["OPENSGOLF_UPDATE_KEY"].strip(); assert len(k) == 64, "OPENSGOLF_UPDATE_KEY must be 64 hex digits"; sys.stdout.buffer.write(bytes.fromhex("302e020100300506032b657004220420" + k))' > "$key"
+          openssl pkeyutl -sign -inkey "$key" -keyform DER -rawin -in SHA256SUMS -out SHA256SUMS.sig
+          # the public key, to compare with autoupdate.rs's PUBLIC_KEY_HEX
+          echo "signed with public key $(openssl pkey -inform DER -in "$key" -pubout -outform DER | tail -c 32 | od -An -tx1 | tr -d ' \n')"
+          rm -f "$key"
+          test "$(stat -c %s SHA256SUMS.sig)" = 64
       - uses: softprops/action-gh-release@v2
         with:
           # a run by hand creates the tag on the commit it built

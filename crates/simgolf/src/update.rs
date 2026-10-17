@@ -3,9 +3,14 @@
 //! Only a click on the button goes online: one request for OpenSGolf's latest release on GitHub
 //! ([`LATEST_API`], the release's tag and nothing about the player is sent beyond what any HTTPS request carries), run in
 //! the background by the content downloads' client (net.rs). The answer says the game is up to date, or which version is
-//! out with a button that opens the release page ([`RELEASES_PAGE`]) in the system's browser; nothing is downloaded or
-//! replaced by the game itself. Desktop and Android builds with the `net` feature have the button; the browser version is
-//! always the newest, and a build without `net` cannot ask, so neither shows it.
+//! out with a button that opens the release page ([`RELEASES_PAGE`]) in the system's browser, and where the release has a
+//! package for this system **Update now**, which downloads, checks and installs it (autoupdate.rs). Desktop and Android
+//! builds with the `net` feature have the button; the browser version is always the newest, and a build without `net`
+//! cannot ask, so neither shows it.
+//!
+//! The interface extra "Check for updates when the game starts" (extras.rs, off by default) makes the same request once at
+//! start; it says nothing unless a newer version is out, and then offers Update now, Skip this version (kept in
+//! settings.json as [`SKIP_KEY`]) or Not now.
 
 use crate::app::App;
 use sg_core::lang::{tr, trf};
@@ -58,6 +63,101 @@ pub fn parse_version(s: &str) -> Option<Version> {
 pub fn latest_tag(body: &[u8]) -> Result<String, String> {
     let v: serde_json::Value = serde_json::from_slice(body).map_err(|e| format!("not a release ({e})"))?;
     v.get("tag_name").and_then(|t| t.as_str()).map(str::to_string).ok_or_else(|| "no release tag in the answer".to_string())
+}
+
+/// A release as the API describes it: its tag and its files (name, download address).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Release {
+    pub tag: String,
+    pub assets: Vec<(String, String)>,
+}
+
+impl Release {
+    /// The version, without the "v".
+    pub fn version(&self) -> &str {
+        self.tag.trim().trim_start_matches(['v', 'V'])
+    }
+
+    /// The download address of the file `name`.
+    #[cfg_attr(not(all(not(target_arch = "wasm32"), feature = "net")), allow(dead_code))]
+    pub fn asset_url(&self, name: &str) -> Option<&str> {
+        self.assets.iter().find(|(n, _)| n == name).map(|(_, u)| u.as_str())
+    }
+}
+
+/// The API's answer as a [`Release`] (its `assets`' `name` and `browser_download_url`; files without both are left out).
+pub fn parse_release(body: &[u8]) -> Result<Release, String> {
+    let tag = latest_tag(body)?;
+    let v: serde_json::Value = serde_json::from_slice(body).map_err(|e| e.to_string())?;
+    let assets = v
+        .get("assets")
+        .and_then(|a| a.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| Some((x.get("name")?.as_str()?.to_string(), x.get("browser_download_url")?.as_str()?.to_string())))
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(Release { tag, assets })
+}
+
+/// The release file that updates this system (.github/workflows/release.yml's names), by `std::env::consts` OS and
+/// architecture; on Linux `appimage` when the game runs from an AppImage. None where there is none (the browser, 32-bit
+/// Windows, other systems).
+pub fn asset_name(os: &str, arch: &str, appimage: bool) -> Option<&'static str> {
+    Some(match (os, arch) {
+        ("windows", "x86_64") => "opensgolf-windows.zip",
+        ("windows", "aarch64") => "opensgolf-windows-arm64.zip",
+        // one universal app for Apple silicon and Intel
+        ("macos", "aarch64" | "x86_64") => "opensgolf-macos.zip",
+        ("linux", "x86_64") if appimage => "opensgolf-linux-x86_64.AppImage",
+        ("linux", "x86_64") => "opensgolf-linux-x86_64.tar.gz",
+        ("linux", "aarch64") if appimage => "opensgolf-linux-arm64.AppImage",
+        ("linux", "aarch64") => "opensgolf-linux-arm64.tar.gz",
+        ("android", _) => "opensgolf-android.apk",
+        _ => return None,
+    })
+}
+
+/// The release file for the system this build runs on (None where Update now is not offered).
+pub fn this_asset() -> Option<&'static str> {
+    if !AVAILABLE {
+        return None;
+    }
+    let appimage = std::env::var_os("APPIMAGE").is_some_and(|p| !p.is_empty());
+    asset_name(std::env::consts::OS, std::env::consts::ARCH, appimage)
+}
+
+/// The settings.json key of the version the player chose to skip ("Skip this version", the start up check only).
+pub const SKIP_KEY: &str = "update_skip";
+
+/// Whether the start up check offers version `latest`: always, unless the player skipped that version (or a newer one).
+pub fn offer_at_start(latest: &str, skipped: Option<&str>) -> bool {
+    match (parse_version(latest), skipped.and_then(parse_version)) {
+        (Some(l), Some(s)) => l > s,
+        _ => true,
+    }
+}
+
+fn settings_json() -> serde_json::Value {
+    sg_core::fsutil::read_file(crate::app::save_dir().join(crate::hd::SETTINGS_FILE))
+        .and_then(|d| serde_json::from_slice::<serde_json::Value>(&d).ok())
+        .filter(|v| v.is_object())
+        .unwrap_or_else(|| serde_json::json!({}))
+}
+
+/// The version the player skipped (settings.json's [`SKIP_KEY`]).
+pub fn skipped_version() -> Option<String> {
+    settings_json().get(SKIP_KEY).and_then(|v| v.as_str()).map(str::to_string)
+}
+
+/// "Skip this version": remembered in settings.json, keeping its other keys.
+pub fn skip_version(v: &str) {
+    let mut s = settings_json();
+    s[SKIP_KEY] = serde_json::Value::String(v.to_string());
+    if let Ok(t) = serde_json::to_string_pretty(&s) {
+        sg_core::fsutil::write_file(crate::app::save_dir().join(crate::hd::SETTINGS_FILE), t.as_bytes());
+    }
 }
 
 /// What the check found.
@@ -165,29 +265,69 @@ impl App {
         if !AVAILABLE || self.update_check.is_some() {
             return;
         }
+        self.update_auto = false;
         let url = std::env::var(TEST_URL_ENV).unwrap_or_else(|_| LATEST_API.to_string());
         println!("checking for updates: {url}");
         self.update_check = Some(crate::net::get(&url, MAX_REPLY));
     }
 
+    /// The interface extra "Check for updates when the game starts" (extras.rs): the same request, once, at start; its
+    /// answer is shown only when a newer version is out that the player has not skipped.
+    pub fn check_for_updates_at_start(&mut self) {
+        if !AVAILABLE || !crate::extras::update_check() || self.update_check.is_some() {
+            return;
+        }
+        self.check_for_updates();
+        self.update_auto = true;
+    }
+
     /// Each frame: the answer, once it is in, in the game's box.
     pub fn poll_update_check(&mut self) {
+        // the start up check waits for any other box (a crash report, a sound note) to be closed first
+        if self.update_auto && self.notice.is_some() {
+            return;
+        }
         let Some(reply) = self.update_check.as_mut().and_then(|r| r.poll()) else { return };
         self.update_check = None;
+        let auto = std::mem::take(&mut self.update_auto);
+        self.update_release = reply.as_ref().ok().and_then(|b| parse_release(b).ok());
         match outcome(reply, VERSION) {
+            Outcome::Latest if auto => println!("update: this is the latest version ({VERSION})"),
             Outcome::Latest => self.show_notice(&trf("STR_UPDATE_LATEST", &[("VERSION", &VERSION)])),
+            Outcome::Newer(v) if auto && !offer_at_start(&v, skipped_version().as_deref()) => {
+                println!("update: OpenSGolf {v} is out, skipped by the player")
+            }
             Outcome::Newer(v) => {
                 println!("update: OpenSGolf {v} is out (this is {VERSION})");
+                use crate::gamefiles::Action;
                 let mut lines = crate::gamefiles::wrap(&trf("STR_UPDATE_NEWER", &[("VERSION", &v), ("CURRENT", &VERSION)]), 560.0);
-                lines.push(format!(" {}", tr("STR_UPDATE_OPEN_PAGE")));
+                // Update now where this system has a package; the start up check's second option skips the version
+                let can = this_asset().is_some();
+                let (confirm, alt) = match (can, auto) {
+                    (true, false) => (Action::UpdateNow, Some(Action::OpenReleases)),
+                    (true, true) => (Action::UpdateNow, Some(Action::SkipVersion)),
+                    (false, false) => (Action::OpenReleases, None),
+                    (false, true) => (Action::OpenReleases, Some(Action::SkipVersion)),
+                };
+                for a in std::iter::once(confirm).chain(alt) {
+                    lines.push(format!(
+                        " {}",
+                        tr(match a {
+                            Action::UpdateNow => "STR_UPDATE_NOW",
+                            Action::SkipVersion => "STR_UPDATE_SKIP",
+                            _ => "STR_UPDATE_OPEN_PAGE",
+                        })
+                    ));
+                }
                 lines.push(format!(" {}", tr("STR_GAME_FILES_NOT_NOW")));
-                self.notice = Some(crate::gamefiles::Notice {
-                    lines,
-                    confirm: Some(crate::gamefiles::Action::OpenReleases),
-                    alt: None,
-                    sel: Some(0),
-                });
+                self.notice = Some(crate::gamefiles::Notice { lines, confirm: Some(confirm), alt, sel: Some(0) });
+                // test hook: SG_UPDATE_NOW=1 chooses Update now at once (autoupdate.rs)
+                if confirm == Action::UpdateNow && std::env::var_os("SG_UPDATE_NOW").is_some() {
+                    self.notice = None;
+                    self.update_now();
+                }
             }
+            Outcome::Failed(e) if auto => eprintln!("update check at start: {e}"),
             Outcome::Failed(e) => {
                 eprintln!("update check: {e}");
                 // the address is not news to the player (net.rs puts it first)
@@ -202,6 +342,30 @@ impl App {
         if !open_url(RELEASES_PAGE) {
             self.show_notice(&trf("STR_UPDATE_NO_BROWSER", &[("URL", &RELEASES_PAGE)]));
         }
+    }
+
+    /// "Skip this version" (the start up check): the release's version is remembered and not offered at start again.
+    pub fn skip_update(&mut self) {
+        if let Some(r) = &self.update_release {
+            println!("update: skipping OpenSGolf {}", r.version());
+            skip_version(r.version());
+        }
+    }
+
+    /// "Update now" (autoupdate.rs); a build without it never offers the option.
+    pub fn update_now(&mut self) {
+        #[cfg(all(not(target_arch = "wasm32"), feature = "net"))]
+        self.start_update();
+    }
+
+    /// A failed or refused update: why, with the download page as the way on.
+    #[cfg_attr(not(all(not(target_arch = "wasm32"), feature = "net")), allow(dead_code))]
+    pub fn update_failed(&mut self, msg: &str) {
+        let mut lines = crate::gamefiles::wrap(msg, 560.0);
+        lines.push(format!(" {}", tr("STR_UPDATE_OPEN_PAGE")));
+        lines.push(format!(" {}", tr("STR_GAME_FILES_NOT_NOW")));
+        self.notice =
+            Some(crate::gamefiles::Notice { lines, confirm: Some(crate::gamefiles::Action::OpenReleases), alt: None, sel: Some(0) });
     }
 }
 
@@ -254,6 +418,52 @@ mod tests {
         assert!(matches!(outcome(reply("nightly"), "0.3.1"), Outcome::Failed(_)));
         // this build's own version is one
         assert!(parse_version(VERSION).is_some());
+    }
+
+    #[test]
+    fn each_system_gets_its_package() {
+        let a = asset_name;
+        assert_eq!(a("windows", "x86_64", false), Some("opensgolf-windows.zip"));
+        assert_eq!(a("windows", "aarch64", false), Some("opensgolf-windows-arm64.zip"));
+        assert_eq!(a("windows", "x86", false), None);
+        assert_eq!(a("macos", "aarch64", false), Some("opensgolf-macos.zip"));
+        assert_eq!(a("macos", "x86_64", false), Some("opensgolf-macos.zip"));
+        assert_eq!(a("linux", "x86_64", false), Some("opensgolf-linux-x86_64.tar.gz"));
+        assert_eq!(a("linux", "x86_64", true), Some("opensgolf-linux-x86_64.AppImage"));
+        assert_eq!(a("linux", "aarch64", false), Some("opensgolf-linux-arm64.tar.gz"));
+        assert_eq!(a("linux", "aarch64", true), Some("opensgolf-linux-arm64.AppImage"));
+        assert_eq!(a("linux", "riscv64", false), None);
+        for arch in ["aarch64", "arm", "x86_64"] {
+            assert_eq!(a("android", arch, false), Some("opensgolf-android.apk"));
+        }
+        assert_eq!(a("freebsd", "x86_64", false), None);
+        assert_eq!(a("", "wasm32", false), None);
+    }
+
+    #[test]
+    fn the_release_lists_its_files() {
+        let body = br#"{"tag_name":"v0.4.1","assets":[{"name":"SHA256SUMS","browser_download_url":"https://x/SHA256SUMS"},
+            {"name":"opensgolf-macos.zip","browser_download_url":"https://x/m.zip"},{"name":"broken"}]}"#;
+        let r = parse_release(body).unwrap();
+        assert_eq!(r.version(), "0.4.1");
+        assert_eq!(r.asset_url("opensgolf-macos.zip"), Some("https://x/m.zip"));
+        assert_eq!(r.asset_url("SHA256SUMS"), Some("https://x/SHA256SUMS"));
+        assert_eq!(r.asset_url("broken"), None);
+        assert_eq!(r.assets.len(), 2);
+        // an answer without files still has its tag
+        assert_eq!(parse_release(br#"{"tag_name":"v1.0.0"}"#).unwrap().assets, vec![]);
+        assert!(parse_release(b"nope").is_err());
+    }
+
+    #[test]
+    fn a_skipped_version_is_not_offered_at_start() {
+        assert!(offer_at_start("0.4.1", None));
+        assert!(!offer_at_start("0.4.1", Some("0.4.1")));
+        assert!(!offer_at_start("v0.4.1", Some("0.4.1")), "the tag's v");
+        assert!(!offer_at_start("0.4.0", Some("0.4.1")), "older than the skipped one");
+        assert!(offer_at_start("0.4.2", Some("0.4.1")), "a newer one is offered again");
+        assert!(offer_at_start("0.5.0", Some("0.4.9")));
+        assert!(offer_at_start("0.4.1", Some("garbage")), "an unreadable skip skips nothing");
     }
 
     #[test]

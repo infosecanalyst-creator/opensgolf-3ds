@@ -334,6 +334,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "ed25519-compact"
+version = "2.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1454db4f2edb7f0e8fe0c5b375b0c978fc63244cc9f010d160e417eb10139aa8"
+
+[[package]]
 name = "either"
 version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -946,9 +952,10 @@ dependencies = [
 
 [[package]]
 name = "opensgolf"
-version = "0.3.8"
+version = "0.4.0"
 dependencies = [
  "cpal",
+ "ed25519-compact",
  "fontdue",
  "gilrs",
  "miniquad",
@@ -1242,7 +1249,7 @@ dependencies = [
 
 [[package]]
 name = "sg-core"
-version = "0.3.8"
+version = "0.4.0"
 dependencies = [
  "fontdue",
  "image-webp",
@@ -1258,7 +1265,7 @@ dependencies = [
 
 [[package]]
 name = "sgplay"
-version = "0.3.8"
+version = "0.4.0"
 dependencies = [
  "cpal",
  "miniquad",
@@ -1267,8 +1274,9 @@ dependencies = [
 
 [[package]]
 name = "sgtool"
-version = "0.3.8"
+version = "0.4.0"
 dependencies = [
+ "ed25519-compact",
  "sg-core",
 ]
 

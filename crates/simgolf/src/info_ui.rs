@@ -369,6 +369,10 @@ impl App {
         }
         dim(g, &s);
         let h = self.info.stats_hole.clamp(1, 18);
+        // the OpenSGolf extras' landing map shows the hole Hole Stats last showed (insight.rs)
+        if crate::extras::landing_map() {
+            self.xs.insight.hole = h;
+        }
         let hole = &self.club.holes[h];
         let st = ratings::hole_stats(hole);
         let ink = black();

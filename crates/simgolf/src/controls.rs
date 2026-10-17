@@ -18,18 +18,22 @@ use std::collections::BTreeMap;
 /// The settings.json key of the bindings.
 pub const SETTINGS_KEY: &str = "controls";
 
-/// A key with or without Shift.
+/// A key with or without Shift, and with or without Ctrl (only the port's hidden Cheats box has a Ctrl key by default).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Binding {
     pub key: KeyCode,
     pub shift: bool,
+    pub ctrl: bool,
 }
 
 const fn plain(key: KeyCode) -> Binding {
-    Binding { key, shift: false }
+    Binding { key, shift: false, ctrl: false }
 }
 const fn shifted(key: KeyCode) -> Binding {
-    Binding { key, shift: true }
+    Binding { key, shift: true, ctrl: false }
+}
+const fn ctrl_shifted(key: KeyCode) -> Binding {
+    Binding { key, shift: true, ctrl: true }
 }
 
 /// The keys that can be bound, by their settings.json names. Modifier keys, Esc (it cancels and opens the pause menu
@@ -135,25 +139,28 @@ fn key_name(k: KeyCode) -> Option<&'static str> {
 }
 
 impl Binding {
-    /// The settings.json form: "Shift+" and the key's name ("W", "Shift+F6", "PageUp").
+    /// The settings.json form: "Ctrl+", "Shift+" and the key's name ("W", "Shift+F6", "PageUp", "Ctrl+Shift+C").
     pub fn name(self) -> String {
         let n = key_name(self.key).unwrap_or("?");
-        if self.shift {
-            format!("Shift+{n}")
-        } else {
-            n.to_string()
-        }
+        format!("{}{}{n}", if self.ctrl { "Ctrl+" } else { "" }, if self.shift { "Shift+" } else { "" })
     }
 
     /// Reads the settings.json form (case of a letter does not matter).
     pub fn parse(s: &str) -> Option<Binding> {
         let s = s.trim();
-        let (shift, rest) = match s.get(..6) {
-            Some(p) if p.eq_ignore_ascii_case("shift+") && s.len() > 6 => (true, &s[6..]),
-            _ => (false, s),
+        let strip = |s: &'static str, t: &str| -> Option<usize> {
+            t.get(..s.len()).filter(|p| p.eq_ignore_ascii_case(s) && t.len() > s.len()).map(|_| s.len())
+        };
+        let (ctrl, s) = match strip("ctrl+", s) {
+            Some(n) => (true, &s[n..]),
+            None => (false, s),
+        };
+        let (shift, rest) = match strip("shift+", s) {
+            Some(n) => (true, &s[n..]),
+            None => (false, s),
         };
         let key = KEY_NAMES.iter().find(|(_, n)| n.eq_ignore_ascii_case(rest)).map(|(c, _)| *c)?;
-        Some(Binding { key, shift })
+        Some(Binding { key, shift, ctrl })
     }
 
     /// As the Keyboard controls screen prints keys: a letter alone in lower case ("g"), with Shift in upper case ("Shift+G");
@@ -164,11 +171,7 @@ impl Binding {
         }
         let n = key_name(self.key).unwrap_or("?");
         let n = if n.len() == 1 && !self.shift { n.to_lowercase() } else { n.to_string() };
-        if self.shift {
-            format!("Shift+{n}")
-        } else {
-            n
-        }
+        format!("{}{}{n}", if self.ctrl { "Ctrl+" } else { "" }, if self.shift { "Shift+" } else { "" })
     }
 }
 
@@ -284,6 +287,27 @@ pub const ACTIONS: &[Action] = {
         act!("history", "STR_CTL_HISTORY", shifted(M)),
         act!("name_tags", "STR_CTL_NAME_TAGS", shifted(H)),
         act!("path_view", "STR_CTL_PATH_VIEW", shifted(V)),
+        // the port's own building tools (build_tools.rs): the measuring tape, on a key the original leaves unused
+        act!("tape", "STR_CTL_TAPE", plain(Apostrophe)),
+        // the port's own comfort keys (comfort.rs, staffview_ui.rs): keys the original leaves unused (it has F5 and F9
+        // alone, and no Shift+A)
+        act!("quick_save", "STR_CTL_QUICK_SAVE", shifted(F5)),
+        act!("quick_load", "STR_CTL_QUICK_LOAD", shifted(F9)),
+        act!("staff_view", "STR_CTL_STAFF_VIEW", shifted(A)),
+        act!("landing_map", "STR_CTL_LANDING_MAP", shifted(D)),
+        act!("hole_comments", "STR_CTL_HOLE_COMMENTS", shifted(I)),
+        // the history graphs (graphs.rs), and the camera bookmarks (views.rs) on Shift+F1 to F4, which the original leaves
+        // unused (Ctrl with a bookmark's key keeps the view there)
+        act!("graphs", "STR_CTL_GRAPHS", shifted(Y)),
+        act!("view_1", "STR_CTL_VIEW_1", shifted(F1)),
+        act!("view_2", "STR_CTL_VIEW_2", shifted(F2)),
+        act!("view_3", "STR_CTL_VIEW_3", shifted(F3)),
+        act!("view_4", "STR_CTL_VIEW_4", shifted(F4)),
+        // the course editor's box (editor.rs): a key the original leaves unused; nothing outside the editor
+        act!("editor", "STR_CTL_EDITOR", shifted(E)),
+        // the port's hidden Cheats box (cheats_ui.rs): the original has no Ctrl keys (the port's Ctrl+V, Ctrl+Z and Ctrl with
+        // a digit or a camera bookmark's key leave C free); nothing changes until a cheat is picked in the box
+        act!("cheats", "STR_CTL_CHEATS", ctrl_shifted(C)),
     ]
 };
 
@@ -399,11 +423,19 @@ impl Settings {
 
     /// The key a key press stands for on the course screen: the default key of the action bound to it, with that action;
     /// the key itself when no action owns it; None when it is the default of an action that was moved and nothing is bound
-    /// to it now. While the pro aims, the shot shapes are looked up first.
-    pub fn translate(&self, key: KeyCode, shift: bool, aiming: bool) -> Option<(KeyCode, bool, Option<usize>)> {
-        let b = Binding { key, shift };
+    /// to it now. While the pro aims, the shot shapes are looked up first. With Ctrl held a key bound with Ctrl comes first;
+    /// otherwise Ctrl does not count (Ctrl with a camera bookmark's key, play_key).
+    pub fn translate(&self, key: KeyCode, shift: bool, ctrl: bool, aiming: bool) -> Option<(KeyCode, bool, Option<usize>)> {
         let order = |ctx: Ctx| (0..ACTIONS.len()).filter(move |&i| ACTIONS[i].ctx == ctx);
         let looked: Vec<usize> = if aiming { order(Ctx::Aim).chain(order(Ctx::Course)).collect() } else { order(Ctx::Course).collect() };
+        if ctrl {
+            let b = Binding { key, shift, ctrl: true };
+            if let Some(&i) = looked.iter().find(|&&i| self.keys_of(i).any(|k| k == b)) {
+                let d = ACTIONS[i].default;
+                return Some((d.key, d.shift, Some(i)));
+            }
+        }
+        let b = Binding { key, shift, ctrl: false };
         if let Some(&i) = looked.iter().find(|&&i| self.keys_of(i).any(|k| k == b)) {
             let d = ACTIONS[i].default;
             return Some((d.key, d.shift, Some(i)));
@@ -416,8 +448,8 @@ impl Settings {
 }
 
 /// [`Settings::translate`] with the bindings in use.
-pub fn translate(key: KeyCode, shift: bool, aiming: bool) -> Option<(KeyCode, bool, Option<usize>)> {
-    SETTINGS.with(|s| s.borrow().translate(key, shift, aiming))
+pub fn translate(key: KeyCode, shift: bool, ctrl: bool, aiming: bool) -> Option<(KeyCode, bool, Option<usize>)> {
+    SETTINGS.with(|s| s.borrow().translate(key, shift, ctrl, aiming))
 }
 
 /// The index of the action with settings.json name `id`.
@@ -485,6 +517,15 @@ const ROW_ACTIONS: &[(&str, &[&str])] = &[
     ("STR_KEYS_K_HISTORY", &["history"]),
     ("STR_KEYS_K_TAGS", &["name_tags"]),
     ("STR_KEYS_K_PATHVIEW", &["path_view"]),
+    ("STR_KEYS_K_TAPE", &["tape"]),
+    ("STR_KEYS_K_QUICK_SAVE", &["quick_save"]),
+    ("STR_KEYS_K_QUICK_LOAD", &["quick_load"]),
+    ("STR_KEYS_K_STAFF_VIEW", &["staff_view"]),
+    ("STR_KEYS_K_LANDING_MAP", &["landing_map"]),
+    ("STR_KEYS_K_HOLE_COMMENTS", &["hole_comments"]),
+    ("STR_KEYS_K_GRAPHS", &["graphs"]),
+    ("STR_KEYS_K_VIEWS", &["view_1", "view_2", "view_3", "view_4"]),
+    ("STR_KEYS_K_EDITOR", &["editor"]),
 ];
 
 /// The text a Keyboard controls row prints for its key: None (the row's own text) unless the player moved one of its keys.
@@ -501,7 +542,12 @@ pub fn row_label(row: &str) -> Option<String> {
 
 /// The key that shows the interface again, as printed (the hint while it is hidden).
 pub fn hide_key_label() -> String {
-    settings().binding(action("hide_interface")).map(Binding::label).unwrap_or_default()
+    key_label("hide_interface")
+}
+
+/// The key of action `id` as printed ("Shift+F9"; empty when it has none).
+pub fn key_label(id: &str) -> String {
+    settings().binding(action(id)).map(Binding::label).unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -512,16 +558,16 @@ mod tests {
     fn defaults_pass_every_key_through_unchanged() {
         let s = Settings::default();
         for a in ACTIONS.iter().filter(|a| a.ctx == Ctx::Course) {
-            let (k, sh, _) = s.translate(a.default.key, a.default.shift, false).unwrap();
+            let (k, sh, _) = s.translate(a.default.key, a.default.shift, a.default.ctrl, false).unwrap();
             assert_eq!((k, sh), (a.default.key, a.default.shift), "{}", a.id);
         }
         // keys no action owns: holes, the keypad, a free letter
-        for k in [KeyCode::Key1, KeyCode::KpAdd, KeyCode::Y] {
-            assert_eq!(s.translate(k, false, false), Some((k, false, None)));
-            assert_eq!(s.translate(k, true, false), Some((k, true, None)));
+        for k in [KeyCode::Key1, KeyCode::KpAdd, KeyCode::O] {
+            assert_eq!(s.translate(k, false, false, false), Some((k, false, None)));
+            assert_eq!(s.translate(k, true, false, false), Some((k, true, None)));
         }
         // while the pro aims, s is the straight shot (its default stays S)
-        let (k, _, i) = s.translate(KeyCode::S, false, true).unwrap();
+        let (k, _, i) = s.translate(KeyCode::S, false, false, true).unwrap();
         assert_eq!(k, KeyCode::S);
         assert!(is_aim(i.unwrap()));
     }
@@ -531,10 +577,10 @@ mod tests {
         let mut s = Settings::default();
         let water = action("water");
         s.bind(water, Some(plain(KeyCode::Q)));
-        assert_eq!(s.translate(KeyCode::Q, false, false), Some((KeyCode::W, false, Some(water))));
-        assert_eq!(s.translate(KeyCode::W, false, false), None);
+        assert_eq!(s.translate(KeyCode::Q, false, false, false), Some((KeyCode::W, false, Some(water))));
+        assert_eq!(s.translate(KeyCode::W, false, false, false), None);
         // Shift+W is still the world map
-        assert_eq!(s.translate(KeyCode::W, true, false).map(|t| t.0), Some(KeyCode::W));
+        assert_eq!(s.translate(KeyCode::W, true, false, false).map(|t| t.0), Some(KeyCode::W));
         // back to its default: no change is kept
         s.bind(water, Some(plain(KeyCode::W)));
         assert!(s.keys.is_empty());
@@ -543,16 +589,16 @@ mod tests {
     #[test]
     fn wasd_scrolls_and_moves_water_and_sand() {
         let s = Settings { wasd: true, ..Default::default() };
-        assert_eq!(s.translate(KeyCode::W, false, false).map(|t| t.0), Some(KeyCode::Up));
-        assert_eq!(s.translate(KeyCode::A, false, false).map(|t| t.0), Some(KeyCode::Left));
-        assert_eq!(s.translate(KeyCode::S, false, false).map(|t| t.0), Some(KeyCode::Down));
-        assert_eq!(s.translate(KeyCode::D, false, false).map(|t| t.0), Some(KeyCode::Right));
+        assert_eq!(s.translate(KeyCode::W, false, false, false).map(|t| t.0), Some(KeyCode::Up));
+        assert_eq!(s.translate(KeyCode::A, false, false, false).map(|t| t.0), Some(KeyCode::Left));
+        assert_eq!(s.translate(KeyCode::S, false, false, false).map(|t| t.0), Some(KeyCode::Down));
+        assert_eq!(s.translate(KeyCode::D, false, false, false).map(|t| t.0), Some(KeyCode::Right));
         // the arrows still scroll
-        assert_eq!(s.translate(KeyCode::Up, false, false).map(|t| t.0), Some(KeyCode::Up));
-        assert_eq!(s.translate(KeyCode::Q, false, false).map(|t| t.0), Some(KeyCode::W));
-        assert_eq!(s.translate(KeyCode::K, false, false).map(|t| t.0), Some(KeyCode::S));
+        assert_eq!(s.translate(KeyCode::Up, false, false, false).map(|t| t.0), Some(KeyCode::Up));
+        assert_eq!(s.translate(KeyCode::Q, false, false, false).map(|t| t.0), Some(KeyCode::W));
+        assert_eq!(s.translate(KeyCode::K, false, false, false).map(|t| t.0), Some(KeyCode::S));
         // the shot shapes keep s and d while the pro aims
-        assert!(is_aim(s.translate(KeyCode::D, false, true).unwrap().2.unwrap()));
+        assert!(is_aim(s.translate(KeyCode::D, false, false, true).unwrap().2.unwrap()));
         for i in 0..ACTIONS.len() {
             assert!(s.conflicts(i).is_empty(), "{} clashes", ACTIONS[i].id);
         }
@@ -573,13 +619,35 @@ mod tests {
     fn names_read_back() {
         for (k, _) in KEY_NAMES {
             for shift in [false, true] {
-                let b = Binding { key: *k, shift };
-                assert_eq!(Binding::parse(&b.name()), Some(b));
+                for ctrl in [false, true] {
+                    let b = Binding { key: *k, shift, ctrl };
+                    assert_eq!(Binding::parse(&b.name()), Some(b));
+                }
             }
         }
+        assert_eq!(Binding::parse("ctrl+shift+c"), Some(ctrl_shifted(KeyCode::C)));
+        assert_eq!(ctrl_shifted(KeyCode::C).label(), "Ctrl+Shift+C");
         assert_eq!(Binding::parse("shift+f6"), Some(shifted(KeyCode::F6)));
         assert_eq!(plain(KeyCode::G).label(), "g");
         assert_eq!(shifted(KeyCode::P).label(), "Shift+P");
         assert_eq!(shifted(KeyCode::Slash).label(), "?");
+    }
+
+    #[test]
+    fn the_cheats_key_needs_ctrl_and_leaves_the_others_alone() {
+        let s = Settings::default();
+        let cheats = action("cheats");
+        // Ctrl+Shift+C opens the box; Shift+C is still the championship course and c photo mode
+        assert_eq!(s.translate(KeyCode::C, true, true, false), Some((KeyCode::C, true, Some(cheats))));
+        assert_eq!(s.translate(KeyCode::C, true, false, false), Some((KeyCode::C, true, Some(action("champ_course")))));
+        assert_eq!(s.translate(KeyCode::C, false, false, false), Some((KeyCode::C, false, Some(action("photo_mode")))));
+        // Ctrl with another action's key is that action (Ctrl+Shift+F1 keeps camera view 1)
+        assert_eq!(s.translate(KeyCode::F1, true, true, false).and_then(|t| t.2), Some(action("view_1")));
+        // no other action has a Ctrl key, so nothing clashes; moved, the old combination does nothing
+        assert!(s.conflicts(cheats).is_empty());
+        let mut m = Settings::default();
+        m.bind(cheats, Some(ctrl_shifted(KeyCode::K)));
+        assert_eq!(m.translate(KeyCode::K, true, true, false).and_then(|t| t.2), Some(cheats));
+        assert_eq!(m.translate(KeyCode::C, true, true, false).and_then(|t| t.2), Some(action("champ_course")));
     }
 }

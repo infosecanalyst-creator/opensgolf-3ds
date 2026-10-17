@@ -173,9 +173,10 @@ void main() {
 }
 "#;
 
-/// Uniforms after the vertex shader's: `lmap` the light map (r sun, g ambient occlusion, b signed distance to the shore, a
-/// water); params = (per-pixel light 0/1, shadow strength, occlusion strength, alpha test); water = (time, reflection, sparkle,
-/// foam); eye_w and light_w are towards the viewer and the light in world space; sky colours for the reflections.
+/// Uniforms after the vertex shader's: `lmap` the light map (r sun, g ambient occlusion, b signed distance to the shore, 0.5
+/// at the shore and +-3 tiles to 1 / 0, a water); params = (per-pixel light 0/1, shadow strength, occlusion strength, alpha
+/// test); water = (time, reflection, sparkle, the haze the truer colour makes up for); eye_w and light_w are towards the
+/// viewer and the light in world space; sky colours for the reflections.
 /// The atmosphere (fx_light.rs): `clouds` a tiling noise; clouds = (shadow strength, 0: none; texture repeats per world unit;
 /// drift x, z in world units); cover = (the noise's cloud edge from, to, 0, 0); mist = (density, 0: none; the low ground's
 /// height; 1 / its depth; time) and mist_col its colour. cover.zw is one pixel of the target (for gl_FragCoord).
@@ -268,7 +269,8 @@ vec3 light(vec4 lm) {
 
 /// The terrain. The seasons, frost and dew and the wet ground (fx_nature.rs, fx_wet.rs) run only when their uniforms are
 /// above 0: fx1 = (wetness, the puddles' level: potential above it is a puddle, rain, time); fx2 = (spring freshness, autumn,
-/// frost, dew); fx3.w the sparkle's cells per world unit; `fxmap` r the puddle potential, g grass.
+/// frost, dew); fx3.w the sparkle's cells per world unit; fx3.z above 1.5 the shoreline's wet band (fx_water.rs); `fxmap` r
+/// the puddle potential, g grass.
 pub fn terrain_fs() -> String {
     format!(
         "{FRAG_HEAD}{GROUND_FS_HEAD}{}",
@@ -359,6 +361,12 @@ void main() {
     c.rgb *= light(lm);
     if (fx2.z + fx2.w > 0.0) c.rgb = frosty(c.rgb, dm.g, lm);
     if (fx1.x > 0.0) c.rgb = wetted(c.rgb, dm.r, lm);
+    if (fx3.z > 1.5 && lm.b < 0.5) {
+        // the shoreline (the port's own): the ground a little darker in a narrow, uneven band where the water wets it
+        float far = (0.5 - lm.b) * 6.0;
+        float band = 1.0 - smoothstep(0.03, 0.16 + 0.10 * noise(w_pos.xz * 0.04), far);
+        c.rgb *= 1.0 - 0.15 * band * (1.0 - lm.a);
+    }
     c.rgb = misty(c.rgb, lm);
     gl_FragColor = c;
 }
@@ -383,6 +391,45 @@ vec2 waves(vec2 p, float t) {
     g += (vec2(noise(r * 2.7 - t * 0.5), noise(r * 2.7 + 5.0 + t * 0.45)) - 0.5) * 0.06;
     return g;
 }
+// The port's own water options (OpenSGolf 0.4, docs/ENHANCED.md "Water"), each skipped while its uniform is 0:
+// fx1 = (rain rings, the painterly waves' strength, ice, caustics); params.w the wind's heading (radians, world x towards z);
+// |fx3.w| the waves' size in world units, fx3.w above 0 the truer colour with depth; water.w the distance haze the colour
+// makes up for (fx_light.rs draws the haze over the frame); fx3.z 2 the shoreline (1 the reflections' lapping).
+
+// a wave's crest as a painter dabs it: in each cell (`q` in cells, x along the wind) now and then a short crescent of light
+// lying across the wind, its trough a little darker on the upwind side; it swells, drifts downwind and fades
+float crest(vec2 q, float t, float salt, out float tr) {
+    vec2 cell = floor(q);
+    vec2 f = q - cell - 0.5;
+    float h1 = hash(cell + salt);
+    float h2 = hash(cell + salt + 19.7);
+    float ph = fract(t + h1);
+    vec2 d = f - (vec2(h1, h2) - 0.5) * 0.45 - vec2((ph - 0.5) * 0.4, 0.0);
+    // bent a little, as a brush stroke is
+    d.x += d.y * d.y * (h2 - 0.5) * 1.6;
+    float e1 = length(d * vec2(3.4, 1.0));
+    float e2 = length((d + vec2(0.07, 0.0)) * vec2(3.4, 1.12));
+    float life = sin(ph * 3.14159) * step(0.42, h2) * (0.6 + 0.4 * h1);
+    tr = (1.0 - smoothstep(0.18, 0.34, e2)) * life;
+    return (1.0 - smoothstep(0.26, 0.40, e1)) * smoothstep(0.22, 0.34, e2) * life;
+}
+// rings opening where raindrops fall, in three staggered layers of cells (`s` cells per world unit)
+float rings(vec2 p, float t, float s, float k) {
+    float r = 0.0;
+    for (int i = 0; i < 3; i++) {
+        float fi = float(i);
+        vec2 q = p * s + vec2(fi * 0.5, fi * 0.37);
+        vec2 cell = floor(q);
+        vec2 f = q - cell;
+        float hc = hash(cell + fi * 17.0);
+        float ph = fract(t * 0.9 + hc);
+        float on = step(hash(cell + vec2(floor(t * 0.9 + hc), fi * 5.0)), k);
+        vec2 ctr = vec2(hash(cell + 7.1 + fi), hash(cell + 3.3 + fi)) * 0.6 + 0.2;
+        float d = length(f - ctr);
+        r += (1.0 - smoothstep(0.0, 0.06, abs(d - ph * 0.42))) * (1.0 - ph) * on;
+    }
+    return min(r, 1.0);
+}
 void main() {
     vec4 lm = texture2D(lmap, lm_uv);
     vec4 tc = texture2D(tex, uv);
@@ -392,9 +439,45 @@ void main() {
     // texture's own middle colour, read from a small mip level
     vec3 ref = texture2D(tex, vec2(0.5, 0.5), 5.0).rgb;
     float wet = 1.0 - smoothstep(0.10, 0.26, length(tc.rgb - ref));
-    float sd = (lm.b - 0.5) * 2.0; // tiles into the water from the shore
+    float sd = (lm.b - 0.5) * 6.0; // tiles into the water from the shore (fx.rs: up to three)
     float t = water.x;
+    bool truer = fx3.w > 0.0;
+    float wsize = abs(fx3.w);
+    vec2 wd = vec2(cos(params.w), sin(params.w));
     vec2 g = waves(w_pos.xz, t);
+    float wk = fx1.y;
+    float ice = 0.0;
+    float reach = 0.0;
+    float edge = 0.0;
+    if (fx1.z > 0.0) {
+        // the ice reaches in from the shore: a small pond (the light map's alpha just under 1, fx.rs `small_ponds`) freezes
+        // over as the cold snap deepens; a larger water gets a thin rim, under half a tile, its edge notched and broken into
+        // loose plates
+        bool pond = lm.a < 0.999;
+        reach = fx1.z * (pond ? 1.6 : 0.42);
+        edge = sd + (noise(w_pos.xz * 0.022) - 0.5) * (pond ? 0.5 : 0.26) + (noise(w_pos.xz * 0.09) - 0.5) * 0.14
+             + (noise(w_pos.xz * 0.23) - 0.5) * 0.06;
+        ice = 1.0 - smoothstep(reach - 0.025, reach, edge);
+        float floe = smoothstep(0.64, 0.67, noise(w_pos.xz * 0.075 + 3.7)) * (1.0 - smoothstep(reach, reach + 0.22, edge));
+        ice = max(ice, floe * step(0.05, reach));
+    }
+    float hi = 0.0;
+    float lo = 0.0;
+    if (wk > 0.0) {
+        // the waves follow the wind: their slope grows with it (calm water at dawn, choppy in a storm)
+        g *= 0.45 + 0.9 * wk;
+        vec2 q = vec2(dot(w_pos.xz, wd), dot(w_pos.xz, vec2(-wd.y, wd.x)) * 0.7) / wsize;
+        float tr1;
+        float tr2;
+        float c1 = crest(q, t * (0.10 + 0.14 * wk), 0.0, tr1);
+        float c2 = crest(q * 1.6 + vec2(0.5, 0.31), t * (0.14 + 0.18 * wk), 7.0, tr2);
+        // fewer and fainter crests on calm water
+        float many = smoothstep(0.15, 0.75, wk + 0.3 * (noise(w_pos.xz / (wsize * 6.0)) - 0.5));
+        float amp = (0.12 + 0.88 * wk) * (1.0 - ice);
+        hi = (c1 * (0.4 + 0.6 * many) + 0.7 * c2 * many) * amp;
+        lo = (tr1 * (0.4 + 0.6 * many) + 0.7 * tr2 * many) * amp;
+        g += wd * (hi - lo) * 0.10;
+    }
     vec3 n = normalize(vec3(-g.x, 1.0, -g.y));
     vec3 r = reflect(-eye_w, n);
     // calm water reflects the pale sky low down; only slopes turned up catch the deeper colour above
@@ -402,12 +485,50 @@ void main() {
     float fres = clamp(1.0 - dot(n, eye_w), 0.0, 1.0);
     float refl = water.y * (0.55 + 0.9 * fres * fres);
     float sun = mix(1.0, lm.r, params.y) * cloud_sun();
+    if (truer) {
+        // the theme's own water colour kept: lighter and greener in the shallows, a deeper blue out in the middle, a
+        // little richer; the sky it mirrors is the sky's own blue, not its pale horizon, and weaker, so the water does not
+        // go grey
+        float deep = smoothstep(0.25, 2.6, sd);
+        // the shallows lighter and, where the art is a deep blue, turned towards turquoise (the tropics' water is already)
+        float blue = clamp((c.b - c.g) * 3.0, 0.0, 1.0);
+        vec3 shallow = c.rgb * mix(vec3(1.06, 1.08, 1.04), vec3(0.98, 1.14, 1.05), blue) + vec3(0.0, 0.03, 0.03) * blue;
+        vec3 depths = c.rgb * mix(vec3(0.93, 0.97, 1.02), vec3(0.97, 1.0, 1.08), blue) + vec3(0.0, 0.01, 0.02) * blue;
+        vec3 tinted = mix(shallow, depths, deep);
+        float l = dot(tinted, vec3(0.299, 0.587, 0.114));
+        // and brighter, as the original's water is
+        tinted = max(mix(vec3(l), tinted, 1.06), vec3(0.0)) * 1.1;
+        c.rgb = mix(c.rgb, tinted, wet);
+        // the sky mirrored as a brighter wash of the water's own colour, a little of the sky's in it
+        sky = mix(c.rgb * 1.45, mix(sky_top, sky_low, 0.4), 0.3);
+        refl *= 0.6;
+    }
     c.rgb = mix(c.rgb, sky, refl * wet);
     // what stands round the water mirrored in it (fx_reflect.rs: drawn flipped into `reflt`), rippled by the waves
     if (fx3.x > 0.0) {
         vec4 rf = texture2D(reflt, gl_FragCoord.xy * cover.zw + g * vec2(0.012, 0.008));
-        float k = fx3.x * wet;
+        float k = fx3.x * wet * (1.0 - ice);
         c.rgb = c.rgb * (1.0 - rf.a * k) + rf.rgb * k;
+    }
+    if (fx1.w > 0.0) {
+        // caustics: the sun's light rippling over the bottom of shallow water (fx1.w: how sunny it is)
+        vec2 cp = w_pos.xz / (wsize * 0.55);
+        float a1 = noise(cp + vec2(t * 0.23, t * 0.15));
+        float a2 = noise(cp * 1.41 + vec2(-t * 0.19, t * 0.21) + 5.0);
+        float web = smoothstep(0.55, 1.0, 1.0 - abs(a1 - a2) * 2.6);
+        float shallow = (1.0 - smoothstep(0.2, 1.4, sd)) * smoothstep(0.02, 0.15, sd);
+        c.rgb += vec3(0.95, 1.0, 0.86) * web * web * shallow * fx1.w * 0.11 * sun * wet * (1.0 - ice);
+    }
+    if (wk > 0.0) {
+        // the waves' painterly light: crests catch the sky's light, the troughs behind them a little darker
+        vec3 lit = mix(sky_low, vec3(1.0), 0.35) * min(light(lm) * 1.2, vec3(1.0));
+        c.rgb = mix(c.rgb, lit, clamp(hi * 0.36, 0.0, 0.6) * wet);
+        c.rgb *= 1.0 - 0.12 * clamp(lo, 0.0, 1.0) * wet;
+    }
+    if (fx1.x > 0.0) {
+        // rain: rings opening across the surface, more of them the harder it rains
+        float rr = rings(w_pos.xz, t, 1.0 / (wsize * 0.42), fx1.x * 0.75) * (1.0 - ice);
+        c.rgb = mix(c.rgb, mix(sky_low, vec3(1.0), 0.5) * light(lm), rr * 0.5 * wet);
     }
     // sparkle: the decoded light's highlight. The sun is never behind the water in this view, so a mirror highlight would not
     // show; instead the facets that the waves turn towards the half vector (more than calm water is) glint, broken up by noise
@@ -416,20 +537,68 @@ void main() {
     float sheen = smoothstep(0.0, 0.10, lift);
     float glint = smoothstep(0.70, 0.95, noise(w_pos.xz * 0.45 + vec2(t * 1.3, -t * 0.9)))
                 * smoothstep(0.60, 0.90, noise(w_pos.xz * 0.21 - vec2(t * 0.4, t * 0.6)));
-    c.rgb += (light_spec * 0.5 + 0.5) * (0.10 * sheen * min(water.z, 1.0) + 0.9 * glint * sheen * water.z) * sun * wet;
+    c.rgb += (light_spec * 0.5 + 0.5) * (0.10 * sheen * min(water.z, 1.0) + 0.9 * glint * sheen * water.z) * sun * wet * (1.0 - ice);
     // foam along the shore: bands drifting in, broken by noise
     float band = 1.0 - smoothstep(0.03, 0.28, sd);
     float wash = 0.5 + 0.5 * sin(sd * 38.0 - t * 1.6 + noise(w_pos.xz * 0.05) * 6.0);
     float foam = band * smoothstep(0.45, 0.95, wash * (0.6 + 0.6 * noise(w_pos.xz * 0.12 + t * 0.2)));
     float wetfoam = 1.0 - smoothstep(0.14, 0.40, length(tc.rgb - ref));
-    c.rgb = mix(c.rgb, vec3(0.94, 0.97, 1.0) * light(lm), foam * water.w * wetfoam * step(0.0, sd));
-    // the water lapping at the shore: a thin line running up and back, the wet sheen behind it
-    if (fx3.z > 0.0) {
+    c.rgb = mix(c.rgb, vec3(0.94, 0.97, 1.0) * light(lm), foam * 0.55 * wetfoam * step(0.0, sd) * (1.0 - ice));
+    if (fx3.z > 1.5) {
+        // the shoreline: two lines of water lapping in and out, the nearer one bright, a wet sheen behind them, and the
+        // bank's own sand and grass a little darker where it is wet
+        float lw = 0.07 + 0.05 * sin(t * 1.1 + noise(w_pos.xz * 0.02) * 6.28);
+        float lw2 = 0.20 + 0.05 * sin(t * 1.1 - 1.9 + noise(w_pos.xz * 0.02 + 4.0) * 6.28);
+        float on = step(0.0, sd) * wetfoam * (1.0 - ice);
+        float lap = (1.0 - smoothstep(0.015, 0.05, abs(sd - lw))) * on;
+        float lap2 = (1.0 - smoothstep(0.01, 0.04, abs(sd - lw2))) * on * (0.5 + 0.5 * noise(w_pos.xz * 0.08 + t * 0.3));
+        vec3 white = vec3(0.96, 0.99, 1.0) * min(light(lm) * 1.1, vec3(1.0));
+        c.rgb = mix(c.rgb, white, lap * 0.72 + lap2 * 0.38);
+        c.rgb += (1.0 - smoothstep(0.0, lw, sd)) * on * 0.09;
+        c.rgb *= 1.0 - 0.14 * (1.0 - wetfoam) * (1.0 - smoothstep(0.0, 0.45, sd));
+    } else if (fx3.z > 0.0) {
+        // the water lapping at the shore: a thin line running up and back, the wet sheen behind it
         float lw = 0.06 + 0.045 * sin(t * 1.25 + noise(w_pos.xz * 0.02) * 6.28);
         float on = step(0.0, sd) * wetfoam;
         float lap = (1.0 - smoothstep(0.0, 0.04, abs(sd - lw))) * on;
         c.rgb = mix(c.rgb, vec3(0.95, 0.98, 1.0) * light(lm), lap * fx3.z * 0.6);
         c.rgb += (1.0 - smoothstep(0.0, lw, sd)) * on * 0.07 * fx3.z;
+    }
+    if (ice > 0.0) {
+        // ice: pale and see-through, thicker and whiter towards the bank, patches of clear dark ice and of a dusting of
+        // snow, a broad sheen, a few cracks, and a thin broken lip of light where it meets the open water
+        vec3 lit = min(light(lm) * 1.2 + 0.08, vec3(1.0));
+        float thick = clamp((reach - edge) / max(reach, 0.3), 0.0, 1.0);
+        float dust = smoothstep(0.45, 0.8, noise(w_pos.xz * 0.035 + 9.1) * 0.7 + noise(w_pos.xz * 0.11) * 0.3);
+        float clear = smoothstep(0.55, 0.75, noise(w_pos.xz * 0.016 + 2.3)) * (1.0 - dust);
+        float streak = noise(w_pos.xz * vec2(0.012, 0.05)) * 0.6 + noise(w_pos.xz * 0.03) * 0.4;
+        vec3 pale = vec3(0.86, 0.92, 0.97) * (0.94 + 0.10 * streak);
+        vec3 iced = mix(c.rgb, pale * lit, 0.52 + 0.26 * thick + 0.18 * dust - 0.26 * clear);
+        // the sheen: a soft band of the sky's light lying across the ice
+        float sheen_i = smoothstep(0.55, 0.85, noise(w_pos.xz * vec2(0.007, 0.022) + vec2(t * 0.002, 0.0)));
+        iced = mix(iced, mix(sky_low, vec3(1.0), 0.5) * lit, sheen_i * 0.22 * (1.0 - dust));
+        // cracks: wandering dark lines where the water shows through, with a pale edge beside them
+        float r1 = abs(noise(w_pos.xz * 0.028 + 5.3) - 0.5);
+        float r2 = abs(noise(w_pos.xz * 0.075 + 1.7) - 0.5);
+        float gate = smoothstep(0.4, 0.6, noise(w_pos.xz * 0.013 + 4.4));
+        float crack = (1.0 - smoothstep(0.0, 0.018, r1)) * gate
+                    + (1.0 - smoothstep(0.0, 0.012, r2)) * 0.6 * smoothstep(0.5, 0.7, noise(w_pos.xz * 0.02 + 8.2));
+        float crack_lit = smoothstep(0.018, 0.03, r1) * (1.0 - smoothstep(0.03, 0.045, r1)) * gate;
+        iced = mix(iced, c.rgb * 0.88, clamp(crack, 0.0, 1.0) * 0.55 * (1.0 - dust * 0.6));
+        iced = mix(iced, vec3(0.97, 0.99, 1.0) * lit, crack_lit * 0.25);
+        // the lip of the ice at the open water, broken, and frost along the bank
+        float lip = smoothstep(reach - 0.09, reach - 0.02, edge) * smoothstep(0.35, 0.6, noise(w_pos.xz * 0.06 + 6.6));
+        float frost = 1.0 - smoothstep(0.01, 0.07, sd);
+        iced = mix(iced, vec3(0.97, 0.99, 1.0) * lit, clamp(lip * 0.6 + frost * 0.45, 0.0, 0.8));
+        c.rgb = mix(c.rgb, iced, ice * wetfoam);
+    }
+    if (truer && water.w > 0.0) {
+        // the distance haze drawn over the frame (fx_light.rs) pales the water towards the top of the screen more than the
+        // land; part of it is made up for here, so a lake keeps its blue up there
+        float y = gl_FragCoord.y * cover.w;
+        float a = water.w * pow(smoothstep(0.3, 1.0, y), 1.4);
+        float k = a * 0.6 / max(1.0 - a, 0.2);
+        c.rgb = clamp(c.rgb + (c.rgb - sky_low) * k * wet, 0.0, 1.0);
     }
     c.rgb = misty(c.rgb, lm);
     gl_FragColor = c;

@@ -115,7 +115,22 @@ const ROWS: &[Row] = &[
     Key("STR_KEYS_K_HISTORY", "STR_KEYS_HISTORY"),
     Key("STR_KEYS_K_TAGS", "STR_KEYS_TAGS"),
     Key("STR_KEYS_K_PATHVIEW", "STR_KEYS_PATHVIEW"),
+    Key("STR_KEYS_K_LANDING_MAP", "STR_KEYS_LANDING_MAP"),
+    Key("STR_KEYS_K_HOLE_COMMENTS", "STR_KEYS_HOLE_COMMENTS"),
+    Key("STR_KEYS_K_GRAPHS", "STR_KEYS_GRAPHS"),
     Key("STR_KEYS_K_REPORT_TABS", "STR_KEYS_REPORT_TABS"),
+    // the port's building tools (build_tools.rs)
+    Key("STR_KEYS_K_TAPE", "STR_KEYS_TAPE"),
+    Key("STR_KEYS_K_AREA_RECT", "STR_KEYS_AREA_RECT"),
+    Key("STR_KEYS_K_AREA_FILL", "STR_KEYS_AREA_FILL"),
+    Key("STR_KEYS_K_QUICK_SAVE", "STR_KEYS_QUICK_SAVE"),
+    Key("STR_KEYS_K_QUICK_LOAD", "STR_KEYS_QUICK_LOAD"),
+    Key("STR_KEYS_K_STAFF_VIEW", "STR_KEYS_STAFF_VIEW"),
+    // the port's camera helpers (views.rs)
+    Key("STR_KEYS_K_VIEWS", "STR_KEYS_VIEWS"),
+    Key("STR_KEYS_K_VIEW_KEEP", "STR_KEYS_VIEW_KEEP"),
+    // the course editor (editor.rs)
+    Key("STR_KEYS_K_EDITOR", "STR_KEYS_EDITOR"),
     Head("STR_KEYS_HEAD_OTHER"),
     Key("STR_KEYS_K_ESC", "STR_KEYS_ESC"),
     Key("STR_KEYS_K_MENU_MOVE", "STR_KEYS_MENU_MOVE"),
