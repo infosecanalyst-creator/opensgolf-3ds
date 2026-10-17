@@ -111,7 +111,7 @@ use miniquad::*;
 use render::*;
 use sg_core::formats::{atoi, parse_pro_golfers};
 use sg_core::lang::tr;
-use sg_core::mixer::Mixer;
+use sg_core::mixer::{Mixer, Shortfall};
 use sg_core::terrain::{Terrain, TT_FAIRWAY, TT_PUTTING_GREEN, TT_ROUGH, TT_SAND, TT_TEE, TT_WATER_SHALLOW};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -1202,27 +1202,48 @@ impl Stage {
         audio::log(&format!("sound: looking in {} and {}", app.game_path("Sounds").display(), app.game_path("SimsFX").display()));
         // the free set's sounds stand in for a copy whose own cannot be played; the player is told once (sound_note)
         mixer.with_fallback();
+        let own = !app.on_free_set() && content::has_original(&app.game_dir);
+        // a copy without sounds (empty Sounds and SimsFX folders, as some downloaded copies have) is said as such, not as
+        // sounds that "could not be played" (the port's own check, Mixer::shortfall)
+        let shortfall = mixer.shortfall().filter(|_| content::has_original(&app.game_dir));
         // (mutable for the no-device note below, which the browser build leaves out)
         #[cfg_attr(target_arch = "wasm32", allow(unused_mut))]
-        let mut sound_note = mixer.check().err().filter(|_| content::has_original(&app.game_dir)).map(|e| {
-            audio::log(&format!("sound: the game's own sounds cannot be played ({e}); playing the free set's sounds"));
-            sg_core::lang::trf("STR_SOUND_CANNOT_PLAY", &[("WHY", &e)])
+        let mut sound_note = match &shortfall {
+            Some(Shortfall::NoneAtAll) => Some(sg_core::lang::tr("STR_SOUND_NONE_IN_COPY").to_string()),
+            Some(Shortfall::NoSoundsFolder { voices }) => Some(sg_core::lang::trf("STR_SOUND_ONLY_VOICES", &[("N", &voices.to_string())])),
+            _ => None,
+        }
+        .or_else(|| {
+            mixer.check().err().filter(|_| content::has_original(&app.game_dir)).map(|e| {
+                audio::log(&format!("sound: the game's own sounds cannot be played ({e}); playing the free set's sounds"));
+                sg_core::lang::trf("STR_SOUND_CANNOT_PLAY", &[("WHY", &e)])
+            })
+        })
+        .or_else(|| match shortfall {
+            Some(Shortfall::Missing { missing, of }) => {
+                Some(sg_core::lang::trf("STR_SOUND_MISSING", &[("N", &missing.to_string()), ("OF", &of.to_string())]))
+            }
+            _ => None,
         });
         // what the sound plays from, in the log and in a browser's console (audio::log)
-        let own = !app.on_free_set() && content::has_original(&app.game_dir);
         let count = mixer.list("").len();
+        let (sounds, voices) = mixer.own_counts();
         audio::log(&if mixer.is_empty() {
             format!("sound: no sounds at all ({}): the game is silent", mixer.last_error())
         } else if own && !mixer.all_free() {
             format!(
-                "sound: {count} sounds from your SimGolf files{}",
-                if sound_note.is_some() { " (some cannot be played: the free set's stand in)" } else { "" }
+                "sound: {} sounds from your SimGolf files ({sounds} in Sounds, {voices} voice clips in SimsFX){}",
+                sounds + voices,
+                if sound_note.is_some() { " (the free set's stand in for what is missing or cannot be played)" } else { "" }
             )
         } else if own {
-            format!("sound: your SimGolf files hold no sounds; playing the {count} free OpenSGolf sounds")
+            format!("sound: your SimGolf files hold no sounds (empty Sounds and SimsFX folders); playing the {count} free OpenSGolf sounds")
         } else {
             format!("sound: {count} free OpenSGolf sounds")
         });
+        if let Some(n) = &sound_note {
+            audio::log(&format!("sound: {n}"));
+        }
         if mixer.is_empty() {
             eprintln!("sound: {}", mixer.last_error());
         } else {

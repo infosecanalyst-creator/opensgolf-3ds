@@ -4,8 +4,9 @@
 //! without case; a Mac's `__MACOSX` folder and `._` files, the videos (.bik) and the Windows programs are left out.
 //!
 //! The zip is read from the file entry by entry (a whole game folder is hundreds of MB, too much to hold in a phone's
-//! memory): stored and deflated entries, Zip64 for archives over 4 GB. Entries in other methods (Deflate64, LZMA: 7-Zip's
-//! and Windows' stronger settings) and encrypted ones are counted and skipped.
+//! memory): stored, deflated and Deflate64 entries (Windows' zipper writes big files, the sounds among them, in Deflate64:
+//! sg_core::inflate64), Zip64 for archives over 4 GB. Entries in other methods (LZMA, BZIP2: 7-Zip's stronger settings)
+//! and encrypted ones are counted and skipped, and the player is told (Unzipped::unread).
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -202,7 +203,7 @@ pub fn unpack_game(source: &Path, dest: &Path, progress: &mut dyn FnMut(usize, u
         });
     }
     let image = images[0];
-    if image.flags & 1 != 0 || ![0, 8].contains(&image.method) {
+    if image.flags & 1 != 0 || ![0, 8, 9].contains(&image.method) {
         return Err(Error::BadZip("the ISO is encrypted or uses unsupported compression".into()));
     }
     let work = crate::iso::Workspace::new(dest)?;
@@ -211,8 +212,18 @@ pub fn unpack_game(source: &Path, dest: &Path, progress: &mut dyn FnMut(usize, u
         return Err(Error::BadZip("invalid ISO entry".into()));
     }
     file.seek(SeekFrom::Start(image.local + 30 + u16le(&head, 26) + u16le(&head, 28)))?;
-    let input = file.take(image.csize);
-    let mut reader: Box<dyn Read> = if image.method == 8 { Box::new(flate2::read::DeflateDecoder::new(input)) } else { Box::new(input) };
+    let mut input = file.take(image.csize);
+    let mut reader: Box<dyn Read> = match image.method {
+        8 => Box::new(flate2::read::DeflateDecoder::new(input)),
+        // Deflate64 (an image zipped by Windows): decoded whole, in memory
+        9 => {
+            let mut body = Vec::new();
+            input.read_to_end(&mut body)?;
+            let data = sg_core::inflate64::inflate(&body, image.size as usize, true).map_err(Error::BadZip)?;
+            Box::new(std::io::Cursor::new(data))
+        }
+        _ => Box::new(input),
+    };
     let path = work.path.join("disc.iso");
     let mut output = File::create(&path)?;
     let mut copied = 0u64;
@@ -251,7 +262,7 @@ pub fn unzip_game(zip: &Path, dest: &Path, progress: &mut dyn FnMut(usize, usize
     for (i, e) in wanted.iter().enumerate() {
         progress(i, wanted.len());
         let Some(rel) = safe_rel(&e.name[prefix.len()..]) else { continue };
-        if e.flags & 1 != 0 || (e.method != 0 && e.method != 8) {
+        if e.flags & 1 != 0 || !matches!(e.method, 0 | 8 | 9) {
             done.unread += 1;
             continue;
         }
@@ -263,6 +274,9 @@ pub fn unzip_game(zip: &Path, dest: &Path, progress: &mut dyn FnMut(usize, usize
         let body = read_at(&mut f, start, e.csize as usize)?;
         let data = if e.method == 0 {
             body
+        } else if e.method == 9 {
+            sg_core::inflate64::inflate(&body, e.size as usize, true)
+                .map_err(|why| Error::BadZip(format!("damaged entry {} ({why})", e.name)))?
         } else {
             miniz_oxide::inflate::decompress_to_vec_with_limit(&body, e.size as usize + 1024)
                 .map_err(|_| Error::BadZip(format!("damaged entry {}", e.name)))?
@@ -387,6 +401,22 @@ mod tests {
         assert_eq!(copy_tree(&dest, &staging, &mut |_| {}).unwrap(), 4);
         install(&staging, &d.join("copy")).unwrap();
         assert!(crate::gamefiles::missing(&d.join("copy")).is_empty() && !staging.exists());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn deflate64_entries_are_unpacked() {
+        // a game folder zipped with `7z a -tzip -mm=Deflate64` (as Windows' zipper writes big files): its sound, 68 KB
+        // with a repeat 65000 bytes back, needs Deflate64's own distance codes (issue #10)
+        let d = tmp("deflate64");
+        let zip = d.join("SimGolf.zip");
+        std::fs::write(&zip, include_bytes!("../../sg-core/tests/data/game64.zip")).unwrap();
+        let dest = d.join("game");
+        assert_eq!(unzip_game(&zip, &dest, &mut |_, _| {}).unwrap(), Unzipped { files: 2, unread: 0 });
+        let wav = std::fs::read(dest.join("Sounds/Applause.wav")).unwrap();
+        assert_eq!(wav.len(), 68000);
+        assert_eq!(wav[..3000], wav[65000..]);
+        assert_eq!(std::fs::read(dest.join("Flics/a.flc")).unwrap(), b"flic\n");
         let _ = std::fs::remove_dir_all(&d);
     }
 }

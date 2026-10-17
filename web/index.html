@@ -36,7 +36,9 @@
       linear-gradient(180deg, var(--bg2), var(--bg));
   }
   /* the game: fixed over the whole window once it starts (the page below is hidden then) */
-  #glcanvas { display: none; position: fixed; inset: 0; width: 100vw; height: 100vh; outline: none; touch-action: none;
+  /* (100dvh: iPad and iPhone Safari's 100vh is the height with their bars hidden, which put the bottom of the game, the
+     dock and the panels, under the bars; opensgolf.js sgFitCanvas sizes it to the visible area as the bars come and go) */
+  #glcanvas { display: none; position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; height: 100dvh; outline: none; touch-action: none;
     -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; background: #000; }
 
   /* the hero: a real in-game picture (taken with the original SimGolf files) behind the title and the two ways to play */
@@ -61,6 +63,7 @@
     text-shadow: 0 3px 14px rgba(0,0,0,0.55); }
   .tagline { margin: 8px 0 0; font-size: clamp(16px, 2.6vw, 20px); max-width: 640px; text-shadow: 0 2px 10px rgba(0,0,0,0.6); }
   .fan { margin: 10px 0 0; color: #cfe0d2; font-size: 13px; text-shadow: 0 1px 6px rgba(0,0,0,0.7); }
+  .card .note { margin: 8px 0 0; color: var(--muted); font-size: 14px; }
 
   .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-top: 26px; }
   .card { background: var(--card); border: 1px solid var(--card-border); border-radius: var(--radius); padding: 22px;
@@ -189,6 +192,9 @@
           <p>Pick the folder of your installed copy of SimGolf (the one holding <code>Data</code>, <code>Flics</code> and
             <code>Sounds</code>, often <code>C:\Program Files\Maxis\SimGolf</code>). The original art, sound and music, made
             new. The files are read in this tab only; nothing is uploaded.</p>
+          <p class="note">If your copy's <code>Sounds</code> and <code>SimsFX</code> folders are empty (some downloaded
+            copies leave the sounds out), the game still plays, with the free OpenSGolf sounds; a full installed copy or the
+            CD has the original's. After loading, the page says what it found.</p>
           <div class="actions">
             <label class="btn">Choose game folder<input id="folder" type="file" webkitdirectory directory multiple></label>
             <label class="btn ghost">Or a .zip<input id="zip" type="file" accept=".zip,.iso,.cdr,.dmg"></label>

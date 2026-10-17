@@ -32,6 +32,7 @@ pub mod heightmap;
 pub mod holetool;
 pub mod homes;
 pub mod index;
+pub mod inflate64;
 pub mod land;
 pub mod lang;
 #[cfg(test)]

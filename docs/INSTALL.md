@@ -11,6 +11,14 @@ Windows programs and a Mac's `__MACOSX` files; afterwards the .zip is no longer 
 `SimGolf` folder next to the program; the full list is in [PLAYING.md](PLAYING.md#your-own-simgolf-files)). *Use the free
 graphics* goes back. No Terminal and no options are needed (`--game DIR` remains for scripts).
 
+If your copy's `Sounds` and `SimsFX` folders are empty (some downloaded copies leave the sounds out), the game still
+plays, with the free OpenSGolf sounds, and says so once when it starts (the browser page too, after loading the files); a
+full installed copy or the CD has the original's. A .zip is read whether it was made with normal (Deflate) compression or
+by Windows' own zipper, which uses Deflate64 for big files such as the sounds (iPad's Files app cannot unpack those and
+shows the folders empty; OpenSGolf can). Files in other compressions (LZMA, BZIP2, 7-Zip's strongest settings) are left
+out and the game says how many; unpack such a zip (or a .7z or .rar) on a computer and pick the folder, or zip it again
+with normal compression.
+
 * **Windows**: unzip `opensgolf-windows.zip` anywhere and double-click `opensgolf.exe` (no console window opens). Windows
   SmartScreen may warn that the program is unknown (it is not signed): *More info*, *Run anyway*. Saves go to
   `%APPDATA%\OpenSGolf` (the games in its `Saved Games`: copy them to back up or move them; docs/PLAYING.md, "Saved games:
