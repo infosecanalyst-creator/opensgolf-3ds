@@ -99,7 +99,7 @@
   details .body { padding: 0 20px 18px; color: var(--muted); font-size: 14px; }
   details .body p { margin: 0 0 12px; }
   details .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-  #hdstatus, #packstatus { margin-top: 10px; color: var(--text); }
+  #hdstatus, #packstatus, #savecount, #savestatus { margin-top: 10px; color: var(--text); }
 
   h2.section { margin: 40px 0 14px; font-size: 24px; }
   .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 14px; }
@@ -210,6 +210,26 @@
     <label class="remember"><input type="checkbox" id="remember" checked> Keep my files in this browser so next time starts at once</label>
     <div id="status" role="status" aria-live="polite"></div>
 
+    <details id="saves">
+      <summary>💾 Your saved games: back up and restore</summary>
+      <div class="body">
+        <p>The games you save here are kept in this browser's own storage for this site (not in a folder on your computer),
+          so clearing the site's data, a private window or another browser will not have them. <b>Back up my saves</b>
+          downloads all of them (with your settings, championship courses and records) as one .zip to keep anywhere.
+          <b>Restore saves...</b> brings such a backup back, here or in another browser, and also takes single saved games
+          (<code>.sgs</code>) from the desktop version (they are in <code>Saved Games</code> in its save folder) or a zip of
+          that whole folder. In the game, Load Previous Game can export or import one save at a time (with the Course
+          sharing extra on). Saved games of the original SimGolf (<code>.sve</code>) cannot be read yet; its Top 10
+          Designers table (<code>top10.sve</code>) can.</p>
+        <div class="actions">
+          <button class="btn ghost" id="backup">Back up my saves</button>
+          <label class="btn ghost">Restore saves...<input id="restore" type="file" multiple accept=".zip,.sgs,.sgch,.pro,.sve,.json"></label>
+        </div>
+        <div id="savecount"></div>
+        <div id="savestatus" role="status" aria-live="polite"></div>
+      </div>
+    </details>
+
     <details>
       <summary>🖼️ HD graphics (optional)</summary>
       <div class="body">
@@ -287,7 +307,8 @@
         <ul>
           <li>Works in Chrome, Edge and Firefox on desktop, and on phones and tablets</li>
           <li>Sound starts with your first click, key or tap</li>
-          <li>Saved courses stay in this browser; screenshots and SimFotos download</li>
+          <li>Saved games stay in this browser: back them up as a .zip under <a href="#saves">Your saved games</a>;
+            screenshots and SimFotos download</li>
         </ul>
       </section>
     </div>
@@ -324,6 +345,9 @@
   document.getElementById("packfolder").addEventListener("change", e => sgLoadPackFolder(e.target.files));
   document.getElementById("packzip").addEventListener("change", e => sgLoadPackZip(e.target.files[0]));
   document.getElementById("playfree").addEventListener("click", () => sgPlayFree());
+  document.getElementById("backup").addEventListener("click", () => sgBackupSaves());
+  document.getElementById("restore").addEventListener("change", e => { sgRestoreFiles(e.target.files).finally(() => { e.target.value = ""; }); });
+  document.querySelector('a[href="#saves"]').addEventListener("click", () => { document.getElementById("saves").open = true; });
   sgInit();
 </script>
 </body>

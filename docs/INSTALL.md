@@ -11,7 +11,8 @@ graphics* goes back. No Terminal and no options are needed (`--game DIR` remains
 
 * **Windows**: unzip `opensgolf-windows.zip` anywhere and double-click `opensgolf.exe` (no console window opens). Windows
   SmartScreen may warn that the program is unknown (it is not signed): *More info*, *Run anyway*. Saves go to
-  `%APPDATA%\OpenSGolf`.
+  `%APPDATA%\OpenSGolf` (the games in its `Saved Games`: copy them to back up or move them; docs/PLAYING.md, "Saved games:
+  where they are, backups and imports").
 * **macOS** (Apple silicon and Intel): unzip `opensgolf-macos.zip` and move `OpenSGolf.app` to Applications. It is not
   notarised, so the first time right-click it and choose *Open*; on macOS 15 and newer that no longer offers *Open*:
   double-click it once, then System Settings → Privacy & Security → *Open Anyway* (near the bottom), and confirm. If macOS

@@ -493,7 +493,7 @@ impl App {
 
     // ---- Top 10 Designers -------------------------------------------------------------------------------------------------
 
-    fn top10_file(&self) -> std::path::PathBuf {
+    pub fn top10_file(&self) -> std::path::PathBuf {
         save_dir().join("top10.sve")
     }
 
