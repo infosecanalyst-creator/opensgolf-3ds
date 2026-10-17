@@ -541,7 +541,7 @@ impl App {
         let ok = self.econ.sandbox || self.econ.affordable(total as f64 * Economy::UNIT, self.hole_numbers.len());
         // above the item's own name over the footprint under the pointer (cursor_ui.rs draw_footprint)
         let (sx, sy) = self.screen_units(to.0 * 1024 + 512, to.1 * 1024 + 512);
-        label(g, s, sx, sy - 25.0, &text, BODY, c15(if ok { WHITE } else { RED }));
+        label(g, s, sx, sy - 30.0, &text, BODY, c15(if ok { WHITE } else { RED }));
     }
 }
 
