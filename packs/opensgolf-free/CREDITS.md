@@ -13,17 +13,17 @@ the places the engine cuts sheets at, sprite frame sizes, views, frame counts, a
 * **Terrain textures, interface, the sprites without a rendered sheet**: drawn by the engine at run time
   (`crates/sg-core/src/freeset/`), GPL-2.0-or-later.
 
-## Sounds
+## Sounds and music
 
-`art/Sounds/` is made by `tools/freeset_art/sounds.py` from these recordings, each dedicated to the public domain under
-**CC0 1.0** (https://creativecommons.org/publicdomain/zero/1.0/), mixed, trimmed and levelled, together with our own
-synthesis (applause, crowd, water, wind, birds, animals, swishes) and generated music:
+`art/Sounds/` and `art/SimsFX/` are made entirely in code by `tools/freeset_art/sounds.py` (with `snd_dsp.py`, `snd_fx.py`,
+`snd_voice.py`, `snd_music.py` and `snd_songs.py`): synthesised effects and voices and music composed for OpenSGolf, all
+GPL-2.0-or-later like the rest of OpenSGolf. No recordings or samples of anyone else are used. The voices speak a babble
+invented here, and every melody and arrangement is our own.
 
-* **Kenney** (https://kenney.nl): *Impact Sounds*, *RPG Audio* and *Music Jingles*, CC0 1.0. Thank you, Kenney.
-* **uisfx** by Romain Simon (https://github.com/romainsimon/uisfx), interface sounds, CC0 1.0 (as published on npm in
-  `@wubbleai/community-sfx`).
+## Text
 
-`tools/freeset_art/fetch_sources.py` downloads these recordings again to rebuild the sounds.
+The stories, sayings, names, descriptions and credits in `crates/sg-core/src/freeset/text.rs` are written for OpenSGolf;
+every person, course and celebrity in them is made up.
 
 ## Fonts
 
