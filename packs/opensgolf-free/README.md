@@ -13,8 +13,16 @@ The set has two parts, both built into the game (nothing is downloaded at run ti
   4 or 8 views), and the sounds and music made by `tools/freeset_art/sounds.py` entirely in code (see **Sounds** below). `crates/sg-core/src/freeset/baked.rs` turns a sheet into the FLC the engine reads.
   Golfers are drawn in the palette slots the engine recolours, so every golfer still wears their own colours; trees use
   the leaf ramp the colour variant palettes change. The main interface sheets (the dock, title screen, course badge,
-  the Terrain, Amenities, Buildings and Elevation panels with the theme's lot pictures, terrain buttons, dialogs and the
-  course report) are vector art drawn by `tools/freeset_art/ui.py` at the places the engine cuts them.
+  the Terrain, Amenities, Buildings and Elevation panels with the theme's lot pictures, terrain buttons, dialogs, the popup
+  frame, the golfer card and the course report) and the full screen pages (Select Difficulty, the world map with its theme
+  balls, Load Game, Pick A Pro, Theme Packs, the credits, Top 10 Designers, the trophy room, the routing map's lower part and
+  the tract buttons) are vector art drawn by `tools/freeset_art/ui.py` and `uipages.py` at the places the engine cuts them. The title menu
+  (`uititle.py`) is a sunny course with the OpenSGolf logotype and big candy plates (Start New Game as the hero, its golf ball
+  winking; a gopher peeks over Sandbox Mode). The large screens are kept in full colour.
+  * **The engine's own boxes** (popup menus, Preferences, the Extras and Enhanced graphics boxes, People, Keyboard controls,
+    Content packs, the save and rename prompts, the title's small buttons): while this set is loaded they are drawn in its look
+    by `crates/simgolf/src/glass_ui.rs` (candy panels with a header band, capsule buttons and tabs, switches, a highlighted
+    row under the pointer), with the same places and hit areas; with the original's files they look exactly as before.
 * **Drawn at run time** by code in `crates/sg-core/src/freeset/` for everything else:
   * **Terrain** (`tex.rs`): each theme's surfaces painted from wrapping noise with lit relief (mowing stripes, blades and
     clumps of grass, scrub, stones, sand grain and ripples, water sheen), in the nine blend shapes the terrain renderer uses.
@@ -26,8 +34,8 @@ The set has two parts, both built into the game (nothing is downloaded at run ti
   * **Text** (`text.rs`): our own stories (thirteen, from Opening Day to The Podcast), characters with twenty sayings each,
     famous golfers, celebrities, a description of every terrain per theme, lighting, credits and a starting high score
     table; every name is made up.
-  * **Fonts**: Liberation Sans Bold (SIL Open Font License 1.1, `crates/simgolf/fonts/LiberationSans-OFL.txt`) under the two
-    names the game loads, `KLEPTO__.TTF` and `manu3_.TTF`.
+  * **Fonts**: Fredoka SemiBold for the headings (`KLEPTO__.TTF`) and Nunito ExtraBold for the text (`manu3_.TTF`), both
+    SIL Open Font License 1.1 (`crates/simgolf/fonts/*-OFL.txt`, made by `tools/freeset_art/fonts.py`, see `CREDITS.md`).
 
 To rebuild the rendered art: `python3 tools/freeset_art/build.py` (numpy and Pillow; `--only REGEX` for some sprites), `python3 tools/freeset_art/ui.py` for the interface sheets, and
 for the sounds `python3 tools/freeset_art/sounds.py` (numpy, scipy, ffmpeg with libvorbis; `--only REGEX` for some). Both rewrite `crates/sg-core/src/freeset/baked_list.rs`, the list of files built into the game.

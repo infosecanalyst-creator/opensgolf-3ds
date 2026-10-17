@@ -372,6 +372,10 @@ impl App {
     pub fn draw_editor_button(&self, g: &mut Gfx, s: &Ui) {
         let r = title_button_rect();
         let lit = self.hover == EDITOR_HOVER;
+        if crate::glass_ui::active() {
+            crate::glass_ui::title_button(g, s, r.x, r.y, r.w, r.h, tr("STR_EDITOR_TITLE_BUTTON"), lit);
+            return;
+        }
         s.fill(g, r.x - 1.0, r.y - 1.0, r.w + 2.0, r.h + 2.0, rgba(1.0, 1.0, 1.0, 0.85));
         s.fill(g, r.x, r.y, r.w, r.h, if lit { rgba(0.13, 0.32, 0.55, 0.95) } else { rgba(0.08, 0.16, 0.32, 0.88) });
         s.put_centered(
@@ -693,7 +697,7 @@ impl App {
         let (px, py) = self.info.pointer;
         let button = |g: &mut Gfx, r: Rect, label: &str, on: bool| {
             let lit = r.has(px, py);
-            s.fill(g, r.x, r.y, r.w, r.h, if lit { rgb(0.85, 0.85, 1.0) } else { rgb(0.47, 0.47, 0.70) });
+            crate::glass_ui::button_fill(g, &s, r.x, r.y, r.w, r.h, lit);
             s.put_centered(g, F_ARIAL10, r.x + r.w / 2.0, r.y + (r.h - 10.0) / 2.0, label, if on { navy } else { grey });
         };
         let label = |g: &mut Gfx, x: f32, y: f32, t: &str| s.put(g, F_ARIAL10, x, y + 4.0, t, navy);

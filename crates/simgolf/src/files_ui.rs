@@ -817,15 +817,25 @@ impl App {
         }
         if let (Some(o), Some(i)) = (f.confirm, sel) {
             let (lines, (x, y, w, h)) = confirm_box(&row_name(&f.files[i]));
-            s.fill(g, x - 3.0, y - 3.0, w + 6.0, h + 6.0, rgba(0.55, 0.55, 0.85, 0.95));
-            s.fill(g, x, y, w, h, rgba(0.92, 0.92, 1.0, 0.97));
+            let free = crate::glass_ui::active();
+            if free {
+                crate::glass_ui::dialog(g, s, x, y, w, h, 34.0);
+            } else {
+                s.fill(g, x - 3.0, y - 3.0, w + 6.0, h + 6.0, rgba(0.55, 0.55, 0.85, 0.95));
+                s.fill(g, x, y, w, h, rgba(0.92, 0.92, 1.0, 0.97));
+            }
             for (k, l) in lines.iter().enumerate() {
                 let ly = y + 26.0 + CONFIRM_PITCH * k as f32;
                 if k == 0 {
-                    s.text_centered(g, x + w / 2.0, ly, l, 16.0, rgb(0.15, 0.1, 0.4));
+                    let ink = if free { crate::glass_ui::HEAD } else { rgb(0.15, 0.1, 0.4) };
+                    s.text_centered(g, x + w / 2.0, ly, l, 16.0, ink);
                 } else {
                     if k - 1 == o {
-                        s.fill(g, x + 8.0, ly - 17.0, w - 16.0, CONFIRM_PITCH - 2.0, rgba(0.98, 0.85, 0.2, 0.9));
+                        if free {
+                            crate::glass_ui::capsule(g, s, x + 8.0, ly - 17.0, w - 16.0, CONFIRM_PITCH - 2.0, [1.0, 0.86, 0.38, 1.0]);
+                        } else {
+                            s.fill(g, x + 8.0, ly - 17.0, w - 16.0, CONFIRM_PITCH - 2.0, rgba(0.98, 0.85, 0.2, 0.9));
+                        }
                     }
                     s.text(g, x + 36.0, ly, l.trim(), 15.0, rgb(0.08, 0.08, 0.25));
                 }
@@ -834,16 +844,30 @@ impl App {
         if file_buttons(f.kind) {
             for (k, r, label) in [(1, IMPORT_RECT, "STR_FILES_IMPORT_SAVE"), (2, EXPORT_RECT, "STR_FILES_EXPORT_SAVE")] {
                 let on = k == 1 || sel.is_some();
-                let fill = if f.file_lit == k { rgba(0.15, 0.2, 0.45, 0.95) } else { rgba(0.08, 0.1, 0.3, 0.85) };
-                s.fill(g, r.x, r.y, r.w, r.h, fill);
-                let ink = if on { rgb(1.0, 1.0, 1.0) } else { rgb(0.5, 0.5, 0.6) };
+                if crate::glass_ui::active() {
+                    crate::glass_ui::button(g, s, r.x, r.y, r.w, r.h, on, f.file_lit == k);
+                } else {
+                    let fill = if f.file_lit == k { rgba(0.15, 0.2, 0.45, 0.95) } else { rgba(0.08, 0.1, 0.3, 0.85) };
+                    s.fill(g, r.x, r.y, r.w, r.h, fill);
+                }
+                let ink = match (on, crate::glass_ui::active()) {
+                    (true, true) => crate::glass_ui::INK,
+                    (false, true) => crate::glass_ui::DIM_INK,
+                    (true, false) => rgb(1.0, 1.0, 1.0),
+                    (false, false) => rgb(0.5, 0.5, 0.6),
+                };
                 s.text_centered(g, r.x + r.w / 2.0, r.y + 19.0, tr(label), 14.0, ink);
             }
         }
         if f.kind == ListKind::Course && crate::extras::sharing() {
             let r = PASTE_RECT;
-            s.fill(g, r.x, r.y, r.w, r.h, if f.paste_lit { rgba(0.15, 0.2, 0.45, 0.95) } else { rgba(0.08, 0.1, 0.3, 0.85) });
-            s.text_centered(g, r.x + r.w / 2.0, r.y + 24.0, tr("STR_FILES_PASTE_CODE"), 15.0, rgb(1.0, 1.0, 1.0));
+            if crate::glass_ui::active() {
+                crate::glass_ui::button(g, s, r.x, r.y, r.w, r.h, true, f.paste_lit);
+            } else {
+                s.fill(g, r.x, r.y, r.w, r.h, if f.paste_lit { rgba(0.15, 0.2, 0.45, 0.95) } else { rgba(0.08, 0.1, 0.3, 0.85) });
+            }
+            let ink = if crate::glass_ui::active() { crate::glass_ui::INK } else { rgb(1.0, 1.0, 1.0) };
+            s.text_centered(g, r.x + r.w / 2.0, r.y + 24.0, tr("STR_FILES_PASTE_CODE"), 15.0, ink);
         }
         // what Import, Export or the paste button have to say: this screen has no ticker (only with the port's buttons on
         // it, so the original's screen is unchanged)
@@ -1222,10 +1246,17 @@ impl App {
         let w = (text_width(head, 17.0) + 60.0).max(360.0);
         // (the port's Save / Cancel and Export as scenario buttons make it 60 taller than the original's)
         let (x, y, h) = (400.0 - w / 2.0, 240.0, 150.0);
-        s.fill(g, x - 3.0, y - 3.0, w + 6.0, h + 6.0, rgba(0.55, 0.55, 0.85, 0.95));
-        s.fill(g, x, y, w, h, rgba(0.92, 0.92, 1.0, 0.97));
-        s.text_centered(g, 400.0, y + 28.0, head, 17.0, rgb(0.15, 0.1, 0.4));
-        s.fill(g, x + 20.0, y + 42.0, w - 40.0, 28.0, WHITE);
+        let free = crate::glass_ui::active();
+        if free {
+            crate::glass_ui::dialog(g, &s, x, y, w, h, 34.0);
+            s.text_centered(g, 400.0, y + 26.0, head, 17.0, crate::glass_ui::HEAD);
+            crate::glass_ui::field(g, &s, x + 20.0, y + 42.0, w - 40.0, 28.0);
+        } else {
+            s.fill(g, x - 3.0, y - 3.0, w + 6.0, h + 6.0, rgba(0.55, 0.55, 0.85, 0.95));
+            s.fill(g, x, y, w, h, rgba(0.92, 0.92, 1.0, 0.97));
+            s.text_centered(g, 400.0, y + 28.0, head, 17.0, rgb(0.15, 0.1, 0.4));
+            s.fill(g, x + 20.0, y + 42.0, w - 40.0, 28.0, WHITE);
+        }
         let caret = if (self.clock * 2.0) as i64 % 2 == 0 { "|" } else { "" };
         s.text(g, x + 26.0, y + 62.0, &format!("{name}{caret}"), 16.0, rgb(0.05, 0.05, 0.2));
         let (px, py) = self.info.pointer;
@@ -1234,6 +1265,12 @@ impl App {
             (save_cancel_button(), "STR_SAVE_CANCEL"),
             (save_export_button(), "STR_SAVE_EXPORT_SCENARIO"),
         ] {
+            if free {
+                let lit = b.has(px, py);
+                crate::glass_ui::button(g, &s, b.x, b.y - 1.0, b.w, b.h + 2.0, true, lit);
+                s.text_centered(g, b.x + b.w / 2.0, b.y + 16.0, tr(label), 13.0, crate::glass_ui::INK);
+                continue;
+            }
             s.fill(g, b.x, b.y, b.w, b.h, if b.has(px, py) { rgba(0.85, 0.85, 1.0, 1.0) } else { rgba(0.66, 0.66, 0.84, 1.0) });
             s.text_centered(g, b.x + b.w / 2.0, b.y + 16.0, tr(label), 13.0, rgb(0.15, 0.1, 0.4));
         }
@@ -1248,7 +1285,11 @@ fn draw_note(g: &mut Gfx, s: &Ui, text: &str) {
     let w = lines.iter().map(|l| text_width(l, SIZE)).fold(0.0, f32::max) + 24.0;
     let h = 8.0 + 20.0 * lines.len() as f32;
     let y = 594.0 - h;
-    s.fill(g, 400.0 - w / 2.0, y, w, h, rgba(0.1, 0.1, 0.3, 0.92));
+    if crate::glass_ui::active() {
+        crate::glass_ui::capsule(g, s, 400.0 - w / 2.0 - 8.0, y, w + 16.0, h, [0.12, 0.18, 0.45, 1.0]);
+    } else {
+        s.fill(g, 400.0 - w / 2.0, y, w, h, rgba(0.1, 0.1, 0.3, 0.92));
+    }
     for (k, l) in lines.iter().enumerate() {
         s.text_centered(g, 400.0, y + 19.0 + 20.0 * k as f32, l, SIZE, rgb(1.0, 1.0, 0.8));
     }

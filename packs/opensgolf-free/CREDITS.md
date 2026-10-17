@@ -27,4 +27,11 @@ every person, course and celebrity in them is made up.
 
 ## Fonts
 
-Liberation Sans Bold, SIL Open Font License 1.1 (`crates/simgolf/fonts/LiberationSans-OFL.txt`).
+* **Fredoka SemiBold** (the headings' face, `KLEPTO__.TTF`, and the lettering of the drawn pictures): copyright 2016 The
+  Fredoka Project Authors, SIL Open Font License 1.1 (`crates/simgolf/fonts/Fredoka-OFL.txt`), from github.com/google/fonts
+  (ofl/fredoka). Made from the variable font by `tools/freeset_art/fonts.py`: the 600 weight instance, Latin-1 subset, line
+  metrics set to Liberation Sans' proportions.
+* **Nunito ExtraBold** (the body text's face, `manu3_.TTF`): copyright 2014 The Nunito Project Authors, SIL Open Font License
+  1.1 (`crates/simgolf/fonts/Nunito-OFL.txt`), from github.com/google/fonts (ofl/nunito), made the same way at weight 800.
+* **Liberation Sans Bold** (the small print, standing in for Arial Bold): SIL Open Font License 1.1
+  (`crates/simgolf/fonts/LiberationSans-OFL.txt`).

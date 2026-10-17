@@ -253,9 +253,13 @@ impl App {
         use crate::ui::{rgb, rgba};
         let Some(r) = self.update_button() else { return };
         let lit = self.hover == UPDATE_HOVER;
+        let label = self.update_label();
+        if crate::glass_ui::active() {
+            crate::glass_ui::title_button(g, s, r.x, r.y, r.w, r.h, label, lit);
+            return;
+        }
         s.fill(g, r.x - 1.0, r.y - 1.0, r.w + 2.0, r.h + 2.0, rgba(1.0, 1.0, 1.0, 0.85));
         s.fill(g, r.x, r.y, r.w, r.h, if lit { rgba(0.13, 0.32, 0.55, 0.95) } else { rgba(0.08, 0.16, 0.32, 0.88) });
-        let label = self.update_label();
         s.put_centered(g, crate::ui::F_MANUAL15, r.x + r.w / 2.0, r.y + 4.0, label, rgb(1.0, 1.0, if lit { 1.0 } else { 0.8 }));
     }
 

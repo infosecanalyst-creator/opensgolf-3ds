@@ -58,6 +58,7 @@ mod fx_winter;
 mod gamefiles;
 mod gamepad;
 mod gfx;
+mod glass_ui;
 mod graphs;
 mod hd;
 mod history_ui;
@@ -2807,6 +2808,7 @@ impl EventHandler for Stage {
     }
 
     fn draw(&mut self) {
+        glass_ui::set_active(self.app.on_free_set());
         enhanced::trial_frame(self.app.clock);
         // too slow for the Enhanced options in use: the costliest go, a step at a time (enhanced.rs, issue #55)
         if self.png_out.is_none() {
