@@ -1320,6 +1320,8 @@ STR_SEARCH_CHANGED                      : Show only what differs from the origin
 # A found option: "{page}: {option}"; the pages of Enhanced graphics' master switch and of the keys
 STR_SEARCH_PLACE_ENHANCED               :Graphics
 STR_SEARCH_PLACE_KEYS                   :Keys
+# a found option's category and its page or tag (Graphics · Water, Gameplay · Noticeable)
+STR_SEARCH_PLACE_TWO                    :{A} · {B}
 STR_SEARCH_KEY                          :{ACTION} ({KEY})
 STR_SEARCH_NONE                         :Nothing found.
 STR_SEARCH_MORE                         :{N} more: type more to narrow the list.
@@ -1335,11 +1337,60 @@ STR_EXTRAS_HARDCORE                     : Hardcore economy
 STR_EXTRAS_MORE_STAFF                   : Higher staff limits
 STR_EXTRAS_ANIMALS                      : Buyable animals
 STR_EXTRAS_SET_PAR                      : Set par: change a hole's par on its Hole Stats
-# The extras box's pages (tabs): the gameplay extras, the calendar and sandbox switches, the interface extras
+# The extras box's pages (tabs), by what their ticks change: how the game plays, relaxed play, the look, information, effort
 STR_EXTRAS_PAGE_GAMEPLAY                :Gameplay
-STR_EXTRAS_PAGE_TIME                    :Time & sandbox
-STR_EXTRAS_PAGE_INTERFACE               :Interface
+STR_EXTRAS_PAGE_SANDBOX                 :Sandbox
+STR_EXTRAS_PAGE_LOOKS                   :Looks
+STR_EXTRAS_PAGE_INFO                    :Info
 STR_EXTRAS_PAGE_HELPERS                 :Helpers
+# each page's banner under the tabs
+STR_EXTRAS_BANNER_GAMEPLAY              :Changes how the game plays.
+STR_EXTRAS_BANNER_SANDBOX               :Bends the rules for relaxed play.
+STR_EXTRAS_BANNER_LOOKS                 :Changes how it looks. Play is unchanged.
+STR_EXTRAS_BANNER_INFO                  :Shows more about your club. Play is unchanged.
+STR_EXTRAS_BANNER_HELPERS               :Saves you effort. Play is unchanged.
+# the pill at the right end of a gameplay or sandbox line: how much it changes the game
+STR_EXTRAS_TAG_LIGHT                    :Light touch
+STR_EXTRAS_TAG_NOTICEABLE               :Noticeable
+STR_EXTRAS_TAG_BIG                      :Big change
+# the foot of the box with no option under the pointer
+STR_EXTRAS_HINT_TAGGED                  :Each tag says how much the game changes. Point at an option, or tap it, to read what it does.
+STR_EXTRAS_HINT_PLAIN                   :Point at an option, or tap it, to read what it does.
+# the foot of the box: what the option under the pointer (or last tapped) changes
+STR_EXTRAS_DESC_ROTATE                  :Tab turns a placed building or the clubhouse a quarter, or steps through the designs of the item in hand. Only the picture turns.
+STR_EXTRAS_DESC_CUT_CONTENT             :Fourteen landmarks the original never used join the landmark strip. Golfers enjoy the view; they have no special powers.
+STR_EXTRAS_DESC_HARDCORE                :Tighter money and choosier golfers: higher wages, upkeep and land prices, more interest, lower fees and at most 12 staff.
+STR_EXTRAS_DESC_MORE_STAFF              :Your club may hire up to 40 employees instead of the original's 20.
+STR_EXTRAS_DESC_ANIMALS                 :Buy pairs of the theme's animals from the landmark strip. They stay near where you set them down and cheer golfers up.
+STR_EXTRAS_DESC_SET_PAR                 :Minus and plus buttons on Hole Stats change a hole's par (2 to 6), and golfers are scored against your par.
+STR_EXTRAS_DESC_SEASON_SPEED            :The calendar runs at half or a quarter speed while golfers, staff and bills keep their pace, so each year holds more golf.
+STR_EXTRAS_DESC_PAUSE_CALENDAR          :The date stands still: golfers keep coming and paying, but no month or year ends, so no interest and no board review.
+STR_EXTRAS_DESC_FREEZE_MOODS            :Golfers' moods never drop. Good moments still cheer them up, and nobody leaves unhappy.
+STR_EXTRAS_DESC_UNLOCK_ALL              :Every building, home site and landmark of the theme is on the panels from the start, as in Sandbox Mode.
+STR_EXTRAS_DESC_LEFTIES                 :About one golfer in ten is left-handed: a mirrored swing, and the ball curves the other way. Your pro can be one too.
+STR_EXTRAS_DESC_WEATHER                 :Rain and snow slow the ball and keep some golfers at home; desert heat waves speed it up. Gentle over a year.
+STR_EXTRAS_DESC_PATHS                   :Draws every path in brick, gravel, dark stone or boardwalk, and adds lamp posts to the landmark strip. A click picks the style.
+STR_EXTRAS_DESC_MORE_VISITORS           :Touring pros and celebrities drop in now and then. They pay more, draw crowds and say what they thought of your course.
+STR_EXTRAS_DESC_PEOPLE                  :A sortable list of every golfer and employee, with golfer profiles and your pro's screens (Shift+G).
+STR_EXTRAS_DESC_HISTORY                 :Keeps every ticker message with its date, so you can read back what you missed (Shift+M).
+STR_EXTRAS_DESC_NAME_TAGS               :A small tag with the name of the golfer or employee under the pointer (Shift+H turns them off and on).
+STR_EXTRAS_DESC_REPORT_TABS             :A strip of tabs over the F1 to F10 reports flips from one report to another without going back to the course.
+STR_EXTRAS_DESC_PATH_HELP               :Path view (Shift+V) marks paths that reach the clubhouse and buildings they miss; a Show button finds a closed building.
+STR_EXTRAS_DESC_LANDING_MAP             :Dots on the course show where the golfers' shots on a hole come to rest, with a count of where they ended (Shift+D).
+STR_EXTRAS_DESC_HOLE_COMMENTS           :The thoughts golfers had most often on each hole, this month, last month or this year (Shift+I).
+STR_EXTRAS_DESC_GRAPHS                  :Graphs of the club and each hole month by month: rounds, money, happiness, ratings and members (Shift+Y).
+STR_EXTRAS_DESC_LIVE_SCORECARDS         :An open golfer card shows the golfer's round so far, hole by hole, as the original shows your pro's.
+STR_EXTRAS_DESC_YEAR_SUMMARY            :After the End of Year report, a page of the year's key figures against the year before.
+STR_EXTRAS_DESC_HOME_DETAILS            :Point at a home site to see whose it is, what it cost, what it sold for and what it is worth now.
+STR_EXTRAS_DESC_AUTOSAVE                :Saves the game every five minutes of play, keeping the last three, so a crash loses little.
+STR_EXTRAS_DESC_SAVE_PICTURES           :Load Previous Game shows a small map of each saved game's course.
+STR_EXTRAS_DESC_SHARING                 :Copy a code for your course to send to a friend; paste one (Ctrl+V) to play theirs and try to beat their record.
+STR_EXTRAS_DESC_PAUSE_BACKGROUND        :The game pauses while its window is in the background and goes on when you come back.
+STR_EXTRAS_DESC_PAUSE_EVENTS            :The game pauses when a VIP arrives, a famous golfer challenges your pro, the SGA makes an offer or money runs short.
+STR_EXTRAS_DESC_UPDATE_CHECK            :Looks online for a newer OpenSGolf when the game starts, and offers it only if there is one.
+STR_EXTRAS_DESC_ZOOM_POINTER            :The mouse wheel and a pinch zoom towards the spot you point at, instead of the middle of the screen.
+STR_EXTRAS_DESC_DRAG_PLACE              :Drag with benches, flower beds and the like in hand to lay a straight row of them, with the cost shown as you go.
+STR_EXTRAS_DESC_TICKER_JUMP             :A click on a ticker message takes the camera to the golfer or place it is about.
 # Slower seasons: a click steps the calendar's speed (1x is the original's)
 STR_EXTRAS_SEASON_SPEED                 : Slower seasons: the calendar at {VALUE}
 STR_EXTRAS_SPEED_1                      :1x (original)
@@ -1376,6 +1427,8 @@ STR_CUT_DESERT_FOUNTAIN                 :desert fountain
 STR_CUT_SEA_ROCK                        :sea rock
 STR_ENHANCED_TITLE                      :Enhanced graphics (not in the original)
 STR_ENHANCED_MASTER                     : Enhanced graphics (off: Classic)
+# the banner under the Enhanced graphics box's tabs
+STR_ENHANCED_BANNER                     :Graphics only: play is never changed.
 STR_ENHANCED_NATIVE_TEXT                : Sharp text at the screen's resolution
 STR_ENHANCED_SMOOTH_UI                  : Smooth interface art at any size
 STR_ENHANCED_WIDESCREEN                 : Widescreen: interface at the window's edges

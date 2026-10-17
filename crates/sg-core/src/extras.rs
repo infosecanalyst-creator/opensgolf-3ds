@@ -60,8 +60,8 @@ pub struct Extras {
 
 /// The options in the order the Extras box lists them (text keys of their lines). Option 6 has three values (a line with
 /// {VALUE}, `SPEED_KEYS`), the others are ticks; `Extras::option` and `Extras::set_option` read and set them by index.
-/// Left-handed golfers (10) came after the sandbox switches and is shown on the Gameplay page (extras_ui.rs `page_lines`).
-/// Weather that matters (11), Path styles and lamps (12) and More visitors (13) came after it, on the same page.
+/// New options are appended so bits and saves keep working; the page each is shown on (Gameplay, Sandbox or Looks) is
+/// extras_ui.rs `PAGE_LINES`'s.
 pub const OPTION_KEYS: [&str; 14] = [
     "STR_EXTRAS_ROTATE",
     "STR_EXTRAS_CUT_CONTENT",

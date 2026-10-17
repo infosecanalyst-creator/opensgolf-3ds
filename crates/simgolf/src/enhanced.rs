@@ -622,15 +622,16 @@ pub fn option_line(o: &OptionEntry, s: &Settings) -> String {
 /// Heading lines of the box above the options: the title, then two empty lines the page tabs are drawn on.
 pub const TAB_LINES: usize = 2;
 
-/// The lines of a page of the Enhanced graphics box: the heading, room for the tabs, the master switch, then the page's
-/// options, padded with empty lines to the longest page.
+/// The lines of a page of the Enhanced graphics box: the heading, room for the tabs and the banner that says graphics never
+/// change play (popup_ui draws them), the master switch, then the page's options, padded with empty lines to the longest
+/// page.
 pub fn popup_lines(page: u8, s: &Settings) -> Vec<String> {
     use sg_core::lang::tr;
     let mut v = vec![tr("STR_ENHANCED_TITLE").to_string()];
-    v.extend((0..TAB_LINES).map(|_| String::new()));
+    v.extend((0..TAB_LINES + crate::popup_ui::BANNER_LINES).map(|_| String::new()));
     v.push(tr("STR_ENHANCED_MASTER").to_string());
     v.extend(page_options(page).map(|o| option_line(o, s)));
-    let n = 1 + TAB_LINES + 1 + most_options();
+    let n = 1 + TAB_LINES + crate::popup_ui::BANNER_LINES + 1 + most_options();
     while v.len() < n {
         v.push(String::new());
     }
@@ -643,7 +644,8 @@ pub fn popup_widest(s: &Settings) -> f32 {
     let lines = (0..PAGES.len() as u8).flat_map(|p| popup_lines(p, s)).map(|l| f.width(&l).round()).fold(0.0, f32::max);
     // wide enough for every tab to hold its name with some room (the tabs share the box's width equally)
     let tab = PAGES.iter().map(|k| f.width(sg_core::lang::tr(k))).fold(0.0, f32::max) + 24.0;
-    lines.max(tab * PAGES.len() as f32)
+    let banner = crate::popup_ui::BANNER_FONT.width(sg_core::lang::tr("STR_ENHANCED_BANNER")) + 24.0;
+    lines.max(tab * PAGES.len() as f32).max(banner)
 }
 
 /// The box's ticks on a page: bit 0 the master switch, bit 1 + i the page's option i.

@@ -69,6 +69,9 @@ pub struct Popup {
     pub pref: crate::prefs_search::Prefs,
     /// The tab under the pointer.
     pub tab_hover: Option<u8>,
+    /// The Extras box: the option last under the pointer or tapped, whose description shows at the box's foot on a touch
+    /// screen (no pointer hovers there).
+    pub last_pick: Option<usize>,
     /// The search box: the words typed, "Show only changed", and the options found.
     pub query: String,
     pub changed_only: bool,
@@ -81,6 +84,7 @@ impl Popup {
         if page != self.page && (page as usize) < self.page_count() {
             self.page = page;
             self.sel = None;
+            self.last_pick = None;
             self.refresh();
         }
     }
@@ -100,7 +104,28 @@ impl Popup {
             if self.kind == PopupKind::Extras { crate::extras_ui::PAGES[page as usize] } else { crate::enhanced::PAGES[page as usize] };
         sg_core::lang::tr(key)
     }
+
+    /// The banner under the tabs: what the page's ticks change (the Extras box), or that graphics never change play (the
+    /// Enhanced graphics box).
+    fn banner(&self) -> Option<&'static str> {
+        match self.kind {
+            PopupKind::Extras => Some(sg_core::lang::tr(crate::extras_ui::BANNERS[self.page as usize])),
+            PopupKind::Enhanced => Some(sg_core::lang::tr("STR_ENHANCED_BANNER")),
+            _ => None,
+        }
+    }
 }
+
+/// The rows under the tabs the Enhanced graphics and Extras boxes keep for their banner: its own and a gap before the
+/// first option.
+pub const BANNER_LINES: usize = 2;
+
+/// The banner's font: Manual SSi Bold 20 (0x519928), as the tabs and options.
+pub const BANNER_FONT: crate::ui::Fnt = crate::ui::F_MANUAL20;
+
+/// The description at the Extras box's foot: Manual SSi Bold 16 (0x821f28), 14 (0x821ee8) when it needs more than two
+/// lines at 16.
+const FOOT_FONTS: [crate::ui::Fnt; 2] = [crate::ui::F_INFO16, crate::ui::F_INFO14];
 
 /// The generic popup (0x46d6e0, EXACT from the code): one text blob split into lines, those starting with a space being
 /// options. Its box is as wide as the widest line (options measured with their leading space) rounded up to 15 mod 16,
@@ -608,9 +633,8 @@ impl App {
                 // a row higher with the Search line, so the box keeps clear of the bottom of the screen
                 176.0,
             ),
-            // filled in below from extras_ui's pages: the gameplay extras, the calendar and sandbox switches, the interface
-            // (two rows higher since the interface page's history graphs and zoom towards the pointer, to keep its OK tick on
-            // an 800 x 600 screen)
+            // filled in below from extras_ui's pages (Gameplay, Sandbox, Looks, Info, Helpers), with the banner under the
+            // tabs and the description at the foot; the tallest page (Info) keeps its OK tick on an 800 x 600 screen
             PopupKind::Extras => (Vec::new(), 0, 400.0, 92.0),
             // filled in below from prefs_search
             PopupKind::Search => (Vec::new(), 0, 400.0, 92.0),
@@ -712,6 +736,7 @@ impl App {
                 keys: crate::controls::settings(),
             },
             tab_hover: None,
+            last_pick: None,
             query: self.pref_query.clone(),
             changed_only: false,
             hits: Vec::new(),
@@ -751,7 +776,58 @@ impl App {
         }
         self.draw_choice_box(g, &s, &b, p.sel);
         self.draw_page_tabs(g, &s, &p);
+        if let Some(t) = p.banner() {
+            draw_banner(g, &s, &b, t);
+        }
+        if p.kind == PopupKind::Extras {
+            self.draw_extras_tags(g, &s, &p, &b);
+        }
         g.flush();
+    }
+
+    /// The Extras box's own parts (the port's own): the tag pill at the right end of each gameplay and sandbox line, and at
+    /// the foot the description of the line under the pointer (on a touch screen the line last tapped; with none, the
+    /// page's hint).
+    fn draw_extras_tags(&self, g: &mut Gfx, s: &Ui, p: &Popup, b: &ChoiceBox) {
+        use crate::info_ui::c15;
+        let r = b.rect();
+        let tops = b.line_tops();
+        let pw = crate::extras_ui::pill_w();
+        let pf = crate::extras_ui::PILL_FONT;
+        for ((k, l), &line) in crate::extras_ui::page_lines(p.page).into_iter().enumerate().zip(&b.options()) {
+            let Some(t) = crate::extras_ui::tag(l) else { continue };
+            let (fill, edge) = t.colours();
+            let (x, y, h) = (r.x + r.w - 24.0 - pw, tops[line] + 5.0, 18.0);
+            s.fill(g, x, y, pw, h, c15(edge));
+            s.fill(g, x + 1.0, y + 1.0, pw - 2.0, h - 2.0, c15(fill));
+            // rounded: the edge's corner pixels take the box's colour
+            for (cx, cy) in [(x, y), (x + pw - 1.0, y), (x, y + h - 1.0), (x + pw - 1.0, y + h - 1.0)] {
+                s.fill(g, cx, cy, 1.0, 1.0, c15(0x4e79));
+            }
+            let label = tr(t.key());
+            let lit = p.sel == Some(k);
+            s.put_shadowed(g, pf, x + pw * 0.5, y + 1.0, label, c15(if lit { 0x7fff } else { 0x7bde }), true);
+        }
+        // the foot: a rule over it, then the text in up to two lines, left of the OK tick
+        let n = b.lines.len();
+        let y0 = tops[n - crate::extras_ui::FOOT_LINES] + 10.0;
+        s.fill(g, r.x + 16.0, y0, r.w - 32.0, 1.0, c15(0x3dd4));
+        let shown = p.sel.or(if self.xs.touched { p.last_pick } else { None });
+        let (text, desc) = crate::extras_ui::foot_text(p.page, shown);
+        let w = r.w - 20.0 - 60.0;
+        let (f, lines) = FOOT_FONTS
+            .iter()
+            .map(|&f| (f, crate::extras::wrap(f, text, w)))
+            .find(|(_, l)| l.len() <= 2)
+            .unwrap_or_else(|| (FOOT_FONTS[1], crate::extras::wrap(FOOT_FONTS[1], text, w)));
+        for (i, l) in lines.iter().take(2).enumerate() {
+            let y = y0 + 5.0 + i as f32 * f.line();
+            if desc {
+                s.put_shadowed(g, f, r.x + 20.0, y, l, c15(0x7ff0), false);
+            } else {
+                s.put(g, f, r.x + 20.0, y, l, c15(0x0210));
+            }
+        }
     }
 
     /// The Enhanced graphics and Extras boxes' tabs (the port's own): the page shown lit white on the box's paler blue, the
@@ -840,6 +916,7 @@ impl App {
         let hit = b.option_at(vx, vy);
         if hit.is_some() {
             p.sel = hit;
+            p.last_pick = hit;
             p.keyed = false;
         } else if !p.keyed {
             p.sel = None;
@@ -963,6 +1040,18 @@ impl App {
         }
         Some(k)
     }
+}
+
+/// The banner of the Enhanced graphics and Extras boxes (the port's own): a band under the tabs in the shown tab's paler
+/// blue and white edge, as if the page hung from it, with the page's meaning centred in white over the original's shadow.
+fn draw_banner(g: &mut Gfx, s: &Ui, b: &ChoiceBox, text: &str) {
+    use crate::info_ui::c15;
+    let r = b.rect();
+    let y = b.line_tops()[1 + crate::enhanced::TAB_LINES] + 1.0;
+    let (x0, x1) = (r.x + 18.0, r.x + r.w - 18.0);
+    s.fill(g, x0 - 1.0, y - 1.0, x1 - x0 + 2.0, 28.0, c15(0x7fff));
+    s.fill(g, x0, y, x1 - x0, 26.0, c15(0x5ade));
+    s.put_shadowed(g, BANNER_FONT, (x0 + x1) * 0.5, y + 3.0, text, c15(0x7fff), true);
 }
 
 impl App {

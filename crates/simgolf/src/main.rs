@@ -999,6 +999,10 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                     p.changed_only = std::env::var_os("SG_PREFS_CHANGED").is_some();
                     p.refresh();
                 }
+                // SG_POPUP_MOUSE="x,y" leaves the pointer on the box there (the Extras box's description of that line)
+                if let Some(m) = std::env::var("SG_POPUP_MOUSE").ok().map(|s| ints(&s)).filter(|m| m.len() >= 2) {
+                    app.popup_pointer(m[0] as f32, m[1] as f32, false);
+                }
             }
             b'm' if v.len() >= 2 => app.move_hole(at(0) as usize, at(1) as usize),
             // test hook: photo mode (photo.rs), P:LOOK,BLUR,VIGNETTE,ZOOM,HINT,SHOOT
