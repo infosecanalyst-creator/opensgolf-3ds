@@ -3437,8 +3437,8 @@ impl App {
 
     /// Applies the current tool at the picked ground point. During a drag it only fires when the cell changes.
     pub fn apply_tool(&mut self, lower: bool, dragging: bool) {
-        // a Shift+drag rectangle paints when the button comes up (build_tools.rs)
-        if !self.has_hit || (self.tool == 0 && self.bt.rect_from.is_some()) {
+        // a Shift+drag rectangle paints, and a drag to place's row is placed, when the button comes up (build_tools.rs)
+        if !self.has_hit || (self.tool == 0 && self.bt.rect_from.is_some()) || self.bt.row_from.is_some() {
             return;
         }
         let (a, b) =

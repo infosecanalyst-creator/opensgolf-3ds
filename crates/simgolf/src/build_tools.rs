@@ -11,6 +11,15 @@
 //!   and the total cost shows by the pointer. Every tile goes through the brush's own paint (App::paint_tiles), so every
 //!   rule and price is the one-tile brush's, and the whole area is one undo step (undo.rs keeps the game at the press).
 //!
+//! * Drag to place (an OpenSGolf extra, off by default: crate::extras drag_place): with a bench, flower bed, ball washer,
+//!   willow or scenic bridge armed, a drag lays a row of them along the straight line from the tile pressed to the tile let
+//!   go, one per footprint. While the button is held the row's footprints are outlined (white where one fits, red where
+//!   not) with the count and total cost by the pointer; on release each goes through App::edit_building, the one-click
+//!   placement, so its rules and price are the click's, and the row is one undo step. Esc or a right click cancels it.
+//!   Unique buildings (the clubhouse's kind: putting green to airstrip, upgraded by placing again), landmarks (each
+//!   chosen and priced on its own), home sites (sold one by one, with their own sums) and paths (which the original
+//!   already paints along a drag) are left as they are. With the extra off a drag does what the original's does.
+//!
 //! The original's Shift with a terrain brush does nothing (apply_tool hands it only to the path, building and elevation
 //! tools); its Ctrl+click is the port's right click on a Mac, so the fill takes Alt.
 
@@ -66,6 +75,46 @@ pub struct BuildTools {
     pub rect_from: Option<(i32, i32)>,
     /// Alt is held (the fill's preview).
     pub alt: bool,
+    /// The row's first tile while a drag to place is under way.
+    pub row_from: Option<(i32, i32)>,
+}
+
+/// The most items one row places.
+pub const MAX_ROW: usize = 256;
+
+/// The kinds drag to place lays in rows: the garden items and the ball washer, which the original places one per click
+/// wherever they fit.
+pub fn row_kind(kind: i32) -> bool {
+    matches!(kind, land::K_BENCH | land::K_FLOWERS | land::K_WASHER | land::K_WILLOW | land::K_BRIDGE)
+}
+
+/// The top left tiles of a row of `size` x `size` footprints from tile `a` to tile `b`: the tiles of the straight line
+/// between them (each step one tile across, down or both, as Bresenham's line), keeping a tile when its footprint is clear
+/// of the last kept one's. `a` always starts the row; at most `max` tiles.
+pub fn row_tiles(a: (i32, i32), b: (i32, i32), size: i32, max: usize) -> Vec<(i32, i32)> {
+    let size = size.max(1);
+    let (dx, dy) = ((b.0 - a.0).abs(), -(b.1 - a.1).abs());
+    let (sx, sy) = ((b.0 - a.0).signum(), (b.1 - a.1).signum());
+    let (mut x, mut y, mut err) = (a.0, a.1, dx + dy);
+    let mut out: Vec<(i32, i32)> = Vec::new();
+    while out.len() < max {
+        if out.last().is_none_or(|&(lx, ly)| (x - lx).abs().max((y - ly).abs()) >= size) {
+            out.push((x, y));
+        }
+        if (x, y) == b {
+            break;
+        }
+        let e2 = 2 * err;
+        if e2 >= dy {
+            err += dy;
+            x += sx;
+        }
+        if e2 <= dx {
+            err += dx;
+            y += sy;
+        }
+    }
+    out
 }
 
 /// Yards between two map points in 1/1024 tile units: 25 yards a tile (the exe's 0x40acd0 for the hole tool's length line;
@@ -190,11 +239,12 @@ impl App {
         true
     }
 
-    /// Esc: the tape and a rectangle under way are put away. True when there was one.
+    /// Esc: the tape and a rectangle or row under way are put away. True when there was one.
     pub fn build_tools_cancel(&mut self) -> bool {
-        let had = self.bt.tape.is_some() || self.bt.rect_from.is_some();
+        let had = self.bt.tape.is_some() || self.bt.rect_from.is_some() || self.bt.row_from.is_some();
         self.bt.tape = None;
         self.bt.rect_from = None;
+        self.bt.row_from = None;
         had
     }
 
@@ -397,9 +447,108 @@ impl App {
     }
 }
 
+impl App {
+    // ---- drag to place (an OpenSGolf extra) --------------------------------------------------------------------------------
+
+    /// The building tool's kind when a press now would start a row (the extra on, a row kind armed, not removing).
+    fn row_tool(&self, remove: bool) -> Option<i32> {
+        let kind = self.build_idx as i32;
+        (crate::extras::drag_place() && self.edit && self.tool == 4 && !remove && self.screen == Screen::Play && row_kind(kind))
+            .then_some(kind)
+    }
+
+    /// A left press on the course with a tool armed: with drag to place on and a row kind armed, the row starts here (it is
+    /// placed when the button comes up). True when it did; otherwise the tool works as in the original.
+    pub fn row_press(&mut self, remove: bool) -> bool {
+        if self.row_tool(remove).is_none() || !self.has_hit {
+            return false;
+        }
+        self.bt.row_from = Some(self.terrain.tile_of(self.hit_x, self.hit_z));
+        true
+    }
+
+    /// The row's top left tiles from `from` to `to` for the armed kind.
+    pub fn row_area(&self, from: (i32, i32), to: (i32, i32)) -> Vec<(i32, i32)> {
+        let size = sg_core::data::buildings().get(self.build_idx).map(|b| b.1).unwrap_or(1);
+        row_tiles(from, to, size, MAX_ROW)
+    }
+
+    /// What one click with the armed row kind would cost at tile x, y ($100 units), None where it would be refused: a garden
+    /// item's own price (land::tile_item_cost), a ball washer's price and clearing where its footprint fits.
+    pub fn row_cost_at(&self, x: i32, y: i32) -> Option<i32> {
+        let kind = self.build_idx as i32;
+        let l = self.land.as_ref()?;
+        if !self.terrain.inside(x, y) {
+            return None;
+        }
+        if matches!(kind, land::K_BENCH | land::K_FLOWERS | land::K_WILLOW | land::K_BRIDGE) {
+            return l.tile_item_cost(x, y, kind, self.exe_theme()).ok();
+        }
+        if !self.build_available(kind as usize) || !l.in_play(x, y) {
+            return None;
+        }
+        let clear = self.footprint_at(kind, x, y).1?;
+        Some(sg_core::data::buildings()[kind as usize].2 + clear)
+    }
+
+    /// The left button came up: a row under way is placed, item by item through the one-click placement, from its first
+    /// tile to the tile under the pointer (undo.rs keeps the whole row as one step).
+    pub fn row_release(&mut self) {
+        let Some(from) = self.bt.row_from.take() else { return };
+        if !self.has_hit || self.row_tool(false).is_none() {
+            return;
+        }
+        let to = self.terrain.tile_of(self.hit_x, self.hit_z);
+        self.place_row(from, to);
+    }
+
+    /// Places a row of the armed kind from tile `from` to tile `to`, one click's placement per item.
+    pub fn place_row(&mut self, from: (i32, i32), to: (i32, i32)) {
+        for (x, y) in self.row_area(from, to) {
+            self.edit_building(x, y, false);
+        }
+    }
+
+    /// The row's preview, while the button is held: each footprint outlined (white where it would go down, red where it would
+    /// be refused) and the number of items with their total cost above the pointer, red when the club cannot afford it.
+    pub(crate) fn draw_row_preview(&self, g: &mut Gfx, s: &Ui) {
+        let Some(from) = self.bt.row_from else { return };
+        if !self.has_hit || self.row_tool(false).is_none() {
+            return;
+        }
+        let to = self.terrain.tile_of(self.hit_x, self.hit_z);
+        let size = sg_core::data::buildings().get(self.build_idx).map(|b| b.1).unwrap_or(1);
+        let tiles = self.row_area(from, to);
+        for &(a, b) in &tiles {
+            let ok = self.row_cost_at(a, b).is_some();
+            let (x0, y0, x1, y1) = (a * 1024, b * 1024, (a + size) * 1024 - 1, (b + size) * 1024 - 1);
+            let c = [self.screen_units(x0, y0), self.screen_units(x1, y0), self.screen_units(x1, y1), self.screen_units(x0, y1)];
+            // Terrain::drawLine one pixel wide at alpha 7 tenths, as the building tool's footprint (0x419e6a)
+            let edge = line_rgba(if ok { WHITE } else { RED } as u32, 7);
+            for i in 0..4 {
+                s.line(g, c[i].0, c[i].1, c[(i + 1) % 4].0, c[(i + 1) % 4].1, 1.0, edge);
+            }
+            if ok {
+                s.quad(g, c, [1.0, 1.0, 1.0, 0.2]);
+            }
+        }
+        let (n, total) = area_cost(&tiles, |x, y| self.row_cost_at(x, y));
+        let text = if self.econ.sandbox {
+            trf("STR_ROW_ITEMS", &[("ITEMS", &n)])
+        } else {
+            trf("STR_ROW_COST", &[("ITEMS", &n), ("MONEY", &crate::ui::money(-total * 100))])
+        };
+        let ok = self.econ.sandbox || self.econ.affordable(total as f64 * Economy::UNIT, self.hole_numbers.len());
+        // above the item's own name over the footprint under the pointer (cursor_ui.rs draw_footprint)
+        let (sx, sy) = self.screen_units(to.0 * 1024 + 512, to.1 * 1024 + 512);
+        label(g, s, sx, sy - 25.0, &text, BODY, c15(if ok { WHITE } else { RED }));
+    }
+}
+
 /// Test hooks for stills (docs/PLAYING.md): SG_TAPE="x0,y0,x1,y1" (tiles, fractions allowed) sets a tape down between
 /// those points; SG_AREA="r,x,y" holds a rectangle from tile x,y to the pointer (SG_CURSOR_TILE) and SG_AREA="f" Alt for
-/// the fill's preview.
+/// the fill's preview; SG_ROW="x,y" holds a drag to place from tile x,y to the pointer (with the drag to place extra on and
+/// a row kind armed).
 pub fn test_hooks(app: &mut App) {
     let t = TILE_SIZE;
     let world = |app: &App, x: f32, y: f32| (x * t - app.terrain.w as f32 * t * 0.5, y * t - app.terrain.h as f32 * t * 0.5);
@@ -421,6 +570,12 @@ pub fn test_hooks(app: &mut App) {
             }
             Some("f") => app.bt.alt = true,
             _ => {}
+        }
+    }
+    if let Ok(v) = std::env::var("SG_ROW") {
+        let n: Vec<i32> = v.split(',').filter_map(|s| s.trim().parse().ok()).collect();
+        if n.len() >= 2 {
+            app.bt.row_from = Some((n[0], n[1]));
         }
     }
 }
@@ -475,6 +630,46 @@ mod tests {
         // a cap: the region is refused, not cut short
         assert!(flood_tiles((0, 0), 6, same(b'.')).is_none());
         assert!(flood_tiles((0, 0), 7, same(b'.')).is_some());
+    }
+
+    #[test]
+    fn a_row_takes_each_tile_of_the_line_or_each_footprint() {
+        // a click without moving: the one tile
+        assert_eq!(row_tiles((4, 4), (4, 4), 1, MAX_ROW), vec![(4, 4)]);
+        // straight along a row or column, either way
+        assert_eq!(row_tiles((2, 5), (6, 5), 1, MAX_ROW), vec![(2, 5), (3, 5), (4, 5), (5, 5), (6, 5)]);
+        assert_eq!(row_tiles((3, 7), (3, 4), 1, MAX_ROW), vec![(3, 7), (3, 6), (3, 5), (3, 4)]);
+        // a diagonal goes corner to corner
+        assert_eq!(row_tiles((0, 0), (3, 3), 1, MAX_ROW), vec![(0, 0), (1, 1), (2, 2), (3, 3)]);
+        // a slope: one tile a column, from the press to the release, no tile twice
+        let t = row_tiles((0, 0), (6, 2), 1, MAX_ROW);
+        assert_eq!(t.len(), 7);
+        assert_eq!((t[0], t[6]), ((0, 0), (6, 2)));
+        assert!(t.windows(2).all(|w| w[1].0 == w[0].0 + 1 && (0..=1).contains(&(w[1].1 - w[0].1))));
+        // reversed, the same line the other way
+        let mut r = row_tiles((6, 2), (0, 0), 1, MAX_ROW);
+        r.reverse();
+        assert_eq!(r.len(), 7);
+        // footprints of 2 tiles: every other tile, never overlapping
+        assert_eq!(row_tiles((0, 0), (5, 0), 2, MAX_ROW), vec![(0, 0), (2, 0), (4, 0)]);
+        assert_eq!(row_tiles((0, 0), (4, 4), 2, MAX_ROW), vec![(0, 0), (2, 2), (4, 4)]);
+        for (a, b) in [((0, 0), (9, 3)), ((5, 9), (0, 1)), ((2, 2), (2, 9))] {
+            let t = row_tiles(a, b, 3, MAX_ROW);
+            assert!(t.windows(2).all(|w| (w[1].0 - w[0].0).abs().max((w[1].1 - w[0].1).abs()) >= 3), "{a:?} {b:?}");
+        }
+        // the cap
+        assert_eq!(row_tiles((0, 0), (1000, 0), 1, 10).len(), 10);
+    }
+
+    #[test]
+    fn rows_are_for_the_items_placed_one_per_click() {
+        for k in [land::K_BENCH, land::K_FLOWERS, land::K_WASHER, land::K_WILLOW, land::K_BRIDGE] {
+            assert!(row_kind(k));
+        }
+        // paths already paint along a drag; landmarks, home sites and the buildings stay one per click
+        for k in [land::K_PATH, land::K_LANDMARK, land::K_HOME_SITE, land::K_SNACK_BAR, land::K_CLUBHOUSE, land::K_TV_TOWER] {
+            assert!(!row_kind(k));
+        }
     }
 
     #[test]

@@ -559,6 +559,19 @@ compare pixel for pixel with the build before the extras).
   ground between the fingers, instead of zooming about the middle of the screen. It works at the original's three zoom
   levels and with Enhanced graphics' smooth zoom (frame by frame as the zoom eases). z, x and the dock's zoom buttons
   still zoom about the middle.
+- **Drag to place** (off, also with the one-click OpenSGolf extras: it changes what the original's drag does): with
+  benches, flower beds, ball washers, willows or scenic bridges armed, hold the left button and drag to lay a row of them
+  along the straight line from the tile you pressed to the tile you let go, one on every tile of the line (one per
+  footprint for anything larger than a tile), instead of one wherever the pointer passes. While you drag, each item's
+  footprint is outlined (white where it can go, red where it cannot) and the number of items and their total cost show
+  above the pointer (red when the club cannot afford it; a sandbox shows the count). The row goes down when you let go:
+  each item exactly as a click there would place it, with the same rules and price (one that does not fit, or once the
+  money runs out, is left out with the click's message), and the whole row is one Ctrl+Z. Esc or a right click before
+  letting go cancels it; a click without moving places the one item. Paths (which the original already lays along a
+  drag), the terrain brushes, landmarks, home sites and the buildings work as in the original, as does Shift (removing).
+  Test hooks: `SG_ROW="x,y"` holds a row from tile x,y to the pointer (`SG_CURSOR_TILE`, with `SG_BUILD=kind` and
+  `SG_PANEL_MOUSE`) for stills; `--edit "W:x0,y0,x1,y1,kind"` places a row of object kind `kind` (1 benches, 2 flower beds,
+  3 ball washers, 16 willows, 19 bridges) and prints the places, the items that fit, their cost and the cash.
 
 Test hooks for stills: `--screen people|staff|pro|history|profile|pathview|tags|ticker|card` (with a game;
   Both only watch the game: the golfers play exactly the same with them on or off. Ticks saved before they existed read
@@ -684,6 +697,13 @@ changed every key does what it did before.
   WASD scrolling is a choice on the Change keys screen: with it on, **w a s d** scroll as the arrow keys do (the arrows
   still work), the water tool moves to **q** and the sand tool to **k**; while your pro aims, s and d stay the straight
   shot and the draw.
+* **Original and Modern controls** (two buttons under the list on Change keys; nothing changes until one is clicked, and
+  the one in use is lit yellow). *Original controls* puts every key back to the original's and turns the WASD camera,
+  *Zoom towards the pointer*, *Drag to place* and Enhanced graphics' *Smooth camera* tick off. *Modern controls* puts
+  every key back to its default with the WASD camera on, and turns *Zoom towards the pointer* and *Drag to place* (both
+  OpenSGolf extras, Interface page) and the *Smooth camera* tick (which counts only while Enhanced graphics is on: the
+  preset never switches Enhanced graphics itself) on. They only set those existing options, which stay changeable one by
+  one; click the other preset to undo one (keys you moved yourself are not kept by either).
 * **Middle-button drag** (always on) drags the course whatever tool is held, as a left drag does with no tool.
 * **u** hides the whole interface (dock, panels, messages, the money and ratings) during normal play, for a clear view of
   the course; a small note in the bottom left corner says which key brings it back. Clicks then go to the course. Photo
