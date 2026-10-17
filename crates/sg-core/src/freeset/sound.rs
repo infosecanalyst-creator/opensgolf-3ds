@@ -1,11 +1,29 @@
 //! Synthesised sounds: every sound file of the game gets a short sound of its kind, made from tones, noise and envelopes
 //! (a click and whoosh for a drive, a plop for water, a babble of vowel sounds for a golfer's voice, a little tune for a
-//! jingle). Music is left out: the game plays nothing where a file is missing.
+//! jingle). The set's own recordings (tools/freeset_art/sounds.py) come first; this is the fallback.
 use super::enc::wav;
 use super::hash;
 use std::f32::consts::TAU;
 
 const RATE: u32 = 22050;
+
+/// Files the game's folders hold twice (the same piece under two names, or a piece the game never plays standing for
+/// one of its kind): the set keeps one recording and plays it for both (tools/freeset_art/sounds.py, ALIASES; keep the
+/// two lists the same). Paths as the manifest spells them, without the extension.
+pub const ALIASES: &[(&str, &str)] = &[
+    ("Sounds/Music/Misc_Music/New Age", "Sounds/New Age"),
+    ("Sounds/Music/Tropical_Music/Steel Drums 2", "Sounds/World/Steel Drums 2"),
+    ("Sounds/Music/Links_Music/Bagpipe1", "Sounds/World/Bagpipe"),
+    ("Sounds/Music/Desert_Music/Spanish Guitar 2", "Sounds/World/Spanish Guitar wFlute 2"),
+    ("Sounds/Steel Drum Short", "Sounds/Music/Tropical_Music/Steel Drum 1a"),
+    ("Sounds/manifold music", "Sounds/Music/Misc_Music/Jazz"),
+    ("Sounds/newhart-theme", "Sounds/Music/Misc_Music/End Of Year Short"),
+];
+
+/// The recording another file of the set plays (see [`ALIASES`]), by the manifest path without its extension.
+pub fn alias(stem: &str) -> Option<&'static str> {
+    ALIASES.iter().find(|(a, _)| a.eq_ignore_ascii_case(stem)).map(|(_, b)| *b)
+}
 
 struct Rng(u32);
 impl Rng {
@@ -241,4 +259,19 @@ pub fn make(low: &str, secs: f32) -> Vec<u8> {
         m.tone(0.1, len.min(0.6), note(r + 2), note(r + 2), 0.25, &[1.0, 0.3]);
     }
     m.out()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn aliases_point_at_recordings() {
+        let m = super::super::manifest();
+        for (from, to) in super::ALIASES {
+            let has = |p: &str| m.entries.iter().any(|e| e.path.eq_ignore_ascii_case(&format!("{p}.wav")));
+            assert!(has(from), "{from} is not a sound of the game");
+            assert!(has(to), "{to} is not a sound of the game");
+            assert!(super::super::baked::get(&format!("{to}.ogg")).is_some(), "{to} has no recording");
+            assert!(super::super::baked::get(&format!("{from}.ogg")).is_none(), "{from} is recorded twice");
+        }
+    }
 }
