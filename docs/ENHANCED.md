@@ -681,3 +681,12 @@ then leaves the marker behind, and the next start comes up in Classic, saves Enh
 player can switch them on again in Preferences (issue #55: on some browsers' graphics, switching Enhanced on froze the
 game and a reload brought the freeze back). In the browser, adding `?classic` to the page's address does the same on
 purpose.
+
+## When the game is too slow for the options in use
+
+With Enhanced on, the game watches its own frame rate. Under 10 frames a second over four seconds (after eight seconds'
+grace at start and after each change; a tab the browser stopped drawing does not count) it turns off the costliest
+option that is still on, saves that, and says so in the ticker: first the pixel-art scaler (on a laptop's graphics chip
+in a browser it alone can cost five times the frame), then multisampling, then the heaviest effects (cast shadows,
+reflections, bloom, grass, crowds, effects quality to low), and last Enhanced itself. Any of them can be switched on again
+in Preferences. Issue #55 was this: on some machines switching Enhanced on in the browser made the game hardly move.

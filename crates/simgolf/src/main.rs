@@ -1047,6 +1047,25 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                     app.econ.cash
                 );
             }
+            b'k' => {
+                // test hook: Move/Eject the first golfer on the course (or golfer k:N) and drop him on the clubhouse
+                let gi = if v.is_empty() {
+                    (0..sg_core::golfer::SLOTS).find(|&g| app.club.g[g].hole > 0 && app.club.g[g].hole < 19)
+                } else {
+                    Some(at(0) as usize)
+                };
+                if let (Some(gi), true) = (gi, v.len() >= 2 && at(1) == 1) {
+                    // k:N,1: only held, as the card's button leaves him (the drop is the player's next click)
+                    app.card_ui.held = Some(gi);
+                    println!("holding golfer {gi}");
+                } else if let Some(gi) = gi {
+                    let (ca, cb) = app.club_anchor();
+                    let (wx, wz) = app.units_to_world(ca * sg_core::staff::UNIT + 512, cb * sg_core::staff::UNIT + 512);
+                    app.card_ui.held = Some(gi);
+                    app.golfer_click(wx, wz, true);
+                    println!("ejected golfer {gi} (hole now {})", app.club.g[gi].hole);
+                }
+            }
             b'o' => {
                 let ok = app.open_hole();
                 println!("open hole: {ok}, next hole {}", app.club.next_hole);
