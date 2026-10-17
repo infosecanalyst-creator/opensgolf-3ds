@@ -482,10 +482,11 @@ pub fn say(msg: &str) {
 
 /// The marker kept while Enhanced is starting up (issue #55): written when Enhanced is switched on or a run starts with
 /// it, removed once the game has drawn [`TRIAL_FRAMES`] frames over at least [`TRIAL_SECS`] seconds with it. A run that
-/// freezes or stops in the meantime leaves it behind, and the next start comes up in Classic with a note, so a graphics
-/// driver that cannot cope with Enhanced never leaves the player stuck (a reload used to bring the same freeze back). The
-/// page's `?classic` writes it too, and so does the page when the browser loses the game's drawing (a WebGL context lost,
-/// a frame that stopped with an error, or no frame drawn for seconds) while Enhanced is on (web/opensgolf.js).
+/// freezes or stops in the meantime leaves it behind, and the next start comes up safe ([`safe`]: Classic, no frame rate
+/// cap) with a note, so a graphics driver that cannot cope with Enhanced never leaves the player stuck (a reload used to
+/// bring the same freeze back). The page's `?classic` writes it too, and so does the page when the browser loses the
+/// game's drawing (a WebGL context lost, a frame that stopped with an error, or no frame drawn for seconds), Enhanced on
+/// or not (web/opensgolf.js).
 ///
 /// The marker used to go after 60 frames, a quarter of a second on a 240 Hz display: a freeze a moment later (the first
 /// click on the title, the first look at the course) found it gone, and every restart came up in Enhanced again.
@@ -651,18 +652,29 @@ pub fn save(s: &Settings) {
     }
 }
 
+/// The settings a start after a failed one comes up with (the marker left behind): Classic, and the display settings that
+/// count in Classic too (the frame rate cap, v-sync) at their defaults. Issue #55: a frame rate cap stopped the browser
+/// version's drawing after the first frame (web/opensgolf.js), Classic included, so turning Enhanced off alone left every
+/// start frozen on the title.
+fn safe(s: Settings) -> Settings {
+    Settings { enabled: false, frame_cap: Settings::DEFAULT.frame_cap, vsync: Settings::DEFAULT.vsync, ..s }
+}
+
 /// At start up, before any art is loaded: the saved settings, with the master switch from `--enhanced` or
 /// `--classic-render` for this run when given (not saved).
 pub fn init(force: Option<bool>) {
     let mut s = saved();
     let trial = crate::app::save_dir().join(TRIAL_FILE);
-    if s.enabled && force != Some(true) && sg_core::fsutil::exists(&trial) {
-        // the last run stopped while Enhanced was starting: Classic, saved, and the player is told
-        s.enabled = false;
-        save(&s);
+    if force != Some(true) && sg_core::fsutil::exists(&trial) {
+        // the last run stopped while Enhanced was starting, or stopped drawing: safe settings, saved, and the player is told
         sg_core::fsutil::remove_file(&trial);
-        RECOVERED.with(|r| r.set(true));
-        say("Enhanced graphics: switched off, the last run stopped while they were starting");
+        let safe = safe(s);
+        if safe != s {
+            s = safe;
+            save(&s);
+            RECOVERED.with(|r| r.set(true));
+            say("Enhanced graphics: switched off with the frame rate cap, the last run stopped while starting");
+        }
     } else if s.enabled && force != Some(false) {
         arm_trial();
     }
@@ -1308,6 +1320,18 @@ mod tests {
         for o in OPTIONS {
             assert!(v.get(o.key).is_some(), "{}", o.key);
         }
+    }
+
+    #[test]
+    fn safe_start_resets_classic_display_settings() {
+        // issue #55: a start after a failed one comes up in Classic without a frame rate cap; the effects picked are kept
+        let s = Settings { enabled: true, frame_cap: 1, vsync: false, fx_rain: true, fix_original_bugs: false, ..Settings::DEFAULT };
+        let r = safe(s);
+        assert!(!r.enabled);
+        assert_eq!(crate::framerate::CAPS[r.frame_cap as usize], 0);
+        assert!(r.vsync);
+        assert!(r.fx_rain && !r.fix_original_bugs);
+        assert_eq!(safe(Settings::DEFAULT), Settings::DEFAULT);
     }
 
     #[test]

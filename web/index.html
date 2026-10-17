@@ -90,6 +90,7 @@
   .remember input { width: 18px; height: 18px; accent-color: var(--green); }
   #status { margin: 14px 0 0; min-height: 1.5em; font-weight: 600; color: var(--accent); }
   #status:empty { display: none; }
+  .trouble { margin: 10px 2px 0; color: var(--muted); font-size: 14px; }
 
   details { margin-top: 14px; background: var(--card); border: 1px solid var(--card-border); border-radius: var(--radius); }
   details > summary { cursor: pointer; padding: 16px 20px; font-weight: 600; list-style: none; display: flex; align-items: center; gap: 10px; }
@@ -209,6 +210,7 @@
   <main class="wrap">
     <label class="remember"><input type="checkbox" id="remember" checked> Keep my files in this browser so next time starts at once</label>
     <div id="status" role="status" aria-live="polite"></div>
+    <p class="trouble">Game stuck on its first picture? <button class="linkish" id="resetgfx" onclick="sgResetGraphics(); return false;">Reset graphics settings</button> (your saved games are kept)</p>
 
     <details id="saves">
       <summary>💾 Your saved games: back up and restore</summary>

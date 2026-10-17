@@ -62,17 +62,34 @@ function sgRestoreSaves() {
 // The frame rate cap (framerate.rs). A browser draws on the display's refresh (v-sync is always on); with a cap the page
 // skips animation frames until the next frame is due, so gl.js calls the game less often. The game's simulation keeps its
 // own 87 ms ticks whatever the frame rate.
+//
+// Whether a frame is due is decided once per animation frame (its timestamp) and holds for every callback in it. Issue
+// #55: the decision used to be made per callback, and the page's own loops (sgPump, sgPadPoll), asked for before the
+// game's and so run first in every frame, took each due frame for themselves: with any cap set the game never drew
+// again after its first frame, in Classic too (the cap counts there), and every reload came up frozen on the title. The
+// page's own loops also ask the browser directly (sgRequestFrame), so only the game's drawing is capped.
 let sgFrameCap = 0;
 let sgFrameDue = 0;
+let sgFrameAt = null;
+let sgFrameRun = true;
 const sgRequestFrame = window.requestAnimationFrame.bind(window);
+// Whether the animation frame at `t` (its timestamp) is drawn under the cap.
+function sgFrameOn(t) {
+    if (sgFrameCap <= 0) return true;
+    if (t !== sgFrameAt) {
+        sgFrameAt = t;
+        const period = 1000 / sgFrameCap;
+        const late = t - sgFrameDue;
+        // a millisecond early still counts, so a 60 cap on a 60 Hz display skips nothing; a due time more than a period
+        // away (the cap changed, a clock that went back) is not waited for
+        sgFrameRun = late >= -1 || late < -period;
+        if (sgFrameRun) sgFrameDue = late >= -1 && late < period ? sgFrameDue + period : t + period;
+    }
+    return sgFrameRun;
+}
 window.requestAnimationFrame = function (callback) {
     const tick = t => {
-        if (sgFrameCap > 0) {
-            const period = 1000 / sgFrameCap;
-            // a millisecond early still counts, so a 60 cap on a 60 Hz display skips nothing
-            if (t < sgFrameDue - 1) return sgRequestFrame(tick);
-            sgFrameDue = t - sgFrameDue < period ? sgFrameDue + period : t + period;
-        }
+        if (!sgFrameOn(t)) return sgRequestFrame(tick);
         try {
             callback(t);
         } catch (e) {
@@ -87,9 +104,10 @@ window.requestAnimationFrame = function (callback) {
 // The watch over the game's drawing (issue #55). A browser that loses the game's WebGL drawing (the graphics driver
 // reset, the GPU process restarted, a frame that stopped with an error) shows the last picture for good while the sound,
 // mixed on timers, plays on, and the clicks still reach the game: only the title's exit button (which reloads the page)
-// seemed to work. Then the page says so over the game and in the console and, with Enhanced graphics on, leaves the
-// marker of a start that failed (crates/simgolf/src/enhanced.rs), so the next start comes up in Classic. The game reports
-// each frame drawn (sg_frame_drawn) and whether Enhanced is on (sg_enhanced).
+// seemed to work. Then the page says so over the game and in the console and leaves the marker of a start that failed
+// (crates/simgolf/src/enhanced.rs), so the next start comes up safe: Classic, and no frame rate cap (the cap counts in
+// Classic too, and a saved setting that stops the drawing in Classic would otherwise bring the freeze back at every
+// start). The game reports each frame drawn (sg_frame_drawn) and whether Enhanced is on (sg_enhanced).
 const SG_TRIAL_KEY = "enhanced_starting";
 const SG_STALL_MS = 5000;
 const sgDraw = { enhanced: false, last: 0, tick: 0, stopped: false, note: null };
@@ -99,20 +117,18 @@ function sgDrawingStopped(why) {
     const canvas = document.getElementById("glcanvas");
     if (d.stopped || !canvas || canvas.style.display !== "block") return;
     d.stopped = true;
-    if (d.enhanced) {
-        try { localStorage.setItem(SAVE_PREFIX + SG_TRIAL_KEY, btoa("1")); } catch (e) {}
-    }
-    console.error("OpenSGolf: the browser stopped drawing the game (" + why + ")" +
-        (d.enhanced ? "; Enhanced graphics will be off at the next start" : ""));
+    try { localStorage.setItem(SAVE_PREFIX + SG_TRIAL_KEY, btoa("1")); } catch (e) {}
+    console.error("OpenSGolf: the browser stopped drawing the game (" + why + "); the next start uses safe graphics " +
+        "settings (Classic, no frame rate cap" + (sgFrameCap > 0 ? ", was " + sgFrameCap : "") + ")" +
+        (d.enhanced ? ", Enhanced graphics were on" : ""));
     const note = document.createElement("div");
     note.style.cssText = "position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:20;max-width:min(560px,90vw);" +
         "background:rgba(10,30,18,0.94);color:#fff;font:500 16px/1.45 system-ui,sans-serif;padding:20px 24px;border-radius:14px;" +
         "box-shadow:0 12px 40px rgba(0,0,0,0.6);text-align:center";
     const text = document.createElement("p");
     text.style.margin = "0 0 14px";
-    text.textContent = "The browser stopped drawing the game, so the picture froze. " + (d.enhanced
-        ? "Enhanced graphics are switched off for the next start: reload the page and play on in Classic. "
-        : "Reload the page to start again. ") + "Games you saved are kept.";
+    text.textContent = "The browser stopped drawing the game, so the picture froze. The graphics settings go back to " +
+        "safe ones for the next start (Classic, no frame rate cap): reload the page to play on. Games you saved are kept.";
     const button = document.createElement("button");
     button.textContent = "Reload the page";
     button.style.cssText = "font:700 16px system-ui,sans-serif;padding:10px 22px;border-radius:999px;border:0;cursor:pointer;" +
@@ -734,8 +750,8 @@ function sgSaveCount() {
 // --- starting --------------------------------------------------------------------------------------------------------------
 function sgStart() {
     sgRestoreSaves();
-    // ?classic in the address starts in Classic graphics: the same marker a run that stopped while Enhanced graphics were
-    // starting leaves behind (crates/simgolf/src/enhanced.rs), so the game turns Enhanced off and says so (issue #55)
+    // ?classic in the address starts with safe graphics settings (Classic, no frame rate cap): the same marker a run that
+    // stopped drawing leaves behind (crates/simgolf/src/enhanced.rs), so the game puts them back and says so (issue #55)
     if (new URLSearchParams(location.search).has("classic")) sgAddFile("enhanced_starting", new Uint8Array([49]));
     document.getElementById("picker").style.display = "none";
     const canvas = document.getElementById("glcanvas");
@@ -980,8 +996,31 @@ async function sgForgetPacks() {
     sgPackStatus("The content packs were removed from this browser.");
 }
 
+// "Reset graphics settings" on the start page, and ?safe in the address (issue #55): the Enhanced graphics settings in
+// settings.json go back to their defaults (Enhanced off, no frame rate cap, v-sync on; "Fix original bugs" is kept), and
+// the marker of a failed start goes. Saved games, the extras, keys and every other setting are untouched.
+function sgResetGraphics() {
+    try {
+        const k = sgStoredKey("settings.json");
+        if (k !== null) {
+            const v = JSON.parse(new TextDecoder().decode(sgUnB64(localStorage.getItem(k))));
+            const e = v && v.enhanced;
+            if (e && typeof e === "object") {
+                v.enhanced = "fix_original_bugs" in e ? { fix_original_bugs: e.fix_original_bugs } : {};
+                sgKeepFile("settings.json", new TextEncoder().encode(JSON.stringify(v, null, 2)));
+            }
+        }
+        const t = sgStoredKey(SG_TRIAL_KEY);
+        if (t !== null) localStorage.removeItem(t);
+    } catch (e) {
+        console.warn("could not reset the graphics settings", e);
+    }
+    sgStatus("The graphics settings were put back to their defaults (Classic, no frame rate cap). Your saved games are kept.");
+}
+
 async function sgInit() {
     sgSaveCount();
+    if (new URLSearchParams(location.search).has("safe")) sgResetGraphics();
     const packs = await sgLoadStored("packs");
     if (packs.length > 0) {
         for (const [path, bytes] of packs) sgAddFile(path, bytes);
@@ -1198,7 +1237,7 @@ function sgAudioWatch() {
 
 // the timer keeps a tab in the background fed; once a frame as well, as a browser busy drawing can hold timers back
 setInterval(() => { sgPump(); sgSoundNote(); sgAudioWatch(); }, 20);
-(function frame() { sgPump(); requestAnimationFrame(frame); })();
+(function frame() { sgPump(); sgRequestFrame(frame); })();
 for (const type of ["mousedown", "pointerdown", "pointerup", "click", "keydown", "touchend"]) window.addEventListener(type, sgStartAudio, true);
 window.addEventListener("touchstart", sgStartAudio, { passive: true, capture: true });
 document.addEventListener("visibilitychange", () => {
@@ -1302,7 +1341,7 @@ function sgKeyboard(show) {
 // bits) and sticks go to the game; a controller that goes away is let go once with everything released.
 let sgPadWas = false;
 function sgPadPoll() {
-    requestAnimationFrame(sgPadPoll);
+    sgRequestFrame(sgPadPoll);
     if (typeof wasm_exports === "undefined" || !wasm_exports.sg_gamepad || !navigator.getGamepads) return;
     const p = Array.from(navigator.getGamepads()).find(g => g && g.connected);
     if (!p) {
@@ -1316,4 +1355,4 @@ function sgPadPoll() {
     const a = p.axes;
     wasm_exports.sg_gamepad(b, a[0] || 0, a[1] || 0, a[2] || 0, a[3] || 0);
 }
-requestAnimationFrame(sgPadPoll);
+sgRequestFrame(sgPadPoll);
