@@ -23,7 +23,7 @@ pub const TERRAIN_SLOTS: usize = 28;
 /// The exe's tile types with a full row (bounce, roll, lie...): 0..22.
 pub const TILE_ROWS: usize = 23;
 /// The data files a pack may have, in the order they are read.
-pub const FILES: [&str; 6] = ["terrain", "buildings", "amenities", "staff", "properties", "economy"];
+pub const FILES: [&str; 7] = ["terrain", "buildings", "amenities", "staff", "properties", "economy", "visitors"];
 /// Object kinds listed in amenities.toml (the rest of the 20 kinds are in buildings.toml).
 pub const AMENITY_KINDS: [usize; 9] = [0, 1, 2, 3, 4, 16, 17, 18, 19];
 
@@ -413,6 +413,9 @@ pub struct Tables {
     pub staff: Vec<StaffDef>,
     pub properties: Vec<PropertyDef>,
     pub economy: EconomyDef,
+    /// data/visitors.toml: the More visitors extra's visitors (`[[visitor]]`) and their rules (`[visits]`).
+    pub visitors: Vec<crate::visitors::VisitorDef>,
+    pub visits: crate::visitors::VisitsDef,
 }
 
 fn slug(s: &str) -> String {
@@ -506,7 +509,16 @@ impl Tables {
             hardcore_fee_cap: d_hardcore_fee_cap(),
             hardcore_mood_penalty: d_hardcore_mood_penalty(),
         };
-        Tables { terrain, buildings, amenities, staff, properties, economy }
+        Tables {
+            terrain,
+            buildings,
+            amenities,
+            staff,
+            properties,
+            economy,
+            visitors: crate::visitors::builtin(),
+            visits: Default::default(),
+        }
     }
 
     /// Merges one data file of a pack (`file` is its name without `.toml`, e.g. "terrain"). Problems (a bad file, a bad
@@ -519,8 +531,34 @@ impl Tables {
         };
         let builtin = builtin_tables();
         let key = table_key(file);
-        for k in doc.keys().filter(|k| k.as_str() != key) {
+        // visitors.toml has its rules too, one [visits] table
+        let rules = if file == "visitors" { "visits" } else { key };
+        for k in doc.keys().filter(|k| k.as_str() != key && k.as_str() != rules) {
             problems.push(format!("data/{file}.toml: unknown table [{k}] (expected [[{key}]])"));
+        }
+        if file == "visitors" {
+            let mut p = |e: String| problems.push(format!("data/{file}.toml: {e}"));
+            if let Some(v) = doc.get(key) {
+                merge_list(&mut self.visitors, &builtin.visitors, v, &mut p);
+            }
+            match doc.get(rules) {
+                Some(toml::Value::Table(t)) => {
+                    let mut base = toml::Table::try_from(&self.visits).unwrap_or_default();
+                    for (k, v) in t {
+                        base.insert(k.clone(), v.clone());
+                    }
+                    match toml::Value::Table(base).try_into::<crate::visitors::VisitsDef>() {
+                        Ok(e) => match e.check() {
+                            Ok(()) => self.visits = e,
+                            Err(e) => p(format!("[visits]: {e}")),
+                        },
+                        Err(e) => p(format!("[visits]: {}", toml_error("", &e))),
+                    }
+                }
+                Some(_) => p("visits must be one [visits] table".into()),
+                None => {}
+            }
+            return problems;
         }
         let Some(v) = doc.get(key) else { return problems };
         let mut p = |e: String| problems.push(format!("data/{file}.toml: {e}"));
@@ -560,6 +598,9 @@ impl Tables {
         }
         let mut eco = toml::Table::new();
         eco.insert("economy".into(), toml::Value::try_from(&self.economy).unwrap_or(toml::Value::Table(Default::default())));
+        let mut vis = toml::Table::new();
+        vis.insert("visits".into(), toml::Value::try_from(&self.visits).unwrap_or(toml::Value::Table(Default::default())));
+        vis.insert("visitor".into(), toml::Value::Array(self.visitors.iter().filter_map(|e| toml::Value::try_from(e).ok()).collect()));
         vec![
             ("terrain", list("terrain", &self.terrain)),
             ("buildings", list("building", &self.buildings)),
@@ -567,6 +608,7 @@ impl Tables {
             ("staff", list("staff", &self.staff)),
             ("properties", list("property", &self.properties)),
             ("economy", toml::to_string(&eco).unwrap_or_default()),
+            ("visitors", toml::to_string(&vis).unwrap_or_default()),
         ]
     }
 }
@@ -580,7 +622,8 @@ pub fn toml_error(text: &str, e: &toml::de::Error) -> String {
     }
 }
 
-/// The key of a file's entries: `[[terrain]]`, `[[building]]`, `[[amenity]]`, `[[staff]]`, `[[property]]`, `[economy]`.
+/// The key of a file's entries: `[[terrain]]`, `[[building]]`, `[[amenity]]`, `[[staff]]`, `[[property]]`, `[economy]`,
+/// `[[visitor]]` (with visitors.toml's `[visits]`).
 pub fn table_key(file: &str) -> &'static str {
     match file {
         "terrain" => "terrain",
@@ -588,6 +631,7 @@ pub fn table_key(file: &str) -> &'static str {
         "amenities" => "amenity",
         "staff" => "staff",
         "properties" => "property",
+        "visitors" => "visitor",
         _ => "economy",
     }
 }
@@ -674,6 +718,9 @@ pub struct Data {
     pub records: [PropertyRecord; 16],
     pub properties: [Property; 16],
     pub economy: EconomyData,
+    /// The More visitors extra's visitors and rules (sg_core::visitors), as merged.
+    pub visitors: Vec<crate::visitors::VisitorDef>,
+    pub visits: crate::visitors::VisitsDef,
 }
 
 /// The economy's constants in engine units.
@@ -835,6 +882,8 @@ impl Data {
                 hardcore_fee_cap: u(e.hardcore_fee_cap),
                 hardcore_mood_penalty: e.hardcore_mood_penalty as i32,
             },
+            visitors: t.visitors.clone(),
+            visits: t.visits.clone(),
         };
         (data, warn)
     }
@@ -990,6 +1039,33 @@ pub fn file_header(file: &str) -> &'static str {
 #   theme       parkland | desert | tropical | links
 #   coast       inland (a square of land) | coast (the sea along one side) | island (water all round)
 #   relief      gentle | rolling | hilly
+"
+        }
+        "visitors" => {
+            "# data/visitors.toml: the More visitors extra's visitors (OpenSGolf built-in values; docs/PLAYING.md, OpenSGolf extras).
+# Merge rules: an entry with the id of an earlier one replaces the fields it gives; `remove = true` deletes it. New ids add
+# visitors. Text fields hold a text key (STR_..., followed by the player's language) or the pack's own text.
+# [visits], the rules (a month is 1024 game ticks; the rating is the one the VIPs go by: fun on Easy and Normal, skill
+# in hundredths on Hard and Impossible):
+#   pro_chance / celebrity_chance        percent of new pairs that bring one, once the course is ready
+#   pro_holes / celebrity_holes          holes open before they come
+#   pro_rating / celebrity_rating        the club rating before they come
+#   pro_gap / celebrity_gap              game ticks at least between two visits of the kind
+#   pro_fee_percent / celebrity_fee_percent   their green fee, in percent of an ordinary golfer's
+#   pro_quick                            touring pros play quickly
+#   celebrity_crowd                      golfers a celebrity draws to the clubhouse beyond the usual arrivals (0..8)
+# [[visitor]], one visitor:
+#   id        the entry's id
+#   kind      touring-pro | celebrity
+#   name      the name shown
+#   job       the profession (the golfer card; a celebrity's title in the ticker)
+#   female    true for a woman
+#   body      0..3, the body among the gender's four; head  0..18, the stock head
+#   skin      0..3; hair 0..5 (women); shirt, pants, hat 0..9: the outfit's swap colours
+#   class     skill class bits 1..7 (1 Length, 2 Accuracy, 4 Imagination)
+#   skills    up to ten special skills, Power Hitter .. Luck, 0..10 each (tens of percent)
+#   weight    how often this one comes against the others of its kind
+#   remarks   what is said of the course at the round's end, unhappiest first (none: the kind's own lines)
 "
         }
         _ => {

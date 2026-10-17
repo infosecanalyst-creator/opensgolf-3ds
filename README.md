@@ -90,7 +90,8 @@ Optional, and off by default (Start New Game has a one-click switch between *the
   ([docs/ENHANCED.md](docs/ENHANCED.md)).
 - **Bigger courses:** Large, Huge and Giant, up to 128 × 128 tiles.
 - **OpenSGolf extras:** a Hardcore economy, turning buildings, cut content restored as landmarks, animals to buy, higher
-  staff limits, setting a hole's par, left-handed golfers (and a left-handed pro), slower seasons (the calendar at 1/2x or
+  staff limits, setting a hole's par, left-handed golfers (and a left-handed pro), more visitors (touring pros and invented
+  celebrities, moddable through data/visitors.toml), slower seasons (the calendar at 1/2x or
   1/4x), sandbox switches (pause the calendar, freeze golfer happiness, unlock everything), a search over every
   Preferences option with a reset to the original, and interface extras such as a People screen, message history,
   autosave (the last three kept), a map of each saved course, pausing in the background or on big news, and course

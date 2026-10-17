@@ -20,6 +20,9 @@
 //!   left-hander is drawn mirrored while addressing the ball and swinging, and his shots bend the other way: his draw goes
 //!   left to right and his fade, hook and slice are mirrored too (`Club::left_handed`, planner.rs).
 //!
+//! * `more_visitors`: More visitors: touring pros and invented celebrities come to play now and then (sg_core::visitors,
+//!   data/visitors.toml); pros pay more and rate the course, celebrities draw a few extra golfers.
+//!
 //! Pause the calendar, Freeze happiness and Unlock all are named "Sandbox: ..." in the Extras box as they are what a sandbox
 //! player wants most, but each works in a normal game too.
 
@@ -41,12 +44,14 @@ pub struct Extras {
     pub freeze_moods: bool,
     pub unlock_all: bool,
     pub lefties: bool,
+    pub more_visitors: bool,
 }
 
 /// The options in the order the Extras box lists them (text keys of their lines). Option 6 has three values (a line with
 /// {VALUE}, `SPEED_KEYS`), the others are ticks; `Extras::option` and `Extras::set_option` read and set them by index.
 /// Left-handed golfers (10) came after the sandbox switches and is shown on the Gameplay page (extras_ui.rs `page_lines`).
-pub const OPTION_KEYS: [&str; 11] = [
+/// More visitors (11) came after it, on the same page.
+pub const OPTION_KEYS: [&str; 12] = [
     "STR_EXTRAS_ROTATE",
     "STR_EXTRAS_CUT_CONTENT",
     "STR_EXTRAS_HARDCORE",
@@ -58,10 +63,14 @@ pub const OPTION_KEYS: [&str; 11] = [
     "STR_EXTRAS_FREEZE_MOODS",
     "STR_EXTRAS_UNLOCK_ALL",
     "STR_EXTRAS_LEFTIES",
+    "STR_EXTRAS_MORE_VISITORS",
 ];
 
 /// The option of `OPTION_KEYS` that is Left-handed golfers.
 pub const LEFTIES: usize = 10;
+
+/// The option of `OPTION_KEYS` that is More visitors.
+pub const MORE_VISITORS: usize = 11;
 
 /// The option of `OPTION_KEYS` that is the calendar speed.
 pub const SEASON_SPEED: usize = 6;
@@ -71,7 +80,8 @@ pub const SPEED_KEYS: [&str; 3] = ["STR_EXTRAS_SPEED_1", "STR_EXTRAS_SPEED_HALF"
 
 impl Extras {
     /// The gameplay extras of the "OpenSGolf extras" choice on Select Difficulty: the ones that add to the game without
-    /// changing its balance (not Hardcore, not the unfinished cut content).
+    /// changing its balance (not Hardcore, not the unfinished cut content, not More visitors, whose higher fees and extra
+    /// golfers change the club's takings).
     pub const OPENSGOLF: Extras = Extras {
         rotate: true,
         cut_content: false,
@@ -84,6 +94,7 @@ impl Extras {
         freeze_moods: false,
         unlock_all: false,
         lefties: false,
+        more_visitors: false,
     };
 
     /// Everything off (the original game).
@@ -92,7 +103,7 @@ impl Extras {
     }
 
     /// The options as bits (the `X:` test hook and `--extras`): one bit per tick in `OPTION_KEYS` order, except that the
-    /// calendar speed takes two (bits 6 and 7), so the ticks after it sit one bit further on (8, 9, 10, 11). The first six
+    /// calendar speed takes two (bits 6 and 7), so the ticks after it sit one bit further on (8, 9, 10, 11, 12). The first six
     /// keep the bits they always had.
     pub fn bits(&self) -> u32 {
         self.rotate as u32
@@ -106,6 +117,7 @@ impl Extras {
             | (self.freeze_moods as u32) << 9
             | (self.unlock_all as u32) << 10
             | (self.lefties as u32) << 11
+            | (self.more_visitors as u32) << 12
     }
 
     pub fn from_bits(b: u32) -> Extras {
@@ -121,6 +133,7 @@ impl Extras {
             freeze_moods: b & 1 << 9 != 0,
             unlock_all: b & 1 << 10 != 0,
             lefties: b & 1 << 11 != 0,
+            more_visitors: b & 1 << 12 != 0,
         }
     }
 
@@ -138,6 +151,7 @@ impl Extras {
             8 => self.freeze_moods as u8,
             9 => self.unlock_all as u8,
             LEFTIES => self.lefties as u8,
+            MORE_VISITORS => self.more_visitors as u8,
             _ => 0,
         }
     }
@@ -157,6 +171,7 @@ impl Extras {
             8 => self.freeze_moods = on,
             9 => self.unlock_all = on,
             LEFTIES => self.lefties = on,
+            MORE_VISITORS => self.more_visitors = on,
             _ => {}
         }
     }

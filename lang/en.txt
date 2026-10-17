@@ -2994,3 +2994,68 @@ STR_CTL_CHEATS                          :Cheats box
 STR_FILES_CHEATED                       :Cheats used
 # Customise Golfer, your pro, with the Left-handed golfers extra on
 STR_CUST_LEFT_HANDED                    :Left-handed
+# The More visitors extra (sg-core visitors.rs, data/visitors.toml): all names and lines are the port's own, invented
+STR_EXTRAS_MORE_VISITORS                : More visitors: touring pros and celebrities
+STR_PEOPLE_TOURING_PRO                  :Touring Pro
+STR_PEOPLE_CELEBRITY                    :Celebrity
+STR_VISITOR_PRO_ARRIVES                 :Touring pro {NAME} has dropped in between tournaments for a quick round. Pros pay more than the usual green fee.
+STR_VISITOR_PRO_RATES                   :Touring pro {NAME} rates your course: '{REMARK}'
+STR_VISITOR_CELEBRITY_ARRIVES           :{JOB} {NAME} is playing your course today! Word gets around, and more golfers are on their way.
+STR_VISITOR_CELEBRITY_SAYS              :{JOB} {NAME} on your course: '{REMARK}'
+# a touring pro's few words on the course, the unhappiest first
+STR_VISITOR_PRO_REMARK_0                :Not up to tour standard.
+STR_VISITOR_PRO_REMARK_1                :Needs a lot of work.
+STR_VISITOR_PRO_REMARK_2                :A fair test of golf.
+STR_VISITOR_PRO_REMARK_3                :Tour quality. I'll be back.
+STR_VISITOR_PRO_REMARK_4                :Worthy of a major championship!
+# a celebrity's words when a pack's celebrity has none of its own
+STR_VISITOR_CELEBRITY_REMARK_0          :Not my kind of place, I'm afraid.
+STR_VISITOR_CELEBRITY_REMARK_1          :A pleasant day out.
+STR_VISITOR_CELEBRITY_REMARK_2          :A wonderful course. I'll tell all my friends!
+STR_VISITOR_JOB_TOURING_PRO             :Touring Pro
+STR_VISITOR_JOB_FILM_STAR               :Film Star
+STR_VISITOR_JOB_POP_STAR                :Pop Star
+STR_VISITOR_JOB_TV_CHEF                 :TV Chef
+STR_VISITOR_JOB_FOOTBALLER              :Ex-Footballer
+STR_VISITOR_JOB_SOAP_STAR               :Soap Star
+STR_VISITOR_JOB_RACING_DRIVER           :Racing Driver
+STR_VISITOR_JOB_NOVELIST                :Novelist
+STR_VISITOR_JOB_ASTRONOMER              :TV Astronomer
+STR_VISITOR_NAME_RENA_VASQUELL          :Rena Vasquell
+STR_VISITOR_NAME_HUGO_BRANDVOLD         :Hugo Brandvold
+STR_VISITOR_NAME_SAMI_VARKONYI          :Sami Varkonyi
+STR_VISITOR_NAME_LOTTIE_PEMBROOK        :Lottie Pembrook
+STR_VISITOR_NAME_MATTEO_KRINGEL         :Matteo Kringel
+STR_VISITOR_NAME_INES_MARLOWE           :Ines Marlowe
+STR_VISITOR_NAME_BROCK_STELLAN          :Brock Stellan
+STR_VISITOR_NAME_MARISOL_VANE           :Marisol Vane
+STR_VISITOR_NAME_ARLO_PENNINGTON        :Arlo Pennington
+STR_VISITOR_NAME_GUS_MALLORY            :Gus Mallory
+STR_VISITOR_NAME_DELLA_STARLING         :Della Starling
+STR_VISITOR_NAME_ZIGGY_MARCHETTI        :Ziggy Marchetti
+STR_VISITOR_NAME_PRUDENCE_OAKES         :Prudence Oakes
+STR_VISITOR_NAME_FELIX_NIGHTLY          :Felix Nightly
+STR_VISITOR_REMARK_BROCK_STELLAN_0      :I've done stunts on safer ground than this.
+STR_VISITOR_REMARK_BROCK_STELLAN_1      :Not bad. Not a blockbuster, either.
+STR_VISITOR_REMARK_BROCK_STELLAN_2      :Two thumbs up. I want the sequel!
+STR_VISITOR_REMARK_MARISOL_VANE_0       :This course is so off-key.
+STR_VISITOR_REMARK_MARISOL_VANE_1       :Catchy, but it needs a better chorus.
+STR_VISITOR_REMARK_MARISOL_VANE_2       :This course is a number one hit!
+STR_VISITOR_REMARK_ARLO_PENNINGTON_0    :Undercooked and badly seasoned.
+STR_VISITOR_REMARK_ARLO_PENNINGTON_1    :A decent dish. A pinch more flair, please.
+STR_VISITOR_REMARK_ARLO_PENNINGTON_2    :Cooked to perfection. My compliments to the chef!
+STR_VISITOR_REMARK_GUS_MALLORY_0        :I've seen better pitches in a car park.
+STR_VISITOR_REMARK_GUS_MALLORY_1        :A course of two halves, this.
+STR_VISITOR_REMARK_GUS_MALLORY_2        :Back of the net! What a course.
+STR_VISITOR_REMARK_DELLA_STARLING_0     :Darling, this course is a tragedy.
+STR_VISITOR_REMARK_DELLA_STARLING_1     :Not quite prime time, but it has promise.
+STR_VISITOR_REMARK_DELLA_STARLING_2     :I'll be telling everyone at the studio!
+STR_VISITOR_REMARK_ZIGGY_MARCHETTI_0    :Too many slow corners for my taste.
+STR_VISITOR_REMARK_ZIGGY_MARCHETTI_1    :A decent lap. There are a few tenths to find.
+STR_VISITOR_REMARK_ZIGGY_MARCHETTI_2    :Pole position! A cracking course.
+STR_VISITOR_REMARK_PRUDENCE_OAKES_0     :A plot full of holes, and not the good kind.
+STR_VISITOR_REMARK_PRUDENCE_OAKES_1     :A solid first draft.
+STR_VISITOR_REMARK_PRUDENCE_OAKES_2     :A page-turner from the first tee to the last green.
+STR_VISITOR_REMARK_FELIX_NIGHTLY_0      :A black hole of a course.
+STR_VISITOR_REMARK_FELIX_NIGHTLY_1      :A middling star, but it shines now and then.
+STR_VISITOR_REMARK_FELIX_NIGHTLY_2      :Simply out of this world!

@@ -115,7 +115,8 @@ text comes from the code, crates/sg-core/src/data.rs). The reference is in secti
 | `data/staff.toml` | employee kinds: name, wage, experienced wage | **done** (task, speed, art planned) |
 | `data/properties.toml` | the sixteen properties: place, course name, bonus, map position, theme, coast, relief | **done** (emblem planned) |
 | `data/economy.toml` | starting money (normal and sandbox), offer slot prices, firing cost, hole maintenance, debt interest, rank thresholds | **done** (fee formula planned) |
-| `data/golfers.toml` | name lists, traits, skill ranges, celebrity and VIP visitors | planned |
+| `data/visitors.toml` | the *More visitors* extra's touring pros and celebrities (names, looks, skills, remarks) and how often they come, what they wait for and what they bring | **done** |
+| `data/golfers.toml` | name lists, traits, skill ranges, VIP visitors | planned |
 | `data/tournaments.toml` | SGA events, purses, entry rules, rival pros | planned |
 
 ## 4. Text and translations
@@ -358,7 +359,8 @@ What to know about replacement art and sound:
 ### Data files
 
 Every file is TOML. Entries are tables in an array named after the file (`[[terrain]]`, `[[building]]`, `[[amenity]]`,
-`[[staff]]`, `[[property]]`); `economy.toml` is one `[economy]` table. Each entry names its `id`; the fields given replace
+`[[staff]]`, `[[property]]`, `[[visitor]]`); `economy.toml` is one `[economy]` table and `visitors.toml` has one `[visits]`
+table besides its entries. Each entry names its `id`; the fields given replace
 the ones of the entry with that id (from the base set or an earlier pack), the others stay. `remove = true` deletes the
 entry. A new id makes a new entry.
 
@@ -462,6 +464,62 @@ turns them on; a pack may leave them out (the built-in values are used).
 [economy]
 start_funds = 200000
 debt_interest_percent = 5
+```
+
+#### visitors.toml
+
+The visitors of the *More visitors* extra (docs/PLAYING.md, OpenSGolf extras; off unless the player ticks it). A new id
+adds a visitor: packs can bring their own touring pros and celebrities. They wear the game's own bodies, heads and outfit
+colours (no new art is needed or read). Text fields take the pack's own text, or a text key (`STR_...`) the pack's
+`lang/*.txt` gives in each language.
+
+`[[visitor]]`:
+
+| Field | Unit | Default | Meaning |
+|-------|------|---------|---------|
+| `id` | | | The built-in ones: the touring pros `rena-vasquell`, `hugo-brandvold`, `sami-varkonyi`, `lottie-pembrook`, `matteo-kringel`, `ines-marlowe`; the celebrities `brock-stellan`, `marisol-vane`, `arlo-pennington`, `gus-mallory`, `della-starling`, `ziggy-marchetti`, `prudence-oakes`, `felix-nightly`. |
+| `kind` | | | `touring-pro` or `celebrity`. |
+| `name`, `job` | text | | The name, and the profession the golfer card shows (a celebrity's title in the ticker: "TV Chef Arlo Pennington"). |
+| `female`, `married` | true/false | false | |
+| `age` | years | 30 | 18..99; the card shows the nearest of the game's age bands (20, 30, 45, 50, 65, 75, 95, plus a year or two). |
+| `body`, `head` | | 0 | The body (0..3 of the gender's four) and the stock head (0..18). |
+| `skin`, `hair`, `shirt`, `pants`, `hat` | | 0 | Outfit colours: skin 0..3, hair 0..5 (women), the others 0..9 (the swap palettes of Bodies/). |
+| `class` | bits | 7 | Skill class: 1 Length, 2 Accuracy, 4 Imagination (1..7). |
+| `skills` | 0..10 x 10 | [] | Special skills, Power Hitter .. Luck, in tens of percent (the skills card). A touring pro also always has the draw, fade and backspin shots. |
+| `weight` | | 1 | How often this one comes against the others of its kind (0: never). |
+| `remarks` | text list | [] | What is said of the course at the end of the round, the unhappiest first, spread over the moods (at most nine); none: the kind's own lines. |
+
+`[visits]` (a month is 1024 game ticks; the rating is the one the VIPs go by: the fun rating on Easy and Normal, the skill
+rating in hundredths on Hard and Impossible):
+
+| Field | Default | Meaning |
+|-------|---------|---------|
+| `pro_chance`, `celebrity_chance` | 10, 5 | Percent of new pairs that bring one, once the course is ready. |
+| `pro_holes`, `celebrity_holes` | 9, 6 | Holes open before they come. |
+| `pro_rating`, `celebrity_rating` | 400, 250 | The club rating before they come. |
+| `pro_gap`, `celebrity_gap` | 2048, 4096 | Game ticks at least between two visits of the kind. |
+| `pro_fee_percent`, `celebrity_fee_percent` | 200, 150 | Their green fee, in percent of what an ordinary golfer in their mood would pay. |
+| `pro_quick` | true | Touring pros play quickly. |
+| `celebrity_crowd` | 6 | Golfers a celebrity draws to the clubhouse beyond the usual arrivals (0..8). |
+
+```toml
+[visits]
+celebrity_chance = 10
+
+[[visitor]]
+id = "dana-fairway"
+kind = "celebrity"
+name = "Dana Fairway"
+job = "Weather Presenter"
+female = true
+age = 40
+head = 5
+shirt = 3
+remarks = ["Grey skies all round.", "Bright spells.", "Sunshine all day!"]
+
+[[visitor]]
+id = "gus-mallory"
+weight = 0          # the built-in footballer stays away
 ```
 
 #### Course size and the economy

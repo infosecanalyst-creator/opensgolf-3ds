@@ -908,6 +908,17 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 app.econ.extras = e;
                 println!("extras {e:?}");
             }
+            b'V' => {
+                // test hook: golfer slot G (partner G ^ 1) becomes visitor I of data/visitors.toml (the More visitors extra);
+                // a negative G: the -G-th ordinary golfer out on the course
+                let mut on = (0..sg_core::golfer::SLOTS).filter(|&g| (1..19).contains(&app.club.g[g].hole) && app.club.g[g].kind == 0);
+                let g = match at(1) {
+                    n if n < 0 => on.nth((-n - 1) as usize).unwrap_or(0),
+                    n => (n as usize).min(sg_core::golfer::SLOTS - 1),
+                };
+                app.club.visitor_arrives(g ^ 1, g, at(0).max(0) as usize);
+                println!("visitor {} in slot {g}: {}", at(0), app.club.name(g));
+            }
             b'H' => {
                 // test hook: golfer slots N,M,... are left-handed (-1 the player's pro), for the Left-handed golfers extra
                 for &g in &v {

@@ -313,6 +313,22 @@ in settings.json under `extras`).
   left-handed, the aim line bending the left-hander's way for a draw or fade (the shot keys keep their names: D is still
   his draw). Switching the extra off puts everyone back to right-handed; switching it on again brings the left-handers
   back.
+- **More visitors: touring pros and celebrities.** New kinds of visitor, the port's own (every name and line is
+  invented), turn up with a new pair in the second golfer's place, as the original's VIPs do (never in the same pair as a
+  VIP, never during a tournament, one of each kind on the course at a time). **Touring pros** come now and then once nine
+  holes are open and the club rating the VIPs go by (fun on Easy and Normal, skill on Hard and Impossible) is 400 or more,
+  at most once in two months: strong players with skills of their own (their card shows them, as a famous pro's), who
+  play quickly (the game's own hurried pace: a step faster, no dawdling over a shot, not giving way), pay twice the green fee
+  an ordinary golfer in their mood would, and at the end of the round rate your course in a few words in the ticker
+  ("Touring pro Rena Vasquell rates your course: 'A fair test of golf.'"). **Celebrities** (a film star, a pop star, a TV
+  chef, an ex-footballer, a soap star, a racing driver, a novelist, a TV astronomer) come rarely, from six holes and a
+  rating of 250, at most once in four months: the ticker announces them, word gets around and six more golfers come to
+  the clubhouse soon after, they pay half as much again as an ordinary golfer, and they say what they thought of the
+  course when they leave. Visitors look like other golfers (the game's own bodies, heads and colours), show on the People
+  screen as *Touring Pro* or *Celebrity* and on their golfer card with their profession, and keep a record on the Best
+  Scores like anyone. They do not become members. How often they come, what they wait for and pay, and who they are, is
+  in `data/visitors.toml`, which content packs can change and add to (docs/MODDING.md, section 3). Not part of the
+  one-click *OpenSGolf extras* choice, as their fees and crowds change the club's takings.
 
 On the **Time & sandbox** page:
 
@@ -349,8 +365,9 @@ a normal game too.
 
 Test hooks: `--extras BITS` sets the extras a new game starts with (1 Tab turns, 2 cut content, 4 hardcore, 8 higher staff
 limits, 16 animals, 32 set par, 64 or 128 the calendar at 1/2x or 1/4x, 256 pause the calendar, 512 freeze golfer
-happiness, 1024 unlock all, 2048 left-handed golfers; not saved to the settings); `--edit "H:N,M,..."` makes golfer slots
-N, M... left-handed (-1 your pro); `--edit "R:N"` asks for par N on the Hole Stats' hole (its
+happiness, 1024 unlock all, 2048 left-handed golfers, 4096 more visitors; not saved to the settings); `--edit
+"H:N,M,..."` makes golfer slots N, M... left-handed (-1 your pro); `--edit "V:I,G"` makes golfer slot G (a negative G: the
+-G-th ordinary golfer out on the course) visitor I of data/visitors.toml (0..5 the touring pros, 6..13 the celebrities); `--edit "R:N"` asks for par N on the Hole Stats' hole (its
 confirmation box; `R:N,1` sets it at once); `--edit "X:BITS"` sets the extras of the game being played; `--edit "T:x,y"`
 presses the Tab of the first extra with the pointer on tile x,y; `--edit "S:page[,design]"` opens the Amenities panel with the
 landmark tool on strip page 0 (own), 1 (cut) or 2 (animals); `--edit "b:x,y,4,t"` places landmark type t (19..32 the cut ones,
