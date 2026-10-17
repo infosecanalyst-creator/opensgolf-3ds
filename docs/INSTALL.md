@@ -95,7 +95,9 @@ with normal compression.
 * **No sound?** The game writes what it found and what it plays on to `sound.txt` in the same save folder (20 seconds after
   it starts, then every two minutes; in the browser the same lines go to the console, F12). Please attach it to a report.
 * **Browser**: nothing to install, see [Play in your browser](https://crspytopgn.github.io/opensgolf/); `opensgolf-web.zip` is the
-  same page to host yourself.
+  same page to host yourself. It takes your SimGolf folder, a .zip of it, or the CD: an `.iso` or a Mac's `.cdr` (also
+  inside a .zip), a .zip of the CD's files, or the CD picked as a folder, unpacked in the page (a `.dmg` cannot be read:
+  make a `.cdr` as above). On an iPad or iPhone, a CD image in the Files app works too.
 * **From source**: see [Build and run](../README.md#build-and-run).
 
 The application icon (a flag on a green and a ball) is drawn by the engine itself (`sgtool icon DIR`; `tools/make_icons.sh`

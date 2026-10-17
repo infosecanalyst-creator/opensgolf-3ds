@@ -478,7 +478,8 @@ const SG_ZIP_METHODS = { 12: "BZIP2", 14: "LZMA", 93: "Zstandard", 95: "XZ", 98:
 // sound so, and neither the browser (DecompressionStream) nor iPad's Files app unpacks it, so the game played the free
 // sounds with the original's art (issue #10). Deflate with a 64 KiB window, length code 285 taking 16 extra bits over a
 // base of 3, and distance codes 30 and 31. The same decoder as crates/sg-core/src/inflate64.rs (after zlib's puff.c).
-// `size` is the entry's size from the zip's directory.
+// `size` is the entry's size from the zip's directory. sgInflateInto also decodes plain deflate (d64 false: the blocks of
+// the CD's installer cabinets) into a part of a bigger buffer.
 const SG_LBASE = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 3];
 const SG_LEXT = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 16];
 const SG_DBASE = [1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097,
@@ -506,8 +507,14 @@ function sgHuff(lengths) {
 }
 function sgInflate64(src, size) {
     const out = new Uint8Array(size);
-    let o = 0, pos = 0, buf = 0, n = 0;
-    const fail = why => { throw new Error("Deflate64: " + why); };
+    if (sgInflateInto(src, out, 0, true) !== size) throw new Error("Deflate64: less data than the zip says");
+    return out;
+}
+// Decodes `src` into `out` from `start`; returns where its output ends.
+function sgInflateInto(src, out, start, d64) {
+    const size = out.length;
+    let o = start, pos = 0, buf = 0, n = 0;
+    const fail = why => { throw new Error((d64 ? "Deflate64: " : "deflate: ") + why); };
     const bits = k => {
         while (n < k) {
             if (pos >= src.length) fail("the data ends early");
@@ -601,63 +608,97 @@ function sgInflate64(src, size) {
             if (sym === 256) break;
             const s = sym - 257;
             if (s >= 29) fail("a bad length code");
-            const len = SG_LBASE[s] + bits(SG_LEXT[s]);
+            const len = !d64 && s === 28 ? 258 : SG_LBASE[s] + bits(SG_LEXT[s]);
             const ds = decode(dh);
+            if (!d64 && ds >= 30) fail("a bad distance code");
             const dist = SG_DBASE[ds] + bits(SG_DEXT[ds]);
-            if (dist > o) fail("a distance too far back");
+            if (dist > o - start) fail("a distance too far back");
             if (o + len > size) fail("more data than the zip says");
             if (dist >= len) out.copyWithin(o, o - dist, o - dist + len);
             else for (let k = 0; k < len; k++) out[o + k] = out[o - dist + k];
             o += len;
         }
     } while (!last);
-    if (o !== size) fail("less data than the zip says");
+    return o;
+}
+// `size` bytes at `offset` of a Blob (of a File only that part is read: a zip or a CD image is never held whole).
+async function sgSlice(blob, offset, size) {
+    return new Uint8Array(await blob.slice(offset, offset + size).arrayBuffer());
+}
+// A zip's directory, read from the end of the Blob: [{ name, flags, method, csize, usize, local, nlen, xlen }].
+async function sgZipEntries(blob) {
+    const tailLen = Math.min(blob.size, 22 + 0xffff);
+    const tail = await sgSlice(blob, blob.size - tailLen, tailLen);
+    const t = new DataView(tail.buffer);
+    let e = tail.length - 22;
+    while (e >= 0 && t.getUint32(e, true) !== 0x06054b50) e--;
+    if (e < 0) throw new Error("not a zip file");
+    const count = t.getUint16(e + 10, true), cdSize = t.getUint32(e + 12, true), cdAt = t.getUint32(e + 16, true);
+    const cd = await sgSlice(blob, cdAt, cdSize);
+    const v = new DataView(cd.buffer);
+    const dec8 = new TextDecoder();
+    const out = [];
+    let p = 0;
+    for (let i = 0; i < count; i++) {
+        if (p + 46 > cd.length || v.getUint32(p, true) !== 0x02014b50) throw new Error("damaged zip directory");
+        const nlen = v.getUint16(p + 28, true), xlen = v.getUint16(p + 30, true), clen = v.getUint16(p + 32, true);
+        out.push({
+            name: dec8.decode(cd.subarray(p + 46, p + 46 + nlen)).replace(/\\/g, "/"),
+            flags: v.getUint16(p + 8, true), method: v.getUint16(p + 10, true),
+            csize: v.getUint32(p + 20, true), usize: v.getUint32(p + 24, true), local: v.getUint32(p + 42, true), nlen, xlen,
+        });
+        p += 46 + nlen + xlen + clen;
+    }
     return out;
 }
+// Where an entry's (compressed) bytes start in the Blob, from its local header.
+async function sgZipDataAt(blob, e) {
+    const h = await sgSlice(blob, e.local, 30);
+    const v = new DataView(h.buffer);
+    if (h.length < 30 || v.getUint32(0, true) !== 0x04034b50) throw new Error("damaged zip entry " + e.name);
+    return e.local + 30 + v.getUint16(26, true) + v.getUint16(28, true);
+}
+// An entry's bytes as stored in the zip (one read with the local header in most cases).
+async function sgZipRaw(blob, e) {
+    let d = await sgSlice(blob, e.local, 30 + e.nlen + e.xlen + 256 + e.csize);
+    const v = new DataView(d.buffer);
+    if (d.length < 30 || v.getUint32(0, true) !== 0x04034b50) throw new Error("damaged zip entry " + e.name);
+    const start = 30 + v.getUint16(26, true) + v.getUint16(28, true);
+    if (start + e.csize > d.length) d = await sgSlice(blob, e.local, start + e.csize);
+    return d.subarray(start, start + e.csize);
+}
+// An entry unpacked, or a string saying why it cannot be.
+async function sgZipRead(blob, e) {
+    if (e.flags & 1) return "encrypted"; // a password-protected entry: its bytes are scrambled
+    if (e.method !== 0 && e.method !== 8 && e.method !== 9) {
+        // BZIP2, LZMA... (7-Zip's stronger settings): the browser cannot unpack them
+        return SG_ZIP_METHODS[e.method] || "compression method " + e.method;
+    }
+    const data = await sgZipRaw(blob, e);
+    if (e.method === 0 || e.usize === 0) return data.slice(0, e.usize);
+    if (e.method === 8) return new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer());
+    try {
+        return sgInflate64(data, e.usize);
+    } catch (err) {
+        console.warn("zip: " + e.name + ": " + err.message);
+        return "damaged Deflate64";
+    }
+}
 // Calls onEntry for each file it can unpack; the ones it cannot are added to `skipped` as [name, why]. Returns how many.
-async function sgUnzip(buf, onEntry, skipped = []) {
-    const v = new DataView(buf);
-    let e = buf.byteLength - 22;
-    while (e >= 0 && v.getUint32(e, true) !== 0x06054b50) e--;
-    if (e < 0) throw new Error("not a zip file");
-    const count = v.getUint16(e + 10, true);
-    let p = v.getUint32(e + 16, true);
-    const dec8 = new TextDecoder();
-    for (let i = 0; i < count; i++) {
-        const flags = v.getUint16(p + 8, true);
-        const method = v.getUint16(p + 10, true);
-        const csize = v.getUint32(p + 20, true), usize = v.getUint32(p + 24, true);
-        const nlen = v.getUint16(p + 28, true), xlen = v.getUint16(p + 30, true), clen = v.getUint16(p + 32, true);
-        const local = v.getUint32(p + 42, true);
-        const name = dec8.decode(new Uint8Array(buf, p + 46, nlen));
-        p += 46 + nlen + xlen + clen;
-        if (sgSkip(name.toLowerCase())) continue;
-        const lnlen = v.getUint16(local + 26, true), lxlen = v.getUint16(local + 28, true);
-        const data = new Uint8Array(buf, local + 30 + lnlen + lxlen, csize);
-        let bytes;
-        if (flags & 1) {
-            // a password-protected entry: its bytes are scrambled
-            skipped.push([name, "encrypted"]);
+// `src` is a Blob (a picked File, read a part at a time) or an ArrayBuffer.
+async function sgUnzip(src, onEntry, skipped = [], list = null) {
+    const blob = src instanceof Blob ? src : new Blob([src]);
+    const entries = list || await sgZipEntries(blob);
+    for (let i = 0; i < entries.length; i++) {
+        const e = entries[i];
+        if (sgSkip(e.name.toLowerCase())) continue;
+        const bytes = await sgZipRead(blob, e);
+        if (typeof bytes === "string") {
+            if (skipped.length < 5) console.warn("zip: cannot unpack " + e.name + " (" + bytes + ")");
+            skipped.push([e.name, bytes]);
             continue;
         }
-        if (method === 0 || usize === 0) bytes = data.slice(0, usize);
-        else if (method === 8) bytes = new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer());
-        else if (method === 9) {
-            try {
-                bytes = sgInflate64(data, usize);
-            } catch (err) {
-                console.warn("zip: " + name + ": " + err.message);
-                skipped.push([name, "damaged Deflate64"]);
-                continue;
-            }
-        } else {
-            // BZIP2, LZMA... (7-Zip's stronger settings): the browser cannot unpack them
-            const why = SG_ZIP_METHODS[method] || "compression method " + method;
-            if (skipped.length < 5) console.warn("zip: cannot unpack " + name + " (" + why + ")");
-            skipped.push([name, why]);
-            continue;
-        }
-        await onEntry(name, bytes, i, count);
+        await onEntry(e.name, bytes, i, entries.length);
     }
     return skipped.length;
 }
@@ -1049,9 +1090,8 @@ function sgPlayFree() {
     sgStart();
 }
 
-const SG_ISO_HELP = "That is the SimGolf CD or an image of it (.iso, or a Mac's .cdr or .dmg). The browser cannot unpack the CD; the " +
-    "desktop and Android versions can (Use my SimGolf files...: the CD itself, an .iso or a .cdr; not a .dmg). In the browser, pick the " +
-    "folder SimGolf was installed to, or a .zip of it.";
+const SG_ISO_HELP = "That is a Mac disk image (.dmg), which the browser cannot read. Make a .cdr instead: with the CD in, open " +
+    "Disk Utility, File > New Image > Image from the CD, Format: DVD/CD master; then pick the .cdr here.";
 // a CD image by its contents, whatever its name: ISO 9660's "CD001" at sector 16 (as the native importer looks, iso.rs)
 async function sgIsCdImage(file) {
     if (file.size < 16 * 2048 + 6) return false;
@@ -1060,8 +1100,7 @@ async function sgIsCdImage(file) {
 }
 async function sgUse(entries, skipped = []) {
     const root = sgRootOf(entries.map(e => e[0]));
-    if (root === null && entries.some(e => /\.(iso|cdr|dmg|bin|img)$/i.test(e[0]) || /(^|\/)data1\.cab$/i.test(e[0]))) {
-        // a zip of the CD (an image, or the disc's InstallShield files): the desktop and Android versions unpack those
+    if (root === null && entries.some(e => /\.dmg$/i.test(e[0]))) {
         sgStatus(SG_ISO_HELP);
         return;
     }
@@ -1092,9 +1131,17 @@ async function sgUse(entries, skipped = []) {
 async function sgLoadFolder(fileList) {
     const files = Array.from(fileList).filter(f => !sgSkip(f.webkitRelativePath.toLowerCase()));
     if (sgRootOf(files.map(f => f.webkitRelativePath)) === null) {
-        // the CD itself (its installer, no installed game)
-        if (files.some(f => /(^|\/)data1\.(cab|hdr)$/i.test(f.webkitRelativePath))) {
-            sgStatus(SG_ISO_HELP);
+        // the CD itself (its installer, no installed game): DATA1.HDR and the DATA*.CAB beside it
+        const hdr = files.find(f => /(^|\/)data1\.hdr$/i.test(f.webkitRelativePath));
+        if (hdr) {
+            const dir = hdr.webkitRelativePath.substring(0, hdr.webkitRelativePath.length - hdr.name.length);
+            const cabs = new Map();
+            for (const f of files) {
+                const v = f.webkitRelativePath === dir + f.name ? sgCabNumber(f.name) : null;
+                if (v !== null) cabs.set(v, f);
+            }
+            await sgUseCd("the CD", async (onFile, progress) =>
+                sgCabUnpack(new Uint8Array(await hdr.arrayBuffer()), cabs, onFile, progress));
             return;
         }
         sgStatus("That folder does not look like a SimGolf game folder (no Flics folder found). Pick the folder that contains Flics, Sounds and Data.");
@@ -1115,8 +1162,17 @@ async function sgLoadFolder(fileList) {
 
 async function sgLoadZip(file) {
     if (!file) return;
-    if (/\.(iso|cdr|dmg|bin|cue|img)$/i.test(file.name) || await sgIsCdImage(file)) {
+    if (/\.dmg$/i.test(file.name)) {
         sgStatus(SG_ISO_HELP);
+        return;
+    }
+    // an image of the CD (.iso, a Mac's .cdr, or misnamed: known by its contents)
+    if (await sgIsCdImage(file)) {
+        await sgUseCd(file.name, (onFile, progress) => sgIsoUnpack(file, onFile, progress));
+        return;
+    }
+    if (/\.(bin|cue|img|mdf|nrg)$/i.test(file.name)) {
+        sgStatus("That disc image format cannot be read (only an .iso, or a Mac's .cdr). The SimGolf installation folder, or a .zip of it, works too.");
         return;
     }
     // other archives, known by their first bytes: the page reads zips only
@@ -1129,16 +1185,24 @@ async function sgLoadZip(file) {
         return;
     }
     sgStatus("Opening " + file.name + "...");
+    let list;
+    try {
+        list = await sgZipEntries(file);
+    } catch (e) {
+        sgStatus("Could not read that zip: " + e.message);
+        return;
+    }
+    if (await sgZipCd(file, list)) return;
     const entries = [];
     const skipped = [];
     try {
-        await sgUnzip(await file.arrayBuffer(), async (name, bytes, i, n) => {
+        await sgUnzip(file, async (name, bytes, i, n) => {
             entries.push([name, bytes]);
             if (i % 50 === 0) {
                 sgStatus("Unpacking your game files: " + (i + 1) + " of " + n);
                 await new Promise(r => setTimeout(r, 0));
             }
-        }, skipped);
+        }, skipped, list);
     } catch (e) {
         sgStatus("Could not read that zip: " + e.message);
         return;
@@ -1146,6 +1210,300 @@ async function sgLoadZip(file) {
     // files it could not unpack are said in the summary over the game (sgFilesSummary), not in an alert, which Safari may
     // not show after the long unpacking; the game still starts (missing sounds are replaced by the free set's)
     await sgUse(entries, skipped);
+}
+
+// --- the SimGolf CD in the browser --------------------------------------------------------------------------------------------
+// An image of the CD (.iso, or a Mac's Disk Utility .cdr: the same bytes; also inside a .zip), a .zip of the CD's files, or
+// the CD itself picked as a folder: the installer's archives on it (DATA1.HDR, DATA*.CAB: InstallShield 6 cabinets) are
+// unpacked here into the installed game's files, which then go the way of a picked zip (sgUse). The same reading as the
+// desktop and Android import (crates/simgolf/src/iso.rs: ISO 9660/Joliet, the cabinets' file table, split files,
+// obfuscated and deflated blocks; layout after unshield's lib/cabfile.h), ported because the page unpacks before the
+// game's WebAssembly starts. The image is read a part at a time from the picked file (iPad Safari cannot hold a 215 MB
+// image and the game's 240 MB of files at once); videos and Windows programs are left out (sgSkip).
+function sgCdError(why) {
+    const e = new Error(why);
+    e.sgCd = true;
+    return e;
+}
+function sgU16(d, at) {
+    if (at + 2 > d.length) throw sgCdError("truncated disc or cabinet record");
+    return d[at] | (d[at + 1] << 8);
+}
+function sgU32(d, at) {
+    if (at + 4 > d.length) throw sgCdError("truncated disc or cabinet record");
+    return (d[at] | (d[at + 1] << 8) | (d[at + 2] << 16) | (d[at + 3] << 24)) >>> 0;
+}
+function sgU64(d, at) {
+    return sgU32(d, at) + sgU32(d, at + 4) * 4294967296;
+}
+// A CD image's files: [{ name, offset, size }] (iso.rs Disc::entries).
+async function sgIsoEntries(blob) {
+    const read = async (offset, size) => {
+        if (offset + size > blob.size) throw sgCdError("disc image is cut short");
+        return sgSlice(blob, offset, size);
+    };
+    let root = null, unicode = false;
+    for (let sector = 16; sector < 80; sector++) {
+        const d = await read(sector * 2048, 2048);
+        if (String.fromCharCode(...d.subarray(1, 6)) !== "CD001" || d[6] !== 1) throw sgCdError("not an ISO 9660 disc image");
+        if (d[0] === 255) break;
+        const esc = String.fromCharCode(...d.subarray(88, 91));
+        const joliet = d[0] === 2 && ["%/@", "%/C", "%/E"].includes(esc);
+        if (joliet || (d[0] === 1 && root === null)) {
+            root = [sgU32(d, 158) * 2048, sgU32(d, 166)];
+            unicode = joliet;
+        }
+    }
+    if (root === null) throw sgCdError("ISO has no readable filesystem");
+    const stack = [["", root[0], root[1], 0]], visited = new Set(), out = [];
+    while (stack.length) {
+        const [parent, offset, size, depth] = stack.pop();
+        if (visited.has(offset)) continue;
+        visited.add(offset);
+        if (depth > 32 || size > 16 * 1024 * 1024 || visited.size > 10000) throw sgCdError("ISO directory limits exceeded");
+        const data = await read(offset, size);
+        let pos = 0;
+        while (pos < data.length) {
+            const len = data[pos];
+            if (len === 0) {
+                pos = (Math.floor(pos / 2048) + 1) * 2048;
+                continue;
+            }
+            if (len < 34 || pos + len > data.length) throw sgCdError("invalid ISO directory record");
+            const record = data.subarray(pos, pos + len);
+            const raw = record.subarray(33, 33 + record[32]);
+            pos += len;
+            if (raw.length === 1 && raw[0] <= 1) continue;
+            let name;
+            if (unicode) {
+                if (raw.length % 2) throw sgCdError("invalid Joliet filename");
+                name = "";
+                for (let i = 0; i < raw.length; i += 2) name += String.fromCharCode((raw[i] << 8) | raw[i + 1]);
+            } else name = new TextDecoder().decode(raw);
+            name = name.split(";")[0].replace(/\.+$/, "");
+            if (name === "" || /[\/\\:]/.test(name) || name === "..") throw sgCdError("unsafe ISO filename");
+            const full = parent ? parent + "/" + name : name;
+            const at = sgU32(record, 2) * 2048, fsize = sgU32(record, 10);
+            if (record[25] & 0x80) throw sgCdError("multi-extent ISO files are not supported");
+            if (at + fsize > blob.size) throw sgCdError("ISO file extends beyond the disc");
+            if (record[25] & 2) stack.push([full, at, fsize, depth + 1]);
+            else out.push({ name: full, offset: at, size: fsize });
+            if (out.length > 100000) throw sgCdError("too many ISO files");
+        }
+    }
+    return out;
+}
+// The volume number of a cabinet named like DATA2.CAB, or null.
+function sgCabNumber(name) {
+    const m = /^data(\d+)\.cab$/i.exec(name);
+    return m ? Number(m[1]) : null;
+}
+// A CP-1252 file name of the installer (the CD's names are Windows').
+const SG_CP1252 = "€\u0081‚ƒ„…†‡ˆ‰Š‹Œ\u008dŽ\u008f\u0090‘’“”•–—˜™š›œ\u009džŸ";
+function sgCabString(d, at) {
+    let s = "";
+    for (let i = at; ; i++) {
+        if (i >= d.length) throw sgCdError("unterminated cabinet filename");
+        const b = d[i];
+        if (b === 0) return s;
+        s += b >= 128 && b < 160 ? SG_CP1252[b - 128] : String.fromCharCode(b);
+    }
+}
+// A path the game may write: relative, no "..", no drive.
+function sgSafeRel(name) {
+    const parts = name.split("/").filter(c => c !== "" && c !== ".");
+    if (parts.some(c => c === ".." || c.includes(":")) || parts.length === 0) return null;
+    return parts.join("/");
+}
+// The installer's archives: DATA1.HDR's bytes and the cabinets by volume number (Blobs). Calls onFile(path, bytes) for each
+// file of the installed game (iso.rs unpack_cabinets).
+async function sgCabUnpack(header, cabs, onFile, progress) {
+    if (String.fromCharCode(...header.subarray(0, 4)) !== "ISc(") throw sgCdError("invalid InstallShield header");
+    const version = sgU32(header, 4);
+    const major = version >>> 24 === 1 ? (version >>> 12) & 15 : Math.floor((version & 65535) / 100);
+    if (major < 6 || major > 16) throw sgCdError("InstallShield " + major + " is not supported (expected version 6 to 16)");
+    const descriptor = sgU32(header, 12);
+    const table = descriptor + sgU32(header, descriptor + 12);
+    const directories = sgU32(header, descriptor + 28);
+    const count = sgU32(header, descriptor + 40);
+    const records = table + sgU32(header, descriptor + 44);
+    if (count > 100000 || directories > 10000) throw sgCdError("installer file limits exceeded");
+    if (records + count * 87 > header.length || table + directories * 4 > header.length) throw sgCdError("truncated installer header");
+    const rec = i => header.subarray(records + i * 87, records + i * 87 + 87);
+    const items = [];
+    for (let i = 0; i < count; i++) {
+        let r = rec(i);
+        if (sgU16(r, 0) & 8 || sgU64(r, 18) === 0) continue;
+        const dir = sgU16(r, 62);
+        if (dir >= directories) throw sgCdError("invalid cabinet directory");
+        const directory = sgCabString(header, table + sgU32(header, table + dir * 4)).replace(/\\/g, "/");
+        const file = sgCabString(header, table + sgU32(r, 58));
+        if (/[\/\\:]/.test(file)) throw sgCdError("unsafe cabinet filename");
+        const name = directory ? directory + "/" + file : file;
+        if (sgSkip(name.toLowerCase())) continue;
+        if (name.startsWith("/") || sgSafeRel(name) === null) throw sgCdError("unsafe cabinet path");
+        // InstallShield keeps one copy of identical files: a record may point at another's data
+        let source = i;
+        const links = new Set();
+        while (r[84] & 1) {
+            source = sgU32(r, 76);
+            if (source >= count || links.has(source)) throw sgCdError("invalid or cyclic cabinet file link");
+            links.add(source);
+            r = rec(source);
+        }
+        if (sgU16(r, 0) & 8 || sgU64(r, 18) === 0) throw sgCdError("cabinet link refers to an invalid file");
+        items.push({ name, flags: sgU16(r, 0), size: sgU64(r, 2), compressed: sgU64(r, 10), offset: sgU64(r, 18), volume: sgU16(r, 85), index: source });
+    }
+    if (sgRootOf(items.map(it => it.name)) === null) throw sgCdError("no SimGolf game in the installer");
+    const heads = new Map();
+    const volumeHead = async v => {
+        if (!heads.has(v)) {
+            const blob = cabs.get(v);
+            if (!blob) throw sgCdError("missing data" + v + ".cab");
+            const h = await sgSlice(blob, 0, 84);
+            if (String.fromCharCode(...h.subarray(0, 4)) !== "ISc(") throw sgCdError("invalid cabinet volume");
+            heads.set(v, h);
+        }
+        return heads.get(v);
+    };
+    for (let k = 0; k < items.length; k++) {
+        const it = items[k];
+        if (it.size > 256 * 1024 * 1024 || it.compressed > 256 * 1024 * 1024) throw sgCdError("cabinet file is too large");
+        const parts = [];
+        let remaining = it.flags & 4 ? it.compressed : it.size, volume = it.volume;
+        while (remaining > 0) {
+            const h = await volumeHead(volume);
+            const blob = cabs.get(volume);
+            let offset, available;
+            if (it.flags & 1) {
+                // a file split over two volumes: the volume's header says where its part is
+                if (it.index === sgU32(h, 32)) [offset, available] = [sgU64(h, 60), sgU64(h, it.flags & 4 ? 76 : 68)];
+                else if (it.index === sgU32(h, 28)) [offset, available] = [sgU64(h, 36), sgU64(h, it.flags & 4 ? 52 : 44)];
+                else throw sgCdError("invalid split cabinet file");
+            } else [offset, available] = [it.offset, remaining];
+            const n = Math.min(available, remaining);
+            if (n === 0 || offset + n > blob.size) throw sgCdError("cabinet file is cut short");
+            parts.push(await sgSlice(blob, offset, n));
+            remaining -= n;
+            volume++;
+        }
+        let body = parts.length === 1 ? parts[0] : new Uint8Array(await new Blob(parts).arrayBuffer());
+        if (it.flags & 2) {
+            // the installer's obfuscation
+            for (let i = 0; i < body.length; i++) {
+                const b = body[i] ^ 0xd5;
+                body[i] = (((b >>> 2) | (b << 6)) - (i % 71)) & 255;
+            }
+        }
+        let out;
+        if (it.flags & 4) {
+            // deflated blocks of up to 64 KiB, each with its length before it
+            out = new Uint8Array(it.size);
+            let pos = 0, o = 0;
+            while (pos < body.length) {
+                const len = sgU16(body, pos);
+                if (len === 0) throw sgCdError("empty compressed cabinet block");
+                if (pos + 2 + len > body.length) throw sgCdError("truncated disc or cabinet record");
+                try {
+                    o = sgInflateInto(body.subarray(pos + 2, pos + 2 + len), out, o, false);
+                } catch (e) {
+                    throw sgCdError("damaged cabinet file: " + it.name + " (" + e.message + ")");
+                }
+                pos += 2 + len;
+            }
+            if (o !== it.size) throw sgCdError("incorrect extracted size: " + it.name);
+        } else {
+            if (body.length !== it.size) throw sgCdError("incorrect extracted size: " + it.name);
+            out = body;
+        }
+        await onFile(sgSafeRel(it.name), out);
+        await progress(k + 1, items.length);
+    }
+}
+// A CD image (a Blob): the installed game's files, through onFile(path, bytes) (iso.rs unpack).
+async function sgIsoUnpack(blob, onFile, progress) {
+    const entries = await sgIsoEntries(blob);
+    if (sgRootOf(entries.map(e => e.name)) !== null) {
+        // an image of an installed game folder: its files as they are
+        const wanted = entries.filter(e => !sgSkip(e.name.toLowerCase()));
+        for (let i = 0; i < wanted.length; i++) {
+            await onFile(wanted[i].name, await sgSlice(blob, wanted[i].offset, wanted[i].size));
+            await progress(i + 1, wanted.length);
+        }
+        return;
+    }
+    const base = n => n.split("/").pop();
+    const header = entries.find(e => base(e.name).toLowerCase() === "data1.hdr");
+    if (!header) throw sgCdError("no SimGolf game or installer on this disc");
+    if (header.size > 16 * 1024 * 1024) throw sgCdError("installer header is too large");
+    const dir = n => n.substring(0, Math.max(0, n.lastIndexOf("/")));
+    const cabs = new Map();
+    for (const e of entries) {
+        const v = dir(e.name) === dir(header.name) ? sgCabNumber(base(e.name)) : null;
+        if (v !== null) cabs.set(v, blob.slice(e.offset, e.offset + e.size));
+    }
+    await sgCabUnpack(await sgSlice(blob, header.offset, header.size), cabs, onFile, progress);
+}
+// Unpacks the CD from an image or its installer files and plays (sgUse). `from` names it for the messages; `unpack` is
+// (onFile, progress) => Promise.
+async function sgUseCd(from, unpack) {
+    const entries = [];
+    try {
+        await unpack(async (path, bytes) => { entries.push([path, bytes]); }, async (i, n) => {
+            if (i % 25 === 0 || i === n) {
+                sgStatus("Unpacking the CD (" + from + "): " + i + " of " + n + " files");
+                await new Promise(r => setTimeout(r, 0));
+            }
+        });
+    } catch (e) {
+        console.warn("CD:", e);
+        sgStatus("Could not unpack " + from + ": " + e.message + (e.sgCd ? "." : " (the browser ran out of memory?). The desktop version can unpack it."));
+        return;
+    }
+    console.log("CD: " + entries.length + " files unpacked from " + from);
+    await sgUse(entries);
+}
+
+// A zip of the CD rather than of the game: an image in it, or the CD's installer files. True when it was (or was not) one
+// and the player was answered.
+async function sgZipCd(file, list) {
+    const names = list.filter(e => !sgSkip(e.name.toLowerCase())).map(e => e.name);
+    if (sgRootOf(names) !== null) return false;
+    const blobOf = async e => {
+        // a stored entry is a part of the picked file, read as needed; a compressed one is unpacked first
+        const at = await sgZipDataAt(file, e);
+        const raw = file.slice(at, at + e.csize);
+        if (e.method === 0) return raw;
+        if (e.method === 8) return new Response(raw.stream().pipeThrough(new DecompressionStream("deflate-raw"))).blob();
+        if (e.method === 9) return new Blob([sgInflate64(new Uint8Array(await raw.arrayBuffer()), e.usize)]);
+        throw sgCdError(e.name + " uses a compression the browser cannot unpack (" + (SG_ZIP_METHODS[e.method] || e.method) + ")");
+    };
+    const images = list.filter(e => /\.(iso|cdr)$/i.test(e.name) && !sgSkip(e.name.toLowerCase()));
+    if (images.length > 1) {
+        sgStatus("That zip holds several CD images; pick the SimGolf one itself.");
+        return true;
+    }
+    if (images.length === 1) {
+        await sgUseCd(images[0].name.split("/").pop(), async (onFile, progress) => sgIsoUnpack(await blobOf(images[0]), onFile, progress));
+        return true;
+    }
+    const hdr = list.find(e => /(^|\/)data1\.hdr$/i.test(e.name));
+    if (hdr) {
+        const dir = hdr.name.substring(0, hdr.name.length - "data1.hdr".length);
+        await sgUseCd("the CD's files", async (onFile, progress) => {
+            const cabs = new Map();
+            for (const e of list) {
+                const rest = e.name.substring(dir.length);
+                const v = e.name.startsWith(dir) && !rest.includes("/") ? sgCabNumber(rest) : null;
+                if (v !== null) cabs.set(v, await blobOf(e));
+            }
+            const h = await sgZipRead(file, hdr);
+            if (typeof h === "string") throw sgCdError("DATA1.HDR: " + h);
+            await sgCabUnpack(h, cabs, onFile, progress);
+        });
+        return true;
+    }
+    return false;
 }
 
 // --- the optional HD art pack -------------------------------------------------------------------------------------------------
@@ -1207,7 +1565,7 @@ async function sgLoadHdZip(file) {
     if (!file) return;
     const entries = [];
     try {
-        await sgUnzip(await file.arrayBuffer(), async (name, bytes, i, n) => {
+        await sgUnzip(file, async (name, bytes, i, n) => {
             entries.push([name, bytes]);
             if (i % 100 === 0) {
                 sgHdStatus("Unpacking the HD pack: " + (i + 1) + " of " + n);

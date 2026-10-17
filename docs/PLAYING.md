@@ -39,8 +39,13 @@ how to make a .cdr instead. **The CD as a folder**: a folder that is the mounted
 Windows), a copy of its files, or a folder above either (names in any case), with no installed game in it, is imported
 as its image would be: the `data1.hdr` and `data*.cab` found there are unpacked in place (crates/simgolf/src/iso.rs
 `unpack_folder`). A folder with neither the installed game nor the CD's installer is refused with a message saying so.
-Other disc formats (BIN/CUE, MDF and UDF) and older InstallShield archives are not supported. The browser page continues
-to accept folders and ordinary game ZIPs (a CD, image or .dmg there gets a message pointing to the desktop version).
+Other disc formats (BIN/CUE, MDF and UDF) and older InstallShield archives are not supported. The browser page takes
+the same: an .iso or .cdr (picked as a .zip is, or inside a .zip), a .zip of the CD's files, or the CD picked as a folder.
+It reads the image a part at a time from the picked file (never whole: iPad Safari could not hold it with the game's
+files) and unpacks the installer there, with the same reading as iso.rs ported to the page (web/opensgolf.js, "the SimGolf
+CD in the browser"; the page unpacks before the game's WebAssembly starts), showing "Unpacking the CD: N of M files"; the
+files are the desktop import's byte for byte. A .dmg gets the message on making a .cdr; .7z and RAR archives are refused
+with a message (unpack them on a computer first).
 
 **Sounds the copy lacks.** The original's own sound plays wherever the player's copy has the clip; a clip it lacks or
 cannot decode (WAV in PCM, float, A-law, mu-law, MS or IMA ADPCM or MP3, or an .ogg or .mp3 file in its place) is the
