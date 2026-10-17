@@ -313,6 +313,36 @@ in settings.json under `extras`).
   left-handed, the aim line bending the left-hander's way for a draw or fade (the shot keys keep their names: D is still
   his draw). Switching the extra off puts everyone back to right-handed; switching it on again brings the left-handers
   back.
+- **Weather that matters (rain, snow, heat, storms).** The weather Enhanced graphics draws is played too (it changes the
+  balance a little, so it is not part of the *OpenSGolf extras* preset). Which days rain follows the property's climate
+  (often in Ireland, Scotland and Wales, rarely in the desert), the same days whenever the game is loaded, and a day lasts
+  three game months (Enhanced graphics' day of light at its normal length; with the extra on its rain, snow and heat
+  keep to these days whatever the *Day length*). Each morning the ticker says what the day brings ("Rain today", "Snow
+  today!", "Heat wave today", "Thunderstorms are on the way today") and a small sign after the date on the badge shows
+  it all day (a cloud with rain, snow or a bolt, or a sun), so the weather is there without Enhanced graphics too. All
+  of it is gentle, a flavour rather than a punishment: over a year it costs a club about 3% of its takings.
+  - *Rain*: wet ground holds a rolling ball (it rolls about 15% less on tees, fairways and greens; the golfers putt a
+    little harder for the slow greens), about one golfer in ten stays away, and about three in ten of those who tee off
+    start a point less happy (no umbrella). The ground dries through the next day, as the Enhanced wet ground does, and
+    its soft, lush turf takes the bounce out of a landing ball, so approach shots hold better.
+  - *Snow* (the late-winter cold snap of early March, where the place gets snow, and a morning's dusting): balls stop
+    almost dead, a quarter of the golfers stay away, half of those who come start a point less happy, and the odd golfer
+    who loves the snow starts a point happier.
+  - *Heat waves* (desert courses, some summer days): baked ground lets the ball run on (about 10% further) and the greens
+    are quicker, golfers get thirsty and hungry sooner (more trips to the snack bars: more sold), a few start a point
+    less happy, and a little fewer come in the midday heat.
+  - *Thunderstorms* (some heavy-rain days, not in the desert): the storm breaks some time in the day ("Storm! Play is
+    suspended..."): nobody tees off, the golfers out on the course wait where they stand (a ball already rolling comes
+    to rest), and everyone at the club buys a drink or a bite while sheltering ($100 each). After about twenty seconds
+    at normal speed the storm passes and play resumes. With Enhanced graphics' lightning on, the lightning comes on
+    these days.
+  The numbers are data: `[economy.weather]` in data/economy.toml (docs/MODDING.md; every field may be left out):
+  `rain_drag` 12, `snow_drag` 30, `heat_drag` -6 (a rolling ball's extra drag per mille of its speed each game tick),
+  `lush_bounce_percent` 70, `rain_turnout_percent` 90, `snow_turnout_percent` 75, `heat_turnout_percent` 85 (at
+  midday), `rain_mood_percent` 30, `snow_mood_percent` 50, `snow_lover_percent` 15, `heat_mood_percent` 25,
+  `heat_thirst_percent` 75, `heat_percent` 45 (heat-wave days in a hundred desert summer days), `storm_percent` 40
+  (thunderstorm days in a hundred heavy-rain days), `storm_ticks` 240 and `storm_spend` 100. A weather mood dip is for
+  that round only, and *Freeze golfer happiness* keeps it away too.
 
 On the **Time & sandbox** page:
 
@@ -349,7 +379,7 @@ a normal game too.
 
 Test hooks: `--extras BITS` sets the extras a new game starts with (1 Tab turns, 2 cut content, 4 hardcore, 8 higher staff
 limits, 16 animals, 32 set par, 64 or 128 the calendar at 1/2x or 1/4x, 256 pause the calendar, 512 freeze golfer
-happiness, 1024 unlock all, 2048 left-handed golfers; not saved to the settings); `--edit "H:N,M,..."` makes golfer slots
+happiness, 1024 unlock all, 2048 left-handed golfers, 4096 weather that matters; not saved to the settings); `--edit "H:N,M,..."` makes golfer slots
 N, M... left-handed (-1 your pro); `--edit "R:N"` asks for par N on the Hole Stats' hole (its
 confirmation box; `R:N,1` sets it at once); `--edit "X:BITS"` sets the extras of the game being played; `--edit "T:x,y"`
 presses the Tab of the first extra with the pointer on tile x,y; `--edit "S:page[,design]"` opens the Amenities panel with the
@@ -815,7 +845,7 @@ The effects are ticks on the same screen; `--fx` turns on only the optional shad
 animated water, terrain light with occlusion and shadows, a sky beyond the map, colour grading, bloom and vignette.
 `--fx-set LIST` picks options (`scaler=off|sharp|edge`, `water`, `lighting`, `occlusion`, `shadows`, `sprite-shadows`,
 `sky`, `tilt-shift`, `grading`, `bloom`, `vignette`, `cast-shadows`, `time-of-day`, `clouds`, `haze`, `rain`, `mist`,
-`ball-trail`, `ball-impacts`, `reflections`, `wind`, `evening-lights`, `seasons`, `after-rain`, `lightning`, `life`, `crowds`, `winter`, `sharpen`, `grass`,
+`ball-trail`, `ball-impacts`, `reflections`, `wind`, `evening-lights`, `seasons`, `after-rain`, `lightning`, `heat`, `life`, `crowds`, `winter`, `sharpen`, `grass`,
 `water-colour`, `waves`, `shoreline`, `caustics`, `rain-rings`, `water-life`, `ice`, `spray` = on/off,
 `quality=low|medium|high`, `day-length=short|normal|long`), `--fx-list` prints them, and `OPENSGOLF_FX` does the
 same from the environment. Without them the game looks exactly as before. Test hooks: `SG_FX_BENCH=N` with `--png` prints
@@ -826,8 +856,10 @@ dusk) and `SG_FX_RAIN=1` (or `0`) makes every day wet (dry) while rain is on. Fo
 `SG_FX_MONTH=M` holds the calendar month (3 March .. 10.99 late October, fractions allowed: 4.5 is mid April),
 `SG_FX_WIND=S` or `S,DEG` fixes the wind's strength (0 calm .. 1 a strong breeze) and its direction (degrees from the
 screen's right towards its top), `SG_FX_WET=W` makes the ground that wet with its puddles that far spread,
-`SG_FX_RAINBOW=K` shows a rainbow, `SG_FX_LIGHTNING=K` a lightning flash of that brightness, and `SG_FX_FACETED=1` lights
-the ground with the tiles' flat faces as before the smooth normals (for comparisons).
+`SG_FX_RAINBOW=K` shows a rainbow, `SG_FX_LIGHTNING=K` a lightning flash of that brightness, `SG_FX_HEAT=K` makes
+every day a heat wave that hot (0 to 1), and `SG_FX_FACETED=1` lights the ground with the tiles' flat faces as before the
+smooth normals (for comparisons). `SG_FX_RAIN` and `SG_FX_HEAT` also set the game's weather while *Weather that matters*
+is on (an always-wet course is a storm day on about four days in ten).
 
 ### Time of day and weather
 
@@ -858,7 +890,11 @@ The **Weather** page and the newer Atmosphere options (docs/ENHANCED.md has the 
 - *Wet ground, puddles and rainbows* (on, with rain): during a rainy day and drying through the next the ground is darker
   and glossy, puddles fill on level fairway and rough and shrink as they dry, and about every other time the sun comes out
   after rain a rainbow stands in the sky.
-- *Lightning in heavy rain* (off): flashes and distant flicker in the heaviest rain on parkland and links courses.
+- *Lightning in heavy rain* (off): flashes and distant flicker in the heaviest rain on parkland and links courses (with
+  the *Weather that matters* extra on, on its thunderstorm days only).
+- *Heat waves in the desert* (off): on a desert course's hot summer days a warm, bleached midday light, a heat haze over
+  the distance and, on the hottest days, parched grass that greens again after (the same days *Weather that matters*
+  plays). It costs nothing measurable.
 
 ## Language
 

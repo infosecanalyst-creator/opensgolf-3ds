@@ -44,6 +44,7 @@ mod fx;
 mod fx_ball;
 mod fx_crowd;
 mod fx_glsl;
+mod fx_heat;
 mod fx_life;
 mod fx_light;
 mod fx_nature;

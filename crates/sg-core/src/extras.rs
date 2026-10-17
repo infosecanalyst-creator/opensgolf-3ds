@@ -20,6 +20,11 @@
 //!   left-hander is drawn mirrored while addressing the ball and swinging, and his shots bend the other way: his draw goes
 //!   left to right and his fade, hook and slice are mirrored too (`Club::left_handed`, planner.rs).
 //!
+//! * `weather`: Weather that matters: the Enhanced graphics' rainy, snowy, stormy and hot days (sg_core::weather) are
+//!   played too: wet and snowy ground holds a rolling ball and baked desert ground lets it run, fewer golfers come in
+//!   foul weather and some start a little less happy, a heat wave makes golfers thirsty, a thunderstorm holds play for a
+//!   while; the morning's ticker says what the day brings (`Club::weather_tick`). By data/economy.toml's `[economy.weather]`.
+//!
 //! Pause the calendar, Freeze happiness and Unlock all are named "Sandbox: ..." in the Extras box as they are what a sandbox
 //! player wants most, but each works in a normal game too.
 
@@ -41,12 +46,13 @@ pub struct Extras {
     pub freeze_moods: bool,
     pub unlock_all: bool,
     pub lefties: bool,
+    pub weather: bool,
 }
 
 /// The options in the order the Extras box lists them (text keys of their lines). Option 6 has three values (a line with
 /// {VALUE}, `SPEED_KEYS`), the others are ticks; `Extras::option` and `Extras::set_option` read and set them by index.
 /// Left-handed golfers (10) came after the sandbox switches and is shown on the Gameplay page (extras_ui.rs `page_lines`).
-pub const OPTION_KEYS: [&str; 11] = [
+pub const OPTION_KEYS: [&str; 12] = [
     "STR_EXTRAS_ROTATE",
     "STR_EXTRAS_CUT_CONTENT",
     "STR_EXTRAS_HARDCORE",
@@ -58,7 +64,11 @@ pub const OPTION_KEYS: [&str; 11] = [
     "STR_EXTRAS_FREEZE_MOODS",
     "STR_EXTRAS_UNLOCK_ALL",
     "STR_EXTRAS_LEFTIES",
+    "STR_EXTRAS_WEATHER",
 ];
+
+/// The option of `OPTION_KEYS` that is Weather that matters.
+pub const WEATHER: usize = 11;
 
 /// The option of `OPTION_KEYS` that is Left-handed golfers.
 pub const LEFTIES: usize = 10;
@@ -84,6 +94,8 @@ impl Extras {
         freeze_moods: false,
         unlock_all: false,
         lefties: false,
+        // it changes the balance: not part of the preset
+        weather: false,
     };
 
     /// Everything off (the original game).
@@ -106,6 +118,7 @@ impl Extras {
             | (self.freeze_moods as u32) << 9
             | (self.unlock_all as u32) << 10
             | (self.lefties as u32) << 11
+            | (self.weather as u32) << 12
     }
 
     pub fn from_bits(b: u32) -> Extras {
@@ -121,6 +134,7 @@ impl Extras {
             freeze_moods: b & 1 << 9 != 0,
             unlock_all: b & 1 << 10 != 0,
             lefties: b & 1 << 11 != 0,
+            weather: b & 1 << 12 != 0,
         }
     }
 
@@ -138,6 +152,7 @@ impl Extras {
             8 => self.freeze_moods as u8,
             9 => self.unlock_all as u8,
             LEFTIES => self.lefties as u8,
+            WEATHER => self.weather as u8,
             _ => 0,
         }
     }
@@ -157,6 +172,7 @@ impl Extras {
             8 => self.freeze_moods = on,
             9 => self.unlock_all = on,
             LEFTIES => self.lefties = on,
+            WEATHER => self.weather = on,
             _ => {}
         }
     }

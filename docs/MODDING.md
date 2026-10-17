@@ -464,6 +464,23 @@ start_funds = 200000
 debt_interest_percent = 5
 ```
 
+The *Weather that matters* extra (docs/PLAYING.md) reads its own sub-table, `[economy.weather]`; any field may be left out
+(its built-in value): `rain_drag` (12), `snow_drag` (30), `heat_drag` (-6): a rolling ball's extra drag on tee, fairway
+and green, per mille of its speed each game tick, at full wetness, snow and heat (negative: it runs on; -30..200);
+`lush_bounce_percent` (70): how high a ball bounces on the soft ground the day after rain; `rain_turnout_percent` (90),
+`snow_turnout_percent` (75), `heat_turnout_percent` (85, at midday): the share of the time new golfers keep coming;
+`rain_mood_percent` (30), `snow_mood_percent` (50), `heat_mood_percent` (25): golfers in a hundred teeing off in it who
+start a point less happy; `snow_lover_percent` (15): who start a point happier in the snow; `heat_thirst_percent` (75):
+how often hunger and thirst grow in a heat wave, in percent of the usual interval (25..400); `heat_percent` (45): heat-wave
+days in a hundred desert summer days; `storm_percent` (40): thunderstorm days in a hundred heavy-rain days; `storm_ticks`
+(240): how long a storm holds play, in game ticks; `storm_spend` (100, money): what each golfer sheltering spends.
+
+```toml
+[economy.weather]
+rain_drag = 20
+storm_percent = 0
+```
+
 #### Course size and the economy
 
 The course size (docs/PLAYING.md, "Course size") is the player's choice for a new game, not a data file setting: a pack

@@ -2202,6 +2202,8 @@ impl App {
         }
         self.club.course_name = self.course_name.clone();
         self.club.course_theme = self.exe_theme();
+        // where the course is, for the Weather that matters extra (sg_core::weather; unused while it is off)
+        self.club.place = self.weather_place();
         self.pro_round_tick();
         self.club.ticker_busy = self.ticker.busy() || self.card.is_some();
         self.club.advisor = self.show_advisor;
