@@ -1,659 +1,869 @@
 #!/usr/bin/env python3
 """The free set's sounds and music: every sound file the game plays (crates/sg-core/src/freeset/manifest.txt, W lines),
-made from CC0 recordings (Kenney's Impact Sounds, RPG Audio and Music Jingles; the uisfx interface sounds) and our own
-synthesis (applause, water, wind, birds, animals, swishes) and little generated pieces of music, levelled to one
-loudness and written as Ogg Vorbis to packs/opensgolf-free/art/Sounds/ (the engine takes an OGG for any WAV).
+all made in code: synthesised golf, interface, building, crowd, nature and animal sounds (snd_fx.py), golfers and
+celebrities babbling in a made-up language (snd_voice.py), and original music (snd_music.py, snd_songs.py). Each is
+levelled to its kind's loudness (EBU R128 / ITU-R BS.1770: music -18 LUFS integrated, effects by their loudest 100 ms),
+its true peak kept under -1 dBFS, cut or padded to the length the manifest gives (music: its own length), and written as
+Ogg Vorbis to packs/opensgolf-free/art/Sounds/ (the engine takes an OGG for any WAV).
 
-usage: sounds.py SOURCES_DIR [--only REGEX]
-SOURCES_DIR holds the CC0 packs as fetch_sources.py lays them out (kenney/sounds/..., uisfx/...).
-needs: numpy, ffmpeg (with libvorbis) on the PATH"""
+usage: sounds.py [--only REGEX] [--report FILE]
+needs: numpy, scipy, ffmpeg (with libvorbis) on the PATH"""
 import argparse
-import hashlib
 import os
 import re
 import subprocess
 import sys
+from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import layout  # noqa: E402
+import snd_dsp as d  # noqa: E402
+import snd_fx as fx  # noqa: E402
+import snd_music as mu  # noqa: E402
+import snd_songs as songs  # noqa: E402
+import snd_voice as vo  # noqa: E402
 
 ROOT = layout.ROOT
 OUT = os.path.join(ROOT, "packs", "opensgolf-free", "art")
-SR = 22050
-
-SRC = None
-
-
-def seed(s):
-    return int(hashlib.md5(s.lower().encode()).hexdigest()[:8], 16)
-
-
-# ---- input and output ----------------------------------------------------------------------------------------------------
-
-def load(rel, sr=SR):
-    """A CC0 recording from the sources folder as mono float samples."""
-    path = os.path.join(SRC, rel)
-    raw = subprocess.run(["ffmpeg", "-v", "quiet", "-i", path, "-ac", "1", "-ar", str(sr), "-f", "f32le", "-"],
-                         capture_output=True, check=True).stdout
-    return np.frombuffer(raw, dtype=np.float32).astype(np.float64)
-
-
-def kenney(name):
-    for d in ("sounds/impact", "sounds/rpg", "sounds/jingles/8-Bit jingles", "sounds/jingles/Hit jingles",
-              "sounds/jingles/Pizzicato jingles", "sounds/jingles/Sax jingles", "sounds/jingles/Steel jingles"):
-        p = os.path.join("kenney", d, name + ".ogg")
-        if os.path.exists(os.path.join(SRC, p)):
-            return load(p)
-    raise FileNotFoundError(name)
-
-
-def ui(name, flavour="soft"):
-    return load(os.path.join("uisfx", flavour, name + ".ogg"))
-
-
-def write_ogg(path, x, sr=SR, stereo=None, quality=2):
-    x = np.asarray(x, np.float64)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    data = x.astype(np.float32)
-    ch = 1
-    if stereo is not None:
-        data = np.stack([x, stereo], 1).astype(np.float32).reshape(-1)
-        ch = 2
-    subprocess.run(["ffmpeg", "-v", "quiet", "-y", "-f", "f32le", "-ar", str(sr), "-ac", str(ch), "-i", "-",
-                    "-c:a", "libvorbis", "-q:a", str(quality), path], input=data.tobytes(), check=True)
-
-
-def level(x, target_db=-18.0, peak=0.89):
-    """Brings a sound to a common loudness (RMS over its loud part) without clipping."""
-    x = np.asarray(x, np.float64)
-    if not len(x) or np.max(np.abs(x)) < 1e-9:
-        return x
-    win = max(1, int(SR * 0.05))
-    p = np.convolve(x * x, np.ones(win) / win, mode="same")
-    loud = p[p > p.max() * 0.1]
-    rms = np.sqrt(loud.mean()) if len(loud) else np.sqrt(p.mean())
-    g = 10 ** (target_db / 20) / max(rms, 1e-9)
-    y = x * g
-    m = np.max(np.abs(y))
-    if m > peak:
-        y *= peak / m
-    return y
-
-
-def fit(x, secs, fade=0.05):
-    """Pads or trims to about `secs` (never cutting a sound short by more than needed), with a short fade out."""
-    n = int(secs * SR)
-    if len(x) < n:
-        x = np.r_[x, np.zeros(n - len(x))]
-    else:
-        x = x[:n].copy()
-    f = min(int(fade * SR), len(x))
-    if f:
-        x[-f:] *= np.linspace(1, 0, f)
-    return x
-
-
-def mix(n, *parts):
-    """Adds (offset seconds, samples, gain) parts into n samples."""
-    out = np.zeros(n)
-    for off, s, g in parts:
-        i = int(off * SR)
-        if i >= n:
-            continue
-        m = min(len(s), n - i)
-        out[i:i + m] += s[:m] * g
-    return out
-
-
-# ---- synthesis -------------------------------------------------------------------------------------------------------------
-
-def t_axis(secs):
-    return np.arange(int(secs * SR)) / SR
-
-
-def env(n, a=0.01, d=0.3, curve=4.0):
-    t = np.arange(n) / SR
-    e = np.minimum(1, t / max(a, 1e-4)) * np.exp(-np.maximum(t - a, 0) / max(d, 1e-4) * (curve / 4))
-    return e
-
-
-def lowpass(x, cutoff):
-    """One-pole low pass (cutoff Hz, scalar or per sample)."""
-    c = np.broadcast_to(np.asarray(cutoff, float), x.shape)
-    a = 1 - np.exp(-2 * np.pi * c / SR)
-    y = np.zeros_like(x)
-    acc = 0.0
-    for i in range(len(x)):
-        acc += a[i] * (x[i] - acc)
-        y[i] = acc
-    return y
-
-
-def lp_fast(x, cutoff, passes=2):
-    """A fixed low pass made of moving averages (fast for long sounds)."""
-    k = max(1, int(SR / max(cutoff, 1) / 2))
-    y = x
-    for _ in range(passes):
-        y = np.convolve(y, np.ones(k) / k, mode="same")
-    return y
-
-
-def bandpass(x, lo, hi):
-    return lp_fast(x, hi) - lp_fast(x, lo)
-
-
-def noise(n, rng):
-    return rng.standard_normal(n)
-
-
-def reverb(x, wet=0.25, size=1.0, rng=None):
-    """A small Schroeder reverb (four combs and two all-passes)."""
-    out = np.zeros(len(x) + int(SR * 1.2 * size))
-    xx = np.r_[x, np.zeros(len(out) - len(x))]
-    acc = np.zeros_like(out)
-    for d, g in ((1557, 0.8), (1617, 0.79), (1491, 0.78), (1422, 0.77)):
-        d = int(d * size * SR / 44100)
-        y = xx.copy()
-        for i in range(d, len(y), d):
-            seg = y[i - d:min(i, len(y) - d)]
-            y[i:i + len(seg)] += seg * g
-        acc += y
-    acc /= 4
-    for d, g in ((225, 0.5), (556, 0.5)):
-        d = int(d * size * SR / 44100)
-        y = np.zeros_like(acc)
-        for i in range(len(acc)):
-            yd = y[i - d] if i >= d else 0.0
-            xd = acc[i - d] if i >= d else 0.0
-            y[i] = -g * acc[i] + xd + g * yd
-        acc = y
-    return xx * (1 - wet) + acc * wet
-
-
-def splash(rng, secs=1.1, big=1.0):
-    n = int(secs * SR)
-    t = np.arange(n) / SR
-    burst = noise(n, rng) * np.exp(-t / (0.12 * big)) * np.minimum(1, t / 0.004)
-    body = lp_fast(burst, 2500) * 0.9 + bandpass(burst, 800, 5000) * 0.5
-    # bubbles: little rising sine blips
-    for k in range(int(10 * big)):
-        st = rng.uniform(0.04, secs * 0.7)
-        f0 = rng.uniform(600, 1600)
-        ln = rng.uniform(0.02, 0.06)
-        m = int(ln * SR)
-        tt = np.arange(m) / SR
-        blip = np.sin(2 * np.pi * (f0 * tt + 2000 * tt * tt / ln)) * np.exp(-tt / (ln / 3))
-        i = int(st * SR)
-        body[i:i + m] += blip[:max(0, min(m, n - i))] * 0.25
-    return body
-
-
-def swish(rng, secs=0.35, pitch=1.0):
-    n = int(secs * SR)
-    t = np.arange(n) / SR
-    e = np.sin(np.pi * np.clip(t / secs, 0, 1)) ** 2
-    nz = noise(n, rng)
-    return bandpass(nz, 500 * pitch, 3500 * pitch) * e
-
-
-def claps(rng, secs, rate=40.0, swell=0.4, fade=1.5):
-    """Applause: many short hand claps, swelling and dying away."""
-    n = int(secs * SR)
-    out = np.zeros(n)
-    count = int(rate * secs)
-    for k in range(count):
-        st = rng.uniform(0, secs) ** 1.15 / secs ** 0.15
-        i = int(st * SR)
-        m = int(SR * 0.012)
-        c = noise(m, rng) * np.exp(-np.arange(m) / (SR * 0.0025))
-        c = bandpass(c, rng.uniform(600, 1100), rng.uniform(2600, 4200)) if m > 20 else c
-        g = rng.uniform(0.3, 1.0)
-        out[i:i + m] += c[:max(0, min(m, n - i))] * g
-    t = np.arange(n) / SR
-    e = np.minimum(1, t / swell) * np.clip((secs - t) / fade, 0, 1)
-    return out * e
-
-
-def crowd(rng, secs, vowel="aa", rise=0.0):
-    """A crowd's 'ooh' or 'aww': noise through two vowel formants, gliding."""
-    n = int(secs * SR)
-    t = np.arange(n) / SR
-    f1, f2 = {"oo": (350, 800), "aa": (700, 1150), "ah": (750, 1200)}[vowel]
-    src = noise(n, rng)
-    glide = 1 + rise * (t / secs - 0.3)
-    y = bandpass(src, f1 * 0.8 * glide.mean(), f1 * 1.25 * glide.mean()) + 0.5 * bandpass(src, f2 * 0.85, f2 * 1.2)
-    e = np.sin(np.pi * np.clip(t / secs, 0, 1)) ** 1.5
-    return y * e
-
-
-def chirp(f0, f1, secs, rng=None, harm=(1.0, 0.25)):
-    n = int(secs * SR)
-    t = np.arange(n) / SR
-    f = f0 + (f1 - f0) * t / secs
-    ph = 2 * np.pi * np.cumsum(f) / SR
-    y = sum(a * np.sin(ph * (k + 1)) for k, a in enumerate(harm))
-    return y * np.sin(np.pi * t / secs) ** 2
-
-
-def birds(rng, secs, density=1.0):
-    n = int(secs * SR)
-    out = np.zeros(n)
-    k = 0
-    tt = rng.uniform(0.2, 1.0)
-    while tt < secs - 0.4:
-        f = rng.uniform(2400, 4200)
-        song = rng.integers(2, 5)
-        for j in range(song):
-            d = rng.uniform(0.05, 0.12)
-            c = chirp(f * rng.uniform(0.9, 1.2), f * rng.uniform(0.7, 1.4), d)
-            i = int((tt + j * (d + 0.03)) * SR)
-            out[i:i + len(c)] += c[:max(0, min(len(c), n - i))] * rng.uniform(0.15, 0.35)
-        tt += rng.uniform(0.8, 2.5) / density
-        k += 1
-    return out
-
-
-def wind(rng, secs, level_=0.4):
-    n = int(secs * SR)
-    nz = lp_fast(noise(n, rng), 500, 3)
-    t = np.arange(n) / SR
-    m = 0.6 + 0.4 * np.sin(2 * np.pi * t / rng.uniform(4, 7) + rng.uniform(0, 6))
-    return nz * m * level_
-
-
-def water_lap(rng, secs):
-    n = int(secs * SR)
-    out = lp_fast(noise(n, rng), 900, 2) * 0.3
-    tt = 0.3
-    while tt < secs - 0.3:
-        i = int(tt * SR)
-        m = int(rng.uniform(0.15, 0.35) * SR)
-        b = bandpass(noise(m, rng), 300, 1800) * np.sin(np.pi * np.arange(m) / m) ** 2
-        out[i:i + m] += b[:max(0, min(m, n - i))] * rng.uniform(0.3, 0.6)
-        tt += rng.uniform(0.6, 1.6)
-    return out
-
-
-def tone(f, secs, harm=(1.0,), decay=0.5, attack=0.005):
-    n = int(secs * SR)
-    t = np.arange(n) / SR
-    y = sum(a * np.sin(2 * np.pi * f * (k + 1) * t) for k, a in enumerate(harm))
-    return y * np.minimum(1, t / attack) * np.exp(-t / decay)
-
-
-def pluck(f, secs, bright=0.5, rng=None):
-    """A Karplus-Strong plucked string, a period at a time."""
-    rng = rng or np.random.default_rng(int(f))
-    n = int(secs * SR)
-    p = max(2, int(round(SR / f)))
-    block = rng.uniform(-1, 1, p)
-    blocks = []
-    decay = 0.996 - (1 - bright) * 0.006
-    for _ in range(n // p + 1):
-        blocks.append(block)
-        block = (block * (0.5 + bright * 0.25) + np.roll(block, -1) * (0.5 - bright * 0.25)) * decay
-    out = np.concatenate(blocks)[:n]
-    t = np.arange(n) / SR
-    return out * 0.6 * np.clip((secs - t) / 0.05, 0, 1)
-
-
-def note_freq(midi):
-    return 440.0 * 2 ** ((midi - 69) / 12)
-
-
-# ---- music -----------------------------------------------------------------------------------------------------------------
-
-def instrument(kind, f, secs, rng):
-    if kind == "pluck":
-        return pluck(f, secs, 0.6, rng)
-    if kind == "harp":
-        return pluck(f, secs, 0.9, rng) * 0.9
-    if kind == "steel":
-        # a steel pan: inharmonic bell partials
-        return tone(f, secs, (1.0, 0.0, 0.45, 0.0, 0.25), decay=0.55) + tone(f * 2.76, secs, (0.15,), decay=0.2)
-    if kind == "piano":
-        return tone(f, secs, (1.0, 0.45, 0.2, 0.1), decay=0.9, attack=0.004)
-    if kind == "pad":
-        n = int(secs * SR)
-        t = np.arange(n) / SR
-        y = sum(np.sin(2 * np.pi * f * d * t) for d in (1.0, 1.003, 0.997)) / 3 + 0.2 * np.sin(4 * np.pi * f * t)
-        return y * np.minimum(1, t / 0.4) * np.clip((secs - t) / 0.5, 0, 1)
-    if kind == "flute":
-        n = int(secs * SR)
-        t = np.arange(n) / SR
-        vib = 1 + 0.004 * np.sin(2 * np.pi * 5.5 * t)
-        y = np.sin(2 * np.pi * np.cumsum(f * vib) / SR) + 0.05 * noise(n, rng)
-        return y * np.minimum(1, t / 0.08) * np.clip((secs - t) / 0.12, 0, 1) * 0.7
-    if kind == "reed":
-        # a bagpipe-like reed: a buzzy saw, softened
-        n = int(secs * SR)
-        t = np.arange(n) / SR
-        saw = 2 * ((f * t) % 1) - 1
-        return lp_fast(saw, 2200) * np.minimum(1, t / 0.05) * np.clip((secs - t) / 0.08, 0, 1) * 0.6
-    return tone(f, secs)
-
-
-SCALES = {"major": [0, 2, 4, 5, 7, 9, 11], "minor": [0, 2, 3, 5, 7, 8, 10], "dorian": [0, 2, 3, 5, 7, 9, 10]}
-
-
-def compose(name, secs, style):
-    """A short generated piece: a chord progression with a bass and an arpeggio, a simple melody on top."""
-    rng = np.random.default_rng(seed(name))
-    tempo = style.get("tempo", 96)
-    beat = 60.0 / tempo
-    key = style.get("key", 60)
-    scale = SCALES[style.get("scale", "major")]
-    prog = style.get("prog", [0, 5, 3, 4])
-    lead, comp, bass = style.get("lead", "piano"), style.get("comp", "pluck"), style.get("bassi", "piano")
-    n = int(secs * SR)
-    out = np.zeros(n + SR * 2)
-    bar = beat * 4
-    bars = max(1, int(secs / bar))
-    melody_prev = 4
-    for b in range(bars):
-        deg = prog[b % len(prog)]
-        root = key + scale[deg % 7] + 12 * (deg // 7)
-        chord = [root + scale[(deg + k) % 7] - scale[deg % 7] + (12 if (deg + k) % 7 < deg % 7 else 0) for k in (0, 2, 4)]
-        t0 = b * bar
-        # bass on beats 1 and 3
-        for k in (0, 2):
-            s = instrument(bass, note_freq(root - 24), beat * 1.8, rng) * 0.5
-            i = int((t0 + k * beat) * SR)
-            out[i:i + len(s)] += s[:len(out) - i]
-        # arpeggio in eighths
-        for k in range(8):
-            m = chord[[0, 1, 2, 1, 0, 2, 1, 2][k]] - (12 if style.get("low_arp") else 0)
-            s = instrument(comp, note_freq(m), beat * 1.2, rng) * 0.22
-            i = int((t0 + k * beat / 2) * SR)
-            out[i:i + len(s)] += s[:len(out) - i]
-        # a melody: a few notes per bar near the last, on chord tones and steps
-        if style.get("melody", True):
-            k = 0.0
-            while k < 4:
-                dur = rng.choice([0.5, 1.0, 1.0, 1.5, 2.0])
-                step = int(rng.choice([-2, -1, 0, 1, 1, 2]))
-                melody_prev = int(np.clip(melody_prev + step, 0, 9))
-                m = key + 12 + scale[melody_prev % 7] + 12 * (melody_prev // 7)
-                if rng.uniform() < 0.85:
-                    s = instrument(lead, note_freq(m), beat * dur * 1.1, rng) * 0.3
-                    i = int((t0 + k * beat) * SR)
-                    out[i:i + len(s)] += s[:len(out) - i]
-                k += dur
-    out = out[:n]
-    f = min(n, int(SR * 1.5))
-    out[-f:] *= np.linspace(1, 0, f)
-    return reverb(out, wet=0.22, size=1.0)[:n]
-
-
-MUSIC = {
-    "buy1short": dict(tempo=100, key=62, prog=[0, 3, 4, 0], lead="piano", comp="pluck"),
-    "buy2short": dict(tempo=92, key=60, prog=[0, 5, 1, 4], lead="flute", comp="pluck"),
-    "buy3short": dict(tempo=108, key=65, prog=[0, 4, 5, 3], lead="steel", comp="pluck"),
-    "buy4short": dict(tempo=84, key=57, scale="minor", prog=[0, 5, 6, 4], lead="piano", comp="harp"),
-    "golf harp 6": dict(tempo=72, key=60, prog=[0, 5, 3, 4], lead="harp", comp="harp", melody=False),
-    "golf harp 7": dict(tempo=76, key=62, prog=[0, 3, 5, 4], lead="harp", comp="harp"),
-    "manifold music": dict(tempo=88, key=55, prog=[0, 4, 5, 3], lead="piano", comp="pluck"),
-    "music idea": dict(tempo=96, key=60, scale="dorian", prog=[0, 3, 0, 4], lead="flute", comp="pluck"),
-    "new age": dict(tempo=66, key=57, prog=[0, 5, 3, 4], lead="pad", comp="harp", low_arp=True),
-    "newhart-theme": dict(tempo=110, key=64, prog=[0, 3, 4, 0], lead="piano", comp="pluck"),
-    "romeo and juliet edit": dict(tempo=70, key=57, scale="minor", prog=[0, 3, 4, 0], lead="flute", comp="harp"),
-    "sail boat": dict(tempo=90, key=62, prog=[0, 4, 3, 4], lead="steel", comp="pluck"),
-    "steel drum short": dict(tempo=104, key=60, prog=[0, 3, 4, 0], lead="steel", comp="steel"),
-    "bagpipe": dict(tempo=84, key=62, scale="dorian", prog=[0, 6, 0, 4], lead="reed", comp="reed", bassi="reed"),
-    "spanish guitar wflute 2": dict(tempo=92, key=57, scale="minor", prog=[0, 6, 5, 4], lead="flute", comp="pluck",
-                                    bassi="pluck"),
-    "steel drums 2": dict(tempo=112, key=65, prog=[0, 3, 4, 3], lead="steel", comp="steel"),
+SR = d.SR
+
+# Files the game's folders hold twice (the same piece under two names): only the first is written, and the engine plays it
+# for the second too (crates/sg-core/src/freeset/sound.rs, ALIASES; keep the two lists the same). The last three are not
+# played by the game at all and stand in for pieces of the same kind.
+ALIASES = {
+    "Sounds/Music/Misc_Music/New Age.wav": "Sounds/New Age.wav",
+    "Sounds/Music/Tropical_Music/Steel Drums 2.wav": "Sounds/World/Steel Drums 2.wav",
+    "Sounds/Music/Links_Music/Bagpipe1.wav": "Sounds/World/Bagpipe.wav",
+    "Sounds/Music/Desert_Music/Spanish Guitar 2.wav": "Sounds/World/Spanish Guitar wFlute 2.wav",
+    "Sounds/Steel Drum Short.wav": "Sounds/Music/Tropical_Music/Steel Drum 1a.wav",
+    "Sounds/manifold music.wav": "Sounds/Music/Misc_Music/Jazz.wav",
+    "Sounds/newhart-theme.wav": "Sounds/Music/Misc_Music/End Of Year Short.wav",
+}
+
+# loudness targets: (dB, how): "fast" is the loudest 100 ms (K-weighted), "integrated" the gated programme loudness
+UI, GOLF, LAND, VOICE, CROWD, ANIMAL, STING, BED, MUSIC = (
+    (-19, "fast"), (-14, "fast"), (-17, "fast"), (-17, "fast"), (-18, "fast"), (-19, "fast"), (-16, "fast"),
+    (-27, "integrated"), (-18, "integrated"))
+
+
+def rng_for(path):
+    return d.rng_of("opensgolf-free", path.lower())
+
+
+# ---- voices ------------------------------------------------------------------------------------------------------------------
+
+# what golfers say (SimsFX: the golfers' own lines; Sounds/Male, Female: shot comments): name pattern -> (mood, script)
+# A script's syllables are our own babble; '<...>' are sounds (snd_voice.say).
+LINES = [
+    (r"badhole", "disgust", "ugh. nee-ba-ZOO."),
+    (r"bad", "angry", "<grunt .6> bah-DOO!"),
+    (r"benchold", "tired", "<sigh .7> hoo-ba."),
+    (r"bench", "happy", "<sigh .8> aah, mee-la-shoo~"),
+    (r"blind", "question", "hm? wee-da-POH?"),
+    (r"celeb", "excited", "<gasp> oo-WAH! shee-ba-LOO!"),
+    (r"scoke", "happy", "<slurp> aah~"),
+    (r"coke", "happy", "<gulp> aah! bee-lo-NAH~"),
+    (r"crabgrass2", "disgust", "eew. gra-ba-NOOK, tsk tsk. bla-ga-DEE."),
+    (r"crab", "disgust", "eew, gra-ba-NOOK."),
+    (r"easy", "sly", "pfft. nee-ba POO-ka~"),
+    (r"greeting", "happy", "ha-LOH! wee-BA!"),
+    (r"happy0", "happy", "wee-BOO na-ZOO! <laugh 3>"),
+    (r"happy1", "happy", "<laugh 3> yay-pa-LOO!"),
+    (r"hard", "sad", "oof... ga-ROO-ba."),
+    (r"haveadrink", "question", "drin-KA, moo-BEE?"),
+    (r"hungry2", "sad", "<rumble> mm-mm... nom-ba-NEE? nom-ba?"),
+    (r"hungry", "sad", "<rumble> nom-ba?"),
+    (r"hurryup", "angry", "ha-RA, ha-RA, ZOO-ba!"),
+    (r"lovely", "awe", "<ooh 1 1.3 1.1> lee-va-SHAY~"),
+    (r"mad", "angry", "BAH-gat! DOO-ga-sha KRA-bo! nee-ga BOM-ba-la, ZOO-ga-sha DEEN!"),
+    (r"oops", "excited", "oop!"),
+    (r"options", "question", "hm. shee-ba, noo-ba?"),
+    (r"sad", "sad", "<sigh .8> oh-noo..."),
+    (r"same", "tired", "sa-ma... sa-ma..."),
+    (r"senic", "awe", "oo-LAH, lee-nay-VOO~"),
+    (r"snack", "happy", "<munch 3> mm!"),
+    (r"storyno", "disgust", "nah-NAH."),
+    (r"storyok", "neutral", "oh-KEE."),
+    (r"storyyes", "excited", "YA! ya-ya, shee-BOO!"),
+    (r"story", "neutral", "so, bee-la noo-ma shee-DOH, ta-ba LOO-ma?"),
+    (r"thirsty", "tired", "<creak uh .25> wa-wa... DREE?"),
+    (r"tired", "tired", "<yawn>"),
+    (r"tricky", "question", "hmm... tee-ka-ROO?"),
+    (r"ugly", "disgust", "eew! BLA."),
+    (r"variety2", "tired", "sa-ma, sa-MA."),
+    (r"variety", "disgust", "sa-ma, sa-ma, SA-ma! noo-va, noo-va, zip-a-DEE?"),
+    (r"waiting", "sly", "<hum 1 1.12 1 .9> ta-ta... HOO-ba?"),
+    (r"water", "sad", "noo, noo, NOOO..."),
+    (r"wet", "neutral", "<trill .3> brr-BA!"),
+    # shot comments
+    (r"good shot", "excited", "ya-HOO! nee-ba!"),
+    (r"bad shot", "angry", "ah-BAH! doo-ga!"),
+    (r"easy shot", "sly", "pfft. ba-ZEE, poo-ka-LA~"),
+    (r"hard shot", "sad", "oof... ga-ROO-ba, mo-ka-NEE."),
+    (r"tricky shot", "question", "hmm. tee-ka-ROO-ba?"),
+]
+
+# the emotion clips by body type: (voice, pitch) per code; the mood from the file name
+BODY_VOICE = {"malekls": ("m2", 1.0), "mkls": ("m2", 0.95), "malepls": ("m1", 1.0), "pls": ("m1", 1.05), "malepss": ("m3", 1.0),
+              "malesss": ("m_old", 1.0), "sss": ("m1", 0.95), "femalepls": ("f1", 1.0), "femalepss": ("f2", 1.0),
+              "femalesss": ("f_old", 1.0), "femaleskss": ("f2", 1.08), "femalesktt": ("f3", 1.0), "fm": ("f1", 1.05)}
+EMOTION = {
+    "happy": ("happy", "<giggle 4> wee-la-LOO~", "<laugh 4> ha-BOO-na!"),
+    "sad": ("sad", "<sigh .8> oh-noo-ba...", "<sigh .9> moo-ga-na..."),
+    "success": ("excited", "YA-HOO! wee-BA!", "YES-ka! ya-HOO!"),
+    "failure": ("angry", "<grunt .8> ah-BAH! noo-ga-DOH!", "ARGH-ba! doo-ga!"),
+}
+
+CELEBS = {
+    "action star char": ("action", "neutral", "GRA-bo. DA-bak."),
+    "action star dislike": ("action", "angry", "<grunt> NAH-ga. BOOM-ba."),
+    "action star interact": ("action", "neutral", "ha. TOH-ga, ba-ZOOK."),
+    "action star like": ("action", "happy", "<laugh 2 .8> YA-ga! DA-bak."),
+    "action star status q": ("action", "neutral", "GRA-bo DA-bak. noo-ma TOH-ga. ha. ZOOK-a-ma, BOOM-ba."),
+    "action star walk": ("action", "neutral", "<grunt .6> hup. hup."),
+    "aging star": ("aging", "awe", "ah, dah-ling~ shee-ma-RAH, la-la-LOO~"),
+    "comedian char": ("comic", "happy", "so, ba-DOO-ga sha-NEE? ba-DA! <rimshot>"),
+    "comedian don't like": ("comic", "disgust", "ee-yah... TOUGH-ba, tough-BA."),
+    "comedian like": ("comic", "happy", "<laugh 4 1.1> HA! ba-DOO-ga!"),
+    "female comic": ("comic_f", "happy", "an-NEE-ba, sho-sho, ZAP-pa-DOO! <rimshot>"),
+    "fitness female": ("fitness", "excited", "HUP! HUP! wan-TOO, wan-TOO! ya-ya-YA!"),
+    "i'll be back": ("action", "neutral", "a-BEE BAK."),
+    "lawn technician": ("tech", "happy", "<mower 1.2> la-la-LOO, sho-ba-NEE~"),
+    "marshall male": ("marshal", "neutral", "<ahem> pee-ka, PEE-ka! moo-ba-la DOH."),
+    "movie princess": ("princess", "awe", "oh~ shee-la-MAY, la-la-LEE~"),
+    "politician char": ("politician", "neutral", "my-FEL-lo ga-ROO-bas! na-MOO-ba, PRO-mis-sa, LOW-va-tax-a! <claps>"),
+    "politician dislike": ("politician", "disgust", "hm. NO-ka-ment."),
+    "politician like": ("politician", "happy", "<laugh 2> va-ROO-ba, ha-ha, VOH-ta!"),
+    "ranger": ("ranger", "happy", "HOW-dee! pa-ROO-ba, ta-NEE~"),
+    "rock star": ("rocker", "excited", "<guitar> YEAH-ya! ROCK-a-loo!"),
+    "spears char": ("singer", "happy", "<sing>"),
+    "spears char radio": ("singer", "happy", "<sing radio>"),
+    "spears dislike": ("singer", "disgust", "oo, NO-pa. na-na."),
+    "spears like": ("singer", "excited", "OH-ma-gosh! la-LOO~"),
+    "super model": ("model", "sly", "mm~ dar-LEE-na. shee-ma, voo-LAH~ <sigh .7>"),
+    "tray girl": ("tray", "happy", "drin-KA? SNAK-a? la-LOO~"),
 }
 
 
-# ---- the sounds of the game ------------------------------------------------------------------------------------------------
+def voice_for(path):
+    """A golfer clip's speaker: men's and women's voices picked per file, so a course sounds like many people."""
+    low = path.lower()
+    name = os.path.basename(low)
+    female = "/female/" in low
+    if "benchold" in name:
+        return "m_old"
+    pool = ["f1", "f2", "f3"] if female else ["m1", "m2", "m3"]
+    return pool[int(rng_for(path).integers(len(pool)))]
 
-def sm(*xs):
-    """The sum of sounds of different lengths."""
-    n = max(len(x) for x in xs)
-    return sum(np.r_[x, np.zeros(n - len(x))] for x in xs)
+
+def extra_sound(tag, rng, sp_voice):
+    """The non-verbal sounds a script can hold besides the synthesiser's own (snd_voice): gulps, slurps, munching,
+    tummy rumbles, a rimshot, a mower, an electric guitar, claps, a polite cough."""
+    if tag == "gulp":
+        t = d.t_axis(0.12)
+        y = np.sin(2 * np.pi * np.cumsum(420 * np.exp(-t / 0.04) + 160) / SR) * d.perc(len(t), 0.003, 0.03)
+        return np.concatenate([y, np.zeros(d.n_of(0.08)), y * 0.7, np.zeros(d.n_of(0.1))])
+    if tag == "slurp":
+        n = d.n_of(0.5)
+        fc = np.linspace(900, 2600, n) + 300 * np.sin(np.linspace(0, 40, n))
+        y = d.sweep_filter(d.noise(n, rng), "bp", fc, 4.0) * np.sin(np.linspace(0, np.pi, n)) ** 0.7
+        return np.concatenate([y * (0.6 + 0.4 * (rng.uniform(size=n) > 0.3)), np.zeros(d.n_of(0.1))])
+    if tag.startswith("munch"):
+        out = []
+        for k in range(int(tag.split()[1]) if " " in tag else 3):
+            m = d.n_of(0.12)
+            t = d.t_axis(0.12)
+            crunch = d.band(d.noise(m, rng), 1500, 7000) * (rng.uniform(size=m) < 0.25) * np.exp(-t / 0.04)
+            out += [crunch * 1.5, vo.say(sp_voice, "<hum 1>", "happy", rng)[: d.n_of(0.12)] * 0.4, np.zeros(d.n_of(0.06))]
+        return np.concatenate(out)
+    if tag == "rumble":
+        n = d.n_of(0.6)
+        t = d.t_axis(0.6)
+        y = d.lp(d.noise(n, rng), 300) * (0.6 + 0.4 * np.sin(2 * np.pi * 9 * t))
+        y += np.sin(2 * np.pi * np.cumsum(90 + 60 * np.sin(2 * np.pi * 3 * t)) / SR) * 0.3
+        return y * np.sin(np.pi * t / 0.6) ** 2 * 1.5
+    if tag == "rimshot":
+        p = mu.Piece("rimshot", 180)
+        p.track("dr", None, 1.0, 0, 0.15, kind="drums")
+        p.note("dr", 0, "r", 0, 0.9)
+        p.note("dr", 0.5, "r", 0, 0.9)
+        p.note("dr", 1.0, "k", 0, 0.8)
+        p.note("dr", 1.0, "o", 0, 1.0)
+        x = p.render(2, master_lufs=-20)
+        return x.mean(1)
+    if tag.startswith("mower"):
+        return fx.mower(rng, 1.2) * np.sin(np.linspace(0, np.pi, d.n_of(1.2))) * 0.6
+    if tag == "guitar":
+        # a big friendly power chord: plucked strings pushed into a soft overdrive
+        out = np.zeros(d.n_of(1.0))
+        for k, m in enumerate((40, 47, 52, 55)):
+            d.put(out, k * 0.012, mu.ks(mu.hz(m), 0.8, 1.0, rng, 0.8, 2.0) * 0.7)
+        return d.lp(d.softclip(out * 6, 2.5), 3500) * 0.5
+    if tag == "claps":
+        return fx.claps(rng, 1.2, people=12, rate=5, swell=0.05, fade=0.6) * 2.5
+    if tag == "ahem":
+        sp = vo.Speaker(vo.VOICES[sp_voice] if isinstance(sp_voice, str) else sp_voice, "neutral", rng)
+        sp.tr.add(0.04, f1=500, f2=1500, av=0, ah=0.6, f0=sp.base)
+        sp.vowel_seg("uh", 0.1, 0.8, sp.base * 1.1, sp.base)
+        sp.silence(0.05)
+        sp.consonant("h", "e", 0.6, sp.base)
+        sp.vowel_seg("e", 0.08, 0.8, sp.base * 1.2, sp.base * 1.1)
+        sp.consonant("m", "e", 0.6, sp.base * 1.1)
+        return np.concatenate([sp.render(), np.zeros(d.n_of(0.1))])
+    return np.zeros(1)
 
 
-def silence(secs=0.1):
-    return np.zeros(int(secs * SR))
+def speak(voice, mood, script, rng, pitch=1.0):
+    """A script that may hold the extra sounds above: spoken in pieces and joined."""
+    parts = re.split(r"(<(?:gulp|slurp|munch[^>]*|rumble|rimshot|mower[^>]*|guitar|claps|ahem)>)", script)
+    out = []
+    for part in parts:
+        if not part.strip():
+            continue
+        m = re.fullmatch(r"<([^>]*)>", part.strip())
+        if m and re.match(r"gulp|slurp|munch|rumble|rimshot|mower|guitar|claps|ahem", m.group(1)):
+            out.append(extra_sound(m.group(1), rng, voice))
+        else:
+            out.append(vo.say(voice, part, mood, rng, pitch))
+    return np.concatenate(out) if out else np.zeros(1)
 
 
-def cat(*xs, gap=0.0):
-    parts = []
-    for x in xs:
-        parts.append(x)
-        if gap:
-            parts.append(np.zeros(int(gap * SR)))
-    return np.concatenate(parts)
+def speak_fit(voice, mood, script, rng, secs, pitch=1.0):
+    """`speak`, dropping words from the end (then speaking faster) until the line fits the clip's length."""
+    words = script.split()
+    y = speak(voice, mood, script, rng, pitch)
+    while len(y) > d.n_of(secs) and len(words) > 1:
+        words = words[:-1]
+        last = words[-1]
+        if not last.startswith("<") and not re.search(r"[!?.~]$", last):
+            words[-1] = last.rstrip(",") + ("!" if mood in ("happy", "excited", "angry") else ".")
+        y = speak(voice, mood, " ".join(words), rng, pitch)
+    if len(y) > d.n_of(secs):
+        y = speak(vo.Voice(**{**vars(vo.VOICES[voice]), "rate": vo.VOICES[voice].rate * len(y) / d.n_of(secs) * 1.05}),
+                  mood, " ".join(words), rng, pitch) if isinstance(voice, str) else y
+    return y
+
+
+def sing(rng, radio=False):
+    """The pop singer's hook: a sung made-up line over a little beat (and through a small radio speaker)."""
+    p = mu.Piece("singer" + ("radio" if radio else ""), 112)
+    p.track("bass", "bass", 0.5, 0, 0.05)
+    p.track("comp", "epiano", 0.3, -0.3, 0.2)
+    p.track("dr", None, 0.35, 0, 0.1, kind="drums")
+    chords = ["Am7", "Fmaj7", "C", "G"]
+    mu.comp(p, "comp", 0, chords, 2, ((0, 1), (1, 1)))
+    mu.bassline(p, "bass", 0, chords, 2, ((0, 1, 0), (1, 1, 12)))
+    p.drums("dr", 0, 2, {"k": "x...x...x...x...", "c": "....x.......x...", "h": "x.x.x.x.x.x.x.x."})
+    backing = p.render(8, master_lufs=-24)
+    backing = backing.mean(1)
+    # the sung line: syllables on notes of A minor
+    v = vo.VOICES["singer"]
+    notes = [(0.0, 76, 0.5, "ba"), (0.5, 76, 0.5, "by"), (1.0, 79, 1.0, "OO"), (2.0, 77, 0.5, "na"), (2.5, 76, 0.5, "na"),
+             (3.0, 74, 1.0, "LEE"), (4.0, 72, 0.5, "oh"), (4.5, 74, 0.5, "ba"), (5.0, 76, 1.5, "BY~"), (6.5, 72, 1.0, "yeah")]
+    beat = 60 / 112
+    line = np.zeros(len(backing) + d.n_of(1))
+    for b, m, ln, syl in notes:
+        sp = vo.Speaker(v, "happy", rng)
+        f = mu.hz(m - 12)
+        sp.syllable(syl.strip("~"), syl.isupper(), f, ln * beat / 0.13 * 0.8, 1.0, f)
+        y = sp.render()
+        d.put(line, b * beat, y)
+    x = backing * 0.5 + line[:len(backing)] * 1.0
+    if radio:
+        x = d.band(x, 400, 3500)
+        x = d.softclip(x * 3, 2) * 0.5
+    return x
+
+
+# ---- the recipes ---------------------------------------------------------------------------------------------------------------
+
+def stinger(name, kind):
+    """The 'ta-da' fanfares and other little musical stingers, made with the music kit."""
+    p = mu.Piece(name, 132)
+    if kind == "tada":
+        p.track("glock", "glock", 0.6, 0.2, 0.3)
+        p.track("mar", "marimba", 0.9, -0.2, 0.25)
+        p.track("pad", "strings", 0.35, 0, 0.4)
+        p.track("bass", "bass", 0.6, 0, 0.05)
+        p.track("dr", None, 0.5, 0, 0.2, kind="drums")
+        for k, m in enumerate((72, 76, 79, 84)):
+            p.note("mar", k * 0.25, m, 0.3, 0.8)
+            p.note("glock", k * 0.25, m + 12, 0.3, 0.6)
+        for m in (72, 76, 79, 84, 88):
+            p.note("mar", 1.0, m, 2.5, 0.9)
+        for m in (60, 64, 67, 72):
+            p.note("pad", 1.0, m, 2.5, 0.7)
+        p.note("bass", 1.0, 36, 2.5, 0.9)
+        p.note("dr", 1.0, "k", 0, 0.8)
+        p.note("dr", 1.0, "G", 0, 0.6)
+        return p.render(4)
+    if kind == "tada2":
+        p.track("vib", "vibes", 0.8, -0.2, 0.3)
+        p.track("pan", "steelpan", 0.9, 0.2, 0.25)
+        p.track("pad", "pad", 0.35, 0, 0.4)
+        p.track("bass", "bass", 0.6, 0, 0.05)
+        p.track("dr", None, 0.5, 0, 0.2, kind="drums")
+        mel = [(0, 79), (0.5, 77), (0.75, 79), (1.0, 84)]
+        for b, m in mel:
+            p.note("pan", b, m, 0.4, 0.85)
+        for m in (65, 69, 72, 76):
+            p.note("pad", 0, m, 1.0, 0.6)
+        for m in (67, 71, 74, 77):
+            p.note("pad", 0.5, m, 0.5, 0.6)
+        for m in (72, 76, 79, 83, 86):
+            p.note("vib", 1.0, m, 3, 0.85)
+            p.note("pad", 1.0, m - 12, 3, 0.6)
+        p.note("bass", 0, 41, 0.5, 0.8)
+        p.note("bass", 0.5, 43, 0.5, 0.8)
+        p.note("bass", 1.0, 36, 3, 0.9)
+        p.drums("dr", 0, 1, {"k": "x...............", "x": "x.x.x.x.........", "c": "....x..........."})
+        p.note("dr", 1.0, "k", 0, 0.9)
+        p.note("dr", 1.0, "G", 0, 0.5)
+        return p.render(5)
+    if kind == "tada3":
+        p.track("kal", "kalimba", 0.9, 0.0, 0.3)
+        p.track("harp", "harp", 0.6, -0.3, 0.35)
+        p.track("glock", "glock", 0.4, 0.3, 0.35)
+        p.track("pad", "pad", 0.3, 0, 0.4)
+        for k, m in enumerate((67, 72, 76, 79, 84, 88)):
+            p.note("harp", k * 0.12, m - 12, 0.5, 0.7)
+        for b, m in ((0.75, 79), (1.0, 81), (1.25, 83), (1.5, 84)):
+            p.note("kal", b, m, 0.3, 0.85)
+            p.note("glock", b, m + 12, 0.3, 0.5)
+        for m in (60, 64, 67, 71, 74):
+            p.note("pad", 1.5, m, 3, 0.6)
+            p.note("harp", 1.5, m, 3, 0.6)
+        return p.render(5)
+    if kind == "twinkle":
+        p.track("cel", "celesta", 0.8, 0.0, 0.45)
+        p.track("glock", "glock", 0.4, 0.3, 0.45)
+        for k, m in enumerate((84, 88, 91, 96, 100)):
+            p.note("cel", k * 0.18, m, 0.3, 0.7)
+            p.note("glock", k * 0.18 + 0.09, m + 7, 0.2, 0.4)
+        return p.render(2.5)
+    raise ValueError(kind)
 
 
 def make(path, secs):
-    """The samples of one sound file of the game (`path` as the manifest has it, under Sounds/), and its loudness target
-    (dB); None for music handled by compose."""
-    name = path.rsplit("/", 1)[-1][:-4].lower()
+    """(samples, (target dB, how), fit) for one sound file of the game; fit False keeps the sound's own length."""
     low = path.lower()
-    rng = np.random.default_rng(seed(path))
-    k = kenney
-    if name in MUSIC:
-        return compose(name, secs, MUSIC[name]), -20
-    if "simsfx/" in low or "/celebs/" in low and not any(w in name for w in ("grill", "jacuzzi", "harley", "bmw", "ferari",
-                                                                                  "lamborgini", "classic", "punching", "arcade",
-                                                                                  "basketball")):
-        # people's voices: the free set keeps them quiet (no gibberish), a soft murmur only for the chattier lines
-        return silence(min(secs, 0.3)), -40
-    if low.startswith("sounds/male/") or low.startswith("sounds/female/"):
-        return silence(0.2), -40
+    name = os.path.splitext(os.path.basename(low))[0].strip()
+    rng = rng_for(path)
+    # ---- music
+    m = songs.piece(name, secs)
+    if m is not None:
+        return m, MUSIC, False
+    # ---- voices
+    if "/celebs/" in low and name in CELEBS:
+        voice, mood, script = CELEBS[name]
+        if script.startswith("<sing"):
+            return sing(rng, "radio" in script), VOICE, True
+        return speak_fit(voice, mood, script, rng, secs), VOICE, True
+    if low.startswith("simsfx/") or low.startswith("sounds/male/") or low.startswith("sounds/female/") \
+            or "vox_grunt" in name:
+        if "grunt" in name:
+            return vo.say("m1", "<grunt 1.1>", "angry", rng), VOICE, True
+        if low.startswith("simsfx/"):
+            key = name if name.startswith("s") else name[1:]  # fBAD0 -> bad0; sCOKE0 (a sip) keeps its s
+        else:
+            key = re.sub(r" (fm2|fm|m2|m)$", "", name)
+        for pat, mood, script in LINES:
+            if re.search(pat, key):
+                y = speak_fit(voice_for(path), mood, script, rng, secs)
+                # a long clip gets a second, different line after a pause
+                if len(y) / SR < secs * 0.55 and secs > 1.4:
+                    more = speak(voice_for(path), mood, " ".join(vo.babble(rng, 3)) + ("!" if mood in ("happy", "excited", "angry") else "."), rng)
+                    y = np.concatenate([y, np.zeros(d.n_of(0.15)), more])
+                return y, VOICE, True
+        return speak(voice_for(path), "neutral", " ".join(vo.babble(rng, 4)) + ".", rng), VOICE, True
     if "/emotion/" in low:
-        if "happy" in name or "success" in name:
-            return k("jingles_PIZZI0%d" % (seed(name) % 3)) * 1.0, -26
-        if "sad" in name or "failure" in name:
-            return k("jingles_PIZZI1%d" % (seed(name) % 3 + 3)), -28
-        return silence(0.2), -40
+        key = name.replace(" mix", "").replace(" ", "")
+        mood_key = next(k for k in EMOTION if k in key)
+        body = key.replace(mood_key, "")
+        voice, pitch = BODY_VOICE.get(body, ("m1", 1.0))
+        mood, s1, s2 = EMOTION[mood_key]
+        script = s1 if int(rng.integers(2)) == 0 else s2
+        if voice.startswith("f") and mood_key == "happy":
+            script = "<giggle 5> la-la-LOO~"
+        return speak_fit(voice, mood, script, rng, secs, pitch), VOICE, True
+    # ---- celebrity things
     if "/celebs/" in low:
-        if "grill" in name:
-            return lp_fast(noise(int(2.6 * SR), rng), 4000) * (0.6 + 0.4 * rng.random(int(2.6 * SR))) * 0.3, -26
-        if "jacuzzi" in name:
-            return splash(rng, 4.0, 0.6) * 0.4 + bandpass(noise(int(4 * SR), rng), 200, 900) * 0.4, -26
-        if any(w in name for w in ("harley", "bmw", "ferari", "lamborgini", "classic")):
-            t = t_axis(min(secs, 1.8))
-            f = 45 + 25 * np.minimum(1, t / 0.6)
-            eng = np.sign(np.sin(2 * np.pi * np.cumsum(f) / SR)) * 0.4 + 0.3 * noise(len(t), rng)
-            return lp_fast(eng, 900) * np.minimum(1, t / 0.1) * np.clip((t[-1] - t) / 0.4, 0, 1), -22
-        if "punching" in name:
-            return cat(k("impactPunch_medium_000"), silence(0.25), k("impactPunch_heavy_001"), silence(0.3), k("impactPunch_medium_002")), -20
-        if "arcade" in name:
-            return k("jingles_NES0%d" % (seed(name) % 9)), -24
-        if "basketball" in name:
-            return cat(k("impactSoft_heavy_000"), silence(0.3), k("impactSoft_heavy_002")), -22
-        return silence(0.2), -40
+        if name.startswith("grill"):
+            n = d.n_of(secs)
+            t = d.t_axis(secs)
+            sizzle = d.band(d.noise(n, rng), 2500, 9000) * (0.5 + 0.5 * (rng.uniform(size=n) < 0.3)) * 0.4
+            pops = (rng.uniform(size=n) < 0.003) * rng.uniform(0.3, 1, n)
+            y = sizzle + d.bp(pops, 3000, 1.0) * 2
+            y *= np.minimum(1, t / 0.3) * np.clip((secs - t) / 0.6, 0, 1)
+            if "good" in name:
+                d.put(y, 1.0, speak("m1", "happy", "mm-MM! YUM-ba!", rng) * 2)
+            if "bad" in name:
+                d.put(y, 1.0, extra_sound("ahem", rng, "m2") * 2)
+                d.put(y, 1.5, vo.say("m2", "<cough 2>", "disgust", rng) * 2)
+            return y, CROWD, True
+        if name.startswith("jacuzzi"):
+            n = d.n_of(secs)
+            t = d.t_axis(secs)
+            bed = d.band(d.noise(n, rng), 300, 2500) * 0.5 * (0.7 + 0.3 * np.sin(2 * np.pi * 0.7 * t))
+            bub = np.zeros(n)
+            for k in range(int(secs * 25)):
+                st = rng.uniform(0, secs - 0.05)
+                ln = rng.uniform(0.01, 0.03)
+                tt = d.t_axis(ln)
+                d.put(bub, st, np.sin(2 * np.pi * np.cumsum(rng.uniform(400, 1200) * (1 + tt / ln)) / SR) * np.exp(-tt / (ln / 3)) * 0.3)
+            y = (bed + bub) * np.minimum(1, t / 0.3) * np.clip((secs - t) / 0.6, 0, 1)
+            if "bad" in name:
+                d.put(y, 1.2, speak("m2", "disgust", "<grunt .5> ee-YOO, BLA-ga.", rng) * 2)
+            else:
+                d.put(y, 1.5, speak("f1", "happy", "<sigh .7> aah~", rng) * 1.5)
+            return y, CROWD, True
+        if any(w in name for w in ("bmw", "ferari", "lamborgini")):
+            hi = 1.3 if "ferari" in name or "lamborgini" in name else 1.0
+            y = fx.engine(rng, secs, rpm=(1200 * hi, 4500 * hi), cyl=8 if hi > 1 else 6, bright=2500, rough=0.1)
+            return d.fade(y, 0.05, 0.15), ANIMAL, True
+        if "classic car" in name:
+            y = np.zeros(d.n_of(secs))
+            d.put(y, 0, fx.horn(rng, 0.28, 300) * 0.8)
+            d.put(y, 0.38, fx.horn(rng, 0.4, 260) * 0.8)
+            return y, ANIMAL, True
+        if "harley" in name:
+            return d.fade(fx.vtwin(rng, secs), 0.05, 0.3), ANIMAL, True
+        if name.startswith("punching"):
+            y = np.zeros(d.n_of(secs))
+            hits = (0.1, 0.45, 0.75, 1.3) if "good" in name else (0.1, 0.9)
+            for k, at in enumerate(hits):
+                d.put(y, at, fx.thunk(rng, 90, 0.3, 1200) * 1.2)
+                d.put(y, at, d.band(d.noise(d.n_of(0.06), rng), 400, 3500) * d.perc(d.n_of(0.06), 0.001, 0.015) * 0.6)
+            if "bad" in name:
+                d.put(y, 0.5, fx.whoosh(rng, 0.3, 0.8))
+                d.put(y, 1.3, speak("m1", "sad", "oof!", rng) * 1.5)
+            else:
+                d.put(y, 1.8, speak("m1", "excited", "HAH!", rng) * 1.5)
+            return y, CROWD, True
+        if name.startswith("arcade"):
+            # chiptune blips (square waves, a few notes)
+            seqs = {"arcade idle": [72, 76, 79, 76, 72, 76, 79, 84], "arcade play": [60, 67, 72, 67, 64, 71, 76, 71],
+                    "arcade play good": [72, 76, 79, 84, 88, 91, 96], "arcade play bad": [79, 76, 72, 67, 64, 60, 55]}
+            seq = seqs.get(name, seqs["arcade play"])
+            y = np.zeros(d.n_of(secs))
+            step = 0.12 if "good" in name or "bad" in name else 0.16
+            for k, m in enumerate(seq):
+                t = d.t_axis(step * 0.9)
+                sq = np.sign(np.sin(2 * np.pi * mu.hz(m) * t)) * 0.3 + np.sign(np.sin(2 * np.pi * mu.hz(m) * 0.5 * t)) * 0.1
+                d.put(y, k * step, d.lp(sq, 4000) * np.exp(-t / 0.15))
+            if "idle" in name or name == "arcade play":
+                n_ = d.n_of(secs)
+                y = y[:n_]
+            return y, ANIMAL, True
+        if name.startswith("basketball"):
+            y = np.zeros(d.n_of(secs))
+            for k, at in enumerate((0.05, 0.45, 0.85)):
+                t = d.t_axis(0.25)
+                b = np.sin(2 * np.pi * np.cumsum(140 * (1 + 0.4 * np.exp(-t / 0.01))) / SR) * np.exp(-t / 0.06)
+                b += d.bp(d.noise(len(t), rng), 1200, 2) * np.exp(-t / 0.01) * 0.4
+                d.put(y, at, b * (1 - 0.1 * k))
+            return y, ANIMAL, True
+        return speak("m1", "neutral", "ba-la-DOO.", rng), VOICE, True
     # ---- golf
-    if "drive with ball" in name or name == "drive" or "tiger swing" in name:
-        hit = sm(k("impactPlate_light_00%d" % (seed(name) % 5)) * 0.9, k("impactGeneric_light_001") * 0.5)
-        return mix(int(0.6 * SR), (0.0, swish(rng, 0.28, 1.2), 0.5), (0.2, hit, 1.0)), -16
-    if "golf swing" in name:
-        return mix(int(0.5 * SR), (0.0, swish(rng, 0.4, 1.0), 1.0)), -22
-    if name == "iron":
-        return mix(int(0.5 * SR), (0.0, swish(rng, 0.25, 1.1), 0.4), (0.18, sm(k("impactMetal_light_002") * 0.6, k("impactPlate_light_001")), 1.0)), -17
-    if name == "chip":
-        return mix(int(0.5 * SR), (0.0, swish(rng, 0.2, 1.3), 0.3), (0.12, k("impactGeneric_light_003"), 1.0)), -19
-    if name == "putt":
-        return k("impactPlate_light_004") * 0.7, -22
+    if "drive with ball" in name or name == "drive":
+        y = np.zeros(d.n_of(secs))
+        d.put(y, 0.0, fx.club_hit(rng, "driver"))
+        if "ball" in name:
+            d.put(y, 0.03, fx.ball_whistle(rng, 0.35) * 0.25)
+        else:
+            d.put(y, 0.01, fx.whoosh(rng, 0.3, 1.2, 0.05, 0.4))
+        return y, GOLF, True
+    if name == "tiger swing 1":
+        y = np.zeros(d.n_of(secs))
+        d.put(y, 0.0, fx.whoosh(rng, 0.35, 1.1, 0.85, 1.0) * 0.6)
+        d.put(y, 0.3, fx.club_hit(rng, "driver") * 1.1)
+        d.put(y, 0.33, fx.ball_whistle(rng, 0.5) * 0.3)
+        d.put(y, 0.5, vo.crowd_vowel(rng, 0.8, "u", 10, glide=(1.0, 1.25)) * 0.12)
+        return y, GOLF, True
+    if name.startswith("golf swing"):
+        perfect = "perfect" in name
+        y = np.zeros(d.n_of(secs))
+        dur = 0.32 if "noimag" in name else 0.42
+        d.put(y, 0.0, fx.whoosh(rng, dur, 1.15 if "fm" in name else 1.0, 0.75, 1.0 if perfect else 0.85))
+        if "grunt" in name:
+            d.put(y, 0.12, vo.say("m1", "<grunt 1.0>", "angry", rng) * 0.9)
+        return y, GOLF, True
+    if name in ("iron", "chip", "putt"):
+        y = np.zeros(d.n_of(secs))
+        d.put(y, 0, fx.club_hit(rng, name))
+        if name == "iron":
+            d.put(y, 0.02, fx.ball_whistle(rng, 0.25, 2700) * 0.15)
+        return y, (GOLF[0] - (3 if name == "putt" else 1 if name == "chip" else 0), "fast"), True
     if "ball in hole" in name:
-        return mix(int(0.9 * SR), (0.0, k("impactPlate_light_002"), 0.8), (0.08, k("impactMetal_light_001"), 0.5),
-                   (0.2, k("impactMetal_light_003"), 0.3)), -18
+        return fx.cup_rattle(rng), GOLF, True
     if "ball drop sand" in name:
-        return k("footstep_snow_002") * 1.0, -22
+        return fx.sand_plop(rng, 0.8), LAND, True
     if "ball drop fairway" in name:
-        base = mix(int(0.8 * SR), (0.0, k("impactSoft_medium_001"), 0.8), (0.28, k("impactSoft_medium_003"), 0.35))
+        y = np.zeros(d.n_of(secs))
+        d.put(y, 0, fx.thud_grass(rng))
+        d.put(y, 0.2, fx.thud_grass(rng, 0.35))
+        d.put(y, 0.3, fx.roll_grass(rng, 0.35))
         if "lucky" in name:
-            base = mix(int(1.6 * SR), (0.0, base, 1.0), (0.4, k("jingles_PIZZI02"), 0.4))
-        return base, -21
+            d.put(y, 0.45, fx.notes(rng, [79, 84, 88, 91], "celesta", 0.6, 0.07) * 0.5)
+        return y, LAND, True
     if "ball tree leaves" in name:
-        return mix(int(1.6 * SR), (0.0, bandpass(noise(int(1.2 * SR), rng), 1500, 7000) * env(int(1.2 * SR), 0.05, 0.3), 0.6),
-                   (0.05, k("impactWood_light_002"), 1.0)), -20
-    if "ball tree" in name:
-        return k("impactWood_light_00%d" % (seed(name) % 5)), -19
+        y = np.zeros(d.n_of(secs))
+        d.put(y, 0, fx.leaves(rng, 1.3, 1.2))
+        d.put(y, 0.03, fx.wood_knock(rng, 640, 0.3) * 0.6)
+        d.put(y, 0.6, fx.thud_grass(rng, 0.4))
+        return y, LAND, True
+    if name in ("ball tree", "ball tree2"):
+        y = np.zeros(d.n_of(secs))
+        d.put(y, 0, fx.wood_knock(rng, 470 if name == "ball tree" else 610, 0.35))
+        if name == "ball tree2":
+            d.put(y, 0.22, fx.wood_knock(rng, 820, 0.25) * 0.4)
+            d.put(y, 0.35, fx.leaves(rng, 0.3, 0.6) * 0.5)
+        return y, LAND, True
     if "ball water" in name:
-        return splash(rng, 1.1, 0.7), -18
+        return fx.water_plop(rng, 1.0, 1.1), LAND, True
     if "tiger bounce" in name:
-        return mix(int(0.5 * SR), (0.0, k("impactSoft_medium_002"), 1.0), (0.22, k("impactSoft_medium_004"), 0.4)), -20
+        return fx.bounces(rng, 3, "grass"), LAND, True
     if "cart away" in name:
-        t = t_axis(3.6)
-        whine = np.sin(2 * np.pi * np.cumsum(300 + 120 * np.minimum(1, t / 1.0)) / SR) * 0.3
-        rumble = lp_fast(noise(len(t), rng), 300) * 0.8
-        return (whine + rumble) * np.minimum(1, t / 0.2) * np.clip((3.6 - t) / 2.5, 0, 1), -24
+        return fx.electric_cart(rng, secs), (ANIMAL[0] - 2, "fast"), True
     if "open soda" in name:
-        return mix(int(2.0 * SR), (0.0, k("metalClick"), 0.8), (0.05, bandpass(noise(int(1.6 * SR), rng), 3000, 9000)
-                                                                  * env(int(1.6 * SR), 0.01, 0.6), 0.5)), -22
+        return fx.can_open(rng, secs, "loud" in name), (LAND[0] - (0 if "loud" in name else 3), "fast"), True
     if "put flag back" in name:
-        return k("metalLatch"), -22
-    if "grunt" in name:
-        return silence(0.2), -40
+        return fx.flagstick(rng), LAND, True
     if name.startswith("applause"):
         if "bad" in name:
-            return mix(int(3.5 * SR), (0.0, claps(rng, 3.5, rate=14, swell=0.3, fade=1.2), 0.7), (0.0, crowd(rng, 1.6, "aa", -0.3), 0.5)), -22
-        return claps(rng, secs, rate=70 if "good" in name else 45, swell=0.35, fade=2.0), -20
+            y = fx.claps(rng, secs, people=8, rate=3.5, swell=0.4, fade=2.5) * 0.8
+            d.put(y, 0.0, vo.crowd_vowel(rng, 1.4, "aw", 14, glide=(1.1, 0.8)) * 0.35)
+            return y, CROWD, True
+        good = "good" in name
+        y = fx.claps(rng, secs, people=45 if good else 30, rate=5.5 if good else 4.5, swell=0.25, fade=2.5)
+        if good:
+            for k in range(5):
+                at = rng.uniform(0.1, 1.6)
+                v = ["m1", "m3", "f2", "m2", "f1"][k]
+                d.put(y, at, vo.say(v, rng.choice(["woo!", "WOO-hoo!", "yay!", "ya-HOO!"]), "excited", rng) * 0.12)
+            t = d.t_axis(0.6)
+            whistle_ = np.sin(2 * np.pi * np.cumsum(2200 + 900 * np.sin(np.pi * t / 0.6)) / SR) * np.sin(np.pi * t / 0.6) * 0.05
+            d.put(y, 0.9, whistle_)
+        return y, CROWD, True
     if "ambience" in name:
-        s = min(secs, 16.0)
-        x = wind(rng, s, 0.25) + birds(rng, s, 1.0)
+        s = secs
+        bed = fx.wind_bed(rng, s, 0.35, 0.4, 450)
+        birds = fx.scatter(rng, s, lambda: fx.bird_song(rng, str(rng.choice(["warbler", "robin", "robin"]))), 0.45, gain=(0.08, 0.2))
+        doves = fx.scatter(rng, s, lambda: fx.bird_song(rng, "dove"), 0.08, gain=(0.05, 0.1))
+        leaves_ = fx.scatter(rng, s, lambda: fx.leaves(rng, 1.5, 0.5, 0.8), 0.15, gain=(0.03, 0.07))
+        # the wind is a light breeze, not a rumble: its lows are cut (as a loop, so the seam stays clean)
+        x = fx.periodic_filter(bed, d.hp4, 160) + birds + doves + leaves_
         if "wtr" in name:
-            x += water_lap(rng, s) * 0.6
-        return x, -28
+            x += fx.lake_lap(rng, s) * 0.5
+        return x, (BED[0] - 2, "integrated"), False
     # ---- interface
-    if name in ("button1", "button2", "button3"):
-        return ui({"button1": "press", "button2": "select", "button3": "toggle-on"}[name]), -22
+    if name == "button1":
+        y = np.zeros(d.n_of(secs))
+        d.put(y, 0, fx.pop(rng, 1050, 0.09, 0.5))
+        d.put(y, 0, fx.tick(rng, 3200, 0.02) * 0.25)
+        return y, UI, True
+    if name == "button2":
+        y = np.zeros(d.n_of(secs))
+        d.put(y, 0, fx.pop(rng, 1000, 0.08, 0.4))
+        d.put(y, 0.055, fx.pop(rng, 1500, 0.12, 0.3) * 0.8)
+        return y, UI, True
+    if name == "button3":
+        return fx.pop(rng, 760, 0.1, 0.5, body=0.3), UI, True
     if name == "check box":
-        return ui("check"), -22
+        y = np.zeros(d.n_of(secs))
+        d.put(y, 0, fx.tick(rng, 2800, 0.03) * 0.6)
+        d.put(y, 0.01, fx.pop(rng, 1600, 0.1, 0.25) * 0.8)
+        return y, UI, True
     if name == "text box":
-        return ui("typing")[:int(0.06 * SR)], -26
-    if name in ("unavailable", "wrong"):
-        return ui("error" if name == "wrong" else "blocked"), -22
+        return fx.tick(rng, 3000, 0.03), (UI[0] - 4, "fast"), True
+    if name == "unavailable":
+        return d.lp(fx.pop(rng, 320, 0.16, 0.3, body=0.5), 1500), UI, True
+    if name == "wrong":
+        y = np.zeros(d.n_of(secs))
+        d.put(y, 0, fx.bell_note(rng, 64, 0.12, 0.7, "marimba"))
+        d.put(y, 0.11, fx.bell_note(rng, 60, 0.2, 0.7, "marimba"))
+        return d.lp(y, 3000), UI, True
     if name == "slide pop up":
-        return ui("open"), -22
-    if name in ("bass up 2", "violin up 2"):
-        return ui("level-up" if "violin" in name else "success"), -22
-    if name in ("bass down 2", "violin down 2"):
-        return ui("back" if "bass" in name else "cancel"), -22
-    if name.startswith("test") or name == "old test 7":
-        return k(["jingles_STEEL00", "jingles_SAX02", "jingles_PIZZI04", "jingles_STEEL05", "jingles_SAX07", "jingles_HIT03"][seed(name) % 6]), -22
+        y = np.zeros(d.n_of(secs))
+        d.put(y, 0, fx.swoosh_up(rng, 0.22, 500, 3000) * 0.5)
+        d.put(y, 0.18, fx.pop(rng, 1300, 0.1, 0.4))
+        d.put(y, 0.2, fx.notes(rng, [91, 96], "celesta", 0.4, 0.06) * 0.25)
+        return y, UI, True
+    if name in ("bass up 2", "bass down 2", "violin up 2", "violin down 2"):
+        up = "up" in name
+        seq = [60, 64, 67] if up else [67, 64, 60]
+        instr = "marimba" if "bass" in name else "pizz"
+        if "bass" in name:
+            seq = [m - 12 for m in seq]
+        return fx.notes(rng, seq, instr, 0.75, 0.07, dur=secs), UI, True
     if name == "building":
-        return mix(int(0.6 * SR), (0.0, k("impactWood_medium_001"), 1.0), (0.12, k("impactWood_light_003"), 0.5)), -20
+        y = np.zeros(d.n_of(secs))
+        d.put(y, 0, fx.thunk(rng, 150, 0.35) * 0.9)
+        d.put(y, 0.08, fx.notes(rng, [72, 79, 84], "glock", 0.55, 0.05) * 0.4)
+        return y, UI, True
     if name == "bench":
-        return k("impactPlank_medium_002"), -20
+        y = np.zeros(d.n_of(secs))
+        d.put(y, 0, fx.wood_knock(rng, 310, 0.3))
+        d.put(y, 0.12, fx.wood_knock(rng, 360, 0.25) * 0.6)
+        return y, UI, True
     if name == "bridge":
-        return mix(int(0.8 * SR), (0.0, k("impactWood_heavy_001"), 0.8), (0.15, k("impactPlank_medium_000"), 0.6)), -20
+        y = np.zeros(d.n_of(secs))
+        for k in range(4):
+            d.put(y, k * 0.09, fx.wood_knock(rng, 260 + 40 * k, 0.3) * (1 - 0.15 * k))
+        return y, UI, True
     if name == "path":
-        return k("footstep_concrete_001"), -21
+        return fx.gravel(rng, secs, 2), UI, True
     if name.startswith("place bunker"):
-        return k("footstep_snow_00%d" % (seed(name) % 5)), -21
+        return fx.sand_pour(rng, 0.55), UI, True
     if name in ("place fairway", "place greentee", "place rough"):
-        return k("footstep_grass_00%d" % (seed(name) % 5)), -21
-    if name == "place water" or name == "place waterrocks":
-        x = splash(rng, 1.0, 0.5)
+        return fx.grass_tuft(rng, 0.35, 1.2 if "green" in name else 0.8 if "rough" in name else 1.0), UI, True
+    if name in ("place water", "place waterrocks"):
+        y = np.zeros(d.n_of(secs))
+        d.put(y, 0, fx.water_plop(rng, 0.8, 0.9) * 0.8)
+        d.put(y, 0.15, fx.lake_lap(rng, 0.9)[:d.n_of(0.9)] * np.hanning(d.n_of(0.9)) * 0.5)
         if "rocks" in name:
-            x = mix(len(x), (0.0, x, 1.0), (0.1, k("impactMining_001"), 0.5))
-        return x, -21
+            d.put(y, 0.25, fx.rocks(rng, 0.6, 2) * 0.6)
+        return y, UI, True
     if name.startswith("place rocks"):
-        return mix(int(1.2 * SR), (0.0, k("impactMining_002"), 1.0), (0.18, k("impactMining_004"), 0.6)), -20
+        return fx.rocks(rng, min(secs, 0.9), 3 if name == "place rocks 1" else 4), UI, True
+    if name == "test 7":
+        # the painting tune's note (the engine pitches it to each note of its tune): a soft mallet F with a little turf
+        y = np.zeros(d.n_of(secs))
+        f = mu.hz(77)
+        d.put(y, 0, mu.marimba(f, 0.3, 0.7, rng) * mu.calibration("marimba"))
+        d.put(y, 0, mu.kalimba(f, 0.3, 0.6, rng) * mu.calibration("kalimba") * 0.5)
+        d.put(y, 0, fx.grass_tuft(rng, 0.3) * 0.15)
+        return y, UI, True
+    if name in ("test 2", "test 4", "old test 7"):  # tees and greens (Test 2): fine turf rolled out
+        y = np.zeros(d.n_of(secs))
+        d.put(y, 0, fx.grass_tuft(rng, 0.4, 1.3))
+        d.put(y, 0.06, fx.leaves(rng, 0.6, 0.6, 1.2) * 0.35)
+        if name != "test 2":
+            d.put(y, 0.1, fx.notes(rng, [84, 91], "celesta", 0.4, 0.08) * 0.3)
+        return y, (UI[0] - 2, "fast"), True
+    if name == "test 9":  # rough
+        y = np.zeros(d.n_of(secs))
+        d.put(y, 0, fx.grass_tuft(rng, 0.45, 0.7))
+        d.put(y, 0.04, fx.leaves(rng, 0.8, 1.2, 0.8) * 0.5)
+        return y, (UI[0] - 2, "fast"), True
+    if name == "test 10":  # sand
+        return fx.sand_pour(rng, 0.9, 1.1), (UI[0] - 3, "fast"), True
     # ---- effects
     if name == "cash":
-        return mix(int(1.2 * SR), (0.0, k("handleCoins"), 1.0), (0.05, ui("purchase"), 0.6)), -18
+        return fx.coins(rng, min(secs, 1.6)), STING, True
     if name.startswith("tada"):
-        return k(["jingles_SAX00", "jingles_STEEL02", "jingles_HIT00"][seed(name) % 3]), -20
+        kind = {"tada": "tada", "tada 2": "tada2", "tada 3": "tada3"}[name]
+        x = stinger(name, kind).mean(1)
+        return d.fade(x[:d.n_of(secs)], 0, 0.6), STING, True
     if name == "twinkle":
-        return ui("achievement"), -22
+        return stinger(name, "twinkle").mean(1), STING, True
     if name == "camera":
-        return mix(int(0.5 * SR), (0.0, k("metalClick"), 1.0), (0.08, k("metalLatch") * 0.5, 0.6)), -22
+        return fx.shutter(rng), UI, True
     if name == "boing":
-        t = t_axis(0.5)
-        return np.sin(2 * np.pi * np.cumsum(180 + 220 * np.exp(-t * 6) * np.cos(t * 50)) / SR) * env(len(t), 0.005, 0.25), -22
+        t = d.t_axis(0.5)
+        f = 220 + 160 * np.exp(-t / 0.18) * np.cos(2 * np.pi * 14 * t)
+        y = np.sin(2 * np.pi * np.cumsum(f) / SR) + 0.3 * np.sin(4 * np.pi * np.cumsum(f) / SR)
+        return y * d.perc(len(t), 0.003, 0.15), UI, True
     if name == "belch":
-        return silence(0.2), -40
+        v = vo.Voice(85, 0.85, breath=0.1, tension=0.8, jitter=0.05, creak=0.9)
+        sp = vo.Speaker(v, "neutral", rng)
+        sp.vowel_seg("aw", 0.25, 1.0, 80, 65, end_vowel="o")
+        return sp.render(), VOICE, True
     if name.startswith("club 2 drop"):
-        return mix(int(1.4 * SR), (0.0, k("impactMetal_light_000"), 1.0), (0.22, k("impactMetal_light_004"), 0.5),
-                   (0.4, k("impactSoft_medium_000"), 0.3)), -21
+        y = np.zeros(d.n_of(secs))
+        d.put(y, 0, fx.club_rattle(rng, 1.4))
+        if "no wtr" not in name:
+            d.put(y, 0.5, fx.water_plop(rng, 1.6, 1.4) * 0.8)
+        return y, LAND, True
     if name in ("desert1", "desert2", "desert3"):
-        d = max(secs, 1.0)
-        return wind(rng, d, 0.5) + (birds(rng, d, 0.5) * 0.5 if name != "desert1" else 0), -26
-    if name in ("grass3", "spring"):
-        return wind(rng, secs, 0.2) + birds(rng, secs, 1.5), -26
+        s = secs
+        y = fx.wind_bed(rng, s, 1.0, 0.8, 380, loop=False) * np.minimum(1, d.t_axis(s) / 0.3)
+        if name != "desert1":
+            d.put(y, s * 0.3, fx.bird_song(rng, "hawk") * 0.25)
+        if name == "desert3":
+            y += fx.insects(rng, s, "cicada") * 0.3
+        return d.fade(y, 0.2, 0.6), (BED[0] + 6, "fast"), True
+    if name == "grass3":
+        s = secs
+        y = fx.wind_bed(rng, s, 0.5, 0.4, 500, loop=False) + fx.insects(rng, s, "cricket") * 0.25
+        d.put(y, 0.4, fx.bird_song(rng, "robin") * 0.3)
+        return d.fade(y, 0.2, 0.6), (BED[0] + 6, "fast"), True
+    if name == "spring":
+        s = secs
+        y = fx.wind_bed(rng, s, 0.25, 0.3, 600, loop=False)
+        for k in range(4):
+            d.put(y, 0.1 + k * 0.7, fx.bird_song(rng, ["warbler", "robin"][k % 2]) * 0.35)
+        return d.fade(y, 0.1, 0.5), (ANIMAL[0], "fast"), True
     if name == "winter":
-        return wind(rng, secs, 0.7), -26
+        s = secs
+        y = fx.wind_bed(rng, s, 1.0, 0.9, 700, loop=False)
+        return d.fade(y, 0.4, 0.8), (BED[0] + 6, "fast"), True
     if name == "lake1":
-        return water_lap(rng, secs) + birds(rng, secs, 0.6) * 0.5, -26
+        s = secs
+        y = fx.lake_lap(rng, s) + fx.scatter(rng, s, lambda: fx.frog(rng), 0.6, loop=False, gain=(0.1, 0.25))
+        return d.fade(y, 0.3, 0.6), (BED[0] + 6, "fast"), True
     if name.startswith("alligator"):
-        t = t_axis(1.5)
-        return lp_fast(noise(len(t), rng), 220) * np.sin(np.pi * t / 1.5) ** 2 * (1 + 0.5 * np.sin(2 * np.pi * 18 * t)), -24
+        y = np.zeros(d.n_of(secs))
+        d.put(y, 0.1, fx.gator(rng, 1.8))
+        d.put(y, 2.2, fx.gator(rng, 1.4) * 0.7)
+        return y, ANIMAL, True
     if name == "dolphin":
-        return cat(chirp(3000, 5200, 0.25), silence(0.06), chirp(4200, 2600, 0.2), silence(0.05), chirp(3200, 5600, 0.3)), -24
+        return fx.dolphin(rng), ANIMAL, True
     if name == "fly":
-        t = t_axis(2.5)
-        return np.sign(np.sin(2 * np.pi * np.cumsum(190 + 30 * np.sin(2 * np.pi * 1.5 * t)) / SR)) * 0.2 * np.sin(np.pi * t / 2.5), -30
+        return fx.fly(rng, min(secs, 3.2)), (ANIMAL[0] - 4, "fast"), True
     if name.startswith("gila"):
-        t = t_axis(1.2)
-        return bandpass(noise(len(t), rng), 2000, 7000) * np.sin(np.pi * t / 1.2) ** 3, -27
+        return fx.hiss(rng, 1.4, 4000), ANIMAL, True
     if name == "snake":
-        t = t_axis(1.8)
-        return bandpass(noise(len(t), rng), 3000, 9000) * np.minimum(1, t / 0.2) * np.clip((1.8 - t) / 0.5, 0, 1), -27
+        y = fx.rattle(rng, 1.6)
+        d.put(y, 0.9, fx.hiss(rng, 0.7, 6000) * 0.5)
+        return y, ANIMAL, True
     if name.startswith("moose"):
-        t = t_axis(1.5)
-        f = 140 - 40 * t
-        return lp_fast(np.sign(np.sin(2 * np.pi * np.cumsum(f) / SR)), 700) * np.sin(np.pi * t / 1.5), -24
+        return fx.moose(rng, 1.5), ANIMAL, True
     if name.startswith("sheep"):
-        t = t_axis(0.9)
-        f = 260 * (1 + 0.06 * np.sin(2 * np.pi * 9 * t))
-        src = np.sign(np.sin(2 * np.pi * np.cumsum(f) / SR))
-        return (bandpass(src, 600, 1100) + 0.6 * bandpass(src, 1500, 2300)) * np.sin(np.pi * t / 0.9), -24
+        return fx.bleat(rng, 300 if name == "sheep 1" else 360, 0.7), ANIMAL, True
     if name.startswith("seriama"):
-        return cat(*[chirp(1800 + 200 * j, 1400 + 150 * j, 0.12, harm=(1.0, 0.4, 0.2)) for j in range(6)], gap=0.05), -24
+        return fx.seriama(rng), ANIMAL, True
     if name.startswith("snore"):
-        t = t_axis(3.5)
-        return lp_fast(noise(len(t), rng), 400) * (np.sin(np.pi * t / 1.75) ** 2), -28
+        return fx.snore(rng, min(secs, 3.6)), (ANIMAL[0] - 3, "fast"), True
     if name.startswith("hot air"):
-        t = t_axis(3.4)
-        return lp_fast(noise(len(t), rng), 1500) * np.minimum(1, t / 0.15) * np.clip((3.4 - t) / 0.6, 0, 1), -24
+        return fx.burner(rng, min(secs, 3.4)), ANIMAL, True
     if name in ("flower bed", "maple", "palm", "tree sprout 3"):
-        n = int(min(secs, 1.6) * SR)
-        rust = bandpass(noise(n, rng), 1200, 6000) * env(n, 0.03, 0.35)
-        return mix(n, (0.0, rust, 0.5), (0.02, k("footstep_grass_001"), 0.7)), -22
+        y = np.zeros(d.n_of(secs))
+        d.put(y, 0, fx.thunk(rng, 110, 0.25, 1500) * 0.6)
+        d.put(y, 0.02, fx.leaves(rng, 0.7 if name != "flower bed" else 1.0, 0.8, 1.1) * 0.6)
+        tune = {"flower bed": [79, 84, 88, 91], "maple": [74, 79, 83], "palm": [76, 81, 84], "tree sprout 3": [72, 76, 79]}[name]
+        d.put(y, 0.12, fx.notes(rng, tune, "celesta", 0.5, 0.06) * 0.45)
+        return y, UI, True
     if name.startswith("taunt") or name.startswith("unrest"):
-        return crowd(rng, 2.5, "aa", 0.2) * 0.6 + claps(rng, 2.5, rate=8, swell=0.5, fade=1.0) * 0.4, -26
+        s = secs
+        y = fx.murmur(rng, s, 8, 1.0)
+        if name.startswith("taunt"):
+            d.put(y, 0.8, vo.crowd_vowel(rng, 1.2, "o", 12, glide=(0.9, 1.3)) * 0.4)
+            d.put(y, 2.6, vo.crowd_vowel(rng, 1.3, "aw", 12, glide=(1.1, 0.8)) * 0.35)
+        else:
+            d.put(y, 1.5, vo.crowd_vowel(rng, 1.6, "uh", 14, base=120, glide=(1.0, 0.9)) * 0.3)
+        return d.fade(y, 0.4, 0.8), CROWD, True
     if name.startswith("timetunnel"):
-        return swish(rng, 0.9, 0.6), -24
+        y = np.zeros(d.n_of(secs))
+        d.put(y, 0, fx.swoosh_up(rng, 0.8, 200, 5000) * 0.6)
+        d.put(y, 0.05, fx.notes(rng, [72, 79, 84, 88, 91, 96], "celesta", 0.45, 0.06) * 0.4)
+        return y, STING, True
     if name == "shotgun":
-        return k("impactPunch_heavy_000"), -22
-    return None, -20
+        y = np.zeros(d.n_of(secs))
+        t = d.t_axis(0.3)
+        bang = d.lp(d.noise(len(t), rng), 2500) * d.perc(len(t), 0.0005, 0.03)
+        bang += np.sin(2 * np.pi * np.cumsum(120 * np.exp(-t / 0.05) + 50) / SR) * d.perc(len(t), 0.001, 0.08)
+        d.put(y, 0, bang)
+        d.put(y, 0.18, d.lp(bang, 900) * 0.25)
+        d.put(y, 0.38, d.lp(bang, 600) * 0.1)
+        return y, (GOLF[0] - 2, "fast"), True
+    return None, None, True
+
+
+def render(path, secs):
+    x, target, fit = make(path, secs)
+    if x is None:
+        return path, None, None
+    db, how = target
+    x = np.asarray(x, float)
+    name = os.path.splitext(os.path.basename(path.lower()))[0].strip()
+    loop = "ambience" in name or name in songs.LOOPED
+    if loop:
+        # a loop is levelled as a loop (three copies, the middle kept), so its filters and limiter leave no seam
+        n = len(x)
+        x = d.master(np.concatenate([x, x, x]), db, how)[n:2 * n]
+        return path, x, (db, how)
+    if how == "fast":
+        x = master_fast(x, db)
+    else:
+        x = d.master(x, db, how)
+    if fit:
+        x = d.fit(x, secs, 0.03)
+    # no clicks at the ends
+    x = d.fade(x, 0.0015, 0.004)
+    return path, x, (db, how)
+
+
+def fast_loudness(x, win=0.1):
+    p = d._power(x)
+    k = d.n_of(win)
+    if len(p) <= k:
+        return -0.691 + 10 * np.log10(np.sum(p) / k + 1e-12)
+    cs = np.concatenate([[0], np.cumsum(p)])
+    return -0.691 + 10 * np.log10(((cs[k:] - cs[:-k]) / k).max() + 1e-12)
+
+
+def master_fast(x, db):
+    x = d.hp(x, 18) if x.ndim == 1 else np.stack([d.hp(x[:, c], 18) for c in range(2)], 1)
+    for _ in range(3):
+        x = x * 10 ** ((db - fast_loudness(x)) / 20)
+        if d.true_peak(x) <= -1.0:
+            break
+        x = d.limit(x, -1.6)
+    tp = d.true_peak(x)
+    if tp > -1.0:
+        x *= 10 ** ((-1.0 - tp) / 20)
+    return x
+
+
+def write_ogg(path, x):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    ch = 1 if x.ndim == 1 else 2
+    subprocess.run(["ffmpeg", "-v", "quiet", "-y", "-f", "f32le", "-ar", str(SR), "-ac", str(ch), "-i", "-",
+                    "-c:a", "libvorbis", "-q:a", "0", "-map_metadata", "-1", "-fflags", "+bitexact", path],
+                   input=x.astype(np.float32).tobytes(), check=True)
+
+
+def entries():
+    out = []
+    for line in open(layout.MANIFEST, encoding="utf-8"):
+        if line.startswith("W "):
+            parts = line.rstrip("\n").split(" ")
+            out.append((" ".join(parts[1:-1]), float(parts[-1])))
+    return out
+
+
+def job(args):
+    path, secs = args
+    try:
+        path, x, target = render(path, secs)
+    except Exception:  # every failing recipe is reported, not just the first
+        import traceback
+        return path, traceback.format_exc()
+    if x is None:
+        return path, None
+    out = os.path.join(OUT, path[:path.rfind(".")] + ".ogg")
+    write_ogg(out, x)
+    return path, (len(x) / SR, target, round(d.lufs(x), 1), round(d.true_peak(x), 1))
 
 
 def main():
-    global SRC
     ap = argparse.ArgumentParser()
-    ap.add_argument("sources")
     ap.add_argument("--only", default="")
+    ap.add_argument("--jobs", type=int, default=os.cpu_count() or 2)
     a = ap.parse_args()
-    SRC = a.sources
-    entries = []
-    for line in open(layout.MANIFEST, encoding="utf-8"):
-        if line.startswith("W "):
-            parts = line.split()
-            entries.append((" ".join(parts[1:-1]), float(parts[-1])))
+    todo = [(p, s) for p, s in entries() if p not in ALIASES and (not a.only or re.search(a.only, p, re.I))]
+    # files that only stand for another are not kept
+    for p in ALIASES:
+        f = os.path.join(OUT, p[:p.rfind(".")] + ".ogg")
+        if os.path.exists(f):
+            os.remove(f)
     done = 0
-    for path, secs in entries:
-        if a.only and not re.search(a.only, path, re.I):
-            continue
-        x, db = make(path, secs)
-        if x is None:
-            print("no recipe:", path)
-            continue
-        x = level(x, db)
-        music = path.rsplit("/", 1)[-1][:-4].lower() in MUSIC
-        out = os.path.join(OUT, path[:path.rfind(".")] + ".ogg")
-        write_ogg(out, x, SR, quality=1 if music else 2)
-        done += 1
+    failed = False
+    with ProcessPoolExecutor(a.jobs) as ex:
+        for path, info in ex.map(job, todo):
+            if info is None or isinstance(info, str):
+                print("FAILED:" if info else "no recipe:", path, info or "")
+                failed = True
+                continue
+            done += 1
+            print("%-52s %6.2fs  target %s  I %6.1f  TP %5.1f" % (path, info[0], info[1], info[2], info[3]), flush=True)
     print(done, "sounds")
+    if failed:
+        sys.exit(1)
     import build
     build.write_index()
 

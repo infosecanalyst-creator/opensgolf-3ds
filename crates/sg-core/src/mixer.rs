@@ -290,9 +290,15 @@ impl Mixer {
             .map_err(|e| format!("cannot load {}: {e}", path.display()))
     }
 
-    /// The free set's clip for a key, decoded.
+    /// The free set's clip for a key, decoded. A key the set spells a little differently (the exe asks for
+    /// "effects/lake 1.wav" and "effects/Alligator.wav", the folders hold "LAKE1.wav" and "Alligator .wav") finds its
+    /// clip by the bare name, as the player's own files do ([`Mixer::alias_of`]).
     fn decode_free(&self, key: &str) -> Option<Vec<i16>> {
-        let w = decode_sound(&crate::freeset::read(self.free.get(key)?)?).ok()?;
+        let file = self.free.get(key).or_else(|| {
+            let want = name_key(key);
+            self.free.iter().find(|(k, _)| name_key(k) == want).map(|(_, f)| f)
+        })?;
+        let w = decode_sound(&crate::freeset::read(file)?).ok()?;
         to_stereo_44k(w.channels, w.bits, w.sample_rate, &w.pcm)
     }
 
