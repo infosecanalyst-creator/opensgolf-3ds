@@ -745,3 +745,59 @@ def coins(rng, dur=1.4, n=10):
     for k, m in enumerate((88, 95)):
         d.put(out, 0.02 + 0.09 * k, bell_note(rng, m, 0.4, 0.8, "glock") * 0.7)
     return out
+
+
+# ---- cartoon comedy -------------------------------------------------------------------------------------------------------------
+
+def slide_whistle(rng, f0=1800, f1=500, dur=0.45, wobble=0.0):
+    """A slide whistle swooping from f0 to f1: a breathy pure tone, the classic 'there goes your ball' sound."""
+    n = N(dur)
+    t = T(dur)
+    k = t / dur
+    f = f0 * (f1 / f0) ** (k ** 1.3)
+    f = f * (1 + wobble * 0.04 * np.sin(2 * np.pi * 7 * t))
+    ph = 2 * np.pi * np.cumsum(f) / SR
+    y = np.sin(ph) + 0.08 * np.sin(2 * ph)
+    breath = d.sweep_filter(d.noise(n, rng), "bp", f * 1.0, 3.0, 64) * 0.25
+    env = np.minimum(1, t / 0.03) * np.clip((dur - t) / 0.06, 0, 1)
+    return (y + breath) * env
+
+
+def bloop(rng, size=1.0):
+    """A cartoon 'BLOOP': a fat drop, then a round rising gulp, a splash and a burble of bubbles."""
+    out = np.zeros(N(1.1))
+    t = T(0.22)
+    f = np.where(t < 0.06, 520 - 3000 * t, 340 + 2600 * (t - 0.06) ** 1.2) / size ** 0.3
+    y = np.sin(2 * np.pi * np.cumsum(f) / SR)
+    y = d.lp(y + 0.3 * np.sin(4 * np.pi * np.cumsum(f) / SR), 2500) * np.sin(np.pi * np.clip(t / 0.22, 0, 1)) ** 0.6
+    d.put(out, 0.0, y * 0.9)
+    d.put(out, 0.0, water_plop(rng, size, 1.0) * 0.6)
+    for k in range(6):
+        tt = T(0.05)
+        b = np.sin(2 * np.pi * np.cumsum(rng.uniform(500, 900) * (1 + 1.5 * tt / 0.05)) / SR) * np.sin(np.pi * tt / 0.05)
+        d.put(out, 0.3 + k * 0.07 + rng.uniform(0, 0.03), b * 0.25 * (1 - k / 7))
+    return out
+
+
+def boing(rng, dur=0.6, f=170):
+    """A cartoon spring: a twangy tone whose pitch wobbles fast and settles, bright at first then mellow."""
+    t = T(dur)
+    wob = np.exp(-t / 0.22) * np.sin(2 * np.pi * 16 * t)
+    fr = f * (1 + 0.55 * wob + 0.25 * np.exp(-t / 0.05))
+    ph = 2 * np.pi * np.cumsum(fr) / SR
+    y = sum(np.sin(h * ph) / h ** 0.8 for h in range(1, 10))
+    cut = 600 + 4000 * np.exp(-t / 0.1)
+    y = d.sweep_filter(y, "lp", cut, 2.0, 64)
+    return y * d.perc(len(t), 0.002, dur / 3)
+
+
+def sad_trombone(rng, instr="kazoo"):
+    """'Wah, wah, wah, waaah' on a kazoo (the bad shot's little joke)."""
+    out = np.zeros(N(2.4))
+    for k, (m, ln) in enumerate(((67, 0.36), (66, 0.36), (65, 0.36), (64, 1.1))):
+        note = mu.INSTR[instr](mu.hz(m), ln, 0.8, rng) * mu.calibration(instr)
+        if k == 3:
+            tt = T(len(note) / SR)[:len(note)]
+            note *= 1 + 0.35 * np.sin(2 * np.pi * 5 * tt) * np.clip((tt - 0.2) / 0.3, 0, 1)
+        d.put(out, k * 0.4, note)
+    return out

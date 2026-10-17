@@ -66,6 +66,13 @@ STORY_MEL = """E5:.5 G5:.5 C6:1 B5:.5 A5:.5 G5:1 | A5:.5 G5:.5 E5:1 C5:2 | D5:.5
 B4:1 D5:.5 F5:.5 G5:2 | E5:.5 G5:.5 C6:1 D6:.5 C6:.5 G5:1 | A5:1.5 G5:.5 F5:.5 E5:.5 C5:1 | D5:1 F5:.5 A5:.5 C6:1 B5:1 |
 G5:2 D5:1 B4:1"""
 
+# a cheeky little rag (story chapters): stride bass, off-beat chords, a syncopated tune
+RAG = ["C", "A7", "D7", "G7", "C", "C7", "F", "G7"]
+RAG_MEL = """E5:.5 G5:.5 C6:.75 G5:.25 A5:.5 G5:.5 E5:1 | E5:.5 G5:.5 C#6:.75 A5:.25 G5:.5 E5:.5 C#5:1 |
+F#5:.5 A5:.5 D6:.75 C6:.25 A5:.5 F#5:.5 D5:1 | G5:.5 B5:.5 D6:.5 F6:.5 E6:.5 D6:.5 B5:1 |
+E5:.5 G5:.5 C6:.75 G5:.25 A5:.5 G5:.5 E5:1 | Bb5:.75 A5:.25 G5:.5 E5:.5 C5:1 r:1 |
+A5:.5 C6:.5 F6:.75 E6:.25 D6:.5 C6:.5 A5:1 | G5:.5 F5:.5 D5:.5 B4:.5 C5:2"""
+
 WALTZ = ["Fmaj7", "Dm7", "Gm7", "C7", "Am7", "D7", "Gm7", "C7"]
 WALTZ_MEL = """C5:1 F5:1 A5:1 | A5:2 G5:1 | Bb5:1 D6:1 C6:1 | Bb5:2 G5:1 | C6:1 E5:1 A5:1 | F#5:2 A5:1 |
 D6:1.5 C6:.5 Bb5:1 | G5:2 E5:1"""
@@ -86,7 +93,7 @@ def _sec(p, at, chords, bpb, mel, style, level, mel_instr=None, mel_vel=1.0, tra
         _ensure(p, lead, ROLE["lead"] * s.get("lead_gain", 1.0), s.get("lead_rev", 0.25))
         p.melody(lead, at, mel, transpose, mel_vel)
         if s.get("double") and level >= 2:
-            _ensure(p, s["double"], ROLE["double"], 0.3, 0.25)
+            _ensure(p, s["double"], ROLE["double"] * s.get("double_gain", 1.0), 0.3, 0.25)
             p.melody(s["double"], at, mel, transpose + 12, mel_vel * 0.55)
     if s.get("pad") and (level <= 1 or s.get("pad_always")):
         mu.pads(p, "pad", at, chords, bpb, vel=0.5 if level else 0.65)
@@ -132,6 +139,7 @@ def _ensure(p, instr, gain, rev, pan=0.0):
 
 # the mix by role (instruments are calibrated to one loudness, snd_music.calibration); a style's *_gain scales its role
 ROLE = dict(lead=1.0, double=0.38, pad=0.32, comp=0.36, arp=0.3, bass=0.62, drums=0.35)
+# (a style's double_gain scales the octave doubling)
 
 
 def setup(p, style):
@@ -157,6 +165,15 @@ POP = dict(lead="marimba", double="glock", pad="pad", comp="epiano", arp="pluck"
            drums={"k": "x.....x.x.......", "r": "....x.......x...", "x": "xoxoxoxoxoxoxoxo", "h": "..x...x...x...x."},
            drums_light={"k": "x.......x.......", "x": "x.o.x.o.x.o.x.o."},
            bass_pattern=((0, 1.5, 0), (1.5, 0.5, 7), (2, 1.0, 0), (3, 0.5, 12), (3.5, 0.5, 7)))
+RAG_STYLE = dict(lead="piano", double="glock", comp="piano", comp_rhythm=((1, 0.5), (3, 0.5)), comp_range=(55, 67),
+                 comp_vel=0.55, bass="piano", bass_pattern=((0, 0.5, 0), (2, 0.5, 7)), bass_oct=36,
+                 drums={"b": "....x.......x...", "w": "x.......x.......", "x": "x.x.x.x.x.x.x.x."},
+                 drums_light={"w": "x.......x......."}, comp_gain=1.4, bass_gain=2.4, double_gain=0.6, drums_gain=2.0)
+BOSSA = dict(lead="vibes", double="flute", comp="nylon", comp_rhythm=((0, 0.5), (0.75, 0.5), (1.5, 0.75), (2.5, 0.5), (3.25, 0.5)),
+             comp_range=(52, 68), comp_vel=0.5, bass="upright", bass_pattern=((0, 1.5, 0), (1.5, 0.5, 7), (2, 1.5, 7), (3.5, 0.5, 0)),
+             drums={"r": "x..x..x...x..x..", "x": "xoxoxoxoxoxoxoxo", "k": "x..x....x..x...."},
+             drums_light={"r": "x..x..x...x..x..", "x": "x.o.x.o.x.o.x.o."}, pad="epiano", pad_gain=0.6, comp_gain=1.2,
+             bass_gain=1.2)
 CALM_STYLE = dict(lead="flute", double="celesta", pad="pad", pad_always=True, arp="celesta", arp_step=0.5,
                   arp_order=(0, 2, 3, 1, 2, 3), arp_range=(64, 88), arp_vel=0.35, comp="harp",
                   comp_rhythm=((0, 4),), comp_range=(50, 66), comp_vel=0.45, bass="bass", bass_pattern=((0, 4, 0),),
@@ -322,9 +339,8 @@ def piece(name, secs):
         st = dict(CALM_STYLE, lead="vibes", double="celesta", comp="harp")
         return theme_piece(n, S, st, [(MAIN_B[:4], first_bars(MAIN_B_MEL, 4), 1), (MAIN_B[4:], last_bars(MAIN_B_MEL, 4), 2)],
                            loop=False, ending=(["Gm7", "C7sus4", "Fmaj9"], first_bars(MAIN_END_MEL, 2)))
-    if n == "buy1short":  # a story chapter passed
-        st = dict(POP, lead="pizz", double="glock", comp="epiano", arp=None, pad=None)
-        return theme_piece(n, S, st, [(STORY, STORY_MEL, 2)], loop=False, ending=(["C"], ""))
+    if n == "buy1short":  # a story chapter passed: a cheeky rag
+        return theme_piece(n, S, RAG_STYLE, [(RAG, RAG_MEL, 2)], loop=False, ending=(["C"], ""))
     if n == "buy4short":  # an odd chapter
         st = dict(POP, lead="kalimba", double="celesta", arp=None)
         return theme_piece(n, S, st, [(STORY[:4], first_bars(STORY_MEL, 4), 1), (STORY[4:6], first_bars(STORY_MEL, 2), 2)],
@@ -334,8 +350,8 @@ def piece(name, secs):
         return theme_piece(n, S, st, [(MAIN_B, MAIN_B_MEL, 3)], loop=False,
                            ending=(["Gm7", "C7sus4", "Fmaj9"], first_bars(MAIN_END_MEL, 2)), intro=0)
     if n == "buy2short":
-        st = dict(POP, lead="epiano", double="glock", arp=None)
-        return theme_piece(n, S, st, [(STORY[4:], last_bars(STORY_MEL, 4), 2)], loop=False, ending=(["Dm7", "G7", "C"], ""))
+        st = dict(RAG_STYLE, lead="kazoo", double="piano")
+        return theme_piece(n, S, st, [(RAG[4:], last_bars(RAG_MEL, 4), 3)], loop=False, ending=(["G7", "C"], ""))
     if n == "romeo and juliet edit":
         st = dict(lead="flute", double="vibes", comp="epiano", comp_rhythm=((1, 1), (2, 1)), comp_range=(55, 72), pad="strings",
                   pad_always=True, bass="bass", bass_pattern=((0, 1, 0),))
@@ -373,13 +389,14 @@ def piece(name, secs):
         return theme_piece(n, S, CLUBHOUSE, [(CLUB[4:], last_bars(CLUB_MEL, 4), 2)], loop=False, ending=(["D"], ""))
     if n in ("spanish guitar wflute 2", "spanish guitar 2"):  # desert story chapter / playlist
         return theme_piece(n, S, DESERT, [(DES_A, DES_A_MEL, 2), (DES_A, DES_A_MEL, 3)], loop=False, ending=(["Am9"], ""))
-    if n == "spanish guitar 1":
-        return theme_piece(n, S, DESERT, [(DES_B, DES_B_MEL, 2)], loop=True)
+    if n == "spanish guitar 1":  # desert playlist: a sunny bossa
+        return theme_piece(n, S, dict(BOSSA, lead="panflute", double="kalimba"), [(DES_B, DES_B_MEL, 2)], loop=True)
     if n == "spanish guitar 3":  # desert odd chapter
         return theme_piece(n, S, DESERT, [(DES_B[:6], first_bars(DES_B_MEL, 6), 2), (DES_A[4:], last_bars(DES_A_MEL, 4), 3)],
                            loop=False, ending=(["Am9"], ""))
     if n == "jazz":
-        return theme_piece(n, S, JAZZ_STYLE, [(JAZZ, JAZZ_MEL, 2), (JAZZ, JAZZ_MEL, 3)], loop=True, nominal=120)
+        # the clubhouse lounge: a bossa, the second time round with the drums in
+        return theme_piece(n, S, BOSSA, [(JAZZ, JAZZ_MEL, 2), (JAZZ, JAZZ_MEL, 3)], loop=True, nominal=120)
     if n == "end of year":
         st = dict(CALM_STYLE, lead="celesta", double="glock", comp="epiano", comp_rhythm=((0, 2), (2, 2)))
         return theme_piece(n, S, st, [(["Bbmaj7", "Bbm6", "Am7", "D7"], first_bars(MAIN_B_MEL, 4), 1),

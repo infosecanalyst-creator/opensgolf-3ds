@@ -46,13 +46,16 @@ Every sound and piece of music is made by `tools/freeset_art/sounds.py` and its 
 * `snd_fx.py`: golf (swing whooshes, driver / iron / chip / putt contact, the ball on grass, sand, water and trees, the cup's
   rattle), the interface (soft pops and ticks, little mallet confirmations; the fairway painting tune's note is an F so
   the engine's pitched tune lands in key), building and terrain tools, applause and crowds, wind, birds, insects, waves,
-  lake water, animals, engines.
+  lake water, animals, engines, and cartoon comedy: a springy boing, a 'bloop' for a ball in the water, a slide whistle
+  for a bad shot, a kazoo 'wah-wah-waaah' for a disappointed crowd, a brass fanfare for the big moments.
 * `snd_voice.py`: a formant voice (glottal pulse, five resonators, consonant noise) speaking *Golfish*, a made-up babble,
-  in moods (happy, excited, sad, angry, tired, awed, disgusted, sly) with laughs, giggles, sighs, yawns, gasps, hums and
-  grunts; a cast of men's and women's voices and one for each celebrity.
+  in cartoon-sized moods (happy, excited, sad, angry, tired, awed, disgusted, sly) with laughs, giggles, grumbles,
+  'ooh!', 'aww!' and 'wheee!', sighs, yawns, gasps, hums and grunts, breath, vibrato and a natural drift of pitch; a cast of
+  men's and women's voices and one for each celebrity.
 * `snd_music.py`, `snd_songs.py`: instruments (e-piano, nylon guitar, harp, harpsichord, marimba, vibes, glockenspiel,
   kalimba, steel pan, flutes, whistle, pads, strings, basses, drums and hand percussion) and original pieces: a main
-  theme (title, accomplishments, year end, story jingles), a calm piece, a jazz piece, and a theme each for the tropical,
+  theme (title, accomplishments, year end, story jingles), a cheeky honky-tonk rag (story chapters), a calm piece, a
+  clubhouse bossa, and a theme each for the tropical,
   desert and links courses, arranged for the story jingles and the in-game playlists (`Sounds/Music`, the M key) and
   medleyed for the credits. Playlist pieces loop without a seam.
 

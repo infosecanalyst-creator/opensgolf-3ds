@@ -58,50 +58,50 @@ def rng_for(path):
 # what golfers say (SimsFX: the golfers' own lines; Sounds/Male, Female: shot comments): name pattern -> (mood, script)
 # A script's syllables are our own babble; '<...>' are sounds (snd_voice.say).
 LINES = [
-    (r"badhole", "disgust", "ugh. nee-ba-ZOO."),
-    (r"bad", "angry", "<grunt .6> bah-DOO!"),
-    (r"benchold", "tired", "<sigh .7> hoo-ba."),
-    (r"bench", "happy", "<sigh .8> aah, mee-la-shoo~"),
+    (r"badhole", "disgust", "<grumble 3> nee-ba-ZOO. pfft."),
+    (r"bad", "angry", "<slidedown .22> BAH!"),
+    (r"benchold", "tired", "<sigh .7> oof. hoo-ba-la."),
+    (r"bench", "happy", "<sigh .8> aah~ mee-la-SHOO~"),
     (r"blind", "question", "hm? wee-da-POH?"),
-    (r"celeb", "excited", "<gasp> oo-WAH! shee-ba-LOO!"),
+    (r"celeb", "excited", "<gasp> <oooh> shee-ba-LOO!"),
     (r"scoke", "happy", "<slurp> aah~"),
-    (r"coke", "happy", "<gulp> aah! bee-lo-NAH~"),
-    (r"crabgrass2", "disgust", "eew. gra-ba-NOOK, tsk tsk. bla-ga-DEE."),
-    (r"crab", "disgust", "eew, gra-ba-NOOK."),
-    (r"easy", "sly", "pfft. nee-ba POO-ka~"),
-    (r"greeting", "happy", "ha-LOH! wee-BA!"),
-    (r"happy0", "happy", "wee-BOO na-ZOO! <laugh 3>"),
+    (r"coke", "happy", "<gulp> AAH! bee-lo-NAH~"),
+    (r"crabgrass2", "disgust", "eew. gra-ba-NOOK! <grumble 3> tsk tsk. bla-ga-DEE."),
+    (r"crab", "disgust", "eew, gra-ba-NOOK. <grumble 2>"),
+    (r"easy", "sly", "pfft. nee-ba POO-ka~ <giggle 3>"),
+    (r"greeting", "happy", "ha-LOH! wee-BA-boo!"),
+    (r"happy0", "happy", "<whee> wee-BOO na-ZOO! <laugh 3>"),
     (r"happy1", "happy", "<laugh 3> yay-pa-LOO!"),
     (r"hard", "sad", "oof... ga-ROO-ba."),
     (r"haveadrink", "question", "drin-KA, moo-BEE?"),
-    (r"hungry2", "sad", "<rumble> mm-mm... nom-ba-NEE? nom-ba?"),
+    (r"hungry2", "sad", "<rumble> mm-mm... nom-ba-NEE? <rumble> nom-BA?"),
     (r"hungry", "sad", "<rumble> nom-ba?"),
-    (r"hurryup", "angry", "ha-RA, ha-RA, ZOO-ba!"),
-    (r"lovely", "awe", "<ooh 1 1.3 1.1> lee-va-SHAY~"),
-    (r"mad", "angry", "BAH-gat! DOO-ga-sha KRA-bo! nee-ga BOM-ba-la, ZOO-ga-sha DEEN!"),
+    (r"hurryup", "angry", "ha-RA, ha-RA! ZOO-ba! <grumble 3>"),
+    (r"lovely", "awe", "<oooh> lee-va-SHAY~"),
+    (r"mad", "angry", "BAH-gat! DOO-ga-sha KRA-bo! <grumble 3> nee-ga BOM-ba-la, ZOO-ga-sha DEEN!"),
     (r"oops", "excited", "oop!"),
-    (r"options", "question", "hm. shee-ba, noo-ba?"),
-    (r"sad", "sad", "<sigh .8> oh-noo..."),
-    (r"same", "tired", "sa-ma... sa-ma..."),
-    (r"senic", "awe", "oo-LAH, lee-nay-VOO~"),
-    (r"snack", "happy", "<munch 3> mm!"),
-    (r"storyno", "disgust", "nah-NAH."),
-    (r"storyok", "neutral", "oh-KEE."),
-    (r"storyyes", "excited", "YA! ya-ya, shee-BOO!"),
+    (r"options", "question", "hm. shee-ba? noo-ba?"),
+    (r"sad", "sad", "<aww> noo-ba..."),
+    (r"same", "tired", "sa-ma... sa-ma... <sigh .6>"),
+    (r"senic", "awe", "<oooh> oo-LAH lee-nay-VOO~"),
+    (r"snack", "happy", "<munch 3> mm-MM!"),
+    (r"storyno", "disgust", "nah-NAH-nah."),
+    (r"storyok", "neutral", "oh-KEE-doh."),
+    (r"storyyes", "excited", "YA! ya-ya-YA, shee-BOO!"),
     (r"story", "neutral", "so, bee-la noo-ma shee-DOH, ta-ba LOO-ma?"),
     (r"thirsty", "tired", "<creak uh .25> wa-wa... DREE?"),
-    (r"tired", "tired", "<yawn>"),
+    (r"tired", "tired", "<yawn> mm-ba..."),
     (r"tricky", "question", "hmm... tee-ka-ROO?"),
-    (r"ugly", "disgust", "eew! BLA."),
+    (r"ugly", "disgust", "EEW! bla-BLA."),
     (r"variety2", "tired", "sa-ma, sa-MA."),
-    (r"variety", "disgust", "sa-ma, sa-ma, SA-ma! noo-va, noo-va, zip-a-DEE?"),
-    (r"waiting", "sly", "<hum 1 1.12 1 .9> ta-ta... HOO-ba?"),
-    (r"water", "sad", "noo, noo, NOOO..."),
-    (r"wet", "neutral", "<trill .3> brr-BA!"),
+    (r"variety", "disgust", "sa-ma, sa-ma, SA-ma! <grumble 2> noo-va, zip-a-DEE?"),
+    (r"waiting", "sly", "<hum 1 1.12 1 .9 1.12> ta-ta... HOO-ba?"),
+    (r"water", "sad", "noo, noo, NOOOO..."),
+    (r"wet", "neutral", "<trill .35> brr-BA!"),
     # shot comments
-    (r"good shot", "excited", "ya-HOO! nee-ba!"),
-    (r"bad shot", "angry", "ah-BAH! doo-ga!"),
-    (r"easy shot", "sly", "pfft. ba-ZEE, poo-ka-LA~"),
+    (r"good shot", "excited", "<whee> ya-HOO!"),
+    (r"bad shot", "angry", "<slidedown> ah-BAH! <grumble 2>"),
+    (r"easy shot", "sly", "pfft. ba-ZEE~ <giggle 3>"),
     (r"hard shot", "sad", "oof... ga-ROO-ba, mo-ka-NEE."),
     (r"tricky shot", "question", "hmm. tee-ka-ROO-ba?"),
 ]
@@ -112,9 +112,9 @@ BODY_VOICE = {"malekls": ("m2", 1.0), "mkls": ("m2", 0.95), "malepls": ("m1", 1.
               "femalesss": ("f_old", 1.0), "femaleskss": ("f2", 1.08), "femalesktt": ("f3", 1.0), "fm": ("f1", 1.05)}
 EMOTION = {
     "happy": ("happy", "<giggle 4> wee-la-LOO~", "<laugh 4> ha-BOO-na!"),
-    "sad": ("sad", "<sigh .8> oh-noo-ba...", "<sigh .9> moo-ga-na..."),
-    "success": ("excited", "YA-HOO! wee-BA!", "YES-ka! ya-HOO!"),
-    "failure": ("angry", "<grunt .8> ah-BAH! noo-ga-DOH!", "ARGH-ba! doo-ga!"),
+    "sad": ("sad", "<aww> moo-ga-na...", "<sigh .9> oh-noo-ba..."),
+    "success": ("excited", "<slideup> <whee> YA-HOO!", "<oooh> YES-ka! ya-HOO!"),
+    "failure": ("angry", "<slidedown> <grumble 3> ah-BAH!", "<slidedown> ARGH-ba! <grumble 2>"),
 }
 
 CELEBS = {
@@ -204,6 +204,11 @@ def extra_sound(tag, rng, sp_voice):
         return d.lp(d.softclip(out * 6, 2.5), 3500) * 0.5
     if tag == "claps":
         return fx.claps(rng, 1.2, people=12, rate=5, swell=0.05, fade=0.6) * 2.5
+    if tag.startswith("slidedown"):
+        ln = float(tag.split()[1]) if " " in tag else 0.38
+        return np.concatenate([fx.slide_whistle(rng, 1700, 420, ln) * 0.5, np.zeros(d.n_of(0.03))])
+    if tag == "slideup":
+        return np.concatenate([fx.slide_whistle(rng, 500, 1900, 0.3) * 0.5, np.zeros(d.n_of(0.03))])
     if tag == "ahem":
         sp = vo.Speaker(vo.VOICES[sp_voice] if isinstance(sp_voice, str) else sp_voice, "neutral", rng)
         sp.tr.add(0.04, f1=500, f2=1500, av=0, ah=0.6, f0=sp.base)
@@ -218,13 +223,13 @@ def extra_sound(tag, rng, sp_voice):
 
 def speak(voice, mood, script, rng, pitch=1.0):
     """A script that may hold the extra sounds above: spoken in pieces and joined."""
-    parts = re.split(r"(<(?:gulp|slurp|munch[^>]*|rumble|rimshot|mower[^>]*|guitar|claps|ahem)>)", script)
+    parts = re.split(r"(<(?:gulp|slurp|munch[^>]*|rumble|rimshot|mower[^>]*|guitar|claps|ahem|slidedown[^>]*|slideup)>)", script)
     out = []
     for part in parts:
         if not part.strip():
             continue
         m = re.fullmatch(r"<([^>]*)>", part.strip())
-        if m and re.match(r"gulp|slurp|munch|rumble|rimshot|mower|guitar|claps|ahem", m.group(1)):
+        if m and re.match(r"gulp|slurp|munch|rumble|rimshot|mower|guitar|claps|ahem|slide", m.group(1)):
             out.append(extra_sound(m.group(1), rng, voice))
         else:
             out.append(vo.say(voice, part, mood, rng, pitch))
@@ -284,21 +289,24 @@ def stinger(name, kind):
     """The 'ta-da' fanfares and other little musical stingers, made with the music kit."""
     p = mu.Piece(name, 132)
     if kind == "tada":
-        p.track("glock", "glock", 0.6, 0.2, 0.3)
-        p.track("mar", "marimba", 0.9, -0.2, 0.25)
-        p.track("pad", "strings", 0.35, 0, 0.4)
+        # the big one (a hole in one!): a brass 'ta-ta-ta-TAAA' with a snare roll and a cymbal, glockenspiel sparkle
+        p.track("brass", "brass", 0.9, 0.0, 0.3, width=0.5)
+        p.track("glock", "glock", 0.45, 0.3, 0.35)
         p.track("bass", "bass", 0.6, 0, 0.05)
-        p.track("dr", None, 0.5, 0, 0.2, kind="drums")
-        for k, m in enumerate((72, 76, 79, 84)):
-            p.note("mar", k * 0.25, m, 0.3, 0.8)
-            p.note("glock", k * 0.25, m + 12, 0.3, 0.6)
-        for m in (72, 76, 79, 84, 88):
-            p.note("mar", 1.0, m, 2.5, 0.9)
+        p.track("dr", None, 0.55, 0, 0.2, kind="drums")
+        for k, m in enumerate((67, 67, 67)):
+            for mm in (m, m - 5):
+                p.note("brass", k / 3, mm, 0.25, 0.8)
         for m in (60, 64, 67, 72):
-            p.note("pad", 1.0, m, 2.5, 0.7)
-        p.note("bass", 1.0, 36, 2.5, 0.9)
-        p.note("dr", 1.0, "k", 0, 0.8)
-        p.note("dr", 1.0, "G", 0, 0.6)
+            p.note("brass", 1.0, m, 2.2, 1.0)
+        for k, m in enumerate((84, 88, 91, 96)):
+            p.note("glock", 1.0 + k * 0.12, m, 0.4, 0.6)
+        p.note("bass", 1.0, 36, 2.2, 0.9)
+        for k in range(12):
+            p.note("dr", k / 12, "s", 0, 0.3 + 0.05 * k)
+        p.note("dr", 1.0, "k", 0, 1.0)
+        p.note("dr", 1.0, "o", 0, 1.0)
+        p.note("dr", 1.0, "G", 0, 0.7)
         return p.render(4)
     if kind == "tada2":
         p.track("vib", "vibes", 0.8, -0.2, 0.3)
@@ -523,7 +531,7 @@ def make(path, secs):
             d.put(y, 0.35, fx.leaves(rng, 0.3, 0.6) * 0.5)
         return y, LAND, True
     if "ball water" in name:
-        return fx.water_plop(rng, 1.0, 1.1), LAND, True
+        return fx.bloop(rng, 1.0), LAND, True
     if "tiger bounce" in name:
         return fx.bounces(rng, 3, "grass"), LAND, True
     if "cart away" in name:
@@ -535,7 +543,8 @@ def make(path, secs):
     if name.startswith("applause"):
         if "bad" in name:
             y = fx.claps(rng, secs, people=8, rate=3.5, swell=0.4, fade=2.5) * 0.8
-            d.put(y, 0.0, vo.crowd_vowel(rng, 1.4, "aw", 14, glide=(1.1, 0.8)) * 0.35)
+            d.put(y, 0.0, vo.crowd_vowel(rng, 1.4, "aw", 14, glide=(1.15, 0.7)) * 0.35)
+            d.put(y, 1.3, fx.sad_trombone(rng) * 0.35)
             return y, CROWD, True
         good = "good" in name
         y = fx.claps(rng, secs, people=45 if good else 30, rate=5.5 if good else 4.5, swell=0.25, fade=2.5)
@@ -663,10 +672,7 @@ def make(path, secs):
     if name == "camera":
         return fx.shutter(rng), UI, True
     if name == "boing":
-        t = d.t_axis(0.5)
-        f = 220 + 160 * np.exp(-t / 0.18) * np.cos(2 * np.pi * 14 * t)
-        y = np.sin(2 * np.pi * np.cumsum(f) / SR) + 0.3 * np.sin(4 * np.pi * np.cumsum(f) / SR)
-        return y * d.perc(len(t), 0.003, 0.15), UI, True
+        return fx.boing(rng, 0.55), UI, True
     if name == "belch":
         v = vo.Voice(85, 0.85, breath=0.1, tension=0.8, jitter=0.05, creak=0.9)
         sp = vo.Speaker(v, "neutral", rng)

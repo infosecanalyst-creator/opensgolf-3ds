@@ -81,7 +81,8 @@ OPENSGOLF
 
 A free engine for a sunny little
 game about building golf courses
-and the people who play them.
+and the people who complain
+about them.
 
 
 THE FREE SET
@@ -89,6 +90,7 @@ THE FREE SET
 Pictures, sounds, music and words
 drawn, synthesised and written
 in code for OpenSGolf.
+No pixels were harmed.
 
 
 ENGINE
@@ -97,22 +99,26 @@ The OpenSGolf contributors
 ART
 Grown from code: trees, clubhouses,
 golfers and every blade of grass
+(we counted most of them)
 
 SOUND
-Made from scratch: club, ball, crowd,
-birds, waves and wind
+Club, ball, crowd, birds, waves,
+wind, and one very dramatic duck
 
 VOICES
-Fluent in Golfish, a language
-spoken nowhere else on Earth
+Performed in fluent Golfish,
+a language with forty words
+for 'my ball went in the pond'
 
 MUSIC
 Original tunes for parkland,
-desert, tropics and links
+desert, tropics and links,
+plus a lounge band that knows
+exactly one song
 
 WORDS
 Stories, sayings and gossip
-overheard on the back nine
+overheard near the snack bar
 
 FONT
 Liberation Sans
@@ -127,7 +133,11 @@ just to watch someone hit a tree
 The groundskeepers, who never
 get the credit (until now)
 
-The ducks on the third hole
+The ducks on the third hole,
+for their patience
+
+The committee, for meeting about
+the meeting about the bunkers
 
 
 No golf balls were lost in the
@@ -136,6 +146,7 @@ were misplaced with feeling.
 
 
 Thank you for playing!
+Please replace your divots.
 #END
 ";
 
@@ -238,20 +249,20 @@ Same time next week, PARTNER?
     (
         "ClubhouseRumours",
         " Clubhouse Rumours
-Psst, PARTNER. They say the clubhouse is getting a new wing.
+Psst, PARTNER. The committee is meeting about the new wing.
  Ooh! More room for the trophy case!
- As long as they don't raise the fees.
- Gossip. Pure, delicious gossip.
-I heard a famous pro might drop by this season.
- I'm practising my autograph face already.
- I'll believe it when I see the hat.
- Famous pros put their pants on one leg at a time.
+ Another meeting? About a meeting?
+ Wake me when they've built something.
+They say socks with sandals may soon be allowed.
+ A bold new era for fashion!
+ The committee will never stand for it.
+ Over my dead, well-dressed body.
 And the pro shop is hiding a secret putter.
- Let's go and look for it after the round!
+ Let's sneak in and look after the round!
  It's probably just a putter. In a drawer.
  You and your secrets.
 Whatever's true, this place keeps getting better.
- Here's to the club! May the rumours be true!
+ Here's to the club! May the gossip be true!
  It has its moments.
  If you say so.
 ",
@@ -259,20 +270,20 @@ Whatever's true, this place keeps getting better.
     (
         "RainCheck",
         " Rain Check
-Those clouds look a bit wet, PARTNER.
+Those clouds look a bit damp, PARTNER.
  A little rain never hurt a round!
  We could play fast and finish dry.
- I'm going home. Goodbye.
-Funny how the ball skids on a wet green.
+ I'm going home. Goodbye forever.
+Funny how the ball goes skiing on a wet green.
  Every shower teaches you something new.
  Funny isn't the word I'd use.
  My ball is now a boat.
-The sun is coming out again!
- And look, a rainbow right over the fairway!
+The sun is out! And there's a rainbow on the fairway!
+ I'm aiming for the pot of gold!
  About time.
- Too late. My socks have given up.
-Next time it rains, snack bar and cocoa?
- Cocoa's on me! With marshmallows!
+ Too late. My socks have resigned.
+Next time it rains: snack bar, cocoa, marshmallows?
+ Cocoa's on me! Extra marshmallows!
  Sure, why not.
  Only if you're paying.
 ",
@@ -511,20 +522,20 @@ fn character(low: &str) -> Option<Vec<u8>> {
             female: false,
             head: 8,
             traits: 0x11,
-            bio: "The club's own professional. Has given four thousand lessons and still says 'keep your head down' like it's news.",
+            bio: "The club pro. Has given four thousand lessons and still says 'keep your head down' like it's breaking news. Owns eleven visors.",
             say: [
-                "Keep your head down and your hopes up!",
+                "Head down, hopes up, wallet open!",
                 "Textbook. Somebody write that down.",
-                "I could do this one with a broom.",
+                "I could play this hole with a broom. And have.",
                 "Ah, a shot with some character.",
                 "Now THIS is why they pay me.",
-                "Even pros have off days. This is one.",
+                "I meant to do that. For teaching purposes.",
                 "Let's call that a teaching moment.",
                 "Fore means FORE, folks!",
                 "That tree has been in my lessons for years.",
-                "Water hazard. Emphasis on hazard.",
+                "Lesson nine: balls do not float. Write it down.",
                 "Now that's a view worth a bogey.",
-                "Who approved THAT?",
+                "Who approved THAT? Not me. Check the minutes.",
                 "Hello, little fella. Mind the green.",
                 "In my day we played through. Politely.",
                 "A pro needs fluids. Professionally.",
@@ -542,7 +553,7 @@ fn character(low: &str) -> Option<Vec<u8>> {
             female: true,
             head: 3,
             traits: 0x02,
-            bio: "Course inspector. Carries a ruler, a magnifying glass and a notebook titled 'Concerns'.",
+            bio: "Course inspector. Carries a ruler, a magnifying glass and a notebook titled 'Concerns, Volume 7'. Has never given ten out of ten.",
             say: [
                 "I'll be making a note of that.",
                 "Acceptable. Barely, but acceptable.",
@@ -553,9 +564,9 @@ fn character(low: &str) -> Option<Vec<u8>> {
                 "That shot will not appear in my report.",
                 "Fore! And also: unacceptable.",
                 "That tree is three inches out of place.",
-                "Water: wet. As feared.",
+                "Water: wet. As predicted in my report.",
                 "Oh. Oh, that's rather lovely. Noted.",
-                "That is an eyesore. Underlined twice.",
+                "An eyesore. Underlined. Twice. In red.",
                 "Is that animal on the approved list?",
                 "Twelve minutes at a tee. Noted. Twice.",
                 "A drink would improve my mood. Slightly.",
@@ -573,7 +584,7 @@ fn character(low: &str) -> Option<Vec<u8>> {
             female: true,
             head: 6,
             traits: 0x04,
-            bio: "Buys land, loves views, and keeps a diamond-studded divot tool for emergencies.",
+            bio: "Buys land, loves views, keeps a diamond divot tool for emergencies. Thinks 'par' is a type of champagne.",
             say: [
                 "Darling, I could buy this hole.",
                 "Divine. Like a good investment.",
@@ -584,9 +595,9 @@ fn character(low: &str) -> Option<Vec<u8>> {
                 "Let's never speak of that shot again.",
                 "Careful! This visor is couture!",
                 "Who put a tree in my way? Buy it. Move it.",
-                "Splash. That ball was monogrammed.",
+                "Splash. That ball was monogrammed, darling.",
                 "What a view! I'll take two.",
-                "Hideous. Have it gift-wrapped and removed.",
+                "Hideous. Gift-wrap it and send it to a rival.",
                 "Aww! Can I adopt it?",
                 "Waiting? I don't do waiting.",
                 "Something sparkling, please. Anything.",
@@ -604,7 +615,7 @@ fn character(low: &str) -> Option<Vec<u8>> {
             female: false,
             head: 11,
             traits: 0x08,
-            bio: "Owns half the town and is negotiating for the other half. Tips caddies in shares.",
+            bio: "Owns half the town and is negotiating for the other half. Tips caddies in shares. Calls every hole 'an opportunity'.",
             say: [
                 "Time is money. So is golf.",
                 "Ka-ching! That's how it's done.",
@@ -615,7 +626,7 @@ fn character(low: &str) -> Option<Vec<u8>> {
                 "That shot has been downsized.",
                 "Do you know who I am? Duck!",
                 "I'm acquiring that tree. Then firing it.",
-                "Liquid assets. Very liquid.",
+                "Liquid assets. Extremely liquid.",
                 "Now that's prime real estate.",
                 "That thing is bad for business.",
                 "Is that critter on the payroll?",
@@ -635,7 +646,7 @@ fn character(low: &str) -> Option<Vec<u8>> {
             female: true,
             head: 1,
             traits: 0x01,
-            bio: "Teaches maths on weekdays and golf on Saturdays. Grades every hole out of ten.",
+            bio: "Teaches maths on weekdays and golf on Saturdays. Grades every hole out of ten and the clubhouse sandwiches out of five.",
             say: [
                 "That's a gold star for the course!",
                 "A+! Top of the class!",
@@ -645,8 +656,8 @@ fn character(low: &str) -> Option<Vec<u8>> {
                 "Hmm. A C minus, at best.",
                 "See me after the round.",
                 "Eyes on your own ball, please!",
-                "That tree gets detention.",
-                "Splash! Points off for spelling.",
+                "That tree is getting detention. And a note home.",
+                "Splash! Points off. And for spelling.",
                 "Gorgeous! Ten out of ten!",
                 "That needs a red pen. Lots of red pen.",
                 "Look! Nature study!",
@@ -666,7 +677,7 @@ fn character(low: &str) -> Option<Vec<u8>> {
             female: false,
             head: 4,
             traits: 0x10,
-            bio: "Head chef at a famous bistro. Finds every bunker, then rates the sand for texture.",
+            bio: "Head chef at a famous bistro. Finds every bunker, then rates the sand for texture. Brings his own sauce to the snack bar.",
             say: [
                 "Golf is like soup. Needs patience.",
                 "Magnifique! Chef's kiss!",
@@ -676,8 +687,8 @@ fn character(low: &str) -> Option<Vec<u8>> {
                 "Overcooked. Completely overcooked.",
                 "That one goes back to the kitchen.",
                 "Whoa! Nearly a flambe!",
-                "The tree has eaten my ball.",
-                "Into the soup it goes!",
+                "The tree ate my ball. Rude, but well seasoned.",
+                "Into the soup! Needs croutons.",
                 "Beautiful. Like a fresh baguette.",
                 "That is not a garnish, that is ugly.",
                 "Hello, little friend. You look... tasty.",
@@ -697,7 +708,7 @@ fn character(low: &str) -> Option<Vec<u8>> {
             female: true,
             head: 9,
             traits: 0x06,
-            bio: "Airline pilot. Only plays in sunshine and reads the wind like a weather report.",
+            bio: "Airline pilot. Only plays in sunshine, reads the wind like a weather report and announces every shot over an imaginary intercom.",
             say: [
                 "Clear skies, light breeze. Perfect!",
                 "Smooth landing! Right on the runway!",
@@ -708,11 +719,11 @@ fn character(low: &str) -> Option<Vec<u8>> {
                 "We seem to have lost an engine.",
                 "Incoming! Brace, brace!",
                 "Bird strike! Well, tree strike.",
-                "Unscheduled water landing.",
+                "Ladies and gentlemen, we have landed. In water.",
                 "Wow. What a view from up here.",
                 "That's not on any map I want.",
                 "Look! Wildlife on the runway!",
-                "We're in a holding pattern again.",
+                "We're in a holding pattern. Again. Snacks?",
                 "Cabin crew, drinks please!",
                 "Ahh, that's first class.",
                 "Is there an in-flight meal?",
@@ -728,7 +739,7 @@ fn character(low: &str) -> Option<Vec<u8>> {
             female: false,
             head: 14,
             traits: 0x11,
-            bio: "Engineer. Hits it long, not always straight. Has a spreadsheet for his slice.",
+            bio: "Engineer. Hits it long, not always straight. Has a spreadsheet for his slice and a second spreadsheet explaining the first.",
             say: [
                 "Velocity times angle. Easy.",
                 "Calculations confirmed!",
@@ -739,9 +750,9 @@ fn character(low: &str) -> Option<Vec<u8>> {
                 "That's a critical error.",
                 "Whoa! Unexpected trajectory!",
                 "Tree collision. Logging the incident.",
-                "Water. Not waterproof, then.",
+                "Test result: ball is not waterproof.",
                 "Elegant design! Very efficient.",
-                "Who signed off on that?",
+                "Who signed off on that? Unacceptable tolerances.",
                 "A squirrel! Fascinating mechanics.",
                 "This queue needs optimising.",
                 "Low on coolant. Need a drink.",
@@ -759,7 +770,7 @@ fn character(low: &str) -> Option<Vec<u8>> {
             female: true,
             head: 12,
             traits: 0x0a,
-            bio: "Award-winning gardener. Admires every flower bed and talks to the trees (they never answer back).",
+            bio: "Award-winning gardener. Admires every flower bed and talks to the trees. The trees are, frankly, terrible listeners.",
             say: [
                 "Ooh, look at those petunias!",
                 "Lovely! Like a rose in bloom.",
@@ -769,12 +780,12 @@ fn character(low: &str) -> Option<Vec<u8>> {
                 "Oh dear. Into the compost.",
                 "That's what I call a weed.",
                 "Careful! I'm not a shrub!",
-                "Sorry, Mr Tree. Didn't mean it.",
+                "Sorry, Mr Tree! Let's not tell Mrs Tree.",
                 "At least the pond lilies are happy.",
                 "Gorgeous! Who planted these?",
                 "That needs a hedge in front of it.",
                 "Hello, little gardener's friend!",
-                "Waiting is like watching grass grow.",
+                "Like watching grass grow. I'd enjoy that more.",
                 "I'm wilting! Water please!",
                 "Ahh. Like rain on a dry lawn.",
                 "I could eat a whole tomato patch.",
@@ -790,7 +801,7 @@ fn character(low: &str) -> Option<Vec<u8>> {
             female: false,
             head: 2,
             traits: 0x02,
-            bio: "Head librarian. A wizard on the greens. Shushes the crowd before every putt.",
+            bio: "Head librarian and a wizard on the greens. Shushes the crowd, the birds and once, memorably, a lawnmower.",
             say: [
                 "Shh! Quiet on the green, please.",
                 "A classic! Worth a reread.",
@@ -799,9 +810,9 @@ fn character(low: &str) -> Option<Vec<u8>> {
                 "This chapter is very long indeed.",
                 "That shot is overdue. Very overdue.",
                 "I'm putting that one back on the shelf.",
-                "Please! Indoor voices! And indoor balls!",
+                "Shh! Indoor voices! And indoor balls!",
                 "The tree has borrowed my ball.",
-                "A soggy paperback of a shot.",
+                "That shot is now a soggy paperback.",
                 "Splendid. Like a good first edition.",
                 "Ghastly. Return it to the publisher.",
                 "Oh! A visiting critter. Hello.",
@@ -821,7 +832,7 @@ fn character(low: &str) -> Option<Vec<u8>> {
             female: false,
             head: 5,
             traits: 0x11,
-            bio: "A steady championship player who has never once raised his voice. Not even at a bunker.",
+            bio: "A steady championship player who has never once raised his voice. Not even at a bunker. Especially not at a bunker.",
             say: [
                 "Fairways and greens, my friends.",
                 "Right where I aimed it.",
@@ -831,8 +842,8 @@ fn character(low: &str) -> Option<Vec<u8>> {
                 "Happens to the best of us.",
                 "Even I have to laugh at that one.",
                 "Heads up, everyone!",
-                "Tree one, Robin nil.",
-                "Well, the fish will enjoy it.",
+                "Tree: one. Robin: nil. Rematch at four.",
+                "The fish are building a collection.",
                 "What a setting for a game of golf.",
                 "Hmm, someone should move that.",
                 "Hello there. Keep off the line, please.",
@@ -894,36 +905,36 @@ pub fn terrain_text(low: &str, keys: &[String]) -> Vec<u8> {
 fn describe(theme: usize, k: &str) -> &'static str {
     let k = k.to_lowercase();
     match (k.as_str(), theme) {
-        ("tees", _) => "Flat, tidy and full of hope. Every hole starts here.",
-        ("green", _) => "Silky short grass around the cup. Whisper when you putt.",
-        ("fairway", 1) => "A ribbon of green through the sand. The safest ground for miles.",
-        ("fairway", _) => "Neat striped grass: the happiest place to find your ball.",
-        ("firm fairway", _) => "Hard and fast. The ball runs and runs and runs.",
-        ("sand trap", 1) => "A bunker in the desert. Yes, it's still somehow worse.",
-        ("sand trap", _) => "Soft sand that loves golf balls a little too much.",
-        ("pot bunker", _) => "Small, deep and grumpy. Bring a ladder and patience.",
-        ("waste bunker", _) => "A wide sandy stretch. Scruffy, but you can play from it.",
-        ("rough", 3) => "Wiry seaside grass. The ball sits down and sulks.",
-        ("rough", _) => "Longer grass beside the fairway. A trickier lie.",
-        ("deep rough", _) => "Tall grass that swallows balls whole. Search party advised.",
-        ("desert", _) => "Sand, stones and sun. Beautiful to look at, awful to play from.",
-        ("water", 2) => "Clear lagoon water. The fish collect golf balls.",
-        ("water", _) => "A pond with a healthy appetite for golf balls.",
-        ("stream", _) => "A babbling brook that crosses the hole. It babbles about you.",
-        ("burn", _) => "A little Scottish stream. Small, sneaky, always in the way.",
-        ("ravine", _) => "A dry gully with no bottom worth finding. Fly over it.",
-        ("brush", _) => "Low, scratchy shrubs. Your ball is in there. Somewhere.",
-        ("gorse", _) => "Prickly yellow-flowered bushes. Pretty, and very pointy.",
-        ("rocks", _) => "Boulders and stones. Bounces go anywhere, mostly sideways.",
-        ("cactus", _) => "Prickly and proud. Do not hug, do not retrieve.",
-        ("joshua tree", _) => "A spiky desert tree that waves its arms at passing shots.",
-        ("palm tree", _) => "A tall palm. Shade for golfers, a goalpost for balls.",
-        ("tropical bush", _) => "Lush leaves and bright flowers. A jungle for lost balls.",
-        ("tropical tree", _) => "A big leafy tree, perfect for shade and for stopping shots.",
-        ("pine", _) | ("pine tree", _) => "A tall evergreen. Smells lovely, blocks shots.",
-        ("scots pine", _) => "A hardy pine bent by the sea wind. Aim around it.",
-        ("maple tree", _) => "A grand leafy maple. Gorgeous in autumn, sticky in spring.",
-        _ => "Trees frame the holes, give shade and catch the odd wild shot.",
+        ("tees", _) => "Flat, tidy and full of hope. Enjoy it: it's all downhill from here.",
+        ("green", _) => "Grass cut with nail scissors. Whisper. Do not stand in anyone's line.",
+        ("fairway", 1) => "A green ribbon through the sand. The only friendly ground for miles.",
+        ("fairway", _) => "Neat striped grass. Golfers aim for it, then wonder why they never land on it.",
+        ("firm fairway", _) => "Hard and fast. The ball runs, and runs, and keeps running. Wave goodbye.",
+        ("sand trap", 1) => "A bunker in the desert. Somehow it is still the worst sand here.",
+        ("sand trap", _) => "A beach with no sea and no fun. Balls check in; they rarely check out.",
+        ("pot bunker", _) => "Small, deep and grumpy. Bring a ladder, a wedge and a therapist.",
+        ("waste bunker", _) => "A big scruffy sandpit. Playable, if you don't mind looking scruffy too.",
+        ("rough", 3) => "Wiry seaside grass. The ball sits down in it and sulks.",
+        ("rough", _) => "Longer grass beside the fairway. Close, but no cigar.",
+        ("deep rough", _) => "Grass so tall it has its own weather. Send a search party.",
+        ("desert", _) => "Sand, stones and sunshine. Lovely postcard, terrible lie.",
+        ("water", 2) => "A turquoise lagoon. The fish run a thriving golf ball business.",
+        ("water", _) => "A pond with a bottomless appetite for brand new golf balls.",
+        ("stream", _) => "A babbling brook. It babbles about your last shot. Loudly.",
+        ("burn", _) => "A wee Scottish stream: small, sneaky and always exactly in the way.",
+        ("ravine", _) => "A dry gully with no bottom worth finding. Fly over it. Bravely.",
+        ("brush", _) => "Low, scratchy shrubs. Your ball is in there somewhere, laughing.",
+        ("gorse", _) => "Pretty yellow flowers on furious little spikes. Look, don't touch.",
+        ("rocks", _) => "Boulders and stones. Bounces go anywhere, mostly sideways, sometimes back.",
+        ("cactus", _) => "Prickly and proud. Do not hug. Do not try to retrieve your ball.",
+        ("joshua tree", _) => "A spiky desert tree that waves at passing shots. Mostly it catches them.",
+        ("palm tree", _) => "A tall palm: shade for golfers, a goalpost for balls, coconuts for luck.",
+        ("tropical bush", _) => "Lush leaves and bright flowers. A five-star resort for lost balls.",
+        ("tropical tree", _) => "A big leafy tree, perfect for a nap in the shade and for stopping shots.",
+        ("pine", _) | ("pine tree", _) => "A tall evergreen. Smells like a holiday, plays like a wall.",
+        ("scots pine", _) => "A hardy pine bent sideways by the sea wind. Golfers know the feeling.",
+        ("maple tree", _) => "A grand leafy maple. Gorgeous in autumn, sticky in spring, solid all year.",
+        _ => "Trees frame the holes, give shade, and quietly collect the odd wild shot.",
     }
 }
 
@@ -972,7 +983,7 @@ mod tests {
             for k in 0..20 {
                 let at = RECORD + k * SAYING;
                 let line = &b[at..at + SAYING];
-                assert!(line[0] != 0 && line[SAYING - 1] == 0, "{f} saying {k}");
+                assert!(line[0] != 0 && line[SAYING - 2] == 0, "{f} saying {k} is too long or empty");
             }
         }
         // terrain descriptions stay short for the tooltip

@@ -295,7 +295,52 @@ def upright(f, held, vel, rng):
     return _release(d.lp(y, 1200) * 1.6 + thump, held, 0.08)
 
 
-INSTR = {"epiano": epiano, "nylon": nylon, "harp": harp, "harpsichord": harpsichord, "uke": uke, "marimba": marimba,
+def piano(f, held, vel, rng):
+    """An old upright, a touch out of tune (honky-tonk): two slightly detuned strings per note with a felt hammer, the
+    highs dying first."""
+    tail = 0.5
+    n = d.n_of(held + tail)
+    t = _t(n)
+    k = (261 / f) ** 0.4
+    y = np.zeros(n)
+    for det in (-0.0035, 0.0035):
+        for h in range(1, 9):
+            fh = f * h * (1 + 0.0004 * h * h) * (1 + det)
+            if fh > SR * 0.45:
+                break
+            y += np.sin(2 * np.pi * fh * t + rng.uniform(0, 6)) * (0.9 / h ** 1.1) * np.exp(-t * h ** 0.7 / (1.6 * k))
+    hammer = d.lp(rng.standard_normal(d.n_of(0.01)), 2500) * np.exp(-_t(d.n_of(0.01)) / 0.002) * 0.3
+    y[:len(hammer)] += hammer
+    y *= np.minimum(1, t / 0.002)
+    return _release(y, held, 0.12) * (0.4 + 0.6 * vel)
+
+
+def brass(f, held, vel, rng):
+    """A bright section brass: detuned saws with a filter that opens on the attack ('blat'), a little fall at the end."""
+    n = d.n_of(held + 0.15)
+    t = _t(n)
+    vib = 1 + 0.005 * np.sin(2 * np.pi * 5.5 * t) * np.clip((t - 0.2) / 0.2, 0, 1)
+    y = d.saw_bl(f * vib, held + 0.15, 30) + d.saw_bl(f * 1.006 * vib, held + 0.15, 30)
+    cut = 600 + 3500 * vel * (np.minimum(1, t / 0.04) * (0.6 + 0.4 * np.exp(-t / 0.15)))
+    y = d.sweep_filter(y, "lp", cut, 1.0, 64)
+    env = d.adsr(n, a=0.025, d=0.15, s=0.8, r=0.1, hold=held)
+    return y * env * 0.35 * (0.6 + 0.4 * vel)
+
+
+def kazoo(f, held, vel, rng):
+    """A kazoo: a buzzy hummed tone through a nasal vowel, wobbling."""
+    n = d.n_of(held + 0.08)
+    t = _t(n)
+    vib = 1 + 0.012 * np.sin(2 * np.pi * 6.0 * t)
+    y = d.saw_bl(f * vib, held + 0.08, 40)
+    y = d.softclip(y * 2.5, 2.0)
+    y = d.peak(d.peak(y, 600, 9, 3), 1700, 8, 3)
+    y = d.hp(y, 300)
+    env = d.adsr(n, a=0.02, d=0.05, s=0.9, r=0.06, hold=held)
+    return y * env * 0.3 * (0.6 + 0.4 * vel)
+
+
+INSTR = {"piano": piano, "brass": brass, "kazoo": kazoo, "epiano": epiano, "nylon": nylon, "harp": harp, "harpsichord": harpsichord, "uke": uke, "marimba": marimba,
          "vibes": vibes, "glock": glock, "celesta": celesta, "kalimba": kalimba, "steelpan": steelpan, "flute": flute,
          "whistle": whistle, "panflute": panflute, "reed": reed, "pad": pad, "strings": strings, "pizz": pizz,
          "bass": bass, "upright": upright, "pluck": lambda f, h, v, r: ks(f, h, v, r, 0.6, 1.5, tail=0.3)}

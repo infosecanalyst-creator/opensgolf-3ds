@@ -83,16 +83,17 @@ VOICES = {
 
 # moods: pitch factor, pitch range (accent size), tempo, loudness, extra breath, tension change, final contour
 MOODS = {
-    "neutral": dict(pitch=1.0, rng=0.25, tempo=1.0, energy=1.0, breath=0.0, tense=0.0, final="."),
-    "happy": dict(pitch=1.12, rng=0.45, tempo=1.12, energy=1.1, breath=0.02, tense=0.05, final="!"),
-    "excited": dict(pitch=1.25, rng=0.6, tempo=1.2, energy=1.25, breath=0.03, tense=0.15, final="!"),
-    "sad": dict(pitch=0.9, rng=0.15, tempo=0.78, energy=0.75, breath=0.12, tense=-0.15, final="."),
-    "angry": dict(pitch=1.05, rng=0.4, tempo=1.15, energy=1.35, breath=0.0, tense=0.35, final="!"),
-    "tired": dict(pitch=0.88, rng=0.12, tempo=0.72, energy=0.7, breath=0.18, tense=-0.2, final="."),
-    "question": dict(pitch=1.05, rng=0.3, tempo=1.0, energy=1.0, breath=0.02, tense=0.0, final="?"),
-    "awe": dict(pitch=1.08, rng=0.5, tempo=0.8, energy=0.95, breath=0.1, tense=-0.05, final="~"),
-    "disgust": dict(pitch=0.95, rng=0.3, tempo=0.9, energy=1.0, breath=0.05, tense=0.25, final="."),
-    "sly": dict(pitch=0.96, rng=0.35, tempo=0.9, energy=0.95, breath=0.08, tense=0.0, final="~"),
+    # cartoon-sized: wide pitch swings, quick happy chatter, slow droopy sadness
+    "neutral": dict(pitch=1.0, rng=0.4, tempo=1.05, energy=1.0, breath=0.03, tense=0.0, final="."),
+    "happy": dict(pitch=1.18, rng=0.75, tempo=1.18, energy=1.1, breath=0.05, tense=0.05, final="!"),
+    "excited": dict(pitch=1.35, rng=0.95, tempo=1.25, energy=1.25, breath=0.05, tense=0.15, final="!"),
+    "sad": dict(pitch=0.88, rng=0.3, tempo=0.75, energy=0.75, breath=0.16, tense=-0.15, final="."),
+    "angry": dict(pitch=1.08, rng=0.7, tempo=1.2, energy=1.35, breath=0.02, tense=0.4, final="!"),
+    "tired": dict(pitch=0.86, rng=0.2, tempo=0.7, energy=0.7, breath=0.22, tense=-0.2, final="."),
+    "question": dict(pitch=1.08, rng=0.5, tempo=1.05, energy=1.0, breath=0.04, tense=0.0, final="?"),
+    "awe": dict(pitch=1.1, rng=0.8, tempo=0.8, energy=0.95, breath=0.14, tense=-0.05, final="~"),
+    "disgust": dict(pitch=0.95, rng=0.5, tempo=0.9, energy=1.0, breath=0.08, tense=0.25, final="."),
+    "sly": dict(pitch=0.95, rng=0.6, tempo=0.9, energy=0.95, breath=0.1, tense=0.0, final="~"),
 }
 
 ONSETS = ["b", "d", "g", "k", "l", "m", "n", "p", "r", "s", "sh", "t", "v", "w", "y", "z", "f", "h", "ch", "j", ""]
@@ -297,7 +298,7 @@ class Speaker:
         vd = self.dur(0.13 * length * (1.35 if stress else 1.0) * (1.1 if vow in DIPHTHONGS else 1.0))
         f0b = end_pitch or f0 * (0.97 if not stress else 1.02)
         # the vowel swells and fades a little, and its pitch moves: up into a stressed peak, then on to the end pitch
-        fm = f0 * (1.06 if stress else 1.01)
+        fm = f0 * (1.16 if stress else 1.03)
         v1, v2 = DIPHTHONGS.get(vow, (vow, vow))
         self.vowel_seg(v1, vd * 0.3, a * 0.8, f0, fm, end_amp=a)
         self.vowel_seg(v1, vd * 0.7, a, fm, f0b, end_vowel=v2 if v2 != v1 else None, end_amp=a * 0.7)
@@ -359,6 +360,40 @@ class Speaker:
         self.vowel_seg("uh", 0.07 * hard + 0.05, 1.2 * hard, f * 1.05, f * 0.8)
         self.tr.add(0.06, f1=300, f2=1300, av=0.3, ah=0.25, f0=f * 0.75)
 
+    def grumble(self, n=4):
+        """A low, creaky mutter of babble, falling, under the breath."""
+        f = self.base * 0.78
+        for k in range(n):
+            syl = ["mm", "brm", "grm", "mph", "nrg", "hrm"][int(self.rng.integers(6))]
+            onset, vow, coda = parse_syllable(syl + "uh")
+            for c in onset:
+                self.consonant(c, "uh", 0.6, f)
+            self.vowel_seg("uh", self.dur(0.11), 0.6, f, f * 0.9, breath=0.1)
+            self.consonant("m", "uh", 0.4, f * 0.9)
+            f *= 0.95
+        self.creaky("uh", 0.18, 0.5, 0.4)
+
+    def aww(self):
+        """A sympathetic 'aww': up a little, then a long droop."""
+        f = self.base * 1.25
+        self.vowel_seg("ae", 0.1, 0.8, f, f * 1.08, breath=0.08)
+        self.vowel_seg("aw", 0.45, 0.9, f * 1.08, f * 0.62, breath=0.12, end_vowel="o")
+        self.tr.add(0.08, av=0, ah=0.05, f0=f * 0.6)
+
+    def oooh(self):
+        """An impressed 'ooooh!': a swoop up and a long arch down."""
+        f = self.base * 1.0
+        self.vowel_seg("u", 0.12, 0.6, f, f * 1.55, breath=0.06)
+        self.vowel_seg("u", 0.35, 0.9, f * 1.55, f * 1.15, breath=0.08, end_vowel="o")
+        self.tr.add(0.06, av=0, ah=0.04, f0=f)
+
+    def whee(self):
+        """A delighted 'wheee!': glides right up."""
+        f = self.base * 1.2
+        self.consonant("w", "i", 0.7, f)
+        self.vowel_seg("i", 0.4, 1.0, f, f * 2.0, breath=0.05)
+        self.tr.add(0.05, av=0, ah=0.05, f0=f * 2)
+
     def creaky(self, vow, dur, f_mul=0.55, amp=0.7):
         f = self.base * f_mul
         self.vowel_seg(vow, dur, amp, f, f * 0.9)
@@ -385,8 +420,13 @@ class Speaker:
             tr[k] = _smooth(tr[k], 22)
         f0 = _smooth(tr["f0"], 40)
         t = np.arange(n) / FS
-        if self.v.vibrato:
-            f0 = f0 * (1 + 0.012 * self.v.vibrato * np.sin(2 * np.pi * 5.3 * t) * np.clip(t / 0.3, 0, 1))
+        # a living voice: the pitch drifts slowly, and a gentle vibrato blooms on held sounds
+        drift = np.cumsum(self.rng.standard_normal(n)) / np.sqrt(FS)
+        drift = _smooth(drift - np.linspace(drift[0], drift[-1], n), 120)
+        f0 = f0 * (1 + 0.04 * np.clip(drift, -1.5, 1.5))
+        steady = np.clip((np.abs(np.gradient(_smooth(tr["f0"], 60))) * FS < 30).astype(float), 0, 1)
+        bloom = _smooth(steady, 150)
+        f0 = f0 * (1 + (0.007 + 0.012 * self.v.vibrato) * np.sin(2 * np.pi * 5.4 * t) * bloom)
         # creak: drop to a rough low pitch in the quietest stretches of the phrase and at phrase ends
         av = _smooth(tr["av"], 14)
         ah = _smooth(tr["ah"], 11)
@@ -490,6 +530,14 @@ def say(voice, script, mood="neutral", rng=None, pitch=1.0, energy=1.0):
                 sp.lip_trill(num or 0.5)
             elif name == "cough":
                 sp.cough(int(num or 2))
+            elif name == "grumble":
+                sp.grumble(int(num or 4))
+            elif name == "aww":
+                sp.aww()
+            elif name == "oooh":
+                sp.oooh()
+            elif name == "whee":
+                sp.whee()
             continue
         # a word: syllables joined by '-', stress in capitals, contour from the final punctuation
         punct = re.findall(r"[!?.~]+$", word)
