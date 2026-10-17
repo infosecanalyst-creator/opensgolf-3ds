@@ -1419,7 +1419,8 @@ impl App {
         let mut mud: BTreeMap<usize, (TextureId, Vec<Vert>)> = BTreeMap::new();
         let mut order: HashMap<&'static str, usize> = HashMap::new();
         for (joined, file, v) in jobs {
-            let Some(tex) = self.theme_texture(g, file) else { continue };
+            // (the Path styles and lamps extra's materials: paths_lamps.rs)
+            let Some(tex) = self.path_texture(g, file) else { continue };
             let next = order.len();
             let key = *order.entry(file).or_insert(next);
             let m = if joined { &mut paths } else { &mut mud };
@@ -3194,6 +3195,10 @@ impl App {
     /// Undo on a tile, as the exe's second right-click does: an item comes off with exactly what it cost back (booked to Build
     /// course), a building is demolished with no refund.
     pub fn undo_tile(&mut self, x: i32, y: i32) {
+        // a lamp post of the Path styles and lamps extra comes off first (paths_lamps.rs)
+        if self.remove_lamp(x, y) {
+            return;
+        }
         self.ensure_land();
         let Some(land) = self.land.as_mut() else { return };
         land.sync_from_terrain(&self.terrain);
@@ -3278,6 +3283,10 @@ impl App {
             // a click on the course before a landmark is chosen puts the tool down (0x41fc7c)
             self.edit = false;
             return;
+        }
+        // the Path styles and lamps extra's lamp post (paths_lamps.rs)
+        if self.chosen_landmark().is_some_and(|t| kind == land::K_LANDMARK && t == sg_core::extras::LAMP_TYPE) {
+            return self.place_lamp(tx, ty);
         }
         // the Buyable animals extra's page of the landmark strip
         if let Some(t) = self.chosen_landmark().filter(|&t| kind == land::K_LANDMARK && t >= sg_core::objects::ANIMAL_BASE) {

@@ -257,7 +257,8 @@ Select Difficulty has a **Game** box next to Course size. One click switches bet
 - **OpenSGolf extras**: the interface extras (People screen, message history, name tags, report tabs, path help, autosave,
   save pictures, course sharing, landing map, comments by hole, history graphs; not the two pauses, the update check or
   zooming towards the pointer, which you tick yourself) and the
-  gameplay extras that do not change the game's balance (turning buildings, animals, more staff).
+  gameplay extras that do not change the game's balance (turning buildings, animals, more staff, path styles and lamps
+  with the original's paths until you pick another style).
 
 If you ticked your own choice in Preferences, the box says "your own mix"; a click goes back to the original. The choice
 is saved and is what new games start with.
@@ -313,6 +314,19 @@ in settings.json under `extras`).
   left-handed, the aim line bending the left-hander's way for a draw or fade (the shot keys keep their names: D is still
   his draw). Switching the extra off puts everyone back to right-handed; switching it on again brings the left-handers
   back.
+- **Path styles and lamps: off / original paths / brick / gravel / dark stone / boardwalk.** Purely for the look; a click
+  steps the value. Every path of the course is drawn in the material chosen: red brick in a running bond, pea gravel,
+  dark slate flagstones or a wooden boardwalk with its planks across the path, made from the theme's own path art (its
+  shading and edges kept) and rounded to the original's colours. Paths cost, join buildings and carry golfers exactly as
+  before, and a path not joined to the clubhouse still shows muddy. In a game, **Tab with the Pathway tool in hand** steps
+  the course's style on (named in a toast) without opening the box. The landmark strip also gets a page with a **lamp
+  post** ($300): press the Landmark button on the Amenities panel (again to reach the page) and click open ground of your
+  course (not water, a building, a home site, a tee or a green), one per tile. Shift-click (undo) on its tile takes it away
+  with its price back. Lamp posts are drawn by the game in the art's style at every zoom, golfers walk past them (they are
+  only decoration), and from dusk their lanterns light up; with Enhanced graphics' time of day each casts a warm pool of
+  light on the ground (see docs/ENHANCED.md, *Evening lights*). With the extra off paths look as in the original and lamp
+  posts are not drawn (they are kept with the game and come back when it is switched on). The style and the lamp posts
+  are saved with the game; a game without them saves as before.
 
 On the **Time & sandbox** page:
 
@@ -355,7 +369,9 @@ confirmation box; `R:N,1` sets it at once); `--edit "X:BITS"` sets the extras of
 presses the Tab of the first extra with the pointer on tile x,y; `--edit "S:page[,design]"` opens the Amenities panel with the
 landmark tool on strip page 0 (own), 1 (cut) or 2 (animals); `--edit "b:x,y,4,t"` places landmark type t (19..32 the cut ones,
 100 + kind an animal pair); `--edit "M:6"` opens the extras box (`M:6,P` on page P: 0 Gameplay, 1 Time & sandbox, 2
-Interface).
+Interface). Path styles and lamps: the style is bits 12 to 14 of `--extras` and `X:` (4096 times 1 original paths, 2
+brick, 3 gravel, 4 dark stone, 5 boardwalk), `--edit "S:3"` opens the lamp page, `--edit "b:x,y,4,200"` places a lamp post
+on tile x,y, and `SG_FX_HOUR=0.95` (night) lights the lanterns for stills.
 
 ## Cheats (not in the original)
 

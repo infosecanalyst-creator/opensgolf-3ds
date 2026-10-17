@@ -468,6 +468,10 @@ pub struct Club {
     /// it waits.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub vip_forced: bool,
+    /// The Path styles and lamps extra's lamp posts (sg_core::extras), course points in units of 1/1024 tile; saved only
+    /// when there is one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lamps: Vec<(i32, i32)>,
 }
 
 impl Default for Club {
@@ -574,6 +578,7 @@ impl Club {
             pro_left: false,
             cheated: false,
             vip_forced: false,
+            lamps: Vec::new(),
         }
     }
 

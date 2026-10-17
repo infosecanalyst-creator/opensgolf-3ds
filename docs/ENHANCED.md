@@ -392,6 +392,9 @@ pixels): the drawing order, the hit tests and the simulation are untouched.
 - **Lamps.** A slim post with a glowing head and a halo beside the two outer corners (on the screen) of each building and
   every few tiles along the paths (a hash keeps them at least two tiles apart), drawn in the sprites' order; a pool of
   warm light on the ground under each, and a wider glow round each building.
+- **Lamp posts** of the Path styles and lamps extra (docs/PLAYING.md; crates/simgolf/src/paths_lamps.rs): the lantern
+  lights warm with a halo, and a wider, brighter pool of light than the automatic lamps' lies round each post. The pools
+  go into the same pass and draw call as the other pools (two soft quads a post), so they cost next to nothing.
 - **Fireflies.** On parkland and tropical courses, at dusk and more in summer (with the seasons), a few on some tiles of
   rough, brush, woods, marsh and within reach of water: green-gold lights drifting slowly a little above the ground,
   glowing up and fading.

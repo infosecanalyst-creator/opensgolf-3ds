@@ -45,6 +45,9 @@ pub fn landmark_name(t: i32) -> &'static str {
 /// The name of one of the port's extra landmark types (sg_core::extras): a cut landmark or a buyable animal.
 fn extra_landmark_name(t: i32) -> Option<&'static str> {
     use crate::objects::{ANIMAL_BASE, CUT_BASE, CUT_LANDMARKS};
+    if t == crate::extras::LAMP_TYPE {
+        return Some(tr("STR_EXTRAS_LAMP"));
+    }
     if t >= ANIMAL_BASE {
         return crate::wildlife::KINDS.get((t - ANIMAL_BASE) as usize).map(|k| k.name());
     }

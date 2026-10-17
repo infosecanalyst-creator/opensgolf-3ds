@@ -2994,3 +2994,17 @@ STR_CTL_CHEATS                          :Cheats box
 STR_FILES_CHEATED                       :Cheats used
 # Customise Golfer, your pro, with the Left-handed golfers extra on
 STR_CUST_LEFT_HANDED                    :Left-handed
+# the Path styles and lamps extra (sg_core::extras PATHS): its line in the Extras box, the styles ({VALUE}), the lamp post
+# on the landmark strip and the toasts
+STR_EXTRAS_PATHS                        : Path styles and lamps: {VALUE}
+STR_EXTRAS_PATHS_OFF                    :off
+STR_EXTRAS_PATHS_ORIGINAL               :original paths
+STR_EXTRAS_PATHS_BRICK                  :brick
+STR_EXTRAS_PATHS_GRAVEL                 :gravel
+STR_EXTRAS_PATHS_STONE                  :dark stone
+STR_EXTRAS_PATHS_BOARDWALK              :boardwalk
+STR_EXTRAS_LAMP                         :lamp post
+STR_EXTRAS_LAMP_EFFECT                  :Lights the way at night
+STR_TOAST_PATH_STYLE                    :Paths: {STYLE}
+STR_TOAST_LAMP_NOT_HERE                 :A lamp post needs open ground on your course
+STR_TOAST_LAMPS_FULL                    :There is a lamp post on this tile already, or no room for more

@@ -51,11 +51,12 @@ pub enum ExtrasLine {
     Ui(usize),
 }
 
-/// The option lines of a page, in order: Left-handed golfers, which came after the sandbox switches, ends the gameplay page.
+/// The option lines of a page, in order: Left-handed golfers and Path styles and lamps, which came after the sandbox
+/// switches, end the gameplay page.
 pub fn page_lines(page: u8) -> Vec<ExtrasLine> {
-    use sg_core::extras::{LEFTIES, SEASON_SPEED};
+    use sg_core::extras::{LEFTIES, PATHS, SEASON_SPEED};
     match page {
-        0 => (0..SEASON_SPEED).chain([LEFTIES]).map(ExtrasLine::Game).collect(),
+        0 => (0..SEASON_SPEED).chain([LEFTIES, PATHS]).map(ExtrasLine::Game).collect(),
         1 => (SEASON_SPEED..LEFTIES).map(ExtrasLine::Game).collect(),
         _ => (0..crate::extras::UI_KEYS.len()).map(ExtrasLine::Ui).collect(),
     }
@@ -73,6 +74,10 @@ pub fn line_text(l: ExtrasLine, e: &Extras, ui: &crate::extras::Settings) -> (St
         ExtrasLine::Game(i) if i == sg_core::extras::SEASON_SPEED => {
             let v = e.option(i);
             (trf(sg_core::extras::OPTION_KEYS[i], &[("VALUE", &tr(sg_core::extras::SPEED_KEYS[v as usize]))]), v != 0)
+        }
+        ExtrasLine::Game(i) if i == sg_core::extras::PATHS => {
+            let v = e.option(i);
+            (trf(sg_core::extras::OPTION_KEYS[i], &[("VALUE", &tr(sg_core::extras::PATH_STYLE_KEYS[v as usize]))]), v != 0)
         }
         ExtrasLine::Game(i) => (tr(sg_core::extras::OPTION_KEYS[i]).to_string(), e.option(i) != 0),
         ExtrasLine::Ui(i) => (tr(crate::extras::UI_KEYS[i]).to_string(), ui.bits() & 1 << i != 0),
@@ -105,12 +110,12 @@ pub fn popup_checks(page: u8, e: &Extras, ui: &crate::extras::Settings) -> u32 {
     page_lines(page).into_iter().enumerate().fold(0, |m, (i, l)| m | (line_text(l, e, ui).1 as u32) << i)
 }
 
-/// The page's lines drawn without a tick box: the calendar speed, which has three values.
+/// The page's lines drawn without a tick box: the calendar speed, which has three values, and the path styles.
 pub fn popup_plain(page: u8) -> u32 {
     page_lines(page)
         .into_iter()
         .enumerate()
-        .filter(|&(_, l)| l == ExtrasLine::Game(sg_core::extras::SEASON_SPEED))
+        .filter(|&(_, l)| l == ExtrasLine::Game(sg_core::extras::SEASON_SPEED) || l == ExtrasLine::Game(sg_core::extras::PATHS))
         .fold(0, |m, (i, _)| m | 1 << i)
 }
 
@@ -126,6 +131,8 @@ pub fn popup_widest(e: &Extras, ui: &crate::extras::Settings) -> f32 {
 pub const PAGE_OWNED: u8 = 0;
 pub const PAGE_CUT: u8 = 1;
 pub const PAGE_ANIMALS: u8 = 2;
+/// The Path styles and lamps extra's page: the lamp post (paths_lamps.rs).
+pub const PAGE_LAMPS: u8 = 3;
 
 /// Building kinds Tab may turn once placed: landmarks and the buildings drawn as one object (the driving range is drawn
 /// tile by tile and home sites by their lot, so they keep their way).
@@ -199,11 +206,13 @@ impl App {
 
     /// The Extras box's OK: the game being played takes the ticked extras, and they become the default for new games.
     pub fn set_extras(&mut self, e: Extras) {
+        // a new path style redraws the paths (paths_lamps.rs)
+        self.dirty |= self.club.extras.path_material() != e.path_material();
         self.club.extras = e;
         self.econ.extras = e;
         self.extras_next = e;
         save(&e);
-        if !e.cut_content && !e.animals {
+        if !e.cut_content && !e.animals && !e.lamps() {
             self.strip_page = PAGE_OWNED;
         }
         if !e.set_par {
@@ -290,6 +299,10 @@ impl App {
     /// building tool in hand, turns the building under the pointer a quarter (the clubhouse too). Returns true when it did
     /// one of those (the original's Tab is not taken then).
     pub fn extras_tab(&mut self) -> bool {
+        // Path styles and lamps: with the Pathway tool in hand, Tab steps the course's path style (paths_lamps.rs)
+        if self.edit && self.tool == 2 && self.next_path_style() {
+            return true;
+        }
         if !self.club.extras.rotate {
             return false;
         }
@@ -340,6 +353,9 @@ impl App {
         if self.club.extras.animals && !sg_core::wildlife::buyable_kinds(self.exe_theme()).is_empty() {
             v.push(PAGE_ANIMALS);
         }
+        if self.club.extras.lamps() {
+            v.push(PAGE_LAMPS);
+        }
         v
     }
 
@@ -370,6 +386,7 @@ impl App {
         match page {
             PAGE_CUT => (0..CUT_LANDMARKS.len() as i32).map(|i| CUT_BASE + i).collect(),
             PAGE_ANIMALS => sg_core::wildlife::buyable_kinds(self.exe_theme()).into_iter().map(|k| ANIMAL_BASE + k).collect(),
+            PAGE_LAMPS => vec![sg_core::extras::LAMP_TYPE],
             _ => Vec::new(),
         }
     }
@@ -393,6 +410,9 @@ impl App {
     /// Whether landmark type `t` may be placed: the club owns it (the original) or the Unlock all extra is on, or it is a cut
     /// landmark or an animal and that extra is on.
     pub fn landmark_allowed(&self, t: i32) -> bool {
+        if t == sg_core::extras::LAMP_TYPE {
+            return self.club.extras.lamps();
+        }
         if (0..CUT_BASE).contains(&t) {
             return self.club.landmarks_shown() & (1 << t) != 0;
         }
@@ -404,7 +424,9 @@ impl App {
 
     /// The price in units of a landmark type the original does not have (a cut landmark, an animal pair).
     pub fn extra_landmark_units(t: i32) -> i32 {
-        if t >= ANIMAL_BASE {
+        if t == sg_core::extras::LAMP_TYPE {
+            sg_core::extras::LAMP_UNITS
+        } else if t >= ANIMAL_BASE {
             sg_core::extras::ANIMAL_UNITS
         } else {
             sg_core::extras::CUT_LANDMARK_UNITS

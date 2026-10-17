@@ -20,6 +20,11 @@
 //!   left-hander is drawn mirrored while addressing the ball and swinging, and his shots bend the other way: his draw goes
 //!   left to right and his fade, hook and slice are mirrored too (`Club::left_handed`, planner.rs).
 //!
+//! * `path_style`: Path styles and lamps (purely cosmetic): 0 off; 1 on with the original's paths; 2..5 every path of the
+//!   course drawn in another material (brick, gravel, dark stone, wooden boardwalk), Tab with the Pathway tool stepping
+//!   through them. The landmark strip gets a page with a lamp post the player can place (`Club::lamps`), lit at night by
+//!   Enhanced graphics' time of day.
+//!
 //! Pause the calendar, Freeze happiness and Unlock all are named "Sandbox: ..." in the Extras box as they are what a sandbox
 //! player wants most, but each works in a normal game too.
 
@@ -41,12 +46,14 @@ pub struct Extras {
     pub freeze_moods: bool,
     pub unlock_all: bool,
     pub lefties: bool,
+    /// Path styles and lamps: 0 off, else 1 + the course's path style (`PATH_STYLE_KEYS`).
+    pub path_style: u8,
 }
 
 /// The options in the order the Extras box lists them (text keys of their lines). Option 6 has three values (a line with
 /// {VALUE}, `SPEED_KEYS`), the others are ticks; `Extras::option` and `Extras::set_option` read and set them by index.
 /// Left-handed golfers (10) came after the sandbox switches and is shown on the Gameplay page (extras_ui.rs `page_lines`).
-pub const OPTION_KEYS: [&str; 11] = [
+pub const OPTION_KEYS: [&str; 12] = [
     "STR_EXTRAS_ROTATE",
     "STR_EXTRAS_CUT_CONTENT",
     "STR_EXTRAS_HARDCORE",
@@ -58,10 +65,14 @@ pub const OPTION_KEYS: [&str; 11] = [
     "STR_EXTRAS_FREEZE_MOODS",
     "STR_EXTRAS_UNLOCK_ALL",
     "STR_EXTRAS_LEFTIES",
+    "STR_EXTRAS_PATHS",
 ];
 
 /// The option of `OPTION_KEYS` that is Left-handed golfers.
 pub const LEFTIES: usize = 10;
+
+/// The option of `OPTION_KEYS` that is Path styles and lamps (several values: `PATH_STYLE_KEYS`).
+pub const PATHS: usize = 11;
 
 /// The option of `OPTION_KEYS` that is the calendar speed.
 pub const SEASON_SPEED: usize = 6;
@@ -84,6 +95,8 @@ impl Extras {
         freeze_moods: false,
         unlock_all: false,
         lefties: false,
+        // purely cosmetic and nothing changes until the player picks a style or places a lamp
+        path_style: 1,
     };
 
     /// Everything off (the original game).
@@ -92,8 +105,8 @@ impl Extras {
     }
 
     /// The options as bits (the `X:` test hook and `--extras`): one bit per tick in `OPTION_KEYS` order, except that the
-    /// calendar speed takes two (bits 6 and 7), so the ticks after it sit one bit further on (8, 9, 10, 11). The first six
-    /// keep the bits they always had.
+    /// calendar speed takes two (bits 6 and 7), so the ticks after it sit one bit further on (8, 9, 10, 11), and Path styles
+    /// and lamps takes three (12 to 14). The first six keep the bits they always had.
     pub fn bits(&self) -> u32 {
         self.rotate as u32
             | (self.cut_content as u32) << 1
@@ -106,6 +119,7 @@ impl Extras {
             | (self.freeze_moods as u32) << 9
             | (self.unlock_all as u32) << 10
             | (self.lefties as u32) << 11
+            | (self.path_style.min(PATH_STYLES) as u32) << 12
     }
 
     pub fn from_bits(b: u32) -> Extras {
@@ -121,6 +135,7 @@ impl Extras {
             freeze_moods: b & 1 << 9 != 0,
             unlock_all: b & 1 << 10 != 0,
             lefties: b & 1 << 11 != 0,
+            path_style: ((b >> 12) & 7).min(PATH_STYLES as u32) as u8,
         }
     }
 
@@ -138,6 +153,7 @@ impl Extras {
             8 => self.freeze_moods as u8,
             9 => self.unlock_all as u8,
             LEFTIES => self.lefties as u8,
+            PATHS => self.path_style.min(PATH_STYLES),
             _ => 0,
         }
     }
@@ -157,6 +173,7 @@ impl Extras {
             8 => self.freeze_moods = on,
             9 => self.unlock_all = on,
             LEFTIES => self.lefties = on,
+            PATHS => self.path_style = v.min(PATH_STYLES),
             _ => {}
         }
     }
@@ -165,6 +182,8 @@ impl Extras {
     pub fn choices(i: usize) -> u8 {
         if i == SEASON_SPEED {
             SPEED_KEYS.len() as u8
+        } else if i == PATHS {
+            PATH_STYLES + 1
         } else {
             2
         }
@@ -626,3 +645,128 @@ pub const CUT_LANDMARK_UNITS: i32 = 60;
 
 /// What a pair of animals costs (units of $100; the port's choice).
 pub const ANIMAL_UNITS: i32 = 20;
+
+// ---- Path styles and lamps (the port's own, purely cosmetic) -------------------------------------------------------------
+
+/// The path styles' names ({VALUE} of the Path styles and lamps line), by `Extras::path_style` (0: the extra off).
+pub const PATH_STYLE_KEYS: [&str; 6] = [
+    "STR_EXTRAS_PATHS_OFF",
+    "STR_EXTRAS_PATHS_ORIGINAL",
+    "STR_EXTRAS_PATHS_BRICK",
+    "STR_EXTRAS_PATHS_GRAVEL",
+    "STR_EXTRAS_PATHS_STONE",
+    "STR_EXTRAS_PATHS_BOARDWALK",
+];
+
+/// The highest `Extras::path_style`.
+pub const PATH_STYLES: u8 = PATH_STYLE_KEYS.len() as u8 - 1;
+
+/// The landmark "type" of the lamp post on the Path styles and lamps page of the landmark strip. It never becomes a
+/// landmark object: placing one adds to `Club::lamps`.
+pub const LAMP_TYPE: i32 = 200;
+
+/// What a lamp post costs (units of $100; the port's choice, about a bench).
+pub const LAMP_UNITS: i32 = 3;
+
+/// The most lamp posts a course may have.
+pub const MAX_LAMPS: usize = 256;
+
+impl Extras {
+    /// Path styles and lamps is on (lamps are drawn and may be placed).
+    pub fn lamps(&self) -> bool {
+        self.path_style != 0
+    }
+
+    /// The course's path material: 0 the original's (also with the extra off), 1 brick, 2 gravel, 3 dark stone, 4 boardwalk.
+    pub fn path_material(&self) -> u8 {
+        self.path_style.saturating_sub(1).min(PATH_STYLES - 1)
+    }
+
+    /// Tab with the Pathway tool: the next path style (the original's after the last). False with the extra off.
+    pub fn next_path_style(&mut self) -> bool {
+        if !self.lamps() {
+            return false;
+        }
+        self.path_style = self.path_style % PATH_STYLES + 1;
+        true
+    }
+}
+
+impl crate::golfer::Club {
+    /// The lamp post standing on tile (a, b), if any (an index into `lamps`).
+    pub fn lamp_on(&self, a: i32, b: i32) -> Option<usize> {
+        self.lamps.iter().position(|&(x, y)| (x >> 10, y >> 10) == (a, b))
+    }
+
+    /// Puts a lamp post at course point (x, y) (units of 1/1024 tile): one per tile, at most `MAX_LAMPS`. Returns whether
+    /// it was put.
+    pub fn add_lamp(&mut self, x: i32, y: i32) -> bool {
+        if !self.extras.lamps() || self.lamps.len() >= MAX_LAMPS || self.lamp_on(x >> 10, y >> 10).is_some() {
+            return false;
+        }
+        self.lamps.push((x, y));
+        true
+    }
+
+    /// Takes the lamp post on tile (a, b) away. Returns whether there was one.
+    pub fn remove_lamp(&mut self, a: i32, b: i32) -> bool {
+        match self.lamp_on(a, b) {
+            Some(i) => {
+                self.lamps.remove(i);
+                true
+            }
+            None => false,
+        }
+    }
+}
+
+#[cfg(test)]
+mod path_tests {
+    use super::*;
+
+    #[test]
+    fn path_styles_step_and_keep_their_bits() {
+        let mut e = Extras::default();
+        assert!(!e.lamps() && !e.next_path_style());
+        assert_eq!(e.path_material(), 0);
+        e.step_option(PATHS);
+        assert_eq!((e.path_style, e.path_material()), (1, 0));
+        let seen: Vec<u8> = (0..5).map(|_| (e.next_path_style(), e.path_material()).1).collect();
+        assert_eq!(seen, vec![1, 2, 3, 4, 0]);
+        for v in 0..=PATH_STYLES {
+            let e = Extras { path_style: v, lefties: true, ..Default::default() };
+            assert_eq!(Extras::from_bits(e.bits()), e);
+            assert_eq!(e.option(PATHS), v);
+        }
+        // the older options keep their bits
+        assert_eq!(Extras { path_style: 3, ..Default::default() }.bits(), 3 << 12);
+        assert_eq!(Extras::choices(PATHS), 6);
+        let mut e = Extras { path_style: PATH_STYLES, ..Default::default() };
+        e.step_option(PATHS);
+        assert!(e.is_off());
+    }
+
+    #[test]
+    fn lamps_save_only_when_placed_and_round_trip() {
+        let mut club = crate::golfer::Club::default();
+        let plain = serde_json::to_string(&club).unwrap();
+        assert!(!plain.contains("lamps") && !plain.contains("path_style"));
+        assert!(!club.add_lamp(1500, 2600), "the extra is off");
+        club.extras.path_style = 3;
+        assert!(club.add_lamp(1500, 2600));
+        assert!(!club.add_lamp(1100, 2100), "one per tile");
+        assert!(club.add_lamp(5000, 2600));
+        assert_eq!(club.lamp_on(1, 2), Some(0));
+        let json = serde_json::to_string(&club).unwrap();
+        let back: crate::golfer::Club = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.lamps, vec![(1500, 2600), (5000, 2600)]);
+        assert_eq!(back.extras.path_style, 3);
+        // a save from before the extra reads as no lamps and the original's paths
+        let old: crate::golfer::Club = serde_json::from_str(&plain).unwrap();
+        assert!(old.lamps.is_empty() && old.extras.is_off());
+        // the last lamp taken away and the extra off: the save is as it was
+        assert!(club.remove_lamp(1, 2) && club.remove_lamp(4, 2) && !club.remove_lamp(4, 2));
+        club.extras.path_style = 0;
+        assert_eq!(serde_json::to_string(&club).unwrap(), plain);
+    }
+}

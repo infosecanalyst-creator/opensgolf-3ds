@@ -141,6 +141,10 @@ impl App {
     /// The building tool's footprint at the pointer: its edge (the lot's size plus the building's level, an upgrade being one
     /// larger) and the clearing charge in $100 units, None where it will not fit (0x40db90; the Pathway pays half).
     fn footprint_at(&self, kind: i32, a: i32, b: i32) -> (i32, Option<i32>) {
+        // the Path styles and lamps extra's lamp post: one tile of open ground with no lamp on it yet (paths_lamps.rs)
+        if kind == land::K_LANDMARK && self.chosen_landmark() == Some(sg_core::extras::LAMP_TYPE) {
+            return (1, (self.lamp_tile_ok(a, b) && self.club.lamp_on(a, b).is_none()).then_some(0));
+        }
         let level = if kind >= 6 { self.lot_level(kind) } else { 0 };
         let size = sg_core::data::buildings().get(kind as usize).map(|b| b.1).unwrap_or(1) + level;
         let clear = self.land.as_ref().and_then(|l| l.fits(a, b, size, kind, self.exe_theme()));
