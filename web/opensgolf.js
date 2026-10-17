@@ -682,8 +682,15 @@ function sgPlayFree() {
     sgStart();
 }
 
+const SG_ISO_HELP = "That is a SimGolf CD image (.iso). The browser cannot unpack a CD image; the desktop and Android versions " +
+    "can (Use my SimGolf files...). In the browser, pick the folder SimGolf was installed to, or a .zip of it.";
 async function sgUse(entries) {
     const root = sgRootOf(entries.map(e => e[0]));
+    if (root === null && entries.some(e => /\.(iso|bin|img)$/i.test(e[0]) || /(^|\/)data1\.cab$/i.test(e[0]))) {
+        // a zip of the CD (an image, or the disc's InstallShield files): the desktop and Android versions unpack those
+        sgStatus(SG_ISO_HELP);
+        return;
+    }
     if (root === null) {
         sgStatus("That does not look like a SimGolf game folder (no Flics folder found). Pick the folder that contains Flics, Sounds and Data, or a .zip of it.");
         return;
@@ -722,6 +729,10 @@ async function sgLoadFolder(fileList) {
 
 async function sgLoadZip(file) {
     if (!file) return;
+    if (/\.(iso|bin|cue|img)$/i.test(file.name)) {
+        sgStatus(SG_ISO_HELP);
+        return;
+    }
     sgStatus("Opening " + file.name + "...");
     const entries = [];
     let unread = 0;

@@ -12,6 +12,7 @@ fontdue = "0.9"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 miniz_oxide = "0.8"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 cpal = { version = "0.15", optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -52,8 +53,8 @@ ndk-context = "0.1"
 [package.metadata.android]
 package_name = "org.opensgolf.game"
 label = "OpenSGolf"
-version_code = 24
-version_name = "0.4.0"
+version_code = 25
+version_name = "0.4.1"
 min_sdk_version = 26
 target_sdk_version = 33
 build_targets = ["aarch64-linux-android", "armv7-linux-androideabi", "x86_64-linux-android"]
