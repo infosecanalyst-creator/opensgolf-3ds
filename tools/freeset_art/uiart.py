@@ -7,7 +7,8 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-FONT = os.path.join(HERE, "..", "..", "crates", "simgolf", "fonts", "LiberationSans-Bold.ttf")
+FONT = os.path.join(HERE, "..", "..", "crates", "simgolf", "fonts", "Fredoka-SemiBold.ttf")
+TEXT_FONT = os.path.join(HERE, "..", "..", "crates", "simgolf", "fonts", "Nunito-ExtraBold.ttf")
 S = 3  # oversampling
 
 

@@ -14,8 +14,10 @@ The set has two parts, both built into the game (nothing is downloaded at run ti
   (see `CREDITS.md`). `crates/sg-core/src/freeset/baked.rs` turns a sheet into the FLC the engine reads.
   Golfers are drawn in the palette slots the engine recolours, so every golfer still wears their own colours; trees use
   the leaf ramp the colour variant palettes change. The main interface sheets (the dock, title screen, course badge,
-  the Terrain, Amenities, Buildings and Elevation panels with the theme's lot pictures, terrain buttons, dialogs and the
-  course report) are vector art drawn by `tools/freeset_art/ui.py` at the places the engine cuts them.
+  the Terrain, Amenities, Buildings and Elevation panels with the theme's lot pictures, terrain buttons, dialogs, the popup
+  frame, the golfer card and the course report) and the full screen pages (Select Difficulty, the world map with its theme
+  balls, Load Game, Pick A Pro, Theme Packs, the credits, Top 10 Designers, the trophy room, the routing map's lower part and
+  the tract buttons) are vector art drawn by `tools/freeset_art/ui.py` and `uipages.py` at the places the engine cuts them.
 * **Drawn at run time** by code in `crates/sg-core/src/freeset/` for everything else:
   * **Terrain** (`tex.rs`): each theme's surfaces painted from wrapping noise with lit relief (mowing stripes, blades and
     clumps of grass, scrub, stones, sand grain and ripples, water sheen), in the nine blend shapes the terrain renderer uses.
@@ -26,8 +28,8 @@ The set has two parts, both built into the game (nothing is downloaded at run ti
   * **Sounds without a recording** (`sound.rs`): synthesised.
   * **Text** (`text.rs`): our own stories, characters, famous golfers, celebrities, terrain descriptions, lighting, credits and
     a starting high score table; every name is made up.
-  * **Fonts**: Liberation Sans Bold (SIL Open Font License 1.1, `crates/simgolf/fonts/LiberationSans-OFL.txt`) under the two
-    names the game loads, `KLEPTO__.TTF` and `manu3_.TTF`.
+  * **Fonts**: Fredoka SemiBold for the headings (`KLEPTO__.TTF`) and Nunito ExtraBold for the text (`manu3_.TTF`), both
+    SIL Open Font License 1.1 (`crates/simgolf/fonts/*-OFL.txt`, made by `tools/freeset_art/fonts.py`, see `CREDITS.md`).
 
 To rebuild the rendered art: `python3 tools/freeset_art/build.py` (numpy and Pillow; `--only REGEX` for some sprites), `python3 tools/freeset_art/ui.py` for the interface sheets, and
 for the sounds `python3 tools/freeset_art/fetch_sources.py DIR` then `python3 tools/freeset_art/sounds.py DIR` (ffmpeg

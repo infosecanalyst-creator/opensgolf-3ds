@@ -39,7 +39,9 @@ pub const FILES: &[&str] = &[
 pub fn make(rel: &str) -> Option<Vec<u8>> {
     let low = rel.to_lowercase();
     if low.ends_with(".ttf") {
-        return Some(super::paint::FONT_TTF.to_vec());
+        // the title screens' and headings' face, and the body text's
+        let ttf = if low.starts_with("klepto") { super::paint::DISPLAY_TTF } else { super::paint::TEXT_TTF };
+        return Some(ttf.to_vec());
     }
     if low.ends_with("lighting.txt") {
         return Some(lighting(super::theme_of(&low)).into_bytes());
@@ -80,8 +82,8 @@ by the OpenSGolf engine itself.
 ENGINE
 OpenSGolf contributors
 
-FONT
-Liberation Sans
+FONTS
+Fredoka and Nunito
 SIL Open Font License
 
 Thank you for playing!

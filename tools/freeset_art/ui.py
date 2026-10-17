@@ -348,22 +348,50 @@ def title_background(sh):
 
 
 def logo(sh, cx, cy, scale=1.0, lit=False):
-    """The OpenSGolf name: 'Open' in green and 'SGolf' in navy on a cream oval, a flag in the O."""
-    x, y, w, h = LOGO_BOX
-    oval(sh, x, y, w, h, CREAM, rgb("#e7dcbc"), rim=rgb("#2e6b3e"), rim_w=5)
+    """The OpenSGolf name on a cream badge: 'Open' in green over 'SGolf' in navy, a ball on a tee and a flag, a gold ribbon
+    underneath with the line under the name. At scale 1 it fills LOGO_BOX about (cx, cy)."""
+    k = scale
+    w, h = 628 * k, 206 * k
+    x, y = cx - w / 2, cy - h / 2
+    badge = sh.mask_ellipse(x, y, w, h)
+    sh.shadow(badge, 3 * k, 7 * k, 9 * k, 0.35)
+    sh.paint(badge, rgb("#1f5a34"))
+    sh.paint(sh.mask_ellipse(x + 5 * k, y + 5 * k, w - 10 * k, h - 10 * k), sh.vgrad(rgb("#5cb85a"), rgb("#2e7d3e"), y, y + h))
+    face = sh.mask_ellipse(x + 13 * k, y + 13 * k, w - 26 * k, h - 26 * k)
+    sh.paint(face, sh.vgrad(rgb("#fffdf4"), rgb("#f1e6c4"), y, y + h))
+    sh.paint(face * sh.mask_ellipse(x + 60 * k, y + 16 * k, w - 120 * k, h * 0.42), (1, 1, 1), 0.55)
     if lit:
-        sh.glow(sh.mask_ellipse(x, y, w, h) - sh.mask_ellipse(x + 6, y + 6, w - 12, h - 12), 4, 0.6, GOLD_HI)
-    t1 = sh.mask_text("Open", cx - 118, cy - 12, 78 * scale)
-    t2 = sh.mask_text("SGolf", cx + 92, cy - 12, 78 * scale)
-    for t, col in ((t1, GREEN), (t2, NAVY)):
-        sh.shadow(t, 2, 3, 2, 0.3)
-        sh.paint(t, lighten(col, 0.15) if lit else col)
-    sub = sh.mask_text("free golf course designer", cx, cy + 50, 22 * scale)
-    sh.paint(sub, rgb("#4a5a66"))
-    # a ball on a tee to the left
-    sh.paint(sh.mask_circle(x + 78, y + 85, 26), sh.rgrad((1, 1, 1), rgb("#c9d6e2"), x + 70, y + 76, 34))
-    sh.paint(sh.mask_poly([(x + 66, y + 108), (x + 90, y + 108), (x + 81, y + 118), (x + 80, y + 140), (x + 76, y + 140),
-                           (x + 75, y + 118)]), rgb("#d0a05a"))
+        sh.glow(np.clip(badge - sh.mask_ellipse(x + 8 * k, y + 8 * k, w - 16 * k, h - 16 * k), 0, 1), 5 * k, 0.8, GOLD_HI)
+    # the name, its letters with a soft drop and a light top edge
+    t1 = sh.mask_text("Open", cx - 118 * k, cy - 22 * k, 86 * k)
+    t2 = sh.mask_text("SGolf", cx + 98 * k, cy - 22 * k, 86 * k)
+    for t, col in ((t1, rgb("#2f9a4a")), (t2, rgb("#1f4f86"))):
+        sh.shadow(t, 1.5 * k, 3.5 * k, 2 * k, 0.35)
+        sh.paint(t, sh.vgrad(lighten(col, 0.25 if not lit else 0.4), lighten(col, -0.12), cy - 60 * k, cy + 15 * k))
+    # the ribbon with the line under the name
+    rx0, rx1, ry = cx - 190 * k, cx + 190 * k, cy + 38 * k
+    for sgn in (-1, 1):
+        ex = cx + sgn * 190 * k
+        sh.paint(sh.mask_poly([(ex, ry + 4 * k), (ex + sgn * 34 * k, ry + 6 * k), (ex + sgn * 22 * k, ry + 19 * k),
+                               (ex + sgn * 34 * k, ry + 32 * k), (ex, ry + 30 * k)]), rgb("#c98a1c"))
+    rib = sh.mask_rrect(rx0, ry, rx1 - rx0, 30 * k, 6 * k)
+    sh.shadow(rib, 0, 2 * k, 2 * k, 0.3)
+    sh.paint(rib, sh.vgrad(rgb("#ffd45e"), rgb("#e9a52a"), ry, ry + 30 * k))
+    sub = sh.mask_text("free golf course designer", cx, ry + 15 * k, 21 * k)
+    sh.paint(sub, rgb("#5a3a08"))
+    # a ball on a tee to the left, a flag to the right
+    bx, by = x + 66 * k, cy - 4 * k
+    sh.paint(sh.mask_poly([(bx - 14 * k, by + 22 * k), (bx + 14 * k, by + 22 * k), (bx + 4 * k, by + 33 * k), (bx + 3 * k, by + 58 * k),
+                           (bx - 3 * k, by + 58 * k), (bx - 4 * k, by + 33 * k)]), rgb("#d9a24e"))
+    ball = sh.mask_circle(bx, by, 26 * k)
+    sh.shadow(ball, 1 * k, 2 * k, 2 * k, 0.3)
+    sh.paint(ball, sh.rgrad((1, 1, 1), rgb("#c3d0dc"), bx - 9 * k, by - 10 * k, 36 * k))
+    for dx, dy in ((-9, -5), (2, -11), (11, -2), (-3, 4), (8, 9), (-11, 9)):
+        sh.paint(ball * sh.mask_circle(bx + dx * k, by + dy * k, 2.6 * k), rgb("#b4c3d0"), 0.7)
+    fx, fy = x + w - 70 * k, cy - 52 * k
+    sh.paint(sh.mask_rrect(fx - 1.5 * k, fy, 3 * k, 96 * k, 1.5 * k), rgb("#5a5a5a"))
+    sh.paint(sh.mask_poly([(fx + 1.5 * k, fy), (fx + 38 * k, fy + 11 * k), (fx + 1.5 * k, fy + 24 * k)]), rgb("#e0403a"))
+    sh.paint(sh.mask_ellipse(fx - 16 * k, fy + 92 * k, 32 * k, 8 * k), rgb("#2e7d3e"), 0.6)
 
 
 def title_pill(sh, k, lit=False):
@@ -379,7 +407,7 @@ def title():
     title_background(base)
     for k in range(5):
         title_pill(base, k)
-    logo(base, 400, 268)
+    logo(base, 400, 275)
     save("Interface/TitleBASE.png", base)
     un = Sheet(800, 600)
     for (cx, cy), r, gl in ICONS:
@@ -390,7 +418,7 @@ def title():
         title_pill(mo, k, lit=True)
     for (cx, cy), r, gl in ICONS:
         glossy_disc(mo, cx, cy, r, GOLD, gl, glyph_col=INK)
-    logo(mo, 400, 268, lit=True)
+    logo(mo, 400, 275, lit=True)
     save("Interface/TitleMO.png", mo, key=(255, 0, 255))
 
 
@@ -625,6 +653,148 @@ def trans_popups():
     s2.paint(s2.mask_rrect(1, 1, 48, 48, 10), (0, 1, 0))
     s2.paint(s2.mask_rrect(300, 0, 50, 50, 0), (0, 1, 0))
     save("Interface/s_TransPopups.png", s2, key=(248, 0, 248))
+
+
+# ---- the popup frame and check boxes (Interface/InfoButtons.pcx and its alpha) ------------------------------------------------
+# popup_ui.rs draw_info_frame: the 3 x 3 frame of 16 x 16 pieces at (200 + 17 col, 17 row), the inside filled by the engine 4
+# pixels in; the check boxes 26 x 26 at (350, 0) ticked and (400, 0) crossed; the card buttons in 46 x 40 cells (0, 50, 100;
+# 50 k) and a small button at (303, 3).
+
+def frame_picture(n=48):
+    """The popup frame as one n x n picture (its 16 pixel edges repeat along the box): a glossy blue band with a dark outline
+    and a light inner line, open in the middle where the engine fills the box."""
+    sh = Sheet(n, n)
+    outer = sh.mask_rrect(0, 0, n, n, 12)
+    hole = sh.mask_rrect(8, 8, n - 16, n - 16, 5)
+    band = np.clip(outer - hole, 0, 1)
+    sh.paint(band, rgb("#1c2556"))
+    body = np.clip(sh.mask_rrect(1.2, 1.2, n - 2.4, n - 2.4, 11) - sh.mask_rrect(6.8, 6.8, n - 13.6, n - 13.6, 6), 0, 1)
+    # the band's light runs across its width: bright on its outer half, deeper inside, as a rounded rail
+    yy, xx = np.mgrid[0:n * S, 0:n * S] / S
+    dist = np.minimum.reduce([xx, yy, n - xx, n - yy])
+    t = np.clip((dist - 1.2) / 5.6, 0, 1)[..., None]
+    rail = mix(rgb("#8fb0ec"), rgb("#3a55a8"), t) * 1.0
+    sh.paint(body, rail)
+    sh.paint(np.clip(sh.mask_rrect(2.2, 2.2, n - 4.4, n - 4.4, 10) - sh.mask_rrect(3.2, 3.2, n - 6.4, n - 6.4, 9), 0, 1), (1, 1, 1), 0.45)
+    inner = np.clip(sh.mask_rrect(6.6, 6.6, n - 13.2, n - 13.2, 6) - sh.mask_rrect(8, 8, n - 16, n - 16, 5), 0, 1)
+    sh.paint(inner, rgb("#f4e7b4"))
+    return sh
+
+
+def check_box(sh, x, y, ticked):
+    m = sh.mask_rrect(x + 1, y + 1, 24, 24, 6)
+    sh.shadow(m, 0.5, 1, 1, 0.35)
+    sh.paint(m, rgb("#26315e"))
+    sh.paint(sh.mask_rrect(x + 2.2, y + 2.2, 21.6, 21.6, 5), sh.vgrad(rgb("#ffffff"), rgb("#dfe4f2"), y + 2, y + 24))
+    if ticked:
+        mk = sh.mask_line([(x + 6.5, y + 13.5), (x + 11, y + 18.5), (x + 20, y + 7)], 3.6)
+        sh.shadow(mk, 0.4, 0.8, 0.6, 0.3)
+        sh.paint(mk, rgb("#2f9a46"))
+    else:
+        mk = np.maximum(sh.mask_line([(x + 8, y + 8), (x + 18, y + 18)], 3.0), sh.mask_line([(x + 18, y + 8), (x + 8, y + 18)], 3.0))
+        sh.paint(mk, rgb("#d2493c"), 0.85)
+
+
+def info_buttons():
+    sh = Sheet(800, 600)
+    fr = frame_picture()
+    for row in range(3):
+        for col in range(3):
+            sub = Sheet(16, 16)
+            sub.rgb[:] = fr.rgb[row * 16 * S:(row + 1) * 16 * S, col * 16 * S:(col + 1) * 16 * S]
+            sub.a[:] = fr.a[row * 16 * S:(row + 1) * 16 * S, col * 16 * S:(col + 1) * 16 * S]
+            sh.paste(sub, 200 + 17 * col, 17 * row)
+    check_box(sh, 350, 0, True)
+    check_box(sh, 400, 0, False)
+    # the card buttons: normal, lit and pressed (gold on the rows the layout marks)
+    for k in range(10):
+        for j, (col, st) in enumerate(((rgb("#4c86c8"), "normal"), (rgb("#4c86c8"), "lit"), (GOLD if k in (3, 5) else rgb("#3a6aa6"), "normal"))):
+            x, y = 50 * j, 50 * k + (0 if j == 1 else 1)
+            pill(sh, x + 1, y + 2, 44, 35, lighten(col, 0.35 if st == "lit" else 0.2), lighten(col, 0.0 if st == "lit" else -0.15))
+    glossy_disc(sh, 313, 13, 9.5, rgb("#9fc8f0"), shadow=False)
+    rgb_, a = sheet_out(sh)
+    save_pair("Interface/InfoButtons.png", "Interface/InfoButtons_A.png", rgb_, a, (248, 0, 248))
+
+
+# ---- the golfer card (Interface/GolferStats.pcx and its alpha) ----------------------------------------------------------------
+# screens_ui.rs draw_card: the plate (64, 33, 402, 244) drawn at (236, 26) with the course seen through its window (the
+# s_GolferStats box (73, 175, 384, 76), darkened by the engine), the story page's plate (64, 300, 402, 138) at (236, 165), and
+# the round buttons 57 x 50 at (500, 50 row) normal and (600, 50 row) hovered: row 0 Customize, 2 Move, 3 Snapshot, 4 Story,
+# 5 Close, 6 Next chapter, 7 back to the card, 8 Snapshot, 9 Close.
+
+def g_shirt(sh, cx, cy, r):
+    body = sh.mask_poly([(cx - r * 0.9, cy - r * 0.45), (cx - r * 0.35, cy - r * 0.8), (cx - r * 0.15, cy - r * 0.6), (cx + r * 0.15, cy - r * 0.6),
+                         (cx + r * 0.35, cy - r * 0.8), (cx + r * 0.9, cy - r * 0.45), (cx + r * 0.65, cy - r * 0.05), (cx + r * 0.45, cy - r * 0.18),
+                         (cx + r * 0.45, cy + r * 0.85), (cx - r * 0.45, cy + r * 0.85), (cx - r * 0.45, cy - r * 0.18), (cx - r * 0.65, cy - r * 0.05)])
+    collar = sh.mask_poly([(cx - r * 0.15, cy - r * 0.6), (cx, cy - r * 0.3), (cx + r * 0.15, cy - r * 0.6)])
+    return np.clip(body - collar, 0, 1)
+
+
+def g_move(sh, cx, cy, r):
+    m = np.maximum(sh.mask_rrect(cx - r * 0.12, cy - r * 0.6, r * 0.24, r * 1.2, r * 0.05), sh.mask_rrect(cx - r * 0.6, cy - r * 0.12, r * 1.2, r * 0.24, r * 0.05))
+    for dx, dy in ((0, -1), (0, 1), (-1, 0), (1, 0)):
+        tip = (cx + dx * r * 0.95, cy + dy * r * 0.95)
+        a = (cx + dx * r * 0.55 - dy * r * 0.35, cy + dy * r * 0.55 - dx * r * 0.35)
+        b = (cx + dx * r * 0.55 + dy * r * 0.35, cy + dy * r * 0.55 + dx * r * 0.35)
+        m = np.maximum(m, sh.mask_poly([tip, a, b]))
+    return m
+
+
+def g_camera(sh, cx, cy, r):
+    body = sh.mask_rrect(cx - r * 0.9, cy - r * 0.45, r * 1.8, r * 1.15, r * 0.2)
+    top = sh.mask_rrect(cx - r * 0.35, cy - r * 0.7, r * 0.7, r * 0.35, r * 0.1)
+    lens = sh.mask_circle(cx, cy + r * 0.12, r * 0.42)
+    dot = sh.mask_circle(cx, cy + r * 0.12, r * 0.22)
+    return np.clip(np.maximum(body, top) - lens + dot, 0, 1)
+
+
+def g_book(sh, cx, cy, r):
+    left = sh.mask_poly([(cx - r * 0.95, cy - r * 0.6), (cx - r * 0.06, cy - r * 0.45), (cx - r * 0.06, cy + r * 0.75), (cx - r * 0.95, cy + r * 0.6)])
+    right = sh.mask_poly([(cx + r * 0.06, cy - r * 0.45), (cx + r * 0.95, cy - r * 0.6), (cx + r * 0.95, cy + r * 0.6), (cx + r * 0.06, cy + r * 0.75)])
+    lines = 0
+    for k in range(3):
+        y = cy - r * 0.2 + k * r * 0.25
+        lines = np.maximum(lines, sh.mask_line([(cx - r * 0.75, y), (cx - r * 0.25, y + r * 0.06)], r * 0.08))
+        lines = np.maximum(lines, sh.mask_line([(cx + r * 0.25, y + r * 0.06), (cx + r * 0.75, y)], r * 0.08))
+    return np.clip(np.maximum(left, right) - lines, 0, 1)
+
+
+def g_next(sh, cx, cy, r):
+    return np.maximum(sh.mask_poly([(cx - r * 0.7, cy - r * 0.7), (cx + r * 0.1, cy), (cx - r * 0.7, cy + r * 0.7)]),
+                      sh.mask_poly([(cx - r * 0.05, cy - r * 0.7), (cx + r * 0.75, cy), (cx - r * 0.05, cy + r * 0.7)]))
+
+
+CARD_ROWS = {0: (g_shirt, "#7a5cc4"), 1: (g_exit, "#c0504a"), 2: (g_move, "#3a8fc8"), 3: (g_camera, "#d0703a"), 4: (g_book, "#3f9e6a"),
+             5: (g_tick, "#3a77b6"), 6: (g_next, "#3f9e6a"), 7: (g_book, "#3a8fc8"), 8: (g_camera, "#d0703a"), 9: (g_tick, "#3a77b6")}
+
+
+def card_plate(sh, x, y, w, h, window=None):
+    m = sh.mask_rrect(x, y, w, h, 18)
+    sh.paint(m, rgb("#20365a"))
+    sh.paint(sh.mask_rrect(x + 1.5, y + 1.5, w - 3, h - 3, 16.5), sh.vgrad(rgb("#f4f8fd"), rgb("#bcd2ea"), y, y + h))
+    sh.paint(sh.mask_rrect(x + 3, y + 3, w - 6, h * 0.35, 15), (1, 1, 1), 0.35)
+    sh.paint(np.clip(sh.mask_rrect(x + 1.5, y + 1.5, w - 3, h - 3, 16.5) - sh.mask_rrect(x + 3, y + 3, w - 6, h - 6, 15), 0, 1), (1, 1, 1), 0.7)
+    if window is not None:
+        wx, wy, ww, wh = window
+        rim = sh.mask_rrect(wx - 3, wy - 3, ww + 6, wh + 6, 11)
+        sh.paint(rim, rgb("#20365a"))
+        sh.paint(np.clip(rim - sh.mask_rrect(wx - 1.5, wy - 1.5, ww + 3, wh + 3, 9.5), 0, 1), rgb("#e8f0fa"), 0.7)
+        sh.erase(sh.mask_rrect(wx, wy, ww, wh, 8))
+
+
+def golfer_stats():
+    sh = Sheet(800, 600)
+    card_plate(sh, 64, 33, 402, 244, (73, 175, 384, 76))
+    # the scorecard's strip behind the hole numbers and strokes
+    sh.paint(sh.mask_rrect(78, 136, 374, 36, 9), rgb("#ffffff"), 0.55)
+    # the mood bars' tray
+    sh.paint(sh.mask_rrect(366, 52, 92, 82, 10), rgb("#ffffff"), 0.4)
+    card_plate(sh, 64, 300, 402, 138)
+    for row, (glyph, col) in CARD_ROWS.items():
+        for x0, st in ((500, "normal"), (600, "lit")):
+            glossy_disc(sh, x0 + 25, 50 * row + 25, 21, rgb(col), glyph, glyph_col=rgb("#fffdf4"), state=st)
+    rgb_, a = sheet_out(sh)
+    save_pair("Interface/GolferStats.png", "Interface/GolferStats_A.png", rgb_, a, (255, 0, 255))
 
 
 # ---- the course report (Interface/infoscreens/coursereport.pcx) and the OK tick (OkStates.pcx) --------------------------------
@@ -1084,11 +1254,34 @@ def main():
     ap.add_argument("--only", default="")
     a = ap.parse_args()
     jobs = [("dock", dock), ("courseinfo", courseinfo), ("title", title), ("terrainpanel", terrain_panel),
-            ("transpopups", trans_popups), ("coursereport", course_report), ("okstates", ok_states),
+            ("transpopups", trans_popups), ("infobuttons", info_buttons), ("golferstats", golfer_stats), ("coursereport", course_report), ("okstates", ok_states),
             ("buildingpanel", building_panel), ("amenitiespanel", amenities_panel),
             ("elevationpanel", elevation_panel),
             ("parklink", lambda: emblem_sheet("Interface/parklink.png", ["park", "links"])),
             ("tropdesert", lambda: emblem_sheet("Interface/tropdesert.png", ["desert", "trop"]))]
+    import uipages as pg
+    jobs += [("loadgame", lambda: save("Interface/Title_LoadGame.png", pg.files_page(False))),
+             ("pickapro", lambda: save("Interface/Title_Pickapro.png", pg.files_page(True))),
+             ("loadgamemo", lambda: save("Interface/Title_LoadGame_MO.png", pg.files_mo(), key=(255, 0, 255))),
+             ("themepacks", lambda: save("Interface/Title_ThemePacks.png", pg.theme_page())),
+             ("themepacksmo", lambda: save("Interface/Title_ThemePacks_MO.png", pg.theme_mo(), key=(255, 0, 255))),
+             ("credits", lambda: save("creditsbckgrd.png", pg.credits_page(logo))),
+             ("top10blank", lambda: save("Interface/Top10_Blank.png", pg.top10_blank())),
+             ("top10trophies", lambda: save("Interface/Top10_Trophies.png", pg.top10_trophies())),
+             ("board", lambda: save("Interface/bulletinboard&mantlewood.png", pg.board_background())),
+             ("tacstees", lambda: save_pair("Interface/tacs&tees.png", "Interface/tacs&tees_A.png", *sheet_out(pg.tacs_and_tees()),
+                                            (255, 0, 255))),
+             ("trophyparts", lambda: save_pair("Interface/TROPHYparts.png", "Interface/TROPHYparts_A.png",
+                                               *sheet_out(pg.trophy_parts()), (255, 0, 255))),
+             ("diffunsel", lambda: save("Interface/TitleSelDiffUnSel.png", pg.difficulty_page())),
+             ("diffmo", lambda: save("Interface/TitleSelDiffMO.png", pg.difficulty_mo(), key=(255, 0, 255))),
+             ("routebottom", lambda: save("Interface/infoscreens/route screens_bottom.png", pg.route_bottom(), key=(255, 0, 255))),
+             ("landbuttons", lambda: save("Interface/infoscreens/buy_land_buttons.png", pg.land_buttons(), key=(255, 0, 255))),
+             ("worldbase", lambda: save("Interface/WorldBase.png", pg.world_base())),
+             ("worldbutton", lambda: save("Interface/WorldButton.png", pg.world_button(), key=(255, 0, 255)))]
+    for theme, name in (("park", "Parkland"), ("links", "Links"), ("desert", "Desert"), ("trop", "Tropical")):
+        jobs.append(("choose" + name, lambda t=theme, n=name: save("Interface/Choose%sButtons.png" % n, pg.choose_buttons(t),
+                                                                  key=(255, 0, 0))))
     for theme, rel in (("park", "ParkLandTerrainButtons"), ("desert", "DesertTerrainButtons"), ("trop", "TropicalTerrainButtons"),
                        ("links", "LinksTerrainButtons")):
         jobs.append((rel, lambda t=theme, r=rel: terrain_buttons(t, "Interface/%s.png" % r)))

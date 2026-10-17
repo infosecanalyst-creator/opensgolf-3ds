@@ -6,13 +6,13 @@ use super::enc;
 use super::paint::{alpha as with_alpha, mix, rgb, sd_ellipse, sd_poly, sd_rect, shade, smooth_noise, Canvas, Col};
 use super::{hash, theme_of, Comp, Entry, Item};
 
-pub const BASE: Col = rgb(66, 108, 150);
-pub const GOLD: Col = rgb(228, 180, 64);
-pub const GREEN: Col = rgb(84, 168, 92);
+pub const BASE: Col = rgb(54, 110, 176);
+pub const GOLD: Col = rgb(242, 180, 48);
+pub const GREEN: Col = rgb(78, 172, 88);
 pub const GREY: Col = rgb(140, 146, 156);
 /// The neutral panels and frames.
-pub const SLATE: Col = rgb(132, 152, 178);
-pub const PAPER: Col = rgb(246, 238, 214);
+pub const SLATE: Col = rgb(158, 186, 218);
+pub const PAPER: Col = rgb(250, 243, 222);
 pub const DARK: Col = rgb(36, 46, 58);
 pub const RED: Col = rgb(200, 74, 62);
 pub const OUTLINE: Col = rgb(26, 40, 56);
@@ -41,49 +41,87 @@ pub fn tone(t: u8, light: u8) -> Col {
     }
 }
 
-/// One piece of a sheet in its box: a bevelled panel, a round or oval button, or a diamond tile.
+/// One piece of a sheet in its box: a glassy panel, a round or oval button, or a diamond tile.
 pub fn element(c: &mut Canvas, p: &Comp) {
+    element_in_stack(c, p, Stack::Alone);
+}
+
+/// Where a piece sits in a column of pieces the engine draws one under another (a report's header, its rows, its foot):
+/// only the column's outer corners are rounded, so the pieces join without notches.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Stack {
+    Alone,
+    Top,
+    Middle,
+    Bottom,
+}
+
+/// A rectangle with its own corner radius for the top two and the bottom two corners.
+fn sd_rect2(px: f32, py: f32, (x, y, w, h): (f32, f32, f32, f32), rt: f32, rb: f32) -> f32 {
+    let r = if py < y + h / 2.0 { rt } else { rb };
+    sd_rect(px, py, x, y, w, h, r)
+}
+
+/// [`element`] for a piece of a column.
+pub fn element_in_stack(c: &mut Canvas, p: &Comp, stack: Stack) {
     let (x, y, w, h) = (p.x, p.y, p.w, p.h);
     let col = tone(p.tone, p.light);
     let big = w * h > 20000.0;
-    // a long oval is drawn as a pill (bars, tabs, the long panels with rounded ends)
-    // and a big piece (a report's frame, a panel) as a plain panel: the engine writes into it
-    let shape = if w * h > 40000.0 && !(p.tone == b'w' && p.shape == b'E') {
+    // a long oval is drawn as a pill (bars, tabs, the long panels with rounded ends), a big piece (a report's frame, a
+    // panel) as a plain panel the engine writes into, and a wide "diamond" (a measured curve, not a tile) as a panel too
+    let wide_diamond = p.shape == b'D' && (w > 2.0 * h || h > 2.0 * w || w * h > 6000.0);
+    let shape = if (w * h > 40000.0 && !(p.tone == b'w' && p.shape == b'E')) || stack != Stack::Alone || wide_diamond {
         b'R'
     } else if p.shape == b'E' && (w > 2.2 * h || h > 2.2 * w) {
         b'P'
     } else {
         p.shape
     };
+    let base_r = if big { 14.0 } else { (w.min(h) * 0.3).min(9.0) };
+    let (rt, rb) = match stack {
+        Stack::Alone => (base_r, base_r),
+        Stack::Top => (base_r, 0.0),
+        Stack::Middle => (0.0, 0.0),
+        Stack::Bottom => (0.0, base_r),
+    };
     let sd = |px: f32, py: f32| -> f32 {
         match shape {
             b'P' => sd_rect(px, py, x, y, w, h, w.min(h) / 2.0),
             b'E' => sd_ellipse(px, py, x + w / 2.0, y + h / 2.0, w / 2.0, h / 2.0),
             b'D' => sd_poly(px, py, &[(x + w / 2.0, y), (x + w, y + h / 2.0), (x + w / 2.0, y + h), (x, y + h / 2.0)]),
-            b'O' => sd_rect(px, py, x, y, w, h, (w.min(h) * 0.3).min(14.0)),
-            _ => sd_rect(px, py, x, y, w, h, if big { 9.0 } else { (w.min(h) * 0.18).min(6.0) }),
+            b'O' => sd_rect2(px, py, (x, y, w, h), rt.max(w.min(h) * 0.3).min(16.0), rb.max(w.min(h) * 0.3).min(16.0)),
+            _ => sd_rect2(px, py, (x, y, w, h), rt, rb),
         }
     };
     let round = shape == b'E';
     let paper = p.tone == b'w';
+    // a row in the middle of a column is a light band the engine writes coloured text on
+    let col = if stack == Stack::Middle && !paper { mix(col, PAPER, 0.72) } else { col };
+    let middle = stack == Stack::Middle;
     c.fill((x, y, x + w, y + h), sd, |px, py| {
-        let d = sd(px, py);
-        let edge = (-d).clamp(0.0, 3.0) / 3.0;
-        // a bevel: light from the top left, a dark outline
+        let d = -sd(px, py);
         let (u, v) = ((px - x) / w.max(1.0), (py - y) / h.max(1.0));
         let lit = if round {
+            // a glossy button: light from the top left, a soft cap of light on top
             let (nx, ny) = (u * 2.0 - 1.0, v * 2.0 - 1.0);
-            0.22 - 0.3 * (nx * 0.5 + ny * 0.8).clamp(-1.0, 1.0) - 0.15 * (nx * nx + ny * ny)
-        } else if paper {
+            let cap = if ny < -0.15 && nx * nx * 0.8 + (ny + 0.55).powi(2) * 2.2 < 0.5 { 0.16 } else { 0.0 };
+            0.2 - 0.26 * (nx * 0.45 + ny * 0.85).clamp(-1.0, 1.0) - 0.12 * (nx * nx + ny * ny) + cap
+        } else if paper || middle {
             0.0
         } else {
-            0.12 - 0.22 * v
+            // a glass panel: brighter at the top, a sheen across its upper part
+            let span = h.min(140.0);
+            let t = ((py - y) / span).clamp(0.0, 1.0);
+            0.16 - 0.24 * t + if py - y < span * 0.42 && big { 0.04 } else { 0.0 }
         };
         let inner = shade(col, lit);
-        if edge < 0.34 {
-            mix(OUTLINE, inner, edge * 2.0)
-        } else if edge < 0.67 && !paper {
-            shade(inner, 0.18)
+        let edge = if middle { 0.0 } else { 1.6 };
+        if d < edge {
+            // the outline: a deep tone of the piece's own colour
+            mix(shade(col, -0.62), inner, (d / edge.max(0.01)).clamp(0.0, 1.0) * 0.35)
+        } else if d < edge + 1.4 && !paper && !middle {
+            // a bright inner rim, strongest along the top
+            mix(shade(inner, 0.42), inner, ((py - y) / h.max(1.0)).clamp(0.0, 1.0) * 0.6)
         } else {
             inner
         }
@@ -91,11 +129,63 @@ pub fn element(c: &mut Canvas, p: &Comp) {
     if paper && w > 30.0 && h > 14.0 {
         // an inset shadow along the top of a field
         c.fill(
-            (x + 2.0, y + 2.0, x + w - 2.0, y + 5.0),
-            |px, py| (sd(px, py) + 2.0).max(py - (y + 4.5)),
-            |_, _| with_alpha(shade(col, -0.25), 0.5),
+            (x + 2.0, y + 1.5, x + w - 2.0, y + 5.0),
+            |px, py| (sd(px, py) + 1.5).max(py - (y + 4.0)),
+            |_, py| with_alpha(shade(col, -0.3), 0.45 * (1.0 - (py - y - 1.5) / 2.5).clamp(0.0, 1.0)),
         );
     }
+}
+
+/// The dock panels' tray (the long piece along the bottom right, 214 / 215, 474, 585 x 126).
+fn is_tray(p: &Comp) -> bool {
+    (p.x - 215.0).abs() < 2.5 && (p.y - 474.0).abs() < 2.5 && p.w > 560.0 && p.h > 110.0
+}
+
+/// The tray as the drawn panels have it (tools/freeset_art/ui.py terrain_panel): a sheet of blue glass with a light rim, its
+/// rounded left end at x 215, y 488, running off the right of the screen.
+fn glass_tray(c: &mut Canvas) {
+    let (x, y, w, h, r) = (215.0, 488.0, 620.0, 140.0, 40.0);
+    c.fill(
+        (x, y, 800.0, 600.0),
+        |px, py| sd_rect(px, py, x, y, w, h, r),
+        |px, py| {
+            let d = -sd_rect(px, py, x, y, w, h, r);
+            let t = ((py - y) / 112.0).clamp(0.0, 1.0);
+            let body = with_alpha(mix(rgb(62, 101, 136), rgb(29, 54, 80), t), 0.78);
+            if d < 3.0 {
+                let rim = with_alpha(rgb(169, 205, 235), 0.8);
+                mix(rim, body, (d / 3.0).powi(3))
+            } else if (py - y) < 11.0 && (px - x) > 35.0 && (px - x) < 575.0 && (py - y) > 5.0 {
+                mix(body, with_alpha(rgb(220, 236, 250), 0.85), 0.12)
+            } else {
+                body
+            }
+        },
+    );
+}
+
+/// Each piece's place in a column: wide pieces (a report's header, rows and foot) with the same left edge and width.
+pub fn stacks(comps: &[Comp]) -> Vec<Stack> {
+    let wide = |p: &Comp| p.w >= 200.0 && p.h >= 12.0;
+    comps
+        .iter()
+        .map(|p| {
+            if !wide(p) {
+                return Stack::Alone;
+            }
+            let same: Vec<&Comp> = comps.iter().filter(|q| wide(q) && (q.x - p.x).abs() <= 3.0 && (q.w - p.w).abs() <= 6.0).collect();
+            if same.len() < 2 {
+                return Stack::Alone;
+            }
+            let top = same.iter().all(|q| q.y >= p.y);
+            let bottom = same.iter().all(|q| q.y <= p.y);
+            match (top, bottom) {
+                (true, false) => Stack::Top,
+                (false, true) => Stack::Bottom,
+                _ => Stack::Middle,
+            }
+        })
+        .collect()
 }
 
 /// The free set's background for a whole screen: a calm gradient of the theme colours with a faint golf ball dimple
@@ -253,8 +343,13 @@ fn draw(low: &str, name: &str, w: usize, h: usize, comps: &[Comp], full: bool) -
         return c;
     }
     // tiny pieces are the original sheets' guide marks and stray specks, not art the engine cuts: drawing them left blobs
-    for p in comps.iter().filter(|p| p.w * p.h >= 60.0 && p.w.min(p.h) >= 4.0) {
-        element(&mut c, p);
+    let st = if low.contains("infoscreens/") { stacks(comps) } else { vec![Stack::Alone; comps.len()] };
+    for (p, s) in comps.iter().zip(st).filter(|(p, _)| p.w * p.h >= 60.0 && p.w.min(p.h) >= 4.0) {
+        if is_tray(p) {
+            glass_tray(&mut c);
+        } else {
+            element_in_stack(&mut c, p, s);
+        }
     }
     if name == "holemark.pcx" {
         hole_numbers(&mut c, comps);
