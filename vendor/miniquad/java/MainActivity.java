@@ -433,7 +433,8 @@ public class MainActivity extends Activity {
                         i.addCategory(Intent.CATEGORY_OPENABLE);
                         i.setType("*/*");
                         i.putExtra(Intent.EXTRA_MIME_TYPES, new String[] {
-                            "application/zip", "application/x-zip-compressed", "application/x-zip", "application/octet-stream"
+                            "application/zip", "application/x-zip-compressed", "application/x-zip", "application/octet-stream",
+                            "application/x-iso9660-image", "application/x-iso-image"
                         });
                     }
                     try {

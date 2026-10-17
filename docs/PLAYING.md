@@ -19,7 +19,7 @@ followed down up to two levels):
 
 With none found it plays on the free base set (opensgolf-free), and the first time the title screen says so next to its
 **Use my SimGolf files...** button (top left). That button, and the same line at the end of Preferences, asks whether the
-files are a .zip of the SimGolf folder or the folder itself, then opens the system's own picker for it (Windows and macOS
+files are a .zip, a CD .iso, or the folder itself, then opens the system's own picker for it (Windows and macOS
 dialogs, the desktop's XDG portal on Linux, Android's file picker). A .zip is unpacked into `game` in the save folder, by the
 browser version's rules: the game folder is the one holding `Flics`, at any depth; `__MACOSX`, `._` files, videos and
 Windows programs are left out (crates/simgolf/src/import.rs). On macOS a picked folder is copied there as well (macOS's
@@ -30,7 +30,12 @@ real restart, so the original's art, sounds, fonts and tables load exactly as on
 game it asks first, as anything not saved is lost). On the original files the button reads **Use the free graphics**, which
 saves the free set as the base set (Preferences > Content's choice) and starts again. The browser version has its own
 picker on the page and no such button; on Android the files are copied into the app (see Android below).
-Test hook: `SG_PICK_FOLDER=DIR` takes DIR (a folder or a .zip) as picked, right after start up (`SG_PICK_FOLDER=free`
+The native importer also accepts ISO 9660/Joliet images of the SimGolf CD, including a .zip containing one .iso. It reads
+game files directly or unpacks the CD's InstallShield 6–16 `data1.hdr`/`data*.cab` archives, including sounds and voices.
+No mounting, original installer, or external extraction tool is needed. Other disc formats (BIN/CUE, MDF and UDF) and
+older InstallShield archives are not supported. The browser page continues to accept folders and ordinary game ZIPs.
+
+Test hook: `SG_PICK_FOLDER=DIR` takes DIR (a folder, .zip or .iso) as picked, right after start up (`SG_PICK_FOLDER=free`
 chooses the free graphics); on Android the intent extra `sg_pick` does the same
 (`adb shell am start -n org.opensgolf.game/.MainActivity --es sg_pick PATH`).
 
