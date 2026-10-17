@@ -555,4 +555,45 @@ mod tests {
         }
         eprintln!("Imported {} game files and {} original sounds", result.files, mixer.list("").len());
     }
+
+    /// With SG_TEST_ISO=<a SimGolf CD image> (and SG_TEST_ISO_REF=<the same disc unpacked another way, e.g. by unshield>):
+    /// the import gives a game folder whose sounds, data and movies match the reference byte for byte. Skipped without them.
+    #[test]
+    fn a_real_disc_imports_like_unshield() {
+        let (Some(iso), Some(reference)) = (std::env::var_os("SG_TEST_ISO"), std::env::var_os("SG_TEST_ISO_REF")) else {
+            return;
+        };
+        let dest = std::env::temp_dir().join(format!("sg_iso_real_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dest);
+        let got = unpack(Path::new(&iso), &dest, &mut |_, _| {}).expect("the disc imports");
+        assert!(got.files > 1000, "{} files", got.files);
+        let reference = Path::new(&reference);
+        // unshield writes spaces in names as underscores ("Golf_Sfx"); the import keeps the disc's names ("Golf Sfx")
+        let key = |p: &Path| p.to_string_lossy().to_lowercase().replace('_', " ");
+        let imported: std::collections::BTreeMap<String, PathBuf> =
+            sg_core::fsutil::walk(&dest).into_iter().map(|f| (key(f.strip_prefix(&dest).unwrap()), f)).collect();
+        let mut checked = 0;
+        for sub in ["Sounds", "Data", "Flics", "SimsFX"] {
+            let r = reference.join(sub);
+            if !r.is_dir() {
+                continue;
+            }
+            for f in sg_core::fsutil::walk(&r) {
+                let rel = f.strip_prefix(reference).unwrap();
+                // what every import leaves out (videos, programs: crate::import::skip)
+                if crate::import::skip(&rel.to_string_lossy().to_lowercase().replace('\\', "/")) {
+                    continue;
+                }
+                let (a, b) = (std::fs::read(&f).ok(), imported.get(&key(rel)).and_then(|m| std::fs::read(m).ok()));
+                assert!(a == b, "{}: reference {:?} bytes, imported {:?} bytes", rel.display(), a.map(|v| v.len()), b.map(|v| v.len()));
+                checked += 1;
+            }
+        }
+        assert!(checked > 1000, "only {checked} files compared");
+        if std::env::var_os("SG_TEST_ISO_KEEP").is_none() {
+            let _ = std::fs::remove_dir_all(&dest);
+        } else {
+            println!("imported game folder kept at {}", dest.display());
+        }
+    }
 }
