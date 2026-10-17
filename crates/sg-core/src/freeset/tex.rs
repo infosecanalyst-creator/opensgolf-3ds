@@ -149,7 +149,24 @@ struct Theme {
     heather: bool,
 }
 
+/// More saturated (k > 1) around the colour's own grey: the sunny, cheerful greens of the turf.
+fn sat(c: Col, k: f32) -> Col {
+    let g = (c[0] + c[1] + c[2]) / 3.0;
+    let f = |v: f32| (g + (v - g) * k).clamp(0.0, 255.0);
+    [f(c[0]), f(c[1]), f(c[2]), c[3]]
+}
+
 fn theme(t: usize) -> Theme {
+    let mut th = theme_base(t);
+    for c in [&mut th.mown, &mut th.green, &mut th.rough, &mut th.deep, &mut th.collar] {
+        *c = sat(*c, 1.12);
+    }
+    th.water = sat(th.water, 1.1);
+    th.shallow = sat(th.shallow, 1.1);
+    th
+}
+
+fn theme_base(t: usize) -> Theme {
     match t {
         // desert: irrigated blue-green turf on warm orange sand, sage scrub
         1 => Theme {
@@ -382,22 +399,16 @@ fn water(x: f32, y: f32, base: Col, seed: u32, sheen: f32) -> (Col, f32) {
     (c, 0.0)
 }
 
-/// Open water by its depth: `level` 0 the shore line, 1 shallow, 2 middle, 3 deep (fractions blend). Below 1 the sandy bed
-/// shows through, a broken line of foam laps at about 0.3, and under 0.1 it is wet, then dry beach sand. The ripples and
-/// glints use one seed for every depth, so neighbouring depths join without a seam.
+/// Water by its distance from the shore: `level` 0 the shore line, 1 and more open water. All open water is one colour
+/// and one pattern (the terrain renderer joins its depths and sets in square tiles, so any difference between them shows
+/// as squares): the shallows lighten only towards a shore, where the sandy bed shows through, a broken line of foam laps
+/// at about 0.3, and under 0.1 it is wet, then dry beach sand.
 fn water_at(th: &Theme, x: f32, y: f32, level: f32, seed: u32) -> Col {
-    let deep = mix(shade(th.water, -0.16), rgb(20, 50, 96), 0.2);
-    let shallow = mix(th.shallow, th.water, 0.3);
-    let base = if level >= 2.0 {
-        mix(th.water, deep, level - 2.0)
-    } else if level >= 1.0 {
-        mix(shallow, th.water, smooth(0.0, 1.0, level - 1.0))
-    } else {
-        mix(mix(th.shallow, th.sand, 0.3), shallow, smooth(0.15, 1.0, level))
-    };
+    let open = mix(th.water, th.shallow, 0.18);
+    let base = mix(mix(th.shallow, th.sand, 0.3), open, smooth(0.15, 1.0, level.min(1.0)));
     // the bed: sandy patches and a few dark weed beds in the shallows
     let bedn = fbm(x, y, 4, 3, seed ^ 0x13);
-    let clear = smooth(1.8, 0.4, level);
+    let clear = smooth(1.0, 0.3, level);
     let c = mix(base, mix(th.shallow, th.sand, 0.45), smooth(0.0, 0.5, bedn) * clear * 0.35);
     let c = shade(c, -smooth(-0.1, -0.5, bedn) * clear * 0.12);
     // large soft swells and fine ripples with glints, stronger in open water
@@ -409,8 +420,8 @@ fn water_at(th: &Theme, x: f32, y: f32, level: f32, seed: u32) -> Col {
     };
     let r = crest(0.0, 3.0, 5.0) * 0.7 + crest(1.7, -4.0, 6.0) * 0.5;
     let spark = smooth(0.5, 0.9, fbm(x, y, 8, 2, seed ^ 0x51));
-    let open = smooth(0.4, 1.5, level);
-    let mut c = shade(c, swell * 0.06 + r * (0.12 + spark * 0.35) * open);
+    let calm = smooth(0.4, 1.0, level);
+    let mut c = shade(c, swell * 0.06 + r * (0.12 + spark * 0.35) * calm);
     // foam: a broken lapping line along the shore, and a fainter second one
     if level < 0.9 {
         let brk = fbm(x, y, 16, 2, seed ^ 0x2f) * 0.18;
@@ -660,7 +671,7 @@ pub fn texture(path: &str) -> Vec<u8> {
     // tees use the number as their look (one of 25), everything else as the shape
     let is_water = matches!(kind, Kind::WaterShallow | Kind::WaterMiddle | Kind::WaterDeep);
     if is_water {
-        return water_piece(kind, &th, th_i, set, var);
+        return water_piece(kind, &th, th_i, var);
     }
     // tees are always the plain fill
     let shape = if is_tee {
@@ -770,35 +781,26 @@ pub fn texture(path: &str) -> Vec<u8> {
 }
 
 /// A water piece. The terrain renderer gives water the border pieces by depth (TERRAIN.md): pieces 2..5 face land or
-/// shallower water, 6..9 deeper water. So the outside of a shallow piece is the shore (foam, wet sand, the beach), and the
-/// outside of a deeper piece the next depth, blended wide, so a lake shades from its banks down to its deep middle.
-fn water_piece(kind: Kind, th: &Theme, th_i: usize, set: u32, var: u32) -> Vec<u8> {
+/// shallower water, 6..9 deeper water. So the outside of a shallow piece's 2..5 is the shore (the shallows lightening,
+/// foam, wet sand, the beach); every other piece is open water, the same in every depth and set so no square shows.
+fn water_piece(kind: Kind, th: &Theme, th_i: usize, var: u32) -> Vec<u8> {
     let shape = if var <= 5 { var } else { var - 5 };
     let second = var > 5;
-    let inner: f32 = match kind {
-        Kind::WaterShallow => 1.0,
-        Kind::WaterMiddle => 2.0,
-        _ => 3.0,
-    };
-    let outer = match (kind, second) {
-        (Kind::WaterShallow, false) => -0.8,
-        (Kind::WaterDeep, _) => 2.0,
-        (_, true) => inner + 1.0,
-        _ => inner - 1.0,
-    };
-    // one seed per theme and set for every depth: the ripples run on across the depths
-    let seed = hash(&format!("water{th_i}{set}"));
-    let shore = outer < 0.0;
+    // only a shallow piece facing land has a shore; every other piece (facing other water) is open water
+    let shore = kind == Kind::WaterShallow && !second;
+    let (inner, outer) = (1.0f32, -0.8f32);
+    // one seed per theme for every depth and set: the ripples run on across all water tiles
+    let seed = hash(&format!("water{th_i}"));
     let mut c = Canvas::new(N, N, [0.0, 0.0, 0.0, 1.0]);
     for y in 0..N {
         for x in 0..N {
             let (fx, fy) = (x as f32 + 0.5, y as f32 + 0.5);
-            let level = if shape == 1 {
+            let level = if shape == 1 || !shore {
                 inner
             } else {
                 let d = shape_sd(shape, fx, fy) + fbm(fx, fy, 8, 3, seed ^ 0x3e) * 3.5 + fbm(fx, fy, 32, 1, seed ^ 0x4f) * 0.8;
-                // the next depth is only met half way at the tile's edge (the tile beyond may not blend back)
-                let t = if shore { smooth(-9.0, 9.0, d) } else { smooth(-6.0, 8.0, d) * 0.5 };
+                // the shallows widen out from the shore's edge
+                let t = smooth(-12.0, 9.0, d);
                 inner + (outer - inner) * t
             };
             c.px[y * N + x] = water_at(th, fx, fy, level, seed);

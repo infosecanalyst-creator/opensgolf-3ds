@@ -230,8 +230,8 @@ def figure(body: Body, pose, club=None, seed=0):
     neck = top
     s.add_tris(loft(neck, Rh, [(-1.0 * S, 1.7 * S, 1.7 * S), (3.0 * S, 1.6 * S, 1.6 * S)], 8), [0.5] * 3, SKIN)
     # a head a little larger than life: the figure reads (and charms) at the game's few dozen pixels
-    hc = neck + Rh @ np.array([0, 7.7 * S, 0.4 * S])
-    hr = np.array([4.2, 5.0, 4.6]) * S * 1.16
+    hc = neck + Rh @ np.array([0, 8.2 * S, 0.4 * S])
+    hr = np.array([4.2, 5.0, 4.6]) * S * 1.27
     s.add_tris(blob(hc, hr, 10, 7) - hc + hc, [0.5] * 3, SKIN)
     # nose: a tiny bump forward, so the facing reads
     s.add_tris(blob(hc + Rh @ np.array([0, -0.5 * S, 5.1 * S]), (0.9 * S, 1.1 * S, 1.0 * S), 6, 4), [0.5] * 3, SKIN)
@@ -410,16 +410,21 @@ def anim(name, t, body):
              (0.75, crouch, dict(kind="putter", hands="r", dir=[0, 0.9, 0.3])), (1.0, dict(sp=4), None)]
         return pose_at(k, t)
     if n in ("happy",):
-        j = np.sin(np.pi * min(1, t * 2)) if t < 0.5 else 0
-        p = dict(DEFAULT, py=8 * j, lsp=170, rsp=170, lsr=25, rsr=25, lel=10, rel=10, lkn=30 * j, rkn=30 * j, hp=-15)
+        # a big leap with both arms flung up in a V, twice
+        j = abs(np.sin(2 * np.pi * t))
+        p = dict(DEFAULT, py=13 * j, lsp=150, rsp=150, lsr=62, rsr=62, lel=8, rel=8, lkn=50 * j, rkn=50 * j, lhp=30 * j,
+                 rhp=30 * j, hp=-20, lft=-1.5 * j, rft=-1.5 * j)
         return p, dict(kind="iron", hands="r", dir=[0.1, 0.9, 0.3])
     if n == "successa":
         pump = abs(np.sin(3 * np.pi * t))
-        return dict(DEFAULT, rsp=60 + 80 * pump, rel=120 - 60 * pump, rsr=10, lsp=-10, hp=-10, sy=10), None
+        return dict(DEFAULT, rsp=50 + 110 * pump, rel=130 - 90 * pump, rsr=12, lsp=20, lel=60, hp=-14, sy=18 * pump, py=-2 * pump,
+                    lkn=14 * pump, rkn=14 * pump, lhp=8 * pump, rhp=8 * pump), None
     if n == "failurea":
         return dict(DEFAULT, sp=10 + 10 * np.sin(np.pi * t), lsp=150, rsp=150, lsr=-30, rsr=-30, lel=130, rel=130, hp=12), None
     if n == "sad":
-        return dict(DEFAULT, sp=14, hp=24, hy=25 * np.sin(4 * np.pi * t), lsp=-6, rsp=-6, lsr=2, rsr=2), dict(kind="iron", hands="r", dir=[0, -0.9, 0.3])
+        # a slump: shoulders forward, head hung and shaking, the club dragging
+        return dict(DEFAULT, sp=20, hp=30, py=-1.5, hy=25 * np.sin(4 * np.pi * t), lsp=-8, rsp=-6, lsr=2, rsr=2, lkn=10, rkn=10,
+                    lhp=8, rhp=8), dict(kind="iron", hands="r", dir=[0, -0.9, 0.3])
     if n == "fidget":
         w = np.sin(2 * np.pi * t)
         return dict(DEFAULT, px=1.5 * w, sr=4 * w, hy=30 * np.sin(4 * np.pi * t), lhr=6 + 3 * w, rhr=6 - 3 * w, lsp=8, rsp=8,

@@ -112,7 +112,10 @@ fn leaf_hue(m: Mat, c: Col, k: f32) -> Col {
         return c;
     }
     let (r, b) = if k < 0.0 { (-k * -10.0, -k * 22.0) } else { (k * 40.0, k * -40.0) };
-    [(c[0] + r).clamp(0.0, 255.0), c[1], (c[2] + b).clamp(0.0, 255.0), c[3]]
+    // and a little richer than the colour itself
+    let g = (c[0] + c[1] + c[2]) / 3.0;
+    let s = |v: f32| g + (v - g) * 1.1;
+    [(s(c[0]) + r).clamp(0.0, 255.0), s(c[1]).clamp(0.0, 255.0), (s(c[2]) + b).clamp(0.0, 255.0), c[3]]
 }
 
 /// The free palette, with the golfer slots in the colours of swap `swap` and the roof, wall and leaves turned by `variant`.
@@ -304,7 +307,16 @@ fn landmark_colours(name: &str) -> Option<&'static [(Mat, Col)]> {
                 (WATER, rgb(70, 130, 170)),
             ],
         ),
-        ("parklandrockpal", &[(STONE, rgb(142, 138, 128)), (LEAF, rgb(90, 130, 60))]),
+        (
+            "parklandrockpal",
+            &[
+                (STONE, rgb(142, 138, 128)),
+                (LEAF, rgb(90, 130, 60)),
+                (EARTH, rgb(150, 110, 70)),
+                (DARK, rgb(40, 32, 28)),
+                (WHITE, rgb(244, 240, 230)),
+            ],
+        ),
         ("civilwarstatuepal", &[(STONE, rgb(184, 178, 166)), (GOLD, rgb(110, 128, 104))]),
         (
             "lighthousecpal",

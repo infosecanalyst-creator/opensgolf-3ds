@@ -314,7 +314,16 @@ def model(name, anim, t):
     kind, t = clip(anim, t)
     for key, (sp, pal) in BIRDS.items():
         if n == key:
-            s = bird(kind, t, sp).s
+            m = bird(kind, t, sp)
+            if key == "duck" and kind == "walk":
+                # a duck crossing: two ducklings waddle along behind her
+                for k, z in enumerate((-12.0, -19.0)):
+                    bob = 0.4 * abs(np.sin(TAU * t + k * 1.3))
+                    c = np.array([0.8 * (-1) ** k, 2.0 + bob, z])
+                    m.ell(c, [1.8, 1.6, 2.4], "YELLOW", 8, 6, 1.1)
+                    m.ell(c + [0, 2.0, 1.6], [1.2, 1.2, 1.2], "YELLOW", 8, 6, 1.15)
+                    m.cyl(c + [0, 2.0, 2.6], c + [0, 1.8, 3.6], 0.5, 0.2, "SHOE", 4)
+            s = m.s
             s.pal = pal
             return s
     for key, (sp, pal) in QUADS.items():

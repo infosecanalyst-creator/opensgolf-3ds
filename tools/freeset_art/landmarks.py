@@ -292,7 +292,20 @@ def boulders(t):
     # moss and grass tufts at the foot
     for c in ([-12, 2, 24], [10, 2, 26], [30, 2, 2], [-32, 2, 0]):
         m.leaves(c, 6)
-    return m, {"STONE": (142, 138, 128), "LEAF": (90, 130, 60)}
+    # a gopher peeking out of its hole by the rocks
+    g = np.array([34, 0, 26])
+    m.ell(g + [0, 0, 0], [9, 3.5, 8], "EARTH", 12, 6, 0.9)
+    m.cyl(g + [0, 2.6, 0], g + [0, 3.4, 0], 4.2, 4.2, "DARK", 10)
+    m.ell(g + [0, 7, 0.5], [3.4, 5.2, 3.2], "EARTH", 10, 7, 1.15)
+    m.ell(g + [0, 12.4, 1.2], [3.0, 2.8, 2.9], "EARTH", 10, 7, 1.2)
+    m.ell(g + [0, 11.4, 3.9], [1.4, 1.1, 0.9], "EARTH", 6, 4, 1.35)
+    for sx in (-1, 1):
+        m.ell(g + [sx * 1.3, 13.4, 3.6], [0.5, 0.5, 0.4], "DARK", 5, 4, 0.5)
+        m.ell(g + [sx * 2.4, 15, 0.5], [0.8, 0.9, 0.5], "EARTH", 5, 4, 1.0)
+        m.ell(g + [sx * 1.8, 8.6, 3.2], [0.8, 0.6, 0.8], "EARTH", 5, 4, 1.1)
+    m.box(g + [0, 10.4, 4.4], [1.2, 0.9, 0.4], "WHITE")
+    return m, {"STONE": (142, 138, 128), "LEAF": (90, 130, 60), "EARTH": (150, 110, 70), "DARK": (40, 32, 28),
+               "WHITE": (244, 240, 230)}
 
 
 def statue_figure(m, pose, tag, scale=1.0, move=(0, 0, 0), rot=None):

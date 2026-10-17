@@ -45,6 +45,8 @@ def palette(colours=None):
             c = shade(cols[name], k)
             if name == "LEAF":
                 # foliage shades turn cool and its highlights warm (as sprite.rs leaf_hue)
+                g = c.mean()
+                c = g + (c - g) * 1.1
                 c = c + (np.array([k * 10.0, 0, -k * 22.0]) if k < 0 else np.array([k * 40.0, 0, -k * 40.0]))
             p[base + i] = np.clip(c, 0, 255).astype(np.uint8)
     p[255] = (255, 0, 255)

@@ -46,6 +46,7 @@ class Tree(Recipe):
         # the scenic elm's frames are not a growth cycle (it has no views either): always the full tree
         size, leaf = (1.0, 1.0) if "scenicelm" in self.name else trees.growth(f, fpv)
         s = trees.species(self.name, rng, leaf)
+        s = trees.gags(self.name, s, leaf)
         return s.transformed(size)
 
 

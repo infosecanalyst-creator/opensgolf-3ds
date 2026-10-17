@@ -293,6 +293,27 @@ class Kit:
             t = trees.broadleaf(rng, h)
         self.s.extend(t.transformed(1.0, move=[x, 0, z]))
 
+    def deckchair(self, x, z, yaw=0.0, col=None):
+        """A striped deckchair (a sight gag by the clubhouse: someone is taking it easy)."""
+        col = self.st["aw1"] if col is None else col
+        R = np.array([[np.cos(np.radians(yaw)), 0, np.sin(np.radians(yaw))], [0, 1, 0],
+                      [-np.sin(np.radians(yaw)), 0, np.cos(np.radians(yaw))]])
+        P = lambda p: np.asarray(p, float) @ R.T + [x, 0, z]
+        wood = c(190, 150, 100)
+        for sx in (-5, 5):
+            self.add(tube(P([sx, 0, -8]), P([sx, 13, 4]), 0.6, 0.6, 4), wood)
+            self.add(tube(P([sx, 0, 6]), P([sx, 6, -2]), 0.6, 0.6, 4), wood)
+        for k in range(5):
+            t0, t1 = k / 5, (k + 1) / 5
+            a0 = np.array([0, 6, -2]) + (np.array([0, 1, 10]) - np.array([0, 6, -2])) * 0
+            # the sling: from the front rail sagging down to the seat and up the back
+            pts = [np.array([0, 5.5, 6]), np.array([0, 3.2, -1]), np.array([0, 12.5, 3.6])]
+            def at(t):
+                return pts[0] * (1 - t) ** 2 + pts[1] * 2 * t * (1 - t) + pts[2] * t * t
+            p0, p1 = at(t0), at(t1)
+            cc = col if k % 2 == 0 else self.st["aw2"]
+            self.add(quad(P(p0 + [-4.6, 0, 0]), P(p0 + [4.6, 0, 0]), P(p1 + [4.6, 0, 0]), P(p1 + [-4.6, 0, 0])), cc)
+
     def flagpole(self, x, z, h=60.0, col=None):
         col = self.st["accent"] if col is None else col
         self.add(tube([x, 0, z], [x, h, z], 0.8, 0.6, 5), c(220, 220, 220))
@@ -423,6 +444,10 @@ def clubhouse(style, level, rng):
     k.planter(-W - 20, -D + 44)
     k.planter(-W + 50, -D - 20)
     k.flagpole(-W - 30, -D - 30, 70)
+    # out on the lawn: a parasol and two deckchairs
+    k.umbrella(W + 30, -D - 34, 13, 20)
+    k.deckchair(W + 18, -D - 40, yaw=200)
+    k.deckchair(W + 42, -D - 36, yaw=160)
     if style == "trop":
         k.tree(W + 26, -D - 20, 90, "palm")
         k.tree(-W - 10, D + 24, 80, "palm")

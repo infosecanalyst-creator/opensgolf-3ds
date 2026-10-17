@@ -4,7 +4,7 @@ little (the seed is the file name). Sizes are in world units before the sprite i
 import numpy as np
 
 from mats import ID
-from scene import Scene, tube, quad
+from scene import Scene, ellipsoid, tube, quad
 
 LEAF, BARKT, RED, WOOD, YELLOW, WHITE, PURPLE = (ID[k] for k in ("LEAF", "BARK", "RED", "WOOD", "YELLOW", "WHITE", "PURPLE"))
 
@@ -42,8 +42,10 @@ def broadleaf(rng, height=100.0, crown=0.5, width=0.36, squash=1.05, leaf=c255(7
     n = max(8, int(round(n * 0.55)))
     ball = ball * 1.3
     top = np.array([lean * height, height * crown, 0.0])
-    s.add_tris(tube([0, 0, 0], top * 0.92, height * 0.05, height * 0.03, 8), bark, BARKT)
-    cr = height * width
+    # a chunky, slightly cartoony tree: a stout trunk flaring at the foot and a big round crown
+    s.add_tris(tube([0, 0, 0], top * 0.92, height * 0.068, height * 0.04, 8), bark, BARKT)
+    s.add_tris(tube([0, 0, 0], [0, height * 0.06, 0], height * 0.085, height * 0.066, 8), bark, BARKT)
+    cr = height * width * 1.12
     cy = height * crown + cr * squash * 0.6
     centre = np.array([lean * height, cy, 0.0])
     s.mass = (centre, cr * 1.05)
@@ -479,3 +481,57 @@ def species(name, rng, leafiness):
             s.pal = pal
             return s
     return None
+
+
+# ---- little sight gags on a few of the plants --------------------------------------------------------------------------------
+
+def sun_hat(s, top, r):
+    """A straw sun hat with a red band, sitting on `top`, tipped a little."""
+    top = np.asarray(top, float)
+    tip = np.array([0.25, 1.0, 0.1])
+    tip /= np.linalg.norm(tip)
+    s.add_tris(tube(top + tip * r * 0.05, top + tip * r * 0.22, r * 1.6, r * 1.6, 14), c255(236, 206, 120), YELLOW)
+    s.add_tris(tube(top + tip * r * 0.2, top + tip * r * 1.5, r * 0.95, r * 0.75, 12), c255(236, 206, 120), YELLOW)
+    s.add_tris(tube(top + tip * r * 0.22, top + tip * r * 0.6, r * 0.99, r * 0.93, 12), c255(200, 50, 50), RED)
+
+
+def squirrel(s, p, side):
+    """A squirrel clinging head-up to a trunk at p, on the trunk's `side` (a unit vector out of the bark)."""
+    p = np.asarray(p, float)
+    side = np.asarray(side, float)
+    # a grey squirrel (it stands out from the bark), a little larger than life
+    fur = ID["STONE"]
+    k = 1.6
+    body = p + side * 2.4 * k
+    def blob(c, r):
+        c = p + (np.asarray(c, float) - p) * k
+        s.add_tris(ellipsoid(c, np.asarray(r, float) * k, 8, 6), c255(150, 148, 140), fur)
+    blob(body, [2.0, 3.0, 2.0])
+    blob(body + [0, 3.4, 0] + side * 0.5, [1.6, 1.6, 1.6])
+    for sx in (-1, 1):
+        blob(body + [sx * 0.9, 4.9, 0] + side * 0.3, [0.45, 0.8, 0.45])
+    # the bushy tail curling up behind
+    for k, (dy, out) in enumerate(((-2.6, 1.2), (-0.8, 2.2), (1.2, 2.6), (3.0, 2.2))):
+        blob(body + [0, dy, 0] + side * out, [1.7 - k * 0.15] * 3)
+
+
+def lost_ball(s, p):
+    """A golf ball lost at the foot of a bush."""
+    s.add_tris(ellipsoid(np.asarray(p, float), [3.0, 3.0, 3.0], 10, 7), c255(250, 250, 250), ID["WHITE"])
+
+
+def gags(name, s, leaf):
+    """Adds the gag a plant carries (on its grown frames only)."""
+    if leaf < 0.99:
+        return s
+    if name == "cactusgroupa":
+        sun_hat(s, [0, 80 * 0.92 + 80 * 0.075, 0], 80 * 0.075 * 1.1)
+    elif name == "treecactuslg":
+        sun_hat(s, [0, 110 * 0.92 + 110 * 0.075, 0], 110 * 0.075 * 1.1)
+    elif name == "treemaplelarge":
+        squirrel(s, [0, 9, 0], [0.6, 0.0, 0.8])
+    elif name == "rhody":
+        lost_ball(s, [24, 3.0, 16])
+    elif name == "tropicalbrush_lg":
+        lost_ball(s, [32, 3.0, 20])
+    return s
