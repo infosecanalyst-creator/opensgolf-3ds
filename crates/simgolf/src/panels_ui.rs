@@ -1009,6 +1009,11 @@ impl App {
                 }
                 self.decor_sprite(id, pal).0
             };
+            // the Path styles and lamps extra's lamp post, drawn by code (paths_lamps.rs)
+            if kind == land::K_LANDMARK && self.strip_design(kind, i) == sg_core::extras::LAMP_TYPE {
+                self.draw_lamp_icon(g, s, cx as f32, cy as f32);
+                continue;
+            }
             let Some(si) = si else { continue };
             let sp = &self.sprites[si].s;
             let f = sp.frames_per_view - 1;
@@ -1030,7 +1035,13 @@ impl App {
             let name = capitalised(sg_core::vips::landmark_short_name(hot));
             let price = (App::extra_landmark_units(hot) * 100).to_string();
             tip_bar(g, s, &trf("STR_LANDMARK_TIP", &[("LANDMARK", &name), ("PRICE", &price)]), mx, my - 7.0);
-            let what = if hot >= sg_core::objects::ANIMAL_BASE { "STR_EXTRAS_ANIMAL_EFFECT" } else { "STR_EXTRAS_CUT_EFFECT" };
+            let what = if hot == sg_core::extras::LAMP_TYPE {
+                "STR_EXTRAS_LAMP_EFFECT"
+            } else if hot >= sg_core::objects::ANIMAL_BASE {
+                "STR_EXTRAS_ANIMAL_EFFECT"
+            } else {
+                "STR_EXTRAS_CUT_EFFECT"
+            };
             tip_bar(g, s, tr(what), mx, my + 3.0);
             return;
         }

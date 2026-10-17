@@ -74,6 +74,7 @@ mod member_panel;
 mod message_ui;
 mod net;
 mod panels_ui;
+mod paths_lamps;
 mod pathview_ui;
 mod people_ui;
 mod perf;
