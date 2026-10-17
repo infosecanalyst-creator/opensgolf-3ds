@@ -1191,6 +1191,7 @@ impl Stage {
         let hd_msg = app.init_hd(o.hd.unwrap_or_else(hd::saved_choice));
         // Enhanced graphics (enhanced.rs), also before any art: the textures carry its filtering
         enhanced::init(o.enhanced);
+        let enhanced_recovered = enhanced::take_recovered();
         // the OpenSGolf extras' ticks (extras.rs)
         extras::init(o.no_extras);
         // the player's keys (controls.rs)
@@ -1418,6 +1419,10 @@ impl Stage {
             if o.png_out.is_none() && gamefiles::take_once("sound_problem_shown", &msg) {
                 app.show_notice(&msg);
             }
+        }
+        // Enhanced graphics turned themselves off: the last run stopped while they were starting (enhanced.rs)
+        if enhanced_recovered && o.png_out.is_none() {
+            app.show_notice(sg_core::lang::tr("STR_ENHANCED_RECOVERED"));
         }
         // the last run crashed: the report, to copy and send (android.rs)
         #[cfg(target_os = "android")]
@@ -2720,6 +2725,7 @@ impl EventHandler for Stage {
     }
 
     fn draw(&mut self) {
+        enhanced::trial_frame();
         match self.app.hd_frame_pass(&mut self.g) {
             Some(pass) => {
                 self.draw_frame(Some(pass));

@@ -672,3 +672,12 @@ The Preferences screen lists a page's options in `OPTIONS` order under the maste
 i the page's option i, at most 31 a page); the box is sized for the longest page and the widest line of all. Interface
 code that should sit at a window edge calls `Screen::anchor(Anchor::...)` before drawing; nothing happens in Classic or
 with the widescreen option off.
+
+## If Enhanced graphics stop the game
+
+While Enhanced graphics start (when they are switched on, and at each start with them on) the game keeps a marker,
+`enhanced_starting`, in the save folder and removes it once 60 frames have been drawn. A run that freezes or stops before
+then leaves the marker behind, and the next start comes up in Classic, saves Enhanced as off and says so in a box; the
+player can switch them on again in Preferences (issue #55: on some browsers' graphics, switching Enhanced on froze the
+game and a reload brought the freeze back). In the browser, adding `?classic` to the page's address does the same on
+purpose.

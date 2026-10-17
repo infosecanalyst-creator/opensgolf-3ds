@@ -436,8 +436,46 @@ pub fn saved() -> Settings {
     serde_json::from_value(settings_json()[SETTINGS_KEY].clone()).unwrap_or_default()
 }
 
+/// The marker kept while Enhanced is starting up (issue #55): written when Enhanced is switched on or a run starts with
+/// it, removed once the game has drawn [`TRIAL_FRAMES`] frames with it. A run that freezes or stops in the meantime
+/// leaves it behind, and the next start comes up in Classic with a note, so a graphics driver that cannot cope with
+/// Enhanced never leaves the player stuck (a reload used to bring the same freeze back). The page's `?classic` writes it
+/// too (web/opensgolf.js).
+const TRIAL_FILE: &str = "enhanced_starting";
+const TRIAL_FRAMES: u32 = 60;
+
+thread_local! {
+    static TRIAL: Cell<Option<u32>> = const { Cell::new(None) };
+    static RECOVERED: Cell<bool> = const { Cell::new(false) };
+}
+
+fn arm_trial() {
+    sg_core::fsutil::write_file(crate::app::save_dir().join(TRIAL_FILE), b"1");
+    TRIAL.with(|t| t.set(Some(0)));
+}
+
+/// Called once per drawn frame: after enough frames with Enhanced on, the start-up marker goes.
+pub fn trial_frame() {
+    TRIAL.with(|t| match t.get() {
+        Some(n) if n + 1 >= TRIAL_FRAMES => {
+            t.set(None);
+            sg_core::fsutil::remove_file(crate::app::save_dir().join(TRIAL_FILE));
+        }
+        Some(n) => t.set(Some(n + 1)),
+        None => {}
+    });
+}
+
+/// True once, when this start turned Enhanced off because the last run stopped while it was starting.
+pub fn take_recovered() -> bool {
+    RECOVERED.with(|r| r.replace(false))
+}
+
 /// Saves the settings into settings.json, keeping its other keys.
 pub fn save(s: &Settings) {
+    if s.enabled && !saved().enabled {
+        arm_trial();
+    }
     let mut v = settings_json();
     if let Ok(e) = serde_json::to_value(s) {
         v[SETTINGS_KEY] = e;
@@ -451,6 +489,17 @@ pub fn save(s: &Settings) {
 /// `--classic-render` for this run when given (not saved).
 pub fn init(force: Option<bool>) {
     let mut s = saved();
+    let trial = crate::app::save_dir().join(TRIAL_FILE);
+    if s.enabled && force != Some(true) && sg_core::fsutil::exists(&trial) {
+        // the last run stopped while Enhanced was starting: Classic, saved, and the player is told
+        s.enabled = false;
+        save(&s);
+        sg_core::fsutil::remove_file(&trial);
+        RECOVERED.with(|r| r.set(true));
+        println!("Enhanced graphics: switched off, the last run stopped while they were starting");
+    } else if s.enabled && force != Some(false) {
+        arm_trial();
+    }
     if let Some(on) = force {
         s.enabled = on;
     }

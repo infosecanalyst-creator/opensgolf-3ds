@@ -362,7 +362,9 @@ impl App {
         } else if views >= 4 {
             (quarter + p.facing).rem_euclid(views)
         } else if views == 2 {
-            quarter % 2
+            // two views (a scenic bridge, a deck): the prop's own facing counts, as for four (0x41192c picks the bridge's
+            // view from the paths at its ends; issue #53)
+            (quarter + p.facing).rem_euclid(2)
         } else {
             0
         };

@@ -325,7 +325,7 @@ impl Stage {
             return vy >= OSK_TOP - OSK_GAP;
         };
         let none = KeyMods::default();
-        let mut key = |me: &mut Self, code| {
+        let key = |me: &mut Self, code| {
             me.key_down_event(code, none, false);
             me.key_up_event(code, none);
         };

@@ -374,6 +374,9 @@ async function sgUnzip(buf, onEntry) {
 // --- starting --------------------------------------------------------------------------------------------------------------
 function sgStart() {
     sgRestoreSaves();
+    // ?classic in the address starts in Classic graphics: the same marker a run that stopped while Enhanced graphics were
+    // starting leaves behind (crates/simgolf/src/enhanced.rs), so the game turns Enhanced off and says so (issue #55)
+    if (new URLSearchParams(location.search).has("classic")) sgAddFile("enhanced_starting", new Uint8Array([49]));
     document.getElementById("picker").style.display = "none";
     const canvas = document.getElementById("glcanvas");
     // a right-click (or a Mac's Ctrl+click) is the game's: no browser menu over the canvas, which would also take the

@@ -1346,7 +1346,9 @@ impl App {
                 // greens, fairways, types 7 and 9 and buildings (setPath 0x10013400, setType 0x10014020 via 0x1000d480,
                 // 0x1000d540, 0x10015230); the tile's path draw (0x100108f0) returns at once without it, so the ground
                 // shows. Neighbours still read the path flag, so their arms run up to the tile's edge.
-                if matches!(t.type_at(tx, ty), 0 | 1 | 2 | 3 | 7 | 9 | 22) {
+                // water too: the bridge on it carries the path (Terrain.dll's type set, 0x1000d480, clears a water
+                // tile's path drawing; issue #53)
+                if matches!(t.type_at(tx, ty), 0 | 1 | 2 | 3 | 7 | 9 | 17 | 22) {
                     continue;
                 }
                 let n = t.path_at(tx, ty - 1) != 0;
@@ -3022,9 +3024,11 @@ impl App {
             sg_core::tracts::buy(land, i);
             self.club.log_event(sg_core::records::log::LAND, i as i32);
             // the terrain the renderer and editor use follows
+            // the whole tract, which is larger than the original's 16 tiles on a larger course (issue #54)
             let (a0, b0) = sg_core::tracts::origin(i);
-            for a in a0..a0 + 16 {
-                for b in b0..b0 + 16 {
+            let side = sg_core::tracts::side();
+            for a in a0..a0 + side {
+                for b in b0..b0 + side {
                     let t = (a * land::mn() + b) as usize;
                     let o = self.terrain.tile_index(a, b);
                     if self.terrain.ty[o] == land::T_OUT {
