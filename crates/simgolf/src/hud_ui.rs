@@ -29,6 +29,35 @@ const PLATES: [[f32; 6]; 4] = [
 /// tropdesert.pcx, 8..15 those of parklink.pcx.
 const SITE_EMBLEM: [usize; 16] = [9, 4, 11, 3, 0, 7, 6, 8, 15, 10, 14, 12, 13, 2, 5, 1];
 
+/// The Weather that matters extra's sign after the badge's date (the port's own), drawn in whole pixels in the palette's
+/// 15-bit colours with the date's black shadow one pixel below: a cloud with rain, snow or a bolt, or the sun of a heat
+/// wave; nothing on a fair day. (x, y) is its top left; it is 11 x 8 pixels.
+fn weather_sign(s: &Ui, g: &mut Gfx, x: f32, y: f32, t: &sg_core::weather::Today) {
+    let Some(key) = sg_core::weather::forecast_key(t) else { return };
+    let black = rgba(0.0, 0.0, 0.0, 1.0);
+    let px = |g: &mut Gfx, c: [f32; 4], rects: &[(f32, f32, f32, f32)]| {
+        for &(dx, dy, w, h) in rects {
+            s.fill(g, x + dx, y + dy + 1.0, w, h, black);
+        }
+        for &(dx, dy, w, h) in rects {
+            s.fill(g, x + dx, y + dy, w, h, c);
+        }
+    };
+    if key == "STR_WEATHER_HEAT_TODAY" {
+        // the sun: a disc and four rays
+        px(g, c15(0x7fe0), &[(3.0, 2.0, 5.0, 4.0), (4.0, 1.0, 3.0, 6.0)]);
+        px(g, c15(0x7e40), &[(5.0, -1.0, 1.0, 1.0), (5.0, 8.0, 1.0, 1.0), (0.0, 4.0, 2.0, 1.0), (9.0, 4.0, 2.0, 1.0)]);
+        return;
+    }
+    // the cloud
+    px(g, c15(0x6318), &[(1.0, 1.0, 9.0, 3.0), (3.0, 0.0, 4.0, 1.0)]);
+    match key {
+        "STR_WEATHER_SNOW_TODAY" => px(g, c15(0x7fff), &[(2.0, 5.0, 1.0, 1.0), (5.0, 6.0, 1.0, 1.0), (8.0, 5.0, 1.0, 1.0)]),
+        "STR_WEATHER_STORM_TODAY" => px(g, c15(0x7fe0), &[(5.0, 4.0, 2.0, 1.0), (4.0, 5.0, 2.0, 1.0), (5.0, 6.0, 1.0, 2.0)]),
+        _ => px(g, c15(0x2a7f), &[(2.0, 5.0, 1.0, 2.0), (5.0, 5.0, 1.0, 2.0), (8.0, 5.0, 1.0, 2.0)]),
+    }
+}
+
 /// The date's months (0x4c2908): a year is eight months of 1024 ticks.
 pub const MONTH_KEYS: [&str; 8] = [
     "STR_MONTH_MARCH",
@@ -233,6 +262,11 @@ impl App {
         let date = trf("STR_DATE", &[("MONTH", &tr(MONTH_KEYS[((t >> 10) & 7) as usize])), ("YEAR", &(2001 + (t >> 13)))]);
         s.text_centered(g, 143.0, top(BADGE_DATE_Y, ARIAL) + 1.0, &date, ARIAL, black);
         s.text_centered(g, 143.0, top(BADGE_DATE_Y, ARIAL), &date, ARIAL, white);
+        // the Weather that matters extra (the port's own; the original shows no weather): a small sign after the date
+        if let Some(t) = self.club.today {
+            let x = 143.0 + ui::text_width(&date, ARIAL) / 2.0 + 4.0;
+            weather_sign(s, g, x, top(BADGE_DATE_Y, ARIAL), &t);
+        }
         // holes named Top 100 and Top 18, homes sold to celebrities, tournament fame, Happy Endings (0x418bc7)
         let ranked = self.club.holes.iter().skip(1).take(18).map(|h| (h.flags & 1 != 0) as i32 + (h.flags & 2 != 0) as i32).sum();
         let sold =

@@ -29,6 +29,12 @@ pub struct State {
     pub options: u32,
     pub(crate) cache: Vec<(i32, i32, i32)>,
     pub(crate) cache_at: usize,
+    /// The Weather that matters extra (sg_core::weather), set by `Club::weather_tick`: a rolling ball's extra drag on tee,
+    /// fairway and green (per mille a tick) and the bounce taken off there (percent); both 0 with the extra off.
+    #[serde(skip)]
+    pub drag: i32,
+    #[serde(skip)]
+    pub bounce_cut: i32,
     /// The ball trace of the next trial shot (the flight record 0x59fc60 the exe gives a golfer before 0x4226a0): when set,
     /// [`preview`] adds the ball's point at each apex, every eighth tick and each bounce, up to 31 points.
     #[serde(skip)]
@@ -102,12 +108,16 @@ fn coarse(mut s: i32, mut v: i32) -> i32 {
 }
 
 /// Coarse roll of a putt on the green (0x4223c0).
-fn roll(c: &Course, mut s: i32) -> i32 {
+fn roll(c: &Course, mut s: i32, drag: i32) -> i32 {
     let r = c.row(t::GREEN).roll;
     let mut d = 0;
     loop {
         d += s / 8;
         s -= s >> r;
+        // Weather that matters: the green as wet, snowy or baked as the real ball finds it (0 with the extra off)
+        if drag != 0 {
+            s -= s * drag / 1000;
+        }
         if s <= 0x3f {
             break;
         }
@@ -117,7 +127,7 @@ fn roll(c: &Course, mut s: i32) -> i32 {
 
 impl State {
     /// Launch speed for a carry of 4/5 of `rng_units` (or a putt's roll), by bisection with the exe's 10-entry cache (0x422430).
-    fn solve(&mut self, c: &Course, rng_units: i32, v: i32, putt: bool) -> i32 {
+    pub(crate) fn solve(&mut self, c: &Course, rng_units: i32, v: i32, putt: bool) -> i32 {
         if let Some(&(_, _, s)) = self.cache.iter().find(|e| e.0 == rng_units && e.1 == v) {
             return s;
         }
@@ -126,7 +136,7 @@ impl State {
         let goal = (rng_units << 10) / 25;
         let mut step = s / 2;
         loop {
-            let d = if putt { roll(c, s) } else { coarse(s, v) };
+            let d = if putt { roll(c, s, self.drag) } else { coarse(s, v) };
             if goal < d {
                 s -= step;
             }
@@ -1077,6 +1087,10 @@ pub fn preview(cl: &mut Club, c: &mut Course, rng: &mut ExeRng, g: usize, wx: i3
             } else {
                 gg.speed = (gg.speed - (gg.speed >> 6)) + 0x20;
             }
+            // Weather that matters, as the real ball (golfer.rs `ball`)
+            if cl.planner.drag != 0 && row.class <= 2 {
+                gg.speed -= gg.speed * cl.planner.drag / 1000;
+            }
             if lie == t::WATER {
                 if !edge {
                     gg.speed /= 2;
@@ -1118,6 +1132,9 @@ pub fn preview(cl: &mut Club, c: &mut Course, rng: &mut ExeRng, g: usize, wx: i3
             if mode == 0 {
                 if bf < 2 && edge {
                     bf = 2;
+                }
+                if cl.planner.bounce_cut != 0 && row.class <= 2 {
+                    bf = bf * (100 - cl.planner.bounce_cut) / 100;
                 }
                 if centre && flag_at(c, a, b) & 0x20 != 0 {
                     bf = 4;

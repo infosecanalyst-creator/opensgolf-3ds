@@ -99,6 +99,8 @@ pub struct Settings {
     pub fx_after_rain: bool,
     /// Lightning in heavy rain (fx_wet.rs).
     pub fx_lightning: bool,
+    /// Heat waves on desert courses: a warm, bleached midday, a heat haze, parched grass (fx_heat.rs).
+    pub fx_heat: bool,
     /// Tiny tufts of grass standing up from the rough, swaying in the wind (fx_life.rs).
     pub fx_grass: bool,
     /// Contrast-adaptive sharpening of the finished picture (the composite in fx_glsl.rs).
@@ -169,6 +171,8 @@ impl Settings {
         fx_after_rain: true,
         // a strong effect: offered, not on by default
         fx_lightning: false,
+        // a strong look like the rain: offered, not on by default
+        fx_heat: false,
         fx_grass: true,
         fx_sharpen: true,
         fx_winter: true,
@@ -404,6 +408,7 @@ pub const OPTIONS: &[OptionEntry] = &[
     tick!("fx_rain", "STR_ENHANCED_FX_RAIN", WEATHER, fx_rain),
     tick!("fx_after_rain", "STR_ENHANCED_FX_AFTER_RAIN", WEATHER, fx_after_rain),
     tick!("fx_lightning", "STR_ENHANCED_FX_LIGHTNING", WEATHER, fx_lightning),
+    tick!("fx_heat", "STR_ENHANCED_FX_HEAT", WEATHER, fx_heat),
     tick!("fx_grass", "STR_ENHANCED_FX_GRASS", EFFECTS, fx_grass),
     tick!("fx_sharpen", "STR_ENHANCED_FX_SHARPEN", EFFECTS, fx_sharpen),
     tick!("fx_winter", "STR_ENHANCED_FX_WINTER", WEATHER, fx_winter),

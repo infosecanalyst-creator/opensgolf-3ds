@@ -68,6 +68,8 @@ pub struct FxSettings {
     pub after_rain: bool,
     /// Lightning in heavy rain on parkland and links courses (fx_wet.rs).
     pub lightning: bool,
+    /// Heat waves on desert courses (fx_heat.rs).
+    pub heat: bool,
     /// Tiny tufts of grass standing up from the rough, swaying in the wind (fx_life.rs).
     pub grass: bool,
     /// Contrast-adaptive sharpening of the finished picture (the composite in fx_glsl.rs).
@@ -133,6 +135,7 @@ impl Default for FxSettings {
             after_rain: true,
             // a strong effect: offered, not on by default
             lightning: false,
+            heat: false,
             grass: true,
             sharpen: true,
             winter: true,
@@ -210,7 +213,7 @@ macro_rules! flag {
     };
 }
 
-static OPTIONS: [FxOption; 41] = [
+static OPTIONS: [FxOption; 42] = [
     FxOption { key: "effects", label: "STR_FX_EFFECTS", choices: ON_OFF, get: |s| s.enabled as usize, set: |s, v| s.enabled = v != 0 },
     FxOption {
         key: "scaler",
@@ -250,6 +253,7 @@ static OPTIONS: [FxOption; 41] = [
     flag!("seasons", "STR_FX_SEASONS", seasons),
     flag!("after-rain", "STR_FX_AFTER_RAIN", after_rain),
     flag!("lightning", "STR_FX_LIGHTNING", lightning),
+    flag!("heat", "STR_FX_HEAT", heat),
     flag!("grass", "STR_FX_GRASS", grass),
     flag!("sharpen", "STR_FX_SHARPEN", sharpen),
     flag!("winter", "STR_FX_WINTER", winter),
@@ -372,6 +376,7 @@ pub fn from_enhanced(e: &crate::enhanced::Settings) -> FxSettings {
     s.seasons = e.fx_seasons;
     s.after_rain = e.fx_after_rain;
     s.lightning = e.fx_lightning;
+    s.heat = e.fx_heat;
     s.grass = e.fx_grass;
     s.sharpen = e.fx_sharpen;
     s.winter = e.fx_winter;
@@ -1060,7 +1065,7 @@ impl App {
         if s.sky {
             self.fx_sky(g, &atm);
         }
-        let season_on = atm.season.fresh + atm.season.autumn + atm.season.frost + atm.season.dew + atm.snow > 0.0;
+        let season_on = atm.season.fresh + atm.season.autumn + atm.season.frost + atm.season.dew + atm.snow + atm.parched > 0.0;
         let terrain_fx = s.lighting || s.occlusion || s.shadows || atm.cloud > 0.0 || atm.mist > 0.0 || atm.wet > 0.0 || season_on;
         let rot = view_rotation(self);
         let lm = self.fx.lightmap.unwrap_or_else(|| gpu(g).no_lightmap);
@@ -1105,7 +1110,8 @@ impl App {
             // the frost's slot carries the snow above 1 (fx_winter.rs): 1 + 2 x snow, the frost full under snow
             fx2: [
                 atm.season.fresh * 0.8,
-                atm.season.autumn,
+                // a heat wave's parched grass takes the autumn's golden grade (fx_heat.rs)
+                atm.season.autumn.max(atm.parched),
                 if atm.snow > 0.0 { 1.0 + 2.0 * atm.snow.min(1.0) } else { atm.season.frost.min(1.0) },
                 atm.season.dew,
             ],

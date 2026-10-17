@@ -103,6 +103,7 @@ decoded terrain light (`sg_core::terrain::Lighting`, `light_direction`) and the 
 | After the rain (`after-rain`) | on | With rain: wet, glossy ground and puddles during and after a rainy day, now and then a rainbow (see *After the rain*). |
 | Grass tufts (`grass`) | on | Tiny tufts of grass, a few pixels at the art's own pixel size, standing up from the rough and the deep rough and swaying in the wind; none on fairways, greens or tees. Only at the closest zoom level. |
 | Lightning (`lightning`) | off | Flashes and distant flicker in heavy rain where the climate is wet (see *Climate*), never in the desert. |
+| Heat waves (`heat`) | off | On a desert course's hot summer days: a warm, bleached light through the midday hours, a warm heat haze over the distance, and on the hottest days parched, straw-tinted grass that greens again once the heat breaks (see *Heat waves*). |
 | Sharpen (`sharpen`) | on | Contrast-adaptive sharpening of the finished picture: the art's own detail (the grass, the trees' leaves, the roofs) comes out crisper on large screens, strongest where the picture is soft and never past its own colours, so no halos. Desktop only, with the other post-processing. |
 | Winter (`winter`) | on | The first days of March on parkland and links courses: full morning frost, snow showers instead of rain, and some mornings a light dusting that melts by mid-morning (see *Winter*). |
 | Tournament crowds (`crowds`) | on | During a tournament or a championship, spectators (the game's own golfer sprites) round the greens and along the fairways of the holes in play, cheering now and then (see *Tournament atmosphere*). |
@@ -130,9 +131,9 @@ filter: 0 sharp bilinear, 1 edge-directed, 2 smooth; a line that steps through t
 still picks sharp bilinear until the filter is chosen again),
 `fx_water`, `fx_terrain_light`, `fx_sprite_shadows`, `fx_sky`, `fx_tilt_shift`, `fx_grading`, `fx_bloom`, `fx_quality`
 (0 to 2), `fx_cast_shadows`, `fx_ball_trail`, `fx_ball_impacts`, `fx_clouds`, `fx_haze`, `fx_time_of_day`, `fx_rain`,
-`fx_mist`, `fx_reflections`, `fx_wind`, `fx_evening_lights`, `fx_seasons`, `fx_after_rain`, `fx_lightning`,
+`fx_mist`, `fx_reflections`, `fx_wind`, `fx_evening_lights`, `fx_seasons`, `fx_after_rain`, `fx_lightning`, `fx_heat`,
 `fx_day_length` (0 to 2, default 1), `fx_water_colour`, `fx_waves`, `fx_shoreline`, `fx_caustics`, `fx_rain_rings`,
-`fx_water_life`, `fx_ice`, `fx_spray`), all on but tilt-shift, lightning, and the three that change the mood most: time of
+`fx_water_life`, `fx_ice`, `fx_spray`), all on but tilt-shift, lightning, heat waves, and the three that change the mood most: time of
 day, rain and mist; the scaler's filter is *Smooth (strongest)*. The ticks map onto `fx::FxSettings` (`fx::sync`): *terrain light*
 stands for per-pixel light, occlusion and shadows, *colour grading* for grading and vignette.
 
@@ -423,7 +424,9 @@ the sun out, a rainbow stands in the sky: a faint arc over the upper screen, opp
 outside it, fading towards the ground at both ends; it is at infinity, so it stays put as the view pans. **Lightning**
 (its own tick, off by default): in heavy rain on parkland and links courses a near strike now and then (a bright flash
 and two after-flickers, the sky end brighter) and fainter, more frequent flicker in the distance, timed by a hash of the
-effects' clock.
+effects' clock. With the *Weather that matters* gameplay extra on (docs/PLAYING.md), the lightning comes only on the
+thunderstorm days the golfers shelter from (a share of the heavy-rain days, `sg_core::weather::Place::storm_on`); with
+it off it comes on every heavy-rain day as before.
 
 ### Ball trail and impacts
 
@@ -481,6 +484,26 @@ leaves and covers the roofs (the original sprites recoloured, as the autumn colo
 once the cold days are over. Late October has its frosty mornings (*Seasons*) but no snow. Drawing only:
 golfers play as ever. Test hook: `SG_FX_SNOW=S` lays that much snow (0 to 0.67) whatever the hour or the year, with
 `SG_FX_MONTH` in the first days of March (e.g. 3.05).
+
+### Heat waves
+
+`crates/simgolf/src/fx_heat.rs` (the port's own). On desert courses only, on about 45 in a hundred summer days (June to
+August, easing in through May and out through September; `[economy.weather] heat_percent` in data/economy.toml), never on
+a rainy day: the sun warmer and brighter, the colours a little washed out and the sky bleached towards a pale warm white,
+strongest through the midday hours with the time of day (a steady look without it), and a warm haze over the far part of
+the view. On the hottest of those days the grass is parched towards straw (the terrain shader's autumn grade, on grass
+only), green again once the heat breaks. It costs nothing measurable: the light's colours, the haze and an existing
+shader grade, no pass of its own, so the frame-rate guard has nothing to step down for it. (A heat shimmer would need a
+distortion pass of its own, so there is none.) Which days are hot is the same hash the *Weather that matters* extra
+plays. Test hook: `SG_FX_HEAT=K` makes every day that hot (0 to 1), for the drawing and, with the extra on, the game.
+
+### The weather's days
+
+What decides the weather (which days rain, the climates, the snowy years and the dustings, the storms and the heat
+waves) is `crates/sg-core/src/weather.rs`, the same hashes as before it moved there, so every day looks as it did. With
+the *Weather that matters* gameplay extra on, the weather's day is the game's (three game months, the day of light at
+its normal length) whatever the *Day length*, so the rain falls when the golfers play in it; with it off, the weather's
+day is the light's, as before.
 
 ### Performance
 

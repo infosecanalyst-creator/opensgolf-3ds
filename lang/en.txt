@@ -1408,6 +1408,7 @@ STR_ENHANCED_FX_EVENING_LIGHTS          : Lit windows, lamps and fireflies at du
 STR_ENHANCED_FX_SEASONS                 : Seasons: blossom, autumn colours, frost
 STR_ENHANCED_FX_AFTER_RAIN              : Wet ground, puddles and rainbows
 STR_ENHANCED_FX_LIGHTNING               : Lightning in heavy rain
+STR_ENHANCED_FX_HEAT                    : Heat waves in the desert: bleached light, parched grass
 STR_ENHANCED_FX_GRASS                   : Grass tufts in the rough
 STR_ENHANCED_FX_SHARPEN                 : Sharper art: contrast-adaptive sharpening
 STR_ENHANCED_FX_WINTER                  : Late-winter frost and snow in early March
@@ -1461,6 +1462,7 @@ STR_FX_EVENING_LIGHTS                   :Evening lights
 STR_FX_SEASONS                          :Seasons
 STR_FX_AFTER_RAIN                       :After the rain
 STR_FX_LIGHTNING                        :Lightning
+STR_FX_HEAT                             :Heat waves
 STR_FX_GRASS                            :Grass tufts
 STR_FX_SHARPEN                          :Sharpen
 STR_FX_WINTER                           :Winter
@@ -2994,3 +2996,12 @@ STR_CTL_CHEATS                          :Cheats box
 STR_FILES_CHEATED                       :Cheats used
 # Customise Golfer, your pro, with the Left-handed golfers extra on
 STR_CUST_LEFT_HANDED                    :Left-handed
+# Weather that matters (sg_core::weather, a gameplay extra): its line in the Extras box, the morning's forecast on the
+# ticker, and a thunderstorm holding play
+STR_EXTRAS_WEATHER                      : Weather that matters (rain, snow, heat, storms)
+STR_WEATHER_RAIN_TODAY                  :Rain today: the greens are slow and fewer golfers are coming out.
+STR_WEATHER_SNOW_TODAY                  :Snow today! Balls stop dead, and only the keenest golfers turn up.
+STR_WEATHER_HEAT_TODAY                  :Heat wave today: hard, fast ground and thirsty golfers.
+STR_WEATHER_STORM_TODAY                 :Thunderstorms are on the way today.
+STR_WEATHER_STORM_BREAKS                :Storm! Play is suspended while the golfers shelter.
+STR_WEATHER_STORM_PASSES                :The storm has passed. Play resumes.
