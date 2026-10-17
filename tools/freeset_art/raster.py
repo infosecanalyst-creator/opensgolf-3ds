@@ -49,7 +49,7 @@ class Frame:
         s = self.ss / UNITS_PER_PX
         return np.stack([(self.ax + 0.0) * self.ss + eye[..., 0] * s, self.ay * self.ss - eye[..., 1] * s], -1)
 
-    def draw(self, tris_world, cols, yaw=0.0, tags=None, ambient=0.5, diffuse=0.62, two_sided=True, emissive=None):
+    def draw(self, tris_world, cols, yaw=0.0, tags=None, ambient=0.5, diffuse=0.62, two_sided=True, emissive=None, tone=None):
         """Draws triangles (n x 3 x 3 world units, ground at y = 0, the object's ground point at the origin) with colours
         (n x 3, 0..1). `tags` (n ints) are kept per sample with the brightness (for palette slots)."""
         if len(tris_world) == 0:
@@ -66,6 +66,9 @@ class Frame:
         # sky light from above, a little bounce from below
         sky = 0.5 + 0.5 * nrm[:, 1]
         bright = ambient * (0.75 + 0.25 * sky) + diffuse * lam
+        if tone is not None:
+            # a palette-ramp model's own lighter and darker parts (trim, joints, stripes) on top of the lighting
+            bright = bright * tone
         if emissive is not None:
             bright = np.where(emissive, 1.0, bright)
         px = self.to_px(eye)
@@ -126,7 +129,7 @@ class Frame:
                 self.tag.reshape(-1)[pix] = tg[ti]
 
     def draw_balls(self, centres, radii, cols, yaw=0.0, mass=None, leafy=0.35, rag=0.18, seed=0, tags=None,
-                   ambient=0.5, diffuse=0.72):
+                   ambient=0.5, diffuse=0.86):
         """Draws spheres (n x 3 world units centres, n radii, n x 3 colours) as lit balls with leafy, ragged outlines: the
         foliage of trees and bushes. `mass` (centre, radius) darkens the inside of a crown (light reaches its outside)."""
         if len(centres) == 0:
@@ -160,24 +163,30 @@ class Frame:
             n = np.stack([dx, dy, nz], -1)
             # leaf clusters: a grain of random tilts over the ball, coarser than a pixel
             if leafy > 0:
-                kx = np.floor(gx / max(self.ss * 2.2, 1)).astype(np.int64)
-                ky = np.floor(gy / max(self.ss * 2.2, 1)).astype(np.int64)
+                kx = np.floor(gx / max(self.ss * 1.7, 1)).astype(np.int64)
+                ky = np.floor(gy / max(self.ss * 1.7, 1)).astype(np.int64)
                 h = (kx * 73856093) ^ (ky * 19349663) ^ (i * 83492791 + seed)
                 jx = ((h & 1023) / 1023.0 - 0.5)
                 jy = (((h >> 10) & 1023) / 1023.0 - 0.5)
                 n = n + leafy * np.stack([jx, jy, np.zeros_like(jx)], -1) * 2
+            z = eye[i, 2] + nz * radii[i]
+            if mass is not None:
+                # the point on the ball, in eye space, against the crown's centre
+                p = np.stack([eye[i, 0] + dx * radii[i], eye[i, 1] + dy * radii[i], z], -1)
+                # a crown is lit as one rounded mass with lobes: bend each leaf ball's normal towards the crown's
+                cn = p - mc
+                cn = cn / np.maximum(np.linalg.norm(cn, axis=-1, keepdims=True), 1e-6)
+                n = n / np.linalg.norm(n, axis=-1, keepdims=True) * 0.6 + cn * 0.55
             n = n / np.linalg.norm(n, axis=-1, keepdims=True)
             lam = np.clip(n @ LIGHT, 0, 1)
             sky = 0.5 + 0.5 * n[..., 1]
             bright = ambient * (0.7 + 0.3 * sky) + diffuse * lam
-            z = eye[i, 2] + nz * radii[i]
             if mass is not None:
-                # the point on the ball, in eye space, against the crown's centre: inner leaves are in shade
-                p = np.stack([eye[i, 0] + dx * radii[i], eye[i, 1] + dy * radii[i], z], -1)
+                # inner leaves are in shade
                 rel = np.linalg.norm(p - mc, axis=-1) / mass[1]
                 # and the underside of the crown is darker than its top: the crown reads as one lit mass, not a heap of balls
                 up = np.clip((p[..., 1] - mc[1]) / mass[1], -1, 1)
-                bright = bright * np.clip(0.45 + 0.6 * rel, 0.45, 1.08) * (0.86 + 0.14 * up)
+                bright = np.minimum(bright * np.clip(0.52 + 0.6 * rel, 0.52, 1.1) * (0.9 + 0.14 * up), 1.2)
             sub = self.depth[y0:y1 + 1, x0:x1 + 1]
             win = inside & (z > sub)
             if not win.any():

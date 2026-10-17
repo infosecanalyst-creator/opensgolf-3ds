@@ -141,6 +141,12 @@ struct Theme {
     scrub: Col,
     rock: Col,
     flower: [Col; 3],
+    /// the desert's woods and ground are sand, not soil
+    desert: bool,
+    /// how much of the bare ground is in the sand of the water's edge (a beach 0, an earthy bank more)
+    bank: f32,
+    /// the scrub is heather (the links)
+    heather: bool,
 }
 
 fn theme(t: usize) -> Theme {
@@ -159,6 +165,9 @@ fn theme(t: usize) -> Theme {
             scrub: rgb(150, 156, 98),
             rock: rgb(178, 120, 84),
             flower: [rgb(236, 120, 60), rgb(250, 210, 80), rgb(210, 80, 120)],
+            desert: true,
+            bank: 0.15,
+            heather: false,
         },
         // tropical: saturated greens, white sand, turquoise water
         2 => Theme {
@@ -174,21 +183,27 @@ fn theme(t: usize) -> Theme {
             scrub: rgb(48, 120, 46),
             rock: rgb(140, 132, 120),
             flower: [rgb(240, 70, 120), rgb(250, 160, 40), rgb(170, 90, 220)],
+            desert: false,
+            bank: 0.05,
+            heather: false,
         },
         // links: pale, muted fescue and heather by a grey sea
         3 => Theme {
-            mown: rgb(118, 156, 78),
-            green: rgb(132, 172, 88),
-            rough: rgb(126, 140, 80),
-            deep: rgb(140, 132, 82),
-            ground: rgb(150, 132, 96),
-            sand: rgb(226, 210, 168),
-            water: rgb(56, 98, 128),
-            shallow: rgb(88, 132, 150),
-            collar: rgb(108, 146, 74),
-            scrub: rgb(116, 90, 110),
-            rock: rgb(138, 136, 128),
-            flower: [rgb(180, 110, 190), rgb(240, 220, 90), rgb(240, 240, 240)],
+            mown: rgb(116, 164, 76),
+            green: rgb(126, 178, 84),
+            rough: rgb(124, 156, 78),
+            deep: rgb(118, 146, 74),
+            ground: rgb(150, 128, 90),
+            sand: rgb(228, 212, 170),
+            water: rgb(48, 100, 132),
+            shallow: rgb(84, 140, 152),
+            collar: rgb(112, 152, 76),
+            scrub: rgb(128, 96, 120),
+            rock: rgb(146, 142, 132),
+            flower: [rgb(186, 112, 196), rgb(244, 214, 80), rgb(244, 244, 236)],
+            desert: false,
+            bank: 0.35,
+            heather: true,
         },
         // parkland: fresh temperate greens
         _ => Theme {
@@ -204,6 +219,9 @@ fn theme(t: usize) -> Theme {
             scrub: rgb(60, 112, 46),
             rock: rgb(146, 140, 128),
             flower: [rgb(226, 60, 80), rgb(250, 210, 70), rgb(160, 90, 210)],
+            desert: false,
+            bank: 0.4,
+            heather: false,
         },
     }
 }
@@ -364,6 +382,52 @@ fn water(x: f32, y: f32, base: Col, seed: u32, sheen: f32) -> (Col, f32) {
     (c, 0.0)
 }
 
+/// Open water by its depth: `level` 0 the shore line, 1 shallow, 2 middle, 3 deep (fractions blend). Below 1 the sandy bed
+/// shows through, a broken line of foam laps at about 0.3, and under 0.1 it is wet, then dry beach sand. The ripples and
+/// glints use one seed for every depth, so neighbouring depths join without a seam.
+fn water_at(th: &Theme, x: f32, y: f32, level: f32, seed: u32) -> Col {
+    let deep = mix(shade(th.water, -0.16), rgb(20, 50, 96), 0.2);
+    let shallow = mix(th.shallow, th.water, 0.3);
+    let base = if level >= 2.0 {
+        mix(th.water, deep, level - 2.0)
+    } else if level >= 1.0 {
+        mix(shallow, th.water, smooth(0.0, 1.0, level - 1.0))
+    } else {
+        mix(mix(th.shallow, th.sand, 0.3), shallow, smooth(0.15, 1.0, level))
+    };
+    // the bed: sandy patches and a few dark weed beds in the shallows
+    let bedn = fbm(x, y, 4, 3, seed ^ 0x13);
+    let clear = smooth(1.8, 0.4, level);
+    let c = mix(base, mix(th.shallow, th.sand, 0.45), smooth(0.0, 0.5, bedn) * clear * 0.35);
+    let c = shade(c, -smooth(-0.1, -0.5, bedn) * clear * 0.12);
+    // large soft swells and fine ripples with glints, stronger in open water
+    let swell = fbm(x, y, 2, 3, seed);
+    let warp = fbm(x, y, 4, 2, seed ^ 0x7) * 2.5;
+    let crest = |phase: f32, fx: f32, fy: f32| {
+        let v = ((x * fx + y * fy) / N as f32 * std::f32::consts::TAU + warp + phase).sin();
+        smooth(0.82, 1.0, v)
+    };
+    let r = crest(0.0, 3.0, 5.0) * 0.7 + crest(1.7, -4.0, 6.0) * 0.5;
+    let spark = smooth(0.5, 0.9, fbm(x, y, 8, 2, seed ^ 0x51));
+    let open = smooth(0.4, 1.5, level);
+    let mut c = shade(c, swell * 0.06 + r * (0.12 + spark * 0.35) * open);
+    // foam: a broken lapping line along the shore, and a fainter second one
+    if level < 0.9 {
+        let brk = fbm(x, y, 16, 2, seed ^ 0x2f) * 0.18;
+        let line = |at: f32, w: f32| smooth(w, 0.0, (level - at + brk * 0.6).abs());
+        let foam = (line(0.3, 0.12) * (0.75 + brk * 2.0) + line(0.62, 0.07) * 0.45).clamp(0.0, 1.0);
+        c = mix(c, rgb(238, 246, 244), foam * 0.85);
+    }
+    // the beach: wet sand at the water's edge, drying away from it
+    if level < 0.16 {
+        let sand = shade(mix(th.sand, th.ground, th.bank), grain(x, y, seed ^ 0x4d) * 0.08 + fbm(x, y, 8, 2, seed ^ 0x21) * 0.04);
+        let wet = shade(mix(sand, th.ground, 0.3), -0.18);
+        let s = mix(sand, wet, smooth(-0.6, 0.12, level));
+        c = mix(c, s, smooth(0.16, 0.06, level));
+    }
+    c
+}
+
 fn paint(kind: Kind, th: &Theme, x: f32, y: f32, seed: u32, set: u32, var: u32) -> (Col, f32) {
     match kind {
         Kind::Fairway => turf(x, y, shade(th.mown, set as f32 * 0.015), 4, 0.07, seed),
@@ -385,12 +449,15 @@ fn paint(kind: Kind, th: &Theme, x: f32, y: f32, seed: u32, set: u32, var: u32) 
             let (c, h) = if var.is_multiple_of(2) { turf(y, x, base, 4, 0.05, seed) } else { turf(x, y, base, 4, 0.05, seed) };
             (c, h * 0.4 + 0.3)
         }
-        Kind::Rough => grass(x, y, shade(th.rough, (set as f32 - 2.0) * 0.02), 0.6, seed),
+        Kind::Rough => grass(x, y, shade(th.rough, (set as f32 - 2.0) * 0.012), 0.6, seed),
         Kind::Deep => {
-            let (c, h) = grass(x, y, th.deep, 1.0, seed);
-            let tall = blades(x, y, seed ^ 0xfe, 16);
-            let c = mix(c, shade(mix(th.deep, rgb(190, 170, 90), 0.35), tall * 0.2), smooth(0.25, 0.6, tall) * 0.5);
-            (c, h + smooth(0.1, 0.6, tall) * 0.3)
+            // long grass in tussocks with sun-bleached tips
+            let under = grass(x, y, shade(th.deep, -0.06), 0.6, seed);
+            let tips = mix(th.deep, rgb(196, 178, 96), 0.3);
+            let t1 = plants(x, y, under, shade(th.deep, 0.05), 4, 60, 0.36, seed ^ 0x1d);
+            let (c, h) = plants(x, y, t1, tips, 8, 22, 0.3, seed ^ 0x2d);
+            let tall = blades(x, y, seed ^ 0xfe, 32);
+            (shade(c, tall * 0.07), h * 0.6 + tall * 0.05)
         }
         Kind::Scrub => {
             let g = ground(x, y, shade(th.ground, (set as f32 - 2.0) * 0.02), seed);
@@ -400,7 +467,9 @@ fn paint(kind: Kind, th: &Theme, x: f32, y: f32, seed: u32, set: u32, var: u32) 
         }
         Kind::Brush => {
             let under = grass(x, y, th.rough, 0.5, seed);
-            plants(x, y, under, mix(th.scrub, rgb(150, 140, 60), 0.35), 8, 50 + set * 6, 0.36, seed ^ 0x5)
+            // low shrubs among the grass (heather on the links)
+            let shrub = if th.heather { mix(th.scrub, th.rough, 0.35) } else { mix(th.scrub, rgb(150, 140, 60), 0.35) };
+            plants(x, y, under, shrub, 8, 50 + set * 6, 0.36, seed ^ 0x5)
         }
         Kind::Sand => sand(x, y, th.sand, seed),
         Kind::Cracks => {
@@ -428,14 +497,9 @@ fn paint(kind: Kind, th: &Theme, x: f32, y: f32, seed: u32, set: u32, var: u32) 
             let s = sand(x, y, mix(th.sand, th.ground, 0.15), seed);
             plants(x, y, s, shade(th.rough, 0.05), 8, 45, 0.35, seed ^ 0x2)
         }
-        Kind::WaterShallow => {
-            let (c, _) = water(x, y, mix(th.water, th.shallow, 0.35), seed, 1.0);
-            // the bottom shows through: light sand patches
-            let bed = smooth(0.1, 0.5, fbm(x, y, 4, 3, seed ^ 0x13));
-            (mix(c, mix(th.shallow, th.sand, 0.4), bed * 0.12), 0.0)
-        }
-        Kind::WaterMiddle => water(x, y, th.water, seed, 1.0),
-        Kind::WaterDeep => water(x, y, shade(th.water, -0.1), seed, 0.8),
+        Kind::WaterShallow => (water_at(th, x, y, 1.0, seed), 0.0),
+        Kind::WaterMiddle => (water_at(th, x, y, 2.0, seed), 0.0),
+        Kind::WaterDeep => (water_at(th, x, y, 3.0, seed), 0.0),
         Kind::Marsh => {
             let mud = grass(x, y, mix(th.deep, th.ground, 0.35), 0.8, seed);
             let pool = smooth(0.12, 0.2, fbm(x, y, 4, 3, seed ^ 0x8));
@@ -447,16 +511,33 @@ fn paint(kind: Kind, th: &Theme, x: f32, y: f32, seed: u32, set: u32, var: u32) 
         Kind::Rock => {
             // grass strewn with stones and boulders (more of them in the later sets)
             let under = grass(x, y, th.rough, 0.4, seed);
-            let share = [30, 14, 40, 22, 55][set as usize % 5];
+            let share = [16, 8, 22, 12, 30][set as usize % 5];
             let big = stones(x, y, under, th.rock, 4, share, 0.36, seed ^ 0x3);
-            stones(x, y, big, th.rock, 8, share, 0.3, seed ^ 0x17)
+            stones(x, y, big, th.rock, 8, share / 2 + 4, 0.3, seed ^ 0x17)
         }
         Kind::Woods => {
-            // the forest floor: bare earth with leaf litter and a few tufts
-            let (c, h) = ground(x, y, mix(th.ground, rgb(120, 84, 52), 0.3), seed);
-            let litter = fbm(x, y, 16, 2, seed ^ 0x45);
-            let c = mix(c, shade(mix(th.ground, rgb(150, 100, 50), 0.5), grain(x, y, seed) * 0.4), smooth(0.1, 0.35, litter) * 0.5);
-            plants(x, y, (c, h), shade(th.rough, 0.05), 8, 10, 0.26, seed ^ 0x81)
+            // the forest floor in the trees' shade: moss and low leafy cover, drifts of fallen leaves, dappled light (in the
+            // desert: sand with litter and a little scrub)
+            let litter_col = mix(th.ground, rgb(156, 104, 54), 0.45);
+            let (mut c, mut h) = if th.desert {
+                ground(x, y, mix(th.ground, rgb(150, 110, 70), 0.25), seed)
+            } else {
+                grass(x, y, shade(mix(th.deep, th.ground, 0.22), -0.1), 0.8, seed)
+            };
+            let drift = smooth(0.0, 0.3, fbm(x, y, 4, 3, seed ^ 0x45));
+            let (d1, _, id) = cells(x, y, 32, seed ^ 0x5c);
+            let leaf = smooth(0.5, 0.3, d1);
+            let tint = (id % 5) as f32 * 0.05 - 0.1;
+            let lc = shade(mix(litter_col, rgb(176, 120, 44), ((id >> 3) % 3) as f32 * 0.25), tint);
+            let amount = if th.desert { 0.35 } else { 0.8 };
+            c = mix(c, mix(shade(litter_col, -0.12), lc, leaf), drift * amount);
+            h += leaf * drift * 0.15;
+            let dapple = fbm(x, y, 2, 2, seed ^ 0x93);
+            c = shade(c, smooth(0.05, 0.4, dapple) * 0.07 - smooth(-0.05, -0.4, dapple) * 0.08);
+            let cover = if th.desert { mix(th.scrub, th.ground, 0.2) } else { shade(th.deep, 0.08) };
+            let share = if th.desert { 12 } else { 34 };
+            let ferns = plants(x, y, (c, h), cover, 8, share, 0.3, seed ^ 0x81);
+            plants(x, y, ferns, shade(cover, -0.12), 16, share / 2, 0.26, seed ^ 0x8f)
         }
         Kind::Paving => {
             // the grounds of a building: a light, even lawn
@@ -470,15 +551,21 @@ fn paint(kind: Kind, th: &Theme, x: f32, y: f32, seed: u32, set: u32, var: u32) 
             (shade(c, strata * 0.08 - crack * 0.35), h - crack * 0.4)
         }
         Kind::Flowers => {
-            let soil = ground(x, y, mix(th.ground, rgb(80, 56, 40), 0.5), seed);
-            let (d1, _, id) = cells(x, y, 16, seed ^ 0x3);
-            let leaves = plants(x, y, soil, shade(th.rough, -0.1), 8, 85, 0.45, seed ^ 0x9);
-            if d1 < 0.3 && id % 3 != 0 {
-                let f = th.flower[(id % 3) as usize];
-                (shade(f, 0.25 - d1), 0.9)
-            } else {
-                leaves
+            // mulched soil with leafy clumps, each clump in flower in one colour
+            let soil = ground(x, y, mix(th.ground, rgb(84, 58, 40), 0.55), seed);
+            let (d1, _, id) = cells(x, y, 4, seed ^ 0x9);
+            let r = 0.42 + (id % 7) as f32 * 0.015;
+            let t = smooth(r + 0.05, r - 0.03, d1 + fbm(x, y, 16, 2, seed ^ 0x6d) * 0.1);
+            if t <= 0.0 {
+                return soil;
             }
+            let dome = (1.0 - (d1 / r).powi(2)).max(0.0).sqrt();
+            let leafc = shade(mix(th.rough, th.deep, 0.4), blades(x * 1.7, y * 1.7, seed ^ 0x12, 32) * 0.12 - 0.05);
+            let f = th.flower[(id % 3) as usize];
+            let (e1, _, fid) = cells(x, y, 16, seed ^ 0x3);
+            let petal = smooth(0.5, 0.26, e1) * smooth(r * 1.0, r * 0.55, d1) * if fid % 5 != 0 { 1.0 } else { 0.0 };
+            let c = mix(leafc, shade(f, 0.1 - e1 * 0.5), petal);
+            (mix(soil.0, c, t), soil.1.max(0.5 + dome * 0.4 + petal * 0.2))
         }
     }
 }
@@ -572,8 +659,11 @@ pub fn texture(path: &str) -> Vec<u8> {
     let is_tee = kind == Kind::Tee;
     // tees use the number as their look (one of 25), everything else as the shape
     let is_water = matches!(kind, Kind::WaterShallow | Kind::WaterMiddle | Kind::WaterDeep);
-    // tees and water are always the plain fill (water's banks are drawn by the land around it)
-    let shape = if is_tee || is_water {
+    if is_water {
+        return water_piece(kind, &th, th_i, set, var);
+    }
+    // tees are always the plain fill
+    let shape = if is_tee {
         1
     } else if var <= 5 {
         var
@@ -590,6 +680,9 @@ pub fn texture(path: &str) -> Vec<u8> {
         Kind::Green | Kind::Tricky => 0.5,
         Kind::WaterShallow | Kind::WaterMiddle | Kind::WaterDeep => 0.0,
         Kind::Sand | Kind::Zen | Kind::Paving => 0.9,
+        // long grass: soft relief, or it reads as hammered metal
+        Kind::Rough | Kind::GrassBunker => 0.45,
+        Kind::Deep | Kind::Woods | Kind::Flowers | Kind::Brush | Kind::Marsh => 0.6,
         _ => 0.9,
     };
     let mut inner = Surf::new();
@@ -605,7 +698,7 @@ pub fn texture(path: &str) -> Vec<u8> {
     // the outside: a low grass collar (lighter on the second set of shapes); desert ground and scrub have none in their
     // second set, they show the bare ground with fewer plants
     let ground_kind = kind == Kind::Scrub || kind == Kind::Rock;
-    let collar_col = if second { shade(th.collar, 0.12) } else { th.collar };
+    let collar_col = if second { shade(th.collar, 0.04) } else { th.collar };
     let mut outer = Surf::new();
     if second && ground_kind {
         // the bare base of the same surface, so the shape fades into it without a seam
@@ -618,7 +711,7 @@ pub fn texture(path: &str) -> Vec<u8> {
         // in the desert the second set of pieces stands in the bare sand
         render(&mut outer, |x, y| ground(x, y, th.ground, look ^ 0x55), 0.9);
     } else {
-        render(&mut outer, |x, y| grass(x, y, collar_col, 0.3, look ^ 0x99), 0.8);
+        render(&mut outer, |x, y| grass(x, y, collar_col, 0.3, look ^ 0x99), 0.45);
     }
     let rag = !crisp(kind);
     let is_wet = is_water || kind == Kind::Marsh;
@@ -652,7 +745,14 @@ pub fn texture(path: &str) -> Vec<u8> {
             }
             s.col[i] = c;
             // mown areas sit a little above the collar, water and sand below it
-            let lift = if is_wet || is_sand { -1.0 } else { 0.6 };
+            // (a ragged edge of long grass only a little: a strong lip there reads as a stitched seam round every patch)
+            let lift = if is_wet || is_sand {
+                -1.0
+            } else if rag {
+                0.22
+            } else {
+                0.5
+            };
             s.h[i] = smooth(1.5, -1.5, d) * lift;
         }
     }
@@ -662,11 +762,49 @@ pub fn texture(path: &str) -> Vec<u8> {
         for x in 0..N as i32 {
             let gx = at(x + 1, y) - at(x - 1, y);
             let gy = at(x, y + 1) - at(x, y - 1);
-            let k = (-(gx + gy) * 0.55).clamp(-0.3, 0.25);
+            let k = (-(gx + gy) * 0.5).clamp(-0.26, 0.22);
             out.px[y as usize * N + x as usize] = shade(s.col[y as usize * N + x as usize], k);
         }
     }
     super::enc::bmp24(&out.to_rgba())
+}
+
+/// A water piece. The terrain renderer gives water the border pieces by depth (TERRAIN.md): pieces 2..5 face land or
+/// shallower water, 6..9 deeper water. So the outside of a shallow piece is the shore (foam, wet sand, the beach), and the
+/// outside of a deeper piece the next depth, blended wide, so a lake shades from its banks down to its deep middle.
+fn water_piece(kind: Kind, th: &Theme, th_i: usize, set: u32, var: u32) -> Vec<u8> {
+    let shape = if var <= 5 { var } else { var - 5 };
+    let second = var > 5;
+    let inner: f32 = match kind {
+        Kind::WaterShallow => 1.0,
+        Kind::WaterMiddle => 2.0,
+        _ => 3.0,
+    };
+    let outer = match (kind, second) {
+        (Kind::WaterShallow, false) => -0.8,
+        (Kind::WaterDeep, _) => 2.0,
+        (_, true) => inner + 1.0,
+        _ => inner - 1.0,
+    };
+    // one seed per theme and set for every depth: the ripples run on across the depths
+    let seed = hash(&format!("water{th_i}{set}"));
+    let shore = outer < 0.0;
+    let mut c = Canvas::new(N, N, [0.0, 0.0, 0.0, 1.0]);
+    for y in 0..N {
+        for x in 0..N {
+            let (fx, fy) = (x as f32 + 0.5, y as f32 + 0.5);
+            let level = if shape == 1 {
+                inner
+            } else {
+                let d = shape_sd(shape, fx, fy) + fbm(fx, fy, 8, 3, seed ^ 0x3e) * 3.5 + fbm(fx, fy, 32, 1, seed ^ 0x4f) * 0.8;
+                // the next depth is only met half way at the tile's edge (the tile beyond may not blend back)
+                let t = if shore { smooth(-9.0, 9.0, d) } else { smooth(-6.0, 8.0, d) * 0.5 };
+                inner + (outer - inner) * t
+            };
+            c.px[y * N + x] = water_at(th, fx, fy, level, seed);
+        }
+    }
+    super::enc::bmp24(&c.to_rgba())
 }
 
 /// Wall and cliff faces: layered rock (Strat, CliffTest) or a timber retaining wall, with grass along the top.
@@ -796,5 +934,67 @@ mod tests {
             inside += (px(31, y) - px(32, y)).abs();
         }
         assert!(edge < inside * 2 + 64 * 30, "edge {edge} inside {inside}");
+    }
+
+    /// For artists: `TEX_SHEET=out.png cargo test -p sg-core tex_sheet -- --ignored` writes a contact sheet of every
+    /// theme's surfaces (a row per surface: the five shapes of set A, then the fill tiled 3 x 3 to show any repetition).
+    #[test]
+    #[ignore]
+    fn tex_sheet() {
+        let Ok(out) = std::env::var("TEX_SHEET") else { return };
+        let names = [
+            "Fairway",
+            "FirmFairway",
+            "PuttingGreen",
+            "TrickyGreen",
+            "Tee",
+            "Rough",
+            "DeepRough",
+            "Overgrowth",
+            "Brush",
+            "Rock",
+            "Woods",
+            "SandBunker1",
+            "GrassySand",
+            "ZenSand",
+            "GrassBunker",
+            "WaterShallow",
+            "WaterMiddle",
+            "WaterDeep",
+            "Marsh",
+            "Ravine",
+            "FlowerBed",
+            "Building",
+        ];
+        let themes = ["Parkland", "Desert", "Tropical", "Links"];
+        let (cw, ch) = (64 * 8 + 16, names.len() * 196);
+        let mut img = crate::assets::Rgba::new((cw * themes.len()) as u32, ch as u32);
+        for (ti, th) in themes.iter().enumerate() {
+            for (ri, n) in names.iter().enumerate() {
+                let mut put = |file: &str, x0: usize, y0: usize| {
+                    let bmp = texture(&format!("Data/Textures/{th}/{file}"));
+                    let t = crate::assets::decode_bmp(&bmp).unwrap();
+                    for y in 0..64 {
+                        for x in 0..64 {
+                            let s = (y * 64 + x) * 4;
+                            let d = ((y0 + y) * img.w as usize + x0 + x) * 4;
+                            img.px[d..d + 4].copy_from_slice(&t.px[s..s + 4]);
+                        }
+                    }
+                };
+                let y0 = ri * 196;
+                for v in 1..=5 {
+                    put(&format!("{n}A{v:04}.bmp"), ti * cw + (v - 1) * 64, y0);
+                }
+                for v in 6..=9 {
+                    put(&format!("{n}B{v:04}.bmp"), ti * cw + (v - 6) * 64, y0 + 66);
+                }
+                for k in 0..9 {
+                    let set = ["A", "B", "C", "A", "D", "B", "E", "C", "A"][k];
+                    put(&format!("{n}{set}0001.bmp"), ti * cw + 5 * 64 + 8 + (k % 3) * 64 - 64 * 2 + 128, y0 + (k / 3) * 64);
+                }
+            }
+        }
+        assert!(crate::png::write_png(&out, &img));
     }
 }

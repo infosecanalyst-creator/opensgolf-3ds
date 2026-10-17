@@ -20,6 +20,8 @@ class Scene:
         self.pal = {}
         self.ambient = 0.5
         self.diffuse = 0.62
+        # ramp models: take a tone from each triangle's colour (its mean over 0.5), as the ramp ignores the colour
+        self.tone = False
 
     def add_tris(self, t, col, tag=-1, emissive=False):
         t = np.asarray(t, float).reshape(-1, 3, 3)
@@ -45,6 +47,7 @@ class Scene:
         out.leafy, out.rag, out.seed, out.no_shadow = self.leafy, self.rag, self.seed, self.no_shadow
         out.pal = self.pal
         out.ambient, out.diffuse = self.ambient, self.diffuse
+        out.tone = self.tone
         r = np.eye(3) if rot is None else rot
         mv = np.asarray(move, float)
         for t, c, g, e in zip(self.tris, self.cols, self.ttags, self.emissive):
@@ -76,7 +79,8 @@ class Scene:
     def render(self, fr: Frame, yaw, shadow=True):
         t, c, g, e = self.merged()
         if len(t):
-            fr.draw(t, c, yaw=yaw, tags=g, emissive=e, ambient=self.ambient, diffuse=self.diffuse)
+            fr.draw(t, c, yaw=yaw, tags=g, emissive=e, ambient=self.ambient, diffuse=self.diffuse,
+                    tone=c.mean(1) / 0.5 if self.tone else None)
         if self.balls:
             cen = np.array([b[0] for b in self.balls])
             rad = np.array([b[1] for b in self.balls])

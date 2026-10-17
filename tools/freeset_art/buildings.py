@@ -56,12 +56,31 @@ class Kit:
         """A box of wall from (x0, z0) to (x1, z1), y0 to y1; `bands` horizontal siding lines."""
         col = self.st["wall"] if col is None else col
         self.add(box([(x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2], [x1 - x0, y1 - y0, z1 - z0]), col)
+        # a plinth of the base stone at the foot, a soft band of shade along the foot (the ground's occlusion) and under
+        # the eaves: the walls sit on the ground and under their roof instead of floating as flat boxes
+        faces = (((x0, z0), (x1, z0)), ((x0, z1), (x1, z1)), ((x0, z0), (x0, z1)), ((x1, z0), (x1, z1)))
+        for (a, b) in faces:
+            if y0 < 1:
+                self._band_on_face(a, b, y0, y0 + 3.5, self.st["stone"] * 0.82, 0.45)
+                self._band_on_face(a, b, y0 + 3.5, y0 + 7, col * 0.9, 0.35)
+            self._band_on_face(a, b, y1 - 4, y1, col * 0.8, 0.35)
         if bands:
             # thin darker lines along the outside faces
             for k in range(1, bands):
                 y = y0 + (y1 - y0) * k / bands
                 for (a, b) in (((x0, z0), (x1, z0)), ((x0, z1), (x1, z1)), ((x0, z0), (x0, z1)), ((x1, z0), (x1, z1))):
                     self._line_on_face(a, b, y, col * 0.88)
+
+    def _band_on_face(self, a, b, y0, y1, col, off):
+        """A band of colour from y0 to y1 just proud of the wall face from a to b (both sides)."""
+        a = np.array([a[0], 0, a[1]], float)
+        b = np.array([b[0], 0, b[1]], float)
+        d = b - a
+        n = np.array([-d[2], 0, d[0]])
+        n = n / (np.linalg.norm(n) + 1e-9)
+        for sgn in (1, -1):
+            o = n * sgn * off
+            self.add(quad(a + o + [0, y0, 0], b + o + [0, y0, 0], b + o + [0, y1, 0], a + o + [0, y1, 0]), col)
 
     def _line_on_face(self, a, b, y, col, t=0.7):
         a = np.array([a[0], y, a[1]], float)
@@ -85,9 +104,22 @@ class Kit:
             q = cx + n * off
             self.add(quad(q - side * hw - up * hh, q + side * hw - up * hh, q + side * hw + up * hh, q - side * hw + up * hh), col)
         rect(p, w / 2 + 1.6, h / 2 + 1.6, 0.6, frame)
-        rect(p, w / 2, h / 2, 0.9, glass)
-        # a light sky reflection on the upper half and a mullion
-        rect(p + up * h * 0.25, w / 2 - 0.5, h / 4 - 0.5, 1.0, glass * 1.35)
+        # a sill casting a little shade
+        rect(p - up * (h / 2 + 1.6), w / 2 + 2.6, 1.0, 1.4, frame * 0.92)
+        if self.rng.uniform() < 0.4:
+            # a warm, lit room behind the glass, brighter at the top
+            q = p + n * 0.9
+            hw, hh = w / 2, h / 2
+            self.s.add_tris(quad(q - side * hw - up * hh, q + side * hw - up * hh, q + side * hw + up * hh, q - side * hw + up * hh),
+                            c(236, 176, 92), emissive=True)
+            q = p + n * 1.0 + up * h * 0.2
+            self.s.add_tris(quad(q - side * (hw - 0.5) - up * hh * 0.5, q + side * (hw - 0.5) - up * hh * 0.5,
+                                 q + side * (hw - 0.5) + up * (hh * 0.8 - 0.5), q - side * (hw - 0.5) + up * (hh * 0.8 - 0.5)),
+                            c(255, 222, 150), emissive=True)
+        else:
+            rect(p, w / 2, h / 2, 0.9, glass)
+            # a light sky reflection on the upper half
+            rect(p + up * h * 0.25, w / 2 - 0.5, h / 4 - 0.5, 1.0, np.minimum(glass * 1.45 + 0.08, 1))
         rect(p, 0.7, h / 2, 1.1, frame)
         rect(p, w / 2, 0.7, 1.1, frame)
         if shutters is not None:
@@ -143,7 +175,15 @@ class Kit:
                 p2, q2 = p + (ss - p) * t, q + (rr - q) * t
                 p3, q3 = p + (ss - p) * (t + 0.04), q + (rr - q) * (t + 0.04)
                 lift = np.array([0, 0.25, 0])
-                self.add(quad(p2 + lift, q2 + lift, q3 + lift, p3 + lift), col * 0.86)
+                self.add(quad(p2 + lift, q2 + lift, q3 + lift, p3 + lift), col * 0.8)
+            # a lighter cap along the hips and ridge
+            for e0, e1 in ((q, rr), (p, ss), (rr, ss)):
+                if np.linalg.norm(e1 - e0) > 1e-3:
+                    dd = (e1 - e0) / np.linalg.norm(e1 - e0)
+                    sd = np.cross(dd, [0, 1.0, 0])
+                    sd = sd / (np.linalg.norm(sd) + 1e-9) * 1.0
+                    self.add(quad(e0 - sd + [0, 0.4, 0], e1 - sd + [0, 0.4, 0], e1 + sd + [0, 0.4, 0], e0 + sd + [0, 0.4, 0]),
+                             np.minimum(col * 1.18 + 0.03, 1))
         # eave fascia
         for p, q in ((a, b), (b, cc), (cc, d), (d, a)):
             self.add(quad(p, q, q - [0, 2.5, 0], p - [0, 2.5, 0]), self.st["trim"])

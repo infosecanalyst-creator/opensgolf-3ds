@@ -36,7 +36,7 @@ def broadleaf(rng, height=100.0, crown=0.5, width=0.36, squash=1.05, leaf=c255(7
               leafiness=1.0, ball=0.34, flowers=None, flower_share=0.0, droop=0.0, lean=0.0):
     """A deciduous tree: trunk to `crown` of the height, a crown `width` of the height across (radius), made of n balls."""
     s = Scene()
-    s.leafy, s.rag = 0.2, 0.16
+    s.leafy, s.rag = 0.32, 0.17
     # fewer, larger clumps than asked for: a crown of a few clear lobes reads as a tree at the game's size, a crown of many
     # small balls as a heap of bubbles
     n = max(8, int(round(n * 0.55)))
@@ -67,10 +67,15 @@ def broadleaf(rng, height=100.0, crown=0.5, width=0.36, squash=1.05, leaf=c255(7
     pts.append(centre)
     for k, p in enumerate(pts):
         r = cr * ball * rng.uniform(0.8, 1.2) * (1.6 if k == len(pts) - 1 else 1.0) * (0.35 + 0.65 * leafiness)
-        col, tag = jitter(leaf, rng, 0.03), LEAF
-        if flowers is not None and rng.uniform() < flower_share:
-            col, tag = jitter(flowers, rng, 0.05), RED
-        s.add_ball(p, r, col, tag)
+        s.add_ball(p, r, jitter(leaf, rng, 0.03), LEAF)
+    if flowers is not None and leafiness > 0.3:
+        # blossom: many small clusters scattered over the crown's surface, the leaves showing between them
+        for k in range(int(n * flower_share * 4)):
+            d = rng.normal(size=3)
+            d[1] = abs(d[1]) * 0.8 + 0.1
+            d /= np.linalg.norm(d)
+            p = centre + d * cr * rng.uniform(0.82, 0.98) * np.array([1, squash, 1])
+            s.add_ball(p, cr * ball * rng.uniform(0.32, 0.46) * leafiness, jitter(flowers, rng, 0.05), RED)
     return s
 
 
@@ -80,7 +85,8 @@ def conifer(rng, height=110.0, width=0.24, tiers=6, leaf=c255(46, 92, 54), bark=
     s = Scene()
     s.leafy, s.rag = 0.42, 0.26
     s.add_tris(tube([0, 0, 0], [0, height * 0.95, 0], height * 0.03, height * 0.008, 6), bark, BARKT)
-    s.mass = (np.array([0, height * 0.55, 0]), height * 0.45)
+    # the crown's mass: about as wide as the lower tiers (a wider one leaves the whole tree in its own shade)
+    s.mass = (np.array([0, height * 0.42, 0]), height * max(width * 1.2, 0.3))
     if leafiness <= 0.02:
         return s
     for t in range(tiers):
@@ -94,7 +100,7 @@ def conifer(rng, height=110.0, width=0.24, tiers=6, leaf=c255(46, 92, 54), bark=
             p = np.array([np.cos(a) * rad * 0.62, y - rad * 0.15, np.sin(a) * rad * 0.62])
             s.add_ball(p, rad * 0.5 * rng.uniform(0.85, 1.1), jitter(leaf, rng, 0.06), LEAF)
         s.add_ball([0, y, 0], rad * 0.62, jitter(leaf, rng, 0.05), LEAF)
-    s.add_ball([0, height * 0.97, 0], height * width * 0.18 * (0.4 + 0.6 * leafiness), leaf * (1.0 if top_round else 1.05), LEAF)
+    s.add_ball([0, height * 0.92, 0], height * width * 0.26 * (0.4 + 0.6 * leafiness), leaf * (1.0 if top_round else 1.05), LEAF)
     return s
 
 
@@ -121,51 +127,58 @@ def scots_pine(rng, height=110.0, leaf=c255(52, 96, 58), leafiness=1.0):
 
 
 def palm(rng, height=120.0, fronds=9, frond_len=0.42, curve=0.18, leaf=c255(70, 136, 56), leafiness=1.0, nuts=True):
-    """A palm: a curved ringed trunk and drooping fronds with jagged leaflets."""
+    """A palm: a curved ringed trunk swelling at the foot, and a full head of arching fronds (a drooping lower ring and a
+    shorter rising upper one) with feathered leaflets, lit darker underneath."""
     s = Scene()
     s.leafy, s.rag = 0.2, 0.15
     a = rng.uniform(0, 2 * np.pi)
     lean = np.array([np.cos(a), 0, np.sin(a)]) * curve * height
-    segs = 9
+    segs = 10
     prev = np.zeros(3)
     for k in range(1, segs + 1):
         t = k / segs
         p = np.array([0, height * t, 0]) + lean * t * t
-        r0 = height * (0.032 - 0.01 * (k - 1) / segs)
-        r1 = height * (0.032 - 0.01 * k / segs)
-        s.add_tris(tube(prev, p, r0, r1, 7, caps=False), BARK_PALM * (0.92 if k % 2 else 1.04), BARKT)
+        f0, f1 = (k - 1) / segs, k / segs
+        r0 = height * (0.03 - 0.009 * f0 + 0.022 * max(0, 0.15 - f0) / 0.15)
+        r1 = height * (0.03 - 0.009 * f1 + 0.022 * max(0, 0.15 - f1) / 0.15)
+        s.add_tris(tube(prev, p, r0, r1, 8, caps=False), BARK_PALM * (0.88 if k % 2 else 1.06), BARKT)
         prev = p
     crown = prev
     s.mass = (crown, height * frond_len)
     if leafiness <= 0.02:
         return s
-    L = height * frond_len * (0.35 + 0.65 * leafiness)
+    # the boss of old leaf bases under the crown
+    s.add_ball(crown - [0, height * 0.02, 0], height * 0.045, BARK_PALM * 0.8, BARKT)
+    L0 = height * frond_len * (0.35 + 0.65 * leafiness)
     a0 = rng.uniform(0, 2 * np.pi)
-    for k in range(fronds):
-        ang = a0 + 2 * np.pi * k / fronds + rng.uniform(-0.2, 0.2)
-        d = np.array([np.cos(ang), 0, np.sin(ang)])
-        side = np.array([-d[2], 0, d[0]])
-        rise = rng.uniform(0.25, 0.7)
-        pts = []
-        for j in range(9):
-            t = j / 8
-            pts.append(crown + d * L * t + np.array([0, L * (rise * t - (0.55 + rise * 0.6) * t * t), 0]))
-        col = jitter(leaf, rng, 0.07)
-        for j in range(8):
-            p0, p1 = pts[j], pts[j + 1]
-            w0 = L * 0.16 * np.sin(np.pi * (j + 0.3) / 8.6)
-            w1 = L * 0.16 * np.sin(np.pi * (j + 1.3) / 8.6)
-            # leaflets hang a little: the edges sit lower than the rib
-            down = np.array([0, -L * 0.05, 0])
-            # jagged edges: the outer points alternate in and out
-            j0 = 1.0 if j % 2 == 0 else 0.7
-            s.add_tris(quad(p0, p1, p1 + side * w1 + down, p0 + side * w0 * j0 + down), col, LEAF)
-            s.add_tris(quad(p0, p0 - side * w0 * j0 + down, p1 - side * w1 + down, p1), col * 0.9, LEAF)
+    rings = [(fronds, 1.0, (0.1, 0.45)), (max(4, fronds // 2 + 1), 0.7, (0.55, 0.95))]
+    for ri, (count, lscale, rises) in enumerate(rings):
+        for k in range(count):
+            ang = a0 + 2 * np.pi * (k + 0.5 * ri) / count + rng.uniform(-0.2, 0.2)
+            d = np.array([np.cos(ang), 0, np.sin(ang)])
+            side = np.array([-d[2], 0, d[0]])
+            rise = rng.uniform(*rises)
+            L = L0 * lscale * rng.uniform(0.9, 1.1)
+            pts = []
+            for j in range(11):
+                t = j / 10
+                pts.append(crown + d * L * t + np.array([0, L * (rise * t - (0.5 + rise * 0.55) * t * t), 0]))
+            col = jitter(leaf, rng, 0.06) * (1.0 if ri else 0.92)
+            for j in range(10):
+                p0, p1 = pts[j], pts[j + 1]
+                w0 = L * 0.24 * np.sin(np.pi * (j + 0.4) / 10.8) ** 0.8
+                w1 = L * 0.24 * np.sin(np.pi * (j + 1.4) / 10.8) ** 0.8
+                # leaflets hang from the rib, feathered: the outer points swept back and alternately short
+                down = np.array([0, -L * 0.07, 0])
+                back = -(p1 - p0) * 0.35
+                j0 = 1.0 if j % 2 == 0 else 0.78
+                s.add_tris(quad(p0, p1, p1 + side * w1 + down + back, p0 + side * w0 * j0 + down + back), col, LEAF)
+                s.add_tris(quad(p0, p0 - side * w0 * j0 + down + back, p1 - side * w1 + down + back, p1), col * 0.88, LEAF)
     if nuts:
-        for k in range(3):
+        for k in range(4):
             ang = rng.uniform(0, 2 * np.pi)
-            s.add_ball(crown + np.array([np.cos(ang) * height * 0.025, -height * 0.03, np.sin(ang) * height * 0.025]),
-                       height * 0.022, c255(120, 90, 50), WOOD)
+            s.add_ball(crown + np.array([np.cos(ang) * height * 0.03, -height * 0.035, np.sin(ang) * height * 0.03]),
+                       height * 0.024, c255(120, 92, 48), WOOD)
     return s
 
 
@@ -278,10 +291,16 @@ def bush(rng, height=40.0, width=0.75, leaf=c255(70, 120, 50), n=9, flowers=None
         a = rng.uniform(0, 2 * np.pi)
         rr = rng.uniform(0.1, 0.75) * cr
         p = np.array([np.cos(a) * rr, height * rng.uniform(0.3, 0.75) * (0.4 + 0.6 * leafiness), np.sin(a) * rr])
-        col, tag = jitter(leaf, rng, 0.07), LEAF
-        if flowers is not None and rng.uniform() < flower_share:
-            col, tag = jitter(flowers, rng, 0.05), RED
-        s.add_ball(p, cr * rng.uniform(0.38, 0.52), col, tag)
+        s.add_ball(p, cr * rng.uniform(0.38, 0.52), jitter(leaf, rng, 0.07), LEAF)
+    if flowers is not None and leafiness > 0.3:
+        # flowers in small clusters over the outside of the shrub
+        top = height * 0.5 * (0.4 + 0.6 * leafiness)
+        for k in range(int(n * flower_share * 4)):
+            d = rng.normal(size=3)
+            d[1] = abs(d[1]) * 0.9 + 0.15
+            d /= np.linalg.norm(d)
+            p = np.array([0, top, 0]) + d * cr * np.array([1.0, 0.7, 1.0]) * rng.uniform(0.75, 0.95)
+            s.add_ball(p, cr * rng.uniform(0.13, 0.19), jitter(flowers, rng, 0.05), RED)
     return s
 
 
@@ -392,7 +411,7 @@ SPECIES = [
     (lambda n: "aspen" in n, lambda r, L: broadleaf(r, 105, crown=0.5, width=0.3, squash=1.3, bark=c255(220, 214, 196),
                                                      leafiness=L), {"LEAF": (196, 170, 64), "BARK": (222, 216, 200)}),
     (lambda n: "cypress" in n, lambda r, L: conifer(r, 160, width=0.13, tiers=9, leafiness=L, bare=0.05),
-     {"LEAF": (44, 86, 54)}),
+     {"LEAF": (58, 104, 64)}),
     (lambda n: "dogwood" in n, lambda r, L: broadleaf(r, 90, width=0.42, squash=0.8, flowers=c255(240, 236, 226),
                                                        flower_share=0.45, leafiness=L),
      {"LEAF": (80, 130, 60), "RED": (240, 236, 226)}),
@@ -425,10 +444,10 @@ SPECIES = [
     (lambda n: "deadswamp" in n, dead_trees, {"BARK": (120, 112, 100)}),
     (lambda n: "oasis" in n, oasis, {"LEAF": (74, 140, 58), "BARK": (150, 120, 86), "WATER": (70, 140, 180)}),
     (lambda n: "maple" in n, lambda r, L: broadleaf(r, 100, leaf=c255(84, 134, 52), leafiness=L), {"LEAF": (84, 134, 52)}),
-    (lambda n: "pinefir" in n, lambda r, L: conifer(r, 120, width=0.22, tiers=7, leafiness=L), {"LEAF": (44, 92, 58)}),
-    (lambda n: "pinespruce" in n, lambda r, L: conifer(r, 120, width=0.25, tiers=8, leafiness=L), {"LEAF": (50, 90, 72)}),
+    (lambda n: "pinefir" in n, lambda r, L: conifer(r, 120, width=0.22, tiers=7, leafiness=L), {"LEAF": (56, 112, 68)}),
+    (lambda n: "pinespruce" in n, lambda r, L: conifer(r, 120, width=0.25, tiers=8, leafiness=L), {"LEAF": (62, 108, 86)}),
     (lambda n: n.startswith("treepine") or "linkspine" in n, lambda r, L: conifer(r, 115, width=0.27, tiers=6, leafiness=L),
-     {"LEAF": (56, 102, 56)}),
+     {"LEAF": (70, 120, 64)}),
     (lambda n: "scotspine" in n or "blackpine" in n, lambda r, L: scots_pine(r, 110, leafiness=L),
      {"LEAF": (58, 104, 62), "BARK": (150, 96, 70)}),
     (lambda n: "linkstree3" in n, lambda r, L: broadleaf(r, 95, width=0.46, squash=0.75, leafiness=L, lean=0.06),

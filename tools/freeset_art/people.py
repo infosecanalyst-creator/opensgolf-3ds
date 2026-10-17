@@ -63,6 +63,29 @@ def blob(c, r, sides=8, stack=6):
     return loft(np.asarray(c, float), np.eye(3), rings, sides)
 
 
+def ik_elbow(sh, tgt, a, b, pole):
+    """The elbow of a two-bone arm (upper a, lower b) from the shoulder sh reaching tgt, bending towards `pole`."""
+    v = tgt - sh
+    dist = np.linalg.norm(v)
+    dn = v / max(dist, 1e-6)
+    dist = np.clip(dist, abs(a - b) + 1e-3, a + b - 1e-3)
+    ca = (a * a + dist * dist - b * b) / (2 * a * dist)
+    perp = pole - dn * (pole @ dn)
+    perp = perp / max(np.linalg.norm(perp), 1e-6)
+    return sh + dn * a * ca + perp * a * np.sqrt(max(1 - ca * ca, 0))
+
+
+def frame_down(a, b):
+    """A rotation whose local -y runs from a to b (for a limb lofted along -y)."""
+    y = a - b
+    y = y / max(np.linalg.norm(y), 1e-6)
+    ref = np.array([0, 0, 1.0]) if abs(y[2]) < 0.9 else np.array([1.0, 0, 0])
+    x = np.cross(y, ref)
+    x /= np.linalg.norm(x)
+    z = np.cross(x, y)
+    return np.stack([x, y, z], 1)
+
+
 # ---- bodies ------------------------------------------------------------------------------------------------------------------
 
 class Body:
@@ -112,6 +135,14 @@ def pose_at(keys, t):
             club = None
             if ca is not None and cb is not None:
                 club = dict(ca, dir=np.asarray(ca["dir"], float) * (1 - u) + np.asarray(cb["dir"], float) * u)
+                if "grip" in ca and "grip" in cb:
+                    # the hands travel on an arc through the keys' grips (a straight line would cut through the body)
+                    g0, g1 = np.asarray(ca["grip"], float), np.asarray(cb["grip"], float)
+                    mid = (g0 + g1) / 2
+                    bulge = np.array([0, 0, 1.0]) * np.linalg.norm(g1 - g0) * 0.25 * cb.get("arc", 0.0)
+                    club["grip"] = (1 - u) ** 2 * g0 + 2 * u * (1 - u) * (mid + bulge) + u * u * g1
+                elif "grip" in club and ("grip" not in ca or "grip" not in cb):
+                    club.pop("grip")
             elif ca is not None or cb is not None:
                 club = ca if u < 0.5 else cb
             return pose, club
@@ -152,7 +183,7 @@ def figure(body: Body, pose, club=None, seed=0):
             lower = body.socks
         if body.legs == "skirt":
             upper = SKIN
-        r_th = 3.1 * S * g
+        r_th = 3.35 * S * g
         s.add_tris(loft(hip, Rth, [(0, r_th, r_th), (-thigh_len * 0.5, r_th * 0.92, r_th * 0.92), (-thigh_len, r_th * 0.72, r_th * 0.72)]),
                    [0.5] * 3, upper)
         if body.legs == "knickers":
@@ -162,7 +193,7 @@ def figure(body: Body, pose, club=None, seed=0):
             s.add_tris(loft(hip, Rth, [(0, r_th * 1.12, r_th * 1.12), (-thigh_len * 0.55, r_th * 1.05, r_th * 1.05)]), [0.5] * 3,
                        body.pants)
             upper_tag = SKIN
-        r_sh = 2.2 * S * g
+        r_sh = 2.4 * S * g
         s.add_tris(loft(knee, Rsh, [(0, r_sh, r_sh), (-shin_len * 0.4, r_sh * 1.05, r_sh * 1.05), (-shin_len, r_sh * 0.7, r_sh * 0.7)]),
                    [0.5] * 3, lower)
         # the shoe points along the pelvis' forward, flat on the ground (lifted with the ankle)
@@ -198,11 +229,12 @@ def figure(body: Body, pose, club=None, seed=0):
     Rh = Rt @ rx(pose["hp"]) @ ry(pose["hy"])
     neck = top
     s.add_tris(loft(neck, Rh, [(-1.0 * S, 1.7 * S, 1.7 * S), (3.0 * S, 1.6 * S, 1.6 * S)], 8), [0.5] * 3, SKIN)
-    hc = neck + Rh @ np.array([0, 7.0 * S, 0.4 * S])
-    hr = np.array([4.2, 5.0, 4.6]) * S
+    # a head a little larger than life: the figure reads (and charms) at the game's few dozen pixels
+    hc = neck + Rh @ np.array([0, 7.7 * S, 0.4 * S])
+    hr = np.array([4.2, 5.0, 4.6]) * S * 1.16
     s.add_tris(blob(hc, hr, 10, 7) - hc + hc, [0.5] * 3, SKIN)
     # nose: a tiny bump forward, so the facing reads
-    s.add_tris(blob(hc + Rh @ np.array([0, -0.5 * S, 4.4 * S]), (0.8 * S, 1.0 * S, 0.9 * S), 6, 4), [0.5] * 3, SKIN)
+    s.add_tris(blob(hc + Rh @ np.array([0, -0.5 * S, 5.1 * S]), (0.9 * S, 1.1 * S, 1.0 * S), 6, 4), [0.5] * 3, SKIN)
     # hair: a cap of hair at the back and top (women: fuller, with a ponytail)
     if not body.bald:
         hair_c = hc + Rh @ np.array([0, 0.9 * S, -0.9 * S])
@@ -211,25 +243,37 @@ def figure(body: Body, pose, club=None, seed=0):
             s.add_tris(blob(hc + Rh @ np.array([0, -1.0 * S, -4.8 * S]), (1.9 * S, 3.2 * S, 1.9 * S), 8, 5), [0.5] * 3, body.hair)
     # cap / visor / hat
     if body.hat == "cap":
-        s.add_tris(blob(hc + Rh @ np.array([0, 1.8 * S, -0.2 * S]), hr * np.array([1.07, 0.75, 1.07]), 10, 6), [0.5] * 3, body.hatcol)
-        brim_c = hc + Rh @ np.array([0, 1.4 * S, 4.6 * S])
-        s.add_tris(blob(brim_c, (3.2 * S, 0.45 * S, 2.6 * S), 8, 3), [0.5] * 3, body.hatcol)
+        s.add_tris(blob(hc + Rh @ np.array([0, 2.1 * S, -0.2 * S]), hr * np.array([1.07, 0.75, 1.07]), 10, 6), [0.5] * 3, body.hatcol)
+        brim_c = hc + Rh @ np.array([0, 1.6 * S, 5.4 * S])
+        s.add_tris(blob(brim_c, (3.6 * S, 0.5 * S, 3.0 * S), 8, 3), [0.5] * 3, body.hatcol)
     elif body.hat == "visor":
-        brim_c = hc + Rh @ np.array([0, 1.6 * S, 4.4 * S])
-        s.add_tris(blob(brim_c, (3.4 * S, 0.45 * S, 2.6 * S), 8, 3), [0.5] * 3, body.hatcol)
+        brim_c = hc + Rh @ np.array([0, 1.8 * S, 5.2 * S])
+        s.add_tris(blob(brim_c, (3.8 * S, 0.5 * S, 3.0 * S), 8, 3), [0.5] * 3, body.hatcol)
         s.add_tris(loft(hc + Rh @ np.array([0, 1.2 * S, 0]), Rh, [(0, hr[0] * 1.05, hr[2] * 1.05), (1.4 * S, hr[0] * 1.02, hr[2] * 1.02)], 10),
                    [0.5] * 3, body.hatcol)
     elif body.hat == "wide":
         s.add_tris(blob(hc + Rh @ np.array([0, 2.5 * S, 0]), (8.0 * S, 0.6 * S, 8.0 * S), 12, 3), [0.5] * 3, body.hatcol)
         s.add_tris(blob(hc + Rh @ np.array([0, 3.8 * S, 0]), (4.4 * S, 2.6 * S, 4.4 * S), 10, 5), [0.5] * 3, body.hatcol)
-    # arms
+    # arms: posed by their joint angles, or (a club with a grip point) reaching the grip, the left hand above the right
     hands = {}
+    grip_at = None
+    if club is not None and "grip" in club and club.get("hands", "both") == "both":
+        grip_at = np.asarray(club["grip"], float) * S
+        cd = np.asarray(club["dir"], float)
+        cd = cd / (np.linalg.norm(cd) + 1e-9)
     for side, sgn in (("l", 1), ("r", -1)):
         sh = top + Rt @ np.array([sgn * shoulder_w, -1.6 * S, 0])
-        Ru = Rt @ rz(sgn * pose[side + "sr"]) @ rx(-pose[side + "sp"]) @ ry(pose[side + "sy"])
         ua, fa = 11.0 * S, 10.0 * S
-        el = sh + Ru @ np.array([0, -ua, 0])
-        Rf = Ru @ rx(-pose[side + "el"])
+        if grip_at is not None:
+            tgt = grip_at + cd * (-1.6 if side == "l" else 1.6) * S
+            # the hand's centre sits 1.4 below the wrist: reach for the target with the forearm that long
+            el = ik_elbow(sh, tgt, ua, fa + 1.4 * S, np.array([sgn * 0.6, -1.0, -0.3]))
+            Ru = frame_down(sh, el)
+            Rf = frame_down(el, tgt)
+        else:
+            Ru = Rt @ rz(sgn * pose[side + "sr"]) @ rx(-pose[side + "sp"]) @ ry(pose[side + "sy"])
+            el = sh + Ru @ np.array([0, -ua, 0])
+            Rf = Ru @ rx(-pose[side + "el"])
         wr = el + Rf @ np.array([0, -fa, 0])
         sleeve = shirt if body.sleeves != "tank" else SKIN
         r_u = 2.2 * S * g
@@ -243,14 +287,17 @@ def figure(body: Body, pose, club=None, seed=0):
             fore = body.jacket
         s.add_tris(loft(el, Rf, [(0, r_u * 0.85, r_u * 0.85), (-fa, r_u * 0.68, r_u * 0.68)]), [0.5] * 3, fore)
         hand = el + Rf @ np.array([0, -fa - 1.4 * S, 0])
-        s.add_tris(blob(hand, (1.6 * S, 1.9 * S, 1.6 * S), 6, 4), [0.5] * 3, body.hands)
+        s.add_tris(blob(hand, (1.8 * S, 2.1 * S, 1.8 * S), 6, 4), [0.5] * 3, body.hands)
         hands[side] = hand
     # the club: from the hands (or one hand) along a direction given in model space
     if club is not None:
         kind = club.get("kind", "iron")
         d = np.asarray(club["dir"], float)
         d = d / (np.linalg.norm(d) + 1e-9)
-        grip = hands["r"] * 0.5 + hands["l"] * 0.5 if club.get("hands", "both") == "both" else hands[club["hands"]]
+        if grip_at is not None:
+            grip = grip_at
+        else:
+            grip = hands["r"] * 0.5 + hands["l"] * 0.5 if club.get("hands", "both") == "both" else hands[club["hands"]]
         length = {"driver": 40.0, "iron": 36.0, "wedge": 32.0, "putter": 30.0}.get(kind, 36.0) * S
         tip = grip + d * length
         s.add_tris(tube(grip - d * 2.5 * S, tip, 1.15 * S, 0.95 * S, 5), [0.5] * 3, STONE)
@@ -287,26 +334,35 @@ CLUB_ADDRESS = dict(kind="driver", hands="both", dir=[0.18, -0.72, 0.66])
 
 
 def swing_keys(kind="driver", power=1.0, bad=0):
-    """A right-handed swing in the golfer's frame (faces +z towards the ball, target on the left, +x)."""
-    top = dict(ADDRESS, sy=-80 * power, pyaw=-35 * power, lsp=110 * power, lsr=-55 * power, rsp=95 * power, rsr=25,
-               rel=95 * power, lel=10, lhr=3, rkn=22, lkn=26, hp=12, hy=40 * power)
-    impact = dict(ADDRESS, sy=12, pyaw=28, lkn=12, rkn=26, rhp=6, rft=1.0)
-    finish = dict(ADDRESS, sp=6, py=-1, sy=95, pyaw=75, lsp=120, lsr=40, rsp=125, rsr=-30, lel=70, rel=50, rkn=34, rhp=-12,
-                  lhp=4, lkn=6, rft=2.5, hy=-70, hp=-6)
-    club_top = dict(kind=kind, hands="both", dir=[0.85 * power + 0.15, 0.35, 0.2 - 0.6 * (1 - power)])
-    club_imp = dict(kind=kind, hands="both", dir=[0.05, -0.75, 0.66])
-    club_fin = dict(kind=kind, hands="both", dir=[-0.75, -0.25, -0.55])
-    keys = [(0.0, ADDRESS, CLUB_ADDRESS | dict(kind=kind)), (0.1, ADDRESS, CLUB_ADDRESS | dict(kind=kind)),
-            (0.45, top, club_top), (0.5, top, club_top), (0.6, impact, club_imp), (0.78, finish, club_fin),
-            (1.0, finish, club_fin)]
+    """A right-handed swing in the golfer's frame (faces +z towards the ball, target on the left, +x). The hands follow grip
+    points (the arms reach them, people.ik_elbow), so the club reads clearly: low and back on the takeaway, over the
+    shoulder at the top, down through the ball and wrapped round the neck at the finish."""
+    pw = power
+    take = dict(ADDRESS, sy=-30 * pw, pyaw=-12 * pw, hy=15 * pw, lkn=22, rkn=16)
+    top = dict(ADDRESS, sy=-85 * pw, pyaw=-38 * pw, lkn=28, rkn=16, lhr=3, hp=10, hy=45 * pw, lft=0.8)
+    impact = dict(ADDRESS, sy=14, pyaw=30, lkn=12, rkn=26, rhp=6, rft=1.0)
+    thru = dict(ADDRESS, sp=18, sy=60, pyaw=55, lkn=8, rkn=30, rhp=-6, rft=2.0, hy=-30)
+    finish = dict(ADDRESS, sp=4, py=-1, sy=95, pyaw=78, rkn=36, rhp=-14, lhp=4, lkn=6, rft=3.0, hy=-60, hp=-8)
+    g = lambda grip, d: dict(kind=kind, hands="both", grip=grip, dir=d)
+    c_addr = g([0.5, 30, 15], [0.18, -0.72, 0.66])
+    c_take = g([-9 * pw, 33 + 2 * pw, 12], [-0.85, 0.25 * pw, 0.45])
+    c_top = g([-9 * pw, 32 + 28 * pw, 12 - 12 * pw], [-0.1 + 0.9 * pw, 0.6 - 0.5 * pw, 0.3 - 0.85 * pw])
+    c_imp = g([2, 30, 15], [0.05, -0.75, 0.66])
+    c_thru = g([12 * pw, 36, 10], [0.9, 0.3, 0.3])
+    c_fin = g([9 * pw, 32 + 28 * pw, 8 - 10 * pw], [-0.6, -0.45, -0.65])
+    keys = [(0.0, ADDRESS, c_addr), (0.1, ADDRESS, c_addr), (0.28, take, c_take), (0.45, top, c_top), (0.5, top, c_top),
+            (0.6, impact, c_imp), (0.68, thru, c_thru), (0.8, finish, c_fin), (1.0, finish, c_fin)]
     if bad == 1:
-        # a lunge and a stumble after a mishit
-        keys[-2] = (0.78, dict(finish, sp=20, py=-4, rkn=40, lkn=30, hy=-20, hp=20, lsp=60, rsp=70), dict(club_fin, dir=[-0.4, -0.7, 0.3]))
-        keys[-1] = (1.0, dict(finish, sp=24, py=-4, rkn=40, lkn=30, hy=10, hp=25, lsp=40, rsp=50, lel=40), dict(club_fin, dir=[0.1, -0.9, 0.4]))
+        # a lunge and a stumble after a mishit: the club falls away, the golfer slumps
+        keys[-2] = (0.8, dict(finish, sp=20, py=-4, rkn=40, lkn=30, hy=-20, hp=20), g([6, 44, 6], [-0.3, -0.8, 0.4]))
+        keys[-1] = (1.0, dict(finish, sp=24, py=-4, rkn=40, lkn=30, hy=10, hp=25), g([4, 34, 10], [0.1, -0.9, 0.4]))
     if bad == 2:
-        keys[2] = (0.45, dict(top, sy=-50, lsp=80, rsp=70), dict(club_top, dir=[0.5, 0.6, 0.3]))
-        keys[3] = (0.5, dict(top, sy=-50, lsp=80, rsp=70), dict(club_top, dir=[0.5, 0.6, 0.3]))
-        keys[-1] = (1.0, dict(finish, sy=60, lsp=80, rsp=80, hp=20, hy=-30), dict(club_fin, dir=[-0.6, -0.3, 0.4]))
+        # a short, cramped swing that stops early
+        short = dict(top, sy=-50, pyaw=-20, hy=25)
+        keys[3] = (0.45, short, g([-8, 46, 8], [0.4, 0.8, -0.2]))
+        keys[4] = (0.5, short, g([-8, 46, 8], [0.4, 0.8, -0.2]))
+        keys[-2] = (0.8, dict(finish, sy=60, pyaw=50, hp=20, hy=-30), g([8, 44, 6], [-0.6, 0.3, -0.4]))
+        keys[-1] = (1.0, dict(finish, sy=60, pyaw=50, hp=20, hy=-30), g([8, 44, 6], [-0.6, 0.3, -0.4]))
     return keys
 
 

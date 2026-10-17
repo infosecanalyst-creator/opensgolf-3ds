@@ -41,7 +41,12 @@ def palette(colours=None):
     for name, (base, n) in MATS.items():
         for i in range(n):
             t = i / max(n - 1, 1)
-            p[base + i] = np.clip(shade(cols[name], ramp_k(t)), 0, 255).astype(np.uint8)
+            k = ramp_k(t)
+            c = shade(cols[name], k)
+            if name == "LEAF":
+                # foliage shades turn cool and its highlights warm (as sprite.rs leaf_hue)
+                c = c + (np.array([k * 10.0, 0, -k * 22.0]) if k < 0 else np.array([k * 40.0, 0, -k * 40.0]))
+            p[base + i] = np.clip(c, 0, 255).astype(np.uint8)
     p[255] = (255, 0, 255)
     return p
 

@@ -4,7 +4,9 @@ import re
 
 import numpy as np
 
+import animals
 import buildings
+import landmarks
 import layout
 import people
 import trees
@@ -65,7 +67,7 @@ class Building(Recipe):
     def scene(self, rng, f, fpv, view_deg):
         body, base = self.parts(np.random.default_rng(7))
         body.mass = None
-        body.ambient, body.diffuse = 0.64, 0.56
+        body.ambient, body.diffuse = 0.56, 0.68
         base.ambient, base.diffuse = 0.7, 0.45
         if self.layer == "body":
             return body
@@ -127,6 +129,61 @@ class Person(Recipe):
         return people.person_scene(self.prefix, self.anim, t, view_deg)
 
 
+class Landmark(Recipe):
+    """A landmark (landmarks.py), in the palette ramps its palette file colours; animated ones fitted over all frames."""
+
+    def __init__(self, name):
+        self.name = name
+
+    def fit_frames(self, fpv):
+        return list(range(fpv))
+
+    def scene(self, rng, f, fpv, view_deg):
+        return landmarks.model(self.name, f / max(fpv, 1))
+
+
+class Animal(Recipe):
+    """An animal clip (animals.py), turned for its views like the golfers, fitted over all its frames."""
+
+    edge_dark = 0.16
+
+    def __init__(self, species, anim):
+        self.species, self.anim = species, anim
+
+    _scales = {}
+
+    def fixed_scale(self):
+        """One scale for the clips of a species (the median of the scales at which each fits its frame), so an animal keeps
+        its size from clip to clip; a clip whose frame is tighter than that (some frames sit oddly round their ground point)
+        is drawn smaller."""
+        if self.species not in Animal._scales:
+            fits = {}
+            for p, (w, h, views, fpv, ax, ay) in layout.sprites().items():
+                low = p.lower()
+                if "/animals/" not in low or low.endswith("shadow.flc"):
+                    continue
+                n = low.rsplit("/", 1)[1][:-4]
+                sp, _, an = n.partition("_")
+                if sp != self.species:
+                    continue
+                r = Animal(sp, an)
+                nv = max(views, 1)
+                step = 45.0 if nv >= 8 else 90.0
+                scenes = [(r.scene(None, f, fpv, v * step), r.yaw(v * step)) for v in range(nv) for f in range(0, fpv, 2)]
+                fits[an] = fit_scale(scenes, w, h, ax, ay)
+            Animal._scales[self.species] = (float(np.median(list(fits.values()))), fits)
+        ref, fits = Animal._scales[self.species]
+        return min(ref, fits.get(self.anim, ref)) * 0.97
+
+    def yaw(self, view_deg):
+        return view_deg - 90.0
+
+    def scene(self, rng, f, fpv, view_deg):
+        loop = any(k in self.anim for k in ("walk", "run", "loop", "sq"))
+        t = f / fpv if loop else f / max(fpv - 1, 1)
+        return animals.model(self.species, self.anim, t)
+
+
 TREE_DIRS = ("flics/trees/", "flics/scenic/")
 
 
@@ -143,6 +200,12 @@ def recipe(path, name):
         if "_" in name and not name.endswith("pal"):
             prefix, anim_name = name.split("_", 1)
             return Person(prefix, anim_name)
+    if "/flics/animals/" in "/" + low and "_" in name:
+        sp, an = name.split("_", 1)
+        if animals.model(sp, an, 0.0) is not None:
+            return Animal(sp, an)
+    if "/flics/landmarks/" in "/" + low and name in landmarks.LANDMARKS:
+        return Landmark(name)
     if any(d in low for d in TREE_DIRS):
         import numpy as np
         if trees.species(name, np.random.default_rng(0), 1.0) is not None:
