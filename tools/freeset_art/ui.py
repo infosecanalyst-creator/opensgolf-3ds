@@ -26,6 +26,11 @@ from uiart import (S, BLUE, CREAM, GOLD, GOLD_HI, GREEN, GREEN_HI, GREY, INK, NA
 OUT = os.path.join(layout.ROOT, "packs", "opensgolf-free", "art", "gfx")
 
 
+# the full screens kept in full colour
+TRUECOLOUR = {"TitleBASE", "TitleMO", "TitleSelDiffUnSel", "TitleSelDiffMO", "WorldBase", "Title_LoadGame", "Title_Pickapro",
+              "Title_ThemePacks", "creditsbckgrd", "Top10_Blank", "Top10_Trophies", "bulletinboard&mantlewood"}
+
+
 def save(rel, sheet, key=None, alpha_rel=None, cut=0.5):
     """Writes the picture (keyed: RGB with the key colour where clear; else RGBA flattened on its own colour) and its alpha
     sheet if asked, as 8-bit palette PNGs when that is lossless enough."""
@@ -38,8 +43,12 @@ def save(rel, sheet, key=None, alpha_rel=None, cut=0.5):
         im = sheet.image()
         img = Image.fromarray(im[..., :3], "RGB")
         a = im[..., 3]
-    q = img.quantize(colors=256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.FLOYDSTEINBERG)
-    q.save(path, optimize=True, bits=8)
+    if os.path.basename(rel)[:-4] in TRUECOLOUR:
+        # the big screens' gradients and glossy shapes band badly in 256 colours
+        img.save(path, optimize=True)
+    else:
+        q = img.quantize(colors=256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.FLOYDSTEINBERG)
+        q.save(path, optimize=True, bits=8)
     if alpha_rel is not None:
         Image.fromarray(a, "L").convert("RGB").quantize(colors=64, dither=Image.Dither.NONE).save(os.path.join(OUT, alpha_rel), bits=8,
                                                                                                 optimize=True)
@@ -403,22 +412,10 @@ def title_pill(sh, k, lit=False):
 
 
 def title():
-    base = Sheet(800, 600)
-    title_background(base)
-    for k in range(5):
-        title_pill(base, k)
-    logo(base, 400, 275)
+    import uititle
+    base, un, mo = uititle.title_sheets()
     save("Interface/TitleBASE.png", base)
-    un = Sheet(800, 600)
-    for (cx, cy), r, gl in ICONS:
-        glossy_disc(un, cx, cy, r, BLUE, gl)
     save("Interface/TitleUnSel.png", un, key=(255, 0, 255))
-    mo = Sheet(800, 600)
-    for k in range(5):
-        title_pill(mo, k, lit=True)
-    for (cx, cy), r, gl in ICONS:
-        glossy_disc(mo, cx, cy, r, GOLD, gl, glyph_col=INK)
-    logo(mo, 400, 275, lit=True)
     save("Interface/TitleMO.png", mo, key=(255, 0, 255))
 
 

@@ -16,7 +16,7 @@
 mod baked;
 mod enc;
 mod icon;
-mod paint;
+pub mod paint;
 mod sound;
 mod sprite;
 mod tex;

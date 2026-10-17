@@ -492,7 +492,7 @@ impl App {
             if m.kind == Kind::Mod && row.pack.is_some() {
                 for (dx, label) in [(BOX.w - 112.0, tr("STR_CONTENT_UP")), (BOX.w - 62.0, tr("STR_CONTENT_DOWN"))] {
                     let r = Rect::new(BOX.x + dx, y + 4.0, 44.0, 20.0);
-                    s.fill(g, r.x, r.y, r.w, r.h, if r.has(px, py) { rgb(0.85, 0.85, 1.0) } else { rgb(0.47, 0.47, 0.70) });
+                    crate::glass_ui::button_fill(g, &s, r.x, r.y, r.w, r.h, r.has(px, py));
                     s.put_centered(g, F_ARIAL10, r.x + r.w / 2.0, r.y + 4.0, label, navy);
                 }
             }
@@ -525,11 +525,11 @@ impl App {
         let note = if changed { tr("STR_CONTENT_NOTE_CHANGED") } else { tr("STR_CONTENT_NOTE") };
         s.put(g, F_ARIAL10, BOX.x + 24.0, BOX.y + BOX.h - 26.0, note, if changed { red } else { navy });
         let b = find_more_button();
-        s.fill(g, b.x, b.y, b.w, b.h, if b.has(px, py) { rgb(0.85, 0.85, 1.0) } else { rgb(0.47, 0.47, 0.70) });
+        crate::glass_ui::button_fill(g, &s, b.x, b.y, b.w, b.h, b.has(px, py));
         s.put_centered(g, F_ARIAL10, b.x + b.w / 2.0, b.y + 5.0, tr("STR_CONTENT_FIND_MORE"), navy);
         // profiles (content_profiles.rs)
         for (b, label) in crate::content_profiles::profile_buttons().into_iter().zip(["STR_PROFILE_SAVE", "STR_PROFILE_LIST"]) {
-            s.fill(g, b.x, b.y, b.w, b.h, if b.has(px, py) { rgb(0.85, 0.85, 1.0) } else { rgb(0.47, 0.47, 0.70) });
+            crate::glass_ui::button_fill(g, &s, b.x, b.y, b.w, b.h, b.has(px, py));
             s.put_centered(g, F_ARIAL10, b.x + b.w / 2.0, b.y + 4.0, tr(label), navy);
         }
         if self.art.trans.tex.is_some() {
@@ -765,7 +765,7 @@ impl App {
             s.put(g, F_ARIAL10, BOX.x + 24.0, y + 24.0, &fit(&line, BOX.w - 160.0), green);
             let r = Rect::new(BOX.x + BOX.w - 112.0, y + 4.0, 94.0, 20.0);
             let label = if busy == Some(k) { tr("STR_INDEX_DOWNLOADING_BUTTON") } else { tr("STR_INDEX_DOWNLOAD") };
-            s.fill(g, r.x, r.y, r.w, r.h, if r.has(px, py) { rgb(0.85, 0.85, 1.0) } else { rgb(0.47, 0.47, 0.70) });
+            crate::glass_ui::button_fill(g, &s, r.x, r.y, r.w, r.h, r.has(px, py));
             s.put_centered(g, F_ARIAL10, r.x + r.w / 2.0, r.y + 4.0, label, navy);
         }
         let n = v.offers.len();
@@ -796,7 +796,7 @@ impl App {
         }
         s.put(g, F_ARIAL10, BOX.x + 24.0, BOX.y + BOX.h - 26.0, tr("STR_CONTENT_NOTE"), navy);
         let b = find_more_button();
-        s.fill(g, b.x, b.y, b.w, b.h, if b.has(px, py) { rgb(0.85, 0.85, 1.0) } else { rgb(0.47, 0.47, 0.70) });
+        crate::glass_ui::button_fill(g, &s, b.x, b.y, b.w, b.h, b.has(px, py));
         s.put_centered(g, F_ARIAL10, b.x + b.w / 2.0, b.y + 5.0, tr("STR_INDEX_BACK"), navy);
         if self.art.trans.tex.is_some() {
             s.image_part(g, &self.art.trans, BOX.x + BOX.w - 70.0, BOX.y + BOX.h - 58.0, 350.0, 140.0, 50.0, 50.0);

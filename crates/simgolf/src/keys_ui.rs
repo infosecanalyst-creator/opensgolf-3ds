@@ -11,7 +11,7 @@ use crate::app::*;
 use crate::gfx::Gfx;
 use crate::info_ui::c15;
 use crate::render::Rect;
-use crate::ui::{rgb, Fnt, Screen as Ui, F_ARIAL10, F_MANUAL15, F_MANUAL20};
+use crate::ui::{Fnt, Screen as Ui, F_ARIAL10, F_MANUAL15, F_MANUAL20};
 use sg_core::lang::{tr, trf};
 
 /// The box: the Content screen's (fits 800 x 600).
@@ -346,7 +346,7 @@ impl App {
                 [(prev_button(), tr("STR_CONTENT_PREVIOUS"), page > 0), (next_button(), tr("STR_CONTENT_NEXT"), page + 1 < pages.len())];
             for (b, label, ok) in more {
                 let lit = ok && b.has(px, py);
-                s.fill(g, b.x, b.y, b.w, b.h, if lit { rgb(0.85, 0.85, 1.0) } else { rgb(0.47, 0.47, 0.70) });
+                crate::glass_ui::button_fill(g, &s, b.x, b.y, b.w, b.h, lit);
                 s.put_centered(g, F_ARIAL10, b.x + b.w / 2.0, b.y + 4.0, label, if ok { navy } else { grey });
             }
             let n = trf("STR_KEYS_PAGE", &[("PAGE", &(page + 1)), ("PAGES", &pages.len())]);
@@ -355,7 +355,7 @@ impl App {
         s.put(g, F_ARIAL10, BOX.x + 24.0, BOX.y + BOX.h - 24.0, tr("STR_KEYS_CLOSE"), navy);
         // the port's Change keys screen (controls_ui.rs)
         let b = crate::controls_ui::change_keys_button();
-        s.fill(g, b.x, b.y, b.w, b.h, if b.has(px, py) { rgb(0.85, 0.85, 1.0) } else { rgb(0.47, 0.47, 0.70) });
+        crate::glass_ui::button_fill(g, &s, b.x, b.y, b.w, b.h, b.has(px, py));
         s.put_centered(g, F_ARIAL10, b.x + b.w / 2.0, b.y + 4.0, tr("STR_KEYS_CHANGE"), navy);
         if self.art.trans.tex.is_some() {
             let r = ok_tick();

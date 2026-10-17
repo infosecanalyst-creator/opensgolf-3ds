@@ -233,6 +233,10 @@ impl App {
         use crate::info_ui::c15;
         let r = b.rect();
         self.draw_info_frame(g, s, r.x, r.y, r.w, r.h);
+        if self.on_free_set() {
+            self.draw_choice_box_free(g, s, b, hover);
+            return;
+        }
         let f = CHOICE_FONT;
         let white = c15(0x7fff);
         let teal = c15(0x0210);
@@ -290,12 +294,61 @@ impl App {
         }
     }
 
+    /// The free set's choice box (the same lines, places and hit areas): a header band behind the title, ink on the candy
+    /// body, the row under the pointer on a light capsule, switches for check boxes and gold dots for radio choices.
+    fn draw_choice_box_free(&self, g: &mut Gfx, s: &Ui, b: &ChoiceBox, hover: Option<usize>) {
+        use crate::glass_ui::{self as gl, DIM_INK, INK};
+        use crate::info_ui::c15;
+        let r = b.rect();
+        let (fx, fw) = crate::message_ui::round16(r.x, r.w);
+        let (fy, _) = crate::message_ui::round16(r.y, r.h);
+        let f = CHOICE_FONT;
+        let white = c15(0x7fff);
+        let tops = b.line_tops();
+        let opts = b.options();
+        let head_bottom = tops.get(1).copied().unwrap_or(tops[0] + 22.0) + 1.0;
+        gl::header(g, s, fx + 3.0, fy + 3.0, fw - 6.0, head_bottom - fy - 3.0, [0.24, 0.33, 0.78, 1.0]);
+        for (i, l) in b.lines.iter().enumerate() {
+            let y = tops[i];
+            let Some(k) = opts.iter().position(|&o| o == i) else {
+                if i == 0 {
+                    let c = if b.checks.is_some() { c15(0x7ff0) } else { white };
+                    s.put_shadowed(g, f, b.cx, y, l, c, true);
+                } else {
+                    s.put_centered(g, f, b.cx, y, l, INK);
+                }
+                continue;
+            };
+            let x = r.x + 36.0;
+            let lit = hover == Some(k);
+            let off = b.disabled & (1 << k) != 0;
+            if lit && !off {
+                gl::capsule(g, s, fx + 6.0, y + 3.0, fw - 12.0, 24.0, [1.0, 0.93, 0.62, 0.95]);
+            }
+            let plain = b.plain & (1 << k) != 0;
+            s.put(g, f, x, y + 8.0, l, if off { DIM_INK } else { INK });
+            match b.checks {
+                Some(_) if plain => s.put(g, f, r.x + 12.0, y + 8.0, "\u{bb}", if off { DIM_INK } else { INK }),
+                Some(m) => gl::switch(g, s, r.x.max(fx + 7.0), y + 15.0, m & (1 << k) != 0, lit),
+                None => gl::radio(g, s, r.x.max(fx + 7.0) + 13.0, y + 15.0, lit),
+            }
+        }
+        if b.checks.is_some() && self.art.trans.tex.is_some() {
+            let (x, y) = (b.cx + (r.w / 2.0).trunc() - 40.0, b.top + r.h - 40.0);
+            s.image_part(g, &self.art.trans, x, y, 350.0, 140.0, 50.0, 50.0);
+        }
+    }
+
     /// The opaque InfoButtons frame (0x40cc00): sizes grown to 15 mod 16 about the centre, the inside filled with 0x4e79
     /// from four pixels in, then the 16 x 16 pieces cut at (200 + 17 col, 17 row): a corner at each end, (w - 17) / 16 top
     /// and bottom pieces from x + 16 when w passes 32, as many side pieces down from y + 16 when h does.
     pub fn draw_info_frame(&self, g: &mut Gfx, s: &Ui, x: f32, y: f32, w: f32, h: f32) {
         let (x, w) = crate::message_ui::round16(x, w);
         let (y, h) = crate::message_ui::round16(y, h);
+        if self.on_free_set() {
+            crate::glass_ui::panel(g, s, x, y, w, h);
+            return;
+        }
         // 0x4e79 as the 16-bit screen shows it next to the frame art (whose inside is the same (152, 152, 200)): each
         // channel shifted up by 3
         let fill =
@@ -777,7 +830,7 @@ impl App {
         self.draw_choice_box(g, &s, &b, p.sel);
         self.draw_page_tabs(g, &s, &p);
         if let Some(t) = p.banner() {
-            draw_banner(g, &s, &b, t);
+            draw_banner(g, &s, &b, t, self.on_free_set());
         }
         if p.kind == PopupKind::Extras {
             self.draw_extras_tags(g, &s, &p, &b);
@@ -798,6 +851,13 @@ impl App {
             let Some(t) = crate::extras_ui::tag(l) else { continue };
             let (fill, edge) = t.colours();
             let (x, y, h) = (r.x + r.w - 24.0 - pw, tops[line] + 5.0, 18.0);
+            if self.on_free_set() {
+                let c = c15(fill);
+                crate::glass_ui::capsule(g, s, x, y, pw, h + 2.0, [c[0] * 1.1, c[1] * 1.1, c[2] * 1.1, 1.0]);
+                let lit = p.sel == Some(k);
+                s.put_shadowed(g, pf, x + pw * 0.5, y + 1.0, tr(t.key()), c15(if lit { 0x7fff } else { 0x7bde }), true);
+                continue;
+            }
             s.fill(g, x, y, pw, h, c15(edge));
             s.fill(g, x + 1.0, y + 1.0, pw - 2.0, h - 2.0, c15(fill));
             // rounded: the edge's corner pixels take the box's colour
@@ -825,7 +885,8 @@ impl App {
             if desc {
                 s.put_shadowed(g, f, r.x + 20.0, y, l, c15(0x7ff0), false);
             } else {
-                s.put(g, f, r.x + 20.0, y, l, c15(0x0210));
+                let ink = if self.on_free_set() { crate::glass_ui::INK } else { c15(0x0210) };
+                s.put(g, f, r.x + 20.0, y, l, ink);
             }
         }
     }
@@ -835,6 +896,25 @@ impl App {
     fn draw_page_tabs(&self, g: &mut Gfx, s: &Ui, p: &Popup) {
         use crate::info_ui::c15;
         let f = CHOICE_FONT;
+        if self.on_free_set() {
+            for (page, r) in p.tabs() {
+                let on = page == p.page;
+                let hover = p.tab_hover == Some(page);
+                let tint = if on { [1.0, 0.86, 0.38, 1.0] } else { [0.28, 0.36, 0.78, 1.0] };
+                crate::glass_ui::capsule(g, s, r.x, r.y + 1.0, r.w, r.h - 2.0, tint);
+                if hover && !on {
+                    crate::glass_ui::ring(g, s, r.x, r.y + 1.0, r.w, r.h - 2.0, [1.0, 1.0, 1.0, 0.9]);
+                }
+                let label = p.page_name(page);
+                let x = r.x + (r.w - f.width(label)) * 0.5;
+                if on {
+                    s.put(g, f, x, r.y + 5.0, label, crate::glass_ui::INK);
+                } else {
+                    s.put_shadowed(g, f, x, r.y + 5.0, label, c15(0x7fff), false);
+                }
+            }
+            return;
+        }
         for (page, r) in p.tabs() {
             let on = page == p.page;
             let hover = p.tab_hover == Some(page);
@@ -1044,11 +1124,17 @@ impl App {
 
 /// The banner of the Enhanced graphics and Extras boxes (the port's own): a band under the tabs in the shown tab's paler
 /// blue and white edge, as if the page hung from it, with the page's meaning centred in white over the original's shadow.
-fn draw_banner(g: &mut Gfx, s: &Ui, b: &ChoiceBox, text: &str) {
+fn draw_banner(g: &mut Gfx, s: &Ui, b: &ChoiceBox, text: &str, free: bool) {
     use crate::info_ui::c15;
     let r = b.rect();
     let y = b.line_tops()[1 + crate::enhanced::TAB_LINES] + 1.0;
     let (x0, x1) = (r.x + 18.0, r.x + r.w - 18.0);
+    if free {
+        // a ribbon across the box
+        crate::glass_ui::capsule(g, s, x0, y - 1.0, x1 - x0, 28.0, [0.2, 0.62, 0.42, 1.0]);
+        s.put_shadowed(g, BANNER_FONT, (x0 + x1) * 0.5, y + 3.0, text, c15(0x7fff), true);
+        return;
+    }
     s.fill(g, x0 - 1.0, y - 1.0, x1 - x0 + 2.0, 28.0, c15(0x7fff));
     s.fill(g, x0, y, x1 - x0, 26.0, c15(0x5ade));
     s.put_shadowed(g, BANNER_FONT, (x0 + x1) * 0.5, y + 3.0, text, c15(0x7fff), true);
@@ -1132,15 +1218,25 @@ impl App {
         let Some(name) = &self.rename else { return };
         let s = Ui::new(self.draw_w, self.draw_h);
         let r = Rect::new(220.0, 240.0, 360.0, 90.0);
-        s.fill(g, r.x - 3.0, r.y - 3.0, r.w + 6.0, r.h + 6.0, rgba(0.55, 0.55, 0.85, 0.95));
-        s.fill(g, r.x, r.y, r.w, r.h, rgba(0.92, 0.92, 1.0, 0.97));
+        let free = self.on_free_set();
+        if free {
+            crate::glass_ui::dialog(g, &s, r.x, r.y, r.w, r.h, 36.0);
+        } else {
+            s.fill(g, r.x - 3.0, r.y - 3.0, r.w + 6.0, r.h + 6.0, rgba(0.55, 0.55, 0.85, 0.95));
+            s.fill(g, r.x, r.y, r.w, r.h, rgba(0.92, 0.92, 1.0, 0.97));
+        }
         let title = match self.xs.rename_for {
             Some(crate::extras::RenameFor::Employee(_)) => tr("STR_RENAME_EMPLOYEE"),
             Some(crate::extras::RenameFor::Bio(_)) => tr("STR_RENAME_BIO"),
             None => tr("STR_RENAME_COURSE"),
         };
-        s.text_centered(g, 400.0, 268.0, title, 17.0, rgb(0.15, 0.1, 0.4));
-        s.fill(g, r.x + 20.0, 282.0, r.w - 40.0, 28.0, rgb(1.0, 1.0, 1.0));
+        if free {
+            s.text_centered(g, 400.0, 266.0, title, 17.0, crate::glass_ui::HEAD);
+            crate::glass_ui::field(g, &s, r.x + 20.0, 284.0, r.w - 40.0, 28.0);
+        } else {
+            s.text_centered(g, 400.0, 268.0, title, 17.0, rgb(0.15, 0.1, 0.4));
+            s.fill(g, r.x + 20.0, 282.0, r.w - 40.0, 28.0, rgb(1.0, 1.0, 1.0));
+        }
         let caret = if (self.clock * 2.0) as i64 % 2 == 0 { "|" } else { "" };
         // a long text (a bio) shows its end, where the typing is
         let mut shown = format!("{name}{caret}");

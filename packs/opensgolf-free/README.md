@@ -17,7 +17,13 @@ The set has two parts, both built into the game (nothing is downloaded at run ti
   the Terrain, Amenities, Buildings and Elevation panels with the theme's lot pictures, terrain buttons, dialogs, the popup
   frame, the golfer card and the course report) and the full screen pages (Select Difficulty, the world map with its theme
   balls, Load Game, Pick A Pro, Theme Packs, the credits, Top 10 Designers, the trophy room, the routing map's lower part and
-  the tract buttons) are vector art drawn by `tools/freeset_art/ui.py` and `uipages.py` at the places the engine cuts them.
+  the tract buttons) are vector art drawn by `tools/freeset_art/ui.py` and `uipages.py` at the places the engine cuts them. The title menu
+  (`uititle.py`) is a sunny course with the OpenSGolf logotype and big candy plates (Start New Game as the hero, its golf ball
+  winking; a gopher peeks over Sandbox Mode). The large screens are kept in full colour.
+  * **The engine's own boxes** (popup menus, Preferences, the Extras and Enhanced graphics boxes, People, Keyboard controls,
+    Content packs, the save and rename prompts, the title's small buttons): while this set is loaded they are drawn in its look
+    by `crates/simgolf/src/glass_ui.rs` (candy panels with a header band, capsule buttons and tabs, switches, a highlighted
+    row under the pointer), with the same places and hit areas; with the original's files they look exactly as before.
 * **Drawn at run time** by code in `crates/sg-core/src/freeset/` for everything else:
   * **Terrain** (`tex.rs`): each theme's surfaces painted from wrapping noise with lit relief (mowing stripes, blades and
     clumps of grass, scrub, stones, sand grain and ripples, water sheen), in the nine blend shapes the terrain renderer uses.

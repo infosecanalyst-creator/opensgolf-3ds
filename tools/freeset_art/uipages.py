@@ -12,78 +12,66 @@ from uiart import (BLUE, CREAM, GOLD, GOLD_HI, GREEN, GREY, INK, NAVY, Sheet, g_
 
 
 def page_background(sh, warm=False, seed=3):
-    """A sunny course seen soft through glass: a sky over rolling hills, quiet enough to read panels over."""
-    top, bot = ("#f6c98a", "#fbe9c8") if warm else ("#8ccaf0", "#e4f4fb")
-    sh.paint(np.ones((sh.h * 3, sh.w * 3), np.float32), sh.vgrad(rgb(top), rgb(bot), 0, 330))
-    # a few soft clouds
-    rng = np.random.default_rng(seed)
-    for k in range(5):
-        cx, cy, r = rng.uniform(40, 760), rng.uniform(40, 220), rng.uniform(26, 48)
-        cloud = np.clip(sum(sh.mask_circle(cx + dx * r, cy + dy * r, rr * r)
-                            for dx, dy, rr in ((0, 0, 1), (-0.9, 0.25, 0.7), (0.95, 0.2, 0.75), (0.4, -0.35, 0.7))), 0, 1)
-        sh.paint(cloud, (1, 1, 1), 0.55)
-    hills = ("#a7d27f", "#86c063", "#6cad51", "#5a9c45") if not warm else ("#c9b56e", "#a9a25a", "#8e964e", "#7a8a46")
-    for i, (y, col) in enumerate(zip((340, 385, 440, 505), hills)):
-        pts = [(x, y + 20 * math.sin(x / (170 + 40 * i) + i * 1.9 + seed) + 9 * math.sin(x / 61 + i)) for x in range(-10, 811, 10)]
-        pts += [(810, 610), (-10, 610)]
-        sh.paint(sh.mask_poly(pts), rgb(col))
-        if i == 0:
-            for k in range(16):
-                x = rng.uniform(0, 800)
-                yy = y + 20 * math.sin(x / 170 + 1.9 * 0 + seed) + 9 * math.sin(x / 61) - 2
-                r = rng.uniform(7, 14)
-                sh.paint(sh.mask_rrect(x - 1.2, yy - r * 0.5, 2.4, r * 0.7, 1), rgb("#6b4a2e"))
-                sh.paint(sh.mask_circle(x, yy - r * 0.9, r * 0.72), rgb("#4b8f3f") if k % 3 else rgb("#3b7a36"))
-    # mowing stripes on the nearest hill
-    near = sh.mask_poly([(x, 505 + 20 * math.sin(x / 290 + 5.7 + seed) + 9 * math.sin(x / 61 + 3)) for x in range(-10, 811, 10)]
-                        + [(810, 610), (-10, 610)])
-    for k in range(11):
-        x0 = k * 84 - 60
-        sh.paint(near * sh.mask_poly([(x0, 610), (x0 + 42, 610), (x0 + 110, 480), (x0 + 68, 480)]), (1, 1, 1), 0.07)
+    """The title screen's sunny course, softly out of focus and veiled, so panels read well over it."""
+    from PIL import Image, ImageFilter
+    import uititle
+    uititle.scene(sh)
+    img = Image.fromarray((np.clip(sh.rgb, 0, 1) * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(3 * 3))
+    sh.rgb[:] = np.asarray(img, np.float32) / 255
+    sh.paint(np.ones((sh.h * 3, sh.w * 3), np.float32), (1, 1, 1), 0.16)
+    if warm:
+        sh.paint(np.ones((sh.h * 3, sh.w * 3), np.float32), rgb("#ffb060"), 0.2)
 
 
 def glass(sh, x, y, w, h, r=16, tint="#ffffff", alpha=0.82, rim="#2c4a73", shadow=True):
-    """A frosted panel: a soft shadow, a dark rim, a light body and a bright inner line along its top."""
-    m = sh.mask_rrect(x, y, w, h, r)
+    """A candy card: a chunky rounded panel on a coloured extrude with a white rim and a soft cream-to-sky body."""
+    edge = rgb("#2a62b8")
+    under = sh.mask_rrect(x, y + 5, w, h, r)
     if shadow:
-        sh.shadow(m, 2, 4, 6, 0.28)
-    sh.paint(m, rgb(rim), 0.9)
-    inner = sh.mask_rrect(x + 2, y + 2, w - 4, h - 4, r - 2)
-    sh.paint(inner, sh.vgrad(lighten(rgb(tint), 0.0), mix(rgb(tint), rgb("#c9dcf0"), 0.55), y, y + h), alpha)
-    sh.paint(np.clip(inner - sh.mask_rrect(x + 3.5, y + 3.5, w - 7, h - 7, r - 3.5), 0, 1), (1, 1, 1), 0.65)
+        sh.shadow(under, 2, 5, 6, 0.35)
+    sh.paint(under, lighten(edge, -0.35))
+    sh.paint(sh.mask_rrect(x, y, w, h, r), edge)
+    sh.paint(sh.mask_rrect(x + 3, y + 3, w - 6, h - 6, r - 3), rgb("#ffffff"))
+    inner = sh.mask_rrect(x + 5, y + 5, w - 10, h - 10, r - 5)
+    sh.paint(inner, sh.vgrad(rgb("#eaf5ff"), rgb("#bcd8f4"), y, y + h), alpha + 0.1)
+    sh.paint(inner * sh.mask_rrect(x + 5, y + 5, w - 10, min(36, h * 0.2), r - 5), (1, 1, 1), 0.45)
 
 
 def paper(sh, x, y, w, h, r=10, stripes=None):
-    """A cream field the engine writes lists on; `stripes` (y0, pitch, n) shades every other row."""
-    m = sh.mask_rrect(x, y, w, h, r)
-    sh.shadow(m, 1, 2, 3, 0.25)
-    sh.paint(m, rgb("#7a6a48"))
-    inner = sh.mask_rrect(x + 1.5, y + 1.5, w - 3, h - 3, r - 1.5)
-    sh.paint(inner, sh.vgrad(rgb("#fffaf0"), rgb("#f6edd6"), y, y + h))
+    """A cream field the engine writes lists on, with a green candy rim; `stripes` (y0, pitch, n) shades every other row."""
+    under = sh.mask_rrect(x, y + 4, w, h, r)
+    sh.shadow(under, 1, 3, 4, 0.3)
+    sh.paint(under, rgb("#1f6e34"))
+    sh.paint(sh.mask_rrect(x, y, w, h, r), rgb("#2e8f45"))
+    inner = sh.mask_rrect(x + 3, y + 3, w - 6, h - 6, r - 3)
+    sh.paint(inner, sh.vgrad(rgb("#fffdf6"), rgb("#f8efd8"), y, y + h))
     if stripes:
         y0, pitch, n = stripes
         for k in range(0, n, 2):
-            sh.paint(inner * sh.mask_rrect(x + 4, y0 + pitch * k - 1, w - 8, pitch, 3), rgb("#efe3c3"), 0.55)
-    # an inset shadow along the top
-    sh.paint(np.clip(inner - sh.mask_rrect(x + 1.5, y + 4, w - 3, h - 3, r - 1.5), 0, 1), rgb("#b9a678"), 0.45)
+            sh.paint(inner * sh.mask_rrect(x + 4, y0 + pitch * k - 1, w - 8, pitch, 3), rgb("#e6f2d8"), 0.8)
+    sh.paint(np.clip(inner - sh.mask_rrect(x + 3, y + 6, w - 6, h - 6, r - 3), 0, 1), rgb("#b9a678"), 0.35)
 
 
 def title_plate(sh, x, y, w, h):
-    """The cream title plate with a green rim (the engine writes the screen's title on it)."""
-    m = sh.mask_rrect(x, y, w, h, h / 2)
-    sh.shadow(m, 1.5, 3, 4, 0.3)
-    sh.paint(m, rgb("#2e6b3e"))
-    sh.paint(sh.mask_rrect(x + 2.5, y + 2.5, w - 5, h - 5, h / 2 - 2.5), sh.vgrad(rgb("#fffaf0"), rgb("#efe2bd"), y, y + h))
-    sh.paint(sh.mask_rrect(x + h * 0.4, y + 4, w - h * 0.8, h * 0.3, h * 0.15), (1, 1, 1), 0.5)
+    """The candy title plate: a cream pill on a green extrude with a white rim (the engine writes the title on it)."""
+    under = sh.mask_rrect(x, y + 4, w, h, h / 2)
+    sh.shadow(under, 2, 5, 5, 0.35)
+    sh.paint(under, rgb("#1f6e34"))
+    sh.paint(sh.mask_rrect(x, y, w, h, h / 2), rgb("#2e8f45"))
+    sh.paint(sh.mask_rrect(x + 2.5, y + 2.5, w - 5, h - 5, h / 2 - 2.5), rgb("#ffffff"))
+    sh.paint(sh.mask_rrect(x + 4.5, y + 4.5, w - 9, h - 9, h / 2 - 4.5), sh.vgrad(rgb("#fffdf4"), rgb("#f3e4b8"), y, y + h))
+    sh.paint(sh.mask_rrect(x + h * 0.45, y + 6, w - h * 0.9, h * 0.28, h * 0.14), (1, 1, 1), 0.6)
 
 
 def dark_pill(sh, x, y, w, h):
-    """A deep blue strip for white text."""
-    m = sh.mask_rrect(x, y, w, h, min(h / 2, 16))
-    sh.shadow(m, 1, 2, 3, 0.3)
-    sh.paint(m, rgb("#0e1b30"))
-    sh.paint(sh.mask_rrect(x + 1.5, y + 1.5, w - 3, h - 3, min(h / 2, 16) - 1.5), sh.vgrad(rgb("#2a4670"), rgb("#13243f"), y, y + h))
-    sh.paint(sh.mask_rrect(x + 10, y + 3, w - 20, h * 0.3, 6), (1, 1, 1), 0.1)
+    """A deep blue candy strip for white text."""
+    r = min(h / 2, 16)
+    under = sh.mask_rrect(x, y + 4, w, h, r)
+    sh.shadow(under, 1, 3, 4, 0.3)
+    sh.paint(under, rgb("#0a1838"))
+    sh.paint(sh.mask_rrect(x, y, w, h, r), rgb("#ffffff"))
+    sh.paint(sh.mask_rrect(x + 2.5, y + 2.5, w - 5, h - 5, r - 2.5), sh.vgrad(rgb("#3a64b8"), rgb("#1a3270"), y, y + h))
+    sh.paint(sh.mask_rrect(x + 12, y + 5, w - 24, h * 0.28, 5), (1, 1, 1), 0.18)
 
 
 def g_tick(sh, cx, cy, r):
@@ -830,14 +818,14 @@ def ball_face(sh, cx, cy, r, mood, ring):
 
 
 def diff_pill(sh, x, y, w, h, col, lit):
-    m = sh.mask_rrect(x, y, w, h, h / 2)
-    sh.shadow(m, 1.5, 3, 4, 0.3)
-    sh.paint(m, lighten(rgb(col), -0.35) if not lit else rgb("#a06a10"))
-    top, bot = ("#fffaf0", "#efe2bd") if not lit else ("#ffe9a8", "#f2b234")
-    sh.paint(sh.mask_rrect(x + 3, y + 3, w - 6, h - 6, h / 2 - 3), sh.vgrad(rgb(top), rgb(bot), y, y + h))
-    sh.paint(sh.mask_rrect(x + h * 0.4, y + 5, w - h * 0.8, h * 0.28, h * 0.14), (1, 1, 1), 0.5)
-    if lit:
-        sh.glow(np.clip(m - sh.mask_rrect(x + 3, y + 3, w - 6, h - 6, h / 2 - 3), 0, 1), 3, 0.7, GOLD_HI)
+    edge = lighten(rgb(col), -0.4)
+    under = sh.mask_rrect(x, y + 5, w, h, h / 2)
+    sh.shadow(under, 2, 5, 5, 0.35)
+    sh.paint(under, edge)
+    sh.paint(sh.mask_rrect(x, y, w, h, h / 2), rgb(col) if not lit else rgb("#ffffff"))
+    top, bot = ("#fffdf4", "#f1e2b4") if not lit else ("#fff2a8", "#ffbe3a")
+    sh.paint(sh.mask_rrect(x + 3.5, y + 3.5, w - 7, h - 7, h / 2 - 3.5), sh.vgrad(rgb(top), rgb(bot), y, y + h))
+    sh.paint(sh.mask_rrect(x + h * 0.4, y + 6, w - h * 0.8, h * 0.26, h * 0.13), (1, 1, 1), 0.6)
 
 
 def difficulty_item(sh, k, dx, dy, lit):
