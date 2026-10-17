@@ -7,10 +7,18 @@ plays without any file of the original SimGolf. Licence: GPL-2.0-or-later (the f
 
 The set has two parts, both built into the game (nothing is downloaded at run time):
 
-* **Rendered art** in `art/` (about 9 MB): sprite sheets of the trees, bushes, cacti, palms, scenic plants, buildings and
-  golfers, staff and celebrities, rendered offline by `tools/freeset_art/build.py` from 3D models made in code (a painterly tree grower, a building
-  kit in each theme's style, a jointed golfer posed for every animation) with the game's own camera (pitch 38.7 degrees,
-  4 or 8 views), and the sounds and music made by `tools/freeset_art/sounds.py` entirely in code (see **Sounds** below). `crates/sg-core/src/freeset/baked.rs` turns a sheet into the FLC the engine reads.
+* **Rendered art** in `art/` (about 11 MB): sprite sheets of the trees, bushes, cacti, palms, scenic plants, buildings,
+  landmarks, animals and golfers, staff and celebrities, rendered offline by `tools/freeset_art/build.py` from 3D models
+  made in code (a painterly tree grower whose crowns are lit as one rounded mass, with warm highlights and cool shade; a
+  building kit in each theme's style with lit windows; a jointed golfer whose hands follow the club's grip through the
+  swing; `landmarks.py` for the windmills, lighthouses, statues, pagoda, barn, volcano and the rest; `animals.py` for the
+  crane, crocodile, duck, elk, flamingo, gila monster, roadrunner, sheep and snake; `props.py` for the hole flags and
+  tee markers, the range and putting green flags, benches and the swing, flower beds (their blooms in the colour of
+  the bed's palette), course signs, the ball washer, sailboats, the windsurfer and the bridges). A few sight gags hide in the world: a
+  sun hat on a cactus, a squirrel on the big maple, a lost ball under a bush, a gopher by the rocks, ducklings following
+  their mother, and by the clubhouse deckchairs, a parked golf cart, a picnic and a garden gnome with the game's own camera (pitch 38.7 degrees,
+  4 or 8 views), and the sounds and music made by `tools/freeset_art/sounds.py` entirely in code (see
+  **Sounds** below). `crates/sg-core/src/freeset/baked.rs` turns a sheet into the FLC the engine reads.
   Golfers are drawn in the palette slots the engine recolours, so every golfer still wears their own colours; trees use
   the leaf ramp the colour variant palettes change. The main interface sheets (the dock, title screen, course badge,
   the Terrain, Amenities, Buildings and Elevation panels with the theme's lot pictures, terrain buttons, dialogs, the popup
@@ -25,11 +33,17 @@ The set has two parts, both built into the game (nothing is downloaded at run ti
     row under the pointer), with the same places and hit areas; with the original's files they look exactly as before.
 * **Drawn at run time** by code in `crates/sg-core/src/freeset/` for everything else:
   * **Terrain** (`tex.rs`): each theme's surfaces painted from wrapping noise with lit relief (mowing stripes, blades and
-    clumps of grass, scrub, stones, sand grain and ripples, water sheen), in the nine blend shapes the terrain renderer uses.
+    tussocks of grass, a mossy forest floor with fallen leaves, heather, scrub, stones, sand grain and ripples, flower
+    clumps), in the nine blend shapes the terrain renderer uses. Water is one seamless open-water pattern in every depth
+    and set (the terrain renderer draws the free set's water as one surface, `Terrain::water_one`, so every water tile
+    facing land takes the shore pieces whatever its depth); its shallow pieces that face land carry the shore (lighter shallows, a broken line of foam, wet sand, a beach
+    or an earthy bank by theme). `cargo test -p sg-core tex_sheet -- --ignored` with `TEX_SHEET=out.png` writes a
+    contact sheet of every surface.
   * **Pictures** (`paint.rs`, `ui.rs`): panels, buttons, screens, the title logo, dock symbols, terrain buttons, hole signs
     and faces, drawn with signed-distance shapes.
-  * **Sprites without a rendered sheet** (`sprite.rs`): animals, flowers, benches, flags, bridges, boats, monuments and the
-    rest, from a few shapes each, in one palette that keeps the engine's colour slots.
+  * **Sprites without a rendered sheet** (`sprite.rs`): the TV towers, water effects, homes, the gazebo and the
+    rest, from a few shapes each, in one palette that keeps the engine's colour slots; and the palette files, which
+    colour the rendered trees, golfers, landmarks and props through those slots.
   * **Sounds without a recording** (`sound.rs`): synthesised (a fallback; every sound of the game has a recording).
   * **Text** (`text.rs`): our own stories (thirteen, from Opening Day to The Podcast), characters with twenty sayings each,
     famous golfers, celebrities, a description of every terrain per theme, lighting, credits and a starting high score
