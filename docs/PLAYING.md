@@ -832,7 +832,9 @@ changed every key does what it did before.
   screen is drawn changes: the game itself always runs on its 87 ms ticks. On the desktop the cap waits out the rest of
   each frame; v-sync takes effect at the next start (macOS and Android always pace to the display). In a browser the page
   skips animation frames to keep under the cap, and v-sync cannot be turned off: browsers always draw on the display's
-  refresh.
+  refresh. If the browser game ever stays stuck on its first picture, *Reset graphics settings* on the start page (or
+  `?safe` at the end of the page's address) puts the Enhanced graphics settings, frame rate cap included, back to their
+  defaults without touching saved games.
 
 Test hooks: `SG_PRESS="u;Shift+Q;..."` presses keys (the names `settings.json` uses) after a scripted still's first frame,
 after `SG_CLICK`; letters and Space also type their character.

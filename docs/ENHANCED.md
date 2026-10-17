@@ -704,14 +704,17 @@ with the widescreen option off.
 While Enhanced graphics start (when they are switched on, and at each start with them on) the game keeps a marker,
 `enhanced_starting`, in the save folder and removes it once it has drawn 60 frames over at least 20 seconds with them (or
 when the desktop game is quit normally before then). A run that freezes or stops before then leaves the marker behind,
-and the next start comes up in Classic, saves Enhanced as off and says so in a box; the player can switch them on again in
-Preferences. In the browser, adding `?classic` to the page's address does the same on purpose.
+and the next start comes up safe: Classic, and the two Display settings that count in Classic too (the frame rate cap and
+v-sync) at their defaults; it saves that and says so in a box, and the player can change them again in Preferences. In the
+browser, adding `?classic` to the page's address does the same on purpose, and `?safe` (or *Reset graphics settings* on
+the start page) puts every Enhanced setting back to its default before starting (only *Fix original bugs* is kept; saved
+games and every other setting are untouched).
 
 The browser version also watches the game's drawing (web/opensgolf.js). When the browser loses it (a WebGL context lost:
 the graphics driver reset or the browser's GPU process restarted; a frame that stopped with an error; or no frame drawn
 for five seconds while the tab is shown), the page says so over the frozen picture with a button to reload, writes a line
-to the console (`OpenSGolf: the browser stopped drawing the game (...)`) and, with Enhanced on, leaves the marker, so the
-reload comes up in Classic. Leaving a game that was drawing well takes the marker away. The game's own lines about
+to the console (`OpenSGolf: the browser stopped drawing the game (...)`) and leaves the marker (Enhanced on or not), so
+the reload comes up with the safe settings. Leaving a game that was drawing well takes the marker away. The game's own lines about
 Enhanced (switched on, too slow, a shader that does not compile, switched off after a failed start) go to the browser's
 console too.
 
@@ -723,6 +726,15 @@ that fails ends the drawing for good, and the clicks still reach the game unseen
 only thing that shows). The 0.4.0 marker went after 60 frames, a quarter of a second on a fast display, so a failure a
 moment later found it gone and every restart came up in Enhanced again; and none of the game's lines reached the browser's
 console, so the frame rate guard's steps, had there been any, were never seen.
+
+The real cause, found in 0.4.5 from the reporter's console (only the "no frame drawn for 5 seconds" line), from `?classic`
+not helping and from a fresh browser profile working until the options were set again: the frame rate cap. The page
+decided whether a frame was due once per callback, and the page's own animation-frame loops (the sound pump and the
+controller poll), asked for before the game's and so run first in every frame, took each due frame themselves. With any
+cap set (30 to 240) the game drew its first frame and never another, in Classic too since the cap counts there, and the
+setting stayed saved, so every start froze on the title (reproduced in Chromium with `{"enhanced":{"frame_cap":1}}` alone).
+Now the decision is made once per animation frame and holds for every callback in it, the page's own loops are not capped,
+and the marker's safe start also clears the cap.
 
 ## When the game is too slow for the options in use
 
