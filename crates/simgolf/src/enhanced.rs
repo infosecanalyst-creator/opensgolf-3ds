@@ -222,8 +222,39 @@ pub fn settings() -> Settings {
 /// Puts settings in use (not saved; see `App::apply_enhanced`).
 pub fn set(s: Settings) {
     SETTINGS.with(|c| c.set(s));
+    page_state(s.enabled);
     // the simulation's own fixes follow the same setting (sg_core::fixes)
     sg_core::fixes::set(s.fix_original_bugs);
+}
+
+/// Tells the page whether Enhanced is on (web/opensgolf.js: it keeps Enhanced from coming back after the browser lost the
+/// game's drawing).
+fn page_state(on: bool) {
+    #[cfg(target_arch = "wasm32")]
+    {
+        #[link(wasm_import_module = "env")]
+        extern "C" {
+            fn sg_enhanced(on: u32);
+        }
+        // SAFETY: a plain call into the page's script with a number
+        unsafe { sg_enhanced(on as u32) };
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    let _ = on;
+}
+
+/// A frame was drawn and handed to the window (main.rs draw): the page's watch over the game's drawing hears of it
+/// (web/opensgolf.js; issue #55).
+pub fn frame_drawn() {
+    #[cfg(target_arch = "wasm32")]
+    {
+        #[link(wasm_import_module = "env")]
+        extern "C" {
+            fn sg_frame_drawn();
+        }
+        // SAFETY: a plain call into the page's script, no arguments
+        unsafe { sg_frame_drawn() };
+    }
 }
 
 fn on(f: impl Fn(&Settings) -> bool) -> bool {
@@ -441,34 +472,82 @@ pub fn saved() -> Settings {
     serde_json::from_value(settings_json()[SETTINGS_KEY].clone()).unwrap_or_default()
 }
 
+/// A line about Enhanced graphics for the player's report: the standard output on the desktop, and the console in a
+/// browser, where the standard output goes nowhere (issue #55: the guard's lines never reached a player's console).
+pub fn say(msg: &str) {
+    println!("{msg}");
+    #[cfg(target_arch = "wasm32")]
+    crate::audio::log_console(msg);
+}
+
 /// The marker kept while Enhanced is starting up (issue #55): written when Enhanced is switched on or a run starts with
-/// it, removed once the game has drawn [`TRIAL_FRAMES`] frames with it. A run that freezes or stops in the meantime
-/// leaves it behind, and the next start comes up in Classic with a note, so a graphics driver that cannot cope with
-/// Enhanced never leaves the player stuck (a reload used to bring the same freeze back). The page's `?classic` writes it
-/// too (web/opensgolf.js).
+/// it, removed once the game has drawn [`TRIAL_FRAMES`] frames over at least [`TRIAL_SECS`] seconds with it. A run that
+/// freezes or stops in the meantime leaves it behind, and the next start comes up in Classic with a note, so a graphics
+/// driver that cannot cope with Enhanced never leaves the player stuck (a reload used to bring the same freeze back). The
+/// page's `?classic` writes it too, and so does the page when the browser loses the game's drawing (a WebGL context lost,
+/// a frame that stopped with an error, or no frame drawn for seconds) while Enhanced is on (web/opensgolf.js).
+///
+/// The marker used to go after 60 frames, a quarter of a second on a 240 Hz display: a freeze a moment later (the first
+/// click on the title, the first look at the course) found it gone, and every restart came up in Enhanced again.
 const TRIAL_FILE: &str = "enhanced_starting";
 const TRIAL_FRAMES: u32 = 60;
+const TRIAL_SECS: f64 = 20.0;
+
+/// The start-up trial: frames drawn and the time of the first one (None until a frame is drawn).
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Trial {
+    frames: u32,
+    since: Option<f64>,
+}
+
+impl Trial {
+    const NEW: Trial = Trial { frames: 0, since: None };
+
+    /// One more frame drawn at `now` (seconds): true once the trial is over.
+    fn frame(&mut self, now: f64) -> bool {
+        let since = *self.since.get_or_insert(now);
+        self.frames = self.frames.saturating_add(1);
+        // a clock that went backwards starts the time again
+        if now < since {
+            self.since = Some(now);
+            return false;
+        }
+        self.frames >= TRIAL_FRAMES && now - since >= TRIAL_SECS
+    }
+}
 
 thread_local! {
-    static TRIAL: Cell<Option<u32>> = const { Cell::new(None) };
+    static TRIAL: Cell<Option<Trial>> = const { Cell::new(None) };
     static RECOVERED: Cell<bool> = const { Cell::new(false) };
 }
 
 fn arm_trial() {
     sg_core::fsutil::write_file(crate::app::save_dir().join(TRIAL_FILE), b"1");
-    TRIAL.with(|t| t.set(Some(0)));
+    TRIAL.with(|t| t.set(Some(Trial::NEW)));
 }
 
-/// Called once per drawn frame: after enough frames with Enhanced on, the start-up marker goes.
-pub fn trial_frame() {
-    TRIAL.with(|t| match t.get() {
-        Some(n) if n + 1 >= TRIAL_FRAMES => {
-            t.set(None);
-            sg_core::fsutil::remove_file(crate::app::save_dir().join(TRIAL_FILE));
+/// Called once per drawn frame with the time in seconds: after enough frames and seconds with Enhanced on, the start-up
+/// marker goes.
+pub fn trial_frame(now: f64) {
+    TRIAL.with(|t| {
+        if let Some(mut trial) = t.get() {
+            if trial.frame(now) {
+                t.set(None);
+                sg_core::fsutil::remove_file(crate::app::save_dir().join(TRIAL_FILE));
+            } else {
+                t.set(Some(trial));
+            }
         }
-        Some(n) => t.set(Some(n + 1)),
-        None => {}
     });
+}
+
+/// The run ends normally (the desktop's quit): a trial still under way passed, so the next start keeps Enhanced. Not in a
+/// browser, where the title's exit button is also what a player stuck on a frozen picture clicks (the page takes the marker
+/// away itself when the game was drawing well, web/opensgolf.js).
+pub fn trial_clean_exit() {
+    if !cfg!(target_arch = "wasm32") && TRIAL.with(|t| t.take()).is_some() {
+        sg_core::fsutil::remove_file(crate::app::save_dir().join(TRIAL_FILE));
+    }
 }
 
 /// The frame rate guard (issue #55): with Enhanced on, a graphics chip too slow for an option shows a game that hardly
@@ -522,16 +601,20 @@ pub fn guard_frame(now: f64) -> Option<(Settings, &'static str)> {
         return None;
     }
     GRACE.with(|g| g.set(now + GUARD_GRACE));
-    slower(s)
+    slower(s, MSAA_COUNTS)
 }
 
+/// Whether the multisampling option changes anything here: a browser never multisamples (hd::msaa_pass), so the guard
+/// does not spend a step on it there.
+const MSAA_COUNTS: bool = !cfg!(target_arch = "wasm32");
+
 /// The next step down from these settings: what to turn off, or None when nothing is left but Classic itself.
-fn slower(mut s: Settings) -> Option<(Settings, &'static str)> {
+fn slower(mut s: Settings, msaa_counts: bool) -> Option<(Settings, &'static str)> {
     if s.fx_scaler {
         s.fx_scaler = false;
         return Some((s, "STR_ENHANCED_SLOW_SCALER"));
     }
-    if s.msaa {
+    if s.msaa && msaa_counts {
         s.msaa = false;
         return Some((s, "STR_ENHANCED_SLOW_MSAA"));
     }
@@ -579,7 +662,7 @@ pub fn init(force: Option<bool>) {
         save(&s);
         sg_core::fsutil::remove_file(&trial);
         RECOVERED.with(|r| r.set(true));
-        println!("Enhanced graphics: switched off, the last run stopped while they were starting");
+        say("Enhanced graphics: switched off, the last run stopped while they were starting");
     } else if s.enabled && force != Some(false) {
         arm_trial();
     }
@@ -594,7 +677,7 @@ pub fn init(force: Option<bool>) {
     crate::fx::sync(&s);
     if s.enabled {
         let on: Vec<&str> = OPTIONS.iter().filter(|o| (o.get)(&s) != 0).map(|o| o.key).collect();
-        println!("Enhanced graphics: on ({})", on.join(", "));
+        say(&format!("Enhanced graphics: on ({})", on.join(", ")));
     }
 }
 
@@ -1245,7 +1328,7 @@ mod guard_tests {
         s.msaa = true;
         s.fx_bloom = true;
         let mut steps = Vec::new();
-        while let Some((n, what)) = slower(s) {
+        while let Some((n, what)) = slower(s, true) {
             steps.push(what);
             s = n;
             if !s.enabled {
@@ -1253,6 +1336,44 @@ mod guard_tests {
             }
         }
         assert_eq!(steps, ["STR_ENHANCED_SLOW_SCALER", "STR_ENHANCED_SLOW_MSAA", "STR_ENHANCED_SLOW_EFFECTS", "STR_ENHANCED_SLOW_OFF"]);
+    }
+
+    #[test]
+    fn the_guard_skips_multisampling_where_it_does_nothing() {
+        // a browser never multisamples: the scaler, then the effects
+        let s = Settings { enabled: true, fx_scaler: false, msaa: true, ..Default::default() };
+        assert_eq!(slower(s, false).map(|r| r.1), Some("STR_ENHANCED_SLOW_EFFECTS"));
+        assert_eq!(slower(s, true).map(|r| r.1), Some("STR_ENHANCED_SLOW_MSAA"));
+    }
+
+    #[test]
+    fn the_start_up_trial_needs_frames_and_seconds() {
+        // 240 frames a second: 60 frames is a quarter of a second, not enough (issue #55)
+        let mut t = Trial::NEW;
+        let mut now = 100.0;
+        for _ in 0..240 * 19 {
+            assert!(!t.frame(now));
+            now += 1.0 / 240.0;
+        }
+        now += 1.5;
+        assert!(t.frame(now));
+        // two frames a second for a minute: the seconds are there, the frames too after 30 s
+        let mut t = Trial::NEW;
+        let mut done = None;
+        for i in 0..120 {
+            if t.frame(i as f64 * 0.5) {
+                done = done.or(Some(i));
+            }
+        }
+        assert_eq!(done, Some(59));
+        // a clock that jumps back starts the time again
+        let mut t = Trial::NEW;
+        for i in 0..100 {
+            t.frame(50.0 + i as f64);
+        }
+        assert!(!t.frame(10.0));
+        assert!(!t.frame(29.0));
+        assert!(t.frame(30.0));
     }
 
     #[test]

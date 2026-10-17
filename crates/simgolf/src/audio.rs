@@ -249,7 +249,7 @@ pub fn log(msg: &str) {
 }
 
 #[cfg(target_arch = "wasm32")]
-fn log_console(msg: &str) {
+pub(crate) fn log_console(msg: &str) {
     #[link(wasm_import_module = "env")]
     extern "C" {
         // miniquad's gl.js: console.log of a nul-terminated UTF-8 string
