@@ -2726,6 +2726,16 @@ impl EventHandler for Stage {
 
     fn draw(&mut self) {
         enhanced::trial_frame();
+        // too slow for the Enhanced options in use: the costliest go, a step at a time (enhanced.rs, issue #55)
+        if self.png_out.is_none() {
+            if let Some((s, what)) = enhanced::guard_frame(self.app.clock) {
+                println!("Enhanced graphics: the game is too slow, {what}");
+                if self.app.apply_enhanced(&mut self.g, s) {
+                    self.app.ui_ok &= load_art(&mut self.app, &mut self.g);
+                }
+                self.app.show_toast(sg_core::lang::tr(what));
+            }
+        }
         match self.app.hd_frame_pass(&mut self.g) {
             Some(pass) => {
                 self.draw_frame(Some(pass));

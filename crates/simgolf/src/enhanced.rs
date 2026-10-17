@@ -466,6 +466,84 @@ pub fn trial_frame() {
     });
 }
 
+/// The frame rate guard (issue #55): with Enhanced on, a graphics chip too slow for an option shows a game that hardly
+/// moves (on a laptop's chip in a browser the pixel-art scaler alone costs five times the frame). When the game draws
+/// fewer than [`GUARD_FPS`] frames a second over [`GUARD_SECS`] seconds, the costliest options go, one step at a time
+/// (the scaler, multisampling, the heavier effects, then Enhanced itself), saved and said in the ticker. Not in a window
+/// the browser stopped drawing (a hidden tab): a gap of over two seconds between frames starts the count again.
+const GUARD_FPS: f64 = 10.0;
+const GUARD_SECS: f64 = 4.0;
+
+thread_local! {
+    /// (start of the window, frames in it, last frame's time)
+    static GUARD: Cell<(f64, u32, f64)> = const { Cell::new((-1.0, 0, -1.0)) };
+    /// No judging before this time: the start (art loading) and the seconds after a step settle first.
+    static GRACE: Cell<f64> = const { Cell::new(-1.0) };
+}
+
+const GUARD_GRACE: f64 = 8.0;
+
+/// Called once per drawn frame with the time in seconds: the settings to change to when the game is too slow for the
+/// ones in use, and what was turned off (a text key), else None.
+pub fn guard_frame(now: f64) -> Option<(Settings, &'static str)> {
+    let s = settings();
+    if !s.enabled {
+        GUARD.with(|g| g.set((-1.0, 0, -1.0)));
+        return None;
+    }
+    let grace = GRACE.with(|g| {
+        if g.get() < 0.0 {
+            g.set(now + GUARD_GRACE);
+        }
+        g.get()
+    });
+    if now < grace {
+        GUARD.with(|g| g.set((-1.0, 0, -1.0)));
+        return None;
+    }
+    let (start, frames, last) = GUARD.with(|g| g.get());
+    if start < 0.0 || now - last > 2.0 || now < last {
+        GUARD.with(|g| g.set((now, 0, now)));
+        return None;
+    }
+    let frames = frames + 1;
+    if now - start < GUARD_SECS {
+        GUARD.with(|g| g.set((start, frames, now)));
+        return None;
+    }
+    // the window is over: a new one starts either way
+    GUARD.with(|g| g.set((now, 0, now)));
+    if frames as f64 / (now - start) >= GUARD_FPS {
+        return None;
+    }
+    GRACE.with(|g| g.set(now + GUARD_GRACE));
+    slower(s)
+}
+
+/// The next step down from these settings: what to turn off, or None when nothing is left but Classic itself.
+fn slower(mut s: Settings) -> Option<(Settings, &'static str)> {
+    if s.fx_scaler {
+        s.fx_scaler = false;
+        return Some((s, "STR_ENHANCED_SLOW_SCALER"));
+    }
+    if s.msaa {
+        s.msaa = false;
+        return Some((s, "STR_ENHANCED_SLOW_MSAA"));
+    }
+    let heavy = s.fx_cast_shadows || s.fx_reflections || s.fx_bloom || s.fx_grass || s.fx_crowds || s.fx_quality > 0;
+    if heavy {
+        s.fx_cast_shadows = false;
+        s.fx_reflections = false;
+        s.fx_bloom = false;
+        s.fx_grass = false;
+        s.fx_crowds = false;
+        s.fx_quality = 0;
+        return Some((s, "STR_ENHANCED_SLOW_EFFECTS"));
+    }
+    s.enabled = false;
+    Some((s, "STR_ENHANCED_SLOW_OFF"))
+}
+
 /// True once, when this start turned Enhanced off because the last run stopped while it was starting.
 pub fn take_recovered() -> bool {
     RECOVERED.with(|r| r.replace(false))
@@ -1146,5 +1224,58 @@ mod tests {
     fn old_settings_files_read() {
         let s: Settings = serde_json::from_str(r#"{"enabled": true}"#).unwrap();
         assert!(s.enabled && s.native_text);
+    }
+}
+
+#[cfg(test)]
+mod guard_tests {
+    use super::*;
+
+    #[test]
+    fn the_guard_steps_down_and_ends_in_classic() {
+        let mut s = Settings { enabled: true, ..Default::default() };
+        s.fx_scaler = true;
+        s.msaa = true;
+        s.fx_bloom = true;
+        let mut steps = Vec::new();
+        while let Some((n, what)) = slower(s) {
+            steps.push(what);
+            s = n;
+            if !s.enabled {
+                break;
+            }
+        }
+        assert_eq!(steps, ["STR_ENHANCED_SLOW_SCALER", "STR_ENHANCED_SLOW_MSAA", "STR_ENHANCED_SLOW_EFFECTS", "STR_ENHANCED_SLOW_OFF"]);
+    }
+
+    #[test]
+    fn a_smooth_game_or_a_hidden_tab_changes_nothing() {
+        set(Settings { enabled: true, fx_scaler: true, ..Default::default() });
+        // the start's grace: slow frames while the art loads count for nothing
+        let mut t = 100.0;
+        for _ in 0..7 {
+            assert!(guard_frame(t).is_none());
+            t += 1.0;
+        }
+        // 30 frames a second for five seconds
+        t += 2.0;
+        for _ in 0..150 {
+            assert!(guard_frame(t).is_none());
+            t += 1.0 / 30.0;
+        }
+        // a hidden tab: no frames for a minute, then smooth again
+        t += 60.0;
+        for _ in 0..150 {
+            assert!(guard_frame(t).is_none());
+            t += 1.0 / 30.0;
+        }
+        // two frames a second: the scaler goes after the window
+        let mut hit = None;
+        for _ in 0..12 {
+            t += 0.5;
+            hit = hit.or(guard_frame(t));
+        }
+        assert_eq!(hit.map(|h| h.1), Some("STR_ENHANCED_SLOW_SCALER"));
+        set(Settings::default());
     }
 }

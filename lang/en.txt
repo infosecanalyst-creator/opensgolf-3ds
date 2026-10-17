@@ -942,6 +942,10 @@ STR_TOUCH_SPEED                         :Speed
 STR_TOUCH_MESSAGE                       :Message
 # Enhanced graphics turned off at start because the last run stopped while they were starting (issue #55)
 STR_ENHANCED_RECOVERED                  :Enhanced graphics were switched off: the game stopped while they were starting last time. You can switch them on again in Preferences.
+STR_ENHANCED_SLOW_SCALER                :The game was running slowly: Enhanced graphics' pixel-art scaler is now off.
+STR_ENHANCED_SLOW_MSAA                  :The game was running slowly: Enhanced graphics' multisampling is now off.
+STR_ENHANCED_SLOW_EFFECTS               :The game was running slowly: Enhanced graphics' heaviest effects are now off.
+STR_ENHANCED_SLOW_OFF                   :The game was running slowly: Enhanced graphics are now off (Classic). They can be switched on again in Preferences.
 # The on-screen keyboard (browser on a touch screen, while a name is typed)
 STR_OSK_SHIFT                           :Shift
 STR_OSK_BACK                            :Delete
