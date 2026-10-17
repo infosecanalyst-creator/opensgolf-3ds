@@ -139,6 +139,10 @@ impl App {
     /// Closes an info screen; the year-end report hands over to the Top 10 when the course made it.
     pub fn close_info(&mut self) {
         if self.screen == Screen::YearEnd {
+            // OpenSGolf extras (year_ui.rs): the year in numbers after the report
+            if self.year_summary_next() {
+                return;
+            }
             if let Some(rank) = self.info.top10_due.take() {
                 self.open_top10(Some(rank));
                 return;

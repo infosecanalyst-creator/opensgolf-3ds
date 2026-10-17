@@ -38,9 +38,13 @@ fn save(e: &Extras) {
 // ---- the Extras box (Preferences > OpenSGolf extras) ------------------------------------------------------------------------
 
 /// The Extras box's pages (tabs along its top, drawn as the Enhanced graphics box's): the gameplay extras, the calendar and
-/// sandbox switches, the interface extras. (One list grew too tall for an 800 x 600 screen once the calendar and sandbox
-/// switches came.)
-pub const PAGES: [&str; 3] = ["STR_EXTRAS_PAGE_GAMEPLAY", "STR_EXTRAS_PAGE_TIME", "STR_EXTRAS_PAGE_INTERFACE"];
+/// sandbox switches, the interface extras, and the helpers 0.4.2 added. (One list grew too tall for an 800 x 600 screen
+/// once the calendar and sandbox switches came, and again with 0.4.2's helpers.)
+pub const PAGES: [&str; 4] = ["STR_EXTRAS_PAGE_GAMEPLAY", "STR_EXTRAS_PAGE_TIME", "STR_EXTRAS_PAGE_INTERFACE", "STR_EXTRAS_PAGE_HELPERS"];
+
+/// The interface extras on the Interface page; the ones after them (0.4.2's) are on the Helpers page, so the box still
+/// fits an 800 x 600 screen.
+const INTERFACE_LINES: usize = 15;
 
 /// What an option line of the Extras box is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -58,7 +62,8 @@ pub fn page_lines(page: u8) -> Vec<ExtrasLine> {
     match page {
         0 => (0..SEASON_SPEED).chain([LEFTIES, WEATHER]).map(ExtrasLine::Game).collect(),
         1 => (SEASON_SPEED..LEFTIES).map(ExtrasLine::Game).collect(),
-        _ => (0..crate::extras::UI_KEYS.len()).map(ExtrasLine::Ui).collect(),
+        2 => (0..INTERFACE_LINES).map(ExtrasLine::Ui).collect(),
+        _ => (INTERFACE_LINES..crate::extras::UI_KEYS.len()).map(ExtrasLine::Ui).collect(),
     }
 }
 

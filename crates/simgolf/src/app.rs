@@ -3234,6 +3234,8 @@ impl App {
                 land.write_area(&mut self.terrain, o.a, o.b, o.a + size - 1, o.b + size - 1);
                 if o.kind == land::K_HOME_SITE {
                     self.club.evict(o.a, o.b);
+                    // the home-site details' record of it (homes_ui.rs)
+                    self.home_removed(o.a, o.b);
                     // buying the lot back (0x40e400): its smoothed value / 50 plus half its value now
                     let c = o.val / 50 + sg_core::homes::lot_value(&self.course, &self.club.holes, self.difficulty, o.a, o.b) / 2;
                     self.econ.spend_to(economy::LEDGER_HOME_SITES, c as f64 * Economy::UNIT);
@@ -3375,6 +3377,8 @@ impl App {
         if lot > 0 {
             // the lot is sold at once
             self.econ.earn_to(economy::LEDGER_HOME_SITES, lot as f64 * Economy::UNIT);
+            // OpenSGolf extras (homes_ui.rs): what the home site cost and sold for
+            self.home_placed(tx, ty, cost.round() as i64, (lot as f64 * Economy::UNIT) as i64);
         }
         self.after_object_change();
         self.snd("Interface/Building.wav", 0.7, false);

@@ -62,6 +62,7 @@ mod graphs;
 mod hd;
 mod history_ui;
 mod holemarks;
+mod homes_ui;
 mod hud_ui;
 mod import;
 mod info_ui;
@@ -86,6 +87,7 @@ mod render;
 mod report_tabs;
 mod reports_ui;
 mod scenario_ui;
+mod scorecard_ui;
 mod screens_ui;
 mod share;
 mod staffview_ui;
@@ -100,6 +102,7 @@ mod update;
 mod views;
 mod wild_ui;
 mod world_ui;
+mod year_ui;
 
 use app::*;
 use gfx::Gfx;
@@ -468,6 +471,12 @@ fn open_screen(app: &mut App, screen: Option<&str>) {
         Some("yearend") if app.ui_ok => {
             app.year_end_tick = (app.club.date() | 0x1fff) + 1;
             app.screen = Screen::YearEnd;
+        }
+        // the year in numbers (year_ui.rs), the page after it
+        Some("yearsum") if app.ui_ok => {
+            app.year_end_tick = (app.club.date() | 0x1fff) + 1;
+            app.screen = Screen::YearEnd;
+            app.xs.year_page = true;
         }
         Some("roster") if app.ui_ok => {
             roster_fill(app);

@@ -602,12 +602,37 @@ compare pixel for pixel with the build before the extras).
   Test hooks: `SG_ROW="x,y"` holds a row from tile x,y to the pointer (`SG_CURSOR_TILE`, with `SG_BUILD=kind` and
   `SG_PANEL_MOUSE`) for stills; `--edit "W:x0,y0,x1,y1,kind"` places a row of object kind `kind` (1 benches, 2 flower beds,
   3 ball washers, 16 willows, 19 bridges) and prints the places, the items that fit, their cost and the cash.
+- **Live scorecards** (on with the one-click OpenSGolf extras: it only shows): while a golfer card is open (a click on a
+  golfer, the People screen's Card, the profile page's Card) the golfer's round so far is drawn under it on the Player
+  panel's own round scorecard, the one the original shows during your pro's round: hole numbers and pars, then the golfer
+  and the partner, each hole's score coloured against par as the original colours your pro's (red under par, dark grey
+  par, blue and purple over), the hole in progress in grey; the wide last column holds the course's par and each golfer's
+  strokes so far, and the score against par (E, +3, -1) stands at the end of each name's bar. Test hook: `--screen card`.
+- **Clickable ticker** (on with the one-click OpenSGolf extras): a click on a ticker message said by a golfer takes the
+  camera to that golfer and follows him (as People > Follow; any camera move lets go), a click on a message about a place
+  (a building with no path, a building's own news) takes it there. A message about nothing on the course opens the
+  message history as before (with that extra on); the Show button stays.
+- **The year in numbers** (on with the one-click OpenSGolf extras): the End of Year report stays as the original has it;
+  its OK then brings a second page in the report's own art, the year's key figures against the year before with a green
+  arrow up or a red arrow down: money taken in and profit (the Financial Report's ledger), rounds played, the fun and
+  skill ratings, members, the happiest and the unhappiest hole (the golfers' mood as they finish it), and tournaments your
+  pro won. Rounds, tournaments and last year's holes are counted by the extra itself from the first year end it sees (a
+  dash until then; they are kept with the game only while it is on). Its OK goes on as the report's did (the Top 10
+  when due). Test hook: `--screen yearsum` (the season in progress, as `--screen yearend`).
+- **Home-site details** (on with the one-click OpenSGolf extras): with the pointer on a home site (no tool in hand), a
+  box in the look of the Home Site tool's sums says whose home it is (a celebrity's vacation home names the celebrity),
+  what it cost to build and what the lot sold for when placed (the only money a home site brings in), that sale spread
+  over the months since (both kept from the moment the extra is on), what a lot there is worth now, what buying it back
+  would cost (demolishing it), and which hole sets its value and how much of it that hole makes. Test hook: the edit spec
+  `b:X,Y,5` places a home site, `SG_POINTER=x,y` points at it.
+
+These four only show or move the camera; nothing of the game changes. Ticks saved before them read as off.
 
 Test hooks for stills: `--screen people|staff|pro|history|profile|pathview|tags|ticker|card` (with a game;
   Both only watch the game: the golfers play exactly the same with them on or off. Ticks saved before they existed read
   as off (choose them in the extras box).
 
-Test hooks for stills: `--screen people|staff|pro|history|profile|pathview|tags|ticker|card|landing|holecomments|graphs` (with a game;
+Test hooks for stills: `--screen people|staff|pro|history|profile|pathview|tags|ticker|card|landing|holecomments|graphs|yearsum` (with a game;
 `graphs` with `SG_GRAPHS=S,M[,C]` shows series S (0 the club, 1 to 18 a hole), measure M (its tab, from 0) and holds
 month C (from 0) up as a tap would;
 `landing` shows the landing map of the first open hole, or of hole N with `SG_LANDING_HOLE=N`; `SG_HOLECOMMENTS=P[,N]` shows comments by hole for period P, 0 this

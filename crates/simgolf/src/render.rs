@@ -853,6 +853,7 @@ impl App {
             self.draw_staff_view(g, &s);
             self.draw_landing_legend(g, &s);
             self.draw_name_tag(g, &s);
+            self.draw_home_details(g, &s);
         }
         // the great-shot SimFoto is drawn over the course alone: footage of the original shows the frozen frame without
         // the dock, the name plate, the rating pills, the leader board and the ticker

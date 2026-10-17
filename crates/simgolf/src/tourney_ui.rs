@@ -132,6 +132,10 @@ impl App {
                     if r.prize > 0 { format!("${},000", r.prize) } else { String::new() }
                 );
             }
+            if res.gary_rank == Some(1) {
+                // OpenSGolf extras (year_ui.rs): tournaments won this year
+                self.year_count_win();
+            }
             match res.gary_rank {
                 Some(r) => {
                     println!("[{:6.1}s] tournament over: {} finishes {r}, prize ${},000", self.sim_time, self.pro_name(), res.gary_prize)

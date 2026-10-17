@@ -1339,6 +1339,7 @@ STR_EXTRAS_SET_PAR                      : Set par: change a hole's par on its Ho
 STR_EXTRAS_PAGE_GAMEPLAY                :Gameplay
 STR_EXTRAS_PAGE_TIME                    :Time & sandbox
 STR_EXTRAS_PAGE_INTERFACE               :Interface
+STR_EXTRAS_PAGE_HELPERS                 :Helpers
 # Slower seasons: a click steps the calendar's speed (1x is the original's)
 STR_EXTRAS_SEASON_SPEED                 : Slower seasons: the calendar at {VALUE}
 STR_EXTRAS_SPEED_1                      :1x (original)
@@ -3015,3 +3016,35 @@ STR_WEATHER_HEAT_TODAY                  :Heat wave today: hard, fast ground and 
 STR_WEATHER_STORM_TODAY                 :Thunderstorms are on the way today.
 STR_WEATHER_STORM_BREAKS                :Storm! Play is suspended while the golfers shelter.
 STR_WEATHER_STORM_PASSES                :The storm has passed. Play resumes.
+# OpenSGolf extras 0.4.2: live scorecards, the clickable ticker, the year in numbers, home-site details (extras.rs)
+STR_EXTRAS_LIVE_SCORECARDS              : Live scorecards (the round so far under the golfer card)
+STR_EXTRAS_TICKER_JUMP                  : Clickable ticker (a click goes to the golfer or place)
+STR_EXTRAS_YEAR_SUMMARY                 : The year in numbers (a page after the End of Year report)
+STR_EXTRAS_HOME_DETAILS                 : Home-site details (cost, sale and value under the pointer)
+STR_SCORECARD_TOTAL                     :Total
+STR_SCORECARD_EVEN                      :E
+STR_SCORECARD_LIVE                      :Round
+STR_SCORECARD_ON_HOLE                   :Hole {HOLE}
+STR_SCORECARD_FINISHED                  :Finished
+STR_YEARSUM_TITLE                       :{YEAR} in Numbers
+STR_YEARSUM_REVENUE                     :Money taken in
+STR_YEARSUM_PROFIT                      :Profit
+STR_YEARSUM_ROUNDS                      :Rounds played
+STR_YEARSUM_FUN                         :Fun rating
+STR_YEARSUM_SKILL                       :Skill rating
+STR_YEARSUM_MEMBERS                     :Members
+STR_YEARSUM_BEST_HOLE                   :Happiest hole
+STR_YEARSUM_WORST_HOLE                  :Unhappiest hole
+STR_YEARSUM_WINS                        :Tournaments won
+STR_YEARSUM_HOLE                        :Hole {HOLE}
+STR_YEARSUM_NOTE                        :Against the year before
+STR_HOMES_TITLE                         :Home site
+STR_HOMES_CELEBRITY                     :{CELEBRITY}'s home
+STR_HOMES_COST                          :Cost to build: {MONEY}
+STR_HOMES_SOLD                          :Sold for: {MONEY}
+STR_HOMES_MONTHLY                       :A month since: {MONEY}
+STR_HOMES_NO_RECORD                     :Placed before records
+STR_HOMES_VALUE                         :Lot value now: {MONEY}
+STR_HOMES_BUY_BACK                      :To buy back: {MONEY}
+STR_HOMES_HOLE                          :Hole {HOLE} adds {MONEY}
+STR_HOMES_NO_HOLE                       :No hole adds value yet
