@@ -65,7 +65,8 @@ OpenSGolf needs a set of graphics, sounds and text. There are two:
 
 - **The original SimGolf files.** If you own the game, point OpenSGolf at your SimGolf folder, the one containing `Data`,
   `Flics` and `Sounds` (on Windows usually `C:\Program Files\Maxis\SimGolf`), or at a .zip of it. In the browser,
-  choose *Choose game folder*; in the app, choose *Use my SimGolf files…* on the title screen. The files are read on your
+  choose *Choose game folder*; in the app, choose *Use my SimGolf files…* on the title screen. The app also takes the
+  SimGolf CD itself, or an image of it (.iso, or a Mac's .cdr), with nothing to install ([INSTALL.md](docs/INSTALL.md)). The files are read on your
   own device and never uploaded.
 - **opensgolf-free**, the free base set. Like OpenGFX for OpenTTD, it contains nothing from the original: art, sounds and
   text made by the engine itself. It is used automatically when no SimGolf files are found. It is simple for now and open

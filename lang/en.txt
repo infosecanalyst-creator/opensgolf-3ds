@@ -2568,7 +2568,7 @@ STR_CTL_EDITOR                          :Course editor: scenario settings
 STR_GAME_FILES_USE_MINE                 :Use my SimGolf files...
 STR_GAME_FILES_USE_FREE                 :Use the free graphics
 # The title of the system's folder picker
-STR_GAME_FILES_PICK_TITLE               :Choose the folder SimGolf is installed in
+STR_GAME_FILES_PICK_TITLE               :Choose the folder SimGolf is installed in, or the SimGolf CD
 # Shown once on the title screen when no SimGolf files were found
 STR_GAME_FILES_HINT                     :Playing with OpenSGolf's free graphics. Have SimGolf? Choose 'Use my SimGolf files...'
 # The folder picked does not hold the game; {MISSING} lists what it lacks
@@ -2583,19 +2583,21 @@ STR_GAME_FILES_ASK_RESTART              :OpenSGolf starts again to change its gr
 STR_GAME_FILES_GO_ON                    :Start again now
 STR_GAME_FILES_NOT_NOW                  :Not now
 STR_GAME_FILES_RESTART                  :Your choice is saved. Start OpenSGolf again to use it.
-# "Use my SimGolf files...": a .zip of the game folder, or the folder itself
-STR_GAME_FILES_ASK_KIND                 :Where are your SimGolf files? Choose a .zip of the game folder, a SimGolf CD .iso (or a .zip containing it), or the folder itself (the one with Flics, Interface and Data).
-STR_GAME_FILES_KIND_ZIP                 :A .zip or .iso file
-STR_GAME_FILES_KIND_FOLDER              :A folder
-STR_GAME_FILES_PICK_ZIP_TITLE           :Choose a SimGolf .zip or CD .iso
+# "Use my SimGolf files...": a .zip of the game folder, a CD image (.iso, .cdr), or a folder (installed, or the CD itself)
+STR_GAME_FILES_ASK_KIND                 :Where are your SimGolf files? Choose a .zip of the game folder, a SimGolf CD image (.iso, or a Mac's .cdr; or a .zip containing one), or a folder: the one SimGolf is installed in (with Flics, Interface and Data), or the SimGolf CD itself.
+STR_GAME_FILES_KIND_ZIP                 :A .zip, .iso or .cdr file
+STR_GAME_FILES_KIND_FOLDER              :A folder, or the SimGolf CD
+STR_GAME_FILES_PICK_ZIP_TITLE           :Choose a SimGolf .zip or CD image (.iso, .cdr)
 # Bringing the files into OpenSGolf's own folder (a .zip unpacked, a folder copied); {N} and {OF} count files
 STR_GAME_FILES_IMPORTING                :Getting your SimGolf files ready...
 STR_GAME_FILES_UNPACKING                :Unpacking your SimGolf files: {N} of {OF}...
 STR_GAME_FILES_COPYING                  :Copying your SimGolf files: {N} files...
 STR_GAME_FILES_COPYING_MB               :Copying your SimGolf files into OpenSGolf: {MB} MB...
 STR_GAME_FILES_BAD_ZIP                  :OpenSGolf could not read that .zip ({ERR}). Make the .zip again, or unpack it and choose the folder.
-STR_GAME_FILES_BAD_DISC                 :OpenSGolf could not read that disc image ({ERR}). Choose an ISO of the SimGolf CD, a .zip containing it, or an installed SimGolf folder.
-STR_GAME_FILES_ZIP_NO_GAME              :That does not hold SimGolf's game files. Choose an installed SimGolf folder (with Flics, Interface and Data), a .zip of it, or a SimGolf CD .iso.
+STR_GAME_FILES_BAD_DISC                 :OpenSGolf could not read that SimGolf CD ({ERR}). Choose the SimGolf CD itself, an .iso or .cdr image of it (or a .zip containing one), or an installed SimGolf folder.
+STR_GAME_FILES_ZIP_NO_GAME              :That does not hold SimGolf's game files. Choose an installed SimGolf folder (with Flics, Interface and Data), a .zip of it, the SimGolf CD, or a CD image (.iso, .cdr).
+STR_GAME_FILES_FOLDER_NO_GAME           :The folder "{DIR}" holds neither an installed SimGolf ({MISSING} not there) nor the SimGolf CD's installer files (DATA1.HDR and the DATA*.CAB files). Choose the folder SimGolf is installed in (with Interface and Flics), or the SimGolf CD itself (on a Mac, the CD under Locations) or a copy of all its files.
+STR_GAME_FILES_DMG                      :OpenSGolf cannot read a Mac .dmg disk image. Make a .cdr of the CD instead: in Disk Utility, with the SimGolf CD in, choose File > New Image > Image from the CD, Format "DVD/CD master", then choose that .cdr here. Or choose the SimGolf CD itself as a folder.
 STR_GAME_FILES_IMPORT_FAILED            :Your SimGolf files could not be copied: {ERR}
 STR_GAME_FILES_USING_SKIPPED            :Playing with your own SimGolf files. {N} files in the .zip use a compression OpenSGolf cannot unpack and were left out: if something is missing, zip the folder again with normal (Deflate) compression.
 # The system does not let the game read the folder ({DIR})

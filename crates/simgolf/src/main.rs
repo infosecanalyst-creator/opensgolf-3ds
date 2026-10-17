@@ -2863,7 +2863,8 @@ impl EventHandler for Stage {
             self.pick_test();
         }
         if let Some(out) = self.png_out.clone() {
-            if self.frames >= 2 {
+            // (an import the test hook started finishes first: it starts the program again on the files)
+            if self.frames >= 2 && !gamefiles::importing() {
                 // SG_FX_BENCH=N: the frame time over N frames drawn offscreen (Classic or with the effects), for measuring
                 if let Some(n) = std::env::var("SG_FX_BENCH").ok().and_then(|v| v.parse::<u32>().ok()) {
                     self.bench(n.max(1));

@@ -9,9 +9,9 @@
 //!
 //! Choosing a folder checks it for the files the game cannot start without, saves it, and starts the program again on it:
 //! the original's art, sounds, fonts and tables then load from the start exactly as they do on a normal start, which no
-//! in-place swap could promise. The player may pick a .zip of the folder instead: it is unpacked into `game` in the save
-//! folder first (import.rs), as is a folder picked on macOS (copied: macOS's privacy rules may refuse the original place on a
-//! later start). A browser gets its files from the page (web/opensgolf.js) and has no such option; on Android Android's own
+//! in-place swap could promise. The player may pick a .zip of the folder instead, a CD image (.iso, a Mac's .cdr) or the CD
+//! itself as a folder: it is unpacked into `game` in the save folder first (import.rs, iso.rs), as is a folder picked on
+//! macOS (copied: macOS's privacy rules may refuse the original place on a later start). A browser gets its files from the page (web/opensgolf.js) and has no such option; on Android Android's own
 //! picker answers later (android.rs) and what was picked is copied into the app's external files folder.
 use crate::app::{save_dir, App};
 use crate::import;
@@ -312,7 +312,8 @@ fn pick_path(start: Option<PathBuf>, zip: bool) -> Option<PathBuf> {
             d = d.set_directory(s);
         }
         if zip {
-            d.add_filter("SimGolf archives", &["zip", "ZIP", "iso", "ISO"]).pick_file()
+            // a .dmg is offered too, so the player picking one is told how to make a .cdr instead
+            d.add_filter("SimGolf archives", &["zip", "ZIP", "iso", "ISO", "cdr", "CDR", "dmg", "DMG"]).pick_file()
         } else {
             d.pick_folder()
         }
@@ -353,12 +354,18 @@ struct Import {
 
 static IMPORT: std::sync::Mutex<Option<Import>> = std::sync::Mutex::new(None);
 
+/// True while an import is in progress (a still drawn to a file waits for it: the SG_PICK_FOLDER test hook).
+pub fn importing() -> bool {
+    IMPORT.lock().unwrap_or_else(|e| e.into_inner()).is_some()
+}
+
 /// The player's message for an import that failed.
 fn import_error(e: import::Error) -> String {
     match e {
         import::Error::BadZip(why) => trf("STR_GAME_FILES_BAD_ZIP", &[("ERR", &why)]),
         import::Error::BadDisc(why) => trf("STR_GAME_FILES_BAD_DISC", &[("ERR", &why)]),
         import::Error::NoGame => tr("STR_GAME_FILES_ZIP_NO_GAME").to_string(),
+        import::Error::Dmg => tr("STR_GAME_FILES_DMG").to_string(),
         import::Error::Io(why) => trf("STR_GAME_FILES_IMPORT_FAILED", &[("ERR", &why)]),
     }
 }
@@ -373,7 +380,8 @@ fn finish_import(staging: &Path, dest: &Path) -> Result<(), String> {
     import::install(staging, dest).map_err(import_error)
 }
 
-/// Starts unpacking `zip` (or copying the game folder in `dir`, `zip` false) into the import folder on a thread.
+/// Starts unpacking `zip` (or copying the game folder in `dir`, `zip` false; or, with no game folder in it, unpacking the
+/// SimGolf CD's installer found there: iso.rs `unpack_folder`) into the import folder on a thread.
 fn start_import(src: PathBuf, zip: bool, remove_src: bool) {
     let note = std::sync::Arc::new(std::sync::Mutex::new(tr("STR_GAME_FILES_IMPORTING").to_string()));
     let n = note.clone();
@@ -386,26 +394,31 @@ fn start_import(src: PathBuf, zip: bool, remove_src: bool) {
         if staging.exists() {
             std::fs::remove_dir_all(&staging).map_err(|e| import_error(e.into()))?;
         }
+        let mut unpacking = |i: usize, n: usize| {
+            if i.is_multiple_of(25) || i == n {
+                set(trf("STR_GAME_FILES_UNPACKING", &[("N", &i), ("OF", &n)]));
+            }
+        };
         let r = if zip {
-            import::unpack_game(&src, &staging, &mut |i, n| {
-                if i % 25 == 0 || i == n {
-                    set(trf("STR_GAME_FILES_UNPACKING", &[("N", &i), ("OF", &n)]));
-                }
-            })
-            .map(|u| u.unread)
-            .map_err(import_error)
+            import::unpack_game(&src, &staging, &mut unpacking).map(|u| u.unread).map_err(import_error)
         } else {
-            let root = locate(&src).map_err(|_| tr("STR_GAME_FILES_ZIP_NO_GAME").to_string());
-            root.and_then(|root| {
-                if remove_src {
-                    // Android: the Java side's copy, on the same storage: moved, not copied again
-                    import::install(&root, &staging).map_err(import_error)
-                } else {
-                    import::copy_tree(&root, &staging, &mut |i| set(trf("STR_GAME_FILES_COPYING", &[("N", &i)])))
-                        .map_err(import_error)
-                        .map(|_| ())
+            match locate(&src) {
+                // the mounted CD or a copy of its files: its cabinets, unpacked as from an .iso
+                Err(_) if crate::iso::disc_folder(&src).is_some() => {
+                    crate::iso::unpack_folder(&src, &staging, &mut unpacking).map(|_| ()).map_err(import_error)
                 }
-            })
+                Err(_) => Err(tr("STR_GAME_FILES_ZIP_NO_GAME").to_string()),
+                Ok(root) => {
+                    if remove_src {
+                        // Android: the Java side's copy, on the same storage: moved, not copied again
+                        import::install(&root, &staging).map_err(import_error)
+                    } else {
+                        import::copy_tree(&root, &staging, &mut |i| set(trf("STR_GAME_FILES_COPYING", &[("N", &i)])))
+                            .map_err(import_error)
+                            .map(|_| ())
+                    }
+                }
+            }
             .map(|_| 0)
         };
         let r = r.and_then(|unread| finish_import(&staging, &dest).map(|_| unread));
@@ -730,11 +743,19 @@ impl App {
         if no_access(picked) {
             return Err(trf("STR_GAME_FILES_NO_ACCESS", &[("DIR", &picked.display())]));
         }
-        let dir = locate(picked).map_err(|lacks| {
-            let lacks: Vec<String> = lacks.iter().map(|l| l.replace('/', std::path::MAIN_SEPARATOR_STR)).collect();
-            let name = picked.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| picked.display().to_string());
-            trf("STR_GAME_FILES_NOT_FOUND", &[("DIR", &name), ("MISSING", &lacks.join(", "))])
-        })?;
+        let dir = match locate(picked) {
+            Ok(dir) => dir,
+            // the port's own: the SimGolf CD itself (or a copy of its files): its installer is unpacked as an .iso's is
+            Err(_) if crate::iso::disc_folder(picked).is_some() => {
+                start_import(picked.to_path_buf(), false, false);
+                return Ok(());
+            }
+            Err(lacks) => {
+                let lacks: Vec<String> = lacks.iter().map(|l| l.replace('/', std::path::MAIN_SEPARATOR_STR)).collect();
+                let name = picked.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| picked.display().to_string());
+                return Err(trf("STR_GAME_FILES_FOLDER_NO_GAME", &[("DIR", &name), ("MISSING", &lacks.join(", "))]));
+            }
+        };
         if cfg!(any(target_os = "macos", target_os = "android")) && !dir.starts_with(import_target()) {
             start_import(dir, false, false);
             return Ok(());
