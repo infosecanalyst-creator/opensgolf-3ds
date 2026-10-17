@@ -480,6 +480,10 @@ pub struct Club {
     /// when there is one.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lamps: Vec<(i32, i32)>,
+    /// The More visitors extra (sg_core::visitors): a celebrity's crowd still to come and each kind's last visit; saved only
+    /// once a visitor has come.
+    #[serde(default, skip_serializing_if = "crate::visitors::Visits::is_zero")]
+    pub visits: crate::visitors::Visits,
 }
 
 impl Default for Club {
@@ -590,6 +594,7 @@ impl Club {
             today: None,
             announced: None,
             lamps: Vec::new(),
+            visits: Default::default(),
         }
     }
 
@@ -1225,6 +1230,7 @@ impl Club {
     /// the pair's compatibility, the story kept only by chance once many have ended happily, the pair relationship.
     pub(crate) fn pair_setup(&mut self, rng: &mut ExeRng, p1: usize, p2: usize) {
         let compat = self.compatibility(p1, p2);
+        let manual = self.g[p2].flags & crate::stories::MANUAL_PAIR != 0;
         self.pick_story(rng, p1, p2);
         if self.g[p2].flags & crate::stories::MANUAL_PAIR == 0 {
             let sandbox = self.sandbox;
@@ -1262,6 +1268,10 @@ impl Club {
         for gg in [p1, p2] {
             self.g[gg].flags &= !crate::stories::MANUAL_PAIR;
         }
+        // the port's More visitors extra (sg_core::visitors): a touring pro or a celebrity may take p2's place
+        if self.extras.more_visitors && !manual {
+            self.visitor_check(rng, p1, p2);
+        }
     }
 
     /// The main frame's arrivals: a waiting pair goes to the first tee when it is free, and a new golfer arrives whenever fewer
@@ -1296,7 +1306,9 @@ impl Club {
         if !tournament && on_hole1 == 0 && can_tee && waiting_pair != -1 && self.g[waiting_pair as usize ^ 1].hole == -1 && !storm {
             self.start_pair(c, rng, waiting_pair as usize);
         }
-        let mut want = self.tick & 0x7f == 0 || queue < 2;
+        // the More visitors extra (sg_core::visitors): a celebrity's crowd arrives on top
+        let crowd = self.visitor_crowd(false);
+        let mut want = self.tick & 0x7f == 0 || queue < 2 || crowd;
         if queue >= 8 {
             want = false;
         }
@@ -1307,6 +1319,9 @@ impl Club {
         if want && !tournament && self.holes[1].par != 0 {
             let s = self.create(c, rng, true);
             if s != -1 {
+                if crowd {
+                    self.visitor_crowd(true);
+                }
                 self.last_created = s;
                 let su = s as usize;
                 self.g[su].partner = s;
@@ -1348,7 +1363,8 @@ impl Club {
             self.sound(0x19, Some((x, y)));
         }
         // the port's Hardcore economy caps the fee (sg_core::extras)
-        let fee = self.extras.fee(fee);
+        // (and the More visitors extra's visitors pay their own share: sg_core::visitors)
+        let fee = self.extras.fee(self.visitor_fee(g, fee));
         if self.game & game::TOURNAMENT == 0 {
             if self.year == 0 && self.fees_this_year == 0 {
                 // the exe's first-fee lesson (0x4c7444, 0x4c7408, 0x4c73cc, 0x4c7374, 0x4c7334)
@@ -1375,6 +1391,7 @@ impl Club {
         }
         self.g[g].hole_tick = self.tick;
         self.g[g].flags &= 0xfbdf_bbff;
+        self.visitor_hurry(g);
         self.g[g].club = 0;
         let last = h == 18 || self.par(h + 1) == 0;
         if self.game & game::TOURNAMENT == 0 && last {
@@ -1526,6 +1543,7 @@ impl Club {
     /// End of a golfer's round (0x4266b0): special visitors give their verdict, then the golfer heads home.
     pub fn round_end(&mut self, rng: &mut ExeRng, g: usize) {
         self.vip_verdict(rng, g);
+        self.visitor_verdict(g);
         self.g[g].bx = 0;
         self.g[g].hole = 19;
         if self.g[g].flags & flag::GARY != 0 {
@@ -3633,7 +3651,7 @@ impl Club {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::land::Object;
 
@@ -3879,6 +3897,48 @@ mod tests {
         assert_eq!((drops, quits), (0, 0));
         let (drops, _) = run(false);
         assert!(drops > 0, "moods fall on this run without the extra");
+    }
+
+    /// A seeded run on Easy on the test course opened as nine holes (the one hole played nine times over) with ratings far above
+    /// what any visitor waits for: the club afterwards and every event it gave, as text.
+    pub(crate) fn nine_hole_run(extras: crate::extras::Extras, ticks: u32) -> (Club, Vec<Event>) {
+        let (mut c, mut club) = test_course();
+        club.difficulty = 0;
+        for h in 2..=9 {
+            club.holes[h] = club.holes[1].clone();
+        }
+        club.next_hole = 10;
+        club.ratings.fun = 5000;
+        club.ratings.skill = 5000;
+        club.extras = extras;
+        let mut rng = ExeRng { state: 2468 };
+        club.new_game(&mut rng);
+        let mut events = Vec::new();
+        for tick in 1..ticks {
+            for g in club.g.iter_mut().take(SLOTS) {
+                g.sx = 400;
+                g.sy = 300;
+            }
+            club.tick(&mut c, &mut rng, tick);
+            events.append(&mut club.out);
+        }
+        (club, events)
+    }
+
+    /// FNV-1a of a text.
+    pub(crate) fn fnv(s: &str) -> u64 {
+        s.bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100_0000_01b3))
+    }
+
+    /// The More visitors extra off (sg_core::visitors): the seeded run gives exactly what it gave before the extra existed
+    /// (the hash was taken on the code before it), the club saved to the byte.
+    #[test]
+    fn nine_holes_without_the_new_visitors_are_bit_identical() {
+        let (club, events) = nine_hole_run(Default::default(), 20_000);
+        let json = serde_json::to_string(&club).unwrap();
+        let ev = serde_json::to_string(&events).unwrap();
+        // (a change to the game's own behaviour or text with everything off retakes these on purpose)
+        assert_eq!((fnv(&json), fnv(&ev)), (0xb7b6_bc77_ae0a_c920, 0x6b61_7fb6_6c6d_1b78), "club {json:.200}");
     }
 }
 

@@ -28,6 +28,8 @@
 //!   course drawn in another material (brick, gravel, dark stone, wooden boardwalk), Tab with the Pathway tool stepping
 //!   through them. The landmark strip gets a page with a lamp post the player can place (`Club::lamps`), lit at night by
 //!   Enhanced graphics' time of day.
+//! * `more_visitors`: More visitors: touring pros and invented celebrities come to play now and then (sg_core::visitors,
+//!   data/visitors.toml); pros pay more and rate the course, celebrities draw a few extra golfers.
 //!
 //! Pause the calendar, Freeze happiness and Unlock all are named "Sandbox: ..." in the Extras box as they are what a sandbox
 //! player wants most, but each works in a normal game too.
@@ -53,12 +55,14 @@ pub struct Extras {
     pub weather: bool,
     /// Path styles and lamps: 0 off, else 1 + the course's path style (`PATH_STYLE_KEYS`).
     pub path_style: u8,
+    pub more_visitors: bool,
 }
 
 /// The options in the order the Extras box lists them (text keys of their lines). Option 6 has three values (a line with
 /// {VALUE}, `SPEED_KEYS`), the others are ticks; `Extras::option` and `Extras::set_option` read and set them by index.
 /// Left-handed golfers (10) came after the sandbox switches and is shown on the Gameplay page (extras_ui.rs `page_lines`).
-pub const OPTION_KEYS: [&str; 13] = [
+/// Weather that matters (11), Path styles and lamps (12) and More visitors (13) came after it, on the same page.
+pub const OPTION_KEYS: [&str; 14] = [
     "STR_EXTRAS_ROTATE",
     "STR_EXTRAS_CUT_CONTENT",
     "STR_EXTRAS_HARDCORE",
@@ -72,6 +76,7 @@ pub const OPTION_KEYS: [&str; 13] = [
     "STR_EXTRAS_LEFTIES",
     "STR_EXTRAS_WEATHER",
     "STR_EXTRAS_PATHS",
+    "STR_EXTRAS_MORE_VISITORS",
 ];
 
 /// The option of `OPTION_KEYS` that is Weather that matters.
@@ -82,6 +87,8 @@ pub const LEFTIES: usize = 10;
 
 /// The option of `OPTION_KEYS` that is Path styles and lamps (several values: `PATH_STYLE_KEYS`).
 pub const PATHS: usize = 12;
+/// The option of `OPTION_KEYS` that is More visitors.
+pub const MORE_VISITORS: usize = 13;
 
 /// The option of `OPTION_KEYS` that is the calendar speed.
 pub const SEASON_SPEED: usize = 6;
@@ -91,7 +98,8 @@ pub const SPEED_KEYS: [&str; 3] = ["STR_EXTRAS_SPEED_1", "STR_EXTRAS_SPEED_HALF"
 
 impl Extras {
     /// The gameplay extras of the "OpenSGolf extras" choice on Select Difficulty: the ones that add to the game without
-    /// changing its balance (not Hardcore, not the unfinished cut content).
+    /// changing its balance (not Hardcore, not the unfinished cut content, not More visitors, whose higher fees and extra
+    /// golfers change the club's takings).
     pub const OPENSGOLF: Extras = Extras {
         rotate: true,
         cut_content: false,
@@ -108,6 +116,7 @@ impl Extras {
         weather: false,
         // purely cosmetic and nothing changes until the player picks a style or places a lamp
         path_style: 1,
+        more_visitors: false,
     };
 
     /// Everything off (the original game).
@@ -116,8 +125,8 @@ impl Extras {
     }
 
     /// The options as bits (the `X:` test hook and `--extras`): one bit per tick in `OPTION_KEYS` order, except that the
-    /// calendar speed takes two (bits 6 and 7), so the ticks after it sit one bit further on (8, 9, 10, 11), and Path styles
-    /// and lamps takes three (12 to 14). The first six keep the bits they always had.
+    /// calendar speed takes two (bits 6 and 7), so the ticks after it sit one bit further on (8 to 12), Path styles and lamps
+    /// takes three (13 to 15) and More visitors is bit 16. The first six keep the bits they always had.
     pub fn bits(&self) -> u32 {
         self.rotate as u32
             | (self.cut_content as u32) << 1
@@ -132,6 +141,7 @@ impl Extras {
             | (self.lefties as u32) << 11
             | (self.weather as u32) << 12
             | (self.path_style.min(PATH_STYLES) as u32) << 13
+            | (self.more_visitors as u32) << 16
     }
 
     pub fn from_bits(b: u32) -> Extras {
@@ -149,6 +159,7 @@ impl Extras {
             lefties: b & 1 << 11 != 0,
             weather: b & 1 << 12 != 0,
             path_style: ((b >> 13) & 7).min(PATH_STYLES as u32) as u8,
+            more_visitors: b & 1 << 16 != 0,
         }
     }
 
@@ -168,6 +179,7 @@ impl Extras {
             LEFTIES => self.lefties as u8,
             WEATHER => self.weather as u8,
             PATHS => self.path_style.min(PATH_STYLES),
+            MORE_VISITORS => self.more_visitors as u8,
             _ => 0,
         }
     }
@@ -189,6 +201,7 @@ impl Extras {
             LEFTIES => self.lefties = on,
             WEATHER => self.weather = on,
             PATHS => self.path_style = v.min(PATH_STYLES),
+            MORE_VISITORS => self.more_visitors = on,
             _ => {}
         }
     }

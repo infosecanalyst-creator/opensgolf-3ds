@@ -55,12 +55,12 @@ pub enum ExtrasLine {
     Ui(usize),
 }
 
-/// The option lines of a page, in order: Left-handed golfers, Weather that matters and Path styles and lamps, which came
-/// after the sandbox switches, end the gameplay page.
+/// The option lines of a page, in order: Left-handed golfers, Weather that matters, Path styles and lamps and More
+/// visitors, which came after the sandbox switches, end the gameplay page.
 pub fn page_lines(page: u8) -> Vec<ExtrasLine> {
-    use sg_core::extras::{LEFTIES, PATHS, SEASON_SPEED, WEATHER};
+    use sg_core::extras::{LEFTIES, MORE_VISITORS, PATHS, SEASON_SPEED, WEATHER};
     match page {
-        0 => (0..SEASON_SPEED).chain([LEFTIES, WEATHER, PATHS]).map(ExtrasLine::Game).collect(),
+        0 => (0..SEASON_SPEED).chain([LEFTIES, WEATHER, PATHS, MORE_VISITORS]).map(ExtrasLine::Game).collect(),
         1 => (SEASON_SPEED..LEFTIES).map(ExtrasLine::Game).collect(),
         2 => (0..INTERFACE_LINES).map(ExtrasLine::Ui).collect(),
         _ => (INTERFACE_LINES..crate::extras::UI_KEYS.len()).map(ExtrasLine::Ui).collect(),

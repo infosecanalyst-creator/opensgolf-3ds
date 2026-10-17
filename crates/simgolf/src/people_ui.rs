@@ -150,6 +150,9 @@ impl App {
         let gg = &self.club.g[g];
         match gg.kind & 0xe0 {
             0x20 => tr("STR_PEOPLE_PRO").into(),
+            // the More visitors extra's visitors (sg_core::visitors)
+            sg_core::visitors::KIND_TOURING_PRO => tr("STR_PEOPLE_TOURING_PRO").into(),
+            sg_core::visitors::KIND_CELEBRITY => tr("STR_PEOPLE_CELEBRITY").into(),
             0 => {
                 let lvl = self.club.members.get(gg.roster.max(0) as usize).map(|m| (m.level & 7) as usize).unwrap_or(0);
                 tr(LEVEL_KEYS[lvl.min(5)]).into()
