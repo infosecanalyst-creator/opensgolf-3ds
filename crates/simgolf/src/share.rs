@@ -113,13 +113,30 @@ impl App {
 
     /// Files dropped on the window: shared courses and saved games, or a text file holding a course code.
     pub fn import_dropped(&mut self, name: &str, b: &[u8]) {
-        if is_save(b) {
+        let low = name.to_ascii_lowercase();
+        if low.ends_with(".sve") && !is_save(b) {
+            // the original SimGolf's files: its Top 10 table has the port's layout; its saved games cannot be read yet
+            match sg_core::top10::parse(b) {
+                Some(other) => self.import_top10(&other),
+                None => self.show_toast(&trf("STR_TOAST_ORIGINAL_SAVE", &[("FILE", &name)])),
+            }
+        } else if is_save(b) {
             self.import_save(b, Some(name));
         } else if let Some(c) = std::str::from_utf8(b).ok().and_then(decode) {
             self.import_save(&c, None);
         } else {
             self.show_toast(&trf("STR_ERROR_NOT_A_SAVED_GAME", &[("FILE", &name)]));
         }
+    }
+
+    /// The original SimGolf's Top 10 Designers (its top10.sve) laid into the port's table (sg_core::top10::merge).
+    fn import_top10(&mut self, other: &[sg_core::top10::Entry]) {
+        let mut t = self.load_top10();
+        let made = sg_core::top10::merge(&mut t, other);
+        if !sg_core::fsutil::write_file(self.top10_file(), &sg_core::top10::to_bytes(&t)) {
+            return self.show_toast(&trf("STR_ERROR_COULD_NOT_WRITE", &[("FILE", &self.top10_file().display())]));
+        }
+        self.show_toast(&trf("STR_TOAST_TOP10_IMPORTED", &[("COUNT", &made)]));
     }
 
     fn import_save(&mut self, b: &[u8], dropped: Option<&str>) {

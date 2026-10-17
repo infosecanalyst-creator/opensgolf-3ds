@@ -98,6 +98,10 @@ pub struct FileList {
     pub info: Option<SaveInfo>,
     /// The pointer is on the paste button (share.rs).
     pub paste_lit: bool,
+    /// The pointer is on the Load list's Import (1) or Export (2) button (the Course sharing extra; the port's own).
+    pub file_lit: u8,
+    /// The browser's file picker is open for Import a save file: its pick is polled each frame.
+    pub picking: bool,
     pub pro: Option<ProFile>,
     portrait_px: Option<Rgba>,
     portrait: Option<Image>,
@@ -208,6 +212,17 @@ fn top_c(s: &Ui, g: &mut Gfx, x: f32, y: f32, t: &str, size: f32, c: [f32; 4]) {
 
 /// The Course sharing extra's *Paste a course code* button on the championship course list (share.rs).
 const PASTE_RECT: Rect = Rect::new(414.0, 520.0, 176.0, 36.0);
+
+/// The Course sharing extra's *Import a save file...* and *Export this save...* buttons on Load Previous Game, where the
+/// course list has its paste button (the port's own: saved games to and from files the player keeps, issue #49).
+const IMPORT_RECT: Rect = Rect::new(414.0, 500.0, 176.0, 28.0);
+const EXPORT_RECT: Rect = Rect::new(414.0, 534.0, 176.0, 28.0);
+
+/// Whether Load Previous Game shows the Import and Export buttons: with the Course sharing extra, where the player can
+/// reach the files (not on Android, whose save folder is the app's own).
+fn file_buttons(kind: ListKind) -> bool {
+    kind == ListKind::Load && crate::extras::sharing() && !cfg!(target_os = "android")
+}
 
 /// The Save pictures extra's map of a course: one cell per tile (a cell per 2 x 2 tiles, or more, on large maps), coloured
 /// by the tile's terrain, paths over it, and the land the club does not own darker.
@@ -636,6 +651,24 @@ impl App {
             return;
         }
         f.paste_lit = false;
+        // the Course sharing extra's Import and Export buttons on Load Previous Game
+        f.file_lit = 0;
+        if file_buttons(f.kind) && (IMPORT_RECT.has(vx, vy) || EXPORT_RECT.has(vx, vy)) {
+            let import = IMPORT_RECT.has(vx, vy);
+            let sel = f.sel.and_then(|i| f.files.get(i)).cloned();
+            if import || sel.is_some() {
+                f.file_lit = if import { 1 } else { 2 };
+            }
+            self.hover = -1;
+            if click {
+                match sel {
+                    _ if import => self.pick_save_file(),
+                    Some(p) => self.export_save_file(&p),
+                    None => {}
+                }
+            }
+            return;
+        }
         let hit = list_hit(vx, vy);
         self.hover = hit;
         if !click {
@@ -798,18 +831,143 @@ impl App {
                 }
             }
         }
+        if file_buttons(f.kind) {
+            for (k, r, label) in [(1, IMPORT_RECT, "STR_FILES_IMPORT_SAVE"), (2, EXPORT_RECT, "STR_FILES_EXPORT_SAVE")] {
+                let on = k == 1 || sel.is_some();
+                let fill = if f.file_lit == k { rgba(0.15, 0.2, 0.45, 0.95) } else { rgba(0.08, 0.1, 0.3, 0.85) };
+                s.fill(g, r.x, r.y, r.w, r.h, fill);
+                let ink = if on { rgb(1.0, 1.0, 1.0) } else { rgb(0.5, 0.5, 0.6) };
+                s.text_centered(g, r.x + r.w / 2.0, r.y + 19.0, tr(label), 14.0, ink);
+            }
+        }
         if f.kind == ListKind::Course && crate::extras::sharing() {
             let r = PASTE_RECT;
             s.fill(g, r.x, r.y, r.w, r.h, if f.paste_lit { rgba(0.15, 0.2, 0.45, 0.95) } else { rgba(0.08, 0.1, 0.3, 0.85) });
             s.text_centered(g, r.x + r.w / 2.0, r.y + 24.0, tr("STR_FILES_PASTE_CODE"), 15.0, rgb(1.0, 1.0, 1.0));
         }
+        // what Import, Export or the paste button have to say: this screen has no ticker (only with the port's buttons on
+        // it, so the original's screen is unchanged)
+        if (file_buttons(f.kind) || f.kind == ListKind::Course && crate::extras::sharing())
+            && !self.toast.is_empty()
+            && self.clock < self.toast_until
+        {
+            draw_note(g, s, &self.toast);
+        }
         let go = f.loading == 2;
         if f.loading == 1 {
             f.loading = 2;
         }
+        let picking = f.picking;
         self.title.files = Some(f);
+        if picking {
+            self.poll_save_pick();
+        }
         if go {
             self.files_ok(g);
+        }
+    }
+
+    /// Load Previous Game's *Import a save file...*: the system's file picker (desktop) or the page's (browser), for a
+    /// saved game (.sgs), a shared course (.sgch), a text file with a course code, or the original's top10.sve; what is
+    /// picked goes where a file dropped on the window goes (share.rs). Test hook: SG_PICK_SAVE=FILE picks FILE.
+    pub fn pick_save_file(&mut self) {
+        if let Some(p) = std::env::var_os("SG_PICK_SAVE") {
+            return self.import_save_path(Path::new(&p));
+        }
+        #[cfg(all(feature = "picker", not(any(target_arch = "wasm32", target_os = "android"))))]
+        {
+            let picked = rfd::FileDialog::new()
+                .set_title(tr("STR_FILES_PICK_SAVE_TITLE"))
+                .add_filter("OpenSGolf", &["sgs", "sgch", "txt", "sve", "SGS", "SGCH", "TXT", "SVE"])
+                .pick_file();
+            if let Some(p) = picked {
+                self.import_save_path(&p);
+            }
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            // SAFETY: a plain call into the page's script, no arguments (web/opensgolf.js)
+            unsafe { crate::editor::web::sg_pick_save() };
+            if let Some(f) = self.title.files.as_mut() {
+                f.picking = true;
+            }
+        }
+        #[cfg(not(any(feature = "picker", target_arch = "wasm32")))]
+        {
+            // no picker in this build: the player copies the file into the folder
+            self.show_toast(&trf("STR_TOAST_SAVE_FOLDER", &[("FOLDER", &saved_games_dir().display())]));
+        }
+    }
+
+    /// Each frame while the browser's picker is open: a file it has read (web/opensgolf.js keeps it under picked/).
+    fn poll_save_pick(&mut self) {
+        #[cfg(target_arch = "wasm32")]
+        {
+            let mut buf = [0u8; 512];
+            // SAFETY: the page writes at most buf.len() bytes of the picked file's name into buf
+            let n = unsafe { crate::editor::web::sg_pick_poll(buf.as_mut_ptr(), buf.len()) };
+            if n >= 0 {
+                if let Some(f) = self.title.files.as_mut() {
+                    f.picking = false;
+                }
+                let name = String::from_utf8_lossy(&buf[..n as usize]).to_string();
+                self.import_save_path(&Path::new("picked").join(name));
+            }
+        }
+    }
+
+    fn import_save_path(&mut self, path: &Path) {
+        let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        match sg_core::fsutil::read_file(path) {
+            Some(b) => self.import_dropped(&name, &b),
+            None => {
+                self.ui_sound(0x18);
+                self.show_toast(&trf("STR_ERROR_FILE_NOT_FOUND", &[("FILE", &path.display())]));
+            }
+        }
+    }
+
+    /// Load Previous Game's *Export this save...*: a copy of the selected save where the player chooses (desktop), or a
+    /// download (browser). Test hook: SG_EXPORT_SAVE=FILE writes the copy to FILE.
+    pub fn export_save_file(&mut self, path: &Path) {
+        let Some(bytes) = sg_core::fsutil::read_file(path) else {
+            self.ui_sound(0x18);
+            return self.show_toast(&trf("STR_ERROR_FILE_NOT_FOUND", &[("FILE", &path.display())]));
+        };
+        let file = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "game.sgs".into());
+        // an autosave's '&' is no name for a file kept elsewhere
+        let file = file.trim_start_matches('&').to_string();
+        let name = row_name(path);
+        let to: Option<PathBuf> = if let Some(p) = std::env::var_os("SG_EXPORT_SAVE") {
+            Some(PathBuf::from(p))
+        } else if cfg!(target_arch = "wasm32") {
+            // the page hands a file under download/ to the browser as a download (web/opensgolf.js)
+            Some(Path::new("download").join(&file))
+        } else {
+            self.export_target(&file)
+        };
+        let Some(to) = to else { return };
+        if !sg_core::fsutil::write_file(&to, &bytes) {
+            return self.show_toast(&trf("STR_ERROR_COULD_NOT_WRITE", &[("FILE", &to.display())]));
+        }
+        println!("exported {} to {}", path.display(), to.display());
+        let shown = if cfg!(target_arch = "wasm32") { file } else { to.display().to_string() };
+        self.show_toast(&trf("STR_TOAST_SAVE_EXPORTED", &[("NAME", &name), ("FILE", &shown)]));
+    }
+
+    /// Where Export this save writes on the desktop: the system's save dialog; without one (a build without the picker,
+    /// Android) nothing is written and the toast says where the save is.
+    fn export_target(&mut self, file: &str) -> Option<PathBuf> {
+        #[cfg(all(feature = "picker", not(any(target_arch = "wasm32", target_os = "android"))))]
+        {
+            let _ = &self;
+            rfd::FileDialog::new().set_title(tr("STR_FILES_EXPORT_TITLE")).set_file_name(file).add_filter("OpenSGolf", &["sgs"]).save_file()
+        }
+        #[cfg(not(all(feature = "picker", not(any(target_arch = "wasm32", target_os = "android")))))]
+        {
+            let _ = file;
+            self.show_toast(&trf("STR_TOAST_SAVE_FOLDER", &[("FOLDER", &saved_games_dir().display())]));
+            None
         }
     }
 
@@ -1083,6 +1241,32 @@ impl App {
     }
 }
 
+/// A note over the bottom of the list screens, on one line or, when too long for the screen, on two broken at a space.
+fn draw_note(g: &mut Gfx, s: &Ui, text: &str) {
+    const SIZE: f32 = 15.0;
+    let lines = note_lines(text, |t| text_width(t, SIZE), 760.0);
+    let w = lines.iter().map(|l| text_width(l, SIZE)).fold(0.0, f32::max) + 24.0;
+    let h = 8.0 + 20.0 * lines.len() as f32;
+    let y = 594.0 - h;
+    s.fill(g, 400.0 - w / 2.0, y, w, h, rgba(0.1, 0.1, 0.3, 0.92));
+    for (k, l) in lines.iter().enumerate() {
+        s.text_centered(g, 400.0, y + 19.0 + 20.0 * k as f32, l, SIZE, rgb(1.0, 1.0, 0.8));
+    }
+}
+
+/// `text` as one line, or two broken at the space nearest the middle when it is wider than `max`.
+fn note_lines(text: &str, width: impl Fn(&str) -> f32, max: f32) -> Vec<String> {
+    if width(text) <= max {
+        return vec![text.to_string()];
+    }
+    let mid = text.len() / 2;
+    let at = text.char_indices().filter(|&(_, c)| c == ' ').map(|(i, _)| i).min_by_key(|&i| i.abs_diff(mid));
+    match at {
+        Some(i) => vec![text[..i].to_string(), text[i + 1..].to_string()],
+        None => vec![text.to_string()],
+    }
+}
+
 /// The Save dialog's Save and Cancel buttons (the port's own, as Enter and Esc).
 fn save_ok_button() -> Rect {
     Rect::new(290.0, 324.0, 105.0, 24.0)
@@ -1131,5 +1315,25 @@ mod tests {
         assert_eq!(list_hit(784.0, 400.0), 3);
         assert_eq!(list_hit(704.0, 555.0), 4);
         assert_eq!(list_hit(400.0, 300.0), -1);
+    }
+
+    #[test]
+    fn import_export_buttons_clear_of_the_art() {
+        // inside neither the exe's hit circles, the save pictures map (304..404) nor each other
+        for r in [IMPORT_RECT, EXPORT_RECT] {
+            for (x, y) in [(r.x, r.y), (r.x + r.w - 1.0, r.y), (r.x, r.y + r.h - 1.0), (r.x + r.w - 1.0, r.y + r.h - 1.0)] {
+                assert_eq!(list_hit(x, y), -1);
+            }
+            assert!(r.x > 404.0 && r.y + r.h <= 600.0);
+        }
+        const { assert!(IMPORT_RECT.y + IMPORT_RECT.h <= EXPORT_RECT.y) };
+    }
+
+    #[test]
+    fn long_notes_break_in_two() {
+        let w = |t: &str| t.len() as f32;
+        assert_eq!(note_lines("short", w, 10.0), ["short"]);
+        assert_eq!(note_lines("one two three four", w, 10.0), ["one two", "three four"]);
+        assert_eq!(note_lines("nospaceshere", w, 5.0), ["nospaceshere"]);
     }
 }
