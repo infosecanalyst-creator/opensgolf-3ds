@@ -19,7 +19,7 @@ followed down up to two levels):
 
 With none found it plays on the free base set (opensgolf-free), and the first time the title screen says so next to its
 **Use my SimGolf files...** button (top left). That button, and the same line at the end of Preferences, asks whether the
-files are a .zip, a CD .iso, or the folder itself, then opens the system's own picker for it (Windows and macOS
+files are a .zip, a CD image (.iso, .cdr), or a folder (installed, or the CD itself), then opens the system's own picker for it (Windows and macOS
 dialogs, the desktop's XDG portal on Linux, Android's file picker). A .zip is unpacked into `game` in the save folder, by the
 browser version's rules: the game folder is the one holding `Flics`, at any depth; `__MACOSX`, `._` files, videos and
 Windows programs are left out (crates/simgolf/src/import.rs). On macOS a picked folder is copied there as well (macOS's
@@ -32,11 +32,18 @@ saves the free set as the base set (Preferences > Content's choice) and starts a
 picker on the page and no such button; on Android the files are copied into the app (see Android below).
 The native importer also accepts ISO 9660/Joliet images of the SimGolf CD, including a .zip containing one .iso. It reads
 game files directly or unpacks the CD's InstallShield 6–16 `data1.hdr`/`data*.cab` archives, including sounds and voices.
-No mounting, original installer, or external extraction tool is needed. Other disc formats (BIN/CUE, MDF and UDF) and
-older InstallShield archives are not supported. The browser page continues to accept folders and ordinary game ZIPs.
+No mounting, original installer, or external extraction tool is needed. A Mac's Disk Utility "DVD/CD master" image (.cdr)
+is the same thing and is taken wherever an .iso is (in the picker, inside a .zip); an image is known by its contents
+(ISO 9660's `CD001` at sector 16), so a misnamed one works too. A compressed Mac .dmg cannot be read: the game says so and
+how to make a .cdr instead. **The CD as a folder**: a folder that is the mounted CD (`/Volumes/...` on a Mac, a drive on
+Windows), a copy of its files, or a folder above either (names in any case), with no installed game in it, is imported
+as its image would be: the `data1.hdr` and `data*.cab` found there are unpacked in place (crates/simgolf/src/iso.rs
+`unpack_folder`). A folder with neither the installed game nor the CD's installer is refused with a message saying so.
+Other disc formats (BIN/CUE, MDF and UDF) and older InstallShield archives are not supported. The browser page continues
+to accept folders and ordinary game ZIPs (a CD, image or .dmg there gets a message pointing to the desktop version).
 
-Test hook: `SG_PICK_FOLDER=DIR` takes DIR (a folder, .zip or .iso) as picked, right after start up (`SG_PICK_FOLDER=free`
-chooses the free graphics); on Android the intent extra `sg_pick` does the same
+Test hook: `SG_PICK_FOLDER=DIR` takes DIR (a folder, the CD as a folder, a .zip, .iso or .cdr) as picked, right after
+start up (`SG_PICK_FOLDER=free` chooses the free graphics; with `--png` the still waits for the import and the restart); on Android the intent extra `sg_pick` does the same
 (`adb shell am start -n org.opensgolf.game/.MainActivity --es sg_pick PATH`).
 
 A Windows release build is a windowed program (no console window); started from a console with options it writes its

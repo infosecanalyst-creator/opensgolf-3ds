@@ -759,11 +759,18 @@ function sgPlayFree() {
     sgStart();
 }
 
-const SG_ISO_HELP = "That is a SimGolf CD image (.iso). The browser cannot unpack a CD image; the desktop and Android versions " +
-    "can (Use my SimGolf files...). In the browser, pick the folder SimGolf was installed to, or a .zip of it.";
+const SG_ISO_HELP = "That is the SimGolf CD or an image of it (.iso, or a Mac's .cdr or .dmg). The browser cannot unpack the CD; the " +
+    "desktop and Android versions can (Use my SimGolf files...: the CD itself, an .iso or a .cdr; not a .dmg). In the browser, pick the " +
+    "folder SimGolf was installed to, or a .zip of it.";
+// a CD image by its contents, whatever its name: ISO 9660's "CD001" at sector 16 (as the native importer looks, iso.rs)
+async function sgIsCdImage(file) {
+    if (file.size < 16 * 2048 + 6) return false;
+    const b = new Uint8Array(await file.slice(16 * 2048 + 1, 16 * 2048 + 6).arrayBuffer());
+    return String.fromCharCode(...b) === "CD001";
+}
 async function sgUse(entries) {
     const root = sgRootOf(entries.map(e => e[0]));
-    if (root === null && entries.some(e => /\.(iso|bin|img)$/i.test(e[0]) || /(^|\/)data1\.cab$/i.test(e[0]))) {
+    if (root === null && entries.some(e => /\.(iso|cdr|dmg|bin|img)$/i.test(e[0]) || /(^|\/)data1\.cab$/i.test(e[0]))) {
         // a zip of the CD (an image, or the disc's InstallShield files): the desktop and Android versions unpack those
         sgStatus(SG_ISO_HELP);
         return;
@@ -788,6 +795,11 @@ async function sgUse(entries) {
 async function sgLoadFolder(fileList) {
     const files = Array.from(fileList).filter(f => !sgSkip(f.webkitRelativePath.toLowerCase()));
     if (sgRootOf(files.map(f => f.webkitRelativePath)) === null) {
+        // the CD itself (its installer, no installed game)
+        if (files.some(f => /(^|\/)data1\.(cab|hdr)$/i.test(f.webkitRelativePath))) {
+            sgStatus(SG_ISO_HELP);
+            return;
+        }
         sgStatus("That folder does not look like a SimGolf game folder (no Flics folder found). Pick the folder that contains Flics, Sounds and Data.");
         return;
     }
@@ -806,7 +818,7 @@ async function sgLoadFolder(fileList) {
 
 async function sgLoadZip(file) {
     if (!file) return;
-    if (/\.(iso|bin|cue|img)$/i.test(file.name)) {
+    if (/\.(iso|cdr|dmg|bin|cue|img)$/i.test(file.name) || await sgIsCdImage(file)) {
         sgStatus(SG_ISO_HELP);
         return;
     }

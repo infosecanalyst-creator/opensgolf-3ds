@@ -2,9 +2,11 @@
 
 Every [release](https://github.com/crspytopgn/opensgolf/releases) has a package for each platform: unpack it and
 double-click. It starts on the free base set. Have SimGolf? Choose **Use my SimGolf files...** on the title screen (or in
-Preferences) and pick either **a .zip** of your SimGolf folder (the same .zip the browser version takes) or **the folder**
-SimGolf is installed in (or the CD's `Program_Files_(ENGLISH)` copied to your computer, or any folder above it); the game
-remembers it. A .zip is unpacked into the game's own folder (`game` in the save folder), leaving out the videos, the
+Preferences) and pick either **a .zip** of your SimGolf folder (the same .zip the browser version takes), **a CD image**
+of the SimGolf disc (an `.iso`, a Mac's `.cdr`, or a .zip holding one), or **a folder**: the one SimGolf is installed in (or
+the CD's `Program_Files_(ENGLISH)` copied to your computer, or any folder above it), or **the SimGolf CD itself** (or a
+copy of all its files), which needs no installing: the game unpacks the disc's own installer files (`DATA1.HDR`,
+`DATA*.CAB`) as it does from an .iso. The game remembers it. A .zip is unpacked into the game's own folder (`game` in the save folder), leaving out the videos, the
 Windows programs and a Mac's `__MACOSX` files; afterwards the .zip is no longer needed. It also finds a usual install by itself (`Program Files\Maxis\SimGolf`, `~/SimGolf`, a Wine install, or a
 `SimGolf` folder next to the program; the full list is in [PLAYING.md](PLAYING.md#your-own-simgolf-files)). *Use the free
 graphics* goes back. No Terminal and no options are needed (`--game DIR` remains for scripts).
@@ -18,10 +20,22 @@ graphics* goes back. No Terminal and no options are needed (`--game DIR` remains
   double-click it once, then System Settings → Privacy & Security → *Open Anyway* (near the bottom), and confirm. If macOS
   says the app "is damaged and can't be opened", that is the download's quarantine flag, not damage: in Terminal run
   `xattr -dr com.apple.quarantine /Applications/OpenSGolf.app` once. Saves go to `~/Library/Application Support/OpenSGolf`.
-  **Your SimGolf files on a Mac**: choose **Use my SimGolf files...**, then **A .zip file** and pick the .zip (a folder
-  picker on a Mac greys out .zip files, which is why the game asks which one first), or **A folder** and pick the unpacked
-  SimGolf folder. Either way the files are copied into `~/Library/Application Support/OpenSGolf/game`, because macOS's
-  privacy rules may stop the game from reading Desktop, Documents or Downloads on a later start. When macOS asks whether
+  **Your SimGolf files on a Mac**: SimGolf is a Windows game, but nothing has to be installed. The simplest ways:
+
+  - **The CD itself**: put the SimGolf CD in (or plug in a USB CD drive), choose **Use my SimGolf files...**, then **A
+    folder, or the SimGolf CD**, and pick the CD under *Locations* in the picker's sidebar (it has the name Finder shows
+    for it, such as SIMGOLF; it lives in `/Volumes`). A folder with a copy of everything on the CD works the same way.
+  - **A CD image**: choose **A .zip, .iso or .cdr file** and pick an `.iso` of the CD, or a `.cdr` made with Disk Utility:
+    with the CD in, open Disk Utility, choose *File* → *New Image* → *Image from "(the CD)"*, set *Format* to **DVD/CD
+    master** and save; that makes a `.cdr` file (the same as an .iso; renaming it is not needed). Disk Utility's other
+    formats (compressed, read-only and the like) make a `.dmg`, which OpenSGolf cannot read: it says so and how to make the
+    .cdr instead.
+  - **An installed copy**: **A .zip, .iso or .cdr file** and a .zip of a SimGolf folder from a Windows PC (a folder picker
+    on a Mac greys out .zip files, which is why the game asks which one first), or **A folder, or the SimGolf CD** and the
+    unpacked SimGolf folder.
+
+  Either way the files are copied into `~/Library/Application Support/OpenSGolf/game` (the CD, image or .zip is not needed
+  afterwards), because macOS's privacy rules may stop the game from reading Desktop, Documents or Downloads on a later start. When macOS asks whether
   OpenSGolf may access files in one of those folders, choose *Allow*; if you chose *Don't Allow* before, turn OpenSGolf on
   under System Settings → Privacy & Security → Files and Folders (the game says so when it cannot read a folder). A right
   click is Ctrl+click or a two-finger click. No sound? The game plays on the Mac's current output device and follows a

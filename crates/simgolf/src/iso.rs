@@ -183,8 +183,7 @@ pub fn unpack(source: &Path, dest: &Path, progress: &mut dyn FnMut(usize, usize)
         }
         return Ok(result);
     }
-    let header =
-        entries.iter().find(|e| e.name.rsplit('/').next().is_some_and(|n| n.eq_ignore_ascii_case("data1.hdr"))).ok_or(Error::NoGame)?;
+    let header = entries.iter().find(|e| e.name.rsplit('/').next().is_some_and(|n| n.eq_ignore_ascii_case(HEADER))).ok_or(Error::NoGame)?;
     let parent = header.name.rsplit_once('/').map_or("", |(p, _)| p);
     let work = Workspace::new(dest)?;
     let mut cabinets = BTreeMap::new();
@@ -193,17 +192,110 @@ pub fn unpack(source: &Path, dest: &Path, progress: &mut dyn FnMut(usize, usize)
             continue;
         }
         let name = entry.name.rsplit('/').next().unwrap_or("").to_lowercase();
-        if let Some(number) = name.strip_prefix("data").and_then(|n| n.strip_suffix(".cab")).and_then(|n| n.parse::<u16>().ok()) {
+        if let Some(number) = cabinet_number(&name) {
             let path = work.path.join(&name);
             disc.copy(entry, &path)?;
             cabinets.insert(number, path);
         }
     }
-    if header.size > 16 * 1024 * 1024 {
+    if header.size > MAX_HEADER {
         return Err(bad("installer header is too large"));
     }
     let data = disc.read(header.offset, header.size as usize)?;
     unpack_cabinets(&data, &cabinets, dest, progress)
+}
+
+/// The installer's file list on the CD, beside its cabinets.
+const HEADER: &str = "data1.hdr";
+const MAX_HEADER: u64 = 16 * 1024 * 1024;
+
+/// The volume number of an InstallShield cabinet named like `DATA2.CAB` (any case).
+fn cabinet_number(name: &str) -> Option<u16> {
+    let low = name.to_lowercase();
+    low.strip_prefix("data").and_then(|n| n.strip_suffix(".cab")).and_then(|n| n.parse::<u16>().ok())
+}
+
+/// The port's own: true when `path` is a CD image by its contents (ISO 9660's "CD001" at sector 16), whatever its name: an
+/// .iso, Disk Utility's "DVD/CD master" .cdr (the same bytes), or a misnamed one.
+pub fn is_cd_image(path: &Path) -> bool {
+    let mut magic = [0; 5];
+    File::open(path).and_then(|mut f| f.seek(SeekFrom::Start(16 * 2048 + 1)).and_then(|_| f.read_exact(&mut magic))).is_ok()
+        && magic == *b"CD001"
+}
+
+/// The port's own: true for a Mac disk image in Apple's .dmg format (a compressed one cannot be read: its "koly" trailer
+/// ends the file), or a file named .dmg.
+pub fn is_dmg(path: &Path) -> bool {
+    if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("dmg")) {
+        return true;
+    }
+    let mut trailer = [0; 4];
+    File::open(path)
+        .and_then(|mut f| {
+            let len = f.metadata()?.len();
+            f.seek(SeekFrom::Start(len.checked_sub(512).ok_or(std::io::ErrorKind::UnexpectedEof)?))?;
+            f.read_exact(&mut trailer)
+        })
+        .is_ok()
+        && trailer == *b"koly"
+}
+
+/// The port's own: the folder in or under `dir` that holds the CD's installer (`data1.hdr`, names in any case): the mounted
+/// SimGolf CD (/Volumes/SIMGOLF on a Mac, a drive letter on Windows), a copy of its files, or a folder above either. The
+/// shallowest wins; a few levels and folders at most.
+pub fn disc_folder(dir: &Path) -> Option<PathBuf> {
+    let mut level = vec![dir.to_path_buf()];
+    let mut seen = 0;
+    for _ in 0..5 {
+        let mut next = Vec::new();
+        for d in &level {
+            let Ok(list) = std::fs::read_dir(d) else { continue };
+            let mut kids = Vec::new();
+            for e in list.flatten() {
+                let name = e.file_name().to_string_lossy().to_lowercase();
+                let kind = e.file_type().ok();
+                // a mounted CD's names are its own (Joliet's, often upper case); a copied one may have any case
+                if name == HEADER && !kind.is_some_and(|k| k.is_dir()) {
+                    return Some(d.clone());
+                }
+                if kind.is_some_and(|k| k.is_dir()) && name != "__macosx" && !name.starts_with('.') {
+                    kids.push(e.path());
+                }
+            }
+            kids.sort();
+            next.extend(kids);
+        }
+        seen += next.len();
+        if seen > 4000 {
+            break;
+        }
+        level = next;
+    }
+    None
+}
+
+/// The port's own: imports the SimGolf CD as a folder (`disc_folder` finds it in `dir`): the same cabinets `unpack` takes
+/// out of an .iso, read where they are.
+pub fn unpack_folder(dir: &Path, dest: &Path, progress: &mut dyn FnMut(usize, usize)) -> Result<Unzipped, Error> {
+    let disc = disc_folder(dir).ok_or(Error::NoGame)?;
+    let mut header = None;
+    let mut cabinets = BTreeMap::new();
+    for e in std::fs::read_dir(&disc)?.flatten() {
+        if e.file_type().is_ok_and(|k| k.is_dir()) {
+            continue;
+        }
+        let name = e.file_name().to_string_lossy().into_owned();
+        if name.eq_ignore_ascii_case(HEADER) {
+            header = Some(e.path());
+        } else if let Some(number) = cabinet_number(&name) {
+            cabinets.insert(number, e.path());
+        }
+    }
+    let header = header.ok_or(Error::NoGame)?;
+    if std::fs::metadata(&header)?.len() > MAX_HEADER {
+        return Err(bad("installer header is too large"));
+    }
+    unpack_cabinets(&std::fs::read(&header)?, &cabinets, dest, progress)
 }
 
 fn unpack_cabinets(
@@ -445,9 +537,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn extracts_cabinet_blocks_and_rejects_unsafe_paths() {
-        let work = Workspace::new(&std::env::temp_dir().join("opensgolf-test")).unwrap();
+    /// A small InstallShield installer: its header (data1.hdr) and one cabinet holding `Flics/a.fli` ("flic", compressed),
+    /// and the compressed body.
+    fn installer() -> (Vec<u8>, Vec<u8>, Vec<u8>) {
         let mut header = vec![0; 700];
         header[..4].copy_from_slice(b"ISc(");
         put32(&mut header, 4, 0x01006000);
@@ -472,6 +564,13 @@ mod tests {
         let mut cabinet = vec![0; 84];
         cabinet[..4].copy_from_slice(b"ISc(");
         cabinet.extend(&body);
+        (header, cabinet, body)
+    }
+
+    #[test]
+    fn extracts_cabinet_blocks_and_rejects_unsafe_paths() {
+        let work = Workspace::new(&std::env::temp_dir().join("opensgolf-test")).unwrap();
+        let (mut header, cabinet, body) = installer();
         let path = work.path.join("data1.cab");
         std::fs::write(&path, &cabinet).unwrap();
         let mut volumes = BTreeMap::from([(1, path)]);
@@ -517,6 +616,69 @@ mod tests {
         header[516..522].copy_from_slice(b"Flics\0");
         put64(&mut header, 594, u64::MAX);
         assert!(matches!(unpack_cabinets(&header, &volumes, &dest, &mut |_, _| {}), Err(Error::BadDisc(_))));
+    }
+
+    #[test]
+    fn the_cd_as_a_folder_imports_its_cabinets() {
+        let work = Workspace::new(&std::env::temp_dir().join("opensgolf-test")).unwrap();
+        let (header, cabinet, _) = installer();
+        // a folder above the CD's copy, whose names are the disc's (upper case) or any case
+        let disc = work.path.join("Backup/SIMGOLF");
+        std::fs::create_dir_all(disc.join("DIRECTX")).unwrap();
+        std::fs::write(disc.join("DATA1.HDR"), &header).unwrap();
+        std::fs::write(disc.join("Data1.Cab"), &cabinet).unwrap();
+        std::fs::write(disc.join("DIRECTX/DATA1.HDR.TXT"), b"").unwrap();
+        assert_eq!(disc_folder(&work.path.join("Backup")), Some(disc.clone()));
+        assert_eq!(disc_folder(&disc), Some(disc.clone()));
+        let dest = work.path.join("game");
+        assert_eq!(unpack_folder(&work.path, &dest, &mut |_, _| {}).unwrap().files, 1);
+        assert_eq!(std::fs::read(dest.join("Flics/a.fli")).unwrap(), b"flic");
+        // a cabinet missing from the copy is named
+        std::fs::remove_file(disc.join("Data1.Cab")).unwrap();
+        assert_eq!(unpack_folder(&disc, &dest, &mut |_, _| {}), Err(Error::BadDisc("missing data1.cab".into())));
+        // neither the installed game nor the CD
+        let empty = work.path.join("Empty/Sub");
+        std::fs::create_dir_all(&empty).unwrap();
+        assert_eq!(disc_folder(&work.path.join("Empty")), None);
+        assert_eq!(unpack_folder(&work.path.join("Empty"), &dest, &mut |_, _| {}), Err(Error::NoGame));
+    }
+
+    #[test]
+    fn a_cdr_or_misnamed_image_is_a_cd_and_a_dmg_is_refused() {
+        let work = Workspace::new(&std::env::temp_dir().join("opensgolf-test")).unwrap();
+        let data = image(true);
+        let dest = work.path.join("game");
+        // Disk Utility's "DVD/CD master" .cdr is the same bytes as an .iso; a misnamed one is known by its contents
+        for name in ["SIMGOLF.cdr", "disc.bin", "noext"] {
+            let source = work.path.join(name);
+            std::fs::write(&source, &data).unwrap();
+            assert!(is_cd_image(&source));
+            assert_eq!(crate::import::unpack_game(&source, &dest, &mut |_, _| {}).unwrap().files, 1, "{name}");
+            assert_eq!(std::fs::read(dest.join("Flics/a.fli")).unwrap(), b"flic");
+        }
+        let zip = work.path.join("disc.zip");
+        std::fs::write(&zip, sg_core::zip::write(&[("SIMGOLF.CDR", &data)])).unwrap();
+        assert_eq!(crate::import::unpack_game(&zip, &dest, &mut |_, _| {}).unwrap().files, 1);
+        // a compressed .dmg (UDIF: "koly" 512 bytes from the end), however it is named; a .zip of one
+        let mut dmg = vec![7; 4096];
+        dmg[4096 - 512..4096 - 508].copy_from_slice(b"koly");
+        for name in ["SIMGOLF.dmg", "picked"] {
+            let source = work.path.join(name);
+            std::fs::write(&source, &dmg).unwrap();
+            assert!(!is_cd_image(&source) && is_dmg(&source));
+            assert_eq!(crate::import::unpack_game(&source, &dest, &mut |_, _| {}), Err(Error::Dmg));
+        }
+        std::fs::write(&zip, sg_core::zip::write(&[("SIMGOLF.dmg", &dmg)])).unwrap();
+        assert_eq!(crate::import::unpack_game(&zip, &dest, &mut |_, _| {}), Err(Error::Dmg));
+        // an uncompressed .dmg that holds the CD's bytes is read as the CD
+        let source = work.path.join("raw.dmg");
+        std::fs::write(&source, &data).unwrap();
+        assert_eq!(crate::import::unpack_game(&source, &dest, &mut |_, _| {}).unwrap().files, 1);
+        // anything else is still "not a disc image"
+        let source = work.path.join("other.cdr");
+        std::fs::write(&source, vec![1; 40000]).unwrap();
+        assert!(!is_cd_image(&source) && !is_dmg(&source));
+        assert!(matches!(crate::import::unpack_game(&source, &dest, &mut |_, _| {}), Err(Error::BadDisc(_))));
     }
 
     /// Local integration check; copyrighted game data is never included in the repository.
@@ -595,5 +757,72 @@ mod tests {
         } else {
             println!("imported game folder kept at {}", dest.display());
         }
+    }
+
+    /// Every file of a game folder, by relative path (lower case, forward slashes), with its bytes' length and a checksum.
+    fn tree(dir: &Path) -> BTreeMap<String, (usize, u64)> {
+        sg_core::fsutil::walk(dir)
+            .into_iter()
+            .map(|f| {
+                let data = std::fs::read(&f).unwrap();
+                // FNV-1a: enough to tell two imports' bytes apart (lengths are compared too)
+                let sum = data.iter().fold(0xcbf2_9ce4_8422_2325u64, |h, &b| (h ^ b as u64).wrapping_mul(0x100_0000_01b3));
+                (f.strip_prefix(dir).unwrap().to_string_lossy().replace('\\', "/").to_lowercase(), (data.len(), sum))
+            })
+            .collect()
+    }
+
+    /// With SG_TEST_ISO=<a SimGolf CD image>: the same disc as a folder (the image's files written out under a folder of its
+    /// own, as a mounted CD shows them; or SG_TEST_CD_DIR=<a mounted CD or a copy of its files>, e.g. /Volumes/SIMGOLF) and
+    /// as a Mac's .cdr give game folders identical to the .iso's. SG_TEST_ISO_KEEP keeps the written-out disc folder.
+    /// Skipped without SG_TEST_ISO.
+    #[test]
+    fn a_real_disc_as_a_folder_or_a_cdr_imports_like_its_iso() {
+        let Some(iso) = std::env::var_os("SG_TEST_ISO") else { return };
+        let iso = PathBuf::from(iso);
+        let work = std::env::temp_dir().join(format!("sg_cd_real_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&work);
+        std::fs::create_dir_all(&work).unwrap();
+        let from_iso = tree_of_import(&work, |dest| unpack(&iso, dest, &mut |_, _| {}));
+        assert!(from_iso.len() > 1000, "{} files", from_iso.len());
+        // the CD as a folder: picked above it ("a folder that holds the CD"), its names as the disc has them
+        let cd = match std::env::var_os("SG_TEST_CD_DIR") {
+            Some(d) => PathBuf::from(d),
+            None => {
+                let mount = work.join("Volumes/SIMGOLF");
+                let file = File::open(&iso).unwrap();
+                let mut disc = Disc { len: file.metadata().unwrap().len(), file };
+                for entry in disc.entries().unwrap() {
+                    disc.copy(&entry, &mount.join(safe_rel(&entry.name).unwrap())).unwrap();
+                }
+                assert!(mount.join("DATA1.HDR").is_file() || mount.join("data1.hdr").is_file());
+                work.join("Volumes")
+            }
+        };
+        let from_folder = tree_of_import(&work, |dest| unpack_folder(&cd, dest, &mut |_, _| {}));
+        assert!(from_folder == from_iso, "the CD as a folder imports differently");
+        // Disk Utility's "DVD/CD master" image: the same bytes under another name, through the picker's path
+        let cdr = work.join("SIMGOLF.cdr");
+        std::fs::copy(&iso, &cdr).unwrap();
+        let from_cdr = tree_of_import(&work, |dest| crate::import::unpack_game(&cdr, dest, &mut |_, _| {}));
+        assert!(from_cdr == from_iso, "the .cdr imports differently");
+        let _ = std::fs::remove_file(&cdr);
+        println!("{} files imported identically from the .iso, the CD as a folder and the .cdr", from_iso.len());
+        if std::env::var_os("SG_TEST_ISO_KEEP").is_none() {
+            let _ = std::fs::remove_dir_all(&work);
+        } else {
+            println!("the disc as a folder kept at {}", cd.display());
+        }
+    }
+
+    /// Imports into a fresh folder in `work` with `import`, and returns what it holds (the folder removed again).
+    fn tree_of_import(work: &Path, import: impl FnOnce(&Path) -> Result<Unzipped, Error>) -> BTreeMap<String, (usize, u64)> {
+        let dest = work.join("game");
+        let _ = std::fs::remove_dir_all(&dest);
+        let got = import(&dest).expect("the disc imports");
+        let files = tree(&dest);
+        assert_eq!(got.files, files.len());
+        let _ = std::fs::remove_dir_all(&dest);
+        files
     }
 }

@@ -19,6 +19,8 @@ pub enum Error {
     BadDisc(String),
     /// No `Flics` folder anywhere in it: not a SimGolf game folder.
     NoGame,
+    /// A Mac disk image in Apple's .dmg format, which the game cannot read (a .cdr can be made instead).
+    Dmg,
     /// Reading or writing failed (the system's message).
     Io(String),
 }
@@ -165,25 +167,38 @@ pub struct Unzipped {
     pub unread: usize,
 }
 
-/// Imports a ZIP, an ISO, or a ZIP containing one ISO. ISO detection uses the file's contents so Android's temporary
-/// filename need not preserve the extension. All output is staged and validated by gamefiles before installation.
+/// A CD image's name inside a zip: an .iso, or a Mac's .cdr (the same bytes).
+fn cd_image_name(low: &str) -> bool {
+    low.ends_with(".iso") || low.ends_with(".cdr")
+}
+
+/// Imports a ZIP, a CD image (.iso, or a Mac's .cdr), or a ZIP containing one. CD image detection uses the file's contents
+/// so Android's temporary filename need not preserve the extension (and a misnamed image works). A .dmg is refused with
+/// its own message. All output is staged and validated by gamefiles before installation.
 pub fn unpack_game(source: &Path, dest: &Path, progress: &mut dyn FnMut(usize, usize)) -> Result<Unzipped, Error> {
     let mut file = File::open(source)?;
     let mut signature = [0; 2];
     file.read_exact(&mut signature)?;
     if signature != *b"PK" {
+        if !crate::iso::is_cd_image(source) && crate::iso::is_dmg(source) {
+            return Err(Error::Dmg);
+        }
         return crate::iso::unpack(source, dest, progress);
     }
     let all = entries(&mut file)?;
     if root_of(all.iter().filter(|e| !skip(&e.name.to_lowercase())).map(|e| e.name.as_str())).is_some() {
         return unzip_game(source, dest, progress);
     }
-    let images: Vec<_> = all.iter().filter(|e| !skip(&e.name.to_lowercase()) && e.name.to_lowercase().ends_with(".iso")).collect();
+    let images: Vec<_> = all.iter().filter(|e| !skip(&e.name.to_lowercase()) && cd_image_name(&e.name.to_lowercase())).collect();
     if images.len() != 1 {
         return Err(if images.is_empty() {
-            Error::NoGame
+            if all.iter().any(|e| e.name.to_lowercase().ends_with(".dmg")) {
+                Error::Dmg
+            } else {
+                Error::NoGame
+            }
         } else {
-            Error::BadDisc("ZIP contains several ISOs; choose the SimGolf disc ISO itself".into())
+            Error::BadDisc("ZIP contains several CD images; choose the SimGolf disc image itself".into())
         });
     }
     let image = images[0];
