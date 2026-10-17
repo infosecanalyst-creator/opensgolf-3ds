@@ -83,6 +83,54 @@ For scripted runs (any of `--png`, `--course`, `--edit`, `--golfer`, `--sandbox`
 
 Saving: Shift+S (or System Functions, Save the current game) opens the Save dialog ("SAVE GAME, edit name then press Enter"): Enter saves the whole game (land, golfers, holes, staff, money, calendar, theme pack and the random generator, so it continues exactly) to `Saved Games/<name>.sgs` in the save folder and shows "Game Saved"; Esc cancels. Shift+L (or Load a previous game) opens Load Previous Game over the game, whose arrow goes back to it. Test hooks: `--screen load|save|themes|credits|champ|pickapro` opens these screens (with `--property` the load and save screens open over a game), `SG_HOVER=n` lights button n (0 OK, 1 back, 2 up, 3 down, 4 delete) with its tooltip, `SG_SELECT=r` selects row r and `SG_CONFIRM=1` opens the delete box. Test hooks: `--save-game F` saves after the `--time` simulation, `--load-game F` starts from a saved game. `--cash N` sets the starting cash, `--time S` simulates S seconds before taking `--png`, `--edit "t:x,y,type;o"` paints one tile through the hole tool (type 0 tee, 1 green) and opens the hole being built, `--edit "e:x,y,n,r"` raises (or with a negative n lowers) every vertex of the square of side 2r + 1 round vertex x,y by n steps (stills of steps and retaining walls).
 
+## Saved games: where they are, backups and imports
+
+Every game you save is one file, `<name>.sgs`, in `Saved Games` in the save folder (autosaves and the quick save too, as
+`&Latest.sgs`, `&Quick.sgs` and so on). Courses and pros saved for championship play are in `Championship` beside it
+(`.sgch` and `.pro`), and the save folder also holds `settings.json` (preferences, keys, extras) and `top10.sve` (the Top 10
+Designers). A save file is complete on its own: copy it to another computer, or between the desktop and the browser
+versions, and it loads there.
+
+- **Windows**: `%APPDATA%\OpenSGolf\Saved Games` (type `%APPDATA%\OpenSGolf` in Explorer's address bar).
+- **macOS**: `~/Library/Application Support/OpenSGolf/Saved Games` (Finder: Go, Go to Folder...).
+- **Linux and the Steam Deck**: `~/.local/share/opensgolf/Saved Games`.
+- `OPENSGOLF_SAVE_DIR` puts the whole save folder elsewhere (a USB stick, a synced folder). A folder from before the
+  project was called OpenSGolf (`SimGolf` / `simgolf` in the same place) keeps being used.
+- **Android**: the app's own internal storage, which other apps cannot reach.
+
+On the desktop, **back up** by copying the save folder (or just `Saved Games`); to **bring a save in**, copy the `.sgs` into
+`Saved Games` (while the game runs too: Load Previous Game reads the folder each time it opens). Dropping a `.sgs` on the
+game's window does the same when the Course sharing extra is on.
+
+**In the browser** there is no folder: the page keeps the files in this browser's local storage for the site (the same
+names, under keys starting `simgolf-file:`). They stay until the site's data is cleared, but a private window, another
+browser or another device does not have them, so back them up. On the start page, **Your saved games: back up and restore**:
+
+- **Back up my saves** downloads `opensgolf-saves-<date>.zip`: every saved game, championship course and pro, the settings,
+  the Top 10 table and the accomplishment snapshots the page keeps (not your game files, the HD pack or content packs,
+  which have their own buttons). The files are stored in the zip as they are, under the same names as in a desktop save
+  folder, so the zip can also be unpacked into a desktop save folder.
+- **Restore saves...** takes such a backup (its files replace those of the same name), a zip of a desktop save folder
+  (whatever folder it was zipped from; the game copy, HD pack, photos and reports in it are left out, its content packs
+  go with the page's packs), or single files: saved games (`.sgs`, into Saved Games), championship courses (`.sgch`) and
+  pros (`.pro`), `settings.json`, and the original's `top10.sve`. A single file never replaces a save of the same name: it
+  is added as "Name (2)". The games are then in Load Previous Game.
+
+**In the game**, with the Course sharing extra on (System Functions > Preferences > OpenSGolf extras; not in the original),
+Load Previous Game has two buttons of the port's own under the list: **Import a save file...** (the system's file
+picker, or the browser's) adds a saved game, a shared course (`.sgch`, to the championship courses), a text file with a
+course code, or the original's `top10.sve`, as dropping it on the window does; **Export this save...** writes a copy of
+the selected save where you choose (the browser downloads it). Test hooks: `SG_PICK_SAVE=FILE` imports FILE without the
+picker, `SG_EXPORT_SAVE=FILE` exports to FILE.
+
+**The original SimGolf's files.** Its saved games (`Saved Games\<name>.sve` in its folder) cannot be read: what the exe
+writes is known only as a list of blocks (a 100-byte header text, then the cash, the clock, the difficulty and several
+counters, the object table, the map arrays, the golfer table, the property list and the history ring;
+docs/DECODE_WORLD2.md 6.2), not the layout of each block, so a conversion would be guesswork. Picking or dropping one says
+so. Its Top 10 Designers (`top10.sve`) has the same layout as the port's: importing it in the game adds its designers to
+your table (its made-up default designers are left out, and the best ten of both stay); the start page's Restore puts it in
+place of the browser's table, after asking.
+
 ## Course size
 
 OpenSGolf can start a game on a map larger than the original's. The choice is on Select Difficulty (Start New Game and
@@ -452,8 +500,10 @@ compare pixel for pixel with the build before the extras).
   `OPENSGOLF-COURSE-1:`) and saves the course for championship play. Send the code to a friend in a message or a text
   file. They press **Ctrl+V** (Cmd+V on a Mac) anywhere in OpenSGolf, or click *Paste a course code* on Play a
   Championship's course list, and the course joins their championship courses. Dropping a shared `.sgch` course, a saved
-  game (`.sgs`) or a text file holding a code on the window brings it in too. The challenge: your course record travels
-  with the course, and the course list shows it to your friend as the score to beat.
+  game (`.sgs`) or a text file holding a code on the window brings it in too, and so does Load Previous Game's *Import a
+  save file...* button (its *Export this save...* copies a save out; see "Saved games: where they are, backups and
+  imports"). The challenge: your course record travels with the course, and the course list shows it to your friend as
+  the score to beat.
 - **Landing map** (**Shift+D**, or *Information, Landing map on / off*): where the golfers' shots on a hole come to rest,
   as small dots on the course for the hole under the pointer (or the last one pointed at, or the one Hole Stats showed
   last): white the tee shots, yellow the second shots, orange the third, red the fourth and later, with a fainter pip

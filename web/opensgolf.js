@@ -103,6 +103,11 @@ miniquad_add_plugin({
             // download: it would be out of reach (and soon over the quota) in local storage. The accomplishment snapshots
             // the board shows (snapshots/accomp<n>.png) are kept like the saves.
             const low = sgKey(path);
+            // Load Previous Game's Export this save (files_ui.rs) writes under download/: a download, kept nowhere
+            if (low.startsWith("download/")) {
+                sgDownload(path.split(/[\\/]/).pop(), bytes);
+                return;
+            }
             if (low.endsWith(".png") && !/(^|\/)accomp\d+\.png$/.test(low)) {
                 sgDownload(path.split(/[\\/]/).pop(), bytes);
                 return;
@@ -201,6 +206,9 @@ miniquad_add_plugin({
         // The course editor's "Import heightmap..." (crates/simgolf/src/editor.rs): the page's file picker for a PNG. The
         // picture is kept under picked/ and its name handed over when the game asks (-1 until one is picked).
         env.sg_pick_file = function () { sgPickFile(); };
+        // Load Previous Game's Import a save file (files_ui.rs): the same picker for a saved game, shared course, course
+        // code or the original's top10.sve; the game reads it from picked/ and files it as a dropped file (share.rs)
+        env.sg_pick_save = function () { sgPickFile(".sgs,.sgch,.txt,.sve"); };
         env.sg_pick_poll = function (dst, cap) {
             if (sgPicked === null) return -1;
             const b = enc.encode(sgPicked);
@@ -216,10 +224,10 @@ const sgnet = { next: 1, reqs: new Map() };
 
 // The course editor's heightmap picker: the name of the picture picked, until the game takes it.
 let sgPicked = null;
-function sgPickFile() {
+function sgPickFile(accept = ".png,image/png") {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = ".png,image/png";
+    input.accept = accept;
     input.style.display = "none";
     input.addEventListener("change", () => {
         const f = input.files && input.files[0];
@@ -371,9 +379,289 @@ async function sgUnzip(buf, onEntry) {
     return unread;
 }
 
+// --- the saved games: backing up and restoring -------------------------------------------------------------------------------
+// What the game writes (saved games, championship courses and pros, settings.json, the Top 10 table, the accomplishment
+// snapshots) is kept in this browser's local storage under SAVE_PREFIX, by the file's path in the save folder. "Back up my
+// saves" hands all of it over as one .zip; "Restore saves..." takes such a zip (or a zip of a desktop save folder) or single
+// save files and puts them back where the game looks (docs/PLAYING.md, "Saved games in the browser").
+function sgSaveStatus(t) {
+    const el = document.getElementById("savestatus");
+    if (el) el.textContent = t;
+}
+function sgB64(bytes) {
+    let bin = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+}
+function sgUnB64(text) {
+    const bin = atob(text);
+    const bytes = new Uint8Array(bin.length);
+    for (let j = 0; j < bin.length; j++) bytes[j] = bin.charCodeAt(j);
+    return bytes;
+}
+// a marker of a start in progress (enhanced.rs), not a file to keep
+function sgTransient(low) {
+    return low === "enhanced_starting";
+}
+// Every kept file: [path, bytes], sorted by path.
+function sgSavedFiles() {
+    const out = [];
+    for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!k || !k.startsWith(SAVE_PREFIX)) continue;
+        const path = k.substring(SAVE_PREFIX.length);
+        if (sgTransient(sgKey(path))) continue;
+        try { out.push([path, sgUnB64(localStorage.getItem(k))]); } catch (e) {}
+    }
+    return out.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+}
+// The key a file is kept under, whatever the case of its name (lookups are case-insensitive, like the game's), or null.
+function sgStoredKey(path) {
+    const k = sgKey(path);
+    for (let i = 0; i < localStorage.length; i++) {
+        const lk = localStorage.key(i);
+        if (lk && lk.startsWith(SAVE_PREFIX) && sgKey(lk.substring(SAVE_PREFIX.length)) === k) return lk;
+    }
+    return null;
+}
+// Keeps a file the way the game's own writes are kept (sg_fs_write), in place of any copy of it under another case. False
+// when local storage is full.
+function sgKeepFile(path, bytes) {
+    sgAddFile(path, bytes);
+    try {
+        for (let old = sgStoredKey(path); old !== null && old !== SAVE_PREFIX + path; old = sgStoredKey(path)) localStorage.removeItem(old);
+        localStorage.setItem(SAVE_PREFIX + path, sgB64(bytes));
+        return true;
+    } catch (e) {
+        console.warn("could not keep " + path + " in local storage", e);
+        return false;
+    }
+}
+
+// A .zip with its files stored (not compressed again: the saves are compressed already), names in UTF-8.
+const sgCrcTable = (() => {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+        t[n] = c >>> 0;
+    }
+    return t;
+})();
+function sgCrc32(b) {
+    let c = 0xffffffff;
+    for (let i = 0; i < b.length; i++) c = sgCrcTable[(c ^ b[i]) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+}
+function sgZip(entries) {
+    const now = new Date();
+    const time = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
+    const date = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+    const parts = [], central = [];
+    let off = 0;
+    for (const [path, data] of entries) {
+        const name = enc.encode(path.replace(/\\/g, "/"));
+        const crc = sgCrc32(data);
+        const l = new DataView(new ArrayBuffer(30));
+        l.setUint32(0, 0x04034b50, true);
+        l.setUint16(4, 20, true); l.setUint16(6, 0x800, true); l.setUint16(8, 0, true);
+        l.setUint16(10, time, true); l.setUint16(12, date, true); l.setUint32(14, crc, true);
+        l.setUint32(18, data.length, true); l.setUint32(22, data.length, true); l.setUint16(26, name.length, true);
+        const c = new DataView(new ArrayBuffer(46));
+        c.setUint32(0, 0x02014b50, true);
+        c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x800, true); c.setUint16(10, 0, true);
+        c.setUint16(12, time, true); c.setUint16(14, date, true); c.setUint32(16, crc, true);
+        c.setUint32(20, data.length, true); c.setUint32(24, data.length, true); c.setUint16(28, name.length, true);
+        c.setUint32(42, off, true);
+        parts.push(new Uint8Array(l.buffer), name, data);
+        central.push(new Uint8Array(c.buffer), name);
+        off += 30 + name.length + data.length;
+    }
+    const csize = central.reduce((n, b) => n + b.length, 0);
+    const e = new DataView(new ArrayBuffer(22));
+    e.setUint32(0, 0x06054b50, true);
+    e.setUint16(8, entries.length, true); e.setUint16(10, entries.length, true);
+    e.setUint32(12, csize, true); e.setUint32(16, off, true);
+    return new Blob([...parts, ...central, new Uint8Array(e.buffer)], { type: "application/zip" });
+}
+
+function sgPlural(n, word) {
+    return n + " " + word + (n === 1 ? "" : "s");
+}
+function sgIsGame(path) {
+    const k = sgKey(path);
+    return k.startsWith("saved games/") && k.endsWith(".sgs");
+}
+
+function sgBackupSaves() {
+    const files = sgSavedFiles();
+    if (files.length === 0) {
+        sgSaveStatus("No saved games in this browser yet: nothing to back up.");
+        return;
+    }
+    const d = new Date();
+    const pad = n => String(n).padStart(2, "0");
+    const name = "opensgolf-saves-" + d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + ".zip";
+    const url = URL.createObjectURL(sgZip(files));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    const games = files.filter(([p]) => sgIsGame(p)).length;
+    sgSaveStatus("Downloaded " + name + ": " + sgPlural(games, "saved game") + " and " + sgPlural(files.length - games, "other file") +
+        " (settings, championship courses, records). Keep it somewhere safe; Restore saves... brings it back.");
+}
+
+const SG_SAVE_MAGIC = "SIMGOLF-NATIVE-SAVE\n";
+function sgIsSave(bytes) {
+    if (bytes.length < SG_SAVE_MAGIC.length) return false;
+    for (let i = 0; i < SG_SAVE_MAGIC.length; i++) if (bytes[i] !== SG_SAVE_MAGIC.charCodeAt(i)) return false;
+    return true;
+}
+// A free name in a folder for a single file brought in: "Name.sgs", else "Name (2).sgs"... (a different file of the same
+// name stays). "" when that very file is there already.
+function sgFreeName(dir, file, bytes) {
+    file = file.replace(/[\\/:*?"<>|]/g, "_");
+    const dot = file.lastIndexOf(".");
+    const stem = (dot > 0 ? file.substring(0, dot) : file).replace(/^[&.]+/, "") || "Imported";
+    const ext = dot > 0 ? file.substring(dot) : "";
+    const b64 = sgB64(bytes);
+    for (let n = 1; n < 100; n++) {
+        const path = dir + stem + (n === 1 ? "" : " (" + n + ")") + ext;
+        const old = sgStoredKey(path);
+        if (old === null) return path;
+        if (localStorage.getItem(old) === b64) return "";
+    }
+    return null;
+}
+
+// What a path in a restored zip becomes in the save folder, or null to leave it out: the files of a desktop save folder
+// that are not saves (the game's own copy, the HD pack, photos, translations, the crash and sound reports) stay out; packs
+// go with the content packs.
+function sgRestorePath(rel) {
+    const low = sgKey(rel);
+    if (low === "" || sgTransient(low) || sgSkip(low)) return null;
+    const top = low.split("/")[0];
+    if (["game", "hd", "photos", "lang", "picked", "download"].includes(top)) return null;
+    if (["crash.txt", "sound.txt", "opensgolf-shot.png"].includes(low)) return null;
+    if (low.endsWith(".png") && !/(^|\/)accomp\d+\.png$/.test(low)) return null;
+    return rel;
+}
+
+// The files of a zip to restore: [path in the save folder, bytes]. A backup from this page has them at its top; a zip of a
+// desktop save folder may hold them under the folder's name (whatever it was zipped from: the files sit beside "Saved
+// Games" and settings.json).
+async function sgZipSaves(buf) {
+    const entries = [];
+    await sgUnzip(buf, async (name, b) => { entries.push([name.replace(/\\/g, "/"), b]); });
+    let root = null;
+    for (const [name] of entries) {
+        const parts = name.split("/");
+        const i = parts.findIndex((p, k) => (p.toLowerCase() === "saved games" && k < parts.length - 1) ||
+            (p.toLowerCase() === "settings.json" && k === parts.length - 1));
+        if (i >= 0) {
+            const r = parts.slice(0, i).join("/");
+            if (root === null || r.length < root.length) root = r;
+        }
+    }
+    const out = [];
+    for (const [name, b] of entries) {
+        if (root && !name.startsWith(root + "/")) continue;
+        const rel = sgRestorePath(root ? name.substring(root.length + 1) : name);
+        if (rel !== null) out.push([rel, b]);
+    }
+    return out;
+}
+
+// "Restore saves...": backups (.zip) and single files (.sgs saved games, .sgch championship courses, .pro pros, the
+// original's top10.sve, settings.json). A backup's files replace those of the same name; a single file never replaces one.
+async function sgRestoreFiles(fileList) {
+    const files = Array.from(fileList || []);
+    if (files.length === 0) return;
+    let kept = 0, games = 0, full = 0, same = 0;
+    const packs = [], original = [], unknown = [];
+    const keep = (path, bytes) => {
+        if (sgKeepFile(path, bytes)) {
+            kept++;
+            if (sgIsGame(path)) games++;
+        } else full++;
+    };
+    for (const f of files) {
+        const bytes = new Uint8Array(await f.arrayBuffer());
+        const low = f.name.toLowerCase();
+        if (bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 3 && bytes[3] === 4) {
+            let entries;
+            try {
+                entries = await sgZipSaves(bytes.buffer);
+            } catch (e) {
+                unknown.push(f.name + " (" + e.message + ")");
+                continue;
+            }
+            if (entries.length === 0) unknown.push(f.name + " (no saves in it)");
+            for (const [rel, b] of entries) {
+                if (sgKey(rel).startsWith("packs/")) {
+                    sgAddFile(rel, b);
+                    packs.push([rel, b]);
+                } else keep(rel, b);
+            }
+            continue;
+        }
+        let path = null;
+        if (low === "top10.sve" && bytes.length === 1560) {
+            // the original SimGolf's Top 10 Designers (the same layout as the port's)
+            if (sgStoredKey("top10.sve") !== null && !confirm("Replace this browser's Top 10 Designers with the table in " + f.name +
+                "? (Import a save file... on the game's Load Previous Game adds it to yours instead.)")) continue;
+            path = "top10.sve";
+        } else if (low.endsWith(".sve")) {
+            original.push(f.name);
+            continue;
+        } else if (low.endsWith(".sgs") && sgIsSave(bytes)) {
+            path = sgFreeName("Saved Games/", f.name, bytes);
+        } else if ((low.endsWith(".sgch") && sgIsSave(bytes)) || low.endsWith(".pro")) {
+            path = sgFreeName("Championship/", f.name, bytes);
+        } else if (low === "settings.json") {
+            path = "settings.json";
+        } else {
+            unknown.push(f.name);
+            continue;
+        }
+        if (path === "") same++;
+        else if (path === null) full++;
+        else keep(path, bytes);
+    }
+    if (packs.length > 0) await sgStoreAdd(packs, "packs");
+    const say = [];
+    if (kept > 0 || packs.length > 0) {
+        say.push("Restored " + sgPlural(kept, "file") + " (" + sgPlural(games, "saved game") + ")" +
+            (packs.length ? " and " + sgPlural(packs.length, "content pack file") : "") + ". The games are in Load Previous Game.");
+    }
+    if (same > 0) say.push(sgPlural(same, "file") + " already in this browser.");
+    if (full > 0) say.push(sgPlural(full, "file") + " did not fit in this browser's storage; delete old saves in the game and try again.");
+    if (original.length > 0) say.push(original.join(", ") + ": saved games of the original SimGolf, which OpenSGolf cannot read yet (their layout is not decoded).");
+    if (unknown.length > 0) say.push(unknown.join(", ") + ": not a saved game or a backup (left out).");
+    sgSaveStatus(say.join(" ") || "Nothing to restore.");
+    sgSaveCount();
+}
+
+// The saved games kept in this browser, on the start page.
+function sgSaveCount() {
+    const el = document.getElementById("savecount");
+    if (!el) return;
+    const files = sgSavedFiles();
+    const games = files.filter(([p]) => sgIsGame(p)).length;
+    el.textContent = files.length === 0 ? "No saved games in this browser yet."
+        : "Kept in this browser: " + sgPlural(games, "saved game") + " (" + sgPlural(files.length, "file") + " in all).";
+}
+
 // --- starting --------------------------------------------------------------------------------------------------------------
 function sgStart() {
     sgRestoreSaves();
+    // ?classic in the address starts in Classic graphics: the same marker a run that stopped while Enhanced graphics were
+    // starting leaves behind (crates/simgolf/src/enhanced.rs), so the game turns Enhanced off and says so (issue #55)
+    if (new URLSearchParams(location.search).has("classic")) sgAddFile("enhanced_starting", new Uint8Array([49]));
     document.getElementById("picker").style.display = "none";
     const canvas = document.getElementById("glcanvas");
     // a right-click (or a Mac's Ctrl+click) is the game's: no browser menu over the canvas, which would also take the
@@ -593,6 +881,7 @@ async function sgForgetPacks() {
 }
 
 async function sgInit() {
+    sgSaveCount();
     const packs = await sgLoadStored("packs");
     if (packs.length > 0) {
         for (const [path, bytes] of packs) sgAddFile(path, bytes);

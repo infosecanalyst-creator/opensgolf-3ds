@@ -1303,11 +1303,13 @@ impl App {
 }
 
 #[cfg(target_arch = "wasm32")]
-mod web {
+pub(crate) mod web {
     #[link(wasm_import_module = "env")]
     extern "C" {
         /// Opens the page's file picker for a PNG (web/opensgolf.js).
         pub fn sg_pick_file();
+        /// Opens the page's file picker for a saved game, shared course or course code (Load Previous Game's Import).
+        pub fn sg_pick_save();
         /// The picked file's name (its bytes are kept under picked/), its length; -1 while nothing is picked.
         pub fn sg_pick_poll(dst: *mut u8, cap: usize) -> i32;
     }

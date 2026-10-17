@@ -940,6 +940,12 @@ STR_TOUCH_OPEN_HOLE                     :Open hole
 STR_TOUCH_TURN                          :Turn
 STR_TOUCH_SPEED                         :Speed
 STR_TOUCH_MESSAGE                       :Message
+# Enhanced graphics turned off at start because the last run stopped while they were starting (issue #55)
+STR_ENHANCED_RECOVERED                  :Enhanced graphics were switched off: the game stopped while they were starting last time. You can switch them on again in Preferences.
+STR_ENHANCED_SLOW_SCALER                :The game was running slowly: Enhanced graphics' pixel-art scaler is now off.
+STR_ENHANCED_SLOW_MSAA                  :The game was running slowly: Enhanced graphics' multisampling is now off.
+STR_ENHANCED_SLOW_EFFECTS               :The game was running slowly: Enhanced graphics' heaviest effects are now off.
+STR_ENHANCED_SLOW_OFF                   :The game was running slowly: Enhanced graphics are now off (Classic). They can be switched on again in Preferences.
 # The on-screen keyboard (browser on a touch screen, while a name is typed)
 STR_OSK_SHIFT                           :Shift
 STR_OSK_BACK                            :Delete
@@ -2672,6 +2678,15 @@ STR_TOAST_SHARE_COPIED                  :Course code for {COURSE} copied. Paste 
 STR_TOAST_SHARE_NO_CODE                 :No course code on the clipboard. Copy the whole code, then paste again.
 STR_TOAST_SHARE_COURSE_ADDED            :{COURSE} added to Play a Championship. Beat the course record!
 STR_TOAST_SHARE_GAME_ADDED              :{COURSE} added to Load Previous Game.
+# Load Previous Game's buttons with the Course sharing extra: saved games to and from files the player keeps
+STR_FILES_IMPORT_SAVE                   :Import a save file...
+STR_FILES_EXPORT_SAVE                   :Export this save...
+STR_FILES_PICK_SAVE_TITLE               :Import a saved game, shared course or course code
+STR_FILES_EXPORT_TITLE                  :Export the saved game
+STR_TOAST_SAVE_EXPORTED                 :{NAME} exported: {FILE}
+STR_TOAST_SAVE_FOLDER                   :Saved games are files in {FOLDER}. Copy a save file (.sgs) there to load it.
+STR_TOAST_ORIGINAL_SAVE                 :{FILE} is a saved game of the original SimGolf. OpenSGolf cannot read those yet (their layout is not decoded); continue it in the original, or start the course again here.
+STR_TOAST_TOP10_IMPORTED                :The original's Top 10 Designers were added to yours ({COUNT} made the list).
 # A game date: "March 3, 2001"
 STR_EXTRAS_DATE                         :{MONTH} {DAY}, {YEAR}
 # Under the Paused caption while People > Follow keeps the camera on someone

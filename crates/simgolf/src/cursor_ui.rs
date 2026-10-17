@@ -311,7 +311,7 @@ impl App {
         let view = match sp.views {
             v if v >= 8 => (quarter * 2 + facing * 2).rem_euclid(8),
             v if v >= 4 => (quarter + facing).rem_euclid(v),
-            2 => quarter % 2,
+            2 => (quarter + facing).rem_euclid(2),
             _ => 0,
         };
         let i = sp.frame_index(view, frame);

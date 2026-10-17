@@ -1047,6 +1047,25 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                     app.econ.cash
                 );
             }
+            b'k' => {
+                // test hook: Move/Eject the first golfer on the course (or golfer k:N) and drop him on the clubhouse
+                let gi = if v.is_empty() {
+                    (0..sg_core::golfer::SLOTS).find(|&g| app.club.g[g].hole > 0 && app.club.g[g].hole < 19)
+                } else {
+                    Some(at(0) as usize)
+                };
+                if let (Some(gi), true) = (gi, v.len() >= 2 && at(1) == 1) {
+                    // k:N,1: only held, as the card's button leaves him (the drop is the player's next click)
+                    app.card_ui.held = Some(gi);
+                    println!("holding golfer {gi}");
+                } else if let Some(gi) = gi {
+                    let (ca, cb) = app.club_anchor();
+                    let (wx, wz) = app.units_to_world(ca * sg_core::staff::UNIT + 512, cb * sg_core::staff::UNIT + 512);
+                    app.card_ui.held = Some(gi);
+                    app.golfer_click(wx, wz, true);
+                    println!("ejected golfer {gi} (hole now {})", app.club.g[gi].hole);
+                }
+            }
             b'o' => {
                 let ok = app.open_hole();
                 println!("open hole: {ok}, next hole {}", app.club.next_hole);
@@ -1191,6 +1210,7 @@ impl Stage {
         let hd_msg = app.init_hd(o.hd.unwrap_or_else(hd::saved_choice));
         // Enhanced graphics (enhanced.rs), also before any art: the textures carry its filtering
         enhanced::init(o.enhanced);
+        let enhanced_recovered = enhanced::take_recovered();
         // the OpenSGolf extras' ticks (extras.rs)
         extras::init(o.no_extras);
         // the player's keys (controls.rs)
@@ -1418,6 +1438,10 @@ impl Stage {
             if o.png_out.is_none() && gamefiles::take_once("sound_problem_shown", &msg) {
                 app.show_notice(&msg);
             }
+        }
+        // Enhanced graphics turned themselves off: the last run stopped while they were starting (enhanced.rs)
+        if enhanced_recovered && o.png_out.is_none() {
+            app.show_notice(sg_core::lang::tr("STR_ENHANCED_RECOVERED"));
         }
         // the last run crashed: the report, to copy and send (android.rs)
         #[cfg(target_os = "android")]
@@ -2720,6 +2744,17 @@ impl EventHandler for Stage {
     }
 
     fn draw(&mut self) {
+        enhanced::trial_frame();
+        // too slow for the Enhanced options in use: the costliest go, a step at a time (enhanced.rs, issue #55)
+        if self.png_out.is_none() {
+            if let Some((s, what)) = enhanced::guard_frame(self.app.clock) {
+                println!("Enhanced graphics: the game is too slow, {what}");
+                if self.app.apply_enhanced(&mut self.g, s) {
+                    self.app.ui_ok &= load_art(&mut self.app, &mut self.g);
+                }
+                self.app.show_toast(sg_core::lang::tr(what));
+            }
+        }
         match self.app.hd_frame_pass(&mut self.g) {
             Some(pass) => {
                 self.draw_frame(Some(pass));

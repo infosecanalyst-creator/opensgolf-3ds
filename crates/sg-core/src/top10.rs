@@ -140,6 +140,32 @@ pub fn insert(t: &mut Vec<Entry>, e: Entry) -> Option<usize> {
     Some(i)
 }
 
+/// The course id given to the entries brought in from another table (`merge`): never a course of this game's, so a
+/// later result of one of its courses does not replace them.
+pub const IMPORTED: i32 = -2;
+
+/// The port's own: another table (the original SimGolf's top10.sve, which has the same layout) laid into this one. Its
+/// made-up default designers (course id -1) are left out, entries already in the table are not added twice, and the best
+/// ten of both stay, ranked by score (ties keep this table's first). Returns how many of the other table's entries made it.
+pub fn merge(t: &mut Vec<Entry>, other: &[Entry]) -> usize {
+    let same = |a: &Entry, b: &Entry| {
+        a.name == b.name && a.course == b.course && a.fun == b.fun && a.skill == b.skill && a.cash == b.cash && a.difficulty == b.difficulty
+    };
+    let mut added = Vec::new();
+    for e in other.iter().filter(|e| e.course_id != -1) {
+        if !t.iter().chain(added.iter()).any(|x| same(x, e)) {
+            added.push(Entry { course_id: IMPORTED, ..e.clone() });
+        }
+    }
+    let first_new = t.len();
+    let mut all: Vec<(usize, Entry)> = t.drain(..).chain(added).enumerate().collect();
+    all.sort_by_key(|(i, e)| (std::cmp::Reverse(e.score()), *i));
+    all.truncate(COUNT);
+    let made = all.iter().filter(|(i, _)| *i >= first_new).count();
+    t.extend(all.into_iter().map(|(_, e)| e));
+    made
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -161,5 +187,48 @@ mod tests {
         assert_eq!(insert(&mut t, Entry { fun: 3000, ..strong }), Some(0));
         assert_eq!(t.len(), 10);
         assert_eq!(t.iter().filter(|e| e.course_id == 7).count(), 1);
+    }
+
+    #[test]
+    fn merge_another_table() {
+        let mut rng = ExeRng::from_clock(99);
+        let mut ours = defaults(&mut rng);
+        let mine = Entry {
+            name: "Me".into(),
+            course: "Home".into(),
+            fun: 900,
+            skill: 900,
+            cash: 9000,
+            difficulty: 1,
+            course_id: 3,
+            ..Default::default()
+        };
+        insert(&mut ours, mine.clone());
+        // the original's file: its own defaults and two real courses, one far ahead, one too weak for the list
+        let mut theirs = defaults(&mut ExeRng::from_clock(5));
+        theirs[0] = Entry {
+            name: "Old".into(),
+            course: "Desert Links".into(),
+            fun: 5000,
+            skill: 5000,
+            cash: 50000,
+            difficulty: 3,
+            course_id: 1,
+            ..Default::default()
+        };
+        theirs[9] = Entry { name: "Old".into(), course: "Weak".into(), course_id: 2, ..Default::default() };
+        let file = to_bytes(&theirs);
+        let other = parse(&file).unwrap();
+        assert_eq!(merge(&mut ours, &other), 1);
+        assert_eq!(ours.len(), COUNT);
+        assert_eq!(ours[0].course, "Desert Links");
+        assert_eq!(ours[0].course_id, IMPORTED);
+        assert!(ours.contains(&mine));
+        assert!(ours.windows(2).all(|w| w[0].score() >= w[1].score()));
+        // the original's made-up designers stay out, and a second import adds nothing
+        assert!(!ours.iter().any(|e| e.course == "Weak"));
+        let before = ours.clone();
+        assert_eq!(merge(&mut ours, &other), 0);
+        assert_eq!(ours, before);
     }
 }
