@@ -1,6 +1,7 @@
 //! Preferences > Keyboard controls > Change keys (the port's own screen, controls.rs): every action of the course screen
 //! with its key; a click on one waits for its new key, Esc cancels the wait. Keys that answer to two actions are printed in
-//! red with a warning; the WASD camera and Reset to defaults are buttons under the list. Drawn as the Keyboard controls screen
+//! red with a warning; the WASD camera, Reset to defaults and the two presets (controls.rs Preset: the original's controls
+//! or the modern ones, the port's own) are buttons under the list. Drawn as the Keyboard controls screen
 //! is (keys_ui.rs), on its box; the OK tick goes back to that screen.
 //!
 //! Also here: the interface hidden with U during play, and the hint on how to bring it back.
@@ -56,8 +57,8 @@ fn row_rect(i: usize) -> Rect {
 }
 
 fn button(k: usize) -> Rect {
-    // previous, next, WASD camera, reset
-    let (x, w) = [(24.0, 80.0), (110.0, 80.0), (256.0, 170.0), (432.0, 150.0)][k];
+    // previous, next, WASD camera, reset, the Original and Modern presets
+    let (x, w) = [(24.0, 64.0), (92.0, 64.0), (162.0, 120.0), (288.0, 110.0), (404.0, 110.0), (518.0, 110.0)][k];
     Rect::new(BOX.x + x, BOX.y + BOX.h - 54.0, w, 20.0)
 }
 
@@ -137,6 +138,14 @@ impl App {
             controls::save(controls::Settings::default());
             r.status = Some((tr("STR_CTL_RESET_DONE").to_string(), false));
             return;
+        }
+        for (k, p) in controls::Preset::ALL.into_iter().enumerate() {
+            if button(4 + k).has(x, y) {
+                controls::apply_preset(p);
+                let done = if p == controls::Preset::Modern { "STR_CTL_PRESET_MODERN_DONE" } else { "STR_CTL_PRESET_ORIGINAL_DONE" };
+                r.status = Some((tr(done).to_string(), false));
+                return;
+            }
         }
         let page = r.page;
         if let Some(i) = (0..ACTIONS.len()).find(|&i| place(i).0 == page && row_rect(i).has(x, y)) {
@@ -235,7 +244,16 @@ impl App {
         let n = pages();
         let wasd = trf("STR_CTL_WASD", &[("STATE", &tr(if set.wasd { "STR_CTL_ON" } else { "STR_CTL_OFF" }))]);
         let page_ok = [r.page > 0, r.page + 1 < n];
-        let labels = [tr("STR_CONTENT_PREVIOUS").to_string(), tr("STR_CONTENT_NEXT").to_string(), wasd, tr("STR_CTL_RESET").to_string()];
+        let labels = [
+            tr("STR_CONTENT_PREVIOUS").to_string(),
+            tr("STR_CONTENT_NEXT").to_string(),
+            wasd,
+            tr("STR_CTL_RESET").to_string(),
+            tr(controls::Preset::Original.text()).to_string(),
+            tr(controls::Preset::Modern.text()).to_string(),
+        ];
+        // the preset in use is lit in the yellow the original's hire dialog marks its choice with (0x7f40)
+        let preset = controls::Preset::of(&controls::preset_values_now());
         for (k, label) in labels.iter().enumerate() {
             if k < 2 && n < 2 {
                 continue;
@@ -243,7 +261,15 @@ impl App {
             let b = button(k);
             let ok = k >= 2 || page_ok[k];
             let lit = ok && b.has(px, py);
-            s.fill(g, b.x, b.y, b.w, b.h, if lit { rgb(0.85, 0.85, 1.0) } else { rgb(0.47, 0.47, 0.70) });
+            let chosen = k >= 4 && preset == Some(controls::Preset::ALL[k - 4]);
+            let fill = if lit {
+                rgb(0.85, 0.85, 1.0)
+            } else if chosen {
+                c15(0x7f40)
+            } else {
+                rgb(0.47, 0.47, 0.70)
+            };
+            s.fill(g, b.x, b.y, b.w, b.h, fill);
             s.put_centered(g, F_ARIAL10, b.x + b.w / 2.0, b.y + 4.0, label, if ok { navy } else { grey });
         }
         let line = match &r.status {
@@ -286,6 +312,11 @@ mod tests {
             let r = row_rect(i);
             assert!(r.y + r.h <= button(0).y, "{} runs into the buttons", ACTIONS[i].id);
         }
+        // the buttons in a row, clear of each other and of the OK tick
+        for k in 0..5 {
+            assert!(button(k).x + button(k).w < button(k + 1).x);
+        }
+        assert!(button(5).x + button(5).w < ok_tick().x);
         for i in 0..ACTIONS.len() {
             for j in i + 1..ACTIONS.len() {
                 if place(i).0 == place(j).0 {

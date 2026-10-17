@@ -550,9 +550,138 @@ pub fn key_label(id: &str) -> String {
     settings().binding(action(id)).map(Binding::label).unwrap_or_default()
 }
 
+// ---- the controls presets (Change keys screen) ------------------------------------------------------------------------------
+
+/// The Change keys screen's presets (the port's own): one click sets the keys and the existing options that decide how
+/// moving round the course and building feel. Nothing changes until one is clicked; either one is undone by clicking the
+/// other (both put every key the player moved back, so the two are the whole of what they set).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Preset {
+    /// Every key at the original's default, the WASD camera off, and the options below off.
+    Original,
+    /// The WASD camera, zooming towards the pointer (an OpenSGolf extra), drag to place (an OpenSGolf extra) and Enhanced
+    /// graphics' smooth camera tick (which counts only while Enhanced graphics is on; the preset leaves the master switch
+    /// alone).
+    Modern,
+}
+
+/// What a preset sets.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PresetValues {
+    pub keys: Settings,
+    pub zoom_pointer: bool,
+    pub drag_place: bool,
+    pub smooth_camera: bool,
+}
+
+impl Preset {
+    pub const ALL: [Preset; 2] = [Preset::Original, Preset::Modern];
+
+    pub fn values(self) -> PresetValues {
+        let modern = self == Preset::Modern;
+        PresetValues {
+            keys: Settings { wasd: modern, keys: BTreeMap::new() },
+            zoom_pointer: modern,
+            drag_place: modern,
+            smooth_camera: modern,
+        }
+    }
+
+    /// The button's text key.
+    pub fn text(self) -> &'static str {
+        match self {
+            Preset::Original => "STR_CTL_PRESET_ORIGINAL",
+            Preset::Modern => "STR_CTL_PRESET_MODERN",
+        }
+    }
+
+    /// The preset these values are, if any.
+    pub fn of(v: &PresetValues) -> Option<Preset> {
+        Preset::ALL.into_iter().find(|p| p.values() == *v)
+    }
+}
+
+/// The values a preset sets, as they are now.
+pub fn preset_values_now() -> PresetValues {
+    let x = crate::extras::settings();
+    PresetValues {
+        keys: settings(),
+        zoom_pointer: x.zoom_pointer,
+        drag_place: x.drag_place,
+        smooth_camera: crate::enhanced::settings().smooth_camera,
+    }
+}
+
+/// Puts a preset in use and saves what it sets (the keys, the two interface extras' ticks and the smooth camera tick).
+pub fn apply_preset(p: Preset) {
+    let smooth = crate::enhanced::settings().smooth_camera;
+    put_preset(p);
+    save(settings());
+    crate::extras::save(&crate::extras::settings());
+    if crate::enhanced::settings().smooth_camera != smooth {
+        crate::enhanced::save(&crate::enhanced::settings());
+    }
+}
+
+/// Puts a preset in use (not saved): its keys, and its options with every other option left as it is.
+fn put_preset(p: Preset) {
+    let v = p.values();
+    set(v.keys);
+    let mut x = crate::extras::settings();
+    (x.zoom_pointer, x.drag_place) = (v.zoom_pointer, v.drag_place);
+    crate::extras::set(x);
+    let mut e = crate::enhanced::settings();
+    e.smooth_camera = v.smooth_camera;
+    crate::enhanced::set(e);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn presets_set_the_original_or_the_modern_controls() {
+        let o = Preset::Original.values();
+        // the original: every key its default, nothing else on
+        assert_eq!(o.keys, Settings::default());
+        assert!(!o.zoom_pointer && !o.drag_place && !o.smooth_camera);
+        for i in 0..ACTIONS.len() {
+            assert_eq!(o.keys.binding(i), Some(ACTIONS[i].default), "{}", ACTIONS[i].id);
+            assert_eq!(o.keys.extra(i), None);
+        }
+        let m = Preset::Modern.values();
+        assert!(m.keys.wasd && m.keys.keys.is_empty() && m.zoom_pointer && m.drag_place && m.smooth_camera);
+        // the modern keys clash nowhere (the WASD camera moves water and sand out of the way)
+        assert!((0..ACTIONS.len()).all(|i| m.keys.conflicts(i).is_empty()));
+        assert_eq!(Preset::of(&o), Some(Preset::Original));
+        assert_eq!(Preset::of(&m), Some(Preset::Modern));
+        // a key of the player's own, or one option changed, is neither preset
+        let mut k = m.clone();
+        k.keys.bind(action("zoom_in"), Some(plain(KeyCode::G)));
+        assert_eq!(Preset::of(&k), None);
+        assert_eq!(Preset::of(&PresetValues { drag_place: false, ..m.clone() }), None);
+    }
+
+    #[test]
+    fn a_preset_is_undone_by_the_other() {
+        // (the settings in use are this test thread's own; nothing is saved)
+        crate::extras::set(crate::extras::Settings::ALL_OFF);
+        let mut moved = Settings::default();
+        moved.bind(action("water"), Some(plain(KeyCode::Q)));
+        set(moved);
+        assert_eq!(Preset::of(&preset_values_now()), None);
+        put_preset(Preset::Modern);
+        assert_eq!(Preset::of(&preset_values_now()), Some(Preset::Modern));
+        // the other extras are left as they were
+        let x = crate::extras::Settings { zoom_pointer: true, drag_place: true, ..crate::extras::Settings::ALL_OFF };
+        assert_eq!(crate::extras::settings(), x);
+        put_preset(Preset::Original);
+        assert_eq!(Preset::of(&preset_values_now()), Some(Preset::Original));
+        assert_eq!(crate::extras::settings(), crate::extras::Settings::ALL_OFF);
+        assert_eq!(settings(), Settings::default());
+        put_preset(Preset::Modern);
+        assert_eq!(crate::extras::settings(), x);
+    }
 
     #[test]
     fn defaults_pass_every_key_through_unchanged() {

@@ -1048,6 +1048,19 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                     app.econ.cash
                 );
             }
+            b'W' if item.len() > 2 && v.len() >= 5 => {
+                // drag to place (build_tools.rs): a row of kind `kind` W:x0,y0,x1,y1,kind through the one-click placement,
+                // then what it cost (whatever the extra's tick)
+                app.build_idx = at(4).clamp(0, 19) as usize;
+                app.ensure_land();
+                app.sync_course();
+                let tiles = app.row_area((at(0), at(1)), (at(2), at(3)));
+                let (n, cost) = build_tools::area_cost(&tiles, |x, y| app.row_cost_at(x, y));
+                let cash = app.econ.cash;
+                app.place_row((at(0), at(1)), (at(2), at(3)));
+                app.sync_course();
+                println!("row {item}: {} places, {n} to place for {cost} units, cash {cash} -> {}", tiles.len(), app.econ.cash);
+            }
             b'k' => {
                 // test hook: Move/Eject the first golfer on the course (or golfer k:N) and drop him on the clubhouse
                 let gi = if v.is_empty() {
@@ -1976,8 +1989,10 @@ impl Stage {
             }
             return;
         }
-        // Esc first puts the tape or a rectangle under way away
+        // Esc first puts the tape or a rectangle or row under way away (a row's drag then places nothing more)
+        let row = self.app.bt.row_from.is_some();
         if k == KeyCode::Escape && self.app.build_tools_cancel() {
+            self.editing &= !row;
             return;
         }
         // the port's own: the whole interface hidden or shown again (u; controls_ui.rs)
@@ -3137,6 +3152,11 @@ impl EventHandler for Stage {
         if button == MouseButton::Right && self.app.bt.rect_from.take().is_some() {
             return;
         }
+        // and a drag to place's row (the OpenSGolf extra)
+        if button == MouseButton::Right && self.app.bt.row_from.take().is_some() {
+            self.editing = false;
+            return;
+        }
         // a click on an open hole's flag shows its Hole Stats, as in the original (issue #44)
         if ui_ok
             && button == MouseButton::Left
@@ -3170,6 +3190,8 @@ impl EventHandler for Stage {
             }
             // the terrain brush's rectangle (Shift) and fill (Alt), the port's own (build_tools.rs)
             match self.app.brush_area_press(self.shift, self.alt) {
+                // with the drag to place extra a row kind starts a row instead (placed on release)
+                build_tools::AreaPress::None if self.app.row_press(self.shift) => {}
                 build_tools::AreaPress::None => self.app.apply_tool(self.shift, false),
                 build_tools::AreaPress::Rect => {}
                 build_tools::AreaPress::Filled => self.editing = false,
@@ -3193,12 +3215,13 @@ impl EventHandler for Stage {
             self.photo_button(false, button, x, y);
             return;
         }
-        // a rectangle under way ends with the left button only; it is painted before the undo step is kept
-        if button != MouseButton::Left && self.app.bt.rect_from.is_some() {
+        // a rectangle or row under way ends with the left button only; it is painted or placed before the undo step is kept
+        if button != MouseButton::Left && (self.app.bt.rect_from.is_some() || self.app.bt.row_from.is_some()) {
             return;
         }
         if button == MouseButton::Left {
             self.app.brush_area_release();
+            self.app.row_release();
         }
         if self.dragging {
             self.app.drag_state(false, now());

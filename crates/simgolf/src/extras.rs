@@ -26,6 +26,9 @@
 //! * history graphs (graphs.rs): the club's and each hole's months as line graphs on a page of their own (Shift+Y).
 //! * zoom towards the pointer (enhanced.rs zoom_anchor): the wheel keeps the ground under the pointer where it is. Left out
 //!   of the one-click OpenSGolf extras: it changes how the original's zoom feels.
+//! * drag to place (build_tools.rs row_*): a drag with a garden item or a ball washer lays a row of them from the press to
+//!   the release. Left out of the one-click OpenSGolf extras like zooming towards the pointer: it changes what the
+//!   original's drag does.
 //!
 //! With every extra off the game draws and plays exactly as before they existed (each hook asks its switch first).
 use serde::{Deserialize, Serialize};
@@ -52,6 +55,7 @@ pub struct Settings {
     pub update_check: bool,
     pub graphs: bool,
     pub zoom_pointer: bool,
+    pub drag_place: bool,
 }
 
 impl Settings {
@@ -73,6 +77,7 @@ impl Settings {
         update_check: false,
         graphs: true,
         zoom_pointer: false,
+        drag_place: false,
     };
     pub const ALL_OFF: Settings = Settings {
         people: false,
@@ -90,6 +95,7 @@ impl Settings {
         update_check: false,
         graphs: false,
         zoom_pointer: false,
+        drag_place: false,
     };
 
     /// The ticks as the Extras box's checkbox bits (in `UI_KEYS` order).
@@ -110,6 +116,7 @@ impl Settings {
             self.update_check,
             self.graphs,
             self.zoom_pointer,
+            self.drag_place,
         ]
         .iter()
         .enumerate()
@@ -134,13 +141,15 @@ impl Settings {
             update_check: on(12),
             graphs: on(13),
             zoom_pointer: on(14),
+            drag_place: on(15),
         }
     }
 
     /// The ticks that make the game style (extras_ui.rs GameStyle): all but the two pauses, which leave the game as it is,
-    /// the update check, which has nothing to do with the game, and zooming towards the pointer, a matter of the mouse.
+    /// the update check, which has nothing to do with the game, and zooming towards the pointer and drag to place, matters
+    /// of the mouse.
     pub fn style(&self) -> Settings {
-        Settings { pause_background: false, pause_events: false, update_check: false, zoom_pointer: false, ..*self }
+        Settings { pause_background: false, pause_events: false, update_check: false, zoom_pointer: false, drag_place: false, ..*self }
     }
 }
 
@@ -152,7 +161,7 @@ impl Default for Settings {
 
 /// The interface extras' lines on the Extras box's Interface page (extras_ui.rs), one tick per extra in `Settings::bits`
 /// order (text keys in lang/en.txt).
-pub const UI_KEYS: [&str; 15] = [
+pub const UI_KEYS: [&str; 16] = [
     "STR_EXTRAS_PEOPLE",
     "STR_EXTRAS_HISTORY",
     "STR_EXTRAS_NAME_TAGS",
@@ -168,6 +177,7 @@ pub const UI_KEYS: [&str; 15] = [
     "STR_EXTRAS_UPDATE_CHECK",
     "STR_EXTRAS_GRAPHS",
     "STR_EXTRAS_ZOOM_POINTER",
+    "STR_EXTRAS_DRAG_PLACE",
 ];
 
 thread_local! {
@@ -227,6 +237,9 @@ pub fn graphs() -> bool {
 pub fn zoom_pointer() -> bool {
     settings().zoom_pointer
 }
+pub fn drag_place() -> bool {
+    settings().drag_place
+}
 
 fn settings_json() -> serde_json::Value {
     sg_core::fsutil::read_file(crate::app::save_dir().join(crate::hd::SETTINGS_FILE))
@@ -284,6 +297,10 @@ fn upgrade_off(v: &serde_json::Value, s: &mut Settings) {
     }
     if v.get("zoom_pointer").is_none() {
         s.zoom_pointer = false;
+    }
+    // drag to place changes what the original's drag does: off from ticks saved before it
+    if v.get("drag_place").is_none() {
+        s.drag_place = false;
     }
 }
 
@@ -727,7 +744,7 @@ mod tests {
         assert_eq!(p.bits(), 0b11 << 8);
         assert_eq!(Settings::from_bits(p.bits()), p);
         assert_eq!(p.style(), Settings::ALL_OFF);
-        for m in [0, 1 << 8, 1 << 9, 1 << 10, 1 << 11, 1 << 12, 1 << 13, 1 << 14, 0x7fff] {
+        for m in [0, 1 << 8, 1 << 9, 1 << 10, 1 << 11, 1 << 12, 1 << 13, 1 << 14, 1 << 15, 0xffff] {
             assert_eq!(Settings::from_bits(m).bits(), m);
         }
     }
@@ -757,6 +774,18 @@ mod tests {
         assert!(s.update_check);
         assert!(!Settings::ALL_ON.update_check, "not in the one-click extras");
         assert_eq!(Settings { update_check: true, ..Settings::ALL_OFF }.style(), Settings::ALL_OFF);
+        // drag to place: off from older ticks, kept when saved, out of the one-click extras and the game style
+        let v: serde_json::Value = serde_json::from_str("{\"people\": true, \"zoom_pointer\": true}").unwrap();
+        let mut d: Settings = serde_json::from_value(v.clone()).unwrap();
+        upgrade_off(&v, &mut d);
+        assert!(!d.drag_place && d.zoom_pointer);
+        let v: serde_json::Value = serde_json::from_str("{\"drag_place\": true}").unwrap();
+        let mut d: Settings = serde_json::from_value(v.clone()).unwrap();
+        upgrade_off(&v, &mut d);
+        assert!(d.drag_place);
+        assert!(!Settings::ALL_ON.drag_place);
+        assert_eq!(Settings { drag_place: true, ..Settings::ALL_OFF }.bits(), 1 << 15);
+        assert_eq!(Settings { drag_place: true, ..Settings::ALL_OFF }.style(), Settings::ALL_OFF);
         // a save with nothing of theirs is the same as before
         assert!(Kept::default().is_empty());
         assert_eq!(serde_json::to_string(&Kept::default()).unwrap(), "{}");

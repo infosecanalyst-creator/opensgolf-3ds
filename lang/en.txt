@@ -2994,3 +2994,13 @@ STR_CTL_CHEATS                          :Cheats box
 STR_FILES_CHEATED                       :Cheats used
 # Customise Golfer, your pro, with the Left-handed golfers extra on
 STR_CUST_LEFT_HANDED                    :Left-handed
+# drag to place (an OpenSGolf extra, build_tools.rs): its tick on the Extras box's Interface page, and the row's count and
+# total cost shown by the pointer while dragging (the sandbox shows the count only)
+STR_EXTRAS_DRAG_PLACE                   : Drag to place: rows of benches, flower beds and the like
+STR_ROW_COST                            :{ITEMS} items: {MONEY}
+STR_ROW_ITEMS                           :{ITEMS} items
+# the Change keys screen's presets (controls.rs Preset): the buttons, and the line under them once one is clicked
+STR_CTL_PRESET_ORIGINAL                 :Original controls
+STR_CTL_PRESET_MODERN                   :Modern controls
+STR_CTL_PRESET_ORIGINAL_DONE            :Original controls: every key the original's; the WASD camera, zooming towards the pointer, drag to place and the smooth camera off.
+STR_CTL_PRESET_MODERN_DONE              :Modern controls: the WASD camera, zooming towards the pointer, drag to place and the smooth camera (with Enhanced graphics) on.
