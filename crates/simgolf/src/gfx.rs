@@ -299,7 +299,7 @@ impl Gfx {
         );
         let sdf_ok = sdf_shader.is_ok();
         let sdf_shader = sdf_shader.unwrap_or_else(|e| {
-            eprintln!("Enhanced graphics: the smooth edges shader does not compile here, smooth edges off ({e:?})");
+            crate::enhanced::say(&format!("Enhanced graphics: the smooth edges shader does not compile here, smooth edges off ({e:?})"));
             shader
         });
         let attrs = [

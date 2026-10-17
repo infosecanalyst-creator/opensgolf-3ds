@@ -702,17 +702,33 @@ with the widescreen option off.
 ## If Enhanced graphics stop the game
 
 While Enhanced graphics start (when they are switched on, and at each start with them on) the game keeps a marker,
-`enhanced_starting`, in the save folder and removes it once 60 frames have been drawn. A run that freezes or stops before
-then leaves the marker behind, and the next start comes up in Classic, saves Enhanced as off and says so in a box; the
-player can switch them on again in Preferences (issue #55: on some browsers' graphics, switching Enhanced on froze the
-game and a reload brought the freeze back). In the browser, adding `?classic` to the page's address does the same on
-purpose.
+`enhanced_starting`, in the save folder and removes it once it has drawn 60 frames over at least 20 seconds with them (or
+when the desktop game is quit normally before then). A run that freezes or stops before then leaves the marker behind,
+and the next start comes up in Classic, saves Enhanced as off and says so in a box; the player can switch them on again in
+Preferences. In the browser, adding `?classic` to the page's address does the same on purpose.
+
+The browser version also watches the game's drawing (web/opensgolf.js). When the browser loses it (a WebGL context lost:
+the graphics driver reset or the browser's GPU process restarted; a frame that stopped with an error; or no frame drawn
+for five seconds while the tab is shown), the page says so over the frozen picture with a button to reload, writes a line
+to the console (`OpenSGolf: the browser stopped drawing the game (...)`) and, with Enhanced on, leaves the marker, so the
+reload comes up in Classic. Leaving a game that was drawing well takes the marker away. The game's own lines about
+Enhanced (switched on, too slow, a shader that does not compile, switched off after a failed start) go to the browser's
+console too.
+
+Issue #55: on two desktops (an RTX 5080 and an RTX 2080 Super, 2560-pixel screens, Firefox and Chrome) switching Enhanced
+on in the browser froze the picture while the sound played on, and after a reload only the title's exit button seemed to
+work. That is what a lost drawing looks like (reproduced with a lost WebGL context and with a frame that throws; the
+reporters' GPUs could not be tested here): miniquad asks for the next frame only after drawing one, so the first frame
+that fails ends the drawing for good, and the clicks still reach the game unseen (the exit button reloads the page, the
+only thing that shows). The 0.4.0 marker went after 60 frames, a quarter of a second on a fast display, so a failure a
+moment later found it gone and every restart came up in Enhanced again; and none of the game's lines reached the browser's
+console, so the frame rate guard's steps, had there been any, were never seen.
 
 ## When the game is too slow for the options in use
 
 With Enhanced on, the game watches its own frame rate. Under 10 frames a second over four seconds (after eight seconds'
 grace at start and after each change; a tab the browser stopped drawing does not count) it turns off the costliest
 option that is still on, saves that, and says so in the ticker: first the pixel-art scaler (on a laptop's graphics chip
-in a browser it alone can cost five times the frame), then multisampling, then the heaviest effects (cast shadows,
+in a browser it alone can cost five times the frame), then multisampling (not in a browser, which never multisamples), then the heaviest effects (cast shadows,
 reflections, bloom, grass, crowds, effects quality to low), and last Enhanced itself. Any of them can be switched on again
 in Preferences. Issue #55 was this: on some machines switching Enhanced on in the browser made the game hardly move.

@@ -73,10 +73,82 @@ window.requestAnimationFrame = function (callback) {
             if (t < sgFrameDue - 1) return sgRequestFrame(tick);
             sgFrameDue = t - sgFrameDue < period ? sgFrameDue + period : t + period;
         }
-        callback(t);
+        try {
+            callback(t);
+        } catch (e) {
+            // miniquad asks for the next frame after drawing this one: a frame that throws ends the game's drawing for good
+            sgDrawingStopped("a frame stopped with an error: " + (e && e.message ? e.message : e));
+            throw e;
+        }
     };
     return sgRequestFrame(tick);
 };
+
+// The watch over the game's drawing (issue #55). A browser that loses the game's WebGL drawing (the graphics driver
+// reset, the GPU process restarted, a frame that stopped with an error) shows the last picture for good while the sound,
+// mixed on timers, plays on, and the clicks still reach the game: only the title's exit button (which reloads the page)
+// seemed to work. Then the page says so over the game and in the console and, with Enhanced graphics on, leaves the
+// marker of a start that failed (crates/simgolf/src/enhanced.rs), so the next start comes up in Classic. The game reports
+// each frame drawn (sg_frame_drawn) and whether Enhanced is on (sg_enhanced).
+const SG_TRIAL_KEY = "enhanced_starting";
+const SG_STALL_MS = 5000;
+const sgDraw = { enhanced: false, last: 0, tick: 0, stopped: false, note: null };
+
+function sgDrawingStopped(why) {
+    const d = sgDraw;
+    const canvas = document.getElementById("glcanvas");
+    if (d.stopped || !canvas || canvas.style.display !== "block") return;
+    d.stopped = true;
+    if (d.enhanced) {
+        try { localStorage.setItem(SAVE_PREFIX + SG_TRIAL_KEY, btoa("1")); } catch (e) {}
+    }
+    console.error("OpenSGolf: the browser stopped drawing the game (" + why + ")" +
+        (d.enhanced ? "; Enhanced graphics will be off at the next start" : ""));
+    const note = document.createElement("div");
+    note.style.cssText = "position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:20;max-width:min(560px,90vw);" +
+        "background:rgba(10,30,18,0.94);color:#fff;font:500 16px/1.45 system-ui,sans-serif;padding:20px 24px;border-radius:14px;" +
+        "box-shadow:0 12px 40px rgba(0,0,0,0.6);text-align:center";
+    const text = document.createElement("p");
+    text.style.margin = "0 0 14px";
+    text.textContent = "The browser stopped drawing the game, so the picture froze. " + (d.enhanced
+        ? "Enhanced graphics are switched off for the next start: reload the page and play on in Classic. "
+        : "Reload the page to start again. ") + "Games you saved are kept.";
+    const button = document.createElement("button");
+    button.textContent = "Reload the page";
+    button.style.cssText = "font:700 16px system-ui,sans-serif;padding:10px 22px;border-radius:999px;border:0;cursor:pointer;" +
+        "background:#f4d35e;color:#10240f";
+    button.addEventListener("click", () => location.reload());
+    note.append(text, button);
+    document.body.appendChild(note);
+    d.note = note;
+}
+
+// No frame for SG_STALL_MS while the page's timers run and the tab is shown: the game's drawing has stopped. Not before
+// the first frame, not in a hidden tab (the browser draws nothing there), and not after a long frame held this thread up
+// (the timers waited too).
+function sgDrawWatch() {
+    const d = sgDraw, now = performance.now();
+    const held = d.tick && now - d.tick > 1000;
+    d.tick = now;
+    if (!d.last || d.stopped) return;
+    if (held || document.hidden) {
+        d.last = now;
+        return;
+    }
+    if (now - d.last > SG_STALL_MS) sgDrawingStopped("no frame drawn for " + Math.round((now - d.last) / 1000) + " seconds");
+}
+setInterval(sgDrawWatch, 250);
+document.addEventListener("visibilitychange", () => { if (sgDraw.last) sgDraw.last = performance.now(); });
+// Leaving a game that was drawing well (a reload, the tab closed, the title's exit button): the marker of Enhanced's
+// start-up trial goes, so a player who leaves within its first seconds keeps Enhanced next time.
+window.addEventListener("pagehide", () => {
+    const d = sgDraw;
+    if (d.stopped || !d.last || performance.now() - d.last > 2000) return;
+    try {
+        const k = sgStoredKey(SG_TRIAL_KEY);
+        if (k !== null) localStorage.removeItem(k);
+    } catch (e) {}
+});
 
 miniquad_add_plugin({
     name: "simgolf_fs",
@@ -86,6 +158,9 @@ miniquad_add_plugin({
         env.sg_keyboard = function (show) { sgKeyboard(show !== 0); };
         // the frame rate cap (Enhanced graphics > Display; framerate.rs): frames a second, 0 for none
         env.sg_frame_cap = function (fps) { sgFrameCap = fps; };
+        // the watch over the game's drawing (sgDrawingStopped): a frame was drawn; Enhanced graphics on or off
+        env.sg_frame_drawn = function () { sgDraw.last = performance.now(); };
+        env.sg_enhanced = function (on) { sgDraw.enhanced = on !== 0; };
         // the game's quit (the title menu's exit button): a tab cannot close itself, so back to the start page
         env.sg_quit = function () { location.reload(); };
         env.sg_fs_size = function (ptr, len) {
@@ -667,6 +742,8 @@ function sgStart() {
     // a right-click (or a Mac's Ctrl+click) is the game's: no browser menu over the canvas, which would also take the
     // button's release
     canvas.addEventListener("contextmenu", e => e.preventDefault());
+    // the graphics driver reset or the browser's GPU process restarted: the game cannot make its art again
+    canvas.addEventListener("webglcontextlost", () => sgDrawingStopped("the WebGL context was lost"));
     canvas.style.display = "block";
     canvas.focus();
     // the sound output (see sgStartAudio)

@@ -2786,11 +2786,11 @@ impl EventHandler for Stage {
     }
 
     fn draw(&mut self) {
-        enhanced::trial_frame();
+        enhanced::trial_frame(self.app.clock);
         // too slow for the Enhanced options in use: the costliest go, a step at a time (enhanced.rs, issue #55)
         if self.png_out.is_none() {
             if let Some((s, what)) = enhanced::guard_frame(self.app.clock) {
-                println!("Enhanced graphics: the game is too slow, {what}");
+                enhanced::say(&format!("Enhanced graphics: the game is too slow, {what}"));
                 if self.app.apply_enhanced(&mut self.g, s) {
                     self.app.ui_ok &= load_art(&mut self.app, &mut self.g);
                 }
@@ -2805,6 +2805,7 @@ impl EventHandler for Stage {
             None => self.draw_frame(None),
         }
         self.g.ctx.commit_frame();
+        enhanced::frame_drawn();
         if perf::on() {
             perf::frame_end();
             let app = &self.app;
@@ -3344,6 +3345,7 @@ impl EventHandler for Stage {
     /// the program with an error code in that teardown on the ARM64 test machine).
     fn quit_requested_event(&mut self) {
         sysdiag::note("the window's close was asked for: exiting");
+        enhanced::trial_clean_exit();
         #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
         std::process::exit(0);
     }
@@ -3503,7 +3505,10 @@ fn quit_game() {
         unsafe { sg_quit() };
     }
     #[cfg(not(target_arch = "wasm32"))]
-    window::order_quit();
+    {
+        enhanced::trial_clean_exit();
+        window::order_quit();
+    }
 }
 
 /// The function key a digit stands for with Alt or Ctrl held: 1 to 9 for F1 to F9, 0 for F10.

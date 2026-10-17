@@ -568,7 +568,9 @@ pub(crate) fn shader(ctx: &mut dyn RenderingBackend, vs: &str, fs: &str, images:
     match ctx.new_shader(ShaderSource::Glsl { vertex: vs, fragment: fs }, meta()) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("Enhanced graphics: an effects shader does not compile on this GPU, the effects are off ({e:?})");
+            crate::enhanced::say(&format!(
+                "Enhanced graphics: an effects shader does not compile on this GPU, the effects are off ({e:?})"
+            ));
             BROKEN.with(|b| b.set(true));
             let fs = stand_in_fs(images.first().copied().unwrap_or("tex"));
             ctx.new_shader(ShaderSource::Glsl { vertex: glsl::POST_VS, fragment: &fs }, meta())
