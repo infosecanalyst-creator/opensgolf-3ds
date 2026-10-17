@@ -827,6 +827,8 @@ impl App {
             let (px, py) = self.card_ui.mouse;
             crate::extras::draw_button(g, s, r, tr("STR_CARD_PROFILE"), true, r.has(px, py));
         }
+        // OpenSGolf extras (scorecard_ui.rs): the round so far on the Player panel's scorecard, under the card
+        self.draw_live_scorecard(g, s, gi);
         if hover >= 0 && self.card_ui.frames >= 7 {
             let tip = match hover {
                 0 => tr("STR_CARD_CUSTOMIZE"),
@@ -1004,7 +1006,8 @@ impl App {
             _ => {
                 let bottom = if self.card_ui.story { 322.0 } else { 287.0 };
                 return Rect::new(236.0, 26.0, 402.0, bottom - 26.0).has(vx, vy)
-                    || (self.club.g[gi].kind != 0 && Rect::new(28.0, 50.0, 208.0, 316.0).has(vx, vy));
+                    || (self.club.g[gi].kind != 0 && Rect::new(28.0, 50.0, 208.0, 316.0).has(vx, vy))
+                    || self.live_card_rect().is_some_and(|r| r.has(vx, vy));
             }
         }
         true
@@ -1439,6 +1442,9 @@ impl App {
 
     pub fn open_year_end(&mut self) {
         self.year_end_tick = self.club.date();
+        // OpenSGolf extras (year_ui.rs): the year in numbers marks the year's end, and its page comes after this one
+        self.year_mark();
+        self.xs.year_page = false;
         if self.ui_ok && self.screen == Screen::Play {
             self.screen = Screen::YearEnd;
             self.screen_jingle(0x7f, Screen::YearEnd);
@@ -1451,6 +1457,11 @@ impl App {
         // footage of the original: the course under the report keeps about 0.72 of its brightness (the exe's 0.25 dim of the
         // info screens), and the dock, the name plate and the rating pills are gone while the report is up (draw_hud)
         crate::info_ui::dim(g, &s);
+        if self.xs.year_page && crate::extras::year_summary() {
+            self.draw_year_summary(g, &s);
+            g.flush();
+            return;
+        }
         let e = &self.art.endo;
         let has = e.tex.is_some();
         if has {

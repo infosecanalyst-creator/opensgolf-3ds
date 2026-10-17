@@ -27,6 +27,15 @@
 //! * zoom towards the pointer (enhanced.rs zoom_anchor): the wheel keeps the ground under the pointer where it is. Left out
 //!   of the one-click OpenSGolf extras: it changes how the original's zoom feels.
 //!
+//! * live scorecards (scorecard_ui.rs): the golfer card's golfer and partner on the Player panel's round scorecard, with
+//!   pars and the score against par so far;
+//! * the clickable ticker (message_ui.rs): a click on a message about a golfer or a place takes the camera there (and
+//!   follows the golfer);
+//! * the year in numbers (year_ui.rs): a page after the original's End of Year report, the year's figures against the year
+//!   before;
+//! * home-site details (homes_ui.rs): what a home site under the pointer cost, brought in and is worth, and the hole that
+//!   lifts its value.
+//!
 //! With every extra off the game draws and plays exactly as before they existed (each hook asks its switch first).
 use serde::{Deserialize, Serialize};
 use std::cell::Cell;
@@ -52,6 +61,10 @@ pub struct Settings {
     pub update_check: bool,
     pub graphs: bool,
     pub zoom_pointer: bool,
+    pub live_scorecards: bool,
+    pub ticker_jump: bool,
+    pub year_summary: bool,
+    pub home_details: bool,
 }
 
 impl Settings {
@@ -73,6 +86,10 @@ impl Settings {
         update_check: false,
         graphs: true,
         zoom_pointer: false,
+        live_scorecards: true,
+        ticker_jump: true,
+        year_summary: true,
+        home_details: true,
     };
     pub const ALL_OFF: Settings = Settings {
         people: false,
@@ -90,6 +107,10 @@ impl Settings {
         update_check: false,
         graphs: false,
         zoom_pointer: false,
+        live_scorecards: false,
+        ticker_jump: false,
+        year_summary: false,
+        home_details: false,
     };
 
     /// The ticks as the Extras box's checkbox bits (in `UI_KEYS` order).
@@ -110,6 +131,10 @@ impl Settings {
             self.update_check,
             self.graphs,
             self.zoom_pointer,
+            self.live_scorecards,
+            self.ticker_jump,
+            self.year_summary,
+            self.home_details,
         ]
         .iter()
         .enumerate()
@@ -134,6 +159,10 @@ impl Settings {
             update_check: on(12),
             graphs: on(13),
             zoom_pointer: on(14),
+            live_scorecards: on(15),
+            ticker_jump: on(16),
+            year_summary: on(17),
+            home_details: on(18),
         }
     }
 
@@ -152,7 +181,7 @@ impl Default for Settings {
 
 /// The interface extras' lines on the Extras box's Interface page (extras_ui.rs), one tick per extra in `Settings::bits`
 /// order (text keys in lang/en.txt).
-pub const UI_KEYS: [&str; 15] = [
+pub const UI_KEYS: [&str; 19] = [
     "STR_EXTRAS_PEOPLE",
     "STR_EXTRAS_HISTORY",
     "STR_EXTRAS_NAME_TAGS",
@@ -168,6 +197,10 @@ pub const UI_KEYS: [&str; 15] = [
     "STR_EXTRAS_UPDATE_CHECK",
     "STR_EXTRAS_GRAPHS",
     "STR_EXTRAS_ZOOM_POINTER",
+    "STR_EXTRAS_LIVE_SCORECARDS",
+    "STR_EXTRAS_TICKER_JUMP",
+    "STR_EXTRAS_YEAR_SUMMARY",
+    "STR_EXTRAS_HOME_DETAILS",
 ];
 
 thread_local! {
@@ -227,6 +260,18 @@ pub fn graphs() -> bool {
 pub fn zoom_pointer() -> bool {
     settings().zoom_pointer
 }
+pub fn live_scorecards() -> bool {
+    settings().live_scorecards
+}
+pub fn ticker_jump() -> bool {
+    settings().ticker_jump
+}
+pub fn year_summary() -> bool {
+    settings().year_summary
+}
+pub fn home_details() -> bool {
+    settings().home_details
+}
 
 fn settings_json() -> serde_json::Value {
     sg_core::fsutil::read_file(crate::app::save_dir().join(crate::hd::SETTINGS_FILE))
@@ -284,6 +329,18 @@ fn upgrade_off(v: &serde_json::Value, s: &mut Settings) {
     }
     if v.get("zoom_pointer").is_none() {
         s.zoom_pointer = false;
+    }
+    // the 0.4.2 helpers (live scorecards, the clickable ticker, the year in numbers, home-site details): off from ticks
+    // saved before them
+    for (k, t) in [
+        ("live_scorecards", &mut s.live_scorecards),
+        ("ticker_jump", &mut s.ticker_jump),
+        ("year_summary", &mut s.year_summary),
+        ("home_details", &mut s.home_details),
+    ] {
+        if v.get(k).is_none() {
+            *t = false;
+        }
     }
 }
 
@@ -371,6 +428,12 @@ pub struct Kept {
     /// The camera bookmarks (views.rs), once one has been kept.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub views: Vec<Option<crate::views::View>>,
+    /// The year in numbers' year-end marks and tournament wins (year_ui.rs), only while its tick is on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub years: Option<crate::year_ui::Kept>,
+    /// Home sites placed while the home-site details are on (homes_ui.rs): what each cost and sold for.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub homes: Vec<crate::homes_ui::Sale>,
 }
 
 impl Kept {
@@ -381,6 +444,8 @@ impl Kept {
             && self.insight.is_none()
             && self.graphs.is_none()
             && self.views.is_empty()
+            && self.years.is_none()
+            && self.homes.is_empty()
     }
 
     pub fn push_message(&mut self, m: Message) {
@@ -451,6 +516,10 @@ pub struct State {
     pub insight: crate::insight::State,
     /// The Graphs page's choices (graphs.rs).
     pub graphs: crate::graphs::State,
+    /// The person record of the golfer who says the message on the ticker (the clickable ticker, message_ui.rs).
+    pub ticker_golfer: Option<i32>,
+    /// The End of Year report shows the year in numbers (year_ui.rs), the page after the original's.
+    pub year_page: bool,
 }
 
 // ---- drawing pieces shared by the extras' screens ---------------------------------------------------------------------------
@@ -757,6 +826,23 @@ mod tests {
         assert!(s.update_check);
         assert!(!Settings::ALL_ON.update_check, "not in the one-click extras");
         assert_eq!(Settings { update_check: true, ..Settings::ALL_OFF }.style(), Settings::ALL_OFF);
+        // the 0.4.2 helpers: off from older ticks, kept when saved, after the older bits, and in the one-click extras
+        let v: serde_json::Value = serde_json::from_str("{\"people\": true, \"graphs\": true}").unwrap();
+        let mut s: Settings = serde_json::from_value(v.clone()).unwrap();
+        upgrade_off(&v, &mut s);
+        assert!(!s.live_scorecards && !s.ticker_jump && !s.year_summary && !s.home_details);
+        let v: serde_json::Value =
+            serde_json::from_str("{\"live_scorecards\": true, \"ticker_jump\": true, \"year_summary\": true, \"home_details\": true}")
+                .unwrap();
+        let mut s: Settings = serde_json::from_value(v.clone()).unwrap();
+        upgrade_off(&v, &mut s);
+        assert!(s.live_scorecards && s.ticker_jump && s.year_summary && s.home_details);
+        let n = Settings { live_scorecards: true, ticker_jump: true, year_summary: true, home_details: true, ..Settings::ALL_OFF };
+        assert_eq!(n.bits(), 0b1111 << 15);
+        assert_eq!(Settings::from_bits(n.bits()), n);
+        assert_eq!(n.style(), n, "they make the game style");
+        assert_eq!(Settings::ALL_ON.bits() & n.bits(), n.bits());
+        assert_eq!(UI_KEYS.len(), 19);
         // a save with nothing of theirs is the same as before
         assert!(Kept::default().is_empty());
         assert_eq!(serde_json::to_string(&Kept::default()).unwrap(), "{}");

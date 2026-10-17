@@ -104,6 +104,9 @@ Optional, and off by default (Start New Game has a one-click switch between *the
 - **History graphs** (interface extra): the club's and each hole's months as line graphs on the Histograph's page:
   rounds, revenue, costs, profit, cash, happiness, ratings and members, and each hole's plays, strokes over par,
   happiness and fees (Shift+Y).
+- **Live scorecards, a clickable ticker, the year in numbers and home-site details** (interface extras): any golfer's
+  round so far on the original's scorecard, a click on a ticker message to go to its golfer or place, a page after the
+  End of Year report with the year against the last, and what a home site cost, sold for and is worth.
 - **Camera bookmarks and modern mouse controls:** four kept views of the course (Ctrl+Shift+F1..F4 keep, Shift+F1..F4
   return), dragging with the middle button, and an interface extra that zooms towards the pointer.
 - **Updates from the title menu:** *Check for updates*, then *Update now* downloads the new version, checks its signature

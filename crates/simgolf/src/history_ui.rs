@@ -225,6 +225,10 @@ impl App {
         let place = self.xs.next_place.take();
         if shown {
             self.xs.ticker_place = place.map(|p| (speaker, p));
+            // the clickable ticker (message_ui.rs) follows the speaking golfer by person record, as the slot may be reused
+            self.xs.ticker_golfer = (speaker >= 0 && (speaker as usize) < sg_core::golfer::SLOTS)
+                .then(|| self.club.g[speaker as usize].roster)
+                .filter(|&r| r >= 0);
         }
         if !shown || !crate::extras::history() || text.trim().is_empty() {
             return;
