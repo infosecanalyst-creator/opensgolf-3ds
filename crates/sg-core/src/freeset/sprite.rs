@@ -106,10 +106,12 @@ fn put_ramp(p: &mut [[u8; 3]; 256], m: Mat, c: Col) {
     }
 }
 
-/// Foliage shades turn cool and its highlights warm, as in sunlight (the same as tools/freeset_art/mats.py).
+/// Shades turn cool and highlights warm, as in sunlight, foliage most of all (the same as tools/freeset_art/mats.py).
 fn leaf_hue(m: Mat, c: Col, k: f32) -> Col {
     if m.base != LEAF.base {
-        return c;
+        // every material: a warm sunlit highlight and a slightly cool shade
+        let (r, b) = if k < 0.0 { (0.0, -k * 8.0) } else { (k * 14.0, k * -16.0) };
+        return [(c[0] + r).clamp(0.0, 255.0), c[1], (c[2] + b).clamp(0.0, 255.0), c[3]];
     }
     let (r, b) = if k < 0.0 { (-k * -10.0, -k * 22.0) } else { (k * 40.0, k * -40.0) };
     // and a little richer than the colour itself
@@ -280,10 +282,159 @@ fn scenic_flower(name: &str) -> Option<Col> {
     F.iter().find(|(k, _)| name.starts_with(k)).map(|(_, c)| *c)
 }
 
-/// The colours of a landmark's palette file (lower case name) by material: the landmarks are rendered offline in these
-/// ramps (tools/freeset_art/landmarks.py gives the same colours).
+/// The colours of a landmark's or a prop's palette file (lower case name) by material: they are rendered offline in these
+/// ramps (tools/freeset_art/landmarks.py and props.py give the same colours).
 fn landmark_colours(name: &str) -> Option<&'static [(Mat, Col)]> {
     const T: &[(&str, &[(Mat, Col)])] = &[
+        ("flag_parkpal", &[(RED, rgb(226, 44, 44)), (WHITE, rgb(244, 244, 240)), (YELLOW, rgb(240, 200, 60)), (DARK, rgb(30, 30, 30))]),
+        ("flag_desertpal", &[(RED, rgb(244, 140, 36)), (WHITE, rgb(244, 244, 240)), (YELLOW, rgb(240, 200, 60)), (DARK, rgb(30, 30, 30))]),
+        ("flag_troppal", &[(RED, rgb(236, 70, 150)), (WHITE, rgb(244, 244, 240)), (YELLOW, rgb(240, 200, 60)), (DARK, rgb(30, 30, 30))]),
+        ("flag_linkspal", &[(RED, rgb(244, 206, 48)), (WHITE, rgb(244, 244, 240)), (YELLOW, rgb(240, 200, 60)), (DARK, rgb(30, 30, 30))]),
+        ("teemarkerpal", &[(RED, rgb(220, 40, 40)), (PURPLE, rgb(50, 90, 220)), (WHITE, rgb(244, 244, 240)), (DARK, rgb(70, 60, 50))]),
+        (
+            "benwpal",
+            &[
+                (WOOD, rgb(156, 110, 66)),
+                (DARK, rgb(54, 58, 62)),
+                (RED, rgb(196, 54, 46)),
+                (WHITE, rgb(240, 236, 226)),
+                (LEAF, rgb(80, 140, 60)),
+            ],
+        ),
+        (
+            "box benchpal",
+            &[
+                (WOOD, rgb(156, 110, 66)),
+                (DARK, rgb(54, 58, 62)),
+                (RED, rgb(196, 54, 46)),
+                (WHITE, rgb(240, 236, 226)),
+                (LEAF, rgb(80, 140, 60)),
+            ],
+        ),
+        (
+            "redbenchpal",
+            &[
+                (WOOD, rgb(156, 110, 66)),
+                (DARK, rgb(54, 58, 62)),
+                (RED, rgb(196, 54, 46)),
+                (WHITE, rgb(240, 236, 226)),
+                (LEAF, rgb(80, 140, 60)),
+            ],
+        ),
+        (
+            "round wood benchpal",
+            &[
+                (WOOD, rgb(156, 110, 66)),
+                (DARK, rgb(54, 58, 62)),
+                (RED, rgb(196, 54, 46)),
+                (WHITE, rgb(240, 236, 226)),
+                (LEAF, rgb(80, 140, 60)),
+            ],
+        ),
+        (
+            "backless benchpal",
+            &[
+                (WOOD, rgb(156, 110, 66)),
+                (DARK, rgb(54, 58, 62)),
+                (RED, rgb(196, 54, 46)),
+                (WHITE, rgb(240, 236, 226)),
+                (LEAF, rgb(80, 140, 60)),
+            ],
+        ),
+        (
+            "loversbenchpal",
+            &[
+                (WOOD, rgb(156, 110, 66)),
+                (DARK, rgb(54, 58, 62)),
+                (RED, rgb(196, 54, 46)),
+                (WHITE, rgb(240, 236, 226)),
+                (LEAF, rgb(80, 140, 60)),
+            ],
+        ),
+        (
+            "swingpal",
+            &[
+                (WOOD, rgb(156, 110, 66)),
+                (DARK, rgb(54, 58, 62)),
+                (RED, rgb(196, 54, 46)),
+                (WHITE, rgb(240, 236, 226)),
+                (LEAF, rgb(80, 140, 60)),
+            ],
+        ),
+        (
+            "upgrade bwasherpal",
+            &[
+                (STONE, rgb(170, 164, 150)),
+                (DARK, rgb(60, 66, 70)),
+                (RED, rgb(40, 110, 70)),
+                (WHITE, rgb(244, 244, 240)),
+                (LEAF, rgb(60, 110, 70)),
+            ],
+        ),
+        (
+            "parkbridgepal",
+            &[
+                (WOOD, rgb(150, 108, 70)),
+                (WHITE, rgb(240, 236, 226)),
+                (EARTH, rgb(186, 136, 92)),
+                (YELLOW, rgb(220, 190, 120)),
+                (STONE, rgb(160, 154, 142)),
+            ],
+        ),
+        (
+            "desbridgepal",
+            &[
+                (WOOD, rgb(150, 108, 70)),
+                (WHITE, rgb(240, 236, 226)),
+                (EARTH, rgb(186, 136, 92)),
+                (YELLOW, rgb(220, 190, 120)),
+                (STONE, rgb(160, 154, 142)),
+            ],
+        ),
+        (
+            "tropbridgepal",
+            &[
+                (WOOD, rgb(150, 108, 70)),
+                (WHITE, rgb(240, 236, 226)),
+                (EARTH, rgb(186, 136, 92)),
+                (YELLOW, rgb(220, 190, 120)),
+                (STONE, rgb(160, 154, 142)),
+            ],
+        ),
+        (
+            "linksbridgepalette",
+            &[
+                (WOOD, rgb(150, 108, 70)),
+                (WHITE, rgb(240, 236, 226)),
+                (EARTH, rgb(186, 136, 92)),
+                (YELLOW, rgb(220, 190, 120)),
+                (STONE, rgb(160, 154, 142)),
+            ],
+        ),
+        ("scenicgenpal", &[(WOOD, rgb(150, 108, 70)), (STONE, rgb(168, 160, 146)), (RED, rgb(178, 64, 50))]),
+        ("sail_movepal", &[(WHITE, rgb(246, 246, 240)), (WOOD, rgb(170, 124, 80)), (RED, rgb(210, 50, 50))]),
+        (
+            "iron benchpal",
+            &[
+                (WOOD, rgb(156, 110, 66)),
+                (DARK, rgb(54, 58, 62)),
+                (RED, rgb(196, 54, 46)),
+                (WHITE, rgb(240, 236, 226)),
+                (LEAF, rgb(80, 140, 60)),
+            ],
+        ),
+        (
+            "rainbow sail pal",
+            &[
+                (WHITE, rgb(246, 246, 240)),
+                (DARK, rgb(60, 60, 60)),
+                (RED, rgb(226, 50, 50)),
+                (YELLOW, rgb(250, 210, 50)),
+                (LEAF, rgb(60, 170, 80)),
+                (PURPLE, rgb(80, 90, 220)),
+                (SHOE, rgb(230, 180, 140)),
+            ],
+        ),
         ("sundialpal", &[(STONE, rgb(190, 184, 170)), (GOLD, rgb(196, 150, 70))]),
         (
             "barnpal",
@@ -403,6 +554,28 @@ fn landmark_colours(name: &str) -> Option<&'static [(Mat, Col)]> {
     T.iter().find(|(k, _)| *k == n).map(|(_, c)| *c)
 }
 
+/// A flower bed's palette (lower case name): its blooms (the RED ramp, tools/freeset_art/props.py) in the colour the
+/// name gives, on green leaves, dark mulch and a stone kerb.
+fn flower_bed_colours(name: &str) -> Option<[(Mat, Col); 5]> {
+    if !(name.contains("flowerbed") || name.contains("desertflowers") || name.contains("tropicalflowers") || name.contains("tropfb")) {
+        return None;
+    }
+    const BLOOMS: [(&str, Col); 10] = [
+        ("yel", rgb(250, 214, 56)),
+        ("org", rgb(248, 140, 40)),
+        ("purp", rgb(156, 84, 214)),
+        ("white", rgb(248, 246, 238)),
+        ("pink", rgb(244, 120, 172)),
+        ("blue", rgb(76, 116, 232)),
+        ("aqua", rgb(64, 196, 206)),
+        ("green", rgb(170, 220, 80)),
+        ("icky", rgb(150, 136, 90)),
+        ("red", rgb(228, 44, 64)),
+    ];
+    let bloom = BLOOMS.iter().find(|(k, _)| name.contains(k)).map(|(_, c)| *c).unwrap_or(rgb(228, 44, 64));
+    Some([(RED, bloom), (LEAF, rgb(70, 140, 56)), (EARTH, rgb(110, 76, 52)), (STONE, rgb(176, 168, 152)), (WHITE, rgb(246, 244, 236))])
+}
+
 /// A palette file (a PCX the engine reads for its palette): golfer swap palettes by their number, the others turn the
 /// roof, wall and leaf colours by their name.
 pub fn palette_file(low: &str, w: u32, h: u32) -> Vec<u8> {
@@ -417,6 +590,12 @@ pub fn palette_file(low: &str, w: u32, h: u32) -> Vec<u8> {
         let mut p = palette(0, false, 0);
         for (m, col) in [SHIRT, PANTS, SKIN, HAT, ALT, HANDS_F].into_iter().zip(c) {
             put_ramp(&mut p, m, col);
+        }
+        p
+    } else if let Some(cols) = flower_bed_colours(name) {
+        let mut p = palette(0, false, 0);
+        for (m, c) in cols {
+            put_ramp(&mut p, m, c);
         }
         p
     } else if let Some(cols) = landmark_colours(name) {

@@ -1276,6 +1276,8 @@ impl App {
         self.clear_batches(g);
         self.terrain.desert = self.theme == 2; // the original swaps shallow water for its desert variant in this theme
         self.terrain.sand_phase = ((self.rot / 90.0).round() as i32).rem_euclid(4);
+        // the free base set draws all its water in one look with a shore against land (sg_core::terrain::Terrain::water_one)
+        self.terrain.water_one = self.content.loaded.first().is_some_and(|b| b == sg_core::packs::FREE);
         self.sync_tile_corners();
         let mut map: BTreeMap<usize, (TextureId, Vec<Vert>)> = BTreeMap::new();
         let mut tris = Vec::new();

@@ -66,11 +66,12 @@ class Frame:
         # sky light from above, a little bounce from below
         sky = 0.5 + 0.5 * nrm[:, 1]
         bright = ambient * (0.75 + 0.25 * sky) + diffuse * lam
-        if tone is not None:
-            # a palette-ramp model's own lighter and darker parts (trim, joints, stripes) on top of the lighting
-            bright = bright * tone
         if emissive is not None:
             bright = np.where(emissive, 1.0, bright)
+        if tone is not None:
+            # a palette-ramp model's own lighter and darker parts (trim, joints, stripes) on top of the lighting (a lit
+            # part's tone too: a flag in full colour with its folds)
+            bright = bright * tone
         px = self.to_px(eye)
         z = eye[..., 2]
         tg = np.full(len(px), -1, dtype=np.int32) if tags is None else np.asarray(tags, dtype=np.int32)

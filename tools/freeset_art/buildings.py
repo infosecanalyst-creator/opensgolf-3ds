@@ -314,6 +314,50 @@ class Kit:
             cc = col if k % 2 == 0 else self.st["aw2"]
             self.add(quad(P(p0 + [-4.6, 0, 0]), P(p0 + [4.6, 0, 0]), P(p1 + [4.6, 0, 0]), P(p1 + [-4.6, 0, 0])), cc)
 
+    def golf_cart(self, x, z, yaw=0.0):
+        """A golf cart parked on the lawn: white body, a striped canopy on posts, black seats, a bag of clubs behind."""
+        a = np.radians(yaw)
+        R = np.array([[np.cos(a), 0, np.sin(a)], [0, 1, 0], [-np.sin(a), 0, np.cos(a)]])
+        P = lambda p: np.asarray(p, float) @ R.T + [x, 0, z]
+        def bx(cen, size, col):
+            self.add(box([0, 0, 0], size) @ R.T + P(cen), col)
+        white, dark = c(244, 244, 238), c(40, 42, 46)
+        bx([0, 7, 0], [20, 6, 34], white)
+        bx([0, 12, 12], [20, 6, 8], white)
+        bx([0, 12.5, -2], [18, 3, 12], dark)
+        bx([0, 19, -8], [18, 11, 2.5], dark)
+        for sx in (-8.5, 8.5):
+            for sz in (-14, 9):
+                self.add(tube(P([sx, 9, sz]), P([sx, 33, sz]), 0.7, 0.7, 4), c(200, 200, 200))
+        bx([0, 34, -2], [22, 1.8, 30], self.st["aw1"])
+        bx([0, 35, -2], [22, 0.6, 10], self.st["aw2"])
+        for sx in (-10, 10):
+            for sz in (-11, 11):
+                self.add(tube(P([sx - 1.5, 4, sz]), P([sx + 1.5, 4, sz]), 4, 4, 8), dark)
+        self.add(tube(P([0, 8, -19]), P([0, 26, -22]), 3.4, 3.4, 8), c(200, 60, 50))
+        for k in range(3):
+            self.add(tube(P([k - 1, 26, -22]), P([k - 1.5, 30, -23]), 1.1, 1.1, 5), c(220, 220, 220))
+
+    def picnic(self, x, z):
+        """A picnic blanket in red and white checks with a basket on it."""
+        n = 4
+        for i in range(n):
+            for j in range(n):
+                col = c(214, 50, 50) if (i + j) % 2 == 0 else c(248, 246, 240)
+                x0, z0 = x - 16 + i * 8, z - 12 + j * 6
+                self.add(quad([x0, 0.8, z0], [x0 + 8, 0.8, z0], [x0 + 8, 0.8, z0 + 6], [x0, 0.8, z0 + 6]), col)
+        self.add(box([x + 4, 4, z + 2], [9, 7, 7]), c(196, 150, 90))
+        self.add(tube([x + 0.5, 7.5, z + 2], [x + 7.5, 7.5, z + 2], 0.6, 0.6, 4), c(150, 106, 60))
+        self.s.add_ball([x - 7, 2.2, z - 4], 2.2, c(230, 40, 40))
+
+    def gnome(self, x, z):
+        """A garden gnome: boots, a blue coat, a white beard, a big red pointy hat."""
+        self.add(box([x, 1.5, z + 0.5], [5, 3, 6]), c(70, 50, 40))
+        self.add(tube([x, 3, z], [x, 10, z], 4, 3.4, 10), c(50, 90, 190))
+        self.s.add_ball([x, 12, z + 1.0], 2.9, c(240, 200, 170))
+        self.add(tube([x, 9.5, z + 2.6], [x, 13.4, z + 2.4], 3.0, 1.8, 8), c(246, 246, 240))
+        self.add(tube([x, 13.5, z], [x + 1, 24, z - 1.5], 3.8, 0.3, 10), c(220, 40, 40))
+
     def flagpole(self, x, z, h=60.0, col=None):
         col = self.st["accent"] if col is None else col
         self.add(tube([x, 0, z], [x, h, z], 0.8, 0.6, 5), c(220, 220, 220))
@@ -448,6 +492,10 @@ def clubhouse(style, level, rng):
     k.umbrella(W + 30, -D - 34, 13, 20)
     k.deckchair(W + 18, -D - 40, yaw=200)
     k.deckchair(W + 42, -D - 36, yaw=160)
+    # a golf cart parked by the entrance, a picnic on the side lawn and a gnome guarding the planter
+    k.golf_cart(-W - 36, D - 10, yaw=10)
+    k.picnic(W - 20, D + 34)
+    k.gnome(-W - 32, -D + 58)
     if style == "trop":
         k.tree(W + 26, -D - 20, 90, "palm")
         k.tree(-W - 10, D + 24, 80, "palm")

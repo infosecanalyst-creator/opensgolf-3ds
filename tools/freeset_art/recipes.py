@@ -7,6 +7,7 @@ import numpy as np
 import animals
 import buildings
 import landmarks
+import props
 import layout
 import people
 import trees
@@ -16,7 +17,8 @@ from scene import Scene, fit_scale
 class Recipe:
     ss = 4
     shrink = 1.0
-    edge_dark = 0.12
+    # a darker rim keeps the silhouette crisp against the grass
+    edge_dark = 0.2
     # 'ramp': drawn in the palette layout of mats.py (for sprites the engine recolours); 'free': a palette of its own
     mode = "ramp"
     # True: the sprite gets a frame of its own size (build.py), drawn at the world's scale
@@ -55,7 +57,7 @@ class Building(Recipe):
     and base of a family share one scale, the largest at which both fit their frames (and never above the world's)."""
 
     mode = "free"
-    edge_dark = 0.06
+    edge_dark = 0.1
     ss = 3
     auto_frame = True
 
@@ -111,7 +113,7 @@ class Person(Recipe):
     """A golfer clip: the figure posed for the animation over its frames and turned for its 8 views, at the world's scale
     (every clip of a body the same size)."""
 
-    edge_dark = 0.16
+    edge_dark = 0.24
 
     def __init__(self, prefix, anim_name):
         self.prefix, self.anim = prefix, anim_name
@@ -146,7 +148,7 @@ class Landmark(Recipe):
 class Animal(Recipe):
     """An animal clip (animals.py), turned for its views like the golfers, fitted over all its frames."""
 
-    edge_dark = 0.16
+    edge_dark = 0.24
 
     def __init__(self, species, anim):
         self.species, self.anim = species, anim
@@ -185,6 +187,33 @@ class Animal(Recipe):
         return animals.model(self.species, self.anim, t)
 
 
+class Prop(Recipe):
+    """A small thing (props.py): flags, markers, benches, flower beds, signs, the ball washer, boats and bridges. Beds and
+    bridges are drawn at the world's scale (they join tile to tile), the rest fitted to their frame over all frames."""
+
+    def __init__(self, path):
+        self.path = path
+
+    def fit_frames(self, fpv):
+        return list(range(0, fpv, max(1, fpv // 6)))
+
+    def fixed_scale(self):
+        return 1.0 if props.prop(self.path, 0.0)[2] == "world" else None
+
+    def yaw(self, view_deg):
+        # a flag flies with the wind, to the right on the screen in every view (its frame sits round the pin's foot)
+        if "flag" in self.path.lower():
+            return -45.0
+        return view_deg
+
+    def scene(self, rng, f, fpv, view_deg):
+        loop = not any(k in self.path.lower() for k in ("_pop", "flowers_", "sin", "tropfb", "_single", "side", "corner"))
+        t = f / fpv if loop else f / max(fpv - 1, 1)
+        m, pal, _ = props.prop(self.path, t)
+        m.s.pal = pal
+        return m.s
+
+
 TREE_DIRS = ("flics/trees/", "flics/scenic/")
 
 
@@ -201,6 +230,8 @@ def recipe(path, name):
         if "_" in name and not name.endswith("pal"):
             prefix, anim_name = name.split("_", 1)
             return Person(prefix, anim_name)
+    if props.prop(path, 0.0) is not None:
+        return Prop(path)
     if "/flics/animals/" in "/" + low and "_" in name:
         sp, an = name.split("_", 1)
         if animals.model(sp, an, 0.0) is not None:

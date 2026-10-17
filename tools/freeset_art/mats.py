@@ -43,6 +43,9 @@ def palette(colours=None):
             t = i / max(n - 1, 1)
             k = ramp_k(t)
             c = shade(cols[name], k)
+            if name != "LEAF":
+                # every material: a warm sunlit highlight and a slightly cool shade (as sprite.rs leaf_hue)
+                c = c + (np.array([0, 0, -k * 8.0]) if k < 0 else np.array([k * 14.0, 0, -k * 16.0]))
             if name == "LEAF":
                 # foliage shades turn cool and its highlights warm (as sprite.rs leaf_hue)
                 g = c.mean()

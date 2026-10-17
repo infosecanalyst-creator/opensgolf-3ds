@@ -501,7 +501,7 @@ def squirrel(s, p, side):
     side = np.asarray(side, float)
     # a grey squirrel (it stands out from the bark), a little larger than life
     fur = ID["STONE"]
-    k = 1.6
+    k = 2.6
     body = p + side * 2.4 * k
     def blob(c, r):
         c = p + (np.asarray(c, float) - p) * k
@@ -517,7 +517,7 @@ def squirrel(s, p, side):
 
 def lost_ball(s, p):
     """A golf ball lost at the foot of a bush."""
-    s.add_tris(ellipsoid(np.asarray(p, float), [3.0, 3.0, 3.0], 10, 7), c255(250, 250, 250), ID["WHITE"])
+    s.add_tris(ellipsoid(np.asarray(p, float), [4.6, 4.6, 4.6], 10, 7), c255(250, 250, 250), ID["WHITE"])
 
 
 def gags(name, s, leaf):
@@ -531,7 +531,7 @@ def gags(name, s, leaf):
     elif name == "treemaplelarge":
         squirrel(s, [0, 9, 0], [0.6, 0.0, 0.8])
     elif name == "rhody":
-        lost_ball(s, [24, 3.0, 16])
+        lost_ball(s, [26, 4.6, 18])
     elif name == "tropicalbrush_lg":
-        lost_ball(s, [32, 3.0, 20])
+        lost_ball(s, [34, 4.6, 22])
     return s

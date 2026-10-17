@@ -158,9 +158,17 @@ fn sat(c: Col, k: f32) -> Col {
 
 fn theme(t: usize) -> Theme {
     let mut th = theme_base(t);
-    for c in [&mut th.mown, &mut th.green, &mut th.rough, &mut th.deep, &mut th.collar] {
-        *c = sat(*c, 1.12);
+    if t == 3 {
+        // the links' natural ground reads as one rolling fescue: its long grass, collar and rough nearly one tone
+        th.collar = mix(th.collar, th.rough, 0.7);
+        th.deep = shade(th.rough, -0.05);
     }
+    // cheerful, sunny turf: richer colour, the greens a step lighter than the fairway, the rough a step darker
+    for c in [&mut th.mown, &mut th.green, &mut th.rough, &mut th.deep, &mut th.collar] {
+        *c = sat(*c, 1.2);
+    }
+    th.green = shade(th.green, 0.05);
+    th.rough = shade(th.rough, -0.03);
     th.water = sat(th.water, 1.1);
     th.shallow = sat(th.shallow, 1.1);
     th
@@ -441,10 +449,10 @@ fn water_at(th: &Theme, x: f32, y: f32, level: f32, seed: u32) -> Col {
 
 fn paint(kind: Kind, th: &Theme, x: f32, y: f32, seed: u32, set: u32, var: u32) -> (Col, f32) {
     match kind {
-        Kind::Fairway => turf(x, y, shade(th.mown, set as f32 * 0.015), 4, 0.07, seed),
+        Kind::Fairway => turf(x, y, shade(th.mown, set as f32 * 0.012), 4, 0.09, seed),
         Kind::Firm => turf(x, y, mix(th.mown, th.sand, 0.22 + set as f32 * 0.03), 4, 0.05, seed),
         Kind::Green => {
-            let (c, h) = turf(x, y, th.green, 8, 0.035, seed);
+            let (c, h) = turf(x, y, th.green, 8, 0.045, seed);
             (c, h * 0.3 + 0.35)
         }
         Kind::Tricky => {
@@ -704,7 +712,7 @@ pub fn texture(path: &str) -> Vec<u8> {
             out.px[i] = *c;
         }
         let _ = seed;
-        return super::enc::bmp24(&out.to_rgba());
+        return super::enc::bmp24(&sunlit(out).to_rgba());
     }
     // the outside: a low grass collar (lighter on the second set of shapes); desert ground and scrub have none in their
     // second set, they show the bare ground with fewer plants
@@ -777,7 +785,7 @@ pub fn texture(path: &str) -> Vec<u8> {
             out.px[y as usize * N + x as usize] = shade(s.col[y as usize * N + x as usize], k);
         }
     }
-    super::enc::bmp24(&out.to_rgba())
+    super::enc::bmp24(&sunlit(out).to_rgba())
 }
 
 /// A water piece. The terrain renderer gives water the border pieces by depth (TERRAIN.md): pieces 2..5 face land or
@@ -807,6 +815,15 @@ fn water_piece(kind: Kind, th: &Theme, th_i: usize, var: u32) -> Vec<u8> {
         }
     }
     super::enc::bmp24(&c.to_rgba())
+}
+
+/// Warm afternoon sunlight over the land: a touch more red and less blue (the water keeps its own clean blues).
+fn sunlit(mut c: Canvas) -> Canvas {
+    for p in c.px.iter_mut() {
+        p[0] = (p[0] * 1.035 + 2.0).min(255.0);
+        p[2] *= 0.94;
+    }
+    c
 }
 
 /// Wall and cliff faces: layered rock (Strat, CliffTest) or a timber retaining wall, with grass along the top.
