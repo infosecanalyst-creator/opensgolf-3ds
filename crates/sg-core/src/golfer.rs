@@ -468,6 +468,22 @@ pub struct Club {
     /// it waits.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub vip_forced: bool,
+    /// The Weather that matters extra (sg_core::weather): where the course is (set by the game before each tick, from the
+    /// course), this tick's weather while the extra is on, and the last weather day the ticker announced. Not saved.
+    #[serde(skip)]
+    pub place: crate::weather::Place,
+    #[serde(skip)]
+    pub today: Option<crate::weather::Today>,
+    #[serde(skip)]
+    pub announced: Option<u32>,
+    /// The Path styles and lamps extra's lamp posts (sg_core::extras), course points in units of 1/1024 tile; saved only
+    /// when there is one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lamps: Vec<(i32, i32)>,
+    /// The More visitors extra (sg_core::visitors): a celebrity's crowd still to come and each kind's last visit; saved only
+    /// once a visitor has come.
+    #[serde(default, skip_serializing_if = "crate::visitors::Visits::is_zero")]
+    pub visits: crate::visitors::Visits,
 }
 
 impl Default for Club {
@@ -574,6 +590,11 @@ impl Club {
             pro_left: false,
             cheated: false,
             vip_forced: false,
+            place: Default::default(),
+            today: None,
+            announced: None,
+            lamps: Vec::new(),
+            visits: Default::default(),
         }
     }
 
@@ -1193,6 +1214,10 @@ impl Club {
         self.g[u].pause = -6 - rng.below(6);
         self.g[v].pause = 0;
         self.pair_setup(rng, u, v);
+        if self.today.is_some() {
+            self.weather_mood(u);
+            self.weather_mood(v);
+        }
         if self.tick & 0x40 != 0 {
             for gg in [u, v] {
                 let m = self.g[gg].mood;
@@ -1205,6 +1230,7 @@ impl Club {
     /// the pair's compatibility, the story kept only by chance once many have ended happily, the pair relationship.
     pub(crate) fn pair_setup(&mut self, rng: &mut ExeRng, p1: usize, p2: usize) {
         let compat = self.compatibility(p1, p2);
+        let manual = self.g[p2].flags & crate::stories::MANUAL_PAIR != 0;
         self.pick_story(rng, p1, p2);
         if self.g[p2].flags & crate::stories::MANUAL_PAIR == 0 {
             let sandbox = self.sandbox;
@@ -1242,6 +1268,10 @@ impl Club {
         for gg in [p1, p2] {
             self.g[gg].flags &= !crate::stories::MANUAL_PAIR;
         }
+        // the port's More visitors extra (sg_core::visitors): a touring pro or a celebrity may take p2's place
+        if self.extras.more_visitors && !manual {
+            self.visitor_check(rng, p1, p2);
+        }
     }
 
     /// The main frame's arrivals: a waiting pair goes to the first tee when it is free, and a new golfer arrives whenever fewer
@@ -1271,16 +1301,27 @@ impl Club {
             on_hole1 = 0;
         }
         let tournament = self.game & game::TOURNAMENT != 0;
-        if !tournament && on_hole1 == 0 && can_tee && waiting_pair != -1 && self.g[waiting_pair as usize ^ 1].hole == -1 {
+        // Weather that matters: nobody tees off while a storm holds play
+        let storm = self.today.is_some_and(|t| t.storm);
+        if !tournament && on_hole1 == 0 && can_tee && waiting_pair != -1 && self.g[waiting_pair as usize ^ 1].hole == -1 && !storm {
             self.start_pair(c, rng, waiting_pair as usize);
         }
-        let mut want = self.tick & 0x7f == 0 || queue < 2;
+        // the More visitors extra (sg_core::visitors): a celebrity's crowd arrives on top
+        let crowd = self.visitor_crowd(false);
+        let mut want = self.tick & 0x7f == 0 || queue < 2 || crowd;
         if queue >= 8 {
+            want = false;
+        }
+        // Weather that matters: fewer golfers come in foul weather
+        if want && self.today.is_some() && !self.weather_turnout() {
             want = false;
         }
         if want && !tournament && self.holes[1].par != 0 {
             let s = self.create(c, rng, true);
             if s != -1 {
+                if crowd {
+                    self.visitor_crowd(true);
+                }
                 self.last_created = s;
                 let su = s as usize;
                 self.g[su].partner = s;
@@ -1322,7 +1363,8 @@ impl Club {
             self.sound(0x19, Some((x, y)));
         }
         // the port's Hardcore economy caps the fee (sg_core::extras)
-        let fee = self.extras.fee(fee);
+        // (and the More visitors extra's visitors pay their own share: sg_core::visitors)
+        let fee = self.extras.fee(self.visitor_fee(g, fee));
         if self.game & game::TOURNAMENT == 0 {
             if self.year == 0 && self.fees_this_year == 0 {
                 // the exe's first-fee lesson (0x4c7444, 0x4c7408, 0x4c73cc, 0x4c7374, 0x4c7334)
@@ -1349,6 +1391,7 @@ impl Club {
         }
         self.g[g].hole_tick = self.tick;
         self.g[g].flags &= 0xfbdf_bbff;
+        self.visitor_hurry(g);
         self.g[g].club = 0;
         let last = h == 18 || self.par(h + 1) == 0;
         if self.game & game::TOURNAMENT == 0 && last {
@@ -1500,6 +1543,7 @@ impl Club {
     /// End of a golfer's round (0x4266b0): special visitors give their verdict, then the golfer heads home.
     pub fn round_end(&mut self, rng: &mut ExeRng, g: usize) {
         self.vip_verdict(rng, g);
+        self.visitor_verdict(g);
         self.g[g].bx = 0;
         self.g[g].hole = 19;
         if self.g[g].flags & flag::GARY != 0 {
@@ -1548,6 +1592,10 @@ impl Club {
     /// One game tick for the golfers: arrivals, the animation pass of the drawing routine, then every golfer's update.
     pub fn tick(&mut self, c: &mut Course, rng: &mut ExeRng, tick: u32) {
         self.tick = tick;
+        // the Weather that matters extra (the port's own): this tick's weather, the morning's forecast, a storm
+        if self.extras.weather || self.today.is_some() {
+            self.weather_tick(c);
+        }
         // the month start goes by the date (sg_core::extras::Calendar; the game tick itself with the extras off)
         if self.date() > 0 && self.cal.new_month(tick) {
             self.month_decay();
@@ -1621,6 +1669,14 @@ impl Club {
             self.shot_recs.retain(|r| r.g != g);
         }
         let mut l = Locals { ba, bb, bt, ga, gb, gt, old_flags: 0, wait_tee: false, closer: false };
+        // Weather that matters: golfers out on the holes wait where they are while a storm holds play (a ball already
+        // rolling comes to rest)
+        if self.today.is_some_and(|t| t.storm) && (1..19).contains(&self.g[g].hole) {
+            if self.g[g].flags & flag::BALL_MOVING != 0 {
+                self.ball(c, rng, g, &l);
+            }
+            return;
+        }
         if self.g[g].pause < 0 {
             if tick & 1 == 1 {
                 self.g[g].pause += 1;
@@ -1698,7 +1754,12 @@ impl Club {
 
     /// Hunger and thirst grow every 160 ticks (120 while walking a leg); hunger near trees, water and marsh.
     fn needs(&mut self, c: &mut Course, rng: &mut ExeRng, g: usize) {
-        let period = if self.g[g].walk_left != 0 { 120 } else { 160 };
+        let mut period = if self.g[g].walk_left != 0 { 120 } else { 160 };
+        // Weather that matters: a heat wave makes golfers thirsty (and hungry) sooner
+        if let Some(t) = self.today.filter(|t| t.heat > 0.0) {
+            let pct = 100 - ((100 - crate::data::economy().weather.heat_thirst_percent) as f32 * t.heat).round() as i32;
+            period = (period * pct / 100).max(1);
+        }
         if (self.tick as i32).wrapping_add(37 * g as i32) % period != 0 || self.g[g].hole == 19 {
             return;
         }
@@ -2996,6 +3057,10 @@ impl Club {
             } else {
                 gg.speed += (0x40 - (gg.speed >> 5)) / 2;
             }
+            // Weather that matters (sg_core::weather): wet or snowy ground holds the ball, baked ground lets it run on
+            if self.planner.drag != 0 && row.class <= 2 {
+                gg.speed -= gg.speed * self.planner.drag / 1000;
+            }
             if Self::ty_flat(c, a, b) == t::GREEN {
                 gg.heading = gg.heading.wrapping_add((gg.curve / 2) as u32);
                 if tick & 7 == 0 && rng.below(8) == 0 {
@@ -3091,6 +3156,10 @@ impl Club {
             let mut bf = row.bounce;
             if bf < 2 && edge != 0 {
                 bf = 2;
+            }
+            // Weather that matters: the soft ground the day after rain takes the bounce out (approach shots hold)
+            if self.planner.bounce_cut != 0 && row.class <= 2 {
+                bf = bf * (100 - self.planner.bounce_cut) / 100;
             }
             let at = (gg.bx, gg.by);
             if gg.vz < -0x100 {
@@ -3582,7 +3651,7 @@ impl Club {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::land::Object;
 
@@ -3829,12 +3898,288 @@ mod tests {
         let (drops, _) = run(false);
         assert!(drops > 0, "moods fall on this run without the extra");
     }
+
+    /// A seeded run on Easy on the test course opened as nine holes (the one hole played nine times over) with ratings far above
+    /// what any visitor waits for: the club afterwards and every event it gave, as text.
+    pub(crate) fn nine_hole_run(extras: crate::extras::Extras, ticks: u32) -> (Club, Vec<Event>) {
+        let (mut c, mut club) = test_course();
+        club.difficulty = 0;
+        for h in 2..=9 {
+            club.holes[h] = club.holes[1].clone();
+        }
+        club.next_hole = 10;
+        club.ratings.fun = 5000;
+        club.ratings.skill = 5000;
+        club.extras = extras;
+        let mut rng = ExeRng { state: 2468 };
+        club.new_game(&mut rng);
+        let mut events = Vec::new();
+        for tick in 1..ticks {
+            for g in club.g.iter_mut().take(SLOTS) {
+                g.sx = 400;
+                g.sy = 300;
+            }
+            club.tick(&mut c, &mut rng, tick);
+            events.append(&mut club.out);
+        }
+        (club, events)
+    }
+
+    /// FNV-1a of a text.
+    pub(crate) fn fnv(s: &str) -> u64 {
+        s.bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100_0000_01b3))
+    }
+
+    /// The More visitors extra off (sg_core::visitors): the seeded run gives exactly what it gave before the extra existed
+    /// (the hash was taken on the code before it), the club saved to the byte.
+    #[test]
+    fn nine_holes_without_the_new_visitors_are_bit_identical() {
+        let (club, events) = nine_hole_run(Default::default(), 20_000);
+        let json = serde_json::to_string(&club).unwrap();
+        let ev = serde_json::to_string(&events).unwrap();
+        // (a change to the game's own behaviour or text with everything off retakes these on purpose)
+        assert_eq!((fnv(&json), fnv(&ev)), (0xb7b6_bc77_ae0a_c920, 0x6b61_7fb6_6c6d_1b78), "club {json:.200}");
+    }
 }
 
 #[cfg(test)]
 mod soak {
     use super::tests::test_course;
     use super::*;
+
+    /// What one seeded season left behind (`season`).
+    #[derive(Debug)]
+    pub(crate) struct Season {
+        /// FNV-1a of the club and the course as saved at the season's end.
+        pub hash: u64,
+        /// Green fees and food and drink earned, in units.
+        pub fees: i32,
+        pub food: i32,
+        pub holes: usize,
+        /// The economy's board stage at the season's end (0: no warning).
+        pub debt_stage: i32,
+        pub cash: f64,
+    }
+
+    /// One seeded season (a calendar year, 8192 game ticks) on the test course, with these extras set up by `setup`.
+    pub(crate) fn season(seed: u32, setup: impl Fn(&mut Club)) -> Season {
+        let (mut c, mut club) = test_course();
+        club.difficulty = 1;
+        setup(&mut club);
+        let mut rng = ExeRng { state: seed };
+        club.new_game(&mut rng);
+        let mut econ = crate::economy::Economy { start_cash: 500.0, ..Default::default() };
+        econ.init();
+        let (mut fees, mut food, mut holes) = (0, 0, 0);
+        for tick in 1..=0x2000u32 {
+            for g in club.g.iter_mut().take(SLOTS) {
+                g.sx = 400;
+                g.sy = 300;
+            }
+            club.cal.step(tick, &club.extras.clone());
+            club.tick(&mut c, &mut rng, tick);
+            club.ticker_busy = false;
+            for e in club.out.drain(..) {
+                match e {
+                    Event::Earn { units, column, .. } => {
+                        match column {
+                            Column::GreensFees => fees += units,
+                            _ => food += units,
+                        }
+                        econ.earn(units as f64 * crate::economy::Economy::UNIT);
+                    }
+                    Event::HoleDone { .. } => holes += 1,
+                    _ => {}
+                }
+            }
+            econ.on_tick_dated(tick, &club.cal, club.difficulty, 1, &[], &mut rng);
+        }
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        for b in serde_json::to_string(&club).unwrap().bytes().chain(serde_json::to_string(&c).unwrap().bytes()) {
+            h = (h ^ b as u64).wrapping_mul(0x100_0000_01b3);
+        }
+        Season { hash: h, fees, food, holes, debt_stage: econ.debt_stage, cash: econ.cash }
+    }
+
+    /// With every extra off the simulation is what it was before the weather (Weather that matters) existed: the season
+    /// below hashes as it did on the commit before it (0.4.1).
+    #[test]
+    fn a_season_with_the_extras_off_is_unchanged() {
+        let s = season(2024, |_| {});
+        println!("{s:?}");
+        assert_eq!(s.hash, 10038109221828143059);
+        // and the course's place (which the game sets before every tick) changes nothing while Weather that matters is off
+        let s = season(2024, |club| club.place = crate::weather::Place { force_rain: Some(1.0), ..wet_place("Glen") });
+        assert_eq!(s.hash, 10038109221828143059);
+    }
+
+    /// An Irish links course (wet, a snowy late winter now and then) and a Las Vegas desert course.
+    fn wet_place(name: &str) -> crate::weather::Place {
+        crate::weather::Place::new(name, 50, 50, Some(10), 3)
+    }
+    fn desert_place(name: &str) -> crate::weather::Place {
+        crate::weather::Place::new(name, 50, 50, Some(3), 1)
+    }
+
+    /// How far a ball rolls along the test course's fairway from a standing start at `speed`, under this tick's weather.
+    fn roll_distance(setup: impl Fn(&mut Club), speed: i32) -> i32 {
+        let (mut c, mut club) = test_course();
+        setup(&mut club);
+        club.tick = 5000;
+        club.weather_tick(&c);
+        let mut rng = ExeRng { state: 1 };
+        let g = 2;
+        let (x, y) = (12 * 1024 + 512, 25 * 1024 + 512);
+        let gg = &mut club.g[g];
+        (gg.hole, gg.bx, gg.by, gg.ox, gg.oy, gg.x, gg.y) = (1, x, y, x, y, x - 2048, y);
+        (gg.speed, gg.heading, gg.bz, gg.vz, gg.strokes) = (speed, crate::geom::angle(1024, 0), 0, 0, 1);
+        gg.flags |= flag::BALL_MOVING;
+        club.shot_start[g] = 4990;
+        for _ in 0..2000 {
+            if club.g[g].speed == 0 {
+                break;
+            }
+            let (ba, bb) = (club.g[g].bx >> 10, club.g[g].by >> 10);
+            let l = Locals { ba, bb, bt: c.ty[idx(ba, bb)], ga: ba, gb: bb, gt: 0, old_flags: 0, wait_tee: false, closer: false };
+            club.ball(&mut c, &mut rng, g, &l);
+        }
+        len(club.g[g].bx - x, club.g[g].by - y)
+    }
+
+    /// Weather that matters: on a rainy day a ball rolls less far on the fairway, in a heat wave further; with the extra
+    /// off the weather does nothing to it.
+    #[test]
+    fn rain_days_reduce_roll() {
+        let rain = |on: bool| {
+            move |club: &mut Club| {
+                club.extras.weather = on;
+                club.place = crate::weather::Place { force_rain: Some(1.0), ..wet_place("Glen") };
+            }
+        };
+        let dry = roll_distance(|_| {}, 0x1000);
+        let wet = roll_distance(rain(true), 0x1000);
+        let off = roll_distance(rain(false), 0x1000);
+        let hot = roll_distance(
+            |club| {
+                club.extras.weather = true;
+                club.place = crate::weather::Place { force_heat: Some(1.0), ..desert_place("Dune") };
+            },
+            0x1000,
+        );
+        println!("roll: dry {dry}, wet {wet}, hot {hot} (units, 1024 a tile)");
+        assert_eq!(off, dry);
+        assert!(wet * 100 < dry * 90 && wet * 100 > dry * 60, "{wet} of {dry}");
+        assert!(hot > dry && hot * 100 < dry * 125, "{hot} of {dry}");
+        // and the putts are planned for the wet green: a harder stroke for the same roll
+        let (c, mut club) = test_course();
+        let dry_putt = club.planner.solve(&c, 100, 0, true);
+        rain(true)(&mut club);
+        club.tick = 5000;
+        club.weather_tick(&c);
+        assert!(club.planner.drag > 0);
+        assert!(club.planner.solve(&c, 100, 0, true) > dry_putt);
+    }
+
+    /// Seasons with and without Weather that matters on wet, snowy and desert courses: the club's takings and the holes
+    /// played over the year stay within a few percent, and the weather never brings the board's warnings.
+    #[test]
+    fn weather_costs_a_season_at_most_a_few_percent() {
+        let names = ["Glen", "Moor", "Firth", "Strand", "Dune", "Mesa"];
+        let (mut off, mut on, mut holes_off, mut holes_on) = (0i64, 0i64, 0usize, 0usize);
+        for (i, name) in names.iter().enumerate() {
+            for seed in [11u32, 23, 37] {
+                let place = if i < 4 { wet_place(name) } else { desert_place(name) };
+                let a = season(seed, |club| club.place = place);
+                let b = season(seed, |club| {
+                    club.place = place;
+                    club.extras.weather = true;
+                });
+                assert_eq!(a.debt_stage, 0);
+                assert_eq!(b.debt_stage, 0, "{name} {seed}: the weather alone brought the board's warning");
+                assert!(b.cash > 0.0);
+                off += (a.fees + a.food) as i64;
+                on += (b.fees + b.food) as i64;
+                holes_off += a.holes;
+                holes_on += b.holes;
+            }
+        }
+        let pct = on as f64 * 100.0 / off as f64;
+        println!("takings with the weather: {pct:.1}% ({on} of {off} units), holes {holes_on} of {holes_off}");
+        assert!(pct > 95.0, "{pct}");
+        assert!(holes_on * 100 > holes_off * 93, "{holes_on} of {holes_off}");
+    }
+
+    /// A storm day: the ticker says so in the morning, play waits while the storm is on (nobody tees off, nobody swings),
+    /// the golfers buy something while they shelter, and play goes on after it.
+    #[test]
+    fn a_storm_holds_play_for_a_while() {
+        let place = wet_place("Storm Point");
+        let w = crate::data::economy().weather;
+        let day = (1..2000).find(|&d| place.storm_on(d, 0, w.storm_percent) && place.storm_on(d, 0, 100)).unwrap();
+        let (mut c, mut club) = test_course();
+        club.place = place;
+        club.extras.weather = true;
+        let mut rng = ExeRng { state: 9 };
+        club.new_game(&mut rng);
+        let start = day * crate::weather::DAY_TICKS;
+        let breaks = start + (place.storm_at(day) * crate::weather::DAY_TICKS as f32) as u32;
+        let (mut texts, mut shelter, mut swings_in_storm, mut tee_offs_in_storm) = (Vec::new(), 0, 0, 0);
+        for tick in start - 2000..breaks + w.storm_ticks as u32 + 1500 {
+            for g in club.g.iter_mut().take(SLOTS) {
+                g.sx = 400;
+                g.sy = 300;
+            }
+            let before: Vec<(i32, i32)> = club.g.iter().take(SLOTS).map(|g| (g.hole, g.strokes)).collect();
+            club.tick(&mut c, &mut rng, tick);
+            club.ticker_busy = false;
+            let storm = club.today.is_some_and(|t| t.storm);
+            for (g, &(hole, strokes)) in club.g.iter().take(SLOTS).zip(before.iter()) {
+                // (a ball already rolling when the storm broke comes to rest, and counts its stroke then)
+                if storm && tick > breaks + 100 {
+                    swings_in_storm += (hole > 0 && g.hole == hole && g.strokes > strokes) as i32;
+                    tee_offs_in_storm += (hole == -1 && g.hole == 1) as i32;
+                }
+            }
+            for e in club.out.drain(..) {
+                match e {
+                    Event::Message { text, .. } => texts.push((tick, text)),
+                    Event::Earn { units, column: Column::FoodDrink, .. } if tick == breaks => shelter += units,
+                    _ => {}
+                }
+            }
+        }
+        let said = |k: &'static str| texts.iter().find(|(_, t)| t.as_str() == crate::lang::tr(k)).map(|&(t, _)| t);
+        assert_eq!(said("STR_WEATHER_STORM_TODAY"), Some(start));
+        assert_eq!(said("STR_WEATHER_STORM_BREAKS"), Some(breaks));
+        assert_eq!(said("STR_WEATHER_STORM_PASSES"), Some(breaks + w.storm_ticks as u32));
+        assert_eq!((swings_in_storm, tee_offs_in_storm), (0, 0));
+        assert!(shelter > 0);
+    }
+
+    /// Foul weather moods: some golfers teeing off in the rain start a point lower, never more than that, and only with
+    /// the extra on.
+    #[test]
+    fn rain_dips_some_moods_a_little() {
+        let (_, mut club) = test_course();
+        club.extras.weather = true;
+        club.place = crate::weather::Place { force_rain: Some(1.0), ..wet_place("Glen") };
+        let (c, _) = test_course();
+        let mut dipped = 0;
+        for tick in 0..400u32 {
+            club.tick = tick;
+            club.weather_tick(&c);
+            club.g[4].mood = 3;
+            club.weather_mood(4);
+            assert!((2..=3).contains(&club.g[4].mood));
+            dipped += (club.g[4].mood == 2) as i32;
+        }
+        assert!((60..200).contains(&dipped), "{dipped} of 400");
+        club.extras.weather = false;
+        club.weather_tick(&c);
+        club.g[4].mood = 3;
+        club.weather_mood(4);
+        assert_eq!(club.g[4].mood, 3);
+    }
 
     /// A long run on the test course at every difficulty: no panics, golfers keep coming and finishing.
     #[test]

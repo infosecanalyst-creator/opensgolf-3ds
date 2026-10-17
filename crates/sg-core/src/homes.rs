@@ -46,6 +46,31 @@ fn dist(dx: i32, dy: i32) -> i32 {
 /// The value of a lot anchored at (a, b): its ring of twelve neighbouring tiles times the best "fun over distance" of the
 /// holes golfers have played, scaled down; a Marina in use raises it. `holes` are the hole records (index 1..18 used).
 pub fn lot_value(c: &Course, holes: &[Hole], difficulty: i32, a: i32, b: i32) -> i32 {
+    lot_value_without(c, holes, difficulty, a, b, None)
+}
+
+/// A played hole's "fun over distance" for a lot at (a, b) (the term `lot_value` takes the best of).
+fn hole_term(h: &Hole, difficulty: i32, a: i32, b: i32) -> Option<i32> {
+    if h.tee_shots == 0 {
+        return None;
+    }
+    let mut fun = h.mood_sum * 1000 / (h.plans / 2 + 4 + h.tee_shots) + (3 - difficulty) * 100;
+    if h.flags & 1 != 0 {
+        fun += 100;
+    }
+    if h.flags & 2 != 0 {
+        fun += 100;
+    }
+    let mut d = dist(a - h.back.0, b - h.back.1).min(dist(a - h.pin.0, b - h.pin.1));
+    let (mx, my) = h.markers[2];
+    if mx != -1 {
+        d = d.min(dist(a - (mx >> 10), b - (my >> 10)));
+    }
+    Some(fun / (d + 8))
+}
+
+/// `lot_value` leaving hole `skip` out (the port's own, for the home-site details extra).
+fn lot_value_without(c: &Course, holes: &[Hole], difficulty: i32, a: i32, b: i32, skip: Option<usize>) -> i32 {
     let mut ring = 0;
     for x in a - 1..=a + 2 {
         ring += view(c, x, b - 1) + view(c, x, b + 2);
@@ -54,29 +79,36 @@ pub fn lot_value(c: &Course, holes: &[Hole], difficulty: i32, a: i32, b: i32) ->
         ring += view(c, a - 1, y) + view(c, a + 2, y);
     }
     let mut best = 0;
-    for h in holes.iter().skip(1).take(18) {
-        if h.tee_shots == 0 {
+    for (i, h) in holes.iter().enumerate().skip(1).take(18) {
+        if Some(i) == skip {
             continue;
         }
-        let mut fun = h.mood_sum * 1000 / (h.plans / 2 + 4 + h.tee_shots) + (3 - difficulty) * 100;
-        if h.flags & 1 != 0 {
-            fun += 100;
+        if let Some(t) = hole_term(h, difficulty, a, b) {
+            best = best.max(t);
         }
-        if h.flags & 2 != 0 {
-            fun += 100;
-        }
-        let mut d = dist(a - h.back.0, b - h.back.1).min(dist(a - h.pin.0, b - h.pin.1));
-        let (mx, my) = h.markers[2];
-        if mx != -1 {
-            d = d.min(dist(a - (mx >> 10), b - (my >> 10)));
-        }
-        best = best.max(fun / (d + 8));
     }
     let marina = c.oper[12];
     if marina != 0 {
         best += marina * best / 3;
     }
     best * ring / 40
+}
+
+/// The hole that sets a lot's value (the best "fun over distance" of `lot_value`, the nearest of equals) and what it adds:
+/// the lot's value less its value without that hole (the next best hole's). None while no played hole lifts the lot.
+/// The port's own reading of the exe's sum, for the home-site details extra.
+pub fn value_hole(c: &Course, holes: &[Hole], difficulty: i32, a: i32, b: i32) -> Option<(usize, i32)> {
+    let mut best: Option<(usize, i32)> = None;
+    for (i, h) in holes.iter().enumerate().skip(1).take(18) {
+        if let Some(t) = hole_term(h, difficulty, a, b) {
+            if t > 0 && best.is_none_or(|b| t > b.1) {
+                best = Some((i, t));
+            }
+        }
+    }
+    let (h, _) = best?;
+    let adds = lot_value(c, holes, difficulty, a, b) - lot_value_without(c, holes, difficulty, a, b, Some(h));
+    Some((h, adds))
 }
 
 /// The house size a home site's value draws (0x40e5b0): 0 a sign, 1 a house being built, 2 and 3 a house, 4 a house with a
@@ -136,6 +168,15 @@ mod tests {
             c.ty[idx(9, b)] = t::WATER;
         }
         assert!(lot_value(&c, &holes, 1, 10, 10) > rough);
+        // the hole that makes the value, and what it adds (all of it, with no other hole played)
+        assert_eq!(value_hole(&c, &holes, 1, 10, 10), Some((1, lot_value(&c, &holes, 1, 10, 10))));
+        holes[2] = holes[1].clone();
+        holes[2].back = (30, 30);
+        holes[2].pin = (31, 31);
+        let far = lot_value_without(&c, &holes, 1, 10, 10, Some(1));
+        assert!(far > 0 && far < lot_value(&c, &holes, 1, 10, 10));
+        assert_eq!(value_hole(&c, &holes, 1, 10, 10), Some((1, lot_value(&c, &holes, 1, 10, 10) - far)));
+        assert_eq!(value_hole(&Course::default(), &vec![Hole::default(); 20], 1, 10, 10), None);
         assert_eq!(house_size(0), 0);
         assert_eq!(house_size(450), 1);
         assert_eq!(house_size(2400), 4);

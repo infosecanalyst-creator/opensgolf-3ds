@@ -277,9 +277,39 @@ impl App {
                 return true;
             }
         }
+        // the clickable ticker: the camera to the golfer or the place the message is about
+        if crate::extras::ticker_jump() && self.ticker_rect().is_some_and(|r| r.has(vx, vy)) && self.ticker_jump_to() {
+            return true;
+        }
         if crate::extras::history() && self.ticker_rect().is_some_and(|r| r.has(vx, vy)) {
             self.open_history();
             return true;
+        }
+        false
+    }
+
+    /// The clickable ticker (OpenSGolf extras): the camera goes to the golfer saying the message, and follows him, while he
+    /// is on the course; else to the place the message is about (as the Show button), else to the building whose picture it
+    /// shows. Returns false when the message is about nothing on the course.
+    fn ticker_jump_to(&mut self) -> bool {
+        if let Some(r) = self.xs.ticker_golfer {
+            if let Some(g) = self.golfer_of(r) {
+                self.look_at((self.club.g[g].x, self.club.g[g].y));
+                self.xs.follow = Some(crate::extras::Follow::Golfer(r));
+                return true;
+            }
+        }
+        if let Some((_, at)) = self.xs.ticker_place {
+            self.look_at(at);
+            return true;
+        }
+        let kind = -self.ticker.speaker;
+        if (6..=14).contains(&kind) {
+            let at = self.course.objects.iter().skip(1).find(|o| o.kind == kind).map(|o| (o.a * 1024 + 1024, o.b * 1024 + 1024));
+            if let Some(at) = at {
+                self.look_at(at);
+                return true;
+            }
         }
         false
     }

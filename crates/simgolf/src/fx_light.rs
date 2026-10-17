@@ -101,6 +101,9 @@ pub struct Atmos {
     /// Winter (fx_winter.rs): the snow lying on level ground (0 none .. 1) and snow falling (0 none .. 1, instead of rain).
     pub snow: f32,
     pub snowfall: f32,
+    /// A heat wave (fx_heat.rs): how hot (0 none .. 1) and how parched the grass looks (0 .. 1).
+    pub heat: f32,
+    pub parched: f32,
     /// How far the water has iced over (0 none .. 1: small ponds frozen, the larger ones at their edges; fx_winter.rs).
     pub ice: f32,
 }
@@ -140,6 +143,8 @@ impl Default for Atmos {
             golden: 0.0,
             snow: 0.0,
             snowfall: 0.0,
+            heat: 0.0,
+            parched: 0.0,
             ice: 0.0,
         }
     }
@@ -256,15 +261,15 @@ const DAY: [Key; 9] = [
     },
 ];
 
-fn lerp3(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
+pub(crate) fn lerp3(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
     [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
 }
 
-fn mul3(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
+pub(crate) fn mul3(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
     [a[0] * b[0], a[1] * b[1], a[2] * b[2]]
 }
 
-fn grey(c: [f32; 3], k: f32) -> [f32; 3] {
+pub(crate) fn grey(c: [f32; 3], k: f32) -> [f32; 3] {
     let l = c[0] * 0.299 + c[1] * 0.587 + c[2] * 0.114;
     lerp3(c, [l, l, l], k)
 }
@@ -302,19 +307,10 @@ pub fn sun_step(w: [f32; 3]) -> (i32, i32) {
     ((az / 3.0).round() as i32, (el / 2.0).round() as i32)
 }
 
-/// A hash for the render-side randomness (FNV-1a over the words, then mixed).
+/// A hash for the render-side randomness (FNV-1a over the words, then mixed): sg_core::weather's, which decides the
+/// weather's days for the drawing and the Weather that matters extra alike.
 fn hash(words: &[u32]) -> u32 {
-    let mut h: u32 = 0x811c_9dc5;
-    for w in words {
-        for b in w.to_le_bytes() {
-            h ^= b as u32;
-            h = h.wrapping_mul(0x0100_0193);
-        }
-    }
-    h ^= h >> 16;
-    h = h.wrapping_mul(0x7feb_352d);
-    h ^= h >> 15;
-    h
+    sg_core::weather::hash(words)
 }
 
 /// The render-side hash, for the other effects' modules.
@@ -419,8 +415,31 @@ pub fn below_now(app: &App) -> [f32; 3] {
 impl App {
     /// The seed of the render-side randomness: the course's name and size, so a save keeps its weather.
     pub(crate) fn fx_seed(&self) -> u32 {
-        let name = self.course_name.bytes().fold(0u32, |h, b| h.wrapping_mul(31).wrapping_add(b as u32));
-        hash(&[name, self.terrain.w as u32, self.terrain.h as u32])
+        sg_core::weather::Place::seed_of(&self.course_name, self.terrain.w as u32, self.terrain.h as u32)
+    }
+
+    /// Where the course is for its weather (sg_core::weather): its seed, its property's climate and its theme, with the
+    /// stills' `SG_FX_RAIN` and `SG_FX_HEAT` (which the Weather that matters extra then plays too). The game hands it to
+    /// the simulation before each tick.
+    pub(crate) fn weather_place(&self) -> sg_core::weather::Place {
+        let env = |k: &str| std::env::var(k).ok().and_then(|v| v.parse::<f32>().ok());
+        let property = self.land.as_ref().map(|l| l.slot.property);
+        sg_core::weather::Place {
+            force_rain: env("SG_FX_RAIN"),
+            force_heat: env("SG_FX_HEAT"),
+            ..sg_core::weather::Place::new(&self.course_name, self.terrain.w as u32, self.terrain.h as u32, property, self.exe_theme())
+        }
+    }
+
+    /// The weather's day and how far through it the clock is (0..1): the light's day, or with the Weather that matters
+    /// extra on the simulation's (sg_core::weather::DAY_TICKS, the light's day at its normal length), so what is drawn
+    /// is the weather the golfers play in whatever the day length.
+    pub(crate) fn fx_weather_day(&self) -> (u32, f32) {
+        if !self.club.extras.weather {
+            return (self.fx_day().0, self.fx_day_fraction());
+        }
+        let dt = sg_core::weather::DAY_TICKS;
+        (self.game_tick / dt, ((self.game_tick % dt) as f32 + self.tick_fraction()) / dt as f32)
     }
 
     /// The day (one game month) and the phase of its light (0..1, 0 dawn, 0.4..0.6 midday, 0.9 sunset). `SG_FX_HOUR`
@@ -442,28 +461,25 @@ impl App {
 
     /// Whether the weather eases from day to day (any day length but the first versions' short one, which is kept as it
     /// was), and the neighbouring day to blend with.
-    fn fx_blend_day(&self, day: u32) -> (u32, f32) {
+    fn fx_blend_day(&self, day: u32, f: f32) -> (u32, f32) {
         if crate::fx::settings().day_length == 0 {
             return (day, 0.0);
         }
-        neighbour(day, self.fx_day_fraction())
+        neighbour(day, f)
     }
 
     /// How hard it rains on a day (0 dry): about one day in four on parkland, more on the links, never in the desert or the
     /// tropics (sunny resort courses).
     /// `SG_FX_RAIN=1` (or 0) makes every day wet (dry) for stills.
     pub(crate) fn fx_rain_on(&self, day: u32) -> f32 {
-        if let Some(v) = std::env::var("SG_FX_RAIN").ok().and_then(|v| v.parse::<f32>().ok()) {
-            return v.clamp(0.0, 1.0);
-        }
-        // the place's climate (fx_winter.rs), wetter or drier from one year to the next
-        let chance = self.fx_climate().rain * self.fx_wet_year();
-        let h = hash(&[self.fx_seed(), day, 0x7261_696e]);
-        if unit(h) < chance {
-            0.6 + 0.4 * unit(hash(&[h]))
-        } else {
-            0.0
-        }
+        // the place's climate (fx_winter.rs), wetter or drier from one year to the next (sg_core::weather)
+        self.weather_place().rain_on(day, self.fx_year())
+    }
+
+    /// How hot a day is (a desert heat wave, sg_core::weather; 0 none).
+    pub(crate) fn fx_heat_on(&self, day: u32) -> f32 {
+        let pct = sg_core::data::economy().weather.heat_percent;
+        self.weather_place().heat_on(day, self.fx_year(), sg_core::weather::month_of(self.date() as f32), pct)
     }
 
     /// This moment's sun, sky and weather.
@@ -483,8 +499,11 @@ impl App {
         let dl = d[0].hypot(d[1]).max(1e-4);
         a.shadow_dir = [d[0] / dl, d[1] / dl];
         let (day, phase) = self.fx_day();
-        let (other, wt) = self.fx_blend_day(day);
-        let rain = if s.rain { self.fx_rain_on(day) * (1.0 - wt) + self.fx_rain_on(other) * wt } else { 0.0 };
+        let (other, wt) = self.fx_blend_day(day, self.fx_day_fraction());
+        // the weather's own day (the light's, or the simulation's with Weather that matters on)
+        let (wday, wf) = self.fx_weather_day();
+        let (wother, wwt) = self.fx_blend_day(wday, wf);
+        let rain = if s.rain { self.fx_rain_on(wday) * (1.0 - wwt) + self.fx_rain_on(wother) * wwt } else { 0.0 };
         if s.time_of_day {
             let el0 = base[1].clamp(-1.0, 1.0).asin().to_degrees();
             let (az, el, sun, amb, sprite, top, low, w, shadow) = day_at(phase, el0);
@@ -586,14 +605,20 @@ impl App {
             let theme = self.exe_theme();
             a.season = crate::fx_nature::season_at(self.fx_month(), theme, s.time_of_day.then_some(phase));
         }
+        if s.heat {
+            let heat = self.fx_heat_on(wday) * (1.0 - wwt) + self.fx_heat_on(wother) * wwt;
+            if heat > 0.0 {
+                self.fx_heat(&mut a, heat, s.time_of_day.then_some(phase));
+            }
+        }
         if s.after_rain || s.lightning {
-            self.fx_weather_after(&mut a, day, rain);
+            self.fx_weather_after(&mut a, wday, wf, rain);
         }
         if s.evening_lights && s.time_of_day {
             crate::fx_night::evening(&mut a, phase, self.exe_theme(), s.seasons.then(|| self.fx_month()));
         }
         if s.winter {
-            self.fx_winter(&mut a, day, s.time_of_day.then_some(phase));
+            self.fx_winter(&mut a, wday, s.time_of_day.then_some(phase));
         }
         a
     }

@@ -44,6 +44,7 @@ mod fx;
 mod fx_ball;
 mod fx_crowd;
 mod fx_glsl;
+mod fx_heat;
 mod fx_life;
 mod fx_light;
 mod fx_nature;
@@ -61,6 +62,7 @@ mod graphs;
 mod hd;
 mod history_ui;
 mod holemarks;
+mod homes_ui;
 mod hud_ui;
 mod import;
 mod info_ui;
@@ -72,6 +74,7 @@ mod member_panel;
 mod message_ui;
 mod net;
 mod panels_ui;
+mod paths_lamps;
 mod pathview_ui;
 mod people_ui;
 mod perf;
@@ -85,6 +88,7 @@ mod render;
 mod report_tabs;
 mod reports_ui;
 mod scenario_ui;
+mod scorecard_ui;
 mod screens_ui;
 mod share;
 mod staffview_ui;
@@ -99,6 +103,7 @@ mod update;
 mod views;
 mod wild_ui;
 mod world_ui;
+mod year_ui;
 
 use app::*;
 use gfx::Gfx;
@@ -467,6 +472,12 @@ fn open_screen(app: &mut App, screen: Option<&str>) {
         Some("yearend") if app.ui_ok => {
             app.year_end_tick = (app.club.date() | 0x1fff) + 1;
             app.screen = Screen::YearEnd;
+        }
+        // the year in numbers (year_ui.rs), the page after it
+        Some("yearsum") if app.ui_ok => {
+            app.year_end_tick = (app.club.date() | 0x1fff) + 1;
+            app.screen = Screen::YearEnd;
+            app.xs.year_page = true;
         }
         Some("roster") if app.ui_ok => {
             roster_fill(app);
@@ -908,6 +919,17 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 app.econ.extras = e;
                 println!("extras {e:?}");
             }
+            b'V' => {
+                // test hook: golfer slot G (partner G ^ 1) becomes visitor I of data/visitors.toml (the More visitors extra);
+                // a negative G: the -G-th ordinary golfer out on the course
+                let mut on = (0..sg_core::golfer::SLOTS).filter(|&g| (1..19).contains(&app.club.g[g].hole) && app.club.g[g].kind == 0);
+                let g = match at(1) {
+                    n if n < 0 => on.nth((-n - 1) as usize).unwrap_or(0),
+                    n => (n as usize).min(sg_core::golfer::SLOTS - 1),
+                };
+                app.club.visitor_arrives(g ^ 1, g, at(0).max(0) as usize);
+                println!("visitor {} in slot {g}: {}", at(0), app.club.name(g));
+            }
             b'H' => {
                 // test hook: golfer slots N,M,... are left-handed (-1 the player's pro), for the Left-handed golfers extra
                 for &g in &v {
@@ -976,6 +998,10 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                 if let Some(p) = app.popup.as_mut().filter(|p| p.kind == popup_ui::PopupKind::Search) {
                     p.changed_only = std::env::var_os("SG_PREFS_CHANGED").is_some();
                     p.refresh();
+                }
+                // SG_POPUP_MOUSE="x,y" leaves the pointer on the box there (the Extras box's description of that line)
+                if let Some(m) = std::env::var("SG_POPUP_MOUSE").ok().map(|s| ints(&s)).filter(|m| m.len() >= 2) {
+                    app.popup_pointer(m[0] as f32, m[1] as f32, false);
                 }
             }
             b'm' if v.len() >= 2 => app.move_hole(at(0) as usize, at(1) as usize),
@@ -1047,6 +1073,19 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                     area.too_large,
                     app.econ.cash
                 );
+            }
+            b'W' if item.len() > 2 && v.len() >= 5 => {
+                // drag to place (build_tools.rs): a row of kind `kind` W:x0,y0,x1,y1,kind through the one-click placement,
+                // then what it cost (whatever the extra's tick)
+                app.build_idx = at(4).clamp(0, 19) as usize;
+                app.ensure_land();
+                app.sync_course();
+                let tiles = app.row_area((at(0), at(1)), (at(2), at(3)));
+                let (n, cost) = build_tools::area_cost(&tiles, |x, y| app.row_cost_at(x, y));
+                let cash = app.econ.cash;
+                app.place_row((at(0), at(1)), (at(2), at(3)));
+                app.sync_course();
+                println!("row {item}: {} places, {n} to place for {cost} units, cash {cash} -> {}", tiles.len(), app.econ.cash);
             }
             b'k' => {
                 // test hook: Move/Eject the first golfer on the course (or golfer k:N) and drop him on the clubhouse
@@ -1976,8 +2015,10 @@ impl Stage {
             }
             return;
         }
-        // Esc first puts the tape or a rectangle under way away
+        // Esc first puts the tape or a rectangle or row under way away (a row's drag then places nothing more)
+        let row = self.app.bt.row_from.is_some();
         if k == KeyCode::Escape && self.app.build_tools_cancel() {
+            self.editing &= !row;
             return;
         }
         // the port's own: the whole interface hidden or shown again (u; controls_ui.rs)
@@ -3137,6 +3178,11 @@ impl EventHandler for Stage {
         if button == MouseButton::Right && self.app.bt.rect_from.take().is_some() {
             return;
         }
+        // and a drag to place's row (the OpenSGolf extra)
+        if button == MouseButton::Right && self.app.bt.row_from.take().is_some() {
+            self.editing = false;
+            return;
+        }
         // a click on an open hole's flag shows its Hole Stats, as in the original (issue #44)
         if ui_ok
             && button == MouseButton::Left
@@ -3170,6 +3216,8 @@ impl EventHandler for Stage {
             }
             // the terrain brush's rectangle (Shift) and fill (Alt), the port's own (build_tools.rs)
             match self.app.brush_area_press(self.shift, self.alt) {
+                // with the drag to place extra a row kind starts a row instead (placed on release)
+                build_tools::AreaPress::None if self.app.row_press(self.shift) => {}
                 build_tools::AreaPress::None => self.app.apply_tool(self.shift, false),
                 build_tools::AreaPress::Rect => {}
                 build_tools::AreaPress::Filled => self.editing = false,
@@ -3193,12 +3241,13 @@ impl EventHandler for Stage {
             self.photo_button(false, button, x, y);
             return;
         }
-        // a rectangle under way ends with the left button only; it is painted before the undo step is kept
-        if button != MouseButton::Left && self.app.bt.rect_from.is_some() {
+        // a rectangle or row under way ends with the left button only; it is painted or placed before the undo step is kept
+        if button != MouseButton::Left && (self.app.bt.rect_from.is_some() || self.app.bt.row_from.is_some()) {
             return;
         }
         if button == MouseButton::Left {
             self.app.brush_area_release();
+            self.app.row_release();
         }
         if self.dragging {
             self.app.drag_state(false, now());

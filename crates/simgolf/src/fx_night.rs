@@ -40,11 +40,20 @@ fn hash(w: &[u32]) -> u32 {
 /// The evening's lights at day phase `p` for `theme` (fireflies on parkland and tropical courses, more in summer when the
 /// month is known).
 pub fn evening(a: &mut Atmos, p: f32, theme: u8, month: Option<f32>) {
-    a.night = if p > 0.5 { smoothstep(0.84, 0.935, p) } else { 1.0 - smoothstep(0.0, 0.06, p) };
+    a.night = night_at(p);
     if theme == 0 || theme == 2 {
         let dusk = if p > 0.5 { smoothstep(0.885, 0.95, p) } else { 1.0 - smoothstep(0.0, 0.015, p) };
         let summer = month.map(|m| 0.25 + 0.75 * smoothstep(3.8, 5.0, m) * (1.0 - smoothstep(9.3, 10.4, m))).unwrap_or(1.0);
         a.fireflies = dusk * summer * (1.0 - a.rain);
+    }
+}
+
+/// How far into the night day phase `p` is (0 by day, 1 at night): from sunset to just after dawn.
+pub fn night_at(p: f32) -> f32 {
+    if p > 0.5 {
+        smoothstep(0.84, 0.935, p)
+    } else {
+        1.0 - smoothstep(0.0, 0.06, p)
     }
 }
 
@@ -276,6 +285,12 @@ impl App {
             let y = self.terrain.height_at(x, z) + 0.5;
             pool(&mut v, x, z, y, 1.2 * TILE_SIZE, 0.42 * k);
             pool(&mut v, x, z, y, 0.45 * TILE_SIZE, 0.22 * k);
+        }
+        // the Path styles and lamps extra's lamp posts (paths_lamps.rs): a wider, warmer pool each, in this same pass
+        for (x, z) in self.lamp_spots() {
+            let y = self.terrain.height_at(x, z) + 0.5;
+            pool(&mut v, x, z, y, 1.6 * TILE_SIZE, 0.5 * k);
+            pool(&mut v, x, z, y, 0.6 * TILE_SIZE, 0.28 * k);
         }
         if let Some(l) = &self.land {
             for o in l.objects.iter().filter(|o| o.kind >= 6) {

@@ -325,9 +325,12 @@ impl App {
         let rock_tex = self.cliffs.tex;
         let mut next_rock = 0;
         // Enhanced graphics only: the evening's lamps, in the sprites' order (fx_night.rs)
-        let mut lamps = if crate::fx::active() { self.fx_lamp_quads(px) } else { Vec::new() };
+        let lamp_tex = if crate::fx::active() { Some(crate::fx::gpu(g).dot) } else { None };
+        let mut lamps: Vec<(f32, Option<miniquad::TextureId>, Vec<Vert>)> =
+            if crate::fx::active() { self.fx_lamp_quads(px).into_iter().map(|(k, v)| (k, lamp_tex, v)).collect() } else { Vec::new() };
+        // and the Path styles and lamps extra's lamp posts (paths_lamps.rs)
+        lamps.extend(self.lamp_quads(g.white, lamp_tex));
         lamps.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-        let lamp_tex = if lamps.is_empty() { None } else { Some(crate::fx::gpu(g).dot) };
         let mut next_lamp = 0;
         for &(key, i) in &items {
             while next_rock < rocks.len() && rocks[next_rock].0 < key {
@@ -335,7 +338,7 @@ impl App {
                 next_rock += 1;
             }
             while next_lamp < lamps.len() && lamps[next_lamp].0 < key {
-                g.tris(Mode::Flat, lamp_tex, u, &lamps[next_lamp].1);
+                g.tris(Mode::Flat, lamps[next_lamp].1, u, &lamps[next_lamp].2);
                 next_lamp += 1;
             }
             let sh = self.props[i].shadow.filter(|_| art_shadows);
@@ -349,7 +352,7 @@ impl App {
             g.tris(Mode::Flat, rock_tex, u, &r.1);
         }
         for l in &lamps[next_lamp..] {
-            g.tris(Mode::Flat, lamp_tex, u, &l.1);
+            g.tris(Mode::Flat, l.1, u, &l.2);
         }
         self.draw_balls(g, u);
     }
@@ -853,6 +856,7 @@ impl App {
             self.draw_staff_view(g, &s);
             self.draw_landing_legend(g, &s);
             self.draw_name_tag(g, &s);
+            self.draw_home_details(g, &s);
         }
         // the great-shot SimFoto is drawn over the course alone: footage of the original shows the frozen frame without
         // the dock, the name plate, the rating pills, the leader board and the ticker

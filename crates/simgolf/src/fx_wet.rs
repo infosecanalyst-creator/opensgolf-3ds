@@ -134,11 +134,10 @@ impl App {
     /// Sets the wet ground, the puddles, a rainbow and a lightning flash of this moment into `a` (rain: today's).
     /// `SG_FX_WET=x` makes the ground that wet with puddles that far spread, `SG_FX_RAINBOW=x` shows a rainbow, and
     /// `SG_FX_LIGHTNING=x` a flash of that brightness, for stills.
-    pub(crate) fn fx_weather_after(&self, a: &mut Atmos, day: u32, rain: f32) {
+    /// `day` is the weather's day and `f` how far through it the clock is (`fx_weather_day`).
+    pub(crate) fn fx_weather_after(&self, a: &mut Atmos, day: u32, f: f32, rain: f32) {
         let s = crate::fx::settings();
         let env = |k: &str| std::env::var(k).ok().and_then(|v| v.parse::<f32>().ok());
-        // how far through the day (one game month) we are
-        let f = self.fx_day_fraction();
         if s.after_rain {
             let yesterday = if day > 0 && s.rain { self.fx_rain_on(day - 1) } else { 0.0 };
             if rain > 0.0 {
@@ -167,7 +166,12 @@ impl App {
         }
         if s.lightning {
             // storms where the climate is wet (the tropics' thunderstorms too), never in the desert
-            if rain >= 0.7 && self.exe_theme() != 1 && self.fx_climate().rain >= 0.2 {
+            // with Weather that matters on, only on the thunderstorm days the golfers shelter from (sg_core::weather)
+            let storm_day = !self.club.extras.weather || {
+                let pct = sg_core::data::economy().weather.storm_percent;
+                self.weather_place().storm_on(day, self.fx_year(), pct)
+            };
+            if rain >= 0.7 && self.exe_theme() != 1 && self.fx_climate().rain >= 0.2 && storm_day {
                 a.flash = self.fx_lightning_now(rain);
             }
             if let Some(v) = env("SG_FX_LIGHTNING") {

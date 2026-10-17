@@ -1320,6 +1320,8 @@ STR_SEARCH_CHANGED                      : Show only what differs from the origin
 # A found option: "{page}: {option}"; the pages of Enhanced graphics' master switch and of the keys
 STR_SEARCH_PLACE_ENHANCED               :Graphics
 STR_SEARCH_PLACE_KEYS                   :Keys
+# a found option's category and its page or tag (Graphics · Water, Gameplay · Noticeable)
+STR_SEARCH_PLACE_TWO                    :{A} · {B}
 STR_SEARCH_KEY                          :{ACTION} ({KEY})
 STR_SEARCH_NONE                         :Nothing found.
 STR_SEARCH_MORE                         :{N} more: type more to narrow the list.
@@ -1335,10 +1337,60 @@ STR_EXTRAS_HARDCORE                     : Hardcore economy
 STR_EXTRAS_MORE_STAFF                   : Higher staff limits
 STR_EXTRAS_ANIMALS                      : Buyable animals
 STR_EXTRAS_SET_PAR                      : Set par: change a hole's par on its Hole Stats
-# The extras box's pages (tabs): the gameplay extras, the calendar and sandbox switches, the interface extras
+# The extras box's pages (tabs), by what their ticks change: how the game plays, relaxed play, the look, information, effort
 STR_EXTRAS_PAGE_GAMEPLAY                :Gameplay
-STR_EXTRAS_PAGE_TIME                    :Time & sandbox
-STR_EXTRAS_PAGE_INTERFACE               :Interface
+STR_EXTRAS_PAGE_SANDBOX                 :Sandbox
+STR_EXTRAS_PAGE_LOOKS                   :Looks
+STR_EXTRAS_PAGE_INFO                    :Info
+STR_EXTRAS_PAGE_HELPERS                 :Helpers
+# each page's banner under the tabs
+STR_EXTRAS_BANNER_GAMEPLAY              :Changes how the game plays.
+STR_EXTRAS_BANNER_SANDBOX               :Bends the rules for relaxed play.
+STR_EXTRAS_BANNER_LOOKS                 :Changes how it looks. Play is unchanged.
+STR_EXTRAS_BANNER_INFO                  :Shows more about your club. Play is unchanged.
+STR_EXTRAS_BANNER_HELPERS               :Saves you effort. Play is unchanged.
+# the pill at the right end of a gameplay or sandbox line: how much it changes the game
+STR_EXTRAS_TAG_LIGHT                    :Light touch
+STR_EXTRAS_TAG_NOTICEABLE               :Noticeable
+STR_EXTRAS_TAG_BIG                      :Big change
+# the foot of the box with no option under the pointer
+STR_EXTRAS_HINT_TAGGED                  :Each tag says how much the game changes. Point at an option, or tap it, to read what it does.
+STR_EXTRAS_HINT_PLAIN                   :Point at an option, or tap it, to read what it does.
+# the foot of the box: what the option under the pointer (or last tapped) changes
+STR_EXTRAS_DESC_ROTATE                  :Tab turns a placed building or the clubhouse a quarter, or steps through the designs of the item in hand. Only the picture turns.
+STR_EXTRAS_DESC_CUT_CONTENT             :Fourteen landmarks the original never used join the landmark strip. Golfers enjoy the view; they have no special powers.
+STR_EXTRAS_DESC_HARDCORE                :Tighter money and choosier golfers: higher wages, upkeep and land prices, more interest, lower fees and at most 12 staff.
+STR_EXTRAS_DESC_MORE_STAFF              :Your club may hire up to 40 employees instead of the original's 20.
+STR_EXTRAS_DESC_ANIMALS                 :Buy pairs of the theme's animals from the landmark strip. They stay near where you set them down and cheer golfers up.
+STR_EXTRAS_DESC_SET_PAR                 :Minus and plus buttons on Hole Stats change a hole's par (2 to 6), and golfers are scored against your par.
+STR_EXTRAS_DESC_SEASON_SPEED            :The calendar runs at half or a quarter speed while golfers, staff and bills keep their pace, so each year holds more golf.
+STR_EXTRAS_DESC_PAUSE_CALENDAR          :The date stands still: golfers keep coming and paying, but no month or year ends, so no interest and no board review.
+STR_EXTRAS_DESC_FREEZE_MOODS            :Golfers' moods never drop. Good moments still cheer them up, and nobody leaves unhappy.
+STR_EXTRAS_DESC_UNLOCK_ALL              :Every building, home site and landmark of the theme is on the panels from the start, as in Sandbox Mode.
+STR_EXTRAS_DESC_LEFTIES                 :About one golfer in ten is left-handed: a mirrored swing, and the ball curves the other way. Your pro can be one too.
+STR_EXTRAS_DESC_WEATHER                 :Rain and snow slow the ball and keep some golfers at home; desert heat waves speed it up. Gentle over a year.
+STR_EXTRAS_DESC_PATHS                   :Draws every path in brick, gravel, dark stone or boardwalk, and adds lamp posts to the landmark strip. A click picks the style.
+STR_EXTRAS_DESC_MORE_VISITORS           :Touring pros and celebrities drop in now and then. They pay more, draw crowds and say what they thought of your course.
+STR_EXTRAS_DESC_PEOPLE                  :A sortable list of every golfer and employee, with golfer profiles and your pro's screens (Shift+G).
+STR_EXTRAS_DESC_HISTORY                 :Keeps every ticker message with its date, so you can read back what you missed (Shift+M).
+STR_EXTRAS_DESC_NAME_TAGS               :A small tag with the name of the golfer or employee under the pointer (Shift+H turns them off and on).
+STR_EXTRAS_DESC_REPORT_TABS             :A strip of tabs over the F1 to F10 reports flips from one report to another without going back to the course.
+STR_EXTRAS_DESC_PATH_HELP               :Path view (Shift+V) marks paths that reach the clubhouse and buildings they miss; a Show button finds a closed building.
+STR_EXTRAS_DESC_LANDING_MAP             :Dots on the course show where the golfers' shots on a hole come to rest, with a count of where they ended (Shift+D).
+STR_EXTRAS_DESC_HOLE_COMMENTS           :The thoughts golfers had most often on each hole, this month, last month or this year (Shift+I).
+STR_EXTRAS_DESC_GRAPHS                  :Graphs of the club and each hole month by month: rounds, money, happiness, ratings and members (Shift+Y).
+STR_EXTRAS_DESC_LIVE_SCORECARDS         :An open golfer card shows the golfer's round so far, hole by hole, as the original shows your pro's.
+STR_EXTRAS_DESC_YEAR_SUMMARY            :After the End of Year report, a page of the year's key figures against the year before.
+STR_EXTRAS_DESC_HOME_DETAILS            :Point at a home site to see whose it is, what it cost, what it sold for and what it is worth now.
+STR_EXTRAS_DESC_AUTOSAVE                :Saves the game every five minutes of play, keeping the last three, so a crash loses little.
+STR_EXTRAS_DESC_SAVE_PICTURES           :Load Previous Game shows a small map of each saved game's course.
+STR_EXTRAS_DESC_SHARING                 :Copy a code for your course to send to a friend; paste one (Ctrl+V) to play theirs and try to beat their record.
+STR_EXTRAS_DESC_PAUSE_BACKGROUND        :The game pauses while its window is in the background and goes on when you come back.
+STR_EXTRAS_DESC_PAUSE_EVENTS            :The game pauses when a VIP arrives, a famous golfer challenges your pro, the SGA makes an offer or money runs short.
+STR_EXTRAS_DESC_UPDATE_CHECK            :Looks online for a newer OpenSGolf when the game starts, and offers it only if there is one.
+STR_EXTRAS_DESC_ZOOM_POINTER            :The mouse wheel and a pinch zoom towards the spot you point at, instead of the middle of the screen.
+STR_EXTRAS_DESC_DRAG_PLACE              :Drag with benches, flower beds and the like in hand to lay a straight row of them, with the cost shown as you go.
+STR_EXTRAS_DESC_TICKER_JUMP             :A click on a ticker message takes the camera to the golfer or place it is about.
 # Slower seasons: a click steps the calendar's speed (1x is the original's)
 STR_EXTRAS_SEASON_SPEED                 : Slower seasons: the calendar at {VALUE}
 STR_EXTRAS_SPEED_1                      :1x (original)
@@ -1375,6 +1427,8 @@ STR_CUT_DESERT_FOUNTAIN                 :desert fountain
 STR_CUT_SEA_ROCK                        :sea rock
 STR_ENHANCED_TITLE                      :Enhanced graphics (not in the original)
 STR_ENHANCED_MASTER                     : Enhanced graphics (off: Classic)
+# the banner under the Enhanced graphics box's tabs
+STR_ENHANCED_BANNER                     :Graphics only: play is never changed.
 STR_ENHANCED_NATIVE_TEXT                : Sharp text at the screen's resolution
 STR_ENHANCED_SMOOTH_UI                  : Smooth interface art at any size
 STR_ENHANCED_WIDESCREEN                 : Widescreen: interface at the window's edges
@@ -1408,6 +1462,7 @@ STR_ENHANCED_FX_EVENING_LIGHTS          : Lit windows, lamps and fireflies at du
 STR_ENHANCED_FX_SEASONS                 : Seasons: blossom, autumn colours, frost
 STR_ENHANCED_FX_AFTER_RAIN              : Wet ground, puddles and rainbows
 STR_ENHANCED_FX_LIGHTNING               : Lightning in heavy rain
+STR_ENHANCED_FX_HEAT                    : Heat waves in the desert: bleached light, parched grass
 STR_ENHANCED_FX_GRASS                   : Grass tufts in the rough
 STR_ENHANCED_FX_SHARPEN                 : Sharper art: contrast-adaptive sharpening
 STR_ENHANCED_FX_WINTER                  : Late-winter frost and snow in early March
@@ -1461,6 +1516,7 @@ STR_FX_EVENING_LIGHTS                   :Evening lights
 STR_FX_SEASONS                          :Seasons
 STR_FX_AFTER_RAIN                       :After the rain
 STR_FX_LIGHTNING                        :Lightning
+STR_FX_HEAT                             :Heat waves
 STR_FX_GRASS                            :Grass tufts
 STR_FX_SHARPEN                          :Sharpen
 STR_FX_WINTER                           :Winter
@@ -2994,3 +3050,133 @@ STR_CTL_CHEATS                          :Cheats box
 STR_FILES_CHEATED                       :Cheats used
 # Customise Golfer, your pro, with the Left-handed golfers extra on
 STR_CUST_LEFT_HANDED                    :Left-handed
+# drag to place (an OpenSGolf extra, build_tools.rs): its tick on the Extras box's Interface page, and the row's count and
+# total cost shown by the pointer while dragging (the sandbox shows the count only)
+STR_EXTRAS_DRAG_PLACE                   : Drag to place: rows of benches, flower beds and the like
+STR_ROW_COST                            :{ITEMS} items: {MONEY}
+STR_ROW_ITEMS                           :{ITEMS} items
+# the Change keys screen's presets (controls.rs Preset): the buttons, and the line under them once one is clicked
+STR_CTL_PRESET_ORIGINAL                 :Original controls
+STR_CTL_PRESET_MODERN                   :Modern controls
+STR_CTL_PRESET_ORIGINAL_DONE            :Original controls: every key the original's; the WASD camera, zooming towards the pointer, drag to place and the smooth camera off.
+STR_CTL_PRESET_MODERN_DONE              :Modern controls: the WASD camera, zooming towards the pointer, drag to place and the smooth camera (with Enhanced graphics) on.
+# Weather that matters (sg_core::weather, a gameplay extra): its line in the Extras box, the morning's forecast on the
+# ticker, and a thunderstorm holding play
+STR_EXTRAS_WEATHER                      : Weather that matters (rain, snow, heat, storms)
+STR_WEATHER_RAIN_TODAY                  :Rain today: the greens are slow and fewer golfers are coming out.
+STR_WEATHER_SNOW_TODAY                  :Snow today! Balls stop dead, and only the keenest golfers turn up.
+STR_WEATHER_HEAT_TODAY                  :Heat wave today: hard, fast ground and thirsty golfers.
+STR_WEATHER_STORM_TODAY                 :Thunderstorms are on the way today.
+STR_WEATHER_STORM_BREAKS                :Storm! Play is suspended while the golfers shelter.
+STR_WEATHER_STORM_PASSES                :The storm has passed. Play resumes.
+# OpenSGolf extras 0.4.2: live scorecards, the clickable ticker, the year in numbers, home-site details (extras.rs)
+STR_EXTRAS_LIVE_SCORECARDS              : Live scorecards (the round so far under the golfer card)
+STR_EXTRAS_TICKER_JUMP                  : Clickable ticker (a click goes to the golfer or place)
+STR_EXTRAS_YEAR_SUMMARY                 : The year in numbers (a page after the End of Year report)
+STR_EXTRAS_HOME_DETAILS                 : Home-site details (cost, sale and value under the pointer)
+STR_SCORECARD_TOTAL                     :Total
+STR_SCORECARD_EVEN                      :E
+STR_SCORECARD_LIVE                      :Round
+STR_SCORECARD_ON_HOLE                   :Hole {HOLE}
+STR_SCORECARD_FINISHED                  :Finished
+STR_YEARSUM_TITLE                       :{YEAR} in Numbers
+STR_YEARSUM_REVENUE                     :Money taken in
+STR_YEARSUM_PROFIT                      :Profit
+STR_YEARSUM_ROUNDS                      :Rounds played
+STR_YEARSUM_FUN                         :Fun rating
+STR_YEARSUM_SKILL                       :Skill rating
+STR_YEARSUM_MEMBERS                     :Members
+STR_YEARSUM_BEST_HOLE                   :Happiest hole
+STR_YEARSUM_WORST_HOLE                  :Unhappiest hole
+STR_YEARSUM_WINS                        :Tournaments won
+STR_YEARSUM_HOLE                        :Hole {HOLE}
+STR_YEARSUM_NOTE                        :Against the year before
+STR_HOMES_TITLE                         :Home site
+STR_HOMES_CELEBRITY                     :{CELEBRITY}'s home
+STR_HOMES_COST                          :Cost to build: {MONEY}
+STR_HOMES_SOLD                          :Sold for: {MONEY}
+STR_HOMES_MONTHLY                       :A month since: {MONEY}
+STR_HOMES_NO_RECORD                     :Placed before records
+STR_HOMES_VALUE                         :Lot value now: {MONEY}
+STR_HOMES_BUY_BACK                      :To buy back: {MONEY}
+STR_HOMES_HOLE                          :Hole {HOLE} adds {MONEY}
+STR_HOMES_NO_HOLE                       :No hole adds value yet
+# the Path styles and lamps extra (sg_core::extras PATHS): its line in the Extras box, the styles ({VALUE}), the lamp post
+# on the landmark strip and the toasts
+STR_EXTRAS_PATHS                        : Path styles and lamps: {VALUE}
+STR_EXTRAS_PATHS_OFF                    :off
+STR_EXTRAS_PATHS_ORIGINAL               :original paths
+STR_EXTRAS_PATHS_BRICK                  :brick
+STR_EXTRAS_PATHS_GRAVEL                 :gravel
+STR_EXTRAS_PATHS_STONE                  :dark stone
+STR_EXTRAS_PATHS_BOARDWALK              :boardwalk
+STR_EXTRAS_LAMP                         :lamp post
+STR_EXTRAS_LAMP_EFFECT                  :Lights the way at night
+STR_TOAST_PATH_STYLE                    :Paths: {STYLE}
+STR_TOAST_LAMP_NOT_HERE                 :A lamp post needs open ground on your course
+STR_TOAST_LAMPS_FULL                    :There is a lamp post on this tile already, or no room for more
+# The More visitors extra (sg-core visitors.rs, data/visitors.toml): all names and lines are the port's own, invented
+STR_EXTRAS_MORE_VISITORS                : More visitors: touring pros and celebrities
+STR_PEOPLE_TOURING_PRO                  :Touring Pro
+STR_PEOPLE_CELEBRITY                    :Celebrity
+STR_VISITOR_PRO_ARRIVES                 :Touring pro {NAME} has dropped in between tournaments for a quick round. Pros pay more than the usual green fee.
+STR_VISITOR_PRO_RATES                   :Touring pro {NAME} rates your course: '{REMARK}'
+STR_VISITOR_CELEBRITY_ARRIVES           :{JOB} {NAME} is playing your course today! Word gets around, and more golfers are on their way.
+STR_VISITOR_CELEBRITY_SAYS              :{JOB} {NAME} on your course: '{REMARK}'
+# a touring pro's few words on the course, the unhappiest first
+STR_VISITOR_PRO_REMARK_0                :Not up to tour standard.
+STR_VISITOR_PRO_REMARK_1                :Needs a lot of work.
+STR_VISITOR_PRO_REMARK_2                :A fair test of golf.
+STR_VISITOR_PRO_REMARK_3                :Tour quality. I'll be back.
+STR_VISITOR_PRO_REMARK_4                :Worthy of a major championship!
+# a celebrity's words when a pack's celebrity has none of its own
+STR_VISITOR_CELEBRITY_REMARK_0          :Not my kind of place, I'm afraid.
+STR_VISITOR_CELEBRITY_REMARK_1          :A pleasant day out.
+STR_VISITOR_CELEBRITY_REMARK_2          :A wonderful course. I'll tell all my friends!
+STR_VISITOR_JOB_TOURING_PRO             :Touring Pro
+STR_VISITOR_JOB_FILM_STAR               :Film Star
+STR_VISITOR_JOB_POP_STAR                :Pop Star
+STR_VISITOR_JOB_TV_CHEF                 :TV Chef
+STR_VISITOR_JOB_FOOTBALLER              :Ex-Footballer
+STR_VISITOR_JOB_SOAP_STAR               :Soap Star
+STR_VISITOR_JOB_RACING_DRIVER           :Racing Driver
+STR_VISITOR_JOB_NOVELIST                :Novelist
+STR_VISITOR_JOB_ASTRONOMER              :TV Astronomer
+STR_VISITOR_NAME_RENA_VASQUELL          :Rena Vasquell
+STR_VISITOR_NAME_HUGO_BRANDVOLD         :Hugo Brandvold
+STR_VISITOR_NAME_SAMI_VARKONYI          :Sami Varkonyi
+STR_VISITOR_NAME_LOTTIE_PEMBROOK        :Lottie Pembrook
+STR_VISITOR_NAME_MATTEO_KRINGEL         :Matteo Kringel
+STR_VISITOR_NAME_INES_MARLOWE           :Ines Marlowe
+STR_VISITOR_NAME_BROCK_STELLAN          :Brock Stellan
+STR_VISITOR_NAME_MARISOL_VANE           :Marisol Vane
+STR_VISITOR_NAME_ARLO_PENNINGTON        :Arlo Pennington
+STR_VISITOR_NAME_GUS_MALLORY            :Gus Mallory
+STR_VISITOR_NAME_DELLA_STARLING         :Della Starling
+STR_VISITOR_NAME_ZIGGY_MARCHETTI        :Ziggy Marchetti
+STR_VISITOR_NAME_PRUDENCE_OAKES         :Prudence Oakes
+STR_VISITOR_NAME_FELIX_NIGHTLY          :Felix Nightly
+STR_VISITOR_REMARK_BROCK_STELLAN_0      :I've done stunts on safer ground than this.
+STR_VISITOR_REMARK_BROCK_STELLAN_1      :Not bad. Not a blockbuster, either.
+STR_VISITOR_REMARK_BROCK_STELLAN_2      :Two thumbs up. I want the sequel!
+STR_VISITOR_REMARK_MARISOL_VANE_0       :This course is so off-key.
+STR_VISITOR_REMARK_MARISOL_VANE_1       :Catchy, but it needs a better chorus.
+STR_VISITOR_REMARK_MARISOL_VANE_2       :This course is a number one hit!
+STR_VISITOR_REMARK_ARLO_PENNINGTON_0    :Undercooked and badly seasoned.
+STR_VISITOR_REMARK_ARLO_PENNINGTON_1    :A decent dish. A pinch more flair, please.
+STR_VISITOR_REMARK_ARLO_PENNINGTON_2    :Cooked to perfection. My compliments to the chef!
+STR_VISITOR_REMARK_GUS_MALLORY_0        :I've seen better pitches in a car park.
+STR_VISITOR_REMARK_GUS_MALLORY_1        :A course of two halves, this.
+STR_VISITOR_REMARK_GUS_MALLORY_2        :Back of the net! What a course.
+STR_VISITOR_REMARK_DELLA_STARLING_0     :Darling, this course is a tragedy.
+STR_VISITOR_REMARK_DELLA_STARLING_1     :Not quite prime time, but it has promise.
+STR_VISITOR_REMARK_DELLA_STARLING_2     :I'll be telling everyone at the studio!
+STR_VISITOR_REMARK_ZIGGY_MARCHETTI_0    :Too many slow corners for my taste.
+STR_VISITOR_REMARK_ZIGGY_MARCHETTI_1    :A decent lap. There are a few tenths to find.
+STR_VISITOR_REMARK_ZIGGY_MARCHETTI_2    :Pole position! A cracking course.
+STR_VISITOR_REMARK_PRUDENCE_OAKES_0     :A plot full of holes, and not the good kind.
+STR_VISITOR_REMARK_PRUDENCE_OAKES_1     :A solid first draft.
+STR_VISITOR_REMARK_PRUDENCE_OAKES_2     :A page-turner from the first tee to the last green.
+STR_VISITOR_REMARK_FELIX_NIGHTLY_0      :A black hole of a course.
+STR_VISITOR_REMARK_FELIX_NIGHTLY_1      :A middling star, but it shines now and then.
+STR_VISITOR_REMARK_FELIX_NIGHTLY_2      :Simply out of this world!

@@ -1419,7 +1419,8 @@ impl App {
         let mut mud: BTreeMap<usize, (TextureId, Vec<Vert>)> = BTreeMap::new();
         let mut order: HashMap<&'static str, usize> = HashMap::new();
         for (joined, file, v) in jobs {
-            let Some(tex) = self.theme_texture(g, file) else { continue };
+            // (the Path styles and lamps extra's materials: paths_lamps.rs)
+            let Some(tex) = self.path_texture(g, file) else { continue };
             let next = order.len();
             let key = *order.entry(file).or_insert(next);
             let m = if joined { &mut paths } else { &mut mud };
@@ -2202,6 +2203,8 @@ impl App {
         }
         self.club.course_name = self.course_name.clone();
         self.club.course_theme = self.exe_theme();
+        // where the course is, for the Weather that matters extra (sg_core::weather; unused while it is off)
+        self.club.place = self.weather_place();
         self.pro_round_tick();
         self.club.ticker_busy = self.ticker.busy() || self.card.is_some();
         self.club.advisor = self.show_advisor;
@@ -3194,6 +3197,10 @@ impl App {
     /// Undo on a tile, as the exe's second right-click does: an item comes off with exactly what it cost back (booked to Build
     /// course), a building is demolished with no refund.
     pub fn undo_tile(&mut self, x: i32, y: i32) {
+        // a lamp post of the Path styles and lamps extra comes off first (paths_lamps.rs)
+        if self.remove_lamp(x, y) {
+            return;
+        }
         self.ensure_land();
         let Some(land) = self.land.as_mut() else { return };
         land.sync_from_terrain(&self.terrain);
@@ -3232,6 +3239,8 @@ impl App {
                 land.write_area(&mut self.terrain, o.a, o.b, o.a + size - 1, o.b + size - 1);
                 if o.kind == land::K_HOME_SITE {
                     self.club.evict(o.a, o.b);
+                    // the home-site details' record of it (homes_ui.rs)
+                    self.home_removed(o.a, o.b);
                     // buying the lot back (0x40e400): its smoothed value / 50 plus half its value now
                     let c = o.val / 50 + sg_core::homes::lot_value(&self.course, &self.club.holes, self.difficulty, o.a, o.b) / 2;
                     self.econ.spend_to(economy::LEDGER_HOME_SITES, c as f64 * Economy::UNIT);
@@ -3278,6 +3287,10 @@ impl App {
             // a click on the course before a landmark is chosen puts the tool down (0x41fc7c)
             self.edit = false;
             return;
+        }
+        // the Path styles and lamps extra's lamp post (paths_lamps.rs)
+        if self.chosen_landmark().is_some_and(|t| kind == land::K_LANDMARK && t == sg_core::extras::LAMP_TYPE) {
+            return self.place_lamp(tx, ty);
         }
         // the Buyable animals extra's page of the landmark strip
         if let Some(t) = self.chosen_landmark().filter(|&t| kind == land::K_LANDMARK && t >= sg_core::objects::ANIMAL_BASE) {
@@ -3373,6 +3386,8 @@ impl App {
         if lot > 0 {
             // the lot is sold at once
             self.econ.earn_to(economy::LEDGER_HOME_SITES, lot as f64 * Economy::UNIT);
+            // OpenSGolf extras (homes_ui.rs): what the home site cost and sold for
+            self.home_placed(tx, ty, cost.round() as i64, (lot as f64 * Economy::UNIT) as i64);
         }
         self.after_object_change();
         self.snd("Interface/Building.wav", 0.7, false);
@@ -3437,8 +3452,8 @@ impl App {
 
     /// Applies the current tool at the picked ground point. During a drag it only fires when the cell changes.
     pub fn apply_tool(&mut self, lower: bool, dragging: bool) {
-        // a Shift+drag rectangle paints when the button comes up (build_tools.rs)
-        if !self.has_hit || (self.tool == 0 && self.bt.rect_from.is_some()) {
+        // a Shift+drag rectangle paints, and a drag to place's row is placed, when the button comes up (build_tools.rs)
+        if !self.has_hit || (self.tool == 0 && self.bt.rect_from.is_some()) || self.bt.row_from.is_some() {
             return;
         }
         let (a, b) =

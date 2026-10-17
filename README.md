@@ -86,12 +86,14 @@ Optional, and off by default (Start New Game has a one-click switch between *the
 
 - **Enhanced graphics** for 4K and widescreen: sharp scaling, water (depth, waves with the wind, shorelines, rain rings,
   reeds, ducks, swans, jumping fish, frozen ponds), light, weather by each place's climate, seasons, late-winter snow,
-  birds of prey, butterflies and falling leaves, grass tufts, tournament crowds and a photo mode
+  desert heat waves, birds of prey, butterflies and falling leaves, grass tufts, tournament crowds and a photo mode
   ([docs/ENHANCED.md](docs/ENHANCED.md)).
 - **Bigger courses:** Large, Huge and Giant, up to 128 × 128 tiles.
 - **OpenSGolf extras:** a Hardcore economy, turning buildings, cut content restored as landmarks, animals to buy, higher
-  staff limits, setting a hole's par, left-handed golfers (and a left-handed pro), slower seasons (the calendar at 1/2x or
-  1/4x), sandbox switches (pause the calendar, freeze golfer happiness, unlock everything), a search over every
+  staff limits, setting a hole's par, left-handed golfers (and a left-handed pro), weather that matters (rain, snow,
+  heat waves and thunderstorms change how balls roll and who comes out to play), path styles and lamp posts, more
+  visitors (touring pros and invented celebrities, moddable through data/visitors.toml), slower seasons (the calendar at
+  1/2x or 1/4x), sandbox switches (pause the calendar, freeze golfer happiness, unlock everything), a search over every
   Preferences option with a reset to the original, and interface extras such as a People screen, message history,
   autosave (the last three kept), a map of each saved course, pausing in the background or on big news, and course
   sharing: copy a course code, a friend pastes it and tries to beat your course record.
@@ -104,8 +106,13 @@ Optional, and off by default (Start New Game has a one-click switch between *the
 - **History graphs** (interface extra): the club's and each hole's months as line graphs on the Histograph's page:
   rounds, revenue, costs, profit, cash, happiness, ratings and members, and each hole's plays, strokes over par,
   happiness and fees (Shift+Y).
+- **Live scorecards, a clickable ticker, the year in numbers and home-site details** (interface extras): any golfer's
+  round so far on the original's scorecard, a click on a ticker message to go to its golfer or place, a page after the
+  End of Year report with the year against the last, and what a home site cost, sold for and is worth.
 - **Camera bookmarks and modern mouse controls:** four kept views of the course (Ctrl+Shift+F1..F4 keep, Shift+F1..F4
   return), dragging with the middle button, and an interface extra that zooms towards the pointer.
+- **Drag to place** (interface extra): drag to lay a row of benches, flower beds, ball washers, willows or bridges, with
+  the row and its cost shown before you let go; and *Original* and *Modern* control presets on the Change keys screen.
 - **Updates from the title menu:** *Check for updates*, then *Update now* downloads the new version, checks its signature
   and installs it in place (Windows, macOS, Linux, Android); an interface extra checks once at each start. Only GitHub is
   contacted, and only then.

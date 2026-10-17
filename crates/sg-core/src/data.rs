@@ -23,7 +23,7 @@ pub const TERRAIN_SLOTS: usize = 28;
 /// The exe's tile types with a full row (bounce, roll, lie...): 0..22.
 pub const TILE_ROWS: usize = 23;
 /// The data files a pack may have, in the order they are read.
-pub const FILES: [&str; 6] = ["terrain", "buildings", "amenities", "staff", "properties", "economy"];
+pub const FILES: [&str; 7] = ["terrain", "buildings", "amenities", "staff", "properties", "economy", "visitors"];
 /// Object kinds listed in amenities.toml (the rest of the 20 kinds are in buildings.toml).
 pub const AMENITY_KINDS: [usize; 9] = [0, 1, 2, 3, 4, 16, 17, 18, 19];
 
@@ -342,6 +342,90 @@ pub struct EconomyDef {
     pub hardcore_fee_cap: i64,
     #[serde(default = "d_hardcore_mood_penalty")]
     pub hardcore_mood_penalty: i64,
+    /// The Weather that matters extra's numbers (`[economy.weather]`; sg_core::weather).
+    #[serde(default)]
+    pub weather: WeatherDef,
+}
+
+/// The Weather that matters extra (sg_core::extras, sg_core::weather): how much rain, snow, heat and storms change the game.
+/// Every field may be left out (its default). Drags are per mille of a rolling ball's speed each game tick on tee, fairway
+/// and green ground at full strength; turnouts are the share of the time new golfers keep arriving; mood shares are the
+/// golfers in a hundred teeing off in that weather whose mood starts a point lower (snow lovers: a point higher).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct WeatherDef {
+    pub rain_drag: i32,
+    pub snow_drag: i32,
+    pub heat_drag: i32,
+    /// How high a ball bounces on the soft ground the day after rain, in percent (approach shots hold better).
+    pub lush_bounce_percent: i32,
+    pub rain_turnout_percent: i32,
+    pub snow_turnout_percent: i32,
+    /// At a heat wave's midday only.
+    pub heat_turnout_percent: i32,
+    pub rain_mood_percent: i32,
+    pub snow_mood_percent: i32,
+    pub snow_lover_percent: i32,
+    pub heat_mood_percent: i32,
+    /// How often hunger and thirst grow in a heat wave, in percent of the usual interval (more drinks sold).
+    pub heat_thirst_percent: i32,
+    /// Heat-wave days in a hundred desert summer days.
+    pub heat_percent: i32,
+    /// Thunderstorm days in a hundred heavy-rain days, how long a storm holds play (game ticks), and what each golfer
+    /// waiting it out spends on food and drink (in the game's money).
+    pub storm_percent: i32,
+    pub storm_ticks: i32,
+    pub storm_spend: i32,
+}
+
+impl Default for WeatherDef {
+    fn default() -> Self {
+        WeatherDef {
+            rain_drag: 12,
+            snow_drag: 30,
+            heat_drag: -6,
+            lush_bounce_percent: 70,
+            rain_turnout_percent: 90,
+            snow_turnout_percent: 75,
+            heat_turnout_percent: 85,
+            rain_mood_percent: 30,
+            snow_mood_percent: 50,
+            snow_lover_percent: 15,
+            heat_mood_percent: 25,
+            heat_thirst_percent: 75,
+            heat_percent: 45,
+            storm_percent: 40,
+            storm_ticks: 240,
+            storm_spend: 100,
+        }
+    }
+}
+
+impl WeatherDef {
+    pub fn check(&self) -> Result<(), String> {
+        for (v, name) in [(self.rain_drag, "rain_drag"), (self.snow_drag, "snow_drag")] {
+            in_range(v as i64, 0, 200, &format!("weather.{name}"))?;
+        }
+        in_range(self.heat_drag as i64, -30, 200, "weather.heat_drag")?;
+        for (v, name) in [
+            (self.lush_bounce_percent, "lush_bounce_percent"),
+            (self.rain_turnout_percent, "rain_turnout_percent"),
+            (self.snow_turnout_percent, "snow_turnout_percent"),
+            (self.heat_turnout_percent, "heat_turnout_percent"),
+            (self.rain_mood_percent, "rain_mood_percent"),
+            (self.snow_mood_percent, "snow_mood_percent"),
+            (self.snow_lover_percent, "snow_lover_percent"),
+            (self.heat_mood_percent, "heat_mood_percent"),
+            (self.heat_percent, "heat_percent"),
+            (self.storm_percent, "storm_percent"),
+        ] {
+            in_range(v as i64, 0, 100, &format!("weather.{name}"))?;
+        }
+        in_range(self.heat_thirst_percent as i64, 25, 400, "weather.heat_thirst_percent")?;
+        in_range(self.storm_ticks as i64, 0, 3072, "weather.storm_ticks")?;
+        units(self.storm_spend as i64, "weather.storm_spend")?;
+        Ok(())
+    }
 }
 
 fn d_staff_limit() -> i64 {
@@ -398,6 +482,7 @@ impl EconomyDef {
         in_range(self.hardcore_interest_percent, 0, 100, "hardcore_interest_percent")?;
         units(self.hardcore_fee_cap, "hardcore_fee_cap")?;
         in_range(self.hardcore_mood_penalty, 0, 10, "hardcore_mood_penalty")?;
+        self.weather.check()?;
         Ok(())
     }
 }
@@ -413,6 +498,9 @@ pub struct Tables {
     pub staff: Vec<StaffDef>,
     pub properties: Vec<PropertyDef>,
     pub economy: EconomyDef,
+    /// data/visitors.toml: the More visitors extra's visitors (`[[visitor]]`) and their rules (`[visits]`).
+    pub visitors: Vec<crate::visitors::VisitorDef>,
+    pub visits: crate::visitors::VisitsDef,
 }
 
 fn slug(s: &str) -> String {
@@ -505,8 +593,18 @@ impl Tables {
             hardcore_interest_percent: d_hardcore_interest_percent(),
             hardcore_fee_cap: d_hardcore_fee_cap(),
             hardcore_mood_penalty: d_hardcore_mood_penalty(),
+            weather: WeatherDef::default(),
         };
-        Tables { terrain, buildings, amenities, staff, properties, economy }
+        Tables {
+            terrain,
+            buildings,
+            amenities,
+            staff,
+            properties,
+            economy,
+            visitors: crate::visitors::builtin(),
+            visits: Default::default(),
+        }
     }
 
     /// Merges one data file of a pack (`file` is its name without `.toml`, e.g. "terrain"). Problems (a bad file, a bad
@@ -519,8 +617,34 @@ impl Tables {
         };
         let builtin = builtin_tables();
         let key = table_key(file);
-        for k in doc.keys().filter(|k| k.as_str() != key) {
+        // visitors.toml has its rules too, one [visits] table
+        let rules = if file == "visitors" { "visits" } else { key };
+        for k in doc.keys().filter(|k| k.as_str() != key && k.as_str() != rules) {
             problems.push(format!("data/{file}.toml: unknown table [{k}] (expected [[{key}]])"));
+        }
+        if file == "visitors" {
+            let mut p = |e: String| problems.push(format!("data/{file}.toml: {e}"));
+            if let Some(v) = doc.get(key) {
+                merge_list(&mut self.visitors, &builtin.visitors, v, &mut p);
+            }
+            match doc.get(rules) {
+                Some(toml::Value::Table(t)) => {
+                    let mut base = toml::Table::try_from(&self.visits).unwrap_or_default();
+                    for (k, v) in t {
+                        base.insert(k.clone(), v.clone());
+                    }
+                    match toml::Value::Table(base).try_into::<crate::visitors::VisitsDef>() {
+                        Ok(e) => match e.check() {
+                            Ok(()) => self.visits = e,
+                            Err(e) => p(format!("[visits]: {e}")),
+                        },
+                        Err(e) => p(format!("[visits]: {}", toml_error("", &e))),
+                    }
+                }
+                Some(_) => p("visits must be one [visits] table".into()),
+                None => {}
+            }
+            return problems;
         }
         let Some(v) = doc.get(key) else { return problems };
         let mut p = |e: String| problems.push(format!("data/{file}.toml: {e}"));
@@ -560,6 +684,9 @@ impl Tables {
         }
         let mut eco = toml::Table::new();
         eco.insert("economy".into(), toml::Value::try_from(&self.economy).unwrap_or(toml::Value::Table(Default::default())));
+        let mut vis = toml::Table::new();
+        vis.insert("visits".into(), toml::Value::try_from(&self.visits).unwrap_or(toml::Value::Table(Default::default())));
+        vis.insert("visitor".into(), toml::Value::Array(self.visitors.iter().filter_map(|e| toml::Value::try_from(e).ok()).collect()));
         vec![
             ("terrain", list("terrain", &self.terrain)),
             ("buildings", list("building", &self.buildings)),
@@ -567,6 +694,7 @@ impl Tables {
             ("staff", list("staff", &self.staff)),
             ("properties", list("property", &self.properties)),
             ("economy", toml::to_string(&eco).unwrap_or_default()),
+            ("visitors", toml::to_string(&vis).unwrap_or_default()),
         ]
     }
 }
@@ -580,7 +708,8 @@ pub fn toml_error(text: &str, e: &toml::de::Error) -> String {
     }
 }
 
-/// The key of a file's entries: `[[terrain]]`, `[[building]]`, `[[amenity]]`, `[[staff]]`, `[[property]]`, `[economy]`.
+/// The key of a file's entries: `[[terrain]]`, `[[building]]`, `[[amenity]]`, `[[staff]]`, `[[property]]`, `[economy]`,
+/// `[[visitor]]` (with visitors.toml's `[visits]`).
 pub fn table_key(file: &str) -> &'static str {
     match file {
         "terrain" => "terrain",
@@ -588,6 +717,7 @@ pub fn table_key(file: &str) -> &'static str {
         "amenities" => "amenity",
         "staff" => "staff",
         "properties" => "property",
+        "visitors" => "visitor",
         _ => "economy",
     }
 }
@@ -674,6 +804,9 @@ pub struct Data {
     pub records: [PropertyRecord; 16],
     pub properties: [Property; 16],
     pub economy: EconomyData,
+    /// The More visitors extra's visitors and rules (sg_core::visitors), as merged.
+    pub visitors: Vec<crate::visitors::VisitorDef>,
+    pub visits: crate::visitors::VisitsDef,
 }
 
 /// The economy's constants in engine units.
@@ -698,6 +831,8 @@ pub struct EconomyData {
     pub hardcore_interest_percent: i32,
     pub hardcore_fee_cap: i32,
     pub hardcore_mood_penalty: i32,
+    /// The Weather that matters extra's numbers (storm_spend in money, as the file has it).
+    pub weather: WeatherDef,
 }
 
 fn leak(s: &str) -> &'static str {
@@ -834,7 +969,10 @@ impl Data {
                 hardcore_interest_percent: e.hardcore_interest_percent as i32,
                 hardcore_fee_cap: u(e.hardcore_fee_cap),
                 hardcore_mood_penalty: e.hardcore_mood_penalty as i32,
+                weather: e.weather,
             },
+            visitors: t.visitors.clone(),
+            visits: t.visits.clone(),
         };
         (data, warn)
     }
@@ -992,6 +1130,33 @@ pub fn file_header(file: &str) -> &'static str {
 #   relief      gentle | rolling | hilly
 "
         }
+        "visitors" => {
+            "# data/visitors.toml: the More visitors extra's visitors (OpenSGolf built-in values; docs/PLAYING.md, OpenSGolf extras).
+# Merge rules: an entry with the id of an earlier one replaces the fields it gives; `remove = true` deletes it. New ids add
+# visitors. Text fields hold a text key (STR_..., followed by the player's language) or the pack's own text.
+# [visits], the rules (a month is 1024 game ticks; the rating is the one the VIPs go by: fun on Easy and Normal, skill
+# in hundredths on Hard and Impossible):
+#   pro_chance / celebrity_chance        percent of new pairs that bring one, once the course is ready
+#   pro_holes / celebrity_holes          holes open before they come
+#   pro_rating / celebrity_rating        the club rating before they come
+#   pro_gap / celebrity_gap              game ticks at least between two visits of the kind
+#   pro_fee_percent / celebrity_fee_percent   their green fee, in percent of an ordinary golfer's
+#   pro_quick                            touring pros play quickly
+#   celebrity_crowd                      golfers a celebrity draws to the clubhouse beyond the usual arrivals (0..8)
+# [[visitor]], one visitor:
+#   id        the entry's id
+#   kind      touring-pro | celebrity
+#   name      the name shown
+#   job       the profession (the golfer card; a celebrity's title in the ticker)
+#   female    true for a woman
+#   body      0..3, the body among the gender's four; head  0..18, the stock head
+#   skin      0..3; hair 0..5 (women); shirt, pants, hat 0..9: the outfit's swap colours
+#   class     skill class bits 1..7 (1 Length, 2 Accuracy, 4 Imagination)
+#   skills    up to ten special skills, Power Hitter .. Luck, 0..10 each (tens of percent)
+#   weight    how often this one comes against the others of its kind
+#   remarks   what is said of the course at the round's end, unhappiest first (none: the kind's own lines)
+"
+        }
         _ => {
             "# data/economy.toml: the money rules (OpenSGolf built-in values). Money is the game's money, multiples of 100.
 #   start_funds            what a normal game starts with, before the property's price
@@ -1011,6 +1176,18 @@ pub fn file_header(file: &str) -> &'static str {
 #   hardcore_interest_percent     interest on debt at each month start under Hardcore
 #   hardcore_fee_cap              the most a golfer pays for a hole under Hardcore
 #   hardcore_mood_penalty         what every bad moment costs a golfer's mood on top under Hardcore
+# [economy.weather]: Weather that matters (sg_core::weather; any field may be left out):
+#   rain_drag, snow_drag, heat_drag  a rolling ball's extra drag on tee, fairway and green, per mille of its speed a tick
+#                                    (wet ground at full wetness, snow lying, a full heat wave; negative: it runs on)
+#   lush_bounce_percent              how high balls bounce on the soft ground the day after rain
+#   rain/snow/heat_turnout_percent   the share of the time new golfers keep coming (heat: at midday)
+#   rain/snow/heat_mood_percent      golfers in a hundred teeing off in it who start a point less happy
+#   snow_lover_percent               golfers in a hundred who start a point happier in the snow
+#   heat_thirst_percent              hunger and thirst grow this often in a heat wave, in percent of the usual interval
+#   heat_percent                     heat-wave days in a hundred desert summer days
+#   storm_percent                    thunderstorm days in a hundred heavy-rain days
+#   storm_ticks                      how long a storm holds play, in game ticks (about 11 a second)
+#   storm_spend                      what each golfer sheltering from it spends on food and drink
 "
         }
     }
@@ -1121,5 +1298,20 @@ tile = 5
         let (d, _) = Data::from_tables(&t);
         assert_eq!((d.records[6].theme, d.records[6].coast), (1, 0));
         assert_eq!(d.properties[6].theme, crate::land::port_theme(1));
+    }
+
+    #[test]
+    fn the_weather_numbers_merge_field_by_field() {
+        let mut t = Tables::builtin();
+        assert!(t.merge("economy", "[economy.weather]\nrain_drag = 20\n").is_empty());
+        assert_eq!(t.economy.weather, WeatherDef { rain_drag: 20, ..WeatherDef::default() });
+        assert_eq!(t.economy.start_funds, Tables::builtin().economy.start_funds);
+        assert!(!t.merge("economy", "[economy.weather]\nstorm_percent = 150\n").is_empty());
+        assert!(!t.merge("economy", "[economy.weather]\nfog = 1\n").is_empty());
+        // an economy file from before the weather reads the built-in numbers
+        let old: EconomyDef = toml::from_str("start_funds = 1\nsandbox_funds = 1\noffer_prices = []\nfiring_cost = 0\nhole_maintenance = 0\ndebt_interest_percent = 0\nrank_holes = []\n").unwrap();
+        assert_eq!(old.weather, WeatherDef::default());
+        let (d, _) = Data::from_tables(&t);
+        assert_eq!(d.economy.weather.rain_drag, 20);
     }
 }

@@ -1,6 +1,6 @@
 //! Preferences > Search (the port's own; docs/PLAYING.md, "Searching the Preferences"): one box that finds an option on any
 //! of the Preferences' pages by its words: the Enhanced graphics options (and its master switch), the OpenSGolf extras
-//! (gameplay, calendar and sandbox, interface) and the keyboard controls. Typing narrows the list, a click on a found option
+//! (gameplay, sandbox, looks, info, helpers) and the keyboard controls. Typing narrows the list, a click on a found option
 //! ticks it (or steps a setting with choices; a key opens Change keys), "Show only changed" keeps the options that differ
 //! from the original game, and "Reset to original..." asks, then puts every one of them back (`Prefs::original`).
 //! Nothing changes until the box's OK, as in the other Preferences boxes; Esc leaves everything as it was.
@@ -65,14 +65,19 @@ pub fn all() -> Vec<Hit> {
     v
 }
 
-/// Where an option is (its page's name).
+/// Where an option is: its category (the extras box's page, "Graphics" and the Enhanced graphics page, or "Keys"), with how
+/// much it changes the game for a gameplay or sandbox extra ("Gameplay · Noticeable").
 pub fn place(h: Hit) -> String {
+    let two = |a: &str, b: &str| trf("STR_SEARCH_PLACE_TWO", &[("A", &a), ("B", &b)]);
     match h {
         Hit::EnhancedOn => tr("STR_SEARCH_PLACE_ENHANCED").to_string(),
-        Hit::Enhanced(i) => tr(enhanced::PAGES[enhanced::OPTIONS[i].page as usize]).to_string(),
+        Hit::Enhanced(i) => two(tr("STR_SEARCH_PLACE_ENHANCED"), tr(enhanced::PAGES[enhanced::OPTIONS[i].page as usize])),
         Hit::Extra(l) => {
-            let page = (0..crate::extras_ui::PAGES.len() as u8).find(|&p| crate::extras_ui::page_lines(p).contains(&l)).unwrap_or(0);
-            tr(crate::extras_ui::PAGES[page as usize]).to_string()
+            let page = tr(crate::extras_ui::PAGES[crate::extras_ui::page_of(l) as usize]);
+            match crate::extras_ui::tag(l) {
+                Some(t) => two(page, tr(t.key())),
+                None => page.to_string(),
+            }
         }
         Hit::Key(_) => tr("STR_SEARCH_PLACE_KEYS").to_string(),
     }
@@ -114,7 +119,8 @@ pub fn plain(h: Hit) -> bool {
     match h {
         Hit::EnhancedOn => false,
         Hit::Enhanced(i) => !enhanced::OPTIONS[i].choices.is_empty(),
-        Hit::Extra(l) => l == ExtrasLine::Game(sg_core::extras::SEASON_SPEED),
+        Hit::Extra(ExtrasLine::Game(i)) => Extras::choices(i) > 2,
+        Hit::Extra(ExtrasLine::Ui(_)) => false,
         Hit::Key(_) => true,
     }
 }
@@ -278,6 +284,20 @@ mod tests {
         toggle(Hit::EnhancedOn, &mut p);
         assert!(p.enh.enabled);
         assert!(plain(speed) && plain(Hit::Key(0)) && !plain(Hit::EnhancedOn));
+        assert!(plain(Hit::Extra(ExtrasLine::Game(sg_core::extras::PATHS))) && !plain(Hit::Extra(ExtrasLine::Game(9))));
+    }
+
+    #[test]
+    fn found_options_say_their_category_and_tag() {
+        let tagged = |a: &'static str, b: &'static str| trf("STR_SEARCH_PLACE_TWO", &[("A", &tr(a)), ("B", &tr(b))]);
+        let weather = Hit::Extra(ExtrasLine::Game(sg_core::extras::WEATHER));
+        assert_eq!(place(weather), tagged("STR_EXTRAS_PAGE_GAMEPLAY", "STR_EXTRAS_TAG_NOTICEABLE"));
+        assert_eq!(place(Hit::Extra(ExtrasLine::Game(9))), tagged("STR_EXTRAS_PAGE_SANDBOX", "STR_EXTRAS_TAG_BIG"));
+        assert_eq!(place(Hit::Extra(ExtrasLine::Game(sg_core::extras::PATHS))), tr("STR_EXTRAS_PAGE_LOOKS"));
+        assert_eq!(place(Hit::Extra(ExtrasLine::Ui(0))), tr("STR_EXTRAS_PAGE_INFO"));
+        // the tag's words find the options so tagged
+        let p = Prefs::original();
+        assert_eq!(search("big change", false, &p).len(), 4, "hardcore and three sandbox switches");
     }
 
     #[test]

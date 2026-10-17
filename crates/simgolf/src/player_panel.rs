@@ -99,6 +99,47 @@ const CARD_X0: f32 = 426.0;
 const CARD_DX: f32 = 18.0;
 const CARD_ROW0: f32 = 552.0;
 const CARD_DY: f32 = 21.0;
+/// The cover's wide last column (the live scorecards extra writes its totals there).
+const TOTAL_X: f32 = 780.0;
+
+/// A score's colour against par as the round's scorecard draws it (0x461110): two or more under 0x7d08, one under 0x6000,
+/// par 0x2108, one over 0x0018, two or more over 0x4010.
+pub(crate) fn score_colour(n: i32, par: i32) -> u32 {
+    if n < par - 1 {
+        0x7d08
+    } else if n < par {
+        0x6000
+    } else if n > par + 1 {
+        0x4010
+    } else if n > par {
+        0x0018
+    } else {
+        0x2108
+    }
+}
+
+/// The holes a golfer has finished (those before `hole` with a par and a score): strokes taken and strokes over par (the
+/// live scorecards extra, the port's own).
+pub(crate) fn round_so_far(card: &[i8; 19], hole: i32, holes: &[sg_core::golfer::Hole]) -> (i32, i32) {
+    let (mut strokes, mut over) = (0, 0);
+    for (i, h) in holes.iter().enumerate().take(19) {
+        let n = card[i] as i32;
+        if (i as i32) < hole && h.par != 0 && n > 0 {
+            strokes += n;
+            over += n - h.par;
+        }
+    }
+    (strokes, over)
+}
+
+/// A score against par as golf writes it: "E" for even, else signed ("+3", "-1").
+pub(crate) fn vs_par(over: i32) -> String {
+    if over == 0 {
+        tr("STR_SCORECARD_EVEN").to_string()
+    } else {
+        format!("{over:+}")
+    }
+}
 
 impl App {
     /// The Player panel's sheet is on the disc (otherwise the dock falls back to its text list).
@@ -252,27 +293,38 @@ impl App {
         s.text(g, x, top(522.0, BODY), &a, BODY, black);
         // the exe draws the wager line from x 320
         s.text(g, if vs_pro && c.game & game::TOURNAMENT == 0 { 320.0 } else { x }, top(533.0, BODY), &b, BODY, black);
+        self.draw_card_rows(g, s, gary, (0.0, 0.0), true, false);
+    }
+
+    /// The scorecard's rows over the cover cut drawn at `COVER_AT` + `d`: hole numbers and pars in grey along the top, then
+    /// golfer `first` (named "... vs." with `vs`) and his partner, a score per hole played coloured against par and the
+    /// hole in progress in grey. With `totals` (the live scorecards extra, scorecard_ui.rs) the wide last column holds the
+    /// course's par and each golfer's strokes so far, and the score against par stands at the end of the name's bar.
+    pub(crate) fn draw_card_rows(&self, g: &mut Gfx, s: &Ui, first: usize, d: (f32, f32), vs: bool, totals: bool) {
+        let c = &self.club;
+        let black = c15(0);
+        let grey = c15(0x6318);
+        let partner = c.g[first].partner;
         let mut y = CARD_ROW0;
-        let mut who = gary as i32;
+        let mut who = first as i32;
         while y <= 589.0 && who >= 0 {
             let gi = who as usize;
             let gg = &c.g[gi];
             let mut name = c.name(gi);
-            if gi == gary {
+            if gi == first && vs {
                 name.push_str(tr("STR_SCORECARD_VS"));
             }
             // a long name (over 115 pixels) is drawn in Arial Bold 10; the exe selects Manual SSi Bold 15 again for the numbers
             let size = if text_width(&name, BODY) > 115.0 { SMALL } else { BODY };
-            s.text(g, 320.0, top(y, size), &name, size, black);
+            s.text(g, 320.0 + d.0, top(y + d.1, size), &name, size, black);
             for (i, hole) in c.holes.iter().enumerate().take(19) {
                 if hole.par == 0 {
                     continue;
                 }
-                let cx = CARD_X0 + CARD_DX * i as f32;
-                if gi == gary {
-                    let grey = c15(0x6318);
-                    s.text_centered(g, cx, top(y - 34.0, BODY), &i.to_string(), BODY, grey);
-                    s.text_centered(g, cx, top(y - 19.0, BODY), &hole.par.to_string(), BODY, grey);
+                let cx = CARD_X0 + CARD_DX * i as f32 + d.0;
+                if gi == first {
+                    s.text_centered(g, cx, top(y - 34.0 + d.1, BODY), &i.to_string(), BODY, grey);
+                    s.text_centered(g, cx, top(y - 19.0 + d.1, BODY), &hole.par.to_string(), BODY, grey);
                 }
                 if (i as i32) > gg.hole {
                     continue;
@@ -281,24 +333,24 @@ impl App {
                     (gg.strokes, 0x4210)
                 } else {
                     let n = gg.card[i] as i32;
-                    let p = hole.par;
-                    let col = if n < p - 1 {
-                        0x7d08
-                    } else if n < p {
-                        0x6000
-                    } else if n > p + 1 {
-                        0x4010
-                    } else if n > p {
-                        0x0018
-                    } else {
-                        0x2108
-                    };
-                    (n, col)
+                    (n, score_colour(n, hole.par))
                 };
-                s.text_centered(g, cx, top(y, BODY), &n.to_string(), BODY, c15(col));
+                s.text_centered(g, cx, top(y + d.1, BODY), &n.to_string(), BODY, c15(col));
+            }
+            if totals {
+                let (strokes, over) = round_so_far(&gg.card, gg.hole, &c.holes);
+                let tx = TOTAL_X + d.0;
+                if gi == first {
+                    let par: i32 = c.holes.iter().take(19).map(|h| h.par).sum();
+                    s.text_centered(g, tx, top(y - 34.0 + d.1, SMALL), tr("STR_SCORECARD_TOTAL"), SMALL, grey);
+                    s.text_centered(g, tx, top(y - 19.0 + d.1, BODY), &par.to_string(), BODY, grey);
+                }
+                s.text_centered(g, tx, top(y + d.1, BODY), &strokes.to_string(), BODY, black);
+                let t = vs_par(over);
+                s.text(g, 428.0 + d.0 - text_width(&t, BODY), top(y + d.1, BODY), &t, BODY, c15(score_colour(over, 0)));
             }
             y += CARD_DY;
-            who = if gi == gary { partner } else { -1 };
+            who = if gi == first { partner } else { -1 };
         }
     }
 

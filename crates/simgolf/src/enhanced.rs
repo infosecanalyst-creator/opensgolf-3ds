@@ -99,6 +99,8 @@ pub struct Settings {
     pub fx_after_rain: bool,
     /// Lightning in heavy rain (fx_wet.rs).
     pub fx_lightning: bool,
+    /// Heat waves on desert courses: a warm, bleached midday, a heat haze, parched grass (fx_heat.rs).
+    pub fx_heat: bool,
     /// Tiny tufts of grass standing up from the rough, swaying in the wind (fx_life.rs).
     pub fx_grass: bool,
     /// Contrast-adaptive sharpening of the finished picture (the composite in fx_glsl.rs).
@@ -169,6 +171,8 @@ impl Settings {
         fx_after_rain: true,
         // a strong effect: offered, not on by default
         fx_lightning: false,
+        // a strong look like the rain: offered, not on by default
+        fx_heat: false,
         fx_grass: true,
         fx_sharpen: true,
         fx_winter: true,
@@ -404,6 +408,7 @@ pub const OPTIONS: &[OptionEntry] = &[
     tick!("fx_rain", "STR_ENHANCED_FX_RAIN", WEATHER, fx_rain),
     tick!("fx_after_rain", "STR_ENHANCED_FX_AFTER_RAIN", WEATHER, fx_after_rain),
     tick!("fx_lightning", "STR_ENHANCED_FX_LIGHTNING", WEATHER, fx_lightning),
+    tick!("fx_heat", "STR_ENHANCED_FX_HEAT", WEATHER, fx_heat),
     tick!("fx_grass", "STR_ENHANCED_FX_GRASS", EFFECTS, fx_grass),
     tick!("fx_sharpen", "STR_ENHANCED_FX_SHARPEN", EFFECTS, fx_sharpen),
     tick!("fx_winter", "STR_ENHANCED_FX_WINTER", WEATHER, fx_winter),
@@ -617,15 +622,16 @@ pub fn option_line(o: &OptionEntry, s: &Settings) -> String {
 /// Heading lines of the box above the options: the title, then two empty lines the page tabs are drawn on.
 pub const TAB_LINES: usize = 2;
 
-/// The lines of a page of the Enhanced graphics box: the heading, room for the tabs, the master switch, then the page's
-/// options, padded with empty lines to the longest page.
+/// The lines of a page of the Enhanced graphics box: the heading, room for the tabs and the banner that says graphics never
+/// change play (popup_ui draws them), the master switch, then the page's options, padded with empty lines to the longest
+/// page.
 pub fn popup_lines(page: u8, s: &Settings) -> Vec<String> {
     use sg_core::lang::tr;
     let mut v = vec![tr("STR_ENHANCED_TITLE").to_string()];
-    v.extend((0..TAB_LINES).map(|_| String::new()));
+    v.extend((0..TAB_LINES + crate::popup_ui::BANNER_LINES).map(|_| String::new()));
     v.push(tr("STR_ENHANCED_MASTER").to_string());
     v.extend(page_options(page).map(|o| option_line(o, s)));
-    let n = 1 + TAB_LINES + 1 + most_options();
+    let n = 1 + TAB_LINES + crate::popup_ui::BANNER_LINES + 1 + most_options();
     while v.len() < n {
         v.push(String::new());
     }
@@ -638,7 +644,8 @@ pub fn popup_widest(s: &Settings) -> f32 {
     let lines = (0..PAGES.len() as u8).flat_map(|p| popup_lines(p, s)).map(|l| f.width(&l).round()).fold(0.0, f32::max);
     // wide enough for every tab to hold its name with some room (the tabs share the box's width equally)
     let tab = PAGES.iter().map(|k| f.width(sg_core::lang::tr(k))).fold(0.0, f32::max) + 24.0;
-    lines.max(tab * PAGES.len() as f32)
+    let banner = crate::popup_ui::BANNER_FONT.width(sg_core::lang::tr("STR_ENHANCED_BANNER")) + 24.0;
+    lines.max(tab * PAGES.len() as f32).max(banner)
 }
 
 /// The box's ticks on a page: bit 0 the master switch, bit 1 + i the page's option i.
