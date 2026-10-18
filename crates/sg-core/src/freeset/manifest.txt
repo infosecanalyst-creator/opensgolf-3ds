@@ -9522,6 +9522,23 @@ W Sounds/Male/Hard Shot M.wav 1.30
 W Sounds/Male/Tricky Shot M.wav 0.74
 W Sounds/manifold music.wav 36.50
 W Sounds/Music Idea.wav 48.01
+W Sounds/Music/Credit.wav 165.00
+W Sounds/Music/Desert_Music/Spanish Guitar 1.wav 12.49
+W Sounds/Music/Desert_Music/Spanish Guitar 2.wav 19.99
+W Sounds/Music/Desert_Music/Spanish Guitar 3.wav 17.00
+W Sounds/Music/Links_Music/Bagpipe1.wav 18.33
+W Sounds/Music/Links_Music/Bagpipe2.wav 20.85
+W Sounds/Music/Links_Music/Harpiscord 1.wav 20.53
+W Sounds/Music/Links_Music/Harpsicord 1 Short.wav 7.11
+W Sounds/Music/Links_Music/Harpsicord 2.wav 19.78
+W Sounds/Music/Misc_Music/End Of Year Short.wav 7.06
+W Sounds/Music/Misc_Music/End Of Year.wav 20.34
+W Sounds/Music/Misc_Music/Jazz.wav 48.01
+W Sounds/Music/Misc_Music/New Age.wav 50.16
+W Sounds/Music/Tropical_Music/Steel Drum 1a.wav 20.48
+W Sounds/Music/Tropical_Music/Steel Drums 1b.wav 20.71
+W Sounds/Music/Tropical_Music/Steel Drums 2.wav 10.08
+W Sounds/Music/Tropical_Music/Steel Drums 3.wav 15.98
 W Sounds/New Age.wav 68.24
 W Sounds/newhart-theme.wav 10.36
 W Sounds/Romeo and Juliet Edit.wav 13.48

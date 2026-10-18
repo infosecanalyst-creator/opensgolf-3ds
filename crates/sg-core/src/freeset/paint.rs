@@ -1,5 +1,5 @@
 //! A small vector painter for the free set: shapes given by signed distance functions (negative inside), filled with
-//! antialiased edges and a colour that may vary over the shape (gradients, shading), and text in the bundled free font.
+//! antialiased edges and a colour that may vary over the shape (gradients, shading), and text in the free set's display font.
 use crate::assets::Rgba;
 
 /// A colour: r, g, b in 0..255 and alpha in 0..1.
@@ -223,12 +223,15 @@ impl Canvas {
     }
 }
 
-/// The bundled free font (Liberation Sans Bold, SIL Open Font License), also the free set's two game fonts.
-pub static FONT_TTF: &[u8] = include_bytes!("../../../simgolf/fonts/LiberationSans-Bold.ttf");
+/// The free set's display face (Fredoka SemiBold, SIL Open Font License 1.1): the headings' font (KLEPTO__.TTF) and the
+/// lettering of the drawn pictures.
+pub static DISPLAY_TTF: &[u8] = include_bytes!("../../../simgolf/fonts/Fredoka-SemiBold.ttf");
+/// The free set's text face (Nunito ExtraBold, SIL Open Font License 1.1): the body text's font (manu3_.TTF).
+pub static TEXT_TTF: &[u8] = include_bytes!("../../../simgolf/fonts/Nunito-ExtraBold.ttf");
 
 fn font() -> Option<&'static fontdue::Font> {
     static F: std::sync::OnceLock<Option<fontdue::Font>> = std::sync::OnceLock::new();
-    F.get_or_init(|| fontdue::Font::from_bytes(FONT_TTF, fontdue::FontSettings::default()).ok()).as_ref()
+    F.get_or_init(|| fontdue::Font::from_bytes(DISPLAY_TTF, fontdue::FontSettings::default()).ok()).as_ref()
 }
 
 // ---- signed distances ------------------------------------------------------------------------------------------------------

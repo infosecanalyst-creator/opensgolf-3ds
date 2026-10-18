@@ -326,7 +326,7 @@ impl App {
             ty += 12.0;
         }
         let b = back_button();
-        s.fill(g, b.x, b.y, b.w, b.h, if b.has(px, py) { rgb(0.85, 0.85, 1.0) } else { rgb(0.47, 0.47, 0.70) });
+        crate::glass_ui::button_fill(g, &s, b.x, b.y, b.w, b.h, b.has(px, py));
         s.put_centered(g, F_ARIAL10, b.x + b.w / 2.0, b.y + 5.0, tr("STR_SCENARIOS_BACK"), navy);
         if self.art.trans.tex.is_some() {
             s.image_part(g, &self.art.trans, BOX.x + BOX.w - 70.0, BOX.y + BOX.h - 58.0, 350.0, 140.0, 50.0, 50.0);

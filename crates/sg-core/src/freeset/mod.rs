@@ -6,8 +6,8 @@
 //! the original's file (the same picture sizes, the same places for the pieces the engine cuts out of a sheet, the same
 //! sprite views, frame counts and anchors), so everything lands where the engine puts the original's art. Those numbers
 //! are the only thing taken from the original: they are in `manifest.txt`, measured by tools/freeset_layout.py. The trees,
-//! buildings and golfers are sprite sheets rendered offline from our own models, and the sounds are made from CC0
-//! recordings and synthesis, by tools/freeset_art (baked.rs, packs/opensgolf-free/art); everything else is drawn here at
+//! buildings and golfers are sprite sheets rendered offline from our own models, and the sounds, voices and music are
+//! synthesised and composed in code, by tools/freeset_art (baked.rs, packs/opensgolf-free/art); everything else is drawn here at
 //! run time (paint.rs, tex.rs, sprite.rs, sound.rs), the text is our own (text.rs) and the two fonts are Liberation Sans
 //! Bold (SIL Open Font License).
 //!
@@ -16,7 +16,7 @@
 mod baked;
 mod enc;
 mod icon;
-mod paint;
+pub mod paint;
 mod sound;
 mod sprite;
 mod tex;
@@ -268,7 +268,10 @@ fn make(m: &Manifest, i: usize) -> Option<Vec<u8>> {
         Item::Wav(secs) => {
             // the recorded and generated sounds of tools/freeset_art (Ogg Vorbis, which the engine takes for a WAV)
             let stem = &e.path[..e.path.rfind('.').unwrap_or(e.path.len())];
-            baked::get(&format!("{stem}.ogg")).map(<[u8]>::to_vec).or_else(|| Some(sound::make(&low, *secs)))
+            baked::get(&format!("{stem}.ogg"))
+                .or_else(|| sound::alias(stem).and_then(|a| baked::get(&format!("{a}.ogg"))))
+                .map(<[u8]>::to_vec)
+                .or_else(|| Some(sound::make(&low, *secs)))
         }
         Item::Keys(keys) => Some(text::terrain_text(&low, keys)),
     }

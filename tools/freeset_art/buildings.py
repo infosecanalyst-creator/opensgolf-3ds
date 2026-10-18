@@ -56,12 +56,31 @@ class Kit:
         """A box of wall from (x0, z0) to (x1, z1), y0 to y1; `bands` horizontal siding lines."""
         col = self.st["wall"] if col is None else col
         self.add(box([(x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2], [x1 - x0, y1 - y0, z1 - z0]), col)
+        # a plinth of the base stone at the foot, a soft band of shade along the foot (the ground's occlusion) and under
+        # the eaves: the walls sit on the ground and under their roof instead of floating as flat boxes
+        faces = (((x0, z0), (x1, z0)), ((x0, z1), (x1, z1)), ((x0, z0), (x0, z1)), ((x1, z0), (x1, z1)))
+        for (a, b) in faces:
+            if y0 < 1:
+                self._band_on_face(a, b, y0, y0 + 3.5, self.st["stone"] * 0.82, 0.45)
+                self._band_on_face(a, b, y0 + 3.5, y0 + 7, col * 0.9, 0.35)
+            self._band_on_face(a, b, y1 - 4, y1, col * 0.8, 0.35)
         if bands:
             # thin darker lines along the outside faces
             for k in range(1, bands):
                 y = y0 + (y1 - y0) * k / bands
                 for (a, b) in (((x0, z0), (x1, z0)), ((x0, z1), (x1, z1)), ((x0, z0), (x0, z1)), ((x1, z0), (x1, z1))):
                     self._line_on_face(a, b, y, col * 0.88)
+
+    def _band_on_face(self, a, b, y0, y1, col, off):
+        """A band of colour from y0 to y1 just proud of the wall face from a to b (both sides)."""
+        a = np.array([a[0], 0, a[1]], float)
+        b = np.array([b[0], 0, b[1]], float)
+        d = b - a
+        n = np.array([-d[2], 0, d[0]])
+        n = n / (np.linalg.norm(n) + 1e-9)
+        for sgn in (1, -1):
+            o = n * sgn * off
+            self.add(quad(a + o + [0, y0, 0], b + o + [0, y0, 0], b + o + [0, y1, 0], a + o + [0, y1, 0]), col)
 
     def _line_on_face(self, a, b, y, col, t=0.7):
         a = np.array([a[0], y, a[1]], float)
@@ -85,9 +104,22 @@ class Kit:
             q = cx + n * off
             self.add(quad(q - side * hw - up * hh, q + side * hw - up * hh, q + side * hw + up * hh, q - side * hw + up * hh), col)
         rect(p, w / 2 + 1.6, h / 2 + 1.6, 0.6, frame)
-        rect(p, w / 2, h / 2, 0.9, glass)
-        # a light sky reflection on the upper half and a mullion
-        rect(p + up * h * 0.25, w / 2 - 0.5, h / 4 - 0.5, 1.0, glass * 1.35)
+        # a sill casting a little shade
+        rect(p - up * (h / 2 + 1.6), w / 2 + 2.6, 1.0, 1.4, frame * 0.92)
+        if self.rng.uniform() < 0.4:
+            # a warm, lit room behind the glass, brighter at the top
+            q = p + n * 0.9
+            hw, hh = w / 2, h / 2
+            self.s.add_tris(quad(q - side * hw - up * hh, q + side * hw - up * hh, q + side * hw + up * hh, q - side * hw + up * hh),
+                            c(236, 176, 92), emissive=True)
+            q = p + n * 1.0 + up * h * 0.2
+            self.s.add_tris(quad(q - side * (hw - 0.5) - up * hh * 0.5, q + side * (hw - 0.5) - up * hh * 0.5,
+                                 q + side * (hw - 0.5) + up * (hh * 0.8 - 0.5), q - side * (hw - 0.5) + up * (hh * 0.8 - 0.5)),
+                            c(255, 222, 150), emissive=True)
+        else:
+            rect(p, w / 2, h / 2, 0.9, glass)
+            # a light sky reflection on the upper half
+            rect(p + up * h * 0.25, w / 2 - 0.5, h / 4 - 0.5, 1.0, np.minimum(glass * 1.45 + 0.08, 1))
         rect(p, 0.7, h / 2, 1.1, frame)
         rect(p, w / 2, 0.7, 1.1, frame)
         if shutters is not None:
@@ -143,7 +175,15 @@ class Kit:
                 p2, q2 = p + (ss - p) * t, q + (rr - q) * t
                 p3, q3 = p + (ss - p) * (t + 0.04), q + (rr - q) * (t + 0.04)
                 lift = np.array([0, 0.25, 0])
-                self.add(quad(p2 + lift, q2 + lift, q3 + lift, p3 + lift), col * 0.86)
+                self.add(quad(p2 + lift, q2 + lift, q3 + lift, p3 + lift), col * 0.8)
+            # a lighter cap along the hips and ridge
+            for e0, e1 in ((q, rr), (p, ss), (rr, ss)):
+                if np.linalg.norm(e1 - e0) > 1e-3:
+                    dd = (e1 - e0) / np.linalg.norm(e1 - e0)
+                    sd = np.cross(dd, [0, 1.0, 0])
+                    sd = sd / (np.linalg.norm(sd) + 1e-9) * 1.0
+                    self.add(quad(e0 - sd + [0, 0.4, 0], e1 - sd + [0, 0.4, 0], e1 + sd + [0, 0.4, 0], e0 + sd + [0, 0.4, 0]),
+                             np.minimum(col * 1.18 + 0.03, 1))
         # eave fascia
         for p, q in ((a, b), (b, cc), (cc, d), (d, a)):
             self.add(quad(p, q, q - [0, 2.5, 0], p - [0, 2.5, 0]), self.st["trim"])
@@ -252,6 +292,71 @@ class Kit:
         else:
             t = trees.broadleaf(rng, h)
         self.s.extend(t.transformed(1.0, move=[x, 0, z]))
+
+    def deckchair(self, x, z, yaw=0.0, col=None):
+        """A striped deckchair (a sight gag by the clubhouse: someone is taking it easy)."""
+        col = self.st["aw1"] if col is None else col
+        R = np.array([[np.cos(np.radians(yaw)), 0, np.sin(np.radians(yaw))], [0, 1, 0],
+                      [-np.sin(np.radians(yaw)), 0, np.cos(np.radians(yaw))]])
+        P = lambda p: np.asarray(p, float) @ R.T + [x, 0, z]
+        wood = c(190, 150, 100)
+        for sx in (-5, 5):
+            self.add(tube(P([sx, 0, -8]), P([sx, 13, 4]), 0.6, 0.6, 4), wood)
+            self.add(tube(P([sx, 0, 6]), P([sx, 6, -2]), 0.6, 0.6, 4), wood)
+        for k in range(5):
+            t0, t1 = k / 5, (k + 1) / 5
+            a0 = np.array([0, 6, -2]) + (np.array([0, 1, 10]) - np.array([0, 6, -2])) * 0
+            # the sling: from the front rail sagging down to the seat and up the back
+            pts = [np.array([0, 5.5, 6]), np.array([0, 3.2, -1]), np.array([0, 12.5, 3.6])]
+            def at(t):
+                return pts[0] * (1 - t) ** 2 + pts[1] * 2 * t * (1 - t) + pts[2] * t * t
+            p0, p1 = at(t0), at(t1)
+            cc = col if k % 2 == 0 else self.st["aw2"]
+            self.add(quad(P(p0 + [-4.6, 0, 0]), P(p0 + [4.6, 0, 0]), P(p1 + [4.6, 0, 0]), P(p1 + [-4.6, 0, 0])), cc)
+
+    def golf_cart(self, x, z, yaw=0.0):
+        """A golf cart parked on the lawn: white body, a striped canopy on posts, black seats, a bag of clubs behind."""
+        a = np.radians(yaw)
+        R = np.array([[np.cos(a), 0, np.sin(a)], [0, 1, 0], [-np.sin(a), 0, np.cos(a)]])
+        P = lambda p: np.asarray(p, float) @ R.T + [x, 0, z]
+        def bx(cen, size, col):
+            self.add(box([0, 0, 0], size) @ R.T + P(cen), col)
+        white, dark = c(244, 244, 238), c(40, 42, 46)
+        bx([0, 7, 0], [20, 6, 34], white)
+        bx([0, 12, 12], [20, 6, 8], white)
+        bx([0, 12.5, -2], [18, 3, 12], dark)
+        bx([0, 19, -8], [18, 11, 2.5], dark)
+        for sx in (-8.5, 8.5):
+            for sz in (-14, 9):
+                self.add(tube(P([sx, 9, sz]), P([sx, 33, sz]), 0.7, 0.7, 4), c(200, 200, 200))
+        bx([0, 34, -2], [22, 1.8, 30], self.st["aw1"])
+        bx([0, 35, -2], [22, 0.6, 10], self.st["aw2"])
+        for sx in (-10, 10):
+            for sz in (-11, 11):
+                self.add(tube(P([sx - 1.5, 4, sz]), P([sx + 1.5, 4, sz]), 4, 4, 8), dark)
+        self.add(tube(P([0, 8, -19]), P([0, 26, -22]), 3.4, 3.4, 8), c(200, 60, 50))
+        for k in range(3):
+            self.add(tube(P([k - 1, 26, -22]), P([k - 1.5, 30, -23]), 1.1, 1.1, 5), c(220, 220, 220))
+
+    def picnic(self, x, z):
+        """A picnic blanket in red and white checks with a basket on it."""
+        n = 4
+        for i in range(n):
+            for j in range(n):
+                col = c(214, 50, 50) if (i + j) % 2 == 0 else c(248, 246, 240)
+                x0, z0 = x - 16 + i * 8, z - 12 + j * 6
+                self.add(quad([x0, 0.8, z0], [x0 + 8, 0.8, z0], [x0 + 8, 0.8, z0 + 6], [x0, 0.8, z0 + 6]), col)
+        self.add(box([x + 4, 4, z + 2], [9, 7, 7]), c(196, 150, 90))
+        self.add(tube([x + 0.5, 7.5, z + 2], [x + 7.5, 7.5, z + 2], 0.6, 0.6, 4), c(150, 106, 60))
+        self.s.add_ball([x - 7, 2.2, z - 4], 2.2, c(230, 40, 40))
+
+    def gnome(self, x, z):
+        """A garden gnome: boots, a blue coat, a white beard, a big red pointy hat."""
+        self.add(box([x, 1.5, z + 0.5], [5, 3, 6]), c(70, 50, 40))
+        self.add(tube([x, 3, z], [x, 10, z], 4, 3.4, 10), c(50, 90, 190))
+        self.s.add_ball([x, 12, z + 1.0], 2.9, c(240, 200, 170))
+        self.add(tube([x, 9.5, z + 2.6], [x, 13.4, z + 2.4], 3.0, 1.8, 8), c(246, 246, 240))
+        self.add(tube([x, 13.5, z], [x + 1, 24, z - 1.5], 3.8, 0.3, 10), c(220, 40, 40))
 
     def flagpole(self, x, z, h=60.0, col=None):
         col = self.st["accent"] if col is None else col
@@ -383,6 +488,14 @@ def clubhouse(style, level, rng):
     k.planter(-W - 20, -D + 44)
     k.planter(-W + 50, -D - 20)
     k.flagpole(-W - 30, -D - 30, 70)
+    # out on the lawn: a parasol and two deckchairs
+    k.umbrella(W + 30, -D - 34, 13, 20)
+    k.deckchair(W + 18, -D - 40, yaw=200)
+    k.deckchair(W + 42, -D - 36, yaw=160)
+    # a golf cart parked by the entrance, a picnic on the side lawn and a gnome guarding the planter
+    k.golf_cart(-W - 36, D - 10, yaw=10)
+    k.picnic(W - 20, D + 34)
+    k.gnome(-W - 32, -D + 58)
     if style == "trop":
         k.tree(W + 26, -D - 20, 90, "palm")
         k.tree(-W - 10, D + 24, 80, "palm")

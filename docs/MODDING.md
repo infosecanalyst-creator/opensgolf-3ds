@@ -559,7 +559,7 @@ test that the merged defaults equal the built-in table (`merged_defaults_equal_t
 
 **Done (second version).** The trees, scenic plants, buildings and golfers are sprite sheets rendered offline from models made
 in code (tools/freeset_art: a tree grower, a building kit per theme, a posed golfer, rendered through the game's camera), and
-the sounds are made from CC0 recordings (Kenney, uisfx) and synthesis; these files (packs/opensgolf-free/art, about 9 MB, see
+the sounds, voices and music are synthesised and composed in code; these files (packs/opensgolf-free/art, about 12 MB, see
 its CREDITS.md) are built into the game by crates/sg-core/src/freeset/baked.rs. Buildings get a frame of their own size (a
 "frame" text in the sheet) so they are drawn at the world's scale. Everything else is drawn, synthesised and written by the
 engine itself (crates/sg-core/src/freeset/) when a file is read: written out it is about 5,500 files and 82 MB, too much to commit, and drawing a

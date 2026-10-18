@@ -4,7 +4,10 @@ import re
 
 import numpy as np
 
+import animals
 import buildings
+import landmarks
+import props
 import layout
 import people
 import trees
@@ -14,7 +17,8 @@ from scene import Scene, fit_scale
 class Recipe:
     ss = 4
     shrink = 1.0
-    edge_dark = 0.12
+    # a darker rim keeps the silhouette crisp against the grass
+    edge_dark = 0.2
     # 'ramp': drawn in the palette layout of mats.py (for sprites the engine recolours); 'free': a palette of its own
     mode = "ramp"
     # True: the sprite gets a frame of its own size (build.py), drawn at the world's scale
@@ -44,6 +48,7 @@ class Tree(Recipe):
         # the scenic elm's frames are not a growth cycle (it has no views either): always the full tree
         size, leaf = (1.0, 1.0) if "scenicelm" in self.name else trees.growth(f, fpv)
         s = trees.species(self.name, rng, leaf)
+        s = trees.gags(self.name, s, leaf)
         return s.transformed(size)
 
 
@@ -52,7 +57,7 @@ class Building(Recipe):
     and base of a family share one scale, the largest at which both fit their frames (and never above the world's)."""
 
     mode = "free"
-    edge_dark = 0.06
+    edge_dark = 0.1
     ss = 3
     auto_frame = True
 
@@ -65,7 +70,7 @@ class Building(Recipe):
     def scene(self, rng, f, fpv, view_deg):
         body, base = self.parts(np.random.default_rng(7))
         body.mass = None
-        body.ambient, body.diffuse = 0.64, 0.56
+        body.ambient, body.diffuse = 0.56, 0.68
         base.ambient, base.diffuse = 0.7, 0.45
         if self.layer == "body":
             return body
@@ -108,7 +113,7 @@ class Person(Recipe):
     """A golfer clip: the figure posed for the animation over its frames and turned for its 8 views, at the world's scale
     (every clip of a body the same size)."""
 
-    edge_dark = 0.16
+    edge_dark = 0.24
 
     def __init__(self, prefix, anim_name):
         self.prefix, self.anim = prefix, anim_name
@@ -127,6 +132,88 @@ class Person(Recipe):
         return people.person_scene(self.prefix, self.anim, t, view_deg)
 
 
+class Landmark(Recipe):
+    """A landmark (landmarks.py), in the palette ramps its palette file colours; animated ones fitted over all frames."""
+
+    def __init__(self, name):
+        self.name = name
+
+    def fit_frames(self, fpv):
+        return list(range(fpv))
+
+    def scene(self, rng, f, fpv, view_deg):
+        return landmarks.model(self.name, f / max(fpv, 1))
+
+
+class Animal(Recipe):
+    """An animal clip (animals.py), turned for its views like the golfers, fitted over all its frames."""
+
+    edge_dark = 0.24
+
+    def __init__(self, species, anim):
+        self.species, self.anim = species, anim
+
+    _scales = {}
+
+    def fixed_scale(self):
+        """One scale for the clips of a species (the median of the scales at which each fits its frame), so an animal keeps
+        its size from clip to clip; a clip whose frame is tighter than that (some frames sit oddly round their ground point)
+        is drawn smaller."""
+        if self.species not in Animal._scales:
+            fits = {}
+            for p, (w, h, views, fpv, ax, ay) in layout.sprites().items():
+                low = p.lower()
+                if "/animals/" not in low or low.endswith("shadow.flc"):
+                    continue
+                n = low.rsplit("/", 1)[1][:-4]
+                sp, _, an = n.partition("_")
+                if sp != self.species:
+                    continue
+                r = Animal(sp, an)
+                nv = max(views, 1)
+                step = 45.0 if nv >= 8 else 90.0
+                scenes = [(r.scene(None, f, fpv, v * step), r.yaw(v * step)) for v in range(nv) for f in range(0, fpv, 2)]
+                fits[an] = fit_scale(scenes, w, h, ax, ay)
+            Animal._scales[self.species] = (float(np.median(list(fits.values()))), fits)
+        ref, fits = Animal._scales[self.species]
+        return min(ref, fits.get(self.anim, ref)) * 0.97
+
+    def yaw(self, view_deg):
+        return view_deg - 90.0
+
+    def scene(self, rng, f, fpv, view_deg):
+        loop = any(k in self.anim for k in ("walk", "run", "loop", "sq"))
+        t = f / fpv if loop else f / max(fpv - 1, 1)
+        return animals.model(self.species, self.anim, t)
+
+
+class Prop(Recipe):
+    """A small thing (props.py): flags, markers, benches, flower beds, signs, the ball washer, boats and bridges. Beds and
+    bridges are drawn at the world's scale (they join tile to tile), the rest fitted to their frame over all frames."""
+
+    def __init__(self, path):
+        self.path = path
+
+    def fit_frames(self, fpv):
+        return list(range(0, fpv, max(1, fpv // 6)))
+
+    def fixed_scale(self):
+        return 1.0 if props.prop(self.path, 0.0)[2] == "world" else None
+
+    def yaw(self, view_deg):
+        # a flag flies with the wind, to the right on the screen in every view (its frame sits round the pin's foot)
+        if "flag" in self.path.lower():
+            return -45.0
+        return view_deg
+
+    def scene(self, rng, f, fpv, view_deg):
+        loop = not any(k in self.path.lower() for k in ("_pop", "flowers_", "sin", "tropfb", "_single", "side", "corner"))
+        t = f / fpv if loop else f / max(fpv - 1, 1)
+        m, pal, _ = props.prop(self.path, t)
+        m.s.pal = pal
+        return m.s
+
+
 TREE_DIRS = ("flics/trees/", "flics/scenic/")
 
 
@@ -143,6 +230,14 @@ def recipe(path, name):
         if "_" in name and not name.endswith("pal"):
             prefix, anim_name = name.split("_", 1)
             return Person(prefix, anim_name)
+    if props.prop(path, 0.0) is not None:
+        return Prop(path)
+    if "/flics/animals/" in "/" + low and "_" in name:
+        sp, an = name.split("_", 1)
+        if animals.model(sp, an, 0.0) is not None:
+            return Animal(sp, an)
+    if "/flics/landmarks/" in "/" + low and name in landmarks.LANDMARKS:
+        return Landmark(name)
     if any(d in low for d in TREE_DIRS):
         import numpy as np
         if trees.species(name, np.random.default_rng(0), 1.0) is not None:

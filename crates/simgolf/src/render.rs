@@ -512,6 +512,14 @@ const MENU_LABEL_KEYS: [&str; 5] =
     ["STR_TITLE_CONTINUE", "STR_TITLE_NEW_GAME", "STR_TITLE_SANDBOX", "STR_TITLE_SELECT_THEME", "STR_TITLE_CHAMPIONSHIP"];
 const MENU_LABEL_X: [f32; 5] = [182.0, 573.0, 141.0, 631.0, 415.0];
 const MENU_LABEL_Y: [f32; 5] = [66.0, 88.0, 431.0, 409.0, 525.0];
+/// The free set's title labels (its plates, tools/freeset_art/uititle.py PLATES): centre x and y, the room and the size.
+const FREE_MENU_LABELS: [(f32, f32, f32, f32); 5] = [
+    (238.0, 85.0, 190.0, 24.0),
+    (636.0, 108.0, 200.0, 30.0),
+    (186.0, 447.0, 164.0, 23.0),
+    (673.0, 431.0, 156.0, 23.0),
+    (459.0, 530.0, 168.0, 23.0),
+];
 
 /// Select Difficulty (0x43a400, docs/DECODE_TITLE2.md 5): each item's lit cut in TitleSelDiffMO.pcx (x, y, w, h), where it
 /// goes, its hit centre (an ellipse twice as wide as tall, octagonal distance under 80) and its label position.
@@ -753,12 +761,29 @@ impl App {
         if let Some(lit) = self.title_mo_parts.get(self.hover.max(0) as usize).filter(|_| (0..6).contains(&self.hover)) {
             s.image(g, lit, 0.0, 0.0);
         }
-        let grey = crate::info_ui::c15(0x6318);
-        for b in 0..5 {
-            s.put_centered(g, crate::ui::F_KLEPTO18, MENU_LABEL_X[b], MENU_LABEL_Y[b] + 8.0, tr(MENU_LABEL_KEYS[b]), grey);
-        }
         let theme = format!("({})", THEME_PACKS.get(self.theme_pack).copied().unwrap_or("Standard"));
-        s.put_centered(g, crate::ui::F_KLEPTO18, MENU_LABEL_X[1], MENU_LABEL_Y[1] + 24.0, &theme, grey);
+        if self.on_free_set() {
+            // the free set's plates (tools/freeset_art/uititle.py): white labels with a drop, each fitted to its plate
+            for (b, &(cx, cy, room, px)) in FREE_MENU_LABELS.iter().enumerate() {
+                let label = tr(MENU_LABEL_KEYS[b]);
+                let probe = crate::ui::Fnt { face: crate::ui::Face::Klepto, px };
+                let f = crate::ui::Fnt { face: crate::ui::Face::Klepto, px: (px * room / probe.width(label).max(1.0)).min(px) };
+                let cy = if b == 1 { cy - 10.0 } else { cy };
+                let top = cy + f.px * 0.36 - f.base();
+                let shadow = if b == 1 { rgba(0.45, 0.2, 0.02, 0.85) } else { rgba(0.05, 0.25, 0.1, 0.85) };
+                s.put_centered(g, f, cx + 1.0, top + 2.0, label, shadow);
+                s.put_centered(g, f, cx, top, label, rgb(1.0, 1.0, 1.0));
+            }
+            let (cx, cy, _, _) = FREE_MENU_LABELS[1];
+            let f = crate::ui::Fnt { face: crate::ui::Face::Klepto, px: 16.0 };
+            s.put_centered(g, f, cx, cy + 15.0 + f.px * 0.36 - f.base(), &theme, rgba(0.42, 0.18, 0.0, 1.0));
+        } else {
+            let grey = crate::info_ui::c15(0x6318);
+            for b in 0..5 {
+                s.put_centered(g, crate::ui::F_KLEPTO18, MENU_LABEL_X[b], MENU_LABEL_Y[b] + 8.0, tr(MENU_LABEL_KEYS[b]), grey);
+            }
+            s.put_centered(g, crate::ui::F_KLEPTO18, MENU_LABEL_X[1], MENU_LABEL_Y[1] + 24.0, &theme, grey);
+        }
         // the port's own: "Use my SimGolf files..." (gamefiles.rs)
         self.draw_files_button(g, &s);
         // and "Check for updates" (update.rs)
@@ -771,6 +796,16 @@ impl App {
             s.text_centered(g, 400.0, 581.0, &self.toast, 18.0, rgb(1.0, 1.0, 0.8));
         }
         g.flush();
+    }
+
+    /// The port's boxes on Select Difficulty: a deep blue capsule on the free set, the plain dark box otherwise.
+    fn free_box_or_fill(&self, g: &mut Gfx, s: &Ui, r: Rect, lit: bool) {
+        if self.on_free_set() {
+            let tint = if lit { [0.2, 0.36, 0.86, 1.0] } else { [0.13, 0.22, 0.55, 1.0] };
+            crate::glass_ui::capsule(g, s, r.x - 6.0, r.y, r.w + 12.0, r.h, tint);
+        } else {
+            s.fill(g, r.x, r.y, r.w, r.h, if lit { rgba(0.15, 0.2, 0.45, 0.9) } else { rgba(0.08, 0.1, 0.3, 0.8) });
+        }
     }
 
     /// Select Difficulty: the screen, the hovered item lit from the sheet, the four names (black when hovered, grey a little
@@ -800,7 +835,7 @@ impl App {
         if self.course_size_choosable() {
             let r = COURSE_SIZE_RECT;
             let lit = self.hover == COURSE_SIZE_HIT;
-            s.fill(g, r.x, r.y, r.w, r.h, if lit { rgba(0.15, 0.2, 0.45, 0.9) } else { rgba(0.08, 0.1, 0.3, 0.8) });
+            self.free_box_or_fill(g, &s, r, lit);
             let n = self.course_size;
             let name = trf("STR_COURSE_SIZE", &[("SIZE", &sg_core::mapsize::name(n))]);
             s.text(g, r.x + 10.0, r.y + 19.0, &name, 17.0, if lit { rgb(1.0, 1.0, 0.6) } else { rgb(1.0, 1.0, 1.0) });
@@ -811,7 +846,7 @@ impl App {
         {
             let r = STYLE_RECT;
             let lit = self.hover == STYLE_HIT;
-            s.fill(g, r.x, r.y, r.w, r.h, if lit { rgba(0.15, 0.2, 0.45, 0.9) } else { rgba(0.08, 0.1, 0.3, 0.8) });
+            self.free_box_or_fill(g, &s, r, lit);
             let (name, detail) = match self.game_style() {
                 crate::extras_ui::GameStyle::Original => ("STR_STYLE_ORIGINAL", "STR_STYLE_ORIGINAL_DETAIL"),
                 crate::extras_ui::GameStyle::Extras => ("STR_STYLE_EXTRAS", "STR_STYLE_EXTRAS_DETAIL"),

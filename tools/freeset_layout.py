@@ -49,7 +49,7 @@ def wanted(rel):
         return (ext == '.tga' or re.fullmatch(r'[a-z0-9]+[a-e]\d{4}\.bmp', name) is not None
                 or name in ('strata.bmp', 'clifftest.bmp', 'retainwalla.bmp', 'retainingwalla.bmp'))
     if low.startswith('sounds/') or low.startswith('simsfx/'):
-        return ext == '.wav' and not low.startswith('sounds/music/')
+        return ext == '.wav'
     if low.startswith(UI_DIRS):
         if any(low.startswith(s) for s in SKIP_UI) or low.startswith('data/') and '/' in low[5:]:
             return False

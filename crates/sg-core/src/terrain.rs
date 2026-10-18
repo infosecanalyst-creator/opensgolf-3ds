@@ -293,6 +293,11 @@ pub struct Terrain {
     /// The view's quarter turn (0..3), which turns the sand trap pictures (see `texture_type_for`).
     #[serde(skip)]
     pub sand_phase: i32,
+    /// The free base set's water: one look in every depth, so all water blends as one surface and only its edge against
+    /// land takes the border pieces (in the shallow water's textures, which carry the free set's shore). Off with the
+    /// original's textures, which are drawn exactly as Terrain.dll draws them.
+    #[serde(skip)]
+    pub water_one: bool,
     /// Each tile's own corner levels (north-west, north-east, south-west, south-east), as Terrain.dll keeps them: its vertex
     /// array is 3W x 3H, so tiles share no vertices, and golf.exe raises each tile's corners to the course's corner as the
     /// ground uses it (0x449540: `elevateCorner` (level - 3) times per corner from 0x40bfe0, water left at sea level), so a
@@ -680,6 +685,7 @@ impl Terrain {
             clubhouse_y: -1,
             clubhouse_size: 0,
             sand_phase: 0,
+            water_one: false,
             ..Default::default()
         };
         let mut rng = Rng::new(if seed != 0 { seed } else { 1 });
@@ -863,6 +869,9 @@ pub fn tile_relation(t: &Terrain, x: i32, y: i32, nx: i32, ny: i32) -> i32 {
     }
     let (me, nb) = (t.tile_index(x, y), t.tile_index(nx, ny));
     let (mt, nt) = (t.ty[me], t.ty[nb]);
+    if t.water_one && mt == TT_WATER_SHALLOW {
+        return if nt == TT_WATER_SHALLOW { 0 } else { 1 };
+    }
     if mt == TT_WATER_SHALLOW {
         let level = t.variation[me];
         let nl = if nt == TT_WATER_SHALLOW { t.variation[nb] } else { 0 };
@@ -903,6 +912,15 @@ pub fn blend_variation(a: i32, b: i32, c: i32) -> i32 {
     };
     let code = r(a, 4, 40) + r(b, 1, 10) + r(c, 2, 20);
     MAP[RAW[code as usize] as usize] as i32
+}
+
+/// With `water_one` (the free set): every water tile in the shallow water's textures, whatever its depth.
+fn water_one_type(t: &Terrain, tile_type: i32) -> Option<i32> {
+    (t.water_one && tile_type == TT_WATER_SHALLOW as i32).then_some(if t.desert {
+        TT_WATER_SHALLOW_DESERT as i32
+    } else {
+        TT_WATER_SHALLOW as i32
+    })
 }
 
 /// Texture type the original picks for a tile type (Tile::m116d).
@@ -972,7 +990,7 @@ pub fn build_tile_triangles(t: &Terrain, tx: i32, ty: i32, out: &mut Vec<TileTri
         // Original triangle index -> (a, b, c), and -> record.
         let abc = [[n, e, ne], [e, n, ne], [e, s, se], [s, e, se], [s, w, sw], [w, s, sw], [w, n, nw], [n, w, nw]];
         const REC_OF: [usize; 8] = [2, 3, 7, 6, 5, 4, 0, 1];
-        let tex_type = texture_type_for(ttype, vbyte, ttype, t.desert, t.sand_phase);
+        let tex_type = water_one_type(t, ttype).unwrap_or_else(|| texture_type_for(ttype, vbyte, ttype, t.desert, t.sand_phase));
         for i in 0..8 {
             let mut v = blend_variation(abc[i][0], abc[i][1], abc[i][2]);
             if (tex_type == TT_ROUGH as i32 || ttype == 7 || tex_type == TT_FAIRWAY as i32) && v > 4 {
@@ -984,7 +1002,7 @@ pub fn build_tile_triangles(t: &Terrain, tx: i32, ty: i32, out: &mut Vec<TileTri
     let tex_type = if ttype == TT_TEE as i32 || ttype == TT_POT_SAND_BUNKER as i32 {
         ttype
     } else {
-        texture_type_for(ttype, vbyte, ttype, t.desert, t.sand_phase)
+        water_one_type(t, ttype).unwrap_or_else(|| texture_type_for(ttype, vbyte, ttype, t.desert, t.sand_phase))
     };
     let use_set = if ttype == TT_TEE as i32 { vbyte } else { set };
     // Terrain.dll keeps a 3 x 3 vertex patch per tile (the global vertex array is 3W x 3H, so tiles share no vertices) with

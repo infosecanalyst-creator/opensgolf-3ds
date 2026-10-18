@@ -344,7 +344,7 @@ impl App {
             s.put(g, F_ARIAL10, BOX.x + 24.0, y + 24.0, &fit(&line, BOX.w - 200.0), green);
             for (which, label) in [(0, tr("STR_PROFILE_LOAD")), (1, tr("STR_PROFILE_DELETE"))] {
                 let r = row_button(row, which);
-                s.fill(g, r.x, r.y, r.w, r.h, if r.has(px, py) { rgb(0.85, 0.85, 1.0) } else { rgb(0.47, 0.47, 0.70) });
+                crate::glass_ui::button_fill(g, &s, r.x, r.y, r.w, r.h, r.has(px, py));
                 s.put_centered(g, F_ARIAL10, r.x + r.w / 2.0, r.y + 4.0, label, navy);
             }
         }
@@ -355,7 +355,7 @@ impl App {
         }
         s.put(g, F_ARIAL10, BOX.x + 24.0, BOX.y + BOX.h - 26.0, tr("STR_CONTENT_NOTE"), navy);
         let b = back_button();
-        s.fill(g, b.x, b.y, b.w, b.h, if b.has(px, py) { rgb(0.85, 0.85, 1.0) } else { rgb(0.47, 0.47, 0.70) });
+        crate::glass_ui::button_fill(g, &s, b.x, b.y, b.w, b.h, b.has(px, py));
         s.put_centered(g, F_ARIAL10, b.x + b.w / 2.0, b.y + 5.0, tr("STR_INDEX_BACK"), navy);
         if self.art.trans.tex.is_some() {
             s.image_part(g, &self.art.trans, BOX.x + BOX.w - 70.0, BOX.y + BOX.h - 58.0, 350.0, 140.0, 50.0, 50.0);

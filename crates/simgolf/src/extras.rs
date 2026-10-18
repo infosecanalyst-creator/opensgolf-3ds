@@ -550,6 +550,17 @@ use std::collections::BTreeMap;
 /// A tab: the command buttons' navy on pale blue (lit under the pointer), the chosen one on the yellow the original's hire
 /// dialog lights its choice with (0x7f40).
 pub fn draw_tab(g: &mut Gfx, s: &Ui, r: Rect, f: Fnt, label: &str, on: bool, hover: bool) {
+    if crate::glass_ui::active() {
+        crate::glass_ui::tab(g, s, r.x, r.y, r.w, r.h + 1.0, on, hover);
+        let x = (r.x + (r.w - f.width(label)) * 0.5).floor();
+        let y = r.y + ((r.h - f.px) * 0.5).floor();
+        if on {
+            s.put(g, f, x, y, label, crate::glass_ui::INK);
+        } else {
+            s.put_shadowed(g, f, x, y, label, c15(0x7fff), false);
+        }
+        return;
+    }
     let edge = if on || hover { c15(0x7fff) } else { c15(0x2d6b) };
     s.fill(g, r.x - 1.0, r.y - 1.0, r.w + 2.0, r.h + 2.0, edge);
     let fill = if on {
@@ -570,6 +581,13 @@ pub fn draw_tab(g: &mut Gfx, s: &Ui, r: Rect, f: Fnt, label: &str, on: bool, hov
 pub fn draw_button(g: &mut Gfx, s: &Ui, r: Rect, label: &str, enabled: bool, hover: bool) {
     let f = crate::ui::F_ARIAL10;
     let lit = enabled && hover;
+    if crate::glass_ui::active() {
+        crate::glass_ui::button(g, s, r.x, r.y, r.w, r.h + 1.0, enabled, lit);
+        let y = r.y + ((r.h - 10.0) * 0.5).floor();
+        let c = if enabled { crate::glass_ui::INK } else { crate::glass_ui::DIM_INK };
+        s.put_centered(g, f, r.x + r.w / 2.0, y, label, c);
+        return;
+    }
     s.fill(g, r.x - 1.0, r.y - 1.0, r.w + 2.0, r.h + 2.0, c15(if lit { 0x7fff } else { 0x2d6b }));
     s.fill(g, r.x, r.y, r.w, r.h, if lit { crate::ui::rgb(0.85, 0.85, 1.0) } else { crate::ui::rgb(0.47, 0.47, 0.70) });
     let y = r.y + ((r.h - 10.0) * 0.5).floor();
