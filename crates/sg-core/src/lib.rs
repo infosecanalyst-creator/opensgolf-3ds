@@ -62,6 +62,7 @@ pub mod thoughts;
 pub mod top10;
 pub mod tournament;
 pub mod tracts;
+pub mod unpack;
 pub mod vfs;
 pub mod vips;
 pub mod visitors;

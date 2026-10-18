@@ -14,10 +14,12 @@ graphics* goes back. No Terminal and no options are needed (`--game DIR` remains
 If your copy's `Sounds` and `SimsFX` folders are empty (some downloaded copies leave the sounds out), the game still
 plays, with the free OpenSGolf sounds, and says so once when it starts (the browser page too, after loading the files); a
 full installed copy or the CD has the original's. A .zip is read whether it was made with normal (Deflate) compression or
-by Windows' own zipper, which uses Deflate64 for big files such as the sounds (iPad's Files app cannot unpack those and
-shows the folders empty; OpenSGolf can). Files in other compressions (LZMA, BZIP2, 7-Zip's strongest settings) are left
-out and the game says how many; unpack such a zip (or a .7z or .rar) on a computer and pick the folder, or zip it again
-with normal compression.
+by Windows' own zipper, which uses Deflate64 for big files such as the sounds, or with 7-Zip's, Keka's or The
+Unarchiver's stronger settings (BZip2, LZMA, PPMd): iPad's Files app cannot unpack those and shows the folders empty;
+OpenSGolf can, in the browser, the desktop app and Android alike. Files in other compressions (Zstandard, XZ) and
+encrypted ones are left out and the game says how many; unpack such a zip (or a .7z or .rar) on a computer and pick the
+folder, or zip it again with normal compression. The browser page shows its version at the bottom (OpenSGolf 0.4.7):
+an older one there is a copy the browser kept; reload the page.
 
 * **Windows**: unzip `opensgolf-windows.zip` anywhere and double-click `opensgolf.exe` (no console window opens). Windows
   SmartScreen may warn that the program is unknown (it is not signed): *More info*, *Run anyway*. Saves go to

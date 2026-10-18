@@ -1,5 +1,6 @@
 //! A small reader for .zip files, enough for content packs (docs/MODDING.md): the central directory, and entries that are
-//! stored, deflated or Deflate64 (crate::inflate64). The whole archive is kept in memory (packs are small, and in a browser it is already in memory).
+//! stored, deflated, Deflate64 (crate::inflate64), BZip2, LZMA or PPMd (crate::unpack). The whole archive is kept in
+//! memory (packs are small, and in a browser it is already in memory).
 use std::collections::BTreeMap;
 
 pub struct Zip {
@@ -15,6 +16,49 @@ fn u16le(d: &[u8], o: usize) -> Option<usize> {
 }
 fn u32le(d: &[u8], o: usize) -> Option<usize> {
     Some(u32::from_le_bytes(d.get(o..o + 4)?.try_into().ok()?) as usize)
+}
+
+/// The checksum of zip entries (CRC-32).
+pub fn crc32(d: &[u8]) -> u32 {
+    let mut c = 0xFFFF_FFFFu32;
+    for &b in d {
+        c ^= b as u32;
+        for _ in 0..8 {
+            c = if c & 1 != 0 { 0xEDB8_8320 ^ (c >> 1) } else { c >> 1 };
+        }
+    }
+    !c
+}
+
+/// The high half of the DOS code page 437, which old Windows zippers wrote names in.
+const CP437: &str =
+    "ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜ¢£¥₧ƒáíóúñÑªº¿⌐¬½¼¡«»░▒▓│┤╡╢╖╕╣║╗╝╜╛┐└┴┬├─┼╞╟╚╔╩╦╠═╬╧╨╤╥╙╘╒╓╫╪┘┌█▄▌▐▀αßΓπΣσµτΦΘΩδ∞φε∩≡±≥≤⌠⌡÷≈°∙·√ⁿ²■\u{a0}";
+
+/// An entry's name (`raw`, its general purpose `flags` and `extra` field from the central directory) with forward
+/// slashes and without a leading "/" or "./": the Info-ZIP Unicode path in the extra field when it has one, UTF-8 when
+/// the flag says so or it reads as UTF-8 (a Mac's and 7-Zip's zips), else CP437. The same as web/files.js sgZipName.
+pub fn entry_name(raw: &[u8], flags: u16, extra: &[u8]) -> String {
+    let mut x = 0;
+    let mut name = None;
+    while x + 4 <= extra.len() {
+        let (id, n) = (u16le(extra, x).unwrap_or(0), u16le(extra, x + 2).unwrap_or(0));
+        if id == 0x7075 && n >= 5 && x + 4 + n <= extra.len() && extra[x + 4] == 1 && u32le(extra, x + 5) == Some(crc32(raw) as usize) {
+            name = Some(String::from_utf8_lossy(&extra[x + 9..x + 4 + n]).into_owned());
+        }
+        x += 4 + n;
+    }
+    let name = name.unwrap_or_else(|| match std::str::from_utf8(raw) {
+        Ok(s) => s.to_string(),
+        Err(_) if flags & 0x800 != 0 => String::from_utf8_lossy(raw).into_owned(),
+        Err(_) => raw.iter().map(|&b| if b < 128 { b as char } else { CP437.chars().nth(b as usize - 128).unwrap_or('?') }).collect(),
+    });
+    let dir = name.ends_with('/') || name.ends_with('\\');
+    let parts: Vec<&str> = name.split(['/', '\\']).filter(|c| !c.is_empty() && *c != ".").collect();
+    let mut out = parts.join("/");
+    if dir && !out.is_empty() {
+        out.push('/');
+    }
+    out
 }
 
 impl Zip {
@@ -44,7 +88,12 @@ impl Zip {
             let (nlen, xlen, clen) =
                 (u16le(&data, p + 28).ok_or_else(bad)?, u16le(&data, p + 30).ok_or_else(bad)?, u16le(&data, p + 32).ok_or_else(bad)?);
             let local = u32le(&data, p + 42).ok_or_else(bad)?;
-            let name = String::from_utf8_lossy(data.get(p + 46..p + 46 + nlen).ok_or_else(bad)?).replace('\\', "/");
+            let flags = u16le(&data, p + 8).ok_or_else(bad)? as u16;
+            let name = entry_name(
+                data.get(p + 46..p + 46 + nlen).ok_or_else(bad)?,
+                flags,
+                data.get(p + 46 + nlen..p + 46 + nlen + xlen).ok_or_else(bad)?,
+            );
             // "version made by"'s high byte 3: Unix, whose mode is the external attributes' high half
             let unix = u16le(&data, p + 4).ok_or_else(bad)? >> 8 == 3;
             let mode = (u32le(&data, p + 38).ok_or_else(bad)? >> 16) as u32 & 0o7777;
@@ -69,8 +118,8 @@ impl Zip {
         self.modes.get(name).copied()
     }
 
-    /// The contents of an entry, by its exact name. None when it is missing, uses a method other than stored, deflate or
-    /// Deflate64, or is damaged.
+    /// The contents of an entry, by its exact name. None when it is missing, uses a method crate::unpack does not know,
+    /// or is damaged.
     pub fn read(&self, name: &str) -> Option<Vec<u8>> {
         let &(method, csize, size, local) = self.entries.get(name)?;
         if self.data.get(local..local + 4)? != [0x50, 0x4b, 0x03, 0x04] {
@@ -81,9 +130,8 @@ impl Zip {
         match method {
             0 => Some(body.to_vec()),
             8 => miniz_oxide::inflate::decompress_to_vec_with_limit(body, size.max(1) * 2 + 1024).ok(),
-            // Deflate64 (Windows' zipper for big files)
-            9 => crate::inflate64::inflate(body, size, true).ok(),
-            _ => None,
+            // Deflate64 (Windows' zipper for big files), BZip2, LZMA, PPMd (7-Zip's stronger settings)
+            m => crate::unpack::unpack(m, body, size).ok(),
         }
     }
 }
@@ -92,16 +140,7 @@ impl Zip {
 pub fn write(files: &[(&str, &[u8])]) -> Vec<u8> {
     let mut out = Vec::new();
     let mut central = Vec::new();
-    let crc = |d: &[u8]| {
-        let mut c = 0xFFFF_FFFFu32;
-        for &b in d {
-            c ^= b as u32;
-            for _ in 0..8 {
-                c = if c & 1 != 0 { 0xEDB8_8320 ^ (c >> 1) } else { c >> 1 };
-            }
-        }
-        !c
-    };
+    let crc = crc32;
     for (name, body) in files {
         let z = miniz_oxide::deflate::compress_to_vec(body, 6);
         let offset = out.len() as u32;
@@ -155,6 +194,18 @@ mod tests {
         assert_eq!(zip.read("a/gfx/x.png").unwrap(), vec![7u8; 300]);
         assert!(zip.read("missing").is_none());
         assert!(super::Zip::open(b"not a zip at all, sorry, no".to_vec()).is_err());
+    }
+
+    #[test]
+    fn names_in_any_encoding() {
+        assert_eq!(super::entry_name(b"SimGolf\\Sounds\\a.wav", 0, &[]), "SimGolf/Sounds/a.wav");
+        assert_eq!(super::entry_name(b"./SimGolf//Flics/", 0, &[]), "SimGolf/Flics/");
+        assert_eq!(super::entry_name(b"/x/caf\x82.wav", 0, &[]), "x/caf\u{e9}.wav");
+        assert_eq!(super::entry_name("na\u{ef}ve".as_bytes(), 0x800, &[]), "na\u{ef}ve");
+        let mut extra = vec![0x75, 0x70, 5 + 3, 0, 1];
+        extra.extend(super::crc32(b"x?").to_le_bytes());
+        extra.extend("x\u{e9}".as_bytes());
+        assert_eq!(super::entry_name(b"x?", 0, &extra), "x\u{e9}");
     }
 
     #[test]

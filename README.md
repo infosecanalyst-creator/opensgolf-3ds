@@ -69,7 +69,8 @@ OpenSGolf needs a set of graphics, sounds and text. There are two:
   browser also take the SimGolf CD itself, or an image of it (.iso, or a Mac's .cdr), with nothing to install ([INSTALL.md](docs/INSTALL.md)). The files are read on your
   own device and never uploaded. If your copy's `Sounds` and `SimsFX` folders are empty (some downloaded copies leave the
   sounds out), the game still plays, with the free OpenSGolf sounds, and says so; a full installed copy or the CD has the
-  original's. Zips made by Windows (Deflate64 for big files) are read too.
+  original's. Zips made by Windows (Deflate64 for big files), 7-Zip, Keka or The Unarchiver (BZip2, LZMA, PPMd) are read
+  too, even on an iPad whose Files app shows their sound folders empty.
 - **opensgolf-free**, the free base set. Like OpenGFX for OpenTTD, it contains nothing from the original: art, sounds and
   text made by the engine itself. It is used automatically when no SimGolf files are found. It is simple for now and open
   to contributions from artists.

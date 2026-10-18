@@ -14,7 +14,7 @@ clip on stderr (`sound: cannot load ...`), and the title screen says once in a b
 (`STR_SOUND_CANNOT_PLAY`; settings.json `sound_problem_shown` keeps it from repeating). A clip the original itself lacks
 stays silent, as in the original. In the browser the page also resumes the audio output on every click, tap or key
 (Chrome's autoplay policy keeps a context made outside a gesture suspended), skips a Mac zip's `__MACOSX` entries, and says
-when a zip holds entries in a compression the browser cannot unpack (Deflate64, BZIP2, LZMA).
+when a zip holds entries in a compression it cannot unpack (it unpacks stored, deflate, Deflate64, BZip2, LZMA and PPMd).
 
 `crates/sg-core/src/mixer.rs` has a small mixer (clips converted to 44.1 kHz stereo, up to 32 voices, looping,
 case insensitive lookup by path under `Sounds/`); the game feeds the system's output device from it through cpal (CoreAudio, WASAPI, ALSA). The mixer can render to a buffer without a device, which is how

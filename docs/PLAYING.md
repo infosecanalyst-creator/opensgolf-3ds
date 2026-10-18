@@ -52,12 +52,19 @@ cannot decode (WAV in PCM, float, A-law, mu-law, MS or IMA ADPCM or MP3, or an .
 free set's, clip by clip. When the copy has no sounds at all (empty `Sounds` and `SimsFX` folders: some downloaded
 copies leave them out), only the Sims' voices in `SimsFX`, or lacks more than a quarter of the game's sounds, a box says so once
 when the game starts and the ticker on every start (sg_core::mixer `shortfall`; the console or log has a `sound:` line
-with the counts). The browser page also sums up what it found after loading the files ("Found in your files: art ✓,
-sounds: N files (music: N), Sims' voices: N"), over the game for a few seconds (longer when something is missing), and
-names files a zip holds in a compression it cannot unpack (BZIP2, LZMA...; the app's importer says how many too).
-Deflate64, which Windows' own zipper uses for big files such as the sounds (and which iPad's Files app cannot unpack: it
-shows such folders empty), is read by the browser, desktop and Android alike (sg_core::inflate64; issue #10). Sound folders a zip has
-beside the game folder rather than in it are used as if they were in it.
+with the counts). The browser page also sums up what it found after loading the files, in large type on the start page
+(and again there on the next visit, as "Last time: ...") and over the game once (20 seconds, or until tapped when
+something is missing): "OpenSGolf 0.4.7. Sounds: found N, used N, skipped N (why: the compression's name, damaged, too
+big). Art ✓, music: N, Sims' voices: N." The console's `files:` line adds the compression methods the zip used.
+Deflate64 (Windows' own zipper, for big files such as the sounds), BZip2, LZMA and PPMd (7-Zip's, Keka's and The
+Unarchiver's stronger settings), which iPad's Files app cannot unpack (it shows such folders empty), are read by the
+browser (web/files.js), desktop and Android (sg_core::inflate64, sg_core::unpack) alike (issue #10); the browser also
+unpacks plain deflate itself when its own DecompressionStream is missing or fails, and checks every file's checksum.
+Names in UTF-8 or the old DOS code page, backslashes and Zip64 are read. Sound folders a zip has beside the game folder
+rather than in it (or in a second copy of it, or a folder such as "SimGolf Sounds") fill in the sounds the game folder
+lacks, and folders differing only in case ("Sounds" and "SOUNDS") are one. Every file of the page carries the version in
+its address (web/build.sh), so a browser never runs an older copy of a part of it; the start page shows the version at
+its bottom.
 
 Test hook: `SG_PICK_FOLDER=DIR` takes DIR (a folder, the CD as a folder, a .zip, .iso or .cdr) as picked, right after
 start up (`SG_PICK_FOLDER=free` chooses the free graphics; with `--png` the still waits for the import and the restart); on Android the intent extra `sg_pick` does the same
