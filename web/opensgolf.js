@@ -23,10 +23,6 @@ const sgfs = { files: new Map(), dirs: new Map(), list: [] };
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
-function sgKey(p) {
-    return p.replace(/\\/g, "/").replace(/\/+/g, "/").replace(/\/$/, "").replace(/^\.\//, "").toLowerCase();
-}
-
 function sgAddFile(path, bytes) {
     const parts = path.replace(/\\/g, "/").split("/").filter(s => s.length > 0);
     sgfs.files.set(sgKey(parts.join("/")), bytes);
@@ -347,49 +343,8 @@ function sgDownload(name, bytes) {
 }
 
 // Loading the player's files. The game folder is the one that holds Flics, Sounds and Data; the player may pick it, any folder
-// above it, or a .zip of it. Videos (.bik) and Windows binaries are not needed and are skipped. The files are kept in this
-// browser (IndexedDB) so the next visit starts at once; "Forget my game files" removes them.
-function sgSkip(low) {
-    // a zip made on a Mac carries the files' resource forks in __MACOSX/ and as "._" files: not game files
-    if (low.startsWith("__macosx/") || low.includes("/__macosx/") || low.startsWith("._") || low.includes("/._")) return true;
-    return low.endsWith(".bik") || low.endsWith(".exe") || low.endsWith(".dll") || low.endsWith(".lib") || low.endsWith("/");
-}
-
-// The game folder in a set of paths: the folder holding Flics. Of several (a zip with a second copy, or a stray Flics
-// folder), the one with the most of the game's other folders beside it, then the shallowest.
-function sgRootOf(paths) {
-    const roots = new Map();
-    for (const p of paths) {
-        const parts = p.split("/");
-        const i = parts.findIndex(x => x.toLowerCase() === "flics");
-        if (i >= 0) roots.set(parts.slice(0, i).join("/"), new Set());
-    }
-    if (roots.size === 0) return null;
-    for (const p of paths) {
-        const parts = p.split("/");
-        for (let i = 0; i < parts.length - 1; i++) {
-            const kids = roots.get(parts.slice(0, i).join("/"));
-            if (kids) kids.add(parts[i].toLowerCase());
-        }
-    }
-    const score = r => ["interface", "data", "sounds", "simsfx"].filter(d => roots.get(r).has(d)).length;
-    return Array.from(roots.keys()).sort((a, b) => score(b) - score(a) || a.split("/").length - b.split("/").length)[0];
-}
-
-// Sound folders the zip or folder holds outside the game folder (a copy repacked with Sounds or SimsFX beside it rather
-// than in it): their files go where the game looks, unless the game folder has that folder already. "rel" is the path
-// under the game folder, or null.
-function sgStraySound(path, rootHas) {
-    const parts = path.split("/");
-    if (!/\.(wav|mp3|ogg)$/i.test(path)) return null;
-    for (let i = parts.length - 2; i >= 0; i--) {
-        const d = parts[i].toLowerCase().replace(/[ _]/g, "");
-        const name = d === "sounds" || d === "sound" ? "Sounds" : d === "simsfx" ? "SimsFX" : null;
-        if (name && !rootHas.has(name.toLowerCase())) return name + "/" + parts.slice(i + 1).join("/");
-    }
-    return null;
-}
-
+// above it, or a .zip of it (web/files.js reads the zip and says where each file goes). The files are kept in this browser
+// (IndexedDB) so the next visit starts at once; "Forget my game files" removes them.
 function sgStatus(t) {
     document.getElementById("status").textContent = t;
 }
@@ -407,23 +362,34 @@ function sgDb() {
         r.onerror = () => fail(r.error);
     });
 }
+// The marker of a store being written (sgStoreAll): one found at the start is a copy cut short (the tab closed), not used.
+const SG_STORE_PARTIAL = "\u0000incomplete";
 async function sgStoreAll(entries, store = "files") {
     try {
         // Safari clears a site's storage after weeks without a visit unless the page is allowed to keep it
         if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
         const db = await sgDb();
-        await new Promise((ok, fail) => {
-            const tx = db.transaction(store, "readwrite");
-            const st = tx.objectStore(store);
-            st.clear();
-            for (const [path, bytes] of entries) st.put(bytes, path);
-            tx.oncomplete = ok;
-            tx.onerror = () => fail(tx.error);
+        // in parts of up to 32 MB: one transaction of the whole game folder had the browser copy all of it at once, a
+        // second copy of the files an iPad's tab may not have room for beside the game
+        const tx = (fill, last) => new Promise((ok, fail) => {
+            const t = db.transaction(store, "readwrite");
+            fill(t.objectStore(store));
+            if (last) t.objectStore(store).delete(SG_STORE_PARTIAL);
+            t.oncomplete = ok;
+            t.onerror = () => fail(t.error);
             // a full storage aborts the transaction
-            tx.onabort = () => fail(tx.error);
+            t.onabort = () => fail(t.error);
         });
+        await tx(st => { st.clear(); st.put(1, SG_STORE_PARTIAL); }, entries.length === 0);
+        for (let i = 0; i < entries.length;) {
+            let j = i, bytes = 0;
+            while (j < entries.length && (j === i || bytes + entries[j][1].length <= 32 * 1048576)) bytes += entries[j++][1].length;
+            const part = entries.slice(i, j);
+            await tx(st => { for (const [path, b] of part) st.put(b, path); }, j === entries.length);
+            i = j;
+        }
     } catch (e) {
-        // (one transaction: all the files are kept, or none)
+        // (the marker stays: a copy cut short is not used)
         console.warn("could not keep the game files in this browser", e);
         if (store === "files") sgNote("Your game files could not be kept in this browser (" + (e && e.name === "QuotaExceededError" ?
             "not enough storage space" : (e && e.message) || "storage refused") + "): the game plays on, but next time pick them again.", true);
@@ -453,7 +419,7 @@ async function sgLoadStored(store = "files") {
             const req = tx.objectStore(store).openCursor();
             req.onsuccess = () => {
                 const c = req.result;
-                if (c) { out.push([c.key, c.value]); c.continue(); } else ok(out);
+                if (c) { out.push([c.key, c.value]); c.continue(); } else ok(out.some(([k]) => k === SG_STORE_PARTIAL) ? [] : out);
             };
             req.onerror = () => fail(req.error);
         });
@@ -470,289 +436,19 @@ async function sgForget() {
     document.getElementById("again").style.display = "none";
 }
 
-// --- reading a .zip (stored, deflated or Deflate64 entries) ---------------------------------------------------------------
-// The compressions a browser cannot unpack, by their zip method number, for the player's message.
-const SG_ZIP_METHODS = { 12: "BZIP2", 14: "LZMA", 93: "Zstandard", 95: "XZ", 98: "PPMd", 99: "AES encryption" };
-
-// Deflate64 (zip method 9), which Windows' built-in zipper uses for big files: a zip of SimGolf made there can hold every
-// sound so, and neither the browser (DecompressionStream) nor iPad's Files app unpacks it, so the game played the free
-// sounds with the original's art (issue #10). Deflate with a 64 KiB window, length code 285 taking 16 extra bits over a
-// base of 3, and distance codes 30 and 31. The same decoder as crates/sg-core/src/inflate64.rs (after zlib's puff.c).
-// `size` is the entry's size from the zip's directory. sgInflateInto also decodes plain deflate (d64 false: the blocks of
-// the CD's installer cabinets) into a part of a bigger buffer.
-const SG_LBASE = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 3];
-const SG_LEXT = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 16];
-const SG_DBASE = [1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097,
-    6145, 8193, 12289, 16385, 24577, 32769, 49153];
-const SG_DEXT = [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13, 14, 14];
-// A canonical Huffman code: counts of each length, the symbols in code order, and (for speed) a table of the codes up to
-// 9 bits by their next 9 bits as read (symbol + length << 16; 0 for a longer code).
-function sgHuff(lengths) {
-    const count = new Uint16Array(16), offs = new Uint16Array(16), symbol = new Uint16Array(lengths.length);
-    for (const l of lengths) count[l]++;
-    count[0] = 0;
-    for (let l = 1; l < 15; l++) offs[l + 1] = offs[l] + count[l];
-    for (let s = 0; s < lengths.length; s++) if (lengths[s]) symbol[offs[lengths[s]]++] = s;
-    const fast = new Uint32Array(512);
-    let code = 0, k = 0;
-    for (let l = 1; l <= 9; l++) {
-        for (let j = 0; j < count[l]; j++, k++, code++) {
-            let rev = 0;
-            for (let b = 0; b < l; b++) rev |= ((code >> b) & 1) << (l - 1 - b);
-            for (let x = rev; x < 512; x += 1 << l) fast[x] = symbol[k] | (l << 16);
-        }
-        code <<= 1;
-    }
-    return { count, symbol, fast };
-}
-function sgInflate64(src, size) {
-    const out = new Uint8Array(size);
-    if (sgInflateInto(src, out, 0, true) !== size) throw new Error("Deflate64: less data than the zip says");
-    return out;
-}
-// Decodes `src` into `out` from `start`; returns where its output ends.
-function sgInflateInto(src, out, start, d64) {
-    const size = out.length;
-    let o = start, pos = 0, buf = 0, n = 0;
-    const fail = why => { throw new Error((d64 ? "Deflate64: " : "deflate: ") + why); };
-    const bits = k => {
-        while (n < k) {
-            if (pos >= src.length) fail("the data ends early");
-            buf |= src[pos++] << n;
-            n += 8;
-        }
-        const v = buf & ((1 << k) - 1);
-        buf >>>= k;
-        n -= k;
-        return v;
-    };
-    const decode = h => {
-        while (n < 9 && pos < src.length) {
-            buf |= src[pos++] << n;
-            n += 8;
-        }
-        const f = h.fast[buf & 511];
-        if (f !== 0 && (f >>> 16) <= n) {
-            buf >>>= f >>> 16;
-            n -= f >>> 16;
-            return f & 0xffff;
-        }
-        let code = 0, first = 0, index = 0;
-        for (let len = 1; len < 16; len++) {
-            if (n === 0) {
-                if (pos >= src.length) fail("the data ends early");
-                buf = src[pos++];
-                n = 8;
-            }
-            code |= buf & 1;
-            buf >>>= 1;
-            n--;
-            const count = h.count[len];
-            if (code - count < first) return h.symbol[index + code - first];
-            index += count;
-            first = (first + count) << 1;
-            code <<= 1;
-        }
-        fail("a bad code");
-    };
-    const fixedL = new Uint8Array(288).fill(8, 0, 144).fill(9, 144, 256).fill(7, 256, 280).fill(8, 280);
-    const fixed = [sgHuff(fixedL), sgHuff(new Uint8Array(32).fill(5))];
-    const ORDER = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
-    let last;
-    do {
-        last = bits(1);
-        const type = bits(2);
-        let lh, dh;
-        if (type === 0) {
-            buf = 0;
-            n = 0;
-            if (pos + 4 > src.length) fail("the data ends early");
-            const len = src[pos] | (src[pos + 1] << 8);
-            if ((len ^ 0xffff) !== (src[pos + 2] | (src[pos + 3] << 8))) fail("a bad stored block");
-            if (pos + 4 + len > src.length || o + len > size) fail("a stored block too long");
-            out.set(src.subarray(pos + 4, pos + 4 + len), o);
-            o += len;
-            pos += 4 + len;
-            continue;
-        } else if (type === 1) {
-            [lh, dh] = fixed;
-        } else if (type === 2) {
-            const nlen = bits(5) + 257, ndist = bits(5) + 1, ncode = bits(4) + 4;
-            const cl = new Uint8Array(19);
-            for (let i = 0; i < ncode; i++) cl[ORDER[i]] = bits(3);
-            const ch = sgHuff(cl);
-            const lengths = new Uint8Array(nlen + ndist);
-            for (let i = 0; i < nlen + ndist;) {
-                const sym = decode(ch);
-                let val = 0, rep = 1;
-                if (sym < 16) val = sym;
-                else if (sym === 16) {
-                    if (i === 0) fail("a repeat with nothing before it");
-                    val = lengths[i - 1];
-                    rep = 3 + bits(2);
-                } else rep = sym === 17 ? 3 + bits(3) : 11 + bits(7);
-                if (i + rep > nlen + ndist) fail("too many code lengths");
-                lengths.fill(val, i, i + rep);
-                i += rep;
-            }
-            lh = sgHuff(lengths.subarray(0, nlen));
-            dh = sgHuff(lengths.subarray(nlen));
-        } else fail("a bad block type");
-        for (;;) {
-            const sym = decode(lh);
-            if (sym < 256) {
-                if (o >= size) fail("more data than the zip says");
-                out[o++] = sym;
-                continue;
-            }
-            if (sym === 256) break;
-            const s = sym - 257;
-            if (s >= 29) fail("a bad length code");
-            const len = !d64 && s === 28 ? 258 : SG_LBASE[s] + bits(SG_LEXT[s]);
-            const ds = decode(dh);
-            if (!d64 && ds >= 30) fail("a bad distance code");
-            const dist = SG_DBASE[ds] + bits(SG_DEXT[ds]);
-            if (dist > o - start) fail("a distance too far back");
-            if (o + len > size) fail("more data than the zip says");
-            if (dist >= len) out.copyWithin(o, o - dist, o - dist + len);
-            else for (let k = 0; k < len; k++) out[o + k] = out[o - dist + k];
-            o += len;
-        }
-    } while (!last);
-    return o;
-}
-// `size` bytes at `offset` of a Blob (of a File only that part is read: a zip or a CD image is never held whole).
-async function sgSlice(blob, offset, size) {
-    return new Uint8Array(await blob.slice(offset, offset + size).arrayBuffer());
-}
-// A zip's directory, read from the end of the Blob: [{ name, flags, method, csize, usize, local, nlen, xlen }].
-async function sgZipEntries(blob) {
-    const tailLen = Math.min(blob.size, 22 + 0xffff);
-    const tail = await sgSlice(blob, blob.size - tailLen, tailLen);
-    const t = new DataView(tail.buffer);
-    let e = tail.length - 22;
-    while (e >= 0 && t.getUint32(e, true) !== 0x06054b50) e--;
-    if (e < 0) throw new Error("not a zip file");
-    const count = t.getUint16(e + 10, true), cdSize = t.getUint32(e + 12, true), cdAt = t.getUint32(e + 16, true);
-    const cd = await sgSlice(blob, cdAt, cdSize);
-    const v = new DataView(cd.buffer);
-    const dec8 = new TextDecoder();
-    const out = [];
-    let p = 0;
-    for (let i = 0; i < count; i++) {
-        if (p + 46 > cd.length || v.getUint32(p, true) !== 0x02014b50) throw new Error("damaged zip directory");
-        const nlen = v.getUint16(p + 28, true), xlen = v.getUint16(p + 30, true), clen = v.getUint16(p + 32, true);
-        out.push({
-            name: dec8.decode(cd.subarray(p + 46, p + 46 + nlen)).replace(/\\/g, "/"),
-            flags: v.getUint16(p + 8, true), method: v.getUint16(p + 10, true),
-            csize: v.getUint32(p + 20, true), usize: v.getUint32(p + 24, true), local: v.getUint32(p + 42, true), nlen, xlen,
-        });
-        p += 46 + nlen + xlen + clen;
-    }
-    return out;
-}
-// Where an entry's (compressed) bytes start in the Blob, from its local header.
-async function sgZipDataAt(blob, e) {
-    const h = await sgSlice(blob, e.local, 30);
-    const v = new DataView(h.buffer);
-    if (h.length < 30 || v.getUint32(0, true) !== 0x04034b50) throw new Error("damaged zip entry " + e.name);
-    return e.local + 30 + v.getUint16(26, true) + v.getUint16(28, true);
-}
-// An entry's bytes as stored in the zip (one read with the local header in most cases).
-async function sgZipRaw(blob, e) {
-    let d = await sgSlice(blob, e.local, 30 + e.nlen + e.xlen + 256 + e.csize);
-    const v = new DataView(d.buffer);
-    if (d.length < 30 || v.getUint32(0, true) !== 0x04034b50) throw new Error("damaged zip entry " + e.name);
-    const start = 30 + v.getUint16(26, true) + v.getUint16(28, true);
-    if (start + e.csize > d.length) d = await sgSlice(blob, e.local, start + e.csize);
-    return d.subarray(start, start + e.csize);
-}
-// An entry unpacked, or a string saying why it cannot be.
-async function sgZipRead(blob, e) {
-    if (e.flags & 1) return "encrypted"; // a password-protected entry: its bytes are scrambled
-    if (e.method !== 0 && e.method !== 8 && e.method !== 9) {
-        // BZIP2, LZMA... (7-Zip's stronger settings): the browser cannot unpack them
-        return SG_ZIP_METHODS[e.method] || "compression method " + e.method;
-    }
-    const data = await sgZipRaw(blob, e);
-    if (e.method === 0 || e.usize === 0) return data.slice(0, e.usize);
-    if (e.method === 8) return new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer());
-    try {
-        return sgInflate64(data, e.usize);
-    } catch (err) {
-        console.warn("zip: " + e.name + ": " + err.message);
-        return "damaged Deflate64";
-    }
-}
-// Calls onEntry for each file it can unpack; the ones it cannot are added to `skipped` as [name, why]. Returns how many.
-// `src` is a Blob (a picked File, read a part at a time) or an ArrayBuffer.
-async function sgUnzip(src, onEntry, skipped = [], list = null) {
-    const blob = src instanceof Blob ? src : new Blob([src]);
-    const entries = list || await sgZipEntries(blob);
-    for (let i = 0; i < entries.length; i++) {
-        const e = entries[i];
-        if (sgSkip(e.name.toLowerCase())) continue;
-        const bytes = await sgZipRead(blob, e);
-        if (typeof bytes === "string") {
-            if (skipped.length < 5) console.warn("zip: cannot unpack " + e.name + " (" + bytes + ")");
-            skipped.push([e.name, bytes]);
-            continue;
-        }
-        await onEntry(e.name, bytes, i, entries.length);
-    }
-    return skipped.length;
-}
-
-// What the player's files hold, said on the start page and over the game once it starts (an iPad shows no console): the
-// art, the sounds, the Sims' voices and the music, and what could not be unpacked. A copy with empty Sounds and SimsFX
-// folders (some downloaded copies, or a zip whose sounds could not be unpacked) plays the free OpenSGolf sounds, which
-// players took for a fault (issue #10). Paths are the game folder's ("game/..."); `skipped` is sgUnzip's. Returns { text, problem }.
-function sgFilesSummary(paths, skipped = []) {
-    let art = 0, sounds = 0, music = 0, voices = 0;
-    for (const path of paths) {
-        const k = sgKey(path);
-        const sound = /\.(wav|mp3|ogg)$/.test(k);
-        if (k.startsWith("game/flics/") || k.startsWith("game/interface/")) art++;
-        else if (k.startsWith("game/simsfx/") && sound) voices++;
-        else if (k.startsWith("game/sounds/") && sound) {
-            sounds++;
-            if (/\bmusic\//.test(k)) music++;
-        }
-    }
-    const skippedSounds = skipped.filter(([n]) => /\.(wav|mp3|ogg)$/i.test(n)).length;
-    const say = ["Found in your files: art " + (art > 0 ? "\u2713" : "\u2717 (none)") + ", sounds: " + sounds +
-        " files (music: " + music + "), Sims' voices: " + voices + "."];
-    let problem = false;
-    if (skipped.length > 0) {
-        problem = true;
-        const kinds = Array.from(new Set(skipped.map(([, why]) => why))).join(", ");
-        say.push(sgPlural(skipped.length, "file") + (skippedSounds ? " (" + skippedSounds + " of them sounds)" : "") +
-            " in the zip use a compression this browser cannot unpack (" + kinds + ") and were left out. Zip the folder " +
-            "again with normal (Deflate) compression, or pick the folder itself.");
-    }
-    if (sounds + voices === 0) {
-        problem = true;
-        say.push(skippedSounds ? "So there are no sounds from your files: the free OpenSGolf sounds play instead."
-            : "Sounds: none in your files (the Sounds and SimsFX folders are empty), so the free OpenSGolf sounds play. A " +
-              "full installed copy of the game or the CD has them.");
-    } else if (sounds === 0) {
-        problem = true;
-        say.push("Your files have no Sounds folder (only the Sims' voices): the free OpenSGolf sounds play for the rest.");
-    }
-    return { text: say.join(" "), problem };
-}
-
-// A note over the game for a few seconds (longer for a problem); a tap closes it and goes no further.
+// A note over the game, in large type so it is read on an iPad: for 20 seconds, or until tapped for a problem; a tap closes
+// it and goes no further.
 function sgNote(text, problem) {
     const note = document.createElement("div");
     note.style.cssText = "position:fixed;left:50%;top:calc(12px + env(safe-area-inset-top));transform:translateX(-50%);z-index:20;" +
-        "max-width:min(640px,calc(100vw - 32px));background:rgba(10,30,18,0.94);color:#fff;font:500 15px/1.45 system-ui,sans-serif;" +
-        "padding:12px 18px;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,0.5);text-align:center;cursor:pointer";
+        "max-width:min(720px,calc(100vw - 32px));background:rgba(10,30,18,0.95);color:#fff;font:600 clamp(16px,2.4vw,20px)/1.45 system-ui,sans-serif;" +
+        "padding:14px 20px;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,0.5);text-align:center;cursor:pointer" +
+        (problem ? ";border:2px solid #f4d35e" : "");
     note.textContent = text + " (Tap to close.)";
     const close = e => { e.stopPropagation(); e.preventDefault(); note.remove(); };
     for (const type of ["pointerdown", "touchstart", "mousedown", "click"]) note.addEventListener(type, close);
     document.body.appendChild(note);
-    setTimeout(() => note.remove(), problem ? 30000 : 8000);
+    if (!problem) setTimeout(() => note.remove(), 20000);
 }
 
 // --- the saved games: backing up and restoring -------------------------------------------------------------------------------
@@ -815,20 +511,6 @@ function sgKeepFile(path, bytes) {
 }
 
 // A .zip with its files stored (not compressed again: the saves are compressed already), names in UTF-8.
-const sgCrcTable = (() => {
-    const t = new Uint32Array(256);
-    for (let n = 0; n < 256; n++) {
-        let c = n;
-        for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-        t[n] = c >>> 0;
-    }
-    return t;
-})();
-function sgCrc32(b) {
-    let c = 0xffffffff;
-    for (let i = 0; i < b.length; i++) c = sgCrcTable[(c ^ b[i]) & 0xff] ^ (c >>> 8);
-    return (c ^ 0xffffffff) >>> 0;
-}
 function sgZip(entries) {
     const now = new Date();
     const time = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
@@ -861,9 +543,6 @@ function sgZip(entries) {
     return new Blob([...parts, ...central, new Uint8Array(e.buffer)], { type: "application/zip" });
 }
 
-function sgPlural(n, word) {
-    return n + " " + word + (n === 1 ? "" : "s");
-}
 function sgIsGame(path) {
     const k = sgKey(path);
     return k.startsWith("saved games/") && k.endsWith(".sgs");
@@ -1098,34 +777,48 @@ async function sgIsCdImage(file) {
     const b = new Uint8Array(await file.slice(16 * 2048 + 1, 16 * 2048 + 6).arrayBuffer());
     return String.fromCharCode(...b) === "CD001";
 }
-async function sgUse(entries, skipped = []) {
-    const root = sgRootOf(entries.map(e => e[0]));
-    if (root === null && entries.some(e => /\.dmg$/i.test(e[0]))) {
+// Plays with the player's files: [path, bytes] (a folder's, a zip's or the CD's). `skipped` is what sgUnzip could not
+// unpack, `stat` what it met (web/files.js).
+async function sgUse(entries, skipped = [], stat = {}) {
+    const place = sgPlace(entries.map(e => e[0]));
+    if (place === null && entries.some(e => /\.dmg$/i.test(e[0]))) {
         sgStatus(SG_ISO_HELP);
         return;
     }
-    if (root === null) {
+    if (place === null) {
         sgStatus("That does not look like a SimGolf game folder (no Flics folder found). Pick the folder that contains Flics, Sounds and Data, or a .zip of it.");
         return;
     }
     const keep = [];
-    const under = p => root === "" || p.startsWith(root + "/");
-    const rootHas = new Set(entries.filter(([p]) => under(p)).map(([p]) => sgKey(p.substring(root.length)).split("/").filter(x => x)[0]));
-    for (const [path, bytes] of entries) {
-        let rel = under(path) ? path.substring(root.length).replace(/^\//, "") : sgStraySound(path, rootHas);
-        if (rel === null) continue;
-        rel = "game/" + rel;
-        sgAddFile(rel, bytes);
-        keep.push([rel, bytes]);
+    for (const [i, path] of place) {
+        const rel = "game/" + path;
+        sgAddFile(rel, entries[i][1]);
+        keep.push([rel, entries[i][1]]);
     }
-    const sum = sgFilesSummary(keep.map(([p]) => p), skipped);
-    console.log("files: " + sum.text);
-    sgStatus(sum.text);
+    // the sound files the player's files held anywhere, used or not
+    const found = entries.filter(([p]) => sgIsSound(p)).length + skipped.filter(([n]) => sgIsSound(n)).length;
+    const sum = sgFilesSummary(keep.map(([p]) => p), skipped, found);
+    const how = stat.methods ? Object.entries(stat.methods).map(([m, n]) => n + " " + m).join(", ") : "";
+    console.log("files: " + sum.text + (how ? " (zip: " + how + (stat.fallback ? "; " + stat.fallback + " deflated by the page" : "") +
+        (stat.crc ? "; " + stat.crc + " with a bad checksum" : "") + ")" : ""));
+    sgSummary(sum, true);
     // play at once; the copy kept for next time is written in the background (it can take minutes for a whole game folder)
     const remember = document.getElementById("remember").checked;
     sgStart();
     sgNote(sum.text, sum.problem);
     if (remember) sgStoreAll(keep);
+}
+
+// The summary of the player's files in large type on the start page; kept for the next visit (the start page is gone once
+// the game runs).
+const SG_SUMMARY_KEY = "opensgolf-files-summary";
+function sgSummary(sum, keep) {
+    const el = document.getElementById("summary");
+    if (el) {
+        el.textContent = sum.text;
+        el.className = sum.problem ? "problem" : "";
+    }
+    if (keep) try { localStorage.setItem(SG_SUMMARY_KEY, JSON.stringify(sum)); } catch (e) {}
 }
 
 async function sgLoadFolder(fileList) {
@@ -1195,6 +888,7 @@ async function sgLoadZip(file) {
     if (await sgZipCd(file, list)) return;
     const entries = [];
     const skipped = [];
+    const stat = {};
     try {
         await sgUnzip(file, async (name, bytes, i, n) => {
             entries.push([name, bytes]);
@@ -1202,14 +896,14 @@ async function sgLoadZip(file) {
                 sgStatus("Unpacking your game files: " + (i + 1) + " of " + n);
                 await new Promise(r => setTimeout(r, 0));
             }
-        }, skipped, list);
+        }, skipped, list, stat);
     } catch (e) {
-        sgStatus("Could not read that zip: " + e.message);
+        sgStatus("Could not read that zip: " + e.message + (/memory|allocat/i.test(e.message) ? " (the browser ran out of memory)" : ""));
         return;
     }
     // files it could not unpack are said in the summary over the game (sgFilesSummary), not in an alert, which Safari may
     // not show after the long unpacking; the game still starts (missing sounds are replaced by the free set's)
-    await sgUse(entries, skipped);
+    await sgUse(entries, skipped, stat);
 }
 
 // --- the SimGolf CD in the browser --------------------------------------------------------------------------------------------
@@ -1474,9 +1168,11 @@ async function sgZipCd(file, list) {
         const at = await sgZipDataAt(file, e);
         const raw = file.slice(at, at + e.csize);
         if (e.method === 0) return raw;
-        if (e.method === 8) return new Response(raw.stream().pipeThrough(new DecompressionStream("deflate-raw"))).blob();
-        if (e.method === 9) return new Blob([sgInflate64(new Uint8Array(await raw.arrayBuffer()), e.usize)]);
-        throw sgCdError(e.name + " uses a compression the browser cannot unpack (" + (SG_ZIP_METHODS[e.method] || e.method) + ")");
+        if (e.method === 8 && typeof DecompressionStream !== "undefined") return new Response(raw.stream().pipeThrough(new DecompressionStream("deflate-raw"))).blob();
+        // (the page's own decoders: the whole entry in memory)
+        const bytes = await sgZipRead(file, e);
+        if (typeof bytes === "string") throw sgCdError(e.name + ": " + bytes);
+        return new Blob([bytes]);
     };
     const images = list.filter(e => /\.(iso|cdr)$/i.test(e.name) && !sgSkip(e.name.toLowerCase()));
     if (images.length > 1) {
@@ -1665,6 +1361,13 @@ function sgResetGraphics() {
 
 async function sgInit() {
     sgSaveCount();
+    const ver = document.getElementById("version");
+    if (ver) ver.textContent = "OpenSGolf " + sgVersion();
+    // what the last files picked held (said again until other files are picked)
+    try {
+        const last = JSON.parse(localStorage.getItem(SG_SUMMARY_KEY) || "null");
+        if (last && last.text) sgSummary({ text: "Last time: " + last.text, problem: last.problem }, false);
+    } catch (e) {}
     if (new URLSearchParams(location.search).has("safe")) sgResetGraphics();
     const packs = await sgLoadStored("packs");
     if (packs.length > 0) {
@@ -1685,6 +1388,7 @@ async function sgInit() {
             for (const [path, bytes] of stored) sgAddFile(path, bytes);
             const sum = sgFilesSummary(stored.map(([p]) => p));
             console.log("files: " + sum.text);
+            sgSummary(sum, false);
             sgStart();
             // only a problem is said again on a start from the kept files
             if (sum.problem) sgNote(sum.text, true);

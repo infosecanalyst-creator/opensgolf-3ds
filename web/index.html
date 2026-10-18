@@ -94,6 +94,12 @@
   #status { margin: 14px 0 0; min-height: 1.5em; font-weight: 600; color: var(--accent); }
   #status:empty { display: none; }
   .trouble { margin: 10px 2px 0; color: var(--muted); font-size: 14px; }
+  /* what the player's files held (opensgolf.js sgSummary): large, so it is read on an iPad, where there is no console */
+  #summary { margin: 18px 0 0; padding: 16px 20px; border-radius: var(--radius); background: var(--card-solid);
+    border: 1px solid var(--card-border); font-size: clamp(18px, 2.6vw, 22px); font-weight: 600; line-height: 1.4; }
+  #summary.problem { border: 2px solid var(--accent); }
+  #summary:empty { display: none; }
+  #version { font-weight: 600; color: var(--text); }
 
   details { margin-top: 14px; background: var(--card); border: 1px solid var(--card-border); border-radius: var(--radius); }
   details > summary { cursor: pointer; padding: 16px 20px; font-weight: 600; list-style: none; display: flex; align-items: center; gap: 10px; }
@@ -196,7 +202,8 @@
             nothing is uploaded.</p>
           <p class="note">If your copy's <code>Sounds</code> and <code>SimsFX</code> folders are empty (some downloaded
             copies leave the sounds out), the game still plays, with the free OpenSGolf sounds; a full installed copy or the
-            CD has the original's. After loading, the page says what it found.</p>
+            CD has the original's. Zips made with Windows, 7-Zip or a Mac's archivers (Deflate64, BZip2, LZMA) are unpacked
+            here even where the iPad's Files app cannot. After loading, the page says what it found.</p>
           <div class="actions">
             <label class="btn">Choose game folder<input id="folder" type="file" webkitdirectory directory multiple></label>
             <label class="btn ghost">Or a .zip or CD image<input id="zip" type="file" accept=".zip,.iso,.cdr,.dmg"></label>
@@ -212,6 +219,7 @@
           </div>
         </section>
       </div>
+      <div id="summary" role="status" aria-live="polite"></div>
     </div>
   </section>
 
@@ -335,6 +343,7 @@
     </div>
 
     <footer>
+      <p><span id="version">OpenSGolf</span></p>
       <p>OpenSGolf is free software (GPL-2.0-or-later), made by fans. Source, all downloads, help and docs:
         <a href="https://github.com/crspytopgn/opensgolf">github.com/crspytopgn/opensgolf</a>.</p>
       <p>An unofficial fan project; not affiliated with or endorsed by Electronic Arts, Firaxis Games or Take-Two Interactive.
@@ -346,6 +355,7 @@
 </div>
 <canvas id="glcanvas" tabindex="1"></canvas>
 <script src="gl.js"></script>
+<script src="files.js"></script>
 <script src="opensgolf.js"></script>
 <script>
   document.getElementById("folder").addEventListener("change", e => sgLoadFolder(e.target.files));

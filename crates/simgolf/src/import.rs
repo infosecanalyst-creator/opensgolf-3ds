@@ -5,8 +5,10 @@
 //!
 //! The zip is read from the file entry by entry (a whole game folder is hundreds of MB, too much to hold in a phone's
 //! memory): stored, deflated and Deflate64 entries (Windows' zipper writes big files, the sounds among them, in Deflate64:
-//! sg_core::inflate64), Zip64 for archives over 4 GB. Entries in other methods (LZMA, BZIP2: 7-Zip's stronger settings)
-//! and encrypted ones are counted and skipped, and the player is told (Unzipped::unread).
+//! sg_core::inflate64), BZip2, LZMA and PPMd ones (7-Zip's, The Unarchiver's and Keka's stronger settings:
+//! sg_core::unpack), Zip64 for archives over 4 GB. Entries in other methods and encrypted ones are counted and skipped,
+//! and the player is told (Unzipped::unread). Where each file goes is the browser's rule (`place`): sound folders beside
+//! the game folder are used, and folders differing only in case are one.
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -49,6 +51,90 @@ pub fn root_of<'a>(paths: impl IntoIterator<Item = &'a str>) -> Option<String> {
         let i = parts[..parts.len().saturating_sub(1)].iter().position(|c| c.eq_ignore_ascii_case("flics"))?;
         Some(parts[..i].join("/"))
     })
+}
+
+/// A sound file, by its name (the game plays WAV, MP3 and OGG).
+fn is_sound(path: &str) -> bool {
+    let low = path.to_lowercase();
+    [".wav", ".mp3", ".ogg"].iter().any(|e| low.ends_with(e))
+}
+
+/// A sound file's place in the game folder when it sits in a sound folder somewhere else (a copy repacked with Sounds or
+/// SimsFX beside the game folder, a second copy of the game, a folder named "SimGolf Sounds"): "Sounds/..." or
+/// "SimsFX/...", from the deepest such folder (web/files.js sgStraySound).
+fn stray_sound(path: &str) -> Option<String> {
+    if !is_sound(path) {
+        return None;
+    }
+    let parts: Vec<&str> = path.split('/').collect();
+    (0..parts.len() - 1).rev().find_map(|i| {
+        let d: String = parts[i].to_lowercase().chars().filter(|c| !matches!(c, ' ' | '_' | '-' | '.')).collect();
+        let name = if d == "sound" || d.ends_with("sounds") {
+            "Sounds"
+        } else if d.contains("simsfx") {
+            "SimsFX"
+        } else {
+            return None;
+        };
+        Some(format!("{name}/{}", parts[i + 1..].join("/")))
+    })
+}
+
+/// Where each of `paths` (forward slashes, the files a zip holds) goes under the game folder: (index, path under the game
+/// folder). The game folder is the folder holding Flics with the most of the game's other folders beside it, then the
+/// shallowest; folders differing only in case are one. Its files keep their place; a sound file anywhere else in a sound
+/// folder (stray_sound), or in a sound folder under the game folder that the game does not look in, also goes where the
+/// game looks unless a file is there already. None when there is no game folder. The same as web/files.js sgPlace.
+pub fn place(paths: &[&str]) -> Option<Vec<(usize, String)>> {
+    let mut roots: Vec<(String, String, std::collections::HashSet<String>)> = Vec::new();
+    for p in paths {
+        let parts: Vec<&str> = p.split('/').collect();
+        if let Some(i) = parts[..parts.len() - 1].iter().position(|c| c.eq_ignore_ascii_case("flics")) {
+            let r = parts[..i].join("/");
+            if !roots.iter().any(|x| x.0 == r.to_lowercase()) {
+                roots.push((r.to_lowercase(), r, Default::default()));
+            }
+        }
+    }
+    for p in paths {
+        let parts: Vec<&str> = p.split('/').collect();
+        for i in 0..parts.len() - 1 {
+            let low = parts[..i].join("/").to_lowercase();
+            if let Some(r) = roots.iter_mut().find(|x| x.0 == low) {
+                r.2.insert(parts[i].to_lowercase());
+            }
+        }
+    }
+    let score =
+        |k: &std::collections::HashSet<String>| ["interface", "data", "sounds", "simsfx"].iter().filter(|d| k.contains(**d)).count();
+    let (low, root, _) =
+        roots.iter().min_by(|a, b| score(&b.2).cmp(&score(&a.2)).then(a.1.split('/').count().cmp(&b.1.split('/').count())))?;
+    let key = |p: &str| p.to_lowercase();
+    let (mut out, mut have, mut strays) = (Vec::new(), std::collections::HashSet::new(), Vec::new());
+    for (i, p) in paths.iter().enumerate() {
+        let under = if low.is_empty() {
+            Some(*p)
+        } else {
+            let n = root.len();
+            (p.len() > n && p.is_char_boundary(n) && p[..n].to_lowercase() == *low && p[n..].starts_with('/')).then(|| &p[n + 1..])
+        };
+        if let Some(rel) = under {
+            out.push((i, rel.to_string()));
+            have.insert(key(rel));
+        }
+        let top = under.map(|r| key(r.split('/').next().unwrap_or("")));
+        if top.as_deref() != Some("sounds") && top.as_deref() != Some("simsfx") {
+            if let Some(s) = stray_sound(under.unwrap_or(p)) {
+                strays.push((i, s));
+            }
+        }
+    }
+    for (i, rel) in strays {
+        if have.insert(key(&rel)) {
+            out.push((i, rel));
+        }
+    }
+    Some(out)
 }
 
 /// A zip entry's name as a relative path, or None when it is unsafe (absolute, `..`) or empty.
@@ -125,8 +211,12 @@ fn entries(f: &mut File) -> Result<Vec<Entry>, Error> {
             return Err(Error::BadZip("bad central directory".into()));
         }
         let (nlen, xlen, clen) = (u16le(&cd, p + 28) as usize, u16le(&cd, p + 30) as usize, u16le(&cd, p + 32) as usize);
-        let name = String::from_utf8_lossy(cd.get(p + 46..p + 46 + nlen).ok_or_else(|| Error::BadZip("bad central directory".into()))?)
-            .replace('\\', "/");
+        let bad = || Error::BadZip("bad central directory".into());
+        let name = sg_core::zip::entry_name(
+            cd.get(p + 46..p + 46 + nlen).ok_or_else(bad)?,
+            u16le(&cd, p + 8) as u16,
+            cd.get(p + 46 + nlen..p + 46 + nlen + xlen).ok_or_else(bad)?,
+        );
         let mut en = Entry {
             name,
             method: u16le(&cd, p + 10) as u16,
@@ -164,7 +254,7 @@ fn entries(f: &mut File) -> Result<Vec<Entry>, Error> {
 pub struct Unzipped {
     /// Files written.
     pub files: usize,
-    /// Files skipped because their compression method is not stored or deflate, or they are encrypted.
+    /// Files skipped because their compression method is not one sg_core::unpack knows, or they are encrypted.
     pub unread: usize,
 }
 
@@ -203,7 +293,7 @@ pub fn unpack_game(source: &Path, dest: &Path, progress: &mut dyn FnMut(usize, u
         });
     }
     let image = images[0];
-    if image.flags & 1 != 0 || ![0, 8, 9].contains(&image.method) {
+    if image.flags & 1 != 0 || !sg_core::unpack::supported(image.method) {
         return Err(Error::BadZip("the ISO is encrypted or uses unsupported compression".into()));
     }
     let work = crate::iso::Workspace::new(dest)?;
@@ -215,14 +305,14 @@ pub fn unpack_game(source: &Path, dest: &Path, progress: &mut dyn FnMut(usize, u
     let mut input = file.take(image.csize);
     let mut reader: Box<dyn Read> = match image.method {
         8 => Box::new(flate2::read::DeflateDecoder::new(input)),
-        // Deflate64 (an image zipped by Windows): decoded whole, in memory
-        9 => {
+        0 => Box::new(input),
+        // Deflate64 (an image zipped by Windows), BZip2, LZMA, PPMd: decoded whole, in memory
+        m => {
             let mut body = Vec::new();
             input.read_to_end(&mut body)?;
-            let data = sg_core::inflate64::inflate(&body, image.size as usize, true).map_err(Error::BadZip)?;
+            let data = sg_core::unpack::unpack(m, &body, image.size as usize).map_err(Error::BadZip)?;
             Box::new(std::io::Cursor::new(data))
         }
-        _ => Box::new(input),
     };
     let path = work.path.join("disc.iso");
     let mut output = File::create(&path)?;
@@ -253,16 +343,17 @@ pub fn unzip_game(zip: &Path, dest: &Path, progress: &mut dyn FnMut(usize, usize
     let mut f = File::open(zip)?;
     let all = entries(&mut f)?;
     let wanted: Vec<&Entry> = all.iter().filter(|e| !skip(&e.name.to_lowercase())).collect();
-    let root = root_of(wanted.iter().map(|e| e.name.as_str())).ok_or(Error::NoGame)?;
-    let prefix = if root.is_empty() { String::new() } else { format!("{root}/") };
-    let wanted: Vec<&Entry> = wanted.into_iter().filter(|e| e.name.starts_with(&prefix)).collect();
+    let placed = place(&wanted.iter().map(|e| e.name.as_str()).collect::<Vec<_>>()).ok_or(Error::NoGame)?;
     let _ = std::fs::remove_dir_all(dest);
     std::fs::create_dir_all(dest)?;
     let mut done = Unzipped::default();
-    for (i, e) in wanted.iter().enumerate() {
-        progress(i, wanted.len());
-        let Some(rel) = safe_rel(&e.name[prefix.len()..]) else { continue };
-        if e.flags & 1 != 0 || !matches!(e.method, 0 | 8 | 9) {
+    // each folder written under the spelling it was first met in (a zip may hold "SOUNDS/a.wav" and "sounds/b.wav")
+    let mut folders = std::collections::HashMap::<String, PathBuf>::new();
+    for (k, (i, rel)) in placed.iter().enumerate() {
+        progress(k, placed.len());
+        let e = wanted[*i];
+        let Some(rel) = safe_rel(rel) else { continue };
+        if e.flags & 1 != 0 || !sg_core::unpack::supported(e.method) {
             done.unread += 1;
             continue;
         }
@@ -272,23 +363,25 @@ pub fn unzip_game(zip: &Path, dest: &Path, progress: &mut dyn FnMut(usize, usize
         }
         let start = e.local + 30 + u16le(&head, 26) + u16le(&head, 28);
         let body = read_at(&mut f, start, e.csize as usize)?;
-        let data = if e.method == 0 {
-            body
-        } else if e.method == 9 {
-            sg_core::inflate64::inflate(&body, e.size as usize, true)
-                .map_err(|why| Error::BadZip(format!("damaged entry {} ({why})", e.name)))?
-        } else {
-            miniz_oxide::inflate::decompress_to_vec_with_limit(&body, e.size as usize + 1024)
-                .map_err(|_| Error::BadZip(format!("damaged entry {}", e.name)))?
-        };
-        let out = dest.join(rel);
+        let data = sg_core::unpack::unpack(e.method, &body, e.size as usize)
+            .map_err(|why| Error::BadZip(format!("damaged entry {} ({why})", e.name)))?;
+        let mut out = dest.to_path_buf();
+        let parts: Vec<_> = rel.components().collect();
+        for (n, c) in parts.iter().enumerate() {
+            if n + 1 == parts.len() {
+                out.push(c);
+            } else {
+                let low = out.join(c).to_string_lossy().to_lowercase();
+                out = folders.entry(low).or_insert_with(|| out.join(c)).clone();
+            }
+        }
         if let Some(d) = out.parent() {
             std::fs::create_dir_all(d)?;
         }
         std::fs::write(&out, data)?;
         done.files += 1;
     }
-    progress(wanted.len(), wanted.len());
+    progress(placed.len(), placed.len());
     Ok(done)
 }
 
@@ -401,6 +494,72 @@ mod tests {
         assert_eq!(copy_tree(&dest, &staging, &mut |_| {}).unwrap(), 4);
         install(&staging, &d.join("copy")).unwrap();
         assert!(crate::gamefiles::missing(&d.join("copy")).is_empty() && !staging.exists());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn places_files_like_the_browser() {
+        let paths = [
+            "SimGolf/Flics/title.fli",
+            "SimGolf/Interface/x.pcx",
+            "SIMGOLF/SOUNDS/Effects/Splash.wav",
+            "simgolf/sounds/Music/song.wav",
+            "Backup/SimGolf/Sounds/Effects/Splash.wav",
+            "Backup/SimGolf/Sounds/Applause.wav",
+            "SimGolf Sounds/SimsFX/Male/hello.wav",
+            "SimGolf/Extras/sound/Music/x.mp3",
+            "Photos/beach.wav",
+            "Old/Flics/a.fli",
+        ];
+        let got = place(&paths).unwrap();
+        let got: Vec<(&str, &str)> = got.iter().map(|(i, r)| (paths[*i], r.as_str())).collect();
+        assert_eq!(
+            got,
+            [
+                ("SimGolf/Flics/title.fli", "Flics/title.fli"),
+                ("SimGolf/Interface/x.pcx", "Interface/x.pcx"),
+                ("SIMGOLF/SOUNDS/Effects/Splash.wav", "SOUNDS/Effects/Splash.wav"),
+                ("simgolf/sounds/Music/song.wav", "sounds/Music/song.wav"),
+                ("SimGolf/Extras/sound/Music/x.mp3", "Extras/sound/Music/x.mp3"),
+                ("Backup/SimGolf/Sounds/Applause.wav", "Sounds/Applause.wav"),
+                ("SimGolf Sounds/SimsFX/Male/hello.wav", "SimsFX/Male/hello.wav"),
+                ("SimGolf/Extras/sound/Music/x.mp3", "Sounds/Music/x.mp3"),
+            ]
+        );
+        assert_eq!(place(&["a/b.txt"]), None);
+    }
+
+    #[test]
+    fn unzips_every_method_and_case_split_folders() {
+        let d = tmp("methods");
+        for (name, data) in [
+            ("bzip2", &include_bytes!("../../sg-core/tests/data/bzip2.zip")[..]),
+            ("bzip2-7z", include_bytes!("../../sg-core/tests/data/bzip2-7z.zip")),
+            ("lzma", include_bytes!("../../sg-core/tests/data/lzma.zip")),
+            ("lzma-7z", include_bytes!("../../sg-core/tests/data/lzma-7z.zip")),
+            ("ppmd-7z", include_bytes!("../../sg-core/tests/data/ppmd-7z.zip")),
+        ] {
+            let zip = d.join(format!("{name}.zip"));
+            std::fs::write(&zip, data).unwrap();
+            let dest = d.join(name);
+            assert_eq!(unzip_game(&zip, &dest, &mut |_, _| {}).unwrap(), Unzipped { files: 4, unread: 0 }, "{name}");
+            assert_eq!(std::fs::read(dest.join("Data/long.txt")).unwrap().len(), 265000, "{name}");
+            assert!(dest.join("Sounds/Effects/Splash.wav").exists() && dest.join("SimsFX/Male/hello.wav").exists(), "{name}");
+        }
+        // a Sounds folder split by case is written as one, a stray sound folder is used, backslashes are folders
+        let files: Vec<(&str, &[u8])> = vec![
+            ("SimGolf\\Flics\\a.fli", b"flic"),
+            ("SimGolf/Sounds/Applause.wav", b"RIFF1"),
+            ("SIMGOLF/SOUNDS/Effects/Splash.wav", b"RIFF2"),
+            ("Extra/SimsFX/Male/hello.wav", b"RIFF3"),
+        ];
+        let zip = d.join("split.zip");
+        std::fs::write(&zip, sg_core::zip::write(&files)).unwrap();
+        let dest = d.join("split");
+        assert_eq!(unzip_game(&zip, &dest, &mut |_, _| {}).unwrap(), Unzipped { files: 4, unread: 0 });
+        assert_eq!(std::fs::read(dest.join("Sounds/Effects/Splash.wav")).unwrap(), b"RIFF2");
+        assert_eq!(std::fs::read(dest.join("SimsFX/Male/hello.wav")).unwrap(), b"RIFF3");
+        assert_eq!(std::fs::read(dest.join("Flics/a.fli")).unwrap(), b"flic");
         let _ = std::fs::remove_dir_all(&d);
     }
 
