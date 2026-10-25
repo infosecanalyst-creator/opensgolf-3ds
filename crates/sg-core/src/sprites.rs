@@ -41,6 +41,41 @@ pub struct Sprite {
 pub struct Packed {
     pub rle: Vec<u8>,
     pub pal: u16,
+    /// How much of each half-size texel's 2 x 2 block was opaque (0..4), as (value, run) pairs: its alpha, so the edges of
+    /// a frame kept at half size stay smooth (empty for a full-size frame).
+    pub cov: Vec<u8>,
+}
+
+fn pack_runs(v: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < v.len() {
+        let s = i;
+        while i < v.len() && v[i] == v[s] && i - s < 255 {
+            i += 1;
+        }
+        out.extend_from_slice(&[v[s], (i - s) as u8]);
+    }
+    out
+}
+
+fn unpack_runs(r: &[u8], n: usize) -> Vec<u8> {
+    let mut out = Vec::with_capacity(n);
+    for p in r.chunks_exact(2) {
+        out.resize(out.len() + p[1] as usize, p[0]);
+    }
+    out.resize(n, 4);
+    out
+}
+
+/// Scales alpha by coverage (0..4 of a 2 x 2 block).
+fn apply_coverage(img: &mut Rgba, cov: &[u8]) {
+    for (i, &c) in cov.iter().enumerate().take((img.w * img.h) as usize) {
+        if c < 4 {
+            let a = &mut img.px[i * 4 + 3];
+            *a = (*a as u32 * c as u32 / 4) as u8;
+        }
+    }
 }
 
 fn pack(idx: &[u8]) -> Vec<u8> {
@@ -64,12 +99,13 @@ fn pack(idx: &[u8]) -> Vec<u8> {
     out
 }
 
-/// Palette indices at half size, for the 3DS's packed frames: each 2 x 2 block keeps its first opaque texel when at least
-/// two of the four are opaque (so outlines hold their shape and thin specks do not swell), else the key colour. Shadows'
+/// Palette indices at half size, for the 3DS's packed frames: each 2 x 2 block keeps its first opaque texel, and how many of
+/// the four were opaque (its coverage, which becomes its alpha: the edge is smoothed as a box filter would). Shadows'
 /// indices are shade levels, which this keeps as they are.
-fn halve_indices(idx: &[u8], w: u32, h: u32) -> (Vec<u8>, u32, u32) {
+fn halve_indices(idx: &[u8], w: u32, h: u32) -> (Vec<u8>, Vec<u8>) {
     let (hw, hh) = (w.div_ceil(2).max(1), h.div_ceil(2).max(1));
     let mut out = vec![255u8; (hw * hh) as usize];
+    let mut cov = vec![0u8; (hw * hh) as usize];
     for y in 0..hh {
         for x in 0..hw {
             let mut first = 255u8;
@@ -86,12 +122,15 @@ fn halve_indices(idx: &[u8], w: u32, h: u32) -> (Vec<u8>, u32, u32) {
                     }
                 }
             }
-            if n >= 2 {
+            if n >= 1 {
                 out[(y * hw + x) as usize] = first;
             }
+            // a block cut by the frame's right or bottom edge counts the missing texels as opaque, so it is not faded
+            let present = (if x * 2 + 1 < w { 2 } else { 1 }) * (if y * 2 + 1 < h { 2 } else { 1 });
+            cov[(y * hw + x) as usize] = (n + 4 - present).min(4) as u8;
         }
     }
-    (out, hw, hh)
+    (out, cov)
 }
 
 fn unpack(rle: &[u8], n: usize) -> Vec<u8> {
@@ -119,7 +158,11 @@ impl Sprite {
         let p = self.packed.get(i)?;
         let (w, h) = self.packed_size(i);
         let ix = Indexed { w, h, idx: unpack(&p.rle, (w * h) as usize), pal: *self.pals.get(p.pal as usize)? };
-        Some(frame_picture(&ix, self.shadow))
+        let mut img = frame_picture(&ix, self.shadow);
+        if !p.cov.is_empty() {
+            apply_coverage(&mut img, &unpack_runs(&p.cov, (w * h) as usize));
+        }
+        Some(img)
     }
 
     /// A frame's size as stored: packed frames are kept at half size (the 3DS draws them at about half the 800 x 600
@@ -198,8 +241,8 @@ pub fn load_sprite(flc_path: &Path, shadow: bool, palette_pcx: Option<&Path>) ->
                     out.pals.len() - 1
                 }
             };
-            let (half, _, _) = halve_indices(&ix.idx, ix.w, ix.h);
-            out.packed.push(Packed { rle: pack(&half), pal: pal as u16 });
+            let (half, cov) = halve_indices(&ix.idx, ix.w, ix.h);
+            out.packed.push(Packed { rle: pack(&half), pal: pal as u16, cov: pack_runs(&cov) });
             out.frames.push(Rgba { w: f.w.div_ceil(2).max(1), h: f.h.div_ceil(2).max(1), px: Vec::new() });
             continue;
         }
@@ -321,6 +364,9 @@ pub fn recolour(s: &Sprite, frame: usize, pal: &[u8; 768]) -> Option<Rgba> {
         let c = c as usize;
         img.px[i * 4..i * 4 + 3].copy_from_slice(&pal[c * 3..c * 3 + 3]);
         img.px[i * 4 + 3] = if c == 255 { 0 } else { 255 };
+    }
+    if let Some(p) = s.packed.get(frame).filter(|p| !p.cov.is_empty()) {
+        apply_coverage(&mut img, &unpack_runs(&p.cov, (w * h) as usize));
     }
     Some(img)
 }
