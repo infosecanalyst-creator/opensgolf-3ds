@@ -13,7 +13,7 @@ $d = "/_to_delete/simgolf-old-$stamp"
   -Q "*RNFR /3ds/opensgolf/stage.txt" -Q "*RNTO $d/opensgolf/stage.txt" -o "$env:TEMP\ftp-quote.txt" 2>&1 | Add-Content $out
 # (the texture cache in /3ds/opensgolf/cache stays: it only depends on the game files, and rebuilding it slows the first start)
 "moves exit $LASTEXITCODE" | Add-Content $out
-& curl.exe -s --max-time 300 -T "$PSScriptRoot\simgolf-3ds.3dsx" "$u/3ds/simgolf-3ds.3dsx" 2>&1 | Add-Content $out
+& curl.exe -s --max-time 1500 -T "$PSScriptRoot\simgolf-3ds.3dsx" "$u/3ds/simgolf-3ds.3dsx" 2>&1 | Add-Content $out
 "upload exit $LASTEXITCODE (local $((Get-Item "$PSScriptRoot\simgolf-3ds.3dsx").Length) bytes)" | Add-Content $out
 "== /3ds/ (simgolf)" | Add-Content $out
 & curl.exe -s --max-time 15 "$u/3ds/" 2>&1 | Select-String -Pattern 'simgolf' | Add-Content $out
