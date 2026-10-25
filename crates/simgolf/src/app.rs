@@ -1272,6 +1272,18 @@ impl App {
         }
     }
 
+    /// The overlays on the ground (paths, mud, retaining walls) rebuilt without the ground itself: the 3DS frontend draws the
+    /// ground with its own renderer and needs only these after an edit.
+    pub fn rebuild_overlays(&mut self, g: &mut Gfx) {
+        for b in self.path_batches.drain(..).chain(self.mud_batches.drain(..)).chain(self.wall_batches.drain(..)) {
+            g.delete_mesh(b.mesh);
+        }
+        self.sync_tile_corners();
+        self.build_paths(g);
+        self.build_walls(g);
+        self.build_edge_walls(g);
+    }
+
     pub fn rebuild_batches(&mut self, g: &mut Gfx) {
         self.clear_batches(g);
         self.terrain.desert = self.theme == 2; // the original swaps shallow water for its desert variant in this theme
@@ -1626,7 +1638,12 @@ impl App {
         }
         let path = self.game_path(&format!("Flics/{rel}"));
         let pal_path = pal.map(|p| self.game_path(&format!("Flics/{p}")));
-        let r = match load_sprite(&path, shadow, pal_path.as_deref()) {
+        // decoded ahead on another thread (the 3DS's golfer bodies: sg_core::preload), else now
+        let loaded = match pal_path {
+            None => sg_core::preload::take(&path),
+            Some(_) => None,
+        };
+        let r = match loaded.unwrap_or_else(|| load_sprite(&path, shadow, pal_path.as_deref())) {
             Ok(s) => {
                 let n = s.frames.len();
                 if crate::hd::active() && !shadow {

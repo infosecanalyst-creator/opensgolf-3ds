@@ -64,6 +64,36 @@ fn pack(idx: &[u8]) -> Vec<u8> {
     out
 }
 
+/// Palette indices at half size, for the 3DS's packed frames: each 2 x 2 block keeps its first opaque texel when at least
+/// two of the four are opaque (so outlines hold their shape and thin specks do not swell), else the key colour. Shadows'
+/// indices are shade levels, which this keeps as they are.
+fn halve_indices(idx: &[u8], w: u32, h: u32) -> (Vec<u8>, u32, u32) {
+    let (hw, hh) = (w.div_ceil(2).max(1), h.div_ceil(2).max(1));
+    let mut out = vec![255u8; (hw * hh) as usize];
+    for y in 0..hh {
+        for x in 0..hw {
+            let mut first = 255u8;
+            let mut n = 0;
+            for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+                let (sx, sy) = (x * 2 + dx, y * 2 + dy);
+                if sx < w && sy < h {
+                    let v = idx[(sy * w + sx) as usize];
+                    if v != 255 {
+                        if n == 0 {
+                            first = v;
+                        }
+                        n += 1;
+                    }
+                }
+            }
+            if n >= 2 {
+                out[(y * hw + x) as usize] = first;
+            }
+        }
+    }
+    (out, hw, hh)
+}
+
 fn unpack(rle: &[u8], n: usize) -> Vec<u8> {
     let mut out = Vec::with_capacity(n);
     let mut p = 0;
@@ -87,8 +117,18 @@ impl Sprite {
     /// A packed frame's picture (the 3DS, see `packed`); None for a frame kept as a picture.
     pub fn unpacked(&self, i: usize) -> Option<Rgba> {
         let p = self.packed.get(i)?;
-        let ix = Indexed { w: self.w, h: self.h, idx: unpack(&p.rle, (self.w * self.h) as usize), pal: *self.pals.get(p.pal as usize)? };
+        let (w, h) = self.packed_size(i);
+        let ix = Indexed { w, h, idx: unpack(&p.rle, (w * h) as usize), pal: *self.pals.get(p.pal as usize)? };
         Some(frame_picture(&ix, self.shadow))
+    }
+
+    /// A frame's size as stored: packed frames are kept at half size (the 3DS draws them at about half the 800 x 600
+    /// screen's pixels anyway), the empty picture in `frames` saying how big.
+    fn packed_size(&self, i: usize) -> (u32, u32) {
+        match (self.packed.is_empty(), self.frames.get(i)) {
+            (false, Some(f)) => (f.w, f.h),
+            _ => (self.w, self.h),
+        }
     }
 
     /// A frame's palette indices, kept or packed.
@@ -97,7 +137,8 @@ impl Sprite {
             return Some(std::borrow::Cow::Borrowed(v));
         }
         let p = self.packed.get(i)?;
-        Some(std::borrow::Cow::Owned(unpack(&p.rle, (self.w * self.h) as usize)))
+        let (w, h) = self.packed_size(i);
+        Some(std::borrow::Cow::Owned(unpack(&p.rle, (w * h) as usize)))
     }
 
     /// Whether `recolour` can draw it in a person's outfit.
@@ -157,7 +198,8 @@ pub fn load_sprite(flc_path: &Path, shadow: bool, palette_pcx: Option<&Path>) ->
                     out.pals.len() - 1
                 }
             };
-            out.packed.push(Packed { rle: pack(&ix.idx), pal: pal as u16 });
+            let (half, _, _) = halve_indices(&ix.idx, ix.w, ix.h);
+            out.packed.push(Packed { rle: pack(&half), pal: pal as u16 });
             out.frames.push(Rgba { w: f.w.div_ceil(2).max(1), h: f.h.div_ceil(2).max(1), px: Vec::new() });
             continue;
         }
@@ -231,17 +273,13 @@ fn frame_picture(ix: &Indexed, shadow: bool) -> Rgba {
             img.px[i * 4 + 3] = alpha;
         }
     }
-    // The 3DS keeps every frame at half size: its top screen shows sprites at about half the 800 x 600 screen's pixels,
-    // and the frames of a whole game at full size did not fit its memory (one groundskeeper clip is 11 MB in RGBA).
-    // Quads are sized from the sprite's own w, h and anchor, so a half-size frame covers the same ground.
-    #[cfg(target_os = "horizon")]
-    let img = half_frame(&img);
+    // (on the 3DS the frames come here already at half size: `halve_indices`)
     img
 }
 
 /// A frame at half size, each pixel the average of a 2 x 2 block (colour weighted by alpha, so transparent pixels do not
 /// darken an edge). The 3DS's sprite frames (see `load_sprite`).
-#[cfg_attr(not(target_os = "horizon"), allow(dead_code))]
+#[allow(dead_code)]
 fn half_frame(img: &Rgba) -> Rgba {
     let (w, h) = (img.w.div_ceil(2).max(1), img.h.div_ceil(2).max(1));
     let mut out = Rgba::new(w, h);
@@ -277,15 +315,13 @@ fn half_frame(img: &Rgba) -> Rgba {
 /// One frame of a person clip in the given palette: index 255 is transparent.
 pub fn recolour(s: &Sprite, frame: usize, pal: &[u8; 768]) -> Option<Rgba> {
     let idx = s.frame_indices(frame)?;
-    let mut img = Rgba::new(s.w, s.h);
-    for (i, &c) in idx.iter().enumerate().take((s.w * s.h) as usize) {
+    let (w, h) = s.packed_size(frame);
+    let mut img = Rgba::new(w, h);
+    for (i, &c) in idx.iter().enumerate().take((w * h) as usize) {
         let c = c as usize;
         img.px[i * 4..i * 4 + 3].copy_from_slice(&pal[c * 3..c * 3 + 3]);
         img.px[i * 4 + 3] = if c == 255 { 0 } else { 255 };
     }
-    // half size on the 3DS, as its other frames
-    #[cfg(target_os = "horizon")]
-    let img = half_frame(&img);
     Some(img)
 }
 

@@ -5,19 +5,44 @@ The course is on the stereoscopic top screen and you build it with the stylus on
 building games. Target hardware: New 3DS / New 3DS XL (an Old 3DS is not supported yet).
 
 **Status: work in progress.** The whole game crate runs on the console: painting the course costs money through the game's own
-rules, holes open with a par, golfers arrive and play, and the game's undo works. Menus, saving, staff and the rest of the
-desktop interface are not wired up yet.
+rules, holes open with a par, golfers arrive and play, staff can be hired, the game saves and loads. Tournaments, the land
+market, the pro's own rounds and the rest of the desktop's menus are not wired up yet.
 
 ## Playing
 
-| Control | |
+The touch screen is where you act, the top screen is where you read, as in DS-era building games.
+
+**Bottom screen:** the course as a flat map, and a strip of tools down its right edge.
+
+| On the map | |
 | --- | --- |
-| Stylus, bottom screen | paint with the armed tool; drag on the edge to scroll; tap the tool strip to change tool or brush size |
-| Tap a new hole's green | open the hole (the status line says when one is ready) |
-| Circle Pad / D-pad | move the view |
-| L / R | zoom out / in |
-| A | use the armed tool at the top screen's cursor |
-| B | undo (up to 30 steps, money included) |
+| Drag | paint or build along the stylus |
+| Tap | do it once |
+| Hold still for half a second | inspect: a golfer, a hole, a building or the ground, shown on the top screen |
+| Hold L or R and drag | slide the view (also the D-pad or C-stick; dragging into the map's edge while painting scrolls too) |
+| 1 2 3 boxes, top right | brush size, remembered per tool |
+
+| Strip | |
+| --- | --- |
+| COURSE tab | HOLE (tap a tee spot, then a green spot, or drag tee to green: it builds both and opens the hole, showing length and par as you go), tee, green, fairway, rough, deep rough, sand, water, trees, raise, lower, move |
+| BUILD tab | gravel and paved paths, bench, flower bed, ball washer, willow, scenic bridge, BLDG (the building list with prices), TURN, CLEAR |
+| STAFF tab | hire (green) and fire (red) club pros, rangers, groundskeepers and soda vendors |
+| INFO tab | money, holes and golfers panels on the top screen, SAVE, LOAD, golfers' thoughts on or off, HELP |
+| Always | UNDO (30 steps, money included), PAUSE / PLAY, SPEED (1x, 2x, 4x) |
+
+The status line over the map names the tool and its price per tile (exactly, for the tile under the stylus), counts what a
+stroke has spent, and says what to do next. Tiles the game refuses (not your land, too dear, a building) flash red; land the
+club does not own is dimmed.
+
+**Top screen:** the 3D course with a bar along the top (cash, with what you just spent or earned, the date and speed, golfers on
+the course, fun and skill ratings), the game's messages and golfers' thoughts along the foot, and the inspect card or the INFO
+panels over it.
+
+| Buttons | |
+| --- | --- |
+| L / R (tap) | zoom out / in |
+| Circle Pad / A | move the top screen's cursor / use the tool there |
+| B | undo |
 | X | pause |
 | 3D slider | depth: raised land comes out of the screen, lowered land and water sink into it |
 | Start + Select | quit |
@@ -64,8 +89,11 @@ They expect to sit in the folder that contains this repository, checked out as `
   game's undo.
 - `vendor/miniquad-3ds`: a no-op stand-in for miniquad's windowing and GPU, so the game crate builds unchanged.
 - `vendor/ctru-rs`, `vendor/citro3d-rs`: the rust3ds crates with small build-script fixes for Windows paths.
-- In `sg-core`, the 3DS keeps sprite frames packed until they are drawn (`Sprite::packed`): one golfer's decoded clips alone were
-  35 MB, more than the console had free.
+- `src/hud.rs`: the top screen's bar, messages, thoughts, inspect card and panels; `src/text.rs`: Liberation Sans Bold rasterized
+  with fontdue for them.
+- In `sg-core`, the 3DS keeps sprite frames packed at half size until they are drawn (`Sprite::packed`): one golfer's decoded
+  clips alone were 35 MB, more than the console had free. `sg_core::preload` decodes every golfer body on a spare CPU core at
+  start, so a new kind of golfer arriving does not stop the game.
 
 ## License
 

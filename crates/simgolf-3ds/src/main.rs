@@ -15,6 +15,8 @@ mod texcache;
 mod gfx;
 mod input;
 mod plan;
+mod hud;
+mod text;
 mod screens;
 mod shim;
 
@@ -945,17 +947,6 @@ fn merge(a: Option<[i32; 4]>, b: [i32; 4]) -> [i32; 4] {
     }
 }
 
-/// The money and the date, for the bottom screen (the game's HUD has them, render.rs draw_hud): "$12,345  MAR 2001".
-fn hud_line(app: &app::App) -> String {
-    const MONTHS: [&str; 12] = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-    let mi = app.econ.month_index();
-    let date = format!("{} {}", MONTHS[((2 + mi % 8) % 12) as usize], 2001 + mi / 8);
-    let cash = app.econ.cash as i64;
-    let digits = sg_core::economy::money_digits(cash.abs());
-    let money = if app.econ.sandbox { "SANDBOX".to_string() } else { format!("{}${digits}", if cash < 0 { "-" } else { "" }) };
-    let paused = if app.paused { "  PAUSED" } else { "" };
-    format!("{money}  {date}{paused}")
-}
 
 /// A terrain picture from its file (bmp, tga or pcx).
 fn decode_picture(path: &Path) -> Option<sg_core::assets::Rgba> {
@@ -1031,6 +1022,12 @@ fn main() {
     // ---- the game (milestone 2): the real club, its money, rules, holes and golfers ----------------------------------------
     // A new game on a Parkland property (the theme the textures were prepared for), the normal game rather than a sandbox, so
     // building costs money. The ground is drawn by this frontend's chunked renderer (Demo); everything on it by the game.
+    // saves (INFO's SAVE and LOAD, and the game's autosave) on the card beside the game's other files
+    let saves = "sdmc:/3ds/opensgolf/saves";
+    let _ = std::fs::create_dir_all(saves);
+    std::env::set_var("OPENSGOLF_SAVE_DIR", saves);
+    let text = text::Text::new(&mut g);
+    let mut hud = hud::Hud::new();
     gfx::trace("game: App::new");
     let mut app = app::App::new(game.clone());
     gfx::trace("game: App::new done");
@@ -1049,6 +1046,18 @@ fn main() {
     gfx::trace(&started);
     // between the game's middle and near levels: the plan's tiles at the size the stylus design was tried at
     app.zoom = app::ZOOM_UNIT * 2f32.powf(1.5);
+    // every golfer body's clips decoded ahead on a spare core (sg_core::preload), so a new kind of golfer arriving does not
+    // stop the game while its 50 clips load
+    let mut jobs = Vec::new();
+    for prefix in app::GOLFER_BODIES.iter().filter(|p| !p.is_empty()) {
+        for &(base, name) in app::GOLFER_CLIPS.iter() {
+            let name = if base == 0x28 && prefix.starts_with("Female") { "NormalSwing" } else { name };
+            jobs.push((app.game_path(&format!("Flics/{prefix}_{name}.flc")), false));
+            jobs.push((app.game_path(&format!("Flics/{prefix}_{name}Shadow.flc")), true));
+        }
+    }
+    let preload_core = start_preload(jobs);
+    gfx::trace(&format!("preload: {}", preload_core.map(|c| format!("on core {c}")).unwrap_or_else(|| "off".into())));
     demo.adopt(&mut g, &app);
     gfx::trace("game: ground adopted");
     demo.sync_view(&app);
@@ -1076,6 +1085,7 @@ fn main() {
             break;
         }
         demo.sync_view(&app);
+        let mut strokes: Vec<plan::Stroke> = Vec::new();
         for ev in input.poll(&hid, cstick) {
             dirty = true;
             match ev {
@@ -1095,13 +1105,11 @@ fn main() {
                 }
                 input::Event::Pen(phase, x, y) => {
                     // the bottom screen: the plan and its tools (plan.rs), editing through the game
-                    let stroke = plan.pen(&mut demo, &mut app, phase, x, y);
-                    if let Some(snd) = stroke.sound {
-                        mixer.play(snd, 0.8, false);
+                    // a press on the map puts away a panel or card on the top screen (it still does its thing on the map)
+                    if matches!(phase, shim::TouchPhase::Started) && x < plan::PLAN_W {
+                        hud.close();
                     }
-                    if let Some(r) = stroke.changed {
-                        changed = Some(merge(changed, r));
-                    }
+                    strokes.push(plan.pen(&mut demo, &mut app, phase, x, y, input.shoulder()));
                 }
                 input::Event::KeyDown(shim::KeyCode::Space, _) => {
                     // X: pause, as Space in the original
@@ -1109,24 +1117,13 @@ fn main() {
                     mixer.play("Interface/Button2.wav", 0.6, false);
                 }
                 input::Event::MouseDown(shim::MouseButton::Right, _, _) => {
-                    // B: the game's undo (the course and the money as they were before the last stroke, up to 30 back)
-                    if app.undo_step(&mut g) {
-                        drop_ground_batches(&mut app, &mut g);
-                        app.dirty = true;
-                        changed = None; // the whole course
-                        mixer.play("Interface/Button2.wav", 0.8, false);
-                    }
+                    // B: the game's undo, as the UNDO button
+                    strokes.push(plan::Stroke { action: Some(plan::Action::Undo), ..Default::default() });
                 }
                 input::Event::MouseDown(shim::MouseButton::Left, mx, my) => {
                     // A: the armed tool once at the top screen's cursor, as a tap on the plan there would
                     let p = demo.pick(mx, my);
-                    let stroke = plan.tap_world(&mut demo, &mut app, p[0], p[2]);
-                    if let Some(snd) = stroke.sound {
-                        mixer.play(snd, 0.8, false);
-                    }
-                    if let Some(r) = stroke.changed {
-                        changed = Some(merge(changed, r));
-                    }
+                    strokes.push(plan.tap_world(&mut demo, &mut app, p[0], p[2]));
                 }
                 _ => {}
             }
@@ -1135,14 +1132,92 @@ fn main() {
             app.cam_z = demo.cam_z;
         }
         // a pen held at the plan's edge slides the view and paints on (plan.rs)
-        let stroke = plan.tick(&mut demo, &mut app);
-        if stroke.scrolled {
+        strokes.push(plan.tick(&mut demo, &mut app));
+        let mut full_rebuild = false;
+        for stroke in strokes {
+            if stroke.scrolled {
+                dirty = true;
+                app.cam_x = demo.cam_x;
+                app.cam_z = demo.cam_z;
+            }
+            if let Some(snd) = stroke.sound {
+                mixer.play(snd, 0.8, false);
+            }
+            if let Some(r) = stroke.changed {
+                changed = Some(merge(changed, r));
+            }
+            full_rebuild |= stroke.rebuilt;
+            let Some(action) = stroke.action else { continue };
             dirty = true;
-            app.cam_x = demo.cam_x;
-            app.cam_z = demo.cam_z;
+            match action {
+                plan::Action::Undo => {
+                    // the course and the money as they were before the last stroke, up to 30 back
+                    if app.undo_step(&mut g) {
+                        drop_ground_batches(&mut app, &mut g);
+                        app.dirty = true;
+                        full_rebuild = true;
+                        plan.stale = true;
+                        mixer.play("Interface/Button2.wav", 0.8, false);
+                    } else {
+                        hud.note("Nothing to undo");
+                    }
+                }
+                plan::Action::Pause => app.paused = !app.paused,
+                plan::Action::Speed => {
+                    // the game's speeds (Space on the desktop): 1, 2, 4; from a pause it simply plays on
+                    if app.paused {
+                        app.paused = false;
+                    } else {
+                        app.speed = match app.speed {
+                            1 => 2,
+                            2 => 4,
+                            _ => 1,
+                        };
+                    }
+                }
+                plan::Action::Panel(p) => hud.toggle(p),
+                plan::Action::Staffed => hud.show(plan::Panel::Staff),
+                plan::Action::Save => {
+                    app.quick_save();
+                    // the game's message names the desktop's keys
+                    if app.ticker.text.starts_with("Quick saved") {
+                        app.ticker.text = "Game saved. INFO tab, LOAD brings it back.".into();
+                    }
+                }
+                plan::Action::Load => {
+                    let path = files_ui::saved_games_dir().join(comfort::QUICK_FILE);
+                    match app.load_game(&mut g, &path) {
+                        Ok(()) => {
+                            drop_ground_batches(&mut app, &mut g);
+                            demo.adopt(&mut g, &app);
+                            demo.sync_view(&app);
+                            plan.stale = true;
+                            changed = None;
+                            hud.note("Loaded the saved game");
+                        }
+                        Err(e) => hud.note(&format!("No save to load ({e})")),
+                    }
+                }
+                plan::Action::Thoughts => hud.note(if plan.thoughts { "Golfers' thoughts on" } else { "Golfers' thoughts off" }),
+                plan::Action::Inspect(wx, wz) => hud.inspect(&app, wx, wz),
+                plan::Action::Note(s) => hud.note(s),
+            }
         }
-        if let Some(r) = stroke.changed {
-            changed = Some(merge(changed, r));
+        if full_rebuild {
+            app.dirty = true;
+            changed = None;
+        }
+        // golfers on the plan, and the top screen's thoughts, money and messages
+        plan.golfers.clear();
+        for gg in app.club.g.iter().filter(|gg| gg.hole > 0 && gg.hole < 19) {
+            plan.golfers.push(app.units_to_world(gg.x, gg.y));
+        }
+        hud.update(&app, plan.thoughts);
+        if hud.animating() || app.ticker.showing {
+            dirty = true;
+        }
+        if app.paused {
+            app.ticker.step_wall(app.clock);
         }
         // the club's clock: golfers, staff, money (only on the course and not while paused, as the desktop runs it)
         perf_loops += 1;
@@ -1159,6 +1234,8 @@ fn main() {
         if app.dirty {
             app.dirty = false;
             drop_ground_batches(&mut app, &mut g);
+            // paths, mud and retaining walls follow the edit (the ground itself is Demo's)
+            app.rebuild_overlays(&mut g);
             demo.terrain = app.terrain.clone();
             match changed.take() {
                 Some(r) => demo.rebuild_tiles(&mut g, r),
@@ -1187,7 +1264,7 @@ fn main() {
         let t = std::time::Instant::now();
         g.begin_frame();
         // the plan's picture, after an edit (now, while the GPU is not reading it)
-        plan.refresh(&mut g, &demo);
+        plan.refresh(&mut g, &demo, &app);
         g.set_stereo_span(STEREO_FULL_HEIGHT, PITCH as f32, DEPTH_RANGE);
         let eyes: &[Eye] = if g.slider() > 0.0 { &[Eye::Left, Eye::Right] } else { &[Eye::Left] };
         for &eye in eyes {
@@ -1203,6 +1280,9 @@ fn main() {
             } else {
                 demo.render_cursor(&mut g, input.cursor);
             }
+            // the information over it, at the screen's depth (hud.rs)
+            g.stereo_world(false);
+            hud.render(&mut g, &text, &app);
         }
         // a hole built (a tee and a green) but not open: the status line says how to open it
         plan.hint = {
@@ -1211,10 +1291,10 @@ fn main() {
                 let r = &app.club.holes[h as usize];
                 r.par == 0 && r.back.0 != 0 && r.pin.0 != 0
             };
-            ready.then(|| format!("TAP GREEN TO OPEN HOLE {h}"))
+            ready.then(|| format!("HOLE {h} IS BUILT: TAP ITS GREEN TO OPEN IT"))
         };
         g.begin_screen(Screen::Bottom, Eye::Left, [0x10, 0x14, 0x10]);
-        plan.render(&mut g, &demo, input.cursor, &hud_line(&app));
+        plan.render(&mut g, &demo, &app, &text, input.cursor);
         let cpu = t.elapsed().as_secs_f32();
         let draws = g.draws;
         g.end_frame();
@@ -1232,13 +1312,14 @@ fn main() {
                 gfx::mem_line()
             );
             perf_reports += 1;
-            if gfx::NET_LOG.load(Ordering::Relaxed) || perf_reports <= 30 {
+            if gfx::NET_LOG.load(Ordering::Relaxed) || perf_reports <= 600 {
                 gfx::trace(&line);
             }
             (perf_t, perf_frames, perf_cpu, perf_draws) = (std::time::Instant::now(), 0, 0.0, 0);
             (perf_sim, perf_loops) = (0.0, 0);
         }
     }
+    sg_core::preload::STOP.store(true, Ordering::Relaxed);
     drop(audio);
     if cstick {
         unsafe { ctru_sys::irrstExit() };
@@ -1246,4 +1327,28 @@ fn main() {
     // stdout/stderr still point at the 3dslink socket and are closed during process exit, after main returns; tearing the
     // socket service down here made that close fault (data abort in _close_r on quitting a network-launched run)
     std::mem::forget(soc);
+}
+
+/// The preload worker's entry: decodes its list (sg_core::preload::run), then ends.
+unsafe extern "C" fn preload_main(arg: *mut core::ffi::c_void) {
+    let jobs = unsafe { Box::from_raw(arg as *mut Vec<(std::path::PathBuf, bool)>) };
+    sg_core::preload::run(*jobs);
+}
+
+/// Starts the sprite preloader on a spare core at a lower priority than the game (core 2 on a New 3DS, where the sound mixer
+/// also lives but mostly sleeps; else the system core's application share). The core used, or None.
+fn start_preload(jobs: Vec<(std::path::PathBuf, bool)>) -> Option<i32> {
+    let mut new3ds = false;
+    let _ = unsafe { ctru_sys::APT_CheckNew3DS(&mut new3ds) };
+    let mut prio = 0x30;
+    let _ = unsafe { ctru_sys::svcGetThreadPriority(&mut prio, 0xFFFF8000) };
+    let arg = Box::into_raw(Box::new(jobs));
+    for core in if new3ds { vec![2, 1] } else { vec![1] } {
+        let t = unsafe { ctru_sys::threadCreate(Some(preload_main), arg as *mut _, 256 * 1024, (prio + 2).min(0x3f), core, true) };
+        if !t.is_null() {
+            return Some(core);
+        }
+    }
+    drop(unsafe { Box::from_raw(arg) });
+    None
 }

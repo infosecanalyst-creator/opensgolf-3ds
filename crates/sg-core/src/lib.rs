@@ -55,6 +55,7 @@ pub mod scenario;
 pub mod script;
 pub mod sounds;
 pub mod sprites;
+pub mod preload;
 pub mod staff;
 pub mod stories;
 pub mod terrain;

@@ -1,4 +1,4 @@
-# Sends the latest build to the 3DS over ftpd: saves the old logs here, moves the old SimGolf files to /_to_delete/simgolf-old/
+# Sends the latest build to the 3DS over ftpd: saves the old logs here, moves the old build and logs to /_to_delete/simgolf-old-<time>/
 $out = "$PSScriptRoot\ftp-out.txt"
 $ip = (Get-Content "$PSScriptRoot\ftp-ip.txt").Trim()
 $u = "ftp://$ip`:5000"
@@ -10,8 +10,8 @@ $d = "/_to_delete/simgolf-old-$stamp"
 & curl.exe -s --max-time 30 "$u/" -Q "*MKD $d" -Q "*MKD $d/opensgolf" `
   -Q "*RNFR /3ds/simgolf-3ds.3dsx" -Q "*RNTO $d/simgolf-3ds.3dsx" `
   -Q "*RNFR /3ds/opensgolf/panic.txt" -Q "*RNTO $d/opensgolf/panic.txt" `
-  -Q "*RNFR /3ds/opensgolf/stage.txt" -Q "*RNTO $d/opensgolf/stage.txt" `
-  -Q "*RNFR /3ds/opensgolf/cache" -Q "*RNTO $d/opensgolf/cache" -o NUL 2>&1 | Add-Content $out
+  -Q "*RNFR /3ds/opensgolf/stage.txt" -Q "*RNTO $d/opensgolf/stage.txt" -o NUL 2>&1 | Add-Content $out
+# (the texture cache in /3ds/opensgolf/cache stays: it only depends on the game files, and rebuilding it slows the first start)
 "moves exit $LASTEXITCODE" | Add-Content $out
 & curl.exe -s --max-time 300 -T "$PSScriptRoot\simgolf-3ds.3dsx" "$u/3ds/simgolf-3ds.3dsx" 2>&1 | Add-Content $out
 "upload exit $LASTEXITCODE (local $((Get-Item "$PSScriptRoot\simgolf-3ds.3dsx").Length) bytes)" | Add-Content $out

@@ -5,12 +5,13 @@
 //!   touch screen         the bottom screen: the course plan to draw on and its tools (plan.rs), as `Pen` events in its
 //!                        pixels; also as touch events in the original's 800 x 600 UI coordinates for the game's screens
 //!   circle pad           moves the course cursor on the top screen (the mouse pointer of the original)
+//!   L / R held           a stylus drag on the plan slides the view instead of painting; a quick tap of L / R zooms
 //!   A / B                left / right click at the course cursor (A uses the armed tool there, as a pen stroke would;
 //!                        B undoes strokes, up to 20 back)
 //!   X                    Space (the original's pause)
 //!   Y                    Tab (cycle the build tools)
 //!   C-stick (New 3DS)    pan the camera; D-pad does the same on an old 3DS
-//!   L / R                zoom out / in
+//!   L / R (tapped)       zoom out / in (on release, and only when no drag used them as a modifier)
 //!   ZL / ZR (New 3DS)    turn the course a quarter (the original's Q / E)
 //!   Start                Escape (menus)
 //!   Select               F1 (help / keys)
@@ -52,11 +53,19 @@ pub struct Input {
     /// Where the pen last was on the bottom screen, in its pixels.
     pen: (f32, f32),
     held: [bool; 2],
+    /// L or R is down now, and whether a stylus drag has used it as the scroll modifier since it went down.
+    shoulder_now: bool,
+    shoulder_used: bool,
 }
 
 impl Input {
     pub fn new() -> Input {
-        Input { cursor: (TOP_W as f32 * 0.5, TOP_H as f32 * 0.5), touching: false, pen: (0.0, 0.0), held: [false; 2] }
+        Input { cursor: (TOP_W as f32 * 0.5, TOP_H as f32 * 0.5), touching: false, pen: (0.0, 0.0), held: [false; 2], shoulder_now: false, shoulder_used: false }
+    }
+
+    /// L or R is held: the plan scrolls under a drag (plan.rs).
+    pub fn shoulder(&self) -> bool {
+        self.shoulder_now
     }
 
     /// Polls the controls once (call after `hid.scan_input()`) and returns this frame's events.
@@ -133,10 +142,21 @@ impl Input {
         if pan != (0.0, 0.0) {
             ev.push(Event::Pan(pan.0, pan.1));
         }
-        let zoom = down.contains(KeyPad::R) as i32 - down.contains(KeyPad::L) as i32;
-        if zoom != 0 {
-            ev.push(Event::Zoom(zoom));
+        // L / R: a tap zooms (on release); held, they turn a stylus drag into scrolling the view, and then zoom nothing
+        let shoulder = held.contains(KeyPad::L) || held.contains(KeyPad::R);
+        if shoulder && held.contains(KeyPad::TOUCH) {
+            self.shoulder_used = true;
         }
+        if !self.shoulder_used {
+            let zoom = up.contains(KeyPad::R) as i32 - up.contains(KeyPad::L) as i32;
+            if zoom != 0 {
+                ev.push(Event::Zoom(zoom));
+            }
+        }
+        if !shoulder {
+            self.shoulder_used = false;
+        }
+        self.shoulder_now = shoulder;
 
         // the touch screen: the bottom screen's interface
         let (tx, ty) = hid.touch_position();
