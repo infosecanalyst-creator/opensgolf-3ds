@@ -56,6 +56,11 @@ fn pack_runs(v: &[u8]) -> Vec<u8> {
         }
         out.extend_from_slice(&[v[s], (i - s) as u8]);
     }
+    // unpack_runs fills the rest with 4
+    while out.len() >= 2 && out[out.len() - 2] == 4 {
+        out.truncate(out.len() - 2);
+    }
+    out.shrink_to_fit();
     out
 }
 
@@ -96,6 +101,7 @@ fn pack(idx: &[u8]) -> Vec<u8> {
             out.extend_from_slice(&idx[s..i]);
         }
     }
+    out.shrink_to_fit();
     out
 }
 
@@ -126,8 +132,9 @@ fn halve_indices(idx: &[u8], w: u32, h: u32) -> (Vec<u8>, Vec<u8>) {
                 out[(y * hw + x) as usize] = first;
             }
             // a block cut by the frame's right or bottom edge counts the missing texels as opaque, so it is not faded
+            // an empty block is see-through whatever its coverage: it says 4, so the runs only break at edges
             let present = (if x * 2 + 1 < w { 2 } else { 1 }) * (if y * 2 + 1 < h { 2 } else { 1 });
-            cov[(y * hw + x) as usize] = (n + 4 - present).min(4) as u8;
+            cov[(y * hw + x) as usize] = if n == 0 { 4 } else { (n + 4 - present).min(4) as u8 };
         }
     }
     (out, cov)
