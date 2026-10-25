@@ -147,7 +147,7 @@ impl App {
         o: sg_core::bodies::Outfit,
     ) -> Option<miniquad::TextureId> {
         let i = self.sprites[si].s.frame_index(view, frame);
-        if self.sprites[si].s.indexed.is_empty() {
+        if !self.sprites[si].s.recolourable() {
             return None;
         }
         if let Some(&t) = self.outfit_tex.get(&(si, i, o)) {
@@ -159,7 +159,9 @@ impl App {
         }
         let pal = self.outfit_pals[&o];
         let img = sg_core::sprites::recolour(&self.sprites[si].s, i, &pal)?;
-        if self.outfit_tex.len() > 6000 {
+        // the 3DS's atlas pages hold far fewer (gfx.rs there): its cache is cleared sooner
+        let cap = if cfg!(target_os = "horizon") { 700 } else { 6000 };
+        if self.outfit_tex.len() > cap {
             for (_, t) in self.outfit_tex.drain() {
                 g.ctx.delete_texture(t);
             }
@@ -181,7 +183,11 @@ impl App {
                 return t;
             }
         }
-        let t = g.texture(&self.sprites[si].s.frames[i], false);
+        // a packed frame (the 3DS keeps its frames packed until drawn, sg_core::sprites::Sprite::packed) is made now
+        let t = match self.sprites[si].s.unpacked(i) {
+            Some(img) => g.texture(&img, false),
+            None => g.texture(&self.sprites[si].s.frames[i], false),
+        };
         self.sprites[si].tex[i] = Some(t);
         t
     }

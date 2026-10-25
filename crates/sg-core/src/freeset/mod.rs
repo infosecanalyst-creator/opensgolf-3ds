@@ -297,6 +297,13 @@ pub fn write_all(dir: &std::path::Path) -> Result<(usize, usize), String> {
         n += 1;
         bytes += d.len();
     }
+    // the file list, so a slow medium (the 3DS's SD card) need not be walked: crate::vfs::INDEX_FILE
+    let index = files().join("\n");
+    if !crate::fsutil::write_file(dir.join(crate::vfs::INDEX_FILE), index.as_bytes()) {
+        return Err(format!("cannot write {}", dir.join(crate::vfs::INDEX_FILE).display()));
+    }
+    n += 1;
+    bytes += index.len();
     Ok((n, bytes))
 }
 

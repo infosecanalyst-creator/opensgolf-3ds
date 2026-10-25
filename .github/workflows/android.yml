@@ -5,10 +5,8 @@ name: android
 # dependencies between runs; releases (release.yml) build all three targets (arm64, 32-bit arm, x86_64).
 # It runs on pushes to main and on pull requests (not on both for the same commit).
 
+# OpenSGolf 3DS fork: upstream's desktop, Android and Pages builds run only when started by hand (the 3DS build is 3ds.yml)
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
 
 concurrency:

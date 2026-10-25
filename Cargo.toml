@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/sg-core", "crates/simgolf", "crates/sgtool", "crates/sgplay"]
+members = ["crates/sg-core", "crates/simgolf", "crates/sgtool", "crates/sgplay", "crates/simgolf-3ds"]
 exclude = ["vendor"]
 
 [workspace.package]
@@ -18,3 +18,12 @@ opt-level = 1
 # miniquad 0.4.11 with one fix for 64-bit ARM Windows (vendor/miniquad/README-OPENSGOLF.md); the rest is upstream's code
 [patch.crates-io]
 miniquad = { path = "vendor/miniquad" }
+
+# The 3DS crates (crates/simgolf-3ds), vendored with two one-line fixes to their build scripts for Windows paths
+# (vendor/ctru-rs/ctru-sys/build.rs, vendor/citro3d-rs/citro3d-sys/build.rs: "OpenSGolf (Windows)")
+[patch."https://github.com/rust3ds/ctru-rs.git"]
+ctru-rs = { path = "vendor/ctru-rs/ctru-rs" }
+ctru-sys = { path = "vendor/ctru-rs/ctru-sys" }
+[patch."https://github.com/rust3ds/citro3d-rs.git"]
+citro3d = { path = "vendor/citro3d-rs/citro3d" }
+citro3d-sys = { path = "vendor/citro3d-rs/citro3d-sys" }

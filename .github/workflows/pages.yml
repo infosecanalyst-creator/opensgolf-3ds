@@ -2,9 +2,8 @@ name: pages
 
 # Publishes the browser version to GitHub Pages: https://crspytopgn.github.io/opensgolf/
 # One-time setup in the repository: Settings > Pages > Build and deployment > Source: "GitHub Actions".
+# OpenSGolf 3DS fork: upstream's desktop, Android and Pages builds run only when started by hand (the 3DS build is 3ds.yml)
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:

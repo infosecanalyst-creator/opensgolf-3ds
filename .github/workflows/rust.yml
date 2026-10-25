@@ -1,10 +1,9 @@
 name: rust
 
 # on pushes to main and on pull requests (not on both for the same commit)
+# OpenSGolf 3DS fork: upstream's desktop, Android and Pages builds run only when started by hand (the 3DS build is 3ds.yml)
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: rust-${{ github.ref }}

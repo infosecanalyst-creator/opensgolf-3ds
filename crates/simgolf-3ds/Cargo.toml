@@ -1,0 +1,52 @@
+[package]
+name = "simgolf-3ds"
+description = "OpenSGolf on the Nintendo 3DS: sg-core's rules and decoders behind a citro3d renderer, two screens, stereoscopic top screen"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-2.0-or-later"
+# Drop this folder into opensgolf/crates/ and add "crates/simgolf-3ds" to the workspace members in the root Cargo.toml.
+# Build with `cargo 3ds build --release -p simgolf-3ds` (see README.md).
+
+[dependencies]
+sg-core = { path = "../sg-core" }
+# The game itself (crates/simgolf/src, compiled into this crate: see main.rs) and what it uses. Its miniquad is a stand-in
+# (vendor/miniquad-3ds: miniquad's types, a GPU that draws nothing); the rest is plain Rust and builds for the 3DS as is.
+miniquad = { path = "../../vendor/miniquad-3ds" }
+fontdue = "0.9"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+miniz_oxide = "0.8"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+# rust3ds: the OS services (gfx, hid, ndsp, fs, apt). Git until the crates.io releases catch up with the target.
+ctru = { git = "https://github.com/rust3ds/ctru-rs.git", package = "ctru-rs" }
+ctru-sys = { git = "https://github.com/rust3ds/ctru-rs.git", package = "ctru-sys" }
+# citro3d: the GPU. The safe wrapper for setup and render targets, the sys crate for texture and draw calls whose safe
+# wrappers are still moving (gfx.rs says which calls use which).
+citro3d = { git = "https://github.com/rust3ds/citro3d-rs.git", package = "citro3d" }
+citro3d-sys = { git = "https://github.com/rust3ds/citro3d-rs.git", package = "citro3d-sys" }
+
+# The game's own feature switches, named so its cfg(feature = ...) lines read as off: no desktop sound device (the 3DS has
+# its own, audio3ds.rs), no HTTPS downloads, no system folder picker, no desktop controllers.
+[features]
+default = []
+audio = []
+net = []
+picker = []
+gamepad = []
+
+[build-dependencies]
+# compiles shader/main.v.pica with devkitPro's picasso at build time (build.rs)
+
+[package.metadata.cargo-3ds]
+# Shown by the Homebrew Launcher; the icon is the free set's app icon written by `sgtool icon` (tools/make_icons.sh)
+name = "OpenSGolf"
+description = "Sid Meier's SimGolf, on two screens"
+author = "OpenSGolf contributors"
+# icon = "../../docs/images/icon-48.png"
+# romfs_dir = "romfs"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"

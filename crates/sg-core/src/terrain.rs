@@ -116,9 +116,12 @@ impl TextureCatalog {
     pub fn load(theme_dir: &Path) -> Result<TextureCatalog, String> {
         let mut index: HashMap<String, PathBuf> = HashMap::new();
         for p in crate::fsutil::list_dir(theme_dir) {
-            if !crate::fsutil::is_dir(&p) {
-                if let Some(n) = p.file_name() {
-                    index.insert(n.to_string_lossy().to_lowercase(), p.clone());
+            // only `*.bmp` names are ever looked up, so no need to stat each entry to skip folders (hundreds of stats
+            // cost seconds on a console's SD card)
+            if let Some(n) = p.file_name() {
+                let n = n.to_string_lossy().to_lowercase();
+                if n.ends_with(".bmp") {
+                    index.insert(n, p.clone());
                 }
             }
         }

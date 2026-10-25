@@ -70,6 +70,7 @@ impl App {
                 shadow: false,
                 frames: vec![img],
                 indexed: Vec::new(),
+                ..Default::default()
             };
             self.sprites.push(GlSprite { s, tex: vec![None] });
             self.sprites.len() - 1

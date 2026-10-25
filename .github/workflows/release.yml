@@ -13,9 +13,8 @@ name: release
 # package (crates/simgolf/src/autoupdate.rs; the key is the secret OPENSGOLF_UPDATE_KEY, docs/RELEASING.md).
 # The icon is the engine's own drawing (sg_core::freeset::app_icon, `sgtool icon`).
 
+# OpenSGolf 3DS fork: upstream's desktop, Android and Pages builds run only when started by hand (the 3DS build is 3ds.yml)
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
     inputs:
       version:

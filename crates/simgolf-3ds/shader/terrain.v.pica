@@ -1,0 +1,60 @@
+; OpenSGolf on the 3DS: the course's vertex shader.
+;
+; The course's lighting never changes while a course is shown (the sun is fixed and the camera's angle is too), so the
+; light model of main.v.pica is worked out once per vertex when the mesh is built (main.rs) and packed into one float:
+;   light = round(diffuse * 255) * 256 + round(specular * 255)        (diffuse, specular in 0..1)
+; Here only the theme's colours scale the two terms:
+;   colour = min(ka + kd * diffuse + ks * specular, 1)
+; where ka = 0.04 + 0.2 * ambient and kd = 0.8 * diffuse colour (brightness calibration folded in, gfx.rs/main.rs).
+;
+; Inputs: two float3s, (x y z) and (u v light): the layout of the stock citro3d examples, proven on the console.
+; Every output is written with full-mask writes (a partial write to an output register hangs the PICA on hardware).
+
+.fvec mvp[4]
+.fvec uvs             ; x, y: the picture's size over its power-of-two texture
+.fvec ka              ; rgb, w = 1 (alpha)
+.fvec kd              ; rgb, w = 0
+.fvec ks              ; rgb, w = 0
+
+.constf k(0.00390625, 0.0039215686, 256.0, 1.0)   ; 1/256, 1/255, 256, 1
+.constf kz(0.0, 0.0, 0.0, 0.0)
+
+.alias inpos v0
+.alias inuvl v1
+
+.out outpos position
+.out outtex texcoord0
+.out outclr color
+
+.proc main
+	; position
+	mov r0.xyz, inpos
+	mov r0.w, k.wwww
+	dp4 outpos.x, mvp[0], r0
+	dp4 outpos.y, mvp[1], r0
+	dp4 outpos.z, mvp[2], r0
+	dp4 outpos.w, mvp[3], r0
+
+	; texcoord, written whole
+	mov r1, uvs
+	mul r1.xy, r1.xy, inuvl.xy
+	mov r1.zw, kz.xxxx
+	mov outtex, r1
+
+	; unpack the light: dq = floor(light / 256), sq = light - dq * 256; diffuse = dq / 255, specular = sq / 255
+	mul r2.x, k.xxxx, inuvl.zzzz
+	flr r2.y, r2.xxxx
+	mul r2.z, k.zzzz, r2.yyyy
+	add r2.w, inuvl.zzzz, -r2.zzzz
+	mul r2.y, k.yyyy, r2.yyyy
+	mul r2.w, k.yyyy, r2.wwww
+
+	; colour = min(ka + kd * diffuse + ks * specular, 1), alpha from ka.w = 1, written whole
+	mul r3, kd, r2.yyyy
+	mul r4, ks, r2.wwww
+	add r3, r3, r4
+	add r3, ka, r3
+	min r3, k.wwww, r3
+	mov outclr, r3
+	end
+.end

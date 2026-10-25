@@ -1,0 +1,10 @@
+[package]
+name = "miniquad"
+version = "0.4.11-3ds"
+edition = "2021"
+description = "OpenSGolf 3DS: a stand-in for miniquad 0.4 (its types, a GPU that draws nothing, the 3DS's window answers)"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+
+[workspace]

@@ -27,6 +27,9 @@ pub const OVERRIDE_DIRS: [(&str, &[&str]); 6] = [
     ("fonts", &[".ttf"]),
 ];
 
+/// A pack folder's optional file list (one pack-relative path per line), read instead of walking the folder.
+pub const INDEX_FILE: &str = "pack-index.txt";
+
 /// Where a pack's files are: a folder, or a folder inside a .zip (`prefix` is that folder's path in the archive, with a
 /// trailing slash, or empty when pack.toml is at the archive's root).
 pub enum Source {
@@ -56,7 +59,28 @@ impl Source {
     /// Every file of the pack, as paths relative to its root with forward slashes, sorted.
     pub fn files(&self) -> Vec<String> {
         match self {
-            Source::Dir(d) => crate::fsutil::walk(d).iter().filter_map(|p| p.strip_prefix(d).ok().map(rel_string)).collect(),
+            // OpenSGolf (3DS): a pack folder may carry `pack-index.txt`, one pack-relative path per line, which stands in for
+            // walking the folder (a stat per file through the console's file service: minutes for the free set on an
+            // SD card). `sgtool freeset` and the 3DS's own first-run write produce it.
+            Source::Dir(d) => match crate::fsutil::read_raw(d.join(INDEX_FILE)) {
+                Some(t) => {
+                    let mut v: Vec<String> = String::from_utf8_lossy(&t)
+                        .lines()
+                        .map(|l| l.trim().replace('\\', "/"))
+                        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+                        .collect();
+                    v.sort();
+                    v
+                }
+                None => {
+                    let v: Vec<String> = crate::fsutil::walk(d).iter().filter_map(|p| p.strip_prefix(d).ok().map(rel_string)).collect();
+                    // write the index so the walk only ever happens once (ignored where the folder is read-only)
+                    if !v.is_empty() {
+                        let _ = std::fs::write(d.join(INDEX_FILE), v.join("\n"));
+                    }
+                    v
+                }
+            },
             Source::Zip { zip, prefix } => {
                 zip.names().filter_map(|n| n.strip_prefix(prefix.as_str()).map(str::to_string)).filter(|n| !n.is_empty()).collect()
             }

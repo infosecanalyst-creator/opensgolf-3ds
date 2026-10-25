@@ -1,0 +1,111 @@
+; OpenSGolf on the 3DS: the one vertex shader everything draws with (the port of gfx.rs's VERTEX GLSL).
+;
+; Terrain.dll's lighting: OpenGL's default material, one directional light fixed in eye space, global ambient 0.2 and the
+; light's ambient times 0.2, its diffuse times 0.8, and a white specular of shininess 13 where the face is lit. Normals are
+; not normalised (no GL_NORMALIZE), as in the original. The lit/unlit choice is a multiply, not a branch.
+;
+; Uniform layout (set by gfx.rs, matrices uploaded row-major so dp4 against a row works):
+;   mvp[0..3]  model-view-projection, already tilted for the rotated 3DS framebuffer and fixed up for PICA depth
+;   mv[0..3]   model-view (only its 3x3 is used, for the normal)
+;   lamb       light ambient rgb, w unused
+;   ldif       light diffuse rgb, w unused
+;   lspec      light specular rgb, w unused
+;   ldir       toward the light in eye space xyz; w = lit (1.0) or unlit (0.0)
+;   uvs        UV scale (the picture's size over its power-of-two texture), x and y
+
+.fvec mvp[4], mv[4]
+.fvec lamb, ldif, lspec, ldir
+.fvec uvs             ; x, y: the picture's size over its power-of-two texture (gfx.rs)
+
+.constf c0(0.0, 1.0, 0.5, 13.0)
+.constf c1(0.04, 0.2, 0.8, 0.0)
+.constf zaxis(0.0, 0.0, 1.0, 0.0)
+
+.alias zero  c0.xxxx
+.alias one   c0.yyyy
+.alias shiny c0.wwww
+
+; The vertex is 12 floats (pos xyz, uv, normal xyz, colour rgba) but is fed to the GPU as four float3 attributes: the
+; PICA hangs on a four-attribute vertex that includes a float2 (found on a New 3DS; emulators accept it), and four
+; float3s are fine. So the inputs are reassembled here:
+.in in_pos v0   ; x y z
+.in in_a   v1   ; u v nx
+.in in_b   v2   ; ny nz r
+.in in_c   v3   ; g b a
+
+.out out_pos position
+.out out_uv  texcoord0
+.out out_col color
+
+.entry main
+.proc main
+    ; r0 = (pos, 1)
+    mov r0.xyz, in_pos
+    mov r0.w, one
+    dp4 out_pos.x, mvp[0], r0
+    dp4 out_pos.y, mvp[1], r0
+    dp4 out_pos.z, mvp[2], r0
+    dp4 out_pos.w, mvp[3], r0
+
+    ; texcoord: built in r13 and written WHOLE. A partial write to an output register (out_uv.xy) hangs the PICA on
+    ; real hardware (found on a New 3DS XL; emulators accept it), so every output is written with one full-mask mov.
+    mov r13, uvs
+    mul r13.xy, r13.xy, in_a.xy
+    mov r13.zw, zero
+    mov out_uv, r13
+
+    ; the lights into registers: a PICA op takes at most one uniform/constant operand, and only in its first slot
+    mov r9, lamb
+    mov r10, ldif
+    mov r11, lspec
+    mov r12, ldir
+
+    ; n = mv * (normal, 0), the normal being (in_a.z, in_b.x, in_b.y)
+    mov r1.x, in_a.zzzz
+    mov r1.yz, in_b.xxyy
+    mov r1.w, zero
+    dp4 r2.x, mv[0], r1
+    dp4 r2.y, mv[1], r1
+    dp4 r2.z, mv[2], r1
+
+    ; d = dot(n, ldir); dpos = max(d, 0); gate = (d > 0)
+    dp3 r3.x, r12, r2
+    max r3.y, zero, r3.x
+    slt r3.z, zero, r3.x
+
+    ; s = 0.04 + 0.2 * lamb
+    mul r4.xyz, c1.yyyy, r9
+    add r4.xyz, c1.xxxx, r4
+
+    ; s += 0.8 * ldif * dpos
+    mul r5.xyz, c1.zzzz, r10
+    mul r5.xyz, r3.yyyy, r5
+    add r4.xyz, r4, r5
+
+    ; h = normalize(ldir + (0,0,1)); spec = lspec * pow(max(dot(n,h),0), 13) * gate
+    add r6.xyz, zaxis, r12
+    dp3 r6.w, r6, r6
+    rsq r6.w, r6.w
+    mul r6.xyz, r6.wwww, r6
+    dp3 r7.x, r2, r6
+    max r7.x, zero, r7.x
+    lg2 r7.x, r7.x
+    mul r7.x, shiny, r7.x
+    ex2 r7.x, r7.x
+    mul r7.x, r3.zzzz, r7.x
+    mul r5.xyz, r7.xxxx, r11
+    add r4.xyz, r4, r5
+
+    ; s = min(s, 1); shade = lerp(1, s, lit)
+    min r4.xyz, one, r4
+    add r4.xyz, -one, r4
+    mul r4.xyz, r12.wwww, r4
+    add r4.xyz, one, r4
+
+    ; the colour is (in_b.z, in_c.x, in_c.y, in_c.z)
+    mov r8.x, in_b.zzzz
+    mov r8.yzw, in_c.xxyz
+    mul r8.xyz, r4, r8
+    mov out_col, r8
+    end
+.end

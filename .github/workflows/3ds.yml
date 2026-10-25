@@ -1,0 +1,68 @@
+# Builds the New 3DS frontend (crates/simgolf-3ds) into simgolf-3ds.3dsx: every push to main and pull request uploads it as a
+# workflow artifact; a tag named 3ds-v* also publishes it as a release.
+name: 3DS
+
+on:
+  push:
+    branches: [main]
+    tags: ["3ds-v*"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: 3ds-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # devkitARM, libctru, citro3d and picasso (the PICA200 shader assembler)
+    container: devkitpro/devkitarm:latest
+    permissions:
+      contents: write
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_HOME: /github/home/.cargo
+      RUSTUP_HOME: /github/home/.rustup
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Host tools (libclang for ctru-sys's bindgen, Rust nightly with the std source)
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends build-essential clang libclang-dev curl ca-certificates
+          curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain nightly -c rust-src
+          echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
+          echo "$DEVKITARM/bin" >> "$GITHUB_PATH"
+          echo "$DEVKITPRO/tools/bin" >> "$GITHUB_PATH"
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            /github/home/.cargo/bin
+            /github/home/.cargo/registry
+            /github/home/.cargo/git
+            target
+          key: 3ds-${{ hashFiles('Cargo.lock') }}-${{ github.sha }}
+          restore-keys: 3ds-${{ hashFiles('Cargo.lock') }}-
+
+      - name: cargo-3ds
+        run: command -v cargo-3ds || cargo install --locked cargo-3ds
+
+      - name: Build
+        run: |
+          rustc --version
+          cargo 3ds build --release -p simgolf-3ds
+          cp target/armv6k-nintendo-3ds/release/simgolf-3ds.3dsx .
+          ls -l simgolf-3ds.3dsx
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: simgolf-3ds
+          path: simgolf-3ds.3dsx
+
+      - name: Release (tags 3ds-v*)
+        if: startsWith(github.ref, 'refs/tags/3ds-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: simgolf-3ds.3dsx

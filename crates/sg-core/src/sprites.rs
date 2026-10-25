@@ -1,6 +1,6 @@
 //! Pre-rendered sprites (trees, buildings, golfers...). Layout facts come from the Firaxis header extension of the .flc files,
 //! see docs/SPRITES.md.
-use crate::assets::{read_pcx_palette, to_rgba, Rgba};
+use crate::assets::{read_pcx_palette, to_rgba, Indexed, Rgba};
 use crate::flc::decode_flc;
 use std::path::Path;
 
@@ -25,9 +25,86 @@ pub struct Sprite {
     /// The palette indices of each frame, kept for golfer and celebrity clips, which are recoloured per person
     /// (sg_core::bodies); empty for everything else.
     pub indexed: Vec<Vec<u8>>,
+    /// A person clip (golfers, celebrities): its frames can be recoloured per person (`recolour`).
+    pub people: bool,
+    /// The 3DS's frames, kept packed (`pack`) and turned into pictures only when first drawn (`unpacked`): the decoded
+    /// frames of one golfer's clips alone were 35 MB, more than the console had left; packed they are under 3. `frames`
+    /// then holds empty pictures of the right size. Empty elsewhere.
+    pub packed: Vec<Packed>,
+    /// The palettes the packed frames use (`Packed::pal` indexes this).
+    pub pals: Vec<[u8; 768]>,
+}
+
+/// One frame's palette indices, the key colour's runs packed: [0, run] for a run of key texels (up to 255), [n, n
+/// indices] for up to 255 other texels.
+#[derive(Clone, Debug, Default)]
+pub struct Packed {
+    pub rle: Vec<u8>,
+    pub pal: u16,
+}
+
+fn pack(idx: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(idx.len() / 4);
+    let mut i = 0;
+    while i < idx.len() {
+        let s = i;
+        if idx[i] == 255 {
+            while i < idx.len() && idx[i] == 255 && i - s < 255 {
+                i += 1;
+            }
+            out.extend_from_slice(&[0, (i - s) as u8]);
+        } else {
+            while i < idx.len() && idx[i] != 255 && i - s < 255 {
+                i += 1;
+            }
+            out.push((i - s) as u8);
+            out.extend_from_slice(&idx[s..i]);
+        }
+    }
+    out
+}
+
+fn unpack(rle: &[u8], n: usize) -> Vec<u8> {
+    let mut out = Vec::with_capacity(n);
+    let mut p = 0;
+    while p < rle.len() {
+        let c = rle[p] as usize;
+        if c == 0 {
+            let run = rle.get(p + 1).copied().unwrap_or(0) as usize;
+            out.resize(out.len() + run, 255);
+            p += 2;
+        } else {
+            let end = (p + 1 + c).min(rle.len());
+            out.extend_from_slice(&rle[p + 1..end]);
+            p = end;
+        }
+    }
+    out.resize(n, 255);
+    out
 }
 
 impl Sprite {
+    /// A packed frame's picture (the 3DS, see `packed`); None for a frame kept as a picture.
+    pub fn unpacked(&self, i: usize) -> Option<Rgba> {
+        let p = self.packed.get(i)?;
+        let ix = Indexed { w: self.w, h: self.h, idx: unpack(&p.rle, (self.w * self.h) as usize), pal: *self.pals.get(p.pal as usize)? };
+        Some(frame_picture(&ix, self.shadow))
+    }
+
+    /// A frame's palette indices, kept or packed.
+    pub fn frame_indices(&self, i: usize) -> Option<std::borrow::Cow<'_, [u8]>> {
+        if let Some(v) = self.indexed.get(i) {
+            return Some(std::borrow::Cow::Borrowed(v));
+        }
+        let p = self.packed.get(i)?;
+        Some(std::borrow::Cow::Owned(unpack(&p.rle, (self.w * self.h) as usize)))
+    }
+
+    /// Whether `recolour` can draw it in a person's outfit.
+    pub fn recolourable(&self) -> bool {
+        !self.indexed.is_empty() || (self.people && !self.packed.is_empty())
+    }
+
     pub fn frame_index(&self, view: i32, f: i32) -> usize {
         let view = view.rem_euclid(self.views.max(1));
         let f = f.rem_euclid(self.frames_per_view.max(1));
@@ -56,74 +133,35 @@ pub fn load_sprite(flc_path: &Path, shadow: bool, palette_pcx: Option<&Path>) ->
         anchor_y: if f.has_ext { (f.canvas_h / 2) as i32 - f.crop_y as i32 } else { f.h as i32 },
         frames: Vec::with_capacity(f.frames.len()),
         indexed: Vec::new(),
+        people: false,
+        packed: Vec::new(),
+        pals: Vec::new(),
     };
     let lower = flc_path.to_string_lossy().to_lowercase().replace('\\', "/");
     let people = !shadow && ["/male/", "/female/", "/celebs/"].iter().any(|d| lower.contains(d));
+    out.people = people;
     for src in &f.frames {
-        if people {
+        if people && !PACKED {
             out.indexed.push(src.idx.clone());
         }
         let mut ix = src.clone();
         if let Some(p) = over {
             ix.pal = p;
         }
-        let mut img = to_rgba(&ix, Some(255));
-        if !shadow {
-            // Texture filtering must not pull the key colour into the edges: spread neighbour colours outwards.
-            let (w, h) = (img.w as i32, img.h as i32);
-            for _pass in 0..2 {
-                let mut next = img.px.clone();
-                for y in 0..h {
-                    for x in 0..w {
-                        let i = ((y * w + x) * 4) as usize;
-                        if img.px[i + 3] != 0 {
-                            continue;
-                        }
-                        'search: for dy in -1..=1 {
-                            for dx in -1..=1 {
-                                let (nx, ny) = (x + dx, y + dy);
-                                if nx < 0 || ny < 0 || nx >= w || ny >= h {
-                                    continue;
-                                }
-                                let q = ((ny * w + nx) * 4) as usize;
-                                if img.px[q + 3] != 0 && next[i..i + 3] != img.px[q..q + 3] {
-                                    let (r, g, b) = (img.px[q], img.px[q + 1], img.px[q + 2]);
-                                    next[i] = r;
-                                    next[i + 1] = g;
-                                    next[i + 2] = b;
-                                    break 'search;
-                                }
-                            }
-                        }
-                    }
+        // the 3DS: packed, made into a picture when first drawn
+        if PACKED {
+            let pal = match out.pals.iter().position(|q| q[..] == ix.pal[..]) {
+                Some(k) => k,
+                None => {
+                    out.pals.push(ix.pal);
+                    out.pals.len() - 1
                 }
-                img.px = next;
-            }
-        } else {
-            for i in 0..(ix.w * ix.h) as usize {
-                if ix.idx[i] == 255 {
-                    continue;
-                }
-                // jgl's blit (0x10013400) draws indices 0xf8..0xfc through the exe's shading tables (0x824148, built by
-                // 0x461830): 0xf8 to 0xfb scale the screen pixel's 5-bit channels by 4/8, 5/8, 6/8 and 7/8 (black at
-                // 1/2, 3/8, 1/4 and 1/8 strength here). Other indices keep the earlier ramp reading (white = lightest).
-                let alpha = match ix.idx[i] {
-                    0xf8 => 128,
-                    0xf9 => 96,
-                    0xfa => 64,
-                    0xfb => 32,
-                    k => {
-                        let dens = 1.0 - ix.pal[k as usize * 3] as f32 / 255.0;
-                        (70.0 + dens * 90.0) as u8
-                    }
-                };
-                img.px[i * 4] = 0;
-                img.px[i * 4 + 1] = 0;
-                img.px[i * 4 + 2] = 0;
-                img.px[i * 4 + 3] = alpha;
-            }
+            };
+            out.packed.push(Packed { rle: pack(&ix.idx), pal: pal as u16 });
+            out.frames.push(Rgba { w: f.w.div_ceil(2).max(1), h: f.h.div_ceil(2).max(1), px: Vec::new() });
+            continue;
         }
-        out.frames.push(img);
+        out.frames.push(frame_picture(&ix, shadow));
     }
     if out.frames.is_empty() {
         return Err(format!("{}: no frames", flc_path.display()));
@@ -131,21 +169,148 @@ pub fn load_sprite(flc_path: &Path, shadow: bool, palette_pcx: Option<&Path>) ->
     Ok(out)
 }
 
+/// Packed frames on the 3DS (`Sprite::packed`).
+const PACKED: bool = cfg!(target_os = "horizon");
+
+/// A frame's picture from its palette indices: the key colour transparent with the neighbouring colours spread into it, or
+/// for a shadow translucent black. Half size on the 3DS.
+fn frame_picture(ix: &Indexed, shadow: bool) -> Rgba {
+    let mut img = to_rgba(&ix, Some(255));
+    if !shadow {
+        // Texture filtering must not pull the key colour into the edges: spread neighbour colours outwards.
+        let (w, h) = (img.w as i32, img.h as i32);
+        for _pass in 0..2 {
+            let mut next = img.px.clone();
+            for y in 0..h {
+                for x in 0..w {
+                    let i = ((y * w + x) * 4) as usize;
+                    if img.px[i + 3] != 0 {
+                        continue;
+                    }
+                    'search: for dy in -1..=1 {
+                        for dx in -1..=1 {
+                            let (nx, ny) = (x + dx, y + dy);
+                            if nx < 0 || ny < 0 || nx >= w || ny >= h {
+                                continue;
+                            }
+                            let q = ((ny * w + nx) * 4) as usize;
+                            if img.px[q + 3] != 0 && next[i..i + 3] != img.px[q..q + 3] {
+                                let (r, g, b) = (img.px[q], img.px[q + 1], img.px[q + 2]);
+                                next[i] = r;
+                                next[i + 1] = g;
+                                next[i + 2] = b;
+                                break 'search;
+                            }
+                        }
+                    }
+                }
+            }
+            img.px = next;
+        }
+    } else {
+        for i in 0..(ix.w * ix.h) as usize {
+            if ix.idx[i] == 255 {
+                continue;
+            }
+            // jgl's blit (0x10013400) draws indices 0xf8..0xfc through the exe's shading tables (0x824148, built by
+            // 0x461830): 0xf8 to 0xfb scale the screen pixel's 5-bit channels by 4/8, 5/8, 6/8 and 7/8 (black at
+            // 1/2, 3/8, 1/4 and 1/8 strength here). Other indices keep the earlier ramp reading (white = lightest).
+            let alpha = match ix.idx[i] {
+                0xf8 => 128,
+                0xf9 => 96,
+                0xfa => 64,
+                0xfb => 32,
+                k => {
+                    let dens = 1.0 - ix.pal[k as usize * 3] as f32 / 255.0;
+                    (70.0 + dens * 90.0) as u8
+                }
+            };
+            img.px[i * 4] = 0;
+            img.px[i * 4 + 1] = 0;
+            img.px[i * 4 + 2] = 0;
+            img.px[i * 4 + 3] = alpha;
+        }
+    }
+    // The 3DS keeps every frame at half size: its top screen shows sprites at about half the 800 x 600 screen's pixels,
+    // and the frames of a whole game at full size did not fit its memory (one groundskeeper clip is 11 MB in RGBA).
+    // Quads are sized from the sprite's own w, h and anchor, so a half-size frame covers the same ground.
+    #[cfg(target_os = "horizon")]
+    let img = half_frame(&img);
+    img
+}
+
+/// A frame at half size, each pixel the average of a 2 x 2 block (colour weighted by alpha, so transparent pixels do not
+/// darken an edge). The 3DS's sprite frames (see `load_sprite`).
+#[cfg_attr(not(target_os = "horizon"), allow(dead_code))]
+fn half_frame(img: &Rgba) -> Rgba {
+    let (w, h) = (img.w.div_ceil(2).max(1), img.h.div_ceil(2).max(1));
+    let mut out = Rgba::new(w, h);
+    for y in 0..h {
+        for x in 0..w {
+            let (mut c, mut a, mut n, mut wsum) = ([0u32; 3], 0u32, 0u32, 0u32);
+            for dy in 0..2 {
+                for dx in 0..2 {
+                    let (sx, sy) = (x * 2 + dx, y * 2 + dy);
+                    if sx >= img.w || sy >= img.h {
+                        continue;
+                    }
+                    let i = ((sy * img.w + sx) * 4) as usize;
+                    let pa = img.px[i + 3] as u32;
+                    for k in 0..3 {
+                        c[k] += img.px[i + k] as u32 * pa.max(1);
+                    }
+                    wsum += pa.max(1);
+                    a += pa;
+                    n += 1;
+                }
+            }
+            let o = ((y * w + x) * 4) as usize;
+            for k in 0..3 {
+                out.px[o + k] = (c[k] / wsum.max(1)).min(255) as u8;
+            }
+            out.px[o + 3] = (a / n.max(1)) as u8;
+        }
+    }
+    out
+}
+
 /// One frame of a person clip in the given palette: index 255 is transparent.
 pub fn recolour(s: &Sprite, frame: usize, pal: &[u8; 768]) -> Option<Rgba> {
-    let idx = s.indexed.get(frame)?;
+    let idx = s.frame_indices(frame)?;
     let mut img = Rgba::new(s.w, s.h);
-    for (i, &c) in idx.iter().enumerate() {
+    for (i, &c) in idx.iter().enumerate().take((s.w * s.h) as usize) {
         let c = c as usize;
         img.px[i * 4..i * 4 + 3].copy_from_slice(&pal[c * 3..c * 3 + 3]);
         img.px[i * 4 + 3] = if c == 255 { 0 } else { 255 };
     }
+    // half size on the 3DS, as its other frames
+    #[cfg(target_os = "horizon")]
+    let img = half_frame(&img);
     Some(img)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn packed_frames_round_trip() {
+        let mut idx = vec![255u8; 1000];
+        idx[3] = 7;
+        for i in 300..900 {
+            idx[i] = (i % 250) as u8;
+        }
+        assert_eq!(unpack(&pack(&idx), idx.len()), idx);
+        assert_eq!(unpack(&pack(&[]), 0), Vec::<u8>::new());
+        let Ok(dir) = std::env::var("SG_FLCS") else { return };
+        for e in std::fs::read_dir(dir).unwrap() {
+            let d = std::fs::read(e.unwrap().path()).unwrap();
+            let Ok(f) = decode_flc(&d) else { continue };
+            for fr in &f.frames {
+                assert_eq!(unpack(&pack(&fr.idx), fr.idx.len()), fr.idx);
+            }
+        }
+    }
 
     #[test]
     fn frame_index_stays_in_the_file() {

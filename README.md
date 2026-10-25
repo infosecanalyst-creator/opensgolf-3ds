@@ -1,3 +1,7 @@
+> **This is a fork of [OpenSGolf](https://github.com/crspytopgn/opensgolf) with a port to the New Nintendo 3DS:** stylus course
+> building on the touch screen, the course in stereoscopic 3D on top. See [`crates/simgolf-3ds`](crates/simgolf-3ds/README.md).
+> Everything else here is upstream OpenSGolf v0.4.7.
+
 # OpenSGolf
 
 [![Release](https://img.shields.io/github/v/release/crspytopgn/opensgolf?label=release)](https://github.com/crspytopgn/opensgolf/releases/latest)
