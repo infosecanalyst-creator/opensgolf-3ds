@@ -8,13 +8,13 @@
 //!   L / R held           a stylus drag on the plan slides the view instead of painting; a quick tap of L / R zooms
 //!   A / B                left / right click at the course cursor (A uses the armed tool there, as a pen stroke would;
 //!                        B undoes strokes, up to 20 back)
-//!   X                    Space (the original's pause)
-//!   Y                    Tab (cycle the build tools)
-//!   C-stick (New 3DS)    pan the camera; D-pad does the same on an old 3DS
+//!   X                    pause (Space, as the original)
+//!   Y                    the bottom strip's next tab (Tab)
+//!   C-stick / D-pad      pan the camera; in the pause menu the D-pad's up and down choose (Up / Down keys)
 //!   L / R (tapped)       zoom out / in (on release, and only when no drag used them as a modifier)
-//!   ZL / ZR (New 3DS)    turn the course a quarter (the original's Q / E)
-//!   Start                Escape (menus)
-//!   Select               F1 (help / keys)
+//!   ZL / ZR (New 3DS)    game speed down / up (Q / E)
+//!   Start                the pause menu: resume, save, load, controls, quit (Escape)
+//!   Select               steps the top screen's panels: money, holes, golfers, staff, none (F1)
 //!   3D slider            read by gfx.rs each frame; nothing to map
 use crate::screens::{self, TOP_H, TOP_W};
 use crate::shim::{KeyCode, KeyMods, MouseButton, TouchPhase};
@@ -44,6 +44,8 @@ const BUTTON_KEYS: &[(KeyPad, KeyCode)] = &[
     (KeyPad::SELECT, KeyCode::F1),
     (KeyPad::ZL, KeyCode::Q),
     (KeyPad::ZR, KeyCode::E),
+    (KeyPad::DPAD_UP, KeyCode::Up),
+    (KeyPad::DPAD_DOWN, KeyCode::Down),
 ];
 
 pub struct Input {

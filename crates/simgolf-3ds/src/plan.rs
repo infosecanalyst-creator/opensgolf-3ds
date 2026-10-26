@@ -9,8 +9,11 @@
 //!     are drawn on it. A white frame marks what the top screen shows.
 //!   * Touch: a drag paints (or builds) along the pen; a tap does it once; holding still for half a second inspects instead
 //!     (golfer, hole, building or ground, shown on the top screen). Holding L or R while dragging slides the view instead.
-//!   * The strip (x 240..320): four tabs (COURSE, BUILD, STAFF, INFO), twelve buttons for the tab, and UNDO, PAUSE and
-//!     SPEED along the foot, always there. Any tool is at most two taps away; the armed tool stays armed across tabs.
+//!   * The strip (x 240..320): four tabs (COURSE, BUILD, STAFF, INFO) as a 2 x 2 block, then twelve buttons for the tab.
+//!     Under the plan, a bar of UNDO, PAUSE, SPEED and the brush SIZE, always there. Any tool is at most two taps away;
+//!     the armed tool stays armed across tabs.
+//!   * Every target is at least 28 pixels (about 8 mm on a New 3DS XL) on its short side, so a fingertip works as well as
+//!     the stylus.
 //!   * The HOLE tool builds a hole in two taps (tee, then green) or one drag, showing the length and par as you go, and
 //!     opens it at once.
 
@@ -27,12 +30,17 @@ use std::time::{Duration, Instant};
 
 /// The plan's width; the strip fills the rest of the 320-pixel screen.
 pub const PLAN_W: f32 = 240.0;
-const PLAN_H: f32 = 240.0;
-const TAB_H: f32 = 20.0;
+/// The plan's height: the bar of UNDO, PAUSE, SPEED and SIZE fills the rest below it.
+const PLAN_H: f32 = 208.0;
+/// The tabs: a 2 x 2 block at the strip's top, each TAB_W x TAB_H.
+const TAB_W: f32 = 40.0;
+const TAB_H: f32 = 28.0;
+const TABS_H: f32 = 2.0 * TAB_H;
 const BTN_W: f32 = 40.0;
 const BTN_H: f32 = 30.0;
-/// The always-there row along the strip's foot: UNDO, PAUSE, SPEED.
-const BAR_Y: f32 = TAB_H + 6.0 * BTN_H + 2.0;
+/// The always-there bar under the plan: UNDO, PAUSE, SPEED, SIZE, each BAR_W wide.
+const BAR_Y: f32 = PLAN_H;
+const BAR_W: f32 = PLAN_W / 4.0;
 /// Plan world units per pixel against the top screen's: the top screen's ground fits inside the plan with land round it.
 const PLAN_ZOOM: f32 = 1.9;
 const R: f32 = std::f32::consts::FRAC_1_SQRT_2;
@@ -43,9 +51,6 @@ const EDGE_SPEED: f32 = 4.0;
 const SLOP: f32 = 4.0;
 /// Holding still this long inspects.
 const HOLD: Duration = Duration::from_millis(450);
-/// The brush-size buttons in the plan's top-right corner.
-const SIZE_X: f32 = PLAN_W - 3.0 * 15.0 - 2.0;
-const SIZE_BTN: f32 = 14.0;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Tab {
@@ -262,8 +267,20 @@ pub struct Plan {
 
 /// Buildings for the BLDG list: everything the building tool places but the one-tile items on the BUILD tab, landmarks
 /// (their designs need the desktop's strip) and the clubhouse.
+impl Plan {
+    /// Y: the strip's next tab (the armed tool stays armed).
+    pub fn next_tab(&mut self) {
+        let i = TABS.iter().position(|t| t.0 == self.tab).unwrap_or(0);
+        self.tab = TABS[(i + 1) % TABS.len()].0;
+        self.picking = false;
+    }
+}
+
 const LIST_KINDS: [i32; 10] = [5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
-const LIST_ROW: f32 = 19.0;
+/// The building list: two columns of cells LIST_ROW high, below the status line.
+const LIST_ROW: f32 = 38.0;
+const LIST_Y: f32 = 16.0;
+const LIST_COL: f32 = PLAN_W / 2.0;
 
 
 /// A 3 x 5 pixel font for the tool labels and the status line: each glyph is five rows of three bits, the high bit on the
@@ -497,7 +514,10 @@ impl Plan {
 
     /// World units per plan pixel.
     fn upp(d: &Demo) -> f32 {
-        d.upp * PLAN_ZOOM
+        // the top screen zooms three steps past the PC game's nearest; the plan stops there, so a hole still fits on it
+        // (the top screen's world units per pixel are 2 / (zoom x 0.4) on its 400 x 240 against 800 x 600, main.rs)
+        let nearest = 2.0 / (crate::app::ZOOM_UNIT * 4.0 * 0.4) * PLAN_ZOOM;
+        (d.upp * PLAN_ZOOM).max(nearest)
     }
 
     /// Ground depth per plan pixel against width: the plan is squashed up and down as the top screen's tilted view is
@@ -542,31 +562,28 @@ impl Plan {
         (((fx - s as f32 * 0.5).round()) as i32, ((fy - s as f32 * 0.5).round()) as i32, s)
     }
 
-    /// The strip's button under (x, y): a tab, a slot (0..12) or the foot row.
+    /// The button under (x, y): a tab, a slot (0..12), or the bar under the plan.
     fn strip_at(x: f32, y: f32) -> Option<StripHit> {
-        if x < PLAN_W || !(0.0..PLAN_H).contains(&y) {
+        if !(0.0..240.0).contains(&y) {
             return None;
         }
-        let sx = x - PLAN_W;
-        if y < TAB_H {
-            return Some(StripHit::Tab(((sx / 20.0) as usize).min(3)));
-        }
-        if y >= BAR_Y {
-            return Some(match sx {
-                v if v < 27.0 => StripHit::Undo,
-                v if v < 53.0 => StripHit::Pause,
-                _ => StripHit::Speed,
+        if x < PLAN_W {
+            if y < BAR_Y {
+                return None;
+            }
+            return Some(match ((x / BAR_W) as usize).min(3) {
+                0 => StripHit::Undo,
+                1 => StripHit::Pause,
+                2 => StripHit::Speed,
+                _ => StripHit::Size,
             });
         }
-        let (col, row) = (((sx / BTN_W) as usize).min(1), ((y - TAB_H) / BTN_H) as usize);
-        (row < 6).then_some(StripHit::Slot(row * 2 + col))
-    }
-
-    fn size_at(&self, x: f32, y: f32) -> Option<i32> {
-        if !self.tool.sized() || self.picking || !(1.0..1.0 + SIZE_BTN).contains(&y) || x < SIZE_X || x >= PLAN_W - 2.0 {
-            return None;
+        let col = (((x - PLAN_W) / BTN_W) as usize).min(1);
+        if y < TABS_H {
+            return Some(StripHit::Tab(((y / TAB_H) as usize).min(1) * 2 + col));
         }
-        Some((((x - SIZE_X) / 15.0) as i32).clamp(0, 2) + 1)
+        let row = ((y - TABS_H) / BTN_H) as usize;
+        (row < 6).then_some(StripHit::Slot(row * 2 + col))
     }
 
     /// Arms a tool (from a button or the building list).
@@ -604,15 +621,25 @@ impl Plan {
                         StripHit::Undo => out.action = Some(Action::Undo),
                         StripHit::Pause => out.action = Some(Action::Pause),
                         StripHit::Speed => out.action = Some(Action::Speed),
+                        StripHit::Size => {
+                            if self.tool.sized() {
+                                let s = self.size() % 3 + 1;
+                                self.sizes.insert(self.tool.key(), s);
+                            } else {
+                                out.sound = Some("Interface/Wrong.wav");
+                                out.action = Some(Action::Note("Brush size is for painting and raising or lowering land"));
+                            }
+                        }
                         StripHit::Slot(i) => self.press_slot(app, slots(self.tab)[i], &mut out),
                     }
                     return out;
                 }
                 if self.picking {
                     // a row of the building list arms it; anywhere else closes the list
-                    let row = ((y - TAB_H) / LIST_ROW).floor();
-                    if row >= 0.0 && (row as usize) < LIST_KINDS.len() && x < PLAN_W {
-                        let k = LIST_KINDS[row as usize];
+                    let row = ((y - LIST_Y) / LIST_ROW).floor();
+                    let i = row as usize * 2 + ((x / LIST_COL) as usize).min(1);
+                    if row >= 0.0 && i < LIST_KINDS.len() && x < PLAN_W {
+                        let k = LIST_KINDS[i];
                         if app.build_available(k as usize) {
                             self.arm(app, Tool::Building(k));
                             out.sound = Some("Interface/Button1.wav");
@@ -624,11 +651,6 @@ impl Plan {
                     self.picking = false;
                     return out;
                 }
-                if let Some(s) = self.size_at(x, y) {
-                    self.sizes.insert(self.tool.key(), s);
-                    out.sound = Some("Interface/Button1.wav");
-                    return out;
-                }
                 self.on_strip = false;
                 self.pen = Some((x, y));
                 let pan = pan || self.tool == Tool::Hand;
@@ -638,7 +660,8 @@ impl Plan {
                 if self.on_strip {
                     return out;
                 }
-                let x = x.min(PLAN_W - 1.0); // a drag onto the strip stays at the plan's edge
+                // a drag onto the strip or the bar stays at the plan's edge
+                let (x, y) = (x.min(PLAN_W - 1.0), y.min(PLAN_H - 1.0));
                 let prev = self.pen.unwrap_or((x, y));
                 self.pen = Some((x, y));
                 let Some(p) = self.press.as_mut() else { return out };
@@ -1045,6 +1068,7 @@ enum StripHit {
     Undo,
     Pause,
     Speed,
+    Size,
 }
 
 // ---- drawing -------------------------------------------------------------------------------------------------------------
@@ -1229,7 +1253,8 @@ impl Plan {
             }
         }
         // what the top screen shows
-        let (hw, hh) = (200.0 / PLAN_ZOOM, 120.0 / PLAN_ZOOM);
+        let k = d.upp / Self::upp(d);
+        let (hw, hh) = (200.0 * k, 120.0 * k);
         let (cx, cy) = (PLAN_W * 0.5, PLAN_H * 0.5);
         p2.outline(g, [(cx - hw, cy - hh), (cx + hw, cy - hh), (cx + hw, cy + hh), (cx - hw, cy + hh)], 1.0, [1.0, 1.0, 1.0, 0.6]);
 
@@ -1292,25 +1317,24 @@ impl Plan {
 
         // the building list over the plan
         if self.picking {
-            p2.rect(g, 0.0, TAB_H, PLAN_W, LIST_KINDS.len() as f32 * LIST_ROW, [0.05, 0.08, 0.05, 0.94]);
+            let rows = LIST_KINDS.len().div_ceil(2) as f32;
+            p2.rect(g, 0.0, LIST_Y, PLAN_W, rows * LIST_ROW, [0.05, 0.08, 0.05, 0.94]);
             for (i, &k) in LIST_KINDS.iter().enumerate() {
-                let y = TAB_H + i as f32 * LIST_ROW;
+                let (x, y) = ((i % 2) as f32 * LIST_COL, LIST_Y + (i / 2) as f32 * LIST_ROW);
                 let ok = app.build_available(k as usize);
-                if self.tool == Tool::Building(k) {
-                    p2.rect(g, 0.0, y, PLAN_W, LIST_ROW, [0.35, 0.3, 0.08, 1.0]);
-                }
-                p2.rect(g, 0.0, y + LIST_ROW - 1.0, PLAN_W, 1.0, [0.2, 0.26, 0.18, 1.0]);
+                let cell = if self.tool == Tool::Building(k) { [0.35, 0.3, 0.08, 1.0] } else { [0.1, 0.16, 0.1, 1.0] };
+                p2.rect(g, x + 1.5, y + 1.5, LIST_COL - 3.0, LIST_ROW - 3.0, cell);
                 let c = if ok { WHITE } else { [0.5, 0.5, 0.5, 1.0] };
-                text.draw(g, &ui, 6.0, y + 4.0, &building_name(k), Size::Normal, c);
+                let name = text.wrap(&building_name(k), Size::Normal, LIST_COL - 10.0).into_iter().next().unwrap_or_default();
+                text.draw(g, &ui, x + 6.0, y + 5.0, &name, Size::Normal, c);
                 let price = if ok { money(building_price(k)) } else { "MORE HOLES".into() };
-                let pw = text.width(&price, Size::Normal);
-                text.draw(g, &ui, PLAN_W - pw - 6.0, y + 4.0, &price, Size::Normal, if ok { [1.0, 0.95, 0.6, 1.0] } else { c });
+                text.draw(g, &ui, x + 6.0, y + 20.0, &price, Size::Normal, if ok { [1.0, 0.95, 0.6, 1.0] } else { c });
             }
         }
 
         // the status line over the plan's top edge, and the brush sizes in its right corner
         let (status, sc) = self.status(d, app, at);
-        let room = if self.tool.sized() && !self.picking { SIZE_X - 4.0 } else { PLAN_W };
+        let room = PLAN_W;
         let lines = text.wrap(&status, Size::Normal, room - 8.0);
         let lh = text.line_height(Size::Normal);
         let sw = lines.iter().map(|l| text.width(l, Size::Normal)).fold(0.0, f32::max);
@@ -1318,33 +1342,23 @@ impl Plan {
         for (i, l) in lines.iter().enumerate() {
             text.draw(g, &ui, 4.0, 1.0 + i as f32 * lh, l, Size::Normal, sc);
         }
-        if self.tool.sized() && !self.picking {
-            let cur = self.size();
-            for n in 1..=3 {
-                let x = SIZE_X + (n - 1) as f32 * 15.0;
-                let on = n == cur;
-                p2.rect(g, x, 1.0, SIZE_BTN, SIZE_BTN, if on { YELLOW } else { [0.0, 0.0, 0.0, 0.6] });
-                let label = n.to_string();
-                draw_text(g, &ui, x + 5.5, 5.5, &label, 1.0, if on { [0.1, 0.1, 0.0, 1.0] } else { WHITE });
-            }
-        }
-
         self.render_strip(g, &ui, app);
     }
 
     fn render_strip(&self, g: &mut Gfx, ui: &Uniforms, app: &App) {
         let p2 = Pen2d { u: ui };
         p2.rect(g, PLAN_W, 0.0, 320.0 - PLAN_W, 240.0, [0.12, 0.16, 0.11, 1.0]);
-        // the tabs
+        // the tabs, 2 x 2
         for (i, (tab, label)) in TABS.iter().enumerate() {
-            let x = PLAN_W + i as f32 * 20.0;
+            let (x, y) = (PLAN_W + (i % 2) as f32 * TAB_W, (i / 2) as f32 * TAB_H);
             let on = *tab == self.tab;
-            p2.rect(g, x + 0.5, 0.5, 19.0, TAB_H - 1.0, if on { [0.3, 0.4, 0.26, 1.0] } else { [0.07, 0.09, 0.06, 1.0] });
+            p2.rect(g, x + 1.0, y + 1.0, TAB_W - 2.0, TAB_H - 2.0, if on { [0.3, 0.4, 0.26, 1.0] } else { [0.07, 0.09, 0.06, 1.0] });
             if on {
-                p2.rect(g, x + 0.5, TAB_H - 2.5, 19.0, 2.0, YELLOW);
+                p2.rect(g, x + 1.0, y + TAB_H - 4.0, TAB_W - 2.0, 3.0, YELLOW);
             }
-            draw_text(g, ui, x + (20.0 - text_width(label, 1.0)) * 0.5, 7.0, label, 1.0, if on { WHITE } else { [0.6, 0.66, 0.58, 1.0] });
+            draw_text(g, ui, x + (TAB_W - text_width(label, 1.0)) * 0.5, y + (TAB_H - 5.0) * 0.5, label, 1.0, if on { WHITE } else { [0.6, 0.66, 0.58, 1.0] });
         }
+        p2.rect(g, PLAN_W, TABS_H - 0.5, 320.0 - PLAN_W, 1.0, [0.0, 0.0, 0.0, 0.5]);
         // the tab's buttons
         let rgb = |c: [u8; 3]| [c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0, 1.0];
         let panel = [0.3, 0.36, 0.28, 1.0];
@@ -1352,7 +1366,7 @@ impl Plan {
             if tool == Tool::None {
                 continue;
             }
-            let (bx, by) = (PLAN_W + (i % 2) as f32 * BTN_W, TAB_H + (i / 2) as f32 * BTN_H);
+            let (bx, by) = (PLAN_W + (i % 2) as f32 * BTN_W, TABS_H + (i / 2) as f32 * BTN_H);
             let (x, y, w, h) = (bx + 3.0, by + 2.0, BTN_W - 6.0, BTN_H - 11.0);
             let (mx, my) = (x + w * 0.5, y + h * 0.5);
             let armed = tool == self.tool
@@ -1485,13 +1499,32 @@ impl Plan {
             let lc = if armed { [0.12, 0.1, 0.02, 1.0] } else { [0.88, 0.92, 0.84, 1.0] };
             draw_text(g, ui, bx + (BTN_W - text_width(label, 1.0)) * 0.5, by + BTN_H - 8.0, label, 1.0, lc);
         }
-        // the foot row: UNDO, PAUSE, SPEED
-        let foot = [(PLAN_W, 27.0), (PLAN_W + 27.0, 26.0), (PLAN_W + 53.0, 27.0)];
-        for (i, &(x, w)) in foot.iter().enumerate() {
+        // the bar under the plan: UNDO, PAUSE, SPEED, SIZE
+        p2.rect(g, 0.0, BAR_Y, PLAN_W, 240.0 - BAR_Y, [0.12, 0.16, 0.11, 1.0]);
+        for i in 0..4 {
+            let (x, w) = (i as f32 * BAR_W, BAR_W);
+            if i == 3 {
+                let sized = self.tool.sized();
+                p2.rect(g, x + 1.0, BAR_Y + 1.0, w - 2.0, 240.0 - BAR_Y - 2.0, [0.24, 0.3, 0.22, if sized { 1.0 } else { 0.45 }]);
+                let c = if sized { WHITE } else { [0.55, 0.6, 0.55, 1.0] };
+                let n = if sized { self.size() } else { 1 };
+                // the brush as n x n squares
+                let cell = 4.0;
+                let span = n as f32 * (cell + 1.0) - 1.0;
+                let (ox, oy) = (x + (w - span) * 0.5, BAR_Y + 12.0 - span * 0.5);
+                for a in 0..n {
+                    for b in 0..n {
+                        p2.rect(g, ox + a as f32 * (cell + 1.0), oy + b as f32 * (cell + 1.0), cell, cell, c);
+                    }
+                }
+                let label = if sized { format!("SIZE {n}") } else { "SIZE".to_string() };
+                draw_text(g, ui, x + (w - text_width(&label, 1.0)) * 0.5, 240.0 - 9.0, &label, 1.0, c);
+                continue;
+            }
             let on = (i == 1 && app.paused) || (i == 2 && !app.paused && app.speed > 1);
-            p2.rect(g, x + 1.0, BAR_Y, w - 2.0, 240.0 - BAR_Y - 1.0, if on { YELLOW } else { [0.24, 0.3, 0.22, 1.0] });
+            p2.rect(g, x + 1.0, BAR_Y + 1.0, w - 2.0, 240.0 - BAR_Y - 2.0, if on { YELLOW } else { [0.24, 0.3, 0.22, 1.0] });
             let c = if on { [0.1, 0.1, 0.0, 1.0] } else { WHITE };
-            let (mx, my) = (x + w * 0.5, BAR_Y + 14.0);
+            let (mx, my) = (x + w * 0.5, BAR_Y + 12.0);
             match i {
                 0 => {
                     // a curved-back arrow

@@ -1064,6 +1064,8 @@ fn main() {
     plan.stale = true;
     gfx::trace("main: game started");
     let mut last_step = std::time::Instant::now();
+    // Start's pause menu: whether the game was paused before it opened (it is put back on Resume)
+    let mut menu_was_paused = false;
     // the tiles the strokes of this frame changed (the ground is rebuilt there when the game marks the course changed)
     let mut changed: Option<[i32; 4]> = None;
     gfx::trace(&format!("textures: {} in VRAM, {} in main memory", g.tex_vram, g.tex_linear));
@@ -1086,8 +1088,37 @@ fn main() {
         }
         demo.sync_view(&app);
         let mut strokes: Vec<plan::Stroke> = Vec::new();
+        let mut menu_pick: Option<usize> = None;
         for ev in input.poll(&hid, cstick) {
             dirty = true;
+            // Start's pause menu takes the controls while it is open: D-pad or a tap to choose, A or a tap to pick, B or
+            // Start to go back
+            if let Some(sel) = hud.menu {
+                let n = hud::MENU.len();
+                match ev {
+                    input::Event::KeyDown(shim::KeyCode::Up, _) => hud.menu = Some((sel + n - 1) % n),
+                    input::Event::KeyDown(shim::KeyCode::Down, _) => hud.menu = Some((sel + 1) % n),
+                    input::Event::MouseDown(shim::MouseButton::Left, _, _) => menu_pick = Some(sel),
+                    input::Event::MouseDown(shim::MouseButton::Right, _, _) | input::Event::KeyDown(shim::KeyCode::Escape, _) => {
+                        menu_pick = Some(0)
+                    }
+                    input::Event::Pen(phase, x, y) => {
+                        if let Some(i) = hud::Hud::menu_hit(x, y) {
+                            hud.menu = Some(i);
+                            if matches!(phase, shim::TouchPhase::Ended) {
+                                menu_pick = Some(i);
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                if menu_pick.is_some() {
+                    mixer.play("Interface/Button1.wav", 0.7, false);
+                } else if matches!(ev, input::Event::KeyDown(shim::KeyCode::Up | shim::KeyCode::Down, _)) {
+                    mixer.play("Interface/Button2.wav", 0.5, false);
+                }
+                continue;
+            }
             match ev {
                 input::Event::Pan(dx, dy) => {
                     // screen right is world +x+z along the 45 degree yaw; screen down is +z-x
@@ -1095,11 +1126,16 @@ fn main() {
                     let r = std::f32::consts::FRAC_1_SQRT_2;
                     app.cam_x += (sx - sz) * r;
                     app.cam_z += (sx + sz) * r;
+                    // the plan's camera too, or the line after this match copies it back and undoes the pan
+                    demo.cam_x = app.cam_x;
+                    demo.cam_z = app.cam_z;
+                    plan.stale = true;
                 }
                 // L / R: the game's zoom levels
                 input::Event::Zoom(z) => {
                     // half the game's steps (its levels double): the small screens want the in-between sizes too
-                    let (near, far) = (app::ZOOM_UNIT * 4.0, app::ZOOM_UNIT * (app::far_level() as f32).exp2());
+                    // three steps closer than the PC game goes (its nearest is ZOOM_UNIT x 4), for a close look on the small screen
+                    let (near, far) = (app::ZOOM_UNIT * 4.0 * 2f32.powf(1.5), app::ZOOM_UNIT * (app::far_level() as f32).exp2());
                     let f = if z > 0 { std::f32::consts::SQRT_2 } else { std::f32::consts::FRAC_1_SQRT_2 };
                     app.zoom = (app.zoom * f).clamp(far * 0.999, near * 1.001);
                 }
@@ -1116,6 +1152,43 @@ fn main() {
                     app.paused = !app.paused;
                     mixer.play("Interface/Button2.wav", 0.6, false);
                 }
+                input::Event::KeyDown(shim::KeyCode::Escape, _) => {
+                    // Start: the pause menu (the game stops while it is up)
+                    menu_was_paused = app.paused;
+                    app.paused = true;
+                    hud.close();
+                    hud.menu = Some(0);
+                    mixer.play("Interface/Button1.wav", 0.7, false);
+                }
+                input::Event::KeyDown(shim::KeyCode::F1, _) => {
+                    // Select: money, holes, golfers, staff, then none
+                    hud.cycle();
+                    mixer.play("Interface/Button2.wav", 0.5, false);
+                }
+                input::Event::KeyDown(shim::KeyCode::Tab, _) => {
+                    // Y: the strip's next tab
+                    plan.next_tab();
+                    mixer.play("Interface/Button2.wav", 0.5, false);
+                }
+                input::Event::KeyDown(k @ (shim::KeyCode::Q | shim::KeyCode::E), _) => {
+                    // ZL / ZR: slower / faster, through pause: paused, 1, 2, 4
+                    let steps = [0u32, 1, 2, 4];
+                    let at = if app.paused { 0 } else { steps.iter().position(|&s| s == app.speed as u32).unwrap_or(1) };
+                    let to = if k == shim::KeyCode::Q { at.saturating_sub(1) } else { (at + 1).min(3) };
+                    if to == 0 {
+                        app.paused = true;
+                    } else {
+                        app.paused = false;
+                        app.speed = steps[to] as _;
+                    }
+                    hud.note(match to {
+                        0 => "Paused",
+                        1 => "Speed: normal",
+                        2 => "Speed: fast",
+                        _ => "Speed: fastest",
+                    });
+                    mixer.play("Interface/Button2.wav", 0.5, false);
+                }
                 input::Event::MouseDown(shim::MouseButton::Right, _, _) => {
                     // B: the game's undo, as the UNDO button
                     strokes.push(plan::Stroke { action: Some(plan::Action::Undo), ..Default::default() });
@@ -1131,8 +1204,21 @@ fn main() {
             app.cam_x = demo.cam_x;
             app.cam_z = demo.cam_z;
         }
-        // a pen held at the plan's edge slides the view and paints on (plan.rs)
-        strokes.push(plan.tick(&mut demo, &mut app));
+        if let Some(pick) = menu_pick {
+            hud.menu = None;
+            app.paused = menu_was_paused;
+            match pick {
+                1 => strokes.push(plan::Stroke { action: Some(plan::Action::Save), ..Default::default() }),
+                2 => strokes.push(plan::Stroke { action: Some(plan::Action::Load), ..Default::default() }),
+                3 => hud.show(plan::Panel::Help),
+                4 => QUIT.store(true, Ordering::Relaxed),
+                _ => {}
+            }
+        }
+        // a pen held at the plan's edge slides the view and paints on (plan.rs); not under the pause menu
+        if hud.menu.is_none() {
+            strokes.push(plan.tick(&mut demo, &mut app));
+        }
         let mut full_rebuild = false;
         for stroke in strokes {
             if stroke.scrolled {
@@ -1206,6 +1292,14 @@ fn main() {
         if full_rebuild {
             app.dirty = true;
             changed = None;
+        }
+        // the view stays over the course: its centre may go to the map's edge, not past it
+        {
+            let (hx, hz) = (app.terrain.w as f32 * sg_core::terrain::TILE_SIZE * 0.5, app.terrain.h as f32 * sg_core::terrain::TILE_SIZE * 0.5);
+            app.cam_x = app.cam_x.clamp(-hx, hx);
+            app.cam_z = app.cam_z.clamp(-hz, hz);
+            demo.cam_x = app.cam_x;
+            demo.cam_z = app.cam_z;
         }
         // golfers on the plan, and the top screen's thoughts, money and messages
         plan.golfers.clear();
@@ -1295,6 +1389,7 @@ fn main() {
         };
         g.begin_screen(Screen::Bottom, Eye::Left, [0x10, 0x14, 0x10]);
         plan.render(&mut g, &demo, &app, &text, input.cursor);
+        hud.render_menu_bottom(&mut g, &text);
         let cpu = t.elapsed().as_secs_f32();
         let draws = g.draws;
         g.end_frame();

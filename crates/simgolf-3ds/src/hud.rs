@@ -5,7 +5,8 @@
 //!   * along the foot: the game's own messages (its ticker) and golfers' thoughts as they have them, the game's main
 //!     feedback on a course ("This hole is too short!"), plus short notes from the tools;
 //!   * a card for whatever a long press on the plan inspected (golfer, hole, building, ground);
-//!   * the INFO tab's panels: money, holes, golfers, staff, help.
+//!   * the INFO tab's panels: money, holes, golfers, staff, help (Select steps through them);
+//!   * Start's pause menu: on the top screen for the buttons, and as big rows on the bottom screen for the stylus.
 //! All of it sits at the screen's depth (no stereo shear), drawn after the world for each eye.
 
 use crate::app::App;
@@ -38,7 +39,16 @@ pub struct Hud {
     last_cash: Option<f64>,
     /// Money just spent or earned: the running sum and when it last changed.
     flash: Option<(f64, Instant)>,
+    /// Start's pause menu is open, with this row chosen.
+    pub menu: Option<usize>,
 }
+
+/// Start's pause menu, in order.
+pub const MENU: [&str; 5] = ["Resume", "Save game", "Load game", "Controls", "Quit"];
+/// The menu's rows on the bottom screen (320 x 240): x, first y, width, height, pitch.
+const MB: (f32, f32, f32, f32, f32) = (40.0, 28.0, 240.0, 34.0, 41.0);
+/// The panels Select steps through, then none.
+const CYCLE: [Panel; 4] = [Panel::Money, Panel::Holes, Panel::Golfers, Panel::Staff];
 
 fn rgba(c: [f32; 3], a: f32) -> [f32; 4] {
     [c[0], c[1], c[2], a]
@@ -69,7 +79,7 @@ fn ty_name(ty: i32) -> &'static str {
 
 impl Hud {
     pub fn new() -> Hud {
-        Hud { panel: None, card: None, note: None, thoughts: VecDeque::new(), seen: vec![(0, 0); SLOTS], last_cash: None, flash: None }
+        Hud { panel: None, card: None, note: None, thoughts: VecDeque::new(), seen: vec![(0, 0); SLOTS], last_cash: None, flash: None, menu: None }
     }
 
     pub fn toggle(&mut self, p: Panel) {
@@ -86,6 +96,49 @@ impl Hud {
     pub fn close(&mut self) {
         self.panel = None;
         self.card = None;
+    }
+
+    /// Select: the next panel (money, holes, golfers, staff), then none.
+    pub fn cycle(&mut self) {
+        self.card = None;
+        self.panel = match self.panel.and_then(|p| CYCLE.iter().position(|&c| c == p)) {
+            Some(i) if i + 1 < CYCLE.len() => Some(CYCLE[i + 1]),
+            Some(_) => None,
+            None => Some(CYCLE[0]),
+        };
+    }
+
+    /// The menu row under a bottom-screen point.
+    pub fn menu_hit(x: f32, y: f32) -> Option<usize> {
+        let (mx, my, w, h, pitch) = MB;
+        if x < mx || x > mx + w || y < my {
+            return None;
+        }
+        let i = ((y - my) / pitch) as usize;
+        (i < MENU.len() && y - my - i as f32 * pitch <= h).then_some(i)
+    }
+
+    /// The pause menu as big rows on the bottom screen, over the plan.
+    pub fn render_menu_bottom(&self, g: &mut Gfx, text: &Text) {
+        let Some(sel) = self.menu else { return };
+        let u = Uniforms::flat(&Mat4::ortho(0.0, 320.0, 240.0, 0.0, -1.0, 1.0), &Mat4::identity());
+        let rect = |g: &mut Gfx, x: f32, y: f32, w: f32, h: f32, c: [f32; 4]| {
+            let v = |x: f32, y: f32| Vert::new(x, y, 0.0, 0.0, 0.0).col(c);
+            g.quad(Mode::Flat, None, &u, [v(x, y), v(x + w, y), v(x + w, y + h), v(x, y + h)]);
+        };
+        rect(g, 0.0, 0.0, 320.0, 240.0, [0.0, 0.0, 0.0, 0.9]);
+        let t = "PAUSED";
+        text.draw(g, &u, (320.0 - text.width(t, Size::Normal)) * 0.5, 8.0, t, Size::Normal, [1.0, 0.85, 0.3, 1.0]);
+        let (mx, my, w, h, pitch) = MB;
+        for (i, label) in MENU.iter().enumerate() {
+            let y = my + i as f32 * pitch;
+            let on = i == sel;
+            rect(g, mx, y, w, h, if on { [0.95, 0.8, 0.25, 1.0] } else { [0.12, 0.3, 0.16, 1.0] });
+            rect(g, mx, y + h - 2.0, w, 2.0, [0.0, 0.0, 0.0, 0.35]);
+            let c = if on { [0.08, 0.08, 0.05, 1.0] } else { [1.0, 1.0, 1.0, 1.0] };
+            let lw = text.width(label, Size::Normal);
+            text.draw(g, &u, mx + (w - lw) * 0.5, y + (h - text.line_height(Size::Normal)) * 0.5, label, Size::Normal, c);
+        }
     }
 
     pub fn note(&mut self, s: &str) {
@@ -323,9 +376,32 @@ impl Hud {
                     text.draw(g, &u, x + w - rw - 8.0, ry, r, Size::Small, *c);
                 }
             }
-            let hint = "Tap the button again to close";
+            let hint = "Select: next   tap the button again to close";
             let hw = text.width(hint, Size::Small);
             text.draw(g, &u, x + w - hw - 8.0, y + 5.0, hint, Size::Small, [0.6, 0.65, 0.6, 1.0]);
+        }
+
+        // Start's pause menu
+        if let Some(sel) = self.menu {
+            rect(g, 0.0, BAR_H, W, H - BAR_H, [0.0, 0.0, 0.0, 0.45]);
+            let rh = lh + 6.0;
+            let (w, h) = (190.0, 30.0 + MENU.len() as f32 * rh + 16.0);
+            let (x, y) = ((W - w) * 0.5, (H - h) * 0.5 + 6.0);
+            rect(g, x, y, w, h, [0.02, 0.06, 0.03, 0.94]);
+            rect(g, x, y, w, 1.5, [1.0, 0.9, 0.3, 1.0]);
+            let t = "PAUSED";
+            text.draw(g, &u, x + (w - text.width(t, Size::Normal)) * 0.5, y + 6.0, t, Size::Normal, [1.0, 0.85, 0.3, 1.0]);
+            for (i, label) in MENU.iter().enumerate() {
+                let ry = y + 26.0 + i as f32 * rh;
+                let on = i == sel;
+                if on {
+                    rect(g, x + 10.0, ry, w - 20.0, rh - 2.0, [0.95, 0.8, 0.25, 1.0]);
+                }
+                let c = if on { [0.08, 0.08, 0.05, 1.0] } else { [1.0, 1.0, 1.0, 1.0] };
+                text.draw(g, &u, x + (w - text.width(label, Size::Normal)) * 0.5, ry + 2.0, label, Size::Normal, c);
+            }
+            let hint = "D-pad choose   A select   B back";
+            text.draw(g, &u, x + (w - text.width(hint, Size::Small)) * 0.5, y + h - 14.0, hint, Size::Small, [0.65, 0.7, 0.65, 1.0]);
         }
     }
 
@@ -401,13 +477,16 @@ impl Hud {
                     ("Do it once", "tap"),
                     ("Look at something", "hold the stylus still"),
                     ("New hole", "HOLE: tap a tee, then a green"),
-                    ("Scroll", "hold L or R and drag, D-pad, or C-stick"),
+                    ("Scroll", "C-stick, D-pad, or hold L or R and drag"),
                     ("Zoom", "tap L (out) or R (in)"),
                     ("Undo", "UNDO button or B"),
-                    ("Pause / speed", "PAUSE and SPEED buttons, or X"),
-                    ("Brush size", "the 1 2 3 boxes top right of the map"),
+                    ("Pause", "PAUSE button or X"),
+                    ("Game speed", "ZL slower, ZR faster (or SPEED)"),
+                    ("Next tool tab", "Y"),
+                    ("Money, holes, golfers, staff", "Select"),
+                    ("Menu: save, load, quit", "Start"),
+                    ("Brush size", "SIZE, under the map"),
                     ("Use tool at cursor", "Circle Pad moves it, A uses it"),
-                    ("Quit", "Start + Select"),
                 ] {
                     rows.push((l.to_string(), r.to_string(), white));
                 }
