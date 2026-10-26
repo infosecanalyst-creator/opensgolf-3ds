@@ -10,6 +10,23 @@ market, the pro's own rounds and the rest of the desktop's menus are not wired u
 
 ## Playing
 
+The game opens on a title screen (no "press Start": straight to the menu, with Continue chosen):
+
+| Title screen | |
+| --- | --- |
+| Continue | the newest save: the autosave written when you leave a game, or any later one |
+| New Course | the Parkland plots on offer, with acres, price and what is left to build with (plots the club cannot afford are greyed out) |
+| Load Game | the saves, newest first |
+| Settings | golfers' thoughts on or off, sound volume (kept in `sdmc:/3ds/opensgolf/settings.txt`) |
+| Controls | the controls page |
+| Quit | back to the Homebrew Launcher |
+
+Tap a row, or use the D-pad and A; B goes back. The game is saved to the autosave when you choose Title screen or Quit from
+the pause menu, when the console sleeps or goes to the HOME Menu, and every five minutes of play.
+
+Opening a course takes about 5 seconds on a start after the first: the sprites a course needed are listed in
+`sdmc:/3ds/opensgolf/cache/sprites.txt` and decoded on a spare CPU core while the title is up.
+
 The touch screen is where you act, the top screen is where you read, as in DS-era building games.
 
 **Bottom screen:** the course as a flat map, and a strip of tools down its right edge.
@@ -49,7 +66,7 @@ panels over it.
 | Y | next tool tab |
 | ZL / ZR | game speed down / up (through pause) |
 | Select | money, holes, golfers and staff panels on the top screen, then none |
-| Start | pause menu: resume, save, load, controls, quit (D-pad and A, or tap a row) |
+| Start | pause menu: resume, save, load, controls, title screen, quit (D-pad and A, or tap a row) |
 | 3D slider | depth: raised land comes out of the screen, lowered land and water sink into it |
 
 ### Game files

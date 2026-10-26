@@ -44,9 +44,9 @@ pub struct Hud {
 }
 
 /// Start's pause menu, in order.
-pub const MENU: [&str; 5] = ["Resume", "Save game", "Load game", "Controls", "Quit"];
+pub const MENU: [&str; 6] = ["Resume", "Save game", "Load game", "Controls", "Title screen", "Quit"];
 /// The menu's rows on the bottom screen (320 x 240): x, first y, width, height, pitch.
-const MB: (f32, f32, f32, f32, f32) = (40.0, 28.0, 240.0, 34.0, 41.0);
+const MB: (f32, f32, f32, f32, f32) = (40.0, 26.0, 240.0, 31.0, 35.0);
 /// The panels Select steps through, then none.
 const CYCLE: [Panel; 4] = [Panel::Money, Panel::Holes, Panel::Golfers, Panel::Staff];
 
@@ -55,7 +55,11 @@ fn rgba(c: [f32; 3], a: f32) -> [f32; 4] {
 }
 
 pub fn date_text(app: &App) -> String {
-    let mi = app.econ.month_index();
+    month_text(app.econ.month_index() as i32)
+}
+
+/// The game's month count as "Jul 2002" (its year is eight playing months, March to October).
+pub fn month_text(mi: i32) -> String {
     format!("{} {}", MONTHS[((2 + mi % 8) % 12) as usize], 2001 + mi / 8)
 }
 
@@ -361,6 +365,21 @@ impl Hud {
 
         // a panel
         if let Some(p) = self.panel {
+            self.draw_panel(g, text, app, p, "Select: next   tap the button again to close");
+        }
+
+        // Start's pause menu
+        self.draw_menu_top(g, text);
+    }
+
+    /// A panel over the top screen below the bar, with a hint in its top-right corner (also the title screen's Controls).
+    pub fn draw_panel(&self, g: &mut Gfx, text: &Text, app: &App, p: Panel, hint: &str) {
+        let u = Uniforms::flat(&Mat4::ortho(0.0, W, H, 0.0, -1.0, 1.0), &Mat4::identity());
+        let rect = |g: &mut Gfx, x: f32, y: f32, w: f32, h: f32, c: [f32; 4]| {
+            let v = |x: f32, y: f32| Vert::new(x, y, 0.0, 0.0, 0.0).col(c);
+            g.quad(Mode::Flat, None, &u, [v(x, y), v(x + w, y), v(x + w, y + h), v(x, y + h)]);
+        };
+        {
             let (x, y, w, h) = (8.0, BAR_H + 4.0, W - 16.0, H - BAR_H - 10.0);
             rect(g, x, y, w, h, [0.02, 0.05, 0.03, 0.9]);
             rect(g, x, y, w, 1.5, [1.0, 0.9, 0.3, 1.0]);
@@ -376,12 +395,19 @@ impl Hud {
                     text.draw(g, &u, x + w - rw - 8.0, ry, r, Size::Small, *c);
                 }
             }
-            let hint = "Select: next   tap the button again to close";
             let hw = text.width(hint, Size::Small);
             text.draw(g, &u, x + w - hw - 8.0, y + 5.0, hint, Size::Small, [0.6, 0.65, 0.6, 1.0]);
         }
+    }
 
-        // Start's pause menu
+    /// Start's pause menu on the top screen.
+    fn draw_menu_top(&self, g: &mut Gfx, text: &Text) {
+        let u = Uniforms::flat(&Mat4::ortho(0.0, W, H, 0.0, -1.0, 1.0), &Mat4::identity());
+        let rect = |g: &mut Gfx, x: f32, y: f32, w: f32, h: f32, c: [f32; 4]| {
+            let v = |x: f32, y: f32| Vert::new(x, y, 0.0, 0.0, 0.0).col(c);
+            g.quad(Mode::Flat, None, &u, [v(x, y), v(x + w, y), v(x + w, y + h), v(x, y + h)]);
+        };
+        let lh = text.line_height(Size::Normal);
         if let Some(sel) = self.menu {
             rect(g, 0.0, BAR_H, W, H - BAR_H, [0.0, 0.0, 0.0, 0.45]);
             let rh = lh + 6.0;
@@ -484,7 +510,7 @@ impl Hud {
                     ("Game speed", "ZL slower, ZR faster (or SPEED)"),
                     ("Next tool tab", "Y"),
                     ("Money, holes, golfers, staff", "Select"),
-                    ("Menu: save, load, quit", "Start"),
+                    ("Menu: save, load, title screen, quit", "Start"),
                     ("Brush size", "SIZE, under the map"),
                     ("Use tool at cursor", "Circle Pad moves it, A uses it"),
                 ] {

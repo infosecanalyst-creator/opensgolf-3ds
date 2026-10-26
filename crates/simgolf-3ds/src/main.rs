@@ -17,6 +17,7 @@ mod input;
 mod plan;
 mod hud;
 mod text;
+mod title;
 mod screens;
 mod shim;
 
@@ -949,6 +950,53 @@ fn merge(a: Option<[i32; 4]>, b: [i32; 4]) -> [i32; 4] {
 
 
 /// A terrain picture from its file (bmp, tga or pcx).
+/// Starts or opens the game picked on the title screen, and brings the frontend's ground, plan and top screen up to it.
+fn open_game(choice: title::Choice, g: &mut Gfx, app: &mut app::App, demo: &mut Demo, plan: &mut plan::Plan, hud: &mut hud::Hud) -> Result<(), String> {
+    let t0 = std::time::Instant::now();
+    match choice {
+        title::Choice::New(prop, _) => app.start_game(g, prop, false),
+        title::Choice::Open(path, _) => app.load_game(g, &path)?,
+        title::Choice::Quit => return Ok(()),
+    }
+    drop_ground_batches(app, g);
+    // between the game's middle and near levels: the plan's tiles at the size the stylus design was tried at
+    app.zoom = app::ZOOM_UNIT * 2f32.powf(1.5);
+    app.paused = false;
+    demo.adopt(g, app);
+    demo.sync_view(app);
+    plan.stale = true;
+    hud.close();
+    hud.menu = None;
+    gfx::trace(&format!("game: {} open in {:.1}s ({}x{} map)", app.course_name, t0.elapsed().as_secs_f32(), app.terrain.w, app.terrain.h));
+    Ok(())
+}
+
+/// Saves the game in play as the autosave ("&Latest.sgs"; the two before it move along, autosave.rs).
+fn autosave_now(app: &app::App) {
+    let dir = files_ui::saved_games_dir();
+    let _ = std::fs::create_dir_all(&dir);
+    autosave::rotate(&dir);
+    match app.save_game(&dir.join(autosave::FILE)) {
+        Ok(()) => gfx::trace("autosaved"),
+        Err(e) => gfx::trace(&format!("autosave failed: {e}")),
+    }
+}
+
+/// Set by the system when the HOME Menu opens or the console goes to sleep: the main loop saves the game.
+static SUSPENDING: AtomicBool = AtomicBool::new(false);
+
+unsafe extern "C" fn on_apt(hook: ctru_sys::APT_HookType, _param: *mut core::ffi::c_void) {
+    if hook == ctru_sys::APTHOOK_ONSUSPEND || hook == ctru_sys::APTHOOK_ONSLEEP {
+        SUSPENDING.store(true, Ordering::Relaxed);
+    }
+}
+
+fn install_suspend_hook() {
+    // the cookie is the system's link in its list of hooks: it lives as long as the program
+    let cookie: &'static mut ctru_sys::aptHookCookie = Box::leak(Box::new(unsafe { std::mem::zeroed() }));
+    unsafe { ctru_sys::aptHook(cookie, Some(on_apt), std::ptr::null_mut()) };
+}
+
 fn decode_picture(path: &Path) -> Option<sg_core::assets::Rgba> {
     let ext = sg_core::fsutil::ext_lower(path);
     sg_core::fsutil::read_file(path).and_then(|d| {
@@ -987,25 +1035,32 @@ fn main() {
         }));
     }
 
-    // Startup narrates itself on a text console on the top screen; the console is dropped before the GPU takes the screens.
-    let (game, prepared) = {
-        let mut console = Console::new(gfx_svc.top_screen.borrow_mut());
+    // The GPU first, so start-up shows the title's look (title::splash) with what is being read, not a text console.
+    let mut g = Gfx::new(gfx_svc);
+    gfx::trace("main: Gfx::new done");
+    let text = text::Text::new(&mut g);
+    // saves (INFO's SAVE and LOAD, the pause menu's, the autosaves) on the card beside the game's other files
+    let saves = "sdmc:/3ds/opensgolf/saves";
+    let _ = std::fs::create_dir_all(saves);
+    std::env::set_var("OPENSGOLF_SAVE_DIR", saves);
+    let (game, prepared, mut app, preload_core) = {
         let t0 = std::time::Instant::now();
         let mut say = |line: &str| {
             println!("[{:5.1}s] {line}", t0.elapsed().as_secs_f32());
-            use ctru::services::gfx::{Flush, Swap};
-            console.flush_buffers();
-            console.swap_buffers();
+            title::splash(&mut g, &text, line, t0.elapsed().as_secs_f32());
         };
-        say("OpenSGolf for the 3DS: starting");
+        say("Starting");
         let game = game_dir(&mut say);
-        say(&format!("game folder: {}", game.display()));
+        println!("game folder: {}", game.display());
+        // the game itself now, so the sprite preloader can start on its spare core while the ground textures are read
+        gfx::trace("game: App::new");
+        let app = app::App::new(game.clone());
+        gfx::trace("game: App::new done");
+        let preload_core = start_preload(preload_jobs(&app));
         let prepared = Demo::prepare(&game, &mut say);
-        say("starting the GPU");
-        (game, prepared)
+        say("Starting the graphics");
+        (game, prepared, app, preload_core)
     };
-    let mut g = Gfx::new(gfx_svc);
-    gfx::trace("main: Gfx::new done");
     let (mut demo, mut plan) = Demo::new(&mut g, prepared);
     gfx::trace("main: Demo::new done (textures + meshes uploaded)");
     let mut input = input::Input::new();
@@ -1019,50 +1074,27 @@ fn main() {
         Some(a) => println!("[audio] on core {}", a.core),
         None => println!("[audio] off: ndsp did not start (dump the DSP firmware with DSP1 once)"),
     }
-    // ---- the game (milestone 2): the real club, its money, rules, holes and golfers ----------------------------------------
-    // A new game on a Parkland property (the theme the textures were prepared for), the normal game rather than a sandbox, so
-    // building costs money. The ground is drawn by this frontend's chunked renderer (Demo); everything on it by the game.
-    // saves (INFO's SAVE and LOAD, and the game's autosave) on the card beside the game's other files
-    let saves = "sdmc:/3ds/opensgolf/saves";
-    let _ = std::fs::create_dir_all(saves);
-    std::env::set_var("OPENSGOLF_SAVE_DIR", saves);
-    let text = text::Text::new(&mut g);
+    // ---- the game: the real club, its money, rules, holes and golfers ------------------------------------------------------
+    // Started or opened from the title screen, on a Parkland property (the theme the textures were prepared for). The ground
+    // is drawn by this frontend's chunked renderer (Demo); everything on it by the game.
     let mut hud = hud::Hud::new();
-    gfx::trace("game: App::new");
-    let mut app = app::App::new(game.clone());
-    gfx::trace("game: App::new done");
     app.mixer = Some(mixer.clone());
     app.draw_w = screens::TOP_W as f32;
     app.draw_h = screens::TOP_H as f32;
-    // the cheapest parkland plot of this game's deal (the desktop's chooser lets the player pick one they can afford; a dear
-    // one dealt first left the club deep in debt)
-    let props = sg_core::data::properties();
-    let prop = (0..props.len()).filter(|&i| props[i].theme == 0).min_by_key(|&i| app.offer_for(i).1).unwrap_or(0);
-    let t_game = std::time::Instant::now();
-    gfx::trace(&format!("game: start_game (property {prop})"));
-    app.start_game(&mut g, prop, false);
-    drop_ground_batches(&mut app, &mut g);
-    let started = format!("game: started in {:.1}s: {} on a {}x{} map", t_game.elapsed().as_secs_f32(), app.course_name, app.terrain.w, app.terrain.h);
-    gfx::trace(&started);
-    // between the game's middle and near levels: the plan's tiles at the size the stylus design was tried at
-    app.zoom = app::ZOOM_UNIT * 2f32.powf(1.5);
-    // every golfer body's clips decoded ahead on a spare core (sg_core::preload), so a new kind of golfer arriving does not
-    // stop the game while its 50 clips load
-    let mut jobs = Vec::new();
-    for prefix in app::GOLFER_BODIES.iter().filter(|p| !p.is_empty()) {
-        for &(base, name) in app::GOLFER_CLIPS.iter() {
-            let name = if base == 0x28 && prefix.starts_with("Female") { "NormalSwing" } else { name };
-            jobs.push((app.game_path(&format!("Flics/{prefix}_{name}.flc")), false));
-            jobs.push((app.game_path(&format!("Flics/{prefix}_{name}Shadow.flc")), true));
-        }
-    }
-    let preload_core = start_preload(jobs);
+    // the sprites a course needed are kept once per run, for the next start's preloader (preload_jobs)
+    let mut kept_list = false;
     gfx::trace(&format!("preload: {}", preload_core.map(|c| format!("on core {c}")).unwrap_or_else(|| "off".into())));
-    demo.adopt(&mut g, &app);
-    gfx::trace("game: ground adopted");
-    demo.sync_view(&app);
-    plan.stale = true;
-    gfx::trace("main: game started");
+    // the title screen (title.rs): a game is started or opened from there
+    let mut title = title::Title::new(&app);
+    mixer.set_master(title.settings.master());
+    plan.thoughts = title.settings.thoughts;
+    // a game is being played (else the title is up); one has been played this run (the title's fly-over shows its course)
+    let mut in_game = false;
+    let mut played = false;
+    // autosaves: every five minutes of play, on leaving the game, and when the console sleeps or goes to the HOME Menu
+    let mut last_autosave = std::time::Instant::now();
+    install_suspend_hook();
+    gfx::trace("main: title up");
     let mut last_step = std::time::Instant::now();
     // Start's pause menu: whether the game was paused before it opened (it is put back on Resume)
     let mut menu_was_paused = false;
@@ -1083,8 +1115,78 @@ fn main() {
         if cstick {
             unsafe { ctru_sys::irrstScanInput() };
         }
-        if hid.keys_held().contains(KeyPad::START) && hid.keys_held().contains(KeyPad::SELECT) {
-            break;
+        if !in_game {
+            // ---- the title screen ----
+            let mut choice = None;
+            for ev in input.poll(&hid, cstick) {
+                if let Some(c) = title.event(&ev, &mixer) {
+                    choice = Some(c);
+                }
+            }
+            plan.thoughts = title.settings.thoughts;
+            let opening = match &choice {
+                Some(title::Choice::Quit) => break,
+                Some(title::Choice::Open(_, name)) | Some(title::Choice::New(_, name)) => {
+                    title.loading = Some(name.clone());
+                    true
+                }
+                None => false,
+            };
+            // the fly-over: a slow circle round the middle of the course
+            {
+                let t = title.clock();
+                let (hx, hz) = (demo.terrain.w as f32 * sg_core::terrain::TILE_SIZE * 0.5, demo.terrain.h as f32 * sg_core::terrain::TILE_SIZE * 0.5);
+                let a = t * 0.06;
+                app.cam_x = hx * 0.4 * a.cos();
+                app.cam_z = hz * 0.4 * a.sin();
+                app.zoom = app::ZOOM_UNIT * 2f32.powf(1.5);
+                demo.sync_view(&app);
+            }
+            g.begin_frame();
+            g.set_stereo_span(STEREO_FULL_HEIGHT, PITCH as f32, DEPTH_RANGE);
+            let eyes: &[Eye] = if g.slider() > 0.0 { &[Eye::Left, Eye::Right] } else { &[Eye::Left] };
+            for &eye in eyes {
+                g.begin_screen(Screen::Top, eye, [0x2c, 0x3e, 0x50]);
+                demo.render_world(&mut g);
+                if played {
+                    g.stereo_world(true);
+                    app.render_world(&mut g);
+                }
+                g.stereo_world(false);
+                title.render_top(&mut g, &text, &app, &hud);
+            }
+            g.begin_screen(Screen::Bottom, Eye::Left, [0x0c, 0x16, 0x0e]);
+            title.render_bottom(&mut g, &text);
+            g.end_frame();
+            if opening {
+                // the frame above says what is opening; now the work (it takes a few seconds)
+                match open_game(choice.unwrap(), &mut g, &mut app, &mut demo, &mut plan, &mut hud) {
+                    Ok(()) => {
+                        if !kept_list {
+                            keep_sprite_list();
+                            kept_list = true;
+                        }
+                        in_game = true;
+                        played = true;
+                        menu_was_paused = false;
+                        changed = None;
+                        dirty = true;
+                        last_step = std::time::Instant::now();
+                        last_autosave = std::time::Instant::now();
+                    }
+                    Err(e) => title.failed(&e),
+                }
+            }
+            continue;
+        }
+        // ---- the game ----
+        if SUSPENDING.swap(false, Ordering::Relaxed) {
+            autosave_now(&app);
+            last_autosave = std::time::Instant::now();
+        }
+        if !app.paused && last_autosave.elapsed().as_secs() >= autosave::INTERVAL as u64 {
+            autosave_now(&app);
+            last_autosave = std::time::Instant::now();
         }
         demo.sync_view(&app);
         let mut strokes: Vec<plan::Stroke> = Vec::new();
@@ -1211,7 +1313,18 @@ fn main() {
                 1 => strokes.push(plan::Stroke { action: Some(plan::Action::Save), ..Default::default() }),
                 2 => strokes.push(plan::Stroke { action: Some(plan::Action::Load), ..Default::default() }),
                 3 => hud.show(plan::Panel::Help),
-                4 => QUIT.store(true, Ordering::Relaxed),
+                4 => {
+                    // back to the title, the game saved first (Continue opens it again)
+                    autosave_now(&app);
+                    title.settings.thoughts = plan.thoughts;
+                    title.settings.save();
+                    title.refresh(&app);
+                    hud.close();
+                    in_game = false;
+                    continue;
+                }
+                // Quit: the game is saved after the loop
+                5 => QUIT.store(true, Ordering::Relaxed),
                 _ => {}
             }
         }
@@ -1414,6 +1527,9 @@ fn main() {
             (perf_sim, perf_loops) = (0.0, 0);
         }
     }
+    if in_game {
+        autosave_now(&app);
+    }
     sg_core::preload::STOP.store(true, Ordering::Relaxed);
     drop(audio);
     if cstick {
@@ -1424,15 +1540,55 @@ fn main() {
     std::mem::forget(soc);
 }
 
+/// The sprites the last opened course asked for (its trees, buildings, staff), one per line: shadow flag, file, palette.
+const SPRITE_LIST: &str = "sdmc:/3ds/opensgolf/cache/sprites.txt";
+
+/// The preloader's list: first the sprites the course opened last time needed (SPRITE_LIST), so opening one from the title
+/// finds them decoded already; then every golfer body's clips, so a new kind of golfer arriving does not stop the game
+/// while its 50 clips load.
+fn preload_jobs(app: &app::App) -> Vec<sg_core::preload::Job> {
+    let mut jobs: Vec<sg_core::preload::Job> = Vec::new();
+    if let Ok(t) = std::fs::read_to_string(SPRITE_LIST) {
+        for line in t.lines() {
+            let mut f = line.split('\t');
+            if let (Some(sh), Some(path)) = (f.next(), f.next()) {
+                let pal = f.next().filter(|p| !p.is_empty()).map(std::path::PathBuf::from);
+                jobs.push((std::path::PathBuf::from(path), sh == "1", pal));
+            }
+        }
+    }
+    gfx::trace(&format!("preload: {} course sprites from the last start", jobs.len()));
+    for prefix in app::GOLFER_BODIES.iter().filter(|p| !p.is_empty()) {
+        for &(base, name) in app::GOLFER_CLIPS.iter() {
+            let name = if base == 0x28 && prefix.starts_with("Female") { "NormalSwing" } else { name };
+            jobs.push((app.game_path(&format!("Flics/{prefix}_{name}.flc")), false, None));
+            jobs.push((app.game_path(&format!("Flics/{prefix}_{name}Shadow.flc")), true, None));
+        }
+    }
+    jobs
+}
+
+/// Writes what the game has asked the preloader for so far (a course just opened: its sprites) to SPRITE_LIST.
+fn keep_sprite_list() {
+    let list = sg_core::preload::asked();
+    let mut out = String::new();
+    for (path, shadow, pal) in &list {
+        let pal = pal.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
+        out.push_str(&format!("{}\t{}\t{}\n", *shadow as u8, path.display(), pal));
+    }
+    let _ = std::fs::write(SPRITE_LIST, out);
+    gfx::trace(&format!("preload: kept {} course sprites for the next start", list.len()));
+}
+
 /// The preload worker's entry: decodes its list (sg_core::preload::run), then ends.
 unsafe extern "C" fn preload_main(arg: *mut core::ffi::c_void) {
-    let jobs = unsafe { Box::from_raw(arg as *mut Vec<(std::path::PathBuf, bool)>) };
+    let jobs = unsafe { Box::from_raw(arg as *mut Vec<sg_core::preload::Job>) };
     sg_core::preload::run(*jobs);
 }
 
 /// Starts the sprite preloader on a spare core at a lower priority than the game (core 2 on a New 3DS, where the sound mixer
 /// also lives but mostly sleeps; else the system core's application share). The core used, or None.
-fn start_preload(jobs: Vec<(std::path::PathBuf, bool)>) -> Option<i32> {
+fn start_preload(jobs: Vec<sg_core::preload::Job>) -> Option<i32> {
     let mut new3ds = false;
     let _ = unsafe { ctru_sys::APT_CheckNew3DS(&mut new3ds) };
     let mut prio = 0x30;

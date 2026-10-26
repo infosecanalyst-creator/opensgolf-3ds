@@ -4,6 +4,7 @@ description = "OpenSGolf on the Nintendo 3DS: sg-core's rules and decoders behin
 version = "0.1.0"
 edition = "2021"
 license = "GPL-2.0-or-later"
+authors = ["OpenSGolf contributors"]
 # Drop this folder into opensgolf/crates/ and add "crates/simgolf-3ds" to the workspace members in the root Cargo.toml.
 # Build with `cargo 3ds build --release -p simgolf-3ds` (see README.md).
 
@@ -38,11 +39,11 @@ gamepad = []
 # compiles shader/main.v.pica with devkitPro's picasso at build time (build.rs)
 
 [package.metadata.cargo-3ds]
-# Shown by the Homebrew Launcher; the icon is the free set's app icon written by `sgtool icon` (tools/make_icons.sh)
+# Shown by the Homebrew Launcher: the name, a line under it, and a 48 x 48 icon of the port's own (a pin on a green)
 name = "OpenSGolf"
-description = "Sid Meier's SimGolf, on two screens"
+description = "Build a golf club, on two screens"
 author = "OpenSGolf contributors"
-# icon = "../../docs/images/icon-48.png"
+icon = "icon.png"
 # romfs_dir = "romfs"
 
 [profile.release]

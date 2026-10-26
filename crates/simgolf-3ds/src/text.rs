@@ -7,11 +7,14 @@ use sg_core::assets::Rgba;
 
 const FONT: &[u8] = include_bytes!("../../simgolf/fonts/LiberationSans-Bold.ttf");
 
-/// The two sizes: small for dense panels and labels, normal for the status line and messages.
+/// The sizes: small for dense panels and labels, normal for the status line and messages, large for the title screen's
+/// buttons, title for the game's name on it.
 #[derive(Clone, Copy, PartialEq)]
 pub enum Size {
     Small,
     Normal,
+    Large,
+    Title,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -32,13 +35,13 @@ pub struct Text {
     atlas_w: f32,
     atlas_h: f32,
     /// Printable ASCII (32..127) per size.
-    glyphs: [[Glyph; 95]; 2],
+    glyphs: [[Glyph; 95]; 4],
     /// Ascent per size: the baseline's distance below the top of a line.
-    ascent: [f32; 2],
-    line: [f32; 2],
+    ascent: [f32; 4],
+    line: [f32; 4],
 }
 
-const PX: [f32; 2] = [9.0, 11.0];
+const PX: [f32; 4] = [9.0, 11.0, 16.0, 30.0];
 
 impl Text {
     pub fn new(g: &mut Gfx) -> Text {
@@ -46,9 +49,9 @@ impl Text {
         const W: u32 = 256;
         let mut rows: Vec<u8> = Vec::new(); // alpha, W wide, grown as needed
         let (mut x, mut y, mut row_h) = (0u32, 0u32, 0u32);
-        let mut glyphs = [[Glyph::default(); 95]; 2];
-        let mut ascent = [0.0; 2];
-        let mut line = [0.0; 2];
+        let mut glyphs = [[Glyph::default(); 95]; 4];
+        let mut ascent = [0.0; 4];
+        let mut line = [0.0; 4];
         for (si, &px) in PX.iter().enumerate() {
             if let Some(m) = font.horizontal_line_metrics(px) {
                 ascent[si] = m.ascent.ceil();
@@ -99,6 +102,8 @@ impl Text {
         match s {
             Size::Small => 0,
             Size::Normal => 1,
+            Size::Large => 2,
+            Size::Title => 3,
         }
     }
 

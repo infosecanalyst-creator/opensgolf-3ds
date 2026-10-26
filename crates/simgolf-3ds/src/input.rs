@@ -10,7 +10,7 @@
 //!                        B undoes strokes, up to 20 back)
 //!   X                    pause (Space, as the original)
 //!   Y                    the bottom strip's next tab (Tab)
-//!   C-stick / D-pad      pan the camera; in the pause menu the D-pad's up and down choose (Up / Down keys)
+//!   C-stick / D-pad      pan the camera; in the pause menu and on the title screen the D-pad chooses (arrow keys)
 //!   L / R (tapped)       zoom out / in (on release, and only when no drag used them as a modifier)
 //!   ZL / ZR (New 3DS)    game speed down / up (Q / E)
 //!   Start                the pause menu: resume, save, load, controls, quit (Escape)
@@ -46,6 +46,8 @@ const BUTTON_KEYS: &[(KeyPad, KeyCode)] = &[
     (KeyPad::ZR, KeyCode::E),
     (KeyPad::DPAD_UP, KeyCode::Up),
     (KeyPad::DPAD_DOWN, KeyCode::Down),
+    (KeyPad::DPAD_LEFT, KeyCode::Left),
+    (KeyPad::DPAD_RIGHT, KeyCode::Right),
 ];
 
 pub struct Input {

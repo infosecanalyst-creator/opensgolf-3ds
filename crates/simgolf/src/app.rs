@@ -385,6 +385,14 @@ const EDGE_NORMALS: [[[f32; 3]; 2]; 4] = [
 ];
 
 /// Reads a whole game saved by `App::save_game` (also used for the Load screen's preview of a save).
+/// A timing line for the 3DS log (simgolf-3ds gfx.rs `trace`); nothing on the other platforms.
+#[cfg(target_os = "horizon")]
+fn stage(s: &str) {
+    crate::gfx::trace(s);
+}
+#[cfg(not(target_os = "horizon"))]
+fn stage(_s: &str) {}
+
 pub fn read_save(path: &Path) -> Result<SaveGame, String> {
     let data = sg_core::fsutil::read_file(path).ok_or_else(|| trf("STR_ERROR_FILE_NOT_FOUND", &[("FILE", &path.display())]))?;
     read_save_bytes(&data, &path.display().to_string())
@@ -1291,6 +1299,15 @@ impl App {
         // the free base set draws all its water in one look with a shore against land (sg_core::terrain::Terrain::water_one)
         self.terrain.water_one = self.content.loaded.first().is_some_and(|b| b == sg_core::packs::FREE);
         self.sync_tile_corners();
+        // the 3DS draws the ground with its own chunked meshes from its own texture cache (simgolf-3ds main.rs): the whole-
+        // course batches, and every ground texture decoded and uploaded for them, would be thrown away (most of the time a
+        // new or loaded game took there)
+        if cfg!(target_os = "horizon") {
+            self.build_paths(g);
+            self.build_walls(g);
+            self.build_edge_walls(g);
+            return;
+        }
         let mut map: BTreeMap<usize, (TextureId, Vec<Vert>)> = BTreeMap::new();
         let mut tris = Vec::new();
         let mut order: HashMap<Option<TextureId>, usize> = HashMap::new();
@@ -1638,11 +1655,8 @@ impl App {
         }
         let path = self.game_path(&format!("Flics/{rel}"));
         let pal_path = pal.map(|p| self.game_path(&format!("Flics/{p}")));
-        // decoded ahead on another thread (the 3DS's golfer bodies: sg_core::preload), else now
-        let loaded = match pal_path {
-            None => sg_core::preload::take(&path),
-            Some(_) => None,
-        };
+        // decoded ahead on another thread (the 3DS: a course's sprites and the golfer bodies, sg_core::preload), else now
+        let loaded = sg_core::preload::take(&path, shadow, pal_path.as_deref());
         let r = match loaded.unwrap_or_else(|| load_sprite(&path, shadow, pal_path.as_deref())) {
             Ok(s) => {
                 let n = s.frames.len();
@@ -1965,9 +1979,13 @@ impl App {
             .map(|d| sg_core::terrain::parse_lighting(&sg_core::formats::latin1(&d)))
             .unwrap_or_default();
         self.light = lighting;
+        let t0 = std::time::Instant::now();
         self.rebuild_batches(g);
+        stage(&format!("load_theme: batches {:.1}s", t0.elapsed().as_secs_f32()));
         self.populate_props();
+        stage(&format!("load_theme: props {:.1}s", t0.elapsed().as_secs_f32()));
         self.register_portraits(g);
+        stage(&format!("load_theme: portraits {:.1}s", t0.elapsed().as_secs_f32()));
         true
     }
 
@@ -2593,6 +2611,7 @@ impl App {
     }
 
     pub fn start_game(&mut self, g: &mut Gfx, prop_idx: usize, sandbox: bool) {
+        let t0 = std::time::Instant::now();
         self.undo.clear();
         // a new game is never the course editor's (editor.rs makes it the editor's afterwards)
         self.editor = None;
@@ -2622,10 +2641,12 @@ impl App {
         }
         let slot_index = self.slot_of[prop_idx];
         let land = land::generate(slot_index, self.offer[slot_index], self.difficulty, sandbox, &mut self.exe_rng, &self.noise);
+        stage(&format!("start_game: land generated {:.1}s", t0.elapsed().as_secs_f32()));
         self.terrain = land.to_terrain();
         self.land = Some(land);
         self.course_name = p.course().to_string();
         self.load_theme(g, p.theme);
+        stage(&format!("start_game: theme loaded {:.1}s", t0.elapsed().as_secs_f32()));
         self.club.course_name = self.course_name.clone();
         self.club.course_theme = self.exe_theme();
         self.bought.clear();
@@ -2656,6 +2677,7 @@ impl App {
         );
         // the scenario's goals (none for a free game) and the packs' scripts
         self.begin_game_scripts();
+        stage(&format!("start_game: done {:.1}s", t0.elapsed().as_secs_f32()));
     }
 
     /// "Return to Main Menu." at the end of a career, the way the exe leaves a game (0x420e0f): the game is saved as
