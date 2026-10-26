@@ -20,7 +20,6 @@ The touch screen is where you act, the top screen is where you read, as in DS-er
 | Tap | do it once |
 | Hold still for half a second | inspect: a golfer, a hole, a building or the ground, shown on the top screen |
 | Hold L or R and drag | slide the view (also the D-pad or C-stick; dragging into the map's edge while painting scrolls too) |
-| 1 2 3 boxes, top right | brush size, remembered per tool |
 
 | Strip | |
 | --- | --- |
@@ -28,7 +27,9 @@ The touch screen is where you act, the top screen is where you read, as in DS-er
 | BUILD tab | gravel and paved paths, bench, flower bed, ball washer, willow, scenic bridge, BLDG (the building list with prices), TURN, CLEAR |
 | STAFF tab | hire (green) and fire (red) club pros, rangers, groundskeepers and soda vendors |
 | INFO tab | money, holes and golfers panels on the top screen, SAVE, LOAD, golfers' thoughts on or off, HELP |
-| Always | UNDO (30 steps, money included), PAUSE / PLAY, SPEED (1x, 2x, 4x) |
+| Bar under the map, always | UNDO (30 steps, money included), PAUSE / PLAY, SPEED (1x, 2x, 4x), SIZE (brush 1, 2, 3, remembered per tool) |
+
+Every button is at least 28 pixels (about 8 mm) across, so a fingertip works as well as the stylus.
 
 The status line over the map names the tool and its price per tile (exactly, for the tile under the stylus), counts what a
 stroke has spent, and says what to do next. Tiles the game refuses (not your land, too dear, a building) flash red; land the
@@ -40,12 +41,16 @@ panels over it.
 
 | Buttons | |
 | --- | --- |
-| L / R (tap) | zoom out / in |
+| L / R (tap) | zoom out / in (three steps closer than the PC game) |
+| C-stick / D-pad | slide the view |
 | Circle Pad / A | move the top screen's cursor / use the tool there |
 | B | undo |
 | X | pause |
+| Y | next tool tab |
+| ZL / ZR | game speed down / up (through pause) |
+| Select | money, holes, golfers and staff panels on the top screen, then none |
+| Start | pause menu: resume, save, load, controls, quit (D-pad and A, or tap a row) |
 | 3D slider | depth: raised land comes out of the screen, lowered land and water sink into it |
-| Start + Select | quit |
 
 ### Game files
 
