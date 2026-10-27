@@ -33,7 +33,9 @@ const H: f32 = 240.0;
 const BAR_H: f32 = 15.0;
 const WHITE: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
 const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const THOUGHT_FOR: Duration = Duration::from_secs(7);
+const THOUGHT_FOR: Duration = Duration::from_secs(45);
+/// Thoughts kept in the overview's feed.
+const FEED: usize = 5;
 const NOTE_FOR: Duration = Duration::from_millis(2600);
 const CARD_FOR: Duration = Duration::from_secs(7);
 
@@ -50,6 +52,8 @@ pub struct Hud {
     flash: Option<(f64, Instant)>,
     /// Start's pause menu is open, with this row chosen.
     pub menu: Option<usize>,
+    /// The game month now, and the cash when it began: this month's cash flow.
+    month: Option<(i32, f64)>,
 }
 
 /// Start's pause menu, in order.
@@ -61,6 +65,31 @@ const CYCLE: [Panel; 4] = [Panel::Money, Panel::Holes, Panel::Golfers, Panel::St
 
 fn rgba(c: [f32; 3], a: f32) -> [f32; 4] {
     [c[0], c[1], c[2], a]
+}
+
+/// "1 golfer", "3 golfers".
+fn plural(n: usize, one: &str, many: &str) -> String {
+    format!("{n} {}", if n == 1 { one } else { many })
+}
+
+/// The course's fun and challenge as the game's words (each hole's average), or None before a hole is open.
+pub fn rating_words(app: &App) -> Option<(&'static str, &'static str)> {
+    let open = (1..19).filter(|&h| app.club.holes[h].par > 0).count() as i32;
+    if open == 0 {
+        return None;
+    }
+    let r = app.club.ratings;
+    Some((sg_core::ratings::fun_word(r.fun / open), sg_core::ratings::demand_word(r.skill / open)))
+}
+
+/// Golfers' average mood as a word and its colour.
+fn mood_word(m: i32) -> (&'static str, [f32; 4]) {
+    match m {
+        m if m >= 5 => ("Happy", [0.6, 1.0, 0.55, 1.0]),
+        m if m >= 0 => ("Content", [1.0, 1.0, 1.0, 1.0]),
+        m if m >= -4 => ("Unhappy", [1.0, 0.75, 0.5, 1.0]),
+        _ => ("Angry", [1.0, 0.5, 0.45, 1.0]),
+    }
 }
 
 pub fn date_text(app: &App) -> String {
@@ -92,7 +121,7 @@ fn ty_name(ty: i32) -> &'static str {
 
 impl Hud {
     pub fn new() -> Hud {
-        Hud { panel: None, card: None, note: None, thoughts: VecDeque::new(), seen: vec![(0, 0); SLOTS], last_cash: None, flash: None, menu: None }
+        Hud { panel: None, card: None, note: None, thoughts: VecDeque::new(), seen: vec![(0, 0); SLOTS], last_cash: None, flash: None, menu: None, month: None }
     }
 
     pub fn toggle(&mut self, p: Panel) {
@@ -111,9 +140,25 @@ impl Hud {
         self.card = None;
     }
 
-    /// Select: the next panel (money, holes, golfers, staff), then none.
+    /// Another game is opening: nothing of the last one's money flash, thoughts or notes carries over.
+    pub fn reset(&mut self) {
+        self.close();
+        self.menu = None;
+        self.note = None;
+        self.thoughts.clear();
+        self.seen = vec![(0, 0); SLOTS];
+        self.last_cash = None;
+        self.flash = None;
+        self.month = None;
+    }
+
+    /// Select: the next panel (money, holes, golfers, staff), then none; the help page closes.
     pub fn cycle(&mut self) {
         self.card = None;
+        if self.panel == Some(Panel::Help) {
+            self.panel = None;
+            return;
+        }
         self.panel = match self.panel.and_then(|p| CYCLE.iter().position(|&c| c == p)) {
             Some(i) if i + 1 < CYCLE.len() => Some(CYCLE[i + 1]),
             Some(_) => None,
@@ -179,6 +224,10 @@ impl Hud {
             }
         }
         self.last_cash = Some(cash);
+        let mi = app.econ.month_index();
+        if self.month.is_none_or(|(m, _)| m != mi) {
+            self.month = Some((mi, cash));
+        }
         if self.flash.is_some_and(|(_, at)| now.duration_since(at) > Duration::from_millis(2200)) {
             self.flash = None;
         }
@@ -215,12 +264,14 @@ impl Hud {
                 sg_core::thoughts::Tone::Bad => [1.0, 0.6, 0.5, 1.0],
                 _ => [1.0, 1.0, 1.0, 1.0],
             };
-            let text = format!("{}: {}", app.club.name(speaker), line.text);
+            // the hole they are on (19 is the walk back to the clubhouse)
+            let tag = if (1..19).contains(&gg.hole) { format!("H{} ", gg.hole) } else { String::new() };
+            let text = format!("{tag}{}: {}", app.club.name(speaker), line.text);
             if self.thoughts.back().is_some_and(|(t, _, _)| *t == text) {
                 continue;
             }
             self.thoughts.push_back((text, c, now));
-            while self.thoughts.len() > 3 {
+            while self.thoughts.len() > FEED {
                 self.thoughts.pop_front();
             }
         }
@@ -314,40 +365,67 @@ impl Hud {
             let s = if sum < 0.0 { money(sum.round() as i64) } else { format!("+{}", money(sum.round() as i64)) };
             let c = if sum < 0.0 { [1.0, 0.55, 0.45, fade] } else { [0.6, 1.0, 0.6, fade] };
             x += 6.0;
-            text.draw(g, &u, x, 1.0, &s, Size::Normal, c);
+            x += text.draw(g, &u, x, 1.0, &s, Size::Normal, c);
         }
-        let _ = x;
-        let speed = if app.paused {
-            "PAUSED".to_string()
-        } else {
-            ">".repeat(match app.speed {
-                1 => 1,
-                2 => 2,
-                _ => 3,
-            })
+        let speed = if app.paused { "PAUSED".to_string() } else { format!("{}x", app.speed.max(1)) };
+        let right = match rating_words(app) {
+            Some((f, c)) => format!("Fun: {f}   Challenge: {c}"),
+            None => "No holes open".to_string(),
         };
-        let mid = format!("{}   {}", date_text(app), speed);
-        let mw = text.width(&mid, Size::Normal);
-        text.draw(g, &u, (W - mw) * 0.5, 1.0, &mid, Size::Normal, if app.paused { [1.0, 0.85, 0.3, 1.0] } else { [1.0, 1.0, 1.0, 1.0] });
-        let golfers = app.club.g.iter().filter(|gg| gg.hole > 0 && gg.hole < 19).count();
-        let r = app.club.ratings;
-        let right = format!("{golfers} golfers   Fun {}   Skill {}.{:02}", r.fun, r.skill / 100, (r.skill % 100).abs());
         let rw = text.width(&right, Size::Small);
         text.draw(g, &u, W - rw - 4.0, 2.5, &right, Size::Small, [0.85, 0.92, 1.0, 1.0]);
+        // the date and speed centred between the cash and the ratings, never over either
+        let mid = format!("{}  {}", date_text(app), speed);
+        let mw = text.width(&mid, Size::Normal);
+        let mx = ((W - mw) * 0.5).min(W - rw - 12.0 - mw).max(x + 8.0);
+        text.draw(g, &u, mx, 1.0, &mid, Size::Normal, if app.paused { [1.0, 0.85, 0.3, 1.0] } else { [1.0, 1.0, 1.0, 1.0] });
 
         // the palette, then the overview or a page
         let body = plan.render_palette(g, &uo, demo, app, text, BAR_H + 1.0) + 2.0;
         let lh = text.line_height(Size::Normal);
         let sl = text.line_height(Size::Small) + 1.0;
         match self.panel {
-            Some(Panel::Help) => self.draw_panel_at(g, text, app, Panel::Help, "Select or B: close", (6.0, BAR_H + 2.0, W - 12.0, H - BAR_H - 4.0), &uo),
-            Some(p) => self.draw_panel_at(g, text, app, p, "Select: next page", (4.0, body, W - 8.0, H - body - 2.0), &uo),
+            Some(Panel::Help) => self.draw_panel_at(g, text, app, Panel::Help, "Select: close", (6.0, BAR_H + 2.0, W - 12.0, H - BAR_H - 4.0), &uo),
+            Some(p) => {
+                let next = match CYCLE.iter().position(|&c| c == p).and_then(|i| CYCLE.get(i + 1)) {
+                    Some(Panel::Money) => "Select: Money",
+                    Some(Panel::Holes) => "Select: Holes",
+                    Some(Panel::Golfers) => "Select: Golfers",
+                    Some(Panel::Staff) => "Select: Staff",
+                    _ => "Select: overview",
+                };
+                self.draw_panel_at(g, text, app, p, next, (4.0, body, W - 8.0, H - body - 2.0), &uo)
+            }
             None => {
-                // the mini-map, at the screen's surface
+                // left: a small mini-map at the screen's surface, the holes under it
                 let mh = H - body - 2.0;
-                plan.render_minimap(g, &u, demo, (4.0, body, mh * 1.35, mh));
-                // beside it: the year's money, the course, then the messages
-                let x0 = 8.0 + mh * 1.35;
+                let (mw, mmh) = (132.0, 88.0f32.min(mh));
+                plan.render_minimap(g, &u, demo, (4.0, body, mw, mmh));
+                let gold = [1.0, 0.86, 0.4, 1.0];
+                let dimc = [0.78, 0.84, 0.78, 1.0];
+                rect(g, 4.0, body + mmh + 1.0, mw, mh - mmh - 1.0, [0.02, 0.05, 0.03, 0.85]);
+                let mut hy = body + mmh + 2.0;
+                let open: Vec<usize> = (1..19).filter(|&h| app.club.holes[h].par > 0).collect();
+                if open.is_empty() {
+                    for l in text.wrap("No holes yet: choose HOLE, then tap a tee and a green on the course.", Size::Small, mw - 6.0) {
+                        text.draw(g, &uo, 7.0, hy, &l, Size::Small, dimc);
+                        hy += sl;
+                    }
+                } else {
+                    let rows = ((body + mh - hy) / sl).floor().max(0.0) as usize;
+                    // the newest holes when they do not all fit
+                    for &h in open.iter().skip(open.len().saturating_sub(rows)) {
+                        let row = sg_core::ratings::report_row(h, &app.club.holes[h], app.difficulty, false);
+                        let l = format!("H{h} par {}  {}", row.par, row.type_name);
+                        text.draw(g, &uo, 7.0, hy, &l, Size::Small, WHITE);
+                        let fw = sg_core::ratings::fun_word(row.fun);
+                        let fwd = text.width(fw, Size::Small);
+                        text.draw(g, &uo, 4.0 + mw - fwd - 3.0, hy, fw, Size::Small, dimc);
+                        hy += sl;
+                    }
+                }
+                // right: the money, the golfers, then their thoughts and the game's messages
+                let x0 = 4.0 + mw + 4.0;
                 let cw = W - x0 - 4.0;
                 rect(g, x0 - 2.0, body, cw + 4.0, mh, [0.02, 0.05, 0.03, 0.85]);
                 let urect = |g: &mut Gfx, x: f32, y: f32, w: f32, h: f32, c: [f32; 4]| {
@@ -355,54 +433,55 @@ impl Hud {
                     g.quad(Mode::Flat, None, &uo, [v(x, y), v(x + w, y), v(x + w, y + h), v(x, y + h)]);
                 };
                 let mut y = body + 2.0;
-                let gold = [1.0, 0.86, 0.4, 1.0];
                 let pair = |g: &mut Gfx, y: f32, l: &str, r: &str, c: [f32; 4]| {
-                    text.draw(g, &uo, x0 + 2.0, y, l, Size::Small, [0.78, 0.84, 0.78, 1.0]);
+                    text.draw(g, &uo, x0 + 2.0, y, l, Size::Small, dimc);
                     let rw = text.width(r, Size::Small);
                     text.draw(g, &uo, x0 + cw - rw - 2.0, y, r, Size::Small, c);
                 };
+                let signed = |v: f64| if v >= 0.5 { format!("+{}", money(v.round() as i64)) } else { money(v.round() as i64) };
+                let up_down = |v: f64| if v >= 0.5 { [0.65, 1.0, 0.6, 1.0] } else if v <= -0.5 { [1.0, 0.6, 0.5, 1.0] } else { WHITE };
+                let month = self.month.map(|(_, c0)| app.econ.cash - c0).unwrap_or(0.0);
                 let year = app.econ.ledger.last().copied().unwrap_or([0.0; econ::LEDGER_COLUMNS]);
                 // the ledger's columns: green fees, home sites, food and drink earn; building, facilities, salaries and
                 // upkeep cost; "other" holds the starting funds, so only a loss there counts
-                let income: f64 = year[..3].iter().sum();
-                let costs: f64 = year[3..7].iter().sum::<f64>() + year[7].min(0.0);
-                let net = income + costs;
-                text.draw(g, &uo, x0 + 2.0, y, "This year", Size::Small, gold);
+                let net: f64 = year[..7].iter().sum::<f64>() + year[7].min(0.0);
+                pair(g, y, "This month", &signed(month), up_down(month));
                 y += sl;
-                pair(g, y, "Income", &money(income.round() as i64), [0.65, 1.0, 0.6, 1.0]);
+                pair(g, y, "This year", &signed(net), up_down(net));
                 y += sl;
-                pair(g, y, "Costs", &money(costs.round() as i64), [1.0, 0.65, 0.55, 1.0]);
-                y += sl;
-                pair(g, y, "Net", &money(net.round() as i64), if net < 0.0 { [1.0, 0.6, 0.5, 1.0] } else { [0.65, 1.0, 0.6, 1.0] });
-                y += sl + 3.0;
-                let open = (1..19).filter(|&h| app.club.holes[h].par > 0).count();
-                let par: i32 = (1..19).map(|h| app.club.holes[h].par as i32).sum();
+                let fees = year[0];
+                if fees.abs() < 0.5 && app.club.g.iter().any(|gg| gg.hole > 0 && gg.hole < 19) {
+                    text.draw(g, &uo, x0 + 2.0, y, "Green fees come in as rounds finish", Size::Small, [0.6, 0.66, 0.6, 1.0]);
+                    y += sl;
+                }
+                y += 3.0;
                 let on = app.club.g.iter().filter(|gg| gg.hole > 0 && gg.hole < 19).count();
                 let waiting = app.club.g.iter().filter(|gg| gg.hole == -1).count();
-                let mood = {
-                    let m: Vec<i32> = app.club.g.iter().filter(|gg| gg.hole > 0 && gg.hole < 19).map(|gg| gg.mood).collect();
-                    if m.is_empty() { 0 } else { m.iter().sum::<i32>() / m.len() as i32 }
-                };
-                text.draw(g, &uo, x0 + 2.0, y, "The course", Size::Small, gold);
+                pair(g, y, "Golfers", &format!("{} playing, {} waiting", on, waiting), WHITE);
                 y += sl;
-                pair(g, y, "Holes open", &(if open > 0 { format!("{open}   par {par}") } else { "none yet".into() }), WHITE);
-                y += sl;
-                pair(g, y, "Golfers", &format!("{on} playing, {waiting} waiting"), WHITE);
-                y += sl;
-                pair(g, y, "Their mood", &format!("{mood}"), if mood < 0 { [1.0, 0.65, 0.55, 1.0] } else { WHITE });
-                y += sl + 3.0;
-                // the game's message, the newest thoughts, a tool's note: as many lines as fit below
+                if on > 0 {
+                    let m: i32 = app.club.g.iter().filter(|gg| gg.hole > 0 && gg.hole < 19).map(|gg| gg.mood).sum::<i32>() / on as i32;
+                    let (w, c) = mood_word(m);
+                    pair(g, y, "Their mood", w, c);
+                    y += sl;
+                }
+                if app.club.ratings.waitlist > 0 {
+                    pair(g, y, "Membership waiting list", &plural(app.club.ratings.waitlist as usize, "person", "people"), WHITE);
+                    y += sl;
+                }
+                y += 3.0;
+                // the game's message, the golfers' thoughts (H = the hole they are on), a tool's note: newest at the foot
                 let mut foot: Vec<(String, [f32; 4])> = Vec::new();
                 if app.ticker.showing && !app.ticker.text.is_empty() {
                     for l in text.wrap(&app.ticker.text.replace('\n', " "), Size::Small, cw - 4.0).into_iter().take(3) {
                         foot.push((l, [1.0, 0.9, 0.45, 1.0]));
                     }
                 }
-                for (s, c, at) in self.thoughts.iter().rev().take(2).collect::<Vec<_>>().into_iter().rev() {
+                for (s, c, at) in self.thoughts.iter() {
                     let age = now.duration_since(*at).as_secs_f32() / THOUGHT_FOR.as_secs_f32();
-                    let a = if age > 0.75 { (1.0 - age) * 4.0 } else { 1.0 };
+                    let a = if age > 0.8 { (1.0 - age) * 5.0 } else { 1.0 };
                     for l in text.wrap(s, Size::Small, cw - 4.0).into_iter().take(2) {
-                        foot.push((l, rgba([c[0], c[1], c[2]], a.clamp(0.0, 1.0))));
+                        foot.push((l, rgba([c[0], c[1], c[2]], a.clamp(0.25, 1.0))));
                     }
                 }
                 if let Some((s, _)) = &self.note {
@@ -413,10 +492,10 @@ impl Hud {
                 let room = ((body + mh - y) / sl).floor().max(0.0) as usize;
                 let n = foot.len();
                 if n > 0 && room > 0 {
-                    urect(g, x0, y - 1.0, cw, 1.0, [1.0, 1.0, 1.0, 0.15]);
+                    urect(g, x0, y - 2.0, cw, 1.0, [1.0, 1.0, 1.0, 0.15]);
                 }
                 for (i, (s, c)) in foot.into_iter().skip(n.saturating_sub(room)).enumerate() {
-                    text.draw(g, &uo, x0 + 2.0, y + 1.0 + i as f32 * sl, &s, Size::Small, c);
+                    text.draw(g, &uo, x0 + 2.0, y + i as f32 * sl, &s, Size::Small, c);
                 }
             }
         }
@@ -425,7 +504,8 @@ impl Hud {
         if let Some((lines, _)) = &self.card {
             let w = lines.iter().map(|l| text.width(l, Size::Normal)).fold(120.0, f32::max) + 16.0;
             let h = lines.len() as f32 * lh + 10.0;
-            let (x, y) = ((W - w) * 0.5, body + 6.0);
+            let w = w.min(W - 8.0);
+            let (x, y) = (4.0, body + 2.0);
             let v = |x: f32, y: f32, c: [f32; 4]| Vert::new(x, y, 0.0, 0.0, 0.0).col(c);
             let card = [0.02, 0.06, 0.03, 0.94];
             g.quad(Mode::Flat, None, &uo, [v(x, y, card), v(x + w, y, card), v(x + w, y + h, card), v(x, y + h, card)]);
@@ -535,27 +615,37 @@ impl Hud {
                     }
                     n += 1;
                     let yards = if r.length > 0 { r.length } else { hole_length(r.back, r.pin).0 };
-                    let state = if r.par == 0 { "not open: tap its green".to_string() } else { format!("par {}   {} yds", r.par, yards) };
-                    let mood = if r.tee_shots > 0 { format!("played {}   mood {}", r.tee_shots, r.mood_sum / r.tee_shots.max(1)) } else { String::new() };
-                    rows.push((format!("Hole {h}   {state}"), mood, if r.par == 0 { [1.0, 0.85, 0.4, 1.0] } else { white }));
+                    if r.par == 0 {
+                        rows.push((format!("Hole {h}   not open: tap its green"), String::new(), [1.0, 0.85, 0.4, 1.0]));
+                        continue;
+                    }
+                    // the Course Report's row: what kind of hole it plays as, how much fun, what it earns
+                    let rep = sg_core::ratings::report_row(h, r, app.difficulty, false);
+                    let right = if r.tee_shots > 0 {
+                        format!("fun {}   fees {}", sg_core::ratings::fun_word(rep.fun).to_lowercase(), money(rep.revenue as i64))
+                    } else {
+                        "not played yet".to_string()
+                    };
+                    rows.push((format!("Hole {h}   par {}   {yards} yds   {}", r.par, rep.type_name), right, white));
                 }
                 if n == 0 {
                     rows.push(("No holes yet: HOLE (COURSE row), then tap a tee and a green on the course".into(), String::new(), dim));
                 }
                 let r = app.club.ratings;
                 rows.push((String::new(), String::new(), white));
-                rows.push((format!("Course par {}   Fun {}   Skill {}.{:02}", r.par, r.fun, r.skill / 100, (r.skill % 100).abs()), String::new(), dim));
+                let words = rating_words(app).map(|(f, c)| format!("   Fun: {f}   Challenge: {c}")).unwrap_or_default();
+                rows.push((format!("Course par {}{words}", r.par), String::new(), dim));
                 (format!("Holes ({n})"), rows)
             }
             Panel::Golfers => {
                 let on: Vec<usize> = (0..SLOTS.min(app.club.g.len())).filter(|&gi| app.club.g[gi].hole > 0 && app.club.g[gi].hole < 19).collect();
                 let waiting = app.club.g.iter().filter(|gg| gg.hole == -1).count();
                 let avg = if on.is_empty() { 0 } else { on.iter().map(|&gi| app.club.g[gi].mood).sum::<i32>() / on.len() as i32 };
-                rows.push((format!("{} on the course   {} waiting   average mood {}", on.len(), waiting, avg), String::new(), dim));
+                rows.push((format!("{} on the course   {} waiting   mood: {}", on.len(), waiting, mood_word(avg).0.to_lowercase()), String::new(), dim));
                 for &gi in on.iter().take(14) {
                     let gg = &app.club.g[gi];
                     let c = if gg.mood < 0 { [1.0, 0.65, 0.55, 1.0] } else { white };
-                    rows.push((app.club.name(gi), format!("hole {}   mood {}", gg.hole, gg.mood), c));
+                    rows.push((app.club.name(gi), format!("hole {}   {}", gg.hole, mood_word(gg.mood).0.to_lowercase()), c));
                 }
                 ("Golfers".into(), rows)
             }
@@ -573,19 +663,18 @@ impl Hud {
             }
             Panel::Help => {
                 for (l, r) in [
-                    ("Choose a tool", "D-pad left / right (up / down: category)"),
-                    ("Paint with it", "drag on the course (bottom screen)"),
-                    ("Do it once", "tap"),
-                    ("Look at something", "hold the stylus still"),
+                    ("Choose a tool", "D-pad left / right"),
+                    ("Change category", "L / R"),
+                    ("Use it", "drag or tap on the course (bottom screen)"),
+                    ("Brush size", "D-pad up / down"),
+                    ("Look at something", "hold the stylus still until the ring fills"),
                     ("New hole", "HOLE: tap a tee, then a green"),
                     ("Hire, fire, save, a page", "choose it, then A"),
-                    ("Brush size", "Y"),
-                    ("Scroll", "Circle Pad, C-stick, or hold L or R and drag"),
-                    ("Zoom", "tap L (out) or R (in)"),
-                    ("Undo", "B"),
-                    ("Pause", "X"),
-                    ("Game speed", "ZL slower, ZR faster"),
-                    ("Money, holes, golfers, staff", "Select"),
+                    ("Scroll", "Circle Pad, C-stick, MOVE tool, or stroke into the edge"),
+                    ("Zoom", "ZL (out) / ZR (in)"),
+                    ("Undo (or clear a placed tee)", "B"),
+                    ("Pause / game speed", "X / Y"),
+                    ("Money, holes, golfers, staff pages", "Select"),
                     ("Menu: save, load, title screen, quit", "Start"),
                 ] {
                     rows.push((l.to_string(), r.to_string(), white));

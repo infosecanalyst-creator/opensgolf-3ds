@@ -36,42 +36,49 @@ drawn twice: the course is on the bottom screen, the dashboard on top.
 | --- | --- |
 | Drag | paint or build along the stylus |
 | Tap | do it once (HOLE: tap a tee spot, then a green spot, or drag tee to green; it builds both and opens the hole) |
-| Hold still for half a second | inspect: a golfer, a hole, a building or the ground, shown on the top screen |
-| Hold L or R and drag | slide the view with the stylus (dragging into the screen's edge while painting scrolls too) |
+| Hold still until the ring round the stylus fills (0.8 s) | inspect: a golfer, a hole, a building or the ground, shown on the top screen |
+| MOVE tool, drag | slide the view with the stylus (a paint stroke into the screen's edge scrolls too) |
 
 The brush's footprint, the hole being laid out and tiles the game refuses (not your land, too dear, a building) are drawn on
 the land.
 
 **Top screen: the dashboard.**
 
-- A bar: cash (with what you just spent or earned), the date and speed, golfers on the course, fun and skill ratings.
-- The tools: four categories (COURSE, BUILD, STAFF, INFO) and the chosen one's row. **D-pad left / right** chooses a tool,
-  **up / down** a category. A tool you use on the course (a paint, raise / lower, a path, an item, a building) is ready as
-  soon as it is chosen; a button that acts (hire, fire, save, load, a page) acts on **A**.
+- A bar: cash (with what you just spent or earned), the date and speed, and the course's fun and challenge in the game's
+  own words.
+- The tools: four categories (COURSE, BUILD, STAFF, INFO) and the chosen one's row. **L / R** choose a category, **D-pad left
+  / right** a tool. A tool you use on the course (a paint, raise / lower, a path, an item, a building) is ready as soon as it
+  is chosen; a button that acts (hire, fire, save, load, a page) acts on **A**.
   - COURSE: hole, tee, green, fairway, rough, deep rough, sand, water, trees, raise, lower, move
   - BUILD: gravel and paved paths, bench, flower bed, ball washer, willow, scenic bridge, the buildings (dimmed until enough
     holes unlock them), turn, clear
   - STAFF: hire (+) and fire (-) club pros, rangers, groundskeepers and soda vendors
   - INFO: the money, holes, golfers and staff pages, save, load, golfers' thoughts on or off, help
-- Under the row, the tool's price per tile (exactly, for the tile under the stylus), what a stroke has spent, and what to do
-  next.
-- The overview: a mini-map of the whole course with a frame for what the bottom screen shows, this year's income, costs and
-  net, holes open, golfers playing and waiting and their mood, and the game's messages and golfers' thoughts. **Select**
-  shows the money, holes, golfers and staff pages in its place, then the overview again.
+- Under the row, the tool's price per tile (exactly, for the tile under the stylus), what a stroke has spent, what to do
+  next, why the game turned tiles down (not your land, not enough money, something in the way), and when a locked
+  building opens.
+- The overview: a mini-map of the whole course with a frame for what the bottom screen shows, and under it the holes (par,
+  the kind of hole it plays as, its fun); this month's and this year's money; golfers playing and waiting and their mood;
+  the membership waiting list; and a feed of golfers' thoughts (tagged with the hole they are on) and the game's messages.
+  **Select** shows the money, holes (with each hole's type, fun and fees), golfers and staff pages in its place, then the
+  overview again.
 
 | Buttons | |
 | --- | --- |
-| D-pad | choose a tool (left / right) and a category (up / down) |
+| L / R | tool category |
+| D-pad left / right | tool |
+| D-pad up / down | brush size 1, 2, 3 (remembered per tool) |
 | A | the chosen button acts (hire, fire, save, a page) |
-| B | undo (30 steps, money included) |
+| B | clears a tee waiting for its green, else undo (30 steps, money included) |
 | X | pause |
-| Y | brush size 1, 2, 3 (remembered per tool) |
+| Y | game speed 1x, 2x, 4x |
 | Circle Pad / C-stick | slide the view |
-| L / R (tap) | zoom out / in (three steps closer than the PC game) |
-| ZL / ZR | game speed down / up (through pause) |
+| ZL / ZR | zoom out / in (three steps closer than the PC game) |
 | Select | the money, holes, golfers and staff pages, then the overview |
 | Start | pause menu: resume, save, load, controls, title screen, quit (D-pad and A, or tap a row) |
 | 3D slider | the dashboard's tools and pages stand out of the screen a little |
+
+The game saves itself every two minutes of play as well as when you leave it.
 
 ### Game files
 

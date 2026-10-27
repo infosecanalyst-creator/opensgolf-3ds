@@ -5,11 +5,11 @@
 //! itself under the stylus rather than a stand-in map of it: what you touch is what changes.
 //!
 //!   * Bottom screen, all of it: the course in the game's own view. A drag paints (or builds) along the pen; a tap does it
-//!     once; holding still for half a second inspects instead (golfer, hole, building or ground, on the top screen). Holding
-//!     L or R while dragging, or the MOVE tool, slides the view with the pen; a stroke into the screen's edge scrolls on.
+//!     once; holding still until a ring round the stylus fills (0.8 s) inspects instead (golfer, hole, building or ground,
+//!     on the top screen). The MOVE tool slides the view with the pen; a stroke into the screen's edge scrolls on.
 //!     The brush's footprint, the hole being laid out and the tiles the game turned down are drawn on the land.
-//!   * Top screen: four categories (COURSE, BUILD, STAFF, INFO) and the chosen one's tools in a row. Left and right on the
-//!     D-pad choose a tool, up and down a category. Tools you use on the course arm as soon as they are chosen; buttons
+//!   * Top screen: four categories (COURSE, BUILD, STAFF, INFO) and the chosen one's tools in a row. L and R choose a
+//!     category, left and right on the D-pad a tool, up and down the brush size. Tools you use on the course arm as soon as they are chosen; buttons
 //!     that act (hire, fire, save, a page) act on A. Under the row, the chosen tool's price and what it does.
 //!   * A mini-map of the whole course (the flat plan this module used to draw on the bottom screen) with a frame for what
 //!     the bottom screen shows.
@@ -41,7 +41,9 @@ const EDGE_SPEED: f32 = 4.0;
 /// A press that moves less than this (pixels) is a tap or a hold, not a drag.
 const SLOP: f32 = 4.0;
 /// Holding still this long inspects.
-const HOLD: Duration = Duration::from_millis(450);
+const HOLD: Duration = Duration::from_millis(800);
+/// The ring under a still stylus starts filling after this, so a careful aim is not mistaken for a look.
+const RING_FROM: Duration = Duration::from_millis(250);
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Tab {
@@ -194,6 +196,8 @@ impl Stroke {
 struct Press {
     x0: f32,
     y0: f32,
+    /// The world point it began on (x, z): a hole's tee, a look, a stroke's first dab stay put if the view moves.
+    w0: (f32, f32),
     t0: Instant,
     /// It moved past SLOP: a drag.
     stroked: bool,
@@ -205,6 +209,7 @@ struct Press {
 
 pub struct Plan {
     tex: Option<TextureId>,
+    tex_size: (u32, u32),
     /// The terrain changed: the plan's picture is redrawn at the next frame (`refresh`).
     pub stale: bool,
     pub tab: Tab,
@@ -236,6 +241,8 @@ pub struct Plan {
     picking: bool,
     /// The D-pad's place in each category's row.
     sel: [usize; 4],
+    /// Why the game last turned tiles down, shown on the status line for a moment.
+    refusal: Option<(&'static str, Instant)>,
     /// Golfers' positions on the plan, world x, z (main.rs, each frame).
     pub golfers: Vec<(f32, f32)>,
     /// The top screen shows thoughts (INFO's THINK button).
@@ -384,17 +391,17 @@ impl Tool {
             Tool::Path(1) => ("PATH", "GRAVEL PATH"),
             Tool::Path(_) => ("PAVED", "PAVED PATH"),
             Tool::Item(land::K_BENCH) => ("BENCH", "BENCH"),
-            Tool::Item(land::K_FLOWERS) => ("FLOWR", "FLOWER BED"),
-            Tool::Item(land::K_WASHER) => ("WASH", "BALL WASHER"),
-            Tool::Item(land::K_WILLOW) => ("WILLW", "WILLOW TREE"),
-            Tool::Item(land::K_BRIDGE) => ("BRIDG", "SCENIC BRIDGE"),
+            Tool::Item(land::K_FLOWERS) => ("FLOWER", "FLOWER BED"),
+            Tool::Item(land::K_WASHER) => ("WASHER", "BALL WASHER"),
+            Tool::Item(land::K_WILLOW) => ("WILLOW", "WILLOW TREE"),
+            Tool::Item(land::K_BRIDGE) => ("BRIDGE", "SCENIC BRIDGE"),
             Tool::Item(_) => ("ITEM", "ITEM"),
             Tool::Building(_) => ("BLDG", "BUILDING"),  // label() and the status line use the game's name
             Tool::Remove => ("CLEAR", "CLEAR"),
             Tool::Pick => ("BLDG", "BUILDINGS"),
             Tool::Turn => ("TURN", "TURN"),
-            Tool::Hire(k) => (STAFF_SHORT[k.min(3)], "HIRE"),
-            Tool::Fire(_) => ("FIRE", "FIRE"),
+            Tool::Hire(k) => (STAFF_SHORT[k.min(3)], ["HIRE A CLUB PRO", "HIRE A RANGER", "HIRE A GROUNDSKEEPER", "HIRE A SODA VENDOR"][k.min(3)]),
+            Tool::Fire(k) => ("FIRE", ["FIRE A CLUB PRO", "FIRE A RANGER", "FIRE A GROUNDSKEEPER", "FIRE A SODA VENDOR"][k.min(3)]),
             Tool::Show(Panel::Money) => ("MONEY", "MONEY"),
             Tool::Show(Panel::Holes) => ("HOLES", "HOLES"),
             Tool::Show(Panel::Golfers) => ("GOLF", "GOLFERS"),
@@ -440,6 +447,7 @@ impl Plan {
         let rgb = (0..t::TYPE_COUNT).map(|ty| rgb.get(ty).copied().flatten().unwrap_or_else(|| fallback_rgb(ty as i32))).collect();
         Plan {
             tex: None,
+            tex_size: (0, 0),
             stale: true,
             tab: Tab::Course,
             tool: Tool::Hole,
@@ -459,6 +467,7 @@ impl Plan {
             flash_until: None,
             picking: false,
             sel: [0; 4],
+            refusal: None,
             golfers: Vec::new(),
             thoughts: true,
         }
@@ -542,7 +551,8 @@ impl Plan {
                 self.on_strip = false;
                 self.pen = Some((x, y));
                 let pan = pan || self.tool == Tool::Hand;
-                self.press = Some(Press { x0: x, y0: y, t0: Instant::now(), stroked: pan, done: pan, pan });
+                let w0 = Self::to_world(d, x, y);
+                self.press = Some(Press { x0: x, y0: y, w0, t0: Instant::now(), stroked: pan, done: pan, pan });
             }
             TouchPhase::Moved => {
                 if self.on_strip {
@@ -566,13 +576,13 @@ impl Plan {
                         return out;
                     }
                     p.stroked = true;
-                    let (x0, y0) = (p.x0, p.y0);
+                    let w0 = p.w0;
                     if self.tool == Tool::Hole {
                         // the drag runs from the tee to the green: nothing is built until the pen comes up
                         return out;
                     }
                     self.remember(app);
-                    let (wx, wz) = Self::to_world(d, x0, y0);
+                    let (wx, wz) = w0;
                     self.apply(d, app, wx, wz, &mut out);
                     out.sound = self.sound();
                 }
@@ -585,7 +595,7 @@ impl Plan {
                     if !p.done {
                         if !p.stroked {
                             // a tap: a new hole's green opens it; else the tool once
-                            let (wx, wz) = Self::to_world(d, p.x0, p.y0);
+                            let (wx, wz) = p.w0;
                             if Self::open_at(app, wx, wz) {
                                 self.stale = true;
                                 out.action = Some(Action::Note("Hole open"));
@@ -598,7 +608,7 @@ impl Plan {
                                 self.finish(app);
                             }
                         } else if self.tool == Tool::Hole {
-                            let tee = Self::to_world(d, p.x0, p.y0);
+                            let tee = p.w0;
                             let green = self.pen.map(|(x, y)| Self::to_world(d, x, y)).unwrap_or(tee);
                             let (tee, green) = (Self::tile_of(d, tee.0, tee.1), Self::tile_of(d, green.0, green.1));
                             self.build_hole(app, tee, green, &mut out);
@@ -670,7 +680,8 @@ impl Plan {
         }
         self.sel[ti] = self.sel[ti].min(row.len() - 1);
         let tool = row[self.sel[ti]];
-        if !tool.momentary() && (dx != 0 || tool != self.tool) && dy == 0 {
+        let locked = matches!(tool, Tool::Building(k) if !app.build_available(k as usize));
+        if !tool.momentary() && tool != self.tool && !(dy != 0 && locked) {
             self.press_slot(app, tool, &mut out);
             if out.sound == Some("Interface/Button1.wav") {
                 out.sound = Some("Interface/Button2.wav");
@@ -697,11 +708,38 @@ impl Plan {
         out
     }
 
-    /// Y: the brush size, 1 to 3, for the tools that have one.
-    pub fn cycle_size(&mut self) -> Stroke {
+    /// Drops a press under way (the pause menu opened over it, or another game is opening): its stroke ends as if the
+    /// stylus had come up, so nothing paints on by itself and the next stroke takes its own undo point.
+    pub fn drop_press(&mut self, app: &mut App) {
+        self.finish(app);
+        self.press = None;
+        self.pen = None;
+        self.last = None;
+        self.last_corner = None;
+        self.last_tile = None;
+    }
+
+    /// Another game is opening: nothing of this one's tools carries over.
+    pub fn reset(&mut self, app: &mut App) {
+        self.drop_press(app);
+        self.hole_tee = None;
+        self.flash.clear();
+        self.flash_until = None;
+        self.refusal = None;
+        self.hint = None;
+        self.stale = true;
+    }
+
+    /// B with a tee placed and no green yet: the tee is taken back (true); else B is undo.
+    pub fn cancel_tee(&mut self) -> bool {
+        self.hole_tee.take().is_some()
+    }
+
+    /// D-pad up / down: the brush size, 1 to 3, for the tools that have one.
+    pub fn change_size(&mut self, by: i32) -> Stroke {
         let mut out = Stroke::default();
         if self.tool.sized() {
-            let s = self.size() % 3 + 1;
+            let s = (self.size() + by).clamp(1, 3);
             self.sizes.insert(self.tool.key(), s);
             out.sound = Some("Interface/Button2.wav");
         } else {
@@ -735,9 +773,12 @@ impl Plan {
         }
         let Some((x, y)) = self.pen else { return out };
         let Some(p) = self.press.as_mut() else { return out };
+        if !p.stroked && !p.done && p.t0.elapsed() > RING_FROM {
+            out.scrolled = true; // the ring fills: redraw
+        }
         if !p.stroked && !p.done && p.t0.elapsed() >= HOLD {
             p.done = true;
-            let (wx, wz) = Self::to_world(d, p.x0, p.y0);
+            let (wx, wz) = p.w0;
             out.action = Some(Action::Inspect(wx, wz));
             out.sound = Some("Interface/Button2.wav");
             return out;
@@ -811,6 +852,12 @@ impl Plan {
 
     /// A whole hole: the tee, a 3 x 3 green with its cup in the middle, then opened, as one undo step.
     fn build_hole(&mut self, app: &mut App, tee: (i32, i32), green: (i32, i32), out: &mut Stroke) {
+        // both ends on the map (a drag can start off it, at the course's edge)
+        if !app.terrain.inside(tee.0, tee.1) || !app.terrain.inside(green.0, green.1) {
+            out.sound = Some("Interface/Wrong.wav");
+            out.action = Some(Action::Note("The tee and the green have to be on the course"));
+            return;
+        }
         let (yards, _) = hole_length(tee, green);
         if (green.0 - tee.0).abs().max((green.1 - tee.1).abs()) < 3 || yards < 75 {
             out.sound = Some("Interface/Wrong.wav");
@@ -899,7 +946,7 @@ impl Plan {
             app.paint_idx = i;
         }
         app.paint_tiles(tiles);
-        tiles.iter().copied().filter(|&(x, y)| app.terrain.ty[app.terrain.tile_index(x, y)] != ty).collect()
+        tiles.iter().copied().filter(|&(x, y)| !app.terrain.inside(x, y) || app.terrain.ty[app.terrain.tile_index(x, y)] != ty).collect()
     }
 
     /// Puts the tool down once at world (wx, wz), through the game.
@@ -917,10 +964,22 @@ impl Plan {
                         }
                     }
                 }
+                let cash = app.econ.cash;
                 let refused = self.paint(app, &tiles, ty);
                 if refused.len() < tiles.len() {
                     out.grow(x0, y0, x0 + s - 1, y0 + s - 1);
                     self.stale = true;
+                }
+                if let Some(&(rx, ry)) = refused.first() {
+                    // why: not the club's land, not enough money, or something in the way
+                    let why = if !app.land.as_ref().is_none_or(|l| l.in_play(rx, ry)) {
+                        "NOT YOUR LAND: BUY MORE TO BUILD THERE"
+                    } else if app.paint_cost_at(rx, ry).is_some_and(|c| c as f64 * 100.0 > cash) {
+                        "NOT ENOUGH MONEY"
+                    } else {
+                        "SOMETHING IS IN THE WAY"
+                    };
+                    self.refusal = Some((why, Instant::now() + Duration::from_millis(2500)));
                 }
                 if !refused.is_empty() {
                     let mut f = std::mem::take(&mut self.flash);
@@ -1082,15 +1141,55 @@ impl Plan {
         }
         let img = Rgba { w, h, px };
         match self.tex {
-            Some(id) => g.update_texture(id, &img),
-            None => self.tex = Some(g.texture_crisp(&img)),
+            Some(id) if self.tex_size == (w, h) => g.update_texture(id, &img),
+            old => {
+                // first time, or a course of another size: a texture of its own size
+                if let Some(id) = old {
+                    g.delete_texture(id);
+                }
+                self.tex = Some(g.texture_crisp(&img));
+                self.tex_size = (w, h);
+            }
         }
     }
 
     /// What the status line says.
     fn status(&self, d: &Demo, app: &App, at: (f32, f32)) -> (String, [f32; 4]) {
-        if let Some(h) = &self.hint {
+        // the chosen button when it is not the tool in hand: what A would do, or why it is locked
+        let chosen = self.chosen();
+        if chosen != self.tool {
+            match chosen {
+                Tool::Building(k) if !app.build_available(k as usize) => {
+                    let n = building_name(k).to_uppercase();
+                    let why = if k == land::K_HOME_SITE {
+                        "OPENS WHEN MEMBERS WANT HOMES".to_string()
+                    } else {
+                        match (0..=18).find(|&h| land::unlocked_kinds(h, false) > k) {
+                            Some(h) => format!("OPENS AT {h} HOLES"),
+                            None => "LOCKED".to_string(),
+                        }
+                    };
+                    return (format!("{n}: {why}"), [0.75, 0.78, 0.72, 1.0]);
+                }
+                Tool::Hire(k) => {
+                    let n = app.employees.iter().filter(|e| e.active && e.job == -2 - k as i8).count();
+                    return (format!("{} (YOU HAVE {n})", chosen.names().1), WHITE);
+                }
+                Tool::Fire(k) => {
+                    let n = app.employees.iter().filter(|e| e.active && e.job == -2 - k as i8).count();
+                    return (format!("{} (YOU HAVE {n})", chosen.names().1), WHITE);
+                }
+                t if t.momentary() => return (format!("{}: PRESS A", t.names().1), WHITE),
+                _ => {}
+            }
+        }
+        if let (Some(h), Tool::Hole) = (&self.hint, self.tool) {
             return (h.clone(), [1.0, 0.86, 0.3, 1.0]);
+        }
+        if let Some((s, until)) = &self.refusal {
+            if Instant::now() < *until {
+                return (s.to_string(), [1.0, 0.6, 0.5, 1.0]);
+            }
         }
         let name = self.tool.names().1;
         if self.in_stroke {
@@ -1103,7 +1202,7 @@ impl Plan {
         let s = match self.tool {
             Tool::Hole => match (self.hole_tee, &self.press) {
                 (_, Some(p)) if p.stroked && !p.pan => {
-                    let tee = Self::tile_of(d, Self::to_world(d, p.x0, p.y0).0, Self::to_world(d, p.x0, p.y0).1);
+                    let tee = Self::tile_of(d, p.w0.0, p.w0.1);
                     let (y, par) = hole_length(tee, tile);
                     format!("HOLE {}   {y} YDS   PAR {par}", app.club.next_hole)
                 }
@@ -1118,21 +1217,21 @@ impl Plan {
                 let n = self.size();
                 // under the pen: what this tile costs (clearing what is there included); else the paint's own price
                 match (self.pen.is_some(), app.paint_cost_at(tile.0, tile.1)) {
-                    (true, Some(c)) => format!("{name} {n}X{n}   {}/TILE HERE", money(c as i64 * 100)),
-                    (true, None) => format!("{name} {n}X{n}   CAN'T PAINT HERE"),
+                    (true, Some(c)) => format!("{name} {n}x{n}   {}/TILE HERE", money(c as i64 * 100)),
+                    (true, None) => format!("{name} {n}x{n}   CAN'T PAINT HERE"),
                     _ => {
                         let c = sg_core::economy::Economy::terrain_cost_units(ty as i32) as i64 * 100;
-                        format!("{name} {n}X{n}   {}/TILE", money(c))
+                        format!("{name} {n}x{n}   {}/TILE", money(c))
                     }
                 }
             }
-            Tool::Raise | Tool::Lower => format!("{name} {}", ["CORNER", "2X2", "HILL"][(self.size() - 1).clamp(0, 2) as usize]),
+            Tool::Raise | Tool::Lower => format!("{name} {}", ["CORNER", "2x2", "HILL"][(self.size() - 1).clamp(0, 2) as usize]),
             Tool::Item(k) | Tool::Building(k) => {
                 let n = if matches!(self.tool, Tool::Building(_)) { building_name(k).to_uppercase() } else { name.to_string() };
                 format!("{n}   {}", money(building_price(k)))
             }
             Tool::Remove => "CLEAR: TAP AN ITEM, PATH OR BUILDING".into(),
-            Tool::Hand => "MOVE VIEW (OR HOLD L AND DRAG)".into(),
+            Tool::Hand => "MOVE: DRAG THE COURSE (OR USE THE CIRCLE PAD)".into(),
             _ => name.to_string(),
         };
         (s, WHITE)
@@ -1141,11 +1240,15 @@ impl Plan {
     /// A tool's label under its button: buildings by the game's own name, the first word of it.
     fn label(tool: Tool) -> String {
         match tool {
-            Tool::Fire(k) => STAFF_SHORT[k.min(3)].to_string(),
+            Tool::Fire(_) => "FIRE".to_string(),
             Tool::Building(k) => {
                 let n = building_name(k).to_uppercase();
                 let w = n.split_whitespace().next().unwrap_or("BLDG").to_string();
-                w.chars().take(6).collect()
+                match w.as_str() {
+                    "DRIVING" => "RANGE".to_string(),
+                    "PUTTING" => "PUTT".to_string(),
+                    _ => w.chars().take(6).collect(),
+                }
             }
             t => t.names().0.to_string(),
         }
@@ -1197,7 +1300,8 @@ impl Plan {
         let key = if chosen.momentary() {
             format!("A: {}", chosen.names().1)
         } else if self.tool.sized() {
-            "Y: BRUSH SIZE".to_string()
+            let n = self.size();
+            format!("BRUSH {n}x{n} (D-PAD UP/DOWN)")
         } else {
             String::new()
         };
@@ -1393,6 +1497,23 @@ impl Plan {
                 g.quad(Mode::Flat, None, &u, q);
             }
         }
+        // a still stylus: a ring filling round it until the press becomes a look (Inspect)
+        if let (Some(p), Some((px, py))) = (&self.press, self.pen) {
+            let held = p.t0.elapsed();
+            if !p.stroked && !p.done && held > RING_FROM {
+                let f = ((held - RING_FROM).as_secs_f32() / (HOLD - RING_FROM).as_secs_f32()).clamp(0.0, 1.0);
+                let ui = Uniforms::flat(&Mat4::ortho(0.0, VIEW_W, VIEW_H, 0.0, -1.0, 1.0), &Mat4::identity());
+                let p2 = Pen2d { u: &ui };
+                let (r, segs) = (13.0, 24);
+                for i in 0..segs {
+                    let (a0, a1) = (i as f32 / segs as f32, (i + 1) as f32 / segs as f32);
+                    let c = if a1 <= f { [1.0, 0.9, 0.3, 0.95] } else { [0.0, 0.0, 0.0, 0.35] };
+                    let ang = |t: f32| (t * std::f32::consts::TAU - std::f32::consts::FRAC_PI_2).sin_cos();
+                    let ((s0, c0), (s1, c1)) = (ang(a0), ang(a1));
+                    p2.line(g, (px + c0 * r, py + s0 * r), (px + c1 * r, py + s1 * r), 2.5, c);
+                }
+            }
+        }
         let Some((x, y)) = self.pen else { return };
         if self.tool == Tool::Hand || self.press.as_ref().is_some_and(|p| p.pan) {
             return;
@@ -1437,7 +1558,7 @@ impl Plan {
             Tool::Hole => {
                 let green = Self::tile_of(d, wx, wz);
                 let tee = match (&self.press, self.hole_tee) {
-                    (Some(p), _) if p.stroked => Some(Self::to_world(d, p.x0, p.y0)).map(|(x, z)| Self::tile_of(d, x, z)),
+                    (Some(p), _) if p.stroked => Some(p.w0).map(|(x, z)| Self::tile_of(d, x, z)),
                     (_, t) => t,
                 };
                 if let Some(tee) = tee {

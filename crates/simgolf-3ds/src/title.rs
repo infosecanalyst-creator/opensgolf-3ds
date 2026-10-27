@@ -428,9 +428,9 @@ impl Title {
             Page::Plots if !back => {
                 let p = &self.plots[self.sel];
                 if p.left > 0 {
-                    format!("{}: {} acres for {}. That leaves {} to build with.", p.place, p.acres, money(p.price), money(p.left))
+                    format!("{} ({}): {} acres for {}. That leaves {} to build with.", p.course, p.place, p.acres, money(p.price), money(p.left))
                 } else {
-                    format!("{}: {} acres for {}, more than the club has.", p.place, p.acres, money(p.price))
+                    format!("{} ({}): {} acres for {}, more than the club has.", p.course, p.place, p.acres, money(p.price))
                 }
             }
             Page::Saves if !back => {

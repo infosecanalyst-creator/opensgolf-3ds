@@ -1,18 +1,17 @@
 //! The 3DS's controls as the events the game crate's `Stage` already handles (mouse, touch, keys) plus two it does not have
 //! (camera pan and zoom as analogue values, which main.rs applies to the camera directly).
 //!
-//! Mapping (change the tables, not the code):
+//! Mapping (change the tables, not the code), the DS building games' layout:
 //!   touch screen         the course (bottom screen), played with the stylus: `Pen` events in its pixels (plan.rs); also as
 //!                        touch events in the original's 800 x 600 UI coordinates for the game's screens
-//!   D-pad                the top screen's tools: left / right a tool, up / down a category (arrow keys); menus too
+//!   L / R                the top screen's tool category, previous / next (PageUp / PageDown)
+//!   D-pad                left / right a tool, up / down the brush size (arrow keys); menus: choose
 //!   A                    the chosen button acts (hire, fire, save, a page); menus: pick
-//!   B                    undo (menus: back)
+//!   B                    clears a placed tee, else undo (menus: back)
 //!   X                    pause (Space, as the original)
-//!   Y                    brush size (Tab)
+//!   Y                    game speed 1x, 2x, 4x (Tab)
 //!   Circle Pad, C-stick  slide the view
-//!   L / R (tapped)       zoom out / in (on release, and only when no drag used them as a modifier)
-//!   L / R held           a stylus drag slides the view instead of painting
-//!   ZL / ZR (New 3DS)    game speed down / up (Q / E)
+//!   ZL / ZR (New 3DS)    zoom out / in (Q / E)
 //!   Start                the pause menu (Escape)
 //!   Select               the top screen's pages: money, holes, golfers, staff, then the overview (F1)
 //!   3D slider            read by gfx.rs each frame; nothing to map
@@ -44,6 +43,8 @@ const BUTTON_KEYS: &[(KeyPad, KeyCode)] = &[
     (KeyPad::SELECT, KeyCode::F1),
     (KeyPad::ZL, KeyCode::Q),
     (KeyPad::ZR, KeyCode::E),
+    (KeyPad::L, KeyCode::PageUp),
+    (KeyPad::R, KeyCode::PageDown),
     (KeyPad::DPAD_UP, KeyCode::Up),
     (KeyPad::DPAD_DOWN, KeyCode::Down),
     (KeyPad::DPAD_LEFT, KeyCode::Left),
@@ -132,21 +133,9 @@ impl Input {
         if pan != (0.0, 0.0) {
             ev.push(Event::Pan(pan.0, pan.1));
         }
-        // L / R: a tap zooms (on release); held, they turn a stylus drag into scrolling the view, and then zoom nothing
-        let shoulder = held.contains(KeyPad::L) || held.contains(KeyPad::R);
-        if shoulder && held.contains(KeyPad::TOUCH) {
-            self.shoulder_used = true;
-        }
-        if !self.shoulder_used {
-            let zoom = up.contains(KeyPad::R) as i32 - up.contains(KeyPad::L) as i32;
-            if zoom != 0 {
-                ev.push(Event::Zoom(zoom));
-            }
-        }
-        if !shoulder {
-            self.shoulder_used = false;
-        }
-        self.shoulder_now = shoulder;
+        // L / R are the tool categories now (BUTTON_KEYS); nothing turns a stylus drag into scrolling (the MOVE tool does)
+        self.shoulder_now = false;
+        self.shoulder_used = false;
 
         // the touch screen: the bottom screen's interface
         let (tx, ty) = hid.touch_position();

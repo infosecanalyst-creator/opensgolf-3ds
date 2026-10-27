@@ -974,17 +974,23 @@ fn open_game(choice: title::Choice, g: &mut Gfx, app: &mut app::App, demo: &mut 
         title::Choice::Quit => return Ok(()),
     }
     drop_ground_batches(app, g);
-    // between the game's middle and near levels: the plan's tiles at the size the stylus design was tried at
-    app.zoom = app::ZOOM_UNIT * 2f32.powf(1.5);
+    // the PC game's nearest level: tiles big enough to hit with the stylus (ZL zooms out for the whole course)
+    app.zoom = app::ZOOM_UNIT * 4.0;
     app.paused = false;
     demo.adopt(g, app);
     demo.sync_view(app);
-    plan.stale = true;
-    hud.close();
-    hud.menu = None;
+    // the ground is built (adopt): the frame loop need not rebuild it again for the load's own "course changed"
+    app.dirty = false;
+    app.refresh_trees();
+    plan.reset(app);
+    hud.reset();
     gfx::trace(&format!("game: {} open in {:.1}s ({}x{} map)", app.course_name, t0.elapsed().as_secs_f32(), app.terrain.w, app.terrain.h));
     Ok(())
 }
+
+/// Seconds of play between autosaves: shorter than the desktop's five minutes, as the save on sleep or the HOME Menu can
+/// only run once the console wakes (the system suspends the game before its main loop sees the flag).
+const AUTOSAVE_SECS: u64 = 120;
 
 /// Saves the game in play as the autosave ("&Latest.sgs"; the two before it move along, autosave.rs).
 fn autosave_now(app: &app::App) {
@@ -1113,6 +1119,8 @@ fn main() {
     let mut last_step = std::time::Instant::now();
     // Start's pause menu: whether the game was paused before it opened (it is put back on Resume)
     let mut menu_was_paused = false;
+    // the stylus went down while the pause menu was open (a press from before it opened picks nothing when it lifts)
+    let mut menu_pen = false;
     // the tiles the strokes of this frame changed (the ground is rebuilt there when the game marks the course changed)
     let mut changed: Option<[i32; 4]> = None;
     gfx::trace(&format!("textures: {} in VRAM, {} in main memory", g.tex_vram, g.tex_linear));
@@ -1204,7 +1212,7 @@ fn main() {
             autosave_now(&app);
             last_autosave = std::time::Instant::now();
         }
-        if !app.paused && last_autosave.elapsed().as_secs() >= autosave::INTERVAL as u64 {
+        if !app.paused && last_autosave.elapsed().as_secs() >= AUTOSAVE_SECS {
             autosave_now(&app);
             last_autosave = std::time::Instant::now();
         }
@@ -1225,11 +1233,20 @@ fn main() {
                         menu_pick = Some(0)
                     }
                     input::Event::Pen(phase, x, y) => {
-                        if let Some(i) = hud::Hud::menu_hit(x, y) {
-                            hud.menu = Some(i);
-                            if matches!(phase, shim::TouchPhase::Ended) {
-                                menu_pick = Some(i);
+                        if matches!(phase, shim::TouchPhase::Started) {
+                            menu_pen = true;
+                        }
+                        let ended = matches!(phase, shim::TouchPhase::Ended | shim::TouchPhase::Cancelled);
+                        if menu_pen {
+                            if let Some(i) = hud::Hud::menu_hit(x, y) {
+                                hud.menu = Some(i);
+                                if ended {
+                                    menu_pick = Some(i);
+                                }
                             }
+                        }
+                        if ended {
+                            menu_pen = false;
                         }
                     }
                     _ => {}
@@ -1268,7 +1285,9 @@ fn main() {
                     mixer.play("Interface/Button2.wav", 0.6, false);
                 }
                 input::Event::KeyDown(shim::KeyCode::Escape, _) => {
-                    // Start: the pause menu (the game stops while it is up)
+                    // Start: the pause menu (the game stops while it is up); a stroke under way ends here
+                    plan.drop_press(&mut app);
+                    menu_pen = false;
                     menu_was_paused = app.paused;
                     app.paused = true;
                     hud.close();
@@ -1281,36 +1300,45 @@ fn main() {
                     mixer.play("Interface/Button2.wav", 0.5, false);
                 }
                 input::Event::KeyDown(shim::KeyCode::Tab, _) => {
-                    // Y: the brush size
-                    strokes.push(plan.cycle_size());
-                }
-                // the D-pad: the top screen's tools (left / right) and categories (up / down)
-                input::Event::KeyDown(shim::KeyCode::Left, _) => strokes.push(plan.nav(&mut app, -1, 0)),
-                input::Event::KeyDown(shim::KeyCode::Right, _) => strokes.push(plan.nav(&mut app, 1, 0)),
-                input::Event::KeyDown(shim::KeyCode::Up, _) => strokes.push(plan.nav(&mut app, 0, -1)),
-                input::Event::KeyDown(shim::KeyCode::Down, _) => strokes.push(plan.nav(&mut app, 0, 1)),
-                input::Event::KeyDown(k @ (shim::KeyCode::Q | shim::KeyCode::E), _) => {
-                    // ZL / ZR: slower / faster, through pause: paused, 1, 2, 4
-                    let steps = [0u32, 1, 2, 4];
-                    let at = if app.paused { 0 } else { steps.iter().position(|&s| s == app.speed as u32).unwrap_or(1) };
-                    let to = if k == shim::KeyCode::Q { at.saturating_sub(1) } else { (at + 1).min(3) };
-                    if to == 0 {
-                        app.paused = true;
-                    } else {
+                    // Y: game speed 1x, 2x, 4x (from a pause it plays on at the speed it had)
+                    if app.paused {
                         app.paused = false;
-                        app.speed = steps[to] as _;
+                    } else {
+                        app.speed = match app.speed {
+                            1 => 2,
+                            2 => 4,
+                            _ => 1,
+                        };
                     }
-                    hud.note(match to {
-                        0 => "Paused",
+                    hud.note(match app.speed {
                         1 => "Speed: normal",
                         2 => "Speed: fast",
                         _ => "Speed: fastest",
                     });
                     mixer.play("Interface/Button2.wav", 0.5, false);
                 }
+                // L / R: the top screen's tool category; the D-pad: a tool (left / right), the brush size (up / down)
+                input::Event::KeyDown(shim::KeyCode::PageUp, _) => strokes.push(plan.nav(&mut app, 0, -1)),
+                input::Event::KeyDown(shim::KeyCode::PageDown, _) => strokes.push(plan.nav(&mut app, 0, 1)),
+                input::Event::KeyDown(shim::KeyCode::Left, _) => strokes.push(plan.nav(&mut app, -1, 0)),
+                input::Event::KeyDown(shim::KeyCode::Right, _) => strokes.push(plan.nav(&mut app, 1, 0)),
+                input::Event::KeyDown(shim::KeyCode::Up, _) => strokes.push(plan.change_size(1)),
+                input::Event::KeyDown(shim::KeyCode::Down, _) => strokes.push(plan.change_size(-1)),
+                input::Event::KeyDown(k @ (shim::KeyCode::Q | shim::KeyCode::E), _) => {
+                    // ZL / ZR: zoom out / in, half the game's steps (its levels double): the small screen wants the in-between
+                    // sizes too, and three steps closer than the PC game goes (its nearest is ZOOM_UNIT x 4)
+                    let (near, far) = (app::ZOOM_UNIT * 4.0 * 2f32.powf(1.5), app::ZOOM_UNIT * (app::far_level() as f32).exp2());
+                    let f = if k == shim::KeyCode::E { std::f32::consts::SQRT_2 } else { std::f32::consts::FRAC_1_SQRT_2 };
+                    app.zoom = (app.zoom * f).clamp(far * 0.999, near * 1.001);
+                }
                 input::Event::MouseDown(shim::MouseButton::Right, _, _) => {
-                    // B: the game's undo, as the UNDO button
-                    strokes.push(plan::Stroke { action: Some(plan::Action::Undo), ..Default::default() });
+                    // B: takes back a tee waiting for its green, else the game's undo
+                    if plan.cancel_tee() {
+                        hud.note("Tee cleared");
+                        mixer.play("Interface/Button2.wav", 0.6, false);
+                    } else {
+                        strokes.push(plan::Stroke { action: Some(plan::Action::Undo), ..Default::default() });
+                    }
                 }
                 input::Event::MouseDown(shim::MouseButton::Left, _, _) => {
                     // A: the chosen button acts (hire, fire, save, a page)
@@ -1332,6 +1360,7 @@ fn main() {
                 4 => {
                     // back to the title, the game saved first (Continue opens it again)
                     autosave_now(&app);
+                    plan.reset(&mut app);
                     title.settings.thoughts = plan.thoughts;
                     title.settings.save();
                     title.refresh(&app);
@@ -1406,7 +1435,10 @@ fn main() {
                             drop_ground_batches(&mut app, &mut g);
                             demo.adopt(&mut g, &app);
                             demo.sync_view(&app);
-                            plan.stale = true;
+                            app.dirty = false;
+                            app.refresh_trees();
+                            plan.reset(&mut app);
+                            hud.reset();
                             changed = None;
                             hud.note("Loaded the saved game");
                         }
@@ -1429,6 +1461,7 @@ fn main() {
             app.cam_z = app.cam_z.clamp(-hz, hz);
             demo.cam_x = app.cam_x;
             demo.cam_z = app.cam_z;
+            demo.sync_view(&app);
         }
         // golfers on the plan, and the top screen's thoughts, money and messages
         plan.golfers.clear();
@@ -1490,14 +1523,6 @@ fn main() {
         plan.refresh(&mut g, &demo, &app);
         g.set_stereo_span(STEREO_FULL_HEIGHT, PITCH as f32, DEPTH_RANGE);
         let eyes: &[Eye] = if g.slider() > 0.0 { &[Eye::Left, Eye::Right] } else { &[Eye::Left] };
-        // the top screen: the dashboard (hud.rs, plan.rs's palette and mini-map); with the 3D slider up the palette and
-        // pages stand a little out of the screen, the mini-map at its surface
-        let depth = g.slider() * 3.0;
-        for &eye in eyes {
-            g.begin_screen(Screen::Top, eye, [0x10, 0x1a, 0x12]);
-            let off = if eyes.len() == 1 { 0.0 } else if eye == Eye::Left { depth } else { -depth };
-            hud.render(&mut g, &text, &app, &plan, &demo, off);
-        }
         // a hole built (a tee and a green) but not open: the status line says how to open it
         plan.hint = {
             let h = app.club.next_hole;
@@ -1507,6 +1532,14 @@ fn main() {
             };
             ready.then(|| format!("HOLE {h} IS BUILT: TAP ITS GREEN TO OPEN IT"))
         };
+        // the top screen: the dashboard (hud.rs, plan.rs's palette and mini-map); with the 3D slider up the palette and
+        // pages stand a little out of the screen, the mini-map at its surface
+        let depth = g.slider() * 3.0;
+        for &eye in eyes {
+            g.begin_screen(Screen::Top, eye, [0x10, 0x1a, 0x12]);
+            let off = if eyes.len() == 1 { 0.0 } else if eye == Eye::Left { depth } else { -depth };
+            hud.render(&mut g, &text, &app, &plan, &demo, off);
+        }
         // the bottom screen: the course, and on it what the tool would do
         g.begin_screen(Screen::Bottom, Eye::Left, [0x2c, 0x3e, 0x50]);
         demo.render_world(&mut g);
@@ -1541,6 +1574,8 @@ fn main() {
     }
     if in_game {
         autosave_now(&app);
+        title.settings.thoughts = plan.thoughts;
+        title.settings.save();
     }
     sg_core::preload::STOP.store(true, Ordering::Relaxed);
     drop(audio);
