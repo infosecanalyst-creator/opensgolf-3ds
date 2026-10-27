@@ -1,8 +1,8 @@
 # OpenSGolf on the New Nintendo 3DS
 
 A 3DS frontend for [OpenSGolf](https://github.com/crspytopgn/opensgolf), the open-source engine that plays Sid Meier's SimGolf.
-The course is on the stereoscopic top screen and you build it with the stylus on the bottom screen, in the style of DS-era
-building games. Target hardware: New 3DS / New 3DS XL (an Old 3DS is not supported yet).
+The course is on the touch screen, built with the stylus as the PC game is with the mouse; the top screen is the club's
+dashboard: the tools, the money and the course's state. Target hardware: New 3DS / New 3DS XL (an Old 3DS is not supported yet).
 
 **Status: work in progress.** The whole game crate runs on the console: painting the course costs money through the game's own
 rules, holes open with a par, golfers arrive and play, staff can be hired, the game saves and loads. Tournaments, the land
@@ -27,47 +27,51 @@ the pause menu, when the console sleeps or goes to the HOME Menu, and every five
 Opening a course takes about 5 seconds on a start after the first: the sprites a course needed are listed in
 `sdmc:/3ds/opensgolf/cache/sprites.txt` and decoded on a spare CPU core while the title is up.
 
-The touch screen is where you act, the top screen is where you read, as in DS-era building games.
+The touch screen is where you act, the top screen is where you read, as in DS-era building games, and the game is never
+drawn twice: the course is on the bottom screen, the dashboard on top.
 
-**Bottom screen:** the course as a flat map, and a strip of tools down its right edge.
+**Bottom screen: the course,** all of it, in the game's own view.
 
-| On the map | |
+| On the course | |
 | --- | --- |
 | Drag | paint or build along the stylus |
-| Tap | do it once |
+| Tap | do it once (HOLE: tap a tee spot, then a green spot, or drag tee to green; it builds both and opens the hole) |
 | Hold still for half a second | inspect: a golfer, a hole, a building or the ground, shown on the top screen |
-| Hold L or R and drag | slide the view (also the D-pad or C-stick; dragging into the map's edge while painting scrolls too) |
+| Hold L or R and drag | slide the view with the stylus (dragging into the screen's edge while painting scrolls too) |
 
-| Strip | |
-| --- | --- |
-| COURSE tab | HOLE (tap a tee spot, then a green spot, or drag tee to green: it builds both and opens the hole, showing length and par as you go), tee, green, fairway, rough, deep rough, sand, water, trees, raise, lower, move |
-| BUILD tab | gravel and paved paths, bench, flower bed, ball washer, willow, scenic bridge, BLDG (the building list with prices), TURN, CLEAR |
-| STAFF tab | hire (green) and fire (red) club pros, rangers, groundskeepers and soda vendors |
-| INFO tab | money, holes and golfers panels on the top screen, SAVE, LOAD, golfers' thoughts on or off, HELP |
-| Bar under the map, always | UNDO (30 steps, money included), PAUSE / PLAY, SPEED (1x, 2x, 4x), SIZE (brush 1, 2, 3, remembered per tool) |
+The brush's footprint, the hole being laid out and tiles the game refuses (not your land, too dear, a building) are drawn on
+the land.
 
-Every button is at least 28 pixels (about 8 mm) across, so a fingertip works as well as the stylus.
+**Top screen: the dashboard.**
 
-The status line over the map names the tool and its price per tile (exactly, for the tile under the stylus), counts what a
-stroke has spent, and says what to do next. Tiles the game refuses (not your land, too dear, a building) flash red; land the
-club does not own is dimmed.
-
-**Top screen:** the 3D course with a bar along the top (cash, with what you just spent or earned, the date and speed, golfers on
-the course, fun and skill ratings), the game's messages and golfers' thoughts along the foot, and the inspect card or the INFO
-panels over it.
+- A bar: cash (with what you just spent or earned), the date and speed, golfers on the course, fun and skill ratings.
+- The tools: four categories (COURSE, BUILD, STAFF, INFO) and the chosen one's row. **D-pad left / right** chooses a tool,
+  **up / down** a category. A tool you use on the course (a paint, raise / lower, a path, an item, a building) is ready as
+  soon as it is chosen; a button that acts (hire, fire, save, load, a page) acts on **A**.
+  - COURSE: hole, tee, green, fairway, rough, deep rough, sand, water, trees, raise, lower, move
+  - BUILD: gravel and paved paths, bench, flower bed, ball washer, willow, scenic bridge, the buildings (dimmed until enough
+    holes unlock them), turn, clear
+  - STAFF: hire (+) and fire (-) club pros, rangers, groundskeepers and soda vendors
+  - INFO: the money, holes, golfers and staff pages, save, load, golfers' thoughts on or off, help
+- Under the row, the tool's price per tile (exactly, for the tile under the stylus), what a stroke has spent, and what to do
+  next.
+- The overview: a mini-map of the whole course with a frame for what the bottom screen shows, this year's income, costs and
+  net, holes open, golfers playing and waiting and their mood, and the game's messages and golfers' thoughts. **Select**
+  shows the money, holes, golfers and staff pages in its place, then the overview again.
 
 | Buttons | |
 | --- | --- |
-| L / R (tap) | zoom out / in (three steps closer than the PC game) |
-| C-stick / D-pad | slide the view |
-| Circle Pad / A | move the top screen's cursor / use the tool there |
-| B | undo |
+| D-pad | choose a tool (left / right) and a category (up / down) |
+| A | the chosen button acts (hire, fire, save, a page) |
+| B | undo (30 steps, money included) |
 | X | pause |
-| Y | next tool tab |
+| Y | brush size 1, 2, 3 (remembered per tool) |
+| Circle Pad / C-stick | slide the view |
+| L / R (tap) | zoom out / in (three steps closer than the PC game) |
 | ZL / ZR | game speed down / up (through pause) |
-| Select | money, holes, golfers and staff panels on the top screen, then none |
+| Select | the money, holes, golfers and staff pages, then the overview |
 | Start | pause menu: resume, save, load, controls, title screen, quit (D-pad and A, or tap a row) |
-| 3D slider | depth: raised land comes out of the screen, lowered land and water sink into it |
+| 3D slider | the dashboard's tools and pages stand out of the screen a little |
 
 ### Game files
 

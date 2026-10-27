@@ -2,19 +2,19 @@
 //! (camera pan and zoom as analogue values, which main.rs applies to the camera directly).
 //!
 //! Mapping (change the tables, not the code):
-//!   touch screen         the bottom screen: the course plan to draw on and its tools (plan.rs), as `Pen` events in its
-//!                        pixels; also as touch events in the original's 800 x 600 UI coordinates for the game's screens
-//!   circle pad           moves the course cursor on the top screen (the mouse pointer of the original)
-//!   L / R held           a stylus drag on the plan slides the view instead of painting; a quick tap of L / R zooms
-//!   A / B                left / right click at the course cursor (A uses the armed tool there, as a pen stroke would;
-//!                        B undoes strokes, up to 20 back)
+//!   touch screen         the course (bottom screen), played with the stylus: `Pen` events in its pixels (plan.rs); also as
+//!                        touch events in the original's 800 x 600 UI coordinates for the game's screens
+//!   D-pad                the top screen's tools: left / right a tool, up / down a category (arrow keys); menus too
+//!   A                    the chosen button acts (hire, fire, save, a page); menus: pick
+//!   B                    undo (menus: back)
 //!   X                    pause (Space, as the original)
-//!   Y                    the bottom strip's next tab (Tab)
-//!   C-stick / D-pad      pan the camera; in the pause menu and on the title screen the D-pad chooses (arrow keys)
+//!   Y                    brush size (Tab)
+//!   Circle Pad, C-stick  slide the view
 //!   L / R (tapped)       zoom out / in (on release, and only when no drag used them as a modifier)
+//!   L / R held           a stylus drag slides the view instead of painting
 //!   ZL / ZR (New 3DS)    game speed down / up (Q / E)
-//!   Start                the pause menu: resume, save, load, controls, quit (Escape)
-//!   Select               steps the top screen's panels: money, holes, golfers, staff, none (F1)
+//!   Start                the pause menu (Escape)
+//!   Select               the top screen's pages: money, holes, golfers, staff, then the overview (F1)
 //!   3D slider            read by gfx.rs each frame; nothing to map
 use crate::screens::{self, TOP_H, TOP_W};
 use crate::shim::{KeyCode, KeyMods, MouseButton, TouchPhase};
@@ -89,7 +89,8 @@ impl Input {
             }
         }
 
-        // circle pad: the course cursor. Dead zone, then a quadratic curve for fine placement near the centre.
+        // circle pad: slides the view (below, with the C-stick). Dead zone, then a quadratic curve for fine moves near the
+        // centre.
         let (cx, cy) = hid.circlepad_position();
         let axis = |v: i16| {
             let f = v as f32 / 156.0;
@@ -99,12 +100,7 @@ impl Input {
                 f * f.abs() * 6.0
             }
         };
-        let (dx, dy) = (axis(cx), -axis(cy));
-        if dx != 0.0 || dy != 0.0 {
-            self.cursor.0 = (self.cursor.0 + dx).clamp(0.0, TOP_W as f32 - 1.0);
-            self.cursor.1 = (self.cursor.1 + dy).clamp(0.0, TOP_H as f32 - 1.0);
-            ev.push(Event::MouseMove(self.cursor.0, self.cursor.1));
-        }
+        let (pdx, pdy) = (axis(cx), -axis(cy));
         for (i, (pad, button)) in [(KeyPad::A, MouseButton::Left), (KeyPad::B, MouseButton::Right)].into_iter().enumerate() {
             if down.contains(pad) {
                 self.held[i] = true;
@@ -131,18 +127,8 @@ impl Input {
         if pan.1.abs() < 0.3 {
             pan.1 = 0.0;
         }
-        if held.contains(KeyPad::DPAD_LEFT) {
-            pan.0 -= 3.0;
-        }
-        if held.contains(KeyPad::DPAD_RIGHT) {
-            pan.0 += 3.0;
-        }
-        if held.contains(KeyPad::DPAD_UP) {
-            pan.1 -= 3.0;
-        }
-        if held.contains(KeyPad::DPAD_DOWN) {
-            pan.1 += 3.0;
-        }
+        pan.0 += pdx;
+        pan.1 += pdy;
         if pan != (0.0, 0.0) {
             ev.push(Event::Pan(pan.0, pan.1));
         }

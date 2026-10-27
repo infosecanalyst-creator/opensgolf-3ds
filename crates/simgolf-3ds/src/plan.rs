@@ -1,19 +1,18 @@
-//! The bottom screen: the course as a flat plan you draw on with the stylus, and a strip of tools down its right edge.
+//! The tools: the course on the bottom screen, played with the stylus as the PC game is with the mouse, and the tool
+//! palette on the top screen, chosen with the D-pad (hud.rs draws the rest of the top screen's dashboard).
 //!
-//! The layout follows the DS and 3DS building games (SimCity DS, Anno 1701 DS, Theme Park DS): the touch screen is where you
-//! act, the top screen is where you read (hud.rs). And it follows what modern builders do with a pointer: the price before you
-//! commit, the reason when something is refused, a long press to look at a thing instead of building on it.
+//! The DS building games' rule (the touch screen is where you act, the top screen is where you read), with the course
+//! itself under the stylus rather than a stand-in map of it: what you touch is what changes.
 //!
-//!   * The plan (x 0..240) shows the ground round the top screen's view from straight above, turned the same 45 degrees and
-//!     squashed as the tilted view is, so shapes match. Land the club does not own is dimmed; buildings, paths and golfers
-//!     are drawn on it. A white frame marks what the top screen shows.
-//!   * Touch: a drag paints (or builds) along the pen; a tap does it once; holding still for half a second inspects instead
-//!     (golfer, hole, building or ground, shown on the top screen). Holding L or R while dragging slides the view instead.
-//!   * The strip (x 240..320): four tabs (COURSE, BUILD, STAFF, INFO) as a 2 x 2 block, then twelve buttons for the tab.
-//!     Under the plan, a bar of UNDO, PAUSE, SPEED and the brush SIZE, always there. Any tool is at most two taps away;
-//!     the armed tool stays armed across tabs.
-//!   * Every target is at least 28 pixels (about 8 mm on a New 3DS XL) on its short side, so a fingertip works as well as
-//!     the stylus.
+//!   * Bottom screen, all of it: the course in the game's own view. A drag paints (or builds) along the pen; a tap does it
+//!     once; holding still for half a second inspects instead (golfer, hole, building or ground, on the top screen). Holding
+//!     L or R while dragging, or the MOVE tool, slides the view with the pen; a stroke into the screen's edge scrolls on.
+//!     The brush's footprint, the hole being laid out and the tiles the game turned down are drawn on the land.
+//!   * Top screen: four categories (COURSE, BUILD, STAFF, INFO) and the chosen one's tools in a row. Left and right on the
+//!     D-pad choose a tool, up and down a category. Tools you use on the course arm as soon as they are chosen; buttons
+//!     that act (hire, fire, save, a page) act on A. Under the row, the chosen tool's price and what it does.
+//!   * A mini-map of the whole course (the flat plan this module used to draw on the bottom screen) with a frame for what
+//!     the bottom screen shows.
 //!   * The HOLE tool builds a hole in two taps (tee, then green) or one drag, showing the length and par as you go, and
 //!     opens it at once.
 
@@ -28,21 +27,13 @@ use sg_core::terrain::{self as t, TILE_SIZE};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-/// The plan's width; the strip fills the rest of the 320-pixel screen.
-pub const PLAN_W: f32 = 240.0;
-/// The plan's height: the bar of UNDO, PAUSE, SPEED and SIZE fills the rest below it.
-const PLAN_H: f32 = 208.0;
-/// The tabs: a 2 x 2 block at the strip's top, each TAB_W x TAB_H.
-const TAB_W: f32 = 40.0;
-const TAB_H: f32 = 28.0;
-const TABS_H: f32 = 2.0 * TAB_H;
+/// The course view: the whole bottom screen.
+pub const VIEW_W: f32 = 320.0;
+pub const VIEW_H: f32 = 240.0;
+/// The tool row on the top screen: a button's size, and how many show at once.
 const BTN_W: f32 = 40.0;
 const BTN_H: f32 = 30.0;
-/// The always-there bar under the plan: UNDO, PAUSE, SPEED, SIZE, each BAR_W wide.
-const BAR_Y: f32 = PLAN_H;
-const BAR_W: f32 = PLAN_W / 4.0;
-/// Plan world units per pixel against the top screen's: the top screen's ground fits inside the plan with land round it.
-const PLAN_ZOOM: f32 = 1.9;
+const ROW_SHOWN: usize = 10;
 const R: f32 = std::f32::consts::FRAC_1_SQRT_2;
 /// The band along the plan's edges where a held pen slides the view, and the fastest it slides (plan pixels a frame).
 const EDGE: f32 = 14.0;
@@ -59,7 +50,7 @@ pub enum Tab {
     Staff,
     Info,
 }
-const TABS: [(Tab, &str); 4] = [(Tab::Course, "CRS"), (Tab::Build, "BLD"), (Tab::Staff, "STF"), (Tab::Info, "INF")];
+const TABS: [(Tab, &str); 4] = [(Tab::Course, "COURSE"), (Tab::Build, "BUILD"), (Tab::Staff, "STAFF"), (Tab::Info, "INFO")];
 
 /// The top screen's information panels (hud.rs).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -127,10 +118,11 @@ impl Tool {
 
 const STAFF_SHORT: [&str; 4] = ["PRO", "RANGER", "KEEPER", "VENDOR"];
 
-fn slots(tab: Tab) -> [Tool; 12] {
+/// Each category's tools, in the order the D-pad goes through them.
+fn slots(tab: Tab) -> Vec<Tool> {
     use Tool::*;
     match tab {
-        Tab::Course => [
+        Tab::Course => vec![
             Hole,
             Paint(t::TT_TEE),
             Paint(t::TT_PUTTING_GREEN),
@@ -144,36 +136,19 @@ fn slots(tab: Tab) -> [Tool; 12] {
             Lower,
             Hand,
         ],
-        Tab::Build => [
-            Path(1),
-            Path(2),
-            Item(land::K_BENCH),
-            Item(land::K_FLOWERS),
-            Item(land::K_WASHER),
-            Item(land::K_WILLOW),
-            Item(land::K_BRIDGE),
-            Pick,
-            Turn,
-            Remove,
-            None,
-            None,
-        ],
-        Tab::Staff => [Hire(0), Fire(0), Hire(1), Fire(1), Hire(2), Fire(2), Hire(3), Fire(3), None, None, None, None],
-        Tab::Info => [
-            Show(Panel::Money),
-            Show(Panel::Holes),
-            Show(Panel::Golfers),
-            Show(Panel::Staff),
-            Save,
-            Load,
-            Thoughts,
-            Show(Panel::Help),
-            None,
-            None,
-            None,
-            None,
-        ],
+        Tab::Build => {
+            let mut v = vec![Path(1), Path(2), Item(land::K_BENCH), Item(land::K_FLOWERS), Item(land::K_WASHER), Item(land::K_WILLOW), Item(land::K_BRIDGE)];
+            v.extend(LIST_KINDS.iter().map(|&k| Building(k)));
+            v.extend([Turn, Remove]);
+            v
+        }
+        Tab::Staff => vec![Hire(0), Fire(0), Hire(1), Fire(1), Hire(2), Fire(2), Hire(3), Fire(3)],
+        Tab::Info => vec![Show(Panel::Money), Show(Panel::Holes), Show(Panel::Golfers), Show(Panel::Staff), Save, Load, Thoughts, Show(Panel::Help)],
     }
+}
+
+fn tab_index(tab: Tab) -> usize {
+    TABS.iter().position(|t| t.0 == tab).unwrap_or(0)
 }
 
 /// What the strip and the plan asked of main.rs this event.
@@ -257,8 +232,10 @@ pub struct Plan {
     /// Tiles the game turned down, flashed red until the instant.
     flash: Vec<(i32, i32)>,
     flash_until: Option<Instant>,
-    /// The building list is open.
+    /// The building list is open (no longer: the buildings are in the BUILD row).
     picking: bool,
+    /// The D-pad's place in each category's row.
+    sel: [usize; 4],
     /// Golfers' positions on the plan, world x, z (main.rs, each frame).
     pub golfers: Vec<(f32, f32)>,
     /// The top screen shows thoughts (INFO's THINK button).
@@ -267,20 +244,8 @@ pub struct Plan {
 
 /// Buildings for the BLDG list: everything the building tool places but the one-tile items on the BUILD tab, landmarks
 /// (their designs need the desktop's strip) and the clubhouse.
-impl Plan {
-    /// Y: the strip's next tab (the armed tool stays armed).
-    pub fn next_tab(&mut self) {
-        let i = TABS.iter().position(|t| t.0 == self.tab).unwrap_or(0);
-        self.tab = TABS[(i + 1) % TABS.len()].0;
-        self.picking = false;
-    }
-}
 
 const LIST_KINDS: [i32; 10] = [5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
-/// The building list: two columns of cells LIST_ROW high, below the status line.
-const LIST_ROW: f32 = 38.0;
-const LIST_Y: f32 = 16.0;
-const LIST_COL: f32 = PLAN_W / 2.0;
 
 
 /// A 3 x 5 pixel font for the tool labels and the status line: each glyph is five rows of three bits, the high bit on the
@@ -424,7 +389,7 @@ impl Tool {
             Tool::Item(land::K_WILLOW) => ("WILLW", "WILLOW TREE"),
             Tool::Item(land::K_BRIDGE) => ("BRIDG", "SCENIC BRIDGE"),
             Tool::Item(_) => ("ITEM", "ITEM"),
-            Tool::Building(_) => ("BLDG", "BUILDING"),
+            Tool::Building(_) => ("BLDG", "BUILDING"),  // label() and the status line use the game's name
             Tool::Remove => ("CLEAR", "CLEAR"),
             Tool::Pick => ("BLDG", "BUILDINGS"),
             Tool::Turn => ("TURN", "TURN"),
@@ -493,6 +458,7 @@ impl Plan {
             flash: Vec::new(),
             flash_until: None,
             picking: false,
+            sel: [0; 4],
             golfers: Vec::new(),
             thoughts: true,
         }
@@ -510,32 +476,19 @@ impl Plan {
         }
     }
 
-    // ---- the plan's geometry -------------------------------------------------------------------------------------------
+    // ---- geometry ------------------------------------------------------------------------------------------------------
 
-    /// World units per plan pixel.
-    fn upp(d: &Demo) -> f32 {
-        // the top screen zooms three steps past the PC game's nearest; the plan stops there, so a hole still fits on it
-        // (the top screen's world units per pixel are 2 / (zoom x 0.4) on its 400 x 240 against 800 x 600, main.rs)
-        let nearest = 2.0 / (crate::app::ZOOM_UNIT * 4.0 * 0.4) * PLAN_ZOOM;
-        (d.upp * PLAN_ZOOM).max(nearest)
-    }
-
-    /// Ground depth per plan pixel against width: the plan is squashed up and down as the top screen's tilted view is
-    /// (1 / sin of the camera's pitch), so shapes on it look as they do on the top screen and the frame is its shape.
-    fn tilt() -> f32 {
-        1.0 / (crate::PITCH as f32).to_radians().sin()
-    }
-
-    /// Plan pixel to world (x, z): the plan's centre is the camera's ground point; right is world +x+z, down +z-x (the
-    /// top screen's 45 degree turn, as main.rs pans), down squashed by the tilt.
+    /// Bottom-screen pixel to the world (x, z) of the land under it, as you see it (hills in front picked first).
     pub fn to_world(d: &Demo, x: f32, y: f32) -> (f32, f32) {
-        let (dx, dy) = ((x - PLAN_W * 0.5) * Self::upp(d), (y - PLAN_H * 0.5) * Self::upp(d) * Self::tilt());
-        (d.cam_x + (dx - dy) * R, d.cam_z + (dx + dy) * R)
+        let p = d.pick(x, y);
+        (p[0], p[2])
     }
 
-    pub fn to_plan(d: &Demo, wx: f32, wz: f32) -> (f32, f32) {
-        let (ex, ez) = (wx - d.cam_x, wz - d.cam_z);
-        (PLAN_W * 0.5 + (ex + ez) * R / Self::upp(d), PLAN_H * 0.5 + (ez - ex) * R / (Self::upp(d) * Self::tilt()))
+    /// Slides the view so the ground under bottom-screen pixel `from` comes under `to` (a drag, an edge scroll).
+    fn slide(d: &mut Demo, from: (f32, f32), to: (f32, f32)) {
+        let (a, b) = (d.ground(from.0, from.1), d.ground(to.0, to.1));
+        d.cam_x -= b.0 - a.0;
+        d.cam_z -= b.1 - a.1;
     }
 
     /// World position of terrain corner (cx, cy).
@@ -562,30 +515,6 @@ impl Plan {
         (((fx - s as f32 * 0.5).round()) as i32, ((fy - s as f32 * 0.5).round()) as i32, s)
     }
 
-    /// The button under (x, y): a tab, a slot (0..12), or the bar under the plan.
-    fn strip_at(x: f32, y: f32) -> Option<StripHit> {
-        if !(0.0..240.0).contains(&y) {
-            return None;
-        }
-        if x < PLAN_W {
-            if y < BAR_Y {
-                return None;
-            }
-            return Some(match ((x / BAR_W) as usize).min(3) {
-                0 => StripHit::Undo,
-                1 => StripHit::Pause,
-                2 => StripHit::Speed,
-                _ => StripHit::Size,
-            });
-        }
-        let col = (((x - PLAN_W) / BTN_W) as usize).min(1);
-        if y < TABS_H {
-            return Some(StripHit::Tab(((y / TAB_H) as usize).min(1) * 2 + col));
-        }
-        let row = ((y - TABS_H) / BTN_H) as usize;
-        (row < 6).then_some(StripHit::Slot(row * 2 + col))
-    }
-
     /// Arms a tool (from a button or the building list).
     fn arm(&mut self, app: &mut App, tool: Tool) {
         self.tool = tool;
@@ -609,48 +538,7 @@ impl Plan {
                 self.last = None;
                 self.last_corner = None;
                 self.last_tile = None;
-                self.on_strip = true;
                 self.pen = None;
-                if let Some(hit) = Self::strip_at(x, y) {
-                    out.sound = Some("Interface/Button1.wav");
-                    match hit {
-                        StripHit::Tab(i) => {
-                            self.tab = TABS[i].0;
-                            self.picking = false;
-                        }
-                        StripHit::Undo => out.action = Some(Action::Undo),
-                        StripHit::Pause => out.action = Some(Action::Pause),
-                        StripHit::Speed => out.action = Some(Action::Speed),
-                        StripHit::Size => {
-                            if self.tool.sized() {
-                                let s = self.size() % 3 + 1;
-                                self.sizes.insert(self.tool.key(), s);
-                            } else {
-                                out.sound = Some("Interface/Wrong.wav");
-                                out.action = Some(Action::Note("Brush size is for painting and raising or lowering land"));
-                            }
-                        }
-                        StripHit::Slot(i) => self.press_slot(app, slots(self.tab)[i], &mut out),
-                    }
-                    return out;
-                }
-                if self.picking {
-                    // a row of the building list arms it; anywhere else closes the list
-                    let row = ((y - LIST_Y) / LIST_ROW).floor();
-                    let i = row as usize * 2 + ((x / LIST_COL) as usize).min(1);
-                    if row >= 0.0 && i < LIST_KINDS.len() && x < PLAN_W {
-                        let k = LIST_KINDS[i];
-                        if app.build_available(k as usize) {
-                            self.arm(app, Tool::Building(k));
-                            out.sound = Some("Interface/Button1.wav");
-                        } else {
-                            out.sound = Some("Interface/Wrong.wav");
-                            out.action = Some(Action::Note("Build more holes to unlock that"));
-                        }
-                    }
-                    self.picking = false;
-                    return out;
-                }
                 self.on_strip = false;
                 self.pen = Some((x, y));
                 let pan = pan || self.tool == Tool::Hand;
@@ -660,16 +548,13 @@ impl Plan {
                 if self.on_strip {
                     return out;
                 }
-                // a drag onto the strip or the bar stays at the plan's edge
-                let (x, y) = (x.min(PLAN_W - 1.0), y.min(PLAN_H - 1.0));
+                let (x, y) = (x.clamp(0.0, VIEW_W - 1.0), y.clamp(0.0, VIEW_H - 1.0));
                 let prev = self.pen.unwrap_or((x, y));
                 self.pen = Some((x, y));
                 let Some(p) = self.press.as_mut() else { return out };
                 if p.pan {
-                    // the land follows the pen
-                    let (dx, dy) = ((x - prev.0) * Self::upp(d), (y - prev.1) * Self::upp(d) * Self::tilt());
-                    d.cam_x -= (dx - dy) * R;
-                    d.cam_z -= (dx + dy) * R;
+                    // the land follows the pen: the spot under it stays under it
+                    Self::slide(d, prev, (x, y));
                     out.scrolled = true;
                     return out;
                 }
@@ -734,7 +619,11 @@ impl Plan {
     fn press_slot(&mut self, app: &mut App, tool: Tool, out: &mut Stroke) {
         match tool {
             Tool::None => out.sound = None,
-            Tool::Pick => self.picking = !self.picking,
+            Tool::Pick => {}
+            Tool::Building(k) if !app.build_available(k as usize) => {
+                out.sound = Some("Interface/Wrong.wav");
+                out.action = Some(Action::Note("Build more holes to unlock that"));
+            }
             Tool::Turn => {
                 app.turn = (app.turn + 1) & 3;
                 out.action = Some(Action::Note("Next building turned"));
@@ -764,6 +653,62 @@ impl Plan {
             }
             t => self.arm(app, t),
         }
+    }
+
+    /// The D-pad on the top screen's palette: left and right choose a tool, up and down a category. A tool used on the course
+    /// is armed at once; a button that acts waits for A.
+    pub fn nav(&mut self, app: &mut App, dx: i32, dy: i32) -> Stroke {
+        let mut out = Stroke { sound: Some("Interface/Button2.wav"), ..Default::default() };
+        if dy != 0 {
+            let i = (tab_index(self.tab) as i32 + dy).rem_euclid(TABS.len() as i32) as usize;
+            self.tab = TABS[i].0;
+        }
+        let ti = tab_index(self.tab);
+        let row = slots(self.tab);
+        if dx != 0 {
+            self.sel[ti] = (self.sel[ti] as i32 + dx).rem_euclid(row.len() as i32) as usize;
+        }
+        self.sel[ti] = self.sel[ti].min(row.len() - 1);
+        let tool = row[self.sel[ti]];
+        if !tool.momentary() && (dx != 0 || tool != self.tool) && dy == 0 {
+            self.press_slot(app, tool, &mut out);
+            if out.sound == Some("Interface/Button1.wav") {
+                out.sound = Some("Interface/Button2.wav");
+            }
+        }
+        out
+    }
+
+    /// The tool the D-pad is on in the shown category.
+    pub fn chosen(&self) -> Tool {
+        let row = slots(self.tab);
+        row[self.sel[tab_index(self.tab)].min(row.len() - 1)]
+    }
+
+    /// A: the chosen button acts (hire, fire, save, load, a page, thoughts, turn), or the chosen tool is armed.
+    pub fn activate(&mut self, app: &mut App) -> Stroke {
+        let mut out = Stroke { sound: Some("Interface/Button1.wav"), ..Default::default() };
+        let tool = self.chosen();
+        if tool == self.tool && !tool.momentary() {
+            out.action = Some(Action::Note("Touch the course to use it"));
+            return out;
+        }
+        self.press_slot(app, tool, &mut out);
+        out
+    }
+
+    /// Y: the brush size, 1 to 3, for the tools that have one.
+    pub fn cycle_size(&mut self) -> Stroke {
+        let mut out = Stroke::default();
+        if self.tool.sized() {
+            let s = self.size() % 3 + 1;
+            self.sizes.insert(self.tool.key(), s);
+            out.sound = Some("Interface/Button2.wav");
+        } else {
+            out.sound = Some("Interface/Wrong.wav");
+            out.action = Some(Action::Note("Brush size is for painting and raising or lowering land"));
+        }
+        out
     }
 
     /// The brush put down every half tile from where it last was to the pen, so a quick stroke leaves no gaps.
@@ -810,38 +755,14 @@ impl Plan {
                 0.0
             }
         };
-        let (ex, ey) = (band(x, PLAN_W), band(y, PLAN_H));
+        let (ex, ey) = (band(x, VIEW_W), band(y, VIEW_H));
         if ex == 0.0 && ey == 0.0 {
             return out;
         }
-        let (dx, dy) = (ex * EDGE_SPEED * Self::upp(d), ey * EDGE_SPEED * Self::upp(d) * Self::tilt());
-        d.cam_x += (dx - dy) * R;
-        d.cam_z += (dx + dy) * R;
+        let c = (VIEW_W * 0.5, VIEW_H * 0.5);
+        Self::slide(d, (c.0 + ex * EDGE_SPEED, c.1 + ey * EDGE_SPEED), c);
         out.scrolled = true;
         self.stroke_to(d, app, x, y, &mut out);
-        out
-    }
-
-    /// The A button: the armed tool once at the top screen's cursor, as a tap on the plan there would.
-    pub fn tap_world(&mut self, d: &mut Demo, app: &mut App, wx: f32, wz: f32) -> Stroke {
-        let mut out = Stroke::default();
-        self.last = None;
-        self.last_corner = None;
-        self.last_tile = None;
-        if Self::open_at(app, wx, wz) {
-            self.stale = true;
-            out.action = Some(Action::Note("Hole open"));
-        } else if self.tool == Tool::Hole {
-            self.hole_tap(d, app, wx, wz, &mut out);
-        } else if !matches!(self.tool, Tool::Hand | Tool::None) {
-            self.remember(app);
-            self.apply(d, app, wx, wz, &mut out);
-            out.sound = self.sound();
-            self.finish(app);
-        }
-        self.last = None;
-        self.last_corner = None;
-        self.last_tile = None;
         out
     }
 
@@ -1166,14 +1087,6 @@ impl Plan {
         }
     }
 
-    /// The four plan points of tile (x, y)'s corners.
-    fn tile_quad(d: &Demo, x: i32, y: i32, s: i32) -> [(f32, f32); 4] {
-        [(x, y), (x + s, y), (x + s, y + s), (x, y + s)].map(|(a, b)| {
-            let (u, w) = Self::corner_world(d, a, b);
-            Self::to_plan(d, u, w)
-        })
-    }
-
     /// What the status line says.
     fn status(&self, d: &Demo, app: &App, at: (f32, f32)) -> (String, [f32; 4]) {
         if let Some(h) = &self.hint {
@@ -1225,156 +1138,88 @@ impl Plan {
         (s, WHITE)
     }
 
-    /// The bottom screen: the plan, the top screen's frame, the brush or hole being laid out, the tool strip.
-    pub fn render(&self, g: &mut Gfx, d: &Demo, app: &App, text: &Text, cursor: (f32, f32)) {
-        let ui = Uniforms::flat(&Mat4::ortho(0.0, 320.0, 240.0, 0.0, -1.0, 1.0), &Mat4::identity());
-        let p2 = Pen2d { u: &ui };
-        let world = |wx: f32, wz: f32| Self::to_plan(d, wx, wz);
-
-        // the course, one texel per tile
-        if let Some(tex) = self.tex {
-            let (cw, ch) = (d.terrain.w, d.terrain.h);
-            let c = [Self::corner_world(d, 0, 0), Self::corner_world(d, cw, 0), Self::corner_world(d, cw, ch), Self::corner_world(d, 0, ch)]
-                .map(|(x, z)| world(x, z));
-            let uv = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)];
-            let q = [0, 1, 2, 3].map(|i| Vert::new(c[i].0, c[i].1, 0.0, uv[i].0, uv[i].1));
-            g.quad(Mode::Flat, Some(tex), &ui, q);
+    /// A tool's label under its button: buildings by the game's own name, the first word of it.
+    fn label(tool: Tool) -> String {
+        match tool {
+            Tool::Fire(k) => STAFF_SHORT[k.min(3)].to_string(),
+            Tool::Building(k) => {
+                let n = building_name(k).to_uppercase();
+                let w = n.split_whitespace().next().unwrap_or("BLDG").to_string();
+                w.chars().take(6).collect()
+            }
+            t => t.names().0.to_string(),
         }
-        // tiles the game just turned down
-        for &(x, y) in &self.flash {
-            p2.quad(g, Self::tile_quad(d, x, y, 1), RED);
-        }
-        // golfers
-        for &(wx, wz) in &self.golfers {
-            let (x, y) = world(wx, wz);
-            if (0.0..PLAN_W).contains(&x) && (0.0..PLAN_H).contains(&y) {
-                p2.rect(g, x - 1.5, y - 1.5, 3.0, 3.0, [0.05, 0.05, 0.05, 1.0]);
-                p2.rect(g, x - 1.0, y - 1.0, 2.0, 2.0, WHITE);
-            }
-        }
-        // what the top screen shows
-        let k = d.upp / Self::upp(d);
-        let (hw, hh) = (200.0 * k, 120.0 * k);
-        let (cx, cy) = (PLAN_W * 0.5, PLAN_H * 0.5);
-        p2.outline(g, [(cx - hw, cy - hh), (cx + hw, cy - hh), (cx + hw, cy + hh), (cx - hw, cy + hh)], 1.0, [1.0, 1.0, 1.0, 0.6]);
-
-        // where the tool would land: the pen if it is down, else the top screen's cursor
-        let pen_world = self.pen.map(|(x, y)| Self::to_world(d, x, y));
-        let at = pen_world.unwrap_or_else(|| {
-            let p = d.pick(cursor.0, cursor.1);
-            (p[0], p[2])
-        });
-        match self.tool {
-            Tool::Hole => {
-                let tee = match (&self.press, self.hole_tee) {
-                    (Some(p), _) if p.stroked && !p.pan => Some(Self::to_world(d, p.x0, p.y0)).map(|(x, z)| Self::tile_of(d, x, z)),
-                    (_, t) => t,
-                };
-                if let (Some(tee), false) = (tee, self.pen.is_none()) {
-                    let green = Self::tile_of(d, at.0, at.1);
-                    let tq = Self::tile_quad(d, tee.0, tee.1, 1);
-                    let gq = Self::tile_quad(d, green.0 - 1, green.1 - 1, 3);
-                    let mid = |q: [(f32, f32); 4]| ((q[0].0 + q[2].0) * 0.5, (q[0].1 + q[2].1) * 0.5);
-                    p2.line(g, mid(tq), mid(gq), 1.5, [1.0, 1.0, 1.0, 0.85]);
-                    p2.quad(g, tq, WHITE);
-                    p2.outline(g, gq, 1.5, YELLOW);
-                } else if let Some(tee) = tee {
-                    // the tee waiting for its green
-                    p2.quad(g, Self::tile_quad(d, tee.0, tee.1, 1), WHITE);
-                } else if self.pen.is_some() {
-                    let tile = Self::tile_of(d, at.0, at.1);
-                    p2.quad(g, Self::tile_quad(d, tile.0, tile.1, 1), WHITE);
-                }
-            }
-            Tool::Raise | Tool::Lower if self.pen.is_some() => {
-                let (kx, ky) = d.terrain.corner_of(at.0, at.1);
-                let (px, py) = {
-                    let (a, b) = Self::corner_world(d, kx, ky);
-                    world(a, b)
-                };
-                p2.rect(g, px - 2.5, py - 2.5, 5.0, 5.0, YELLOW);
-            }
-            Tool::Paint(_) if self.pen.is_some() => {
-                let (x0, y0, s) = self.brush_tiles(d, at.0, at.1);
-                p2.outline(g, Self::tile_quad(d, x0, y0, s), 1.5, YELLOW);
-            }
-            Tool::Building(k) if self.pen.is_some() => {
-                let s = sg_core::data::buildings()[k.clamp(0, 19) as usize].1;
-                let t = Self::tile_of(d, at.0, at.1);
-                p2.outline(g, Self::tile_quad(d, t.0, t.1, s), 1.5, YELLOW);
-            }
-            _ if self.pen.is_some() && self.tool != Tool::Hand => {
-                let t = Self::tile_of(d, at.0, at.1);
-                p2.outline(g, Self::tile_quad(d, t.0, t.1, 1), 1.5, YELLOW);
-            }
-            _ => {
-                if self.pen.is_none() {
-                    let (px, py) = world(at.0, at.1);
-                    p2.rect(g, px - 1.5, py - 1.5, 3.0, 3.0, WHITE);
-                }
-            }
-        }
-
-        // the building list over the plan
-        if self.picking {
-            let rows = LIST_KINDS.len().div_ceil(2) as f32;
-            p2.rect(g, 0.0, LIST_Y, PLAN_W, rows * LIST_ROW, [0.05, 0.08, 0.05, 0.94]);
-            for (i, &k) in LIST_KINDS.iter().enumerate() {
-                let (x, y) = ((i % 2) as f32 * LIST_COL, LIST_Y + (i / 2) as f32 * LIST_ROW);
-                let ok = app.build_available(k as usize);
-                let cell = if self.tool == Tool::Building(k) { [0.35, 0.3, 0.08, 1.0] } else { [0.1, 0.16, 0.1, 1.0] };
-                p2.rect(g, x + 1.5, y + 1.5, LIST_COL - 3.0, LIST_ROW - 3.0, cell);
-                let c = if ok { WHITE } else { [0.5, 0.5, 0.5, 1.0] };
-                let name = text.wrap(&building_name(k), Size::Normal, LIST_COL - 10.0).into_iter().next().unwrap_or_default();
-                text.draw(g, &ui, x + 6.0, y + 5.0, &name, Size::Normal, c);
-                let price = if ok { money(building_price(k)) } else { "MORE HOLES".into() };
-                text.draw(g, &ui, x + 6.0, y + 20.0, &price, Size::Normal, if ok { [1.0, 0.95, 0.6, 1.0] } else { c });
-            }
-        }
-
-        // the status line over the plan's top edge, and the brush sizes in its right corner
-        let (status, sc) = self.status(d, app, at);
-        let room = PLAN_W;
-        let lines = text.wrap(&status, Size::Normal, room - 8.0);
-        let lh = text.line_height(Size::Normal);
-        let sw = lines.iter().map(|l| text.width(l, Size::Normal)).fold(0.0, f32::max);
-        p2.rect(g, 0.0, 0.0, sw + 8.0, lh * lines.len() as f32 + 3.0, [0.0, 0.0, 0.0, 0.6]);
-        for (i, l) in lines.iter().enumerate() {
-            text.draw(g, &ui, 4.0, 1.0 + i as f32 * lh, l, Size::Normal, sc);
-        }
-        self.render_strip(g, &ui, app);
     }
 
-    fn render_strip(&self, g: &mut Gfx, ui: &Uniforms, app: &App) {
+    /// The top screen's palette at y0 (the tabs, then the shown category's row of buttons, then the status line); drawn
+    /// with `ui` (which may carry the 3D slider's offset). Returns the y below it.
+    pub fn render_palette(&self, g: &mut Gfx, ui: &Uniforms, d: &Demo, app: &App, text: &Text, y0: f32) -> f32 {
         let p2 = Pen2d { u: ui };
-        p2.rect(g, PLAN_W, 0.0, 320.0 - PLAN_W, 240.0, [0.12, 0.16, 0.11, 1.0]);
-        // the tabs, 2 x 2
+        const W: f32 = 400.0;
+        // the categories
+        let tw = W / TABS.len() as f32;
         for (i, (tab, label)) in TABS.iter().enumerate() {
-            let (x, y) = (PLAN_W + (i % 2) as f32 * TAB_W, (i / 2) as f32 * TAB_H);
+            let x = i as f32 * tw;
             let on = *tab == self.tab;
-            p2.rect(g, x + 1.0, y + 1.0, TAB_W - 2.0, TAB_H - 2.0, if on { [0.3, 0.4, 0.26, 1.0] } else { [0.07, 0.09, 0.06, 1.0] });
+            p2.rect(g, x + 1.0, y0, tw - 2.0, 14.0, if on { [0.3, 0.42, 0.26, 1.0] } else { [0.08, 0.11, 0.08, 0.92] });
             if on {
-                p2.rect(g, x + 1.0, y + TAB_H - 4.0, TAB_W - 2.0, 3.0, YELLOW);
+                p2.rect(g, x + 1.0, y0 + 12.0, tw - 2.0, 2.0, YELLOW);
             }
-            draw_text(g, ui, x + (TAB_W - text_width(label, 1.0)) * 0.5, y + (TAB_H - 5.0) * 0.5, label, 1.0, if on { WHITE } else { [0.6, 0.66, 0.58, 1.0] });
+            let lw = text.width(label, Size::Small);
+            text.draw(g, ui, x + (tw - lw) * 0.5, y0 + 1.0, label, Size::Small, if on { WHITE } else { [0.62, 0.68, 0.6, 1.0] });
         }
-        p2.rect(g, PLAN_W, TABS_H - 0.5, 320.0 - PLAN_W, 1.0, [0.0, 0.0, 0.0, 0.5]);
-        // the tab's buttons
+        // the row: ten buttons at a time, scrolled to keep the chosen one in view
+        let ry = y0 + 15.0;
+        let row = slots(self.tab);
+        let sel = self.sel[tab_index(self.tab)].min(row.len() - 1);
+        let first = if row.len() <= ROW_SHOWN { 0 } else { sel.saturating_sub(ROW_SHOWN / 2).min(row.len() - ROW_SHOWN) };
+        p2.rect(g, 0.0, ry, W, BTN_H + 1.0, [0.1, 0.14, 0.1, 0.94]);
+        for (k, &tool) in row.iter().enumerate().skip(first).take(ROW_SHOWN) {
+            let bx = (k - first) as f32 * BTN_W;
+            let armed = tool == self.tool || (tool == Tool::Thoughts && self.thoughts);
+            self.draw_tool(g, ui, app, tool, bx, ry, armed);
+            if k == sel && !armed {
+                p2.outline(g, [(bx + 1.0, ry + 0.5), (bx + BTN_W - 1.0, ry + 0.5), (bx + BTN_W - 1.0, ry + BTN_H - 0.5), (bx + 1.0, ry + BTN_H - 0.5)], 1.5, WHITE);
+            }
+        }
+        // more to either side
+        if first > 0 {
+            p2.tri(g, (1.0, ry + BTN_H * 0.5), (6.0, ry + BTN_H * 0.5 - 5.0), (6.0, ry + BTN_H * 0.5 + 5.0), YELLOW);
+        }
+        if first + ROW_SHOWN < row.len() {
+            p2.tri(g, (W - 1.0, ry + BTN_H * 0.5), (W - 6.0, ry + BTN_H * 0.5 - 5.0), (W - 6.0, ry + BTN_H * 0.5 + 5.0), YELLOW);
+        }
+        // the status line: the armed tool's price and what to do; the chosen button's key on the right
+        let sy = ry + BTN_H + 2.0;
+        let at = self.pen.map(|(x, y)| Self::to_world(d, x, y)).unwrap_or((d.cam_x, d.cam_z));
+        let (status, sc) = self.status(d, app, at);
+        let chosen = row[sel];
+        let key = if chosen.momentary() {
+            format!("A: {}", chosen.names().1)
+        } else if self.tool.sized() {
+            "Y: BRUSH SIZE".to_string()
+        } else {
+            String::new()
+        };
+        let kw = text.width(&key, Size::Small);
+        p2.rect(g, 0.0, sy - 1.0, W, 13.0, [0.0, 0.0, 0.0, 0.55]);
+        let line = text.wrap(&status, Size::Normal, W - kw - 16.0).into_iter().next().unwrap_or_default();
+        text.draw(g, ui, 5.0, sy - 1.0, &line, Size::Normal, sc);
+        text.draw(g, ui, W - kw - 5.0, sy + 0.5, &key, Size::Small, [0.75, 0.82, 0.72, 1.0]);
+        sy + 13.0
+    }
+
+    /// One palette button at (bx, by), BTN_W x BTN_H: its picture and label, yellow when armed.
+    fn draw_tool(&self, g: &mut Gfx, ui: &Uniforms, app: &App, tool: Tool, bx: f32, by: f32, armed: bool) {
+        let p2 = Pen2d { u: ui };
         let rgb = |c: [u8; 3]| [c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0, 1.0];
         let panel = [0.3, 0.36, 0.28, 1.0];
-        for (i, &tool) in slots(self.tab).iter().enumerate() {
-            if tool == Tool::None {
-                continue;
-            }
-            let (bx, by) = (PLAN_W + (i % 2) as f32 * BTN_W, TABS_H + (i / 2) as f32 * BTN_H);
-            let (x, y, w, h) = (bx + 3.0, by + 2.0, BTN_W - 6.0, BTN_H - 11.0);
-            let (mx, my) = (x + w * 0.5, y + h * 0.5);
-            let armed = tool == self.tool
-                || (tool == Tool::Pick && (self.picking || matches!(self.tool, Tool::Building(_))))
-                || (tool == Tool::Thoughts && self.thoughts);
-            if armed {
-                p2.rect(g, bx + 1.0, by + 0.5, BTN_W - 2.0, BTN_H - 1.0, YELLOW);
-            }
+        let (x, y, w, h) = (bx + 3.0, by + 2.0, BTN_W - 6.0, BTN_H - 11.0);
+        let (mx, my) = (x + w * 0.5, y + h * 0.5);
+        if armed {
+            p2.rect(g, bx + 1.0, by + 0.5, BTN_W - 2.0, BTN_H - 1.0, YELLOW);
+        }
+        let locked = matches!(tool, Tool::Building(k) if !app.build_available(k as usize));
             match tool {
                 Tool::Paint(ty) => {
                     p2.rect(g, x, y, w, h, rgb(self.colour(ty as i32)));
@@ -1453,7 +1298,7 @@ impl Plan {
                         }
                     }
                 }
-                Tool::Pick => {
+                Tool::Pick | Tool::Building(_) => {
                     p2.rect(g, x, y, w, h, panel);
                     p2.rect(g, mx - 7.0, my - 1.0, 14.0, 8.0, [0.8, 0.5, 0.35, 1.0]);
                     p2.tri(g, (mx - 9.0, my - 1.0), (mx, my - 8.0), (mx + 9.0, my - 1.0), [0.55, 0.25, 0.2, 1.0]);
@@ -1492,82 +1337,67 @@ impl Plan {
                 }
                 _ => p2.rect(g, x, y, w, h, panel),
             }
-            let label = match tool {
-                Tool::Fire(k) => STAFF_SHORT[k.min(3)],
-                t => t.names().0,
-            };
-            let lc = if armed { [0.12, 0.1, 0.02, 1.0] } else { [0.88, 0.92, 0.84, 1.0] };
-            draw_text(g, ui, bx + (BTN_W - text_width(label, 1.0)) * 0.5, by + BTN_H - 8.0, label, 1.0, lc);
+        if locked {
+            p2.rect(g, x, y, w, h, [0.0, 0.0, 0.0, 0.55]);
         }
-        // the bar under the plan: UNDO, PAUSE, SPEED, SIZE
-        p2.rect(g, 0.0, BAR_Y, PLAN_W, 240.0 - BAR_Y, [0.12, 0.16, 0.11, 1.0]);
-        for i in 0..4 {
-            let (x, w) = (i as f32 * BAR_W, BAR_W);
-            if i == 3 {
-                let sized = self.tool.sized();
-                p2.rect(g, x + 1.0, BAR_Y + 1.0, w - 2.0, 240.0 - BAR_Y - 2.0, [0.24, 0.3, 0.22, if sized { 1.0 } else { 0.45 }]);
-                let c = if sized { WHITE } else { [0.55, 0.6, 0.55, 1.0] };
-                let n = if sized { self.size() } else { 1 };
-                // the brush as n x n squares
-                let cell = 4.0;
-                let span = n as f32 * (cell + 1.0) - 1.0;
-                let (ox, oy) = (x + (w - span) * 0.5, BAR_Y + 12.0 - span * 0.5);
-                for a in 0..n {
-                    for b in 0..n {
-                        p2.rect(g, ox + a as f32 * (cell + 1.0), oy + b as f32 * (cell + 1.0), cell, cell, c);
-                    }
-                }
-                let label = if sized { format!("SIZE {n}") } else { "SIZE".to_string() };
-                draw_text(g, ui, x + (w - text_width(&label, 1.0)) * 0.5, 240.0 - 9.0, &label, 1.0, c);
-                continue;
-            }
-            let on = (i == 1 && app.paused) || (i == 2 && !app.paused && app.speed > 1);
-            p2.rect(g, x + 1.0, BAR_Y + 1.0, w - 2.0, 240.0 - BAR_Y - 2.0, if on { YELLOW } else { [0.24, 0.3, 0.22, 1.0] });
-            let c = if on { [0.1, 0.1, 0.0, 1.0] } else { WHITE };
-            let (mx, my) = (x + w * 0.5, BAR_Y + 12.0);
-            match i {
-                0 => {
-                    // a curved-back arrow
-                    p2.rect(g, mx - 5.0, my - 3.0, 10.0, 1.5, c);
-                    p2.rect(g, mx + 3.5, my - 3.0, 1.5, 8.0, c);
-                    p2.rect(g, mx - 3.0, my + 3.5, 8.0, 1.5, c);
-                    p2.tri(g, (mx - 5.0, my - 6.5), (mx - 9.0, my - 2.25), (mx - 5.0, my + 2.0), c);
-                }
-                1 => {
-                    if app.paused {
-                        p2.tri(g, (mx - 4.0, my - 6.0), (mx + 6.0, my), (mx - 4.0, my + 6.0), c);
-                    } else {
-                        p2.rect(g, mx - 5.0, my - 6.0, 3.5, 12.0, c);
-                        p2.rect(g, mx + 1.5, my - 6.0, 3.5, 12.0, c);
-                    }
-                }
-                _ => {
-                    let n = match app.speed {
-                        1 => 1,
-                        2 => 2,
-                        _ => 3,
-                    };
-                    let span = n as f32 * 6.0;
-                    for k in 0..n {
-                        let x0 = mx - span * 0.5 + k as f32 * 6.0;
-                        p2.tri(g, (x0, my - 5.0), (x0 + 6.0, my), (x0, my + 5.0), c);
-                    }
-                }
-            }
-            let label = ["UNDO", if app.paused { "PLAY" } else { "PAUSE" }, "SPEED"][i];
-            draw_text(g, ui, x + (w - text_width(label, 1.0)) * 0.5, 240.0 - 9.0, label, 1.0, c);
-        }
+        let label = Self::label(tool);
+        let lc = if armed { [0.12, 0.1, 0.02, 1.0] } else if locked { [0.5, 0.52, 0.5, 1.0] } else { [0.88, 0.92, 0.84, 1.0] };
+        draw_text(g, ui, bx + (BTN_W - text_width(&label, 1.0)) * 0.5, by + BTN_H - 8.0, &label, 1.0, lc);
     }
 
-    /// On the top screen while the pen is down: the brush's footprint lying on the 3D land (or the corner an elevation tool
-    /// will move, or the hole being laid out), drawn in the world so it has the land's depth in 3D.
-    pub fn render_top(&self, g: &mut Gfx, d: &Demo) {
+    /// The whole course in (x, y, w, h) on the top screen, turned and squashed as the course view is, land off the club's
+    /// property dimmed, golfers as dots, and a frame round what the bottom screen shows.
+    pub fn render_minimap(&self, g: &mut Gfx, ui: &Uniforms, d: &Demo, (rx, ry, rw, rh): (f32, f32, f32, f32)) {
+        let Some(tex) = self.tex else { return };
+        let p2 = Pen2d { u: ui };
+        let half = (d.terrain.w.max(d.terrain.h) as f32) * TILE_SIZE * 0.5;
+        let sinp = (crate::PITCH as f32).to_radians().sin();
+        // world to the map: screen right is world +x+z, down +z-x (the view's 45 degree turn), down squashed by the pitch
+        let span_u = 2.0 * half * std::f32::consts::SQRT_2;
+        let scale = (rw / span_u).min(rh / (span_u * sinp));
+        let (cx, cy) = (rx + rw * 0.5, ry + rh * 0.5);
+        let mm = |wx: f32, wz: f32| (cx + (wx + wz) * R * scale, cy + (wz - wx) * R * sinp * scale);
+        p2.rect(g, rx, ry, rw, rh, [0.03, 0.06, 0.04, 0.85]);
+        let (cw, ch) = (d.terrain.w, d.terrain.h);
+        let c = [Self::corner_world(d, 0, 0), Self::corner_world(d, cw, 0), Self::corner_world(d, cw, ch), Self::corner_world(d, 0, ch)].map(|(x, z)| mm(x, z));
+        let uv = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)];
+        let q = [0, 1, 2, 3].map(|i| Vert::new(c[i].0, c[i].1, 0.0, uv[i].0, uv[i].1));
+        g.quad(Mode::Flat, Some(tex), ui, q);
+        for &(wx, wz) in &self.golfers {
+            let (x, y) = mm(wx, wz);
+            p2.rect(g, x - 1.0, y - 1.0, 2.0, 2.0, WHITE);
+        }
+        // what the bottom screen shows: its 320 x 240 pixels at the view's scale, round the camera
+        let (fx, fy) = mm(d.cam_x, d.cam_z);
+        let (hw, hh) = (VIEW_W * 0.5 * d.upp * scale, VIEW_H * 0.5 * d.upp * scale);
+        p2.outline(g, [(fx - hw, fy - hh), (fx + hw, fy - hh), (fx + hw, fy + hh), (fx - hw, fy + hh)], 1.0, [1.0, 0.95, 0.5, 0.9]);
+    }
+
+    /// On the course (bottom screen): tiles the game just turned down, a hole's tee waiting for its green, and while the pen
+    /// is down the brush's footprint lying on the land (or the corner an elevation tool will move, or the hole being laid
+    /// out).
+    pub fn render_overlay(&self, g: &mut Gfx, d: &Demo) {
+        let u = Uniforms::flat(&d.proj(), &d.view());
+        {
+            let lift = 3.0;
+            let at = |cx: i32, cy: i32| {
+                let (a, b) = Self::corner_world(d, cx, cy);
+                Vert::new(a, d.terrain.height_at(a, b) + lift, b, 0.0, 0.0)
+            };
+            for &(tx, ty) in &self.flash {
+                let q = [at(tx, ty), at(tx + 1, ty), at(tx + 1, ty + 1), at(tx, ty + 1)].map(|v| v.col(RED));
+                g.quad(Mode::Flat, None, &u, q);
+            }
+            if let (Some((tx, ty)), Tool::Hole) = (self.hole_tee, self.tool) {
+                let q = [at(tx, ty), at(tx + 1, ty), at(tx + 1, ty + 1), at(tx, ty + 1)].map(|v| v.col([1.0, 1.0, 1.0, 0.85]));
+                g.quad(Mode::Flat, None, &u, q);
+            }
+        }
         let Some((x, y)) = self.pen else { return };
         if self.tool == Tool::Hand || self.press.as_ref().is_some_and(|p| p.pan) {
             return;
         }
         let (wx, wz) = Self::to_world(d, x, y);
-        let u = Uniforms::flat(&d.proj(), &d.view());
         let lift = 3.0;
         let at = |cx: i32, cy: i32| {
             let (a, b) = Self::corner_world(d, cx, cy);

@@ -218,6 +218,9 @@ const PITCH: f64 = 40.541603;
 /// raised land, buildings (upright quads at their footprint's height, not flat sprites), and the ball in flight (its sprite at
 /// the ball's world y, its shadow on the ground at y = 0, so it lifts out of the screen along the shot's arc).
 const STEREO_FULL_HEIGHT: f32 = 7.0 * HEIGHT_STEP;
+/// The course view's size: the whole bottom screen, played with the stylus.
+const VIEW_W: f32 = screens::BOTTOM_W as f32;
+const VIEW_H: f32 = screens::BOTTOM_H as f32;
 /// Course chunk size in tiles (see `Demo::chunks`): small enough that an edit rebuilds little and off-screen chunks are
 /// skipped, large enough to keep the draw calls few.
 const CHUNK: i32 = 10;
@@ -765,17 +768,29 @@ impl Demo {
     fn view(&self) -> Mat4 {
         self.eye_rot.mul(&Mat4::translate(-self.cam_x, 0.0, -self.cam_z))
     }
-    /// The orthographic projection for the top screen at the current zoom.
+    /// The orthographic projection for the course view (the bottom screen) at the current zoom.
     fn proj(&self) -> Mat4 {
-        let (hw, hh) = (screens::TOP_W as f32 * self.upp * 0.5, screens::TOP_H as f32 * self.upp * 0.5);
+        let (hw, hh) = (VIEW_W * self.upp * 0.5, VIEW_H * self.upp * 0.5);
         Mat4::ortho(-hw, hw, -hh, hh, -DEPTH_RANGE, DEPTH_RANGE)
     }
 
-    /// The point of the land under top-screen pixel (sx, sy): (x, height, z) in world units. The view ray through the pixel
+    /// The sea-level point under course-view pixel (sx, sy), (x, z): what a drag slides by (steady over hills).
+    fn ground(&self, sx: f32, sy: f32) -> (f32, f32) {
+        let (vx, vy) = ((sx - VIEW_W * 0.5) * self.upp, -(sy - VIEW_H * 0.5) * self.upp);
+        let r = self.eye_rot.0;
+        let (a, b, c, d) = (r[0], r[8], r[1], r[9]);
+        let det = a * d - b * c;
+        if det.abs() < 1e-6 {
+            return (self.cam_x, self.cam_z);
+        }
+        (self.cam_x + (vx * d - b * vy) / det, self.cam_z + (a * vy - c * vx) / det)
+    }
+
+    /// The point of the land under course-view pixel (sx, sy): (x, height, z) in world units. The view ray through the pixel
     /// is followed down onto the land (a few steps of "where does the ray reach this height"), so a hill in front is what
     /// gets picked, as you see it.
     fn pick(&self, sx: f32, sy: f32) -> [f32; 3] {
-        let (w, h) = (screens::TOP_W as f32, screens::TOP_H as f32);
+        let (w, h) = (VIEW_W, VIEW_H);
         let (vx, vy) = ((sx - w * 0.5) * self.upp, -(sy - h * 0.5) * self.upp);
         let r = self.eye_rot.0;
         // the ground (y = 0) point first: view x = r00 dx + r02 dz, view y = r10 dx + r12 dz (r[col*4 + row])
@@ -1132,7 +1147,9 @@ fn main() {
                 }
                 None => false,
             };
-            // the fly-over: a slow circle round the middle of the course
+            // the fly-over: a slow circle round the middle of the course, on the top screen
+            app.draw_w = screens::TOP_W as f32;
+            app.draw_h = screens::TOP_H as f32;
             {
                 let t = title.clock();
                 let (hx, hz) = (demo.terrain.w as f32 * sg_core::terrain::TILE_SIZE * 0.5, demo.terrain.h as f32 * sg_core::terrain::TILE_SIZE * 0.5);
@@ -1180,6 +1197,9 @@ fn main() {
             continue;
         }
         // ---- the game ----
+        // the game draws its sprites for the course view's size (the title's fly-over draws them for the top screen)
+        app.draw_w = VIEW_W;
+        app.draw_h = VIEW_H;
         if SUSPENDING.swap(false, Ordering::Relaxed) {
             autosave_now(&app);
             last_autosave = std::time::Instant::now();
@@ -1223,15 +1243,12 @@ fn main() {
             }
             match ev {
                 input::Event::Pan(dx, dy) => {
-                    // screen right is world +x+z along the 45 degree yaw; screen down is +z-x
-                    let (sx, sz) = (dx * demo.upp, dy * demo.upp);
-                    let r = std::f32::consts::FRAC_1_SQRT_2;
-                    app.cam_x += (sx - sz) * r;
-                    app.cam_z += (sx + sz) * r;
-                    // the plan's camera too, or the line after this match copies it back and undoes the pan
-                    demo.cam_x = app.cam_x;
-                    demo.cam_z = app.cam_z;
-                    plan.stale = true;
+                    // Circle Pad / C-stick: the view moves by (dx, dy) course-view pixels
+                    let c = (VIEW_W * 0.5, VIEW_H * 0.5);
+                    let (a, b) = (demo.ground(c.0, c.1), demo.ground(c.0 + dx, c.1 + dy));
+                    // demo's camera; the line after this match copies it to the game's
+                    demo.cam_x += b.0 - a.0;
+                    demo.cam_z += b.1 - a.1;
                 }
                 // L / R: the game's zoom levels
                 input::Event::Zoom(z) => {
@@ -1242,11 +1259,7 @@ fn main() {
                     app.zoom = (app.zoom * f).clamp(far * 0.999, near * 1.001);
                 }
                 input::Event::Pen(phase, x, y) => {
-                    // the bottom screen: the plan and its tools (plan.rs), editing through the game
-                    // a press on the map puts away a panel or card on the top screen (it still does its thing on the map)
-                    if matches!(phase, shim::TouchPhase::Started) && x < plan::PLAN_W {
-                        hud.close();
-                    }
+                    // the bottom screen: the course, played with the stylus (plan.rs), editing through the game
                     strokes.push(plan.pen(&mut demo, &mut app, phase, x, y, input.shoulder()));
                 }
                 input::Event::KeyDown(shim::KeyCode::Space, _) => {
@@ -1268,10 +1281,14 @@ fn main() {
                     mixer.play("Interface/Button2.wav", 0.5, false);
                 }
                 input::Event::KeyDown(shim::KeyCode::Tab, _) => {
-                    // Y: the strip's next tab
-                    plan.next_tab();
-                    mixer.play("Interface/Button2.wav", 0.5, false);
+                    // Y: the brush size
+                    strokes.push(plan.cycle_size());
                 }
+                // the D-pad: the top screen's tools (left / right) and categories (up / down)
+                input::Event::KeyDown(shim::KeyCode::Left, _) => strokes.push(plan.nav(&mut app, -1, 0)),
+                input::Event::KeyDown(shim::KeyCode::Right, _) => strokes.push(plan.nav(&mut app, 1, 0)),
+                input::Event::KeyDown(shim::KeyCode::Up, _) => strokes.push(plan.nav(&mut app, 0, -1)),
+                input::Event::KeyDown(shim::KeyCode::Down, _) => strokes.push(plan.nav(&mut app, 0, 1)),
                 input::Event::KeyDown(k @ (shim::KeyCode::Q | shim::KeyCode::E), _) => {
                     // ZL / ZR: slower / faster, through pause: paused, 1, 2, 4
                     let steps = [0u32, 1, 2, 4];
@@ -1295,10 +1312,9 @@ fn main() {
                     // B: the game's undo, as the UNDO button
                     strokes.push(plan::Stroke { action: Some(plan::Action::Undo), ..Default::default() });
                 }
-                input::Event::MouseDown(shim::MouseButton::Left, mx, my) => {
-                    // A: the armed tool once at the top screen's cursor, as a tap on the plan there would
-                    let p = demo.pick(mx, my);
-                    strokes.push(plan.tap_world(&mut demo, &mut app, p[0], p[2]));
+                input::Event::MouseDown(shim::MouseButton::Left, _, _) => {
+                    // A: the chosen button acts (hire, fire, save, a page)
+                    strokes.push(plan.activate(&mut app));
                 }
                 _ => {}
             }
@@ -1474,22 +1490,13 @@ fn main() {
         plan.refresh(&mut g, &demo, &app);
         g.set_stereo_span(STEREO_FULL_HEIGHT, PITCH as f32, DEPTH_RANGE);
         let eyes: &[Eye] = if g.slider() > 0.0 { &[Eye::Left, Eye::Right] } else { &[Eye::Left] };
+        // the top screen: the dashboard (hud.rs, plan.rs's palette and mini-map); with the 3D slider up the palette and
+        // pages stand a little out of the screen, the mini-map at its surface
+        let depth = g.slider() * 3.0;
         for &eye in eyes {
-            g.begin_screen(Screen::Top, eye, [0x2c, 0x3e, 0x50]);
-            demo.render_world(&mut g);
-            // everything on the ground, drawn by the game (its ground batches are dropped: the ground is the chunks above):
-            // the retaining walls, paths, water glints, trees, buildings, golfers, staff, the pro's aim line
-            g.stereo_world(true);
-            app.render_world(&mut g);
-            g.stereo_world(false);
-            if plan.pen.is_some() {
-                plan.render_top(&mut g, &demo); // the brush under the pen, on the land
-            } else {
-                demo.render_cursor(&mut g, input.cursor);
-            }
-            // the information over it, at the screen's depth (hud.rs)
-            g.stereo_world(false);
-            hud.render(&mut g, &text, &app);
+            g.begin_screen(Screen::Top, eye, [0x10, 0x1a, 0x12]);
+            let off = if eyes.len() == 1 { 0.0 } else if eye == Eye::Left { depth } else { -depth };
+            hud.render(&mut g, &text, &app, &plan, &demo, off);
         }
         // a hole built (a tee and a green) but not open: the status line says how to open it
         plan.hint = {
@@ -1500,8 +1507,13 @@ fn main() {
             };
             ready.then(|| format!("HOLE {h} IS BUILT: TAP ITS GREEN TO OPEN IT"))
         };
-        g.begin_screen(Screen::Bottom, Eye::Left, [0x10, 0x14, 0x10]);
-        plan.render(&mut g, &demo, &app, &text, input.cursor);
+        // the bottom screen: the course, and on it what the tool would do
+        g.begin_screen(Screen::Bottom, Eye::Left, [0x2c, 0x3e, 0x50]);
+        demo.render_world(&mut g);
+        // everything on the ground, drawn by the game (its ground batches are dropped: the ground is the chunks above):
+        // the retaining walls, paths, water glints, trees, buildings, golfers, staff, the pro's aim line
+        app.render_world(&mut g);
+        plan.render_overlay(&mut g, &demo);
         hud.render_menu_bottom(&mut g, &text);
         let cpu = t.elapsed().as_secs_f32();
         let draws = g.draws;

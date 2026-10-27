@@ -1,17 +1,25 @@
-//! The top screen's information, over the 3D course: the DS convention of reading on top and acting below (plan.rs).
+//! The top screen: the dashboard, the DS convention of reading on top and acting below (the course is on the bottom screen,
+//! plan.rs). Nothing of the course is drawn twice: up here are the tools, the money and the club.
+//!
+//!   * a bar along the top (below);
+//!   * the tool palette and its status line (plan.rs `render_palette`), chosen with the D-pad;
+//!   * the overview: a mini-map of the whole course with a frame for the bottom screen's view (plan.rs `render_minimap`),
+//!     this year's money (income, costs, net), the course (holes open, golfers, ratings) and the game's messages and
+//!     golfers' thoughts; Select (or the INFO buttons) puts a page in its place: money, holes, golfers, staff;
 //!
 //!   * a bar along the top: cash (with what was just spent or earned flashing beside it), the date and game speed, golfers
 //!     on the course and the club's fun and skill ratings;
 //!   * along the foot: the game's own messages (its ticker) and golfers' thoughts as they have them, the game's main
 //!     feedback on a course ("This hole is too short!"), plus short notes from the tools;
-//!   * a card for whatever a long press on the plan inspected (golfer, hole, building, ground);
-//!   * the INFO tab's panels: money, holes, golfers, staff, help (Select steps through them);
+//!   * a card for whatever a long press on the course inspected (golfer, hole, building, ground);
+//!   * the help page (INFO row), over the whole screen;
 //!   * Start's pause menu: on the top screen for the buttons, and as big rows on the bottom screen for the stylus.
 //! All of it sits at the screen's depth (no stereo shear), drawn after the world for each eye.
 
 use crate::app::App;
 use crate::gfx::{Gfx, Mat4, Mode, Uniforms, Vert};
-use crate::plan::{building_name, hole_length, Panel};
+use crate::plan::{building_name, hole_length, Panel, Plan};
+use crate::Demo;
 use crate::text::{money, Size, Text};
 use sg_core::economy as econ;
 use sg_core::golfer::SLOTS;
@@ -23,6 +31,7 @@ use std::time::{Duration, Instant};
 const W: f32 = 400.0;
 const H: f32 = 240.0;
 const BAR_H: f32 = 15.0;
+const WHITE: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
 const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const THOUGHT_FOR: Duration = Duration::from_secs(7);
 const NOTE_FOR: Duration = Duration::from_millis(2600);
@@ -122,7 +131,7 @@ impl Hud {
         (i < MENU.len() && y - my - i as f32 * pitch <= h).then_some(i)
     }
 
-    /// The pause menu as big rows on the bottom screen, over the plan.
+    /// The pause menu as big rows on the bottom screen, over the course.
     pub fn render_menu_bottom(&self, g: &mut Gfx, text: &Text) {
         let Some(sel) = self.menu else { return };
         let u = Uniforms::flat(&Mat4::ortho(0.0, 320.0, 240.0, 0.0, -1.0, 1.0), &Mat4::identity());
@@ -217,7 +226,7 @@ impl Hud {
         }
     }
 
-    /// A long press on the plan at world (wx, wz): the nearest golfer, else the hole, building or ground there.
+    /// A long press on the course at world (wx, wz): the nearest golfer, else the hole, building or ground there.
     pub fn inspect(&mut self, app: &App, wx: f32, wz: f32) {
         self.panel = None;
         let mut lines = Vec::new();
@@ -283,8 +292,11 @@ impl Hud {
     }
 
     /// The overlay for one eye (after the world, at the screen's depth).
-    pub fn render(&self, g: &mut Gfx, text: &Text, app: &App) {
+    /// The whole top screen. `off`: the 3D slider's offset for this eye (pixels; the palette and pages stand out by it).
+    pub fn render(&self, g: &mut Gfx, text: &Text, app: &App, plan: &Plan, demo: &Demo, off: f32) {
         let u = Uniforms::flat(&Mat4::ortho(0.0, W, H, 0.0, -1.0, 1.0), &Mat4::identity());
+        // the same, moved by the eye's offset
+        let uo = Uniforms::flat(&Mat4::ortho(-off, W - off, H, 0.0, -1.0, 1.0), &Mat4::identity());
         let rect = |g: &mut Gfx, x: f32, y: f32, w: f32, h: f32, c: [f32; 4]| {
             let v = |x: f32, y: f32| Vert::new(x, y, 0.0, 0.0, 0.0).col(c);
             g.quad(Mode::Flat, None, &u, [v(x, y), v(x + w, y), v(x + w, y + h), v(x, y + h)]);
@@ -323,49 +335,106 @@ impl Hud {
         let rw = text.width(&right, Size::Small);
         text.draw(g, &u, W - rw - 4.0, 2.5, &right, Size::Small, [0.85, 0.92, 1.0, 1.0]);
 
-        // the foot: the game's message, then the newest thoughts, then a tool's note
-        let mut foot: Vec<(String, [f32; 4])> = Vec::new();
-        if app.ticker.showing && !app.ticker.text.is_empty() {
-            for l in text.wrap(&app.ticker.text.replace('\n', " "), Size::Normal, W - 12.0).into_iter().take(2) {
-                foot.push((l, [1.0, 0.9, 0.45, 1.0]));
-            }
-        }
-        for (s, c, at) in self.thoughts.iter().rev().take(2).collect::<Vec<_>>().into_iter().rev() {
-            let age = now.duration_since(*at).as_secs_f32() / THOUGHT_FOR.as_secs_f32();
-            let a = if age > 0.75 { (1.0 - age) * 4.0 } else { 1.0 };
-            for l in text.wrap(s, Size::Normal, W - 12.0).into_iter().take(2) {
-                foot.push((l, rgba([c[0], c[1], c[2]], a.clamp(0.0, 1.0))));
-            }
-        }
-        if let Some((s, _)) = &self.note {
-            foot.push((s.clone(), [1.0, 1.0, 1.0, 1.0]));
-        }
+        // the palette, then the overview or a page
+        let body = plan.render_palette(g, &uo, demo, app, text, BAR_H + 1.0) + 2.0;
         let lh = text.line_height(Size::Normal);
-        let foot: Vec<_> = foot.into_iter().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect();
-        if !foot.is_empty() && self.panel.is_none() {
-            let top = H - lh * foot.len() as f32 - 4.0;
-            rect(g, 0.0, top - 2.0, W, H - top + 2.0, [0.0, 0.0, 0.0, 0.45]);
-            for (i, (s, c)) in foot.iter().enumerate() {
-                text.draw_shadowed(g, &u, 6.0, top + i as f32 * lh, s, Size::Normal, *c);
+        let sl = text.line_height(Size::Small) + 1.0;
+        match self.panel {
+            Some(Panel::Help) => self.draw_panel_at(g, text, app, Panel::Help, "Select or B: close", (6.0, BAR_H + 2.0, W - 12.0, H - BAR_H - 4.0), &uo),
+            Some(p) => self.draw_panel_at(g, text, app, p, "Select: next page", (4.0, body, W - 8.0, H - body - 2.0), &uo),
+            None => {
+                // the mini-map, at the screen's surface
+                let mh = H - body - 2.0;
+                plan.render_minimap(g, &u, demo, (4.0, body, mh * 1.35, mh));
+                // beside it: the year's money, the course, then the messages
+                let x0 = 8.0 + mh * 1.35;
+                let cw = W - x0 - 4.0;
+                rect(g, x0 - 2.0, body, cw + 4.0, mh, [0.02, 0.05, 0.03, 0.85]);
+                let urect = |g: &mut Gfx, x: f32, y: f32, w: f32, h: f32, c: [f32; 4]| {
+                    let v = |x: f32, y: f32| Vert::new(x, y, 0.0, 0.0, 0.0).col(c);
+                    g.quad(Mode::Flat, None, &uo, [v(x, y), v(x + w, y), v(x + w, y + h), v(x, y + h)]);
+                };
+                let mut y = body + 2.0;
+                let gold = [1.0, 0.86, 0.4, 1.0];
+                let pair = |g: &mut Gfx, y: f32, l: &str, r: &str, c: [f32; 4]| {
+                    text.draw(g, &uo, x0 + 2.0, y, l, Size::Small, [0.78, 0.84, 0.78, 1.0]);
+                    let rw = text.width(r, Size::Small);
+                    text.draw(g, &uo, x0 + cw - rw - 2.0, y, r, Size::Small, c);
+                };
+                let year = app.econ.ledger.last().copied().unwrap_or([0.0; econ::LEDGER_COLUMNS]);
+                // the ledger's columns: green fees, home sites, food and drink earn; building, facilities, salaries and
+                // upkeep cost; "other" holds the starting funds, so only a loss there counts
+                let income: f64 = year[..3].iter().sum();
+                let costs: f64 = year[3..7].iter().sum::<f64>() + year[7].min(0.0);
+                let net = income + costs;
+                text.draw(g, &uo, x0 + 2.0, y, "This year", Size::Small, gold);
+                y += sl;
+                pair(g, y, "Income", &money(income.round() as i64), [0.65, 1.0, 0.6, 1.0]);
+                y += sl;
+                pair(g, y, "Costs", &money(costs.round() as i64), [1.0, 0.65, 0.55, 1.0]);
+                y += sl;
+                pair(g, y, "Net", &money(net.round() as i64), if net < 0.0 { [1.0, 0.6, 0.5, 1.0] } else { [0.65, 1.0, 0.6, 1.0] });
+                y += sl + 3.0;
+                let open = (1..19).filter(|&h| app.club.holes[h].par > 0).count();
+                let par: i32 = (1..19).map(|h| app.club.holes[h].par as i32).sum();
+                let on = app.club.g.iter().filter(|gg| gg.hole > 0 && gg.hole < 19).count();
+                let waiting = app.club.g.iter().filter(|gg| gg.hole == -1).count();
+                let mood = {
+                    let m: Vec<i32> = app.club.g.iter().filter(|gg| gg.hole > 0 && gg.hole < 19).map(|gg| gg.mood).collect();
+                    if m.is_empty() { 0 } else { m.iter().sum::<i32>() / m.len() as i32 }
+                };
+                text.draw(g, &uo, x0 + 2.0, y, "The course", Size::Small, gold);
+                y += sl;
+                pair(g, y, "Holes open", &(if open > 0 { format!("{open}   par {par}") } else { "none yet".into() }), WHITE);
+                y += sl;
+                pair(g, y, "Golfers", &format!("{on} playing, {waiting} waiting"), WHITE);
+                y += sl;
+                pair(g, y, "Their mood", &format!("{mood}"), if mood < 0 { [1.0, 0.65, 0.55, 1.0] } else { WHITE });
+                y += sl + 3.0;
+                // the game's message, the newest thoughts, a tool's note: as many lines as fit below
+                let mut foot: Vec<(String, [f32; 4])> = Vec::new();
+                if app.ticker.showing && !app.ticker.text.is_empty() {
+                    for l in text.wrap(&app.ticker.text.replace('\n', " "), Size::Small, cw - 4.0).into_iter().take(3) {
+                        foot.push((l, [1.0, 0.9, 0.45, 1.0]));
+                    }
+                }
+                for (s, c, at) in self.thoughts.iter().rev().take(2).collect::<Vec<_>>().into_iter().rev() {
+                    let age = now.duration_since(*at).as_secs_f32() / THOUGHT_FOR.as_secs_f32();
+                    let a = if age > 0.75 { (1.0 - age) * 4.0 } else { 1.0 };
+                    for l in text.wrap(s, Size::Small, cw - 4.0).into_iter().take(2) {
+                        foot.push((l, rgba([c[0], c[1], c[2]], a.clamp(0.0, 1.0))));
+                    }
+                }
+                if let Some((s, _)) = &self.note {
+                    for l in text.wrap(s, Size::Small, cw - 4.0) {
+                        foot.push((l, WHITE));
+                    }
+                }
+                let room = ((body + mh - y) / sl).floor().max(0.0) as usize;
+                let n = foot.len();
+                if n > 0 && room > 0 {
+                    urect(g, x0, y - 1.0, cw, 1.0, [1.0, 1.0, 1.0, 0.15]);
+                }
+                for (i, (s, c)) in foot.into_iter().skip(n.saturating_sub(room)).enumerate() {
+                    text.draw(g, &uo, x0 + 2.0, y + 1.0 + i as f32 * sl, &s, Size::Small, c);
+                }
             }
         }
 
-        // the inspect card
+        // the inspect card, over the overview
         if let Some((lines, _)) = &self.card {
             let w = lines.iter().map(|l| text.width(l, Size::Normal)).fold(120.0, f32::max) + 16.0;
             let h = lines.len() as f32 * lh + 10.0;
-            let (x, y) = ((W - w) * 0.5, BAR_H + 8.0);
-            rect(g, x, y, w, h, [0.02, 0.06, 0.03, 0.88]);
-            rect(g, x, y, w, 1.5, [1.0, 0.9, 0.3, 1.0]);
+            let (x, y) = ((W - w) * 0.5, body + 6.0);
+            let v = |x: f32, y: f32, c: [f32; 4]| Vert::new(x, y, 0.0, 0.0, 0.0).col(c);
+            let card = [0.02, 0.06, 0.03, 0.94];
+            g.quad(Mode::Flat, None, &uo, [v(x, y, card), v(x + w, y, card), v(x + w, y + h, card), v(x, y + h, card)]);
+            let gl = [1.0, 0.9, 0.3, 1.0];
+            g.quad(Mode::Flat, None, &uo, [v(x, y, gl), v(x + w, y, gl), v(x + w, y + 1.5, gl), v(x, y + 1.5, gl)]);
             for (i, l) in lines.iter().enumerate() {
                 let c = if i == 0 { [1.0, 0.92, 0.5, 1.0] } else { [1.0, 1.0, 1.0, 1.0] };
-                text.draw(g, &u, x + 8.0, y + 5.0 + i as f32 * lh, l, Size::Normal, c);
+                text.draw(g, &uo, x + 8.0, y + 5.0 + i as f32 * lh, l, Size::Normal, c);
             }
-        }
-
-        // a panel
-        if let Some(p) = self.panel {
-            self.draw_panel(g, text, app, p, "Select: next   tap the button again to close");
         }
 
         // Start's pause menu
@@ -375,12 +444,17 @@ impl Hud {
     /// A panel over the top screen below the bar, with a hint in its top-right corner (also the title screen's Controls).
     pub fn draw_panel(&self, g: &mut Gfx, text: &Text, app: &App, p: Panel, hint: &str) {
         let u = Uniforms::flat(&Mat4::ortho(0.0, W, H, 0.0, -1.0, 1.0), &Mat4::identity());
+        self.draw_panel_at(g, text, app, p, hint, (8.0, BAR_H + 4.0, W - 16.0, H - BAR_H - 10.0), &u);
+    }
+
+    /// A page in (x, y, w, h), drawn with `u`.
+    pub fn draw_panel_at(&self, g: &mut Gfx, text: &Text, app: &App, p: Panel, hint: &str, (x, y, w, h): (f32, f32, f32, f32), u: &Uniforms) {
+        let u = *u;
         let rect = |g: &mut Gfx, x: f32, y: f32, w: f32, h: f32, c: [f32; 4]| {
             let v = |x: f32, y: f32| Vert::new(x, y, 0.0, 0.0, 0.0).col(c);
             g.quad(Mode::Flat, None, &u, [v(x, y), v(x + w, y), v(x + w, y + h), v(x, y + h)]);
         };
         {
-            let (x, y, w, h) = (8.0, BAR_H + 4.0, W - 16.0, H - BAR_H - 10.0);
             rect(g, x, y, w, h, [0.02, 0.05, 0.03, 0.9]);
             rect(g, x, y, w, 1.5, [1.0, 0.9, 0.3, 1.0]);
             let (title, rows) = self.panel_rows(app, p);
@@ -466,7 +540,7 @@ impl Hud {
                     rows.push((format!("Hole {h}   {state}"), mood, if r.par == 0 { [1.0, 0.85, 0.4, 1.0] } else { white }));
                 }
                 if n == 0 {
-                    rows.push(("No holes yet: COURSE tab, HOLE, tap a tee then a green".into(), String::new(), dim));
+                    rows.push(("No holes yet: HOLE (COURSE row), then tap a tee and a green on the course".into(), String::new(), dim));
                 }
                 let r = app.club.ratings;
                 rows.push((String::new(), String::new(), white));
@@ -492,27 +566,27 @@ impl Hud {
                     rows.push((name.to_string(), n.to_string(), white));
                 }
                 rows.push((String::new(), String::new(), white));
-                rows.push(("STAFF tab: the green button hires one, the red one fires one".into(), String::new(), dim));
+                rows.push(("STAFF row: choose + to hire one or - to fire one, then press A".into(), String::new(), dim));
                 rows.push(("Groundskeepers keep the grass and weeds down; rangers keep play moving;".into(), String::new(), dim));
                 rows.push(("soda vendors sell drinks; the club pro teaches.".into(), String::new(), dim));
                 ("Staff".into(), rows)
             }
             Panel::Help => {
                 for (l, r) in [
-                    ("Paint", "drag on the bottom map"),
+                    ("Choose a tool", "D-pad left / right (up / down: category)"),
+                    ("Paint with it", "drag on the course (bottom screen)"),
                     ("Do it once", "tap"),
                     ("Look at something", "hold the stylus still"),
                     ("New hole", "HOLE: tap a tee, then a green"),
-                    ("Scroll", "C-stick, D-pad, or hold L or R and drag"),
+                    ("Hire, fire, save, a page", "choose it, then A"),
+                    ("Brush size", "Y"),
+                    ("Scroll", "Circle Pad, C-stick, or hold L or R and drag"),
                     ("Zoom", "tap L (out) or R (in)"),
-                    ("Undo", "UNDO button or B"),
-                    ("Pause", "PAUSE button or X"),
-                    ("Game speed", "ZL slower, ZR faster (or SPEED)"),
-                    ("Next tool tab", "Y"),
+                    ("Undo", "B"),
+                    ("Pause", "X"),
+                    ("Game speed", "ZL slower, ZR faster"),
                     ("Money, holes, golfers, staff", "Select"),
                     ("Menu: save, load, title screen, quit", "Start"),
-                    ("Brush size", "SIZE, under the map"),
-                    ("Use tool at cursor", "Circle Pad moves it, A uses it"),
                 ] {
                     rows.push((l.to_string(), r.to_string(), white));
                 }
