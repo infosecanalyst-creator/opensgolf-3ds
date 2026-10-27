@@ -22,9 +22,11 @@ OpenSGolf runs on the New Nintendo 3DS and New 3DS XL only.
 The same steps install every update. You never need to take the SD card out.
 
 ## Game files
-The game needs SimGolf's art and data. It looks for them in this order:
-- Your own copy of SimGolf, in sdmc:/3ds/opensgolf/game.
-- The free set. If there is no copy, the game writes a free replacement set (about 82 MB) to sdmc:/3ds/opensgolf/free the first time it starts.
+The game can play with either of two sets of art, sounds and data:
+- Original SimGolf: your own copy of the PC game, in sdmc:/3ds/opensgolf/game. Copy the whole installed folder (the one with Data, Bodies, Flics and Sounds in it).
+- The free set: replacement art and sounds (about 82 MB), written to sdmc:/3ds/opensgolf/free the first time it is needed.
+
+With a copy of SimGolf on the card the game uses it. To pick the other set, go to Settings on the title screen and tap Game art, then choose Quit and start OpenSGolf again. Saves work with either set.
 
 ## First launch
 The first time you open a course it takes about 19 seconds while the game decodes its sprites. It remembers which sprites the course needed, so after that a course opens in about 5 seconds.
@@ -33,7 +35,7 @@ The first time you open a course it takes about 19 seconds while the game decode
 | Continue | Opens your newest save.
 | New Course | Lists the Parkland plots with their size and price. Plots you cannot afford are greyed out.
 | Load Game | Lists your saved games, newest first.
-| Settings | Golfer thoughts on or off; sound Off, Low, Medium or High.
+| Settings | Golfer thoughts on or off; sound Off, Low, Medium or High; game art Original SimGolf or Free set.
 | Controls | The button chart.
 | Manual | This manual.
 | Quit | Back to the Homebrew Launcher.

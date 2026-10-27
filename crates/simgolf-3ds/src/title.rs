@@ -8,7 +8,8 @@
 //!   * Continue      the newest save (the autosave written when the game is left, or any later one)
 //!   * New Course    the plots of land on offer, with their size and price and what is left to build with
 //!   * Load Game     every save, newest first
-//!   * Settings      golfers' thoughts on the top screen, sound volume (kept on the card)
+//!   * Settings      golfers' thoughts on the top screen, sound volume, game art: your copy of SimGolf or the free set
+//!                   (kept on the card; the art changes the next time the game starts)
 //!   * Controls      the controls page (hud.rs)
 //!   * Manual        the instruction manual (manual.rs, run by main.rs)
 //!   * Quit          back to the Homebrew Launcher
@@ -94,6 +95,8 @@ pub struct Settings {
     pub thoughts: bool,
     /// An index into VOLUMES.
     pub volume: usize,
+    /// Play on the free art set even when a copy of SimGolf is on the card (read at start-up, by main.rs's game_dir).
+    pub free_art: bool,
 }
 
 const VOLUMES: [(&str, f32); 4] = [("Off", 0.0), ("Low", 0.3), ("Medium", 0.55), ("High", 0.8)];
@@ -101,12 +104,13 @@ const SETTINGS_FILE: &str = "sdmc:/3ds/opensgolf/settings.txt";
 
 impl Settings {
     pub fn load() -> Settings {
-        let mut s = Settings { thoughts: true, volume: 3 };
+        let mut s = Settings { thoughts: true, volume: 3, free_art: false };
         if let Ok(t) = std::fs::read_to_string(SETTINGS_FILE) {
             for line in t.lines() {
                 match line.split_once('=') {
                     Some(("thoughts", v)) => s.thoughts = v.trim() != "0",
                     Some(("volume", v)) => s.volume = v.trim().parse::<usize>().unwrap_or(3).min(VOLUMES.len() - 1),
+                    Some(("art", v)) => s.free_art = v.trim() == "free",
                     _ => {}
                 }
             }
@@ -115,7 +119,8 @@ impl Settings {
     }
 
     pub fn save(&self) {
-        let _ = std::fs::write(SETTINGS_FILE, format!("thoughts={}\nvolume={}\n", self.thoughts as u8, self.volume));
+        let art = if self.free_art { "free" } else { "original" };
+        let _ = std::fs::write(SETTINGS_FILE, format!("thoughts={}\nvolume={}\nart={art}\n", self.thoughts as u8, self.volume));
     }
 
     /// The mixer's master volume.
@@ -144,10 +149,13 @@ pub struct Title {
     pub loading: Option<String>,
     /// The press began on this row (a tap picks it on release only if it ends on the same row).
     pressed: Option<usize>,
+    /// The art this run is drawn with (the free set, else the player's copy of SimGolf), and whether a copy is on the card.
+    running_free: bool,
+    has_original: bool,
 }
 
 impl Title {
-    pub fn new(app: &App) -> Title {
+    pub fn new(app: &App, running_free: bool) -> Title {
         let mut t = Title {
             page: Page::Main,
             sel: 0,
@@ -158,6 +166,8 @@ impl Title {
             t0: Instant::now(),
             loading: None,
             pressed: None,
+            running_free,
+            has_original: sg_core::fsutil::is_dir("sdmc:/3ds/opensgolf/game/Data"),
         };
         t.refresh(app);
         t
@@ -243,6 +253,7 @@ impl Title {
             Page::Settings => vec![
                 row(&format!("Golfer thoughts: {}", if self.settings.thoughts { "On" } else { "Off" })),
                 row(&format!("Sound: {}", VOLUMES[self.settings.volume].0)),
+                row(&format!("Game art: {}", if self.settings.free_art || !self.has_original { "Free set" } else { "Original SimGolf" })),
                 back,
             ],
             Page::Controls => vec![back],
@@ -396,6 +407,14 @@ impl Title {
                 self.settings.save();
                 mixer.play("Interface/Button1.wav", 0.7, false);
             }
+            Page::Settings if i == 2 => {
+                if self.has_original {
+                    self.settings.free_art = !self.settings.free_art;
+                    self.settings.save();
+                } else {
+                    self.note = Some("No copy of SimGolf on the card: put its files in sdmc:/3ds/opensgolf/game to play with the original art.".into());
+                }
+            }
             // Back
             _ => {
                 let from = self.page;
@@ -426,7 +445,7 @@ impl Title {
                 }
                 Some(Item::New) => "Choose a plot of land and build a new course on it.".into(),
                 Some(Item::Load) => format!("Choose from your {} saved games, newest first.", self.saves.len()),
-                Some(Item::Settings) => "Golfers' thoughts on the top screen, and the sound volume.".into(),
+                Some(Item::Settings) => "Golfers' thoughts, the sound volume, and the game art: the original SimGolf or the free set.".into(),
                 Some(Item::Controls) => "How to play with the stylus, a fingertip and the buttons.".into(),
                 Some(Item::Manual) => "The instruction manual: building holes, staff, golfers, money and tips.".into(),
                 Some(Item::Quit) => "Back to the Homebrew Launcher.".into(),
@@ -446,6 +465,19 @@ impl Title {
             }
             Page::Settings if self.sel == 0 => "Golfers say what they think of the course along the foot of the top screen.".into(),
             Page::Settings if self.sel == 1 => "Sound effects and the course's ambience. Tap to change.".into(),
+            Page::Settings if self.sel == 2 => {
+                let want_free = self.settings.free_art || !self.has_original;
+                if want_free != self.running_free {
+                    format!(
+                        "Switches to {} the next time OpenSGolf starts: choose Quit, then start it again. Saves work with either.",
+                        if want_free { "the free set" } else { "the original SimGolf art" }
+                    )
+                } else if want_free {
+                    "Playing with the free replacement art and sounds. Tap to use your copy of SimGolf instead.".into()
+                } else {
+                    "Playing with your copy of SimGolf: its art, sounds and golfers. Tap to use the free set instead.".into()
+                }
+            }
             _ => "Back to the title.".into(),
         }
     }

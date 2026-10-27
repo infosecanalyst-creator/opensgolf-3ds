@@ -207,6 +207,17 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Set by `shim::window::order_quit`.
 pub static QUIT: AtomicBool = AtomicBool::new(false);
+/// The game is running on the free art set (else on the player's own copy of SimGolf): set once by `game_dir`. The texture
+/// cache and the sprite list are kept per art set.
+static ART_FREE: AtomicBool = AtomicBool::new(false);
+
+fn art_name() -> &'static str {
+    if ART_FREE.load(Ordering::Relaxed) {
+        "free"
+    } else {
+        "game"
+    }
+}
 
 /// Where the game's files live on the SD card: your own SimGolf copy (the folder with Data, Flics and Sounds) goes in
 /// `sdmc:/3ds/opensgolf/game`; without one the free base set is written to `sdmc:/3ds/opensgolf/free` on first start.
@@ -326,19 +337,25 @@ struct Demo {
     cache_file: PathBuf,
 }
 
-/// Where the game's files are. With a copy of SimGolf at `sdmc:/3ds/opensgolf/game` that folder is read directly. Without
-/// one, the free base set is a content pack (gfx/, sfx/, text/, fonts/ with a pack.toml): it is mounted through sg-core's pack
+/// Where the game's files are. With a copy of SimGolf at `sdmc:/3ds/opensgolf/game` that folder is read directly, unless the
+/// player chose the free set in Settings (`prefer_free`). Otherwise the free base set is a content pack (gfx/, sfx/, text/, fonts/ with a pack.toml): it is mounted through sg-core's pack
 /// loader and virtual file system, which maps the original's paths (Data/Textures/..., Sounds/...) onto the pack, exactly
 /// as the desktop game does. The same loader is what mods on the SD card will go through.
 ///
 /// A missing free set is written first, with progress on a text console on the bottom screen (the GPU takes that screen
 /// over afterwards): drawing 5,465 files on the ARM11 takes minutes, so `make-free-set.ps1` makes the set on a PC instead.
-fn game_dir(say: &mut dyn FnMut(&str)) -> PathBuf {
+fn game_dir(say: &mut dyn FnMut(&str), prefer_free: bool) -> PathBuf {
     let root = Path::new(SD_ROOT);
     let game = root.join("game");
-    if sg_core::fsutil::is_dir(game.join("Data")) {
+    let original = sg_core::fsutil::is_dir(game.join("Data"));
+    if original && !prefer_free {
+        say("game files: your copy of SimGolf");
         return game;
     }
+    ART_FREE.store(true, Ordering::Relaxed);
+    // with a copy of SimGolf in game/, the free set is mapped under a folder of its own, so none of the original's files
+    // show through where the set has none
+    let game = if original { root.join("freegame") } else { game };
     let free = root.join("free");
     if !sg_core::fsutil::exists(free.join("pack.toml")) {
         write_free_set(say, &free);
@@ -471,7 +488,7 @@ impl Demo {
         }
         // decoded textures are cached on the SD card after the first run: one read instead of hundreds of file opens
         // one cache per art set: the player's own copy of SimGolf and the free set draw the same names differently
-        let art = if sg_core::fsutil::is_dir(Path::new(SD_ROOT).join("game/Data/Textures")) { "game" } else { "free" };
+        let art = art_name();
         let cache_file = PathBuf::from(format!("{SD_ROOT}/cache/{theme}-{art}-textures.bin"));
         let t = std::time::Instant::now();
         let mut cache = texcache::read(&cache_file);
@@ -1072,7 +1089,7 @@ fn main() {
             title::splash(&mut g, &text, line, t0.elapsed().as_secs_f32());
         };
         say("Starting");
-        let game = game_dir(&mut say);
+        let game = game_dir(&mut say, title::Settings::load().free_art);
         println!("game folder: {}", game.display());
         // the game itself now, so the sprite preloader can start on its spare core while the ground textures are read
         gfx::trace("game: App::new");
@@ -1107,7 +1124,7 @@ fn main() {
     let mut kept_list = false;
     gfx::trace(&format!("preload: {}", preload_core.map(|c| format!("on core {c}")).unwrap_or_else(|| "off".into())));
     // the title screen (title.rs): a game is started or opened from there
-    let mut title = title::Title::new(&app);
+    let mut title = title::Title::new(&app, ART_FREE.load(Ordering::Relaxed));
     // the instruction manual (manual.rs): over the title or the game; it keeps its place between openings
     let mut manual = manual::Manual::new();
     // whether the game was paused before the manual opened over it (put back when it closes)
@@ -1652,14 +1669,16 @@ fn main() {
 }
 
 /// The sprites the last opened course asked for (its trees, buildings, staff), one per line: shadow flag, file, palette.
-const SPRITE_LIST: &str = "sdmc:/3ds/opensgolf/cache/sprites.txt";
+fn sprite_list() -> String {
+    format!("{SD_ROOT}/cache/sprites-{}.txt", art_name())
+}
 
 /// The preloader's list: first the sprites the course opened last time needed (SPRITE_LIST), so opening one from the title
 /// finds them decoded already; then every golfer body's clips, so a new kind of golfer arriving does not stop the game
 /// while its 50 clips load.
 fn preload_jobs(app: &app::App) -> Vec<sg_core::preload::Job> {
     let mut jobs: Vec<sg_core::preload::Job> = Vec::new();
-    if let Ok(t) = std::fs::read_to_string(SPRITE_LIST) {
+    if let Ok(t) = std::fs::read_to_string(sprite_list()) {
         for line in t.lines() {
             let mut f = line.split('\t');
             if let (Some(sh), Some(path)) = (f.next(), f.next()) {
@@ -1687,7 +1706,7 @@ fn keep_sprite_list() {
         let pal = pal.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
         out.push_str(&format!("{}\t{}\t{}\n", *shadow as u8, path.display(), pal));
     }
-    let _ = std::fs::write(SPRITE_LIST, out);
+    let _ = std::fs::write(sprite_list(), out);
     gfx::trace(&format!("preload: kept {} course sprites for the next start", list.len()));
 }
 
