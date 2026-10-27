@@ -1341,8 +1341,19 @@ fn main() {
                     }
                 }
                 input::Event::MouseDown(shim::MouseButton::Left, _, _) => {
-                    // A: the chosen button acts (hire, fire, save, a page)
-                    strokes.push(plan.activate(&mut app));
+                    // A: the chosen button acts (hire, fire, save, a page); with a course tool in hand, the view goes to the
+                    // golfer behind the newest thought
+                    match (plan.chosen() == plan.tool, hud.speaker(&app)) {
+                        (true, Some((gi, name))) => {
+                            let gg = &app.club.g[gi];
+                            let (x, z) = app.units_to_world(gg.x, gg.y);
+                            demo.cam_x = x;
+                            demo.cam_z = z;
+                            hud.note(&format!("Here is {name}"));
+                            mixer.play("Interface/Button2.wav", 0.6, false);
+                        }
+                        _ => strokes.push(plan.activate(&mut app)),
+                    }
                 }
                 _ => {}
             }
@@ -1547,6 +1558,7 @@ fn main() {
         // the retaining walls, paths, water glints, trees, buildings, golfers, staff, the pro's aim line
         app.render_world(&mut g);
         plan.render_overlay(&mut g, &demo);
+        hud.render_bubbles(&mut g, &app, &demo);
         hud.render_menu_bottom(&mut g, &text);
         let cpu = t.elapsed().as_secs_f32();
         let draws = g.draws;

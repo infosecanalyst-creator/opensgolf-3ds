@@ -62,13 +62,15 @@ the land.
   the membership waiting list; and a feed of golfers' thoughts (tagged with the hole they are on) and the game's messages.
   **Select** shows the money, holes (with each hole's type, fun and fees), golfers and staff pages in its place, then the
   overview again.
+- On the course, a speech bubble over a golfer who just thought something (green dots good, red bad); A goes to the
+  golfer behind the newest thought, named on the status line.
 
 | Buttons | |
 | --- | --- |
 | L / R | tool category |
 | D-pad left / right | tool |
 | D-pad up / down | brush size 1, 2, 3 (remembered per tool) |
-| A | the chosen button acts (hire, fire, save, a page) |
+| A | the chosen button acts (hire, fire, save, a page); with a course tool in hand, the view goes to the golfer behind the newest thought |
 | B | clears a tee waiting for its green, else undo (30 steps, money included) |
 | X | pause |
 | Y | game speed 1x, 2x, 4x |

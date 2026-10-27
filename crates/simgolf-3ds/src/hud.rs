@@ -54,7 +54,14 @@ pub struct Hud {
     pub menu: Option<usize>,
     /// The game month now, and the cash when it began: this month's cash flow.
     month: Option<(i32, f64)>,
+    /// Golfers who just had a thought: who (golfer slot), the thought's colour, when. A bubble shows over each on the course
+    /// for a moment; the newest is who A goes to.
+    spoke: Vec<(usize, [f32; 4], Instant)>,
 }
+
+/// How long a speech bubble stays over a golfer, and how long A can still go to the newest speaker.
+const BUBBLE_FOR: Duration = Duration::from_millis(2500);
+const SPEAKER_FOR: Duration = Duration::from_secs(20);
 
 /// Start's pause menu, in order.
 pub const MENU: [&str; 6] = ["Resume", "Save game", "Load game", "Controls", "Title screen", "Quit"];
@@ -121,7 +128,7 @@ fn ty_name(ty: i32) -> &'static str {
 
 impl Hud {
     pub fn new() -> Hud {
-        Hud { panel: None, card: None, note: None, thoughts: VecDeque::new(), seen: vec![(0, 0); SLOTS], last_cash: None, flash: None, menu: None, month: None }
+        Hud { panel: None, card: None, note: None, thoughts: VecDeque::new(), seen: vec![(0, 0); SLOTS], last_cash: None, flash: None, menu: None, month: None, spoke: Vec::new() }
     }
 
     pub fn toggle(&mut self, p: Panel) {
@@ -150,6 +157,7 @@ impl Hud {
         self.last_cash = None;
         self.flash = None;
         self.month = None;
+        self.spoke.clear();
     }
 
     /// Select: the next panel (money, holes, golfers, staff), then none; the help page closes.
@@ -271,8 +279,57 @@ impl Hud {
                 continue;
             }
             self.thoughts.push_back((text, c, now));
+            self.spoke.retain(|(g, _, at)| *g != speaker && now.duration_since(*at) < SPEAKER_FOR);
+            self.spoke.push((speaker, c, now));
             while self.thoughts.len() > FEED {
                 self.thoughts.pop_front();
+            }
+        }
+    }
+
+    /// The golfer behind the newest thought, while it is recent and they are still on the course: (slot, name).
+    pub fn speaker(&self, app: &App) -> Option<(usize, String)> {
+        let &(gi, _, at) = self.spoke.last()?;
+        let gg = app.club.g.get(gi)?;
+        (at.elapsed() < SPEAKER_FOR && gg.hole > 0 && gg.hole <= 19).then(|| (gi, app.club.name(gi)))
+    }
+
+    /// On the course (bottom screen): a speech bubble over each golfer who just had a thought, in the thought's colour.
+    pub fn render_bubbles(&self, g: &mut Gfx, app: &App, d: &Demo) {
+        let now = Instant::now();
+        let mvp = d.proj().mul(&d.view());
+        let u = Uniforms::flat(&Mat4::ortho(0.0, 320.0, 240.0, 0.0, -1.0, 1.0), &Mat4::identity());
+        let quad = |g: &mut Gfx, p: [(f32, f32); 4], c: [f32; 4]| {
+            let v = |(x, y): (f32, f32)| Vert::new(x, y, 0.0, 0.0, 0.0).col(c);
+            g.quad(Mode::Flat, None, &u, p.map(v));
+        };
+        for &(gi, c, at) in &self.spoke {
+            let age = now.duration_since(at);
+            let Some(gg) = app.club.g.get(gi) else { continue };
+            if age > BUBBLE_FOR || gg.hole <= 0 || gg.hole > 19 {
+                continue;
+            }
+            let (wx, wz) = app.units_to_world(gg.x, gg.y);
+            let q = mvp.apply([wx, d.terrain.height_at(wx, wz), wz]);
+            // above the golfer's head: a golfer stands about 45 world units tall
+            let lift = (45.0 / d.upp).clamp(10.0, 60.0);
+            let (x, y) = ((q[0] + 1.0) * 160.0, (1.0 - q[1]) * 120.0 - lift);
+            if !(-10.0..330.0).contains(&x) || !(-10.0..250.0).contains(&y) {
+                continue;
+            }
+            let fade = 1.0 - ((age.as_secs_f32() / BUBBLE_FOR.as_secs_f32()) - 0.8).max(0.0) * 5.0;
+            let (bw, bh) = (16.0, 10.0);
+            let edge = [0.05, 0.08, 0.05, 0.9 * fade];
+            let fill = [1.0, 1.0, 1.0, 0.95 * fade];
+            quad(g, [(x - bw * 0.5 - 1.0, y - bh - 1.0), (x + bw * 0.5 + 1.0, y - bh - 1.0), (x + bw * 0.5 + 1.0, y + 1.0), (x - bw * 0.5 - 1.0, y + 1.0)], edge);
+            quad(g, [(x - bw * 0.5, y - bh), (x + bw * 0.5, y - bh), (x + bw * 0.5, y), (x - bw * 0.5, y)], fill);
+            // the tail, pointing down at the golfer
+            quad(g, [(x - 3.0, y), (x + 1.0, y), (x - 1.0, y + 4.0), (x - 1.0, y + 4.0)], fill);
+            // three dots in the thought's colour (green good, red bad)
+            let dot = [c[0] * 0.8, c[1] * 0.8, c[2] * 0.8, fade];
+            for k in 0..3 {
+                let dx = x - 4.0 + k as f32 * 4.0;
+                quad(g, [(dx - 1.2, y - 6.2), (dx + 1.2, y - 6.2), (dx + 1.2, y - 3.8), (dx - 1.2, y - 3.8)], dot);
             }
         }
     }
@@ -381,7 +438,8 @@ impl Hud {
         text.draw(g, &u, mx, 1.0, &mid, Size::Normal, if app.paused { [1.0, 0.85, 0.3, 1.0] } else { [1.0, 1.0, 1.0, 1.0] });
 
         // the palette, then the overview or a page
-        let body = plan.render_palette(g, &uo, demo, app, text, BAR_H + 1.0) + 2.0;
+        let speaker = self.speaker(app).map(|(_, n)| n);
+        let body = plan.render_palette(g, &uo, demo, app, text, BAR_H + 1.0, speaker.as_deref()) + 2.0;
         let lh = text.line_height(Size::Normal);
         let sl = text.line_height(Size::Small) + 1.0;
         match self.panel {

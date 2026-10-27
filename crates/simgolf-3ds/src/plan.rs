@@ -1256,7 +1256,8 @@ impl Plan {
 
     /// The top screen's palette at y0 (the tabs, then the shown category's row of buttons, then the status line); drawn
     /// with `ui` (which may carry the 3D slider's offset). Returns the y below it.
-    pub fn render_palette(&self, g: &mut Gfx, ui: &Uniforms, d: &Demo, app: &App, text: &Text, y0: f32) -> f32 {
+    /// `speaker`: the golfer behind the newest thought, whom A goes to while a course tool is in hand.
+    pub fn render_palette(&self, g: &mut Gfx, ui: &Uniforms, d: &Demo, app: &App, text: &Text, y0: f32, speaker: Option<&str>) -> f32 {
         let p2 = Pen2d { u: ui };
         const W: f32 = 400.0;
         // the categories
@@ -1299,11 +1300,18 @@ impl Plan {
         let chosen = row[sel];
         let key = if chosen.momentary() {
             format!("A: {}", chosen.names().1)
-        } else if self.tool.sized() {
-            let n = self.size();
-            format!("BRUSH {n}x{n} (D-PAD UP/DOWN)")
         } else {
-            String::new()
+            let see = speaker.map(|n| format!("A: SEE {}", n.to_uppercase()));
+            let brush = self.tool.sized().then(|| {
+                let n = self.size();
+                format!("BRUSH {n}x{n}")
+            });
+            match (see, brush) {
+                (Some(a), Some(b)) => format!("{a}   {b}"),
+                (Some(a), None) => a,
+                (None, Some(b)) => format!("{b} (D-PAD UP/DOWN)"),
+                (None, None) => String::new(),
+            }
         };
         let kw = text.width(&key, Size::Small);
         p2.rect(g, 0.0, sy - 1.0, W, 13.0, [0.0, 0.0, 0.0, 0.55]);
