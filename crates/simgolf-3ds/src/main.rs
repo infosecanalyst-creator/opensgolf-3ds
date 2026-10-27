@@ -18,6 +18,7 @@ mod plan;
 mod hud;
 mod text;
 mod title;
+mod manual;
 mod screens;
 mod shim;
 
@@ -971,7 +972,7 @@ fn open_game(choice: title::Choice, g: &mut Gfx, app: &mut app::App, demo: &mut 
     match choice {
         title::Choice::New(prop, _) => app.start_game(g, prop, false),
         title::Choice::Open(path, _) => app.load_game(g, &path)?,
-        title::Choice::Quit => return Ok(()),
+        title::Choice::Quit | title::Choice::Manual => return Ok(()),
     }
     drop_ground_batches(app, g);
     // the PC game's nearest level: tiles big enough to hit with the stylus (ZL zooms out for the whole course)
@@ -1107,6 +1108,10 @@ fn main() {
     gfx::trace(&format!("preload: {}", preload_core.map(|c| format!("on core {c}")).unwrap_or_else(|| "off".into())));
     // the title screen (title.rs): a game is started or opened from there
     let mut title = title::Title::new(&app);
+    // the instruction manual (manual.rs): over the title or the game; it keeps its place between openings
+    let mut manual = manual::Manual::new();
+    // whether the game was paused before the manual opened over it (put back when it closes)
+    let mut manual_was_paused = false;
     mixer.set_master(title.settings.master());
     plan.thoughts = title.settings.thoughts;
     // a game is being played (else the title is up); one has been played this run (the title's fly-over shows its course)
@@ -1142,8 +1147,14 @@ fn main() {
             // ---- the title screen ----
             let mut choice = None;
             for ev in input.poll(&hid, cstick) {
-                if let Some(c) = title.event(&ev, &mixer) {
-                    choice = Some(c);
+                if manual.open {
+                    manual.event(&ev, &mixer);
+                    continue;
+                }
+                match title.event(&ev, &mixer) {
+                    Some(title::Choice::Manual) => manual.show(),
+                    Some(c) => choice = Some(c),
+                    None => {}
                 }
             }
             plan.thoughts = title.settings.thoughts;
@@ -1153,7 +1164,7 @@ fn main() {
                     title.loading = Some(name.clone());
                     true
                 }
-                None => false,
+                Some(title::Choice::Manual) | None => false,
             };
             // the fly-over: a slow circle round the middle of the course, on the top screen
             app.draw_w = screens::TOP_W as f32;
@@ -1170,6 +1181,17 @@ fn main() {
             g.begin_frame();
             g.set_stereo_span(STEREO_FULL_HEIGHT, PITCH as f32, DEPTH_RANGE);
             let eyes: &[Eye] = if g.slider() > 0.0 { &[Eye::Left, Eye::Right] } else { &[Eye::Left] };
+            if manual.open {
+                // the manual over the title: text on top, its sections below
+                for &eye in eyes {
+                    g.begin_screen(Screen::Top, eye, manual::BG_TOP);
+                    manual.render_top(&mut g, &text);
+                }
+                g.begin_screen(Screen::Bottom, Eye::Left, manual::BG_BOTTOM);
+                manual.render_bottom(&mut g, &text);
+                g.end_frame();
+                continue;
+            }
             for &eye in eyes {
                 g.begin_screen(Screen::Top, eye, [0x2c, 0x3e, 0x50]);
                 demo.render_world(&mut g);
@@ -1221,6 +1243,14 @@ fn main() {
         let mut menu_pick: Option<usize> = None;
         for ev in input.poll(&hid, cstick) {
             dirty = true;
+            // the manual takes the controls while it is open; the game stays paused under it
+            if manual.open {
+                manual.event(&ev, &mixer);
+                if !manual.open {
+                    app.paused = manual_was_paused;
+                }
+                continue;
+            }
             // Start's pause menu takes the controls while it is open: D-pad or a tap to choose, A or a tap to pick, B or
             // Start to go back
             if let Some(sel) = hud.menu {
@@ -1369,6 +1399,11 @@ fn main() {
                 2 => strokes.push(plan::Stroke { action: Some(plan::Action::Load), ..Default::default() }),
                 3 => hud.show(plan::Panel::Help),
                 4 => {
+                    manual_was_paused = menu_was_paused;
+                    app.paused = true;
+                    manual.show();
+                }
+                5 => {
                     // back to the title, the game saved first (Continue opens it again)
                     autosave_now(&app);
                     plan.reset(&mut app);
@@ -1380,7 +1415,7 @@ fn main() {
                     continue;
                 }
                 // Quit: the game is saved after the loop
-                5 => QUIT.store(true, Ordering::Relaxed),
+                6 => QUIT.store(true, Ordering::Relaxed),
                 _ => {}
             }
         }
@@ -1429,6 +1464,13 @@ fn main() {
                             _ => 1,
                         };
                     }
+                }
+                // INFO's HELP: the manual (the game waits under it)
+                plan::Action::Panel(plan::Panel::Help) => {
+                    plan.drop_press(&mut app);
+                    manual_was_paused = app.paused;
+                    app.paused = true;
+                    manual.show();
                 }
                 plan::Action::Panel(p) => hud.toggle(p),
                 plan::Action::Staffed => hud.show(plan::Panel::Staff),
@@ -1546,6 +1588,16 @@ fn main() {
         // the top screen: the dashboard (hud.rs, plan.rs's palette and mini-map); with the 3D slider up the palette and
         // pages stand a little out of the screen, the mini-map at its surface
         let depth = g.slider() * 3.0;
+        if manual.open {
+            for &eye in eyes {
+                g.begin_screen(Screen::Top, eye, manual::BG_TOP);
+                manual.render_top(&mut g, &text);
+            }
+            g.begin_screen(Screen::Bottom, Eye::Left, manual::BG_BOTTOM);
+            manual.render_bottom(&mut g, &text);
+            g.end_frame();
+            continue;
+        }
         for &eye in eyes {
             g.begin_screen(Screen::Top, eye, [0x10, 0x1a, 0x12]);
             let off = if eyes.len() == 1 { 0.0 } else if eye == Eye::Left { depth } else { -depth };

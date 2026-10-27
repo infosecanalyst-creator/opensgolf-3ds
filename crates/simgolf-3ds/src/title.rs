@@ -10,6 +10,7 @@
 //!   * Load Game     every save, newest first
 //!   * Settings      golfers' thoughts on the top screen, sound volume (kept on the card)
 //!   * Controls      the controls page (hud.rs)
+//!   * Manual        the instruction manual (manual.rs, run by main.rs)
 //!   * Quit          back to the Homebrew Launcher
 //!
 //! `splash` draws the same look while the game's files are read at start-up, in place of the text console.
@@ -43,6 +44,8 @@ const BG_BOTTOM: [u8; 3] = [0x0c, 0x16, 0x0e];
 pub enum Choice {
     Open(PathBuf, String),
     New(usize, String),
+    /// The instruction manual (main.rs opens it over the title).
+    Manual,
     Quit,
 }
 
@@ -62,6 +65,7 @@ enum Item {
     Load,
     Settings,
     Controls,
+    Manual,
     Quit,
 }
 
@@ -190,7 +194,7 @@ impl Title {
         if !self.saves.is_empty() {
             v.push(Item::Load);
         }
-        v.extend([Item::Settings, Item::Controls, Item::Quit]);
+        v.extend([Item::Settings, Item::Controls, Item::Manual, Item::Quit]);
         v
     }
 
@@ -208,6 +212,7 @@ impl Title {
                         Item::Load => "Load Game",
                         Item::Settings => "Settings",
                         Item::Controls => "Controls",
+                        Item::Manual => "Manual",
                         Item::Quit => "Quit",
                     })
                 })
@@ -246,7 +251,7 @@ impl Title {
 
     /// Two columns when a page has more than five choices (the plots), so each stays big enough for a fingertip.
     fn grid(&self, n: usize) -> bool {
-        n > 6
+        n > 6 && self.page != Page::Main
     }
 
     /// Each row's rectangle on the bottom screen (x, y, w, h). In a grid the last row (Back) spans both columns.
@@ -370,6 +375,7 @@ impl Title {
                 Item::Load => self.go(Page::Saves),
                 Item::Settings => self.go(Page::Settings),
                 Item::Controls => self.go(Page::Controls),
+                Item::Manual => return Some(Choice::Manual),
                 Item::Quit => return Some(Choice::Quit),
             },
             Page::Plots if i < last => {
@@ -422,6 +428,7 @@ impl Title {
                 Some(Item::Load) => format!("Choose from your {} saved games, newest first.", self.saves.len()),
                 Some(Item::Settings) => "Golfers' thoughts on the top screen, and the sound volume.".into(),
                 Some(Item::Controls) => "How to play with the stylus, a fingertip and the buttons.".into(),
+                Some(Item::Manual) => "The instruction manual: building holes, staff, golfers, money and tips.".into(),
                 Some(Item::Quit) => "Back to the Homebrew Launcher.".into(),
                 None => String::new(),
             },

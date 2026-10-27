@@ -406,7 +406,7 @@ impl Tool {
             Tool::Show(Panel::Holes) => ("HOLES", "HOLES"),
             Tool::Show(Panel::Golfers) => ("GOLF", "GOLFERS"),
             Tool::Show(Panel::Staff) => ("STAFF", "STAFF"),
-            Tool::Show(Panel::Help) => ("HELP", "HELP"),
+            Tool::Show(Panel::Help) => ("HELP", "MANUAL"),
             Tool::Save => ("SAVE", "SAVE"),
             Tool::Load => ("LOAD", "LOAD"),
             Tool::Thoughts => ("THINK", "THOUGHTS"),

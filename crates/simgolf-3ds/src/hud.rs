@@ -64,9 +64,9 @@ const BUBBLE_FOR: Duration = Duration::from_millis(2500);
 const SPEAKER_FOR: Duration = Duration::from_secs(20);
 
 /// Start's pause menu, in order.
-pub const MENU: [&str; 6] = ["Resume", "Save game", "Load game", "Controls", "Title screen", "Quit"];
+pub const MENU: [&str; 7] = ["Resume", "Save game", "Load game", "Controls", "Manual", "Title screen", "Quit"];
 /// The menu's rows on the bottom screen (320 x 240): x, first y, width, height, pitch.
-const MB: (f32, f32, f32, f32, f32) = (40.0, 26.0, 240.0, 31.0, 35.0);
+const MB: (f32, f32, f32, f32, f32) = (40.0, 24.0, 240.0, 27.0, 30.5);
 /// The panels Select steps through, then none.
 const CYCLE: [Panel; 4] = [Panel::Money, Panel::Holes, Panel::Golfers, Panel::Staff];
 
@@ -733,7 +733,7 @@ impl Hud {
                     ("Undo (or clear a placed tee)", "B"),
                     ("Pause / game speed", "X / Y"),
                     ("Money, holes, golfers, staff pages", "Select"),
-                    ("Menu: save, load, title screen, quit", "Start"),
+                    ("Menu: save, load, manual, title, quit", "Start"),
                 ] {
                     rows.push((l.to_string(), r.to_string(), white));
                 }

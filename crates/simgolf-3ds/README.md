@@ -19,7 +19,13 @@ The game opens on a title screen (no "press Start": straight to the menu, with C
 | Load Game | the saves, newest first |
 | Settings | golfers' thoughts on or off, sound volume (kept in `sdmc:/3ds/opensgolf/settings.txt`) |
 | Controls | the controls page |
+| Manual | the instruction manual (see below) |
 | Quit | back to the Homebrew Launcher |
+
+The instruction manual opens from the title screen, the pause menu and INFO's HELP button: the text on the top screen
+(Circle Pad or D-pad to scroll, L / R for the previous or next section), a button per section on the touch screen, B or
+Start to close; it reopens where it was left, and the game waits under it. Its text is `manual.txt` (built in); a
+`manual.txt` in `sdmc:/3ds/opensgolf/` replaces it.
 
 Tap a row, or use the D-pad and A; B goes back. The game is saved to the autosave when you choose Title screen or Quit from
 the pause menu, when the console sleeps or goes to the HOME Menu, and every five minutes of play.
@@ -53,7 +59,7 @@ the land.
   - BUILD: gravel and paved paths, bench, flower bed, ball washer, willow, scenic bridge, the buildings (dimmed until enough
     holes unlock them), turn, clear
   - STAFF: hire (+) and fire (-) club pros, rangers, groundskeepers and soda vendors
-  - INFO: the money, holes, golfers and staff pages, save, load, golfers' thoughts on or off, help
+  - INFO: the money, holes, golfers and staff pages, save, load, golfers' thoughts on or off, HELP (the manual)
 - Under the row, the tool's price per tile (exactly, for the tile under the stylus), what a stroke has spent, what to do
   next, why the game turned tiles down (not your land, not enough money, something in the way), and when a locked
   building opens.
@@ -77,7 +83,7 @@ the land.
 | Circle Pad / C-stick | slide the view |
 | ZL / ZR | zoom out / in (three steps closer than the PC game) |
 | Select | the money, holes, golfers and staff pages, then the overview |
-| Start | pause menu: resume, save, load, controls, title screen, quit (D-pad and A, or tap a row) |
+| Start | pause menu: resume, save, load, controls, manual, title screen, quit (D-pad and A, or tap a row) |
 | 3D slider | the dashboard's tools and pages stand out of the screen a little |
 
 The game saves itself every two minutes of play as well as when you leave it.

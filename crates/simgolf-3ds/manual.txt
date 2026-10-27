@@ -1,0 +1,255 @@
+# Welcome
+You own a piece of land and a clubhouse. Your job is to turn it into a golf course people love to play, and to keep the club in the black while you do.
+
+OpenSGolf is an open-source engine that plays Sid Meier's SimGolf (2002). On the New 3DS you build the course on the touch screen with the stylus, the way the PC game is played with a mouse, and you watch the club's money, ratings and golfers on the top screen.
+
+Golfers arrive, play your holes and tell you what they think, out loud. Happy golfers play more rounds, pay green fees and bring members. Bored or frustrated golfers leave. Everything in this manual is about making more of the first kind.
+
+## Reading this manual
+- Tap a section on the touch screen to open it.
+- Circle Pad or D-pad up and down: scroll.
+- L and R: previous and next section.
+- B or Start: close. The manual opens again where you left it.
+
+# Getting started
+OpenSGolf runs on the New Nintendo 3DS and New 3DS XL only.
+
+## Installing over Wi-Fi
+1. On the 3DS, open the Homebrew Launcher and start ftpd.
+2. On the PC, run ftp-send.cmd in the Simgolf folder. It uploads simgolf-3ds.3dsx to sdmc:/3ds/ and writes the result to ftp-out.txt.
+3. Close ftpd and start OpenSGolf from the Homebrew Launcher.
+
+The same steps install every update. You never need to take the SD card out.
+
+## Game files
+The game needs SimGolf's art and data. It looks for them in this order:
+- Your own copy of SimGolf, in sdmc:/3ds/opensgolf/game.
+- The free set. If there is no copy, the game writes a free replacement set (about 82 MB) to sdmc:/3ds/opensgolf/free the first time it starts.
+
+## First launch
+The first time you open a course it takes about 19 seconds while the game decodes its sprites. It remembers which sprites the course needed, so after that a course opens in about 5 seconds.
+
+## The title screen
+| Continue | Opens your newest save.
+| New Course | Lists the Parkland plots with their size and price. Plots you cannot afford are greyed out.
+| Load Game | Lists your saved games, newest first.
+| Settings | Golfer thoughts on or off; sound Off, Low, Medium or High.
+| Controls | The button chart.
+| Manual | This manual.
+| Quit | Back to the Homebrew Launcher.
+
+Tap a choice, or move with the D-pad and press A.
+
+# The two screens
+## Bottom screen: your course
+The touch screen is where you play. Use the stylus the way you would use a mouse on the PC. A finger works too.
+- Drag to paint with the current tool: fairway, sand, water and so on.
+- Tap to place one thing: a bench, a tee, a building.
+- Touch and hold until the ring fills to inspect what is under the stylus: a golfer, a hole, a building or a staff member.
+- Drag into the edge of the screen while painting and the view scrolls with you.
+- Pick the MOVE tool to drag the view without painting.
+
+Golfers speak in speech bubbles above their heads. Green dots mean a good thought; red dots mean a bad one.
+
+## Top screen: the dashboard
+The top screen never needs touching. It tells you how the club is doing and which tool you are holding.
+- The bar: your cash (it flashes when money comes in or goes out), the date, the game speed, and the Fun and Challenge ratings.
+- The tool row: the categories COURSE, BUILD, STAFF and INFO, with the tools of the current category below them.
+- The status line: what the chosen tool costs per tile, what you just spent, and why a placement was refused.
+- The overview: a mini-map with a frame showing where the bottom screen is looking; the hole list; money this month and this year; golfers playing and waiting and their mood; and the thoughts feed, tagged with the hole (H3, H7).
+
+Press Select to swap the overview for the Money, Holes, Golfers or Staff page, and again to step on and back to the overview.
+
+With the 3D slider up, the tools and pages float slightly in front of the screen.
+
+# Controls
+| Stylus / finger | Paint, place, inspect.
+| L / R | Previous / next tool category.
+| D-pad left / right | Previous / next tool.
+| D-pad up / down | Bigger / smaller brush (1x1, 2x2 or 3x3 tiles).
+| A | Use the chosen button: hire, open a page, save. With a course tool in hand and a golfer who just spoke, A jumps the view to that golfer.
+| B | Cancel a tee you have placed; otherwise undo.
+| X | Pause / unpause.
+| Y | Game speed 1x, 2x, 4x.
+| Circle Pad | Pan the view.
+| C-stick | Pan the view.
+| ZL / ZR | Zoom out / in.
+| Start | Pause menu.
+| Select | Next dashboard page.
+
+## Pause menu (Start)
+| Resume | Back to the game.
+| Save game | Saves to the Quick slot.
+| Load game | Opens the Quick save.
+| Controls | The button chart.
+| Manual | This manual.
+| Title screen | Saves, then returns to the title.
+| Quit | Saves, then returns to the Homebrew Launcher.
+
+The hint at the right of the status line always shows what A does right now, for example A: SEE BOB.
+
+# Building your course
+Press L or R until COURSE is lit, then pick a tool with the D-pad. Course tools are ready to use the moment you choose them.
+
+## Laying out a hole
+1. Choose the HOLE tool.
+2. Tap where the tee should go. A tee appears and waits for its green.
+3. Tap where the green should go, at least 3 tiles (about 75 yards) from the tee.
+
+You can also drag from the tee to the green in one stroke. The hole opens to golfers automatically. If a hole is built but closed, the status line says HOLE n IS BUILT: TAP ITS GREEN TO OPEN IT.
+
+Changed your mind about a tee before placing the green? Press B.
+
+## Painting terrain
+| Tee, Green | Extra tee or green around a hole.
+| Fairway | The short grass golfers aim for.
+| Rough, Deep rough | Longer grass that punishes a missed shot.
+| Sand | Bunkers.
+| Water | Ponds and creeks.
+| Trees | Plants trees.
+| Raise, Lower | Changes the height of the ground.
+| Move | Drags the view; paints nothing.
+
+D-pad up makes the brush bigger and D-pad down smaller: 1x1, 2x2 or 3x3 tiles. Each tool remembers its own size. The course shows the brush outline before you touch.
+
+## Costs and refusals
+The status line shows the price per tile before you paint, and what the stroke cost after. If a tile cannot be changed, the status line says why:
+- NOT YOUR LAND: outside your plot.
+- NOT ENOUGH MONEY: you cannot pay for the next tile.
+- SOMETHING IS IN THE WAY: a building, path or golfer is on the tile.
+
+## Undo
+Press B to undo. The game keeps the last 30 steps, and an undo gives the money back too.
+
+# Paths, items and buildings
+Press L or R until BUILD is lit.
+
+## Paths and items
+| Path | Gravel path. Golfers walk faster on paths.
+| Paved | Paved path. Costs more, looks better.
+| Bench | Somewhere to rest.
+| Flower | A flower bed. Golfers like pretty holes.
+| Washer | A ball washer by a tee.
+| Willow | A single willow tree.
+| Bridge | A scenic bridge over water.
+
+Drag to lay a path. Tap to place an item.
+
+## Buildings
+The buildings come after the items in the BUILD row. Most open as your course grows:
+| Home site | When members ask for homes.
+| Putting green | 1 hole.
+| Snack bar | 3 holes.
+| Pro shop | 4 holes.
+| Swim club | 5 holes.
+| Driving range | 7 holes.
+| Cart garage | 8 holes.
+| Marina | 9 holes.
+| Resort hotel | 11 holes.
+| Airstrip | 12 holes.
+
+A locked building is greyed out, and the status line says when it opens (for example PRO SHOP: OPENS AT 4 HOLES). Choose an open building, then tap where it should stand.
+
+## Turn and Clear
+- TURN: turns the next building a quarter turn. Choose it and press A.
+- CLEAR: removes paths, items and buildings under the stylus. Items give back what they cost; buildings are knocked down with no refund.
+
+A building only earns money once a path joins it to the clubhouse. Placing a building you already have upgrades it and moves it; that needs a Country Club (10 holes).
+
+# Staff
+Press L or R until STAFF is lit. Each kind of staff has a hire button and a fire button. Choose one and press A. The status line shows how many you have, for example HIRE A RANGER (YOU HAVE 2).
+| Club pro | Gives golfers lessons and sells to them.
+| Ranger | Keeps play moving so groups don't stack up.
+| Groundskeeper | Keeps the grass, greens and sand in shape.
+| Soda vendor | Sells drinks on the course.
+
+Every staff member is paid each month, and experienced staff cost more. The Staff page (Select) lists who works for you. Touch and hold a staff member on the course to see their card.
+
+# Golfers and ratings
+## Listening to golfers
+Golfers say what they think as they play. A speech bubble pops up over the golfer: green dots for a good thought, red for a bad one. The words go into the thoughts feed on the top screen, tagged with the hole.
+
+When someone has just spoken, the status line shows A: SEE and their name. Press A to jump the view to them, then touch and hold the golfer to open their card.
+
+Turn thoughts off in Settings or with the THINK button in the INFO row.
+
+## Mood
+The overview shows how golfers feel on average: Happy, Content, Unhappy or Angry. Happy golfers come back and play more. Angry golfers leave.
+
+The thoughts tell you why: slow play, a hole that is too hard or too dull, nothing to drink, nowhere to sit, a long walk to the next tee. They praise water, well-placed sand, flowers, a good view and a hole that suits their game.
+
+## Fun and Challenge
+The bar shows two ratings: Fun and Challenge. Each is Poor, Fair, Good, Very Good or Outstanding.
+- Fun rises with variety, scenery and holes that reward good shots.
+- Challenge rises with hazards that punish bad shots: sand, water, deep rough and trees near the landing zone.
+
+A good course has both. Beginners want forgiving holes; experts want a test.
+
+## Hole types
+The game names each hole by its shape and difficulty, such as a Freeway (long, straight and open). The Holes page (Select) lists every hole with its par, type, Fun and green fees.
+
+# Money
+You start with $100,000 less the price of your plot. Your cash is on the bar at the top left.
+
+## Where money comes from
+- Green fees, paid as each golfer finishes a round.
+- Home sites, sold to members who want to live on the course.
+- Food and drink, from the snack bar and soda vendors.
+- Other buildings such as the pro shop, once a path joins them to the clubhouse.
+
+## Where it goes
+- Course building: every tile you paint.
+- Facilities: buildings and items.
+- Salaries: your staff, each month.
+- Maintenance: keeping the course in shape.
+
+The overview shows money in and out this month and this year. The Money page (Select) breaks it down. The Holes page shows what each hole earns.
+
+If cash runs low, build less and let the green fees catch up. Painting refuses tiles you cannot pay for, so you can't go broke by accident.
+
+# Saving and loading
+## Autosave
+The game saves for you every 2 minutes of play, when you choose Title screen or Quit, when the game closes, and when the 3DS goes to sleep. The autosave is called Latest. Continue on the title screen opens whichever save is newest.
+
+## Saving yourself
+Press Start and choose Save game, or choose SAVE in the INFO row and press A. This writes the Quick slot.
+
+## Loading
+Choose Load game from the pause menu, LOAD in the INFO row, or Load Game on the title screen.
+
+## Where saves live
+Saves are in sdmc:/3ds/opensgolf/saves/Saved Games/ in SimGolf's own .sgs format. A save from the PC game opens on the 3DS, and the other way round.
+
+# Tips
+- Start small. Build three or four short holes first. Golfers arrive sooner and money starts flowing.
+- Join everything with paths. Buildings earn nothing until a path links them to the clubhouse.
+- Read the thoughts. Press A to jump to a golfer and see the problem yourself.
+- Mix it up. Holes of different lengths, pars and shapes raise Fun.
+- Put hazards near the landing zone. Sand and water where a missed shot lands raise Challenge without making a hole unfair.
+- Hire a groundskeeper early. A worn course makes everyone grumpy.
+- Add a ranger when golfers complain about waiting.
+- Press Y for 2x or 4x while you wait for money. Press X to pause while you plan.
+- Undo is cheap: 30 steps, money included. Try things.
+- Zoom in (ZR) to place things precisely, and out (ZL) to plan a hole.
+
+# Troubleshooting
+## A course is slow to open
+The first time takes about 19 seconds while sprites are decoded. After that, about 5 seconds.
+
+## There is no sound
+Homebrew needs a dump of the 3DS sound firmware. Run DSP1 from the Homebrew Launcher once, then restart OpenSGolf. Also check Sound in Settings.
+
+## Installing an update
+Start ftpd on the 3DS, then run ftp-send.cmd on the PC.
+
+## It can't find the game files
+Put your SimGolf files in sdmc:/3ds/opensgolf/game, or leave about 100 MB free on the SD card for the free set.
+
+## A tool won't place anything
+Read the status line on the top screen. It says why: not your land, not enough money, something in the way, or a building still locked.
+
+## The game crashed
+Look in sdmc:/3ds/opensgolf/ for panic.txt and stage.txt and send them with a note of what you were doing. Your last autosave is at most 2 minutes old.
+
+## Changing this manual
+A file named manual.txt in sdmc:/3ds/opensgolf/ replaces the built-in text. Sections start with "# ", headings with "## ", list items with "- ", and table rows with "| ".
