@@ -1604,7 +1604,8 @@ fn main() {
         };
         // the top screen: the dashboard (hud.rs, plan.rs's palette and mini-map); with the 3D slider up the palette and
         // pages stand a little out of the screen, the mini-map at its surface
-        let depth = g.slider() * 3.0;
+        // whole pixels, so the dashboard's text stays sharp in each eye
+        let depth = (g.slider() * 3.0).round();
         if manual.open {
             for &eye in eyes {
                 g.begin_screen(Screen::Top, eye, manual::BG_TOP);

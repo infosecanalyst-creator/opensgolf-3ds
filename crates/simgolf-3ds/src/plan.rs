@@ -316,6 +316,8 @@ fn text_width(text: &str, scale: f32) -> f32 {
 
 /// Draws `text` in the 3 x 5 font with its top-left at (x, y); each row's runs of lit pixels are one rectangle.
 fn draw_text(g: &mut Gfx, ui: &Uniforms, x: f32, y: f32, text: &str, scale: f32, c: [f32; 4]) {
+    // on whole pixels: a one-pixel stroke on a half pixel loses rows and columns on the console's rasterizer
+    let (x, y) = (x.round(), y.round());
     let mut verts: Vec<Vert> = Vec::new();
     let v = |x: f32, y: f32| Vert::new(x, y, 0.0, 0.0, 0.0).col(c);
     for (i, ch) in text.chars().enumerate() {
@@ -1281,7 +1283,7 @@ impl Plan {
         for (k, &tool) in row.iter().enumerate().skip(first).take(ROW_SHOWN) {
             let bx = (k - first) as f32 * BTN_W;
             let armed = tool == self.tool || (tool == Tool::Thoughts && self.thoughts);
-            self.draw_tool(g, ui, app, tool, bx, ry, armed);
+            self.draw_tool(g, ui, app, text, tool, bx, ry, armed);
             if k == sel && !armed {
                 p2.outline(g, [(bx + 1.0, ry + 0.5), (bx + BTN_W - 1.0, ry + 0.5), (bx + BTN_W - 1.0, ry + BTN_H - 0.5), (bx + 1.0, ry + BTN_H - 0.5)], 1.5, WHITE);
             }
@@ -1322,7 +1324,7 @@ impl Plan {
     }
 
     /// One palette button at (bx, by), BTN_W x BTN_H: its picture and label, yellow when armed.
-    fn draw_tool(&self, g: &mut Gfx, ui: &Uniforms, app: &App, tool: Tool, bx: f32, by: f32, armed: bool) {
+    fn draw_tool(&self, g: &mut Gfx, ui: &Uniforms, app: &App, text: &Text, tool: Tool, bx: f32, by: f32, armed: bool) {
         let p2 = Pen2d { u: ui };
         let rgb = |c: [u8; 3]| [c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0, 1.0];
         let panel = [0.3, 0.36, 0.28, 1.0];
@@ -1454,7 +1456,13 @@ impl Plan {
         }
         let label = Self::label(tool);
         let lc = if armed { [0.12, 0.1, 0.02, 1.0] } else if locked { [0.5, 0.52, 0.5, 1.0] } else { [0.88, 0.92, 0.84, 1.0] };
-        draw_text(g, ui, bx + (BTN_W - text_width(&label, 1.0)) * 0.5, by + BTN_H - 8.0, &label, 1.0, lc);
+        // the label in the interface font where it fits (crisp and readable), else the 3 x 5 pixel font
+        let lw = text.width(&label, Size::Small);
+        if lw <= BTN_W - 3.0 {
+            text.draw(g, ui, (bx + (BTN_W - lw) * 0.5).round(), by + BTN_H - 10.0, &label, Size::Small, lc);
+        } else {
+            draw_text(g, ui, bx + (BTN_W - text_width(&label, 1.0)) * 0.5, by + BTN_H - 8.0, &label, 1.0, lc);
+        }
     }
 
     /// The whole course in (x, y, w, h) on the top screen, turned and squashed as the course view is, land off the club's
