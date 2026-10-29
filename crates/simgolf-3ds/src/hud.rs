@@ -429,11 +429,13 @@ impl Hud {
             Some((f, c)) => format!("Fun: {f}   Challenge: {c}"),
             None => "No holes open".to_string(),
         };
-        let rw = text.width(&right, Size::Small);
-        text.draw(g, &u, W - rw - 4.0, 2.5, &right, Size::Small, [0.85, 0.92, 1.0, 1.0]);
-        // the date and speed centred between the cash and the ratings, never over either
+        // the date and speed centred between the cash and the ratings, never over either: the ratings give way (cut
+        // short) when the cash and its flash leave too little room
         let mid = format!("{}  {}", date_text(app), speed);
         let mw = text.width(&mid, Size::Normal);
+        let right = text.fit(&right, Size::Small, (W - 4.0) - (x + 8.0 + mw + 10.0));
+        let rw = text.width(&right, Size::Small);
+        text.draw(g, &u, W - rw - 4.0, 2.5, &right, Size::Small, [0.85, 0.92, 1.0, 1.0]);
         let mx = ((W - mw) * 0.5).min(W - rw - 12.0 - mw).max(x + 8.0);
         text.draw(g, &u, mx, 1.0, &mid, Size::Normal, if app.paused { [1.0, 0.85, 0.3, 1.0] } else { [1.0, 1.0, 1.0, 1.0] });
 
@@ -471,13 +473,13 @@ impl Hud {
                     }
                 } else {
                     let rows = ((body + mh - hy) / sl).floor().max(0.0) as usize;
-                    // the newest holes when they do not all fit
+                    // the newest holes when they do not all fit; the hole's type is cut short rather than run into its fun
                     for &h in open.iter().skip(open.len().saturating_sub(rows)) {
                         let row = sg_core::ratings::report_row(h, &app.club.holes[h], app.difficulty, false);
-                        let l = format!("H{h} par {}  {}", row.par, row.type_name);
-                        text.draw(g, &uo, 7.0, hy, &l, Size::Small, WHITE);
                         let fw = sg_core::ratings::fun_word(row.fun);
                         let fwd = text.width(fw, Size::Small);
+                        let l = text.fit(&format!("H{h} par {}  {}", row.par, row.type_name), Size::Small, mw - fwd - 14.0);
+                        text.draw(g, &uo, 7.0, hy, &l, Size::Small, WHITE);
                         text.draw(g, &uo, 4.0 + mw - fwd - 3.0, hy, fw, Size::Small, dimc);
                         hy += sl;
                     }
@@ -491,10 +493,13 @@ impl Hud {
                     g.quad(Mode::Flat, None, &uo, [v(x, y), v(x + w, y), v(x + w, y + h), v(x, y + h)]);
                 };
                 let mut y = body + 2.0;
+                // the right column reads in the normal size (the small one was hard to read on the console)
+                let sl = lh;
                 let pair = |g: &mut Gfx, y: f32, l: &str, r: &str, c: [f32; 4]| {
-                    text.draw(g, &uo, x0 + 2.0, y, l, Size::Small, dimc);
-                    let rw = text.width(r, Size::Small);
-                    text.draw(g, &uo, x0 + cw - rw - 2.0, y, r, Size::Small, c);
+                    let rw = text.width(r, Size::Normal);
+                    let l = text.fit(l, Size::Normal, cw - rw - 12.0);
+                    text.draw(g, &uo, x0 + 2.0, y, &l, Size::Normal, dimc);
+                    text.draw(g, &uo, x0 + cw - rw - 2.0, y, r, Size::Normal, c);
                 };
                 let signed = |v: f64| if v >= 0.5 { format!("+{}", money(v.round() as i64)) } else { money(v.round() as i64) };
                 let up_down = |v: f64| if v >= 0.5 { [0.65, 1.0, 0.6, 1.0] } else if v <= -0.5 { [1.0, 0.6, 0.5, 1.0] } else { WHITE };
@@ -509,7 +514,8 @@ impl Hud {
                 y += sl;
                 let fees = year[0];
                 if fees.abs() < 0.5 && app.club.g.iter().any(|gg| gg.hole > 0 && gg.hole < 19) {
-                    text.draw(g, &uo, x0 + 2.0, y, "Green fees come in as rounds finish", Size::Small, [0.6, 0.66, 0.6, 1.0]);
+                    let l = text.fit("Green fees come in as rounds finish", Size::Normal, cw - 4.0);
+                    text.draw(g, &uo, x0 + 2.0, y, &l, Size::Normal, [0.6, 0.66, 0.6, 1.0]);
                     y += sl;
                 }
                 y += 3.0;
@@ -524,26 +530,26 @@ impl Hud {
                     y += sl;
                 }
                 if app.club.ratings.waitlist > 0 {
-                    pair(g, y, "Membership waiting list", &plural(app.club.ratings.waitlist as usize, "person", "people"), WHITE);
+                    pair(g, y, "Waiting to join", &plural(app.club.ratings.waitlist as usize, "person", "people"), WHITE);
                     y += sl;
                 }
                 y += 3.0;
                 // the game's message, the golfers' thoughts (H = the hole they are on), a tool's note: newest at the foot
                 let mut foot: Vec<(String, [f32; 4])> = Vec::new();
                 if app.ticker.showing && !app.ticker.text.is_empty() {
-                    for l in text.wrap(&app.ticker.text.replace('\n', " "), Size::Small, cw - 4.0).into_iter().take(3) {
+                    for l in text.wrap(&app.ticker.text.replace('\n', " "), Size::Normal, cw - 4.0).into_iter().take(3) {
                         foot.push((l, [1.0, 0.9, 0.45, 1.0]));
                     }
                 }
                 for (s, c, at) in self.thoughts.iter() {
                     let age = now.duration_since(*at).as_secs_f32() / THOUGHT_FOR.as_secs_f32();
                     let a = if age > 0.8 { (1.0 - age) * 5.0 } else { 1.0 };
-                    for l in text.wrap(s, Size::Small, cw - 4.0).into_iter().take(2) {
+                    for l in text.wrap(s, Size::Normal, cw - 4.0).into_iter().take(2) {
                         foot.push((l, rgba([c[0], c[1], c[2]], a.clamp(0.25, 1.0))));
                     }
                 }
                 if let Some((s, _)) = &self.note {
-                    for l in text.wrap(s, Size::Small, cw - 4.0) {
+                    for l in text.wrap(s, Size::Normal, cw - 4.0) {
                         foot.push((l, WHITE));
                     }
                 }
@@ -553,7 +559,7 @@ impl Hud {
                     urect(g, x0, y - 2.0, cw, 1.0, [1.0, 1.0, 1.0, 0.15]);
                 }
                 for (i, (s, c)) in foot.into_iter().skip(n.saturating_sub(room)).enumerate() {
-                    text.draw(g, &uo, x0 + 2.0, y + i as f32 * sl, &s, Size::Small, c);
+                    text.draw(g, &uo, x0 + 2.0, y + i as f32 * sl, &s, Size::Normal, c);
                 }
             }
         }

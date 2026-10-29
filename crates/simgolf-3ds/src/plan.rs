@@ -32,7 +32,7 @@ pub const VIEW_W: f32 = 320.0;
 pub const VIEW_H: f32 = 240.0;
 /// The tool row on the top screen: a button's size, and how many show at once.
 const BTN_W: f32 = 40.0;
-const BTN_H: f32 = 30.0;
+const BTN_H: f32 = 34.0;
 const ROW_SHOWN: usize = 10;
 const R: f32 = std::f32::consts::FRAC_1_SQRT_2;
 /// The band along the plan's edges where a held pen slides the view, and the fastest it slides (plan pixels a frame).
@@ -310,6 +310,22 @@ fn glyph(c: char) -> [u8; 5] {
 }
 
 /// Width of `text` in the 3 x 5 font at `scale` (4 pixels a glyph, less the last one's gap).
+/// "WASHER" as "Washer".
+fn title_case(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut start = true;
+    for ch in s.chars() {
+        if ch.is_alphabetic() {
+            out.extend(if start { ch.to_uppercase().collect::<Vec<_>>() } else { ch.to_lowercase().collect() });
+            start = false;
+        } else {
+            out.push(ch);
+            start = true;
+        }
+    }
+    out
+}
+
 fn text_width(text: &str, scale: f32) -> f32 {
     (text.chars().count() as f32 * 4.0 - 1.0).max(0.0) * scale
 }
@@ -1296,7 +1312,7 @@ impl Plan {
             p2.tri(g, (W - 1.0, ry + BTN_H * 0.5), (W - 6.0, ry + BTN_H * 0.5 - 5.0), (W - 6.0, ry + BTN_H * 0.5 + 5.0), YELLOW);
         }
         // the status line: the armed tool's price and what to do; the chosen button's key on the right
-        let sy = ry + BTN_H + 2.0;
+        let sy = ry + BTN_H + 3.0;
         let at = self.pen.map(|(x, y)| Self::to_world(d, x, y)).unwrap_or((d.cam_x, d.cam_z));
         let (status, sc) = self.status(d, app, at);
         let chosen = row[sel];
@@ -1316,11 +1332,11 @@ impl Plan {
             }
         };
         let kw = text.width(&key, Size::Small);
-        p2.rect(g, 0.0, sy - 1.0, W, 13.0, [0.0, 0.0, 0.0, 0.55]);
+        p2.rect(g, 0.0, sy - 2.0, W, 15.0, [0.0, 0.0, 0.0, 0.55]);
         let line = text.wrap(&status, Size::Normal, W - kw - 16.0).into_iter().next().unwrap_or_default();
         text.draw(g, ui, 5.0, sy - 1.0, &line, Size::Normal, sc);
         text.draw(g, ui, W - kw - 5.0, sy + 0.5, &key, Size::Small, [0.75, 0.82, 0.72, 1.0]);
-        sy + 13.0
+        sy + 14.0
     }
 
     /// One palette button at (bx, by), BTN_W x BTN_H: its picture and label, yellow when armed.
@@ -1328,7 +1344,7 @@ impl Plan {
         let p2 = Pen2d { u: ui };
         let rgb = |c: [u8; 3]| [c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0, 1.0];
         let panel = [0.3, 0.36, 0.28, 1.0];
-        let (x, y, w, h) = (bx + 3.0, by + 2.0, BTN_W - 6.0, BTN_H - 11.0);
+        let (x, y, w, h) = (bx + 3.0, by + 2.0, BTN_W - 6.0, BTN_H - 15.0);
         let (mx, my) = (x + w * 0.5, y + h * 0.5);
         if armed {
             p2.rect(g, bx + 1.0, by + 0.5, BTN_W - 2.0, BTN_H - 1.0, YELLOW);
@@ -1457,9 +1473,12 @@ impl Plan {
         let label = Self::label(tool);
         let lc = if armed { [0.12, 0.1, 0.02, 1.0] } else if locked { [0.5, 0.52, 0.5, 1.0] } else { [0.88, 0.92, 0.84, 1.0] };
         // the label in the interface font where it fits (crisp and readable), else the 3 x 5 pixel font
-        let lw = text.width(&label, Size::Small);
-        if lw <= BTN_W - 3.0 {
-            text.draw(g, ui, (bx + (BTN_W - lw) * 0.5).round(), by + BTN_H - 10.0, &label, Size::Small, lc);
+        // in title case (narrower than capitals, and easier to read at this size), with room to each side so neighbours
+        // never touch
+        let soft = title_case(&label);
+        let lw = text.width(&soft, Size::Small);
+        if lw <= BTN_W - 4.0 {
+            text.draw(g, ui, (bx + (BTN_W - lw) * 0.5).round(), by + BTN_H - 12.0, &soft, Size::Small, lc);
         } else {
             draw_text(g, ui, bx + (BTN_W - text_width(&label, 1.0)) * 0.5, by + BTN_H - 8.0, &label, 1.0, lc);
         }

@@ -165,6 +165,22 @@ impl Text {
         self.draw(g, u, x, y, text, s, c)
     }
 
+    /// `text` cut to fit in `w` (ending in "..." when cut).
+    pub fn fit(&self, text: &str, s: Size, w: f32) -> String {
+        if self.width(text, s) <= w {
+            return text.to_string();
+        }
+        let mut t: Vec<char> = text.chars().collect();
+        while !t.is_empty() {
+            t.pop();
+            let cut: String = t.iter().collect::<String>().trim_end().to_string() + "...";
+            if self.width(&cut, s) <= w {
+                return cut;
+            }
+        }
+        String::new()
+    }
+
     /// Splits `text` into lines no wider than `w`.
     pub fn wrap(&self, text: &str, s: Size, w: f32) -> Vec<String> {
         let mut out = Vec::new();
