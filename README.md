@@ -1,6 +1,10 @@
 > **This is a fork of [OpenSGolf](https://github.com/crspytopgn/opensgolf) with a port to the New Nintendo 3DS:** stylus course
 > building on the touch screen, the course in stereoscopic 3D on top. See [`crates/simgolf-3ds`](crates/simgolf-3ds/README.md).
 > Everything else here is upstream OpenSGolf v0.4.7.
+>
+> **Bring your own game files.** No SimGolf data is included. This fork publishes no builds: OpenSGolf's English text
+> (`lang/en.txt`, compiled into every build) contains much of the original game's own text, which belongs to Electronic
+> Arts. Build it yourself for your own use.
 
 # OpenSGolf
 
@@ -11,10 +15,6 @@
 OpenSGolf is an open source game engine that plays Sid Meier's SimGolf (2002). It uses the original game's files if you
 have them, or its own free graphics and sound if you don't. It runs on Windows, macOS, Linux, Android and in the browser.
 
-![A golf course in OpenSGolf, played with the original SimGolf files](docs/images/golfers.jpg)
-
-<sub>Screenshot taken with the original SimGolf files (not included). More pictures on the
-[website](https://crspytopgn.github.io/opensgolf/).</sub>
 
 ## Table of contents
 

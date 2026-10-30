@@ -42,3 +42,8 @@ hd-download/
 
 # the 3DS port's Homebrew Launcher icon (an original drawing, not game art)
 !crates/simgolf-3ds/icon.png
+
+# build and cache folders
+build_asan/
+__pycache__/
+*.pyc

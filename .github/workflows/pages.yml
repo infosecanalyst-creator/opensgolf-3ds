@@ -17,6 +17,8 @@ concurrency:
 
 jobs:
   deploy:
+    # this fork publishes no builds (lang/en.txt holds the original game's text); see README
+    if: false
     runs-on: ubuntu-latest
     environment:
       name: github-pages

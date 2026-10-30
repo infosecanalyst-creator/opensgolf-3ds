@@ -96,11 +96,13 @@ OpenSGolf needs art and sound. Either:
 - **none:** on first start OpenSGolf writes its free base set (about 82 MB) to `sdmc:/3ds/opensgolf/free`. That takes a few
   minutes on the console; `sgtool freeset <dir>` on a PC is faster.
 
-No game files are included in this repository or its builds.
+No game art or sound is included in this repository or its builds. Note that OpenSGolf's English text (`lang/en.txt`,
+inherited from upstream and compiled into every build) contains much of the original game's own wording, which belongs to
+Electronic Arts; for that reason this fork does not publish builds. Build it yourself for your own use.
 
 ### Installing
 
-Copy `simgolf-3ds.3dsx` (from a release, the Actions artifacts, or your own build) to `sdmc:/3ds/` and start it from the
+Copy `simgolf-3ds.3dsx` (from your own build) to `sdmc:/3ds/` and start it from the
 Homebrew Launcher, or send it over Wi-Fi with `3dslink` (Homebrew Launcher, Y for NetLoader). The console needs custom firmware
 (<https://3ds.hacks.guide>) and, for sound, its DSP firmware dumped once with DSP1.
 
