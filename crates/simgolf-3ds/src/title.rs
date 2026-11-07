@@ -589,10 +589,16 @@ pub fn splash(g: &mut Gfx, text: &Text, line: &str, secs: f32) {
         let sw = text.width(s, Size::Normal);
         text.draw(g, &u, (320.0 - sw) * 0.5, 124.0 + i as f32 * 14.0, s, Size::Normal, DIM);
     }
-    // a bar that fills over the usual start-up time, never quite to the end
-    let f = 1.0 - (-secs / 6.0).exp();
+    // real progress when the line says "N / M files" (writing the free set); otherwise a bar that fills over the
+    // usual start-up time, never quite to the end
+    let counted = line.split_once('/').and_then(|(a, b)| {
+        let n: f32 = a.trim().parse().ok()?;
+        let m: f32 = b.split_whitespace().next()?.parse().ok()?;
+        (m > 0.0).then(|| (n / m).clamp(0.0, 1.0))
+    });
+    let f = counted.unwrap_or_else(|| (1.0 - (-secs / 6.0).exp()) * 0.95);
     rect(g, &u, 60.0, 170.0, 200.0, 6.0, [0.18, 0.26, 0.2, 1.0]);
-    rect(g, &u, 60.0, 170.0, 200.0 * f * 0.95, 6.0, GOLD);
+    rect(g, &u, 60.0, 170.0, 200.0 * f, 6.0, GOLD);
     g.end_frame();
 }
 
