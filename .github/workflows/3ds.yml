@@ -55,3 +55,10 @@ jobs:
           cp target/armv6k-nintendo-3ds/release/simgolf-3ds.3dsx .
           ls -l simgolf-3ds.3dsx
 
+
+      # Private delivery to Ryan's own 3DS: a one-day artifact, not a published build.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: simgolf-3ds
+          path: simgolf-3ds.3dsx
+          retention-days: 1
