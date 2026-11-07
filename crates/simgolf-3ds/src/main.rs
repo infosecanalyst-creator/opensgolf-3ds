@@ -1163,7 +1163,9 @@ fn main() {
         if !in_game {
             // ---- the title screen ----
             let mut choice = None;
-            for ev in input.poll(&hid, cstick) {
+            let evs = input.poll(&hid, cstick);
+        g.set_swapped(input.swapped);
+        for ev in evs {
                 if manual.open {
                     manual.event(&ev, &mixer);
                     continue;
@@ -1258,7 +1260,9 @@ fn main() {
         demo.sync_view(&app);
         let mut strokes: Vec<plan::Stroke> = Vec::new();
         let mut menu_pick: Option<usize> = None;
-        for ev in input.poll(&hid, cstick) {
+        let evs = input.poll(&hid, cstick);
+        g.set_swapped(input.swapped);
+        for ev in evs {
             dirty = true;
             // the manual takes the controls while it is open; the game stays paused under it
             if manual.open {

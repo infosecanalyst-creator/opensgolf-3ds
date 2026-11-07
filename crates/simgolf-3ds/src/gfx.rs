@@ -575,6 +575,8 @@ pub struct Gfx {
     eye: Eye,
     /// The 3D slider, 0..1, read once per frame.
     slider: f32,
+    /// ZL: the top screen's picture is on the touchscreen and the other way round (3D off).
+    swapped: bool,
     /// Draws are the world (sheared per eye) rather than the interface (at screen depth).
     world: bool,
     /// The uniforms and UV scale last sent to the GPU, so a draw with the same ones sends nothing (the course is hundreds of
@@ -707,6 +709,7 @@ impl Gfx {
             screen: Screen::Top,
             eye: Eye::Left,
             slider: 0.0,
+            swapped: false,
             world: false,
             sent: None,
             sent_terrain: None,
@@ -1209,6 +1212,15 @@ impl Gfx {
     /// then the PICA fix-up.
     fn eye_mvp(&self, mvp: &Mat4) -> Mat4 {
         let m = if self.screen == Screen::Top && self.slider > 0.0 && self.world { self.shear_clip(mvp) } else { *mvp };
+        if self.swapped {
+            // the top picture (400 x 240) on the 320-wide touchscreen: full width, 0.8 of the height; the touchscreen picture
+            // (320 x 240) centred on the 400-wide top screen: 0.8 of the width. Bars take the clear colour.
+            let (sx, sy) = if self.screen == Screen::Top { (1.0, 0.8) } else { (0.8, 1.0) };
+            let mut sc = Mat4::identity().0;
+            sc[0] = sx;
+            sc[5] = sy;
+            return Mat4::pica_fixup().mul(&Mat4(sc).mul(&m));
+        }
         Mat4::pica_fixup().mul(&m)
     }
 
@@ -1308,6 +1320,14 @@ impl Gfx {
 
     // -- frames and screens -----------------------------------------------------------------------------------------------------
 
+    /// ZL: swaps the two screens' pictures (and turns 3D off while they are swapped).
+    pub fn set_swapped(&mut self, on: bool) {
+        if on != self.swapped {
+            self.swapped = on;
+            unsafe { ctru_sys::gfxSet3D(!on) };
+        }
+    }
+
     /// The 3D slider (0..1) as the game should read it; 0 means draw the top screen once.
     pub fn slider(&self) -> f32 {
         self.slider
@@ -1320,7 +1340,7 @@ impl Gfx {
         if tr {
             trace(&format!("frame {}: begin", self.frame_no));
         }
-        self.slider = unsafe { ctru_sys::osGet3DSliderState() };
+        self.slider = if self.swapped { 0.0 } else { unsafe { ctru_sys::osGet3DSliderState() } };
         self.stream_frame ^= 1;
         self.stream[self.stream_frame].clear();
         self.mode_applied = None;
@@ -1367,10 +1387,12 @@ impl Gfx {
         self.flush();
         self.screen = screen;
         self.eye = eye;
-        let target = match (screen, eye) {
-            (Screen::Top, Eye::Left) => &mut self.top_left,
-            (Screen::Top, Eye::Right) => &mut self.top_right,
-            (Screen::Bottom, _) => &mut self.bottom,
+        let target = match (screen, eye, self.swapped) {
+            (Screen::Top, Eye::Left, false) => &mut self.top_left,
+            (Screen::Top, Eye::Right, false) => &mut self.top_right,
+            (Screen::Bottom, _, false) => &mut self.bottom,
+            (Screen::Top, _, true) => &mut self.bottom,
+            (Screen::Bottom, _, true) => &mut self.top_left,
         };
         target.clear(ClearFlags::ALL, rgba, 0);
         unsafe { c3d::C3D_FrameDrawOn(target.as_raw()) };

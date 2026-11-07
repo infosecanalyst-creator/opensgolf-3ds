@@ -735,7 +735,7 @@ impl Hud {
                     ("New hole", "HOLE: tap a tee, then a green"),
                     ("Hire, fire, save, a page", "choose it, then A"),
                     ("Scroll", "Circle Pad, C-stick, MOVE tool, or stroke into the edge"),
-                    ("Zoom", "ZL (out) / ZR (in)"),
+                    ("Zoom / swap screens", "ZR tap in, hold out / ZL"),
                     ("Undo (or clear a placed tee)", "B"),
                     ("Pause / game speed", "X / Y"),
                     ("Money, holes, golfers, staff pages", "Select"),

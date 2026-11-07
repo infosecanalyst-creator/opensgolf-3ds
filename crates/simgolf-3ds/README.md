@@ -81,7 +81,8 @@ the land.
 | X | pause |
 | Y | game speed 1x, 2x, 4x |
 | Circle Pad / C-stick | slide the view |
-| ZL / ZR | zoom out / in (three steps closer than the PC game) |
+| ZL | swap the screens (3D and touch off while swapped) |
+| ZR | tap: zoom in (three steps closer than the PC game); hold: zoom out |
 | Select | the money, holes, golfers and staff pages, then the overview |
 | Start | pause menu: resume, save, load, controls, manual, title screen, quit (D-pad and A, or tap a row) |
 | 3D slider | the dashboard's tools and pages stand out of the screen a little |

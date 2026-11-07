@@ -75,7 +75,8 @@ With the 3D slider up, the tools and pages float slightly in front of the screen
 | Y | Game speed 1x, 2x, 4x.
 | Circle Pad | Pan the view.
 | C-stick | Pan the view.
-| ZL / ZR | Zoom out / in.
+| ZL | Swap the screens (3D and touch are off while swapped).
+| ZR | Tap: zoom in. Hold: zoom out step by step.
 | Start | Pause menu.
 | Select | Next dashboard page.
 
@@ -232,7 +233,7 @@ Saves are in sdmc:/3ds/opensgolf/saves/Saved Games/ in SimGolf's own .sgs format
 - Add a ranger when golfers complain about waiting.
 - Press Y for 2x or 4x while you wait for money. Press X to pause while you plan.
 - Undo is cheap: 30 steps, money included. Try things.
-- Zoom in (ZR) to place things precisely, and out (ZL) to plan a hole.
+- Zoom in (tap ZR) to place things precisely, and out (hold ZR) to plan a hole.
 
 # Troubleshooting
 ## A course is slow to open

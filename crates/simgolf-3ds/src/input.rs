@@ -11,7 +11,8 @@
 //!   X                    pause (Space, as the original)
 //!   Y                    game speed 1x, 2x, 4x (Tab)
 //!   Circle Pad, C-stick  slide the view
-//!   ZL / ZR (New 3DS)    zoom out / in (Q / E)
+//!   ZL (New 3DS)         swap the screens
+//!   ZR (New 3DS)         tap: zoom in (E); hold: zoom out (Q)
 //!   Start                the pause menu (Escape)
 //!   Select               the top screen's pages: money, holes, golfers, staff, then the overview (F1)
 //!   3D slider            read by gfx.rs each frame; nothing to map
@@ -41,8 +42,6 @@ const BUTTON_KEYS: &[(KeyPad, KeyCode)] = &[
     (KeyPad::Y, KeyCode::Tab),
     (KeyPad::START, KeyCode::Escape),
     (KeyPad::SELECT, KeyCode::F1),
-    (KeyPad::ZL, KeyCode::Q),
-    (KeyPad::ZR, KeyCode::E),
     (KeyPad::L, KeyCode::PageUp),
     (KeyPad::R, KeyCode::PageDown),
     (KeyPad::DPAD_UP, KeyCode::Up),
@@ -61,11 +60,15 @@ pub struct Input {
     /// L or R is down now, and whether a stylus drag has used it as the scroll modifier since it went down.
     shoulder_now: bool,
     shoulder_used: bool,
+    /// ZL swapped the screens (the touchscreen is then not read).
+    pub swapped: bool,
+    /// Frames ZR has been held (tap = zoom in, hold = zoom out).
+    zr_frames: u32,
 }
 
 impl Input {
     pub fn new() -> Input {
-        Input { cursor: (TOP_W as f32 * 0.5, TOP_H as f32 * 0.5), touching: false, pen: (0.0, 0.0), held: [false; 2], shoulder_now: false, shoulder_used: false }
+        Input { cursor: (TOP_W as f32 * 0.5, TOP_H as f32 * 0.5), touching: false, pen: (0.0, 0.0), held: [false; 2], shoulder_now: false, shoulder_used: false, swapped: false, zr_frames: 0 }
     }
 
     /// L or R is held: the plan scrolls under a drag (plan.rs).
@@ -80,6 +83,22 @@ impl Input {
         let up = hid.keys_up();
         let held = hid.keys_held();
         let mods = KeyMods::default();
+
+        // ZL swaps the screens. ZR: a tap zooms in, holding it zooms out step by step.
+        if down.contains(KeyPad::ZL) {
+            self.swapped = !self.swapped;
+        }
+        if held.contains(KeyPad::ZR) {
+            self.zr_frames += 1;
+            if self.zr_frames >= 20 && (self.zr_frames - 20) % 12 == 0 {
+                ev.push(Event::KeyDown(KeyCode::Q, mods));
+            }
+        } else {
+            if up.contains(KeyPad::ZR) && self.zr_frames > 0 && self.zr_frames < 20 {
+                ev.push(Event::KeyDown(KeyCode::E, mods));
+            }
+            self.zr_frames = 0;
+        }
 
         for &(pad, key) in BUTTON_KEYS {
             if down.contains(pad) {
@@ -139,7 +158,7 @@ impl Input {
 
         // the touch screen: the bottom screen's interface
         let (tx, ty) = hid.touch_position();
-        let touching = held.contains(KeyPad::TOUCH);
+        let touching = held.contains(KeyPad::TOUCH) && !self.swapped;
         let (vx, vy) = screens::touch_to_virtual(tx as f32, ty as f32);
         let phase = match (self.touching, touching) {
             (false, true) => Some(TouchPhase::Started),
