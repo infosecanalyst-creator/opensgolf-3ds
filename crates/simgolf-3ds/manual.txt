@@ -80,6 +80,9 @@ With the 3D slider up, the tools and pages float slightly in front of the screen
 | Start | Pause menu.
 | Select | Next dashboard page.
 
+## Left-handed play
+The Left hand button at the bottom of this manual's touch screen swaps the D-pad with the face buttons: Y and Up, A and Right, B and Down, X and Left. So the D-pad does A, B, X and Y's jobs, and the face buttons pick tools and brush size. The setting is saved and applies everywhere.
+
 ## Pause menu (Start)
 | Resume | Back to the game.
 | Save game | Saves to the Quick slot.

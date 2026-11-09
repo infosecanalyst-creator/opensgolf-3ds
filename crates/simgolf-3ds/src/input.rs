@@ -19,6 +19,49 @@
 use crate::screens::{self, TOP_H, TOP_W};
 use crate::shim::{KeyCode, KeyMods, MouseButton, TouchPhase};
 use ctru::services::hid::{Hid, KeyPad};
+use std::sync::atomic::{AtomicU8, Ordering};
+
+/// Left-handed play: the D-pad and the face buttons swap places (Y<->Up, A<->Right, B<->Down, X<->Left).
+/// Toggled from the manual's touch screen, kept as a marker file, applied where the pad is read.
+const LEFTY_FILE: &str = "sdmc:/3ds/opensgolf/.lefty";
+static LEFTY: AtomicU8 = AtomicU8::new(2); // 2 = not read yet
+
+pub fn lefty() -> bool {
+    let v = LEFTY.load(Ordering::Relaxed);
+    if v != 2 {
+        return v == 1;
+    }
+    let on = std::fs::metadata(LEFTY_FILE).is_ok();
+    LEFTY.store(on as u8, Ordering::Relaxed);
+    on
+}
+
+pub fn set_lefty(on: bool) {
+    LEFTY.store(on as u8, Ordering::Relaxed);
+    if on {
+        let _ = std::fs::write(LEFTY_FILE, b"1");
+    } else {
+        let _ = std::fs::remove_file(LEFTY_FILE);
+    }
+}
+
+fn remap(k: KeyPad) -> KeyPad {
+    if !lefty() {
+        return k;
+    }
+    let mut o = k;
+    for (a, b) in [(KeyPad::Y, KeyPad::DPAD_UP), (KeyPad::A, KeyPad::DPAD_RIGHT), (KeyPad::B, KeyPad::DPAD_DOWN), (KeyPad::X, KeyPad::DPAD_LEFT)] {
+        o.remove(a);
+        o.remove(b);
+        if k.contains(a) {
+            o.insert(b);
+        }
+        if k.contains(b) {
+            o.insert(a);
+        }
+    }
+    o
+}
 
 #[derive(Clone, Copy, Debug)]
 pub enum Event {
@@ -79,9 +122,9 @@ impl Input {
     /// Polls the controls once (call after `hid.scan_input()`) and returns this frame's events.
     pub fn poll(&mut self, hid: &Hid, cstick: bool) -> Vec<Event> {
         let mut ev = Vec::new();
-        let down = hid.keys_down();
-        let up = hid.keys_up();
-        let held = hid.keys_held();
+        let down = remap(hid.keys_down());
+        let up = remap(hid.keys_up());
+        let held = remap(hid.keys_held());
         let mods = KeyMods::default();
 
         // ZL swaps the screens. ZR: a tap zooms in, holding it zooms out step by step.

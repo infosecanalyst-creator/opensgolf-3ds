@@ -101,7 +101,10 @@ impl Manual {
         let mut v: Vec<_> = (0..n)
             .map(|i| (x0 + (i % 2) as f32 * (full * 0.5 + gap * 0.5), top + (i / 2) as f32 * pitch, full * 0.5 - gap * 0.5, pitch - gap))
             .collect();
-        v.push((x0, H - close_h - 4.0, full, close_h));
+        // last row: the Left hand toggle, then Close
+        let tw = full * 0.62;
+        v.push((x0, H - close_h - 4.0, tw, close_h));
+        v.push((x0 + tw + gap, H - close_h - 4.0, full - tw - gap, close_h));
         v
     }
 
@@ -152,6 +155,9 @@ impl Manual {
                     _ => {
                         if let (Some(i), true) = (at, at == self.pressed) {
                             if i == n {
+                                crate::input::set_lefty(!crate::input::lefty());
+                                mixer.play("Interface/Button1.wav", 0.6, false);
+                            } else if i == n + 1 {
                                 self.open = false;
                                 mixer.play("Interface/Button2.wav", 0.6, false);
                             } else {
@@ -295,8 +301,16 @@ impl Manual {
         let n = self.sections.len();
         for (i, &(x, y, w, h)) in lay.iter().enumerate() {
             let on = i == self.cur;
-            let close = i == n;
-            let label = if close { "Close" } else { self.sections[i].title.as_str() };
+            let close = i == n + 1;
+            let toggle = i == n;
+            let on = on || (toggle && crate::input::lefty());
+            let label = if close {
+                "Close"
+            } else if toggle {
+                if crate::input::lefty() { "Left hand: on" } else { "Left hand: off" }
+            } else {
+                self.sections[i].title.as_str()
+            };
             rect(g, &u, x, y, w, h, if on { ROW_ON } else if close { [0.3, 0.16, 0.14, 1.0] } else { ROW });
             rect(g, &u, x, y + h - 2.0, w, 2.0, [0.0, 0.0, 0.0, 0.35]);
             let c = if on { INK } else { WHITE };
