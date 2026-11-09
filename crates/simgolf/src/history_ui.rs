@@ -45,12 +45,23 @@ struct Row {
     lines: Vec<String>,
 }
 
+/// The page's fonts and line pitch at the text size (textsize.rs): the messages wrap and grow, the page scrolls sooner.
+fn body() -> crate::ui::Fnt {
+    crate::textsize::big(F_MANUAL15)
+}
+fn small() -> crate::ui::Fnt {
+    crate::textsize::big(F_ARIAL10)
+}
+fn line() -> f32 {
+    crate::textsize::px(LINE)
+}
+
 fn row_lines(m: &Message) -> Vec<String> {
-    m.text.split('\n').flat_map(|p| wrap(F_MANUAL15, &p.replace(['^', '_'], " "), TEXT_W)).collect()
+    m.text.split('\n').flat_map(|p| wrap(body(), &p.replace(['^', '_'], " "), TEXT_W)).collect()
 }
 
 fn row_height(lines: usize) -> f32 {
-    (14.0 + LINE * lines as f32).max(36.0) + 6.0
+    (crate::textsize::px(14.0) + line() * lines as f32).max(36.0) + 6.0
 }
 
 impl App {
@@ -152,9 +163,10 @@ impl App {
         let (white, yellow, navy, grey) = (c15(0x7fff), c15(0x7ff0), c15(0x0018), c15(0x6318));
         s.put_shadowed(g, F_MANUAL20, 400.0, BOX.y + 14.0, tr("STR_HISTORY_TITLE"), yellow, true);
         let n = self.xs.kept.messages.len();
-        s.put(g, F_ARIAL10, BOX.x + 24.0, BOX.y + 40.0, &trf("STR_HISTORY_HELP", &[("COUNT", &n)]), navy);
+        let help = trf("STR_HISTORY_HELP", &[("COUNT", &n)]);
+        s.put(g, crate::textsize::fit(F_ARIAL10, 1.5, &help, BOX.w - 48.0), BOX.x + 24.0, BOX.y + 40.0, &help, navy);
         if n == 0 {
-            s.put_centered(g, F_MANUAL15, 400.0, 280.0, tr("STR_HISTORY_EMPTY"), white);
+            s.put_centered(g, body(), 400.0, 280.0, tr("STR_HISTORY_EMPTY"), white);
         }
         let (px, py) = self.info.pointer;
         let rows = self.history_rows();
@@ -170,13 +182,13 @@ impl App {
             } else if m.speaker != crate::message_ui::NOBODY {
                 self.small_picture(g, &s, m.speaker, BOX.x + 20.0, r.y, 36.0);
             }
-            s.put(g, F_ARIAL10, TEXT_X, r.y, &crate::extras::date(m.tick), navy);
+            s.put(g, small(), TEXT_X, r.y, &crate::extras::date(m.tick), navy);
             if place {
                 let t = tr("STR_HISTORY_SHOW");
-                s.put(g, F_ARIAL10, UP.x - 12.0 - F_ARIAL10.width(t), r.y, t, navy);
+                s.put(g, small(), UP.x - 12.0 - small().width(t), r.y, t, navy);
             }
             for (k, l) in r.lines.iter().enumerate() {
-                s.put(g, F_MANUAL15, TEXT_X, r.y + 12.0 + LINE * k as f32, l, white);
+                s.put(g, body(), TEXT_X, r.y + crate::textsize::px(12.0) + line() * k as f32, l, white);
             }
             s.fill(g, BOX.x + 20.0, r.y + r.h - 4.0, UP.x - BOX.x - 32.0, 1.0, rgba(0.0, 0.0, 0.3, 0.25));
         }
@@ -195,7 +207,8 @@ impl App {
                 UP.y + UP.h + 4.0 + (track - th) * (self.xs.history.off as f32 / (n.saturating_sub(rows.len()).max(1)) as f32).min(1.0);
             s.fill(g, UP.x + 7.0, ty, 6.0, th, white);
         }
-        s.put(g, F_ARIAL10, BOX.x + 24.0, BOX.y + BOX.h - 24.0, tr("STR_HISTORY_CLOSE"), navy);
+        let close = tr("STR_HISTORY_CLOSE");
+        s.put(g, crate::textsize::fit(F_ARIAL10, 1.5, close, BOX.w - 110.0), BOX.x + 24.0, BOX.y + BOX.h - 24.0, close, navy);
         if self.art.trans.tex.is_some() {
             let r = ok_tick();
             s.image_part(g, &self.art.trans, r.x, r.y, 350.0, 140.0, 50.0, 50.0);
@@ -244,6 +257,19 @@ impl App {
             return;
         }
         self.xs.kept.push_message(Message { tick, text: text.to_string(), speaker, roster, face, at });
+    }
+
+    /// A golfer's story line (the original shows it only in the bubble over the golfer, thoughts_ui.rs): the history keeps
+    /// it as the golfer's message, so a story can be read again.
+    pub fn keep_story_line(&mut self, g: usize, text: &str) {
+        if !crate::extras::history() || text.trim().is_empty() {
+            return;
+        }
+        let gg = &self.club.g[g];
+        let (roster, at) = (gg.roster, Some((gg.x, gg.y)));
+        let face = self.club.attitude(g) as u8;
+        let tick = self.date();
+        self.xs.kept.push_message(Message { tick, text: text.to_string(), speaker: g as i32, roster, face, at });
     }
 }
 

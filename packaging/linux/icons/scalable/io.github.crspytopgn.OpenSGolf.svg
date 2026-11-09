@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The OpenSGolf application icon as a vector drawing: the same shapes and colours as sg_core::freeset::app_icon
+     (crates/sg-core/src/freeset/icon.rs, drawn on its 256 x 256 grid), copied by hand. GPL-2.0-or-later, like the engine. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="sky" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="170">
+      <stop offset="0" stop-color="#468cdc"/>
+      <stop offset="1" stop-color="#aad7f5"/>
+    </linearGradient>
+    <linearGradient id="fairway" gradientUnits="userSpaceOnUse" x1="0" y1="160" x2="0" y2="250">
+      <stop offset="0" stop-color="#4e984a"/>
+      <stop offset="1" stop-color="#2c6929"/>
+    </linearGradient>
+    <linearGradient id="green" gradientUnits="userSpaceOnUse" x1="40" y1="0" x2="220" y2="0">
+      <stop offset="0" stop-color="#78c46a"/>
+      <stop offset="1" stop-color="#60ba50"/>
+    </linearGradient>
+    <linearGradient id="flag" gradientUnits="userSpaceOnUse" x1="0" y1="44" x2="0" y2="98">
+      <stop offset="0" stop-color="#eb322d"/>
+      <stop offset="1" stop-color="#b9191e"/>
+    </linearGradient>
+    <radialGradient id="ball" gradientUnits="userSpaceOnUse" cx="85.6" cy="164.3" r="41.6">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#b9c3c8"/>
+    </radialGradient>
+    <clipPath id="square">
+      <rect x="8" y="8" width="240" height="240" rx="44"/>
+    </clipPath>
+  </defs>
+  <!-- the rounded square: sky fading to the horizon -->
+  <rect x="8" y="8" width="240" height="240" rx="44" fill="url(#sky)"/>
+  <!-- the fairway: a wide hill across the bottom, clipped to the square -->
+  <ellipse cx="128" cy="250" rx="190" ry="92" fill="url(#fairway)" clip-path="url(#square)"/>
+  <!-- the putting green and its hole -->
+  <ellipse cx="128" cy="186" rx="92" ry="30" fill="url(#green)"/>
+  <ellipse cx="150" cy="186" rx="13" ry="5" fill="#1e3219"/>
+  <!-- the pin, lit from the left, and its flag waving to the left -->
+  <rect x="146" y="42" width="8" height="146" rx="4" fill="#c8c8c3"/>
+  <path d="M150 42 a4 4 0 0 0 -4 4 v138 a4 4 0 0 0 4 4 z" fill="#fafaf5"/>
+  <polygon points="147,44 66,70 147,98" fill="url(#flag)"/>
+  <!-- the ball on the green left of the hole: a soft shadow, the ball shaded from the top left, its dimples -->
+  <ellipse cx="102" cy="200" rx="28.6" ry="7" fill="#143c14" fill-opacity="0.45"/>
+  <circle cx="96" cy="176" r="26" fill="url(#ball)"/>
+  <g fill="#96a0a5" fill-opacity="0.6">
+    <ellipse cx="86.9" cy="178.6" rx="2.34" ry="2.08"/>
+    <ellipse cx="97.3" cy="183.8" rx="2.34" ry="2.08"/>
+    <ellipse cx="106.4" cy="177.3" rx="2.34" ry="2.08"/>
+    <ellipse cx="99.9" cy="169.5" rx="2.34" ry="2.08"/>
+    <ellipse cx="92.1" cy="190.3" rx="2.34" ry="2.08"/>
+    <ellipse cx="107.7" cy="187.7" rx="2.34" ry="2.08"/>
+    <ellipse cx="83" cy="187.7" rx="2.34" ry="2.08"/>
+  </g>
+</svg>

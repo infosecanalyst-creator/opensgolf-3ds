@@ -1,0 +1,16 @@
+<p>OpenSGolf is a free, open source engine for the golf course building game Sid Meier's SimGolf (2002). Lay out holes, plant trees and dig ponds, put up a clubhouse and shops, hire staff, and watch your golfers play your course, chat, complain and come back for more.</p>
+
+<p>It comes with its own complete set of free graphics and sounds, so you can start playing right away. If you own SimGolf, tap <b>Use my SimGolf files...</b> on the title screen and pick a .zip of your SimGolf folder or the folder itself: OpenSGolf copies the files into its own storage and then plays with the original art and sounds. No game files are included.</p>
+
+<p>With every option at its default it aims to play exactly like the original. On top of that it offers:</p>
+<ul>
+<li>Touch controls made for phones and tablets, and game controller support</li>
+<li>Optional enhanced, high-resolution graphics</li>
+<li>Optional fixes for bugs of the original game</li>
+<li>Optional interface helpers and extras, all off until you turn them on</li>
+<li>A course editor for your own scenarios, and content packs (mods)</li>
+</ul>
+
+<p>The game plays in landscape. How to play, and the touch controls: https://github.com/crspytopgn/opensgolf/blob/main/docs/PLAYING.md</p>
+
+<p>OpenSGolf is not affiliated with or endorsed by Electronic Arts or Firaxis Games. SimGolf and Sid Meier's are trademarks of their owners and are named here only to say which game's files OpenSGolf can use.</p>

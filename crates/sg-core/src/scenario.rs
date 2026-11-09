@@ -477,6 +477,7 @@ pub fn pack_manifest(id: &str, name: &str, author: &str, description: &str, vers
         description: description.to_string(),
         requires: Vec::new(),
         conflicts: Vec::new(),
+        scale: 1,
     };
     #[derive(Serialize)]
     struct File<'a> {

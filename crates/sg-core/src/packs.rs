@@ -182,7 +182,22 @@ pub struct Manifest {
     pub requires: Vec<String>,
     #[serde(default)]
     pub conflicts: Vec<String>,
+    /// High-resolution art (docs/MODDING.md, "High-resolution packs and your own art"): the pack's pictures and sprite
+    /// sheets are this many times the original's size (1, 2 or 4). The port's own.
+    #[serde(default = "scale_one", skip_serializing_if = "is_scale_one")]
+    pub scale: u32,
 }
+
+fn scale_one() -> u32 {
+    1
+}
+
+fn is_scale_one(s: &u32) -> bool {
+    *s == 1
+}
+
+/// The scales a pack may give its art.
+pub const SCALES: [u32; 3] = [1, 2, 4];
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -207,6 +222,9 @@ impl Manifest {
         Version::parse(&m.version).map_err(|e| format!("pack.toml: {e}"))?;
         for r in m.requires.iter().chain(&m.conflicts) {
             Requirement::parse(r).map_err(|e| format!("pack.toml: {e}"))?;
+        }
+        if !SCALES.contains(&m.scale) {
+            return Err(format!("pack.toml: scale = {} (1, 2 or 4)", m.scale));
         }
         Ok(m)
     }
@@ -238,6 +256,7 @@ impl Manifest {
             description: "The art, sounds, music and text of the SimGolf installed on this computer.".into(),
             requires: Vec::new(),
             conflicts: Vec::new(),
+            scale: 1,
         }
     }
 }
@@ -562,6 +581,7 @@ pub fn resolve(found: &Found, settings: &Settings) -> Plan {
             description: String::new(),
             requires: Vec::new(),
             conflicts: Vec::new(),
+            scale: 1,
         };
         rows.push(Row { manifest, location: loc.clone(), pack: None, status: Status::Error(e.clone()), warnings: Vec::new() });
     }
@@ -660,7 +680,7 @@ pub fn load(found: &Found, plan: &Plan) -> Loaded {
         if id == FREE && !matches!(*p.source, Source::Generated) {
             layers.push(Layer::new(id, Arc::new(Source::Generated)));
         }
-        layers.push(Layer::new(id, p.source.clone()));
+        layers.push(Layer::with_scale(id, p.source.clone(), p.manifest.scale));
     }
     let (data, w) = crate::data::Data::from_tables(&tables);
     warnings.extend(w.into_iter().map(|w| (String::new(), w)));
@@ -742,6 +762,17 @@ mod tests {
         assert!(Manifest::parse(&manifest("a", "mod", "1", &["b >> 2"], &[])).unwrap_err().contains("requirement"));
         assert!(Manifest::parse(&manifest("original", "base", "1", &[], &[])).is_err());
         assert!(Manifest::parse("[pack]\nid = \"a\"\nname = \"A\"\nversion = \"1\"\nkind = \"mod\"\ncolour = 3\n").is_err());
+    }
+
+    #[test]
+    fn manifest_scale() {
+        let base = manifest("a", "mod", "1", &[], &[]);
+        assert_eq!(Manifest::parse(&base).unwrap().scale, 1);
+        assert_eq!(Manifest::parse(&format!("{base}scale = 4\n")).unwrap().scale, 4);
+        assert_eq!(Manifest::parse(&format!("{base}scale = 2\n")).unwrap().scale, 2);
+        assert!(Manifest::parse(&format!("{base}scale = 3\n")).unwrap_err().contains("scale"));
+        // scale 1 is left out when a manifest is written (scenario exports stay as they were)
+        assert!(!crate::scenario::pack_manifest("s", "S", "", "", "1.0.0").contains("scale"));
     }
 
     #[test]

@@ -404,6 +404,8 @@ impl Club {
                     self.message_by(trf("STR_VIP_COMMISSIONER_YES", &[("VISITOR", &name), ("GOAL", &goal)]), g as i32, 1);
                     self.sound(0x2f, None);
                     self.land_offer = true;
+                    // the Keep the land offer extra: the approval waits for a purchase (extras.rs)
+                    self.land_kept |= self.extras.keep_land;
                 } else {
                     let pq = partner_quit(self);
                     self.message_by(
@@ -544,5 +546,27 @@ mod tests {
             ["Wealthy Heiress Ivana Richman has decided not to donate a landmark to your course. 'I don't like this course much.' \
               she comments. 'I'll be back in a few months.'"]
         );
+    }
+
+    #[test]
+    fn the_commissioners_approval_waits_with_keep_the_land_offer() {
+        for keep in [false, true] {
+            let mut cl = Club::default();
+            let mut rng = ExeRng::from_clock(1);
+            cl.extras.keep_land = keep;
+            // the commissioner played to the last hole and enjoyed it
+            cl.g[3].kind = 0x40;
+            cl.g[3].hole = 1;
+            cl.g[3].mood = 5;
+            cl.vip_verdict(&mut rng, 3);
+            assert!(cl.land_offer, "the question comes either way");
+            assert_eq!(cl.land_kept, keep);
+        }
+        // an unhappy commissioner approves nothing, and nothing waits
+        let mut cl = Club::default();
+        cl.extras.keep_land = true;
+        (cl.g[3].kind, cl.g[3].hole, cl.g[3].mood) = (0x40, 1, 1);
+        cl.vip_verdict(&mut ExeRng::from_clock(1), 3);
+        assert!(!cl.land_offer && !cl.land_kept);
     }
 }

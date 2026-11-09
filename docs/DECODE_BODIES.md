@@ -268,6 +268,12 @@ Spot check (EXACT): entries 250..255 identical in every Swap; 255 = FF00FF.
 
 - EXACT: sprite accessor FUN_0043d6f0(animId, frame, view) returns a 0x2c byte sprite record. Drawing view = (DAT_005685f4 - facing - 2) & 7, facing being golfer +0x1a (0x5794d2). The camera term matches the existing SPRITES.md convention.
 - EXACT: loader FUN_0043d740 loads each FLC. People files have 8 views; Sitting and SitSq have 4 (view mask 0x0F, others 0xFF). Default people crop is a 60x60 window at canvas (210,200) (param_4 = 0); other modes crop larger squares. Canvas is 480x480. Every sprite has a `<name>Shadow.flc` companion.
+- DERIVED (from the art: MalePSS_NormalWalk, NormalAddress, PerfectSwing, PuttAddress and Putt.flc): a golf clip's view
+  v sends the ball the way the walk's view v faces (with the camera unturned, 1 down the screen, 3 right, 5 up, 7 left:
+  the walker's cap brim, and the backswing going the other way), and the address's last frame and the swing's first are
+  the same picture in each view. So a swing is drawn at the shot's direction as its address is: the facing turned back by
+  the quarter turn the shot's start gives it for every club but the putter (golfer.rs). A horizontal mirror of view k sends
+  the ball as view 2 - k does (3 and 7 swap, 1 and 5 stay).
 - UNKNOWN: the in world golfer queue call site was not found in the decompile. Only the spectator call and the held golfer call use the compose flag. Treat in world golfer drawing as: choose anim id by state, frame by timer, set `a` from the profile (section 4), flag 0x100|slot (DERIVED from the Customise and spectator calls).
 - Female sets omit PerfectSwing, NoAccSwing and NoimagSwing (EXACT: not present on disc); female NormalSwing takes id offset 0x28.
 

@@ -71,6 +71,11 @@ impl App {
 
     /// Option `k` of the box picked (not Done): the cheat is used, with a word on the ticker line.
     pub fn use_cheat(&mut self, k: usize) {
+        // the interface's call is an action (replay.rs): logged, then applied by App::apply
+        if self.rec.depth_zero() {
+            self.act(sg_core::action::Action::Cheat(k));
+            return;
+        }
         match k {
             ADD_SMALL | ADD_LARGE | TAKE_SMALL => {
                 let amount = match k {
@@ -94,7 +99,7 @@ impl App {
             LAND => self.cheat_buy_land(),
             _ => {
                 if let Some(i) = SWITCHES.iter().position(|&s| s == k) {
-                    // the same tick as the Extras box's (kept as the next games' default too)
+                    // the same tick as the Extras box's (this game's only)
                     let mut e = self.club.extras;
                     e.step_option(SWITCH_OPTIONS[i]);
                     self.set_extras(e);

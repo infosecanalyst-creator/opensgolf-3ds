@@ -193,13 +193,18 @@ impl Art {
     /// The head's 140 x 140 cell alone: a stock head from the halo page, a custom one from its own portrait file.
     #[allow(clippy::too_many_arguments)]
     pub fn halo_cell(&self, g: &mut Gfx, s: &Ui, female: bool, head: u8, e: usize, x: f32, y: f32) {
+        self.halo_cell_in(g, s, female, head, e, (x, y, 140.0, 140.0));
+    }
+
+    /// `halo_cell` stretched over `dst` (x, y, w, h); a negative width mirrors it about x.
+    pub fn halo_cell_in(&self, g: &mut Gfx, s: &Ui, female: bool, head: u8, e: usize, dst: (f32, f32, f32, f32)) {
         let gi = (!female) as usize;
         let e = e.min(2) as f32;
         if head < 19 {
             let (sx, sy) = ((head / 2) as f32 * 140.0, (head & 1) as f32 * 420.0 + e * 140.0);
-            s.image_part(g, &self.halo[gi], x, y, sx, sy, 140.0, 140.0);
+            s.image_scaled(g, &self.halo[gi], dst, (sx, sy, 140.0, 140.0));
         } else if let Some(img) = self.heads[gi].get(head as usize - 19) {
-            s.image_part(g, img, x, y, 0.0, e * 140.0, 140.0, 140.0);
+            s.image_scaled(g, img, dst, (0.0, e * 140.0, 140.0, 140.0));
         }
     }
 
@@ -394,6 +399,25 @@ pub const CLASS_WORDS: [&str; 3] = ["STR_CLASS_LENGTH", "STR_CLASS_ACCURACY", "S
 pub const LARGE: f32 = crate::ui::F_MANUAL20.px;
 pub const BODY: f32 = crate::ui::F_MANUAL15.px;
 pub const SMALL: f32 = crate::ui::F_ARIAL10.px;
+/// The room of the golfer card's identity lines (the port's own, issue #164), centred on x 420: the plate's middle panel
+/// (about x 294 to 542) and its frame, as wide as the widest English line ("This is the best course I've ever played!" in
+/// quotes, 256 pixels in Manual SSi 15). A wider line (a translation) is drawn a little smaller or cut.
+const CARD_ID_ROOM: f32 = 256.0;
+/// The room of a bar's name on the golfer card (issue #164): the bar's 80 pixels and a little either side, centred on x
+/// 586 inside the card's right edge.
+const CARD_BAR_ROOM: f32 = 86.0;
+/// The room of a skill's name in its pill on the pro's skills card and the skills dialog (issue #164): from the name's x,
+/// 56 pixels into the 191 pixel pill, to where its round end starts. "High Backspin Shot" is 126 pixels wide.
+pub(crate) const SKILL_PILL_ROOM: f32 = 133.0;
+
+/// The rooms of the words of the Membership Roster's legend (the port's own, issue #164), centred on their x: a pill on the
+/// art (90 pixels, 45 either side of the word's middle) and a little more, clear of the entry's mark (from 67 to 51 left of
+/// the middle) and of the next one's. The member levels' words have more room between their marks ("Silver Member" is 98
+/// pixels wide in the free set's face); Photo Opp and Happy Ending sit between the camera and the heart, and the heart and
+/// the window's frame by the OK tick.
+const ROSTER_LEGEND_ROOMS: [f32; 6] = [100.0, 100.0, 100.0, 100.0, 94.0, 94.0];
+/// The legend's pills' height (from y 530, the words' tops at 536 in their middle), for words on two lines.
+const ROSTER_PILL_H: f32 = 26.0;
 
 fn black() -> [f32; 4] {
     rgb(0.05, 0.05, 0.1)
@@ -535,7 +559,7 @@ impl App {
         if picks.is_empty() {
             return;
         }
-        if picks.len() != 2 || !self.club.pick_pair(&mut self.course, &mut self.exe_rng, picks[0], picks[1]) {
+        if picks.len() != 2 || !self.act(sg_core::action::Action::Pair { a: picks[0], b: picks[1] }) {
             self.ui_sound(0x18);
         }
     }
@@ -550,7 +574,7 @@ impl App {
         }
         // fonts (0x459850): the title in 0x821020, the name in 0x821f08, the rest in 0x821ee8
         use crate::ui::{F_INFO14, F_INFO20, F_INFO_TITLE};
-        s.put_centered(g, F_INFO_TITLE, 338.0, 14.0, tr("STR_PAIR_TITLE"), black());
+        s.put_centered_fit(g, F_INFO_TITLE, 338.0, 14.0, crate::ui::TITLE_ROOM, tr("STR_PAIR_TITLE"), black());
         let list = self.club.waiting();
         // the picked golfers' faces (0x459850): neutral, or with two picked happy when they share more than three of the
         // five traits and angry when they share fewer than two
@@ -710,7 +734,8 @@ impl App {
         self.card_buttons(gi).iter().find(|b| dist(vx - b.4, vy - b.5) < 25.0).map(|b| b.0).unwrap_or(-1)
     }
 
-    /// The golfer card over the course (0x45c560), redrawn every frame while it is open.
+    /// The golfer card over the course (0x45c560), redrawn every frame while it is open. Its identity lines keep to
+    /// `CARD_ID_ROOM` and the bars' names to `CARD_BAR_ROOM` (issue #164).
     pub fn draw_card(&mut self, g: &mut Gfx, s: &Ui) {
         let Some(gi) = self.card else { return };
         let h = self.club.g[gi].hole;
@@ -758,30 +783,37 @@ impl App {
         } else {
             trf("STR_CARD_NAME_JOB", &[("GOLFER", &self.club.vip_name(gi)), ("JOB", &p.job)])
         };
-        s.text_centered(g, 420.0, top(40.0, LARGE), &name, LARGE, teal);
-        s.text_centered(
-            g,
-            420.0,
-            top(62.0, BODY),
-            &trf("STR_CARD_MARITAL_AGE", &[("MARITAL", &self.club.marital(gi)), ("AGE", &self.club.age(gi))]),
-            BODY,
-            teal,
-        );
-        s.text_centered(g, 420.0, top(75.0, BODY), &and_list(&trait_words(p.traits)), BODY, teal);
+        // the card's art cannot grow: with bigger text (textsize.rs) each line takes what fits beside the face and the bars,
+        // and the 13 to 16 pixel rows between them cap the body lines at 125%; a line wider than the room (a translation,
+        // issue #164) is drawn a little smaller or cut (ui.rs fit_line)
+        let id_line = |g: &mut Gfx, y: f32, t: &str, size: f32, cap: f32, c| {
+            let big = crate::textsize::fit_px(size, cap, t, CARD_ID_ROOM);
+            let (f, t, dy) = crate::ui::fit_line(crate::ui::fnt_for(big), t, CARD_ID_ROOM);
+            s.put_centered(g, f, 420.0, y - ((big - size) / 2.0).floor() + dy, &t, c);
+        };
+        id_line(g, 40.0, &name, LARGE, 1.5, teal);
+        let marital = trf("STR_CARD_MARITAL_AGE", &[("MARITAL", &self.club.marital(gi)), ("AGE", &self.club.age(gi))]);
+        id_line(g, 62.0, &marital, BODY, 1.2, teal);
+        id_line(g, 75.0, &and_list(&trait_words(p.traits)), BODY, 1.2, teal);
         let opinion = sg_core::thoughts::course_opinion(gg.mood, 0);
-        s.text_centered(g, 420.0, top(91.0, BODY), &trf("STR_CARD_OPINION", &[("OPINION", &opinion)]), BODY, c15(0x4210));
+        id_line(g, 91.0, &trf("STR_CARD_OPINION", &[("OPINION", &opinion)]), BODY, 1.2, c15(0x4210));
         let likes: Vec<&str> = (0..3).filter(|b| gg.class & (1 << b) != 0).map(|b| tr(CLASS_WORDS[b])).collect();
-        s.text_centered(g, 420.0, top(105.0, BODY), &likes.join(tr("STR_LIST_SEPARATOR")), BODY, teal);
+        id_line(g, 105.0, &likes.join(tr("STR_LIST_SEPARATOR")), BODY, 1.2, teal);
         // the five bars: the bright full length, then the dark part from the right end
         for (i, (label, w)) in bars(&gg).iter().enumerate() {
             let y = 44.0 + 16.0 * i as f32;
-            s.text_centered(g, 586.0, top(y, SMALL), label, SMALL, black());
+            s.text_centered_fit(g, 586.0, top(y, SMALL), CARD_BAR_ROOM, label, SMALL, black());
             let bad = *w > 40;
             s.fill(g, 546.0, y + 10.0, 80.0, 4.0, c15(if bad { 0x7d08 } else { 0x23e8 }));
             s.fill(g, 626.0 - *w as f32, y + 10.0, *w as f32, 4.0, c15(if bad { 0x6000 } else { 0x1284 }));
         }
         // the scorecard: hole numbers, strokes coloured against par, the hole in progress in grey, the total
         let mut total = 0;
+        // a golfer on Course B (the Second course extra, sg_core::second): its pars, and a B before the hole numbers
+        let on_b = gg.course_b && self.club.course_b.is_some();
+        if on_b {
+            s.text_centered(g, 248.0, top(132.0, SMALL), tr("STR_COURSE_B_HOLE").replace("{HOLE}", "").trim(), SMALL, black());
+        }
         for hole in 1..19 {
             let x = 266.0 + 18.0 * (hole - 1) as f32;
             s.text_centered(g, x, top(132.0, SMALL), &format!("{hole}"), SMALL, black());
@@ -789,7 +821,7 @@ impl App {
                 (gg.strokes, c15(0x4210))
             } else {
                 let k = gg.card[hole] as i32;
-                let par = self.club.holes[hole].par;
+                let par = self.club.course_holes(on_b).get(hole).map_or(0, |r| r.par);
                 let c = if par == 0 {
                     black()
                 } else if k < par - 1 {
@@ -877,12 +909,15 @@ impl App {
             if text.is_empty() {
                 continue;
             }
-            // a line wider than the window goes on to the next
+            // a line wider than the window goes on to the next; with bigger text (textsize.rs) at most 125% here, so the
+            // window still shows four lines and none runs onto the buttons
+            let k = crate::textsize::k(1.25);
+            let size = crate::textsize::sized(size, k);
             for l in wrap_text(&text, size, 380.0) {
-                if y <= 240.0 {
+                if if k > 1.0 { y + size <= 246.0 } else { y <= 240.0 } {
                     s.text(g, 248.0, top(y, size), &l, size, c);
                 }
-                y += 13.0;
+                y += (13.0 * k).round();
             }
         }
     }
@@ -941,7 +976,9 @@ impl App {
             if v != 0 {
                 s.text(g, 37.0, top(y + 7.0, BODY), &skill_value(v), BODY, black());
             }
-            s.text(g, 88.0, top(y + 7.0, BODY), sg_core::pro::skill_label(r), BODY, if v != 0 { black() } else { c15(0x4210) });
+            // a name too long for its pill (a translation, issue #164): a little smaller or cut (ui.rs fit_line)
+            let c = if v != 0 { black() } else { c15(0x4210) };
+            s.text_fit(g, 88.0, top(y + 7.0, BODY), SKILL_PILL_ROOM, sg_core::pro::skill_label(r), BODY, c);
         }
     }
 
@@ -988,11 +1025,7 @@ impl App {
                     self.cam_x = x;
                     self.cam_z = z;
                 }
-                for gg in [gi, gi ^ 1] {
-                    if self.club.g[gg].timer == 0 {
-                        self.club.g[gg].timer = 1;
-                    }
-                }
+                self.act(sg_core::action::Action::Snapshot { golfer: gi });
                 self.simfoto = Some(SimFoto { slot: gi, frames: 0, saved: false });
             }
             3 => self.card_ui.story = !self.card_ui.story,
@@ -1000,7 +1033,7 @@ impl App {
             5 => {
                 // Next Chapter: the replier's random reply, then a forced story beat (sg_core::stories::next_chapter)
                 let _ = p;
-                self.club.next_chapter(&mut self.course, &mut self.exe_rng, gi);
+                self.act(sg_core::action::Action::Chapter { golfer: gi });
                 self.card = None;
             }
             _ => {
@@ -1016,6 +1049,16 @@ impl App {
     /// A left click on the course while no tool is busy: a golfer held by Move/Eject is put down there; otherwise the
     /// nearest golfer within reach opens the card, or the pair screen when he is waiting in the clubhouse.
     pub fn golfer_click(&mut self, wx: f32, wz: f32, clubhouse: bool) -> bool {
+        // a golfer put down is an action (replay.rs): where, in map units, is what it holds
+        if self.rec.depth_zero() && self.card_ui.held.is_some() {
+            let k = sg_core::terrain::TILE_SIZE / sg_core::staff::UNIT as f32;
+            let ux = ((wx + self.terrain.w as f32 * sg_core::terrain::TILE_SIZE * 0.5) / k) as i32;
+            let uy = ((wz + self.terrain.h as f32 * sg_core::terrain::TILE_SIZE * 0.5) / k) as i32;
+            let unit = sg_core::staff::UNIT;
+            let (x, y) = (ux.div_euclid(unit) * unit + unit / 2, uy.div_euclid(unit) * unit + unit / 2);
+            let golfer = self.card_ui.held.take().unwrap_or(0);
+            return self.act(sg_core::action::Action::DropGolfer { golfer, x, y, clubhouse });
+        }
         if let Some(gi) = self.card_ui.held.take() {
             // the exe puts the golfer on the centre of the clicked tile (+0x9e cleared); dropped on the clubhouse he goes
             // home: hole 19, no strokes, mood 0, and an ordinary golfer's membership record marks the hole quit and the
@@ -1272,9 +1315,20 @@ impl App {
         }
     }
 
-    /// After a frame: a photo that does not wait is let go once drawn.
+    /// After a frame: a photo that does not wait is let go once drawn. The port's own: a photo that cannot be drawn (the
+    /// interface hidden with u, the showcase fly-over, Enhanced graphics' photo mode) is let go at once, as if clicked
+    /// away (the player's pro's words go to the ticker instead), since a held photo nobody can see would hold the whole
+    /// game, every golfer standing where he is, with nothing on screen to say why.
     pub fn great_shot_frame(&mut self) {
-        if self.great_shot.as_ref().is_some_and(|gs| gs.shown && !gs.held) {
+        let unseen = !self.ui_ok || self.hud_hidden() || self.photo.is_some();
+        let Some(gs) = self.great_shot.as_ref() else { return };
+        if gs.shown && !gs.held {
+            self.great_shot_release();
+        } else if !gs.shown && unseen && self.screen == crate::app::Screen::Play {
+            if gs.held && gs.g as i32 == self.club.gary {
+                let (text, g) = (gs.text.clone(), gs.g as i32);
+                self.post_message(&text, 1, g);
+            }
             self.great_shot_release();
         }
     }
@@ -1288,7 +1342,14 @@ impl App {
         self.great_shot.is_some()
     }
 
-    fn great_shot_release(&mut self) {
+    pub(crate) fn great_shot_release(&mut self) {
+        // the photo let go goes on with the game: an action (replay.rs)
+        if self.rec.depth_zero() {
+            if self.great_shot.is_some() {
+                self.act(sg_core::action::Action::GreatShotDone);
+            }
+            return;
+        }
         let Some(gs) = self.great_shot.take() else { return };
         self.club.great_shot_after(&mut self.course, &mut self.exe_rng, gs.g, gs.bad);
     }
@@ -1478,7 +1539,7 @@ impl App {
         // highlight 2 below its strip
         use crate::ui::{F_INFO14, F_INFO_TITLE};
         // "END of  YEAR: " + year (footage of the original shows the colon and the wide gaps)
-        s.put_centered(g, F_INFO_TITLE, 406.0, 55.0, &trf("STR_YEAREND_TITLE", &[("YEAR", &year)]), black());
+        s.put_centered_fit(g, F_INFO_TITLE, 406.0, 55.0, crate::ui::TITLE_ROOM, &trf("STR_YEAREND_TITLE", &[("YEAR", &year)]), black());
         s.put_centered(g, F_INFO14, 465.0, 93.0, tr("STR_YEAREND_THIS_YEAR"), black());
         s.put_centered(g, F_INFO14, 566.0, 93.0, tr("STR_YEAREND_LAST_YEAR"), black());
         let m = ((tick >> 10) % 500) as usize;
@@ -1679,15 +1740,28 @@ impl App {
                 s.text_centered(g, 320.0, row(y), text, 14.0, ink);
             }
         }
-        for (x, t) in [
+        for (k, (x, t)) in [
             (82.0, tr("STR_MEMBER_MEMBER")),
             (208.0, tr("STR_MEMBER_SILVER")),
             (326.0, tr("STR_MEMBER_GOLD")),
             (450.0, tr("STR_MEMBER_RESIGNED")),
             (573.0, tr("STR_ROSTER_PHOTO_OPP")),
             (693.0, tr("STR_ROSTER_HAPPY_ENDING")),
-        ] {
-            s.text_centered(g, x, row(536.0), t, 14.0, ink);
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            // words wider than their pill (a translation, issue #164): a little smaller, else on two lines in the pill (26
+            // pixels high round the words' middle), else cut, clear of the marks beside them (ui.rs fit_in)
+            let w = ROSTER_LEGEND_ROOMS[k];
+            match crate::ui::fit_in(crate::ui::fnt_for(14.0), t, (x - w / 2.0, 530.0, w, ROSTER_PILL_H)) {
+                None => s.text_centered(g, x, row(536.0), t, 14.0, ink),
+                Some((f, lines)) => {
+                    for (l, cx, ty) in lines {
+                        s.put_centered(g, f, cx, ty, &l, ink);
+                    }
+                }
+            }
         }
         // the OK tick and, under the pointer, the arrow's lit piece
         self.ok_tick(g, &s, 732.0, 548.0, false);

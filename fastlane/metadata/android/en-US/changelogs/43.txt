@@ -1,0 +1,1 @@
+* Problem reports now say why a game file could not be opened, and what its folder holds

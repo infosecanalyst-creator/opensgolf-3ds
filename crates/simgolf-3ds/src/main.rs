@@ -194,8 +194,53 @@ mod wild_ui;
 mod world_ui;
 #[path = "../../simgolf/src/year_ui.rs"]
 mod year_ui;
+// added with the upstream catch-up of Nov 2026 (OpenSGolf 0.6.x to 0.7.3)
+// (not here: the desktop's walk camera, walk*.rs)
+#[path = "../../simgolf/src/selfcheck.rs"]
+mod selfcheck;
+/// The desktop's touch layer (touch.rs) stays off on the 3DS, which has its own (plan.rs); the game keeps a touch target in
+/// App, so its type is here.
+mod touch {
+    #[derive(Clone, Copy, Debug, Default, PartialEq)]
+    pub struct TouchTarget {
+        pub on: bool,
+        pub mouse: bool,
+        pub target: Option<(f32, f32)>,
+    }
+}
+#[path = "../../simgolf/src/atlas.rs"]
+mod atlas;
+#[path = "../../simgolf/src/bugreport.rs"]
+mod bugreport;
+#[path = "../../simgolf/src/fingerprint.rs"]
+mod fingerprint;
+#[path = "../../simgolf/src/fx_dawn.rs"]
+mod fx_dawn;
+#[path = "../../simgolf/src/hd_make.rs"]
+mod hd_make;
+#[path = "../../simgolf/src/launcher.rs"]
+mod launcher;
+#[path = "../../simgolf/src/packart.rs"]
+mod packart;
+#[path = "../../simgolf/src/playcount.rs"]
+mod playcount;
+#[path = "../../simgolf/src/prefs_ui.rs"]
+mod prefs_ui;
+#[path = "../../simgolf/src/replay.rs"]
+mod replay;
+#[path = "../../simgolf/src/showcase.rs"]
+mod showcase;
+#[path = "../../simgolf/src/support.rs"]
+mod support;
+#[path = "../../simgolf/src/tees.rs"]
+mod tees;
+#[path = "../../simgolf/src/textsize.rs"]
+mod textsize;
+#[path = "../../simgolf/src/welcome.rs"]
+mod welcome;
 mod compat;
-pub use compat::{load_art, Stage};
+pub use compat::{apply_edit_spec, ints, load_art, Stage};
+pub use render::Rect;
 
 use ctru::prelude::*;
 use gfx::{Eye, Gfx, Mat4, Mode, TerrainMesh, TerrainUniforms, TerrainVert, TextureId, Uniforms, Vert};

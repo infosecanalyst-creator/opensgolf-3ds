@@ -60,6 +60,10 @@ const BUILDINGS_BODY: Cut = (216.0, 482.0, 584.0, 118.0);
 const ELEVATION_BODY: Cut = (215.0, 482.0, 585.0, 118.0);
 const EMPLOYEE_BODY: Cut = (215.0, 474.0, 585.0, 126.0);
 
+/// The Second course extra's A/B switch over the Build Course panel (sg_core::second), and its hit code.
+const COURSE_SWITCH: Rect = Rect { x: 224.0, y: 460.0, w: 132.0, h: 18.0 };
+const COURSE_SWITCH_HIT: i32 = -10;
+
 /// Tooltips show once the pointer has stayed on the same hit for more than 10 frames.
 const TIP_DELAY_FRAMES: u32 = 10;
 
@@ -110,14 +114,27 @@ fn tile_key(id: i32, theme: usize) -> &'static str {
     match (theme, id) {
         (1, 4) => "STR_TILE_DESERT",
         (1, 5) => "STR_TILE_DESERT_ROUGH",
-        (1, 10) => "STR_TILE_RAVINE",
+        // the desert's stream is its brush and its brush its ravine (issue #117): the names the exe's theme loader gives the
+        // two (sg_core::tracts::type_name), in the order footage of the original's desert panel shows them (Pot bunker,
+        // Brush, Water; Waste bunker, Ravine, Rocks), on the art its sheet and Terrain.dll draw them with (the dry weeds of
+        // the Overgrowth textures for tile 10, the crack of the Brush textures for tile 11); each tooltip's description is
+        // the theme's text file's for that name. Up to 0.5.13 the port called tile 10 the Ravine (issue #89).
+        (1, 10) => "STR_TILE_BRUSH",
+        (1, 11) => "STR_TILE_RAVINE",
         // the desert's tree is drawn as a Joshua tree and its pine as a cactus (the button art and sg_core::decor agree)
         (1, 13) => "STR_TILE_JOSHUA_TREE",
         (1, 14) => "STR_TILE_CACTUS",
-        (2, 11) => "STR_TILE_TROPICAL_BUSH",
-        (2, 13) => "STR_TILE_TROPICAL_TREE",
-        // the Links names are inferred
+        // the tropical tree is drawn as the tropical bush and its pine as the tropical tree (sg_core::decor: TropicalBrush,
+        // Tree_Cerc and Tree_Drac); the theme's text file and the exe's per-theme names agree, and its brush keeps its name
+        (2, 13) => "STR_TILE_TROPICAL_BUSH",
+        (2, 14) => "STR_TILE_TROPICAL_TREE",
+        // the Links stream is a burn, its trees maples, pines and Scots pines (the theme's text file, the exe's per-theme
+        // names and sg_core::decor agree)
+        (3, 10) => "STR_TILE_BURN",
         (3, 11) => "STR_TILE_GORSE",
+        (3, 13) => "STR_TILE_MAPLE_TREE",
+        (3, 14) => "STR_TILE_PINE",
+        (3, 15) => "STR_TILE_SCOTS_PINE",
         _ => [
             "STR_TILE_TEES",
             "STR_TILE_GREEN",
@@ -155,16 +172,30 @@ fn terrain_slot_rect(i: usize, theme: usize) -> Rect {
     }
 }
 
-/// The terrain slot under the pointer. The exe's own test for these buttons is not in the decode: the tile buttons take the
-/// diamond of their isometric slab, the trees their rectangle, trees first since they overlap the first row.
+/// The terrain slot under the pointer (0x432f90): the slots in order, tiles then trees, the first whose cell holds the point,
+/// a cell being 62 wide from the button's left and the 44 rows ending 10 above the foot of its picture. A tree is thus hit
+/// only at its foot, as a further cell of the tile rows, never over its tall picture (#142: the port took the trees' whole
+/// pictures first, so the pointer over a tree's crown, or beside it, picked the tree).
 fn terrain_slot_at(theme: usize, px: f32, py: f32) -> Option<usize> {
-    if let Some(i) = (13..16).rev().find(|&i| terrain_slot_rect(i, theme).has(px, py)) {
-        return Some(i);
-    }
-    (0..13).rev().find(|&i| {
+    let (px, py) = (px.floor(), py.floor());
+    (0..16).find(|&i| {
         let r = terrain_slot_rect(i, theme);
-        r.has(px, py) && (px - (r.x + 31.0)).abs() / 31.0 + (py - (r.y + 24.0)).abs() / 24.0 <= 1.0
+        let bottom = r.y + r.h - 10.0;
+        px >= r.x && px < r.x + 62.0 && py >= bottom - 44.0 && py < bottom
     })
+}
+
+/// The cell of the TerrainButtons sheet tile slot `slot` (0..13) shows: its own, or with `swap` the stream's (slot 5, tile
+/// 10) and the brush's (slot 11, tile 11) traded, every state with it. Only the free set's desert sheet needs that: its
+/// cells there show a stream and bushes as in its other themes, while the desert names tile 10 its Brush and tile 11 its
+/// Ravine (`tile_key`); the original's desert sheet already holds dry weeds and a crack in those cells, and its cells carry
+/// the shadow of the row above, so they are never moved.
+fn terrain_cell(slot: usize, swap: bool) -> usize {
+    match slot {
+        5 if swap => 11,
+        11 if swap => 5,
+        k => k,
+    }
 }
 
 fn tile_id(slot: usize) -> i32 {
@@ -239,6 +270,12 @@ fn design_strip(kind: i32) -> Option<Strip> {
     Some(Strip { dx, count, scale })
 }
 
+/// Whether a click goes to the open panel's click routine, as the main frame routes it (0x41e400): below y 480 and right of
+/// the dock (x 200 on); a click above it is the course's, so it never re-applies the strip's design.
+fn in_panel_band(px: f32, py: f32) -> bool {
+    px.floor() as i32 >= 200 && py.floor() as i32 > 480
+}
+
 /// The exe sprite and palette of design i of a strip.
 fn strip_sprite(kind: i32, i: i32) -> (u16, u8) {
     let n = i as u16;
@@ -261,25 +298,29 @@ impl Strip {
         (self.left() + 0x2c + 47 * i / 2, 500 + if i & 1 != 0 { 27 } else { 0 })
     }
 
-    /// The design under a point, shown designs only: within the box its pad (47 x 40 round the anchor) and its picture
-    /// (up to 44 px above the anchor) cover, the one whose picture centre is nearest (the two rows overlap). The hover picks the design, so a box
-    /// smaller than the picture (an octagon squashed to half height, within 20) left the pick on a neighbour the pointer
-    /// had crossed on its way to the picture.
+    /// The design under a point, shown designs only (0x43231d..0x432369): within an octagon round its anchor, about 19
+    /// pixels across and 9 tall (`metric(dx, 2 dy) < 20`, 0x467170), whatever its picture; the last such design wins. The
+    /// pointer over a tall picture's top is on no design (#142: the port took the whole picture, so tall landmarks and
+    /// scenic trees were hard to pick from their neighbours); the hover stays on the last design touched, as the exe's
+    /// callers keep it (0x5a9f50).
     fn hit(&self, mask: u32, px: f32, py: f32) -> i32 {
         let (px, py) = (px.floor() as i32, py.floor() as i32);
-        let mut best = (-1, i32::MAX);
+        let metric = |a: i32, b: i32| {
+            let (a, b) = (a.abs(), b.abs());
+            if a > b {
+                (b + 2 * a) / 2
+            } else {
+                (a + 2 * b) / 2
+            }
+        };
+        let mut hit = -1;
         for i in (0..self.count).filter(|&i| mask == 0 || mask & (1 << i) != 0) {
             let (cx, cy) = self.at(i);
-            let (dx, dy) = (px - cx, py - cy);
-            if (-23..24).contains(&dx) && (-44..21).contains(&dy) {
-                // nearest picture centre (a 40 px picture stands on its anchor)
-                let d = dx * dx + (dy + 18) * (dy + 18);
-                if d < best.1 {
-                    best = (i, d);
-                }
+            if metric(px - cx, 2 * (py - cy)) < 20 {
+                hit = i;
             }
         }
-        best.0
+        hit
     }
 }
 
@@ -299,6 +340,10 @@ fn strip_button(i: i32, state: i32) -> Cut {
 // ---- Add Buildings: the lots ---------------------------------------------------------------------------------------------------
 
 /// Lot i places building kind 6 + i. The hover text (third line of the info box) is the exe's.
+/// The room a line of a lot's info box has (`lot_info`; the port's own, issue #164): the 160 pixel box less its edges.
+/// The English names, costs and descriptions are at most 130 pixels wide.
+const LOT_ROOM: f32 = 150.0;
+
 const LOT_EFFECT: [&str; 9] = [
     "STR_LOT_PUTTING_GREEN",
     "STR_LOT_SNACK_BAR",
@@ -515,10 +560,14 @@ pub(crate) fn tip_bar(g: &mut Gfx, s: &Ui, text: &str, px: f32, py: f32) {
 /// The tooltip bar sized for `chars` characters whatever the text (the amenity slots' cost bar keeps the name's width).
 pub(crate) fn tip_bar_sized(g: &mut Gfx, s: &Ui, text: &str, chars: usize, px: f32, py: f32) {
     let (px, y) = (px.floor(), py.floor() - 5.0);
-    let half = 3.0 * chars as f32;
+    // with bigger text (textsize.rs) the bar and its words grow about the same middle
+    let k = crate::textsize::scale();
+    let (f, hh) = (crate::textsize::big(crate::ui::F_ARIAL10), crate::textsize::px(10.0));
+    let half = (3.0 * chars as f32 * k).max(if k > 1.0 { f.width(text) / 2.0 + 3.0 } else { 0.0 }).floor();
     let x = px.max(half).min(800.0 - half);
-    s.fill(g, x - half, y - 5.0, 2.0 * half, 10.0, rgba(0.0, 0.0, 0.0, 0.5));
-    s.put_centered(g, crate::ui::F_ARIAL10, x, y - 5.0, text, rgb(1.0, 1.0, 1.0));
+    let top = if k > 1.0 { (y - (hh / 2.0).floor()).max(0.0) } else { y - 5.0 };
+    s.fill(g, x - half, top, 2.0 * half, hh, rgba(0.0, 0.0, 0.0, 0.5));
+    s.put_centered(g, f, x, top, text, rgb(1.0, 1.0, 1.0));
 }
 
 thread_local! {
@@ -547,9 +596,14 @@ fn terrain_text(app: &App, theme: usize, name: &str) -> String {
                 .collect();
             text.lines().map(|l| l.trim_end_matches('\r').to_string()).collect()
         });
-        let key = format!("*{name}");
-        lines.iter().position(|l| l.eq_ignore_ascii_case(&key)).and_then(|k| lines.get(k + 1)).cloned().unwrap_or_default()
+        text_entry(lines, name).unwrap_or_default()
     })
+}
+
+/// The line after the one that reads "*" and `name` (without case), the description of that tile.
+fn text_entry(lines: &[String], name: &str) -> Option<String> {
+    let key = format!("*{name}");
+    lines.iter().position(|l| l.eq_ignore_ascii_case(&key)).and_then(|k| lines.get(k + 1)).cloned()
 }
 
 impl App {
@@ -704,7 +758,11 @@ impl App {
     }
 
     /// The level the next building of a kind would have: 0 when none stands, 1 for an upgrade, 2 when it is upgraded already.
+    /// Always 0 for the Snack Bar, which the exe never levels (land::kind_has_levels).
     pub(crate) fn lot_level(&self, kind: i32) -> i32 {
+        if !land::kind_has_levels(kind) {
+            return 0;
+        }
         self.land.as_ref().and_then(|l| l.objects.iter().find(|o| o.kind == kind)).map(|o| o.sub + 1).unwrap_or(0)
     }
 
@@ -727,13 +785,19 @@ impl App {
         self.employees.iter().enumerate().filter(|(_, e)| e.active && (-5..=-2).contains(&e.job)).map(|(i, _)| i).collect()
     }
 
-    /// The Tees button looks disabled while the hole being built has its tee, and once eighteen holes are built.
+    /// The Tees button looks disabled while the hole being built has its tee, and once eighteen holes are built (with the
+    /// Multiple tees extra on, not while an open hole may still take a forward or middle tee: tees.rs).
     fn tee_disabled(&self) -> bool {
-        let h = self.club.next_hole;
+        // (of the course the A/B switch shows: sg_core::second)
+        let b = self.hole_b();
+        if self.club.extras.tees && self.club.course_holes(b).iter().take(19).skip(1).any(|r| r.par != 0) {
+            return false;
+        }
+        let h = self.club.course_next_hole(b);
         if !(0..19).contains(&h) {
             return true;
         }
-        let Some(rec) = self.club.holes.get(h as usize) else { return false };
+        let Some(rec) = self.club.course_holes(b).get(h as usize) else { return false };
         let two = self.club.game & sg_core::golfer::game::TWO_TEES != 0;
         rec.back.0 != 0 && !(two && rec.fwd.0 == 0)
     }
@@ -747,6 +811,9 @@ impl App {
         let theme = self.exe_theme() as usize;
         match (self.panel, self.pstate.alt) {
             (1, false) => {
+                if self.club.second_course_offered() && COURSE_SWITCH.has(px, py) {
+                    return COURSE_SWITCH_HIT;
+                }
                 if let Some(i) = terrain_slot_at(theme, px, py) {
                     return i as i32;
                 }
@@ -856,6 +923,8 @@ impl App {
         blit(g, s, &body_art, TERRAIN_BODY, TERRAIN_BODY.0, TERRAIN_BODY.1);
         // no button is lit while no tool is armed (a new game opens the panel with none, 0x4c2848 = -1)
         let current = (self.tool == 0 && self.edit).then(|| PAINT[self.paint_idx].ty);
+        // the free set's desert: its stream and bushes buttons trade places to sit over the Ravine and the Brush (`terrain_cell`)
+        let swap = theme == 1 && self.on_free_set();
         for i in 0..16 {
             let r = terrain_slot_rect(i, theme);
             let id = tile_id(i);
@@ -869,8 +938,9 @@ impl App {
                 0
             };
             if i < 13 {
-                let sx = if i > 6 { 248.0 } else { 0.0 } + state as f32 * 62.0;
-                blit(g, s, &buttons, (sx, (i % 7) as f32 * 54.0, 62.0, 54.0), r.x, r.y);
+                let k = terrain_cell(i, swap);
+                let sx = if k > 6 { 248.0 } else { 0.0 } + state as f32 * 62.0;
+                blit(g, s, &buttons, (sx, (k % 7) as f32 * 54.0, 62.0, 54.0), r.x, r.y);
             } else {
                 // trees have no disabled look
                 let state = state.min(2) as f32;
@@ -880,8 +950,8 @@ impl App {
         // 0x433190: while the hole being built has no green (and is under 19) the theme's waving flag (sprite 0x189 + theme,
         // palette 0x63, view 3) stands on the Green button at (slot x + 31, slot y + 24), still on frame 0 unless the Green
         // tool is armed; footage of the original shows it on the button in a new game
-        let h1 = self.club.next_hole;
-        if (0..19).contains(&h1) && self.club.holes.get(h1 as usize).is_some_and(|r| r.pin.0 == 0) {
+        let h1 = self.club.course_next_hole(self.hole_b());
+        if (0..19).contains(&h1) && self.club.course_holes(self.hole_b()).get(h1 as usize).is_some_and(|r| r.pin.0 == 0) {
             // The loader (0x43d740, called with its shadow argument 1 for these flags) plays "<name>Shadow.flc" and then the
             // body into one canvas, so the flag carries its shadow (up and to the right, as in the footage at p1 1600-1700):
             // the port draws the shadow sprite first at the same anchor.
@@ -894,7 +964,7 @@ impl App {
                     let sp = &self.sprites[k].s;
                     let (w, hh, ax, ay) = (sp.w as f32, sp.h as f32, sp.anchor_x as f32, sp.anchor_y as f32);
                     let f = frame.min(sp.frames_per_view.max(1) - 1);
-                    let tex = self.sprite_texture(g, k, 3, f);
+                    let tex = self.sprite_texture_whole(g, k, 3, f);
                     let im = Image { tex: Some(tex), w, h: hh };
                     s.image_scaled(g, &im, (r.x + 31.0 - ax, r.y + 24.0 - ay, w, hh), (0.0, 0.0, w, hh));
                 }
@@ -904,6 +974,10 @@ impl App {
             if h == code {
                 blit(g, s, &body_art, cut, x, y);
             }
+        }
+        // the Second course extra's A/B switch over the panel (sg_core::second)
+        if self.club.second_course_offered() {
+            self.draw_course_switch(g, s, h == COURSE_SWITCH_HIT);
         }
         // the current tool's name over its button, white on a shadow, in every frame of the footage (not decoded)
         if let Some(i) = (0..16).find(|&i| current == Some(tile_id(i))) {
@@ -920,7 +994,30 @@ impl App {
         match h {
             -2 => tip_bar(g, s, tr("STR_TIP_AMENITIES"), mx, my),
             -3 => tip_bar(g, s, tr("STR_PANEL_UNDO"), mx, my),
+            COURSE_SWITCH_HIT => tip_bar(g, s, tr("STR_COURSE_SWITCH_TIP"), mx, my),
             _ => {}
+        }
+    }
+
+    /// The Second course extra's A/B switch (sg_core::second): two tabs over the Build Course panel's top left, the course
+    /// the hole tools and hole reports work on lit. The port's own, drawn in plain shapes and text.
+    fn draw_course_switch(&self, g: &mut Gfx, s: &Ui, hot: bool) {
+        let r = COURSE_SWITCH;
+        let b = self.hole_b();
+        s.fill(g, r.x - 1.0, r.y - 1.0, r.w + 2.0, r.h + 2.0, rgb(0.1, 0.12, 0.1));
+        for (k, key) in ["STR_COURSE_SWITCH_A", "STR_COURSE_SWITCH_B"].into_iter().enumerate() {
+            let on = (k == 1) == b;
+            let x = r.x + k as f32 * r.w / 2.0;
+            let c = if on {
+                rgb(0.86, 0.78, 0.42)
+            } else if hot {
+                rgb(0.42, 0.5, 0.36)
+            } else {
+                rgb(0.3, 0.36, 0.27)
+            };
+            s.fill(g, x + 1.0, r.y + 1.0, r.w / 2.0 - 2.0, r.h - 2.0, c);
+            let ink = if on { rgb(0.0, 0.0, 0.0) } else { rgb(1.0, 1.0, 1.0) };
+            s.put_centered(g, crate::ui::F_ARIAL10, x + r.w / 4.0, r.y + 4.0, tr(key), ink);
         }
     }
 
@@ -985,7 +1082,11 @@ impl App {
         }
         blit(g, s, &art, if st.count & 1 != 0 { STRIP_END_ODD } else { STRIP_END_EVEN }, x, 477.0);
         let (mx, my) = self.pstate.mouse;
-        let hot = st.hit(mask, mx, my);
+        // under the pointer, else the design last under it (the exe's 0x5a9f50 keeps it)
+        let hot = match st.hit(mask, mx, my) {
+            -1 => (0..st.count).find(|&i| self.design_hover != -1 && self.strip_design(kind, i) == self.design_hover).unwrap_or(-1),
+            h => h,
+        };
         let current = self.design.filter(|d| d.0 == kind).map(|d| d.1).unwrap_or(-1);
         for i in (0..st.count).filter(|&i| mask == 0 || mask & (1 << i) != 0) {
             let (cx, cy) = st.at(i);
@@ -1018,7 +1119,7 @@ impl App {
             let sp = &self.sprites[si].s;
             let f = sp.frames_per_view - 1;
             let (w, h, ax, ay) = (sp.w as f32, sp.h as f32, sp.anchor_x as f32, sp.anchor_y as f32);
-            let tex = self.sprite_texture(g, si, 0, f);
+            let tex = self.sprite_texture_whole(g, si, 0, f);
             // the extras' pages fit each picture to the strip's height (their art comes in any size)
             let extra_page = kind == land::K_LANDMARK && self.strip_page_shown().is_some_and(|p| p != crate::extras_ui::PAGE_OWNED);
             let k = if extra_page { st.scale.min(44.0 / h.max(1.0)) } else { st.scale };
@@ -1155,11 +1256,19 @@ impl App {
 
     /// A lot's info box (0x434350): the pop-up frame (x, 460, 160, 100), three lines in Arial Bold 10 (0x519fd8), black,
     /// centred on the box with their tops at 462, 472 and 482. The cost is a plain grouped number ("Cost: 10,000" and
-    /// "Cost: 15,000" in footage of the original: 0x42dc00 adds no money sign).
+    /// "Cost: 15,000" in footage of the original: 0x42dc00 adds no money sign). Lines wider than the box (a translation)
+    /// are fitted to `LOT_ROOM`.
     fn lot_info(&self, g: &mut Gfx, s: &Ui, i: usize) {
         let level = self.lot_level(6 + i as i32);
         let cx = ((i % 5) as f32 * 80.0 + if i > 4 { 431.0 } else { 391.0 }).clamp(80.0, 720.0);
-        self.popup_frame(g, s, cx - 80.0, 460.0, 160.0, 100.0);
+        let f = crate::ui::F_ARIAL10;
+        // a description too wide for the box (a translation, issue #164): a little smaller, else on up to three lines,
+        // the box moving up 10 pixels for each line more so they all show above the panel (ui.rs fit_lines)
+        let effect = tr(LOT_EFFECT[i]);
+        let lines = crate::ui::fit_lines(f, effect, LOT_ROOM, 3);
+        let more = lines.as_ref().map_or(0.0, |t| 10.0 * (t.lines.len() - 1) as f32);
+        let y = 460.0 - more;
+        self.popup_frame(g, s, cx - 80.0, y, 160.0, 100.0);
         // the Snack Bar never says "Upgraded" nor shows the upgrade price
         let up = level != 0 && i != 1;
         let name = land::building_name(6 + i as i32);
@@ -1167,10 +1276,19 @@ impl App {
         let dollars = if up { units * 300 / 2 } else { units * 100 };
         let ink = rgb(0.0, 0.0, 0.0);
         let title = if up { trf("STR_LOT_UPGRADED", &[("BUILDING", &name)]) } else { name.to_string() };
-        let f = crate::ui::F_ARIAL10;
-        s.put_centered(g, f, cx, 462.0, &title, ink);
-        s.put_centered(g, f, cx, 472.0, &trf("STR_TIP_COST", &[("COST", &crate::ui::group(dollars.max(0) as u64))]), ink);
-        s.put_centered(g, f, cx, 482.0, tr(LOT_EFFECT[i]), ink);
+        s.put_centered_fit(g, f, cx, y + 2.0, LOT_ROOM, &title, ink);
+        let cost = trf("STR_TIP_COST", &[("COST", &crate::ui::group(dollars.max(0) as u64))]);
+        s.put_centered_fit(g, f, cx, y + 12.0, LOT_ROOM, &cost, ink);
+        match lines {
+            None => s.put_centered(g, f, cx, y + 22.0, effect, ink),
+            Some(t) => {
+                // a smaller font keeps its lines' middles where the full size's would be
+                let dy = ((f.px - t.font.px) / 2.0).floor();
+                for (k, l) in t.lines.iter().enumerate() {
+                    s.put_centered(g, t.font, cx, y + 22.0 + dy + 10.0 * k as f32, l, ink);
+                }
+            }
+        }
     }
 
     /// The exe's pop-up frame (0x40d0b0): a size that is not a multiple of 16 grows to the next 16 - 1 (a remainder r adds
@@ -1374,9 +1492,10 @@ impl App {
                 continue;
             }
             let fi = sp.frame_index(view.rem_euclid(sp.views.max(1)), f % sp.frames_per_view.max(1));
-            let (w, h) = (sp.frames[fi].w as f32, sp.frames[fi].h as f32);
+            let (w, h) = sp.frame_size(fi);
+            let (w, h) = (w as f32, h as f32);
             let (axx, ayy) = (sp.anchor_x as f32, sp.anchor_y as f32);
-            let tex = self.sprite_texture(g, k, view.rem_euclid(sp.views.max(1)), f % sp.frames_per_view.max(1));
+            let tex = self.sprite_texture_whole(g, k, view.rem_euclid(sp.views.max(1)), f % sp.frames_per_view.max(1));
             s.image(g, &Image { tex: Some(tex), w, h }, ax - axx, ay - ayy);
         }
     }
@@ -1391,7 +1510,7 @@ impl App {
         // fonts (0x459400): the title in 0x821020 (Klepto 24) centred at (377, 107), the rest in 0x821ee8 (Manual SSi 14),
         // all black: each kind's blurb left at 231 with its top at 0x97 + 0x47 k, 20 above its first line, the wage lines
         // left at 246
-        s.put_centered(g, crate::ui::F_INFO_TITLE, 377.0, 107.0, tr("STR_HIRE_TITLE"), ink);
+        s.put_centered_fit(g, crate::ui::F_INFO_TITLE, 377.0, 107.0, crate::ui::TITLE_ROOM, tr("STR_HIRE_TITLE"), ink);
         let (mx, my) = self.pstate.mouse;
         let hot = hire_choice_at(mx, my);
         for k in 0..4 {
@@ -1468,16 +1587,14 @@ impl App {
 
     fn terrain_click(&mut self, h: i32) -> bool {
         match h {
+            COURSE_SWITCH_HIT => self.toggle_hole_course(),
             -2 => self.pstate.alt = true,
             -3 => self.arm_undo(),
             i if i >= 0 => {
                 // the three tree buttons paint the theme's tree, pine and palm tiles
                 let Some(k) = Self::paint_index_of(tile_id(i as usize)) else { return false };
-                self.tool = 0;
-                self.paint_idx = k;
                 // picking a brush rolls its variant (0x41eaa0); the green always starts as a plain green
-                self.paint_variant = if PAINT[k].ty == 1 { Some((k, 0)) } else { None };
-                self.edit = true;
+                self.pick_brush(k);
             }
             _ => return false,
         }
@@ -1525,12 +1642,16 @@ impl App {
             }
             _ => {
                 // any other click in the panel picks the design last under the pointer on the strip (0x434ac0's default);
-                // the click itself is not a button press
+                // the click itself is not a button press. Only a click in the panel's band reaches it (`in_panel_band`): a
+                // click on the course keeps the chosen design, though the pointer crossed other designs on its way up
+                // (issue #103)
                 if let Some((kind, st, mask)) = self.open_strip() {
                     let (px, py) = self.pstate.mouse;
                     let hot = st.hit(mask, px, py);
                     if hot != -1 {
                         self.design_hover = self.strip_design(kind, hot);
+                    } else if !in_panel_band(px, py) {
+                        return false;
                     }
                     if self.design_hover != -1 || kind == land::K_LANDMARK {
                         self.design = (self.design_hover != -1).then_some((kind, self.design_hover));
@@ -1542,12 +1663,14 @@ impl App {
         true
     }
 
-    fn buildings_click(&mut self, h: i32) -> bool {
+    pub(crate) fn buildings_click(&mut self, h: i32) -> bool {
         match h {
             -2 => {
+                // the Elevation panel comes back with its tool armed, Analyze Golf Shot too (it arms like the others since
+                // elevation_click below; it was left drawn as selected but not armed), as the E key does
                 self.pstate.alt = true;
                 self.tool = 1;
-                self.edit = self.pstate.elev_tool < 3;
+                self.edit = true;
             }
             -3 => self.arm_undo(),
             i if i >= 0 => {
@@ -1578,7 +1701,7 @@ impl App {
         true
     }
 
-    fn elevation_click(&mut self, h: i32) -> bool {
+    pub(crate) fn elevation_click(&mut self, h: i32) -> bool {
         match h {
             -2 => {
                 self.pstate.alt = false;
@@ -1590,11 +1713,12 @@ impl App {
                 self.arm_undo();
             }
             3 => {
-                // Analyze Golf Shot: what the exe's map click does with it is not decoded; the tool is only selected and the
-                // map is left alone (placeholder)
+                // Analyze Golf Shot: armed like the other elevation tools, so that a right click on the course is the
+                // exe's / key (main.rs right_click, 0x41e4be..0x41f29d). The port's own: a left click on the course also
+                // analyses from the clicked tile, as / does from the tile under the pointer.
                 self.pstate.elev_tool = 3;
-                self.edit = false;
-                self.show_toast(tr("STR_TOAST_ANALYZE_NOT_AVAILABLE"));
+                self.tool = 1;
+                self.edit = true;
             }
             i if i >= 0 => {
                 self.pstate.elev_tool = i as usize;
@@ -1685,6 +1809,11 @@ impl App {
     /// vertex, the 2 x 2 square or the area, heights 3..13 with the lowering cap off hilly land, nothing spreading). No money
     /// is charged (none is in the exe's edit routines).
     pub fn edit_elevation(&mut self, cx: i32, cy: i32, delta: i32) {
+        // the interface's call is an action (replay.rs): logged, then applied by App::apply
+        if self.rec.depth_zero() {
+            self.act(sg_core::action::Action::Elevation { x: cx, y: cy, tool: self.pstate.elev_tool as i32, up: delta > 0 });
+            return;
+        }
         let hilly = self.land.as_ref().is_some_and(|l| l.slot.record().relief == 2);
         self.terrain.edit_elevation(self.pstate.elev_tool as i32, cx, cy, delta > 0, hilly);
         self.dirty = true;
@@ -1697,17 +1826,46 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_strip_picture_picks_its_own_design() {
+    fn only_a_click_in_the_panel_band_re_applies_the_strip_design() {
+        // issue #103: the windmill chosen, the pointer crosses its upper neighbour on the way to the course, and the click
+        // on the course must not make that neighbour the design
+        let st = design_strip(land::K_LANDMARK).unwrap();
+        let (wx, wy) = st.at(11);
+        let (nx, ny) = st.at(10);
+        assert!(in_panel_band(wx as f32, wy as f32) && in_panel_band(nx as f32, ny as f32));
+        assert!(!in_panel_band(400.0, 300.0) && !in_panel_band(wx as f32, 480.0) && in_panel_band(wx as f32, 481.0));
+        assert!(!in_panel_band(150.0, 560.0), "the dock's corner is not the panel");
+    }
+
+    #[test]
+    fn every_terrain_button_has_its_description() {
+        // the tooltip looks its description up by the button's English name in Interface/<theme>.txt, whose "*Name" lines
+        // the free set keeps exactly as the original's (issue #88: the tropical pine, named "Pine tree", had none)
+        for (t, file) in ["parkland", "desert", "tropical", "links"].iter().enumerate() {
+            let d = sg_core::freeset::read(&format!("text/Interface/{file}.txt")).expect(file);
+            let lines: Vec<String> = String::from_utf8_lossy(&d).lines().map(|l| l.trim_end_matches('\r').to_string()).collect();
+            for slot in 0..16 {
+                let name = sg_core::lang::en(tile_key(tile_id(slot), t));
+                assert!(text_entry(&lines, name).is_some_and(|l| !l.is_empty()), "{file}: {name}");
+            }
+        }
+        assert_eq!(sg_core::lang::en(tile_key(14, 2)), "Tropical tree");
+        assert_eq!(sg_core::lang::en(tile_key(13, 2)), "Tropical bush");
+        assert_eq!(sg_core::lang::en(tile_key(11, 2)), "Brush");
+    }
+
+    #[test]
+    fn a_strip_design_is_hit_at_its_base() {
+        // issue #142: the exe's octagon round each anchor (0x43231d), not the picture standing above it
         let st = Strip { dx: 0, count: 6, scale: 1.0 };
         for i in 0..6 {
             let (cx, cy) = st.at(i);
-            // the pad, and the picture standing above the anchor
             assert_eq!(st.hit(0, cx as f32, cy as f32), i);
-            assert_eq!(st.hit(0, cx as f32 + 8.0, cy as f32 - 30.0), i, "picture of {i}");
-            assert_eq!(st.hit(0, cx as f32 - 3.0, cy as f32 - 18.0), i, "middle of {i}");
+            assert_eq!(st.hit(0, cx as f32 + 15.0, cy as f32), i, "the octagon's side of {i}");
+            assert_ne!(st.hit(0, cx as f32, cy as f32 - 30.0), i, "the top of {i}'s picture");
         }
         // hidden designs are never picked; far away nothing is
-        assert_eq!(st.hit(0b111101, st.at(1).0 as f32, st.at(1).1 as f32 - 30.0) == 1, false);
+        assert_eq!(st.hit(0b111101, st.at(1).0 as f32, st.at(1).1 as f32), -1);
         assert_eq!(st.hit(0, 10.0, 10.0), -1);
     }
 
@@ -1718,7 +1876,8 @@ mod tests {
         assert_eq!(st.left(), 402);
         assert_eq!((st.at(0), st.at(1)), ((446, 500), (469, 527)));
         assert_eq!(st.hit(0, 469.0, 527.0), 1);
-        assert_eq!(st.hit(0, 469.0, 510.0), 1);
+        assert_eq!(st.hit(0, 469.0, 520.0), 1);
+        assert_eq!(st.hit(0, 469.0, 505.0), -1, "above the octagon");
         // landmarks show only the club's
         let st = design_strip(land::K_LANDMARK).unwrap();
         assert_eq!(st.hit(1 << 3, st.at(3).0 as f32, st.at(3).1 as f32), 3);
@@ -1744,14 +1903,40 @@ mod tests {
 
     #[test]
     fn slots_and_choices() {
-        assert_eq!(terrain_slot_at(0, 301.0, 532.0), Some(0));
-        assert_eq!(terrain_slot_at(0, 332.0, 570.0), Some(7));
-        assert_eq!(terrain_slot_at(0, 735.0, 500.0), Some(13));
+        // every button's cell: 62 wide, the 44 rows ending 10 above its picture's foot (0x432f90)
+        for i in 0..16 {
+            let r = terrain_slot_rect(i, 0);
+            assert_eq!(terrain_slot_at(0, r.x + 30.0, r.y + r.h - 20.0), Some(i), "slot {i}");
+        }
+        // issue #142: the trees are hit at their foot only, not over their crowns (Parkland: 704-765 x 507-550, pine
+        // 673-734 x 546-589, palm 735-796 x 545-588)
+        assert_eq!(terrain_slot_at(0, 735.0, 530.0), Some(13));
+        assert_eq!(terrain_slot_at(0, 735.0, 500.0), None, "the tree's crown");
+        assert_eq!(terrain_slot_at(0, 700.0, 560.0), Some(14));
+        assert_eq!(terrain_slot_at(0, 780.0, 560.0), Some(15));
         assert_eq!(terrain_slot_at(0, 230.0, 590.0), None);
         assert_eq!(hire_choice_at(300.0, 175.0), Some(0));
         assert_eq!(hire_choice_at(300.0, 195.0), Some(1));
         assert_eq!(hire_choice_at(300.0, 390.0), Some(6));
         assert_eq!(hire_choice_at(300.0, 225.0), None);
         assert_eq!(hire_choice_at(600.0, 175.0), None);
+    }
+
+    #[test]
+    fn the_desert_names_its_brush_and_ravine_as_the_original() {
+        // issue #117: in the desert tile 10 (slot 5, the dry weeds) is the Brush and tile 11 (slot 11, the crack) the Ravine
+        assert_eq!((tile_id(5), tile_id(11)), (10, 11));
+        assert_eq!((sg_core::lang::en(tile_key(10, 1)), sg_core::lang::en(tile_key(11, 1))), ("Brush", "Ravine"));
+        // the other themes keep their stream (or burn) and brush (or gorse)
+        assert_eq!((sg_core::lang::en(tile_key(10, 0)), sg_core::lang::en(tile_key(11, 0))), ("Stream", "Brush"));
+        assert_eq!((sg_core::lang::en(tile_key(10, 3)), sg_core::lang::en(tile_key(11, 3))), ("Burn", "Gorse"));
+        // the free set's desert sheet trades only those two cells
+        assert_eq!((terrain_cell(5, true), terrain_cell(11, true)), (11, 5));
+        for k in 0..13 {
+            assert_eq!(terrain_cell(k, false), k);
+            if k != 5 && k != 11 {
+                assert_eq!(terrain_cell(k, true), k);
+            }
+        }
     }
 }

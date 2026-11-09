@@ -226,9 +226,10 @@ fn sway_params(k: Kind) -> Option<(f32, f32, f32, f32)> {
 /// The season's weights at calendar month `m` (3.0 the start of March .. 11.0 the end of October) for `theme` (the exe's
 /// order: parkland, desert, tropical, links), and the mornings' frost and dew at day phase `phase` (None: no time of day).
 pub fn season_at(m: f32, theme: u8, phase: Option<f32>) -> Season {
-    // per theme: autumn colours, blossom, freshness, frost
+    // per theme: autumn colours, blossom, freshness, frost (none where the theme has no winter: the desert and the
+    // tropics)
     let (ka, kb, kf, kc) = match theme {
-        1 => (0.35, 0.3, 0.5, 0.5),
+        1 => (0.35, 0.3, 0.5, 0.0),
         2 => (0.0, 0.0, 0.4, 0.0),
         3 => (0.85, 0.6, 1.0, 1.0),
         _ => (1.0, 1.0, 1.0, 1.0),
@@ -512,7 +513,7 @@ impl App {
             // the art's flag points right of the pole: mirrored when the wind blows to the screen's left
             let right = *self.fx.nature.flag_right.entry((si, frame_index)).or_insert_with(|| {
                 let sp = &self.sprites[si].s;
-                let img = &sp.frames[frame_index];
+                let img = sp.frame(frame_index);
                 let (mut m, mut n) = (0.0f32, 0.0f32);
                 for (k, p) in img.px.chunks_exact(4).enumerate() {
                     if p[3] > 0 {
@@ -556,13 +557,13 @@ impl App {
         let tex2 = if seasonal && p.outfit.is_none() { self.fx_season_texture(g, si, fi, tex).unwrap_or(tex) } else { tex };
         let bend = if s.wind { self.fx_sway(si, fi, p.x, p.z) } else { None };
         let night = self.fx.atmos.night;
-        let glow = if s.evening_lights && night > 0.0 { self.fx_window_glow(g, si, fi, tex).map(|t| (t, night)) } else { None };
+        let glow = if s.window_lights && night > 0.0 { self.fx_window_glow(g, si, fi, tex).map(|t| (t, night)) } else { None };
         (tex2, bend, glow)
     }
 
     /// The seasonal colours of a tree frame (cached), or None for the classic art.
     pub(crate) fn fx_season_texture(&mut self, g: &mut Gfx, si: usize, frame_index: usize, classic: TextureId) -> Option<TextureId> {
-        if crate::hd::active() {
+        if crate::hd::active() || self.pack_hires(si) {
             return None;
         }
         let season = self.fx.atmos.season;
@@ -587,7 +588,7 @@ impl App {
             }
         }
         let salt = self.fx_salt(si);
-        let img = recolour(&self.sprites[si].s.frames[frame_index], kind, key, salt);
+        let img = recolour(&self.sprites[si].s.frame(frame_index), kind, key, salt);
         let t = g.texture(&img, false);
         self.fx.nature.season_tex.insert((si, frame_index), (classic, key, t));
         Some(t)

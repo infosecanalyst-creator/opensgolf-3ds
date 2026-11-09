@@ -1,0 +1,54 @@
+# DRAFT build recipe for F-Droid's fdroiddata repository (https://gitlab.com/fdroid/fdroiddata, file
+# metadata/org.opensgolf.game.yml). The application id is the one the APK already uses (crates/simgolf/Cargo.toml,
+# [package.metadata.android] package_name). Store texts, icon and screenshots come from fastlane/metadata/android/ in
+# this repository. The open questions for F-Droid's reviewers are in packaging/README.md ("F-Droid").
+Categories:
+  - Games
+License: GPL-2.0-or-later
+AuthorName: The OpenSGolf contributors
+SourceCode: https://github.com/crspytopgn/opensgolf
+IssueTracker: https://github.com/crspytopgn/opensgolf/issues
+Changelog: https://github.com/crspytopgn/opensgolf/releases
+Donate: https://buymeacoffee.com/crspytopgn
+
+AutoName: OpenSGolf
+
+RepoType: git
+Repo: https://github.com/crspytopgn/opensgolf.git
+
+Builds:
+  - versionName: 0.5.6
+    versionCode: 40
+    commit: v0.5.6
+    sudo:
+      - apt-get update
+      - apt-get install -y build-essential cmake pkg-config openjdk-17-jdk-headless unzip
+    output: apk/opensgolf-release.apk
+    srclibs:
+      - rustup@1.28.2
+    # the old C++ port and a CMake build folder (prebuilt static libraries) are not used by the Android build
+    scandelete:
+      - build_asan
+      - legacy
+    prebuild:
+      # F-Droid installs updates itself: the game's own Update now is left out (OPENSGOLF_NO_SELF_UPDATE in build:),
+      # and with it the one permission it needed
+      - sed -i -e '/^\[\[package.metadata.android.permission\]\]$/,/^name = "android.permission.REQUEST_INSTALL_PACKAGES"$/d'
+        crates/simgolf/Cargo.toml
+    build:
+      - $$rustup$$/rustup-init.sh -y --profile minimal --default-toolchain stable
+      - source $HOME/.cargo/env
+      # cargo-quad-apk, the APK builder the project's docker image (notfl3/cargo-apk) carries; pin a commit
+      - cargo install --locked --git https://github.com/not-fl3/cargo-quad-apk --rev @CARGO_QUAD_APK_COMMIT@ cargo-quad-apk
+      - sdkmanager "platforms;android-33" "build-tools;34.0.0"
+      - export ANDROID_HOME=$$SDK$$ NDK_HOME=$$NDK$$ ANDROID_BUILD_DIR=$HOME/opensgolf-android OPENSGOLF_NO_SELF_UPDATE=1
+      - export PATH=$$SDK$$/build-tools/34.0.0:$PATH
+      - tools/android_build.sh release $PWD/apk
+    # the NDK of the project's docker image (notfl3/cargo-apk: android-ndk-r25)
+    ndk: 25.0.8775105
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags ^v[0-9.]+$
+UpdateCheckData: crates/simgolf/Cargo.toml|version_code = (\d+)|.|version_name = "([^"]+)"
+CurrentVersion: 0.5.6
+CurrentVersionCode: 40

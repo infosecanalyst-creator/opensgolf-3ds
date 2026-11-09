@@ -158,6 +158,10 @@ impl App {
 
     /// Tab with the Pathway tool: the course's next path style, named in a toast. False with the extra off.
     pub fn next_path_style(&mut self) -> bool {
+        // the interface's call is an action (replay.rs): logged, then applied by App::apply
+        if self.rec.depth_zero() {
+            return self.club.extras.lamps() && self.act(sg_core::action::Action::PathStyle);
+        }
         if !self.club.extras.next_path_style() {
             return false;
         }
@@ -202,7 +206,9 @@ impl App {
             self.ui_sound(24);
             return self.show_toast(sg_core::lang::tr("STR_TOAST_LAMPS_FULL"));
         }
+        let cash = self.econ.cash;
         self.econ.spend_to(sg_core::economy::LEDGER_FACILITIES, cost);
+        self.float_change(cash, (a, b));
         self.ui_sound(262);
     }
 

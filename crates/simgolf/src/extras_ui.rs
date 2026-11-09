@@ -25,6 +25,11 @@ pub fn saved() -> Extras {
     serde_json::from_value(settings_json()[SETTINGS_KEY].clone()).unwrap_or_default()
 }
 
+/// Saves the extras new games start with.
+pub fn save_next(e: &Extras) {
+    save(e);
+}
+
 fn save(e: &Extras) {
     let mut v = settings_json();
     if let Ok(x) = serde_json::to_value(e) {
@@ -37,22 +42,30 @@ fn save(e: &Extras) {
 
 // ---- the Extras box (Preferences > OpenSGolf extras) ------------------------------------------------------------------------
 
-/// The Extras box's pages (tabs along its top, drawn as the Enhanced graphics box's), sorted by what they change so the
-/// player sees at a glance which ticks touch the game: Gameplay and Sandbox change how it plays (each line tagged with how
-/// much), Looks, Info and Helpers leave play as it is. Only the page a line is shown on follows this; the extras' bits,
-/// saves and settings keep their order.
-pub const PAGES: [&str; 5] =
-    ["STR_EXTRAS_PAGE_GAMEPLAY", "STR_EXTRAS_PAGE_SANDBOX", "STR_EXTRAS_PAGE_LOOKS", "STR_EXTRAS_PAGE_INFO", "STR_EXTRAS_PAGE_HELPERS"];
+/// The Extras box's pages (tabs along its top, drawn as the Enhanced graphics box's), sorted by the three classes of extra
+/// so the player sees at a glance which ticks touch the game: GAMEPLAY changes how the game plays (the Gameplay and
+/// Sandbox pages, each line tagged with how much), LOOKS changes only how it looks (the Looks page), HELPER shows
+/// information or saves effort (the Info, Saves and Controls pages); the last three leave play exactly as it is. Only the page a line
+/// is shown on follows this; the extras' bits, saves and settings keep their order.
+pub const PAGES: [&str; 6] = [
+    "STR_EXTRAS_PAGE_GAMEPLAY",
+    "STR_EXTRAS_PAGE_SANDBOX",
+    "STR_EXTRAS_PAGE_LOOKS",
+    "STR_EXTRAS_PAGE_INFO",
+    "STR_EXTRAS_PAGE_SAVES",
+    "STR_EXTRAS_PAGE_CONTROLS",
+];
 /// The last page whose lines change how the game plays (Gameplay and Sandbox, before it): their lines carry a tag.
 const LAST_TAGGED_PAGE: u8 = 1;
 
 /// Each page's banner, the line under the tabs that says what its ticks change.
-pub const BANNERS: [&str; 5] = [
+pub const BANNERS: [&str; 6] = [
     "STR_EXTRAS_BANNER_GAMEPLAY",
     "STR_EXTRAS_BANNER_SANDBOX",
     "STR_EXTRAS_BANNER_LOOKS",
     "STR_EXTRAS_BANNER_INFO",
-    "STR_EXTRAS_BANNER_HELPERS",
+    "STR_EXTRAS_BANNER_SAVES",
+    "STR_EXTRAS_BANNER_CONTROLS",
 ];
 
 /// The hint shown where the description of the line under the pointer goes while there is none: on the tagged pages, what
@@ -64,8 +77,14 @@ const HINTS: [&str; 2] = ["STR_EXTRAS_HINT_TAGGED", "STR_EXTRAS_HINT_PLAIN"];
 pub enum ExtrasLine {
     /// Option i of sg_core::extras::OPTION_KEYS.
     Game(usize),
-    /// Interface extra i (crate::extras::LINES' ticks, bit i of their Settings).
+    /// Interface extra i (crate::extras::UI_KEYS' ticks, bit i of their Settings).
     Ui(usize),
+    /// The Calendar line: Slower seasons and Pause the calendar as one setting (`Extras::calendar`).
+    Calendar,
+    /// A line of the Info page that ticks several interface extras together (`GROUPS`).
+    Group(usize),
+    /// The preset line at the top of the box, over the tabs (`Preset`).
+    Preset,
 }
 
 /// How much a gameplay or sandbox extra changes the game: the coloured pill at the right end of its line.
@@ -74,74 +93,143 @@ pub enum Tag {
     Light,
     Noticeable,
     Big,
+    /// Not finished: the cut content (decoration only).
+    Experimental,
 }
 
 impl Tag {
+    pub const ALL: [Tag; 4] = [Tag::Light, Tag::Noticeable, Tag::Big, Tag::Experimental];
+
     /// The pill's words.
     pub fn key(self) -> &'static str {
         match self {
             Tag::Light => "STR_EXTRAS_TAG_LIGHT",
             Tag::Noticeable => "STR_EXTRAS_TAG_NOTICEABLE",
             Tag::Big => "STR_EXTRAS_TAG_BIG",
+            Tag::Experimental => "STR_EXTRAS_TAG_EXPERIMENTAL",
         }
     }
 
-    /// The pill's fill and edge (15-bit colours, muted as the original's palette is): green, amber, red.
+    /// The pill's fill and edge (15-bit colours, muted as the original's palette is): green, amber, red, slate, each dark
+    /// enough for its white words to read (about 5 to 1 or better).
     pub fn colours(self) -> (u32, u32) {
         match self {
-            Tag::Light => (0x1a48, 0x0d03),
-            Tag::Noticeable => (0x6204, 0x3922),
+            Tag::Light => (0x11e6, 0x0d03),
+            Tag::Noticeable => (0x4d62, 0x3922),
             Tag::Big => (0x58c6, 0x3063),
+            Tag::Experimental => (0x4153, 0x20c9),
         }
     }
 }
 
-/// The option lines of each page, in order (the gameplay page from the lightest touch to the biggest change).
-const PAGE_LINES: [&[ExtrasLine]; 5] = {
+/// The Info page's grouped lines: (text key, description key, the interface extras' bits it ticks together). The ticks
+/// stay one bit each in settings.json, so older and newer versions read them alike; a line whose ticks differ shows as
+/// "some on" and a click turns them all on.
+pub const GROUPS: [(&str, &str, &[usize]); 3] = [
+    // the People screen, name tags, live scorecards
+    ("STR_EXTRAS_GROUP_PEOPLE", "STR_EXTRAS_DESC_GROUP_PEOPLE", &[0, 2, 16]),
+    // landing map, comments by hole, history graphs, the year in numbers, report tabs
+    ("STR_EXTRAS_GROUP_REPORTS", "STR_EXTRAS_DESC_GROUP_REPORTS", &[10, 11, 13, 18, 3]),
+    // the message history and the clickable ticker
+    ("STR_EXTRAS_GROUP_MESSAGES", "STR_EXTRAS_DESC_GROUP_MESSAGES", &[1, 17]),
+];
+
+/// The option of `OPTION_KEYS` that is the cut content (shown only with the original game's files, `show_cut_content`).
+const CUT: usize = 1;
+
+/// The interface extra that is the update check: a tick of Preferences > More (prefs_ui.rs), not in the box.
+#[cfg(test)]
+const UPDATE_CHECK: usize = 12;
+
+/// The interface extra that was the desert's Ravine and Brush art (0.5.6 to 0.5.13, issue #89): retired in 0.6, when the
+/// desert's two tiles took the theme's own names (issue #117), so it is on no page; its `settings.json` key is still read
+/// and ignored (extras.rs `from_json`).
+#[cfg(test)]
+const RETIRED_DESERT_ART: usize = 23;
+
+/// The option lines of each page, in order (each page's most wanted first). Slower
+/// seasons and Pause the calendar (options 6 and 7) are the Sandbox page's Calendar line; the Info page's groups stand for
+/// their ticks (`GROUPS`); the update check is on Preferences itself.
+const PAGE_LINES: [&[ExtrasLine]; 6] = {
     use sg_core::extras as x;
-    use ExtrasLine::{Game as G, Ui as U};
+    use ExtrasLine::{Calendar, Game as G, Group, Ui as U};
+    // each page's lines in the order players are likeliest to want them, the experimental cut content last
     [
         &[
-            G(0), // Tab turns buildings
-            G(4), // animals
+            G(x::WEATHER),
+            G(x::MORE_VISITORS),
             G(x::LEFTIES),
             G(3), // higher staff limits
             G(5), // set par
-            G(1), // cut content
-            G(x::WEATHER),
-            G(x::MORE_VISITORS),
+            G(x::TEES),
+            G(4), // animals
+            G(x::SECOND_COURSE),
             G(2), // hardcore
+            G(CUT),
         ],
-        &[G(x::SEASON_SPEED), G(7), G(8), G(9)],
-        &[G(x::PATHS)],
-        // People, history, name tags, report tabs, path help, landing map, comments by hole, graphs, live scorecards, the
-        // year in numbers, home-site details
-        &[U(0), U(1), U(2), U(3), U(4), U(10), U(11), U(13), U(16), U(18), U(19)],
-        // autosave, save pictures, sharing, the two pauses, update check, zoom towards the pointer, drag to place, ticker
-        &[U(5), U(6), U(7), U(8), U(9), U(12), U(14), U(15), U(17)],
+        // unlock all, no new dandelions, freeze moods, the calendar (slower seasons, pause), keeping the commissioner's
+        // approval (moved here when the Gameplay page grew too long for the box)
+        &[G(9), G(x::NO_WEEDS), G(8), Calendar, G(x::KEEP_LAND)],
+        // the interface at the edges, path styles and lamps, random trees, Tab turns buildings (only the picture turns),
+        // home names on hover, the hole flyover
+        &[U(26), G(x::PATHS), U(21), G(0), U(28), U(29)],
+        // People, extra reports, messages, home-site details, path help
+        &[Group(0), Group(1), Group(2), U(19), U(4)],
+        // autosave, import and export saved games, sharing, save pictures
+        &[U(5), U(22), U(7), U(6)],
+        // zoom towards the pointer, right click puts the tool away, drag to place, right-drag panning, mouse aim and swing
+        // (the three the controls presets set and the two that change what the original's mouse does), then the two pauses
+        &[U(14), U(25), U(15), U(20), U(27), U(24), U(8), U(9)],
     ]
 };
 
-/// The option lines of a page, in order.
-pub fn page_lines(page: u8) -> Vec<ExtrasLine> {
-    PAGE_LINES.get(page as usize).map_or_else(Vec::new, |l| l.to_vec())
+thread_local! {
+    static CUT_SHOWN: std::cell::Cell<bool> = const { std::cell::Cell::new(true) };
 }
 
-/// The page a line is on.
-pub fn page_of(l: ExtrasLine) -> u8 {
-    PAGE_LINES.iter().position(|p| p.contains(&l)).unwrap_or(0) as u8
+/// Whether the box lists the cut content: only with the original game's files (popup_ui sets it as a box opens). On the
+/// free base set the line is hidden; a game that has it on keeps it, harmlessly.
+pub fn show_cut_content(on: bool) {
+    CUT_SHOWN.with(|c| c.set(on));
+}
+
+fn cut_shown() -> bool {
+    CUT_SHOWN.with(|c| c.get())
+}
+
+/// The option lines of a page, in order.
+pub fn page_lines(page: u8) -> Vec<ExtrasLine> {
+    PAGE_LINES
+        .get(page as usize)
+        .map_or_else(Vec::new, |l| l.iter().copied().filter(|&l| l != ExtrasLine::Game(CUT) || cut_shown()).collect())
+}
+
+/// The box's option lines on a page: the preset line, then the page's.
+pub fn box_lines(page: u8) -> Vec<ExtrasLine> {
+    std::iter::once(ExtrasLine::Preset).chain(page_lines(page)).collect()
+}
+
+/// The page a line is on (none for the preset line, which is over the tabs, and for the options no page lists).
+pub fn page_of(l: ExtrasLine) -> Option<u8> {
+    PAGE_LINES.iter().position(|p| p.contains(&l)).map(|p| p as u8)
 }
 
 /// How much a line changes the game (none for the pages that leave play as it is).
 pub fn tag(l: ExtrasLine) -> Option<Tag> {
-    if page_of(l) > LAST_TAGGED_PAGE {
+    if page_of(l)? > LAST_TAGGED_PAGE {
         return None;
     }
     Some(match l {
-        // Tab turns buildings, animals, left-handed golfers
-        ExtrasLine::Game(i) if i == 0 || i == 4 || i == sg_core::extras::LEFTIES => Tag::Light,
-        // hardcore, and the sandbox's pause, freeze and unlock all
-        ExtrasLine::Game(2 | 7 | 8 | 9) => Tag::Big,
+        // animals, left-handed golfers, keeping the commissioner's approval, multiple tees (nothing changes until one is
+        // placed)
+        ExtrasLine::Game(i) if i == 4 || i == sg_core::extras::LEFTIES || i == sg_core::extras::KEEP_LAND || i == sg_core::extras::TEES => {
+            Tag::Light
+        }
+        ExtrasLine::Game(CUT) => Tag::Experimental,
+        // hardcore, and the sandbox's freeze and unlock all
+        ExtrasLine::Game(2 | 8 | 9) => Tag::Big,
+        // a second course of 18 holes
+        ExtrasLine::Game(i) if i == sg_core::extras::SECOND_COURSE => Tag::Big,
         _ => Tag::Noticeable,
     })
 }
@@ -162,6 +250,10 @@ const GAME_DESC: [&str; sg_core::extras::OPTION_KEYS.len()] = [
     "STR_EXTRAS_DESC_WEATHER",
     "STR_EXTRAS_DESC_PATHS",
     "STR_EXTRAS_DESC_MORE_VISITORS",
+    "STR_EXTRAS_DESC_NO_WEEDS",
+    "STR_EXTRAS_DESC_KEEP_LAND",
+    "STR_EXTRAS_DESC_SECOND_COURSE",
+    "STR_EXTRAS_DESC_TEES",
 ];
 const UI_DESC: [&str; crate::extras::UI_KEYS.len()] = [
     "STR_EXTRAS_DESC_PEOPLE",
@@ -184,32 +276,46 @@ const UI_DESC: [&str; crate::extras::UI_KEYS.len()] = [
     "STR_EXTRAS_DESC_TICKER_JUMP",
     "STR_EXTRAS_DESC_YEAR_SUMMARY",
     "STR_EXTRAS_DESC_HOME_DETAILS",
+    "STR_EXTRAS_DESC_RIGHT_DRAG",
+    "STR_EXTRAS_DESC_RANDOM_TREES",
+    "STR_EXTRAS_DESC_SAVE_FILES",
+    "STR_EXTRAS_DESC_DESERT_ART",
+    "STR_EXTRAS_DESC_MOUSE_SWING",
+    "STR_EXTRAS_DESC_RIGHT_DROP",
+    "STR_EXTRAS_DESC_WIDE_UI",
+    "STR_EXTRAS_DESC_EDGE_SCROLL",
+    "STR_EXTRAS_DESC_HOME_LABELS_HOVER",
+    "STR_EXTRAS_DESC_HOLE_FLYOVER",
 ];
 
-/// A line's description (what ticking it changes).
-pub fn desc_key(l: ExtrasLine) -> &'static str {
+/// A line's description (what ticking it changes; for the preset line, what the preset in use is).
+pub fn desc_key(l: ExtrasLine, e: &Extras, ui: &crate::extras::Settings) -> &'static str {
     match l {
         ExtrasLine::Game(i) => GAME_DESC[i],
         ExtrasLine::Ui(i) => UI_DESC[i],
+        ExtrasLine::Calendar => "STR_EXTRAS_DESC_CALENDAR",
+        ExtrasLine::Group(g) => GROUPS[g].1,
+        ExtrasLine::Preset => Preset::of(e, ui).desc(),
     }
 }
 
-/// The text at the foot of a page: the description of option `k` of the page, or the page's hint with none.
-pub fn foot_text(page: u8, k: Option<usize>) -> (&'static str, bool) {
-    match k.and_then(|k| page_lines(page).get(k).copied()) {
-        Some(l) => (sg_core::lang::tr(desc_key(l)), true),
+/// The text at the foot of a page: the description of option `k` of the box (`box_lines`), or the page's hint with none.
+pub fn foot_text(page: u8, k: Option<usize>, e: &Extras, ui: &crate::extras::Settings) -> (&'static str, bool) {
+    match k.and_then(|k| box_lines(page).get(k).copied()) {
+        Some(l) => (sg_core::lang::tr(desc_key(l, e, ui)), true),
         None => (sg_core::lang::tr(HINTS[(page > LAST_TAGGED_PAGE) as usize]), false),
     }
 }
 
-/// The most option lines a page has (every page is drawn that tall).
+/// The most option lines a page has (every page is drawn that tall), counting lines a page hides (the cut content off the
+/// original files), so the box keeps its size either way.
 fn most_lines() -> usize {
-    (0..PAGES.len() as u8).map(|p| page_lines(p).len()).max().unwrap_or(0)
+    PAGE_LINES.iter().map(|p| p.len()).max().unwrap_or(0)
 }
 
 /// The widest tag pill (they are all drawn this wide, so they line up).
 pub fn pill_w() -> f32 {
-    [Tag::Light, Tag::Noticeable, Tag::Big].iter().map(|t| PILL_FONT.width(sg_core::lang::tr(t.key()))).fold(0.0, f32::max) + 14.0
+    Tag::ALL.iter().map(|t| PILL_FONT.width(sg_core::lang::tr(t.key()))).fold(0.0, f32::max) + 14.0
 }
 
 /// The tag pills' font: Manual SSi Bold 14, the info screens' body (0x821ee8).
@@ -224,68 +330,107 @@ fn pill_room() -> f32 {
 /// to two lines and the box keeps its size).
 pub const FOOT_LINES: usize = 2;
 
-/// A line's text (with its value for the calendar speed) and whether it is on.
-pub fn line_text(l: ExtrasLine, e: &Extras, ui: &crate::extras::Settings) -> (String, bool) {
-    use sg_core::lang::{tr, trf};
+/// Lines of the box between its title and the tabs: the preset line and a gap.
+pub const HEAD_LINES: usize = 2;
+
+/// A line's value: a tick's 0 or 1, a setting's value, a group's 0 (all off), 1 (all on) or 2 (some on), the preset's
+/// index in `Preset::ALL`.
+pub fn line_value(l: ExtrasLine, e: &Extras, ui: &crate::extras::Settings) -> u8 {
     match l {
-        ExtrasLine::Game(i) if i == sg_core::extras::SEASON_SPEED => {
-            let v = e.option(i);
-            (trf(sg_core::extras::OPTION_KEYS[i], &[("VALUE", &tr(sg_core::extras::SPEED_KEYS[v as usize]))]), v != 0)
+        ExtrasLine::Game(i) => e.option(i),
+        ExtrasLine::Ui(i) => (ui.bits() >> i & 1) as u8,
+        ExtrasLine::Calendar => e.calendar(),
+        ExtrasLine::Group(g) => {
+            let on = GROUPS[g].2.iter().filter(|&&b| ui.bits() & 1 << b != 0).count();
+            if on == 0 {
+                0
+            } else if on == GROUPS[g].2.len() {
+                1
+            } else {
+                2
+            }
         }
-        ExtrasLine::Game(i) if i == sg_core::extras::PATHS => {
-            let v = e.option(i);
-            (trf(sg_core::extras::OPTION_KEYS[i], &[("VALUE", &tr(sg_core::extras::PATH_STYLE_KEYS[v as usize]))]), v != 0)
-        }
-        ExtrasLine::Game(i) => (tr(sg_core::extras::OPTION_KEYS[i]).to_string(), e.option(i) != 0),
-        ExtrasLine::Ui(i) => (tr(crate::extras::UI_KEYS[i]).to_string(), ui.bits() & 1 << i != 0),
+        ExtrasLine::Preset => Preset::of(e, ui) as u8,
     }
 }
 
-/// A click on a line: a tick flips, the calendar speed steps on.
+/// A line's text (with its value for a setting) and whether it is on (a group only with all its ticks on).
+pub fn line_text(l: ExtrasLine, e: &Extras, ui: &crate::extras::Settings) -> (String, bool) {
+    use sg_core::extras::{CALENDAR_KEYS, OPTION_KEYS, PATHS, PATH_STYLE_KEYS, SEASON_SPEED, SPEED_KEYS};
+    use sg_core::lang::{tr, trf};
+    let v = line_value(l, e, ui);
+    match l {
+        ExtrasLine::Game(i) if i == SEASON_SPEED => (trf(OPTION_KEYS[i], &[("VALUE", &tr(SPEED_KEYS[v as usize]))]), v != 0),
+        ExtrasLine::Game(i) if i == PATHS => (trf(OPTION_KEYS[i], &[("VALUE", &tr(PATH_STYLE_KEYS[v as usize]))]), v != 0),
+        ExtrasLine::Game(i) => (tr(OPTION_KEYS[i]).to_string(), v != 0),
+        ExtrasLine::Ui(i) => (tr(crate::extras::UI_KEYS[i]).to_string(), v != 0),
+        ExtrasLine::Calendar => (trf("STR_EXTRAS_CALENDAR", &[("VALUE", &tr(CALENDAR_KEYS[v as usize]))]), v != 0),
+        ExtrasLine::Group(g) if v == 2 => (trf("STR_EXTRAS_SOME_ON", &[("LINE", &tr(GROUPS[g].0))]), false),
+        ExtrasLine::Group(g) => (tr(GROUPS[g].0).to_string(), v != 0),
+        ExtrasLine::Preset => (trf("STR_EXTRAS_PRESET", &[("VALUE", &tr(Preset::ALL[v as usize].key()))]), false),
+    }
+}
+
+/// Whether a line is drawn without a tick box: a setting a click steps (the preset, the calendar, the path styles).
+pub fn is_plain(l: ExtrasLine) -> bool {
+    match l {
+        ExtrasLine::Game(i) => Extras::choices(i) > 2,
+        ExtrasLine::Calendar | ExtrasLine::Preset => true,
+        ExtrasLine::Ui(_) | ExtrasLine::Group(_) => false,
+    }
+}
+
+/// A click on a line: a tick flips, a setting steps on, a group's ticks all go off when all were on and else all on, the
+/// preset line puts the next preset in use (`next_preset`).
 pub fn toggle_line(l: ExtrasLine, e: &mut Extras, ui: &mut crate::extras::Settings) {
     match l {
         ExtrasLine::Game(i) => e.step_option(i),
         ExtrasLine::Ui(i) => *ui = crate::extras::Settings::from_bits(ui.bits() ^ 1 << i),
+        ExtrasLine::Calendar => e.step_calendar(),
+        ExtrasLine::Group(g) => {
+            let all = line_value(l, e, ui) == 1;
+            let m = GROUPS[g].2.iter().fold(0, |m, &b| m | 1 << b);
+            *ui = crate::extras::Settings::from_bits(if all { ui.bits() & !m } else { ui.bits() | m });
+        }
+        ExtrasLine::Preset => next_preset(e, ui),
     }
 }
 
-/// The lines of a page of the Extras box: the title, room for the tabs and the banner (popup_ui draws them), the page's
-/// options, padded with empty lines to the longest page, and the rows of the description at the foot (beside the OK tick).
+/// The lines of a page of the Extras box: the title, the preset line and a gap, room for the tabs and the banner (popup_ui
+/// draws them), the page's options, padded with empty lines to the longest page, and the rows of the description at the
+/// foot (beside the OK tick).
 pub fn popup_lines(page: u8, e: &Extras, ui: &crate::extras::Settings) -> Vec<String> {
-    let mut v = vec![sg_core::lang::tr("STR_EXTRAS_TITLE").to_string()];
+    let mut v = vec![sg_core::lang::tr("STR_EXTRAS_TITLE").to_string(), line_text(ExtrasLine::Preset, e, ui).0, String::new()];
     v.extend((0..crate::enhanced::TAB_LINES + crate::popup_ui::BANNER_LINES).map(|_| String::new()));
     v.extend(page_lines(page).into_iter().map(|l| line_text(l, e, ui).0));
-    let n = 1 + crate::enhanced::TAB_LINES + crate::popup_ui::BANNER_LINES + most_lines() + FOOT_LINES;
+    let n = 1 + HEAD_LINES + crate::enhanced::TAB_LINES + crate::popup_ui::BANNER_LINES + most_lines() + FOOT_LINES;
     while v.len() < n {
         v.push(String::new());
     }
     v
 }
 
-/// The box's ticks on a page (bit i the page's option i).
+/// The box's ticks on a page (bit i the box's option i: the preset line, then the page's).
 pub fn popup_checks(page: u8, e: &Extras, ui: &crate::extras::Settings) -> u32 {
-    page_lines(page).into_iter().enumerate().fold(0, |m, (i, l)| m | (line_text(l, e, ui).1 as u32) << i)
+    box_lines(page).into_iter().enumerate().fold(0, |m, (i, l)| m | (line_text(l, e, ui).1 as u32) << i)
 }
 
-/// The page's lines drawn without a tick box: the calendar speed, which has three values, and the path styles.
+/// The box's lines drawn without a tick box on a page (`is_plain`).
 pub fn popup_plain(page: u8) -> u32 {
-    page_lines(page)
-        .into_iter()
-        .enumerate()
-        .filter(|&(_, l)| l == ExtrasLine::Game(sg_core::extras::SEASON_SPEED) || l == ExtrasLine::Game(sg_core::extras::PATHS))
-        .fold(0, |m, (i, _)| m | 1 << i)
+    box_lines(page).into_iter().enumerate().filter(|&(_, l)| is_plain(l)).fold(0, |m, (i, _)| m | 1 << i)
 }
 
 /// The widest line of every page (a tagged one with its pill), the banners, and room for the tabs (the box keeps one width
-/// whatever the page). The line texts are measured with every setting's widest value, so a click that steps a value does
+/// whatever the page). The line texts are measured with every value they can show, so a click that steps a value does
 /// not change the box's size.
 pub fn popup_widest(e: &Extras, ui: &crate::extras::Settings) -> f32 {
     let f = crate::popup_ui::CHOICE_FONT;
     let lines = PAGE_LINES
         .iter()
-        .flat_map(|p| p.iter())
-        .map(|&l| {
-            let w = line_values(l, e).into_iter().map(|e| f.width(&line_text(l, &e, ui).0).round()).fold(0.0, f32::max);
+        .flat_map(|p| p.iter().copied())
+        .chain([ExtrasLine::Preset])
+        .map(|l| {
+            let w = line_texts(l, e, ui).iter().map(|t| f.width(t).round()).fold(0.0, f32::max);
             w + tag(l).map_or(0.0, |_| pill_room())
         })
         .fold(f.width(sg_core::lang::tr("STR_EXTRAS_TITLE")).round(), f32::max);
@@ -294,18 +439,153 @@ pub fn popup_widest(e: &Extras, ui: &crate::extras::Settings) -> f32 {
     lines.max(banners).max(tab * PAGES.len() as f32)
 }
 
-/// The extras with each value a line can show (one setting for a tick).
-fn line_values(l: ExtrasLine, e: &Extras) -> Vec<Extras> {
+/// Every text a line can show (each value of a setting, a group all on and some on, each preset).
+fn line_texts(l: ExtrasLine, e: &Extras, ui: &crate::extras::Settings) -> Vec<String> {
+    use sg_core::lang::{tr, trf};
     match l {
         ExtrasLine::Game(i) => (0..Extras::choices(i))
             .map(|v| {
                 let mut x = *e;
                 x.set_option(i, v);
-                x
+                line_text(l, &x, ui).0
             })
             .collect(),
-        ExtrasLine::Ui(_) => vec![*e],
+        ExtrasLine::Calendar => (0..sg_core::extras::CALENDAR_KEYS.len() as u8)
+            .map(|v| {
+                let mut x = *e;
+                x.set_calendar(v);
+                line_text(l, &x, ui).0
+            })
+            .collect(),
+        ExtrasLine::Group(g) => vec![tr(GROUPS[g].0).to_string(), trf("STR_EXTRAS_SOME_ON", &[("LINE", &tr(GROUPS[g].0))])],
+        ExtrasLine::Preset => Preset::ALL.iter().map(|p| trf("STR_EXTRAS_PRESET", &[("VALUE", &tr(p.key()))])).collect(),
+        ExtrasLine::Ui(_) => vec![line_text(l, e, ui).0],
     }
+}
+
+// ---- the presets (Select Difficulty's Game box, the Extras box's top line) ------------------------------------------------
+
+/// The presets of the OpenSGolf extras (docs/PLAYING.md, "Original game or OpenSGolf extras"): one click sets every
+/// gameplay, look and helper extra. Each leaves the player's own pauses, update check and controls-preset ticks
+/// (`Settings::with_kept`) and the bug fixes as they are.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Preset {
+    /// Every extra off: the game exactly as it was.
+    Original,
+    /// Every helper and look on, nothing that changes play.
+    Helpers,
+    /// The helpers and looks with OpenSGolf's own gameplay additions (`Extras::OPENSGOLF`).
+    OpenSGolf,
+    /// Anything else: the player's own mix.
+    Custom,
+}
+
+impl Preset {
+    pub const ALL: [Preset; 4] = [Preset::Original, Preset::Helpers, Preset::OpenSGolf, Preset::Custom];
+
+    /// Its name.
+    pub fn key(self) -> &'static str {
+        match self {
+            Preset::Original => "STR_PRESET_ORIGINAL",
+            Preset::Helpers => "STR_PRESET_HELPERS",
+            Preset::OpenSGolf => "STR_PRESET_OPENSGOLF",
+            Preset::Custom => "STR_PRESET_CUSTOM",
+        }
+    }
+
+    /// Its one-line description (the Extras box's foot).
+    pub fn desc(self) -> &'static str {
+        match self {
+            Preset::Original => "STR_PRESET_DESC_ORIGINAL",
+            Preset::Helpers => "STR_PRESET_DESC_HELPERS",
+            Preset::OpenSGolf => "STR_PRESET_DESC_OPENSGOLF",
+            Preset::Custom => "STR_PRESET_DESC_CUSTOM",
+        }
+    }
+
+    /// What it sets: the gameplay extras and the interface ticks (the kept ones off); none for Custom.
+    pub fn values(self) -> Option<(Extras, crate::extras::Settings)> {
+        use crate::extras::Settings;
+        match self {
+            Preset::Original => Some((Extras::default(), Settings::ALL_OFF)),
+            Preset::Helpers => Some((Extras::LOOKS, Settings::HELPERS)),
+            Preset::OpenSGolf => Some((Extras::OPENSGOLF, Settings::HELPERS)),
+            Preset::Custom => None,
+        }
+    }
+
+    /// The preset these extras are: any path style counts as path styles on (Tab with the Pathway tool steps it in a
+    /// game), a stopped calendar whatever speed is stored as stopped; the kept ticks do not count.
+    pub fn of(e: &Extras, ui: &crate::extras::Settings) -> Preset {
+        let mut n = *e;
+        n.path_style = n.path_style.min(1);
+        n.set_calendar(e.calendar());
+        let u = ui.preset_part();
+        Preset::ALL.into_iter().find(|p| p.values() == Some((n, u))).unwrap_or(Preset::Custom)
+    }
+
+    /// Puts the preset's values (Custom: the mix `custom`) in `e` and `ui`, the kept ticks and a path style already chosen
+    /// left as they are. Returns false when there is nothing to put (Custom without a mix).
+    pub fn apply(self, e: &mut Extras, ui: &mut crate::extras::Settings, custom: Option<(Extras, crate::extras::Settings)>) -> bool {
+        let Some((pe, pu)) = self.values().or(custom) else { return false };
+        let style = e.path_style;
+        let keep_style = e.lamps() && pe.lamps();
+        *e = pe;
+        if keep_style {
+            e.path_style = style;
+        }
+        *ui = pu.with_kept(ui);
+        true
+    }
+}
+
+/// The preset after `now` (Original, Original + helpers, OpenSGolf, Custom, Original), put in `e` and `ui`. Custom is
+/// skipped while there is no mix of the player's own to go back to (`custom`, a mix that is no preset).
+pub fn cycle_preset(
+    now: Preset,
+    e: &mut Extras,
+    ui: &mut crate::extras::Settings,
+    custom: Option<(Extras, crate::extras::Settings)>,
+) -> Preset {
+    let custom = custom.filter(|(ce, cu)| Preset::of(ce, cu) == Preset::Custom);
+    let i = Preset::ALL.iter().position(|&p| p == now).unwrap_or(0);
+    for k in 1..=Preset::ALL.len() {
+        let p = Preset::ALL[(i + k) % Preset::ALL.len()];
+        if p.apply(e, ui, custom) {
+            return p;
+        }
+    }
+    now
+}
+
+/// The settings.json key of the player's own mix, kept when a preset replaces it so Custom can bring it back.
+const CUSTOM_KEY: &str = "extras_custom";
+
+/// The player's own mix last kept (none before one was).
+pub fn custom_mix() -> Option<(Extras, crate::extras::Settings)> {
+    let v = &settings_json()[CUSTOM_KEY];
+    Some((serde_json::from_value(v["extras"].clone()).ok()?, serde_json::from_value(v["ui"].clone()).ok()?))
+}
+
+/// Keeps the extras as the player's own mix when they are no preset.
+pub fn remember_custom(e: &Extras, ui: &crate::extras::Settings) {
+    if Preset::of(e, ui) != Preset::Custom || custom_mix() == Some((*e, *ui)) {
+        return;
+    }
+    let mut v = settings_json();
+    v[CUSTOM_KEY] = serde_json::json!({ "extras": e, "ui": ui });
+    if let Ok(t) = serde_json::to_string_pretty(&v) {
+        sg_core::fsutil::write_file(crate::app::save_dir().join(crate::hd::SETTINGS_FILE), t.as_bytes());
+    }
+}
+
+/// The preset line's click: the next preset (a mix of the player's own is kept first, for Custom to bring back).
+pub fn next_preset(e: &mut Extras, ui: &mut crate::extras::Settings) {
+    let now = Preset::of(e, ui);
+    if now == Preset::Custom {
+        remember_custom(e, ui);
+    }
+    cycle_preset(now, e, ui, custom_mix());
 }
 
 /// Pages of the landmark strip: the club's own landmarks (the original's strip), the cut ones, the animals.
@@ -321,17 +601,6 @@ fn turnable(kind: i32) -> bool {
     kind == land::K_LANDMARK || (6..=15).contains(&kind) && kind != land::K_DRIVING_RANGE
 }
 
-/// The game style Select Difficulty shows (docs/PLAYING.md, "Original game or OpenSGolf extras").
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum GameStyle {
-    /// Every extra off and Classic graphics: the game exactly as it was (fixes for the original's own bugs stay on).
-    Original,
-    /// The interface extras and the gameplay extras of `Extras::OPENSGOLF`.
-    Extras,
-    /// Anything else the player ticked in Preferences.
-    Mix,
-}
-
 impl App {
     /// The date now: the game tick, or with the Slower seasons and Pause the calendar extras the calendar's tick
     /// (sg_core::extras::Calendar).
@@ -339,42 +608,33 @@ impl App {
         self.club.cal.date(self.game_tick)
     }
 
-    /// The game style of what the next game starts with.
-    pub fn game_style(&self) -> GameStyle {
-        // the two pauses (comfort.rs) are no part of the style
-        let ui = crate::extras::settings().style();
-        if self.extras_next.is_off() && ui == crate::extras::Settings::ALL_OFF && !crate::enhanced::settings().enabled {
-            GameStyle::Original
-        } else if self.extras_next == Extras::OPENSGOLF && ui == crate::extras::Settings::ALL_ON {
-            GameStyle::Extras
-        } else {
-            GameStyle::Mix
+    /// The preset Select Difficulty's Game box shows for what the next game starts with. Its Original is the original
+    /// game, Classic graphics included: with every extra off but Enhanced graphics on it says Custom.
+    pub fn game_style(&self) -> Preset {
+        match Preset::of(&self.extras_next, &crate::extras::settings()) {
+            Preset::Original if crate::enhanced::settings().enabled => Preset::Custom,
+            p => p,
         }
     }
 
-    /// A click on the game style: the original game becomes the OpenSGolf extras, anything else the original game. The
-    /// choice is saved like the Preferences ticks it sets; the extras leave the graphics as they are, the original game
-    /// turns Enhanced graphics off.
+    /// A click on the Game box: the next preset (Original, Original + helpers, OpenSGolf, Custom when the player has a mix
+    /// of their own, Original). The choice is saved like the Preferences ticks it sets; the original game also turns
+    /// Enhanced graphics off (the others leave the graphics as they are). The pauses, the update check, the controls
+    /// presets' ticks and the bug fixes stay as the player set them.
     pub fn next_game_style(&mut self, g: &mut crate::gfx::Gfx) {
-        let (e, ui) = if self.game_style() == GameStyle::Original {
-            (Extras::OPENSGOLF, crate::extras::Settings::ALL_ON)
-        } else {
-            (Extras::default(), crate::extras::Settings::ALL_OFF)
-        };
+        let (mut e, mut ui) = (self.extras_next, crate::extras::settings());
+        if Preset::of(&e, &ui) == Preset::Custom {
+            remember_custom(&e, &ui);
+        }
+        let p = cycle_preset(self.game_style(), &mut e, &mut ui, custom_mix());
         self.extras_next = e;
         save(&e);
-        // the two pauses and the update check stay as the player ticked them
-        let now = crate::extras::settings();
-        let ui = crate::extras::Settings {
-            pause_background: now.pause_background,
-            pause_events: now.pause_events,
-            update_check: now.update_check,
-            ..ui
-        };
         crate::extras::set(ui);
         crate::extras::save(&ui);
-        if ui.style() == crate::extras::Settings::ALL_OFF {
+        if !ui.path_help {
             self.xs.path_view = false;
+        }
+        if p == Preset::Original {
             let mut enh = crate::enhanced::settings();
             if enh.enabled {
                 enh.enabled = false;
@@ -385,14 +645,24 @@ impl App {
         }
     }
 
-    /// The Extras box's OK: the game being played takes the ticked extras, and they become the default for new games.
+    /// The Extras box's OK. In a game, the game takes the ticked extras (kept in its save) and new games still start with
+    /// the extras chosen on the title screens (#137: a sandbox game's extras carried over into the next standard game). On
+    /// the title screens they are what new games start with, saved for the next run.
     pub fn set_extras(&mut self, e: Extras) {
+        if self.land.is_none() || self.on_title() {
+            self.extras_next = e;
+            save(&e);
+            return;
+        }
+        // a game's own extras changed while it is played: an action (replay.rs)
+        if self.rec.depth_zero() {
+            self.act(sg_core::action::Action::Extras(e));
+            return;
+        }
         // a new path style redraws the paths (paths_lamps.rs)
         self.dirty |= self.club.extras.path_material() != e.path_material();
         self.club.extras = e;
         self.econ.extras = e;
-        self.extras_next = e;
-        save(&e);
         if !e.cut_content && !e.animals && !e.lamps() {
             self.strip_page = PAGE_OWNED;
         }
@@ -405,7 +675,8 @@ impl App {
     /// out of `PAR_RANGE`, nothing at all when the hole's par may not be changed now).
     pub fn par_buttons(&self) -> Vec<(i32, Rect)> {
         let h = self.info.stats_hole.clamp(1, 18);
-        if !self.club.can_set_par(h) {
+        // (Course A's holes only: the Second course extra's Course B keeps the game's pars, sg_core::second)
+        if self.hole_b() || !self.club.can_set_par(h) {
             return Vec::new();
         }
         let par = self.club.holes[h].par;
@@ -430,8 +701,36 @@ impl App {
         }
     }
 
+    /// The Hole flyover extra's button on Hole Stats (showcase.rs): only for an open hole.
+    pub fn flyover_button(&self) -> Option<Rect> {
+        let h = self.info.stats_hole.clamp(1, 18);
+        (crate::extras::hole_flyover() && self.club.holes[h].par != 0).then(|| Rect::new(652.0, 36.0, 96.0, 22.0))
+    }
+
+    /// Draws the Fly over button (lit under the pointer), in the par buttons' colours.
+    pub fn draw_flyover_button(&self, g: &mut crate::gfx::Gfx, s: &crate::ui::Screen) {
+        use crate::info_ui::c15;
+        let Some(r) = self.flyover_button() else { return };
+        let (px, py) = self.info.pointer;
+        let lit = r.has(px, py);
+        s.fill(g, r.x - 1.0, r.y - 1.0, r.w + 2.0, r.h + 2.0, c15(0x0000));
+        s.fill(g, r.x, r.y, r.w, r.h, c15(if lit { 0x5ade } else { 0x3dd4 }));
+        s.text_centered(
+            g,
+            r.x + r.w * 0.5,
+            r.y + 16.0,
+            sg_core::lang::tr("STR_HOLESTATS_FLY_OVER"),
+            14.0,
+            c15(if lit { 0x7fff } else { 0x0000 }),
+        );
+    }
+
     /// A click on Hole Stats: a par button asks to confirm the change (true), anything else is the original's close.
     pub fn hole_stats_click(&mut self, x: f32, y: f32) -> bool {
+        if self.flyover_button().is_some_and(|r| r.has(x, y)) {
+            let h = self.info.stats_hole.clamp(1, 18);
+            return self.start_flyover(h);
+        }
         let Some((p, _)) = self.par_buttons().into_iter().find(|(_, r)| r.has(x, y)) else { return false };
         self.ask_par(p);
         true
@@ -463,13 +762,14 @@ impl App {
     /// The confirmation box's Yes: the hole gets the par asked for.
     pub fn confirm_par(&mut self) {
         if let Some((h, p)) = self.par_change.take() {
-            self.club.set_par(h, p);
+            self.act(sg_core::action::Action::SetPar { hole: h as i32, par: p });
         }
     }
 
-    /// The gameplay extras the extras box shows: in a game, its own; on the title screens, what the next game starts with.
+    /// The gameplay extras the extras box shows: in a game, its own; on the title screens (a game left there too), what the
+    /// next game starts with.
     pub fn extras_shown(&self) -> Extras {
-        if self.land.is_some() {
+        if self.land.is_some() && !self.on_title() {
             self.club.extras
         } else {
             self.extras_next
@@ -481,7 +781,7 @@ impl App {
     /// one of those (the original's Tab is not taken then).
     pub fn extras_tab(&mut self) -> bool {
         // Path styles and lamps: with the Pathway tool in hand, Tab steps the course's path style (paths_lamps.rs)
-        if self.edit && self.tool == 2 && self.next_path_style() {
+        if self.edit && self.tool == 2 && self.club.extras.lamps() && self.act(sg_core::action::Action::PathStyle) {
             return true;
         }
         if !self.club.extras.rotate {
@@ -507,6 +807,11 @@ impl App {
             return false;
         }
         let (a, b) = self.terrain.tile_of(self.hit_x, self.hit_z);
+        self.act(sg_core::action::Action::Turn { x: a, y: b })
+    }
+
+    /// The Rotate extra's turn of the building whose footprint holds tile a, b: the Turn action (replay.rs).
+    pub(crate) fn turn_building(&mut self, a: i32, b: i32) -> bool {
         self.ensure_land();
         let Some(l) = self.land.as_mut() else { return false };
         // any object whose footprint holds the tile (the generator's clubhouse carries no footprint flag, so not object_on)
@@ -528,7 +833,8 @@ impl App {
         if self.club.landmarks_shown() & 0x3fff != 0 {
             v.push(PAGE_OWNED);
         }
-        if self.club.extras.cut_content {
+        // the cut landmarks' art is the original game's: no page on the free base set (a game with the extra on keeps it)
+        if self.club.extras.cut_content && !self.on_free_set() {
             v.push(PAGE_CUT);
         }
         if self.club.extras.animals && !sg_core::wildlife::buyable_kinds(self.exe_theme()).is_empty() {
@@ -635,67 +941,221 @@ impl App {
             self.ui_sound(24);
             return self.show_toast(sg_core::lang::tr("STR_TOAST_ANIMALS_FULL"));
         }
+        let cash = self.econ.cash;
         self.econ.spend_to(sg_core::economy::LEDGER_FACILITIES, cost);
+        self.float_change(cash, (a, b));
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::extras::Settings;
 
     #[test]
     fn every_option_is_on_exactly_one_page() {
         let all: Vec<ExtrasLine> = PAGE_LINES.iter().flat_map(|p| p.iter().copied()).collect();
-        let want: Vec<ExtrasLine> = (0..sg_core::extras::OPTION_KEYS.len())
-            .map(ExtrasLine::Game)
-            .chain((0..crate::extras::UI_KEYS.len()).map(ExtrasLine::Ui))
-            .collect();
-        for l in &want {
+        for l in &all {
             assert_eq!(all.iter().filter(|&m| m == l).count(), 1, "{l:?} must be on exactly one page");
         }
-        assert_eq!(all.len(), want.len());
+        // every gameplay option: on a page, or (Slower seasons, Pause the calendar) the Calendar line
+        for i in 0..sg_core::extras::OPTION_KEYS.len() {
+            let shown = all.contains(&ExtrasLine::Game(i));
+            assert_eq!(shown, i != 6 && i != 7, "option {i}");
+        }
+        assert!(all.contains(&ExtrasLine::Calendar));
+        // every interface tick: on a page, in exactly one group, or (the update check) on Preferences itself; the retired
+        // desert art tick nowhere
+        for b in 0..crate::extras::UI_KEYS.len() {
+            let places = all.contains(&ExtrasLine::Ui(b)) as usize
+                + GROUPS.iter().filter(|g| g.2.contains(&b)).count()
+                + (b == UPDATE_CHECK || b == RETIRED_DESERT_ART) as usize;
+            assert_eq!(places, 1, "interface extra {b}");
+        }
         assert_eq!(PAGES.len(), PAGE_LINES.len());
         assert_eq!(BANNERS.len(), PAGES.len());
+        assert_eq!(page_lines(3).len(), 5, "the Info page's five lines");
     }
 
     #[test]
-    fn gameplay_pages_are_tagged_and_the_others_not() {
+    fn each_page_holds_one_class() {
+        use sg_core::extras as x;
         for (p, lines) in PAGE_LINES.iter().enumerate() {
             for &l in lines.iter() {
-                let tagged = p <= 1;
-                assert_eq!(tag(l).is_some(), tagged, "{l:?} on page {p}");
-                assert_eq!(page_of(l), p as u8);
+                assert_eq!(tag(l).is_some(), p <= 1, "{l:?} on page {p}");
+                assert_eq!(page_of(l), Some(p as u8));
             }
         }
+        // looks: only the picture changes
+        for l in [ExtrasLine::Game(0), ExtrasLine::Game(x::PATHS), ExtrasLine::Ui(21), ExtrasLine::Ui(26), ExtrasLine::Ui(28)] {
+            assert_eq!(page_of(l), Some(2), "{l:?}");
+        }
+        // animals cost money and lift moods: gameplay, a light touch
+        assert_eq!((page_of(ExtrasLine::Game(4)), tag(ExtrasLine::Game(4))), (Some(0), Some(Tag::Light)));
         assert_eq!(tag(ExtrasLine::Game(2)), Some(Tag::Big), "hardcore");
-        assert_eq!(tag(ExtrasLine::Game(sg_core::extras::WEATHER)), Some(Tag::Noticeable));
-        assert_eq!(tag(ExtrasLine::Game(sg_core::extras::SEASON_SPEED)), Some(Tag::Noticeable));
-        assert_eq!(tag(ExtrasLine::Game(sg_core::extras::LEFTIES)), Some(Tag::Light));
-        assert_eq!(page_of(ExtrasLine::Game(sg_core::extras::PATHS)), 2);
-        assert_eq!(page_of(ExtrasLine::Ui(5)), 4, "autosave");
-        assert_eq!(page_of(ExtrasLine::Ui(0)), 3, "People");
+        assert_eq!(tag(ExtrasLine::Game(CUT)), Some(Tag::Experimental));
+        assert_eq!(tag(ExtrasLine::Game(x::WEATHER)), Some(Tag::Noticeable));
+        assert_eq!(tag(ExtrasLine::Calendar), Some(Tag::Noticeable));
+        assert_eq!(tag(ExtrasLine::Game(x::LEFTIES)), Some(Tag::Light));
+        assert_eq!((page_of(ExtrasLine::Game(x::KEEP_LAND)), tag(ExtrasLine::Game(x::KEEP_LAND))), (Some(1), Some(Tag::Light)));
+        assert_eq!((page_of(ExtrasLine::Game(x::SECOND_COURSE)), tag(ExtrasLine::Game(x::SECOND_COURSE))), (Some(0), Some(Tag::Big)));
+        assert_eq!((page_of(ExtrasLine::Game(x::TEES)), tag(ExtrasLine::Game(x::TEES))), (Some(0), Some(Tag::Light)));
+        assert_eq!(page_of(ExtrasLine::Ui(5)), Some(4), "autosave");
+        // the Controls page holds the mouse ticks, the most wanted first, then the two pauses
+        assert_eq!(page_lines(5), [14, 25, 15, 20, 27, 24, 8, 9].map(ExtrasLine::Ui));
+        // the Saves page holds the saving and sharing ticks only, autosave first
+        assert_eq!(page_lines(4), [ExtrasLine::Ui(5), ExtrasLine::Ui(22), ExtrasLine::Ui(7), ExtrasLine::Ui(6)]);
+        // the most wanted first: weather on Gameplay, the interface at the edges on Looks; the experimental line last
+        assert_eq!(page_lines(0)[0], ExtrasLine::Game(x::WEATHER));
+        assert_eq!(page_lines(2)[0], ExtrasLine::Ui(26));
+        assert_eq!(page_lines(0).last(), Some(&ExtrasLine::Game(CUT)));
+        assert_eq!((page_of(ExtrasLine::Preset), tag(ExtrasLine::Preset)), (None, None));
+        assert_eq!(page_of(ExtrasLine::Ui(UPDATE_CHECK)), None);
+    }
+
+    #[test]
+    fn the_cut_content_shows_only_with_the_original_files() {
+        assert!(page_lines(0).contains(&ExtrasLine::Game(CUT)));
+        show_cut_content(false);
+        assert!(!page_lines(0).contains(&ExtrasLine::Game(CUT)));
+        let n = popup_lines(0, &Extras::default(), &Settings::ALL_OFF).len();
+        show_cut_content(true);
+        // the box keeps its size either way (most_lines counts the hidden line)
+        assert_eq!(popup_lines(0, &Extras::default(), &Settings::ALL_OFF).len(), n);
     }
 
     #[test]
     fn every_line_and_page_has_its_words() {
         let keys = PAGES.iter().chain(&BANNERS).chain(&HINTS).chain(&GAME_DESC).chain(&UI_DESC);
-        for k in keys.chain([Tag::Light, Tag::Noticeable, Tag::Big].map(Tag::key).iter()) {
+        let groups = GROUPS.iter().flat_map(|g| [g.0, g.1]);
+        let presets = Preset::ALL.iter().flat_map(|p| [p.key(), p.desc()]);
+        let more = ["STR_EXTRAS_CALENDAR", "STR_EXTRAS_DESC_CALENDAR", "STR_EXTRAS_SOME_ON", "STR_EXTRAS_PRESET"];
+        for k in keys.copied().chain(Tag::ALL.map(Tag::key)).chain(groups).chain(presets).chain(more).chain(sg_core::extras::CALENDAR_KEYS)
+        {
             assert!(sg_core::lang::has(k), "lang/en.txt has no {k}");
         }
-        // the foot shows the line's description, or the page's hint with none under the pointer
-        assert_eq!(foot_text(2, Some(0)), (sg_core::lang::tr("STR_EXTRAS_DESC_PATHS"), true));
-        assert!(!foot_text(2, Some(5)).1);
-        assert!(!foot_text(3, None).1);
+        // the foot shows the line's description (the box's option 0 is the preset line), or the page's hint with none
+        let (e, ui) = (Extras::default(), Settings::ALL_OFF);
+        assert_eq!(foot_text(2, Some(2), &e, &ui), (sg_core::lang::tr("STR_EXTRAS_DESC_PATHS"), true));
+        assert_eq!(foot_text(2, Some(0), &e, &ui), (sg_core::lang::tr("STR_PRESET_DESC_ORIGINAL"), true));
+        assert_eq!(foot_text(0, Some(0), &Extras::OPENSGOLF, &Settings::HELPERS).0, sg_core::lang::tr("STR_PRESET_DESC_OPENSGOLF"));
+        assert!(!foot_text(2, Some(7), &e, &ui).1);
+        assert!(!foot_text(3, None, &e, &ui).1);
     }
 
     #[test]
-    fn every_page_is_as_tall() {
-        let (e, ui) = (Extras::default(), crate::extras::Settings::ALL_OFF);
+    fn every_page_is_as_tall_and_the_preset_heads_it() {
+        let (e, ui) = (Extras::default(), Settings::ALL_OFF);
         let n = popup_lines(0, &e, &ui).len();
         for p in 0..PAGES.len() as u8 {
-            assert_eq!(popup_lines(p, &e, &ui).len(), n);
-            // the foot's rows are no options (lines starting with a space)
-            assert!(popup_lines(p, &e, &ui)[n - FOOT_LINES..].iter().all(|l| l.is_empty()));
+            let lines = popup_lines(p, &e, &ui);
+            assert_eq!(lines.len(), n);
+            // the foot's rows are no options
+            assert!(lines[n - FOOT_LINES..].iter().all(|l| l.is_empty()));
+            // the preset line is the first option, over the tabs, and drawn without a tick box
+            assert!(lines[1].starts_with(' ') && lines[2].is_empty());
+            assert_eq!(box_lines(p)[0], ExtrasLine::Preset);
+            assert_eq!(popup_plain(p) & 1, 1);
         }
+        // the tallest box still fits an 800 x 600 screen from the box's top (popup_ui: 92)
+        assert!(92.0 + (n as f32 * 3.0 + 3.0) * 8.0 <= 584.0, "{n} lines");
+    }
+
+    #[test]
+    fn presets_match_their_ticks_and_keep_the_players_own() {
+        use Preset::*;
+        let none = Settings::ALL_OFF;
+        assert_eq!(Preset::of(&Extras::default(), &none), Original);
+        assert_eq!(Preset::of(&Extras::LOOKS, &Settings::HELPERS), Helpers);
+        assert_eq!(Preset::of(&Extras::OPENSGOLF, &Settings::HELPERS), OpenSGolf);
+        // the OpenSGolf preset: helpers, looks, more staff, animals, weather, tees, the second course; nothing else
+        let o = Extras::OPENSGOLF;
+        assert!(o.more_staff && o.animals && o.rotate && o.path_style == 1 && o.weather && o.tees && o.second_course);
+        assert!(!o.more_visitors && !o.hardcore && !o.lefties && !o.set_par && !o.cut_content && !o.keep_land);
+        assert!(o.calendar() == 0 && !o.freeze_moods && !o.unlock_all && !o.no_weeds);
+        let fewer = Extras { more_staff: false, animals: false, weather: false, tees: false, second_course: false, ..o };
+        assert_eq!(fewer, Extras::LOOKS);
+        // the kept ticks (pauses, update check, controls presets) do not count
+        let kept = Settings {
+            pause_background: true,
+            pause_events: true,
+            update_check: true,
+            zoom_pointer: true,
+            drag_place: true,
+            right_drag: true,
+            mouse_swing: true,
+            ..Settings::ALL_OFF
+        };
+        assert_eq!(Preset::of(&Extras::default(), &kept), Original);
+        assert_eq!(Preset::of(&Extras::OPENSGOLF, &Settings { right_drag: true, ..Settings::HELPERS }), OpenSGolf);
+        // any path style is the path styles of the presets; a stopped calendar is one whatever speed is stored
+        assert_eq!(Preset::of(&Extras { path_style: 4, ..Extras::OPENSGOLF }, &Settings::HELPERS), OpenSGolf);
+        // one tick more or less is the player's own mix
+        assert_eq!(Preset::of(&Extras { weather: false, ..Extras::OPENSGOLF }, &Settings::HELPERS), Custom);
+        assert_eq!(Preset::of(&Extras::default(), &Settings { people: true, ..none }), Custom);
+        assert_eq!(Preset::of(&Extras::LOOKS, &Settings { random_trees: false, ..Settings::HELPERS }), Custom);
+        assert_eq!(Preset::of(&Extras { pause_calendar: true, season_speed: 2, ..Extras::default() }, &none), Custom);
+        // applying keeps the kept ticks and a chosen path style
+        let (mut e, mut ui) = (Extras { path_style: 3, hardcore: true, ..Extras::default() }, kept);
+        assert!(OpenSGolf.apply(&mut e, &mut ui, None));
+        assert_eq!((e, ui), (Extras { path_style: 3, ..Extras::OPENSGOLF }, Settings::HELPERS.with_kept(&kept)));
+        assert_eq!(Preset::of(&e, &ui), OpenSGolf);
+        assert!(Original.apply(&mut e, &mut ui, None));
+        assert_eq!((e, ui), (Extras::default(), kept));
+        assert!(!Custom.apply(&mut e, &mut ui, None), "no mix of the player's own to go back to");
+    }
+
+    #[test]
+    fn the_preset_line_cycles_and_custom_comes_back() {
+        use Preset::*;
+        let (mut e, mut ui) = (Extras::default(), Settings::ALL_OFF);
+        let mut seen = Vec::new();
+        for _ in 0..4 {
+            seen.push(cycle_preset(Preset::of(&e, &ui), &mut e, &mut ui, None));
+        }
+        assert_eq!(seen, vec![Helpers, OpenSGolf, Original, Helpers], "no Custom without a mix");
+        let mine = (Extras { weather: true, ..Extras::default() }, Settings { people: true, ..Settings::ALL_OFF });
+        let mut seen = Vec::new();
+        for _ in 0..4 {
+            seen.push(cycle_preset(Preset::of(&e, &ui), &mut e, &mut ui, Some(mine)));
+        }
+        assert_eq!(seen, vec![OpenSGolf, Custom, Original, Helpers]);
+        // Custom brings the mix back, the kept ticks as they are now
+        let (mut e, mut ui) = (Extras::OPENSGOLF, Settings { pause_events: true, ..Settings::HELPERS });
+        assert_eq!(cycle_preset(OpenSGolf, &mut e, &mut ui, Some(mine)), Custom);
+        assert_eq!((e, ui), (mine.0, Settings { pause_events: true, ..mine.1 }));
+        // a kept "mix" that is a preset is no mix
+        assert_eq!(cycle_preset(OpenSGolf, &mut e, &mut ui, Some((Extras::default(), Settings::ALL_OFF))), Original);
+    }
+
+    #[test]
+    fn the_calendar_and_the_groups_are_one_line_each() {
+        let ui = Settings::ALL_OFF;
+        let mut e = Extras::default();
+        let mut shown = Vec::new();
+        for _ in 0..4 {
+            toggle_line(ExtrasLine::Calendar, &mut e, &mut ui.clone());
+            shown.push(line_text(ExtrasLine::Calendar, &e, &ui));
+        }
+        assert_eq!(shown.iter().map(|t| t.1).collect::<Vec<_>>(), [true, true, true, false]);
+        assert!(shown[2].0.contains(sg_core::lang::tr("STR_EXTRAS_CALENDAR_STOPPED")) && e.is_off());
+        // a group: all on, mixed (shown as some on; a click turns all on), all off
+        let people = ExtrasLine::Group(0);
+        let mut ui = Settings { name_tags: true, ..Settings::ALL_OFF };
+        assert_eq!(line_value(people, &e, &ui), 2);
+        assert!(!line_text(people, &e, &ui).1 && line_text(people, &e, &ui).0.contains("("));
+        toggle_line(people, &mut e, &mut ui);
+        assert!(ui.people && ui.name_tags && ui.live_scorecards && line_text(people, &e, &ui).1);
+        toggle_line(people, &mut e, &mut ui);
+        assert_eq!(ui, Settings::ALL_OFF);
+        // the groups' ticks stay single bits: the reports line ticks its five
+        toggle_line(ExtrasLine::Group(1), &mut e, &mut ui);
+        assert_eq!(
+            ui,
+            Settings { landing_map: true, hole_comments: true, graphs: true, year_summary: true, report_tabs: true, ..Settings::ALL_OFF }
+        );
+        // the box's lines measure every value they can show (no change of size on a click)
+        let w = popup_widest(&e, &ui);
+        assert_eq!(w, popup_widest(&Extras::OPENSGOLF, &Settings { people: true, ..Settings::HELPERS }));
     }
 }

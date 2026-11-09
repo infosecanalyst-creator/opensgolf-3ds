@@ -266,6 +266,8 @@ pub fn write_fixture(dir: &Path, font: Option<&Path>) {
         };
         put(dir, &format!("Data/Textures/{theme}/Path.tga"), &path(true));
         put(dir, &format!("Data/Textures/{theme}/PathX.tga"), &path(true));
+        put(dir, &format!("Data/Textures/{theme}/PathInside.tga"), &path(true));
+        put(dir, &format!("Data/Textures/{theme}/PathInsideX.tga"), &path(true));
         put(dir, &format!("Data/Textures/{theme}/PathCurve.tga"), &path(false));
         put(dir, &format!("Data/Textures/{theme}/PathCurveX.tga"), &path(false));
         put(

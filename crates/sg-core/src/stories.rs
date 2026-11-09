@@ -1,6 +1,6 @@
 //! Golfer stories (the exe's story system): each text file in the theme's folder is a story of four scenes for a pair of
-//! golfers, chosen when the pair goes to the first tee if the file name's code fits them. About once a hole, when the two
-//! walk close together, the story's owner speaks the next scene's opening line and the partner answers with a reply as good as
+//! golfers, chosen when the pair goes to the first tee if the file name's code fits them. At most once a hole, when the two
+//! walk close together while the player watches the owner close up, the story's owner speaks the next scene's opening line and the partner answers with a reply as good as
 //! the partner's mood allows; the best reply passes the scene, and passing the fourth is a Happy Ending that unlocks a
 //! landmark.
 //!
@@ -264,9 +264,17 @@ impl Club {
         }
     }
 
+    /// Whether the player is watching the story's owner g, as a beat needs (0x428c07, 0x428c57..0x428c8e): no ticker message
+    /// up, the view at the closest zoom, and the owner's screen point (`sx`, `sy`, which the drawing code sets each frame,
+    /// -1 off screen) inside the 800 x 600 screen's 50 pixel border and above the dock (x 51..749, y 51..449).
+    pub fn story_watched(&self, g: usize) -> bool {
+        let gg = &self.g[g];
+        !self.message_up && self.view_close && (51..750).contains(&gg.sx) && (51..450).contains(&gg.sy)
+    }
+
     /// The automatic story trigger in the golfer update (owner g): the pair on one hole, both standing, close enough for the
-    /// scene, at most one beat a hole and 150 ticks after the last one on the course. (The exe also needs the owner on screen
-    /// and the view zoomed in; the port lets stories run wherever the camera is.)
+    /// scene, at most one beat a hole and 150 ticks after the last one on the course, and only while the player watches
+    /// the owner close up (`story_watched`).
     pub(crate) fn story_trigger(&mut self, c: &mut Course, rng: &mut ExeRng, g: usize) {
         let gg = &self.g[g];
         if gg.flags & flag::STORY == 0 || gg.flags & flag::STORY_BEAT != 0 {
@@ -284,7 +292,7 @@ impl Club {
         if !standing(gg.anim) || !standing(pp.anim) || self.tick.wrapping_sub(self.last_beat) <= 150 {
             return;
         }
-        if len(gg.x - pp.x, gg.y - pp.y) >= 0x3000 / (gg.story_step + 6) {
+        if len(gg.x - pp.x, gg.y - pp.y) >= 0x3000 / (gg.story_step + 6) || !self.story_watched(g) {
             return;
         }
         if c.landmark_bits(gg.x, gg.y) & 8 == 8 {
@@ -472,7 +480,7 @@ impl Club {
         loop {
             if inside(a, b) {
                 let t = c.ty[idx(a, b)];
-                if c.row(t).class == 4 && t != crate::course::t::BUILDING && c.flags[idx(a, b)] & 0x320 == 0 {
+                if crate::land::class(t) == 4 && t != crate::course::t::BUILDING && c.flags[idx(a, b)] & 0x320 == 0 {
                     break;
                 }
             }
@@ -535,5 +543,73 @@ mod tests {
         assert_eq!(s.line(0, 2, 0, false), " Bad two");
         // past the last reply: the last one
         assert_eq!(s.line(0, 1, -5, false), " Fine reply");
+    }
+
+    /// A story pair (owner 0, partner 1) standing side by side on hole 2, ready for a beat at tick 0x400 with the owner
+    /// on screen at (`sx`, `sy`).
+    fn ready_pair(sx: i32, sy: i32) -> (Course, Club) {
+        let (c, mut club) = crate::golfer::tests::test_course();
+        club.stories = Stories::build(&[("AxxxxxxxAlpha.txt".to_string(), TEXT.to_string())], 0);
+        club.tick = 0x400;
+        club.last_beat = 0;
+        for (g, x) in [(0, 20 << 10), (1, (20 << 10) + 300)] {
+            let gg = &mut club.g[g];
+            gg.story = 0;
+            gg.partner = 1 - g as i32;
+            gg.hole = 2;
+            gg.strokes = 2;
+            gg.anim = anim::STAND;
+            gg.x = x;
+            gg.y = 25 << 10;
+            gg.mood = 8;
+            gg.smooth_mood = 20;
+            gg.sx = sx;
+            gg.sy = sy;
+        }
+        club.g[0].flags |= flag::STORY;
+        (c, club)
+    }
+
+    fn beats(club: &mut Club, c: &mut Course) -> bool {
+        let mut rng = ExeRng { state: 7 };
+        club.story_trigger(c, &mut rng, 0);
+        club.g[0].flags & flag::STORY_BEAT != 0
+    }
+
+    #[test]
+    fn a_beat_needs_the_owner_watched_close_up() {
+        // watched: the beat comes
+        let (mut c, mut club) = ready_pair(400, 300);
+        assert!(beats(&mut club, &mut c));
+        assert_eq!(club.g[0].story_step, 1);
+        assert_eq!(club.last_beat, 0x400);
+        // the exe's border: x 51..749, y 51..449 of the 800 x 600 screen
+        for (sx, sy, want) in [
+            (51, 51, true),
+            (749, 449, true),
+            (50, 300, false),
+            (750, 300, false),
+            (400, 50, false),
+            (400, 450, false),
+            (400, 500, false),
+            (-1, -1, false),
+        ] {
+            let (mut c, mut club) = ready_pair(sx, sy);
+            assert_eq!(club.story_watched(0), want, "{sx},{sy}");
+            assert_eq!(beats(&mut club, &mut c), want, "{sx},{sy}");
+        }
+        // zoomed out, or a ticker message up: nothing happens, and nothing is used up
+        let (mut c, mut club) = ready_pair(400, 300);
+        club.view_close = false;
+        assert!(!beats(&mut club, &mut c));
+        assert_eq!((club.g[0].story_step, club.last_beat), (0, 0));
+        let (mut c, mut club) = ready_pair(400, 300);
+        club.message_up = true;
+        assert!(!beats(&mut club, &mut c));
+        // only the owner's place counts (the partner may be off screen)
+        let (mut c, mut club) = ready_pair(400, 300);
+        club.g[1].sx = -1;
+        club.g[1].sy = -1;
+        assert!(beats(&mut club, &mut c));
     }
 }

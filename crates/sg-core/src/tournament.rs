@@ -451,7 +451,7 @@ impl Club {
                     }
                     let i = idx(a, b);
                     let ty = c.ty[i];
-                    let class = crate::data::row(ty).class;
+                    let class = crate::land::class(ty);
                     if (class == 4 || class == 13) && ty != crate::course::t::BUILDING && c.flags[i] & (f::LOW | f::CUP | f::OBSTACLE) == 0
                     {
                         let (dx, dy) = (pin.0 - a, pin.1 - b);

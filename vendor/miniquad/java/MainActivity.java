@@ -222,6 +222,16 @@ class QuadSurface
         }
     }
 
+    // racing wheels, pedals and flight sticks are left alone (gamepad.rs `not_a_gamepad`, #169)
+    private static boolean notAPad(InputDevice d) {
+        if (d == null) return false;
+        String n = d.getName().toLowerCase(java.util.Locale.ROOT);
+        String[] words = {"wheel", "pedal", "racing", "driving force", "g29", "g920", "g923", "g27", "g25", "fanatec",
+                "thrustmaster t", "flight", "hotas", "throttle", "rudder", "yoke"};
+        for (String w : words) if (n.contains(w)) return true;
+        return false;
+    }
+
     private void sendPad() {
         QuadNative.surfaceOnGamepad(padButtons, padLx, padLy, padRx, padRy);
     }
@@ -230,7 +240,7 @@ class QuadSurface
     @Override
     public boolean onGenericMotionEvent(MotionEvent e) {
         if ((e.getSource() & InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK
-                && e.getAction() == MotionEvent.ACTION_MOVE) {
+                && e.getAction() == MotionEvent.ACTION_MOVE && !notAPad(e.getDevice())) {
             padLx = e.getAxisValue(MotionEvent.AXIS_X);
             padLy = e.getAxisValue(MotionEvent.AXIS_Y);
             padRx = e.getAxisValue(MotionEvent.AXIS_Z);

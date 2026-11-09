@@ -1,0 +1,3 @@
+* A one-finger drag only scrolls the view
+* The aim's label no longer hides the end of the shot
+* No hard circles in the sky after rain (Enhanced graphics)

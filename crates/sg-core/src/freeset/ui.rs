@@ -3,6 +3,7 @@
 //! (manifest.txt) so every cut finds a finished piece of art. Some sheets get their own drawing: the terrain buttons (a
 //! small tile of each terrain), the hole signs (their numbers), the faces and the title screen (the OpenSGolf name).
 use super::enc;
+use super::face::{face, faces};
 use super::paint::{alpha as with_alpha, mix, rgb, sd_ellipse, sd_poly, sd_rect, shade, smooth_noise, Canvas, Col};
 use super::{hash, theme_of, Comp, Entry, Item};
 
@@ -143,7 +144,7 @@ fn is_tray(p: &Comp) -> bool {
 
 /// The tray as the drawn panels have it (tools/freeset_art/ui.py terrain_panel): a sheet of blue glass with a light rim, its
 /// rounded left end at x 215, y 488, running off the right of the screen.
-fn glass_tray(c: &mut Canvas) {
+pub(super) fn glass_tray(c: &mut Canvas) {
     let (x, y, w, h, r) = (215.0, 488.0, 620.0, 140.0, 40.0);
     c.fill(
         (x, y, 800.0, 600.0),
@@ -342,6 +343,9 @@ fn draw(low: &str, name: &str, w: usize, h: usize, comps: &[Comp], full: bool) -
         }
         return c;
     }
+    if let Some(c) = super::people::sheet(name, w, h) {
+        return c;
+    }
     // tiny pieces are the original sheets' guide marks and stray specks, not art the engine cuts: drawing them left blobs
     let st = if low.contains("infoscreens/") { stacks(comps) } else { vec![Stack::Alone; comps.len()] };
     for (p, s) in comps.iter().zip(st).filter(|(p, _)| p.w * p.h >= 60.0 && p.w.min(p.h) >= 4.0) {
@@ -458,7 +462,7 @@ fn difficulty_lit(c: &mut Canvas) {
 }
 
 #[derive(Clone, Copy, PartialEq)]
-enum Glyph {
+pub(super) enum Glyph {
     Build,
     House,
     People,
@@ -500,7 +504,7 @@ fn round_button(c: &mut Canvas, x: f32, y: f32, r: f32, col: Col, g: Glyph) {
 }
 
 /// A simple white symbol in a circle of radius r.
-fn glyph(c: &mut Canvas, g: Glyph, x: f32, y: f32, r: f32, col: Col) {
+pub(super) fn glyph(c: &mut Canvas, g: Glyph, x: f32, y: f32, r: f32, col: Col) {
     let w = (r * 0.22).max(1.5);
     match g {
         Glyph::Build => {
@@ -831,77 +835,6 @@ fn hole_numbers(c: &mut Canvas, comps: &[Comp]) {
         c.text(&n.to_string(), p.x + p.w / 2.0, p.y + 1.0, (p.h * 0.6).max(8.0), rgb(30, 60, 30), 1);
         c.line(p.x + p.w / 2.0, p.y + p.h * 0.7, p.x + p.w / 2.0, p.y + p.h, 1.5, rgb(120, 90, 60));
     }
-}
-
-/// Faces: the halo page (140 x 140 cells, two heads to a column, three expressions each) or the expressions page (90 x
-/// 120 cells, 100 apart, rows 372 apart).
-fn faces(c: &mut Canvas, name: &str, female: bool) {
-    let halo = name.starts_with("golfballhalopage");
-    for head in 0..19u8 {
-        for e in 0..3 {
-            let (cx, cy, r) = if halo {
-                ((head / 2) as f32 * 140.0 + 70.0, (head & 1) as f32 * 420.0 + e as f32 * 140.0 + 72.0, 50.0)
-            } else {
-                ((head / 2) as f32 * 100.0 + 45.0, (head & 1) as f32 * 372.0 + [4.0, 128.0, 252.0][e] + 62.0, 36.0)
-            };
-            face(c, cx, cy, r, head, e, female);
-        }
-    }
-}
-
-/// A cartoon face: skin, hair, eyes and a mouth for the expression (0 happy, 1 neutral, 2 cross).
-pub fn face(c: &mut Canvas, cx: f32, cy: f32, r: f32, head: u8, e: usize, female: bool) {
-    const SKINS: [Col; 4] = [rgb(244, 206, 172), rgb(212, 158, 112), rgb(160, 108, 70), rgb(108, 72, 50)];
-    const HAIR: [Col; 6] = [rgb(90, 60, 35), rgb(35, 30, 30), rgb(222, 186, 106), rgb(168, 72, 36), rgb(176, 176, 176), rgb(120, 82, 50)];
-    let skin = SKINS[(head as usize * 7 / 3) % 4];
-    let hair = HAIR[(head as usize * 5) % 6];
-    let long = female;
-    if long {
-        c.round_rect(cx - r * 0.95, cy - r * 0.9, r * 1.9, r * 1.75, r * 0.7, shade(hair, -0.15));
-    }
-    // ears, face
-    c.circle(cx - r * 0.8, cy + r * 0.05, r * 0.18, shade(skin, -0.1));
-    c.circle(cx + r * 0.8, cy + r * 0.05, r * 0.18, shade(skin, -0.1));
-    c.fill(
-        (cx - r, cy - r, cx + r, cy + r),
-        |x, y| sd_ellipse(x, y, cx, cy, r * 0.78, r * 0.9),
-        |x, y| shade(skin, 0.1 - ((x - cx) * 0.3 + (y - cy) * 0.5) / r * 0.15),
-    );
-    // hair on top
-    let hair_h = if head.is_multiple_of(3) && !female { 0.25 } else { 0.42 };
-    c.fill(
-        (cx - r, cy - r, cx + r, cy),
-        |x, y| sd_ellipse(x, y, cx, cy - r * 0.45, r * 0.82, r * 0.55).max(y - (cy - r * (0.9 - hair_h * 1.6))),
-        |_, _| hair,
-    );
-    // eyes
-    let ey = cy - r * 0.08;
-    for s in [-1.0f32, 1.0] {
-        let ex = cx + s * r * 0.3;
-        c.ellipse(ex, ey, r * 0.13, r * 0.15, rgb(255, 255, 255));
-        c.circle(ex, ey + r * 0.02, r * 0.07, rgb(40, 40, 50));
-        // brows: raised when happy, angled when cross
-        let tilt = match e {
-            2 => s * -0.12,
-            0 => 0.06,
-            _ => 0.0,
-        } * r;
-        c.line(ex - r * 0.14, ey - r * 0.24 + tilt, ex + r * 0.14, ey - r * 0.24 - tilt, r * 0.05, shade(hair, -0.2));
-    }
-    // nose and mouth
-    c.line(cx, cy + r * 0.0, cx + r * 0.05, cy + r * 0.2, r * 0.05, shade(skin, -0.25));
-    let my = cy + r * 0.45;
-    let curve = match e {
-        0 => 0.16,
-        2 => -0.12,
-        _ => 0.0,
-    };
-    for k in 0..12 {
-        let u = k as f32 / 11.0 * 2.0 - 1.0;
-        let (x0, y0) = (cx + u * r * 0.3, my + (1.0 - u * u) * curve * r);
-        c.circle(x0, y0, r * 0.045, rgb(150, 50, 50));
-    }
-    let _ = female;
 }
 
 #[cfg(test)]

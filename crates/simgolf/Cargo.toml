@@ -53,8 +53,8 @@ ndk-context = "0.1"
 [package.metadata.android]
 package_name = "org.opensgolf.game"
 label = "OpenSGolf"
-version_code = 31
-version_name = "0.4.7"
+version_code = 62
+version_name = "0.7.3"
 min_sdk_version = 26
 target_sdk_version = 33
 build_targets = ["aarch64-linux-android", "armv7-linux-androideabi", "x86_64-linux-android"]
@@ -71,6 +71,8 @@ icon = "@mipmap/ic_launcher"
 name = "android.permission.REQUEST_INSTALL_PACKAGES"
 
 [package.metadata.android.activity_attributes]
+# landscape either way up (SimGolf's screens are 800 x 600): a turn half round needs no restart, and the game reads the
+# surface's size every frame (main.rs update), so it follows the surface whenever Android changes it
 "android:screenOrientation" = "sensorLandscape"
 # Android 12 and newer refuse a launcher activity that does not say this
 "android:exported" = "true"

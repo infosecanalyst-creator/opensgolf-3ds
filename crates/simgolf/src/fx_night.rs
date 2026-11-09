@@ -1,5 +1,5 @@
 //! Enhanced graphics' evening lights (docs/ENHANCED.md, "Evening lights"), with the time of day: from sunset the windows of
-//! the clubhouse and the other buildings glow warm, lamps light up beside the buildings and along the paths with soft pools
+//! the clubhouse and the other buildings glow warm (their own tick, *Lit windows*), lamps light up beside the buildings and along the paths with soft pools
 //! of light on the ground, and on parkland and tropical courses fireflies drift over the rough and near the water at dusk.
 //! The lights fade out again at dawn. Without the time of day there is no evening, and nothing here draws.
 //!
@@ -196,7 +196,8 @@ impl App {
     /// The glow of a building frame's lit windows, cached (None when it has none, or it is not a building). The texture is
     /// padded by GLOW_PAD pixels each way.
     pub(crate) fn fx_window_glow(&mut self, g: &mut Gfx, si: usize, frame_index: usize, classic: TextureId) -> Option<TextureId> {
-        if self.fx.atmos.night <= 0.0 || crate::hd::active() || self.fx_kind(si) != crate::fx_nature::Kind::Building {
+        if self.fx.atmos.night <= 0.0 || crate::hd::active() || self.pack_hires(si) || self.fx_kind(si) != crate::fx_nature::Kind::Building
+        {
             return None;
         }
         if let Some(&(src, t)) = self.fx.night.glow.get(&(si, frame_index)) {
@@ -207,7 +208,7 @@ impl App {
                 g.ctx.delete_texture(t);
             }
         }
-        let img = window_glow(&self.sprites[si].s.frames[frame_index], si as u32 * 7919 + frame_index as u32);
+        let img = window_glow(&self.sprites[si].s.frame(frame_index), si as u32 * 7919 + frame_index as u32);
         let t = img.map(|i| {
             let t = g.texture(&i, false);
             crate::fx::plain_texture(t);
@@ -267,6 +268,7 @@ impl App {
         if k <= 0.0 {
             return;
         }
+        let s = crate::fx::settings();
         let dot = crate::fx::gpu(g).dot;
         let mut v: Vec<Vert> = Vec::new();
         let pool = |v: &mut Vec<Vert>, x: f32, z: f32, y: f32, rad: f32, a: f32| {
@@ -281,7 +283,8 @@ impl App {
                 p(-rad, rad, 0.0, 1.0),
             ]);
         };
-        for (x, z) in self.fx_lamp_spots() {
+        let lamps = if s.evening_lights { self.fx_lamp_spots() } else { Vec::new() };
+        for (x, z) in lamps {
             let y = self.terrain.height_at(x, z) + 0.5;
             pool(&mut v, x, z, y, 1.2 * TILE_SIZE, 0.42 * k);
             pool(&mut v, x, z, y, 0.45 * TILE_SIZE, 0.22 * k);
@@ -292,7 +295,8 @@ impl App {
             pool(&mut v, x, z, y, 1.6 * TILE_SIZE, 0.5 * k);
             pool(&mut v, x, z, y, 0.6 * TILE_SIZE, 0.28 * k);
         }
-        if let Some(l) = &self.land {
+        // the windows' light spilling round the buildings (with the lit windows)
+        if let Some(l) = self.land.as_ref().filter(|_| s.window_lights) {
             for o in l.objects.iter().filter(|o| o.kind >= 6) {
                 let s = l.footprint_size(o) as f32;
                 let (x0, z0) = self.terrain.tile_centre(o.a, o.b);
@@ -309,7 +313,7 @@ impl App {
     /// head with a halo. `px` is world units per 800 x 600 pixel.
     pub(crate) fn fx_lamp_quads(&self, px: f32) -> Vec<(f32, Vec<Vert>)> {
         let k = self.fx.atmos.night;
-        if k <= 0.0 {
+        if k <= 0.0 || !crate::fx::settings().evening_lights {
             return Vec::new();
         }
         let m = self.mv;
@@ -356,7 +360,7 @@ impl App {
         let (w, h) = (self.draw_w, self.draw_h);
         let m = self.mv;
         let upp = self.upp.max(1e-6);
-        let vscale = (w / 800.0).min(h / 600.0);
+        let vscale = crate::ui::view_scale(w, h);
         let seed = self.fx_seed();
         let time = self.fx.time;
         let tw = t.w.max(0) as usize;

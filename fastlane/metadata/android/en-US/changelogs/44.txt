@@ -1,0 +1,1 @@
+* Tropical trees now show with retail CD installs whose tree folders are named with spaces (Tree Cerc, Tree Drac)

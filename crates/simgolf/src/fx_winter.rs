@@ -63,7 +63,7 @@ impl App {
         a.rain *= 1.0 - k;
         a.wet *= 1.0 - k;
         a.puddles *= 1.0 - k;
-        if a.snow > 0.0 || a.snowfall > 0.0 {
+        if (a.snow > 0.0 || a.snowfall > 0.0) && crate::fx::settings().frost {
             a.season.frost = a.season.frost.max(k * 0.6);
         }
         // the same snow on the trees and roofs (fx_nature.rs)
@@ -76,7 +76,7 @@ impl App {
     /// Falling snow: small square flakes drifting down the screen and swaying, pale, in the art's pixel style.
     pub(crate) fn fx_snow_draw(&mut self, g: &mut Gfx, u: &Uniforms, k: f32) {
         let (w, h) = (self.draw_w, self.draw_h);
-        let vscale = (w / 800.0).min(h / 600.0);
+        let vscale = crate::ui::view_scale(w, h);
         let n = ((w * h) / (1920.0 * 1080.0) * 900.0 * k).clamp(30.0, 2500.0) as u32;
         let seed = self.fx_seed();
         let t = self.fx.time;

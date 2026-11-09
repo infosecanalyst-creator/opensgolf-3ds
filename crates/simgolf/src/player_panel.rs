@@ -19,6 +19,12 @@ use sg_core::lang::{tr, trf};
 use sg_core::pro;
 use sg_core::tournament::OFFERED;
 
+/// The room of the aim's lines (the port's own, issue #164): the box from x 336 to 482 they are centred in on x 406.
+const AIM_ROOM: f32 = 140.0;
+/// The room of a skill line in the first column (from x 494, up to the second's x 641) and the second (to the screen's
+/// edge), issue #164. "High Backspin Shot +100%" is 132 pixels wide.
+const SKILL_ROOMS: [f32; 2] = [143.0, 153.0];
+
 /// The body, cut from the sheet and drawn at the same place.
 pub const PLAYER_BODY: Cut = (214.0, 474.0, 586.0, 126.0);
 
@@ -101,6 +107,49 @@ const CARD_ROW0: f32 = 552.0;
 const CARD_DY: f32 = 21.0;
 /// The cover's wide last column (the live scorecards extra writes its totals there).
 const TOTAL_X: f32 = 780.0;
+
+/// The room of the live scorecard's "Total" over its wide last column (issue #164): the cell, x 762 to 797.
+const TOTAL_ROOM: f32 = 35.0;
+/// Where the scorecard's first cell starts (x 436, hole 1's numbers centred on 444): the row labels and the two lines on
+/// the round keep left of it (issue #164).
+const CARD_CELLS: f32 = 436.0;
+/// Where the lines on the round end at most (issue #164): about where "Hole" starts (x 410), as far as the English
+/// "Professional" and "Tournament" from x 325 reach in the free set's face (413 and 411).
+const LINE_END: f32 = 414.0;
+/// The labels' room right of the lines on the round when they move left (a gap, and two pixels before the first cell).
+const LABEL_GAP: f32 = 3.0;
+/// The left edge of the dark header the labels are drawn on (its outline at x 403 on the cover cut): a label that moves
+/// left starts no further left than two pixels inside it, so its white stays on the dark.
+const HEADER_LEFT: f32 = 403.0;
+
+/// The scorecard's heads over the cover cut drawn at `COVER_AT` + `d`: the two lines on the round (`lines`: x and text, in
+/// black Manual SSi Bold 15 with their tops at 522 and 533) and the row labels "Hole" and "Par" in white Arial Bold 10 at
+/// (410, 519) and (414, 534) (0x461110). A line on the round too wide to end before the labels (a translation, the port's
+/// own, issue #164) is drawn a little smaller or cut; a label too wide to end before the first cell ends at the cell
+/// instead and starts as far left as the line on the round beside it and the dark header's edge (`HEADER_LEFT`) leave
+/// it, a little smaller or cut if it still does not fit (ui.rs fit_line). What fits is drawn as the exe draws it.
+pub(crate) fn draw_card_heads(g: &mut Gfx, s: &Ui, d: (f32, f32), lines: [(f32, &str); 2]) {
+    let (white, black) = (c15(0x7fff), c15(0));
+    let fitted = lines.map(|(x, t)| (x, crate::ui::fit_line(crate::ui::fnt_for(BODY), t, LINE_END - x)));
+    let ends = fitted.each_ref().map(|(x, (f, t, _))| x + f.width(t));
+    // "Hole" beside the first line, "Par" beside the second (and the first's descenders)
+    let labels = [(410.0, 519.0, tr("STR_SCORECARD_HOLE"), ends[0]), (414.0, 534.0, tr("STR_SCORECARD_PAR"), ends[0].max(ends[1]))];
+    for (x, ty, t, after) in labels {
+        let f = crate::ui::fnt_for(SMALL);
+        if x + f.width(t) <= CARD_CELLS {
+            s.text(g, x + d.0, top(ty + d.1, SMALL), t, SMALL, white);
+            continue;
+        }
+        let end = CARD_CELLS - 2.0;
+        let start = (after + LABEL_GAP).max(HEADER_LEFT + 2.0).min(x);
+        let (f, t, _) = crate::ui::fit_line(f, t, end - start);
+        s.text_in(g, f.face, end - f.width(&t) + d.0, top(ty + d.1, SMALL), &t, f.px, white);
+    }
+    // the lines after the labels, as the exe draws them
+    for ((x, (f, t, _)), ty) in fitted.iter().zip([522.0, 533.0]) {
+        s.text_in(g, f.face, x + d.0, top(ty + d.1, BODY), t, f.px, black);
+    }
+}
 
 /// A score's colour against par as the round's scorecard draws it (0x461110): two or more under 0x7d08, one under 0x6000,
 /// par 0x2108, one over 0x0018, two or more over 0x4010.
@@ -220,10 +269,11 @@ impl App {
                 blit(g, s, &im, cut(id, state), POS[id].0, POS[id].1);
             }
             // the aim's own lines (0x41b62f): Manual SSi Bold 15 (0x51b360) in dark blue 0x0018, centred on x 406 with tops
-            // at 542, 556, 570 and 584; then the skills as in the idle panel, white where they count for this shot, else grey
+            // at 542, 556, 570 and 584; then the skills as in the idle panel, white where they count for this shot, else grey.
+            // A line wider than the aim's box (a translation, issue #164) is drawn a little smaller or cut (ui.rs fit_line)
             if let Some((lines, skills)) = self.aim_text() {
                 for (i, l) in lines.iter().enumerate() {
-                    s.put_centered(g, crate::ui::F_MANUAL15, 406.0, 542.0 + 14.0 * i as f32, l, c15(0x0018));
+                    s.put_centered_fit(g, crate::ui::F_MANUAL15, 406.0, 542.0 + 14.0 * i as f32, AIM_ROOM, l, c15(0x0018));
                 }
                 self.draw_skill_lines(g, s, &skills);
             }
@@ -256,11 +306,12 @@ impl App {
     }
 
     /// Skill lines from (494, 540) 12 apart, a new column at x 641 once past y 599; lit ones white (0x7fff), the others grey
-    /// (0x4210).
+    /// (0x4210). A line wider than its column (a translation, issue #164) is drawn a little smaller or cut (`SKILL_ROOMS`).
     fn draw_skill_lines(&self, g: &mut Gfx, s: &Ui, rows: &[(String, bool)]) {
         let (mut x, mut y) = (494.0, 540.0);
         for (t, lit) in rows {
-            s.text(g, x, top(y, SMALL), t, SMALL, c15(if *lit { 0x7fff } else { 0x4210 }));
+            let room = SKILL_ROOMS[(x > 494.0) as usize];
+            s.text_fit(g, x, top(y, SMALL), room, t, SMALL, c15(if *lit { 0x7fff } else { 0x4210 }));
             y += 12.0;
             if y > 599.0 {
                 x = 641.0;
@@ -273,10 +324,6 @@ impl App {
     /// hole played, coloured against par.
     fn draw_round_card(&self, g: &mut Gfx, s: &Ui, gary: usize) {
         let c = &self.club;
-        let white = c15(0x7fff);
-        let black = c15(0);
-        s.text(g, 410.0, top(519.0, SMALL), tr("STR_SCORECARD_HOLE"), SMALL, white);
-        s.text(g, 414.0, top(534.0, SMALL), tr("STR_SCORECARD_PAR"), SMALL, white);
         let partner = c.g[gary].partner;
         let vs_pro = partner >= 0 && c.g[partner as usize].vip() == 0x20;
         let (a, b, x) = if !vs_pro {
@@ -290,9 +337,9 @@ impl App {
         } else {
             (tr("STR_SCORECARD_PROFESSIONAL").to_string(), tr("STR_SCORECARD_TOURNAMENT").to_string(), 325.0)
         };
-        s.text(g, x, top(522.0, BODY), &a, BODY, black);
         // the exe draws the wager line from x 320
-        s.text(g, if vs_pro && c.game & game::TOURNAMENT == 0 { 320.0 } else { x }, top(533.0, BODY), &b, BODY, black);
+        let xb = if vs_pro && c.game & game::TOURNAMENT == 0 { 320.0 } else { x };
+        draw_card_heads(g, s, (0.0, 0.0), [(x, &a), (xb, &b)]);
         self.draw_card_rows(g, s, gary, (0.0, 0.0), true, false);
     }
 
@@ -342,7 +389,8 @@ impl App {
                 let tx = TOTAL_X + d.0;
                 if gi == first {
                     let par: i32 = c.holes.iter().take(19).map(|h| h.par).sum();
-                    s.text_centered(g, tx, top(y - 34.0 + d.1, SMALL), tr("STR_SCORECARD_TOTAL"), SMALL, grey);
+                    // a word wider than the column's cell (a translation, issue #164): a little smaller or cut
+                    s.text_centered_fit(g, tx, top(y - 34.0 + d.1, SMALL), TOTAL_ROOM, tr("STR_SCORECARD_TOTAL"), SMALL, grey);
                     s.text_centered(g, tx, top(y - 19.0 + d.1, BODY), &par.to_string(), BODY, grey);
                 }
                 s.text_centered(g, tx, top(y + d.1, BODY), &strokes.to_string(), BODY, black);
@@ -368,7 +416,9 @@ impl App {
             1 if practice => self.pro_button(0),
             2 if play => self.pro_button(1),
             3 if tournament => self.begin_tournament(),
-            4..=8 => self.club.set_shot_option(SHOTS[h as usize - 4]),
+            4..=8 => {
+                self.act(sg_core::action::Action::ShotOption(SHOTS[h as usize - 4]));
+            }
             9 => {
                 self.panel = 4;
                 self.golfer_page = 0;

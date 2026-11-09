@@ -111,6 +111,18 @@ pub struct FileList {
     pub loading: u8,
     /// Play a Championship: the course chosen in the first step.
     pub course: Option<PathBuf>,
+    /// The last click on a row: the row and the clock then (`double_click`; the port's own, issue #145).
+    pub last_click: Option<(usize, f64)>,
+}
+
+/// The most seconds between the two clicks of a double-click on a row (a finger's two taps arrive as two clicks, touch.rs),
+/// as the desktops' usual default.
+pub const DOUBLE_CLICK_S: f64 = 0.5;
+
+/// Whether a click on `row` at `now` (seconds) makes a double-click with the click before (`last`): the same row, soon
+/// enough after (the port's own: a double-click on a save loads it, as selecting it and pressing the tick does; #145).
+pub fn double_click(last: Option<(usize, f64)>, row: usize, now: f64) -> bool {
+    last.is_some_and(|(r, t)| r == row && now >= t && now - t <= DOUBLE_CLICK_S)
 }
 
 pub struct Credits {
@@ -213,15 +225,17 @@ fn top_c(s: &Ui, g: &mut Gfx, x: f32, y: f32, t: &str, size: f32, c: [f32; 4]) {
 /// The Course sharing extra's *Paste a course code* button on the championship course list (share.rs).
 const PASTE_RECT: Rect = Rect::new(414.0, 520.0, 176.0, 36.0);
 
-/// The Course sharing extra's *Import a save file...* and *Export this save...* buttons on Load Previous Game, where the
-/// course list has its paste button (the port's own: saved games to and from files the player keeps, issue #49).
+/// The Import and export saved games extra's *Import a save file...* and *Export this save...* buttons on Load Previous
+/// Game, where the course list has its paste button (the port's own: saved games to and from files the player keeps,
+/// issue #49).
 const IMPORT_RECT: Rect = Rect::new(414.0, 500.0, 176.0, 28.0);
 const EXPORT_RECT: Rect = Rect::new(414.0, 534.0, 176.0, 28.0);
 
-/// Whether Load Previous Game shows the Import and Export buttons: with the Course sharing extra, where the player can
-/// reach the files (not on Android, whose save folder is the app's own).
+/// Whether Load Previous Game shows the Import and Export buttons: with the Import and export saved games extra (up to
+/// 0.4.9 part of Course sharing), where the player can reach the files (not on Android, whose save folder is the app's
+/// own).
 fn file_buttons(kind: ListKind) -> bool {
-    kind == ListKind::Load && crate::extras::sharing() && !cfg!(target_os = "android")
+    kind == ListKind::Load && crate::extras::save_files() && !cfg!(target_os = "android")
 }
 
 /// The Save pictures extra's map of a course: one cell per tile (a cell per 2 x 2 tiles, or more, on large maps), coloured
@@ -364,6 +378,8 @@ impl App {
     pub fn open_files(&mut self, kind: ListKind, from_game: bool) {
         let files = match kind {
             ListKind::Load => {
+                // the original SimGolf's saved games put in the folder become games of the port's own (share.rs)
+                self.import_original_folder();
                 let mut v = list(&saved_games_dir(), "sgs");
                 // the single save of earlier versions of the port
                 if sg_core::fsutil::exists(self.game_file()) {
@@ -686,7 +702,14 @@ impl App {
             4 => {}
             _ if vx > 320.0 && vy > 115.0 => {
                 let row = ((vy - 116.0) / 16.0) as usize + f.scroll;
+                let now = crate::app::now();
+                let again = double_click(f.last_click, row, now) && row < n;
+                f.last_click = if again { None } else { Some((row, now)) };
                 self.select_row(row);
+                // a double-click (or a finger's double tap) on a row: what the tick does with it selected (#145)
+                if let Some(f) = self.title.files.as_mut().filter(|f| again && f.sel == Some(row)) {
+                    f.loading = 1;
+                }
             }
             _ => {}
         }
@@ -769,7 +792,9 @@ impl App {
             ListKind::Course => tr("STR_FILES_CHAMP_TITLE"),
             ListKind::Pro => tr("STR_FILES_PRO_TITLE"),
         };
-        top_c(s, g, 504.0, 42.0, title, 24.0, BLACK);
+        // a longer title (a translation) is fitted over the list, on the free set to its plate (ui.rs fit_line; issue #164)
+        let room = if self.on_free_set() { 340.0 } else { crate::ui::TITLE_ROOM };
+        s.put_centered_fit(g, font(24.0), 504.0, 42.0, room, title, BLACK);
         let n = f.files.len();
         for r in 0..ROWS.min(n.saturating_sub(f.scroll)) {
             let i = f.scroll + r;
@@ -778,7 +803,8 @@ impl App {
             if on {
                 s.fill(g, 310.0, y - 1.0, 456.0, 15.0, c15(if pro { 0x1284 } else { 0x7b20 }));
             }
-            top(s, g, 320.0, y, &row_name(&f.files[i]), 13.0, if on && pro { WHITE } else { BLACK });
+            // a name longer than the row (a long save name, or a translated autosave's) is fitted (ui.rs fit_line)
+            s.put_fit(g, font(13.0), 320.0, y, 440.0, &row_name(&f.files[i]), if on && pro { WHITE } else { BLACK });
         }
         if n > f.scroll + ROWS {
             top(s, g, 320.0, 372.0, tr("STR_FILES_MORE"), 13.0, BLACK);
@@ -871,7 +897,7 @@ impl App {
         }
         // what Import, Export or the paste button have to say: this screen has no ticker (only with the port's buttons on
         // it, so the original's screen is unchanged)
-        if (file_buttons(f.kind) || f.kind == ListKind::Course && crate::extras::sharing())
+        if (file_buttons(f.kind) || f.kind == ListKind::Course && crate::extras::sharing() || self.sve_toast)
             && !self.toast.is_empty()
             && self.clock < self.toast_until
         {
@@ -892,7 +918,8 @@ impl App {
     }
 
     /// Load Previous Game's *Import a save file...*: the system's file picker (desktop) or the page's (browser), for a
-    /// saved game (.sgs), a shared course (.sgch), a text file with a course code, or the original's top10.sve; what is
+    /// saved game (.sgs), a shared course (.sgch), a text file with a course code, or the original's top10.sve and saved
+    /// games (.sve); what is
     /// picked goes where a file dropped on the window goes (share.rs). Test hook: SG_PICK_SAVE=FILE picks FILE.
     pub fn pick_save_file(&mut self) {
         if let Some(p) = std::env::var_os("SG_PICK_SAVE") {
@@ -916,15 +943,43 @@ impl App {
                 f.picking = true;
             }
         }
-        #[cfg(not(any(feature = "picker", target_arch = "wasm32")))]
+        #[cfg(target_os = "android")]
+        {
+            // Android's own picker (android.rs), answered later in poll_save_pick
+            if crate::android::pick_save_file() {
+                if let Some(f) = self.title.files.as_mut() {
+                    f.picking = true;
+                }
+            }
+        }
+        #[cfg(not(any(feature = "picker", target_arch = "wasm32", target_os = "android")))]
         {
             // no picker in this build: the player copies the file into the folder
             self.show_toast(&trf("STR_TOAST_SAVE_FOLDER", &[("FOLDER", &saved_games_dir().display())]));
         }
     }
 
-    /// Each frame while the browser's picker is open: a file it has read (web/opensgolf.js keeps it under picked/).
+    /// Each frame while the browser's picker is open: a file it has read (web/opensgolf.js keeps it under picked/). On
+    /// Android: the file its picker copied (android.rs), told apart by its bytes, as Android does not say its name.
     fn poll_save_pick(&mut self) {
+        #[cfg(target_os = "android")]
+        {
+            let state = crate::android::import_state();
+            let (what, arg) = state.split_once(':').unwrap_or((state.as_str(), ""));
+            let dest = crate::android::picked_save_path();
+            if what == "picking" || what == "copying" || (what == "zip" && Path::new(arg) != dest) {
+                return;
+            }
+            if let Some(f) = self.title.files.as_mut() {
+                f.picking = false;
+            }
+            if what == "zip" {
+                if let Some(b) = sg_core::fsutil::read_file(&dest) {
+                    sg_core::fsutil::remove_file(&dest);
+                    self.import_unnamed(&b);
+                }
+            }
+        }
         #[cfg(target_arch = "wasm32")]
         {
             let mut buf = [0u8; 512];
@@ -1368,6 +1423,19 @@ mod tests {
             assert!(r.x > 404.0 && r.y + r.h <= 600.0);
         }
         const { assert!(IMPORT_RECT.y + IMPORT_RECT.h <= EXPORT_RECT.y) };
+    }
+
+    #[test]
+    fn a_double_click_is_two_clicks_on_one_row_close_together() {
+        // the first click only selects
+        assert!(!double_click(None, 3, 10.0));
+        // the same row again in time: a double-click
+        assert!(double_click(Some((3, 10.0)), 3, 10.3));
+        assert!(double_click(Some((3, 10.0)), 3, 10.0 + DOUBLE_CLICK_S));
+        // too slow, another row, or a clock gone back: two single clicks
+        assert!(!double_click(Some((3, 10.0)), 3, 10.0 + DOUBLE_CLICK_S + 0.01));
+        assert!(!double_click(Some((3, 10.0)), 4, 10.2));
+        assert!(!double_click(Some((3, 10.0)), 3, 9.0));
     }
 
     #[test]

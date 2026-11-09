@@ -13,6 +13,50 @@ function sgVersion() {
     return SG_VERSION.startsWith("%") ? "dev" : SG_VERSION;
 }
 
+// --- phones and tablets held upright (the port's own; web/opensgolf.js sgFitCanvas) ------------------------------------------
+// SimGolf is a landscape game: its screens are 800 x 600. A phone or tablet (a touch device: a coarse pointer, or an iPad
+// that calls itself a Mac) held upright (taller than wide) is asked to turn sideways, until the player picks "Play anyway"
+// for the session. A desktop window, however tall, is never asked.
+function sgPortraitAsk(touch, w, h, dismissed) {
+    return !!touch && h > w && !dismissed;
+}
+
+// Where the game's canvas goes in the visible area (w x h at left, top): all of it, except on a touch device held upright,
+// where the game plays in a 4:3 band across the middle (the 800 x 600 screens fill its width; the rest is black), so the
+// whole game shows at the largest size the width allows, neither cut off nor stretched.
+function sgCanvasRect(touch, w, h, left, top) {
+    if (!touch || h <= w) return { left: Math.round(left), top: Math.round(top), width: Math.round(w), height: Math.round(h) };
+    const bh = Math.min(h, w * 3 / 4);
+    return { left: Math.round(left), top: Math.round(top + (h - bh) / 2), width: Math.round(w), height: Math.round(bh) };
+}
+
+// The edges of the canvas a phone hides (its camera cut-out, rounded corners and home bar), once the page draws under them
+// (index.html viewport-fit=cover): the window's CSS safe-area insets [left, top, right, bottom] where they fall on the canvas
+// (rect, in a w x h window), as fractions of the canvas's width and height, for the game (ui.rs safe_extent). An upright
+// phone's 4:3 band in the middle reaches neither its top nor its bottom inset.
+function sgSafeInsets(insets, rect, w, h) {
+    const [l, t, r, b] = insets;
+    if (!(rect.width > 0 && rect.height > 0)) return [0, 0, 0, 0];
+    const over = (inset, gap) => Math.max(0, inset - Math.max(0, gap));
+    return [
+        over(l, rect.left) / rect.width,
+        over(t, rect.top) / rect.height,
+        over(r, w - rect.left - rect.width) / rect.width,
+        over(b, h - rect.top - rect.height) / rect.height,
+    ];
+}
+
+// --- the game's sound asleep in the background (the port's own; web/opensgolf.js sgSoundSleep) ----------------------------
+// What the page does with its sound context, in `state` ("running", "suspended", Safari's "interrupted", "closed", or none
+// made yet): "suspend" while the game has its sound asleep (the Pause in the background extra, with the window in the
+// background), "resume" for a context that is not running while the game's sound is awake and the page is shown, else
+// "". A context left suspended plays nothing, so a phone has no sound to keep the page running for.
+function sgSoundAction(state, asleep, hidden) {
+    if (!state || state === "closed") return "";
+    if (asleep) return state === "running" ? "suspend" : "";
+    return state !== "running" && !hidden ? "resume" : "";
+}
+
 function sgKey(p) {
     return p.replace(/\\/g, "/").replace(/\/+/g, "/").replace(/\/$/, "").replace(/^\.\//, "").toLowerCase();
 }
@@ -21,9 +65,65 @@ function sgPlural(n, word) {
     return n + " " + word + (n === 1 ? "" : "s");
 }
 
-// A sound file, by its name (the game plays WAV, MP3 and OGG).
+// A sound file, by its name (the game plays WAV, MP3, MP2 and OGG).
 function sgIsSound(path) {
-    return /\.(wav|mp3|ogg)$/i.test(path);
+    return /\.(wav|mp3|mp2|ogg)$/i.test(path);
+}
+
+// The coding of a sound file the game cannot play, by its headers (the same check as sg_core::assets::probe_sound, for the
+// summary: a copy whose sounds were shrunk to such a coding played the free sounds with nothing said), or null when it
+// plays: WAV in PCM, float, A-law, mu-law, MS and IMA ADPCM, GSM 6.10, MPEG layers 1-3; AIFF; bare MP3/MP2; OGG Vorbis.
+const SG_CODECS = { 0x10: "OKI ADPCM", 0x14: "G.721/G.726 ADPCM", 0x22: "DSP Group TrueSpeech", 0x32: "MSN Audio", 0x40: "G.721/G.726 ADPCM",
+    0x42: "G.723.1", 0x64: "G.721/G.726 ADPCM", 0x92: "Dolby AC-3", 0x130: "Sipro ACELP.net", 0x160: "Windows Media Audio",
+    0x161: "Windows Media Audio", 0x162: "Windows Media Audio", 0x163: "Windows Media Audio", 0x401: "Intel Music Coder", 0x1600: "AAC",
+    0x1601: "AAC", 0xa106: "AAC", 0xf1ac: "FLAC" };
+function sgSoundCoding(b) {
+    if (!(b instanceof Uint8Array)) b = new Uint8Array(b);
+    const s = (o, n) => String.fromCharCode(...b.subarray(o, o + n));
+    if (b.length < 4) return "not a WAV, AIFF, MP3 or OGG file";
+    if (s(0, 4) === "OggS") {
+        const head = s(0, Math.min(b.length, 256));
+        return head.includes("\x01vorbis") ? null : head.includes("OpusHead") ? "Opus" : head.includes("Speex") ? "Speex"
+            : head.includes("FLAC") ? "FLAC" : "an OGG file that is not Vorbis";
+    }
+    if (s(0, 3) === "ID3" || (b[0] === 0xff && (b[1] & 0xe0) === 0xe0)) return null;
+    if (s(0, 4) === "fLaC") return "FLAC";
+    if (b.length >= 12 && s(0, 4) === "FORM" && s(8, 4) === "AIFF") return null;
+    if (b.length >= 12 && s(0, 4) === "FORM" && s(8, 4) === "AIFC") {
+        // AIFF-C: its COMM chunk's compression
+        const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+        for (let pos = 12; pos + 8 <= b.length;) {
+            const sz = dv.getUint32(pos + 4);
+            if (s(pos, 4) === "COMM" && pos + 30 <= b.length) {
+                const c = s(pos + 26, 4);
+                return ["NONE", "twos", "sowt", "fl32", "FL32", "fl64", "FL64", "ulaw", "ULAW", "alaw", "ALAW"].includes(c) ? null
+                    : "AIFF-C coding '" + c + "'";
+            }
+            pos += 8 + sz + (sz & 1);
+        }
+        return "AIFF with no COMM chunk";
+    }
+    if (b.length >= 12 && s(4, 4) === "ftyp") return "AAC/M4A";
+    if (!["RIFF", "RIFX", "RF64"].includes(s(0, 4)) || b.length < 12 || s(8, 4) !== "WAVE") return "not a WAV, AIFF, MP3 or OGG file";
+    const big = s(0, 4) === "RIFX";
+    const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+    const u16 = o => dv.getUint16(o, !big), u32 = o => dv.getUint32(o, !big);
+    for (let pos = 12; pos + 8 <= b.length;) {
+        const sz = u32(pos + 4);
+        if (s(pos, 4) === "fmt " && sz >= 16 && pos + 24 <= b.length) {
+            let tag = u16(pos + 8);
+            const bits = u16(pos + 22);
+            if (tag === 0xfffe && pos + 34 <= b.length) tag = u16(pos + 32);
+            const names = { 1: "PCM", 2: "Microsoft ADPCM", 3: "float PCM", 6: "A-law", 7: "mu-law", 0x11: "IMA ADPCM" };
+            const ok = { 1: [8, 16, 24, 32], 3: [32, 64], 6: [8], 7: [8], 2: [4], 0x11: [4] };
+            if (big && ![1, 3].includes(tag)) return (names[tag] || SG_CODECS[tag] || "WAV format 0x" + tag.toString(16).padStart(4, "0")) + " in a big-endian (RIFX) WAV";
+            if (ok[tag]) return ok[tag].includes(bits) ? null : bits + "-bit " + names[tag];
+            if ([0x31, 0x50, 0x55].includes(tag)) return null;
+            return SG_CODECS[tag] || "WAV format 0x" + tag.toString(16).padStart(4, "0");
+        }
+        pos += 8 + sz + (sz & 1);
+    }
+    return "no fmt chunk";
 }
 
 // Files the game does not need. Videos (.bik) and Windows binaries are skipped.
@@ -1590,13 +1690,26 @@ async function sgUnzip(src, onEntry, skipped = [], list = null, stat = {}) {
     return skipped.length;
 }
 
+// The sound files of the game folder ([path, bytes], "game/...") in a coding the game cannot play: { n, example }.
+function sgSoundCodings(files) {
+    const bad = { n: 0, example: "" };
+    for (const [p, bytes] of files) {
+        const k = sgKey(p);
+        if (!(k.startsWith("game/sounds/") || k.startsWith("game/simsfx/")) || !sgIsSound(k)) continue;
+        const why = sgSoundCoding(bytes);
+        if (why !== null && bad.n++ === 0) bad.example = why;
+    }
+    return bad;
+}
+
 // What the player's files hold, said in large text on the start page (and on it again next time) and over the game once it
 // starts (an iPad shows no console): the version, the sounds found, used and left out (and why), the art, the music and
 // the Sims' voices. A copy with empty Sounds and SimsFX folders (some downloaded copies, or a zip whose sounds could not be
 // unpacked) plays the free OpenSGolf sounds, which players took for a fault (issue #10). `paths` are the game folder's
 // ("game/..."); `skipped` is sgUnzip's; `found` the sound files the zip or folder held anywhere (null: not known, a start
-// from the files kept in the browser). Returns { text, problem }.
-function sgFilesSummary(paths, skipped = [], found = null) {
+// from the files kept in the browser); `bad` the sound files in a coding the game cannot play, as { n, example }
+// (sgSoundCodings). Returns { text, problem }.
+function sgFilesSummary(paths, skipped = [], found = null, bad = null) {
     let art = 0, sounds = 0, music = 0, voices = 0;
     for (const path of paths) {
         const k = sgKey(path);
@@ -1626,16 +1739,28 @@ function sgFilesSummary(paths, skipped = [], found = null) {
     if (used === 0) {
         problem = true;
         say.push(skippedSounds.length ? "So there are no sounds from your files: the free OpenSGolf sounds play instead."
-            : "Sounds: none in your files (the Sounds and SimsFX folders are empty), so the free OpenSGolf sounds play. A " +
-              "full installed copy of the game or the CD has them.");
+            : "Sounds: none in your files (the Sounds and SimsFX folders are empty), so the free OpenSGolf sounds play. " +
+              "For the original sounds, use the SimGolf CD or its .iso, or a full installed copy.");
     } else if (sounds === 0) {
         problem = true;
-        say.push("Your files have no Sounds folder (only the Sims' voices): the free OpenSGolf sounds play for the rest.");
+        say.push("Your files have no Sounds folder (only the Sims' voices): the free OpenSGolf sounds play for the rest. " +
+            "For the original sounds, use the SimGolf CD or its .iso, or a full installed copy.");
+    } else if (used < 100) {
+        // a full copy has about 320 sound files; a downloaded copy with the sounds left out keeps a stray one or two
+        problem = true;
+        say.push("Only " + sgPlural(used, "sound") + " in your files (some downloaded copies leave the sounds out): the free " +
+            "OpenSGolf sounds play for the rest. For the original sounds, use the SimGolf CD or its .iso, or a full installed copy.");
+    }
+    if (bad && bad.n > 0) {
+        problem = true;
+        say.push(bad.n + " of your sounds use a format OpenSGolf can't play yet (e.g. " + bad.example + "): the free OpenSGolf " +
+            "sounds play for those. A copy of the game with its original sounds (the CD, or a full installed copy) plays them all.");
     }
     return { text: say.join(" "), problem };
 }
 
 if (typeof module !== "undefined") {
     module.exports = { sgKey, sgSkip, sgRootOf, sgStraySound, sgPlace, sgZipEntries, sgZipRead, sgUnzip, sgInflate, sgInflateInto,
-        sgBunzip2, sgUnlzma, sgUnppmd, sgZipName, sgZipPath, sgCrc32, sgFilesSummary, sgVersion };
+        sgBunzip2, sgUnlzma, sgUnppmd, sgZipName, sgZipPath, sgCrc32, sgFilesSummary, sgVersion, sgSoundCoding,
+        sgSoundCodings, sgPortraitAsk, sgCanvasRect, sgSafeInsets, sgSoundAction };
 }

@@ -2,16 +2,26 @@
 
 ## Sound
 
-All 241 sound effects, voices and music tracks under `Sounds/` are ordinary PCM `.wav` files (22.05 or 44.1 kHz, mono or stereo, 16 bit),
-so the original needs no decoder. Copies of the game that went through other tools do not always keep them that way, and a
+All 241 sound effects, voices and music tracks under `Sounds/` but one are ordinary PCM `.wav` files (22.05 or 44.1 kHz, mono or
+stereo, 16 bit); the one, `Sounds/Effects/Sheep 2.wav`, is an AIFF file (big-endian PCM from a Mac) under a `.wav` name, which
+OpenSGolf 0.4.7 and before read as broken (the free set's sheep played for it). Copies of the game that went through other tools do not always keep them that way, and a
 copy whose sounds the old WAV reader refused played no sound at all, browser and desktop alike (issue #10). So
 `crates/sg-core/src/wav.rs` reads every common WAV coding (8/16/24/32-bit PCM, 32/64-bit float, A-law, mu-law, Microsoft
-ADPCM, IMA ADPCM, MP3 inside a WAV, WAVE_FORMAT_EXTENSIBLE; more than two channels keep the first two; checked against ffmpeg's decoding of
-the same files), a copy whose sounds were converted to `.ogg` is read as the `.wav` names the game asks for, and macOS
-`._` resource-fork files are ignored. Where the player's copy still fails (no `Sounds` folder,
+ADPCM, IMA ADPCM, GSM 6.10 (the port's own decoder, `crates/sg-core/src/gsm.rs`, bit-exact with libgsm), MPEG layer 1, 2 or
+3 inside a WAV, WAVE_FORMAT_EXTENSIBLE around any of these; big-endian RIFX and RF64 files; chunks in any order, odd-sized
+chunks without their pad byte, a data chunk said to be longer than the file; AIFF and AIFF-C; more than two channels keep the
+first two; checked against ffmpeg's decoding of the same files), a file is told by its bytes rather than its name (a bare
+MP3 or MP2 or an OGG Vorbis file called `.wav`), a copy whose sounds were converted to `.ogg`, `.mp3` or `.mp2` is read as
+the `.wav` names the game asks for, and macOS `._` resource-fork files are ignored. Codings still not read, named to the
+player: DSP Group TrueSpeech, G.723.1, WMA, AAC, FLAC, Opus and the other rare ones (`wav::codec_name`). Where the player's copy still fails (no `Sounds` folder,
 or a clip in a coding not read) the free base set's sound of that name plays instead, the failure is logged once per
 clip on stderr (`sound: cannot load ...`), and the title screen says once in a box what went wrong
-(`STR_SOUND_CANNOT_PLAY`; settings.json `sound_problem_shown` keeps it from repeating). A clip the original itself lacks
+(`STR_SOUND_CANNOT_PLAY`; settings.json `sound_problem_shown` keeps it from repeating). At start every one of the player's
+sound files is checked from its first 64 KiB (headers only, `Mixer::unplayable`): files in a coding the port cannot play
+are counted and the box says "N of your sounds use a format OpenSGolf can't play yet (e.g. GSM 6.10)" (`STR_SOUND_UNPLAYABLE`;
+the sound report, sound.txt, has a `codings:` line). A "rip" whose WAVs were re-encoded to such a coding showed the
+original's art and "N sounds from your SimGolf files" while the free set's sounds played. The browser page makes the same
+check on the files picked (`sgSoundCoding` in web/files.js) and adds the sentence to its summary. A clip the original itself lacks
 stays silent, as in the original. In the browser the page also resumes the audio output on every click, tap or key
 (Chrome's autoplay policy keeps a context made outside a gesture suspended), skips a Mac zip's `__MACOSX` entries, and says
 when a zip holds entries in a compression it cannot unpack (it unpacks stored, deflate, Deflate64, BZip2, LZMA and PPMd).

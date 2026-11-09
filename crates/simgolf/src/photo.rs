@@ -241,7 +241,7 @@ pub fn photos_dir() -> PathBuf {
 }
 
 /// The date and time (UTC) of a Unix time, as year, month, day, hour, minute, second.
-fn civil(secs: i64) -> (i64, u32, u32, u32, u32, u32) {
+pub(crate) fn civil(secs: i64) -> (i64, u32, u32, u32, u32, u32) {
     let (days, rem) = (secs.div_euclid(86400), secs.rem_euclid(86400));
     // days to a date in the proleptic Gregorian calendar (H. Hinnant's civil_from_days)
     let z = days + 719468;
@@ -778,7 +778,7 @@ impl Stage {
         let mut raw = vec![0u8; (w * h * 4) as usize];
         self.g.ctx.texture_read_pixels(color, &mut raw);
         self.g.ctx.delete_render_pass(pass);
-        // (deleting the pass deleted its textures)
+        // (the pass's deletion, made by the commit below, deletes its textures)
         let _ = depth;
         self.g.ctx.commit_frame();
         self.app.draw_w = ow;

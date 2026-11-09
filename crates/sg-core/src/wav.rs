@@ -1,7 +1,10 @@
 //! WAV files. The original's own sounds are plain 16-bit PCM, but copies of the game that went through other tools (a
 //! re-encoded download, a sound editor, a converter) hold the other common WAV codings. They are all turned into 8- or
-//! 16-bit PCM here: 24- and 32-bit PCM, 32- and 64-bit float, A-law and mu-law, Microsoft ADPCM, IMA ADPCM, and
-//! WAVE_FORMAT_EXTENSIBLE headers around any of them. More than two channels keep the first two.
+//! 16-bit PCM here: 24- and 32-bit PCM, 32- and 64-bit float, A-law and mu-law, Microsoft ADPCM, IMA ADPCM, GSM 6.10
+//! (crate::gsm), MPEG layers 1, 2 and 3, and WAVE_FORMAT_EXTENSIBLE headers around any of them, in little-endian RIFF,
+//! big-endian RIFX and RF64 files, and AIFF and AIFF-C files (PCM, float, G.711) too: one of the original's own sounds is
+//! an AIFF called .wav. More than two channels keep the first two. [`probe`] tells from the headers alone
+//! whether a file plays, and [`codec_name`] names a coding that does not (TrueSpeech, WMA and the like).
 use crate::assets::Wav;
 
 fn u16at(d: &[u8], o: usize) -> u16 {
@@ -11,29 +14,226 @@ fn u32at(d: &[u8], o: usize) -> u32 {
     u32::from_le_bytes([d[o], d[o + 1], d[o + 2], d[o + 3]])
 }
 
-pub fn decode(d: &[u8]) -> Result<Wav, String> {
-    if d.len() < 12 || &d[0..4] != b"RIFF" || &d[8..12] != b"WAVE" {
+/// A plausible RIFF chunk id: four printable ASCII characters.
+fn is_id(d: &[u8], o: usize) -> bool {
+    d.get(o..o + 4).is_some_and(|id| id.iter().all(|&c| (0x20..0x7f).contains(&c)))
+}
+
+/// The parts of a WAV file the decoder needs.
+struct Parts<'a> {
+    /// The fmt chunk's body, little-endian (a RIFX file's fields are swapped into it).
+    fmt: Vec<u8>,
+    data: &'a [u8],
+    frames_total: Option<usize>,
+    /// A big-endian RIFX file: its PCM samples are big-endian too.
+    big: bool,
+}
+
+/// Finds the fmt, fact and data chunks of a RIFF (or big-endian RIFX, or RF64) WAVE file, as forgiving as the tools that
+/// wrote them: chunks in any order (a LIST before the fmt, the data before the fmt), an odd-sized chunk without its pad
+/// byte, a data chunk said to be longer than the file (cut at the end of the file) or of size 0 or 0xffffffff (written
+/// by a tool that streamed it: the rest of the file).
+fn parts(d: &[u8]) -> Result<Parts<'_>, String> {
+    if d.len() < 12 || !matches!(&d[0..4], b"RIFF" | b"RIFX" | b"RF64") || &d[8..12] != b"WAVE" {
         return Err("not a RIFF WAVE".into());
     }
+    let big = &d[0..4] == b"RIFX";
+    let size = |o: usize| if big { u32::from_be_bytes([d[o], d[o + 1], d[o + 2], d[o + 3]]) } else { u32at(d, o) } as usize;
     let mut pos = 12usize;
-    let mut fmt: Option<&[u8]> = None;
+    let mut fmt: Option<Vec<u8>> = None;
+    let mut data: Option<&[u8]> = None;
     let mut frames_total: Option<usize> = None;
     while pos + 8 <= d.len() {
-        let sz = u32at(d, pos + 4) as usize;
+        let mut sz = size(pos + 4);
         let body = pos + 8;
         let avail = d.len() - body;
         let id = &d[pos..pos + 4];
-        if id == b"fmt " && sz >= 16 && avail >= 16 {
-            fmt = Some(&d[body..body + sz.min(avail)]);
-        } else if id == b"fact" && sz >= 4 && avail >= 4 {
-            frames_total = Some(u32at(d, body) as usize);
-        } else if id == b"data" {
-            let Some(f) = fmt else { return Err("data before fmt".into()) };
-            return to_pcm(f, &d[body..body + sz.min(avail)], frames_total);
+        if id == b"data" && (sz == 0 || sz == u32::MAX as usize) && avail > 0 && !is_id(d, body) {
+            sz = avail;
         }
-        pos = pos.saturating_add(8).saturating_add(sz).saturating_add(sz & 1);
+        if id == b"fmt " && sz >= 16 && avail >= 16 && fmt.is_none() {
+            let mut f = d[body..body + sz.min(avail)].to_vec();
+            if big {
+                for (o, w) in [(0, 2), (2, 2), (4, 4), (8, 4), (12, 2), (14, 2)] {
+                    f[o..o + w].reverse();
+                }
+            }
+            fmt = Some(f);
+        } else if id == b"fact" && sz >= 4 && avail >= 4 {
+            frames_total = Some(size(body));
+        } else if id == b"data" && data.is_none() {
+            data = Some(&d[body..body + sz.min(avail)]);
+        }
+        if fmt.is_some() && data.is_some() {
+            break;
+        }
+        let next = body.saturating_add(sz);
+        // an odd-sized chunk is followed by a pad byte, which some tools leave out
+        pos = if sz & 1 == 1 && !is_id(d, next + 1) && is_id(d, next) { next } else { next.saturating_add(sz & 1) };
     }
-    Err("no data chunk".into())
+    match (fmt, data) {
+        (Some(fmt), Some(data)) => Ok(Parts { fmt, data, frames_total, big }),
+        (None, _) => Err("no fmt chunk".into()),
+        (_, None) => Err("no data chunk".into()),
+    }
+}
+
+/// The format tag of a fmt chunk body, the sub-format's for a WAVE_FORMAT_EXTENSIBLE header.
+fn format_tag(f: &[u8]) -> Result<u16, String> {
+    let tag = u16at(f, 0);
+    if tag != EXTENSIBLE {
+        return Ok(tag);
+    }
+    // cbSize 22: valid bits, channel mask, then the sub-format GUID, whose first two bytes are the format tag
+    if f.len() < 26 {
+        return Err("short WAVE_FORMAT_EXTENSIBLE header".into());
+    }
+    Ok(u16at(f, 24))
+}
+
+/// An AIFF or AIFF-C file (big-endian, from Macs): the original's own "Sounds/Effects/Sheep 2.wav" is one. Its COMM chunk
+/// (channels, frames, sample size, the rate as an 80-bit float, AIFF-C's compression) as a WAV fmt chunk body, and its
+/// SSND chunk's samples turned to a WAV's (little-endian; 8-bit unsigned).
+fn aiff(d: &[u8]) -> Result<(Vec<u8>, Vec<u8>), String> {
+    let be16 = |o: usize| u16::from_be_bytes([d[o], d[o + 1]]);
+    let be32 = |o: usize| u32::from_be_bytes([d[o], d[o + 1], d[o + 2], d[o + 3]]);
+    let aifc = &d[8..12] == b"AIFC";
+    let mut pos = 12usize;
+    let mut comm: Option<(u16, u16, u32, [u8; 4])> = None;
+    let mut ssnd: Option<&[u8]> = None;
+    while pos + 8 <= d.len() {
+        let sz = be32(pos + 4) as usize;
+        let body = pos + 8;
+        let avail = d.len() - body;
+        let id = &d[pos..pos + 4];
+        if id == b"COMM" && sz >= 18 && avail >= 18 {
+            // 80-bit extended: sign and 15-bit exponent, then a 64-bit mantissa with its leading one
+            let e = (be16(body + 8) & 0x7fff) as i32;
+            let m = u64::from_be_bytes(d[body + 10..body + 18].try_into().unwrap_or_default());
+            let rate = (m as f64 * 2f64.powi(e - 16383 - 63)).round() as u32;
+            let mut c = *b"NONE";
+            if aifc && sz >= 22 && avail >= 22 {
+                c.copy_from_slice(&d[body + 18..body + 22]);
+            }
+            comm = Some((be16(body), be16(body + 6), rate, c));
+        } else if id == b"SSND" && sz >= 8 && avail >= 8 {
+            let start = (body + 8).saturating_add(be32(body) as usize).min(d.len());
+            ssnd = Some(&d[start..(body + sz.min(avail)).max(start)]);
+        }
+        pos = body.saturating_add(sz).saturating_add(sz & 1);
+    }
+    let (ch, bits, rate, c) = comm.ok_or("AIFF with no COMM chunk")?;
+    let data = ssnd.ok_or("AIFF with no SSND chunk")?;
+    let (tag, bits, mut data) = match &c {
+        b"NONE" | b"twos" if matches!(bits, 8 | 16 | 24 | 32) => (PCM, bits, data.to_vec()),
+        b"sowt" if matches!(bits, 16 | 24 | 32) => (PCM, bits, data.to_vec()),
+        b"fl32" | b"FL32" => (FLOAT, 32, data.to_vec()),
+        b"fl64" | b"FL64" => (FLOAT, 64, data.to_vec()),
+        b"ulaw" | b"ULAW" => (MULAW, 8, data.to_vec()),
+        b"alaw" | b"ALAW" => (ALAW, 8, data.to_vec()),
+        _ => return Err(format!("AIFF-C coding '{}'", String::from_utf8_lossy(&c))),
+    };
+    if bits == 8 && tag == PCM {
+        // AIFF's 8-bit samples are signed, a WAV's unsigned
+        data.iter_mut().for_each(|b| *b ^= 0x80);
+    } else if bits >= 16 && &c != b"sowt" {
+        data.chunks_exact_mut(bits as usize / 8).for_each(|s| s.reverse());
+    }
+    let align = ch * bits.max(8) / 8;
+    let mut f = Vec::with_capacity(16);
+    for v in [tag as u32, ch as u32] {
+        f.extend_from_slice(&(v as u16).to_le_bytes());
+    }
+    f.extend_from_slice(&rate.to_le_bytes());
+    f.extend_from_slice(&(rate * align as u32).to_le_bytes());
+    f.extend_from_slice(&align.to_le_bytes());
+    f.extend_from_slice(&bits.to_le_bytes());
+    Ok((f, data))
+}
+
+fn is_aiff(d: &[u8]) -> bool {
+    d.len() >= 12 && &d[0..4] == b"FORM" && matches!(&d[8..12], b"AIFF" | b"AIFC")
+}
+
+pub fn decode(d: &[u8]) -> Result<Wav, String> {
+    if is_aiff(d) {
+        let (f, data) = aiff(d)?;
+        return to_pcm(&f, &data, None);
+    }
+    let p = parts(d)?;
+    if p.big {
+        // a RIFX file (big-endian, from old Macs and some sound editors): only PCM and float are written so
+        let tag = format_tag(&p.fmt)?;
+        let bits = u16at(&p.fmt, 14) as usize;
+        if !matches!(tag, PCM | FLOAT) {
+            return Err(format!("{} in a big-endian (RIFX) WAV", codec_name(tag)));
+        }
+        let mut data = p.data.to_vec();
+        if bits >= 16 {
+            for s in data.chunks_exact_mut(bits / 8) {
+                s.reverse();
+            }
+        }
+        return to_pcm(&p.fmt, &data, p.frames_total);
+    }
+    to_pcm(&p.fmt, p.data, p.frames_total)
+}
+
+/// Whether [`decode`] plays this WAV, from its headers alone (the start's check of every one of the player's sounds,
+/// Mixer::unplayable): Err names the coding when it does not.
+pub fn probe(d: &[u8]) -> Result<(), String> {
+    if is_aiff(d) {
+        // (the samples' bytes are swapped on the way: cheap next to reading them)
+        return aiff(d).map(|_| ());
+    }
+    let p = parts(d)?;
+    let tag = format_tag(&p.fmt)?;
+    let bits = u16at(&p.fmt, 14);
+    let ok = match tag {
+        PCM => matches!(bits, 8 | 16 | 24 | 32),
+        FLOAT => matches!(bits, 32 | 64),
+        ALAW | MULAW => bits == 8,
+        MS_ADPCM | IMA_ADPCM => bits == 4 && !p.big,
+        GSM | MPEG | MP3 => !p.big,
+        _ => false,
+    };
+    if ok && u16at(&p.fmt, 2) > 0 && u32at(&p.fmt, 4) > 0 {
+        Ok(())
+    } else if ok {
+        Err("WAV with no channels or no sample rate".into())
+    } else if matches!(tag, PCM | FLOAT | ALAW | MULAW | MS_ADPCM | IMA_ADPCM) && !p.big {
+        Err(format!("{}-bit {}", bits, codec_name(tag)))
+    } else {
+        Err(codec_name(tag))
+    }
+}
+
+/// The name of a WAV format tag, for the player (the codings copies of the game were seen or are likely to use).
+pub fn codec_name(tag: u16) -> String {
+    match tag {
+        PCM => "PCM".into(),
+        MS_ADPCM => "Microsoft ADPCM".into(),
+        FLOAT => "float PCM".into(),
+        ALAW => "A-law".into(),
+        MULAW => "mu-law".into(),
+        0x10 => "OKI ADPCM".into(),
+        IMA_ADPCM => "IMA ADPCM".into(),
+        0x14 | 0x40 | 0x64 => "G.721/G.726 ADPCM".into(),
+        0x22 => "DSP Group TrueSpeech".into(),
+        GSM => "GSM 6.10".into(),
+        0x32 => "MSN Audio".into(),
+        0x42 => "G.723.1".into(),
+        MPEG => "MPEG layer 1/2".into(),
+        MP3 => "MP3".into(),
+        0x92 => "Dolby AC-3".into(),
+        0x130 => "Sipro ACELP.net".into(),
+        0x160..=0x163 => "Windows Media Audio".into(),
+        0x401 => "Intel Music Coder".into(),
+        0x1600..=0x1601 | 0xa106 => "AAC".into(),
+        0xf1ac => "FLAC".into(),
+        0x674f..=0x6751 => "Ogg Vorbis inside a WAV".into(),
+        _ => format!("WAV format 0x{tag:04x}"),
+    }
 }
 
 const PCM: u16 = 1;
@@ -42,22 +242,17 @@ const FLOAT: u16 = 3;
 const ALAW: u16 = 6;
 const MULAW: u16 = 7;
 const IMA_ADPCM: u16 = 0x11;
+const GSM: u16 = 0x31;
+const MPEG: u16 = 0x50;
 const MP3: u16 = 0x55;
 const EXTENSIBLE: u16 = 0xfffe;
 
 fn to_pcm(f: &[u8], data: &[u8], frames_total: Option<usize>) -> Result<Wav, String> {
-    let mut tag = u16at(f, 0);
+    let tag = format_tag(f)?;
     let ch = u16at(f, 2) as usize;
     let rate = u32at(f, 4);
     let align = u16at(f, 12) as usize;
     let bits = u16at(f, 14);
-    if tag == EXTENSIBLE {
-        // cbSize 22: valid bits, channel mask, then the sub-format GUID, whose first two bytes are the format tag
-        if f.len() < 26 {
-            return Err("short WAVE_FORMAT_EXTENSIBLE header".into());
-        }
-        tag = u16at(f, 24);
-    }
     if ch == 0 || rate == 0 {
         return Err("WAV with no channels or no sample rate".into());
     }
@@ -92,9 +287,15 @@ fn to_pcm(f: &[u8], data: &[u8], frames_total: Option<usize>) -> Result<Wav, Str
             }
             data.chunks(align).flat_map(|b| ima_adpcm_block(b, ch)).collect()
         }
-        // MPEG layer 3 inside a WAV (copies repacked to save space): decoded whole; its own frames give the rate
-        (MP3, _) => return mp3(data),
-        _ => return Err(format!("unsupported WAV coding (format 0x{tag:04x}, {bits} bits)")),
+        // MPEG audio inside a WAV, layer 3 or layers 1 and 2 (copies repacked to save space): decoded whole; its own
+        // frames give the rate
+        (MP3 | MPEG, _) => return mp3(data),
+        // GSM 6.10 (crate::gsm), mono at 8 kHz
+        (GSM, _) if ch == 1 => crate::gsm::decode_wav49(data),
+        (MS_ADPCM | IMA_ADPCM, _) | (PCM | FLOAT | ALAW | MULAW, _) => {
+            return Err(format!("unsupported WAV coding ({bits}-bit {})", codec_name(tag)))
+        }
+        _ => return Err(format!("unsupported WAV coding ({})", codec_name(tag))),
     };
     let mut pcm = Vec::with_capacity(samples.len() / ch * out_ch * 2);
     for (i, v) in samples.iter().enumerate() {
@@ -102,22 +303,22 @@ fn to_pcm(f: &[u8], data: &[u8], frames_total: Option<usize>) -> Result<Wav, Str
             pcm.extend_from_slice(&v.to_le_bytes());
         }
     }
-    if let Some(n) = frames_total.filter(|_| matches!(tag, MS_ADPCM | IMA_ADPCM)) {
-        // ADPCM pads its last block: the fact chunk gives the real length
+    if let Some(n) = frames_total.filter(|_| matches!(tag, MS_ADPCM | IMA_ADPCM | GSM)) {
+        // ADPCM and GSM pad their last block: the fact chunk gives the real length
         pcm.truncate(n * out_ch * 2);
     }
     Ok(Wav { channels: out_ch as u16, bits: 16, sample_rate: rate, pcm })
 }
 
-/// An MPEG audio stream (the data of a format 0x55 WAV, or a bare .mp3) as 16-bit PCM.
+/// An MPEG audio stream, layer 1, 2 or 3 (the data of a format 0x50 or 0x55 WAV, or a bare .mp3 or .mp2) as 16-bit PCM.
 pub fn mp3(data: &[u8]) -> Result<Wav, String> {
     let d = nanomp3::decode_all::<i16>(data);
     let ch = match d.channels {
         Some(c) => c.num() as u16,
-        None => return Err("MP3 inside a WAV: no audio frames found".into()),
+        None => return Err("MPEG audio: no audio frames found".into()),
     };
     if d.sample_rate == 0 || d.samples.is_empty() {
-        return Err("MP3 inside a WAV: no audio frames found".into());
+        return Err("MPEG audio: no audio frames found".into());
     }
     let mut pcm = Vec::with_capacity(d.samples.len() * 2);
     for v in d.samples {
@@ -320,5 +521,91 @@ mod tests {
         let w = decode(&riff(&fmt(MS_ADPCM, 1, 22050, 8, 4, &[4, 0, 0, 0]), None, &block)).unwrap();
         // s2, s1, then s1*256>>8 + 1*16 = 216, then 216 + 0
         assert_eq!(i16s(&w), [100, 200, 216, 216]);
+    }
+
+    #[test]
+    fn mpeg_layer_2_inside_a_wav_is_decoded() {
+        // half a second of a 440 Hz tone, 22.05 kHz mono, as ffmpeg writes MP2 into a WAV (format 0x50)
+        let d = include_bytes!("../tests/data/tone_mp2.wav");
+        assert_eq!(u16at(d, 20), MPEG);
+        assert_eq!(probe(d), Ok(()));
+        let w = decode(d).unwrap();
+        assert_eq!((w.channels, w.bits, w.sample_rate), (1, 16, 22050));
+        let n = w.pcm.len() / 2;
+        assert!((10000..13500).contains(&n), "{n} samples");
+        let peak = w.pcm.chunks_exact(2).map(|s| i16::from_le_bytes([s[0], s[1]]).unsigned_abs()).max().unwrap();
+        assert!((3000..4500).contains(&peak), "peak {peak}");
+    }
+
+    #[test]
+    fn odd_files_are_read_as_their_writers_meant() {
+        let f = fmt(PCM, 1, 8000, 2, 16, &[]);
+        // a LIST chunk before the fmt, odd-sized and without its pad byte
+        let mut v = b"RIFF\0\0\0\0WAVELIST\x03\0\0\0abc".to_vec();
+        v.extend_from_slice(b"fmt \x10\0\0\0");
+        v.extend_from_slice(&f);
+        v.extend_from_slice(b"data\x04\0\0\0\x34\x12\x78\x56");
+        assert_eq!(i16s(&decode(&v).unwrap()), [0x1234, 0x5678]);
+        // a data chunk said to be longer than the file: cut at its end
+        let mut v = b"RIFF\0\0\0\0WAVEfmt \x10\0\0\0".to_vec();
+        v.extend_from_slice(&f);
+        v.extend_from_slice(b"data\xff\0\0\0\x34\x12");
+        assert_eq!(i16s(&decode(&v).unwrap()), [0x1234]);
+        // the data before the fmt
+        let mut v = b"RIFF\0\0\0\0WAVEdata\x02\0\0\0\x34\x12fmt \x10\0\0\0".to_vec();
+        v.extend_from_slice(&f);
+        assert_eq!(i16s(&decode(&v).unwrap()), [0x1234]);
+        assert!(decode(&v[..22]).unwrap_err().contains("no fmt"));
+        // a streamed data chunk of size 0: the rest of the file
+        let mut v = b"RIFF\0\0\0\0WAVEfmt \x10\0\0\0".to_vec();
+        v.extend_from_slice(&f);
+        v.extend_from_slice(b"data\0\0\0\0\x34\x12");
+        assert_eq!(i16s(&decode(&v).unwrap()), [0x1234]);
+        // big-endian RIFX: sizes, fmt fields and samples
+        let mut be = b"RIFX\0\0\0\0WAVEfmt \0\0\0\x10".to_vec();
+        be.extend_from_slice(&[0, 1, 0, 1, 0, 0, 0x1f, 0x40, 0, 0, 0x3e, 0x80, 0, 2, 0, 16]);
+        be.extend_from_slice(b"data\0\0\0\x02\x12\x34");
+        let w = decode(&be).unwrap();
+        assert_eq!((w.sample_rate, i16s(&w)), (8000, vec![0x1234]));
+        // RF64 (its sizes in a ds64 chunk; 0xffffffff in the data chunk's)
+        let mut v = b"RF64\xff\xff\xff\xffWAVEds64\x04\0\0\0\0\0\0\0fmt \x10\0\0\0".to_vec();
+        v.extend_from_slice(&f);
+        v.extend_from_slice(b"data\xff\xff\xff\xff\x34\x12");
+        assert_eq!(i16s(&decode(&v).unwrap()), [0x1234]);
+    }
+
+    #[test]
+    fn the_headers_alone_say_what_plays_and_name_what_does_not() {
+        assert_eq!(probe(&riff(&fmt(PCM, 1, 8000, 2, 16, &[]), None, &[0, 0])), Ok(()));
+        assert_eq!(probe(&riff(&fmt(GSM, 1, 8000, 65, 0, &[64, 1]), None, &[0; 65])), Ok(()));
+        assert_eq!(probe(&riff(&fmt(0x22, 1, 8000, 32, 1, &[]), None, &[0; 32])), Err("DSP Group TrueSpeech".into()));
+        assert_eq!(probe(&riff(&fmt(PCM, 1, 8000, 2, 12, &[]), None, &[0, 0])), Err("12-bit PCM".into()));
+        let mut ext = vec![16, 0, 4, 0, 0, 0, 0x31, 0, 0, 0, 0, 0, 0x10, 0, 0x80, 0, 0, 0xaa, 0, 0x38, 0x9b, 0x71];
+        assert_eq!(probe(&riff(&fmt(EXTENSIBLE, 1, 8000, 65, 0, &ext), None, &[0; 65])), Ok(()));
+        ext[6] = 0x61;
+        ext[7] = 0x01;
+        assert_eq!(probe(&riff(&fmt(EXTENSIBLE, 1, 8000, 65, 0, &ext), None, &[0; 65])), Err("Windows Media Audio".into()));
+        assert!(decode(&riff(&fmt(0x22, 1, 8000, 32, 1, &[]), None, &[0; 32])).unwrap_err().contains("TrueSpeech"));
+        // every coding the probe passes, decode takes (a GSM block as an example)
+        assert_eq!(decode(&riff(&fmt(GSM, 1, 8000, 65, 0, &[64, 1]), Some(320), &[0; 65])).unwrap().pcm.len(), 640);
+    }
+
+    #[test]
+    fn an_aiff_called_wav_is_read() {
+        // as the original's "Sounds/Effects/Sheep 2.wav": mono 16-bit at 22050 Hz (40 0d ac 44: the 80-bit rate)
+        let mut v = b"FORM\0\0\0\0AIFFCOMM\0\0\0\x12\0\x01\0\0\0\x02\0\x10\x40\x0d\xac\x44\0\0\0\0\0\0".to_vec();
+        v.extend_from_slice(b"SSND\0\0\0\x0c\0\0\0\0\0\0\0\0\x12\x34\xff\xfe");
+        assert_eq!(probe(&v), Ok(()));
+        let w = decode(&v).unwrap();
+        assert_eq!((w.channels, w.bits, w.sample_rate), (1, 16, 22050));
+        assert_eq!(i16s(&w), [0x1234, -2]);
+        // 8-bit AIFF samples are signed
+        v[27] = 8;
+        let w = decode(&v).unwrap();
+        assert_eq!((w.bits, w.pcm), (8, vec![0x92, 0xb4, 0x7f, 0x7e]));
+        // an AIFF-C coding it does not know is named
+        let mut c = b"FORM\0\0\0\0AIFCCOMM\0\0\0\x16\0\x01\0\0\0\x02\0\x10\x40\x0d\xac\x44\0\0\0\0\0\0ima4".to_vec();
+        c.extend_from_slice(b"SSND\0\0\0\x08\0\0\0\0\0\0\0\0");
+        assert_eq!(probe(&c), Err("AIFF-C coding 'ima4'".into()));
     }
 }

@@ -1346,7 +1346,12 @@ pub fn aim_search(cl: &mut Club, c: &mut Course, rng: &mut ExeRng, g: usize) -> 
                             } else {
                                 c.h(et)
                                     + if ef & 0x80 != 0 {
-                                        if (ef & 0x1f) as i32 == cl.g[g].hole {
+                                        // (with a Course B, the cup is the golfer's own only on the course played:
+                                        // sg_core::second)
+                                        if (ef & 0x1f) as i32 == cl.g[g].hole
+                                            && (cl.course_b.is_none()
+                                                || cl.holes.get(cl.g[g].hole.clamp(0, 19) as usize).is_some_and(|r| r.pin == (ea, eb)))
+                                        {
                                             -1
                                         } else {
                                             2

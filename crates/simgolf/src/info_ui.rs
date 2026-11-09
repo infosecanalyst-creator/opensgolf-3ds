@@ -90,6 +90,29 @@ pub fn text_right(s: &Ui, g: &mut Gfx, x: f32, y: f32, t: &str, size: f32, c: [f
     s.text(g, x - text_width(t, size), y, t, size, c);
 }
 
+/// The Course Report's text with bigger text (textsize.rs; the port's own): each cell as big as its room on the art holds,
+/// at most this much (the rows are 17 pixels apart); 14 pixels, the exe's, at normal size.
+const REPORT_CAP: f32 = 1.15;
+
+/// The room of the cell a right-aligned or centred x falls in.
+fn col(x: f32) -> Option<(f32, f32)> {
+    CX.iter().zip(CW).map(|(&l, w)| (l, w)).find(|&(l, w)| x > l && x <= l + w + 2.0)
+}
+
+fn cell_right(s: &Ui, g: &mut Gfx, x: f32, y: f32, t: &str, c: [f32; 4]) {
+    let room = col(x).map_or(40.0, |(l, _)| x - l - 2.0);
+    text_right(s, g, x, y, t, crate::textsize::fit_px(14.0, REPORT_CAP, t, room), c);
+}
+
+fn cell_centred(s: &Ui, g: &mut Gfx, x: f32, y: f32, t: &str, c: [f32; 4]) {
+    let room = col(x).map_or(40.0, |(_, w)| w - 2.0);
+    s.text_centered(g, x, y, t, crate::textsize::fit_px(14.0, REPORT_CAP, t, room), c);
+}
+
+fn cell_left(s: &Ui, g: &mut Gfx, x: f32, y: f32, t: &str, room: f32, c: [f32; 4]) {
+    s.text(g, x, y, t, crate::textsize::fit_px(14.0, REPORT_CAP, t, room), c);
+}
+
 /// "1.23" in hundredths, "-" for negatives (0x42dd50).
 pub fn hundredths(v: i32) -> String {
     format!("{}{}.{:02}", if v < 0 { "-" } else { "" }, v.abs() / 100, v.abs() % 100)
@@ -164,24 +187,30 @@ impl App {
     pub fn flag_click(&mut self, vx: f32, vy: f32) -> bool {
         let z = self.exe_zoom();
         let tall = 10.0 + 12.0 * z;
-        let mut best: Option<(f32, usize)> = None;
-        for h in 1..19 {
-            if self.club.holes[h].par == 0 {
+        let mut best: Option<(f32, usize, bool)> = None;
+        // (Course B's flags too, with the Second course extra: sg_core::second)
+        let courses: &[bool] = if self.club.course_b.is_some() { &[false, true] } else { &[false] };
+        for (&b, h) in courses.iter().flat_map(|b| std::iter::repeat_n(b, 18).zip(1..19)) {
+            let Some(&sg_core::golfer::Hole { par, pin: (pa, pb), .. }) = self.club.course_holes(b).get(h) else { continue };
+            if par == 0 {
                 continue;
             }
             // the pin is a tile; the cup stands at its centre (staff units)
-            let (pa, pb) = self.club.holes[h].pin;
             let u = sg_core::staff::UNIT;
             let Some((sx, sy)) = self.screen_of(pa * u + u / 2, pb * u + u / 2) else { continue };
             if (vx - sx).abs() <= 4.0 + 2.0 * z && vy <= sy + 4.0 && vy >= sy - tall {
                 let d = (vx - sx).abs() + (vy - (sy - tall * 0.5)).abs() * 0.2;
-                if best.is_none_or(|(bd, _)| d < bd) {
-                    best = Some((d, h));
+                if best.is_none_or(|(bd, _, _)| d < bd) {
+                    best = Some((d, h, b));
                 }
             }
         }
-        let Some((_, h)) = best else { return false };
+        let Some((_, h, b)) = best else { return false };
         self.info.stats_hole = h;
+        if self.club.course_b.is_some() {
+            // the course the hole tools work on: an action (replay.rs)
+            self.act(sg_core::action::Action::CourseShown(b));
+        }
         self.screen = Screen::HoleStats;
         self.ui_sound(0x38);
         true
@@ -189,6 +218,11 @@ impl App {
 
     /// A click on the Course Report: a hole's row opens its Hole Stats, anything else closes the report.
     pub fn report_click(&mut self, vx: f32, vy: f32) {
+        // (the holes of the course the hole panel's A/B switch shows: sg_core::second)
+        self.on_hole_course(|a| a.report_click_shown(vx, vy))
+    }
+
+    fn report_click_shown(&mut self, vx: f32, vy: f32) {
         let holes = self.report_holes();
         let row = ((vy - REPORT_TOP) / REPORT_PITCH).floor();
         if vy >= REPORT_TOP && (0.0..holes.len() as f32).contains(&row) && (0.0..800.0).contains(&vx) {
@@ -204,6 +238,29 @@ impl App {
     /// The Course Report (0x44fb30 mode 0): header, a 17 px strip per open hole with its numbers and the art's highlight cells,
     /// the totals strip and the legend.
     pub fn draw_report(&mut self, g: &mut Gfx) {
+        // (the course the hole panel's A/B switch shows: sg_core::second)
+        self.on_hole_course(|a| a.draw_report_shown(g))
+    }
+
+    /// A report's title, marked as Course B's while Course B is shown (the Second course extra, sg_core::second).
+    fn course_title(&self, t: &str) -> String {
+        if self.club.b_shown() {
+            trf("STR_COURSE_B_TITLE", &[("TITLE", &t)])
+        } else {
+            t.to_string()
+        }
+    }
+
+    /// A hole's name on the reports: Course B's numbered "Hole B3" (the Second course extra, sg_core::second).
+    fn report_hole_name(&self, h: usize, hole: &sg_core::golfer::Hole) -> String {
+        if self.club.b_shown() && hole.flags & 0x81 == 0 {
+            trf("STR_HOLE_NAME_NUMBER", &[("HOLE", &self.hole_text(true, h as i32))])
+        } else {
+            ratings::hole_name(h, hole)
+        }
+    }
+
+    fn draw_report_shown(&mut self, g: &mut Gfx) {
         let art = &self.info.art.report;
         if !self.ui_ok || art.tex.is_none() {
             return;
@@ -215,9 +272,9 @@ impl App {
         s.image_part(g, art, 0.0, 0.0, 0.0, 0.0, 800.0, REPORT_TOP);
         // fonts (0x44fb30): the title in 0x821020 (Klepto 24) centred at (316, 35); every other line
         // in 0x821ee8 (Manual SSi 14), the rows' tops 2 below their pieces, the totals' 11 below theirs
-        s.put_centered(g, crate::ui::F_INFO_TITLE, 316.0, 35.0, tr("STR_REPORT_TITLE"), ink);
+        s.put_centered_fit(g, crate::ui::F_INFO_TITLE, 316.0, 35.0, crate::ui::TITLE_ROOM, &self.course_title(tr("STR_REPORT_TITLE")), ink);
         for c in 0..12 {
-            s.text_centered(g, CX[c] + CW[c] / 2.0, 86.0, tr(HEAD[c]), 14.0, ink);
+            cell_centred(&s, g, CX[c] + CW[c] / 2.0, 86.0, tr(HEAD[c]), ink);
         }
         let all = self.club.game & sg_core::golfer::game::TWO_TEES != 0;
         let holes = self.report_holes();
@@ -294,7 +351,7 @@ impl App {
             mark(g, 11, (r.profit < 0).then_some(0));
             let ty = y + 12.0;
             let hole = &self.club.holes[r.hole];
-            s.text(g, 15.0, ty, &ratings::hole_name(r.hole, hole), 14.0, ink);
+            cell_left(&s, g, 15.0, ty, &self.report_hole_name(r.hole, hole), 72.0, ink);
             // Top 100 / Top 18 / scenic marker (index 3..7 on the sheet's icon row), and the dogleg arrow in the type cell
             let tops = if r.flags & 1 != 0 { 1 + (r.flags >> 1 & 1) as usize } else { 0 };
             let m = 2 + tops + if r.scenic { 3 } else { 0 };
@@ -303,35 +360,35 @@ impl App {
             }
             let dog = if r.flags & 0x60 == 0 { 1 } else { (r.flags >> 4 & 2) as usize };
             s.image_part(g, art, 555.0, y + 1.0, 547.0, 549.0 + 14.0 * dog as f32, 12.0, 13.0);
-            text_right(&s, g, 151.0, ty, &r.yards.to_string(), 14.0, ink);
-            s.text_centered(g, 172.0, ty, &r.par.to_string(), 14.0, ink);
-            text_right(&s, g, 227.0, ty, &hundredths(r.avg), 14.0, ink);
-            text_right(&s, g, 278.0, ty, &trf("STR_UNIT_MINUTES", &[("MINUTES", &r.minutes)]), 14.0, ink);
-            text_right(&s, g, 324.0, ty, &format!("{}%", r.fun), 14.0, ink);
-            text_right(&s, g, 369.0, ty, &hundredths(r.len), 14.0, ink);
-            text_right(&s, g, 415.0, ty, &hundredths(r.acc), 14.0, ink);
-            text_right(&s, g, 462.0, ty, &hundredths(r.img), 14.0, ink);
-            s.text(g, 471.0, ty, r.type_name, 14.0, ink);
-            text_right(&s, g, 635.0, ty, &digits(r.avg_fee), 14.0, ink);
-            text_right(&s, g, 709.0, ty, &digits(r.revenue), 14.0, ink);
-            text_right(&s, g, 786.0, ty, &digits(r.profit), 14.0, ink);
+            cell_right(&s, g, 151.0, ty, &r.yards.to_string(), ink);
+            cell_centred(&s, g, 172.0, ty, &r.par.to_string(), ink);
+            cell_right(&s, g, 227.0, ty, &hundredths(r.avg), ink);
+            cell_right(&s, g, 278.0, ty, &trf("STR_UNIT_MINUTES", &[("MINUTES", &r.minutes)]), ink);
+            cell_right(&s, g, 324.0, ty, &format!("{}%", r.fun), ink);
+            cell_right(&s, g, 369.0, ty, &hundredths(r.len), ink);
+            cell_right(&s, g, 415.0, ty, &hundredths(r.acc), ink);
+            cell_right(&s, g, 462.0, ty, &hundredths(r.img), ink);
+            cell_left(&s, g, 471.0, ty, r.type_name, 80.0, ink);
+            cell_right(&s, g, 635.0, ty, &digits(r.avg_fee), ink);
+            cell_right(&s, g, 709.0, ty, &digits(r.revenue), ink);
+            cell_right(&s, g, 786.0, ty, &digits(r.profit), ink);
         }
         let total_y = REPORT_TOP + REPORT_PITCH * rows.len() as f32;
         s.image_part(g, art, 0.0, total_y, 0.0, 420.0, 800.0, 29.0);
         let ty = total_y + 21.0;
         if open > 0 {
-            s.text(g, 15.0, ty, tr("STR_REPORT_TOTAL"), 14.0, ink);
-            text_right(&s, g, 151.0, ty, &digits(t_yds), 14.0, ink);
-            s.text_centered(g, 172.0, ty, &t_par.to_string(), 14.0, ink);
-            text_right(&s, g, 227.0, ty, &hundredths(t_avg), 14.0, ink);
+            cell_left(&s, g, 15.0, ty, tr("STR_REPORT_TOTAL"), 95.0, ink);
+            cell_right(&s, g, 151.0, ty, &digits(t_yds), ink);
+            cell_centred(&s, g, 172.0, ty, &t_par.to_string(), ink);
+            cell_right(&s, g, 227.0, ty, &hundredths(t_avg), ink);
             // the exe shows the last hole's minutes past the hour, not the total's
             let time = if t_min >= 60 {
                 trf("STR_UNIT_HOURS_MINUTES", &[("HOURS", &(t_min / 60)), ("MINUTES", &(m_last % 60))])
             } else {
                 trf("STR_UNIT_MINUTES", &[("MINUTES", &(m_last % 60))])
             };
-            text_right(&s, g, 278.0, ty, &time, 14.0, ink);
-            text_right(&s, g, 324.0, ty, &format!("{}%", t_fun / open), 14.0, ink);
+            cell_right(&s, g, 278.0, ty, &time, ink);
+            cell_right(&s, g, 324.0, ty, &format!("{}%", t_fun / open), ink);
             for (c, (x, v)) in [(369.0, t_len / open), (415.0, t_acc / open), (462.0, t_img / open)].into_iter().enumerate() {
                 // the totals light up only from 50 (the +Img total never does: the exe's own slip)
                 let k = match v {
@@ -342,20 +399,20 @@ impl App {
                 if let (Some(k), true) = (k, c < 2) {
                     s.image_part(g, art, CX[5 + c], total_y + 9.0, CX[5 + c], [205.0, 241.0, 275.0][k as usize], CW[5 + c], 15.0);
                 }
-                text_right(&s, g, x, ty, &hundredths(v), 14.0, ink);
+                cell_right(&s, g, x, ty, &hundredths(v), ink);
             }
-            text_right(&s, g, 635.0, ty, &format!("\u{a7}{}", digits(t_fee / open)), 14.0, ink);
-            text_right(&s, g, 709.0, ty, &format!("\u{a7}{}", digits(t_rev)), 14.0, ink);
+            cell_right(&s, g, 635.0, ty, &format!("\u{a7}{}", digits(t_fee / open)), ink);
+            cell_right(&s, g, 709.0, ty, &format!("\u{a7}{}", digits(t_rev)), ink);
             if t_prof < 0 {
                 s.image_part(g, art, CX[11], total_y + 9.0, CX[11], 205.0, CW[11], 15.0);
             }
-            text_right(&s, g, 786.0, ty, &format!("\u{a7}{}", digits(t_prof)), 14.0, ink);
+            cell_right(&s, g, 786.0, ty, &format!("\u{a7}{}", digits(t_prof)), ink);
         }
         let by = total_y + 29.0;
         s.image_part(g, art, 0.0, by, 0.0, 468.0, 800.0, 72.0);
         // the legend's tops at the bottom piece's y - 63 + its height (72), the tick 15 below them (0x4520f0)
-        for (x, t) in [(178.0, tr("STR_REPORT_TOP_100")), (335.0, tr("STR_REPORT_TOP_18")), (487.0, tr("STR_REPORT_SCENIC"))] {
-            s.put_centered(g, crate::ui::F_INFO14, x, by + 9.0, t, ink);
+        for (k, t) in [tr("STR_REPORT_TOP_100"), tr("STR_REPORT_TOP_18"), tr("STR_REPORT_SCENIC")].into_iter().enumerate() {
+            draw_legend_word(g, &s, k, by + 9.0, t, ink);
         }
         self.ok_tick(g, &s, 734.0, by + 24.0, false);
         g.flush();
@@ -365,6 +422,11 @@ impl App {
 
     /// The Hole Stats dialog (0x453330) for the hole picked on the Course Report. It closes on any click.
     pub fn draw_hole_stats(&mut self, g: &mut Gfx) {
+        // (the course the hole panel's A/B switch shows: sg_core::second)
+        self.on_hole_course(|a| a.draw_hole_stats_shown(g))
+    }
+
+    fn draw_hole_stats_shown(&mut self, g: &mut Gfx) {
         let s = Ui::new(self.draw_w, self.draw_h);
         self.view = s.view;
         let art = &self.info.art.holestat;
@@ -381,12 +443,12 @@ impl App {
         let st = ratings::hole_stats(hole);
         let ink = black();
         s.image_part(g, art, 0.0, 0.0, 0.0, 0.0, 800.0, 220.0);
-        let mut title = trf("STR_HOLESTATS_TITLE", &[("HOLE", &ratings::hole_name(h, hole))]);
+        let mut title = trf("STR_HOLESTATS_TITLE", &[("HOLE", &self.report_hole_name(h, hole))]);
         if hole.flags & 0x81 != 0 {
             title += &trf("STR_HOLESTATS_NUMBER", &[("HOLE", &h)]);
         }
         // fonts (0x453330): the title in 0x821020 (Klepto 24) centred at (385, 48), the rest in 0x821ee8 (Manual SSi 14)
-        s.put_centered(g, crate::ui::F_INFO_TITLE, 385.0, 48.0, &title, ink);
+        s.put_centered_fit(g, crate::ui::F_INFO_TITLE, 385.0, 48.0, crate::ui::TITLE_ROOM, &self.course_title(&title), ink);
         // left column: label at 190, value centred at 356
         let rows = [
             (83.0, tr("STR_HOLESTATS_FUN")),
@@ -411,7 +473,8 @@ impl App {
         if rounds > 0 {
             // the exe's clock picks one of five figures, a new one every 1.024 seconds
             let k = ((self.clock * 1000.0) as u64 >> 10) % 5;
-            let on_hole = self.club.g.iter().filter(|g| g.hole == h as i32 && g.strokes > 0).count() as i32;
+            let b = self.club.b_shown();
+            let on_hole = self.club.g.iter().filter(|g| g.hole == h as i32 && g.strokes > 0 && g.course_b == b).count() as i32;
             let r = (rounds - on_hole).max(1);
             let (label, value) = match k {
                 0 => (tr("STR_HOLESTATS_AVG_DRIVE"), trf("STR_UNIT_YDS", &[("YARDS", &(hole.drive_sum / rounds))])),
@@ -428,6 +491,7 @@ impl App {
         let par_ink = if hole.game_par != 0 { c15(0x0018) } else { ink };
         s.text_centered(g, 536.0, 135.0, &hole.par.to_string(), 14.0, par_ink);
         self.draw_par_buttons(g, &s);
+        self.draw_flyover_button(g, &s);
         s.text(g, 441.0, 156.0, tr("STR_HOLESTATS_STROKE_AVERAGE"), 14.0, ink);
         if let Some(a) = st.avg {
             s.text_centered(g, 591.0, 156.0, &hundredths(a), 14.0, ink);
@@ -478,7 +542,7 @@ impl App {
         s.image_part(g, art, 195.0, 45.0, 195.0, 45.0, 411.0, 79.0);
         let n = (1..19).filter(|&h| self.club.holes[h].par != 0).count();
         // fonts (0x455a30): the title in 0x821020 (Klepto 24) centred at (413, 59), the rest in 0x821ee8 (Manual SSi 14)
-        s.put_centered(g, crate::ui::F_INFO_TITLE, 413.0, 59.0, &trf("STR_BEST_TITLE", &[("HOLES", &n)]), ink);
+        s.put_centered_fit(g, crate::ui::F_INFO_TITLE, 413.0, 59.0, crate::ui::TITLE_ROOM, &trf("STR_BEST_TITLE", &[("HOLES", &n)]), ink);
         s.text(g, 236.0, 106.0, tr("STR_BEST_GOLFER"), 14.0, ink);
         s.text_centered(g, 551.0, 106.0, tr("STR_BEST_SCORE"), 14.0, ink);
         let mut y = 124.0;
@@ -507,7 +571,10 @@ impl App {
         if let Some(t) = sg_core::fsutil::read_file(&f).and_then(|d| top10::parse(&d)) {
             return t;
         }
-        let t = top10::defaults(&mut self.exe_rng);
+        // drawn with the game's generator: an action (replay.rs)
+        self.act(sg_core::action::Action::Top10);
+        // (refused during a replay: the table is shown without touching the game's generator)
+        let t = self.top10_drawn.take().unwrap_or_else(|| top10::defaults(&mut self.exe_rng.clone()));
         sg_core::fsutil::write_file(&f, &top10::to_bytes(&t));
         t
     }
@@ -595,4 +662,23 @@ impl App {
         }
         g.flush();
     }
+}
+
+/// The Course Report legend's marks (the bottom piece's Top 100, Top 18 and scenic marks, 14 pixels wide) and its words'
+/// middles (0x4520f0), by entry.
+const LEGEND_MARK_X: [f32; 3] = [113.0, 271.0, 423.0];
+const LEGEND_WORD_X: [f32; 3] = [178.0, 335.0, 487.0];
+
+/// A legend entry's words as the exe centres them on its x (Manual SSi 14) when they fit between their mark and as far
+/// again on the other side; longer words (a translation, the port's own, issue #164) start after the mark and have the
+/// room up to the next entry's mark (the last: to the OK tick), a little smaller or cut if they still do not fit
+/// (ui.rs fit_line), so they never run over their mark.
+fn draw_legend_word(g: &mut Gfx, s: &Ui, k: usize, y: f32, t: &str, c: [f32; 4]) {
+    let f = crate::ui::F_INFO14;
+    let (x, after) = (LEGEND_WORD_X[k], LEGEND_MARK_X[k] + 14.0 + 4.0);
+    if f.width(t) <= 2.0 * (x - after) {
+        return s.put_centered(g, f, x, y, t, c);
+    }
+    let end = LEGEND_MARK_X.get(k + 1).copied().unwrap_or(728.0) - 8.0;
+    s.put_fit(g, f, after, y, end - after, t, c);
 }

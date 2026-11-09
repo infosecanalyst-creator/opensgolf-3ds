@@ -34,6 +34,53 @@ STR_TOAST_NOT_ENOUGH_MONEY              :Du hast nicht genug Geld.
 * Lines starting with `#` and blank lines are ignored. You do not need to keep the order or the comments, but keeping the
   English file's order makes it easy to compare.
 * Leave out what you have not translated yet: those texts stay English.
+* The letters the game can draw: Latin-1 (Western European) and Latin Extended-A (Central European: Hungarian ő ű, Polish
+  ą ł, Czech č ř and the rest), plus the typographic quotes ‘ ’ ‚ “ ” „, the dashes – — and the ellipsis …. Where the game's
+  own font has no glyph for one of the added letters it is drawn from Arial Bold (or the bundled stand-in), else as the
+  plain letter. Anything else (Cyrillic, Greek, CJK) shows as `?` for now.
+
+## Longer texts
+
+Translations are often longer than the English the screens were laid out for. You do not have to squeeze your words:
+a label that is too wide for its button, tab, menu sign, panel or screen title, or for the widest a pop-up box can grow
+(the width of the screen), is first drawn a little smaller (down to three quarters of its size), then, where its box is
+tall enough, wrapped onto a second line, and only as a last resort cut short with an ellipsis (…), so it never runs over
+its neighbours. Message windows and descriptions wrap as before. Text that fits is drawn exactly as it always was. Still,
+prefer a shorter word where your language has one: smaller and cut text is harder to read. `SG_TEXTFIT=1` (an
+environment variable) prints every text the game had to fit this way, each once, with the width it had.
+
+The boxes and places this covers:
+
+* buttons and tabs of the game's own screens, the pop-up boxes (their lines and page tabs), the title menu signs, Select
+  Difficulty, the info screens' titles and the Load list;
+* the building's info box over the Build Course panel (name, cost, what it does): a description too wide for the box
+  goes onto up to three lines, the box moving up to show them;
+* the home-site details box (the Home-site details extra): a line too wide goes onto two lines and the box grows; the
+  celebrity's name and "Home" over the lot on the course;
+* the golfer card: the name, the marital status and age, the traits, the quote and the likes between the face and the
+  bars, and the five bars' names (Fun, Attitude, Energy, Hunger, Thirst);
+* the skill names in their pills on a pro's skills card and in the skills dialog;
+* the world map: the question over the globe, each card's place, bonus and acres line, the legend, and the lit card's
+  offer. The offer's three texts (`STR_WORLD_BUY_ACRES`, `STR_WORLD_PROPERTY_KIND`, `STR_WORLD_FOR_ONLY`) are read as one
+  sentence when one of them is too wide: they are joined with spaces and wrapped in the card, so write them to follow
+  on from each other;
+* the shot panel while your pro aims: the Attitude, Club, Distance and Lie lines in their box, and the skill lines in
+  their two columns (and the box the aim's lines get when the Player panel is not open);
+* Comments by Hole: the two lines at its foot keep left of the OK tick;
+* the Course Report's legend (Top 100, Top 18, scenic hole): words too wide to sit centred beside their mark start
+  after the mark and may run on to the next one;
+* the round's scorecard (on the Player panel during your pro's round, and the live scorecard under the golfer card):
+  the two lines on the round keep left of the "Hole" and "Par" labels; a label too wide for its place ends at the first
+  hole's cell and starts as far left as the line beside it and the dark header allow (a little smaller or cut if it still
+  does not fit); "Total" keeps to its column's cell;
+* the SGA report: the Selection Criteria line and "Grade:" in their pills, each criterion's name and value in its pill,
+  and the ideals inside the frame;
+* the Routing Map: the box's title in its pill, and the two lines of help in the box (each a little smaller, else on
+  two lines);
+* the Player Comments report: the three headings in their pills, and each comment in its column (a little smaller, else
+  cut, so the rows stay in line and never run under the hole's number);
+* the Membership Roster's legend (member levels, Photo Opp, Happy Ending): each word in its pill between the marks, on
+  two lines in the pill if it does not fit on one.
 
 ## Parameters
 

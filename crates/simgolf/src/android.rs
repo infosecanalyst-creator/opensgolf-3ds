@@ -29,7 +29,7 @@ use miniquad::native::android::{self, ndk_sys};
 use std::ffi::{c_char, c_int, CStr, CString};
 use std::io::{BufRead, BufReader};
 use std::os::fd::FromRawFd;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 /// The tag of everything the game writes to the system log.
@@ -248,6 +248,22 @@ unsafe fn threw(env: *mut ndk_sys::JNIEnv) -> bool {
 /// for.
 pub fn pick_game_files(folder: bool) -> bool {
     let dest = if folder { game_root().with_file_name("import") } else { files_dir().join("import.zip") };
+    pick_to(folder, &dest)
+}
+
+/// Where Load Previous Game's *Import a save file...* has Android's picker copy the file picked ([`pick_save_file`]).
+pub fn picked_save_path() -> PathBuf {
+    files_dir().join("picked_save")
+}
+
+/// Load Previous Game's *Import a save file...* (files_ui.rs): the same picker as [`pick_game_files`] for one file, copied
+/// to [`picked_save_path`]; [`import_state`] says when it is there ("zip:PATH"). Android does not hand the file's name
+/// over, so the game tells what it is from its bytes.
+pub fn pick_save_file() -> bool {
+    pick_to(false, &picked_save_path())
+}
+
+fn pick_to(folder: bool, dest: &Path) -> bool {
     unsafe {
         let activity = android::ACTIVITY;
         if activity.is_null() {
@@ -419,7 +435,7 @@ fn property(name: &CStr) -> String {
 }
 
 /// The phone, for a report: maker, model, chip and Android version.
-fn device() -> String {
+pub(crate) fn device() -> String {
     format!(
         "{} {} ({}), Android {} (API {}), {}",
         property(c"ro.product.manufacturer"),

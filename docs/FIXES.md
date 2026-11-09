@@ -1,9 +1,10 @@
 # Fixes of the original game's bugs
 
 OpenSGolf plays SimGolf 1:1, bugs included, unless a bug is fixed here. Where the bug is the original's own behaviour the
-fix sits behind the setting **Fix the original game's bugs** (Preferences, *Enhanced graphics settings...*, Display page;
-settings.json `enhanced.fix_original_bugs`). It is **on by default** and, unlike every other line of that box, works in
-Classic too (the Enhanced master switch does not gate it). Turn it off to play the original's behaviour. Crashes and the
+fix sits behind the setting **Fix the original game's bugs** (a line of Preferences itself, with the note "Its own
+glitches only; play is otherwise the original's."; kept as settings.json `enhanced.fix_original_bugs`, where it always
+was). It is **on by default** and works in Classic too (the Enhanced master switch does not gate it); the presets of
+Select Difficulty's Game box and of the extras box leave it as it is. Turn it off to play the original's behaviour. Crashes and the
 port's own bugs are fixed whatever the setting.
 
 - Switch in the game: `enhanced::fix_bugs()` (crates/simgolf/src/enhanced.rs); in the simulation `sg_core::fixes::on()`
@@ -141,3 +142,45 @@ EXACT (0x435570 hit test, 0x435760 draw): below the closest zoom the Golfers pan
 columns 121 apart), so a click centred the map on another golfer than the one under the pointer, and the compact list's
 further columns could not be clicked at all. With the setting the click takes the cell as drawn:
 crates/simgolf/src/member_panel.rs:56.
+
+## 12. A free building past the edge of a small property (#125)
+
+EXACT (0x470a60): the properties that come with a building beside the clubhouse (Jurassic Springs' kind 13 and four
+others) put it on the far side unless the tile past it is off the land, but the generator marks the land the player does
+not own only at its end (the acres at 0x4720e8, after the clubhouse at 0x471618), so that test never sees the owned edge.
+On the smallest deals the building could stand partly past the edge, over the cliff. With the setting the building takes
+the other side of the clubhouse when its lot would leave the owned square (`generate`, crates/sg-core/src/land.rs); the
+generator makes the same draws, so the rest of the map is the exe's. New games only: a saved game keeps its buildings.
+
+## 13. A path under the pine brush (#126)
+
+EXACT (0x41aa9e, table 0x4c2d28): the brush under the pointer draws every picture of `Data/<theme>.pcx` whose entry in the
+exe's table is the brush's tile type, and for any tree type also the trees button's picture (cell 7). The table's 15th
+entry is 14, the pine's type, but the sheet's 15th picture is a path, so the pine brush (the trees' bottom left button)
+showed a path tile with the trees. With the setting a tree brush draws only the trees picture: `brush_cells`,
+crates/simgolf/src/cursor_ui.rs.
+
+## 14. Greens join a putting green (#128), rough a driving range (#139)
+
+A putting green's lot is green tiles round a building tile (`Land::place_sized`), and the exe treats them as any green:
+a green painted beside one blends into it (Terrain.dll draws no border between tiles of one class), and the hole tool's rule
+that a green next to another green starts no hole without a tee (0x41fee2) counts the putting green, so a green painted
+against it got no flag. With the setting the putting green's tiles are a group of their own: they keep their border against
+a painted green (`tile_relation`, crates/sg-core/src/terrain.rs; the lot's tiles from `Land::putting_greens_to`, not saved),
+and the hole tool does not count them as a neighbouring green (`App::green_joins`, crates/simgolf/src/app.rs).
+A driving range's lot is rough (deep rough along its far side) round a building tile, so rough painted beside it blends into
+it the same way (#139); with the setting its tiles are a group of their own as well (`Land::lots_to`). A marina's water is
+left one with the lake it stands in.
+
+## 15. Land past the property's edge (#144)
+
+The land generator draws the spots for its landmarks, difficulty obstacles and their paths anywhere on the map, and marks the
+land the club does not own only at the end (0x4720e8). Round an island the cut-off land becomes sea, so an island property
+(Oahu, Wales) could start with a landmark and its garden standing out in the water, and every property could have obstacles
+past its edge. With the setting an object reaching the cut-off land is removed, its ground goes back to the level round it
+and the cut tiles keep no paths or marks (`Land::clear_cut`, crates/sg-core/src/land.rs). The draws are the same, so the
+rest of the map is the exe's.
+A coastal property's sea is laid down first, with the first tile of each row out of bounds, and the 24 ground patches come
+after it; the first patch is always a wetland, and its random walk can reach the sea's edge and turn those tiles back into
+wetland or pond, so a strip of marsh stood past the map's edge (the reporter's Florida). With the setting that edge is out
+of bounds again at the end.

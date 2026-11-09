@@ -2,15 +2,17 @@
 //! menu, select difficulty, heads-up display with the dock). The property chooser and land screen are in world_ui, the
 //! course report in info_ui.
 use crate::app::*;
+use crate::atlas::STex;
 use crate::gfx::{Gfx, Mat4, Mode, Uniforms, Vert};
-use crate::ui::{money, rgb, rgba, text_width, wrap_text, Screen as Ui};
+use crate::ui::{money, rgb, rgba, text_width, Screen as Ui};
+use miniquad::TextureId;
 use sg_core::decor::WEEDY_BED;
 use sg_core::economy::{Economy, STAFF_KINDS};
 use sg_core::lang::{tr, trf};
 use sg_core::sprites::SPRITE_UNITS_PER_PIXEL;
 use sg_core::terrain::{DEPTH_RANGE, TILE_SIZE};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Rect {
     pub x: f32,
     pub y: f32,
@@ -27,13 +29,21 @@ impl Rect {
     }
 }
 
+/// The pro's aim line's points (map units) and how far up the screen each is drawn (`App::aim_path`).
+pub(crate) type AimPath = (Vec<(i32, i32)>, Vec<f32>);
+
+/// CALIBRATED: the decoded light leaves flat ground at about 58% of its texture, but the game's own rendered terrain icons
+/// (Data/<theme>.pcx, e.g. desert sand 223,161,96 against its texture's 234,171,110) show about 95%, so something in the
+/// original's setup brightens it further (not yet found). Ambient and diffuse are scaled to match.
+pub(crate) const BRIGHTNESS: f32 = 1.74;
+
 // ---- the course ---------------------------------------------------------------------------------------------------------------
 
 impl App {
     /// Draws the course and everything on it. Camera as the original: ortho +-5000 depth, pitch about X, then yaw 45 degrees.
     pub fn render_world(&mut self, g: &mut Gfx) {
         // world units per drawable pixel: the zoom is in the 800 x 600 screen's pixels, so a bigger window shows the same view
-        let vscale = (self.draw_w / 800.0).min(self.draw_h / 600.0);
+        let vscale = crate::ui::view_scale(self.draw_w, self.draw_h);
         // the zoom and turn as shown: eased by Enhanced's smooth camera, else the camera's own (enhanced.rs)
         let upp = 2.0 / (self.view_zoom() * vscale);
         let (hw, hh) = (self.draw_w * upp * 0.5, self.draw_h * upp * 0.5);
@@ -49,10 +59,6 @@ impl App {
         // renderer has no clock); the exe animates water with its ripple, rock and waterfall sprites (wild_ui).
         let mut lit = Uniforms::flat(&proj, &mv);
         lit.lit = 1.0;
-        // CALIBRATED: the decoded light leaves flat ground at about 58% of its texture, but the game's own rendered terrain
-        // icons (Data/<theme>.pcx, e.g. desert sand 223,161,96 against its texture's 234,171,110) show about 95%, so
-        // something in the original's setup brightens it further (not yet found). Ambient and diffuse are scaled to match.
-        const BRIGHTNESS: f32 = 1.74;
         lit.light_amb = self.light.ambient.map(|v| v * BRIGHTNESS);
         lit.light_dif = self.light.diffuse.map(|v| v * BRIGHTNESS);
         lit.light_spec = self.light.specular;
@@ -99,20 +105,25 @@ impl App {
         g.flush();
     }
 
+    /// The pro's aim line (0x41bbe1) in map units from the ball, and how far up the screen each point is drawn (800 x 600
+    /// pixels); None when the pro is not aiming.
+    pub(crate) fn aim_path(&self) -> Option<AimPath> {
+        let (Some(gi), Some(p)) = (self.club.pro_aiming(), self.aim) else { return None };
+        let gg = &self.club.g[gi];
+        let opt = self.club.planner.option;
+        // a left-handed pro's draw and fade bend the other way (the Left-handed golfers extra)
+        let line = sg_core::pro::aim_line((gg.bx, gg.by), &p, self.club.hand_bend(gi, opt));
+        Some((line, sg_core::pro::aim_lifts(p.distance, opt, self.exe_zoom())))
+    }
+
     /// The pro's aim line (0x41bbe1): from the ball, bending with the shot type, drawn white over a dark copy; and a box on
     /// the aimed tile.
     fn draw_aim(&mut self, g: &mut Gfx, u: &Uniforms) {
-        let (Some(gi), Some(p)) = (self.club.pro_aiming(), self.aim) else { return };
-        let gg = &self.club.g[gi];
-        let ball = (gg.bx, gg.by);
-        let opt = self.club.planner.option;
-        // a left-handed pro's draw and fade bend the other way (the Left-handed golfers extra)
-        let line = sg_core::pro::aim_line(ball, &p, self.club.hand_bend(gi, opt));
+        let (Some(p), Some((line, lifts))) = (self.aim, self.aim_path()) else { return };
         let zoom = self.exe_zoom();
-        let lifts = sg_core::pro::aim_lifts(p.distance, opt, zoom);
         let mv = self.mv;
         let (ux, uy, uz) = (mv[1], mv[5], mv[9]);
-        let vscale = (self.draw_w / 800.0).min(self.draw_h / 600.0);
+        let vscale = crate::ui::view_scale(self.draw_w, self.draw_h);
         let px = self.upp * vscale; // world units per 800 x 600 pixel
                                     // a ground point moved `up` pixels up the screen
         let lifted = |p: [f32; 3], up: f32| [p[0] + ux * up * px, p[1] + uy * up * px, p[2] + uz * up * px];
@@ -137,18 +148,84 @@ impl App {
         self.draw_lines(g, u, &bx, true, 1.0, [1.0, 0.95, 0.3, 1.0]);
     }
 
-    /// A person's frame in the palette of an outfit, recoloured on first use and cached.
-    pub(crate) fn outfit_texture(
+    /// A person's frame in the palette of an outfit, recoloured on first use and cached (in Classic, in the sprite atlas,
+    /// atlas.rs).
+    pub(crate) fn outfit_texture(&mut self, g: &mut Gfx, si: usize, view: i32, frame: i32, o: sg_core::bodies::Outfit) -> Option<STex> {
+        let i = self.sprites[si].s.frame_index(view, frame);
+        if crate::packart::active() {
+            if let Some(t) = self.pack_outfit_texture(g, si, i, o) {
+                return Some(STex::whole(t));
+            }
+        }
+        if !self.sprites[si].s.recolourable() {
+            return None;
+        }
+        if let Some(&(t, slot)) = self.outfit_atlas.get(&(si, i, o)) {
+            if g.atlas_valid(slot) {
+                return Some(t);
+            }
+            self.outfit_atlas.remove(&(si, i, o));
+        }
+        if let Some(&t) = self.outfit_tex.get(&(si, i, o)) {
+            return Some(STex::whole(t));
+        }
+        if !self.outfit_pals.contains_key(&o) {
+            let pal = self.swaps.compose(&o)?;
+            self.outfit_pals.insert(o, pal);
+        }
+        let pal = self.outfit_pals[&o];
+        let img = sg_core::sprites::recolour(&self.sprites[si].s, i, &pal)?;
+        if !crate::packart::active() {
+            if let Some((t, slot)) = g.atlas_texture(&img) {
+                self.outfit_atlas.insert((si, i, o), (t, slot));
+                return Some(t);
+            }
+        }
+        // the 3DS's atlas pages hold far fewer (simgolf-3ds gfx.rs): its cache is cleared sooner
+        let cap = if cfg!(target_os = "horizon") { 700 } else { 6000 };
+        if self.outfit_tex.len() > cap {
+            // half of them go (never every texture at once: the golfers on screen would all be made again together)
+            let mut keys: Vec<_> = self.outfit_tex.keys().copied().collect();
+            keys.truncate(keys.len() / 2);
+            for k in keys {
+                if let Some(t) = self.outfit_tex.remove(&k) {
+                    g.ctx.delete_texture(t);
+                }
+            }
+        }
+        let t = g.texture(&img, false);
+        self.outfit_tex.insert((si, i, o), t);
+        Some(STex::whole(t))
+    }
+
+    /// A frame as a texture of its own (the interface's pictures of people and things, drawn whole).
+    pub(crate) fn sprite_texture_whole(&mut self, g: &mut Gfx, si: usize, view: i32, frame: i32) -> TextureId {
+        let i = self.sprites[si].s.frame_index(view, frame);
+        if let Some(t) = self.sprites[si].tex[i] {
+            return t;
+        }
+        let t = match self.sprite_texture_made(g, si, i) {
+            Some(t) => t,
+            None => g.texture(&self.sprites[si].s.frame(i), false),
+        };
+        self.sprites[si].tex[i] = Some(t);
+        t
+    }
+
+    /// A recoloured frame as a texture of its own (the customise screen's figure).
+    pub(crate) fn outfit_texture_whole(
         &mut self,
         g: &mut Gfx,
         si: usize,
         view: i32,
         frame: i32,
         o: sg_core::bodies::Outfit,
-    ) -> Option<miniquad::TextureId> {
+    ) -> Option<TextureId> {
         let i = self.sprites[si].s.frame_index(view, frame);
-        if !self.sprites[si].s.recolourable() {
-            return None;
+        if crate::packart::active() {
+            if let Some(t) = self.pack_outfit_texture(g, si, i, o) {
+                return Some(t);
+            }
         }
         if let Some(&t) = self.outfit_tex.get(&(si, i, o)) {
             return Some(t);
@@ -159,37 +236,50 @@ impl App {
         }
         let pal = self.outfit_pals[&o];
         let img = sg_core::sprites::recolour(&self.sprites[si].s, i, &pal)?;
-        // the 3DS's atlas pages hold far fewer (gfx.rs there): its cache is cleared sooner
-        let cap = if cfg!(target_os = "horizon") { 700 } else { 6000 };
-        if self.outfit_tex.len() > cap {
-            for (_, t) in self.outfit_tex.drain() {
-                g.ctx.delete_texture(t);
-            }
-        }
         let t = g.texture(&img, false);
         self.outfit_tex.insert((si, i, o), t);
         Some(t)
     }
 
-    pub(crate) fn sprite_texture(&mut self, g: &mut Gfx, si: usize, view: i32, frame: i32) -> miniquad::TextureId {
-        let i = self.sprites[si].s.frame_index(view, frame);
-        if let Some(t) = self.sprites[si].tex[i] {
-            return t;
+    /// A frame's texture from a content pack's art or HD art, when either is on.
+    fn sprite_texture_made(&mut self, g: &mut Gfx, si: usize, i: usize) -> Option<TextureId> {
+        if crate::packart::active() {
+            if let Some(t) = self.pack_sprite_texture(g, si, i) {
+                return Some(t);
+            }
         }
         if crate::hd::active() {
             if let Some(img) = self.hd.sprites.get(&si).and_then(|h| h.frame(i)) {
-                let t = g.texture_hd(&img);
-                self.sprites[si].tex[i] = Some(t);
-                return t;
+                return Some(g.texture_hd(&img));
             }
         }
-        // a packed frame (the 3DS keeps its frames packed until drawn, sg_core::sprites::Sprite::packed) is made now
-        let t = match self.sprites[si].s.unpacked(i) {
-            Some(img) => g.texture(&img, false),
-            None => g.texture(&self.sprites[si].s.frames[i], false),
-        };
+        None
+    }
+
+    pub(crate) fn sprite_texture(&mut self, g: &mut Gfx, si: usize, view: i32, frame: i32) -> STex {
+        let i = self.sprites[si].s.frame_index(view, frame);
+        if let Some(t) = self.sprites[si].tex[i] {
+            return STex::whole(t);
+        }
+        if let Some(&(t, slot)) = self.sprite_atlas.get(&(si, i)) {
+            if g.atlas_valid(slot) {
+                return t;
+            }
+            self.sprite_atlas.remove(&(si, i));
+        }
+        if let Some(t) = self.sprite_texture_made(g, si, i) {
+            self.sprites[si].tex[i] = Some(t);
+            return STex::whole(t);
+        }
+        // the frame made RGBA once, for the atlas or else its own texture
+        let img = self.sprites[si].s.frame(i);
+        if let Some((t, slot)) = g.atlas_texture(&img) {
+            self.sprite_atlas.insert((si, i), (t, slot));
+            return t;
+        }
+        let t = g.texture(&img, false);
         self.sprites[si].tex[i] = Some(t);
-        t
+        STex::whole(t)
     }
 
     /// Props as camera-facing quads. Sprites are pre-rendered, so they ignore lighting and depth: ground overlays first, then
@@ -212,7 +302,7 @@ impl App {
                                                   // The sprites were rendered at 4 camera yaws, 90 degrees apart; 8 view sprites (people) face 45 degree steps.
         let quarter = ((self.view_rot() / 90.0).round() as i32 % 4 + 4) % 4;
         let s = SPRITE_UNITS_PER_PIXEL;
-        let px = self.upp * (self.draw_w / 800.0).min(self.draw_h / 600.0); // world units per 800 x 600 pixel
+        let px = self.upp * crate::ui::view_scale(self.draw_w, self.draw_h); // world units per 800 x 600 pixel
         let mut items: Vec<(f32, usize)> = Vec::new();
         // where each prop is drawn: between the last two ticks with Enhanced's smooth motion (enhanced.rs), else where it is
         let smooth = crate::enhanced::smooth_motion();
@@ -235,10 +325,12 @@ impl App {
             let view = app.prop_view(&p, si, quarter);
             let sp = &app.sprites[si].s;
             let (w, h, ax, ay) = (sp.w as f32, sp.h as f32, sp.anchor_x as f32, sp.anchor_y as f32);
-            let tex = match p.outfit.filter(|_| !shadow) {
+            let st = match p.outfit.filter(|_| !shadow) {
                 Some(o) => app.outfit_texture(g, si, view, p.frame, o).unwrap_or_else(|| app.sprite_texture(g, si, view, p.frame)),
                 None => app.sprite_texture(g, si, view, p.frame),
             };
+            // (Enhanced graphics draws whole textures: the atlas is Classic's, atlas.rs)
+            let tex = st.id;
             // Enhanced graphics only: the art's own shadow frame, softened (fx.rs)
             let tex = if shadow && crate::fx::active() { app.fx_shadow(g, si, view, p.frame, tex).unwrap_or(tex) } else { tex };
             // Enhanced graphics only: the time of day, rain and clouds tint the pre-lit sprite (fx_light.rs); the seasons
@@ -257,8 +349,11 @@ impl App {
             let (t, b) = (ay * s, -(h - ay) * s); // up is positive
                                                   // a mirrored prop (a left-handed golfer's swing) is flipped left to right about its anchor
             let flip = if p.mirror { -1.0 } else { 1.0 };
+            // the frame's place on its texture (all of it, or its part of an atlas page)
+            let uv = if tex == st.id { st } else { STex::whole(tex) };
             let c = |cx: f32, cy: f32, tu: f32, tv: f32| {
                 let cx = cx * flip;
+                let (tu, tv) = uv.at(tu, tv);
                 let v = Vert::new(p.x + rx * cx + ux * cy, y + ry * cx + uy * cy, p.z + rz * cx + uz * cy, tu, tv);
                 match tint {
                     Some(t) => v.col(t),
@@ -320,6 +415,8 @@ impl App {
             self.fx_cast_shadows(g, u, &items, &shown);
             // the evening's pools of lamp and window light on the ground (fx_night.rs)
             self.fx_light_pools(g, u);
+            // the grass the dawn's sprinklers water (fx_dawn.rs)
+            self.fx_sprinkler_wet(g, u);
         }
         let art_shadows = !crate::fx_shadow::hide_art_shadows();
         // the exe composites each sprite's shadow under its body when it loads them (0x43d740 draws NameShadow.flc, then
@@ -336,6 +433,10 @@ impl App {
             if crate::fx::active() { self.fx_lamp_quads(px).into_iter().map(|(k, v)| (k, lamp_tex, v)).collect() } else { Vec::new() };
         // and the Path styles and lamps extra's lamp posts (paths_lamps.rs)
         lamps.extend(self.lamp_quads(g.white, lamp_tex));
+        // Enhanced graphics only: the dawn's sprinklers, in the same order (fx_dawn.rs)
+        if crate::fx::active() {
+            lamps.extend(self.fx_sprinkler_quads(g.white));
+        }
         lamps.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
         let mut next_lamp = 0;
         for &(key, i) in &items {
@@ -387,10 +488,11 @@ impl App {
             view = v.rem_euclid(views.max(1));
         }
         if p.mirror && views >= 8 {
-            // a mirrored prop (a left-handed golfer's swing): the view whose mirror image faces the same way on the screen.
-            // Views 3 and 7 face straight down and up the screen (the people's clips: each mirrors into itself), so view k
-            // mirrors into view 6 - k.
-            view = (6 - view).rem_euclid(8);
+            // a mirrored prop (a left-handed golfer's address and swing): the view whose mirror image sends the ball the same
+            // way on the screen. A golf clip's view sends it the way a walker in that view faces: 3 to the screen's right and
+            // 7 to its left, which the mirror swaps, 1 and 5 down and up the screen, which it keeps, so view k is drawn from
+            // view 2 - k. (Up to 0.6.4 it was 6 - k, which kept the body's facing and so aimed the other way.)
+            view = (2 - view).rem_euclid(8);
         }
         view
     }
@@ -406,7 +508,7 @@ impl App {
         let mv = self.mv;
         let (rx, ry, rz) = (mv[0], mv[4], mv[8]);
         let (ux, uy, uz) = (mv[1], mv[5], mv[9]);
-        let vscale = (self.draw_w / 800.0).min(self.draw_h / 600.0);
+        let vscale = crate::ui::view_scale(self.draw_w, self.draw_h);
         let px = self.upp * vscale; // world units per 800 x 600 pixel
         let side = (2.0 * self.exe_zoom() / 4.0).max(1.0f32);
         if self.ball_trail.len() != self.club.g.len() {
@@ -428,7 +530,9 @@ impl App {
             let (a, b, cc, d) = (c(dx, dy), c(dx + w, dy), c(dx + w, dy + h), c(dx, dy + h));
             g.tris(Mode::Flat, None, u, &[a, b, cc, a, cc, d]);
         };
-        for i in 0..self.club.g.len() {
+        // the golfers' balls only: the hole tool's trial golfer past them (sg_core::holetool::TRIAL) keeps the last ball of
+        // its layout pass at the cup of the hole it planned, which the exe never draws (its golfer table ends at SLOTS)
+        for i in 0..self.club.g.len().min(sg_core::golfer::SLOTS) {
             let gl = &self.club.g[i];
             if gl.bx == 0 || gl.hole <= 0 || gl.hole >= 19 || gl.flags & flag::PENALTY != 0 {
                 self.ball_trail[i] = None;
@@ -549,7 +653,7 @@ pub const COURSE_SIZE_RECT: Rect = Rect::new(14.0, 548.0, 300.0, 44.0);
 /// Its hover code.
 pub const COURSE_SIZE_HIT: i32 = 101;
 
-/// The game style button on Select Difficulty (the port's own, docs/PLAYING.md "Original game or OpenSGolf extras"):
+/// The Game box on Select Difficulty (the port's own, docs/PLAYING.md "Original game or OpenSGolf extras": the presets),
 /// a box right of the course size.
 /// It starts right of x 472, where the Impossible face's hit area (DIFF_CENTRES[3]) ends at this height.
 pub const STYLE_RECT: Rect = Rect::new(480.0, 548.0, 255.0, 44.0);
@@ -694,9 +798,9 @@ impl App {
                 for &k in OFFERED_KINDS.iter() {
                     let k = k as usize;
                     if self.build_available(k) {
-                        let (name, _, price) = sg_core::data::buildings()[k];
+                        let price = sg_core::data::buildings()[k].2;
                         v.push(PanelItem {
-                            label: format!("{}  {}", sg_core::lang::text(name), money(price as i64 * 100)),
+                            label: format!("{}  {}", sg_core::land::building_name(k as i32), money(price as i64 * 100)),
                             kind: 4,
                             arg: k,
                         });
@@ -785,21 +889,52 @@ impl App {
             s.put_centered(g, f, cx, cy + 15.0 + f.px * 0.36 - f.base(), &theme, rgba(0.42, 0.18, 0.0, 1.0));
         } else {
             let grey = crate::info_ui::c15(0x6318);
+            // a label longer than its sign (a translation): smaller or cut (ui.rs fit_line; issue #164)
+            let room = |b: usize| MENU_BTN[b].w - 20.0;
             for b in 0..5 {
-                s.put_centered(g, crate::ui::F_KLEPTO18, MENU_LABEL_X[b], MENU_LABEL_Y[b] + 8.0, tr(MENU_LABEL_KEYS[b]), grey);
+                let (x, y) = (MENU_LABEL_X[b], MENU_LABEL_Y[b] + 8.0);
+                s.put_centered_fit(g, crate::ui::F_KLEPTO18, x, y, room(b), tr(MENU_LABEL_KEYS[b]), grey);
             }
-            s.put_centered(g, crate::ui::F_KLEPTO18, MENU_LABEL_X[1], MENU_LABEL_Y[1] + 24.0, &theme, grey);
+            s.put_centered_fit(g, crate::ui::F_KLEPTO18, MENU_LABEL_X[1], MENU_LABEL_Y[1] + 24.0, room(1), &theme, grey);
         }
         // the port's own: "Use my SimGolf files..." (gamefiles.rs)
         self.draw_files_button(g, &s);
+        // and "Launcher..." beside it (launcher.rs)
+        self.draw_launcher_button(g, &s);
         // and "Check for updates" (update.rs)
         self.draw_update_button(g, &s);
         // and "Course editor..." (editor.rs)
         self.draw_editor_button(g, &s);
+        // and the player's own time played (support.rs's counter; from a minute on): the free set's bottom left corner, the
+        // top middle on the original's title, clear of its trademark lines
+        let played = self.support.record.played.max(0.0) as u64;
+        if played >= 60 {
+            let t = trf("STR_TITLE_PLAYED", &[("TIME", &crate::support::time_words(played))]);
+            let f = crate::ui::F_MANUAL15;
+            if self.on_free_set() {
+                s.put(g, f, 9.0, 579.0, &t, rgba(0.0, 0.0, 0.0, 0.6));
+                s.put(g, f, 8.0, 578.0, &t, rgb(1.0, 1.0, 1.0));
+            } else {
+                s.put_centered(g, f, 400.0, 8.0, &t, crate::info_ui::c15(0x2108));
+            }
+        }
+        // the port's own: the version, small at the bottom middle, under Play a Championship (the free set's light on a
+        // shadow, the original's in its dark title ink)
+        let v = trf("STR_TITLE_VERSION", &[("VERSION", &crate::update::VERSION)]);
+        let f = crate::ui::F_MANUAL15;
+        if self.on_free_set() {
+            s.put_centered(g, f, 401.0, 583.0, &v, rgba(0.0, 0.0, 0.0, 0.6));
+            s.put_centered(g, f, 400.0, 582.0, &v, rgb(1.0, 1.0, 1.0));
+        } else {
+            s.put_centered(g, f, 400.0, 582.0, &v, crate::info_ui::c15(0x2108));
+        }
         if !self.toast.is_empty() && self.clock < self.toast_until {
-            let w = text_width(&self.toast, 18.0) + 24.0;
-            s.fill(g, 400.0 - w / 2.0, 560.0, w, 30.0, rgba(0.1, 0.1, 0.3, 0.9));
-            s.text_centered(g, 400.0, 581.0, &self.toast, 18.0, rgb(1.0, 1.0, 0.8));
+            // with bigger text (textsize.rs) the note grows up from the bottom, as wide as the screen at most
+            let size = crate::textsize::fit_px(18.0, 2.0, &self.toast, 780.0);
+            let w = text_width(&self.toast, size) + 24.0;
+            let h = 30.0 + (size - 18.0);
+            s.fill(g, 400.0 - w / 2.0, 590.0 - h, w, h, rgba(0.1, 0.1, 0.3, 0.9));
+            s.text_centered(g, 400.0, 581.0, &self.toast, size, rgb(1.0, 1.0, 0.8));
         }
         g.flush();
     }
@@ -829,39 +964,54 @@ impl App {
         // 0x43a400: all in Klepto ITC 24 (0x519a40), centred with the given tops; the hovered name black, the others in
         // 0x4210, two pixels lower
         let k24 = crate::ui::F_KLEPTO24;
-        s.put_centered(g, k24, 602.0, 42.0, tr("STR_TITLE_SELECT_DIFFICULTY"), rgb(0.0, 0.0, 0.0));
+        // longer names (a translation) are fitted: the title to the top right's room, each name to its sign (the free set's
+        // plates are smaller: tools/freeset_art) (ui.rs fit_line; issue #164)
+        let (title_room, room) = if self.on_free_set() {
+            (330.0, 172.0)
+        } else {
+            (2.0 * (800.0 - 602.0) - 16.0, DIFF_CUTS.iter().map(|c| c.2).fold(f32::MAX, f32::min) - 32.0)
+        };
+        s.put_centered_fit(g, k24, 602.0, 42.0, title_room, tr("STR_TITLE_SELECT_DIFFICULTY"), rgb(0.0, 0.0, 0.0));
         for (i, &(x, y)) in DIFF_LABELS.iter().enumerate() {
             if self.hover == i as i32 {
-                s.put_centered(g, k24, x, y, tr(DIFFICULTY_KEYS[i]), rgb(0.0, 0.0, 0.0));
+                s.put_centered_fit(g, k24, x, y, room, tr(DIFFICULTY_KEYS[i]), rgb(0.0, 0.0, 0.0));
             } else {
-                s.put_centered(g, k24, x, y + 2.0, tr(DIFFICULTY_KEYS[i]), crate::info_ui::c15(0x4210));
+                s.put_centered_fit(g, k24, x, y + 2.0, room, tr(DIFFICULTY_KEYS[i]), crate::info_ui::c15(0x4210));
             }
         }
-        // the course size (the port's own; not for a championship or a scenario, which bring their own course)
         if self.course_size_choosable() {
-            let r = COURSE_SIZE_RECT;
-            let lit = self.hover == COURSE_SIZE_HIT;
-            self.free_box_or_fill(g, &s, r, lit);
-            let n = self.course_size;
-            let name = trf("STR_COURSE_SIZE", &[("SIZE", &sg_core::mapsize::name(n))]);
-            s.text(g, r.x + 10.0, r.y + 19.0, &name, 17.0, if lit { rgb(1.0, 1.0, 0.6) } else { rgb(1.0, 1.0, 1.0) });
-            let detail = trf("STR_COURSE_SIZE_DETAIL", &[("TILES", &n), ("YARDS", &(n * 25))]);
-            s.text(g, r.x + 10.0, r.y + 37.0, &detail, 12.0, rgb(0.85, 0.85, 1.0));
+            self.draw_course_size_box(g, &s, COURSE_SIZE_RECT, self.hover == COURSE_SIZE_HIT);
         }
-        // the game style (the port's own): the original game or the OpenSGolf extras, one click apart
-        {
-            let r = STYLE_RECT;
-            let lit = self.hover == STYLE_HIT;
-            self.free_box_or_fill(g, &s, r, lit);
-            let (name, detail) = match self.game_style() {
-                crate::extras_ui::GameStyle::Original => ("STR_STYLE_ORIGINAL", "STR_STYLE_ORIGINAL_DETAIL"),
-                crate::extras_ui::GameStyle::Extras => ("STR_STYLE_EXTRAS", "STR_STYLE_EXTRAS_DETAIL"),
-                crate::extras_ui::GameStyle::Mix => ("STR_STYLE_MIX", "STR_STYLE_MIX_DETAIL"),
-            };
-            s.text(g, r.x + 10.0, r.y + 19.0, tr(name), 17.0, if lit { rgb(1.0, 1.0, 0.6) } else { rgb(1.0, 1.0, 1.0) });
-            s.text(g, r.x + 10.0, r.y + 37.0, tr(detail), 12.0, rgb(0.85, 0.85, 1.0));
-        }
+        self.draw_style_box(g, &s, STYLE_RECT, self.hover == STYLE_HIT);
         g.flush();
+    }
+
+    /// The course size box (the port's own; not for a championship or a scenario, which bring their own course): on Select
+    /// Difficulty, and on the world map for a sandbox, which skips that screen.
+    pub fn draw_course_size_box(&self, g: &mut Gfx, s: &Ui, r: Rect, lit: bool) {
+        self.free_box_or_fill(g, s, r, lit);
+        let n = self.course_size;
+        let name = trf("STR_COURSE_SIZE", &[("SIZE", &sg_core::mapsize::name(n))]);
+        s.text_fit(g, r.x + 10.0, r.y + 19.0, r.w - 20.0, &name, 17.0, if lit { rgb(1.0, 1.0, 0.6) } else { rgb(1.0, 1.0, 1.0) });
+        let detail = trf("STR_COURSE_SIZE_DETAIL", &[("TILES", &n), ("YARDS", &(n * 25))]);
+        s.text_fit(g, r.x + 10.0, r.y + 37.0, r.w - 20.0, &detail, 12.0, rgb(0.85, 0.85, 1.0));
+    }
+
+    /// The game's preset box (the port's own, extras_ui.rs Preset): Original, Original + helpers, OpenSGolf or Custom, a
+    /// click steps to the next.
+    pub fn draw_style_box(&self, g: &mut Gfx, s: &Ui, r: Rect, lit: bool) {
+        self.free_box_or_fill(g, s, r, lit);
+        let p = self.game_style();
+        // Klepto ITC, the title screens' face, draws its plus sign as a bar: "Original & helpers" here
+        let name = trf("STR_STYLE_GAME", &[("PRESET", &tr(p.key()))]).replace('+', "&");
+        let detail = match p {
+            crate::extras_ui::Preset::Original => "STR_STYLE_ORIGINAL_DETAIL",
+            crate::extras_ui::Preset::Helpers => "STR_STYLE_HELPERS_DETAIL",
+            crate::extras_ui::Preset::OpenSGolf => "STR_STYLE_OPENSGOLF_DETAIL",
+            crate::extras_ui::Preset::Custom => "STR_STYLE_CUSTOM_DETAIL",
+        };
+        s.text_fit(g, r.x + 10.0, r.y + 19.0, r.w - 20.0, &name, 17.0, if lit { rgb(1.0, 1.0, 0.6) } else { rgb(1.0, 1.0, 1.0) });
+        s.text_fit(g, r.x + 10.0, r.y + 37.0, r.w - 20.0, tr(detail), 12.0, rgb(0.85, 0.85, 1.0));
     }
 
     /// Whether Select Difficulty offers the course size: for a new game or a sandbox, not a championship or a scenario.
@@ -890,6 +1040,7 @@ impl App {
         }
         // the golfers' names and thoughts belong to the course, under the HUD
         self.draw_names(g, &s);
+        self.draw_home_labels(g, &s);
         self.draw_thoughts(g, &s);
         // the OpenSGolf extras' path view and name tag (extras.rs), over the course and under the HUD
         if self.great_shot.is_none() {
@@ -964,7 +1115,8 @@ impl App {
                 s.fill(g, 600.0, 440.0 - h, 192.0, h, rgba(0.12, 0.1, 0.3, 0.85));
                 for (i, (l, on)) in rows.iter().enumerate() {
                     let c = if *on { rgb(1.0, 1.0, 1.0) } else { rgb(0.55, 0.55, 0.65) };
-                    s.text(g, 608.0, 440.0 - h + 20.0 + 16.0 * i as f32, l, 13.0, c);
+                    // a line wider than the box (a translation, issue #164): a little smaller or cut (ui.rs fit_line)
+                    s.text_fit(g, 608.0, 440.0 - h + 20.0 + 16.0 * i as f32, 176.0, l, 13.0, c);
                 }
             }
         }
@@ -1065,25 +1217,6 @@ impl App {
                     s.fill(g, r.x, r.y, r.w, r.h, rgba(0.5, 0.5, 0.9, 0.45));
                 }
                 s.text(g, r.x + 4.0, r.y + 13.0, &it.label, 13.0, rgb(1.0, 1.0, 1.0));
-            }
-        }
-        // Story lines (port-only, until the exe's portrait bubbles for story talk are drawn), below the ticker's place.
-        s.anchor(Anchor::Top);
-        if self.show_advisor {
-            let y = 124.0;
-            if !self.story_lines.is_empty() && self.game_tick < self.story_until {
-                // the latest story lines (the exe shows them as thought bubbles over the two golfers)
-                let mut rows: Vec<String> = Vec::new();
-                for l in self.story_lines.iter() {
-                    let (who, text) = l.split_once('|').unwrap_or(("", l));
-                    rows.extend(wrap_text(&format!("{who}: {text}"), 14.0, 290.0));
-                }
-                let sh = 26.0 + 17.0 * rows.len() as f32;
-                s.fill(g, 244.0, y, 306.0, sh, rgba(0.12, 0.2, 0.25, 0.85));
-                s.text(g, 252.0, y + 16.0, &self.story_title, 12.0, rgb(0.8, 0.9, 1.0));
-                for (i, l) in rows.iter().enumerate() {
-                    s.text(g, 252.0, y + 33.0 + 17.0 * i as f32, l, 14.0, rgb(1.0, 1.0, 1.0));
-                }
             }
         }
         s.anchor(Anchor::Centre);

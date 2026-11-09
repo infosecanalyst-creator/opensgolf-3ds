@@ -1,0 +1,6 @@
+* Smoother play: no more short freezes as golfers come and go, and the course draws faster
+* Enhanced graphics keep up better on big screens and slower machines, and ease off by themselves when the game slows
+* HD graphics (beta): an AI upscaler redraws your own SimGolf art
+* New cartoon faces for the free graphics' golfers
+* The game now says when some of your SimGolf files cannot be read
+* New options: aim and swing with the mouse as on touch, and no new dandelions in sandbox games

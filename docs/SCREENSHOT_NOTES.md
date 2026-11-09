@@ -213,6 +213,10 @@ Nothing from the footage is stored in the repository.
   (400, 300) cuts through the lit cut's mask (footage: dim olive balls with a soft shadow when the pointer is off the
   options), the checkboxes InfoButtons' ticked (350, 0) and crossed (400, 0) boxes. The commissioner's land offer is at
   (450, 160) on two heading lines.
+  Checked again for readability (October 2026): the port draws the original's box as the exe does, nothing lighter.
+  The fill is the opaque 0x4e79 (152, 152, 200) of 0x40cc00 (not the translucent TransPopups art, which 0x46d6e0 uses
+  only for the radio balls and the OK tick), the checkbox list's title the exe's constant 0x7ff0 (pale yellow) and the
+  shadow palette colour 1 a pixel below, all measured in the port's stills; the low contrast is the original's.
 - **Retirement question** (System Functions, Quit), at (400, 100): "After a short career / Gary Golf plans his
   retirement." with " Wait, I don't want to quit yet!", " I'd like to save this game first.", " So long for now." Settled
   from the code (main loop 0x420b4e): "lengthy" once the year index passes 9 (2011 on), "her" for a woman, "After an

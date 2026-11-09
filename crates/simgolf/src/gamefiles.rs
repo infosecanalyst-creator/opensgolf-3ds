@@ -294,6 +294,10 @@ pub enum Action {
     UpdateNow,
     /// Do not offer the newest release at start again (update.rs).
     SkipVersion,
+    /// An answer about making HD graphics (hd_make.rs).
+    HdMake(crate::hd_make::Choice),
+    /// Remove HD graphics' OK (hd_make.rs): switched off and deleted at the next frame, which has the graphics to hand.
+    HdRemove,
 }
 
 /// The crash report the box offers to copy.
@@ -611,6 +615,8 @@ impl App {
             Action::OpenReleases => self.open_releases_page(),
             Action::UpdateNow => self.update_now(),
             Action::SkipVersion => self.skip_update(),
+            Action::HdMake(c) => self.hd_make_answer(c),
+            Action::HdRemove => self.hd.remove_pending = true,
         }
     }
 
@@ -906,13 +912,75 @@ impl App {
         }
         if self.free_hint {
             let hint = tr("STR_GAME_FILES_HINT");
-            let x = r.x + r.w + 10.0;
+            // after the Launcher... button beside it (launcher.rs)
+            let l = crate::launcher::title_button_rect(Some(label));
+            let x = l.x + l.w + 10.0;
             let w = crate::ui::F_ARIAL10.width(hint) + 16.0;
             // up to "Check for updates" at the top right (update.rs)
             let end = self.update_button().map_or(790.0, |u| u.x - 6.0);
             s.fill(g, x, r.y, w.min(end - x), r.h, rgba(1.0, 0.98, 0.85, 0.92));
             s.put(g, crate::ui::F_ARIAL10, x + 8.0, r.y + 6.0, hint, rgb(0.1, 0.1, 0.2));
         }
+    }
+}
+
+/// What the launcher says of the game files (launcher.rs): the line in use, the line under it (where they are, or what was
+/// found), whether that is a problem, and whether the player's own files are in use.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FilesReport {
+    pub line: String,
+    pub detail: String,
+    pub problem: bool,
+    pub mine: bool,
+}
+
+/// The launcher's test hook for stills without the files: "mine:N" reports the player's own files with N sounds.
+const REPORT_ENV: &str = "SG_LAUNCHER_FILES";
+
+impl App {
+    /// The launcher's report on the game files, from what this start loaded: the player's own files with the sounds of
+    /// theirs that play (the start's sound report, Mixer::own_counts), or the free graphics, chosen or for want of the
+    /// files, with the folder of any SimGolf files found (find, `game_files_found`) and, when the chosen folder could no longer
+    /// be read, why (the restart's own message, STR_GAME_FILES_LOST).
+    pub fn files_report(&self) -> FilesReport {
+        let web = cfg!(target_arch = "wasm32");
+        let phone = cfg!(target_os = "android");
+        let hook = std::env::var(REPORT_ENV).ok();
+        let fake = hook.as_deref().and_then(|v| v.strip_prefix("mine")).map(|n| n.trim_start_matches(':').parse::<usize>().unwrap_or(0));
+        if fake.is_some() || !self.on_free_set() {
+            let n = fake.unwrap_or_else(|| self.mixer.as_ref().filter(|m| !m.all_free()).map(|m| m.own_counts()).map_or(0, |(s, v)| s + v));
+            let line = if n > 0 { trf("STR_LAUNCHER_FILES_MINE", &[("N", &n)]) } else { tr("STR_LAUNCHER_FILES_MINE_QUIET").to_string() };
+            let detail = if web {
+                tr("STR_LAUNCHER_FILES_FROM_PAGE").to_string()
+            } else if fake.is_some() {
+                trf("STR_LAUNCHER_FILES_FROM", &[("DIR", &"C:\\Program Files (x86)\\Maxis\\SimGolf")])
+            } else {
+                trf("STR_LAUNCHER_FILES_FROM", &[("DIR", &self.game_dir.display())])
+            };
+            return FilesReport { line, detail, problem: false, mine: true };
+        }
+        let chosen = self.content.settings.base.as_deref() == Some(sg_core::packs::FREE);
+        let lost = !chosen && !web && !phone && saved_dir().is_some_and(|d| locate(&d).is_err());
+        if lost {
+            let dir = saved_dir().unwrap_or_default();
+            let why = if no_access(&dir) { "STR_GAME_FILES_NO_ACCESS" } else { "STR_GAME_FILES_LOST" };
+            return FilesReport {
+                line: tr("STR_LAUNCHER_FILES_FREE").to_string(),
+                detail: trf(why, &[("DIR", &dir.display())]),
+                problem: true,
+                mine: false,
+            };
+        }
+        let found = self.game_files_found;
+        let line = tr(if chosen { "STR_LAUNCHER_FILES_FREE_CHOSEN" } else { "STR_LAUNCHER_FILES_FREE" }).to_string();
+        let detail = if found {
+            trf("STR_LAUNCHER_FILES_FOUND", &[("DIR", &self.game_dir.display())])
+        } else if web {
+            tr("STR_LAUNCHER_FILES_FROM_PAGE").to_string()
+        } else {
+            tr("STR_LAUNCHER_FILES_NONE_FOUND").to_string()
+        };
+        FilesReport { line, detail, problem: false, mine: false }
     }
 }
 

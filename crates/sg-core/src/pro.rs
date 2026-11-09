@@ -84,9 +84,10 @@ pub fn club_label(k: usize) -> &'static str {
 
 /// The lie under the ball, for the panel: 0x41b759 prints "Lie: " and the name (+0x00) of the terrain table's record for
 /// the type under the ball (0x40bfa0, out of bounds off the map), the singular lower-case names of the static table
-/// 0x4c1a40 ("tees", "sand trap", "pot bunker", "out of bounds"); the exe's per-theme renaming of some records is not decoded.
+/// 0x4c1a40 ("tees", "sand trap", "pot bunker", "out of bounds"), as the loaded theme renames some of the records
+/// (crate::land::terrain_name: in the desert "desert", "rough", "canyon").
 pub fn lie_name(ty: u8) -> &'static str {
-    crate::course::type_name(ty as i32)
+    crate::land::terrain_name(ty as i32)
 }
 
 /// Whether skill k counts for the shot being aimed (the panel draws it white, else grey).
@@ -875,6 +876,34 @@ mod tests {
         cl.gary = -1;
         cl.great_shot(&c, &mut rng, 3, 0, 12, false, vec![]);
         assert!(said(&cl).unwrap().ends_with("into the hole at Hole 2!  "));
+    }
+
+    /// Issue #83: which skill a great approach that ends on the green grows. As 0x407e00 picks it (re-read from the
+    /// publisher's exe for the issue: the jump table at 0x4095f4), an iron (clubs 3..10) grows Accurate Irons and a draw
+    /// the Draw Shot; putting comes only from a shot played from the green, or as the fallback after 50 tries when no other
+    /// skill the shot showed can still grow: a straight Lob Wedge (club 11), or irons already at the course rank's cap.
+    #[test]
+    fn great_approach_skill() {
+        let grown = |club: i32, shape: i32, irons: u8, seed: u32| {
+            let (c, mut cl) = great_shot_club();
+            cl.pro_skill = [2; 16];
+            cl.pro_skill[3] = irons;
+            let g = &mut cl.g[3];
+            (g.club, g.shot_type, g.strokes, g.rating) = (club, shape, 1, 0);
+            (g.ox, g.oy, g.bx, g.by) = (20 << 10, 25 << 10, 34 << 10, 25 << 10);
+            let before = cl.pro_skill;
+            cl.great_shot(&c, &mut ExeRng { state: seed }, 3, 2, 100, false, vec![]);
+            (0..12).filter(|&k| cl.pro_skill[k] != before[k]).collect::<Vec<_>>()
+        };
+        for seed in 1..=12 {
+            assert_eq!(grown(7, 0, 2, seed), vec![3], "a 6 Iron grows Accurate Irons (seed {seed})");
+            assert_eq!(grown(7, 1, 2, seed).len(), 1, "one skill grows (seed {seed})");
+            assert!([3, 5].contains(&grown(7, 1, 2, seed)[0]), "a drawn iron: irons or the draw (seed {seed})");
+            assert_eq!(grown(11, 1, 2, seed), vec![5], "a drawn wedge grows the Draw Shot (seed {seed})");
+            assert_eq!(grown(11, 0, 2, seed), vec![4], "a straight wedge has only putting left (seed {seed})");
+            // hole 2 open: a Municipal course, cap 6
+            assert_eq!(grown(7, 0, 6, seed), vec![4], "irons at the cap: putting (seed {seed})");
+        }
     }
 
     #[test]

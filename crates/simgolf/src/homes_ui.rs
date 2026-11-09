@@ -11,7 +11,6 @@
 //! * the hole that sets its value (the nearest hole with the most fun, sg_core::homes::value_hole) and how much of the
 //!   value it makes.
 use crate::app::*;
-use crate::cursor_ui::label;
 use crate::gfx::Gfx;
 use crate::info_ui::c15;
 use crate::screens_ui::BODY;
@@ -31,6 +30,14 @@ pub struct Sale {
     pub cost: i64,
     pub sold: i64,
 }
+
+/// The room of a line of the home-site details box (the port's own, issue #164): the 180 pixel box as far as the screen's
+/// right edge leaves it (centred on x 710, 84 pixels either side); "Sylvester Stallion's home" is 160 pixels wide.
+const DETAILS_ROOM: f32 = 168.0;
+
+/// The room of a line of a home's label on the course (issue #164): a generous one, so only a very long name or translation
+/// is fitted ("Sylvester Stallion's" is 121 pixels wide).
+const LABEL_ROOM: f32 = 200.0;
 
 /// The most sales kept (a lot is placed on 2 x 2 tiles; no course holds this many).
 const MAX_SALES: usize = 400;
@@ -73,6 +80,44 @@ impl App {
         l.objects.iter().find(|o| o.kind == land::K_HOME_SITE && (o.a..=o.a + 1).contains(&x) && (o.b..=o.b + 1).contains(&y)).copied()
     }
 
+    /// Each home site's resident, as the exe's main view labels it (0x415c32..0x415ebc): at the closest zoom, over every
+    /// occupied lot on the screen, "<name>'s" and "Home" under it, in pink (0x7e9f) Manual SSi 15 with the shadowed centred
+    /// call (0x404bc0), centred on the lot; each lot's label shows for 16 of every 64 game ticks, staggered by its record
+    /// (`(13 * record + tick) & 0x30 == 0`), so the names take turns (#141). With the home names on hover extra (extras.rs;
+    /// the port's own, #160) only the lot under the pointer is labelled, for as long as the pointer stays on it.
+    pub fn draw_home_labels(&self, g: &mut Gfx, s: &Ui) {
+        let exe_zoom = self.zoom * 4.0 / 0.905;
+        if exe_zoom.round() < 4.0 || self.screen != Screen::Play {
+            return;
+        }
+        let Some(l) = self.land.as_ref() else { return };
+        let hover = crate::extras::home_labels_hover();
+        for (slot, o) in l.objects.iter().enumerate() {
+            if o.kind != land::K_HOME_SITE || o.sub <= 0 {
+                continue;
+            }
+            let size = l.footprint_size(o);
+            let shown = if hover {
+                self.hover_tile.is_some_and(|(x, y)| (o.a..o.a + size.max(1)).contains(&x) && (o.b..o.b + size.max(1)).contains(&y))
+            } else {
+                (13 * slot as u32).wrapping_add(self.game_tick) & 0x30 == 0
+            };
+            if !shown {
+                continue;
+            }
+            let Some(c) = self.club.celebrities.get((o.sub - 1) as usize) else { continue };
+            let Some((x, y)) = self.screen_of(o.a * 1024 + size * 512, o.b * 1024 + size * 512) else { continue };
+            let (x, y) = (x.floor(), y.floor());
+            let pink = c15(0x7e9f);
+            let owner = trf("STR_HOME_LABEL_OWNER", &[("CELEBRITY", &c.name)]);
+            // a line wider than `LABEL_ROOM` (a translation, issue #164): a little smaller or cut (ui.rs fit_line)
+            for (t, ty) in [(owner.as_str(), y - 12.0), (tr("STR_HOME_LABEL_HOME"), y)] {
+                let (f, t, dy) = crate::ui::fit_line(crate::ui::F_MANUAL15, t, LABEL_ROOM);
+                s.put_shadowed(g, f, x, ty + dy, &t, pink, true);
+            }
+        }
+    }
+
     /// The box for the home site under the pointer (draw_hud, with the name tags).
     pub fn draw_home_details(&self, g: &mut Gfx, s: &Ui) {
         if !crate::extras::home_details() || self.screen != Screen::Play || self.edit || self.card.is_some() {
@@ -108,13 +153,25 @@ impl App {
             Some((h, adds)) => (trf("STR_HOMES_HOLE", &[("HOLE", &h), ("MONEY", &dollars(adds as i64 / 4 * 100))]), green),
             None => (tr("STR_HOMES_NO_HOLE").to_string(), c15(0x6318)),
         });
+        // a line wider than the box (a translation, issue #164): a little smaller, else on two lines (ui.rs fit_lines)
+        let f = crate::ui::fnt_for(BODY);
+        let rows: Vec<(crate::ui::Fnt, String, [f32; 4])> = lines
+            .iter()
+            .flat_map(|(t, c)| match crate::ui::fit_lines(f, t, DETAILS_ROOM, 2) {
+                None => vec![(f, t.clone(), *c)],
+                Some(fitted) => fitted.lines.into_iter().map(|l| (fitted.font, l, *c)).collect(),
+            })
+            .collect();
         // the lot box's frame (673, 380) grown leftward and upward to hold the lines, its bottom clear of the dock
-        let h = 22.0 + 15.0 * lines.len() as f32;
+        let h = 22.0 + 15.0 * rows.len() as f32;
         let (x, w) = (620.0, 180.0);
         let y = 470.0 - h;
         self.art.trans_frame(g, s, x, y, w, h);
-        for (i, (t, c)) in lines.iter().enumerate() {
-            label(g, s, x + w / 2.0, y + 10.0 + 15.0 * i as f32, t, BODY, *c);
+        for (i, (f, t, c)) in rows.iter().enumerate() {
+            // cursor_ui::label's look in the fitted font, a smaller one on the same middle
+            let top = y + 10.0 + 15.0 * i as f32 + ((BODY - f.px) / 2.0).floor();
+            s.put_centered(g, *f, x + w / 2.0, top + 1.0, t, [0.0, 0.0, 0.0, c[3]]);
+            s.put_centered(g, *f, x + w / 2.0, top, t, *c);
         }
     }
 }

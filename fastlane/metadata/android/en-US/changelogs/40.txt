@@ -1,0 +1,6 @@
+* The plan of the hole being built is kept through a save and load, and planned again after a course change, as in the original
+* The calendar's hold is kept in saves
+* Each save is read back and checked as it is written
+* Report a problem: a filled-in bug report form, with a save and a screenshot to attach
+* New Looks extra: the desert's Ravine and Brush art the right way round
+* After an hour of play, a gentle note about supporting OpenSGolf (asks at most twice, easy to turn off)

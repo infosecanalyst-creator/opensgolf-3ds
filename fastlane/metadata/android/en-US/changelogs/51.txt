@@ -1,0 +1,6 @@
+* Uses much less memory, and Enhanced graphics run faster
+* A touch Undo button while building
+* Pause in the background also stops the sound; Autosave saves when you leave the game
+* A green beside a putting green no longer joins it, and gets its flag
+* Painting water over the sea keeps its colour
+* The pointer next to the build panel no longer picks a tree

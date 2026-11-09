@@ -1,0 +1,72 @@
+# Flatpak manifest for OpenSGolf (Flathub). How to build it, submit it and update it per release: packaging/README.md.
+#
+#   flatpak-builder --user --install --force-clean build-dir packaging/flatpak/io.github.crspytopgn.OpenSGolf.yml
+#
+# cargo-sources.json (next to this file) lists every crate in Cargo.lock, so the build needs no network. Make it again
+# whenever Cargo.lock changes:
+#
+#   python3 flatpak-cargo-generator.py Cargo.lock -o packaging/flatpak/cargo-sources.json
+#
+# (flatpak-cargo-generator.py is in https://github.com/flatpak/flatpak-builder-tools, cargo/; it needs python3-aiohttp and
+# python3-tomlkit.)
+id: io.github.crspytopgn.OpenSGolf
+runtime: org.freedesktop.Platform
+runtime-version: "25.08"
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: opensgolf
+
+finish-args:
+  - --share=ipc
+  # the game's window is X11 (miniquad's default backend; its Wayland one is experimental and not used), so XWayland
+  # on a Wayland desktop
+  - --socket=x11
+  # the GPU (OpenGL) and game controllers (gamepad.rs reads /dev/input through gilrs and libudev). Without controller
+  # support --device=dri would be enough.
+  - --device=all
+  # sound: the game plays through ALSA, which the runtime routes to PulseAudio / PipeWire
+  - --socket=pulseaudio
+  # Preferences > Content > Find more: downloads content packs (mods) from the project's content index on GitHub. The
+  # game's own "Check for updates" and "Update now" are left out of this build (OPENSGOLF_NO_SELF_UPDATE below): Flathub
+  # updates it.
+  - --share=network
+  # No --filesystem: "Use my SimGolf files..." asks the desktop's file chooser portal for the folder, CD image or .zip
+  # (the rfd crate's xdg-portal backend), which grants access to just that. Saves, settings and an unpacked .zip live in
+  # ~/.var/app/io.github.crspytopgn.OpenSGolf/data/opensgolf (the game follows $XDG_DATA_HOME).
+
+modules:
+  - name: opensgolf
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/opensgolf/cargo
+        CARGO_NET_OFFLINE: "true"
+        # a store's build: no Check for updates / Update now (crates/simgolf/src/update.rs, STORE_BUILD)
+        OPENSGOLF_NO_SELF_UPDATE: "1"
+    build-commands:
+      - cargo build --release --locked --offline -p opensgolf
+      # the game reads its packs (the free base set among them) and translations from beside the program, so they go
+      # together in /app/lib/opensgolf, with /app/bin/opensgolf a link to it (the game resolves the link)
+      - install -Dm755 target/release/opensgolf /app/lib/opensgolf/opensgolf
+      - cp -r packs lang /app/lib/opensgolf/
+      - mkdir -p /app/bin && ln -s ../lib/opensgolf/opensgolf /app/bin/opensgolf
+      - install -Dm644 packaging/linux/io.github.crspytopgn.OpenSGolf.desktop -t /app/share/applications
+      - install -Dm644 packaging/linux/io.github.crspytopgn.OpenSGolf.metainfo.xml -t /app/share/metainfo
+      - |
+        for n in 64 128 256 512; do
+          install -Dm644 packaging/linux/icons/${n}x${n}/io.github.crspytopgn.OpenSGolf.png \
+            /app/share/icons/hicolor/${n}x${n}/apps/io.github.crspytopgn.OpenSGolf.png
+        done
+      - install -Dm644 packaging/linux/icons/scalable/io.github.crspytopgn.OpenSGolf.svg -t /app/share/icons/hicolor/scalable/apps
+      - install -Dm644 LICENSE -t /app/share/licenses/io.github.crspytopgn.OpenSGolf
+    sources:
+      # a release: its tag and the commit the tag points at (`git rev-list -n 1 vX.Y.Z`). For a local test build of a
+      # checkout use instead:   - type: dir
+      #                           path: ../..
+      - type: git
+        url: https://github.com/crspytopgn/opensgolf.git
+        tag: v@VERSION@
+        commit: "@COMMIT@"
+      - cargo-sources.json

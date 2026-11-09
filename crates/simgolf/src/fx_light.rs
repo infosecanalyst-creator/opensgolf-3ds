@@ -106,6 +106,8 @@ pub struct Atmos {
     pub parched: f32,
     /// How far the water has iced over (0 none .. 1: small ponds frozen, the larger ones at their edges; fx_winter.rs).
     pub ice: f32,
+    /// The dawn's sprinklers (0 off .. 1 in full spray; fx_dawn.rs).
+    pub sprinklers: f32,
 }
 
 impl Default for Atmos {
@@ -146,6 +148,7 @@ impl Default for Atmos {
             heat: 0.0,
             parched: 0.0,
             ice: 0.0,
+            sprinklers: 0.0,
         }
     }
 }
@@ -601,9 +604,13 @@ impl App {
         if s.haze {
             a.haze = 0.30 + 0.25 * rain;
         }
-        if s.seasons {
+        if s.seasons || s.frost {
             let theme = self.exe_theme();
-            a.season = crate::fx_nature::season_at(self.fx_month(), theme, s.time_of_day.then_some(phase));
+            let season = crate::fx_nature::season_at(self.fx_month(), theme, s.time_of_day.then_some(phase));
+            // the frost has its own tick (the port's own), the rest of the year's look is the seasons'
+            let frost = if s.frost { season.frost } else { 0.0 };
+            a.season = if s.seasons { season } else { crate::fx_nature::Season::default() };
+            a.season.frost = frost;
         }
         if s.heat {
             let heat = self.fx_heat_on(wday) * (1.0 - wwt) + self.fx_heat_on(wother) * wwt;
@@ -614,11 +621,18 @@ impl App {
         if s.after_rain || s.lightning {
             self.fx_weather_after(&mut a, wday, wf, rain);
         }
-        if s.evening_lights && s.time_of_day {
+        if (s.evening_lights || s.window_lights) && s.time_of_day {
             crate::fx_night::evening(&mut a, phase, self.exe_theme(), s.seasons.then(|| self.fx_month()));
+            if !s.evening_lights {
+                a.fireflies = 0.0;
+            }
         }
         if s.winter {
             self.fx_winter(&mut a, wday, s.time_of_day.then_some(phase));
+        }
+        if s.sprinklers && s.time_of_day {
+            // the dawn's sprinklers (fx_dawn.rs): after the winter, whose cold keeps them off
+            a.sprinklers = crate::fx_dawn::sprinklers_at(phase, &a);
         }
         a
     }
@@ -697,7 +711,7 @@ impl App {
     /// (their places from the render-side hash, their fall from the effects' clock).
     fn fx_rain_draw(&mut self, g: &mut Gfx, u: &Uniforms, k: f32) {
         let (w, h) = (self.draw_w, self.draw_h);
-        let vscale = (w / 800.0).min(h / 600.0);
+        let vscale = crate::ui::view_scale(w, h);
         let n = ((w * h) / (1920.0 * 1080.0) * 700.0 * k).clamp(40.0, 2500.0) as u32;
         let seed = self.fx_seed();
         let t = self.fx.time;

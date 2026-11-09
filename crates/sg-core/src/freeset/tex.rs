@@ -460,7 +460,12 @@ fn paint(kind: Kind, th: &Theme, x: f32, y: f32, seed: u32, set: u32, var: u32) 
             let d1 = ((x + y) / N as f32 * 4.0 * std::f32::consts::PI).sin();
             let d2 = ((x - y) / N as f32 * 4.0 * std::f32::consts::PI).sin();
             let (c, h) = turf(x, y, shade(th.green, -0.02 - set as f32 * 0.02), 0, 0.0, seed);
-            (shade(c, (smooth(-0.3, 0.3, d1) + smooth(-0.3, 0.3, d2) - 1.0) * 0.045), h * 0.3 + 0.35)
+            // and rolls in the putting surface, lit from one side, as the original's TrickyGreen pictures show its
+            // undulations (so a tricky green reads as one from a plain green at a glance)
+            let roll = |x: f32, y: f32| fbm(x, y, 3, 2, seed ^ 0x7c1);
+            let slope = roll(x + 3.0, y + 3.0) - roll(x - 3.0, y - 3.0);
+            let lit = (slope * 2.2).clamp(-1.0, 1.0) * 0.11 + roll(x, y) * 0.03;
+            (shade(c, (smooth(-0.3, 0.3, d1) + smooth(-0.3, 0.3, d2) - 1.0) * 0.03 + lit), h * 0.3 + 0.35 + roll(x, y) * 0.1)
         }
         Kind::Tee => {
             // tees use their number as a look: stripes one way or the other, slightly lighter or darker
@@ -865,6 +870,119 @@ fn wall(c: &mut Canvas, kind: &str, th: &Theme, seed: u32) {
     }
 }
 
+/// The rocks the game stands along water banks (cliffs01.pcx; sg_core::decor::bank_rocks cuts it with `rock_cut`): in each
+/// cut a heap of boulders standing on the cut's ground line (40 pixels down), as tall as the bank's steps (5 a step), its
+/// peak over the cut's anchor, in the theme's rock with a little moss on top (bare in the desert). Everything else on the
+/// sheet stays clear: the original's labels and frames round the cuts are never drawn by the game.
+pub fn bank_rocks(low: &str, w: u32, h: u32) -> Option<Vec<u8>> {
+    if low != "cliffs01.pcx" {
+        return None;
+    }
+    let mut c = Canvas::new(w as usize, h as usize, [0.0; 4]);
+    for n in 0..4 * 56 {
+        let Some(((x, y, cw, _), ax)) = crate::decor::rock_cut(n) else { continue };
+        let (block, set) = (n / 56, (n % 56) / 7 + 1);
+        let th = theme(block as usize);
+        let seed = h32(n, 0, 0x6b73);
+        let (x0, x1, ground) = (x as f32, (x + cw) as f32, y as f32 + 40.0);
+        let peak = x0 + ax as f32;
+        let tall = (4.0 + 5.0 * set as f32).min(34.0);
+        // nothing outside the cut (the neighbouring cuts are a pixel away)
+        let clip = |px: f32, py: f32| sd_rect(px, py, x0, y as f32, cw as f32, 46.0, 0.0);
+        // the heap's outline: highest over the anchor, falling away to both sides, ragged
+        let top = |px: f32| {
+            let span = if px < peak { peak - x0 } else { x1 - peak }.max(3.0);
+            let fall = ((px - peak).abs() / span).min(1.0);
+            ground - tall * (1.0 - 0.55 * fall * fall) - fbm(px * 4.0, 7.0, 4, 2, seed) * 2.0
+        };
+        // boulders from the bottom row up, the upper ones smaller, each lit from the upper left
+        let rows = 1 + (tall / 7.0) as i32;
+        for row in 0..rows {
+            let r = (5.5 - row as f32 * 0.5).max(2.5);
+            let yc = ground - r * 0.8 - row as f32 * (tall - r * 1.6).max(0.0) / rows.max(2) as f32 * 1.1;
+            let k = ((cw as f32 - 2.0) / (r * 1.4)).max(1.0) as i32;
+            for i in 0..k {
+                let u = (i as f32 + 0.5) / k as f32;
+                let xc = x0 + 1.0 + u * (cw as f32 - 2.0) + (rnd(i, row, seed) - 0.5) * r * 0.6;
+                if yc - r * 0.6 < top(xc) {
+                    continue;
+                }
+                let (rx, ry) = (r * (0.9 + 0.3 * rnd(i, row + 9, seed)), r * 0.8);
+                let tone = (rnd(i, row + 17, seed) - 0.5) * 0.12;
+                c.fill(
+                    (xc - rx, yc - ry, xc + rx, yc + ry),
+                    |px, py| {
+                        (((px - xc) / rx).powi(2) + ((py - yc) / ry).powi(2))
+                            .sqrt()
+                            .mul_add(rx.min(ry), -rx.min(ry))
+                            .max(clip(px, py))
+                            .max(py - ground)
+                    },
+                    |px, py| {
+                        let (nx, ny) = ((px - xc) / rx, (py - yc) / ry);
+                        let lit = -0.6 * nx - 0.7 * ny;
+                        shade(th.rock, tone + lit * 0.22 - 0.05 + grain(px, py, seed) * 0.08)
+                    },
+                );
+            }
+        }
+        // the face between and behind the boulders, so the heap reads as one bank up to its outline
+        c.fill(
+            (x0, ground - tall - 3.0, x1, ground),
+            |px, py| (top(px) - py).max(py - ground).max(clip(px, py)),
+            |px, py| {
+                let crack = (fbm(px * 3.0, py * 3.0, 4, 2, seed ^ 5).abs() < 0.06) as i32 as f32;
+                shade(th.rock, -0.28 + fbm(px * 2.0, py * 2.0, 4, 2, seed ^ 3) * 0.1 - crack * 0.15)
+            },
+        );
+        // redraw the boulders over the face (it was laid after them so their gaps fill), then moss along the top
+        for row in 0..rows {
+            let r = (5.5 - row as f32 * 0.5).max(2.5);
+            let yc = ground - r * 0.8 - row as f32 * (tall - r * 1.6).max(0.0) / rows.max(2) as f32 * 1.1;
+            let k = ((cw as f32 - 2.0) / (r * 1.4)).max(1.0) as i32;
+            for i in 0..k {
+                let u = (i as f32 + 0.5) / k as f32;
+                let xc = x0 + 1.0 + u * (cw as f32 - 2.0) + (rnd(i, row, seed) - 0.5) * r * 0.6;
+                if yc - r * 0.6 < top(xc) {
+                    continue;
+                }
+                let (rx, ry) = (r * (0.9 + 0.3 * rnd(i, row + 9, seed)) - 0.7, r * 0.8 - 0.7);
+                let tone = (rnd(i, row + 17, seed) - 0.5) * 0.12;
+                c.fill(
+                    (xc - rx, yc - ry, xc + rx, yc + ry),
+                    |px, py| {
+                        (((px - xc) / rx).powi(2) + ((py - yc) / ry).powi(2))
+                            .sqrt()
+                            .mul_add(rx.min(ry), -rx.min(ry))
+                            .max(clip(px, py))
+                            .max(py - ground)
+                    },
+                    |px, py| {
+                        let (nx, ny) = ((px - xc) / rx, (py - yc) / ry);
+                        let lit = -0.6 * nx - 0.7 * ny;
+                        shade(th.rock, tone + lit * 0.22 + grain(px, py, seed) * 0.08)
+                    },
+                );
+            }
+        }
+        if block != 1 {
+            for px in x..x + cw {
+                let fx = px as f32 + 0.5;
+                if rnd(px, 3, seed) < 0.55 {
+                    let t = top(fx);
+                    let len = 1.0 + 2.0 * rnd(px, 4, seed);
+                    c.fill(
+                        (fx - 0.5, t - 1.0, fx + 0.5, t + len),
+                        |qx, qy| sd_rect(qx, qy, fx - 0.5, t - 0.5, 1.0, len, 0.0),
+                        |_, _| shade(th.collar, -0.1 + rnd(px, 5, seed) * 0.15),
+                    );
+                }
+            }
+        }
+    }
+    crate::png::encode_png(&c.to_rgba_keyed([255, 0, 255], 0.5))
+}
+
 /// A path overlay (gravel without X in the name, paving with X): Path a crossing, PathCap a small square, PathCurve a disc,
 /// PathInside a crossing with filled corners; RedRingThin a thin red ring.
 pub fn overlay(low: &str, w: u32, h: u32) -> Vec<u8> {
@@ -937,6 +1055,21 @@ pub fn overlay(low: &str, w: u32, h: u32) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bank_rocks_fill_their_cuts_only() {
+        assert!(bank_rocks("other.pcx", 800, 600).is_none());
+        let img = crate::png::decode_png(&bank_rocks("cliffs01.pcx", 800, 600).unwrap()).unwrap();
+        let alpha = |x: i32, y: i32| img.px[((y as u32 * img.w + x as u32) * 4 + 3) as usize];
+        for n in 0..4 * 56 {
+            let Some(((x, y, w, _), ax)) = crate::decor::rock_cut(n) else { continue };
+            // a rock stands on the cut's ground line under its anchor, and the cut's top rows stay clear
+            assert!(alpha(x + ax.clamp(0, w - 1), y + 38) > 128, "cut {n}: no rock at its foot");
+            assert!((x..x + w).all(|px| alpha(px, y) == 0), "cut {n}: drawn to its top");
+        }
+        // the sheet's empty corner
+        assert_eq!(alpha(790, 590), 0);
+    }
 
     #[test]
     fn the_fill_tiles_without_a_seam() {

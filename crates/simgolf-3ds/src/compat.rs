@@ -69,3 +69,22 @@ pub fn load_art(app: &mut App, g: &mut Gfx) -> bool {
     app.info.art = crate::info_ui::InfoArt::load(g, app);
     ok
 }
+
+/// Leading comma separated integers, like sscanf("%d,%d,...") (main.rs's, which stops at the first that does not parse).
+pub fn ints(s: &str) -> Vec<i32> {
+    let mut v = Vec::new();
+    for part in s.split(',') {
+        let p = part.trim_start();
+        let digits = p.strip_prefix('-').unwrap_or(p);
+        if !digits.starts_with(|c: char| c.is_ascii_digit()) {
+            break;
+        }
+        let end = digits.find(|c: char| !c.is_ascii_digit()).unwrap_or(digits.len());
+        let n: i32 = digits[..end].parse().unwrap_or(0);
+        v.push(if p.starts_with('-') { -n } else { n });
+    }
+    v
+}
+
+/// The desktop's scripted edits (main.rs's --editor-set, also replayed from a bug report's action log): not on the 3DS.
+pub fn apply_edit_spec(_app: &mut App, _spec: &str) {}

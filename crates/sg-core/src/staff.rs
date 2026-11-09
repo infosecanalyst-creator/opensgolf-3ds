@@ -64,7 +64,7 @@ pub struct Employee {
 }
 
 /// What the staff code needs to know about, and may change on, a golfer.
-#[derive(Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StaffGolfer {
     /// On the course and playing.
     pub present: bool,
@@ -247,7 +247,8 @@ fn layer(t: &Terrain, a: i32, b: i32) -> i32 {
 }
 
 fn class(ty: i32) -> u8 {
-    crate::data::get().land_types.get(ty as usize).map(|i| i.class).unwrap_or(0)
+    // the desert's deep rough is class 5 there, as the exe's theme loader makes it (land::class)
+    u8::try_from(ty).map_or(0, crate::land::class)
 }
 
 fn on_path(t: &Terrain, a: i32, b: i32) -> bool {

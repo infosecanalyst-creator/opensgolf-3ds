@@ -24,6 +24,20 @@ const BOX_W: f32 = 416.0;
 const LINE: f32 = 15.0;
 /// The ticker font (0x51b360): Manual SSi Bold 15.
 const FONT: f32 = BODY;
+
+/// The ticker's font size and line pitch at the text size (textsize.rs; the exe's 15 and 15 at normal size): the box keeps
+/// its width and grows down with the lines.
+fn font() -> f32 {
+    crate::textsize::px(FONT)
+}
+fn line() -> f32 {
+    crate::textsize::px(LINE)
+}
+
+/// The text's height as the exe sums it: 15 per line break plus 0x20, and with bigger text the bigger font's extra height.
+fn text_h(rows: usize) -> f32 {
+    rows.saturating_sub(1) as f32 * line() + 32.0 + (font() - FONT)
+}
 /// Speaker codes (0x4c2e08).
 pub const NOBODY: i32 = -1;
 const FRAME_S: f64 = sg_core::flight::TICK_MS as f64 / 1000.0;
@@ -152,7 +166,7 @@ fn lines(text: &str, width: f32) -> Vec<String> {
         if b[i] == '\n' {
             start = i + 1;
         }
-        if start < i && text_width(&b[start..i].iter().collect::<String>(), FONT) > width {
+        if start < i && text_width(&b[start..i].iter().collect::<String>(), font()) > width {
             if let Some(s) = space.take() {
                 b[s] = '\n';
                 start = s + 1;
@@ -252,7 +266,7 @@ impl App {
         }
         let talk = self.ticker.speaker != NOBODY;
         let rows = lines(&self.ticker.text, if talk { 0x25 as f32 * 8.0 } else { 0x2c as f32 * 8.0 });
-        let h0 = rows.len().saturating_sub(1) as f32 * LINE + 32.0;
+        let h0 = text_h(rows.len());
         let (x, y, h) = if talk { (X + 28.0, Y + 44.0, h0.max(96.0)) } else { (X, Y, h0) };
         Some(crate::render::Rect::new(x - 8.0, y - 8.0, BOX_W, h + 16.0))
     }
@@ -327,7 +341,7 @@ impl App {
     pub fn message_box(&self, g: &mut Gfx, s: &Ui, x: f32, y: f32, arg: i32, text: &str, speaker: i32) {
         let talk = speaker != NOBODY;
         let rows = lines(text, if talk { 0x25 as f32 * 8.0 } else { 0x2c as f32 * 8.0 });
-        let h0 = rows.len().saturating_sub(1) as f32 * LINE + 32.0;
+        let h0 = text_h(rows.len());
         let (mut x, mut y, mut h, mut arg) = (x, y, h0, arg);
         if talk {
             h = h.max(96.0);
@@ -348,7 +362,7 @@ impl App {
         let white = rgb(1.0, 1.0, 1.0);
         if !talk {
             for (i, l) in rows.iter().enumerate() {
-                s.text(g, x + 12.0, top(y + 16.0 + LINE * i as f32, FONT), l, FONT, white);
+                s.text(g, x + 12.0, top(y + 16.0 + line() * i as f32, font()), l, font(), white);
             }
             return;
         }
@@ -359,7 +373,7 @@ impl App {
             ty += ((96 - h0 as i32 - 16) / 2) as f32;
         }
         for (i, l) in rows.iter().enumerate() {
-            s.text(g, x + 100.0, top(ty + LINE * i as f32, FONT), l, FONT, white);
+            s.text(g, x + 100.0, top(ty + line() * i as f32, font()), l, font(), white);
         }
     }
     /// 0x40d320 called with nobody speaking and mode -2 (the dialog frame instead of the strip), as 0x4065c0 does for the
@@ -369,10 +383,10 @@ impl App {
     /// 15 apart.
     pub fn draw_note_box(&self, g: &mut Gfx, s: &Ui, x: f32, y: f32, text: &str) {
         let rows = lines(text, 0x2c as f32 * 8.0);
-        let h = rows.len().saturating_sub(1) as f32 * LINE + 32.0;
+        let h = text_h(rows.len());
         self.art.trans_frame(g, s, x - 8.0, y - 8.0, BOX_W, h + 16.0);
         for (i, l) in rows.iter().enumerate() {
-            s.text(g, x + 12.0, top(y + 16.0 + LINE * i as f32, FONT), l, FONT, rgb(1.0, 1.0, 1.0));
+            s.text(g, x + 12.0, top(y + 16.0 + line() * i as f32, font()), l, font(), rgb(1.0, 1.0, 1.0));
         }
     }
 

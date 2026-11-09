@@ -132,6 +132,16 @@ impl TextureCatalog {
         let mut found = 0;
         for t in 0..TYPE_COUNT {
             let Some(name) = NAMES[t] else { continue };
+            if t == TT_TEE as usize {
+                // Terrain.dll's loader (0x1000782d) treats the tees apart: TeeA0001..TeeA0025 are 25 sets of one
+                // picture each (the round mark, then the arrows), set k being file k + 1; a tile's variant byte is its set
+                for v in 1..=25 {
+                    let Some(p) = index.get(&format!("{name}A{v:04}.bmp").to_lowercase()) else { break };
+                    cat.files[t].push(vec![Some(p.clone())]);
+                    found += 1;
+                }
+                continue;
+            }
             for letter in 'A'..='E' {
                 let mut vars = vec![None; 9];
                 let mut have = 0;
@@ -307,6 +317,16 @@ pub struct Terrain {
     /// flattened tile steps away from its neighbours and the step is closed by a retaining wall. Empty: the shared corners.
     #[serde(skip)]
     pub tile_corner: Vec<[i8; 4]>,
+    /// Vertex normals from the tile's own triangles only, as the port shaded the ground before issue #112 (kept for Enhanced
+    /// graphics, whose look is tuned to it); off, they take the neighbours' triangles too, as Terrain.dll does
+    /// (`vertex_normals`).
+    #[serde(skip)]
+    pub own_tile_normals: bool,
+    /// Per tile, the kind of the building whose lot keeps open ground (a putting green's green, a driving range's rough:
+    /// `Land::lots_to`), 0 elsewhere; not saved. With "Fix original bugs" a lot keeps its border against
+    /// the same ground painted beside it (`tile_relation`, #128, #139). Empty: none.
+    #[serde(skip)]
+    pub lot: Vec<u8>,
 }
 
 pub const MAX_LEVEL: i32 = 24;
@@ -455,6 +475,20 @@ impl Terrain {
         // stable random look
         let h = (x as u32).wrapping_mul(73856093) ^ (y as u32).wrapping_mul(19349663) ^ (ty as u32).wrapping_mul(83492791);
         self.set[i] = ((h >> 7) % 5) as u8;
+    }
+
+    /// The kind of the building whose lot tile (x, y) is part of (`lot`), 0 for none.
+    pub fn lot_at(&self, x: i32, y: i32) -> u8 {
+        if self.inside(x, y) {
+            self.lot.get(self.tile_index(x, y)).copied().unwrap_or(0)
+        } else {
+            0
+        }
+    }
+
+    /// Whether tile (x, y) is part of a putting green's lot.
+    pub fn on_putting_green(&self, x: i32, y: i32) -> bool {
+        self.lot_at(x, y) == crate::land::K_PUTTING_GREEN as u8
     }
 
     pub fn set_wall(&mut self, x: i32, y: i32, dir: i32, on: bool) {
@@ -889,6 +923,11 @@ pub fn tile_relation(t: &Terrain, x: i32, y: i32, nx: i32, ny: i32) -> i32 {
     if type_class(mt as i32, t.desert) != type_class(nt as i32, t.desert) {
         return 1;
     }
+    // the exe blends a putting green into a green painted beside it (#128), a driving range into rough (#139); fixed, a
+    // building's lot keeps its border
+    if crate::fixes::on() && t.lot_at(x, y) != t.lot_at(nx, ny) {
+        return 1;
+    }
     if mt != nt {
         2
     } else {
@@ -926,8 +965,30 @@ fn water_one_type(t: &Terrain, tile_type: i32) -> Option<i32> {
     })
 }
 
-/// Texture type the original picks for a tile type (Tile::m116d).
-fn texture_type_for(tile_type: i32, vbyte: i32, param: i32, desert: bool, phase: i32) -> i32 {
+/// The edge (0 north, 1 east, 2 south, 3 west) each triangle record holds half of (`TILE_TRIS`).
+const EDGE_OF_REC: [usize; 8] = [3, 0, 0, 1, 3, 2, 2, 1];
+
+/// Desert theme, water tile: which of its edges meet a tee, green, fairway or sand (types 0, 1, 2, 3, 7, 8, 9). Tile::m1096
+/// (0x10013670) sets a flag per edge neighbour when the theme (0x10070a0c) is 1, the Desert (its lighting file, 0x1000399d),
+/// the tile's type is 17 and the neighbour passes Tile::m1311 (0x100155b0, that list of types); it then hands both of that
+/// edge's triangles to m116d as type 25, WaterShallowDesert, whose pictures have a grass shore. The rest of the water keeps
+/// the Desert's WaterShallow, whose shore is sand (issue #161). Off with the free base set's one-look water (`water_one`).
+fn desert_grass_edges(t: &Terrain, tx: i32, ty: i32) -> [bool; 4] {
+    let mut out = [false; 4];
+    if !t.desert || t.water_one || t.ty[t.tile_index(tx, ty)] != TT_WATER_SHALLOW {
+        return out;
+    }
+    for (d, o) in out.iter_mut().enumerate() {
+        let (nx, ny) = (tx + DX4[d], ty + DY4[d]);
+        *o = t.inside(nx, ny) && matches!(t.ty[t.tile_index(nx, ny)], 0 | 1 | 2 | 3 | 7 | 8 | 9);
+    }
+    out
+}
+
+/// Texture type the original picks for a tile type (Tile::m116d, 0x10012ec0): it switches on the tile's own type, so a water
+/// tile's depth turns `param` into WaterMiddle or WaterDeep whatever `param` is; shallow water keeps `param` (WaterShallow,
+/// or WaterShallowDesert for the triangles `desert_grass_edges` swaps).
+fn texture_type_for(tile_type: i32, vbyte: i32, param: i32, phase: i32) -> i32 {
     match tile_type {
         1 => {
             if vbyte & 0x80 != 0 {
@@ -945,7 +1006,6 @@ fn texture_type_for(tile_type: i32, vbyte: i32, param: i32, desert: bool, phase:
         17 => match vbyte {
             1 => TT_WATER_MIDDLE as i32,
             2 => TT_WATER_DEEP as i32,
-            _ if desert => TT_WATER_SHALLOW_DESERT as i32,
             _ => param,
         },
         22 => {
@@ -959,6 +1019,95 @@ fn texture_type_for(tile_type: i32, vbyte: i32, param: i32, desert: bool, phase:
     }
 }
 
+/// A vertex's texture coordinates (top-down) under view quarter turn `phase`, as Terrain.dll's table at 0x10063ca0 has them
+/// (its bottom-up coordinates turned a quarter per phase).
+pub fn view_uv(u: f32, v: f32, phase: i32) -> (f32, f32) {
+    match phase.rem_euclid(4) {
+        1 => (v, 1.0 - u),
+        2 => (1.0 - u, 1.0 - v),
+        3 => (1.0 - v, u),
+        _ => (u, v),
+    }
+}
+
+/// The 8 triangles of a tile as (row, column) points of its 3 x 3 patch, in Terrain.dll's record order (quadrants NW, NE, SW,
+/// SE, two each). The tile is a fan of eight triangles round its centre, each holding half of one tile edge (the edge its
+/// blend variation belongs to), so every quadrant is split along the diagonal from the tile corner to the centre: NW and SE
+/// along one diagonal, NE and SW along the other.
+const TILE_TRIS: [[(usize, usize); 3]; 8] = [
+    [(0, 0), (1, 0), (1, 1)],
+    [(0, 0), (1, 1), (0, 1)],
+    // NE: corner (0,2); first the north half edge, then the east one
+    [(0, 1), (1, 1), (0, 2)],
+    [(1, 1), (1, 2), (0, 2)],
+    // SW: corner (2,0); first the west half edge, then the south one
+    [(1, 0), (2, 0), (1, 1)],
+    [(2, 0), (2, 1), (1, 1)],
+    [(1, 1), (2, 1), (2, 2)],
+    [(1, 1), (2, 2), (1, 2)],
+];
+
+/// The unit face normals of a tile's 8 triangles (`TILE_TRIS` order) from its own patch heights, turned to face up
+/// (Terrain.dll 0x10011d60: the cross product of the triangle's two edges, normalised).
+fn tile_face_normals(t: &Terrain, tx: i32, ty: i32) -> [[f32; 3]; 8] {
+    let hgt = t.patch_heights(tx, ty);
+    let half = TILE_SIZE * 0.5;
+    let p = |(j, k): (usize, usize)| [k as f32 * half, hgt[j][k], j as f32 * half];
+    let mut out = [[0f32, 1.0, 0.0]; 8];
+    for (o, ix) in out.iter_mut().zip(&TILE_TRIS) {
+        let (a, b, c) = (p(ix[0]), p(ix[1]), p(ix[2]));
+        let (ux, uy, uz) = (b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+        let (vx, vy, vz) = (c[0] - a[0], c[1] - a[1], c[2] - a[2]);
+        let mut n = [uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx];
+        let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+        if len > 0.0 {
+            n = n.map(|c| c / len);
+        }
+        if n[1] < 0.0 {
+            n = n.map(|c| -c);
+        }
+        *o = n;
+    }
+    out
+}
+
+/// The normals of tile (tx, ty)'s 3 x 3 vertex patch ([row][column]): at each point the sum of the unit face normals of the
+/// triangles that meet it, normalised. Terrain.dll (Tile::calcNormals 0x10012cf0: the centre from the tile's 8 triangles;
+/// 0x10011ef0 once per corner: the corner and its edge midpoints from the tile's triangles and those of the neighbours on
+/// that side, the diagonal one included, where they exist) takes every triangle on the map that meets the point, so an edge
+/// midpoint sums 4 triangles and a corner 8, each neighbour's from its own vertices. With `own_tile_normals` (Enhanced
+/// graphics; the port's earlier shading) only the tile's own triangles count.
+pub fn vertex_normals(t: &Terrain, tx: i32, ty: i32) -> [[[f32; 3]; 3]; 3] {
+    let reach = if t.own_tile_normals { 0 } else { 1 };
+    let mut sum = [[[0f32; 3]; 3]; 3];
+    for dy in -reach..=reach {
+        for dx in -reach..=reach {
+            let (nx, ny) = (tx + dx, ty + dy);
+            if !t.inside(nx, ny) {
+                continue;
+            }
+            let faces = tile_face_normals(t, nx, ny);
+            for (n, ix) in faces.iter().zip(&TILE_TRIS) {
+                for &(j, k) in ix {
+                    // the point in this tile's patch, if it is one
+                    let (pj, pk) = (j as i32 + 2 * dy, k as i32 + 2 * dx);
+                    if (0..3).contains(&pj) && (0..3).contains(&pk) {
+                        let s = &mut sum[pj as usize][pk as usize];
+                        for c in 0..3 {
+                            s[c] += n[c];
+                        }
+                    }
+                }
+            }
+        }
+    }
+    for n in sum.iter_mut().flatten() {
+        let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+        *n = if len > 0.0 { n.map(|c| c / len) } else { [0.0, 1.0, 0.0] };
+    }
+    sum
+}
+
 /// Appends the 8 triangles of tile (tx,ty). Tile = 3x3 vertex patch (corners, edge midpoints, centre), 50 units apart; quadrants
 /// split along their NW-SE diagonal; UVs 0, 0.5, 1. Sand (type 7) tiles are dished 13 units like the original. World X/Z are
 /// centred on the map: x = tx*100 - w*50.
@@ -970,15 +1119,13 @@ pub fn build_tile_triangles(t: &Terrain, tx: i32, ty: i32, out: &mut Vec<TileTri
     let hgt = t.patch_heights(tx, ty);
     let ox = tx as f32 * TILE_SIZE - t.w as f32 * TILE_SIZE * 0.5;
     let oz = ty as f32 * TILE_SIZE - t.h as f32 * TILE_SIZE * 0.5;
-    let vtx = |j: usize, k: usize| Vertex {
-        x: ox + k as f32 * TILE_SIZE * 0.5,
-        y: hgt[j][k],
-        z: oz + j as f32 * TILE_SIZE * 0.5,
-        u: k as f32 * 0.5,
-        v: j as f32 * 0.5,
-        nx: 0.0,
-        ny: 1.0,
-        nz: 0.0,
+    // Terrain.dll takes each vertex's texture coordinates from a table by the view's quarter turn (0x10063ca0, phase
+    // 0x10070a14 at 0x1000e833), so its pictures turn with the view; the port does so for the tees only, whose arrows the exe
+    // picks by the view (decor::tee_arrow) and would otherwise point the wrong way once the view is turned
+    let phase = if ttype == TT_TEE as i32 { t.sand_phase } else { 0 };
+    let vtx = |j: usize, k: usize| {
+        let (u, v) = view_uv(k as f32 * 0.5, j as f32 * 0.5, phase);
+        Vertex { x: ox + k as f32 * TILE_SIZE * 0.5, y: hgt[j][k], z: oz + j as f32 * TILE_SIZE * 0.5, u, v, nx: 0.0, ny: 1.0, nz: 0.0 }
     };
 
     // Variation per triangle record (rec = 2*quadrant + {0,1}; quadrants NW, NE, SW, SE).
@@ -993,7 +1140,7 @@ pub fn build_tile_triangles(t: &Terrain, tx: i32, ty: i32, out: &mut Vec<TileTri
         // Original triangle index -> (a, b, c), and -> record.
         let abc = [[n, e, ne], [e, n, ne], [e, s, se], [s, e, se], [s, w, sw], [w, s, sw], [w, n, nw], [n, w, nw]];
         const REC_OF: [usize; 8] = [2, 3, 7, 6, 5, 4, 0, 1];
-        let tex_type = water_one_type(t, ttype).unwrap_or_else(|| texture_type_for(ttype, vbyte, ttype, t.desert, t.sand_phase));
+        let tex_type = water_one_type(t, ttype).unwrap_or_else(|| texture_type_for(ttype, vbyte, ttype, t.sand_phase));
         for i in 0..8 {
             let mut v = blend_variation(abc[i][0], abc[i][1], abc[i][2]);
             if (tex_type == TT_ROUGH as i32 || ttype == 7 || tex_type == TT_FAIRWAY as i32) && v > 4 {
@@ -1005,70 +1152,145 @@ pub fn build_tile_triangles(t: &Terrain, tx: i32, ty: i32, out: &mut Vec<TileTri
     let tex_type = if ttype == TT_TEE as i32 || ttype == TT_POT_SAND_BUNKER as i32 {
         ttype
     } else {
-        water_one_type(t, ttype).unwrap_or_else(|| texture_type_for(ttype, vbyte, ttype, t.desert, t.sand_phase))
+        water_one_type(t, ttype).unwrap_or_else(|| texture_type_for(ttype, vbyte, ttype, t.sand_phase))
     };
     let use_set = if ttype == TT_TEE as i32 { vbyte } else { set };
-    // Terrain.dll keeps a 3 x 3 vertex patch per tile (the global vertex array is 3W x 3H, so tiles share no vertices) with
-    // one normal per vertex: the sum of the unit face normals of the tile's triangles that use it, normalised. So a slope is
-    // shaded smoothly inside a tile rather than per triangle.
+    let grass_edge = desert_grass_edges(t, tx, ty);
     type Tri = ([Vertex; 3], [(usize, usize); 3], usize);
     let mut tris_all: Vec<Tri> = Vec::with_capacity(8);
-    for q in 0..4 {
-        let (j, k) = (q / 2, q % 2);
-        // The tile is a fan of eight triangles round its centre, each holding half of one tile edge (the edge its blend
-        // variation belongs to), so every quadrant is split along the diagonal from the tile corner to the centre: NW and SE
-        // along one diagonal, NE and SW along the other.
-        let idx: [[(usize, usize); 3]; 2] = if j == k {
-            [[(j, k), (j + 1, k), (j + 1, k + 1)], [(j, k), (j + 1, k + 1), (j, k + 1)]]
-        } else if k == 1 {
-            // NE: corner (0,2); first the north half edge, then the east one
-            [[(0, 1), (1, 1), (0, 2)], [(1, 1), (1, 2), (0, 2)]]
-        } else {
-            // SW: corner (2,0); first the west half edge, then the south one
-            [[(1, 0), (2, 0), (1, 1)], [(2, 0), (2, 1), (1, 1)]]
-        };
-        for (s, ix) in idx.iter().enumerate() {
-            tris_all.push(([vtx(ix[0].0, ix[0].1), vtx(ix[1].0, ix[1].1), vtx(ix[2].0, ix[2].1)], *ix, q * 2 + s));
-        }
+    for (r, ix) in TILE_TRIS.iter().enumerate() {
+        tris_all.push(([vtx(ix[0].0, ix[0].1), vtx(ix[1].0, ix[1].1), vtx(ix[2].0, ix[2].1)], *ix, r));
     }
-    let mut sum = [[[0f32; 3]; 3]; 3];
-    for (tri, ix, _) in &tris_all {
-        let (ux, uy, uz) = (tri[1].x - tri[0].x, tri[1].y - tri[0].y, tri[1].z - tri[0].z);
-        let (vx, vy, vz) = (tri[2].x - tri[0].x, tri[2].y - tri[0].y, tri[2].z - tri[0].z);
-        let (mut nx, mut ny, mut nz) = (uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx);
-        let len = (nx * nx + ny * ny + nz * nz).sqrt();
-        if len > 0.0 {
-            nx /= len;
-            ny /= len;
-            nz /= len;
-        }
-        if ny < 0.0 {
-            nx = -nx;
-            ny = -ny;
-            nz = -nz;
-        }
-        for &(j, k) in ix {
-            sum[j][k][0] += nx;
-            sum[j][k][1] += ny;
-            sum[j][k][2] += nz;
-        }
-    }
+    // Terrain.dll keeps a 3 x 3 vertex patch per tile (the global vertex array is 3W x 3H, so tiles share no vertices) with
+    // one normal per vertex: the sum of the unit face normals of every triangle on the map that meets that point, its own
+    // tile's and the neighbours' (Tile::calcNormals 0x10012cf0 and its corner pass 0x10011ef0), normalised. So a slope is
+    // shaded smoothly across tile edges too (issue #112). Enhanced graphics keeps the port's earlier per-tile sums
+    // (`own_tile_normals`).
+    let normals = vertex_normals(t, tx, ty);
     for (tri, ix, r) in tris_all {
+        let tex_type =
+            if grass_edge[EDGE_OF_REC[r]] { texture_type_for(ttype, vbyte, TT_WATER_SHALLOW_DESERT as i32, 0) } else { tex_type };
         let mut tt = TileTri { tex_type, set: use_set, variation: var[r], v: tri };
         for (v, &(j, k)) in tt.v.iter_mut().zip(&ix) {
-            let n = sum[j][k];
-            let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
-            if len > 0.0 {
-                (v.nx, v.ny, v.nz) = (n[0] / len, n[1] / len, n[2] / len);
-            }
+            (v.nx, v.ny, v.nz) = (normals[j][k][0], normals[j][k][1], normals[j][k][2]);
         }
         out.push(tt);
     }
 }
 
+/// A path tile's neighbours with a path, as Terrain.dll's tile path draw (0x100108f0) adds them up from the neighbours' path
+/// flag (Tile+0x208): north (y - 1) 1, south 2, east (x + 1) 4, west 8.
+pub fn path_mask(n: bool, s: bool, e: bool, w: bool) -> u8 {
+    n as u8 | (s as u8) << 1 | (e as u8) << 2 | (w as u8) << 3
+}
+
+/// The centre of a path tile, by its `path_mask`: what Terrain.dll draws on each of the four triangles between the tile's
+/// centre and two edge midpoints, north-west, north-east, south-west and south-east in that order (the jump table of
+/// 0x100116d0, after the tile's arms: an arm per neighbour, a third of the tile wide, from the centre to the edge, in
+/// `Path.tga`). 0 draws nothing there, 2 the triangle of `PathInside.tga` (the filled corner between two arms), 3 that of
+/// `PathCurve.tga` (the round edge: four of them give a lone tile its round dot, two the round end of a path, one the outside
+/// of a bend). A straight run's centre (masks 3 and 12) is all arm. `PathCap.tga` is loaded but never drawn.
+pub fn path_centre(mask: u8) -> [u8; 4] {
+    const T: [[u8; 4]; 16] = [
+        [3, 3, 3, 3], // alone
+        [0, 0, 3, 3], // N: an end
+        [3, 3, 0, 0], // S
+        [0, 0, 0, 0], // N S: straight
+        [3, 0, 3, 0], // E
+        [0, 2, 3, 0], // N E: a bend
+        [3, 0, 0, 2], // S E
+        [0, 2, 0, 2], // N S E: a T
+        [0, 3, 0, 3], // W
+        [2, 0, 0, 3], // N W
+        [0, 3, 2, 0], // S W
+        [2, 0, 2, 0], // N S W
+        [0, 0, 0, 0], // E W: straight
+        [2, 2, 0, 0], // N E W
+        [0, 0, 2, 2], // S E W
+        [2, 2, 2, 2], // a crossing
+    ];
+    T[mask as usize & 15]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn path_pieces_follow_the_neighbours() {
+        // a lone tile is the round dot, all curve
+        assert_eq!(path_centre(path_mask(false, false, false, false)), [3; 4]);
+        // straight runs: arms only, no round piece
+        assert_eq!(path_centre(path_mask(true, true, false, false)), [0; 4]);
+        assert_eq!(path_centre(path_mask(false, false, true, true)), [0; 4]);
+        // the end of a run going north: rounded on the south side only
+        assert_eq!(path_centre(path_mask(true, false, false, false)), [0, 0, 3, 3]);
+        // a bend north to east: the inside corner filled, the outside (south-west) rounded
+        assert_eq!(path_centre(path_mask(true, false, true, false)), [0, 2, 3, 0]);
+        // a bend south to west
+        assert_eq!(path_centre(path_mask(false, true, false, true)), [0, 3, 2, 0]);
+        // a T (north, south and east): the two inside corners on the east filled, nothing round
+        assert_eq!(path_centre(path_mask(true, true, true, false)), [0, 2, 0, 2]);
+        assert_eq!(path_centre(15), [2; 4]);
+        // the round piece shows only on a side with no neighbour, the filled corner only between two
+        for m in 0..16u8 {
+            let c = path_centre(m);
+            let (n, s, e, w) = (m & 1 != 0, m & 2 != 0, m & 4 != 0, m & 8 != 0);
+            for (q, (v, h)) in [(n, w), (n, e), (s, w), (s, e)].into_iter().enumerate() {
+                let want = match (v, h) {
+                    (true, true) => 2,
+                    (false, false) => 3,
+                    _ => 0,
+                };
+                assert_eq!(c[q], want, "mask {m} quadrant {q}");
+            }
+        }
+    }
+
+    #[test]
+    fn desert_water_takes_the_grass_shore_only_where_it_meets_grass_or_sand() {
+        // a pond tile with a fairway north, desert ground (rough) east, a sand trap south and rock west (issue #161)
+        let pond = |desert: bool, depth: u8| {
+            let mut t = Terrain { w: 3, h: 3, ty: vec![TT_ROUGH; 9], variation: vec![0; 9], set: vec![0; 9], ..Default::default() };
+            t.corner = vec![0; 16];
+            t.path_kind = vec![0; 9];
+            t.wall_mask = vec![0; 9];
+            t.desert = desert;
+            t.ty[4] = TT_WATER_SHALLOW;
+            t.variation[4] = depth;
+            t.ty[1] = TT_FAIRWAY;
+            t.ty[7] = TT_SAND;
+            t.ty[3] = TT_ROCK;
+            let mut out = Vec::new();
+            build_tile_triangles(&t, 1, 1, &mut out);
+            out.iter().map(|tri| tri.tex_type).collect::<Vec<_>>()
+        };
+        let want = |shore: i32, other: i32| EDGE_OF_REC.iter().map(|&e| if e == 0 || e == 2 { shore } else { other }).collect::<Vec<_>>();
+        let (sh, desert_sh) = (TT_WATER_SHALLOW as i32, TT_WATER_SHALLOW_DESERT as i32);
+        assert_eq!(pond(true, 0), want(desert_sh, sh));
+        // other themes, and water with depth (m116d turns any type on a deep tile into its depth), keep their own pictures
+        assert_eq!(pond(false, 0), vec![sh; 8]);
+        assert_eq!(pond(true, 2), vec![TT_WATER_DEEP as i32; 8]);
+        // each record's edge is the one its blend variation reads first (the `abc` table's a)
+        assert_eq!(EDGE_OF_REC.iter().filter(|&&e| e == 0).count(), 2);
+    }
+
+    #[test]
+    fn view_turns_the_picture_a_quarter_per_phase() {
+        // Terrain.dll's table (bottom-up there): under phase 1 the vertex that showed the picture's top-left shows its
+        // bottom-left
+        assert_eq!(view_uv(0.0, 0.0, 0), (0.0, 0.0));
+        assert_eq!(view_uv(0.0, 0.0, 1), (0.0, 1.0));
+        assert_eq!(view_uv(0.0, 0.0, 2), (1.0, 1.0));
+        assert_eq!(view_uv(0.0, 0.0, 3), (1.0, 0.0));
+        assert_eq!(view_uv(0.5, 0.5, 3), (0.5, 0.5));
+        // four quarters come round again
+        let mut p = (0.5, 0.0);
+        for _ in 0..4 {
+            p = view_uv(p.0, p.1, 1);
+        }
+        assert_eq!(p, (0.5, 0.0));
+    }
 
     #[test]
     fn tiles_keep_their_own_corners() {
@@ -1174,5 +1396,59 @@ mod tests {
         build_tile_triangles(&t, 4, 4, &mut v);
         assert_eq!(v.len(), 8);
         assert!(v.iter().all(|tri| tri.v.iter().all(|p| p.ny >= 0.0)));
+    }
+
+    /// Issue #112: Terrain.dll sums the face normals of every triangle that meets a vertex, the neighbours' too, so the
+    /// vertices two tiles share get the same normal and a hill is shaded smoothly across tile edges, not in hard tiles.
+    #[test]
+    fn vertex_normals_are_smooth_across_tiles() {
+        let mut t = Terrain::demo_course(10, 10, 9);
+        t.ty.iter_mut().for_each(|v| *v = TT_ROUGH);
+        t.corner.iter_mut().for_each(|c| *c = 0);
+        // a hill top at corner (5, 5): every tile round it has one raised corner
+        t.raise_corner(5, 5, 3);
+        let n = |t: &Terrain, x: i32, y: i32, j: usize, k: usize| vertex_normals(t, x, y)[j][k];
+        let close = |a: [f32; 3], b: [f32; 3]| (0..3).all(|c| (a[c] - b[c]).abs() < 1e-5);
+        // the hill top, as the four tiles meeting there have it: straight up
+        for (x, y, j, k) in [(4, 4, 2, 2), (5, 4, 2, 0), (4, 5, 0, 2), (5, 5, 0, 0)] {
+            assert!(close(n(&t, x, y, j, k), [0.0, 1.0, 0.0]), "{x},{y}: {:?}", n(&t, x, y, j, k));
+        }
+        // the edge midpoint between tiles (4, 4) and (5, 4), and the corner (5, 4) the four tiles share
+        assert!(close(n(&t, 4, 4, 1, 2), n(&t, 5, 4, 1, 0)));
+        for (x, y, j, k) in [(4, 3, 2, 2), (5, 3, 2, 0), (4, 4, 0, 2), (5, 4, 0, 0)] {
+            assert!(close(n(&t, x, y, j, k), n(&t, 5, 4, 0, 0)));
+        }
+        // a corner sums the unit normals of the eight triangles round it
+        let mut sum = [0f32; 3];
+        for (x, y, j, k) in [(4, 4, 2, 2), (5, 4, 2, 0), (4, 5, 0, 2), (5, 5, 0, 0)] {
+            for (f, ix) in tile_face_normals(&t, x, y).iter().zip(&TILE_TRIS) {
+                if ix.contains(&(j, k)) {
+                    (0..3).for_each(|c| sum[c] += f[c]);
+                }
+            }
+        }
+        assert!(sum[1] > 7.0 && sum[1] < 8.0);
+        // the port's earlier per-tile normals (Enhanced graphics): a tile sees only its own slope there
+        t.own_tile_normals = true;
+        assert!(!close(n(&t, 5, 5, 0, 0), [0.0, 1.0, 0.0]));
+        assert!(!close(n(&t, 4, 4, 1, 2), n(&t, 5, 4, 1, 0)));
+        // and build_tile_triangles hands the vertices these normals
+        t.own_tile_normals = false;
+        let mut v = Vec::new();
+        build_tile_triangles(&t, 5, 5, &mut v);
+        let top = v[0].v[0];
+        assert!(close([top.nx, top.ny, top.nz], [0.0, 1.0, 0.0]));
+    }
+
+    /// Flat ground keeps the straight-up normal with either rule (Classic pixels on flat land do not change).
+    #[test]
+    fn flat_ground_normals_point_up() {
+        let mut t = Terrain::demo_course(10, 10, 9);
+        t.corner.iter_mut().for_each(|c| *c = 0);
+        t.ty.iter_mut().for_each(|v| *v = TT_ROUGH);
+        for own in [false, true] {
+            t.own_tile_normals = own;
+            assert!(vertex_normals(&t, 3, 3).iter().flatten().all(|n| *n == [0.0, 1.0, 0.0]));
+        }
     }
 }

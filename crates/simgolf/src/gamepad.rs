@@ -10,6 +10,10 @@
 //!   stick click: repeat the last message (?).
 //!
 //! A real mouse movement gives the pointer back to the mouse.
+//!
+//! Racing wheels, pedals and flight sticks are left alone (`not_a_gamepad`), and a stick counts only once it has been seen
+//! at rest in its centre (`Pad::centred`): an axis that rests at one end, as a pedal does, never moves the pointer or the
+//! course by itself (#169).
 
 use crate::Stage;
 use miniquad::{EventHandler, KeyCode, KeyMods, MouseButton};
@@ -83,6 +87,10 @@ pub struct Pad {
     repeat_at: [f64; 4],
     /// B went down off the course: it is Esc until it comes up.
     b_esc: bool,
+    /// Each stick (left, right) has been seen in its centre since the controller came: until then it is ignored.
+    centred: [bool; 2],
+    /// A controller was there last frame.
+    had: bool,
 }
 
 #[cfg(any(target_arch = "wasm32", target_os = "android"))]
@@ -114,6 +122,44 @@ pub extern "C" fn sg_gamepad(buttons: u32, lx: f32, ly: f32, rx: f32, ry: f32) {
     }
 }
 
+/// A device that is not a gamepad by its name: a racing wheel, pedals, a flight stick or a throttle. Their axes rest
+/// at one end or off centre and would move the pointer or scroll the course by themselves (#169).
+pub fn not_a_gamepad(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    [
+        "wheel",
+        "pedal",
+        "racing",
+        "driving force",
+        "g29",
+        "g920",
+        "g923",
+        "g27",
+        "g25",
+        "fanatec",
+        "thrustmaster t",
+        "flight",
+        "hotas",
+        "throttle",
+        "rudder",
+        "yoke",
+    ]
+    .iter()
+    .any(|w| n.contains(w))
+}
+
+/// A stick only counts once it has been seen in its centre: until then its reading is (0, 0).
+fn gate(centred: &mut bool, v: (f32, f32)) -> (f32, f32) {
+    if !*centred && v.0 * v.0 + v.1 * v.1 < DEAD * DEAD {
+        *centred = true;
+    }
+    if *centred {
+        v
+    } else {
+        (0.0, 0.0)
+    }
+}
+
 /// A stick with its dead zone taken out and a gentle curve (fine moves near the centre, fast at full tilt).
 fn shape(v: (f32, f32)) -> (f32, f32) {
     let m = (v.0 * v.0 + v.1 * v.1).sqrt();
@@ -136,7 +182,7 @@ impl Pad {
         {
             if !self.started {
                 self.started = true;
-                self.gilrs = gilrs::Gilrs::new().map_err(|e| eprintln!("controllers: {e}")).ok();
+                self.gilrs = gilrs::Gilrs::new().map_err(|e| crate::bugreport::warn(&format!("controllers: {e}"))).ok();
             }
             let gil = self.gilrs.as_mut()?;
             while let Some(ev) = gil.next_event() {
@@ -144,7 +190,7 @@ impl Pad {
                     println!("controller connected: {}", gil.gamepad(ev.id).name());
                 }
             }
-            let (_, pad) = gil.gamepads().find(|(_, p)| p.is_connected())?;
+            let (_, pad) = gil.gamepads().find(|(_, p)| p.is_connected() && !not_a_gamepad(p.name()))?;
             use gilrs::{Axis, Button};
             let map = [
                 Button::South,
@@ -190,7 +236,16 @@ impl Stage {
     pub(crate) fn gamepad_update(&mut self, t: f64) {
         let dt = if self.pad.t > 0.0 { (t - self.pad.t).clamp(0.0, 0.1) as f32 } else { 0.0 };
         self.pad.t = t;
-        let Some(s) = self.pad.read() else { return };
+        let Some(mut s) = self.pad.read() else {
+            self.pad.had = false;
+            return;
+        };
+        if !self.pad.had {
+            self.pad.had = true;
+            self.pad.centred = [false; 2];
+        }
+        s.left = gate(&mut self.pad.centred[0], s.left);
+        s.right = gate(&mut self.pad.centred[1], s.right);
         let prev = std::mem::replace(&mut self.pad.last, s);
         let pressed = s.buttons & !prev.buttons;
         let released = prev.buttons & !s.buttons;
@@ -250,7 +305,16 @@ impl Stage {
         if pressed & btn::RS != 0 {
             self.app.repeat_message();
         }
+        // Y on the course is the game speed's one button, which cycles (the ] key steps and stops: App::step_speed);
+        // elsewhere (photo mode) it is ] as before
+        let speed_button = self.app.screen == crate::app::Screen::Play && self.app.photo.is_none();
+        if speed_button && pressed & btn::Y != 0 {
+            self.app.cycle_speed();
+        }
         for &(b, k) in &KEYS {
+            if speed_button && b == btn::Y {
+                continue;
+            }
             if pressed & b != 0 {
                 self.key_down_event(k, none, false);
             }
@@ -331,5 +395,27 @@ mod tests {
         assert!((x - 1.0).abs() < 1e-5 && y == 0.0);
         let (x, _) = shape((0.5, 0.0));
         assert!(x > 0.0 && x < 0.5);
+    }
+
+    #[test]
+    fn wheels_and_pedals_are_not_gamepads() {
+        assert!(not_a_gamepad("Logitech G29 Driving Force Racing Wheel"));
+        assert!(not_a_gamepad("Logitech G HUB G920 Driving Force Racing Wheel USB"));
+        assert!(not_a_gamepad("Thrustmaster T.Flight Hotas X"));
+        assert!(!not_a_gamepad("Xbox Wireless Controller"));
+        assert!(!not_a_gamepad("DualSense Wireless Controller"));
+        assert!(!not_a_gamepad("Steam Deck"));
+        assert!(!not_a_gamepad("Nintendo Switch Pro Controller"));
+    }
+
+    #[test]
+    fn a_stick_resting_off_centre_counts_only_once_centred() {
+        let mut c = false;
+        // a pedal resting at one end: ignored
+        assert_eq!(gate(&mut c, (0.0, -1.0)), (0.0, 0.0));
+        assert_eq!(gate(&mut c, (0.0, -1.0)), (0.0, 0.0));
+        // seen at rest in the centre: from then on it counts
+        assert_eq!(gate(&mut c, (0.05, 0.0)), (0.05, 0.0));
+        assert_eq!(gate(&mut c, (0.0, -1.0)), (0.0, -1.0));
     }
 }

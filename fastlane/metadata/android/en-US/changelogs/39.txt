@@ -1,0 +1,1 @@
+0.5.5: on touch screens, dragging while moving an employee now scrolls the view instead of placing them.

@@ -9,6 +9,9 @@ name: release
 #   Windows  opensgolf-windows.zip (x64) and opensgolf-windows-arm64.zip (Windows on ARM, e.g. Snapdragon laptops)
 #   Android  opensgolf-android.apk (signed with a debug key, for sideloading)
 #   browser  opensgolf-web.zip
+# Each Windows .zip and Linux .tar.gz also comes as NAME-bin.zip / NAME-bin.tar.gz, the same package without packs/ (the
+# programs, lang and the documents, a few MB), with opensgolf-packs.sha256 listing every file in packs/: the game's
+# "Update now" then downloads only the programs and the pack files that changed (GitHub issue #65, autoupdate.rs),
 # and SHA256SUMS with SHA256SUMS.sig, its ed25519 signature, which the game's "Update now" checks before installing a
 # package (crates/simgolf/src/autoupdate.rs; the key is the secret OPENSGOLF_UPDATE_KEY, docs/RELEASING.md).
 # The icon is the engine's own drawing (sg_core::freeset::app_icon, `sgtool icon`).
@@ -64,6 +67,8 @@ jobs:
           cp icons/icon_256.png "$out/opensgolf.png"
           cp -r packs lang "$out/"
           tar czf "$out.tar.gz" "$out"
+          # the same without packs/, for selective updates (autoupdate.rs)
+          tar czf "$out-bin.tar.gz" --exclude="$out/packs" "$out"
       - name: AppImage
         run: |
           # the game finds its packs and translations next to the program (usr/bin), its saves in ~/.local/share/opensgolf
@@ -153,10 +158,14 @@ jobs:
           cp LICENSE README.md docs/PLAYING.md docs/MODDING.md "$out/"
           cp -r packs lang "$out/"
           7z a "$out.zip" "$out" > /dev/null
+          # the same without packs/, for selective updates (autoupdate.rs)
+          7z a "$out-bin.zip" "$out" '-xr!packs' > /dev/null
       - uses: actions/upload-artifact@v4
         with:
           name: windows-${{ matrix.name }}
-          path: ${{ matrix.out }}.zip
+          path: |
+            ${{ matrix.out }}.zip
+            ${{ matrix.out }}-bin.zip
 
   android:
     runs-on: ubuntu-latest
@@ -202,10 +211,17 @@ jobs:
     # this fork publishes no builds (lang/en.txt holds the original game's text); see README
     if: false
     steps:
+      - uses: actions/checkout@v4
+        with:
+          path: src
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
+      - name: List the packs' files (opensgolf-packs.sha256)
+        # a selective update compares these with the player's copy and fetches only the files that differ, from this
+        # release's tag in the repository (autoupdate.rs); signed with the packages below
+        run: (cd src && find packs -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) > dist/opensgolf-packs.sha256
       - name: Sign the packages (SHA256SUMS, SHA256SUMS.sig)
         # "Update now" (crates/simgolf/src/autoupdate.rs) installs only a package whose SHA-256 is in SHA256SUMS, signed
         # with the key in the OPENSGOLF_UPDATE_KEY secret (the private key `sgtool update-keygen` prints: 64 hex digits,
@@ -230,8 +246,25 @@ jobs:
           echo "signed with public key $(openssl pkey -inform DER -in "$key" -pubout -outform DER | tail -c 32 | od -An -tx1 | tr -d ' \n')"
           rm -f "$key"
           test "$(stat -c %s SHA256SUMS.sig)" = 64
+      - name: Release notes (this version's section of CHANGELOG.md)
+        # "## 0.6 (...)" up to the next "## ": the highlights of the minor version (a 0.6.x fix release shows them too),
+        # above GitHub's list of the changes since the last release
+        run: |
+          python3 - "$VERSION" <<'PY'
+          import re, sys
+          v = sys.argv[1].lstrip("v")
+          minor = ".".join(v.split(".")[:2])
+          text = open("src/CHANGELOG.md", encoding="utf-8").read()
+          m = re.search(r"^## " + re.escape(minor) + r" \(.*?(?=^## |\Z)", text, re.S | re.M)
+          body = m.group(0).strip() if m else ""
+          body = body.replace("](docs/", "](https://github.com/crspytopgn/opensgolf/blob/main/docs/")
+          body += "\n\nEverything, version by version: [CHANGELOG.md](https://github.com/crspytopgn/opensgolf/blob/main/CHANGELOG.md)\n"
+          open("release-notes.md", "w", encoding="utf-8").write(body)
+          print(body)
+          PY
       - uses: softprops/action-gh-release@v2
         with:
+          body_path: release-notes.md
           # a run by hand creates the tag on the commit it built
           tag_name: ${{ env.VERSION }}
           target_commitish: ${{ github.sha }}
@@ -239,3 +272,41 @@ jobs:
           files: dist/*
           make_latest: true
           generate_release_notes: true
+
+  stores:
+    # After the release: the Homebrew cask (crspytopgn/homebrew-tap) and winget's manifest (microsoft/winget-pkgs) move to
+    # the new version. Each needs a token secret (docs/RELEASING.md, "Store updates"); without it the step says so and
+    # does nothing, and a store that fails never fails the release, which is already published.
+    needs: publish
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - name: Homebrew cask
+        shell: bash
+        env:
+          TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then echo "::warning::HOMEBREW_TAP_TOKEN is not set: update the Homebrew cask by hand (docs/RELEASING.md)"; exit 0; fi
+          v="${VERSION#v}"
+          url="https://github.com/crspytopgn/opensgolf/releases/download/$VERSION"
+          sum=$(curl -fsSL "$url/SHA256SUMS" | awk '$2 == "opensgolf-macos.zip" { print $1 }')
+          test ${#sum} = 64
+          git clone -q "https://x-access-token:$TOKEN@github.com/crspytopgn/homebrew-tap.git" tap
+          cd tap
+          sed -i -E "s/^  version \"[^\"]+\"/  version \"$v\"/; s/^  sha256 \"[0-9a-f]+\"/  sha256 \"$sum\"/" Casks/opensgolf.rb
+          git diff --stat
+          if git diff --quiet; then echo "the cask is already at $v"; exit 0; fi
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -qam "opensgolf $v"
+          git push -q origin HEAD
+      - name: winget
+        shell: pwsh
+        env:
+          TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          if (-not $env:TOKEN) { Write-Output "::warning::WINGET_TOKEN is not set: update winget's manifest by hand (docs/RELEASING.md)"; exit 0 }
+          $v = $env:VERSION.TrimStart("v")
+          $url = "https://github.com/crspytopgn/opensgolf/releases/download/$env:VERSION"
+          Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+          # a pull request to microsoft/winget-pkgs from the token's account, its installers and hashes from the release
+          .\wingetcreate.exe update crspytopgn.OpenSGolf --version $v --urls "$url/opensgolf-windows.zip|x64" "$url/opensgolf-windows-arm64.zip|arm64" --submit --token $env:TOKEN
+          if ($LASTEXITCODE -ne 0) { Write-Output "::warning::wingetcreate could not update crspytopgn.OpenSGolf (is the package in winget yet?)"; exit 0 }

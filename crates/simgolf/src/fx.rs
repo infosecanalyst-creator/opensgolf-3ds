@@ -100,6 +100,12 @@ pub struct FxSettings {
     pub ice: bool,
     /// Spray and foam round the fountains and at the foot of the waterfalls.
     pub spray: bool,
+    /// The buildings' windows lit from dusk to dawn, with the time of day (fx_night.rs).
+    pub window_lights: bool,
+    /// Sprinklers on a few fairway, green and tee tiles at dawn, with the time of day (fx_dawn.rs).
+    pub sprinklers: bool,
+    /// Frost on the grass on cold mornings where the theme has a winter, with the time of day (fx_nature.rs).
+    pub frost: bool,
 }
 
 impl Default for FxSettings {
@@ -150,6 +156,9 @@ impl Default for FxSettings {
             water_life: true,
             ice: true,
             spray: true,
+            window_lights: true,
+            sprinklers: true,
+            frost: true,
         }
     }
 }
@@ -213,7 +222,7 @@ macro_rules! flag {
     };
 }
 
-static OPTIONS: [FxOption; 42] = [
+static OPTIONS: [FxOption; 45] = [
     FxOption { key: "effects", label: "STR_FX_EFFECTS", choices: ON_OFF, get: |s| s.enabled as usize, set: |s, v| s.enabled = v != 0 },
     FxOption {
         key: "scaler",
@@ -274,6 +283,9 @@ static OPTIONS: [FxOption; 42] = [
     flag!("water-life", "STR_FX_WATER_LIFE", water_life),
     flag!("ice", "STR_FX_ICE", ice),
     flag!("spray", "STR_FX_SPRAY", spray),
+    flag!("window-lights", "STR_FX_WINDOW_LIGHTS", window_lights),
+    flag!("sprinklers", "STR_FX_SPRINKLERS", sprinklers),
+    flag!("frost", "STR_FX_FROST", frost),
 ];
 
 /// The options in the order a preferences screen lists them; the first is the master switch.
@@ -391,6 +403,9 @@ pub fn from_enhanced(e: &crate::enhanced::Settings) -> FxSettings {
     s.water_life = e.fx_water_life;
     s.ice = e.fx_ice;
     s.spray = e.fx_spray;
+    s.window_lights = e.fx_window_lights;
+    s.sprinklers = e.fx_sprinklers;
+    s.frost = e.fx_frost;
     s
 }
 
@@ -1134,7 +1149,7 @@ impl App {
             u.fx3[2] = 2.0;
             uw.fx3[2] = 2.0;
         }
-        let wu = self.fx_water_uniforms(&atm, 2.0 / (self.view_zoom() * (self.draw_w / 800.0).min(self.draw_h / 600.0)).max(1e-6));
+        let wu = self.fx_water_uniforms(&atm, 2.0 / (self.view_zoom() * crate::ui::view_scale(self.draw_w, self.draw_h)).max(1e-6));
         uw.fx1 = wu.fx1;
         uw.params[3] = wu.heading;
         uw.fx3[3] = wu.size;
@@ -1176,7 +1191,7 @@ impl App {
     /// A softened copy of a sprite's shadow frame (the art's own shadow: none is invented), or None to draw the classic one.
     pub fn fx_shadow(&mut self, g: &mut Gfx, si: usize, view: i32, frame: i32, classic: TextureId) -> Option<TextureId> {
         let s = settings();
-        if !s.enabled || !s.soft_sprite_shadows || crate::hd::active() {
+        if !s.enabled || !s.soft_sprite_shadows || crate::hd::active() || self.pack_hires(si) {
             return None;
         }
         let i = self.sprites[si].s.frame_index(view, frame);
@@ -1186,7 +1201,7 @@ impl App {
             }
             g.ctx.delete_texture(t);
         }
-        let img = soften_shadow(&self.sprites[si].s.frames[i]);
+        let img = soften_shadow(&self.sprites[si].s.frame(i));
         let t = g.texture(&img, false);
         self.fx.shadows.insert((si, i), (classic, t));
         Some(t)

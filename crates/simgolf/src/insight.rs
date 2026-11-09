@@ -6,7 +6,10 @@
 //!   resting place, where it first came down, its number on the hole and the ground it stopped on go into a rolling store
 //!   of the hole's last `MAX_SHOTS` shots. Shift+D (or the Information menu) shows them as dots on the course for the hole
 //!   under the pointer (or the last one looked at, or the one Hole Stats last showed), coloured by the shot's number, with a
-//!   legend counting where they ended up;
+//!   legend counting where they ended up. The legend's tabs switch the dots to heat maps (the port's own, 0.5): where
+//!   balls come to rest, where golfers stand waiting (`waiting`: a golfer standing where it stood last tick, its ball and
+//!   its partner's still), and where golfers complain (each thought that put a golfer out, at the golfer's tile), for
+//!   the hole or the whole course;
 //! * comments by hole: every thought a golfer has while playing a hole (the thought bubbles, golfer.rs `event`) is
 //!   tallied by hole and kind for this month, last month and this year, and a page (Shift+I, the Information menu, or a
 //!   tab after F10 on the tabbed reports) lists each hole's three most frequent with their counts, in the words of the
@@ -208,6 +211,10 @@ pub struct Kept {
     pub landings: Landings,
     #[serde(default, skip_serializing_if = "Tally::is_empty")]
     pub tally: Tally,
+    /// The landing map's heat maps of waiting and complaints (a save from before them reads as none, which fill from
+    /// then on).
+    #[serde(default, skip_serializing_if = "Heat::is_empty")]
+    pub heat: Heat,
 }
 
 impl Kept {
@@ -217,9 +224,112 @@ impl Kept {
         let out = Kept {
             landings: if landing { k.landings.clone() } else { Landings::default() },
             tally: if comments { k.tally.clone() } else { Tally::default() },
+            heat: if landing { k.heat.clone() } else { Heat::default() },
         };
-        (!out.landings.is_empty() || !out.tally.is_empty()).then_some(out)
+        (!out.landings.is_empty() || !out.tally.is_empty() || !out.heat.is_empty()).then_some(out)
     }
+}
+
+// ---- the heat maps --------------------------------------------------------------------------------------------------------
+
+/// What the landing map shows: the shots as dots (the map as it was), or a heat map of where balls come to rest, where
+/// golfers stand waiting, or where they complain.
+pub const SHOW_DOTS: u8 = 0;
+pub const SHOW_LANDED: u8 = 1;
+pub const SHOW_WAITING: u8 = 2;
+pub const SHOW_COMPLAINTS: u8 = 3;
+pub const SHOWS: usize = 4;
+const SHOW_KEYS: [&str; SHOWS] =
+    ["STR_LANDING_SHOW_DOTS", "STR_LANDING_SHOW_LANDED", "STR_LANDING_SHOW_WAITING", "STR_LANDING_SHOW_COMPLAINTS"];
+/// A tile's count is halved, with the rest of its hole's, when it passes this: the map leans to the recent months and its
+/// counts stay small.
+const HEAT_AGE: u32 = 50_000;
+
+/// A tile as the heat maps key it (a << 16 | b, so the save's JSON keys stay short).
+pub fn tile_key(a: i32, b: i32) -> u32 {
+    (a.clamp(0, 0xffff) as u32) << 16 | b.clamp(0, 0xffff) as u32
+}
+
+pub fn key_tile(k: u32) -> (i32, i32) {
+    ((k >> 16) as i32, (k & 0xffff) as i32)
+}
+
+/// One heat map: by hole, by tile, a count.
+pub type HeatMap = BTreeMap<u8, BTreeMap<u32, u32>>;
+
+/// The heat maps kept with the game: golfer ticks spent standing waiting (on the tee for the group ahead, for the way to
+/// clear, held up on the path) and complaints (thoughts that put a golfer out), each by hole and tile, and the tee and cup
+/// each hole had (a hole built again elsewhere starts afresh, as the landing map's shots do).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Heat {
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub wait: HeatMap,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub moan: HeatMap,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub layout: BTreeMap<u8, [i32; 4]>,
+}
+
+impl Heat {
+    pub fn is_empty(&self) -> bool {
+        self.wait.is_empty() && self.moan.is_empty()
+    }
+
+    /// Adds `n` to a tile of a hole laid out as `layout` in one of the maps (`complaint` the complaints' map).
+    pub fn add(&mut self, complaint: bool, hole: u8, layout: [i32; 4], tile: (i32, i32), n: u32) {
+        if self.layout.get(&hole).is_some_and(|l| *l != layout) {
+            self.wait.remove(&hole);
+            self.moan.remove(&hole);
+        }
+        self.layout.insert(hole, layout);
+        let m = if complaint { &mut self.moan } else { &mut self.wait };
+        let tiles = m.entry(hole).or_default();
+        let c = tiles.entry(tile_key(tile.0, tile.1)).or_insert(0);
+        *c = c.saturating_add(n);
+        if *c > HEAT_AGE {
+            tiles.retain(|_, v| {
+                *v /= 2;
+                *v > 0
+            });
+        }
+    }
+}
+
+/// Whether a golfer standing where it stood last tick is waiting: standing or sitting (not addressing, swinging or
+/// reacting), its ball still, and its partner neither playing a shot nor watching a ball in flight. Holds on the tee for the
+/// group ahead, waits for the way to clear and golfers held up on the path all show so.
+pub fn waiting(me: &sg_core::golfer::Golfer, partner: Option<&sg_core::golfer::Golfer>) -> bool {
+    use sg_core::golfer::anim;
+    if !(1..19).contains(&me.hole) || !matches!(me.anim, anim::STAND | anim::SITTING) || me.flags & flag::BALL_MOVING != 0 {
+        return false;
+    }
+    partner.is_none_or(|p| p.flags & flag::BALL_MOVING == 0 && !(p.anim == anim::ADDRESS || (1..=6).contains(&p.anim)))
+}
+
+/// A heat map's tiles for a hole (0: every hole), summed.
+fn heat_tiles(m: &HeatMap, hole: u8) -> BTreeMap<u32, u32> {
+    let mut out = BTreeMap::new();
+    for (_, tiles) in m.iter().filter(|(h, _)| hole == 0 || **h == hole) {
+        for (&k, &v) in tiles {
+            *out.entry(k).or_insert(0) += v;
+        }
+    }
+    out
+}
+
+/// The heat maps' colour for a tile with `t` (0 to 1) of the busiest tile's count: a pale yellow through orange to a deep
+/// red, more opaque as it rises, so the course shows through the quiet tiles (on grass, sand and snow alike, and on the
+/// free set's art).
+pub fn heat_colour(t: f32) -> [f32; 4] {
+    let t = t.clamp(0.0, 1.0).sqrt();
+    let stops = [(0.0, [1.0, 0.95, 0.45, 0.30]), (0.5, [1.0, 0.55, 0.10, 0.45]), (1.0, [0.80, 0.0, 0.20, 0.62])];
+    let (a, b) = if t < 0.5 { (stops[0], stops[1]) } else { (stops[1], stops[2]) };
+    let f = (t - a.0) / (b.0 - a.0);
+    let mut c = [0.0; 4];
+    for i in 0..4 {
+        c[i] = a.1[i] + (b.1[i] - a.1[i]) * f;
+    }
+    c
 }
 
 /// A ball in play as the landing map follows it: whose it is, its hole and shot number, where it first came down, whether
@@ -249,6 +359,24 @@ pub struct State {
     pub off: usize,
     /// The map keeps its hole whatever the pointer is over (the --screen landing test hook's SG_LANDING_HOLE).
     pub fixed: bool,
+    /// What the map shows (SHOW_DOTS, SHOW_LANDED, SHOW_WAITING, SHOW_COMPLAINTS) and whether for the whole course.
+    pub show: u8,
+    pub whole: bool,
+    /// Each golfer slot's person record and place after the last tick, to see who stood still (the heat map of waiting).
+    pub prev: Vec<(i32, i32, i32)>,
+}
+
+/// The landing map legend's height at normal size.
+pub const LEGEND_H: f32 = 186.0;
+
+/// The landing map's legend as laid out for the text size: the box, its factor, the four What tabs, the two Where tabs
+/// and the top of its key.
+pub struct Legend {
+    pub r: Rect,
+    pub k: f32,
+    pub shows: [Rect; SHOWS],
+    pub scopes: [Rect; 2],
+    pub body: f32,
 }
 
 /// What a finished shot was: a ball in play that has stopped. `pos` is the ball's place now, `left` whether the golfer has
@@ -307,6 +435,14 @@ const TEXT_W: f32 = COUNT_R - TEXT_X - 40.0;
 const LINE: f32 = 16.0;
 /// The page's font: the reports' (Manual SSi 14, as the F2 report and the other report tabs' pages print).
 const FONT: Fnt = F_INFO14;
+
+/// The page's font and line pitch at the text size (textsize.rs): the blocks grow and the page scrolls sooner.
+fn font() -> Fnt {
+    crate::textsize::big(FONT)
+}
+fn line() -> f32 {
+    crate::textsize::px(LINE)
+}
 const UP: Rect = Rect { x: BOX.x + BOX.w - 44.0, y: TOP_Y, w: 20.0, h: 20.0 };
 const DOWN: Rect = Rect { x: BOX.x + BOX.w - 44.0, y: BOTTOM_Y - 20.0, w: 20.0, h: 20.0 };
 const PERIOD_KEYS: [&str; PERIODS] = ["STR_HOLECOMMENTS_THIS_MONTH", "STR_HOLECOMMENTS_LAST_MONTH", "STR_HOLECOMMENTS_THIS_YEAR"];
@@ -331,7 +467,7 @@ struct Block {
 
 /// A block's height for `lines` lines of text (at least the hole's two).
 fn block_height(lines: usize) -> f32 {
-    LINE * lines.max(2) as f32 + 8.0
+    line() * lines.max(2) as f32 + 8.0
 }
 
 impl App {
@@ -380,13 +516,70 @@ impl App {
             let course = &self.course;
             let shot = finish(&f, (gl.bx, gl.by), left, gl.flags & flag::PENALTY != 0, oob, |p| course.tile_type(p.0, p.1));
             if let Some(s) = shot {
-                let hr = &self.club.holes[f.hole as usize];
-                let layout = [hr.back.0, hr.back.1, hr.pin.0, hr.pin.1];
+                let layout = self.hole_layout(f.hole as usize);
                 let k = self.xs.kept.insight.get_or_insert_with(Default::default);
                 k.landings.push(f.hole as u8, layout, s);
             }
         }
         self.xs.insight.flights = flights;
+        self.heat_tick(n);
+    }
+
+    /// The hole's tee and cup tiles, as the heat maps and the shots keep them.
+    fn hole_layout(&self, h: usize) -> [i32; 4] {
+        let hr = &self.club.holes[h];
+        [hr.back.0, hr.back.1, hr.pin.0, hr.pin.1]
+    }
+
+    /// After each golfers' tick: a tick of waiting for every golfer standing where it stood last tick (`waiting`). Reads
+    /// the simulation only.
+    fn heat_tick(&mut self, n: usize) {
+        let mut prev = std::mem::take(&mut self.xs.insight.prev);
+        prev.resize(n, (-1, 0, 0));
+        for (i, p) in prev.iter_mut().enumerate() {
+            let gl = &self.club.g[i];
+            let now = (gl.roster, gl.x, gl.y);
+            let still = std::mem::replace(p, now) == now;
+            if !still || gl.roster < 0 {
+                continue;
+            }
+            let partner = usize::try_from(gl.partner).ok().filter(|&q| q < n && q != i).map(|q| &self.club.g[q]);
+            if !waiting(gl, partner) {
+                continue;
+            }
+            let (h, tile) = (gl.hole as usize, (gl.x >> 10, gl.y >> 10));
+            let layout = self.hole_layout(h);
+            let k = self.xs.kept.insight.get_or_insert_with(Default::default);
+            k.heat.add(false, h as u8, layout, tile, 1);
+        }
+        self.xs.insight.prev = prev;
+    }
+
+    /// A golfer's thought (the landing map on): one that put the golfer out counts on the heat map of complaints, at the
+    /// tile the golfer stands on, for the hole it is about (as comments by hole counts it). Reads the simulation only.
+    pub fn heat_thought(&mut self, g: usize, id: u32, arg: i32) {
+        if id >= MAX_ID || g >= sg_core::golfer::SLOTS {
+            return;
+        }
+        let gg = &self.club.g[g];
+        // the newest thought's mood change is in the history it was just put in (golfer.rs event); the few kept out of it
+        // (the score at a hole's end) take their line's tone
+        let bad = if gg.thoughts[0] as u32 == id {
+            gg.args[0] & 0xc000 == 0xc000
+        } else {
+            self.club.thought(&self.course, id, arg & 0x3fff, g).tone == sg_core::thoughts::Tone::Bad
+        };
+        if !bad {
+            return;
+        }
+        let hole = if matches!(id, 0x13 | 0x17) && gg.thought as u32 == id { gg.thought_stamp as i32 / 11 } else { gg.hole };
+        if !(1..19).contains(&hole) {
+            return;
+        }
+        let tile = (gg.x >> 10, gg.y >> 10);
+        let layout = self.hole_layout(hole as usize);
+        let k = self.xs.kept.insight.get_or_insert_with(Default::default);
+        k.heat.add(true, hole as u8, layout, tile, 1);
     }
 
     /// Shift+D and the Information menu's line: the landing map on or off.
@@ -411,12 +604,50 @@ impl App {
             .map(|(h, _)| h)
     }
 
-    /// The landing map over the course (draw_hud, under the golfers' names): the hole's shots as dots.
+    /// The holes the map shows: the one picked, or every open hole for the whole course (0 for none).
+    fn shown_holes(&self) -> Vec<u8> {
+        if self.xs.insight.whole {
+            (1..19).filter(|&h| self.club.holes[h].par != 0).map(|h| h as u8).collect()
+        } else {
+            vec![self.xs.insight.hole as u8].into_iter().filter(|&h| h != 0).collect()
+        }
+    }
+
+    /// The heat map shown, by tile (empty for the dots).
+    fn heat_shown(&self) -> BTreeMap<u32, u32> {
+        let Some(kept) = self.xs.kept.insight.as_ref() else { return BTreeMap::new() };
+        let holes = self.shown_holes();
+        let mut out = BTreeMap::new();
+        match self.xs.insight.show {
+            SHOW_LANDED => {
+                for &h in &holes {
+                    for sh in kept.landings.shots(h) {
+                        let (x, y) = sh.rest();
+                        *out.entry(tile_key(x >> 10, y >> 10)).or_insert(0) += 1;
+                    }
+                }
+            }
+            SHOW_WAITING | SHOW_COMPLAINTS => {
+                let m = if self.xs.insight.show == SHOW_WAITING { &kept.heat.wait } else { &kept.heat.moan };
+                for &h in &holes {
+                    for (k, v) in heat_tiles(m, h) {
+                        *out.entry(k).or_insert(0) += v;
+                    }
+                }
+            }
+            _ => {}
+        }
+        out
+    }
+
+    /// The landing map over the course (draw_hud, under the golfers' names): the hole's shots as dots, or a heat map.
     pub fn draw_landing_map(&mut self, g: &mut Gfx, s: &Ui) {
         if !self.xs.insight.map || !crate::extras::landing_map() || self.screen == Screen::YearEnd {
             return;
         }
-        if self.screen == Screen::Play && !self.xs.insight.fixed {
+        // the hole follows the pointer over the course, not over the legend
+        let (px, py) = self.info.pointer;
+        if self.screen == Screen::Play && !self.xs.insight.fixed && !self.landing_legend().r.has(px, py) {
             if let Some(h) = self.hole_near_pointer() {
                 self.xs.insight.hole = h;
             }
@@ -425,62 +656,182 @@ impl App {
         if !(1..19).contains(&h) || self.club.holes[h].par == 0 {
             self.xs.insight.hole = 0;
         }
-        let h = self.xs.insight.hole as u8;
+        if self.xs.insight.show != SHOW_DOTS {
+            let tiles = self.heat_shown();
+            let most = tiles.values().copied().max().unwrap_or(0).max(1) as f32;
+            let corner = |x: i32, y: i32| {
+                let (wx, wz) = self.units_to_world(x, y);
+                self.screen_of_world(wx, wz)
+            };
+            for (&k, &n) in &tiles {
+                let (a, b) = key_tile(k);
+                if self.screen_of(a * 1024 + 512, b * 1024 + 512).is_none() {
+                    continue;
+                }
+                let (x0, y0, x1, y1) = (a * 1024, b * 1024, a * 1024 + 1024, b * 1024 + 1024);
+                if let (Some(p0), Some(p1), Some(p2), Some(p3)) = (corner(x0, y0), corner(x1, y0), corner(x1, y1), corner(x0, y1)) {
+                    s.quad(g, [p0, p1, p2, p3], heat_colour(n as f32 / most));
+                }
+            }
+            return;
+        }
         let k = (self.exe_zoom() / 4.0).clamp(0.5, 1.0);
         let shade = rgba(0.0, 0.0, 0.0, 0.45);
         if let Some(kept) = self.xs.kept.insight.as_ref() {
-            for sh in kept.landings.shots(h) {
-                let mut c = c15(SHOT_COLOURS[sh.num() - 1]);
-                if let Some((lx, ly)) = (sh.land() != sh.rest()).then(|| self.screen_of(sh.land().0, sh.land().1)).flatten() {
-                    // where it first came down: a small faint pip
-                    c[3] = 0.45;
-                    s.fill(g, lx - k, ly - k, 2.0 * k, 2.0 * k, c);
+            for h in self.shown_holes() {
+                for sh in kept.landings.shots(h) {
+                    let mut c = c15(SHOT_COLOURS[sh.num() - 1]);
+                    if let Some((lx, ly)) = (sh.land() != sh.rest()).then(|| self.screen_of(sh.land().0, sh.land().1)).flatten() {
+                        // where it first came down: a small faint pip
+                        c[3] = 0.45;
+                        s.fill(g, lx - k, ly - k, 2.0 * k, 2.0 * k, c);
+                    }
+                    let Some((x, y)) = self.screen_of(sh.rest().0, sh.rest().1) else { continue };
+                    let d = 4.0 * k;
+                    s.fill(g, x - d / 2.0 - 1.0, y - d / 2.0 - 1.0, d + 2.0, d + 2.0, shade);
+                    c[3] = 0.8;
+                    s.fill(g, x - d / 2.0, y - d / 2.0, d, d, c);
                 }
-                let Some((x, y)) = self.screen_of(sh.rest().0, sh.rest().1) else { continue };
-                let d = 4.0 * k;
-                s.fill(g, x - d / 2.0 - 1.0, y - d / 2.0 - 1.0, d + 2.0, d + 2.0, shade);
-                c[3] = 0.8;
-                s.fill(g, x - d / 2.0, y - d / 2.0, d, d, c);
             }
         }
     }
 
-    /// The landing map's legend in the upper right (draw_hud, over the golfers' names as the path view's legend is).
+    /// The legend's place in the upper right (under the path view's legend when both are up), its tabs, and the text
+    /// size it is drawn at (textsize.rs: the box grows with its text, leftwards and down).
+    pub fn landing_legend(&self) -> Legend {
+        // under the path view's legend when both are up, as big as the pair still fits above the dock's panel
+        let (k, _, y) = self.legend_place(LEGEND_H);
+        let (w, h) = ((224.0 * k).round(), (LEGEND_H * k).round());
+        let r = Rect::new(790.0 - w, y, w, h);
+        let (tw, th) = (((w - 24.0) / 2.0).floor(), (14.0 * k).round());
+        let tab = |col: usize, row: usize| {
+            Rect::new(r.x + 10.0 + (tw + 4.0) * col as f32, r.y + (28.0 * k).round() + (th + 4.0) * row as f32, tw, th)
+        };
+        Legend {
+            r,
+            k,
+            shows: [tab(0, 0), tab(1, 0), tab(0, 1), tab(1, 1)],
+            scopes: [tab(0, 2), tab(1, 2)],
+            body: r.y + (28.0 * k).round() + (th + 4.0) * 3.0 + 6.0,
+        }
+    }
+
+    /// A click on the landing map's legend (Play): its tabs pick what the map shows and for which holes; the rest of the box
+    /// takes the click too, so it does not go to the course under it. False when the legend is not up or not under it.
+    pub fn landing_legend_click(&mut self, vx: f32, vy: f32) -> bool {
+        if !self.xs.insight.map || !crate::extras::landing_map() || self.screen != Screen::Play {
+            return false;
+        }
+        let l = self.landing_legend();
+        if !l.r.has(vx, vy) {
+            return false;
+        }
+        if let Some(i) = l.shows.iter().position(|t| t.has(vx, vy)) {
+            self.xs.insight.show = i as u8;
+        } else if let Some(i) = l.scopes.iter().position(|t| t.has(vx, vy)) {
+            self.xs.insight.whole = i == 1;
+        }
+        true
+    }
+
+    /// The landing map's legend in the upper right (draw_hud, over the golfers' names as the path view's legend is): what it
+    /// shows (Shots, Landings, Waiting, Complaints), for this hole or the whole course, and the key to the dots or the heat.
     pub fn draw_landing_legend(&self, g: &mut Gfx, s: &Ui) {
         if !self.xs.insight.map || !crate::extras::landing_map() || self.screen == Screen::YearEnd {
             return;
         }
         use crate::enhanced::Anchor;
+        use crate::textsize::fit;
         s.anchor(Anchor::TopRight);
-        // under the path view's legend when both are up
-        let below = self.xs.path_view && crate::extras::path_help();
-        let (x, y, w, h) = (566.0, if below { 244.0 } else { 140.0 }, 224.0, 128.0);
+        let l = self.landing_legend();
+        let (r, k) = (l.r, l.k);
+        let (x, y, w, h) = (r.x, r.y, r.w, r.h);
         self.art.trans_fill(g, s, x, y, w, h, true);
         let (white, yellow, grey) = (c15(0x7fff), c15(0x7ff0), c15(0x6318));
+        let small = F_ARIAL10.scaled(k);
+        let line = (14.0 * k).round();
+        let room = w - 20.0;
         let hole = self.xs.insight.hole;
-        let title = if hole == 0 { tr("STR_LANDING_TITLE").to_string() } else { trf("STR_LANDING_TITLE_HOLE", &[("HOLE", &hole)]) };
-        s.put_shadowed(g, F_MANUAL15, x + 10.0, y + 6.0, &title, yellow, false);
-        for (i, key) in SHOT_KEYS.iter().enumerate() {
-            let (rx, ry) = (x + 11.0 + 106.0 * (i % 2) as f32, y + 28.0 + 14.0 * (i / 2) as f32);
-            s.fill(g, rx, ry + 2.0, 8.0, 8.0, rgba(0.0, 0.0, 0.0, 0.6));
-            s.fill(g, rx + 1.0, ry + 3.0, 6.0, 6.0, c15(SHOT_COLOURS[i]));
-            s.put(g, F_ARIAL10, rx + 14.0, ry, tr(key), white);
-        }
-        let counts = self.xs.kept.insight.as_ref().map(|k| k.landings.counts(hole as u8)).unwrap_or_default();
-        let n: u32 = counts.iter().sum();
-        if hole == 0 {
-            s.put(g, F_ARIAL10, x + 10.0, y + 62.0, tr("STR_LANDING_POINT"), white);
-        } else if n == 0 {
-            s.put(g, F_ARIAL10, x + 10.0, y + 62.0, tr("STR_LANDING_NONE"), white);
+        let title = if self.xs.insight.whole {
+            tr("STR_LANDING_TITLE_COURSE").to_string()
+        } else if hole == 0 {
+            tr("STR_LANDING_TITLE").to_string()
         } else {
-            s.put(g, F_ARIAL10, x + 10.0, y + 60.0, &trf("STR_LANDING_SHOTS", &[("COUNT", &n)]), white);
-            let c = |i: usize| counts[i];
-            let l1 = trf("STR_LANDING_GROUNDS_1", &[("FAIRWAY", &c(0)), ("ROUGH", &c(1)), ("SAND", &c(2))]);
-            let l2 = trf("STR_LANDING_GROUNDS_2", &[("WATER", &c(3)), ("GREEN", &c(4)), ("OTHER", &c(5))]);
-            s.put(g, F_ARIAL10, x + 10.0, y + 74.0, &l1, white);
-            s.put(g, F_ARIAL10, x + 10.0, y + 88.0, &l2, white);
+            trf("STR_LANDING_TITLE_HOLE", &[("HOLE", &hole)])
+        };
+        s.put_shadowed(g, fit(F_MANUAL15, k, &title, room), x + 10.0, y + 6.0, &title, yellow, false);
+        let (px, py) = self.info.pointer;
+        for (i, t) in l.shows.iter().enumerate() {
+            let label = tr(SHOW_KEYS[i]);
+            draw_tab(g, s, *t, fit(F_ARIAL10, k, label, t.w - 4.0), label, self.xs.insight.show == i as u8, t.has(px, py));
         }
-        s.put(g, F_ARIAL10, x + 10.0, y + h - 18.0, tr("STR_LANDING_CLOSE"), grey);
+        for (i, t) in l.scopes.iter().enumerate() {
+            let label = tr(if i == 0 { "STR_LANDING_THIS_HOLE" } else { "STR_LANDING_WHOLE_COURSE" });
+            draw_tab(g, s, *t, fit(F_ARIAL10, k, label, t.w - 4.0), label, self.xs.insight.whole == (i == 1), t.has(px, py));
+        }
+        let put = |g: &mut Gfx, yy: f32, text: &str, c: [f32; 4]| s.put(g, fit(F_ARIAL10, k, text, room), x + 10.0, yy, text, c);
+        let by = l.body;
+        let holes = self.shown_holes();
+        if holes.is_empty() {
+            put(g, by, tr(if self.xs.insight.whole { "STR_LANDING_NO_HOLES" } else { "STR_LANDING_POINT" }), white);
+        } else if self.xs.insight.show == SHOW_DOTS {
+            for (i, key) in SHOT_KEYS.iter().enumerate() {
+                let (rx, ry) = (x + 11.0 + ((w - 20.0) / 2.0).floor() * (i % 2) as f32, by + line * (i / 2) as f32);
+                let d = (8.0 * k).round();
+                s.fill(g, rx, ry + 2.0, d, d, rgba(0.0, 0.0, 0.0, 0.6));
+                s.fill(g, rx + 1.0, ry + 3.0, d - 2.0, d - 2.0, c15(SHOT_COLOURS[i]));
+                s.put(g, small, rx + d + 6.0, ry, tr(key), white);
+            }
+            let mut counts = [0u32; GROUNDS];
+            if let Some(kept) = self.xs.kept.insight.as_ref() {
+                for &hh in &holes {
+                    for (c, n) in counts.iter_mut().zip(kept.landings.counts(hh)) {
+                        *c += n;
+                    }
+                }
+            }
+            let n: u32 = counts.iter().sum();
+            let ty = by + 2.0 * line + 6.0;
+            if n == 0 {
+                put(g, ty, tr("STR_LANDING_NONE"), white);
+            } else {
+                put(g, ty, &trf("STR_LANDING_SHOTS", &[("COUNT", &n)]), white);
+                let c = |i: usize| counts[i];
+                let l1 = trf("STR_LANDING_GROUNDS_1", &[("FAIRWAY", &c(0)), ("ROUGH", &c(1)), ("SAND", &c(2))]);
+                let l2 = trf("STR_LANDING_GROUNDS_2", &[("WATER", &c(3)), ("GREEN", &c(4)), ("OTHER", &c(5))]);
+                put(g, ty + line, &l1, white);
+                put(g, ty + 2.0 * line, &l2, white);
+            }
+        } else {
+            // the heat's key: a bar from the quietest colour to the busiest, few to many
+            let (bx, bw, bh) = (x + 10.0, w - 20.0, (8.0 * k).round());
+            let steps = 24;
+            for i in 0..steps {
+                let t = (i as f32 + 0.5) / steps as f32;
+                let mut c = heat_colour(t);
+                c[3] = 0.4 + 0.6 * c[3];
+                let x0 = bx + bw * i as f32 / steps as f32;
+                s.fill(g, x0, by + 2.0, bw / steps as f32 + 0.5, bh, c);
+            }
+            let (few, many) = (tr("STR_LANDING_FEW"), tr("STR_LANDING_MANY"));
+            s.put(g, small, bx, by + bh + 4.0, few, white);
+            s.put_right(g, small, bx + bw, by + bh + 4.0, many, white);
+            let tiles = self.heat_shown();
+            let total: u64 = tiles.values().map(|&v| v as u64).sum();
+            let ty = by + bh + 4.0 + line + 4.0;
+            let text = match (self.xs.insight.show, total) {
+                (_, 0) => tr("STR_LANDING_HEAT_NONE").to_string(),
+                (SHOW_LANDED, n) => trf("STR_LANDING_HEAT_LANDED", &[("COUNT", &n)]),
+                // golfer ticks of 87 ms, as minutes at normal speed
+                (SHOW_WAITING, n) => trf("STR_LANDING_HEAT_WAITING", &[("MINUTES", &(n * sg_core::flight::TICK_MS as u64 / 60_000))]),
+                (_, n) => trf("STR_LANDING_HEAT_COMPLAINTS", &[("COUNT", &n)]),
+            };
+            let words = crate::extras::wrap(small, &text, room);
+            for (i, l) in words.iter().take(2).enumerate() {
+                put(g, ty + line * i as f32, l, white);
+            }
+        }
+        put(g, y + h - line - 4.0, tr("STR_LANDING_CLOSE"), grey);
         s.anchor(Anchor::Centre);
     }
 
@@ -560,7 +911,7 @@ impl App {
                     sg_core::thoughts::Tone::Bad => bad,
                     _ => navy,
                 };
-                lines.push((crate::extras::wrap(FONT, &text, TEXT_W), n, c));
+                lines.push((crate::extras::wrap(font(), &text, TEXT_W), n, c));
             }
             let h_px = block_height(lines.iter().map(|l| l.0.len()).sum());
             if y + h_px > BOTTOM_Y && !out.is_empty() {
@@ -640,11 +991,11 @@ impl App {
             let name = tr(crate::hud_ui::MONTH_KEYS[(m & 7) as usize]);
             let label = trf(key, &[("MONTH", &name), ("YEAR", &(2001 + (month >> 3)))]);
             let r = period_tab(k);
-            draw_tab(g, &s, r, FONT, &label, self.xs.insight.period == k, r.has(px, py));
+            draw_tab(g, &s, r, crate::textsize::fit(FONT, 1.25, &label, r.w - 6.0), &label, self.xs.insight.period == k, r.has(px, py));
         }
         let holes = self.comment_holes();
         if holes.is_empty() {
-            s.put_centered(g, FONT, 400.0, 280.0, tr("STR_HOLECOMMENTS_NO_HOLES"), white);
+            s.put_centered(g, font(), 400.0, 280.0, tr("STR_HOLECOMMENTS_NO_HOLES"), white);
         }
         let blocks = self.comment_blocks();
         let clickable = crate::extras::landing_map();
@@ -652,18 +1003,18 @@ impl App {
             if clickable && (b.y..b.y + b.h).contains(&py) && (BOX.x..UP.x).contains(&px) {
                 s.fill(g, BOX.x + 16.0, b.y - 2.0, UP.x - BOX.x - 24.0, b.h - 2.0, rgba(1.0, 1.0, 1.0, 0.18));
             }
-            s.put(g, FONT, HOLE_X, b.y, &trf("STR_HOLECOMMENTS_HOLE", &[("HOLE", &b.hole)]), white);
-            s.put(g, FONT, HOLE_X, b.y + LINE, &trf("STR_HOLECOMMENTS_HEARD", &[("COUNT", &b.total)]), navy);
+            s.put(g, font(), HOLE_X, b.y, &trf("STR_HOLECOMMENTS_HOLE", &[("HOLE", &b.hole)]), white);
+            s.put(g, font(), HOLE_X, b.y + line(), &trf("STR_HOLECOMMENTS_HEARD", &[("COUNT", &b.total)]), navy);
             if b.lines.is_empty() {
-                s.put(g, FONT, TEXT_X, b.y, tr("STR_HOLECOMMENTS_NOTHING"), grey);
+                s.put(g, font(), TEXT_X, b.y, tr("STR_HOLECOMMENTS_NOTHING"), grey);
             }
             let mut y = b.y;
             for (words, n, c) in &b.lines {
                 let count = n.to_string();
-                s.put(g, FONT, COUNT_R - FONT.width(&count), y, &count, *c);
+                s.put(g, font(), COUNT_R - font().width(&count), y, &count, *c);
                 for w in words {
-                    s.put(g, FONT, TEXT_X, y, w, *c);
-                    y += LINE;
+                    s.put(g, font(), TEXT_X, y, w, *c);
+                    y += line();
                 }
             }
             s.fill(g, BOX.x + 20.0, b.y + b.h - 5.0, UP.x - BOX.x - 32.0, 1.0, rgba(0.0, 0.0, 0.3, 0.25));
@@ -684,8 +1035,12 @@ impl App {
             s.fill(g, UP.x + 7.0, ty, 6.0, th, white);
         }
         let help = if clickable { "STR_HOLECOMMENTS_HELP_MAP" } else { "STR_HOLECOMMENTS_HELP" };
-        s.put(g, FONT, BOX.x + 24.0, BOX.y + BOX.h - 46.0, tr("STR_HOLECOMMENTS_COUNTED"), navy);
-        s.put(g, FONT, BOX.x + 24.0, BOX.y + BOX.h - 28.0, tr(help), navy);
+        // the foot's two lines keep to the room left of the OK tick (bigger text only as far as fits; a line wider than the
+        // room, a translation, a little smaller or cut: ui.rs fit_line, issue #164)
+        let room = ok_tick().x - 6.0 - (BOX.x + 24.0);
+        for (t, y) in [(tr("STR_HOLECOMMENTS_COUNTED"), BOX.y + BOX.h - 46.0), (tr(help), BOX.y + BOX.h - 28.0)] {
+            s.put_fit(g, crate::textsize::fit(FONT, 1.25, t, room), BOX.x + 24.0, y, room, t, navy);
+        }
         if self.art.trans.tex.is_some() {
             let r = ok_tick();
             s.image_part(g, &self.art.trans, r.x, r.y, 350.0, 140.0, 50.0, 50.0);
@@ -822,6 +1177,67 @@ mod tests {
         assert!(!json.contains("tally"));
         let back: Kept = serde_json::from_str(&json).unwrap();
         assert_eq!(back, only);
+    }
+
+    #[test]
+    fn heat_maps_count_age_and_start_afresh() {
+        let mut h = Heat::default();
+        assert!(h.is_empty());
+        let lay = [1, 2, 10, 12];
+        h.add(false, 3, lay, (5, 7), 4);
+        h.add(false, 3, lay, (5, 7), 1);
+        h.add(true, 3, lay, (6, 7), 1);
+        h.add(false, 4, [0; 4], (9, 9), 2);
+        assert_eq!(h.wait[&3][&tile_key(5, 7)], 5);
+        assert_eq!(heat_tiles(&h.wait, 0).values().sum::<u32>(), 7);
+        assert_eq!(heat_tiles(&h.wait, 4).len(), 1);
+        assert_eq!(heat_tiles(&h.moan, 3)[&tile_key(6, 7)], 1);
+        // a busy tile halves its hole's counts, and the quiet ones go
+        h.add(false, 3, lay, (1, 1), 1);
+        h.add(false, 3, lay, (5, 7), HEAT_AGE);
+        assert_eq!(h.wait[&3].get(&tile_key(1, 1)), None);
+        assert!(h.wait[&3][&tile_key(5, 7)] <= HEAT_AGE / 2 + 3);
+        // the hole built again elsewhere starts afresh, both maps
+        h.add(false, 3, [7, 7, 9, 9], (2, 2), 1);
+        assert_eq!(h.wait[&3].len(), 1);
+        assert!(!h.moan.contains_key(&3));
+        assert_eq!(key_tile(tile_key(300, 17)), (300, 17));
+        // saved and read back; a save from before the heat maps reads as none
+        let k = Kept { heat: h.clone(), ..Default::default() };
+        let json = serde_json::to_string(&Kept::for_save(&Some(k.clone()), true, false).unwrap()).unwrap();
+        assert_eq!(serde_json::from_str::<Kept>(&json).unwrap().heat, h);
+        assert_eq!(Kept::for_save(&Some(k), false, true), None);
+        assert!(serde_json::from_str::<Kept>("{\"landings\": {}}").unwrap().heat.is_empty());
+    }
+
+    #[test]
+    fn who_is_waiting() {
+        use sg_core::golfer::{anim, Golfer};
+        let me = Golfer { hole: 2, anim: anim::STAND, ..Default::default() };
+        assert!(waiting(&me, None));
+        assert!(waiting(&Golfer { anim: anim::SITTING, ..me.clone() }, None));
+        // playing, walking home, or swinging is not waiting
+        assert!(!waiting(&Golfer { hole: 19, ..me.clone() }, None));
+        assert!(!waiting(&Golfer { anim: anim::ADDRESS, ..me.clone() }, None));
+        assert!(!waiting(&Golfer { flags: flag::BALL_MOVING, ..me.clone() }, None));
+        // nor watching the partner play
+        let p = Golfer { hole: 2, anim: anim::STAND, ..Default::default() };
+        assert!(waiting(&me, Some(&p)));
+        assert!(!waiting(&me, Some(&Golfer { anim: 3, ..p.clone() })));
+        assert!(!waiting(&me, Some(&Golfer { flags: flag::BALL_MOVING, ..p.clone() })));
+    }
+
+    #[test]
+    fn heat_rises_in_colour_and_opacity() {
+        let (lo, hi) = (heat_colour(0.0), heat_colour(1.0));
+        assert!(lo[3] < hi[3] && hi[3] < 0.7 && lo[3] > 0.2);
+        assert!(lo[1] > hi[1]);
+        let mut last = 0.0;
+        for i in 0..=10 {
+            let a = heat_colour(i as f32 / 10.0)[3];
+            assert!(a >= last);
+            last = a;
+        }
     }
 
     #[test]

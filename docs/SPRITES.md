@@ -19,7 +19,9 @@ All 1,893 sprite FLCs carry a Firaxis extension in the "reserved" part of the 12
 | 108 | duration of one view in ms | `framesPerView * speed` |
 | 112 | bit mask of stored views | 0x0F, 0xFF, 0x01, 0x03 |
 
-The header `frames` field is `views * framesPerView`. The file stores each view as
+The header `frames` field is `views * framesPerView`, except in `Flics/Scenic/ScenicElm.flc` (and its shadow), which
+says 52 over 4 views of 12 and stores 56 frames; the exe lays it out by views and frames per view all the same, and so
+does `decode_flc` (it accepts the extension when the count is at least `views * framesPerView`). The file stores each view as
 `framesPerView + 1` chunks: the extra last chunk of every view is the FLC "ring frame" that loops the
 view back to its first frame, so the loader must decode all chunks and drop one per view, otherwise
 frames of later views are shifted by one per view (this was why trees first looked as if they had odd

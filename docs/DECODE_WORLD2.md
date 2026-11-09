@@ -374,6 +374,9 @@ Message text is paraphrased; ids below are the unlock counter DAT_005a6364 value
   headerOnly, championship) loads saved_games\<name> or Themes\Championship\<name>. It keeps the theme byte, preserves bit 4
   of DAT_0059e7b8 and sets 0x40000000; when restore is set and the name is not "While Browsing.sve" it shows "Loading Game".
   FUN_0040bbf0 is the partial loader (omits the debt counter among others) (EXACT).
+* Every block, its size, offset and meaning, the flag-dependent tail and the record layouts: DECODE_SAVE.md (which also
+  corrects "keeps the theme byte": the loader reads the theme from the file and reloads the theme's art when it differs).
+  FUN_0040bbf0 serves the championship course files (.cse), not the .sve saves.
 
 ### 6.3 Load Previous Game browser (FUN_0043b610)
 

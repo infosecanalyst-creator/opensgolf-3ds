@@ -60,7 +60,13 @@ impl App {
 
     /// The tag for this frame (draw_hud, over the golfers' names and thoughts).
     pub fn draw_name_tag(&self, g: &mut Gfx, s: &Ui) {
-        if !crate::extras::name_tags() || self.screen != Screen::Play || self.edit || self.card_ui.held.is_some() || self.xs.touched {
+        if !crate::extras::name_tags()
+            || self.xs.tags_hidden
+            || self.screen != Screen::Play
+            || self.edit
+            || self.card_ui.held.is_some()
+            || self.xs.touched
+        {
             return;
         }
         let (px, py) = self.info.pointer;
@@ -82,10 +88,12 @@ impl App {
                 (None, self.staff_name(i), job, c15(0x7fff))
             }
         };
-        let f = F_ARIAL10;
+        // with bigger text (textsize.rs) the tag grows with its words
+        let f = crate::textsize::big(F_ARIAL10);
+        let (k, row) = (crate::textsize::scale(), crate::textsize::px(12.0));
         let tw = f.width(&name).max(f.width(&sub));
         let w = tw + 10.0 + if face.is_some() { FACE + 4.0 } else { 0.0 };
-        let h = 26.0;
+        let h = (26.0 * k).round();
         let top = (y - self.exe_zoom() * 10.0 - h - 6.0).floor().max(2.0);
         let left = (x - w / 2.0).floor().clamp(2.0, 798.0 - w);
         // the ticker strip's translucent dark fill and a thin light edge
@@ -93,10 +101,10 @@ impl App {
         s.fill(g, left, top, w, h, rgba(0.0, 0.0, 0.1, 0.62));
         let mut tx = left + 5.0;
         if let Some((r, e)) = face {
-            self.small_head(g, s, r, e, tx - 2.0, top + 4.0, FACE);
+            self.small_head(g, s, r, e, tx - 2.0, top + 4.0 + ((h - 26.0) / 2.0).floor(), FACE);
             tx += FACE + 4.0;
         }
         s.put_shadowed(g, f, tx, top + 2.0, &name, ink, false);
-        s.put(g, f, tx, top + 14.0, &sub, c15(0x6318));
+        s.put(g, f, tx, top + 2.0 + row, &sub, c15(0x6318));
     }
 }

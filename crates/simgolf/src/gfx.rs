@@ -57,6 +57,49 @@ impl Mat4 {
         m[14] = z;
         Mat4(m)
     }
+    /// gluPerspective: vertical field of view in degrees, width / height, near and far distances (both positive).
+    pub fn perspective(fovy: f32, aspect: f32, n: f32, f: f32) -> Mat4 {
+        let k = 1.0 / (fovy.to_radians() * 0.5).tan();
+        let mut m = [0.0; 16];
+        m[0] = k / aspect;
+        m[5] = k;
+        m[10] = (f + n) / (n - f);
+        m[11] = -1.0;
+        m[14] = 2.0 * f * n / (n - f);
+        Mat4(m)
+    }
+    /// gluLookAt: the view from `eye` towards `at`, `up` being up on the screen.
+    pub fn look_at(eye: [f32; 3], at: [f32; 3], up: [f32; 3]) -> Mat4 {
+        let norm = |v: [f32; 3]| {
+            let l = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt().max(1e-12);
+            [v[0] / l, v[1] / l, v[2] / l]
+        };
+        let cross = |a: [f32; 3], b: [f32; 3]| [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+        let dot = |a: [f32; 3], b: [f32; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+        let f = norm([at[0] - eye[0], at[1] - eye[1], at[2] - eye[2]]);
+        let s = norm(cross(f, up));
+        let u = cross(s, f);
+        let mut m = Mat4::identity().0;
+        for k in 0..3 {
+            m[k * 4] = s[k];
+            m[k * 4 + 1] = u[k];
+            m[k * 4 + 2] = -f[k];
+        }
+        m[12] = -dot(s, eye);
+        m[13] = -dot(u, eye);
+        m[14] = dot(f, eye);
+        Mat4(m)
+    }
+    /// The matrix times the point (x, y, z, 1): clip coordinates for a projection.
+    #[cfg(test)]
+    pub fn apply(&self, p: [f32; 3]) -> [f32; 4] {
+        let m = &self.0;
+        let mut r = [0.0; 4];
+        for (row, v) in r.iter_mut().enumerate() {
+            *v = m[row] * p[0] + m[4 + row] * p[1] + m[8 + row] * p[2] + m[12 + row];
+        }
+        r
+    }
     pub fn mul(&self, o: &Mat4) -> Mat4 {
         let (a, b) = (&self.0, &o.0);
         let mut r = [0.0; 16];
@@ -244,6 +287,8 @@ pub struct Gfx {
     pub fx: Option<Box<crate::fx::FxGpu>>,
     /// The batches drawn since the renderer was last used for anything else, sent to the GPU together (`Deferred`).
     queue: std::rc::Rc<std::cell::RefCell<Queue>>,
+    /// Classic's sprite atlas (atlas.rs).
+    pub(crate) atlas: crate::atlas::Atlas,
 }
 
 fn seq_indices(n: usize) -> Vec<u32> {
@@ -362,6 +407,7 @@ impl Gfx {
             batch_uniforms: None,
             fx: None,
             queue,
+            atlas: Default::default(),
         }
     }
 
@@ -512,7 +558,8 @@ impl Gfx {
             format: TextureFormat::RGBA8,
             wrap: TextureWrap::Clamp,
             min_filter: FilterMode::Linear,
-            mag_filter: FilterMode::Linear,
+            // pixel-perfect scaling (the port's own, ui::view_scale): the art's pixels magnified whole, unsmoothed
+            mag_filter: if !mipmaps && crate::enhanced::pixel_perfect() { FilterMode::Nearest } else { FilterMode::Linear },
             mipmap_filter: if mipmaps { MipmapFilterMode::Linear } else { MipmapFilterMode::None },
             allocate_mipmaps: mipmaps,
             sample_count: 1,
@@ -709,6 +756,49 @@ struct Deferred {
     vb: BufferId,
     ib: BufferId,
     cap: usize,
+    /// Textures deleted during the frame, deleted for real when it ends: a draw queued earlier in the frame (a batch, the cast
+    /// shadows' list of outlines) may still name one, and a texture made meanwhile must not take its place under the same
+    /// name (that drew one frame of every cast shadow from the wrong pictures when their cache was emptied, large and hard).
+    /// Render passes too (issue #111, see `Doomed`).
+    doomed: Doomed<RenderPass, TextureId>,
+}
+
+/// What the frame deleted, deleted for real when it ends (`Deferred`).
+///
+/// miniquad's `delete_render_pass` deletes the pass's textures as well (colour, depth, resolve), at once, while the game
+/// deletes those textures itself too (they are its own: hd.rs, fx.rs, fx_reflect.rs, fx_shadow.rs), which comes later,
+/// at the frame's end. A window resized with multisampling or a window sized effect on made a new texture of the new
+/// size between the two, under the GL name the pass had just freed; the frame's end then deleted that new texture. The
+/// window stayed black, or (as a later texture, a font atlas, took the name) showed text glyphs all over it, until the
+/// game was started again, whatever size the window went back to (issue #111). Deleting the passes at the frame's end
+/// too keeps every name taken until then; the passes go first, and a texture already gone with its pass is deleted a
+/// second time at no cost, nothing having been made since (GL ignores a name that is no longer a texture).
+struct Doomed<P, T> {
+    passes: Vec<P>,
+    textures: Vec<T>,
+}
+
+impl<P: PartialEq, T: PartialEq> Doomed<P, T> {
+    fn new() -> Self {
+        Doomed { passes: Vec::new(), textures: Vec::new() }
+    }
+
+    fn pass(&mut self, p: P) {
+        if !self.passes.contains(&p) {
+            self.passes.push(p);
+        }
+    }
+
+    fn texture(&mut self, t: T) {
+        if !self.textures.contains(&t) {
+            self.textures.push(t);
+        }
+    }
+
+    /// The passes and the textures to delete now, in that order, and the lists emptied.
+    fn take(&mut self) -> (Vec<P>, Vec<T>) {
+        (std::mem::take(&mut self.passes), std::mem::take(&mut self.textures))
+    }
 }
 
 impl Deferred {
@@ -716,7 +806,7 @@ impl Deferred {
         let cap = 16384;
         let vb = inner.new_buffer(BufferType::VertexBuffer, BufferUsage::Stream, BufferSource::empty::<Vert>(cap));
         let ib = inner.new_buffer(BufferType::IndexBuffer, BufferUsage::Immutable, BufferSource::slice(&seq_indices(cap)));
-        Deferred { inner, queue, vb, ib, cap }
+        Deferred { inner, queue, vb, ib, cap, doomed: Doomed::new() }
     }
 
     /// Draws the waiting batches (before anything else reaches the renderer).
@@ -806,8 +896,8 @@ impl RenderingBackend for Deferred {
         self.inner.render_pass_color_attachments(render_pass)
     }
     fn delete_render_pass(&mut self, render_pass: RenderPass) {
-        self.submit();
-        self.inner.delete_render_pass(render_pass)
+        // at the frame's end with its textures (`doomed`)
+        self.doomed.pass(render_pass);
     }
     fn new_pipeline(&mut self, layout: &[BufferLayout], attrs: &[VertexAttribute], shader: ShaderId, p: PipelineParams) -> Pipeline {
         self.submit();
@@ -837,8 +927,8 @@ impl RenderingBackend for Deferred {
         self.inner.delete_buffer(buffer)
     }
     fn delete_texture(&mut self, texture: TextureId) {
-        self.submit();
-        self.inner.delete_texture(texture)
+        // at the frame's end (`doomed`)
+        self.doomed.texture(texture);
     }
     fn delete_shader(&mut self, program: ShaderId) {
         self.submit();
@@ -878,6 +968,13 @@ impl RenderingBackend for Deferred {
     }
     fn commit_frame(&mut self) {
         self.submit();
+        let (passes, textures) = self.doomed.take();
+        for p in passes {
+            self.inner.delete_render_pass(p);
+        }
+        for t in textures {
+            self.inner.delete_texture(t);
+        }
         self.inner.commit_frame()
     }
     fn draw(&self, base_element: i32, num_elements: i32, num_instances: i32) {
@@ -889,6 +986,84 @@ impl RenderingBackend for Deferred {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// GL's texture names as Mesa and the Windows drivers hand them out: the lowest free name first, so a deleted name is
+    /// soon taken again. A pass owns its textures as miniquad's do (its deletion deletes them).
+    #[derive(Default)]
+    struct FakeGl {
+        live: Vec<bool>,
+        passes: Vec<Vec<usize>>,
+    }
+
+    impl FakeGl {
+        fn new_texture(&mut self) -> usize {
+            match self.live.iter().position(|l| !l) {
+                Some(n) => {
+                    self.live[n] = true;
+                    n
+                }
+                None => {
+                    self.live.push(true);
+                    self.live.len() - 1
+                }
+            }
+        }
+        fn new_pass(&mut self, textures: Vec<usize>) -> usize {
+            self.passes.push(textures);
+            self.passes.len() - 1
+        }
+        fn delete_texture(&mut self, t: usize) {
+            self.live[t] = false;
+        }
+        fn delete_pass(&mut self, p: usize) {
+            for t in std::mem::take(&mut self.passes[p]) {
+                self.delete_texture(t);
+            }
+        }
+    }
+
+    /// Issue #111: a window target of the old size goes (its pass, then its textures, as hd.rs free_target and the
+    /// effects' targets do) and one of the new size is made in the same frame. The new texture must outlive the frame.
+    #[test]
+    fn resized_target_survives_the_frame() {
+        // the old way: the pass went at once and took its texture's name with it, the texture itself at the frame's end
+        let mut gl = FakeGl::default();
+        let old = gl.new_texture();
+        let pass = gl.new_pass(vec![old]);
+        gl.delete_pass(pass);
+        let mut doomed = vec![old];
+        let new = gl.new_texture();
+        assert_eq!(new, old, "the freed name is taken again");
+        for t in doomed.drain(..) {
+            gl.delete_texture(t);
+        }
+        assert!(!gl.live[new], "the old way deleted the new target");
+
+        // now: the pass waits for the frame's end with the texture
+        let mut gl = FakeGl::default();
+        let font = gl.new_texture();
+        let old = gl.new_texture();
+        let pass = gl.new_pass(vec![old]);
+        let mut doomed: Doomed<usize, usize> = Doomed::new();
+        doomed.pass(pass);
+        doomed.texture(old);
+        doomed.texture(old);
+        let new = gl.new_texture();
+        assert_ne!(new, old);
+        let (passes, textures) = doomed.take();
+        assert_eq!((passes.len(), textures.len()), (1, 1));
+        for p in passes {
+            gl.delete_pass(p);
+        }
+        for t in textures {
+            gl.delete_texture(t);
+        }
+        assert!(gl.live[new] && gl.live[font] && !gl.live[old]);
+        // the next frame's texture (a font atlas at the new size) takes the freed name, and nothing deletes it
+        let atlas = gl.new_texture();
+        assert_eq!(atlas, old);
+        assert!(doomed.take() == (Vec::new(), Vec::new()));
+    }
 
     /// The precision of each non-sampler uniform a shader stage declares: its own qualifier, else the stage's default for
     /// floats (highp in a vertex shader, the `precision` statement's in a fragment shader; "either" when that depends on
@@ -945,6 +1120,8 @@ mod tests {
             ("blur", g::POST_VS, g::blur_fs()),
             ("composite", g::POST_VS, g::composite_fs()),
             ("photo composite", g::POST_VS, crate::photo::COMPOSITE_FS.to_string()),
+            ("walk camera", crate::walk_gl::WALK_VS, crate::walk_gl::walk_fs()),
+            ("walk camera sky", crate::walk_gl::SKY_VS, crate::walk_gl::sky_fs()),
         ];
         let mut bad = Vec::new();
         for (name, vs, fs) in &pairs {
@@ -971,6 +1148,42 @@ mod tests {
         let m = Mat4::rotate(90.0, 0.0, 1.0, 0.0).0;
         let (x, z) = (m[0] * 1.0, m[2] * 1.0);
         assert!(x.abs() < 1e-6 && (z + 1.0).abs() < 1e-6);
+    }
+
+    /// Clip coordinates to normalised device coordinates.
+    fn ndc(c: [f32; 4]) -> [f32; 3] {
+        [c[0] / c[3], c[1] / c[3], c[2] / c[3]]
+    }
+
+    #[test]
+    fn perspective_maps_the_near_and_far_planes() {
+        let p = Mat4::perspective(60.0, 1.5, 2.0, 500.0);
+        assert!((ndc(p.apply([0.0, 0.0, -2.0]))[2] + 1.0).abs() < 1e-5);
+        assert!((ndc(p.apply([0.0, 0.0, -500.0]))[2] - 1.0).abs() < 1e-4);
+        // the top of the view at 30 degrees above straight ahead, the right edge at aspect times as far
+        let t = (30.0f32).to_radians().tan() * 10.0;
+        assert!((ndc(p.apply([0.0, t, -10.0]))[1] - 1.0).abs() < 1e-5);
+        assert!((ndc(p.apply([t * 1.5, 0.0, -10.0]))[0] - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn a_point_straight_ahead_is_at_the_screen_centre() {
+        let eye = [120.0, 8.0, -40.0];
+        let at = [300.0, 20.0, 60.0];
+        let view = Mat4::look_at(eye, at, [0.0, 1.0, 0.0]);
+        // the eye goes to the origin, the point looked at onto -Z at its distance
+        let o = view.apply(eye);
+        assert!(o[..3].iter().all(|v| v.abs() < 1e-3));
+        let d = ((180.0f32).powi(2) + 12.0f32.powi(2) + 100.0f32.powi(2)).sqrt();
+        let a = view.apply(at);
+        assert!(a[0].abs() < 1e-3 && a[1].abs() < 1e-3 && (a[2] + d).abs() < 1e-2);
+        let s = ndc(Mat4::perspective(60.0, 16.0 / 9.0, 1.0, 5000.0).mul(&view).apply(at));
+        assert!(s[0].abs() < 1e-5 && s[1].abs() < 1e-5 && s[2] > -1.0 && s[2] < 1.0);
+        // world up is up on the screen, and a point to the right of the line of sight is on the right
+        let up = ndc(Mat4::perspective(60.0, 1.0, 1.0, 5000.0).mul(&view).apply([at[0], at[1] + 10.0, at[2]]));
+        assert!(up[1] > 0.0);
+        let right = view.apply([eye[0] - 100.0, eye[1], eye[2] + 180.0]); // (dz, -dx) of the heading: its right
+        assert!(right[0] > 0.0);
     }
 
     #[test]

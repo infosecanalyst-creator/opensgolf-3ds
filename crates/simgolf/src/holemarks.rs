@@ -11,7 +11,7 @@ use crate::ui::{line_rgba, rgb, Screen as Ui};
 use sg_core::analysis::KINDS;
 use sg_core::assets::decode_pcx;
 use sg_core::lang::{tr, trf};
-use sg_core::sprites::Sprite;
+use sg_core::sprites::{Frame, Sprite};
 
 /// Exe colour words used here (0x8000 plus 15-bit RGB): the analysis title, its rule, the black of shadows and circles.
 const CYAN: u32 = 0x3ff;
@@ -68,9 +68,7 @@ impl App {
                 frame_ms: 0,
                 view_mask: 0,
                 shadow: false,
-                frames: vec![img],
-                indexed: Vec::new(),
-                ..Default::default()
+                frames: vec![Frame::Rgba(img)],
             };
             self.sprites.push(GlSprite { s, tex: vec![None] });
             self.sprites.len() - 1
@@ -107,7 +105,7 @@ impl App {
 
     /// Virtual pixels to world units at the current zoom, and the eye's right and up axes in world space.
     fn eye_axes(&self) -> (f32, [f32; 3], [f32; 3]) {
-        let vs = (self.draw_w / 800.0).min(self.draw_h / 600.0);
+        let vs = crate::ui::view_scale(self.draw_w, self.draw_h);
         let m = self.mv;
         (self.upp * vs, [m[0], m[4], m[8]], [m[1], m[5], m[9]])
     }
@@ -117,11 +115,13 @@ impl App {
     /// a hazard (not drawn) or the pin. Each is a white line 2 pixels wide at alpha 9 tenths over a black one at 7 a pixel lower (0x41382f, 0x4137fe), both 6 pixels right
     /// of the true line (3 per trial golfer, this being the second). The first golfer's tee shot only sets the tee facing.
     pub(crate) fn draw_layout_path(&mut self, g: &mut Gfx, u: &Uniforms) {
-        let h = self.club.next_hole;
+        // (on the course the hole panel's A/B switch shows: sg_core::second)
+        let hb = self.hole_b();
+        let h = self.club.course_next_hole(hb);
         if !(1..19).contains(&h) {
             return;
         }
-        let rec = &self.club.holes[h as usize];
+        let rec = &self.club.course_holes(hb)[h as usize];
         let (back, pin) = (rec.back, rec.pin);
         if back.0 == 0 || pin.0 == 0 || self.club.layout_land.len() < 2 {
             return;
@@ -135,7 +135,7 @@ impl App {
             let (x, z) = app.terrain.tile_centre(a, b);
             [x, app.terrain.height_at(x, z), z]
         };
-        let vs = (self.draw_w / 800.0).min(self.draw_h / 600.0);
+        let vs = crate::ui::view_scale(self.draw_w, self.draw_h);
         let mut start = at(self, back);
         let lands: Vec<(i32, i32)> = self.club.layout_land[1..].to_vec();
         for (n, l) in lands.into_iter().enumerate() {
@@ -158,11 +158,12 @@ impl App {
     /// white body text over a dark red shadow a pixel lower (0x404bc0), centred, their tops 26, 13 and 0 pixels above a point 5 pixels per zoom step over the green; and over
     /// the back tee, blinking on the game tick's bits 2 and 3, "Press 'h' to open hole".
     pub fn draw_building_label(&mut self, g: &mut Gfx) {
-        let h = self.club.next_hole;
+        let hb = self.hole_b();
+        let h = self.club.course_next_hole(hb);
         if !(1..19).contains(&h) || self.edit_hidden_label() {
             return;
         }
-        let rec = &self.club.holes[h as usize];
+        let rec = &self.club.course_holes(hb)[h as usize];
         let (back, pin) = (rec.back, rec.pin);
         if back.0 == 0 || pin.0 == 0 {
             return;
@@ -170,7 +171,14 @@ impl App {
         let centre = |(a, b): (i32, i32)| (a * 0x400 + 0x200, b * 0x400 + 0x200);
         let (gx, gy) = centre(pin);
         let Some((x, y)) = self.screen_of(gx, gy) else { return };
-        let Some((h, yards, par)) = self.club.building_figures(&self.course) else { return };
+        // the original stores the hole's length as it draws it: an action (replay.rs), which a replay plays from its log
+        if rec.length == 0 {
+            if self.rec.replaying() {
+                return;
+            }
+            self.act(sg_core::action::Action::MeasureHole);
+        }
+        let Some((h, yards, par)) = self.on_hole_course(|a| a.club.building_figures(&a.course)) else { return };
         let s = Ui::new(self.draw_w, self.draw_h);
         let lift = 5.0 * (self.zoom / ZOOM_UNIT).round().max(1.0);
         // 0x404bc0: white with palette colour 1 (dark red, as footage of the original shows) one pixel below
@@ -178,7 +186,7 @@ impl App {
             s.text_centered(g, x, top(y + 1.0, BODY), t, BODY, crate::ui::SHADOW_1);
             s.text_centered(g, x, top(y, BODY), t, BODY, c15(WHITE));
         };
-        label(g, x, y - lift - 26.0, &trf("STR_HOLE_LABEL_HOLE", &[("HOLE", &h)]));
+        label(g, x, y - lift - 26.0, &trf("STR_HOLE_LABEL_HOLE", &[("HOLE", &self.hole_text(hb, h))]));
         label(g, x, y - lift - 13.0, &trf("STR_HOLE_LABEL_YARDS", &[("YARDS", &yards)]));
         label(g, x, y - lift, &trf("STR_HOLE_LABEL_PAR", &[("PAR", &par)]));
         let (tx, ty) = centre(back);
@@ -199,6 +207,11 @@ impl App {
     /// from the pointer's tile. `at` overrides the pointer (scripted runs).
     pub fn start_analysis(&mut self, at: Option<(i32, i32)>, nearest: bool) {
         let Some((a, b)) = at.or(self.hover_tile) else { return };
+        // the interface's call is an action (replay.rs): logged, then applied by App::apply
+        if self.rec.depth_zero() {
+            self.act(sg_core::action::Action::Analysis { x: a, y: b, nearest });
+            return;
+        }
         self.sync_course();
         if nearest {
             self.analysis_hole = self.club.nearest_hole(a, b);

@@ -1,0 +1,54 @@
+# Copies the files attached to issues (screenshots, videos, report zips, saves) to the issue-attachments branch, under
+# attachments/<issue number>/, so they can be read through the repository (.github/scripts/mirror_attachments.py).
+name: issue attachments
+
+on:
+  issues:
+    types: [opened, edited]
+  issue_comment:
+    types: [created, edited]
+  workflow_dispatch:
+    inputs:
+      issues:
+        description: "Issue numbers, separated by spaces"
+        required: true
+
+permissions:
+  contents: write
+  issues: read
+
+concurrency:
+  group: issue-attachments
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    if: github.event_name == 'workflow_dispatch' || github.event.sender.type != 'Bot'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: main
+          sparse-checkout: .github/scripts
+      - name: Check out the attachments branch
+        run: |
+          git clone --quiet --branch issue-attachments --depth 1 "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" store \
+            || { git init --quiet store && git -C store checkout --quiet --orphan issue-attachments \
+                 && git -C store remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"; }
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Copy the attachments
+        run: python3 main/.github/scripts/mirror_attachments.py store $ISSUES
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUES: ${{ github.event.inputs.issues || github.event.issue.number }}
+      - name: Commit and push
+        run: |
+          cd store
+          git add -A
+          if git diff --cached --quiet; then echo "nothing new"; exit 0; fi
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit --quiet -m "Attachments of issue ${ISSUES}"
+          git push --quiet origin issue-attachments
+        env:
+          ISSUES: ${{ github.event.inputs.issues || github.event.issue.number }}

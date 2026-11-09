@@ -89,7 +89,21 @@ pub fn buy(land: &mut Land, i: usize) {
 
 /// A terrain type's name as the theme calls it; trees are named in the plural on the land screen.
 pub fn type_name(t: u8, theme: u8, plural: bool) -> String {
-    let named = match (theme, t) {
+    if let Some((one, many)) = theme_names(t, theme) {
+        return if plural { many } else { one }.to_string();
+    }
+    let base = crate::lang::text(crate::data::land_type(t).name_key).to_string();
+    if plural && crate::data::land_type(t).class == 13 {
+        trf("STR_THEME_TERRAIN_TREES", &[("TREE", &base)])
+    } else {
+        base
+    }
+}
+
+/// The theme's own name for a terrain type (the exe's theme number: 0 Parkland, 1 Desert, 2 Tropical, 3 Links), single then
+/// plural, where the theme loader renames the terrain table's record; None where the table's own name stands.
+pub fn theme_names(t: u8, theme: u8) -> Option<(&'static str, &'static str)> {
+    match (theme, t) {
         (1, 4) => Some((tr("STR_THEME_TERRAIN_DESERT"), tr("STR_THEME_TERRAIN_DESERT_PLURAL"))),
         (1, 5) => Some((tr("STR_THEME_TERRAIN_ROUGH"), tr("STR_THEME_TERRAIN_ROUGH_PLURAL"))),
         (1, 10) => Some((tr("STR_THEME_TERRAIN_BRUSH"), tr("STR_THEME_TERRAIN_BRUSH_PLURAL"))),
@@ -109,15 +123,6 @@ pub fn type_name(t: u8, theme: u8, plural: bool) -> String {
         (3, 14) => Some((tr("STR_THEME_TERRAIN_PINE"), tr("STR_THEME_TERRAIN_PINE_PLURAL"))),
         (3, 15) => Some((tr("STR_THEME_TERRAIN_SCOTS_PINE"), tr("STR_THEME_TERRAIN_SCOTS_PINE_PLURAL"))),
         _ => None,
-    };
-    if let Some((one, many)) = named {
-        return if plural { many } else { one }.to_string();
-    }
-    let base = crate::lang::text(crate::data::land_type(t).name_key).to_string();
-    if plural && crate::data::land_type(t).class == 13 {
-        trf("STR_THEME_TERRAIN_TREES", &[("TREE", &base)])
-    } else {
-        base
     }
 }
 

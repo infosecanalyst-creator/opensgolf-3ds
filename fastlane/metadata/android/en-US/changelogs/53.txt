@@ -1,0 +1,5 @@
+* Undo puts back only what the click changed; the clock keeps going
+* Money shows over each tile you build on, as in the original
+* Golfers swing along the ball's line
+* No stray ball left by the pin
+* The tournament offer says where to begin it

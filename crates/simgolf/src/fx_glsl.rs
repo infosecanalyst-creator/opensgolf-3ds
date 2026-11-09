@@ -282,16 +282,21 @@ vec3 seasonal(vec3 c, float grass) {
     s = mix(s, vec3(l * 1.22, l * 1.10, l * 0.60), fx2.y * 0.32);
     return mix(c, s, gm);
 }
-// early mornings: frost in patches (more in hollows) and dew or rime glinting in the sun
+// early mornings: frost in patches (more in hollows), with a fine grain of rime
 vec3 frosty(vec3 c, float grass, vec4 lm) {
     // level ground only (not the cliffs and walls)
     float gm = grass * (1.0 - lm.a) * smoothstep(0.6, 0.85, up_n);
     float patchy = noise(w_pos.xz * 0.012) * 0.6 + noise(w_pos.xz * 0.05) * 0.4 + 0.3 * (1.0 - lm.g);
     // above 1 the frost's slot carries the snow (fx_winter.rs): 1 + 2 x snow
     float snow = max(fx2.z - 1.0, 0.0) * 0.5;
-    float f = min(fx2.z, 1.0) * gm * smoothstep(0.12, 0.8, patchy);
+    // a full frost lies as an even pale sheen; as the morning warms it melts back into the hollows and the shade, in
+    // patches, before it goes (the port's own)
+    float fr = min(fx2.z, 1.0);
+    float f = gm * smoothstep(0.92 - fr, 1.25 - fr, patchy) * smoothstep(0.0, 0.25, fr);
     float l = dot(c, vec3(0.299, 0.587, 0.114));
-    c = mix(c, vec3(0.84, 0.88, 0.92) * (0.55 + 0.6 * l), f * 0.42);
+    // rime: a fine grain of brighter crystals over the sheen
+    float rime = hash(floor(w_pos.xz * 0.7));
+    c = mix(c, vec3(0.84, 0.89, 0.94) * (0.58 + 0.6 * l), f * (0.30 + 0.14 * rime));
     if (snow > 0.0) {
         // under snow the grass is a dull winter green, pale and grey
         float lv = (1.0 - lm.a) * smoothstep(0.5, 0.85, up_n);
@@ -310,10 +315,8 @@ vec3 frosty(vec3 c, float grass, vec4 lm) {
         white *= 0.96 + 0.06 * grain;
         c = mix(c, min(white, vec3(1.0)), cov * 0.97);
     }
-    float h = hash(floor(vec2(w_pos.x + w_pos.y * 1.37, w_pos.z - w_pos.y * 0.71) * fx3.w));
-    float tw = 0.5 + 0.5 * sin(fx1.w * 2.6 + h * 40.0);
-    float sp = step(0.991, h) * tw * min(fx2.w + fx2.z, 1.0) * gm * cloud_sun();
-    return c + vec3(0.92, 0.96, 1.0) * sp * 0.6;
+    // (0.6 dropped the dew's twinkling white dots: on screen they read as flickering pixels, not dew)
+    return c;
 }
 // wet ground: darker and a little glossy, with puddles mirroring the sky (rain rings in them while it rains)
 vec3 wetted(vec3 c, float pot, vec4 lm) {

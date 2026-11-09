@@ -1,0 +1,1 @@
+Racing wheels and pedals no longer move the pointer or scroll the course by themselves. Longer translations also fit the scorecard, the SGA report, the routing map, the Membership Roster and the golfers' comments.

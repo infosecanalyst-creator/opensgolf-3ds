@@ -68,7 +68,7 @@ pub fn apply(code: &str) -> bool {
         }
     }
     if found.is_empty() {
-        eprintln!("language: no lang/{code}.txt found, staying with English");
+        crate::bugreport::warn(&format!("language: no lang/{code}.txt found, staying with English"));
         return false;
     }
     lang::set_language(code);
@@ -78,7 +78,7 @@ pub fn apply(code: &str) -> bool {
 /// Applies a translation file given by path (the --lang-file test hook): English with that file over it.
 pub fn apply_file(path: &std::path::Path) -> bool {
     let Some(d) = sg_core::fsutil::read_file(path) else {
-        eprintln!("language: cannot read {}", path.display());
+        crate::bugreport::warn(&format!("language: cannot read {}", path.display()));
         return false;
     };
     let text = String::from_utf8_lossy(&d);

@@ -31,5 +31,5 @@ Facts read from the publisher exe (tables at 0x4c79a0 and 0x4c79b4, loader near 
 * Sprite cell k of the theme sheet belongs to slot k (confirmed by looking at the art), four states in the order normal, hover, selected (gold outline), disabled.
 * Tree buttons have three states only, at x = 520 + state*80, rows y 0 / 150 / 300; sizes depend on the theme.
 * Tooltip: a 160x112 box at y 402, name from the per-theme tile table, then the cost per tile (cost byte times 100). The frame art for the box is not located; sgview draws a plain box.
-* Per-theme names differ (Desert: "desert" for rough, "rough" for deep rough, cactus, joshua tree; Tropical: tropical bush and tree; Links: gorse). Links tree names are inferred.
+* Per-theme names differ (Desert: "desert" for rough, "rough" for deep rough, cactus, joshua tree; Tropical: tropical bush for the tree, tropical tree for the pine; Links: burn for the stream, gorse, maple tree, pine, scots pine). They match the "*Name" lines of Interface/<theme>.txt, which the tooltip looks its description up by (issue #88).
 Placeholders: the disabled state is never used (what disables a button is not decoded); the three tree buttons all paint our Woods tile (species choice not decoded); gravel/paved path, raise, lower and open-hole are temporary text chips until the Elevation panel is rebuilt.

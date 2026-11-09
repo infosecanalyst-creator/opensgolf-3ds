@@ -242,3 +242,15 @@ fn bench_ticks_and_walks() {
         );
     }
 }
+
+#[test]
+fn the_cheapest_four_properties_fit_the_starting_funds_at_every_size() {
+    // #66: the new-game chooser compares each slot's price, grown with the map's edge, with the starting funds grown the
+    // same way (as start_game pays them), so a larger course size offers the same four slots as the original's 1000 units
+    let e = sg_core::data::economy();
+    for &(n, _) in mapsize::SIZES.iter() {
+        let funds = mapsize::scale_money_at(n, e.start_funds as i64);
+        let fits = e.offer_units.iter().filter(|&&u| mapsize::scale_money_at(n, u as i64 * 100) <= funds).count();
+        assert_eq!(fits, 4, "size {n}");
+    }
+}

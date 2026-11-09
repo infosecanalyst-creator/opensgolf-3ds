@@ -9,7 +9,7 @@
 //! entries whose red channel gives the darkness (crate::sprites).
 use super::enc::{flc as write_flc, pcx_indexed, FlcHead};
 use super::hash;
-use super::paint::{rgb, shade, Col};
+use super::paint::{noise, rgb, shade, Col};
 use std::f32::consts::PI;
 
 // ---- the palette --------------------------------------------------------------------------------------------------------------
@@ -870,6 +870,8 @@ fn draw(ix: &mut Ix, c: &Ctx) {
         animal(ix, c);
     } else if in_dir("flics/trees/") || is_tree_name(c.name) {
         tree(ix, c);
+    } else if c.has("waterfall") {
+        waterfall(ix, c);
     } else if c.has("anim")
         || c.has("status")
         || c.has("elev")
@@ -905,6 +907,8 @@ fn draw(ix: &mut Ix, c: &Ctx) {
         sign(ix, c);
     } else if c.has("wall") || c.has("fence") || c.has("rockwall") {
         wall(ix, c);
+    } else if in_dir("flics/water/") && (c.has("coral") || c.has("sand") || c.name.starts_with("uw")) {
+        water_piece(ix, c);
     } else if in_dir("flics/landmarks/") || in_dir("flics/scenic/") || in_dir("flics/water/") {
         landmark(ix, c);
     } else {
@@ -1290,6 +1294,62 @@ fn cart(ix: &mut Ix, c: &Ctx, phi: f32) {
 
 // ---- animals -------------------------------------------------------------------------------------------------------------------------
 
+/// A bird of prey of the fly-overs (Scenic/Eagle, Hawk, Vulture, Pelican: SQ gliding, Fidget a wingbeat). The frame is tall
+/// because the bird flies high over its ground point (wild_ui.rs draws it there, with no lift), so it is drawn in the air
+/// near the top of the frame with nothing under it: wings spread across its heading, body, tail and head.
+fn flier(ix: &mut Ix, c: &Ctx, to: &impl Fn(f32, f32, f32) -> (f32, f32)) {
+    let n = c.name;
+    let t = c.t();
+    // the body's height: its centre some 22 pixels under the frame's top
+    let top = c.view.ay - c.h;
+    let hy = (c.view.ay - (top + 22.0)) / COSP;
+    // the bird's size by its frame (the eagle's 50 pixels wide: a wingspan of about 30)
+    let s = c.w / 50.0 * 1.3;
+    let span = 12.0 * s;
+    let (wing, body, head, tail) = if n.contains("pelican") {
+        (WHITE, WHITE, WHITE, WHITE)
+    } else if n.contains("vulture") {
+        (DARK, DARK, RED, DARK)
+    } else if n.contains("hawk") {
+        (BARK, EARTH, EARTH, WOOD)
+    } else {
+        // the bald eagle: a dark brown bird with a white head and tail
+        (BARK, BARK, WHITE, WHITE)
+    };
+    // the wing tips' rise: a full beat over the Fidget clip, a slow sway while gliding
+    let (lift, sway) = if c.has("fidget") { ((t * 2.0 * PI).cos() * span * 0.45, 0.0) } else { (span * 0.08, (t * 2.0 * PI).sin() * 1.2) };
+    for side in [-1.0f32, 1.0] {
+        // a wing: broad at the body, swept back a little to rounded, fingered tips, the tips lifted (or tilted the other
+        // way on the sway)
+        let tip = hy + lift + side * sway;
+        let mid = hy + (tip - hy) * 0.5;
+        let pts = [
+            to(2.4 * s, hy, side * 1.2 * s),
+            to(2.2 * s, mid, side * span * 0.55),
+            to(1.0 * s, tip, side * span),
+            to(-1.2 * s, tip, side * span * 0.97),
+            to(-2.8 * s, mid, side * span * 0.6),
+            to(-3.2 * s, hy, side * 1.2 * s),
+        ];
+        // lit from the upper left: the up-turned wing is lighter, the far one darker
+        let k = 0.45 + 0.08 * side + if lift > 0.0 { 0.1 } else { 0.0 };
+        ix.poly(&pts, wing.at(k));
+        // the darker flight feathers along the trailing edge and at the tip
+        let dark = if n.contains("pelican") { DARK.at(0.3) } else { wing.at(k - 0.3) };
+        ix.line(pts[3], pts[4], dark);
+        ix.line(pts[2], pts[3], dark);
+    }
+    // the fanned tail
+    let tl =
+        [to(-3.0 * s, hy, 1.0 * s), to(-7.0 * s, hy, 2.4 * s), to(-7.4 * s, hy, 0.0), to(-7.0 * s, hy, -2.4 * s), to(-3.0 * s, hy, -s)];
+    ix.poly(&tl, tail.at(0.65));
+    ix.rod(to(-3.4 * s, hy, 0.0), to(2.8 * s, hy, 0.0), 1.9 * s, body, 0.0);
+    let h = to(4.2 * s, hy + 0.6, 0.0);
+    ix.ball(h.0, h.1, 1.7 * s, 1.6 * s, head, 0.2);
+    let beak = if n.contains("pelican") { 4.0 } else { 1.6 } * s;
+    ix.rod(to(5.4 * s, hy + 0.5, 0.0), to(5.4 * s + beak, hy, 0.0), 0.5 * s, YELLOW, 0.1);
+}
+
 fn animal(ix: &mut Ix, c: &Ctx) {
     let step = if c.views >= 8 { 45.0 } else { 90.0 };
     let phi = (135.0 - step * c.v as f32).to_radians();
@@ -1339,18 +1399,7 @@ fn animal(ix: &mut Ix, c: &Ctx) {
         return;
     }
     if n.contains("eagle") || n.contains("hawk") || n.contains("pelican") || n.contains("vulture") {
-        // a bird on a tall perch: the post and the bird at its top
-        let top = c.view.ay - 4.0;
-        let base = to(0.0, 0.0, 0.0);
-        ix.rod(base, (base.0, base.1 - top * 0.8), 1.5, WOOD, 0.0);
-        let b = (base.0, base.1 - top * 0.8 - 4.0);
-        let m = if n.contains("pelican") { WHITE } else { BARK };
-        let flap = if c.has("fidget") { cyc * 4.0 } else { 0.0 };
-        ix.ball(b.0, b.1, 3.0, 4.0, m, 0.0);
-        ix.ball(b.0 + fx * 1.5, b.1 - 4.5, 2.0, 2.0, if n.contains("eagle") { WHITE } else { m }, 0.1);
-        ix.rod((b.0 - 2.0, b.1 - 1.0), (b.0 - 6.0, b.1 - 2.0 - flap), 1.2, m, 0.0);
-        ix.rod((b.0 + 2.0, b.1 - 1.0), (b.0 + 6.0, b.1 - 2.0 - flap), 1.2, m, 0.0);
-        ix.rod((b.0 + fx * 2.5, b.1 - 4.5), (b.0 + fx * 4.5, b.1 - 4.0), 0.6, YELLOW, 0.0);
+        flier(ix, c, &to);
         return;
     }
     if n.contains("dolphin") {
@@ -1811,6 +1860,24 @@ fn water_fx(ix: &mut Ix, c: &Ctx) {
     }
     let (ax, ay) = (c.view.ax, c.view.ay);
     let t = c.t();
+    if c.low.contains("flics/water/") && c.has("spray") {
+        // the foam at a waterfall's foot (Water/sprayShortA, sprayTallA and the themes'): white water churning in a low
+        // cloud of droplets that rise and fall over the clip
+        let (rx, ry) = ((c.w * 0.22).max(4.0), (c.w * 0.22).max(4.0) * SINP * 0.6);
+        ix.fill(
+            (ax - rx, ay - ry, ax + rx, ay + ry),
+            |x, y| ((x - ax) / rx).powi(2) + ((y - ay) / ry).powi(2) <= 1.0,
+            |x, y| if noise(x as i32, y as i32, c.seed ^ c.f) > 0.45 { WHITE.at(0.85) } else { WATER.at(0.8) },
+        );
+        for k in 0..10 {
+            let a = noise(k, 1, c.seed) * 2.0 * PI;
+            let (vx, vy) = (a.cos() * rx * 0.9, 2.0 + 4.0 * noise(k, 2, c.seed));
+            let u = (t + noise(k, 3, c.seed)) % 1.0;
+            let (x, y) = (ax + vx * u, ay - vy * 4.0 * u * (1.0 - u));
+            ix.set(x as i32, y as i32, WHITE.at(0.9));
+        }
+        return;
+    }
     if c.has("spray") || c.has("splash") || c.has("fountain") {
         let hgt = (ay - 2.0).max(3.0) * (0.6 + 0.4 * (t * 2.0 * PI).sin().abs());
         for k in 0..6 {
@@ -1834,6 +1901,120 @@ fn water_fx(ix: &mut Ix, c: &Ctx) {
             |_, _| WATER.at(0.75),
         );
     }
+}
+
+/// The waterfalls where water meets higher water (Water/WaterfallShortA, WaterfallTallA and the themes' own; decor.rs
+/// `waterfalls` places them on a tile's edges): a sheet of water pouring over the step, streaked white and moving down
+/// over the clip, foam where it lands. Views 0 and 1 are the falls on the tile's far edges (the right one running down to
+/// the right, the left one up), 2 and 3 the low lip on its near edges; the tall fall is a column between two mossy rocks.
+fn waterfall(ix: &mut Ix, c: &Ctx) {
+    let (ax, ay) = (c.view.ax, c.view.ay);
+    let t = c.t();
+    let seed = c.seed;
+    // a falling streak's brightness at a pixel: light runs moving down the sheet, one loop over the clip
+    let streak = |x: f32, y: f32| {
+        let col = x.floor();
+        let lane = noise(col as i32, 7, seed);
+        let w = ((y * 0.45 - t * 2.0 * PI * 2.0 + lane * 9.0).sin() + 1.0) * 0.5;
+        lane * 0.5 + w * 0.5
+    };
+    let paint = |k: f32, foam: bool| {
+        if foam || k > 0.82 {
+            WHITE.at(0.55 + 0.4 * k)
+        } else {
+            WATER.at(0.35 + 0.55 * k)
+        }
+    };
+    if c.has("tall") {
+        // the column, slightly wider where it lands, between rocks at its lip
+        let (top, bot) = (8.0, (ay + 2.0).min(c.h - 3.0));
+        let hw = |y: f32| 4.5 + 2.0 * ((y - top) / (bot - top)).clamp(0.0, 1.0);
+        ix.fill(
+            (ax - 8.0, top, ax + 8.0, bot),
+            |x, y| (x - ax).abs() <= hw(y) + (noise(y as i32, 3, seed) - 0.5) * 1.5,
+            |x, y| {
+                let edge = (x - ax).abs() > hw(y) - 1.0;
+                let k = streak(x, y) * if edge { 0.6 } else { 1.0 };
+                paint(k, y > bot - 3.0 && noise(x as i32, y as i32, seed ^ c.f) > 0.4)
+            },
+        );
+        for side in [-1.0f32, 1.0] {
+            ix.ball(ax + side * 7.0, top + 1.0, 4.0, 3.0, STONE, -0.05);
+            ix.ball(ax + side * 9.5, top + 4.0, 3.0, 2.5, LEAF, -0.1);
+        }
+        return;
+    }
+    // the short fall: a band along the tile's edge, 9 pixels high on the far edges, a 3 pixel foaming lip on the near ones
+    let s = if c.v == 0 || c.v == 2 { 1.0 } else { -1.0 };
+    let (mid, high) = if c.v < 2 { (ay - 6.0, 9.0) } else { (ay - 12.0, 3.0) };
+    let half = (c.w * 0.5 - 6.0).max(4.0);
+    let centre = |x: f32| mid + s * 0.6 * (x - ax);
+    ix.fill(
+        (ax - half - 1.0, mid - half * 0.6 - high, ax + half + 1.0, mid + half * 0.6 + high),
+        |x, y| {
+            let d = y - centre(x);
+            let ragged = (noise(x as i32, 1, seed) - 0.5) * 2.0;
+            (x - ax).abs() <= half && d.abs() <= high * 0.5 + ragged * 0.6
+        },
+        |x, y| {
+            let d = (y - centre(x)) / (high * 0.5);
+            // the lip lit on top, foam at the foot
+            let foam = d > 0.55 && noise(x as i32, y as i32, seed ^ c.f) > 0.45;
+            let k = streak(x, y - centre(x)) * (0.75 + 0.25 * (1.0 - d.abs()));
+            paint(if d < -0.6 { k.max(0.7) } else { k }, foam)
+        },
+    );
+}
+
+/// The pieces in shallow, flat water (wild_ui.rs lays them on the water with its palette): the tropical sand bars
+/// (Water/AStropsand*), and what shows under the surface (Water/UW*): rocks, dim and low, and the tropics' coral. Low
+/// and flat, so nothing stands up out of the water.
+fn water_piece(ix: &mut Ix, c: &Ctx) {
+    let (ax, ay) = (c.view.ax, c.view.ay);
+    let half = ax.min(c.w - ax).max(3.0);
+    let seed = c.seed ^ c.v.wrapping_mul(0x9e37);
+    if c.has("sand") {
+        // a sand bar just breaking the surface: pale on top, darker and wet at its rim, a few shells
+        let (rx, ry) = (half * 0.8, half * 0.8 * SINP * 0.7);
+        let lump = |x: f32, y: f32| 1.0 + (noise((x / 3.0) as i32, (y / 3.0) as i32, seed) - 0.5) * 0.3;
+        ix.fill(
+            (ax - rx, ay - ry * 1.3, ax + rx, ay + ry * 1.3),
+            |x, y| ((x - ax) / rx).powi(2) + ((y - ay) / ry).powi(2) <= lump(x, y),
+            |x, y| {
+                let d = ((x - ax) / rx).powi(2) + ((y - ay) / ry).powi(2);
+                if d > 0.75 {
+                    EARTH.at(0.45)
+                } else if noise(x as i32, y as i32, seed ^ 5) > 0.93 {
+                    WHITE.at(0.9)
+                } else {
+                    YELLOW.at(0.25 + 0.15 * (1.0 - d) + 0.1 * noise(x as i32, y as i32, seed))
+                }
+            },
+        );
+        return;
+    }
+    if c.has("coral") {
+        // low clumps of branching coral seen through the water
+        let k = 3 + (seed % 3) as i32;
+        for i in 0..k {
+            let ox = (noise(i, 1, seed) - 0.5) * half * 1.2;
+            let oy = (noise(i, 2, seed) - 0.5) * half * 0.5;
+            let m = [RED, PURPLE, YELLOW][(i as u32 + seed) as usize % 3];
+            let (bx, by) = (ax + ox, ay + oy);
+            ix.ball(bx, by, 2.5, 1.5, m, -0.2);
+            for j in 0..4 {
+                let a = (j as f32 - 1.5) * 0.45 + (noise(i, 10 + j, seed) - 0.5) * 0.4;
+                let l = 2.5 + 2.0 * noise(i, 20 + j, seed);
+                ix.rod((bx, by), (bx + a.sin() * l * 1.3, by - a.cos() * l * 0.8), 0.6, m, -0.1 + 0.1 * j as f32);
+            }
+        }
+        return;
+    }
+    // a rock under the surface: dim, its top near the water
+    let (rx, ry) = (half * 0.65, half * 0.65 * SINP);
+    ix.ball(ax, ay - ry * 0.2, rx, ry, STONE, -0.25);
+    let s = (noise(1, 1, seed) - 0.5) * rx;
+    ix.ball(ax + s, ay - ry * 0.4, rx * 0.45, ry * 0.5, STONE, -0.15);
 }
 
 fn bridge(ix: &mut Ix, c: &Ctx) {
@@ -2028,6 +2209,33 @@ fn landmark(ix: &mut Ix, c: &Ctx) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn birds_of_prey_fly_with_nothing_under_them() {
+        // the fly-over's frame is tall because the bird is high over its ground point: nothing (issue #84's post) may be
+        // drawn in the frame's lower half
+        for (name, w, h, fpv, crop) in [("eagle_sq", 47, 124, 18, (224, 113)), ("eagle_fidget", 50, 133, 12, (223, 104))] {
+            let head = FlcHead { w, h, views: 4, fpv, crop, view_ms: 1500, mask: 15, speed: 83 };
+            let f = crate::flc::decode_flc(&flc(&format!("flics/scenic/{name}.flc"), &head)).unwrap();
+            for fr in &f.frames {
+                assert!(fr.idx.iter().any(|&i| i != KEY), "{name}: an empty frame");
+                let low = &fr.idx[(h / 2 * w) as usize..];
+                assert!(low.iter().all(|&i| i == KEY), "{name}: something under the bird");
+            }
+        }
+    }
+
+    #[test]
+    fn waterfalls_and_water_pieces_are_water() {
+        // drawn as water, sand and rock, not as the monument (gold) the unknown scenery falls back to
+        for name in ["waterfallshorta", "tropwaterfalltalla", "uwtropcorala", "astropsanda", "uwparkrocka"] {
+            let head = FlcHead { w: 40, h: 50, views: 4, fpv: 2, crop: (220, 200), view_ms: 1000, mask: 15, speed: 83 };
+            let f = crate::flc::decode_flc(&flc(&format!("flics/water/{name}.flc"), &head)).unwrap();
+            let used: std::collections::HashSet<u8> = f.frames.iter().flat_map(|fr| fr.idx.iter().copied()).collect();
+            assert!(used.iter().any(|&i| i != KEY), "{name}: nothing drawn");
+            assert!(!used.iter().any(|&i| (GOLD.base..GOLD.base + GOLD.n).contains(&i)), "{name}: drawn as a monument");
+        }
+    }
 
     #[test]
     fn people_keep_their_colour_slots() {

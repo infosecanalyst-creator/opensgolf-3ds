@@ -74,6 +74,26 @@ fn describe(list: &[PackStamp]) -> String {
     list.iter().map(|p| format!("{} {}", p.id, p.version)).collect::<Vec<_>>().join(", ")
 }
 
+/// The base pack of a list (its graphics), in plain words.
+fn art_name(list: &[PackStamp]) -> Option<String> {
+    let base = list.iter().find(|p| p.kind == Kind::Base)?;
+    Some(match base.id.as_str() {
+        sg_core::packs::ORIGINAL => tr("STR_SAVE_PACKS_ART_ORIGINAL").to_string(),
+        sg_core::packs::FREE => tr("STR_SAVE_PACKS_ART_FREE").to_string(),
+        id => trf("STR_SAVE_PACKS_ART_OTHER", &[("ID", &id)]),
+    })
+}
+
+/// What Load Previous Game says of a save made with other packs (the port's own): the graphics when the base pack differs
+/// ("saved with the original SimGolf art; you're using the free graphics"), else that other mods or a translation were
+/// in use.
+fn differ_text(saved: &[PackStamp], now: &[PackStamp]) -> String {
+    match (art_name(saved), art_name(now)) {
+        (Some(a), Some(b)) if a != b => trf("STR_SAVE_PACKS_DIFFER_ART", &[("SAVED", &a), ("NOW", &b)]),
+        _ => tr("STR_SAVE_PACKS_DIFFER").to_string(),
+    }
+}
+
 // ---- profiles ------------------------------------------------------------------------------------------------------------------
 
 fn settings_path() -> PathBuf {
@@ -396,10 +416,18 @@ impl App {
             return false;
         }
         let (_, missing) = settings_for(&rec.packs, &self.content.found);
-        let mut text = trf("STR_SAVE_PACKS_DIFFER", &[("SAVED", &describe(&rec.packs)), ("NOW", &describe(&self.content.stamps))]);
+        // plain words on screen; the packs' ids and versions go to the log
+        println!(
+            "content: {} was saved with {}; running with {}; not installed: {}",
+            path.display(),
+            describe(&rec.packs),
+            describe(&self.content.stamps),
+            if missing.is_empty() { "none".to_string() } else { missing.join(", ") }
+        );
+        let mut text = differ_text(&rec.packs, &self.content.stamps);
         if !missing.is_empty() {
             text.push(' ');
-            text.push_str(&trf("STR_SAVE_PACKS_MISSING", &[("MISSING", &missing.join(", "))]));
+            text.push_str(tr("STR_SAVE_PACKS_MISSING"));
         }
         let mut lines = crate::gamefiles::wrap(&text, 560.0);
         use crate::gamefiles::{Action, Notice};
@@ -460,6 +488,18 @@ mod tests {
 
     fn stamp(id: &str, kind: Kind) -> PackStamp {
         PackStamp { id: id.into(), version: "1.0.0".into(), kind }
+    }
+
+    #[test]
+    fn a_save_with_other_graphics_is_told_in_plain_words() {
+        let orig = [stamp(packs::ORIGINAL, Kind::Base)];
+        let free = [stamp(packs::FREE, Kind::Base), stamp("fr", Kind::Translation)];
+        let t = differ_text(&orig, &free);
+        assert!(t.contains(tr("STR_SAVE_PACKS_ART_ORIGINAL")) && t.contains(tr("STR_SAVE_PACKS_ART_FREE")), "{t}");
+        assert!(!t.contains("1.0.0") && !t.contains("opensgolf-free"), "no ids or versions: {t}");
+        // the same graphics with other mods or a translation
+        assert_eq!(differ_text(&orig, &[stamp(packs::ORIGINAL, Kind::Base), stamp("m", Kind::Mod)]), tr("STR_SAVE_PACKS_DIFFER"));
+        assert!(differ_text(&[stamp("my-art", Kind::Base)], &orig).contains("my-art"));
     }
 
     #[test]

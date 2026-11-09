@@ -115,10 +115,13 @@ impl App {
     pub fn import_dropped(&mut self, name: &str, b: &[u8]) {
         let low = name.to_ascii_lowercase();
         if low.ends_with(".sve") && !is_save(b) {
-            // the original SimGolf's files: its Top 10 table has the port's layout; its saved games cannot be read yet
+            // the original SimGolf's files: its Top 10 table has the port's layout; its saved games are read into games of
+            // the port's own (sg_core::sve)
             match sg_core::top10::parse(b) {
                 Some(other) => self.import_top10(&other),
-                None => self.show_toast(&trf("STR_TOAST_ORIGINAL_SAVE", &[("FILE", &name)])),
+                None => {
+                    self.import_original(name, b);
+                }
             }
         } else if is_save(b) {
             self.import_save(b, Some(name));
@@ -126,6 +129,20 @@ impl App {
             self.import_save(&c, None);
         } else {
             self.show_toast(&trf("STR_ERROR_NOT_A_SAVED_GAME", &[("FILE", &name)]));
+        }
+    }
+
+    /// A file brought in without its name (Android's picker): what it is is told from its bytes.
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    pub fn import_unnamed(&mut self, b: &[u8]) {
+        if is_save(b) {
+            self.import_save(b, Some("Imported.sgs"));
+        } else if b.len() >= sg_core::sve::BASE_LEN {
+            self.import_original("", b);
+        } else if let Some(other) = sg_core::top10::parse(b) {
+            self.import_top10(&other);
+        } else {
+            self.import_dropped("", b);
         }
     }
 
@@ -139,31 +156,108 @@ impl App {
         self.show_toast(&trf("STR_TOAST_TOP10_IMPORTED", &[("COUNT", &made)]));
     }
 
+    /// A saved game of the original SimGolf (`Saved Games\\<name>.sve`) becomes a saved game of the port's own, "<name>
+    /// (imported)" in Load Previous Game; a file that does not read as one is refused with the reason. Returns whether it
+    /// was imported.
+    pub fn import_original(&mut self, name: &str, b: &[u8]) -> bool {
+        let ok = self.add_original(name, b);
+        if ok {
+            self.refresh_files();
+        }
+        ok
+    }
+
+    fn add_original(&mut self, name: &str, b: &[u8]) -> bool {
+        let g = match sg_core::sve::read(b) {
+            Ok(g) => g,
+            Err(e) => {
+                println!("the original's saved game {name} was not imported: {e}");
+                self.ui_sound(0x18);
+                let file = if name.is_empty() { tr("STR_SVE_PICKED_FILE") } else { name };
+                self.show_toast(&trf("STR_TOAST_SVE_UNREADABLE", &[("FILE", &file), ("WHY", &e)]));
+                return false;
+            }
+        };
+        let course = g.course_name.clone();
+        let save = crate::app::original_save(g, &self.game_dir);
+        let bytes = match encode_save(&save, 6) {
+            Ok(b) => b,
+            Err(e) => {
+                self.show_toast(&trf("STR_TOAST_COULD_NOT_SAVE", &[("ERROR", &e)]));
+                return false;
+            }
+        };
+        // "<name> (imported)": the original's name for the save, else the course's (the original's own "While Browsing"
+        // and "Shadow" files would be hidden in the Load list)
+        let stem = std::path::Path::new(name).file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+        let stem = clean_name(&stem);
+        let stem = if stem.is_empty() || stem.contains("While Browsing") || stem.contains("Shadow") { clean_name(&course) } else { stem };
+        let path = unique_path(crate::files_ui::saved_games_dir(), format!("{} {}", stem, tr("STR_SVE_IMPORTED_SUFFIX")), "sgs");
+        if !sg_core::fsutil::write_file(&path, &bytes) {
+            self.show_toast(&trf("STR_ERROR_COULD_NOT_WRITE", &[("FILE", &path.display())]));
+            return false;
+        }
+        println!("imported the original's saved game {name} as {}", path.display());
+        let file = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+        self.show_toast(&trf("STR_TOAST_SVE_IMPORTED", &[("COURSE", &course), ("NAME", &file)]));
+        true
+    }
+
+    /// The original's saved games put in the Saved Games folder (copied there, or kept by the browser's Restore saves),
+    /// as the Load list opens: each is moved into "Saved Games/Originals" (whether it reads or not, so it is looked at
+    /// once; the browser drops it instead) and imported (`import_original`).
+    pub fn import_original_folder(&mut self) {
+        let dir = crate::files_ui::saved_games_dir();
+        let found: Vec<std::path::PathBuf> = sg_core::fsutil::list_dir(&dir)
+            .into_iter()
+            .filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("sve")))
+            .filter(|p| !p.file_name().is_some_and(|n| n.eq_ignore_ascii_case("top10.sve")))
+            .collect();
+        for p in found {
+            let Some(b) = sg_core::fsutil::read_file(&p) else { continue };
+            let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            // the browser keeps no copy (its storage is small, and the player has the file)
+            if cfg!(not(target_arch = "wasm32")) {
+                let stem = p.file_stem().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                if !sg_core::fsutil::write_file(unique_path(dir.join("Originals"), clean_name(&stem), "sve"), &b) {
+                    continue;
+                }
+            }
+            if !sg_core::fsutil::remove_file(&p) {
+                continue;
+            }
+            self.add_original(&name, &b);
+            self.sve_toast = true;
+        }
+    }
+
+    /// An open file list shows a file just added at once.
+    fn refresh_files(&mut self) {
+        if let Some((kind, from_game, course)) = self.title.files.as_ref().map(|f| (f.kind, f.from_game, f.course.clone())) {
+            if self.screen == Screen::Files {
+                self.title.files = None;
+                self.open_files(kind, from_game);
+                if let Some(f) = self.title.files.as_mut() {
+                    f.course = course;
+                }
+            }
+        }
+    }
+
     fn import_save(&mut self, b: &[u8], dropped: Option<&str>) {
         let s = match read_save_bytes(b, dropped.unwrap_or("course code")) {
             Ok(s) => s,
             Err(e) => return self.show_toast(&e),
         };
-        // a safe file name: no path characters, and not an autosave's leading '&'
         let clean = |n: &str| {
-            let s: String = n.chars().map(|c| if "\\/:*?\"<>|".contains(c) || c.is_control() { '_' } else { c }).collect();
-            let s = s.trim_start_matches(['&', '.']).trim().to_string();
+            let s = clean_name(n);
             if s.is_empty() {
                 "Shared".to_string()
             } else {
                 s
             }
         };
-        // never over a file that is there already: "Name (2)", "Name (3)"...
-        let unique = |dir: std::path::PathBuf, stem: String, ext: &str| {
-            let mut p = dir.join(format!("{stem}.{ext}"));
-            let mut n = 2;
-            while sg_core::fsutil::read_file(&p).is_some() && n < 100 {
-                p = dir.join(format!("{stem} ({n}).{ext}"));
-                n += 1;
-            }
-            p
-        };
+        let unique = unique_path;
         let game = dropped.is_some_and(|n| n.to_ascii_lowercase().ends_with(".sgs"));
         let path = if game {
             let stem = dropped.and_then(|n| std::path::Path::new(n).file_stem()).map(|s| s.to_string_lossy().to_string());
@@ -176,17 +270,25 @@ impl App {
         }
         let key = if game { "STR_TOAST_SHARE_GAME_ADDED" } else { "STR_TOAST_SHARE_COURSE_ADDED" };
         self.show_toast(&trf(key, &[("COURSE", &s.course_name)]));
-        // an open list shows it at once
-        if let Some((kind, from_game, course)) = self.title.files.as_ref().map(|f| (f.kind, f.from_game, f.course.clone())) {
-            if self.screen == Screen::Files {
-                self.title.files = None;
-                self.open_files(kind, from_game);
-                if let Some(f) = self.title.files.as_mut() {
-                    f.course = course;
-                }
-            }
-        }
+        self.refresh_files();
     }
+}
+
+/// A safe file name: no path characters, and not an autosave's leading '&' ("" when nothing is left).
+fn clean_name(n: &str) -> String {
+    let s: String = n.chars().map(|c| if "\\/:*?\"<>|".contains(c) || c.is_control() { '_' } else { c }).collect();
+    s.trim_start_matches(['&', '.']).trim().to_string()
+}
+
+/// A file in `dir` that is not there already: "Name.ext", else "Name (2).ext", "Name (3).ext"...
+fn unique_path(dir: std::path::PathBuf, stem: String, ext: &str) -> std::path::PathBuf {
+    let mut p = dir.join(format!("{stem}.{ext}"));
+    let mut n = 2;
+    while sg_core::fsutil::read_file(&p).is_some() && n < 100 {
+        p = dir.join(format!("{stem} ({n}).{ext}"));
+        n += 1;
+    }
+    p
 }
 
 #[cfg(test)]

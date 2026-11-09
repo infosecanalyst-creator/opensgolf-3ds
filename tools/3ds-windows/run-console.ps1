@@ -1,6 +1,6 @@
 # Sends the build to the console over Wi-Fi and shows its output live (no SD card swapping).
 # On the console: Homebrew Launcher -> press Y (NetLoader) -> it shows "Waiting for 3dslink connection" and its IP.
-# Then run this script; pass the IP if autodetection fails:   .\run-console.ps1 3DS-IP
+# Then run this script; pass the IP if autodetection fails:   .\run-console.ps1 192.168.1.50
 # Add -Log to also save the output to console-log.txt (3dslink then holds its output back until the game exits:
 # it buffers when its output goes to a file).
 param([string]$Ip = "", [switch]$Log)

@@ -9,9 +9,15 @@
 //!   sgtool fixture <dir> [font.ttf]    write a stand-in game folder with placeholder art (for tests)
 //!   sgtool dump-data <dir>             write the built-in data tables as data/*.toml (a template for content packs)
 //!   sgtool freeset <dir>               write the free base set (opensgolf-free) as a pack folder, every file drawn anew
+//!   sgtool hd-kit <game> <out> [--scale 4] [--only Flics/Trees]
+//!                                      starter kit for drawing your own high-resolution art: reference pictures, guide
+//!                                      layers, a template pack and CHECKLIST.csv (docs/MODDING.md)
+//!   sgtool pack-check <pack> [--game <dir>]
+//!                                      check a content pack: sizes, sprite sheets, names, licence
 //!   sgtool update-keygen               print a new ed25519 key pair for signing releases (docs/RELEASING.md)
 //!   sgtool update-sign <file>          sign <file> (SHA256SUMS) with the key in $OPENSGOLF_UPDATE_KEY: <file>.sig
 mod fixture;
+mod kit;
 
 use sg_core::assets::{decode_bmp, decode_pcx, decode_sound, decode_tga, to_rgba, Rgba};
 use sg_core::flc::decode_flc;
@@ -208,6 +214,43 @@ fn main() {
         }
         // "Update now" (crates/simgolf/src/autoupdate.rs): the release key. The private half (the 32-byte seed) goes into
         // the GitHub Actions secret OPENSGOLF_UPDATE_KEY, the public half into autoupdate.rs's PUBLIC_KEY_HEX.
+        ("hd-kit", n) if n >= 4 => {
+            let mut scale = 4;
+            let mut only = Vec::new();
+            let mut i = 4;
+            while i < n {
+                match (a[i].as_str(), a.get(i + 1)) {
+                    ("--scale", Some(v)) => scale = v.parse().unwrap_or_else(|_| fail(format!("--scale {v}: a number"))),
+                    ("--only", Some(v)) => only.extend(v.split(',').map(str::to_string)),
+                    (o, _) => fail(format!("unknown option {o} (--scale N, --only DIR)")),
+                }
+                i += 2;
+            }
+            match kit::hd_kit(Path::new(&a[2]), Path::new(&a[3]), scale, &only) {
+                Ok(msg) => println!("{msg}"),
+                Err(e) => fail(e),
+            }
+        }
+        ("pack-check", n) if n >= 3 => {
+            let game = match (a.get(3).map(String::as_str), a.get(4)) {
+                (Some("--game"), Some(g)) => Some(Path::new(g)),
+                (Some(o), _) => fail(format!("unknown option {o} (--game DIR)")),
+                _ => None,
+            };
+            let r = kit::pack_check(Path::new(&a[2]), game);
+            for e in &r.errors {
+                println!("error: {e}");
+            }
+            for w in &r.warnings {
+                println!("warning: {w}");
+            }
+            println!("{} files checked: {} errors, {} warnings", r.checked, r.errors.len(), r.warnings.len());
+            if r.errors.is_empty() {
+                println!("the pack looks good");
+            } else {
+                exit(1);
+            }
+        }
         ("update-keygen", _) => {
             let kp = ed25519_compact::KeyPair::from_seed(ed25519_compact::Seed::new(random_seed()));
             println!("public key (crates/simgolf/src/autoupdate.rs PUBLIC_KEY_HEX):\n{}", hex(&kp.pk[..]));
@@ -231,7 +274,7 @@ fn main() {
             println!("wrote a placeholder game folder to {}", a[2]);
         }
         _ => {
-            eprintln!("usage: sgtool check|png|sheet|chr|top10|dta|story|fixture|freeset|icon|dump-data|update-keygen|update-sign ...");
+            eprintln!("usage: sgtool check|png|sheet|chr|top10|dta|story|fixture|freeset|icon|dump-data|hd-kit|pack-check|update-keygen|update-sign ...");
             exit(2);
         }
     }

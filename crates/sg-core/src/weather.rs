@@ -370,6 +370,22 @@ impl crate::golfer::Club {
         self.planner.bounce_cut = cut;
     }
 
+    /// A loaded game's weather as the last tick left it (the port's own): `today`, the day already announced and the drag
+    /// and bounce the planner uses are not saved, so without this the first tick after a load announced the forecast
+    /// again and, the drag having gone back to 0, cleared the planner's cache the uninterrupted game keeps. The game sets
+    /// `place` first. Nothing changes with the extra off.
+    pub fn weather_restore(&mut self) {
+        if !self.extras.weather {
+            return;
+        }
+        let w = crate::data::economy().weather;
+        let t = self.place.today(self.tick, self.date(), &w);
+        self.today = Some(t);
+        self.announced = Some(t.day);
+        self.planner.drag = t.drag(&w);
+        self.planner.bounce_cut = 100 - t.bounce_percent(&w);
+    }
+
     /// Whether new golfers come this tick under the weather (`Today::turnout`): the time is cut in blocks of 64 game ticks
     /// (about six seconds), and a hash of the block keeps that share of them open.
     pub(crate) fn weather_turnout(&self) -> bool {

@@ -15,8 +15,10 @@
 //! except where the engine lists a folder by file type (terrain textures, heads) or reads a palette: those are BMP and PCX.
 mod baked;
 mod enc;
+mod face;
 mod icon;
 pub mod paint;
+mod people;
 mod sound;
 mod sprite;
 mod tex;
@@ -256,7 +258,9 @@ fn make(m: &Manifest, i: usize) -> Option<Vec<u8>> {
     let low = e.path.to_lowercase();
     match &e.item {
         // the interface pictures drawn by tools/freeset_art/ui.py, else drawn here
-        Item::Pic { .. } => baked::get(&pack_path(e)).map(<[u8]>::to_vec).or_else(|| ui::picture(e, &low)),
+        Item::Pic { w, h, .. } => {
+            baked::get(&pack_path(e)).map(<[u8]>::to_vec).or_else(|| tex::bank_rocks(&low, *w, *h)).or_else(|| ui::picture(e, &low))
+        }
         Item::Alpha { of, .. } => baked::get(&pack_path(e)).map(<[u8]>::to_vec).or_else(|| ui::alpha(&m.entries[*of], &low)),
         Item::Pal { w, h } => Some(sprite::palette_file(&low, *w, *h)),
         Item::Flc(head) => {
@@ -275,6 +279,55 @@ fn make(m: &Manifest, i: usize) -> Option<Vec<u8>> {
         }
         Item::Keys(keys) => Some(text::terrain_text(&low, keys)),
     }
+}
+
+/// What an original file is, by the layout manifest (sizes and sprite layouts only): the reference the high-resolution
+/// pack tools check against without the game (crate::hires, `sgtool pack-check`). The port's own.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Reference {
+    /// A picture of w x h pixels (PCX, TGA or BMP).
+    Picture { w: u32, h: u32 },
+    /// The alpha sheet (`_A`, `_alpha`) of another picture.
+    Alpha { w: u32, h: u32 },
+    /// A PCX read for its palette only (colour variants of sprites, the golfers' swap palettes).
+    Palette,
+    /// A sprite: frames of w x h, `views` rows of `frames` each, the ground point at (ax, ay) in the frame.
+    Sprite { w: u32, h: u32, views: u32, frames: u32, ax: i32, ay: i32, ms: u32 },
+    /// A 64 x 64 terrain texture.
+    Texture,
+    /// A path overlay texture.
+    Overlay { w: u32, h: u32 },
+}
+
+fn reference_of(item: &Item) -> Option<Reference> {
+    Some(match item {
+        Item::Pic { w, h, .. } => Reference::Picture { w: *w, h: *h },
+        Item::Alpha { w, h, .. } => Reference::Alpha { w: *w, h: *h },
+        Item::Pal { .. } => Reference::Palette,
+        Item::Flc(f) => Reference::Sprite {
+            w: f.w,
+            h: f.h,
+            views: f.views.max(1),
+            frames: f.fpv.max(1),
+            ax: 240 - f.crop.0 as i32,
+            ay: 240 - f.crop.1 as i32,
+            ms: f.view_ms,
+        },
+        Item::Tex => Reference::Texture,
+        Item::Overlay { w, h } => Reference::Overlay { w: *w, h: *h },
+        Item::Wav(_) | Item::Keys(_) => return None,
+    })
+}
+
+/// The original's file at `path` (relative to the game folder, any case), from the layout manifest.
+pub fn reference(path: &str) -> Option<Reference> {
+    let low = path.to_lowercase().replace('\\', "/");
+    manifest().entries.iter().find(|e| e.path.to_lowercase() == low).and_then(|e| reference_of(&e.item))
+}
+
+/// Every picture and sprite of the original, as (path in the game folder as the original spells it, what it is).
+pub fn references() -> Vec<(String, Reference)> {
+    manifest().entries.iter().filter_map(|e| reference_of(&e.item).map(|r| (e.path.clone(), r))).collect()
 }
 
 /// The set's pack.toml (the same as packs/opensgolf-free/pack.toml in the repository).
@@ -341,6 +394,15 @@ mod tests {
         if let Ok(t) = std::fs::read_to_string(file) {
             assert_eq!(t.replace('\r', ""), PACK_TOML.replace('\r', ""));
         }
+    }
+
+    #[test]
+    fn references_of_the_original() {
+        assert_eq!(reference("BLDG.PCX"), Some(Reference::Picture { w: 800, h: 600 }));
+        assert_eq!(reference("flics/trees/willowgreen.pcx"), Some(Reference::Palette));
+        let Some(Reference::Sprite { w, h, views, frames, ax, ay, .. }) = reference("Flics/Trees/WillowTree.flc") else { panic!() };
+        assert_eq!((w, h, views, frames, ax, ay), (85, 78, 4, 14, 34, 58));
+        assert!(references().len() > 2000);
     }
 
     #[test]

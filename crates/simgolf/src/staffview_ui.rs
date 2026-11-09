@@ -12,6 +12,9 @@ use sg_core::lang::{tr, trf};
 use sg_core::staff::job;
 use sg_core::terrain::{TT_FAIRWAY, TT_PUTTING_GREEN, TT_TEE};
 
+/// The legend's height at normal size.
+pub const LEGEND_H: f32 = 126.0;
+
 /// The view's marks, made again every few frames: the posts with their rings, and the kept tiles out of reach.
 #[derive(Clone, Debug, Default)]
 pub struct Marks {
@@ -94,12 +97,18 @@ impl App {
     fn draw_staff_legend(&self, g: &mut Gfx, s: &Ui, m: &Marks) {
         use crate::enhanced::Anchor;
         s.anchor(Anchor::TopRight);
-        // under the path view's legend when both are up
-        let y = if self.xs.path_view && crate::extras::path_help() { 244.0 } else { 140.0 };
-        let (x, w, h) = (566.0, 224.0, 126.0);
+        // under the path view's legend when both are up; with bigger text (textsize.rs) as big as the pair still fits
+        let (k, _, y) = self.legend_place(LEGEND_H);
+        let (w, h) = ((224.0 * k).round(), (LEGEND_H * k).round());
+        let x = 790.0 - w;
         self.art.trans_fill(g, s, x, y, w, h, true);
         let white = c15(0x7fff);
-        s.put_shadowed(g, F_MANUAL15, x + 10.0, y + 6.0, tr("STR_STAFF_VIEW_TITLE"), c15(0x7ff0), false);
+        let title = tr("STR_STAFF_VIEW_TITLE");
+        s.put_shadowed(g, crate::textsize::fit(F_MANUAL15, k, title, w - 20.0), x + 10.0, y + 6.0, title, c15(0x7ff0), false);
+        let (pitch, top) = ((15.0 * k).round(), (28.0 * k).round());
+        let (sw, sh) = ((12.0 * k).round(), (7.0 * k).round());
+        let put =
+            |g: &mut Gfx, ry: f32, t: &str| s.put(g, crate::textsize::fit(F_ARIAL10, k, t, w - sw - 28.0), x + sw + 18.0, ry, t, white);
         let count = |j: i8| m.rings.iter().filter(|r| r.2 == j).count();
         let rows: [(u16, String); 4] = [
             (work_colour(job::GROUNDSKEEPER), trf("STR_STAFF_VIEW_KEEPERS", &[("COUNT", &count(job::GROUNDSKEEPER))])),
@@ -108,15 +117,15 @@ impl App {
             (work_colour(job::CLUB_PRO), trf("STR_STAFF_VIEW_PROS", &[("COUNT", &count(job::CLUB_PRO))])),
         ];
         for (i, (c, t)) in rows.iter().enumerate() {
-            let ry = y + 28.0 + 15.0 * i as f32;
-            s.fill(g, x + 11.0, ry + 2.0, 12.0, 7.0, rgba(0.0, 0.0, 0.0, 0.6));
-            s.fill(g, x + 12.0, ry + 3.0, 10.0, 5.0, c15(*c as u32));
-            s.put(g, F_ARIAL10, x + 30.0, ry, t, white);
+            let ry = y + top + pitch * i as f32;
+            s.fill(g, x + 11.0, ry + 2.0, sw, sh, rgba(0.0, 0.0, 0.0, 0.6));
+            s.fill(g, x + 12.0, ry + 3.0, sw - 2.0, sh - 2.0, c15(*c as u32));
+            put(g, ry, t);
         }
-        let ry = y + 28.0 + 15.0 * 4.0;
-        s.fill(g, x + 11.0, ry + 2.0, 12.0, 7.0, rgba(0.0, 0.0, 0.0, 0.6));
-        s.fill(g, x + 12.0, ry + 3.0, 10.0, 5.0, rgba(1.0, 0.25, 0.25, 0.8));
-        s.put(g, F_ARIAL10, x + 30.0, ry, &trf("STR_STAFF_VIEW_BARE", &[("COUNT", &m.bare.len())]), white);
+        let ry = y + top + pitch * 4.0;
+        s.fill(g, x + 11.0, ry + 2.0, sw, sh, rgba(0.0, 0.0, 0.0, 0.6));
+        s.fill(g, x + 12.0, ry + 3.0, sw - 2.0, sh - 2.0, rgba(1.0, 0.25, 0.25, 0.8));
+        put(g, ry, &trf("STR_STAFF_VIEW_BARE", &[("COUNT", &m.bare.len())]));
         s.anchor(Anchor::Centre);
     }
 }

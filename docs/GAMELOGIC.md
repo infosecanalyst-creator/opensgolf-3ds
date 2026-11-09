@@ -58,7 +58,7 @@ skill classes) stands in. The special visitors are read from the Standard theme'
 ## Stories, visitors, land and home sites
 
 `stories.rs`: the theme's story files, chosen per pair by their name code and played scene by scene as the pair walks
-together. `vips.rs`: the CEO, the County commissioner and the Wealthy heiress, their verdicts, and celebrity vacation homes.
+together while the player watches them close up (`Club::story_watched`, from the golfers' screen points the game sets). `vips.rs`: the CEO, the County commissioner and the Wealthy heiress, their verdicts, and celebrity vacation homes.
 `tracts.rs` and `homes.rs`: buying land after the commissioner's approval, and home sites. `ratings.rs`: the exe's statistics
 pass and Course Report.
 

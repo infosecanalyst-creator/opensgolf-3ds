@@ -1,0 +1,2 @@
+* Central European letters and typographic quotes in the game's text
+* New optional extra: keep the land offer to buy land when you like

@@ -1,0 +1,2 @@
+* Hungarian letters with double accents in the game's own fonts
+* The blimp's reflection sits below the water again (Enhanced graphics)

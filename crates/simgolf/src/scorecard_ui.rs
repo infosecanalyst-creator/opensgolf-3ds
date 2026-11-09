@@ -7,9 +7,7 @@
 //! base set) the scorecard is drawn plain in the same places.
 use crate::app::*;
 use crate::gfx::Gfx;
-use crate::info_ui::c15;
 use crate::render::Rect;
-use crate::screens_ui::{top, BODY, SMALL};
 use crate::ui::{rgb, Screen as Ui};
 use sg_core::lang::{tr, trf};
 
@@ -38,16 +36,11 @@ impl App {
         } else {
             draw_plain_cover(g, s, r);
         }
-        let white = c15(0x7fff);
-        let black = c15(0);
         // the Player panel's row labels and its two lines on the round (here the hole the golfer is on)
-        s.text(g, 410.0 + D.0, top(519.0 + D.1, SMALL), tr("STR_SCORECARD_HOLE"), SMALL, white);
-        s.text(g, 414.0 + D.0, top(534.0 + D.1, SMALL), tr("STR_SCORECARD_PAR"), SMALL, white);
         let h = self.club.g[gi].hole;
         let where_ =
             if (1..19).contains(&h) { trf("STR_SCORECARD_ON_HOLE", &[("HOLE", &h)]) } else { tr("STR_SCORECARD_FINISHED").to_string() };
-        s.text(g, 334.0 + D.0, top(522.0 + D.1, BODY), tr("STR_SCORECARD_LIVE"), BODY, black);
-        s.text(g, 334.0 + D.0, top(533.0 + D.1, BODY), &where_, BODY, black);
+        crate::player_panel::draw_card_heads(g, s, D, [(334.0, tr("STR_SCORECARD_LIVE")), (334.0, &where_)]);
         self.draw_card_rows(g, s, gi, D, false, true);
     }
 }

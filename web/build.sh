@@ -13,6 +13,8 @@ MQ=$(printf "%s" "$META" | python3 -c 'import json,sys; m=json.load(sys.stdin); 
 VERSION=$(printf "%s" "$META" | python3 -c 'import json,sys; m=json.load(sys.stdin); print([p["version"] for p in m["packages"] if p["name"]=="opensgolf"][0])')
 cp "$(dirname "$MQ")/js/gl.js" web/dist/
 cp web/index.html web/files.js web/opensgolf.js web/dist/
+# the Latest news box's copy of the game's What's new list (opensgolf.js sgNews)
+cp whatsnew.json web/dist/
 # the page's version, and every file it loads named with the version and a hash of the published files in its address, so
 # a browser (Safari keeps scripts for a while) never runs an older gl.js, page script or game with a newer page
 python3 - "$VERSION" <<'PY'

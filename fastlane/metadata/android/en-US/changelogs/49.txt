@@ -1,0 +1,6 @@
+* A first-start box to choose how to play, and What's new once after updating
+* Loading a save in the browser no longer freezes for seconds
+* Typing in the bug report form opened from Report a problem no longer loses what you type
+* Game options: Helpers split into Saves and Controls, and each page lists its most wanted options first
+* The version is shown on the title screen
+* A new game's building beside the clubhouse no longer hangs over the edge of a small property

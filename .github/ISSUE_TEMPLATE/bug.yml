@@ -7,6 +7,12 @@ body:
     attributes:
       label: What happened
       description: What you did, what you expected and what happened instead.
+      value: |
+        What I did:
+
+        What I expected:
+
+        What happened instead:
     validations:
       required: true
   - type: input
@@ -14,17 +20,23 @@ body:
     attributes:
       label: Version
       description: The version or commit (shown in Preferences), or "browser".
-  - type: dropdown
+  - type: input
     id: platform
     attributes:
       label: Platform
-      options: [Windows, macOS, Linux, Browser (desktop), Browser (phone or tablet), Android, iOS]
-  - type: dropdown
+      description: Windows, macOS, Linux, Browser (desktop), Browser (phone or tablet), Android or iOS.
+  - type: input
     id: baseset
     attributes:
       label: Base set
-      options: [Original game files, OpenSGolf free set]
+      description: Original game files, or OpenSGolf free set.
+  - type: input
+    id: system
+    attributes:
+      label: System
+      description: Filled in by the game's Report a problem (Preferences > More); leave empty otherwise.
   - type: textarea
     id: extra
     attributes:
       label: Screenshots, save file, log
+      description: Drag in the files the game's Report a problem wrote (the save, the screenshot and the text file with its warnings), or your own.

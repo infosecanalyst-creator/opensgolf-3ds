@@ -80,6 +80,11 @@ impl App {
 
     /// The pro panel's buttons: 0 practice round, 1 match, 2 skills, 3 cancel the round.
     pub fn pro_button(&mut self, b: usize) {
+        // the interface's call is an action (replay.rs): logged, then applied by App::apply
+        if self.rec.depth_zero() {
+            self.act(sg_core::action::Action::Pro { button: b });
+            return;
+        }
         match b {
             0 | 1 => {
                 let m = b == 1;
@@ -138,7 +143,7 @@ impl App {
         self.screen = Screen::Skills;
     }
 
-    fn finish_skills(&mut self, then: Option<bool>) {
+    pub(crate) fn finish_skills(&mut self, then: Option<bool>) {
         let mut mask = 0u16;
         for k in 0..12 {
             if self.club.pro_skill[k] != 0 {
@@ -182,12 +187,12 @@ impl App {
             return;
         }
         if let Some((k, add)) = pad_hit(vx, vy) {
-            let v = &mut self.club.pro_skill[k];
-            if add && d.points > 0 && *v < 10 {
-                *v += 1;
+            let v = self.club.pro_skill[k];
+            if add && d.points > 0 && v < 10 {
+                self.act(sg_core::action::Action::Skill { skill: k, value: v + 1 });
                 d.points -= 1;
-            } else if !add && *v > 0 && *v > d.floor[k] {
-                *v -= 1;
+            } else if !add && v > 0 && v > d.floor[k] {
+                self.act(sg_core::action::Action::Skill { skill: k, value: v - 1 });
                 d.points += 1;
             } else {
                 self.ui_sound(0x18);
@@ -223,9 +228,8 @@ impl App {
     }
 
     fn close_skills(&mut self, d: SkillDialog) {
-        self.club.skill_points = d.points.max(0);
         self.screen = Screen::Play;
-        self.finish_skills(d.then);
+        self.act(sg_core::action::Action::SkillsDone { points: d.points, then: d.then });
     }
 
     pub fn draw_skills(&mut self, g: &mut Gfx) {
@@ -284,7 +288,8 @@ impl App {
                 s.text(g, X0 + 87.0, top(y + 7.0, BODY), &skill_value(v), BODY, rgb(0.0, 0.0, 0.0));
             }
             let c = if v != 0 { rgb(0.0, 0.0, 0.0) } else { c15(0x4210) };
-            s.text(g, X0 + 138.0, top(y + 7.0, BODY), pro::skill_label(r), BODY, c);
+            // a name too long for its pill (a translation, issue #164): a little smaller or cut, as on the skills card
+            s.text_fit(g, X0 + 138.0, top(y + 7.0, BODY), crate::screens_ui::SKILL_PILL_ROOM, pro::skill_label(r), BODY, c);
         }
         if d.editable {
             // the OK ball: footage of the original shows the yellow cut with the pointer away from it
@@ -408,7 +413,8 @@ impl App {
                 }
             }
         }
-        self.aim = self.club.aim_frame(&self.course, tile, corner);
+        // the aiming frame changes the pro's facing, club and aim: an action (replay.rs)
+        self.act(sg_core::action::Action::Aim { x: tile.0, y: tile.1, corner });
         self.show_player_panel();
     }
 
@@ -417,9 +423,7 @@ impl App {
         if self.club.pro_aiming().is_none() {
             return false;
         }
-        if self.club.commit_aim() {
-            self.aim = None;
-        }
+        self.act(sg_core::action::Action::Swing);
         true
     }
 

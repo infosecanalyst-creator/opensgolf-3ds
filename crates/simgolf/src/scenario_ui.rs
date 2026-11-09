@@ -97,12 +97,19 @@ fn facts(app: &App) -> Facts {
     }
 }
 
+/// The example scenario that comes with the game (packs/example-scenario-desert-challenge): not a reason to ask.
+pub fn is_bundled_example(id: &str) -> bool {
+    id.starts_with("example-")
+}
+
 impl App {
     // ---- the Start New Game screen ---------------------------------------------------------------------------------------
 
-    /// True when scenario packs are installed: Start New Game then offers them.
+    /// True when scenario packs other than the example that comes with the game are installed: Start New Game then
+    /// offers them. With only the example, Start New Game goes straight to Choose Difficulty as in the original (the
+    /// example still opens in the course editor's Load scenario and starts with `--scenario`).
     pub fn has_scenarios(&self) -> bool {
-        self.content.found.packs.iter().any(|p| p.manifest.kind == Kind::Scenario)
+        self.content.found.packs.iter().any(|p| p.manifest.kind == Kind::Scenario && !is_bundled_example(&p.manifest.id))
     }
 
     pub fn open_scenarios(&mut self) {
@@ -219,7 +226,7 @@ impl App {
                 .and_then(|data| read_save_bytes(&data, course));
             let r = save.and_then(|s| self.load_save(g, s));
             if let Err(e) = r {
-                eprintln!("scenario {id}: {e}");
+                crate::bugreport::warn(&format!("scenario {id}: {e}"));
                 self.show_toast(&e);
                 return;
             }
@@ -389,7 +396,7 @@ impl App {
     }
 
     fn script_error(&mut self, pack: &str, msg: String) {
-        eprintln!("script {pack}: {msg}");
+        crate::bugreport::warn(&format!("script {pack}: {msg}"));
         self.show_toast(&trf("STR_SCRIPT_ERROR_TOAST", &[("PACK", &pack)]));
         self.scen.errors.push((pack.to_string(), msg));
         if self.scen.errors.len() > 100 {
@@ -404,8 +411,10 @@ impl App {
             .iter()
             .filter_map(|&n| self.club.holes.get(n as usize).map(|h| HoleView { number: n, par: h.par, yards: h.length }))
             .collect();
-        let golfers =
-            (0..self.club.g.len()).filter(|&g| self.club.g[g].hole > 0).map(|g| self.golfer_view(g, self.club.g[g].strokes)).collect();
+        let golfers = (0..self.club.g.len().min(sg_core::golfer::SLOTS))
+            .filter(|&g| self.club.g[g].hole > 0)
+            .map(|g| self.golfer_view(g, self.club.g[g].strokes))
+            .collect();
         GameView {
             year: 2001 + self.econ.year_index() as i32,
             month: 3 + self.econ.month_index().rem_euclid(8),
@@ -646,7 +655,7 @@ impl App {
                 self.content.rediscover();
             }
             Err(e) => {
-                eprintln!("could not export the scenario: {e}");
+                crate::bugreport::warn(&format!("could not export the scenario: {e}"));
                 self.show_toast(&e);
             }
         }
@@ -686,4 +695,14 @@ fn scenario_summary(sc: &Scenario) -> String {
         None => String::new(),
     };
     trf("STR_SCENARIOS_SUMMARY", &[("PLACE", &place), ("DIFFICULTY", &diff), ("MONEY", &money), ("GOALS", &sc.goals.len())])
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn only_the_bundled_example_does_not_make_start_new_game_ask() {
+        let m = sg_core::packs::Manifest::parse(include_str!("../../../packs/example-scenario-desert-challenge/pack.toml")).unwrap();
+        assert!(super::is_bundled_example(&m.id));
+        assert!(!super::is_bundled_example("my-desert-challenge"));
+    }
 }

@@ -100,7 +100,7 @@ impl App {
         let a = self.fx.atmos;
         let t = self.fx.time;
         let mv = self.mv;
-        let vscale = (self.draw_w / 800.0).min(self.draw_h / 600.0);
+        let vscale = crate::ui::view_scale(self.draw_w, self.draw_h);
         // sizes below are in the art's pixels: drawn one to one at the closest zoom (the exe's 4), smaller further out
         let z = self.exe_zoom() / 4.0;
         let tint = self.fx_sprite_tint(0.0, 0.0, false).map(|t| [t[0], t[1], t[2]]).unwrap_or([1.0; 3]);
@@ -204,7 +204,7 @@ impl App {
         let a = self.fx.atmos;
         let t = self.fx.time;
         let mv = self.mv;
-        let vscale = (self.draw_w / 800.0).min(self.draw_h / 600.0);
+        let vscale = crate::ui::view_scale(self.draw_w, self.draw_h);
         let z = self.exe_zoom() / 4.0;
         let tint = self.fx_sprite_tint(0.0, 0.0, false).map(|t| [t[0], t[1], t[2]]).unwrap_or([1.0; 3]);
         let mut d = Dots { v: Vec::new(), axes: [mv[0], mv[4], mv[8], mv[1], mv[5], mv[9]], px: self.upp * vscale };
@@ -215,6 +215,12 @@ impl App {
         let reach = ((self.draw_w.max(self.draw_h) * self.upp / TILE_SIZE) * 0.75).ceil() as i32 + 1;
         let (dark, light) = if desert { ([0.42, 0.40, 0.22], [0.58, 0.55, 0.32]) } else { ([0.20, 0.36, 0.12], [0.36, 0.55, 0.20]) };
         let snow = a.snow;
+        // only the tufts on screen: the square of tiles round the view reaches well past the screen's corners, and drawing
+        // every tuft in it streamed some 200,000 vertices a frame on a course of rough (the screen's edges in clip space,
+        // widened by 12 art pixels, more than a tuft's blades reach from its root)
+        let m = u.mvp;
+        let margin = 12.0 * d.px * z;
+        let (edge_x, edge_y) = (1.0 + 2.0 * margin / (self.draw_w * self.upp), 1.0 + 2.0 * margin / (self.draw_h * self.upp));
         for ty in (cy - reach).max(0)..(cy + reach).min(self.terrain.h) {
             for tx in (cx - reach).max(0)..(cx + reach).min(self.terrain.w) {
                 let n = match self.terrain.ty[self.terrain.tile_index(tx, ty)] {
@@ -228,6 +234,12 @@ impl App {
                     let (ox, oz) = (hash(hs, 1 + k) - 0.5, hash(hs, 20 + k) - 0.5);
                     let (x, zz) = (mx + ox * TILE_SIZE * 0.9, mz + oz * TILE_SIZE * 0.9);
                     let c = [x, self.terrain.height_at(x, zz), zz];
+                    let cw = m[3] * c[0] + m[7] * c[1] + m[11] * c[2] + m[15];
+                    let (sx, sy) =
+                        ((m[0] * c[0] + m[4] * c[1] + m[8] * c[2] + m[12]) / cw, (m[1] * c[0] + m[5] * c[1] + m[9] * c[2] + m[13]) / cw);
+                    if sx.abs() > edge_x || sy.abs() > edge_y {
+                        continue;
+                    }
                     let sway = (a.wind.k * a.wind.screen_x * 1.6 + 0.6 * (t * 2.3 + hash(hs, 40 + k) * 6.3).sin() * a.wind.k).round();
                     // five blades fanning out from the root: (where, height, which way the tip leans)
                     let size = 0.7 + 0.5 * hash(hs, 80 + k);

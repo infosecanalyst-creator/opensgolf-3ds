@@ -199,7 +199,7 @@ impl App {
             s.fill(g, 187.0, 40.0, 429.0, foot + 25.0 - 40.0, rgb(0.9, 0.88, 0.8));
         }
         let year = 2000 + (self.year_end_tick >> 13);
-        s.put_centered(g, F_INFO_TITLE, 406.0, 55.0, &trf("STR_YEARSUM_TITLE", &[("YEAR", &year)]), black);
+        s.put_centered_fit(g, F_INFO_TITLE, 406.0, 55.0, crate::ui::TITLE_ROOM, &trf("STR_YEARSUM_TITLE", &[("YEAR", &year)]), black);
         s.put_centered(g, F_INFO14, 465.0, 93.0, tr("STR_YEAREND_THIS_YEAR"), black);
         s.put_centered(g, F_INFO14, 566.0, 93.0, tr("STR_YEAREND_LAST_YEAR"), black);
         let green = c15(0x1284);

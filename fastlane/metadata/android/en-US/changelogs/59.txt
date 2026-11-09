@@ -1,0 +1,7 @@
+* Optional second course: 18 more holes on the same land
+* Optional forward and middle tees, chosen by golfers' skill
+* Optional flyover of a hole from Hole Stats
+* Double-click or double-tap a save to load it
+* Longer translations shrink or wrap to fit
+* Option: celebrities' home names only under the pointer
+* Problem reports can include an exact replay

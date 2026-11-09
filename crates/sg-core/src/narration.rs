@@ -7,7 +7,7 @@
 use crate::course::Course;
 use crate::golfer::Club;
 use crate::lang::{tr, trf};
-use crate::thoughts::feature;
+use crate::thoughts::feature_at;
 use crate::tracts::type_name;
 
 /// Ticks that must pass after a narration before the next one (0x467a00 compares the tick 0x834170 with 0x55e5ac).
@@ -80,9 +80,7 @@ impl Club {
             // the terrain table's singular name (0x578350 + 0x30 * arg), as the theme renames it
             2 | 3 | 10 | 13 => trf(key, &[("GOLFER", &name), ("TERRAIN", &type_name(arg.clamp(0, 22) as u8, c.theme, false)), ("HE", &he)]),
             // the scenery name of a tile (0x407700)
-            11 | 0x14 | 0x1c => {
-                trf(key, &[("GOLFER", &name), ("WHAT", &feature(c, arg / crate::course::n(), arg % crate::course::n(), c.theme))])
-            }
+            11 | 0x14 | 0x1c => trf(key, &[("GOLFER", &name), ("WHAT", &feature_at(c, arg, c.theme))]),
             0x16 => {
                 let who = self.celebrities.get(arg.max(0) as usize).map(|p| p.name.as_str()).unwrap_or("");
                 trf(key, &[("GOLFER", &name), ("CELEBRITY", &who)])

@@ -1,7 +1,8 @@
 # HD graphics (optional)
 
 SimGolf's art was drawn for 800×600. On today's screens the port scales it up, and it gets soft. **HD mode** draws the same
-art upscaled ×4 (or ×2), for example by an AI upscaler such as Real-ESRGAN, plus trilinear filtering and anti-aliasing.
+art upscaled ×4 (or ×2), by the AI upscaler built into the game (or one you run yourself, such as Real-ESRGAN), plus
+trilinear filtering and anti-aliasing.
 Everything stays where it was: the layouts, the sprite cuts and the click areas are the classic ones.
 
 **Classic is the default and is never changed by HD.** With HD off, the game runs exactly the code it ran before HD
@@ -13,17 +14,45 @@ PNGs byte for byte). HD is opt-in, and switching back to Classic restores the cl
 The game's art belongs to Electronic Arts and the port reads it at run time from your own copy. An upscaled pack is a
 derivative of that art, so:
 
-- you make it **yourself, locally, from your own copy** with `tools/hd_pack`;
+- you make it **yourself, locally, from your own copy**, in the game (Preferences → Graphics → *Make HD graphics from my
+  SimGolf files (beta)...*) or with `tools/hd_pack`;
 - it is **never** committed to this repository, bundled with a release, put into `web/dist`, or offered for download by
   this project; `.gitignore` excludes `HD/` and pack folders;
 - **do not share or upload your pack.**
 
-The repository ships only the pack tool and the loader. The upscaler is a separate download you get yourself
-(Real-ESRGAN ncnn-vulkan, BSD-3-Clause, <https://github.com/xinntao/Real-ESRGAN/releases>).
+The repository ships only the pack makers and the loader. The game's own AI upscaler is built in (Real-ESRGAN's small
+general model, BSD-3-Clause, see the README's licence section). The game never downloads anything for HD.
 
 ## Making a pack
 
-See [tools/hd_pack/README.md](../tools/hd_pack/README.md). In short:
+**In the game (one click; beta).** With your SimGolf files in use, System Functions → Preferences → Graphics → *Make HD
+graphics from my SimGolf files (beta)...*. The game times its AI upscaler on your device for a moment and says how many
+pictures, how much space and how long *on this device*. It then makes the pack in the background while you play: *Keep
+playing* closes the box and a note at the top of the screen shows the percentage and the time left (a click on it brings
+the box back, with *Stop*). A run that is stopped, or cut short by closing the game, carries on by itself the next time the
+game starts. When it is done HD switches itself on (no restart), a box says so, and it stays on. *Remove HD graphics...*
+(same box) switches back to Classic and deletes the pack.
+
+| | scale | size | time |
+|---|---|---|---|
+| *Make it* | ×4 | about 1.2 GB | measured on the device; about 10 minutes on an 8-core laptop, 25 on a 4-core one |
+| *Make a smaller one* | ×2 | about 0.6 GB | the same (the model always works at ×4; ×2 is its output halved) |
+
+The upscaler is Real-ESRGAN's small general model (realesr-general-wdn-x4v3, BSD-3-Clause, Xintao Wang), run on the
+processor in plain Rust (`crates/sg-core/src/aiscale.rs`, 2.4 MB of weights): no graphics card, no download, the same
+result on Windows, macOS, Linux and Android. It works out only the pixels that can reach a visible one (49% of the art's 245
+million; the clear space round sprites costs nearly nothing) and uses the processor's vector unit (AVX2 or AVX-512 with
+FMA on PCs, NEON on ARM). The colours come from the model and the transparency from xBRZ's upscale of the same picture
+(colour keys become real transparency first). Pictures of the course's theme are made first. Browsers are left out for now:
+there the model runs on one thread without the vector unit, which would take many hours.
+
+Natively the pack goes to `<save folder>/HD` (or `--hd-pack DIR`). The manifest's `method` is
+`ai:realesr-general-wdn-x4v3`; otherwise it is the pack `hd_pack.py` writes, so everything below holds for either.
+
+Test hook: `opensgolf --game <folder> --make-hd [--hd-pack DIR] [--hd-scale 2|4] [--hd-method ai|xbrz|realesrgan]` makes
+the pack without a window and says how long it took (docs/PLAYING.md lists the rest).
+
+**With the script.** See [tools/hd_pack/README.md](../tools/hd_pack/README.md). In short:
 
 ```sh
 pip install Pillow
@@ -53,8 +82,8 @@ the size and looks the same, which helps when moving a 4x pack between machines.
 If HD is chosen and no pack is found, the game says how to make one and stays Classic.
 
 Content packs (docs/MODDING.md) sit above the HD pack: when an enabled mod replaces a picture, terrain texture or sprite,
-the mod's file is used, loaded the classic way, and the HD pack's upscale of the original is not. Everything else is as
-described here.
+the mod's file is used, loaded the classic way (or at its own resolution for a high-resolution pack of your own art,
+docs/MODDING.md section 11), and the HD pack's upscale of the original is not. Everything else is as described here.
 
 ## What changes in HD
 
@@ -82,6 +111,6 @@ The code is in `crates/simgolf/src/hd.rs`.
   show there instead). Some files contain both 255,0,255 and 248,0,248, and the pack treats both as transparent.
 - Palette variants of sprites are made by adding the palette change, spread smoothly, to the default-palette upscale. This
   is close to, but not exactly, an upscale of the variant.
-- A ×4 pack is large (about 1.6 GB on disk), and HD sprites need much more video memory than classic ones. Use `--scale 2`
-  on small GPUs and in browsers.
-- The quality depends on the upscaler. The Lanczos path is for testing only.
+- A ×4 pack is large (about 0.8 GB on disk with xBRZ, 1.6 GB with Real-ESRGAN or Lanczos), and HD sprites need much more
+  video memory than classic ones. Use ×2 on small GPUs and in browsers.
+- The quality depends on the upscaler. The Lanczos path of hd_pack.py is for testing only.

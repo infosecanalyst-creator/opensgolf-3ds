@@ -94,7 +94,8 @@ after it, a version that does not match, or a conflict with a loaded pack is not
 row; the rest of the pack loads.
 
 The HD graphics mode (docs/HD.md) is the first override layer: an enabled pack's file wins over the HD upscale of the file it
-replaces (which is then loaded the classic way); everything else of HD is unchanged. It stays a local thing that is never
+replaces (which is then loaded the classic way, or at the pack's resolution for a high-resolution pack, section 11);
+everything else of HD is unchanged. The order is: enabled pack file > HD pack upscale > original. It stays a local thing that is never
 shared, because it is made from the original art.
 
 How it works: every read of a game file goes through `sg_core::fsutil::read_file`, which asks `sg_core::vfs` first, and
@@ -157,7 +158,9 @@ be shared without any of EA's material. Translations are made in the open (plann
 **done** (crates/sg-core/src/scenario.rs, crates/simgolf/src/scenario_ui.rs). A scenario pack (`kind = "scenario"`) holds
 `scenario.toml`: the property (or a theme), the money, the difficulty, optionally a saved game to start from (its land,
 holes, buildings and date), the texts to show, and the goals. With a scenario pack installed, **Start New Game** first asks
-for a free game (the original's way on) or a scenario. A scenario's goals are checked at each month start; a goal with
+for a free game (the original's way on) or a scenario. The example that comes with the game does not count: with only
+it, Start New Game goes straight on as in the original (the example still opens in the course editor's *Load scenario*
+and starts with `--scenario example-scenario-desert-challenge`). A scenario's goals are checked at each month start; a goal with
 `by_year` is missed when that year ends without it. A message says when a goal is reached or missed; when every goal is
 reached the scenario is won (`win_text`), when one is missed it is lost (`lose_text`), and either way the game goes on.
 **Information > Scenario Goals** lists the goals and how they stand. The goals are saved with the game. A scenario's own
@@ -318,6 +321,7 @@ One `[pack]` table; unknown keys are an error.
 | `description` | no | One or two sentences; shown when the pack is picked on the Content screen. |
 | `requires` | no | Packs that must be loaded before this one, each `"id"` or `"id OP VERSION[, OP VERSION]"` with OP one of `>=`, `>`, `<=`, `<`, `=`, `!=`, `^` (same first number, at least this version) or `~` (same first two numbers, at least this version). `original >= 1.0` is the built-in base set. |
 | `conflicts` | no | Packs this one cannot be loaded with, in the same form. The check goes both ways. |
+| `scale` | no | `1` (the default), `2` or `4`: the pack's pictures and sprite sheets are that many times the original's size (section 11). |
 
 ### Files of a pack
 
@@ -327,7 +331,7 @@ my-pack/
   data/terrain.toml             merged over the tables (section 3; the six files of the table above)
   gfx/Interface/BuildPanel.png  replaces Interface/BuildPanel.pcx of the game folder
   gfx/Data/Textures/...         terrain textures (BMP or TGA in the game; PNG accepted)
-  gfx/Flics/...                 sprites and animations (FLC only)
+  gfx/Flics/...                 sprites and animations: FLC, or a PNG sheet (section 11)
   sfx/Sounds/Applause.ogg       replaces Sounds/Applause.wav
   music/Sounds/...              music lives under Sounds/ in the game folder too
   text/Themes/Standard/...      stories (TXT), characters (CHR, GLF), golfer lists (DTA), terrain descriptions
@@ -353,7 +357,8 @@ What to know about replacement art and sound:
 * Pictures the game reads as palette art (the customise-golfer sheets) take their palette from the PNG's first 256
   colours in the order they appear; more colours are mapped to the nearest of those. Palette files (`*.pcx` the sprites
   are recoloured with) must stay PCX.
-* Sprites and animations (`.flc`) are replaced by FLC files only.
+* Sprites and animations (`.flc`) are replaced by FLC files or by PNG sprite sheets (section 11).
+* Bigger, sharper art than the original's: a high-resolution pack (`scale = 2` or `4`, section 11).
 * OGG Vorbis, mono or stereo, any sample rate; WAV 8 or 16 bit PCM. The game converts both to 44.1 kHz stereo.
 
 ### Data files
@@ -585,3 +590,97 @@ Testing: `tools/freeset_playtest.sh` (CI, Linux) decodes every file with `sgtool
 folder, builds a hole, plays about three months, saves, loads and opens every report and title screen, failing on any crash
 or missing-file or decode message; `packs::tests::the_free_base_set_stands_in_for_a_missing_game_folder` checks the loaders
 (textures, swap palettes, sounds, roster, stories, fonts, sprites) against it.
+
+## 11. High-resolution packs and your own art
+
+**Done.** A content pack can bring its own art at two or four times the original's resolution: drawn from scratch by you,
+under a licence of your choice, and shared like any other pack. The game draws it at the original's size on screen, so
+every layout, cut and click area stays the same; on a big window it is simply sharper. It works in Classic and Enhanced,
+with HD mode (docs/HD.md) on or off. The order is: enabled pack file > HD pack upscale > original, file by file, so a pack
+may redraw only a few files.
+
+### The pack
+
+Add `scale` to pack.toml:
+
+```toml
+[pack]
+id = "my-trees"
+name = "Hand-drawn trees"
+version = "0.1.0"
+kind = "mod"
+authors = ["Your Name"]
+license = "CC-BY-SA-4.0"
+scale = 4                      # 1 (default), 2 or 4; 4 is recommended
+```
+
+* **Format:** PNG, 8 bits per channel, RGBA, not interlaced. Transparency is the alpha channel (soft edges are fine).
+* **Naming:** each file goes under `gfx/` at the original's path with `.png`: `gfx/Interface/BuildPanel.png` for
+  `Interface/BuildPanel.pcx`, `gfx/Data/Textures/Parkland/grass.png` for a terrain texture, `gfx/Flics/Trees/TreeMapleLarge.png`
+  for `Flics/Trees/TreeMapleLarge.flc`. Names are not case-sensitive.
+* **Sizes:** every picture is exactly `scale` times the original's width and height. A file whose size does not fit is not
+  used (the original, or the HD upscale, is drawn instead) and `sgtool pack-check` tells you what it should be.
+* In a pack with `scale` above 1 only PNGs are read under `gfx/`: a PCX, TGA, BMP or FLC there is ignored. The pictures
+  under `Bodies/` and `Heads/` (recoloured from their palette indices) and the palette files (`*Pal*.pcx`) cannot be
+  replaced at a higher resolution. A base set must have `scale = 1`.
+* Everything that reads a picture some other way than the game's picture loaders gets it scaled down to the original's
+  size, so your art shows everywhere.
+
+### Sprite sheets
+
+Any pack (also one with `scale = 1`) may give a sprite as a PNG sheet instead of an FLC:
+
+* one **row per view** (direction), one **column per frame**, view-major as the original stores them;
+* every frame the same size: `scale` times the original's frame;
+* the **ground point** (the pixel that stands on the ground) where the original's is.
+
+The game reads the frame size, the number of views and frames and the ground point from the file the sheet replaces (the
+original, or the free base set's), so in the common case a sheet needs nothing else. `sgtool hd-kit` lists them all.
+A `<name>.json` next to the sheet changes the layout, in the original's pixels:
+
+```json
+{ "frame": [26, 35], "views": 4, "frames": 2, "anchor": [2, 33], "frame_ms": 300 }
+```
+
+All keys are optional (`frames` is frames per view; a two-frame flag instead of the original's sixteen is fine).
+
+* **Shadows** stay separate sheets with the same layout: `TreeMapleLargeShadow.png` for `TreeMapleLargeShadow.flc`, drawn
+  in black with the alpha as the shadow's strength (about 40 to 50%).
+* **Colour variants** (trees and flowers drawn with a `*Pal*.pcx`, golfers' and celebrities' clothes): draw the sprite in
+  the colours of the original (the kit's reference shows them). For each pixel the game finds the nearest colour of the
+  original sprite's palette and moves the pixel by that colour's change in the variant, so one sheet gives every variant.
+  * `<name>.mask.png` (same size as the sheet) limits this to the pixels it covers. For people its colours say what a
+    pixel is: red shirt, green trousers, blue skin, yellow hat, magenta (women's) hair, cyan hands and arms; anything
+    else (or transparent) keeps its colour.
+  * `<name>~<palette>.png` is a variant drawn by hand, used as it is: `TreeMapleLarge~PalRedMaple.png` for the red maple.
+
+### Tools
+
+* `sgtool hd-kit <SimGolf folder> <out> [--scale 4] [--only Flics/Trees]` writes a starter kit: for every original
+  picture and sprite a reference PNG at the chosen scale (nearest neighbour, clearly a reference, marked so pack-check
+  refuses it), a separate guide layer for each sheet (`<name>.guide.png`: the frame grid in blue, each ground point as a
+  red cross), a `template/` pack (pack.toml with the scale, a README with these rules, a LICENSE placeholder for your
+  licence, and an empty folder tree like the originals'), and `CHECKLIST.csv` with every file's path, pixel size, frame
+  size, frames, views and ground point. **The reference pictures are EA's art for your personal reference only: never
+  upload them or put them (or anything traced over them) in a pack.** `--only` may be repeated or take a comma-separated
+  list.
+* `sgtool pack-check <pack folder> [--game <SimGolf folder>]` checks a pack: pack.toml, the licence, PNG format, every
+  picture's and sheet's size against the original (from the free set's layout manifest, or the game folder when given),
+  sheet grids and `.json` files, masks and variants, unknown names, kit references and guide layers left in.
+
+### Testing and publishing
+
+1. Put the pack folder in `<save folder>/packs/` (the save folder is in docs/HD.md), start the game and switch the pack on
+   in System Functions > Preferences > Game files > Content packs, then start the game again. The terminal says
+   `content pack ...` for a sheet or picture it could not use.
+2. Run `sgtool pack-check` until it says the pack looks good.
+3. Choose a free licence (CC-BY-4.0, CC-BY-SA-4.0 or CC0-1.0 for art), put its text in `LICENSE` and its SPDX id in
+   pack.toml, zip the folder and open a pull request to <https://github.com/crspytopgn/opensgolf-content> adding it to
+   the index (docs/CONTENT_INDEX.md). Players then find it in Preferences > Game files > Content packs > *Find more*.
+
+How it works: `sg_core::vfs` keeps a high-resolution pack's PNGs apart from the files the classic loaders read
+(`vfs::art`); the loaders (`ui::load_pcx`, `load_pcx_alpha`, `split_overlay`, the terrain textures and the sprite loader,
+crates/simgolf/src/packart.rs) ask for them first and make the texture at the pack's resolution while reporting the
+original's size, as the HD mode does. Every other read gets the picture scaled down (cached). Sheets are cut, scaled and
+recoloured by `sg_core::hires`; a sprite drawn from a high-resolution sheet is left alone by the Enhanced effects that
+redraw the classic frames (seasons, lit windows, soft shadows), as in HD.

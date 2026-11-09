@@ -360,7 +360,7 @@ impl App {
         }
         // the Left-handed golfers extra: the pro's own tick under his skills
         if self.left_tick_shown(&c) && left_tick_rect().has(vx, vy) {
-            self.club.pro_left = !self.club.pro_left;
+            self.act(sg_core::action::Action::ProLeft(!self.club.pro_left));
             self.ui_sound(0x0b);
             self.cust = Some(c);
             return;
@@ -640,13 +640,10 @@ impl App {
     /// Exit: the class toggles go into the record and the golfer; a pro's look goes back to the pro table (0x43a2b0); the
     /// card's golfer takes the record's age and marital byte (0x41ea62).
     fn cust_ok(&mut self, c: &Customise) {
-        let Some(p) = self.club.roster.get_mut(c.record) else { return };
-        p.fixed = (p.fixed & !7) | c.toggles as i32;
-        let b21 = p.b21;
-        if let Some(g) = c.slot.filter(|&g| g < sg_core::golfer::SLOTS) {
-            let gg = &mut self.club.g[g];
-            gg.class = (gg.class & 0xf8) | c.toggles;
-            gg.looks = b21 as i8 as i16 as u16;
+        let Some(p) = self.club.roster.get(c.record) else { return };
+        // the record as edited, and the card's golfer: an action (replay.rs)
+        if let Ok(person) = serde_json::to_value(p) {
+            self.act(sg_core::action::Action::Person { record: c.record, person, slot: c.slot, toggles: c.toggles });
         }
         self.cust_music(false);
         self.cust = None;
@@ -770,11 +767,11 @@ impl App {
                 let (w, h, ax, ay) = {
                     let sp = &self.sprites[si].s;
                     let n = sp.frames_per_view.max(1);
-                    let fr = &sp.frames[sp.frame_index(view, 5 % n)];
-                    (fr.w as f32, fr.h as f32, sp.anchor_x as f32, sp.anchor_y as f32)
+                    let (fw, fh) = sp.frame_size(sp.frame_index(view, 5 % n));
+                    (fw as f32, fh as f32, sp.anchor_x as f32, sp.anchor_y as f32)
                 };
                 let n = self.sprites[si].s.frames_per_view.max(1);
-                if let Some(tex) = self.outfit_texture(g, si, view, 5 % n, o) {
+                if let Some(tex) = self.outfit_texture_whole(g, si, view, 5 % n, o) {
                     s.image(g, &Image { tex: Some(tex), w, h }, x - ax, 239.0 - ay);
                 }
             }

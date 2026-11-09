@@ -3,6 +3,12 @@
 `hd_pack.py` upscales the game's art (×4 by default, or ×2) into a folder the port loads when **HD graphics** are turned on.
 For what HD mode is and its limits, see [docs/HD.md](../../docs/HD.md).
 
+**Built-in alternative.** The game makes the same pack itself, with nothing to install: System Functions → Preferences →
+Graphics → *Make HD graphics from my SimGolf files...* (or `opensgolf --game <folder> --make-hd`). It uses the built-in xBRZ
+pixel-art upscaler, or realesrgan-ncnn-vulkan when that is on PATH or next to the game, and writes the same files and
+manifest as this script, in the background while you play. This script stays for scripting, other Real-ESRGAN models and
+options, and Lanczos test packs.
+
 > **Legal note.** The art belongs to Electronic Arts. The pack is a derivative of it, so make it yourself, from your own
 > copy, on your own machine, and **never share, upload or commit it**. This repository ships only this tool and the game's
 > loader. No art, upscaled or otherwise, is ever bundled or downloadable from this project.

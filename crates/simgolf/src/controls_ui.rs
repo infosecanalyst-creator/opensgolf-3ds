@@ -288,6 +288,10 @@ impl App {
 
     /// The interface hidden during play: a small note in the bottom left corner says how to bring it back.
     pub fn draw_hud_hint(&self, g: &mut Gfx) {
+        // the showcase fly-over hides the interface without a note (showcase.rs)
+        if self.showcase.is_some() {
+            return;
+        }
         let s = Ui::new(self.draw_w, self.draw_h);
         let t = trf("STR_CTL_HUD_HINT", &[("KEY", &controls::hide_key_label())]);
         let w = F_ARIAL10.width(&t) + 12.0;
@@ -296,9 +300,10 @@ impl App {
         g.flush();
     }
 
-    /// True while the interface is hidden on the course screen (play, not photo mode).
+    /// True while the interface is hidden on the course screen (play, not photo mode), by the player or for the showcase
+    /// fly-over (showcase.rs).
     pub fn hud_hidden(&self) -> bool {
-        self.ctl.hud_hidden && self.screen == Screen::Play && self.photo.is_none()
+        (self.ctl.hud_hidden || self.showcase.is_some()) && self.screen == Screen::Play && self.photo.is_none()
     }
 }
 

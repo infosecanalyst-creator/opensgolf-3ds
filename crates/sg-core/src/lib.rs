@@ -7,6 +7,8 @@
 // The port keeps the original code's own constants (3.14159, 6.28) so its results stay identical; index loops mirror its tables.
 #![allow(clippy::approx_constant, clippy::needless_range_loop, clippy::should_implement_trait)]
 
+pub mod action;
+pub mod aiscale;
 pub mod analysis;
 pub mod assets;
 pub mod bink;
@@ -20,6 +22,7 @@ pub mod data;
 pub mod decor;
 pub mod economy;
 pub mod extras;
+pub mod fingerprint;
 pub mod fixes;
 pub mod flc;
 pub mod flight;
@@ -28,7 +31,10 @@ pub mod freeset;
 pub mod fsutil;
 pub mod geom;
 pub mod golfer;
+pub mod gsm;
+pub mod hdgen;
 pub mod heightmap;
+pub mod hires;
 pub mod holetool;
 pub mod homes;
 pub mod index;
@@ -53,11 +59,13 @@ pub mod rng;
 pub mod roster;
 pub mod scenario;
 pub mod script;
+pub mod second;
 pub mod sounds;
 pub mod sprites;
 pub mod preload;
 pub mod staff;
 pub mod stories;
+pub mod sve;
 pub mod terrain;
 pub mod thoughts;
 pub mod top10;
@@ -70,6 +78,7 @@ pub mod visitors;
 pub mod wav;
 pub mod weather;
 pub mod wildlife;
+pub mod xbrz;
 pub mod zip;
 
 pub use assets::{Indexed, Rgba};

@@ -16,7 +16,7 @@
 //!   go, one per footprint. While the button is held the row's footprints are outlined (white where one fits, red where
 //!   not) with the count and total cost by the pointer; on release each goes through App::edit_building, the one-click
 //!   placement, so its rules and price are the click's, and the row is one undo step. Esc or a right click cancels it.
-//!   Unique buildings (the clubhouse's kind: putting green to airstrip, upgraded by placing again), landmarks (each
+//!   Buildings (the clubhouse's kind: putting green to airstrip, upgraded by placing again but for the snack bar), landmarks (each
 //!   chosen and priced on its own), home sites (sold one by one, with their own sums) and paths (which the original
 //!   already paints along a drag) are left as they are. With the extra off a drag does what the original's does.
 //!
@@ -261,7 +261,7 @@ impl App {
             if hr.par == 0 && h != next {
                 return None;
             }
-            [hr.back, hr.fwd].into_iter().find(|t| t.0 != 0 && region.contains(t)).map(|t| (h, t))
+            [hr.back, hr.fwd].into_iter().chain(hr.extra_tees().map(|(_, p)| p)).find(|t| t.0 != 0 && region.contains(t)).map(|t| (h, t))
         })
     }
 
@@ -310,12 +310,16 @@ impl App {
                 }
             }
         }
-        if old as i32 == pe.ty && pe.vbyte == self.terrain.variation[ti] as i32 {
+        let want = if pe.ty == 1 { self.green_brush_byte() } else { pe.vbyte };
+        if old as i32 == pe.ty && want == self.terrain.variation[ti] as i32 {
             return None;
         }
         let cup = self.course.flags.get(sg_core::course::idx(x, y)).is_some_and(|&f| f & sg_core::course::f::CUP != 0);
         if self.club.game & golf::game::TOURNAMENT != 0 && (old == 0 || cup) {
             return None;
+        }
+        if old as i32 == pe.ty && pe.ty == 1 {
+            return Some(0); // a green turned plain or tricky costs nothing (0x420561)
         }
         Some(Economy::terrain_clear_units(old as i32) + Economy::terrain_cost_units(pe.ty))
     }
@@ -360,6 +364,21 @@ impl App {
 
     /// Paints an area with the armed brush as one stroke; a fill or rectangle over the limit only says so.
     pub fn paint_area(&mut self, area: &Area) {
+        // the interface's call is an action (replay.rs): logged, then applied by App::apply
+        if self.rec.depth_zero() {
+            let p = &crate::app::PAINT[self.paint_idx];
+            let a = sg_core::action::Action::PaintArea {
+                ty: p.ty,
+                vbyte: p.vbyte,
+                turn: self.brush_turn(),
+                look: self.brush_look(),
+                tiles: area.tiles.clone(),
+                too_large: area.too_large,
+                tee: self.tee_tool_step(),
+            };
+            self.act(a);
+            return;
+        }
         if area.too_large {
             self.ui_sound(24);
             self.show_toast(&trf("STR_TOAST_AREA_TOO_LARGE", &[("MAX", &MAX_AREA)]));
@@ -504,6 +523,20 @@ impl App {
 
     /// Places a row of the armed kind from tile `from` to tile `to`, one click's placement per item.
     pub fn place_row(&mut self, from: (i32, i32), to: (i32, i32)) {
+        // the interface's call is an action (replay.rs): logged, then applied by App::apply
+        if self.rec.depth_zero() {
+            let a = sg_core::action::Action::Row {
+                from,
+                to,
+                kind: self.build_idx as i32,
+                design: self.design,
+                turn: self.turn,
+                remove: false,
+                style: self.path_kind,
+            };
+            self.act(a);
+            return;
+        }
         for (x, y) in self.row_area(from, to) {
             self.edit_building(x, y, false);
         }

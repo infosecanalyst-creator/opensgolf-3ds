@@ -11,9 +11,18 @@
 //! * `-z max-page-size=16384` lays the library's segments out on 16 KB boundaries. Android 15 and newer phones may run
 //!   with 16 KB memory pages, and their loader refuses a library aligned for 4 KB pages (NDK r25's lld lays out x86_64
 //!   for 4 KB); 16 KB alignment also loads on 4 KB phones.
+//!
+//! On every system: a store's or package manager's build (`OPENSGOLF_NO_SELF_UPDATE=1`, update.rs STORE_BUILD) gets the
+//! `opensgolf_store` cfg, which leaves the play-time count (playcount.rs) out of the build entirely.
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
+    // the same rule as update::STORE_BUILD: set and neither empty nor "0"
+    println!("cargo:rerun-if-env-changed=OPENSGOLF_NO_SELF_UPDATE");
+    println!("cargo:rustc-check-cfg=cfg(opensgolf_store)");
+    if std::env::var("OPENSGOLF_NO_SELF_UPDATE").is_ok_and(|v| !v.is_empty() && v != "0") {
+        println!("cargo:rustc-cfg=opensgolf_store");
+    }
     let os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     if os != "android" {
         return;

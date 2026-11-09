@@ -62,7 +62,8 @@ pub mod f {
 }
 
 /// The terrain table's names (+0x00, the singular form) as the exe's static table at 0x4c1a40 has them. The exe patches some
-/// names per theme when it copies the table at run time (which ones, and to what, is not decoded: these are the defaults).
+/// names per theme when it copies the table at run time (crate::tracts::theme_names; crate::land::terrain_name gives the
+/// loaded theme's name): these are the defaults.
 pub const TYPE_NAME_KEYS: [&str; 23] = [
     "STR_TERRAIN_TEES",
     "STR_TERRAIN_GREEN",
@@ -313,7 +314,8 @@ impl Course {
             }
         }
         if self.level[7] != 0 {
-            // The exe's quirk: an existing snack bar zeroes its operational level entry.
+            // The exe's quirk (0x40fce9): a standing snack bar zeroes its level and operational level entries.
+            self.level[7] = 0;
             self.oper[7] = 0;
         }
         self.refresh();

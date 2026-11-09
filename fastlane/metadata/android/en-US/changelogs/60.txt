@@ -1,0 +1,1 @@
+Longer translations now also fit the building info box, home-site details, golfer card, pro skills, world map cards, shot panel, Comments by Hole and the Course Report legend, instead of running out of them.

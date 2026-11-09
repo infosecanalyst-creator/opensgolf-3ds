@@ -78,7 +78,12 @@ second "Overgrowth" (probably a copy-paste slip in the original).
   default), 1 Tropical, 2 Desert, 3 Links (inferred from jump table order).
 * For each type the loader tries sets `A`..`E`: file `<TypeName><Set>0001.bmp`; if it exists it
   also loads `0002`..`0009`. Stops at the first missing set. Stored in a global table
-  `tex[37 types][25 sets][9 variations]`. Type 0 (Tee) uses a slightly different loop.
+  `tex[37 types][25 sets][9 variations]`. Type 0 (Tee) uses a slightly different loop: TeeA0001..TeeA0025 become sets
+  0..24 of one picture each (the round mark, then 24 arrows, three per heading); golf.exe picks the set per frame (PARITY.md,
+  "Tee arrows").
+* Texture coordinates come from a table by the view phase (0x10063ca0, indexed at 0x1000e833 with the phase 0x10070a14 also
+  used for sand): each phase turns the picture a quarter, so the ground's pictures turn with the view. The port does this for
+  tee tiles only (`view_uv`).
 * Textures are 64x64 24-bit BMPs, built with `gluBuild2DMipmaps`, linear filtering, repeat wrap.
 * Overlays loaded per theme: `Path.tga`, `PathCap.tga`, `PathInside.tga`, `PathCurve.tga`, the same
   four with an `X` suffix, `CliffTest.bmp`, `RetainWallA.bmp`, `strata.bmp` (texture ids 35, 34 and 36 in that order of the
@@ -113,6 +118,14 @@ second "Overgrowth" (probably a copy-paste slip in the original).
   their vertex sums are normalised), global ambient default 0.2. The glTexEnvi call passes the texture target (0xde1) where
   GL_TEXTURE_ENV belongs, so it fails and textures stay in GL_MODULATE. `changeLighting` (+-0.1 on the ambient, diffuse
   0.9, specular 1 1 0.9) is not imported by the exe. Port: `sg_core::terrain::Lighting::shade`, the shader in gfx.rs.
+* Vertex normals (Tile::calcNormals 0x10012cf0, run while the tile's dirty byte at Tile+0x244 is set): the centre gets the
+  normalised sum of the tile's 8 face normals (record + 0x2c, each the normalised cross product of the triangle's edges,
+  0x10011d60); then once per corner (0x10011ef0 with N/S and W/E) the corner and its edge midpoints get the sums of the unit
+  face normals of every triangle meeting them, in this tile and in the neighbours on that side and the diagonal one where
+  they exist (each neighbour's from its own vertices): 8 triangles at a corner, 4 at an edge midpoint. So the vertices
+  two tiles share end up with the same normal and the ground is shaded smoothly across tile edges (issue #112: the port
+  summed only the tile's own triangles, so hills showed hard-edged dark tiles in Classic). Port:
+  `sg_core::terrain::vertex_normals`; Enhanced graphics keeps the per-tile sums (`Terrain::own_tile_normals`).
 
 ## Edge blending (per-triangle texture variation)
 
@@ -150,7 +163,7 @@ The table and mapping are in `blendVariation()`.
 | 7 | N | W | NW | 1 |
 
 Texture type for a tile type (`Tile::m116d`): type 1 with bit 0x80 of the variation byte becomes
-TrickyGreen (26); types 6 and 21 use Rough (4); type 7 uses SandBunker1..4 by `byte & 3`; types 13..16
+TrickyGreen (26) (golf.exe's green brush stores 0xff there for the tricky green, 0x420561); types 6 and 21 use Rough (4); type 7 uses SandBunker1..4 by `byte & 3`; types 13..16
 use Woods (13); type 17 (water) uses WaterMiddle (23) or WaterDeep (24) when the byte is 1 or 2, so
 water depth lives in that byte; type 22 uses Rough when the byte is 0x40..0x47. Rough, Fairway and type 7
 clamp variations above 4 to 0 (they have only 5 files).
@@ -175,8 +188,13 @@ special cases, sand dishing, type names and texture file selection, per-theme li
 case-insensitive lookup.
 
 Approximates (marked `APPROXIMATION` in code): elevation scale; the light direction and strength; the
-type class grouping; the water-in-desert-theme variant (`m1096` swaps triangles next to land to
-WaterShallowDesert when a global theme flag is 1, not ported yet).
+type class grouping.
+
+The Desert's water (`desert_grass_edges`, EXACT): `m1096` sets a flag per edge neighbour when the theme (0x10070a0c) is 1,
+the Desert (the lighting file it picks, 0x1000399d), the tile is type 17 and the neighbour is a tee, green, fairway, firm
+fairway or sand (types 0, 1, 2, 3, 7, 8, 9: `m1311`, 0x100155b0); both triangles on a flagged edge go to `m116d` as type 25,
+WaterShallowDesert, the pictures with a grass shore. All other desert water keeps the Desert's WaterShallow, whose shore is
+sand. `m116d` switches on the tile's own type, so a deep or middle tile's triangles still take WaterDeep or WaterMiddle.
 
 The type 7 phase: golf.exe hands the view to Terrain.dll as an angle (0x4498a0: view 0x5685f4 = 0, 2, 4, 6 gives 0, 90, 180
 and -90 degrees, through the import at 0x4a4f82), and the DLL's setter (0x1000adc0) stores the phase as 0 for 0 degrees, 1

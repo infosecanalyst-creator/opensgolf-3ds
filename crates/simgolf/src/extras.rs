@@ -1,7 +1,9 @@
 //! OpenSGolf extras (docs/PLAYING.md, "OpenSGolf extras"): the port's own additions to the interface, none of them in the
 //! original. Each is purely additive (it adds a screen, a tag or a strip; nothing of the original's is taken away or
-//! changed); a new player starts with them off (the original game) and Select Difficulty turns them all on in one click; Preferences > *OpenSGolf extras...* has a tick for each, kept in settings.json under
-//! "ui_extras", and `--no-extras` turns them all off for one run (not saved).
+//! changed); a new player starts with them off (the original game) and the presets (Select Difficulty's Game box, the top
+//! line of the Extras box: extras_ui.rs `Preset`) turn them on in one click; Preferences > *OpenSGolf extras...* has a
+//! tick for each (the Info page groups some into one line), kept in settings.json under "ui_extras", and `--no-extras`
+//! turns them all off for one run (not saved). The update check is a plain Preferences line, not in the Extras box.
 //!
 //! * the People screen (people_ui.rs): every golfer on the course and every employee, sortable, with Locate, Follow, the
 //!   golfer card, the golfer's profile page, and for the staff Hire, Fire, Move and Rename, and the player's pro's screens;
@@ -10,25 +12,27 @@
 //! * tabbed reports (report_tabs.rs): a strip of tabs over the F1 to F10 reports to flip between them;
 //! * path help (pathview_ui.rs): a path view marking buildings and holes the paths do not reach, and a Show button on
 //!   messages about a place;
-//! * autosave (autosave.rs): the game saved every five minutes of play, as "autosave (Latest)" in the Load list;
+//! * autosave (autosave.rs): the game saved every five minutes of play and as its window goes to the background, as
+//!   "autosave (Latest)" in the Load list;
 //! * save pictures (files_ui.rs): a map of the course beside the Load list's saves;
 //! * course sharing (share.rs): course codes and shared files for Play a Championship, with the sharer's record to beat;
-//! * pause in the background and pause on big events (comfort.rs): the game stops while its window is in the background,
-//!   or when a VIP arrives, a famous golfer challenges, the SGA offers a tournament, the board warns or cash goes below
-//!   zero. These two are left out of the one-click OpenSGolf extras (`ALL_ON`): some players leave the game running in
-//!   the background on purpose.
+//! * pause in the background and pause on big events (comfort.rs): the game and its sound stop while its window is in the
+//!   background, or the game stops when a VIP arrives, a famous golfer challenges, the SGA offers a tournament, the board warns or cash goes below
+//!   zero. The presets leave these two as the player has them (`Settings::with_kept`): some players leave the game
+//!   running in the background on purpose.
 //! * the landing map (insight.rs): where golfers' tee shots and approaches on a hole come to rest, as dots on the course;
 //! * comments by hole (insight.rs): each hole's most frequent thoughts this month and last month, on a page of their own.
 //! * check for updates when the game starts (update.rs): the title menu's Check for updates, once at start, saying
-//!   something only when a newer version is out. Left out of the one-click OpenSGolf extras like the pauses: it goes
+//!   something only when a newer version is out. A plain Preferences line, which the presets leave alone: it goes
 //!   online, which a player chooses for themselves.
 //!
 //! * history graphs (graphs.rs): the club's and each hole's months as line graphs on a page of their own (Shift+Y).
-//! * zoom towards the pointer (enhanced.rs zoom_anchor): the wheel keeps the ground under the pointer where it is. Left out
-//!   of the one-click OpenSGolf extras: it changes how the original's zoom feels.
+//! * zoom towards the pointer (enhanced.rs zoom_anchor): the wheel keeps the ground under the pointer where it is. Set by
+//!   the Change keys' controls presets (controls.rs `Preset`), and left alone by the extras presets: it changes how the
+//!   original's zoom feels.
 //! * drag to place (build_tools.rs row_*): a drag with a garden item or a ball washer lays a row of them from the press to
-//!   the release. Left out of the one-click OpenSGolf extras like zooming towards the pointer: it changes what the
-//!   original's drag does.
+//!   the release. Set by the Change keys' controls presets, and left alone by the extras presets, like zooming towards
+//!   the pointer: it changes what the original's drag does.
 //!
 //! * live scorecards (scorecard_ui.rs): the golfer card's golfer and partner on the Player panel's round scorecard, with
 //!   pars and the score against par so far;
@@ -38,6 +42,42 @@
 //!   before;
 //! * home-site details (homes_ui.rs): what a home site under the pointer cost, brought in and is worth, and the hole that
 //!   lifts its value.
+//!
+//! * right-drag panning (main.rs right_down): a drag with the right button moves the course, as OpenSGolf did up to 0.4.7;
+//!   a right click that does not move is still the original's (undo, putting a tool away). Set by the controls presets
+//!   like zooming towards the pointer: it changes what the original's right button does.
+//! * random trees (app.rs painted_tile, place_tile_item): each tree the woods, pine and palm brushes plant takes a random
+//!   one of its type's looks (size, and for pines the species), and each scenic tree placed a random one of the seven,
+//!   instead of the tool's one look until Tab steps it. A look (the Extras box's Looks page): only which of the original's
+//!   pictures each tree gets changes. The facing is not chosen: the original turns every tree by its tile's place, and nothing
+//!   per tile holds a facing.
+//! * import and export saved games (files_ui.rs file_buttons): Load Previous Game's *Import a save file...* and *Export
+//!   this save...*, for moving games between devices (issue #49). Up to 0.4.9 they came with Course sharing, so ticks
+//!   saved before it follow that tick.
+//!
+//! * retired: the desert's Ravine and Brush art (0.5.6 to 0.5.13, issue #89), a look that traded the two tiles' pictures
+//!   in the desert theme. The pictures were the original's all along: the desert's tile 10 is its Brush (the dry weeds)
+//!   and tile 11 its Ravine (the crack), the names the exe's theme loader gives them, which the port had the other way
+//!   round (issue #117, panels_ui.rs `tile_key`). Its bit (23) and `settings.json` key stay so that older ticks load; the
+//!   key is read and ignored, and no page shows it.
+//!
+//! * mouse aim and swing (touch.rs): with the mouse, the pro's shot is aimed and taken as by touch: a click sets the
+//!   target, a drag from it moves it, a drag elsewhere looks round, and the round Swing button shoots. Off, a click on the
+//!   course aims and shoots at once as in the original. Left alone by the presets, as the controls presets' ticks are: it
+//!   changes what the original's click does.
+//!
+//! * right click puts the tool away (main.rs right_click): with a tool in hand (a terrain brush, the elevation tools,
+//!   a building), a right click on the course puts it down, as Space does, instead of the original's: a terrain brush's
+//!   right click is the undo's, which twice on a hole's tee or green takes the hole away. Left alone by the presets.
+//!
+//! * the interface at the screen's edges (enhanced.rs widescreen): on a wide screen with Classic graphics, the HUD goes
+//!   to the window's edges as Enhanced graphics' Widescreen tick puts it, instead of staying in the 800 x 600 middle. A
+//!   look: the art and the game are the same. On by default and left alone by the presets (the original only ran at
+//!   4:3, where it changes nothing).
+//!
+//! * home names on hover (homes_ui.rs draw_home_labels): the celebrities' names over their home sites show only while the
+//!   pointer is on the lot, instead of the original's taking turns over every lot at the closest zoom (issue #160). A look,
+//!   on the Looks page; left alone by the presets, as it takes the original's labels away.
 //!
 //! With every extra off the game draws and plays exactly as before they existed (each hook asks its switch first).
 use serde::{Deserialize, Serialize};
@@ -61,6 +101,9 @@ pub struct Settings {
     pub pause_events: bool,
     pub landing_map: bool,
     pub hole_comments: bool,
+    /// Check for updates when the game starts: on from 0.6 (stored as "check_updates", which reads as on when missing, so
+    /// every player gets it once; the old "update_check" key, off by default before, is no longer read).
+    #[serde(rename = "check_updates", default = "on")]
     pub update_check: bool,
     pub graphs: bool,
     pub zoom_pointer: bool,
@@ -69,12 +112,38 @@ pub struct Settings {
     pub ticker_jump: bool,
     pub year_summary: bool,
     pub home_details: bool,
+    pub right_drag: bool,
+    pub random_trees: bool,
+    pub save_files: bool,
+    pub desert_art: bool,
+    pub mouse_swing: bool,
+    /// A right click puts the tool in hand away (OpenSGolf extras; the original's right click with a terrain brush is the
+    /// undo's, main.rs right_click).
+    #[serde(default)]
+    pub right_drop: bool,
+    /// The HUD at the window's edges on a wide screen with Classic graphics too (enhanced.rs widescreen; Enhanced graphics
+    /// has its own Widescreen tick). On by default (missing reads as on, as the update check): the original only ran at
+    /// 4:3, where nothing moves, so there is no original wide-screen layout to keep.
+    #[serde(default = "on")]
+    pub wide_ui: bool,
+    /// The pointer at the screen's very edge scrolls the view, as in the original (main.rs edge_scroll; full screen only,
+    /// where the pointer cannot leave the window). On by default (missing reads as on): it is the original's.
+    #[serde(default = "on")]
+    pub edge_scroll: bool,
+    /// The celebrities' home names only under the pointer (homes_ui.rs draw_home_labels; the port's own, issue #160).
+    #[serde(default)]
+    pub home_labels_hover: bool,
+    /// Hole Stats' Fly over button: a short camera flight down the hole (showcase.rs). Off by default.
+    pub hole_flyover: bool,
 }
 
 impl Settings {
-    /// The OpenSGolf extras of Select Difficulty's one click: every extra but the two pauses (they change when the game
-    /// runs, which a player may not want; each is ticked on its own in Preferences).
-    pub const ALL_ON: Settings = Settings {
+    /// The interface extras of the "Original + helpers" and "OpenSGolf" presets (extras_ui.rs `Preset`): every helper and
+    /// look, without the ticks the presets leave as the player has them (`Settings::kept`: the two pauses, which change when
+    /// the game runs, the update check, which goes online, the three the Change keys' controls presets set: zoom towards
+    /// the pointer, drag to place, right-drag panning, mouse aim and swing, right click puts the tool away, and the interface at
+    /// the screen's edges, on by default). Those are false here.
+    pub const HELPERS: Settings = Settings {
         people: true,
         history: true,
         name_tags: true,
@@ -95,6 +164,16 @@ impl Settings {
         ticker_jump: true,
         year_summary: true,
         home_details: true,
+        right_drag: false,
+        random_trees: true,
+        save_files: true,
+        desert_art: false,
+        mouse_swing: false,
+        right_drop: false,
+        wide_ui: false,
+        edge_scroll: false,
+        home_labels_hover: false,
+        hole_flyover: true,
     };
     pub const ALL_OFF: Settings = Settings {
         people: false,
@@ -117,6 +196,16 @@ impl Settings {
         ticker_jump: false,
         year_summary: false,
         home_details: false,
+        right_drag: false,
+        random_trees: false,
+        save_files: false,
+        desert_art: false,
+        mouse_swing: false,
+        right_drop: false,
+        wide_ui: false,
+        edge_scroll: false,
+        home_labels_hover: false,
+        hole_flyover: false,
     };
 
     /// The ticks as the Extras box's checkbox bits (in `UI_KEYS` order).
@@ -142,6 +231,16 @@ impl Settings {
             self.ticker_jump,
             self.year_summary,
             self.home_details,
+            self.right_drag,
+            self.random_trees,
+            self.save_files,
+            self.desert_art,
+            self.mouse_swing,
+            self.right_drop,
+            self.wide_ui,
+            self.edge_scroll,
+            self.home_labels_hover,
+            self.hole_flyover,
         ]
         .iter()
         .enumerate()
@@ -171,26 +270,55 @@ impl Settings {
             ticker_jump: on(17),
             year_summary: on(18),
             home_details: on(19),
+            right_drag: on(20),
+            random_trees: on(21),
+            save_files: on(22),
+            desert_art: on(23),
+            mouse_swing: on(24),
+            right_drop: on(25),
+            wide_ui: on(26),
+            edge_scroll: on(27),
+            home_labels_hover: on(28),
+            hole_flyover: on(29),
         }
     }
 
-    /// The ticks that make the game style (extras_ui.rs GameStyle): all but the two pauses, which leave the game as it is,
-    /// the update check, which has nothing to do with the game, and zooming towards the pointer and drag to place, matters
-    /// of the mouse.
-    pub fn style(&self) -> Settings {
-        Settings { pause_background: false, pause_events: false, update_check: false, zoom_pointer: false, drag_place: false, ..*self }
+    /// The ticks a preset sets (extras_ui.rs `Preset`): all but the kept ones (`with_kept`), which are false here.
+    pub fn preset_part(&self) -> Settings {
+        self.with_kept(&Settings::ALL_OFF)
+    }
+
+    /// These ticks with the ones a preset leaves alone taken from `from`: the two pauses, the update check (a plain
+    /// Preferences line, not in the Extras box) and the controls presets' ticks (zoom towards the pointer, drag to place,
+    /// right-drag panning), and mouse aim and swing, which changes what the original's click does, like them.
+    pub fn with_kept(&self, from: &Settings) -> Settings {
+        Settings {
+            pause_background: from.pause_background,
+            pause_events: from.pause_events,
+            update_check: from.update_check,
+            zoom_pointer: from.zoom_pointer,
+            drag_place: from.drag_place,
+            right_drag: from.right_drag,
+            mouse_swing: from.mouse_swing,
+            right_drop: from.right_drop,
+            wide_ui: from.wide_ui,
+            edge_scroll: from.edge_scroll,
+            home_labels_hover: from.home_labels_hover,
+            ..*self
+        }
     }
 }
 
+/// Every tick off, as a new player starts and as ticks missing from settings.json read (`saved`).
 impl Default for Settings {
     fn default() -> Self {
-        Settings::ALL_ON
+        Settings::ALL_OFF
     }
 }
 
 /// The interface extras' lines on the Extras box's Interface page (extras_ui.rs), one tick per extra in `Settings::bits`
 /// order (text keys in lang/en.txt).
-pub const UI_KEYS: [&str; 20] = [
+pub const UI_KEYS: [&str; 30] = [
     "STR_EXTRAS_PEOPLE",
     "STR_EXTRAS_HISTORY",
     "STR_EXTRAS_NAME_TAGS",
@@ -211,10 +339,25 @@ pub const UI_KEYS: [&str; 20] = [
     "STR_EXTRAS_TICKER_JUMP",
     "STR_EXTRAS_YEAR_SUMMARY",
     "STR_EXTRAS_HOME_DETAILS",
+    "STR_EXTRAS_RIGHT_DRAG",
+    "STR_EXTRAS_RANDOM_TREES",
+    "STR_EXTRAS_SAVE_FILES",
+    "STR_EXTRAS_DESERT_ART",
+    "STR_EXTRAS_MOUSE_SWING",
+    "STR_EXTRAS_RIGHT_DROP",
+    "STR_EXTRAS_WIDE_UI",
+    "STR_EXTRAS_EDGE_SCROLL",
+    "STR_EXTRAS_HOME_LABELS_HOVER",
+    "STR_EXTRAS_HOLE_FLYOVER",
 ];
 
+/// The update check's value when settings.json has none (`Settings::update_check`).
+fn on() -> bool {
+    true
+}
+
 thread_local! {
-    static SETTINGS: Cell<Settings> = const { Cell::new(Settings::ALL_ON) };
+    static SETTINGS: Cell<Settings> = const { Cell::new(Settings::ALL_OFF) };
 }
 
 pub fn settings() -> Settings {
@@ -285,6 +428,41 @@ pub fn year_summary() -> bool {
 pub fn home_details() -> bool {
     settings().home_details
 }
+pub fn right_drag() -> bool {
+    settings().right_drag
+}
+/// Mouse aim and swing: the mouse aims the pro's shot as a finger does (touch.rs).
+pub fn mouse_swing() -> bool {
+    settings().mouse_swing
+}
+
+/// Whether the HUD goes to the window's edges with Classic graphics too (enhanced.rs widescreen).
+pub fn wide_ui() -> bool {
+    settings().wide_ui
+}
+
+pub fn edge_scroll() -> bool {
+    settings().edge_scroll
+}
+
+/// Whether the celebrities' home names show only under the pointer (homes_ui.rs draw_home_labels).
+pub fn home_labels_hover() -> bool {
+    settings().home_labels_hover
+}
+
+/// Whether a right click puts the tool in hand away (main.rs right_click).
+pub fn right_drop() -> bool {
+    settings().right_drop
+}
+pub fn hole_flyover() -> bool {
+    settings().hole_flyover
+}
+pub fn random_trees() -> bool {
+    settings().random_trees
+}
+pub fn save_files() -> bool {
+    settings().save_files
+}
 
 fn settings_json() -> serde_json::Value {
     sg_core::fsutil::read_file(crate::app::save_dir().join(crate::hd::SETTINGS_FILE))
@@ -293,34 +471,40 @@ fn settings_json() -> serde_json::Value {
         .unwrap_or_else(|| serde_json::json!({}))
 }
 
-/// The ticks saved in settings.json: all on for a player whose settings predate them, all off on a first start (a new
-/// player starts with the original game; Select Difficulty switches to the extras in one click).
+/// The ticks saved in settings.json: all off on a first start (a new player starts with the original game; the presets
+/// switch to the extras in one click) and when settings.json has no ticks at all (settings written before the extras
+/// existed, or only by other screens: 0.4.9 read those as most extras on).
 pub fn saved() -> Settings {
     if sg_core::fsutil::read_file(crate::app::save_dir().join(crate::hd::SETTINGS_FILE)).is_none() {
         return Settings::ALL_OFF;
     }
-    let v = settings_json()[SETTINGS_KEY].clone();
+    from_json(&settings_json()[SETTINGS_KEY])
+}
+
+/// The ticks in settings.json's "ui_extras" value: a tick missing there reads as off (`Settings::default`), except that
+/// autosave, save pictures and sharing, which came after the People screen, follow its tick in ticks saved before them.
+fn from_json(v: &serde_json::Value) -> Settings {
+    if !v.is_object() {
+        return Settings { update_check: true, wide_ui: true, edge_scroll: true, ..Settings::ALL_OFF };
+    }
     let mut s: Settings = serde_json::from_value(v.clone()).unwrap_or_default();
-    // ticks saved before autosave, save pictures and sharing existed: those follow the People screen's tick (all on or
-    // all off)
-    if v.is_object() && v.get("autosave").is_none() {
+    if v.get("autosave").is_none() {
         s.autosave = s.people;
         s.save_pictures = s.people;
     }
-    if v.is_object() && v.get("sharing").is_none() {
+    if v.get("sharing").is_none() {
         s.sharing = s.people;
     }
-    // ticks saved before the two pauses existed: off (they are off in every preset)
-    if v.get("pause_background").is_none() {
-        s.pause_background = false;
-    }
-    if v.get("pause_events").is_none() {
-        s.pause_events = false;
-    }
-    // ticks saved before the landing map and comments by hole existed: those start off (they keep a little more with the
-    // game, so a player who had the extras on chooses them anew)
-    upgrade_off(&v, &mut s);
+    follow_sharing(v, &mut s);
+    upgrade_off(v, &mut s);
     s
+}
+
+/// Ticks saved before Import and export saved games (0.5), whose buttons came with Course sharing: it follows that tick.
+fn follow_sharing(v: &serde_json::Value, s: &mut Settings) {
+    if v.get("save_files").is_none() {
+        s.save_files = s.sharing;
+    }
 }
 
 /// The extras added in 0.4 read as off from ticks saved before them.
@@ -331,10 +515,7 @@ fn upgrade_off(v: &serde_json::Value, s: &mut Settings) {
     if v.is_object() && v.get("hole_comments").is_none() {
         s.hole_comments = false;
     }
-    // the update check goes online: off unless ticked
-    if v.get("update_check").is_none() {
-        s.update_check = false;
-    }
+    // the update check (0.6: "check_updates", on unless unticked since; `Settings::update_check`) is not upgraded here
     // the history graphs keep more with the game, and zooming towards the pointer changes the original's zoom: both read
     // as off from ticks saved before them
     if v.get("graphs").is_none() {
@@ -359,6 +540,16 @@ fn upgrade_off(v: &serde_json::Value, s: &mut Settings) {
             *t = false;
         }
     }
+    // right-drag panning (0.4.8): off from ticks saved before it, so a 0.4.7 player's right button is the original's
+    if v.get("right_drag").is_none() {
+        s.right_drag = false;
+    }
+    // random trees (0.4.8): off from ticks saved before it
+    if v.get("random_trees").is_none() {
+        s.random_trees = false;
+    }
+    // the desert's Ravine and Brush art (0.5.6 to 0.5.13): retired, its key read and ignored (issue #117)
+    s.desert_art = false;
 }
 
 /// Saves the ticks into settings.json, keeping its other keys.
@@ -376,8 +567,7 @@ pub fn save(s: &Settings) {
 pub fn init(off: bool) {
     let first = sg_core::fsutil::read_file(crate::app::save_dir().join(crate::hd::SETTINGS_FILE)).is_none();
     let s = if off { Settings::ALL_OFF } else { saved() };
-    // a first start writes its choice down at once, so later files written without this key (HD, language, keys) do not
-    // read as an older player's settings (all on)
+    // a first start writes its choice down at once (a file without the key reads as all off too)
     if first && !off {
         save(&s);
     }
@@ -528,6 +718,8 @@ pub struct State {
     pub test_open: Option<String>,
     /// The screen has been touched (touch.rs): no pointer to hover with, so no name tags.
     pub touched: bool,
+    /// Shift+H hid the name tags (until the game is closed; not saved).
+    pub tags_hidden: bool,
     pub path_marks: Option<crate::pathview_ui::Marks>,
     /// The landing map's balls in play, the map and the comments page (insight.rs).
     pub insight: crate::insight::State,
@@ -550,14 +742,20 @@ use std::collections::BTreeMap;
 /// A tab: the command buttons' navy on pale blue (lit under the pointer), the chosen one on the yellow the original's hire
 /// dialog lights its choice with (0x7f40).
 pub fn draw_tab(g: &mut Gfx, s: &Ui, r: Rect, f: Fnt, label: &str, on: bool, hover: bool) {
+    // a label too wide for its tab (a translation): smaller, on two lines or cut (ui.rs fit_in; issue #164)
+    let fitted = crate::ui::fit_in(f, label, (r.x, r.y, r.w, r.h));
     if crate::glass_ui::active() {
         crate::glass_ui::tab(g, s, r.x, r.y, r.w, r.h + 1.0, on, hover);
-        let x = (r.x + (r.w - f.width(label)) * 0.5).floor();
-        let y = r.y + ((r.h - f.px) * 0.5).floor();
-        if on {
-            s.put(g, f, x, y, label, crate::glass_ui::INK);
-        } else {
-            s.put_shadowed(g, f, x, y, label, c15(0x7fff), false);
+        let put = |g: &mut Gfx, f: Fnt, x: f32, y: f32, t: &str| {
+            if on {
+                s.put(g, f, x, y, t, crate::glass_ui::INK);
+            } else {
+                s.put_shadowed(g, f, x, y, t, c15(0x7fff), false);
+            }
+        };
+        match fitted {
+            Some((f, lines)) => lines.iter().for_each(|(t, cx, y)| put(g, f, (cx - f.width(t) * 0.5).floor(), *y, t)),
+            None => put(g, f, (r.x + (r.w - f.width(label)) * 0.5).floor(), r.y + ((r.h - f.px) * 0.5).floor(), label),
         }
         return;
     }
@@ -571,9 +769,18 @@ pub fn draw_tab(g: &mut Gfx, s: &Ui, r: Rect, f: Fnt, label: &str, on: bool, hov
         crate::ui::rgb(0.47, 0.47, 0.70)
     };
     s.fill(g, r.x, r.y, r.w, r.h, fill);
-    let x = (r.x + (r.w - f.width(label)) * 0.5).floor();
-    let y = r.y + ((r.h - f.px) * 0.5).floor();
-    s.put(g, f, x, y, label, c15(0x0018));
+    match fitted {
+        Some((f, lines)) => {
+            for (t, cx, y) in &lines {
+                s.put(g, f, (cx - f.width(t) * 0.5).floor(), *y, t, c15(0x0018));
+            }
+        }
+        None => {
+            let x = (r.x + (r.w - f.width(label)) * 0.5).floor();
+            let y = r.y + ((r.h - f.px) * 0.5).floor();
+            s.put(g, f, x, y, label, c15(0x0018));
+        }
+    }
 }
 
 /// A command button in the look of the Keyboard controls screen's page buttons (keys_ui): navy on the pale blue, lit under
@@ -581,17 +788,23 @@ pub fn draw_tab(g: &mut Gfx, s: &Ui, r: Rect, f: Fnt, label: &str, on: bool, hov
 pub fn draw_button(g: &mut Gfx, s: &Ui, r: Rect, label: &str, enabled: bool, hover: bool) {
     let f = crate::ui::F_ARIAL10;
     let lit = enabled && hover;
-    if crate::glass_ui::active() {
+    let c = if crate::glass_ui::active() {
         crate::glass_ui::button(g, s, r.x, r.y, r.w, r.h + 1.0, enabled, lit);
-        let y = r.y + ((r.h - 10.0) * 0.5).floor();
-        let c = if enabled { crate::glass_ui::INK } else { crate::glass_ui::DIM_INK };
-        s.put_centered(g, f, r.x + r.w / 2.0, y, label, c);
-        return;
+        if enabled {
+            crate::glass_ui::INK
+        } else {
+            crate::glass_ui::DIM_INK
+        }
+    } else {
+        s.fill(g, r.x - 1.0, r.y - 1.0, r.w + 2.0, r.h + 2.0, c15(if lit { 0x7fff } else { 0x2d6b }));
+        s.fill(g, r.x, r.y, r.w, r.h, if lit { crate::ui::rgb(0.85, 0.85, 1.0) } else { crate::ui::rgb(0.47, 0.47, 0.70) });
+        c15(if enabled { 0x0018 } else { 0x6318 })
+    };
+    // a label too wide for its button (a translation): smaller, on two lines or cut (ui.rs fit_in; issue #164)
+    match crate::ui::fit_in(f, label, (r.x, r.y, r.w, r.h)) {
+        Some((f, lines)) => lines.iter().for_each(|(t, cx, y)| s.put_centered(g, f, *cx, *y, t, c)),
+        None => s.put_centered(g, f, r.x + r.w / 2.0, r.y + ((r.h - 10.0) * 0.5).floor(), label, c),
     }
-    s.fill(g, r.x - 1.0, r.y - 1.0, r.w + 2.0, r.h + 2.0, c15(if lit { 0x7fff } else { 0x2d6b }));
-    s.fill(g, r.x, r.y, r.w, r.h, if lit { crate::ui::rgb(0.85, 0.85, 1.0) } else { crate::ui::rgb(0.47, 0.47, 0.70) });
-    let y = r.y + ((r.h - 10.0) * 0.5).floor();
-    s.put_centered(g, f, r.x + r.w / 2.0, y, label, c15(if enabled { 0x0018 } else { 0x6318 }));
 }
 
 /// A scroll arrow in the look of the roster's: a small triangle in the box's navy, pointing up or down.
@@ -683,13 +896,14 @@ impl crate::app::App {
         }
     }
 
-    /// Shift+H: the name tags off or on (saved with the other ticks).
+    /// Shift+H with the name tags extra ticked: hides the tags or shows them again until the game is closed (the tick
+    /// itself stays; with it unticked the key does nothing, as the other extras' keys).
     pub fn toggle_name_tags(&mut self) {
-        let mut s = settings();
-        s.name_tags = !s.name_tags;
-        set(s);
-        save(&s);
-        self.show_toast(sg_core::lang::tr(if s.name_tags { "STR_TOAST_NAME_TAGS_ON" } else { "STR_TOAST_NAME_TAGS_OFF" }));
+        if !name_tags() {
+            return;
+        }
+        self.xs.tags_hidden = !self.xs.tags_hidden;
+        self.show_toast(sg_core::lang::tr(if self.xs.tags_hidden { "STR_TOAST_NAME_TAGS_OFF" } else { "STR_TOAST_NAME_TAGS_ON" }));
     }
 
     /// "Following <name>" under the Paused caption while the camera follows someone.
@@ -819,21 +1033,66 @@ mod tests {
     use super::*;
 
     #[test]
-    fn bits_round_trip_and_old_settings_read_as_on() {
+    fn bits_round_trip_and_missing_ticks_read_as_off() {
         for m in 0..1024 {
             assert_eq!(Settings::from_bits(m).bits(), m);
         }
+        // settings.json without the ticks at all (written before the extras, or only by other screens): all off but the
+        // update check, the interface at the screen's edges (both on from 0.6) and edge scrolling (the original's)
+        assert_eq!(Settings::default(), Settings::ALL_OFF);
+        let checking = Settings { update_check: true, wide_ui: true, edge_scroll: true, ..Settings::ALL_OFF };
+        assert_eq!(from_json(&serde_json::Value::Null), checking);
+        let file: serde_json::Value = serde_json::from_str("{\"hd\": {\"enabled\": false}, \"controls\": {}}").unwrap();
+        assert_eq!(from_json(&file[SETTINGS_KEY]), checking);
+        // the first ticks (People to path help) as the first version saved them: as saved, the later ones off but for the
+        // three that follow the People screen
+        let v: serde_json::Value = serde_json::from_str(
+            "{\"people\": true, \"history\": false, \"name_tags\": true, \"report_tabs\": true, \"path_help\": false}",
+        )
+        .unwrap();
+        let s = from_json(&v);
+        let want = Settings {
+            people: true,
+            name_tags: true,
+            report_tabs: true,
+            // import and export follows sharing, which follows the People screen
+            save_files: true,
+            autosave: true,
+            save_pictures: true,
+            sharing: true,
+            // on from 0.6 for every file without their own ticks (edge scrolling from 0.6.4)
+            update_check: true,
+            wide_ui: true,
+            edge_scroll: true,
+            ..Settings::ALL_OFF
+        };
+        assert_eq!(s, want);
+        // ticks saved now read back as saved
+        for t in [Settings::HELPERS, Settings::ALL_OFF, Settings { update_check: true, random_trees: true, ..Settings::ALL_OFF }] {
+            assert_eq!(from_json(&serde_json::to_value(t).unwrap()), t);
+        }
         let s: Settings = serde_json::from_str("{\"people\": false}").unwrap();
-        assert_eq!(s, Settings { people: false, ..Settings::ALL_ON });
         // the pauses are off unless saved on, and they come after the older ticks' bits
         assert!(!s.pause_background && !s.pause_events);
         let p = Settings { pause_background: true, pause_events: true, ..Settings::ALL_OFF };
         assert_eq!(p.bits(), 0b11 << 8);
         assert_eq!(Settings::from_bits(p.bits()), p);
-        assert_eq!(p.style(), Settings::ALL_OFF);
+        assert_eq!(p.preset_part(), Settings::ALL_OFF);
         for m in [0, 1 << 8, 1 << 9, 1 << 10, 1 << 11, 1 << 12, 1 << 13, 1 << 14, 1 << 15, 0xffff] {
             assert_eq!(Settings::from_bits(m).bits(), m);
         }
+    }
+
+    #[test]
+    fn the_update_check_is_on_once_from_0_6_and_stays_as_the_player_sets_it() {
+        // an older file's update tick (off by default then) is not read: on
+        let v: serde_json::Value = serde_json::from_str("{\"people\": true, \"update_check\": false}").unwrap();
+        assert!(from_json(&v).update_check);
+        // unticked since: off, and saved as such
+        let v: serde_json::Value = serde_json::from_str("{\"check_updates\": false}").unwrap();
+        let s = from_json(&v);
+        assert!(!s.update_check);
+        assert_eq!(serde_json::to_value(s).unwrap()["check_updates"], serde_json::Value::Bool(false));
     }
 
     #[test]
@@ -847,20 +1106,20 @@ mod tests {
         let mut s: Settings = serde_json::from_value(v.clone()).unwrap();
         upgrade_off(&v, &mut s);
         assert!(s.landing_map && s.hole_comments);
-        assert!(!s.update_check, "the update check reads as off from ticks saved before it");
+        assert!(s.update_check, "the update check reads as on from ticks saved before 0.6");
         assert!(!s.graphs && !s.zoom_pointer, "the graphs and zooming to the pointer read as off from older ticks");
         let v: serde_json::Value = serde_json::from_str("{\"graphs\": true, \"zoom_pointer\": true}").unwrap();
         let mut g: Settings = serde_json::from_value(v.clone()).unwrap();
         upgrade_off(&v, &mut g);
         assert!(g.graphs && g.zoom_pointer);
-        assert!(!Settings::ALL_ON.zoom_pointer && Settings::ALL_ON.graphs);
-        assert_eq!(Settings { zoom_pointer: true, ..Settings::ALL_OFF }.style(), Settings::ALL_OFF);
+        assert!(!Settings::HELPERS.zoom_pointer && Settings::HELPERS.graphs);
+        assert_eq!(Settings { zoom_pointer: true, ..Settings::ALL_OFF }.preset_part(), Settings::ALL_OFF);
         let v: serde_json::Value = serde_json::from_str("{\"update_check\": true}").unwrap();
         let mut s: Settings = serde_json::from_value(v.clone()).unwrap();
         upgrade_off(&v, &mut s);
         assert!(s.update_check);
-        assert!(!Settings::ALL_ON.update_check, "not in the one-click extras");
-        assert_eq!(Settings { update_check: true, ..Settings::ALL_OFF }.style(), Settings::ALL_OFF);
+        assert!(!Settings::HELPERS.update_check, "not in the presets");
+        assert_eq!(Settings { update_check: true, ..Settings::ALL_OFF }.preset_part(), Settings::ALL_OFF);
         // drag to place: off from older ticks, kept when saved, out of the one-click extras and the game style
         let v: serde_json::Value = serde_json::from_str("{\"people\": true, \"zoom_pointer\": true}").unwrap();
         let mut d: Settings = serde_json::from_value(v.clone()).unwrap();
@@ -870,9 +1129,9 @@ mod tests {
         let mut d: Settings = serde_json::from_value(v.clone()).unwrap();
         upgrade_off(&v, &mut d);
         assert!(d.drag_place);
-        assert!(!Settings::ALL_ON.drag_place);
+        assert!(!Settings::HELPERS.drag_place);
         assert_eq!(Settings { drag_place: true, ..Settings::ALL_OFF }.bits(), 1 << 15);
-        assert_eq!(Settings { drag_place: true, ..Settings::ALL_OFF }.style(), Settings::ALL_OFF);
+        assert_eq!(Settings { drag_place: true, ..Settings::ALL_OFF }.preset_part(), Settings::ALL_OFF);
         // the 0.4.2 helpers: off from older ticks, kept when saved, after the older bits, and in the one-click extras
         let v: serde_json::Value = serde_json::from_str("{\"people\": true, \"graphs\": true}").unwrap();
         let mut s: Settings = serde_json::from_value(v.clone()).unwrap();
@@ -887,11 +1146,119 @@ mod tests {
         let n = Settings { live_scorecards: true, ticker_jump: true, year_summary: true, home_details: true, ..Settings::ALL_OFF };
         assert_eq!(n.bits(), 0b1111 << 16);
         assert_eq!(Settings::from_bits(n.bits()), n);
-        assert_eq!(n.style(), n, "they make the game style");
-        assert_eq!(Settings::ALL_ON.bits() & n.bits(), n.bits());
-        assert_eq!(UI_KEYS.len(), 20);
+        assert_eq!(n.preset_part(), n, "the presets set them");
+        assert_eq!(Settings::HELPERS.bits() & n.bits(), n.bits());
         // a save with nothing of theirs is the same as before
         assert!(Kept::default().is_empty());
         assert_eq!(serde_json::to_string(&Kept::default()).unwrap(), "{}");
+    }
+
+    #[test]
+    fn right_drag_is_off_unless_ticked() {
+        // ticks as 0.4.7 saved them (every extra of its day on): the right button stays the original's
+        let v: serde_json::Value = serde_json::from_str(
+            "{\"people\": true, \"zoom_pointer\": true, \"drag_place\": true, \"live_scorecards\": true, \"home_details\": true}",
+        )
+        .unwrap();
+        let mut s: Settings = serde_json::from_value(v.clone()).unwrap();
+        upgrade_off(&v, &mut s);
+        assert!(!s.right_drag && s.drag_place && s.zoom_pointer);
+        let v: serde_json::Value = serde_json::from_str("{\"right_drag\": true}").unwrap();
+        let mut s: Settings = serde_json::from_value(v.clone()).unwrap();
+        upgrade_off(&v, &mut s);
+        assert!(s.right_drag);
+        assert!(!Settings::HELPERS.right_drag && !Settings::ALL_OFF.right_drag && !Settings::default().right_drag);
+        let r = Settings { right_drag: true, ..Settings::ALL_OFF };
+        assert_eq!(r.bits(), 1 << 20);
+        assert_eq!(Settings::from_bits(r.bits()), r);
+        assert_eq!(r.preset_part(), Settings::ALL_OFF);
+    }
+
+    #[test]
+    fn mouse_swing_is_off_unless_ticked_and_the_presets_leave_it() {
+        // ticks saved before it (every extra of 0.5 on): the mouse aims and shoots with one click, as in the original
+        let v: serde_json::Value = serde_json::json!({ "people": true, "right_drag": true, "desert_art": true });
+        assert!(!from_json(&v).mouse_swing && from_json(&v).right_drag);
+        assert!(from_json(&serde_json::json!({ "mouse_swing": true })).mouse_swing);
+        assert!(!Settings::ALL_OFF.mouse_swing && !Settings::default().mouse_swing && !Settings::HELPERS.mouse_swing);
+        let m = Settings { mouse_swing: true, ..Settings::ALL_OFF };
+        assert_eq!(m.bits(), 1 << 24, "after every older tick");
+        assert_eq!(Settings::from_bits(m.bits()), m);
+        // the presets leave it as the player has it
+        assert_eq!(m.preset_part(), Settings::ALL_OFF);
+        assert!(Settings::HELPERS.with_kept(&m).mouse_swing && !Settings::HELPERS.with_kept(&Settings::ALL_OFF).mouse_swing);
+    }
+
+    #[test]
+    fn save_files_follow_course_sharing_from_older_ticks() {
+        for sharing in [false, true] {
+            let v: serde_json::Value = serde_json::json!({ "people": true, "sharing": sharing, "random_trees": true });
+            let mut s: Settings = serde_json::from_value(v.clone()).unwrap();
+            follow_sharing(&v, &mut s);
+            assert_eq!(s.save_files, sharing);
+        }
+        let v: serde_json::Value = serde_json::json!({ "sharing": false, "save_files": true });
+        let mut s: Settings = serde_json::from_value(v.clone()).unwrap();
+        follow_sharing(&v, &mut s);
+        assert!(s.save_files && !s.sharing);
+        assert!(Settings::HELPERS.save_files && !Settings::ALL_OFF.save_files);
+        assert_eq!(Settings { save_files: true, ..Settings::ALL_OFF }.preset_part().bits(), 1 << 22, "the presets set it");
+        let f = Settings { save_files: true, ..Settings::ALL_OFF };
+        assert_eq!(f.bits(), 1 << 22);
+        assert_eq!(Settings::from_bits(f.bits()), f);
+        assert_eq!(UI_KEYS.len(), 30);
+    }
+
+    #[test]
+    fn the_interface_at_the_edges_is_on_unless_switched_off_and_the_presets_leave_it() {
+        assert!(from_json(&serde_json::json!({ "people": true })).wide_ui, "missing: on");
+        assert!(!from_json(&serde_json::json!({ "wide_ui": false })).wide_ui, "switched off: stays off");
+        let off = Settings { wide_ui: false, ..Settings::HELPERS };
+        assert!(!Settings::HELPERS.with_kept(&off).wide_ui && Settings::ALL_OFF.with_kept(&checking_on()).wide_ui);
+    }
+
+    fn checking_on() -> Settings {
+        Settings { wide_ui: true, ..Settings::ALL_OFF }
+    }
+
+    #[test]
+    fn home_names_on_hover_are_off_unless_ticked_and_the_presets_leave_them() {
+        assert!(!from_json(&serde_json::json!({ "people": true, "edge_scroll": true })).home_labels_hover, "missing: off");
+        assert!(from_json(&serde_json::json!({ "home_labels_hover": true })).home_labels_hover);
+        assert!(!Settings::ALL_OFF.home_labels_hover && !Settings::default().home_labels_hover && !Settings::HELPERS.home_labels_hover);
+        let h = Settings { home_labels_hover: true, ..Settings::ALL_OFF };
+        assert_eq!(h.bits(), 1 << 28, "after every older tick");
+        assert_eq!(Settings::from_bits(h.bits()), h);
+        assert_eq!(h.preset_part(), Settings::ALL_OFF);
+        assert!(Settings::HELPERS.with_kept(&h).home_labels_hover);
+    }
+
+    #[test]
+    fn random_trees_are_off_unless_ticked() {
+        let v: serde_json::Value = serde_json::from_str("{\"people\": true, \"drag_place\": true, \"right_drag\": true}").unwrap();
+        let mut s: Settings = serde_json::from_value(v.clone()).unwrap();
+        upgrade_off(&v, &mut s);
+        assert!(!s.random_trees && s.right_drag);
+        let v: serde_json::Value = serde_json::from_str("{\"random_trees\": true}").unwrap();
+        let mut s: Settings = serde_json::from_value(v.clone()).unwrap();
+        upgrade_off(&v, &mut s);
+        assert!(s.random_trees);
+        assert!(Settings::HELPERS.random_trees && !Settings::ALL_OFF.random_trees, "a look: the helper presets tick it");
+        let r = Settings { random_trees: true, ..Settings::ALL_OFF };
+        assert_eq!(r.bits(), 1 << 21);
+        assert_eq!(Settings::from_bits(r.bits()), r);
+        assert_eq!(r.preset_part(), r);
+    }
+
+    #[test]
+    fn the_retired_desert_art_tick_loads_and_is_ignored() {
+        // settings saved by 0.5.6 to 0.5.13 with it ticked still load, the other ticks as they were, and it reads as off
+        let v: serde_json::Value = serde_json::json!({ "people": true, "random_trees": true, "desert_art": true });
+        let s = from_json(&v);
+        assert!(s.people && s.random_trees && !s.desert_art);
+        assert!(!Settings::ALL_OFF.desert_art && !Settings::default().desert_art && !Settings::HELPERS.desert_art);
+        // its bit stays where it was, so the later ticks keep theirs
+        let d = Settings { desert_art: true, ..Settings::ALL_OFF };
+        assert_eq!(d.bits(), 1 << 23);
     }
 }

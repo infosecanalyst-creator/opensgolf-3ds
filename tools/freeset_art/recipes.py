@@ -31,6 +31,10 @@ class Recipe:
     def fit_frames(self, fpv):
         return [fpv - 1]
 
+    def anchor(self, w, h, ax, ay):
+        """The ground point the sprite is drawn around in its frames."""
+        return ax, ay
+
     def yaw(self, view_deg):
         return view_deg
 
@@ -44,12 +48,33 @@ class Tree(Recipe):
     def __init__(self, name):
         self.name = name
 
+    # the free set keeps the scenic elm as a plain animation (the original's header does not add up, docs/SPRITES.md): its
+    # 52 frames are four turns of the tree, each growing over 13 frames (the game draws its last, the grown tree)
+    ELM_CYCLE = 13
+
+    def elm(self):
+        return "scenicelm" in self.name
+
+    def fit_frames(self, fpv):
+        if self.elm():
+            return [k * self.ELM_CYCLE + self.ELM_CYCLE - 1 for k in range(fpv // self.ELM_CYCLE)]
+        return [fpv - 1]
+
+    def anchor(self, w, h, ax, ay):
+        # a file without views is drawn from the middle of its bottom edge; the original elm stands 9 pixels above it
+        # (its trunk's foot at y = 76 of 85), so ours does too and its foot and shadow fit the frame
+        return (ax, ay - 9) if self.elm() else (ax, ay)
+
     def scene(self, rng, f, fpv, view_deg):
-        # the scenic elm's frames are not a growth cycle (it has no views either): always the full tree
-        size, leaf = (1.0, 1.0) if "scenicelm" in self.name else trees.growth(f, fpv)
+        turn = 0.0
+        if self.elm():
+            turn, f, fpv = (f // self.ELM_CYCLE) * 90.0, f % self.ELM_CYCLE, self.ELM_CYCLE
+        size, leaf = trees.growth(f, fpv)
         s = trees.species(self.name, rng, leaf)
         s = trees.gags(self.name, s, leaf)
-        return s.transformed(size)
+        a = np.radians(turn)
+        rot = np.array([[np.cos(a), 0.0, np.sin(a)], [0.0, 1.0, 0.0], [-np.sin(a), 0.0, np.cos(a)]])
+        return s.transformed(size, rot=rot)
 
 
 class Building(Recipe):

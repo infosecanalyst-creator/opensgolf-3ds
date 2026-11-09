@@ -42,6 +42,24 @@ pub enum PopupKind {
     ResetOriginal,
     /// The hidden Cheats box (the port's own, cheats_ui.rs): a list of cheats, open until Done.
     Cheats,
+    /// Preferences > Graphics (the port's own, prefs_ui.rs): HD, Enhanced, pixel-perfect, Enhanced graphics settings.
+    PrefsGraphics,
+    /// Preferences > Game files (the port's own, prefs_ui.rs): your SimGolf files or the free graphics, Content packs,
+    /// Language.
+    PrefsFiles,
+    /// Preferences > More (the port's own, prefs_ui.rs): the bug fixes, the update checks, Search, Report a problem, Support
+    /// OpenSGolf.
+    PrefsMore,
+    /// Report a problem's confirmation (the port's own, bugreport.rs): what will open, a screenshot tick, OK or Cancel.
+    Report,
+    /// The support reminder (the port's own, support.rs): Support on Buy Me a Coffee, Maybe later, Don't ask again; over
+    /// the title menu or the course.
+    Support,
+    /// "How would you like to play?" (the port's own, welcome.rs): the four presets, once, over the title menu.
+    Welcome,
+    /// "What's new in OpenSGolf" (the port's own, welcome.rs): the version's highlights with their Try it pills, See
+    /// everything that's new and OK, once after an update, over the title menu.
+    WhatsNew,
 }
 
 #[derive(Clone, Debug)]
@@ -51,7 +69,7 @@ pub struct Popup {
     pub lines: Vec<String>,
     /// Option bits that are greyed out.
     pub disabled: u32,
-    /// Checkbox bits (Prefs).
+    /// Checkbox bits (Preferences and its boxes, by option).
     pub checks: u32,
     /// The option lit by the pointer or the keys: none at first (0x46d6e0 starts at -1), the one under the pointer, or the
     /// last one the Up and Down keys reached (kept while the pointer is off the options).
@@ -61,21 +79,26 @@ pub struct Popup {
     pub top: f32,
     /// The screen the popup came from.
     pub back: Screen,
-    /// Preferences: the option of the port's "Use my SimGolf files..." line (gamefiles.rs), when it is shown.
-    pub files_line: Option<usize>,
+    /// Preferences and its boxes (prefs_ui.rs): the options, in order, and what they depend on.
+    pub items: Vec<crate::prefs_ui::Line>,
+    pub ctx: crate::prefs_ui::Ctx,
+    /// Preferences and its boxes on a touch screen: the line tapped once, whose second tap opens it (prefs_ui::opens).
+    pub armed: Option<usize>,
     /// Enhanced graphics and the OpenSGolf extras: the page (tab) shown. Those boxes and the search box keep the settings as
     /// ticked so far in `pref` (put in use by OK).
     pub page: u8,
     pub pref: crate::prefs_search::Prefs,
     /// The tab under the pointer.
     pub tab_hover: Option<u8>,
-    /// The Extras box: the option last under the pointer or tapped, whose description shows at the box's foot on a touch
-    /// screen (no pointer hovers there).
+    /// The Extras box and Preferences' boxes: the option last under the pointer or tapped, whose description shows at the
+    /// box's foot on a touch screen (no pointer hovers there).
     pub last_pick: Option<usize>,
     /// The search box: the words typed, "Show only changed", and the options found.
     pub query: String,
     pub changed_only: bool,
     pub hits: Vec<crate::prefs_search::Hit>,
+    /// The What's new box (welcome.rs): the highlights that only tell (no Try it).
+    pub tell: u32,
 }
 
 impl Popup {
@@ -95,6 +118,15 @@ impl Popup {
             PopupKind::Enhanced => crate::enhanced::PAGES.len(),
             PopupKind::Extras => crate::extras_ui::PAGES.len(),
             _ => 1,
+        }
+    }
+
+    /// Lines between the title and the tabs: the Extras box's preset line and a gap (extras_ui::HEAD_LINES).
+    fn head_lines(&self) -> usize {
+        if self.kind == PopupKind::Extras {
+            crate::extras_ui::HEAD_LINES
+        } else {
+            0
         }
     }
 
@@ -156,14 +188,65 @@ pub struct ChoiceBox {
     /// The widest line to size the box for at least (the Enhanced graphics box keeps one size on all its pages; 0 for the
     /// exe's boxes, sized by their own lines).
     pub min_w: f32,
+    /// The port's own box (not one of the exe's): its headings take a dark edge all round (`OWN_EDGE`) instead of the
+    /// exe's one-pixel dark red shadow, which leaves pale yellow or white over the lavender hard to read.
+    pub own: bool,
+    /// The port's welcome boxes (welcome.rs): the notes under an option are part of its row for the pointer and taps, so
+    /// each choice is a big, touch-sized target; an empty note ends it. In a radio box the `plain` options only tell: a
+    /// bullet for the ball, never lit.
+    pub note_hits: bool,
 }
+
+/// The dark ink of the port's own boxes' parts (the Extras and Enhanced graphics boxes' page shown and banner, the
+/// descriptions at the Extras box's foot): a deep navy of the original's 15-bit palette, in the family of the list box's
+/// dark blue headings (0x46de70), about 6 to 1 against the lavender 0x4e79 and 8 to 1 against the paler blue 0x5ade.
+pub const OWN_INK: u32 = 0x0010;
+/// The port's own hints and notes (the Extras box's foot, the note under Preferences' bug fixes): the options' teal 0x0210
+/// darkened until it reads on the lavender (about 5 to 1; the exe's teal is under 2 to 1).
+pub const OWN_TEAL: u32 = 0x00c6;
+/// The edge round the port's own boxes' headings and the shadow under their other light labels (a near-black navy).
+pub const OWN_EDGE: u32 = 0x0004;
+/// The Extras and Enhanced graphics boxes' pages not shown: a darker shade of their old 0x3dd4, so white labels read
+/// on them (about 7 to 1).
+const TAB_OFF: u32 = 0x2d50;
 
 /// The popup's font: the default font object 0x519928, Manual SSi Bold 20 (0x46d6e0 selects it first).
 pub const CHOICE_FONT: crate::ui::Fnt = crate::ui::F_MANUAL20;
 
+/// The port's note under an option (a line starting with a tab, e.g. the Preferences' note under the bug fixes): no option,
+/// drawn small where an option's text starts, in Manual SSi Bold 14 (0x821ee8).
+pub const NOTE_FONT: crate::ui::Fnt = crate::ui::F_INFO14;
+
+/// Whether a line is the port's note under an option.
+fn is_note(l: &str) -> bool {
+    l.starts_with('\t')
+}
+
+/// Whether a line is Preferences' divider between the original's ticks and the port's lines (prefs_ui::DIVIDER).
+fn is_divider(l: &str) -> bool {
+    l.starts_with(crate::prefs_ui::DIVIDER)
+}
+
+/// A line's width in the box's font `f` (an option with its leading space; a note in its own font at the same text size,
+/// from where an option's text starts; the divider with room for its rules).
+fn line_width(l: &str, f: crate::ui::Fnt) -> f32 {
+    if is_note(l) {
+        f.width(" ") + note_font(f).width(&l[1..])
+    } else if is_divider(l) {
+        f.width(&l[1..]) + 64.0
+    } else {
+        f.width(l)
+    }
+}
+
+/// The note's font for a box drawn in `f` (it grows with the text size, textsize.rs).
+fn note_font(f: crate::ui::Fnt) -> crate::ui::Fnt {
+    NOTE_FONT.scaled(f.px / CHOICE_FONT.px)
+}
+
 impl ChoiceBox {
     pub fn new(lines: Vec<String>, cx: f32, top: f32) -> ChoiceBox {
-        ChoiceBox { lines, cx, top, checks: None, disabled: 0, plain: 0, min_w: 0.0 }
+        ChoiceBox { lines, cx, top, checks: None, disabled: 0, plain: 0, min_w: 0.0, own: false, note_hits: false }
     }
 
     /// The indexes of the option lines.
@@ -171,12 +254,60 @@ impl ChoiceBox {
         self.lines.iter().enumerate().filter(|(_, l)| l.starts_with(' ')).map(|(i, _)| i).collect()
     }
 
-    /// The box as 0x46d6e0 computes it (before the frame's rounding): x = cx - w / 2, y = the call's y.
+    /// The text size the box is drawn at (textsize.rs; the port's own): the player's, cut to what keeps the box on the
+    /// 800 x 600 screen, in steps of 5%; 1 at normal size, where everything below is the exe's.
+    pub fn k(&self) -> f32 {
+        let want = crate::textsize::scale();
+        if want == 1.0 {
+            return 1.0;
+        }
+        let widest = (self.widest(CHOICE_FONT) as f32).max(self.min_w).max(1.0);
+        let h1 = (self.lines.len() as f32 * 3.0 + 3.0) * 8.0;
+        let k = want.min(592.0 / h1).min((792.0 - 0x40 as f32) / widest).max(1.0);
+        (k * 20.0).floor() / 20.0
+    }
+
+    /// The box's font: the popup's, at the box's text size.
+    pub fn font(&self) -> crate::ui::Fnt {
+        CHOICE_FONT.scaled(self.k())
+    }
+
+    /// The room a line of the box has (the port's own, issue #164): the box grows with its widest line up to the screen's
+    /// width (800 pixels with its margins); a longer line (a translation) is drawn smaller or cut to this
+    /// (ui.rs fit_line), so it never runs off the screen. No line of the original's boxes comes near it.
+    pub const MAX_TEXT_W: i32 = 752;
+
+    /// A line as drawn: smaller or cut when it is wider than the box can grow (`MAX_TEXT_W`), with how far down to move
+    /// it; as it is otherwise (notes and the divider always).
+    fn fitted<'a>(f: crate::ui::Fnt, l: &'a str) -> (crate::ui::Fnt, std::borrow::Cow<'a, str>, f32) {
+        if is_note(l) || is_divider(l) {
+            return (f, std::borrow::Cow::Borrowed(l), 0.0);
+        }
+        crate::ui::fit_line(f, l, Self::MAX_TEXT_W as f32)
+    }
+
+    fn widest(&self, f: crate::ui::Fnt) -> i32 {
+        self.lines.iter().map(|l| line_width(l, f).round() as i32).max().unwrap_or(0)
+    }
+
+    /// The box as 0x46d6e0 computes it (before the frame's rounding): x = cx - w / 2, y = the call's y. With bigger text
+    /// (the port's own) it grows with its lines and moves in from the screen's edges to stay on it.
     pub fn rect(&self) -> Rect {
-        let widest = self.lines.iter().map(|l| CHOICE_FONT.width(l).round() as i32).max().unwrap_or(0).max(self.min_w as i32);
+        let k = self.k();
+        let widest = self.widest(self.font()).max((self.min_w * k) as i32).min(Self::MAX_TEXT_W);
         let w = (((widest - 1) | 15) + 0x31) as f32;
-        let h = (self.lines.len() as f32 * 3.0 + 3.0) * 8.0;
-        Rect::new(self.cx - (w / 2.0).trunc(), self.top, w, h)
+        let h = ((self.lines.len() as f32 * 3.0 + 3.0) * 8.0 * k).round();
+        let (x, y) = (self.cx - (w / 2.0).trunc(), self.top);
+        if k == 1.0 {
+            return Rect::new(x, y, w, h);
+        }
+        Rect::new(x.min(796.0 - w).max(4.0), y.min(596.0 - h).max(4.0), w, h)
+    }
+
+    /// The x the box's headings are centred on (the call's x, or where the box moved to).
+    pub fn centre(&self) -> f32 {
+        let r = self.rect();
+        r.x + (r.w / 2.0).trunc()
     }
 
     /// The frame as drawn (0x40cc00 grows a size that is not a multiple of 16 to 15 mod 16 and moves back by half of what
@@ -191,13 +322,14 @@ impl ChoiceBox {
     /// The y of each line (the top the text calls are given; options draw their text 8 below it, 7 when under the
     /// pointer).
     pub fn line_tops(&self) -> Vec<f32> {
-        let mut y = self.top + 12.0;
+        let k = self.k();
+        let mut y = self.rect().y + 12.0 * k;
         let mut seen_option = false;
         let mut v = Vec::with_capacity(self.lines.len());
         for l in &self.lines {
-            v.push(y);
+            v.push(y.round());
             seen_option |= l.starts_with(' ');
-            y += if seen_option { 24.0 } else { 18.0 };
+            y += if seen_option { 24.0 } else { 18.0 } * k;
         }
         v
     }
@@ -210,20 +342,37 @@ impl ChoiceBox {
         let opts = self.options();
         let first = *opts.first()?;
         let y0 = self.line_tops()[first];
-        let right = self.cx + (r.w / 2.0).trunc() - 48.0;
+        let right = self.centre() + (r.w / 2.0).trunc() - 48.0;
         if x <= r.x || x >= right || y < y0 {
             return None;
         }
-        let line = first + ((y - y0) / 24.0) as usize;
+        let mut line = first + ((y - y0) / (24.0 * self.k())) as usize;
+        if self.note_hits {
+            // a note's row belongs to the option over it (through the notes between them)
+            while line > first && self.lines.get(line).is_some_and(|l| is_note(l) && l.len() > 1) {
+                line -= 1;
+            }
+        }
         opts.iter().position(|&o| o == line)
     }
 
     /// The OK tick of a checkbox list: the 50 x 50 cut at (cx + w / 2 - 40, top + h - 40); a click within 20 of its
     /// centre (both ways) accepts.
     pub fn ok_tick(&self) -> Rect {
-        let r = self.rect();
-        let (x, y) = (self.cx + (r.w / 2.0).trunc() - 40.0, self.top + r.h - 40.0);
+        let (x, y) = self.ok_corner();
         Rect::new(x + 1.0, y + 1.0, 39.0, 39.0)
+    }
+
+    /// Where the OK tick's 50 x 50 cut is drawn.
+    pub fn ok_corner(&self) -> (f32, f32) {
+        let r = self.rect();
+        (self.centre() + (r.w / 2.0).trunc() - 40.0, r.y + r.h - 40.0)
+    }
+
+    /// How far below a line's top its 24-pixel-high art (the check boxes, the radio balls) goes with bigger text, to sit
+    /// in the middle of the taller row.
+    pub fn art_dy(&self) -> f32 {
+        ((24.0 * self.k() - 24.0) / 2.0).floor()
     }
 }
 
@@ -237,25 +386,43 @@ impl App {
             self.draw_choice_box_free(g, s, b, hover);
             return;
         }
-        let f = CHOICE_FONT;
+        let f = b.font();
+        let (tk, cx, dy) = (b.k(), b.centre(), b.art_dy());
+        // the text's place in its row, the exe's 8 (7 lit) at normal size
+        let ty = (8.0 * tk).round();
         let white = c15(0x7fff);
         let teal = c15(0x0210);
         let tops = b.line_tops();
         let opts = b.options();
-        for (i, l) in b.lines.iter().enumerate() {
+        for (i, line) in b.lines.iter().enumerate() {
             let y = tops[i];
+            let (lf, l, fy) = ChoiceBox::fitted(f, line);
             let Some(k) = opts.iter().position(|&o| o == i) else {
+                if is_note(&l) {
+                    // the port's note, in the dark teal of the Extras box's hints
+                    s.put(g, note_font(f), r.x + 36.0 + f.width(" "), y + tk.round(), &l[1..], c15(OWN_TEAL));
+                    continue;
+                }
+                if is_divider(&l) {
+                    draw_divider(g, s, f, &r, y + ty, &l[1..], c15(OWN_INK));
+                    continue;
+                }
                 let c = if b.checks.is_some() { c15(0x7ff0) } else { white };
-                s.put_shadowed(g, f, b.cx, y, l, c, true);
+                if b.own {
+                    put_edged(g, s, lf, cx, y + fy, &l, c);
+                } else {
+                    s.put_shadowed(g, lf, cx, y + fy, &l, c, true);
+                }
                 continue;
             };
             let x = r.x + 36.0;
             if b.disabled & (1 << k) != 0 {
-                s.put(g, f, x, y + 8.0, l, c15(0x6318));
+                s.put(g, lf, x, y + ty + fy, &l, c15(0x6318));
                 continue;
             }
-            let lit = hover == Some(k);
             let plain = b.plain & (1 << k) != 0;
+            // the welcome boxes' options that only tell are never lit
+            let lit = hover == Some(k) && !(plain && b.checks.is_none());
             let chosen = match b.checks {
                 Some(_) if plain => lit,
                 Some(m) => m & (1 << k) != 0,
@@ -263,12 +430,15 @@ impl App {
             };
             let c = if chosen { white } else { teal };
             if lit {
-                s.put_shadowed(g, f, x, y + 7.0, l, c, false);
+                s.put_shadowed(g, lf, x, y + ty + fy - 1.0, &l, c, false);
             } else {
-                s.put(g, f, x, y + 8.0, l, c);
+                s.put(g, lf, x, y + ty + fy, &l, c);
             }
+            let y = y + dy;
             match b.checks {
                 Some(_) if plain => {}
+                // a small dot where the ball goes (the font has no bullet)
+                None if plain => s.fill(g, r.x + 24.0, y + 12.0, 5.0, 5.0, teal),
                 Some(_) => {
                     // the InfoButtons boxes 0x561260[1] (ticked) and [2] (crossed), 26 x 26 at (300 + 50 k, 0)
                     let cut = if chosen { 350.0 } else { 400.0 };
@@ -289,7 +459,7 @@ impl App {
             }
         }
         if b.checks.is_some() && self.art.trans.tex.is_some() {
-            let (x, y) = (b.cx + (r.w / 2.0).trunc() - 40.0, b.top + r.h - 40.0);
+            let (x, y) = b.ok_corner();
             s.image_part(g, &self.art.trans, x, y, 350.0, 140.0, 50.0, 50.0);
         }
     }
@@ -302,39 +472,56 @@ impl App {
         let r = b.rect();
         let (fx, fw) = crate::message_ui::round16(r.x, r.w);
         let (fy, _) = crate::message_ui::round16(r.y, r.h);
-        let f = CHOICE_FONT;
+        let f = b.font();
+        let (tk, cx) = (b.k(), b.centre());
+        let ty = (8.0 * tk).round();
+        // the switches and dots in the middle of the row (15 below its top at normal size)
+        let mid = (12.0 * tk).round() + 3.0;
+        let row = (24.0 * tk).round();
         let white = c15(0x7fff);
         let tops = b.line_tops();
         let opts = b.options();
         let head_bottom = tops.get(1).copied().unwrap_or(tops[0] + 22.0) + 1.0;
         gl::header(g, s, fx + 3.0, fy + 3.0, fw - 6.0, head_bottom - fy - 3.0, [0.24, 0.33, 0.78, 1.0]);
-        for (i, l) in b.lines.iter().enumerate() {
+        for (i, line) in b.lines.iter().enumerate() {
             let y = tops[i];
+            let (lf, l, fy) = ChoiceBox::fitted(f, line);
             let Some(k) = opts.iter().position(|&o| o == i) else {
+                if is_note(&l) {
+                    s.put(g, note_font(f), r.x + 36.0 + f.width(" "), y + tk.round(), &l[1..], INK);
+                    continue;
+                }
+                if is_divider(&l) {
+                    draw_divider(g, s, f, &r, y + ty, &l[1..], INK);
+                    continue;
+                }
                 if i == 0 {
                     let c = if b.checks.is_some() { c15(0x7ff0) } else { white };
-                    s.put_shadowed(g, f, b.cx, y, l, c, true);
+                    s.put_shadowed(g, lf, cx, y + fy, &l, c, true);
                 } else {
-                    s.put_centered(g, f, b.cx, y, l, INK);
+                    s.put_centered(g, lf, cx, y + fy, &l, INK);
                 }
                 continue;
             };
             let x = r.x + 36.0;
-            let lit = hover == Some(k);
+            let plain = b.plain & (1 << k) != 0;
+            let lit = hover == Some(k) && !(plain && b.checks.is_none());
             let off = b.disabled & (1 << k) != 0;
             if lit && !off {
-                gl::capsule(g, s, fx + 6.0, y + 3.0, fw - 12.0, 24.0, [1.0, 0.93, 0.62, 0.95]);
+                // the welcome boxes: the capsule takes in the notes that are part of the option's row
+                let n = if b.note_hits { b.lines[i + 1..].iter().take_while(|l| is_note(l) && l.len() > 1).count() } else { 0 };
+                gl::capsule(g, s, fx + 6.0, y + 3.0, fw - 12.0, row * (1 + n) as f32, [1.0, 0.93, 0.62, 0.95]);
             }
-            let plain = b.plain & (1 << k) != 0;
-            s.put(g, f, x, y + 8.0, l, if off { DIM_INK } else { INK });
+            s.put(g, lf, x, y + ty + fy, &l, if off { DIM_INK } else { INK });
             match b.checks {
-                Some(_) if plain => s.put(g, f, r.x + 12.0, y + 8.0, "\u{bb}", if off { DIM_INK } else { INK }),
-                Some(m) => gl::switch(g, s, r.x.max(fx + 7.0), y + 15.0, m & (1 << k) != 0, lit),
-                None => gl::radio(g, s, r.x.max(fx + 7.0) + 13.0, y + 15.0, lit),
+                None if plain => s.fill(g, r.x.max(fx + 7.0) + 11.0, y + mid - 3.0, 6.0, 6.0, INK),
+                Some(_) if plain => s.put(g, f, r.x + 12.0, y + ty, "\u{bb}", if off { DIM_INK } else { INK }),
+                Some(m) => gl::switch(g, s, r.x.max(fx + 7.0), y + mid, m & (1 << k) != 0, lit),
+                None => gl::radio(g, s, r.x.max(fx + 7.0) + 13.0, y + mid, lit),
             }
         }
         if b.checks.is_some() && self.art.trans.tex.is_some() {
-            let (x, y) = (b.cx + (r.w / 2.0).trunc() - 40.0, b.top + r.h - 40.0);
+            let (x, y) = b.ok_corner();
             s.image_part(g, &self.art.trans, x, y, 350.0, 140.0, 50.0, 50.0);
         }
     }
@@ -492,30 +679,38 @@ impl Popup {
             lines: self.lines.clone(),
             cx: self.cx,
             top: self.top,
-            checks: matches!(self.kind, PopupKind::Prefs | PopupKind::Enhanced | PopupKind::Extras | PopupKind::Search)
-                .then_some(self.checks),
+            checks: (crate::prefs_ui::is_prefs_box(self.kind)
+                || matches!(self.kind, PopupKind::Enhanced | PopupKind::Extras | PopupKind::Search | PopupKind::Report))
+            .then_some(self.checks),
             disabled: self.disabled,
             plain: match self.kind {
-                PopupKind::Prefs => {
-                    1 << PREFS_CONTENT
-                        | 1 << PREFS_ENHANCED
-                        | 1 << PREFS_KEYS
-                        | 1 << PREFS_EXTRAS
-                        | 1 << PREFS_SEARCH
-                        | 1 << PREFS_LANGUAGE
-                        | self.files_line.map_or(0, |k| 1 << k)
-                }
+                k if crate::prefs_ui::is_prefs_box(k) => crate::prefs_ui::plain_bits(&self.items),
                 PopupKind::Enhanced => crate::enhanced::popup_plain(self.page),
                 PopupKind::Extras => crate::extras_ui::popup_plain(self.page),
                 PopupKind::Search => crate::prefs_search::popup_plain(&self.hits),
+                PopupKind::Report => crate::bugreport::BOX_PLAIN,
+                PopupKind::WhatsNew => self.tell,
                 _ => 0,
             },
             min_w: match self.kind {
+                // Preferences' boxes: wide enough for their descriptions at the foot
+                k if crate::prefs_ui::is_prefs_box(k) => PREFS_MIN_W,
                 PopupKind::Enhanced => crate::enhanced::popup_widest(&self.pref.enh),
                 PopupKind::Extras => crate::extras_ui::popup_widest(&self.pref.ex, &self.pref.ui),
                 PopupKind::Search => crate::prefs_search::LINE_W,
+                // room for the Try it pills right of the highlights
+                PopupKind::WhatsNew => {
+                    let f = CHOICE_FONT;
+                    let widest = self.lines.iter().filter(|l| l.starts_with(' ')).map(|l| f.width(l)).fold(0.0, f32::max);
+                    widest + crate::welcome::pill_w() + 36.0
+                }
                 _ => 0.0,
             },
+            own: !matches!(
+                self.kind,
+                PopupKind::Info | PopupKind::System | PopupKind::Prefs | PopupKind::LandOffer | PopupKind::CareerOver | PopupKind::Retire
+            ),
+            note_hits: matches!(self.kind, PopupKind::Welcome | PopupKind::WhatsNew),
         }
     }
 
@@ -555,36 +750,23 @@ impl Popup {
         let tops = b.line_tops();
         let (x0, x1) = (r.x + 16.0, r.x + r.w - 16.0);
         let w = (x1 - x0) / n as f32;
-        let y = tops[1] + 2.0;
-        (0..n).map(|i| (i as u8, Rect::new(x0 + w * i as f32 + 2.0, y, w - 4.0, 30.0))).collect()
+        let y = tops[1 + self.head_lines()] + 2.0;
+        let h = (30.0 * b.k()).round();
+        (0..n).map(|i| (i as u8, Rect::new(x0 + w * i as f32 + 2.0, y, w - 4.0, h))).collect()
     }
     fn options(&self) -> Vec<usize> {
         self.choice_box().options()
     }
 }
 
-/// The option of the Preferences list that opens Preferences > Content.
-pub const PREFS_CONTENT: usize = 5;
-/// The option of the Preferences list that switches Enhanced graphics on and off (its master switch, enhanced.rs).
-pub const PREFS_ENHANCED_ON: usize = 6;
-/// The option of the Preferences list that opens Preferences > Enhanced graphics (enhanced.rs).
-pub const PREFS_ENHANCED: usize = 7;
-/// The option of the Preferences list that opens Preferences > Keyboard controls (keys_ui.rs).
-pub const PREFS_KEYS: usize = 8;
-/// The option of the Preferences list that opens Preferences > OpenSGolf extras (extras_ui.rs, extras.rs).
-pub const PREFS_EXTRAS: usize = 9;
-/// The option of the Preferences list that opens Preferences > Search (prefs_search.rs).
-pub const PREFS_SEARCH: usize = 10;
-/// The Preferences' option that switches the language (shown only when there is a translation to switch to).
-const PREFS_LANGUAGE: usize = 11;
+/// What Preferences and its boxes return for their OK (an option that does something returns its index).
+pub const BOX_OK: usize = usize::MAX - 1;
+/// The narrowest Preferences and its boxes are drawn, so their foot holds a description in two lines.
+const PREFS_MIN_W: f32 = 440.0;
 /// What the search box returns: OK; a found key (its action after this) to change on Change keys; Reset to original.
 pub const SEARCH_OK: usize = 0;
 pub const SEARCH_RESET: usize = 1;
 pub const SEARCH_KEY: usize = 2;
-/// The bit of a Preferences result that asks for the "Use my SimGolf files..." line's action (gamefiles.rs), after the
-/// ticks are applied.
-pub const PREFS_FILES_FLAG: usize = 20;
-
 /// What a popup returned: an option index (counted from the first option line), or None when cancelled.
 pub type PopupResult = Option<usize>;
 
@@ -605,12 +787,16 @@ impl App {
                 [tr(career).to_string(), trf("STR_RETIRE_PLANS", &[("PRO", &self.pro_name()), ("HIS", &his)])]
             }
         };
-        // the language line (docs/TRANSLATING.md), only when there is more than English to choose from
-        let languages = if kind == PopupKind::Prefs { crate::language::available().len() } else { 0 };
-        let language =
-            if languages > 1 { trf("STR_MENU_PREFS_LANGUAGE", &[("LANGUAGE", &crate::language::current_name())]) } else { String::new() };
+        // Preferences and its boxes (prefs_ui.rs): the files line, the language line (docs/TRANSLATING.md, only when there is
+        // more than English to choose from) and the update check depend on the build and what is installed
+        let ctx = self.prefs_ctx();
+        let prefs_lines =
+            if crate::prefs_ui::is_prefs_box(kind) { crate::prefs_ui::lines(kind, &ctx, crate::textsize::pct()) } else { Vec::new() };
         let set_par_lines: [String; 2];
         let cheat_lines: Vec<String>;
+        let report_lines: Vec<String>;
+        let support_lines: Vec<String>;
+        let welcome_lines: Vec<String>;
         let (mut lines, disabled, cx, mut top): (Vec<&str>, u32, f32, f32) = match kind {
             PopupKind::Retire => (
                 vec![retire[0].as_str(), retire[1].as_str(), tr("STR_RETIRE_WAIT"), tr("STR_RETIRE_SAVE_FIRST"), tr("STR_RETIRE_SO_LONG")],
@@ -661,33 +847,15 @@ impl App {
                 // one line higher with the sharing line, so the box stays on the screen
                 if crate::extras::sharing() { 308.0 } else { 340.0 },
             ),
-            PopupKind::Prefs => (
-                vec![
-                    tr("STR_MENU_PREFS_TITLE"),
-                    tr("STR_MENU_PREFS_THOUGHTS"),
-                    tr("STR_MENU_PREFS_ADVISOR"),
-                    tr("STR_MENU_PREFS_ANIMALS"),
-                    tr("STR_MENU_PREFS_SOUND"),
-                    tr("STR_MENU_PREFS_HD"),
-                    // the port's own: Preferences > Content (docs/MODDING.md)
-                    tr("STR_MENU_PREFS_CONTENT"),
-                    // the port's own: Enhanced graphics on or off, and its settings (docs/ENHANCED.md)
-                    tr("STR_MENU_PREFS_ENHANCED_ON"),
-                    tr("STR_MENU_PREFS_ENHANCED"),
-                    // the port's own: Preferences > Keyboard controls (keys_ui.rs)
-                    tr("STR_MENU_PREFS_KEYS"),
-                    // the port's own: Preferences > OpenSGolf extras (extras_ui.rs, extras.rs)
-                    tr("STR_MENU_PREFS_EXTRAS"),
-                    // the port's own: Preferences > Search (prefs_search.rs)
-                    tr("STR_MENU_PREFS_SEARCH"),
-                ],
-                0,
-                400.0,
-                // a row higher with the Search line, so the box keeps clear of the bottom of the screen
-                176.0,
-            ),
-            // filled in below from extras_ui's pages (Gameplay, Sandbox, Looks, Info, Helpers), with the banner under the
-            // tabs and the description at the foot; the tallest page (Info) keeps its OK tick on an 800 x 600 screen
+            // the original's four ticks, then the port's lines (prefs_ui.rs); higher than the original's place with the port's
+            // lines, so the box keeps clear of the bottom of the screen
+            PopupKind::Prefs => (prefs_lines.iter().map(|l| l.as_str()).collect(), 0, 400.0, 128.0),
+            PopupKind::PrefsGraphics | PopupKind::PrefsFiles | PopupKind::PrefsMore => {
+                (prefs_lines.iter().map(|l| l.as_str()).collect(), 0, 400.0, 176.0)
+            }
+            // filled in below from extras_ui's pages (Gameplay, Sandbox, Looks, Info, Helpers), with the preset line over the
+            // tabs, the banner under them and the description at the foot; the tallest page keeps its OK tick on an
+            // 800 x 600 screen
             PopupKind::Extras => (Vec::new(), 0, 400.0, 92.0),
             // filled in below from prefs_search
             PopupKind::Search => (Vec::new(), 0, 400.0, 92.0),
@@ -706,6 +874,27 @@ impl App {
                 let old = self.club.holes[h.clamp(1, 18)].par;
                 set_par_lines = [trf("STR_SET_PAR_1", &[("HOLE", &h), ("OLD", &old), ("NEW", &new)]), tr("STR_SET_PAR_2").to_string()];
                 (vec![set_par_lines[0].as_str(), set_par_lines[1].as_str(), tr("STR_SET_PAR_YES"), tr("STR_SET_PAR_NO")], 0, 400.0, 200.0)
+            }
+            // the port's own Report a problem box (bugreport.rs): in the middle of the screen
+            PopupKind::Report => {
+                report_lines = crate::bugreport::box_lines();
+                let top = crate::bugreport::box_top(report_lines.len());
+                (report_lines.iter().map(|l| l.as_str()).collect(), 0, 400.0, top)
+            }
+            // the port's own support reminder (support.rs): in the middle of the screen
+            PopupKind::Support => {
+                support_lines = crate::support::box_lines(self.support.record.played);
+                let top = crate::bugreport::box_top(support_lines.len());
+                (support_lines.iter().map(|l| l.as_str()).collect(), 0, 400.0, top)
+            }
+            // the port's own welcome boxes (welcome.rs): in the middle of the screen
+            PopupKind::Welcome | PopupKind::WhatsNew => {
+                welcome_lines = match (kind, self.welcome.news) {
+                    (PopupKind::WhatsNew, Some((v, h))) => crate::welcome::whatsnew_lines(v, h, self.on_free_set()),
+                    _ => crate::welcome::welcome_lines(self.on_free_set()),
+                };
+                let top = crate::bugreport::box_top(welcome_lines.len());
+                (welcome_lines.iter().map(|l| l.as_str()).collect(), 0, 400.0, top)
             }
             // the port's own Cheats box: below the dock's top, clear of the course's middle
             PopupKind::Cheats => {
@@ -727,24 +916,16 @@ impl App {
                 150.0,
             ),
         };
-        if languages > 1 {
-            lines.push(&language);
-        }
-        // the port's own: "Use my SimGolf files..." or "Use the free graphics" (gamefiles.rs), last
-        let files = if kind == PopupKind::Prefs { self.files_option().map(|(_, l)| format!(" {l}")) } else { None };
-        let files_line = files.as_ref().map(|_| lines.len() - 1);
-        if let Some(f) = &files {
-            lines.push(f);
-        }
         let enh = crate::enhanced::settings();
         // the Enhanced graphics box opens on its first page; its lines are made by refresh below
         // the port's own: the goals of a scenario or of the packs' scripts (docs/MODDING.md 5), after the original's lines
         if kind == PopupKind::Info && self.has_goals() {
             lines.push(tr("STR_MENU_INFO_GOALS"));
         }
-        // the OpenSGolf extras' lines (extras.rs), last
+        // the OpenSGolf extras' lines (extras.rs), last: Buy land while the Keep the land offer extra keeps an approval
         if kind == PopupKind::Info {
             for (on, key) in [
+                (self.land_waiting(), "STR_MENU_INFO_BUY_LAND"),
                 (crate::extras::people(), "STR_MENU_INFO_PEOPLE"),
                 (crate::extras::history(), "STR_MENU_INFO_HISTORY"),
                 (crate::extras::path_help(), "STR_MENU_INFO_PATH_VIEW"),
@@ -759,16 +940,8 @@ impl App {
                 }
             }
         }
-        let checks = if kind == PopupKind::Prefs {
-            self.show_thoughts as u32
-                | (self.show_advisor as u32) << 1
-                | (self.club.wildlife.enabled as u32) << 2
-                | (!self.mute as u32) << 3
-                | (self.hd.enabled as u32) << 4
-                | (crate::enhanced::settings().enabled as u32) << PREFS_ENHANCED_ON
-        } else {
-            0
-        };
+        let items = crate::prefs_ui::items(kind, &ctx);
+        let checks = items.iter().enumerate().fold(0, |m, (k, &l)| m | (self.prefs_tick(l) as u32) << k);
         let back = if self.screen == Screen::Popup { self.popup.as_ref().map(|p| p.back).unwrap_or(Screen::Play) } else { self.screen };
         self.popup = Some(Popup {
             kind,
@@ -780,20 +953,27 @@ impl App {
             cx,
             top,
             back,
-            files_line,
+            items,
+            ctx,
+            armed: None,
             page: 0,
             pref: crate::prefs_search::Prefs {
                 enh,
                 ex: self.extras_shown(),
                 ui: crate::extras::settings(),
                 keys: crate::controls::settings(),
+                text: crate::textsize::pct(),
+                hd: self.hd.enabled,
             },
             tab_hover: None,
             last_pick: None,
             query: self.pref_query.clone(),
             changed_only: false,
             hits: Vec::new(),
+            tell: if kind == PopupKind::WhatsNew { self.whatsnew_tell() } else { 0 },
         });
+        // the cut content's line only with the original game's files (extras_ui.rs)
+        crate::extras_ui::show_cut_content(!self.on_free_set());
         if let Some(p) = self.popup.as_mut().filter(|p| matches!(p.kind, PopupKind::Extras | PopupKind::Search)) {
             p.refresh();
         }
@@ -808,6 +988,11 @@ impl App {
             }
         }
         self.screen = Screen::Popup;
+    }
+
+    /// A popup over the title menu (the support reminder, support.rs): the menu is drawn under it and its music goes on.
+    pub fn popup_over_title(&self) -> bool {
+        self.screen == Screen::Popup && self.popup.as_ref().is_some_and(|p| p.back == Screen::Menu)
     }
 
     pub fn close_popup(&mut self) {
@@ -830,32 +1015,40 @@ impl App {
         self.draw_choice_box(g, &s, &b, p.sel);
         self.draw_page_tabs(g, &s, &p);
         if let Some(t) = p.banner() {
-            draw_banner(g, &s, &b, t, self.on_free_set());
+            draw_banner(g, &s, &b, t, self.on_free_set(), p.head_lines());
         }
         if p.kind == PopupKind::Extras {
             self.draw_extras_tags(g, &s, &p, &b);
+        }
+        if p.kind == PopupKind::WhatsNew {
+            self.draw_try_pills(g, &s, &p, &b);
+        }
+        if crate::prefs_ui::is_prefs_box(p.kind) {
+            self.draw_prefs_foot(g, &s, &p, &b);
         }
         g.flush();
     }
 
     /// The Extras box's own parts (the port's own): the tag pill at the right end of each gameplay and sandbox line, and at
     /// the foot the description of the line under the pointer (on a touch screen the line last tapped; with none, the
-    /// page's hint).
+    /// page's hint; the preset line's is the preset in use).
     fn draw_extras_tags(&self, g: &mut Gfx, s: &Ui, p: &Popup, b: &ChoiceBox) {
         use crate::info_ui::c15;
         let r = b.rect();
         let tops = b.line_tops();
-        let pw = crate::extras_ui::pill_w();
-        let pf = crate::extras_ui::PILL_FONT;
-        for ((k, l), &line) in crate::extras_ui::page_lines(p.page).into_iter().enumerate().zip(&b.options()) {
+        // the pills grow with the text (textsize.rs)
+        let tk = b.k();
+        let pw = (crate::extras_ui::pill_w() * tk).round();
+        let pf = crate::extras_ui::PILL_FONT.scaled(tk);
+        for ((k, l), &line) in crate::extras_ui::box_lines(p.page).into_iter().enumerate().zip(&b.options()) {
             let Some(t) = crate::extras_ui::tag(l) else { continue };
             let (fill, edge) = t.colours();
-            let (x, y, h) = (r.x + r.w - 24.0 - pw, tops[line] + 5.0, 18.0);
+            let (x, y, h) = (r.x + r.w - 24.0 - pw, tops[line] + (5.0 * tk).round(), (18.0 * tk).round());
             if self.on_free_set() {
                 let c = c15(fill);
                 crate::glass_ui::capsule(g, s, x, y, pw, h + 2.0, [c[0] * 1.1, c[1] * 1.1, c[2] * 1.1, 1.0]);
                 let lit = p.sel == Some(k);
-                s.put_shadowed(g, pf, x + pw * 0.5, y + 1.0, tr(t.key()), c15(if lit { 0x7fff } else { 0x7bde }), true);
+                put_dark_shadow(g, s, pf, x + pw * 0.5, y + 1.0, tr(t.key()), c15(if lit { 0x7fff } else { 0x7bde }), true);
                 continue;
             }
             s.fill(g, x, y, pw, h, c15(edge));
@@ -866,36 +1059,92 @@ impl App {
             }
             let label = tr(t.key());
             let lit = p.sel == Some(k);
-            s.put_shadowed(g, pf, x + pw * 0.5, y + 1.0, label, c15(if lit { 0x7fff } else { 0x7bde }), true);
+            put_dark_shadow(g, s, pf, x + pw * 0.5, y + 1.0, label, c15(if lit { 0x7fff } else { 0x7bde }), true);
         }
-        // the foot: a rule over it, then the text in up to two lines, left of the OK tick
-        let n = b.lines.len();
-        let y0 = tops[n - crate::extras_ui::FOOT_LINES] + 10.0;
-        s.fill(g, r.x + 16.0, y0, r.w - 32.0, 1.0, c15(0x3dd4));
         let shown = p.sel.or(if self.xs.touched { p.last_pick } else { None });
-        let (text, desc) = crate::extras_ui::foot_text(p.page, shown);
+        let (text, desc) = crate::extras_ui::foot_text(p.page, shown, &p.pref.ex, &p.pref.ui);
+        self.draw_foot(g, s, b, crate::extras_ui::FOOT_LINES, text, desc);
+    }
+
+    /// The What's new box's Try it pills (welcome.rs): at the right end of each highlight that is an option, as the Extras
+    /// box's tag pills, in its green; On once the option is in use.
+    fn draw_try_pills(&self, g: &mut Gfx, s: &Ui, p: &Popup, b: &ChoiceBox) {
+        use crate::info_ui::c15;
+        let r = b.rect();
+        let tops = b.line_tops();
+        let tk = b.k();
+        let pw = (crate::welcome::pill_w() * tk).round();
+        let pf = crate::extras_ui::PILL_FONT.scaled(tk);
+        for ((k, x), &line) in self.whatsnew_shown().iter().enumerate().zip(&b.options()) {
+            let Some(t) = x.action.filter(|&t| self.can_try(t)) else { continue };
+            let on = self.tried(t);
+            let label = tr(if on { "STR_WHATSNEW_ON" } else { "STR_WHATSNEW_TRY" });
+            // the Extras box's green tag (its Light pill), the tabs' paler blue once on
+            let (fill, edge) = if on { (0x3dd4, 0x2d50) } else { (0x11e6, 0x0d03) };
+            let (x, y, h) = (r.x + r.w - 24.0 - pw, tops[line] + (5.0 * tk).round(), (18.0 * tk).round());
+            let lit = p.sel == Some(k);
+            if self.on_free_set() {
+                let c = c15(fill);
+                crate::glass_ui::capsule(g, s, x, y, pw, h + 2.0, [c[0] * 1.1, c[1] * 1.1, c[2] * 1.1, 1.0]);
+            } else {
+                s.fill(g, x, y, pw, h, c15(edge));
+                s.fill(g, x + 1.0, y + 1.0, pw - 2.0, h - 2.0, c15(fill));
+                for (cx, cy) in [(x, y), (x + pw - 1.0, y), (x, y + h - 1.0), (x + pw - 1.0, y + h - 1.0)] {
+                    s.fill(g, cx, cy, 1.0, 1.0, c15(0x4e79));
+                }
+            }
+            put_dark_shadow(g, s, pf, x + pw * 0.5, y + 1.0, label, c15(if lit { 0x7fff } else { 0x7bde }), true);
+        }
+    }
+
+    /// The description at the foot of the Extras box and of Preferences and its boxes (the port's own): a rule over it, then
+    /// the text in up to two lines, left of the OK tick, in dark ink (a hint in dark teal) on the lavender.
+    fn draw_foot(&self, g: &mut Gfx, s: &Ui, b: &ChoiceBox, foot_lines: usize, text: &str, desc: bool) {
+        use crate::info_ui::c15;
+        let r = b.rect();
+        let tops = b.line_tops();
+        let tk = b.k();
+        let n = b.lines.len();
+        let y0 = tops[n - foot_lines] + 10.0;
+        s.fill(g, r.x + 16.0, y0, r.w - 32.0, 1.0, c15(0x3dd4));
         let w = r.w - 20.0 - 60.0;
-        let (f, lines) = FOOT_FONTS
+        // with bigger text (textsize.rs) the foot steps down from its size to the original's until two lines hold it
+        let fonts: Vec<crate::ui::Fnt> = FOOT_FONTS.iter().flat_map(|&f| [f.scaled(tk), f.scaled((tk + 1.0) / 2.0), f]).collect();
+        let (f, lines) = fonts
             .iter()
             .map(|&f| (f, crate::extras::wrap(f, text, w)))
             .find(|(_, l)| l.len() <= 2)
             .unwrap_or_else(|| (FOOT_FONTS[1], crate::extras::wrap(FOOT_FONTS[1], text, w)));
         for (i, l) in lines.iter().take(2).enumerate() {
             let y = y0 + 5.0 + i as f32 * f.line();
-            if desc {
-                s.put_shadowed(g, f, r.x + 20.0, y, l, c15(0x7ff0), false);
-            } else {
-                let ink = if self.on_free_set() { crate::glass_ui::INK } else { c15(0x0210) };
-                s.put(g, f, r.x + 20.0, y, l, ink);
-            }
+            // dark ink on the lavender (the port's own: pale yellow and teal read poorly there)
+            let ink = match (self.on_free_set(), desc) {
+                (true, _) => crate::glass_ui::INK,
+                (false, true) => c15(OWN_INK),
+                (false, false) => c15(OWN_TEAL),
+            };
+            s.put(g, f, r.x + 20.0, y, l, ink);
         }
     }
 
-    /// The Enhanced graphics and Extras boxes' tabs (the port's own): the page shown lit white on the box's paler blue, the
-    /// others teal on a darker blue; a tab under the pointer is outlined.
+    /// Preferences and its boxes' foot (prefs_ui.rs): what the line under the pointer (on a touch screen the line last
+    /// tapped) does, or the box's hint.
+    fn draw_prefs_foot(&self, g: &mut Gfx, s: &Ui, p: &Popup, b: &ChoiceBox) {
+        let shown = p.sel.or(if self.xs.touched { p.last_pick } else { None });
+        let armed = shown.is_some() && p.armed == shown;
+        let (text, desc) = crate::prefs_ui::foot_text(p.kind, &p.ctx, shown, armed);
+        self.draw_foot(g, s, b, crate::prefs_ui::FOOT_LINES, &text, desc);
+    }
+
+    /// The Enhanced graphics and Extras boxes' tabs (the port's own): the page shown in dark ink on the box's paler blue,
+    /// the others white over a dark shadow on a darker blue (pale yellow under the pointer); a tab under the pointer is
+    /// outlined.
     fn draw_page_tabs(&self, g: &mut Gfx, s: &Ui, p: &Popup) {
         use crate::info_ui::c15;
-        let f = CHOICE_FONT;
+        let k = p.choice_box().k();
+        let f = CHOICE_FONT.scaled(k);
+        // the label's place in the tab, the exe's 5 (6 when not lit) at normal size
+        let (y5, y6) = ((5.0 * k).round(), (6.0 * k).round());
         if self.on_free_set() {
             for (page, r) in p.tabs() {
                 let on = page == p.page;
@@ -905,12 +1154,13 @@ impl App {
                 if hover && !on {
                     crate::glass_ui::ring(g, s, r.x, r.y + 1.0, r.w, r.h - 2.0, [1.0, 1.0, 1.0, 0.9]);
                 }
-                let label = p.page_name(page);
-                let x = r.x + (r.w - f.width(label)) * 0.5;
+                // a page name too wide for its tab (a translation): smaller or cut (ui.rs fit_line; issue #164)
+                let (f, label, fy) = crate::ui::fit_line(f, p.page_name(page), r.w);
+                let x = r.x + (r.w - f.width(&label)) * 0.5;
                 if on {
-                    s.put(g, f, x, r.y + 5.0, label, crate::glass_ui::INK);
+                    s.put(g, f, x, r.y + y5 + fy, &label, crate::glass_ui::INK);
                 } else {
-                    s.put_shadowed(g, f, x, r.y + 5.0, label, c15(0x7fff), false);
+                    put_dark_shadow(g, s, f, x, r.y + y5 + fy, &label, c15(0x7fff), false);
                 }
             }
             return;
@@ -920,13 +1170,13 @@ impl App {
             let hover = p.tab_hover == Some(page);
             let edge = if on || hover { c15(0x7fff) } else { c15(0x2d6b) };
             s.fill(g, r.x - 1.0, r.y - 1.0, r.w + 2.0, r.h + 2.0, edge);
-            s.fill(g, r.x, r.y, r.w, r.h, if on { c15(0x5ade) } else { c15(0x3dd4) });
-            let label = p.page_name(page);
-            let x = r.x + (r.w - f.width(label)) * 0.5;
+            s.fill(g, r.x, r.y, r.w, r.h, if on { c15(0x5ade) } else { c15(TAB_OFF) });
+            let (f, label, fy) = crate::ui::fit_line(f, p.page_name(page), r.w);
+            let x = r.x + (r.w - f.width(&label)) * 0.5;
             if on {
-                s.put_shadowed(g, f, x, r.y + 5.0, label, c15(0x7fff), false);
+                s.put(g, f, x, r.y + y5 + fy, &label, c15(OWN_INK));
             } else {
-                s.put(g, f, x, r.y + 6.0, label, c15(if hover { 0x7fff } else { 0x0210 }));
+                put_dark_shadow(g, s, f, x, r.y + y6 + fy, &label, c15(if hover { 0x7ff0 } else { 0x7fff }), false);
             }
         }
     }
@@ -959,7 +1209,10 @@ impl App {
                 p.refresh();
             }
             KeyCode::Enter | KeyCode::KpEnter | KeyCode::Space => {
-                if p.sel.is_none() && !matches!(p.kind, PopupKind::Prefs | PopupKind::Enhanced | PopupKind::Extras | PopupKind::Search) {
+                if p.sel.is_none()
+                    && !crate::prefs_ui::is_prefs_box(p.kind)
+                    && !matches!(p.kind, PopupKind::Enhanced | PopupKind::Extras | PopupKind::Search | PopupKind::Report)
+                {
                     return Some(None);
                 }
                 return Some(self.popup_accept(None));
@@ -1019,51 +1272,45 @@ impl App {
     /// Accepting an option: a greyed one refuses with the error sound and keeps the popup open (None result is not
     /// returned then; the caller sees the same popup); a checkbox list toggles until OK.
     fn popup_accept(&mut self, pick: Option<usize>) -> PopupResult {
+        let touched = self.xs.touched;
         let p = self.popup.as_mut()?;
         let k = pick.or(p.sel).unwrap_or(0);
-        if p.kind == PopupKind::Prefs {
-            // "Use my SimGolf files...": the ticks so far are kept, as with OK, then the line's action runs
-            if p.files_line.is_some_and(|f| f == k && (pick.is_some() || p.sel == Some(k))) {
-                return Some((p.checks | 1 << PREFS_FILES_FLAG) as usize);
+        if crate::prefs_ui::is_prefs_box(p.kind) {
+            use crate::prefs_ui::Line;
+            let line = p.items.get(k).copied().filter(|_| pick.is_some() || p.sel.is_some());
+            let Some(line) = line else { return Some(BOX_OK) };
+            if crate::prefs_ui::is_tick(line) {
+                if pick.is_some() {
+                    p.checks ^= 1 << k;
+                    return Some(usize::MAX); // toggled, stay open
+                }
+                // Enter on a tick: OK
+                return Some(BOX_OK);
             }
-            if pick == Some(PREFS_LANGUAGE) {
-                // the next language, at once: the box is rebuilt in it with the ticks kept
-                let checks = p.checks;
-                crate::language::cycle();
-                self.open_popup(PopupKind::Prefs);
+            if matches!(line, Line::TextSize | Line::Language) {
+                // the next text size or language, at once: the box is rebuilt at it with the ticks and the lit line kept
+                let (kind, checks, sel, keyed, last) = (p.kind, p.checks, p.sel, p.keyed, p.last_pick);
+                if line == Line::TextSize {
+                    crate::textsize::cycle();
+                } else {
+                    crate::language::cycle();
+                }
+                self.open_popup(kind);
                 if let Some(p) = self.popup.as_mut() {
-                    p.checks = checks;
+                    (p.checks, p.sel, p.keyed, p.last_pick) = (checks, sel, keyed, last);
                 }
                 return Some(usize::MAX);
             }
-            // the Content packs line opens its screen (the ticks so far are kept, as with OK)
-            if k == PREFS_CONTENT && (pick.is_some() || p.sel == Some(k)) {
-                return Some((p.checks | 1 << PREFS_CONTENT) as usize);
+            // on a touch screen a line that opens something shows what it does on the first tap and opens on the second
+            if pick.is_some() && touched && crate::prefs_ui::opens(line) && p.armed != Some(k) {
+                p.armed = Some(k);
+                return Some(usize::MAX);
             }
-            // so does the Enhanced graphics line
-            if k == PREFS_ENHANCED && (pick.is_some() || p.sel == Some(k)) {
-                return Some((p.checks | 1 << PREFS_ENHANCED) as usize);
-            }
-            // and the Keyboard controls line
-            if k == PREFS_KEYS && (pick.is_some() || p.sel == Some(k)) {
-                return Some((p.checks | 1 << PREFS_KEYS) as usize);
-            }
-            // and the OpenSGolf extras line
-            if k == PREFS_EXTRAS && (pick.is_some() || p.sel == Some(k)) {
-                return Some((p.checks | 1 << PREFS_EXTRAS) as usize);
-            }
-            // and the Search line
-            if k == PREFS_SEARCH && (pick.is_some() || p.sel == Some(k)) {
-                return Some((p.checks | 1 << PREFS_SEARCH) as usize);
-            }
-            if pick.is_some() {
-                p.checks ^= 1 << k;
-                return Some(usize::MAX); // toggled, stay open
-            }
-            return Some(p.checks as usize);
+            // the ticks so far are kept, as with OK, then the line's action runs (main.rs)
+            return Some(k);
         }
         if p.kind == PopupKind::Extras {
-            if let Some(l) = pick.and_then(|k| crate::extras_ui::page_lines(p.page).get(k).copied()) {
+            if let Some(l) = pick.and_then(|k| crate::extras_ui::box_lines(p.page).get(k).copied()) {
                 crate::extras_ui::toggle_line(l, &mut p.pref.ex, &mut p.pref.ui);
                 p.refresh();
                 return Some(usize::MAX); // toggled, stay open
@@ -1095,6 +1342,17 @@ impl App {
             }
             return Some(usize::MAX);
         }
+        // Report a problem (bugreport.rs): the screenshot tick toggles, Cancel cancels, OK (its line, the tick, Enter) goes
+        if p.kind == PopupKind::Report {
+            return match pick.or(p.sel) {
+                Some(crate::bugreport::BOX_SHOT) if pick.is_some() => {
+                    p.checks ^= 1 << crate::bugreport::BOX_SHOT;
+                    Some(usize::MAX)
+                }
+                Some(crate::bugreport::BOX_CANCEL) => None,
+                _ => Some(crate::bugreport::BOX_GO),
+            };
+        }
         if p.kind == PopupKind::Enhanced {
             if pick.is_some() {
                 crate::enhanced::toggle(p.page, k, &mut p.pref.enh);
@@ -1123,21 +1381,58 @@ impl App {
 }
 
 /// The banner of the Enhanced graphics and Extras boxes (the port's own): a band under the tabs in the shown tab's paler
-/// blue and white edge, as if the page hung from it, with the page's meaning centred in white over the original's shadow.
-fn draw_banner(g: &mut Gfx, s: &Ui, b: &ChoiceBox, text: &str, free: bool) {
+/// blue and white edge, as if the page hung from it, with the page's meaning centred in the shown tab's dark ink.
+fn draw_banner(g: &mut Gfx, s: &Ui, b: &ChoiceBox, text: &str, free: bool, head: usize) {
     use crate::info_ui::c15;
     let r = b.rect();
-    let y = b.line_tops()[1 + crate::enhanced::TAB_LINES] + 1.0;
+    let y = b.line_tops()[1 + head + crate::enhanced::TAB_LINES] + 1.0;
     let (x0, x1) = (r.x + 18.0, r.x + r.w - 18.0);
+    // with bigger text the band grows with its words (textsize.rs)
+    let k = b.k();
+    let (f, h, ty) = (crate::textsize::fit(BANNER_FONT, k, text, x1 - x0 - 8.0), (26.0 * k).round(), (3.0 * k).round());
     if free {
         // a ribbon across the box
-        crate::glass_ui::capsule(g, s, x0, y - 1.0, x1 - x0, 28.0, [0.2, 0.62, 0.42, 1.0]);
-        s.put_shadowed(g, BANNER_FONT, (x0 + x1) * 0.5, y + 3.0, text, c15(0x7fff), true);
+        crate::glass_ui::capsule(g, s, x0, y - 1.0, x1 - x0, h + 2.0, [0.12, 0.46, 0.3, 1.0]);
+        put_dark_shadow(g, s, f, (x0 + x1) * 0.5, y + ty, text, c15(0x7fff), true);
         return;
     }
-    s.fill(g, x0 - 1.0, y - 1.0, x1 - x0 + 2.0, 28.0, c15(0x7fff));
-    s.fill(g, x0, y, x1 - x0, 26.0, c15(0x5ade));
-    s.put_shadowed(g, BANNER_FONT, (x0 + x1) * 0.5, y + 3.0, text, c15(0x7fff), true);
+    s.fill(g, x0 - 1.0, y - 1.0, x1 - x0 + 2.0, h + 2.0, c15(0x7fff));
+    s.fill(g, x0, y, x1 - x0, h, c15(0x5ade));
+    s.put_centered(g, f, (x0 + x1) * 0.5, y + ty, text, c15(OWN_INK));
+}
+
+/// Preferences' divider (prefs_ui::DIVIDER; the port's own): its words centred on the box in dark ink, with a rule either
+/// side at the middle of the letters.
+fn draw_divider(g: &mut Gfx, s: &Ui, f: crate::ui::Fnt, r: &Rect, y: f32, t: &str, c: [f32; 4]) {
+    let cx = r.x + (r.w / 2.0).trunc();
+    let half = (f.width(t) / 2.0).floor();
+    s.put(g, f, cx - half, y, t, c);
+    let ry = y + (f.px * 0.55).round();
+    let (x0, x1) = (r.x + 20.0, r.x + r.w - 20.0);
+    s.fill(g, x0, ry, (cx - half - 10.0 - x0).max(0.0), 2.0, c);
+    s.fill(g, cx + half + 10.0, ry, (x1 - cx - half - 10.0).max(0.0), 2.0, c);
+}
+
+/// A light label of the port's own over a dark shadow one pixel below and right (`OWN_EDGE`; the exe's shadowed calls use
+/// a dark red one pixel below, too faint to carry pale text on the port's mid-tone tabs and pills).
+#[allow(clippy::too_many_arguments)]
+fn put_dark_shadow(g: &mut Gfx, s: &Ui, f: crate::ui::Fnt, x: f32, y: f32, t: &str, c: [f32; 4], centred: bool) {
+    let x = if centred { x - (f.width(t) / 2.0).floor() } else { x };
+    let e = crate::info_ui::c15(OWN_EDGE);
+    s.put(g, f, x + 1.0, y + 1.0, t, e);
+    s.put(g, f, x, y + 1.0, t, e);
+    s.put(g, f, x, y, t, c);
+}
+
+/// A heading of the port's own boxes, centred on x: the exe's colour inside a dark edge one pixel all round (`OWN_EDGE`),
+/// so pale yellow and white read on the lavender.
+fn put_edged(g: &mut Gfx, s: &Ui, f: crate::ui::Fnt, cx: f32, y: f32, t: &str, c: [f32; 4]) {
+    let x = cx - (f.width(t) / 2.0).floor();
+    let e = crate::info_ui::c15(OWN_EDGE);
+    for (dx, dy) in [(-1.0, -1.0), (0.0, -1.0), (1.0, -1.0), (-1.0, 0.0), (1.0, 0.0), (-1.0, 1.0), (0.0, 1.0), (1.0, 1.0), (0.0, 2.0)] {
+        s.put(g, f, x + dx, y + dy, t, e);
+    }
+    s.put(g, f, x, y, t, c);
 }
 
 impl App {
@@ -1172,8 +1467,14 @@ impl App {
                             }
                         }
                         crate::extras::RenameFor::Bio(r) => {
-                            if let Some(p) = self.club.roster.get_mut(r.max(0) as usize) {
+                            // the person's record is the club's: an action (replay.rs)
+                            let rec = r.max(0) as usize;
+                            if let Some(mut p) = self.club.roster.get(rec).cloned() {
                                 p.bio = n;
+                                if let Ok(person) = serde_json::to_value(&p) {
+                                    let fixed = (p.fixed & 7) as u8;
+                                    self.act(sg_core::action::Action::Person { record: rec, person, slot: None, toggles: fixed });
+                                }
                             }
                         }
                     }
@@ -1194,8 +1495,7 @@ impl App {
                 if n.is_empty() || n.chars().any(|c| "\\/:*?\"<>|".contains(c)) {
                     self.ui_sound(0x18);
                 } else {
-                    self.course_name = n.clone();
-                    self.club.course_name = n;
+                    self.act(sg_core::action::Action::Rename(n));
                     self.rename = None;
                 }
             }
@@ -1245,5 +1545,115 @@ impl App {
         }
         s.text(g, r.x + 26.0, 302.0, &shown, 16.0, rgb(0.05, 0.05, 0.2));
         g.flush();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    #[test]
+    fn every_preferences_description_fits_the_foot() {
+        use crate::prefs_ui::{desc_key, items, Ctx};
+        // each box as drawn at normal text size; the foot's text left of the OK tick, in its smaller font
+        let width = |kind: PopupKind, c: &Ctx| {
+            let b = ChoiceBox {
+                lines: crate::prefs_ui::lines(kind, c, 100),
+                checks: Some(0),
+                plain: crate::prefs_ui::plain_bits(&items(kind, c)),
+                min_w: PREFS_MIN_W,
+                own: kind != PopupKind::Prefs,
+                ..ChoiceBox::new(Vec::new(), 400.0, 100.0)
+            };
+            b.rect().w - 20.0 - 60.0
+        };
+        let all = Ctx {
+            files: Some(("Use my SimGolf files...", false)),
+            languages: true,
+            update_now: true,
+            play_count: true,
+            played: 0,
+            make_hd: Some(crate::hd_make::Offer::Make),
+            remove_hd: true,
+        };
+        let free = Ctx { files: Some(("Use the free graphics", true)), ..all };
+        let mut long = Vec::new();
+        for c in [all, free] {
+            for kind in [PopupKind::Prefs, PopupKind::PrefsGraphics, PopupKind::PrefsFiles, PopupKind::PrefsMore] {
+                let w = width(kind, &c);
+                for l in items(kind, &c) {
+                    if let Some(d) = desc_key(l, &c) {
+                        let t = sg_core::lang::trf("STR_PREFS_TAP_AGAIN", &[("DESC", &sg_core::lang::tr(d))]);
+                        // "Tap again" only on the lines that open something (foot_text's armed)
+                        let plain = sg_core::lang::tr(d).to_string();
+                        let texts = if crate::prefs_ui::opens(l) { vec![plain, t] } else { vec![plain] };
+                        for text in texts {
+                            let n = crate::extras::wrap(FOOT_FONTS[1], &text, w).len();
+                            if n > 2 {
+                                long.push(format!("{d} takes {n} lines: {text}"));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        long.dedup();
+        assert!(long.is_empty(), "{long:#?}");
+    }
+    use super::*;
+
+    /// WCAG contrast ratio of two 15-bit colours as the port shows them (`info_ui::c15`).
+    fn contrast(a: u32, b: u32) -> f32 {
+        let lum = |v: u32| {
+            let c = crate::info_ui::c15(v);
+            let lin = |x: f32| if x <= 0.03928 { x / 12.92 } else { ((x + 0.055) / 1.055).powf(2.4) };
+            0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2])
+        };
+        let (x, y) = (lum(a), lum(b));
+        (x.max(y) + 0.05) / (x.min(y) + 0.05)
+    }
+
+    #[test]
+    fn the_ports_own_labels_read_on_their_grounds() {
+        // dark ink on the lavender fill and on the page shown and banner
+        assert!(contrast(OWN_INK, 0x4e79) >= 4.5);
+        assert!(contrast(OWN_INK, 0x5ade) >= 4.5);
+        assert!(contrast(OWN_TEAL, 0x4e79) >= 4.5);
+        // white labels on the other tabs and on the tag pills
+        assert!(contrast(0x7fff, TAB_OFF) >= 4.5);
+        assert!(contrast(0x7ff0, TAB_OFF) >= 4.5);
+        for t in [
+            crate::extras_ui::Tag::Light,
+            crate::extras_ui::Tag::Noticeable,
+            crate::extras_ui::Tag::Big,
+            crate::extras_ui::Tag::Experimental,
+        ] {
+            assert!(contrast(0x7bde, t.colours().0) >= 4.5, "{t:?}");
+        }
+        // what was there before: the exe's teal on the old tab and the white banner on the paler blue
+        assert!(contrast(0x0210, 0x3dd4) < 2.0 && contrast(0x7fff, 0x5ade) < 2.5);
+    }
+
+    #[test]
+    fn bigger_text_grows_the_box_and_keeps_it_on_the_screen() {
+        let lines: Vec<String> = std::iter::once("Title".to_string()).chain((0..14).map(|i| format!(" Option number {i}"))).collect();
+        let b = ChoiceBox::new(lines, 400.0, 176.0);
+        crate::textsize::set(100);
+        assert_eq!(b.k(), 1.0);
+        let normal = b.rect();
+        // at normal size the exe's geometry: (lines * 3 + 3) * 8 high from the call's y, lines 18 then 24 apart
+        assert_eq!((normal.y, normal.h), (176.0, (15.0 * 3.0 + 3.0) * 8.0));
+        assert_eq!(b.line_tops()[..3], [188.0, 206.0, 230.0]);
+        for p in [125, 150] {
+            crate::textsize::set(p);
+            let r = b.rect();
+            assert!(b.k() > 1.0 && b.k() <= p as f32 / 100.0);
+            assert!(r.h > normal.h && r.y >= 4.0 && r.y + r.h <= 596.0 && r.x >= 4.0 && r.x + r.w <= 796.0);
+            // the rows follow the size, and a click on a row finds its option
+            let tops = b.line_tops();
+            assert!(tops[2] - tops[1] > 24.0);
+            assert_eq!(b.option_at(r.x + 50.0, tops[5] + 2.0), Some(4));
+            assert!(b.ok_tick().y + 39.0 <= r.y + r.h);
+        }
+        crate::textsize::set(100);
     }
 }

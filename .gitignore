@@ -16,6 +16,9 @@ game/
 !crates/simgolf/fonts/LiberationSans-Bold.ttf
 # the Android launcher icon is our own drawing (tools/make_icons.sh)
 !crates/simgolf/android/res/**/*.png
+# the store icons and screenshots: our own drawing and pictures of the free set only (packaging/README.md)
+!packaging/**/*.png
+!fastlane/**/*.png
 # the free base set's art, rendered from our own models by tools/freeset_art (packs/opensgolf-free/CREDITS.md)
 !packs/opensgolf-free/art/**/*.png
 __pycache__/
@@ -42,6 +45,7 @@ hd-download/
 
 # the 3DS port's Homebrew Launcher icon (an original drawing, not game art)
 !crates/simgolf-3ds/icon.png
+selfcheck-test/
 
 # build and cache folders
 build_asan/

@@ -63,7 +63,7 @@ is filtered, placed and animated.
 | Anti-aliasing (`msaa`) | The frame is drawn into a 4× multisampled target and resolved (the HD mode's target): smooth terrain edges, cliffs and lines. Desktop only, where the renderer can resolve multisampled targets. |
 | Smooth camera: zoom, turns and panning (`smooth_camera`) | The mouse wheel and a two-finger pinch zoom continuously between the original's farthest and closest levels (a wheel notch is a quarter of a doubling); the zoom buttons and z / x still step to the next original level. Every zoom change is eased. A quarter turn (PageUp, Home, the dock's turn buttons, a twist) is animated instead of snapping; the sprites switch to the next view half way through. Arrow-key scrolls glide, and a dragged course keeps moving for a moment when let go. The rules keep the original's levels: see *The Classic guarantee*. |
 | Photo mode (`photo_mode`) | Lets photo mode open (the C key or the camera button over the course): see *Photo mode* below. On by default. |
-| Fix the original game's bugs (`fix_original_bugs`) | Not an Enhanced option: listed here, but the master switch does not gate it, so Classic gets the fixes too. Fixes the original game's own bugs (docs/FIXES.md); off plays them as the original does. On by default. |
+| Fix the original game's bugs (`fix_original_bugs`) | Not an Enhanced option: kept with these settings, but a line of Preferences itself (not in this box), and the master switch does not gate it, so Classic gets the fixes too. Fixes the original game's own bugs (docs/FIXES.md); off plays them as the original does. On by default. |
 | Smooth motion between game ticks (`smooth_motion`) | The simulation runs in 87 ms ticks (about 11.5 a second) as the original does; the screen is drawn at the display's refresh rate (60 to 144 Hz, miniquad's swap interval 1). With this option golfers, staff, celebrity residents, animals, carts, the balloon, blimp, sailboat and birds, and the balls (their flight arcs too, without the original's whole-pixel height steps) are drawn between where they were at the last two ticks instead of jumping once a tick. Moves of more than two tiles in a tick (a golfer sent home, a new ball) are not smoothed. This is drawing only: the simulation, saves and tests are unchanged. It shows things one tick (87 ms) behind the simulation. |
 
 ## Effects
@@ -99,7 +99,7 @@ decoded terrain light (`sg_core::terrain::Lighting`, `light_direction`) and the 
 | Water reflections (`reflections`) | on | Trees, buildings and golfers mirrored in the water, rippling; stronger sun glitter at golden hour; the water lapping at the shore (see *Water reflections*). |
 | Wind (`wind`) | on | A wind for each day: trees, palms, bushes and grasses sway, flags fly downwind, the rain and the clouds follow it (see *Wind*). |
 | Evening lights (`evening-lights`) | on | With the time of day: lit windows, lamps with pools of light and fireflies at dusk (see *Evening lights*). |
-| Seasons (`seasons`) | on | Blossom and fresh greens in spring, autumn colours in September and October, frost and dew on spring and autumn mornings (see *Seasons*). |
+| Seasons (`seasons`) | on | Blossom and fresh greens in spring, autumn colours in September and October, frost on spring and autumn mornings (see *Seasons*). |
 | After the rain (`after-rain`) | on | With rain: wet, glossy ground and puddles during and after a rainy day, now and then a rainbow (see *After the rain*). |
 | Grass tufts (`grass`) | on | Tiny tufts of grass, a few pixels at the art's own pixel size, standing up from the rough and the deep rough and swaying in the wind; none on fairways, greens or tees. Only at the closest zoom level. |
 | Lightning (`lightning`) | off | Flashes and distant flicker in heavy rain where the climate is wet (see *Climate*), never in the desert. |
@@ -340,7 +340,8 @@ effects stay off it (only the shoreline's wet band darkens it, faintly, next to 
   zoom but one in. The course's bodies of water are found when the ground changes (`build_ponds`: 4-connected water,
   each tile's distance from the land); a body of 450 tiles or more, or of 150 running off the map, is the sea: none of
   this on it (a river running off the map is not the sea). Reeds stand in about a third of the shore tiles of ponds and
-  lakes, on the bank side, swaying with the wind, bulrush heads from June (papyrus tufts in the desert), browner in
+  lakes, on the bank side at the water's edge, each a tuft of stems fanning out from one root (the middle ones tallest,
+  dark at the foot and lit to the tip, two leaves arching out low), swaying with the wind, bulrush heads from June (papyrus tufts in the desert), browner in
   autumn. Lily pads lie in some of the tiles one or two from the land from late April to October, a few flowers in high
   summer. Ducks (drakes and ducks, ducklings in May and June) and, except in the tropics, swans glide in slow ovals on
   open water (two tiles from the land and the property's edge) of lakes of 24 tiles or more, one group for every 40
@@ -412,8 +413,7 @@ tree; the grass turns a little golden. Palms and cacti do not change. The trees 
 (foliage picked by hue, 48° to 178°), made when the season moves on by an eighth and cached; the grass is tinted in the
 terrain shader (green pixels of grassy ground only). Per theme: no autumn or blossom in the tropics, little in the
 desert, a little less on the links. With the time of day, early mornings in March, April and October have frost lying
-in patches (more in hollows) and, in spring and autumn, dew or rime glinting in the sun (tiny twinkling sparkles, on
-level ground only).
+in patches (more in hollows, on level ground only).
 
 ### After the rain
 
@@ -507,6 +507,40 @@ waves) is `crates/sg-core/src/weather.rs`, the same hashes as before it moved th
 the *Weather that matters* gameplay extra on, the weather's day is the game's (three game months, the day of light at
 its normal length) whatever the *Day length*, so the rain falls when the golfers play in it; with it off, the weather's
 day is the light's, as before.
+
+### Lit windows, dawn sprinklers, frost (0.5)
+
+The port's own, each its own tick, all with the time of day (without it there is no evening or morning):
+
+- **Lit windows** (*Warm light in the buildings' windows at night*, Atmosphere, on): the windows of *Evening lights* above
+  on a tick of their own, with the warm pool spilling round each building; *Lamps and fireflies at dusk* keeps the lamps
+  and the fireflies. The windows are found in each frame's art, so the original's buildings and the free set's alike glow
+  (the free set's pale-blue panes are framed by its light walls as the original's dark ones are). Both lights share the
+  evening's strength (`Atmos::night`).
+- **Dawn sprinklers** (*Sprinklers on the fairways and greens at dawn*, Atmosphere, on; `crates/simgolf/src/fx_dawn.rs`):
+  from phase 0.975 (just before dawn) to 0.09, gone by 0.15, not in the rain, the snow or on a frosty morning. Where they
+  stand is a render-side hash of the course: about one tee, green or fairway tile in fifteen, at least four tiles apart, at
+  most 24. Each throws a jet that sweeps to and fro across a half circle round its own heading; its 30 drops leave the
+  nozzle one after another and fly out along the jet as it pointed when they left, arcing up a third of the throw (1.5
+  tiles) and down, a solid two-pixel stream near the nozzle breaking into single drops and falling spray. The drops and
+  the riser are squares of the art's pixel size in the sprites' depth order (render.rs draws them with the lamps), tinted
+  by the dawn light as the sprites are; a soft dark disc under each, drawn with the evening's pools, is the watered grass.
+- **Frost** (*Frost on cold mornings, melting by late morning*, Weather, on): the seasons' frost on a tick of its own
+  (*Seasons* keeps the blossom and the autumn colours), on cold mornings from March to mid April and in October
+  (and full in a late-winter cold snap, fx_winter.rs), from dawn to phase 0.2. None where the theme has no winter: the
+  desert's frost was taken out with the tropics'. The terrain shader lays it on the grass (fairways, greens and tees
+  included) as an even pale sheen with a fine grain of brighter rime when it is full, and as it thins the sheen melts back
+  in patches into the hollows and the shade (a threshold on the patch noise plus the occlusion that rises as the frost
+  weakens) before it goes.
+- **Pixel-perfect scaling** (*Pixel-perfect scaling: whole sizes only*, Display, off; counts in Classic too, like the frame
+  rate cap): `ui::view_scale` gives the window pixels per 800 x 600 pixel for the interface and the course alike, and with
+  this on it takes the largest whole number that fits (a window smaller than 800 x 600 still shrinks), with the picture's
+  corner on a whole pixel; textures made the classic way (the interface art, the sprites, the classic font, not the
+  mipmapped terrain) magnify nearest-neighbour; `ui::pixel_border` covers the window round the picture (black, or the
+  widescreen frame's dark green with Enhanced on) and Enhanced widescreen stays off while it is on. Enhanced's own
+  smoothing (smooth interface art, the pixel-art scaler) is the player's choice and still applies when ticked. Every
+  `(w / 800).min(h / 600)` in the renderer and the effects goes through `ui::view_scale`, so with the option off the numbers
+  are the same as before.
 
 ### Performance
 

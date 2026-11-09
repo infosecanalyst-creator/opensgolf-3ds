@@ -504,7 +504,7 @@ impl App {
                 Tab::Pro => tr("STR_PEOPLE_TAB_PRO").to_string(),
             };
             let r = tab_rect(i);
-            draw_tab(g, &s, r, F_ARIAL10, &label, *t == self.xs.people.tab, r.has(px, py));
+            draw_tab(g, &s, r, crate::textsize::fit(F_ARIAL10, 1.25, &label, r.w - 6.0), &label, *t == self.xs.people.tab, r.has(px, py));
         }
         if self.xs.people.tab == Tab::Pro {
             self.draw_pro_tab(g, &s);
@@ -514,18 +514,23 @@ impl App {
             let t = (self.xs.people.tab == Tab::Staff) as usize;
             let cols = if t == 0 { &GOLFER_COLS } else { &STAFF_COLS };
             let (sc, down) = self.xs.people.sort[t];
+            // with bigger text (textsize.rs) the list keeps its 20 pixel rows: its words grow to 120% at most, each cut to
+            // its column as before
+            let cell = F_MANUAL15.scaled(crate::textsize::k(1.2));
+            let foot = |t: &str| crate::textsize::fit(F_ARIAL10, 1.5, t, BOX.w - 110.0);
             for (c, col) in cols.iter().enumerate() {
                 let x = BOX.x + col.1;
                 let lit = (HEAD_Y - 4.0..ROW0 - 2.0).contains(&py) && (x..x + col.2).contains(&px);
-                s.put_shadowed(g, F_MANUAL15, x + 4.0, HEAD_Y, tr(col.0), if lit { white } else { yellow }, false);
+                let head = crate::textsize::fit(F_MANUAL15, 1.2, tr(col.0), col.2 - 16.0);
+                s.put_shadowed(g, head, x + 4.0, HEAD_Y, tr(col.0), if lit { white } else { yellow }, false);
                 if c == sc {
-                    draw_arrow(g, &s, x + 10.0 + F_MANUAL15.width(tr(col.0)), HEAD_Y + 8.0, !down, white);
+                    draw_arrow(g, &s, x + 10.0 + head.width(tr(col.0)), HEAD_Y + 8.0, !down, white);
                 }
             }
             s.fill(g, BOX.x + 24.0, ROW0 - 3.0, UP.x - BOX.x - 32.0, 1.0, rgba(0.0, 0.0, 0.3, 0.4));
             if lines.is_empty() {
                 let key = if t == 0 { "STR_PEOPLE_NO_GOLFERS" } else { "STR_PEOPLE_NO_STAFF" };
-                s.put_centered(g, F_MANUAL15, 400.0, ROW0 + 60.0, tr(key), white);
+                s.put_centered(g, cell, 400.0, ROW0 + 60.0, tr(key), white);
             }
             let off = self.xs.people.off.min(lines.len().saturating_sub(ROWS));
             self.xs.people.off = off;
@@ -547,10 +552,10 @@ impl App {
                         }
                     }
                     let mut text = l.cells[c].clone();
-                    while F_MANUAL15.width(&text) > col.2 - 6.0 && text.chars().count() > 1 {
+                    while cell.width(&text) > col.2 - 6.0 && text.chars().count() > 1 {
                         text.pop();
                     }
-                    s.put(g, F_MANUAL15, x, y + 2.0, &text, ink);
+                    s.put(g, cell, x, y + 2.0 - (cell.px - F_MANUAL15.px).min(2.0), &text, ink);
                 }
             }
             for (b, up, ok) in [(UP, true, off > 0), (DOWN, false, off + ROWS < lines.len())] {
@@ -561,14 +566,8 @@ impl App {
                 let r = button_rect(k);
                 draw_button(g, &s, r, tr(label), ok, r.has(px, py));
             }
-            s.put(
-                g,
-                F_ARIAL10,
-                BOX.x + 24.0,
-                BOX.y + BOX.h - 24.0,
-                tr(if t == 0 { "STR_PEOPLE_HELP_GOLFERS" } else { "STR_PEOPLE_HELP_STAFF" }),
-                navy,
-            );
+            let help = tr(if t == 0 { "STR_PEOPLE_HELP_GOLFERS" } else { "STR_PEOPLE_HELP_STAFF" });
+            s.put(g, foot(help), BOX.x + 24.0, BOX.y + BOX.h - 24.0, help, navy);
         }
         if self.art.trans.tex.is_some() {
             let r = ok_tick();
@@ -584,17 +583,23 @@ impl App {
         s.put_shadowed(g, F_MANUAL20, BOX.x + 40.0, BOX.y + 76.0, &self.pro_name(), white, false);
         let level: i32 = c.pro_skill[..10].iter().map(|&v| v as i32).sum();
         let info = trf("STR_PEOPLE_PRO_RECORD", &[("POINTS", &c.skill_points), ("SKILLS", &level), ("TROPHIES", &c.trophies)]);
-        s.put(g, F_MANUAL15, BOX.x + 40.0, BOX.y + 104.0, &info, navy);
+        // with bigger text (textsize.rs): the lines 18 apart grow to 115%, the others as far as their room holds
+        let line = |t: &str, w: f32| crate::textsize::fit(F_MANUAL15, 1.15, t, w);
+        s.put(g, line(&info, BOX.w - 80.0), BOX.x + 40.0, BOX.y + 104.0, &info, navy);
         let status = if c.gary != -1 { tr("STR_PEOPLE_PRO_PLAYING") } else { tr("STR_PEOPLE_PRO_FREE") };
-        s.put(g, F_MANUAL15, BOX.x + 40.0, BOX.y + 122.0, status, navy);
+        s.put(g, line(status, BOX.w - 80.0), BOX.x + 40.0, BOX.y + 122.0, status, navy);
         let (px, py) = self.info.pointer;
         let ok = self.pro_buttons_ok();
         for (b, (label, help)) in PRO_BUTTONS.iter().enumerate() {
             let r = pro_button_rect(b);
             draw_button(g, s, r, tr(label), ok[b], r.has(px, py));
-            s.put(g, F_ARIAL10, r.x + r.w + 16.0, r.y + 7.0, tr(help), if ok[b] { navy } else { grey });
+            let room = BOX.x + BOX.w - 24.0 - (r.x + r.w + 16.0);
+            let f = crate::textsize::fit(F_ARIAL10, 1.5, tr(help), room);
+            s.put(g, f, r.x + r.w + 16.0, r.y + 7.0 - ((f.px - 10.0) / 2.0).floor(), tr(help), if ok[b] { navy } else { grey });
         }
-        s.put_shadowed(g, F_MANUAL15, BOX.x + 40.0, BOX.y + 384.0, tr("STR_PEOPLE_PRO_NOTE"), yellow, false);
-        s.put(g, F_ARIAL10, BOX.x + 24.0, BOX.y + BOX.h - 24.0, tr("STR_PEOPLE_HELP_PRO"), navy);
+        let note = tr("STR_PEOPLE_PRO_NOTE");
+        s.put_shadowed(g, crate::textsize::fit(F_MANUAL15, 1.5, note, BOX.w - 80.0), BOX.x + 40.0, BOX.y + 384.0, note, yellow, false);
+        let help = tr("STR_PEOPLE_HELP_PRO");
+        s.put(g, crate::textsize::fit(F_ARIAL10, 1.5, help, BOX.w - 110.0), BOX.x + 24.0, BOX.y + BOX.h - 24.0, help, navy);
     }
 }

@@ -31,6 +31,38 @@ use sg_core::assets::Rgba;
 pub struct Mat4(pub [f32; 16]);
 
 impl Mat4 {
+    pub fn perspective(fovy: f32, aspect: f32, n: f32, f: f32) -> Mat4 {
+        let k = 1.0 / (fovy.to_radians() * 0.5).tan();
+        let mut m = [0.0; 16];
+        m[0] = k / aspect;
+        m[5] = k;
+        m[10] = (f + n) / (n - f);
+        m[11] = -1.0;
+        m[14] = 2.0 * f * n / (n - f);
+        Mat4(m)
+    }
+    /// gluLookAt: the view from `eye` towards `at`, `up` being up on the screen.
+    pub fn look_at(eye: [f32; 3], at: [f32; 3], up: [f32; 3]) -> Mat4 {
+        let norm = |v: [f32; 3]| {
+            let l = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt().max(1e-12);
+            [v[0] / l, v[1] / l, v[2] / l]
+        };
+        let cross = |a: [f32; 3], b: [f32; 3]| [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+        let dot = |a: [f32; 3], b: [f32; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+        let f = norm([at[0] - eye[0], at[1] - eye[1], at[2] - eye[2]]);
+        let s = norm(cross(f, up));
+        let u = cross(s, f);
+        let mut m = Mat4::identity().0;
+        for k in 0..3 {
+            m[k * 4] = s[k];
+            m[k * 4 + 1] = u[k];
+            m[k * 4 + 2] = -f[k];
+        }
+        m[12] = -dot(s, eye);
+        m[13] = -dot(u, eye);
+        m[14] = dot(f, eye);
+        Mat4(m)
+    }
     pub fn identity() -> Mat4 {
         let mut m = [0.0; 16];
         m[0] = 1.0;
@@ -545,6 +577,8 @@ pub struct Gfx {
     pub ctx: Box<dyn miniquad::RenderingBackend>,
     /// The game's Enhanced graphics pipelines: never made on the 3DS.
     pub fx: Option<Box<crate::fx::FxGpu>>,
+    /// The game's sprite atlas (atlas.rs): never filled on the 3DS, whose textures are its own (atlas_texture says no).
+    pub(crate) atlas: crate::atlas::Atlas,
     _inst: citro3d::Instance,
     main: Program,
     main_slots: MainSlots,
@@ -601,7 +635,7 @@ pub struct Gfx {
     in_frame: bool,
     /// Sprite pictures packed into shared pages (`Atlas`): per texture slot, the page and where the picture sits on it.
     subs: Vec<Option<Sub>>,
-    atlas: Vec<Page>,
+    pages: Vec<Page>,
 }
 
 /// A picture on an atlas page: the page's texture and the picture's rectangle there in UV units (x0, y0, x1, y1).
@@ -700,6 +734,7 @@ impl Gfx {
             white: TextureId::from_index(0),
             ctx: miniquad::window::new_rendering_backend(),
             fx: None,
+            atlas: Default::default(),
             batch: Vec::new(),
             batch_tex: None,
             batch_mode: Mode::Flat,
@@ -722,7 +757,7 @@ impl Gfx {
             buf_bound: std::ptr::null(),
             in_frame: false,
             subs: Vec::new(),
-            atlas: Vec::new(),
+            pages: Vec::new(),
         };
         g.white = g.texture(&Rgba { w: 8, h: 8, px: vec![255; 8 * 8 * 4] }, false);
         trace("gfx: ready");
@@ -776,7 +811,7 @@ impl Gfx {
         // a cell of whole 8 x 8 tiles with a clear texel all round, so filtering never reaches a neighbour's texels
         let (cw, ch) = ((img.w + 2 + 7) & !7, (img.h + 2 + 7) & !7);
         let mut pi = None;
-        for (i, p) in self.atlas.iter_mut().enumerate().rev() {
+        for (i, p) in self.pages.iter_mut().enumerate().rev() {
             if p.fmt != fmt || p.retired {
                 continue;
             }
@@ -795,12 +830,12 @@ impl Gfx {
             Some(i) => i,
             None => {
                 let tex = self.page_texture(fmt)?;
-                self.atlas.push(Page { tex, fmt, x: 0, y: 0, shelf_h: 0, live: 0, retired: false });
-                self.atlas.len() - 1
+                self.pages.push(Page { tex, fmt, x: 0, y: 0, shelf_h: 0, live: 0, retired: false });
+                self.pages.len() - 1
             }
         };
         let (ox, oy, page) = {
-            let p = &mut self.atlas[pi];
+            let p = &mut self.pages[pi];
             let at = (p.x, p.y);
             p.x += cw;
             p.shelf_h = p.shelf_h.max(ch);
@@ -945,7 +980,7 @@ impl Gfx {
         // a picture on an atlas page: its slot is freed (its cell stays used until the program ends)
         if let Some(s) = self.subs.get_mut(id.index()) {
             if let Some(sub) = s.take() {
-                if let Some(p) = self.atlas.get_mut(sub.pi) {
+                if let Some(p) = self.pages.get_mut(sub.pi) {
                     p.live = p.live.saturating_sub(1);
                     p.retired |= p.live == 0;
                 }
@@ -1354,7 +1389,7 @@ impl Gfx {
             self.retired.clear();
             self.retired_terrain.clear();
             // atlas pages whose pictures were all deleted: cleared (the GPU is done with them) and filled again
-            for p in self.atlas.iter_mut().filter(|p| p.retired) {
+            for p in self.pages.iter_mut().filter(|p| p.retired) {
                 if let Some(Some(t)) = self.textures.get_mut(p.tex.index()) {
                     let data = t.raw.__bindgen_anon_1.data as *mut u8;
                     std::ptr::write_bytes(data, 0, (PAGE * PAGE * p.fmt.bytes()) as usize);
@@ -1478,4 +1513,59 @@ fn to_c3d(m: &Mat4) -> c3d::C3D_Mtx {
 /// off on the 3DS): None on the 3DS, where textures are not measured.
 pub fn batch_scale(_ctx: &dyn miniquad::RenderingBackend, _batch: &[Vert], _tex: TextureId, _u: &Uniforms) -> Option<f32> {
     None
+}
+
+/// The game's gfx.rs `bleed_alpha` (unchanged).
+/// Gives every fully transparent pixel the average colour of its opaque neighbours (repeated outwards a few pixels), so linear
+/// filtering and mipmaps at a sprite's edge mix in the sprite's own colours instead of the transparent key colour.
+pub fn bleed_alpha(img: &Rgba) -> Rgba {
+    let (w, h) = (img.w as usize, img.h as usize);
+    let mut out = img.clone();
+    let mut known: Vec<bool> = img.px.chunks_exact(4).map(|p| p[3] != 0).collect();
+    for _ in 0..4 {
+        let mut next = known.clone();
+        let mut changed = false;
+        for y in 0..h {
+            for x in 0..w {
+                let i = y * w + x;
+                if known[i] {
+                    continue;
+                }
+                let (mut r, mut g, mut b, mut n) = (0u32, 0u32, 0u32, 0u32);
+                for (dx, dy) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1), (-1, -1), (1, -1), (-1, 1), (1, 1)] {
+                    let (nx, ny) = (x as i32 + dx, y as i32 + dy);
+                    if nx < 0 || ny < 0 || nx >= w as i32 || ny >= h as i32 {
+                        continue;
+                    }
+                    let j = ny as usize * w + nx as usize;
+                    if known[j] {
+                        r += out.px[j * 4] as u32;
+                        g += out.px[j * 4 + 1] as u32;
+                        b += out.px[j * 4 + 2] as u32;
+                        n += 1;
+                    }
+                }
+                if n > 0 {
+                    out.px[i * 4] = (r / n) as u8;
+                    out.px[i * 4 + 1] = (g / n) as u8;
+                    out.px[i * 4 + 2] = (b / n) as u8;
+                    next[i] = true;
+                    changed = true;
+                }
+            }
+        }
+        known = next;
+        if !changed {
+            break;
+        }
+    }
+    // whatever is still far from any opaque pixel goes black, so even the smallest mipmaps carry no key colour
+    for (p, k) in out.px.chunks_exact_mut(4).zip(&known) {
+        if !k {
+            p[0] = 0;
+            p[1] = 0;
+            p[2] = 0;
+        }
+    }
+    out
 }

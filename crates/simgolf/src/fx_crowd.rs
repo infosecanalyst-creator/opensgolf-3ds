@@ -34,7 +34,8 @@ impl App {
         if !tour {
             return Vec::new();
         }
-        let mut holes: Vec<usize> = self.club.g.iter().filter(|g| (1..19).contains(&g.hole)).map(|g| g.hole as usize).collect();
+        let mut holes: Vec<usize> =
+            self.club.g.iter().take(sg_core::golfer::SLOTS).filter(|g| (1..19).contains(&g.hole)).map(|g| g.hole as usize).collect();
         holes.sort_unstable();
         holes.dedup();
         let t = self.fx.time;
@@ -48,7 +49,13 @@ impl App {
             }
             let (pin, tee) = (hr.pin, hr.back);
             // what the crowd watches: a ball in the air on this hole, else the green (in tiles)
-            let ball = self.club.g.iter().find(|g| g.hole == h as i32 && g.bz > 0).map(|g| (g.bx as f32 / 1024.0, g.by as f32 / 1024.0));
+            let ball = self
+                .club
+                .g
+                .iter()
+                .take(sg_core::golfer::SLOTS)
+                .find(|g| g.hole == h as i32 && g.bz > 0)
+                .map(|g| (g.bx as f32 / 1024.0, g.by as f32 / 1024.0));
             let look = ball.unwrap_or((pin.0 as f32 + 0.5, pin.1 as f32 + 0.5));
             let hs = seed ^ (h as u32).wrapping_mul(0x51ed);
             let cheering = (t + hash(hs, 99) * CHEER_EVERY).rem_euclid(CHEER_EVERY) < CHEER_FOR;

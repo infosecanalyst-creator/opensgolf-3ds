@@ -147,6 +147,12 @@ making of this game. Several
 were misplaced with feeling.
 
 
+SUPPORT
+OpenSGolf is free and made
+in spare time. A coffee keeps
+it going, if you'd like:
+buymeacoffee.com/crspytopgn
+
 Thank you for playing!
 Please replace your divots.
 #END

@@ -150,6 +150,21 @@ function sgDrawWatch() {
     if (now - d.last > SG_STALL_MS) sgDrawingStopped("no frame drawn for " + Math.round((now - d.last) / 1000) + " seconds");
 }
 setInterval(sgDrawWatch, 250);
+
+// Enhanced graphics draw at most about 1440p's pixels (SG_ENHANCED_PIXELS): a 4K screen has four times 1080p's and each
+// effect runs on every one of them, which a laptop's chip cannot keep up with; the browser stretches the picture to the
+// screen. Classic draws at the screen's own pixels as always (its picture stays exact). miniquad's gl.js sizes the canvas
+// and places the mouse with its dpi_scale, which this replaces.
+const SG_ENHANCED_PIXELS = 2560 * 1440;
+const sgScreenDpr = dpi_scale;
+function sgDpr() {
+    const real = sgScreenDpr();
+    const c = document.getElementById("glcanvas");
+    const area = c ? c.clientWidth * c.clientHeight : 0;
+    if (!sgDraw.enhanced || !area || area * real * real <= SG_ENHANCED_PIXELS) return real;
+    return Math.max(1, Math.sqrt(SG_ENHANCED_PIXELS / area));
+}
+dpi_scale = sgDpr;
 document.addEventListener("visibilitychange", () => { if (sgDraw.last) sgDraw.last = performance.now(); });
 // Leaving a game that was drawing well (a reload, the tab closed, the title's exit button): the marker of Enhanced's
 // start-up trial goes, so a player who leaves within its first seconds keeps Enhanced next time.
@@ -168,11 +183,23 @@ miniquad_add_plugin({
     register_plugin: function (importObject) {
         const env = importObject.env;
         env.sg_keyboard = function (show) { sgKeyboard(show !== 0); };
+        // the edges of the canvas a phone hides (sgFitCanvas): side 0 left, 1 top, 2 right, 3 bottom, as a fraction
+        env.sg_safe_area = function (side) { return sgSafe[side] || 0; };
         // the frame rate cap (Enhanced graphics > Display; framerate.rs): frames a second, 0 for none
         env.sg_frame_cap = function (fps) { sgFrameCap = fps; };
+        // the game's sound paused for the background (the Pause in the background extra; audio.rs output_asleep): 1 asleep,
+        // 0 awake again (sgSoundSleep)
+        env.sg_sound_sleep = function (asleep) { sgSoundSleep(asleep !== 0); };
         // the watch over the game's drawing (sgDrawingStopped): a frame was drawn; Enhanced graphics on or off
         env.sg_frame_drawn = function () { sgDraw.last = performance.now(); };
-        env.sg_enhanced = function (on) { sgDraw.enhanced = on !== 0; };
+        env.sg_enhanced = function (on) {
+            const was = sgDraw.enhanced;
+            sgDraw.enhanced = on !== 0;
+            // the drawing's size follows (sgDpr), after this frame: the game hears of it as of a window resized
+            if (was !== sgDraw.enhanced) setTimeout(() => { const c = document.getElementById("glcanvas"); if (c && wasm_exports) resize(c, wasm_exports.resize); }, 0);
+        };
+        // the game asks for the screen's scale too (touch slop): the same as the drawing's
+        env.dpi_scale = sgDpr;
         // the game's quit (the title menu's exit button): a tab cannot close itself, so back to the start page
         env.sg_quit = function () { location.reload(); };
         env.sg_fs_size = function (ptr, len) {
@@ -190,6 +217,13 @@ miniquad_add_plugin({
             // download: it would be out of reach (and soon over the quota) in local storage. The accomplishment snapshots
             // the board shows (snapshots/accomp<n>.png) are kept like the saves.
             const low = sgKey(path);
+            // the HD pack the game makes itself (Preferences > Graphics > Make HD graphics..., hd_make.rs) goes with an HD pack
+            // the player picked: in this browser's IndexedDB (far too large for local storage)
+            if (low.startsWith("hd/")) {
+                sgAddFile(path, bytes);
+                sgHdKeep(path, bytes);
+                return;
+            }
             // Load Previous Game's Export this save (files_ui.rs) writes under download/: a download, kept nowhere
             if (low.startsWith("download/")) {
                 sgDownload(path.split(/[\\/]/).pop(), bytes);
@@ -224,6 +258,7 @@ miniquad_add_plugin({
                 // an older version of a downloaded pack
                 sgDb().then(db => db.transaction("packs", "readwrite").objectStore("packs").delete(path)).catch(() => {});
             }
+            if (k.startsWith("hd/")) sgHdKeep(path, null);
             try {
                 for (let i = localStorage.length - 1; i >= 0; i--) {
                     const lk = localStorage.key(i);
@@ -294,8 +329,22 @@ miniquad_add_plugin({
         // picture is kept under picked/ and its name handed over when the game asks (-1 until one is picked).
         env.sg_pick_file = function () { sgPickFile(); };
         // Load Previous Game's Import a save file (files_ui.rs): the same picker for a saved game, shared course, course
-        // code or the original's top10.sve; the game reads it from picked/ and files it as a dropped file (share.rs)
+        // code or the original's top10.sve and saved games; the game reads it from picked/ and files it as a dropped file
+        // (share.rs)
         env.sg_pick_save = function () { sgPickFile(".sgs,.sgch,.txt,.sve"); };
+        // Report a problem (crates/simgolf/src/bugreport.rs): the bug report form in a new tab (the click on the box's OK
+        // is still being handled, so the browser takes it as the player's); a note with the link when the tab is blocked
+        env.sg_open_url = function (ptr, len) { sgOpenUrl(sgStr(ptr, len)); };
+        // the play-time count (crates/simgolf/src/playcount.rs): an event for the page's GoatCounter (index.html), counted every
+        // time (no_session); nothing when the page's own tick is off (#playcount), the counter is blocked or the page has none
+        env.sg_playcount = function (ptr, len) {
+            const path = sgStr(ptr, len);
+            if (sgPlaycountOff()) return;
+            try { if (window.goatcounter && window.goatcounter.count) window.goatcounter.count({ path: path, title: path, event: true, no_session: true }); } catch (e) {}
+        };
+        // 1 when the page's tick has turned the count off (the game then shows no notice either)
+        env.sg_playcount_off = function () { return sgPlaycountOff() ? 1 : 0; };
+        env.sg_touch_device = function () { return sgTouchDevice() ? 1 : 0; };
         env.sg_pick_poll = function (dst, cap) {
             if (sgPicked === null) return -1;
             const b = enc.encode(sgPicked);
@@ -330,6 +379,38 @@ function sgPickFile(accept = ".png,image/png") {
     input.click();
 }
 
+// Report a problem: the form in a new tab, else a note over the game with its link to tap.
+// the page's "Count my play time" tick (index.html #playcount) is off, remembered in this browser
+function sgPlaycountOff() {
+    try { return localStorage.getItem("sg_playcount_off") === "1"; } catch (e) { return false; }
+}
+
+function sgOpenUrl(url) {
+    let w = null;
+    try { w = window.open(url, "_blank"); } catch (e) {}
+    if (w) {
+        try { w.opener = null; } catch (e) {}
+        return;
+    }
+    const note = document.createElement("div");
+    note.style.cssText = "position:fixed;left:50%;top:calc(12px + env(safe-area-inset-top));transform:translateX(-50%);z-index:20;" +
+        "max-width:min(720px,calc(100vw - 32px));background:rgba(10,30,18,0.95);color:#fff;font:600 clamp(16px,2.4vw,20px)/1.45 system-ui,sans-serif;" +
+        "padding:14px 20px;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,0.5);text-align:center";
+    const a = document.createElement("a");
+    a.href = url;
+    a.target = "_blank";
+    a.rel = "noopener";
+    a.style.color = "#f4d35e";
+    a.textContent = "Open the bug report form";
+    const close = document.createElement("span");
+    close.textContent = "  \u00d7";
+    close.style.cursor = "pointer";
+    a.addEventListener("click", () => setTimeout(() => note.remove(), 0));
+    close.addEventListener("click", () => note.remove());
+    note.append(a, close);
+    document.body.appendChild(note);
+}
+
 // Hands a file to the browser as a download.
 function sgDownload(name, bytes) {
     const url = URL.createObjectURL(new Blob([bytes], { type: name.toLowerCase().endsWith(".png") ? "image/png" : "application/octet-stream" }));
@@ -347,6 +428,54 @@ function sgDownload(name, bytes) {
 // (IndexedDB) so the next visit starts at once; "Forget my game files" removes them.
 function sgStatus(t) {
     document.getElementById("status").textContent = t;
+}
+
+// The panel beside the spinning CD while the player's files are read: the step, a bar and its count, and a clock that
+// ticks every second (with a time left once a tenth is done), so a long file never looks stuck. `n` 0: no count yet.
+let sgProg = null;
+function sgProgressBegin() {
+    sgProgressEnd();
+    const el = id => document.getElementById(id);
+    sgProg = { t0: Date.now(), frac: 0, timer: 0, el };
+    el("prog").hidden = false;
+    el("prog").closest(".tray").classList.add("busy");
+    sgProgress("Opening your files", 0, 0);
+    sgProg.timer = setInterval(sgProgressClock, 1000);
+}
+function sgProgress(stage, i, n, unit = "files") {
+    if (!sgProg) return;
+    const el = sgProg.el;
+    const frac = n > 0 ? Math.min(1, i / n) : 0;
+    if (stage !== sgProg.stage) {
+        // a new step starts its own clock for the time left
+        sgProg.stage = stage;
+        sgProg.s0 = Date.now();
+    }
+    sgProg.frac = frac;
+    el("pstage").textContent = stage;
+    el("pcount").textContent = n > 0 ? Math.round(frac * 100) + "% · " + i + " of " + n + " " + unit : "";
+    el("pfill").style.width = n > 0 ? (frac * 100).toFixed(1) + "%" : "";
+    el("pfill").parentNode.classList.toggle("wait", !(n > 0));
+    sgProgressClock();
+}
+function sgProgressClock() {
+    if (!sgProg) return;
+    const fmt = s => s < 60 ? s + " s" : Math.floor(s / 60) + " min " + String(s % 60).padStart(2, "0") + " s";
+    const took = Math.round((Date.now() - sgProg.t0) / 1000);
+    let t = "Working for " + fmt(took);
+    const step = (Date.now() - sgProg.s0) / 1000;
+    if (sgProg.frac >= 0.1 && sgProg.frac < 1 && step > 3) {
+        const left = Math.max(1, Math.round(step * (1 - sgProg.frac) / sgProg.frac));
+        t += " · about " + (left < 60 ? left + " s" : Math.round(left / 60) + " min") + " left";
+    }
+    sgProg.el("ptime").textContent = t;
+}
+function sgProgressEnd() {
+    if (!sgProg) return;
+    clearInterval(sgProg.timer);
+    sgProg.el("prog").hidden = true;
+    sgProg.el("prog").closest(".tray").classList.remove("busy");
+    sgProg = null;
 }
 
 // --- browser storage of the game files --------------------------------------------------------------------------------------
@@ -632,7 +761,7 @@ async function sgZipSaves(buf) {
 }
 
 // "Restore saves...": backups (.zip) and single files (.sgs saved games, .sgch championship courses, .pro pros, the
-// original's top10.sve, settings.json). A backup's files replace those of the same name; a single file never replaces one.
+// original's top10.sve and saved games (.sve), settings.json). A backup's files replace those of the same name; a single file never replaces one.
 async function sgRestoreFiles(fileList) {
     const files = Array.from(fileList || []);
     if (files.length === 0) return;
@@ -671,8 +800,10 @@ async function sgRestoreFiles(fileList) {
                 "? (Import a save file... on the game's Load Previous Game adds it to yours instead.)")) continue;
             path = "top10.sve";
         } else if (low.endsWith(".sve")) {
-            original.push(f.name);
-            continue;
+            // a saved game of the original SimGolf: the game reads it into a game of its own when Load Previous Game opens
+            // (crates/simgolf/src/share.rs, import_original_folder)
+            path = sgFreeName("Saved Games/", f.name, bytes);
+            if (path !== null && path !== "") original.push(f.name);
         } else if (low.endsWith(".sgs") && sgIsSave(bytes)) {
             path = sgFreeName("Saved Games/", f.name, bytes);
         } else if ((low.endsWith(".sgch") && sgIsSave(bytes)) || low.endsWith(".pro")) {
@@ -695,7 +826,7 @@ async function sgRestoreFiles(fileList) {
     }
     if (same > 0) say.push(sgPlural(same, "file") + " already in this browser.");
     if (full > 0) say.push(sgPlural(full, "file") + " did not fit in this browser's storage; delete old saves in the game and try again.");
-    if (original.length > 0) say.push(original.join(", ") + ": saved games of the original SimGolf, which OpenSGolf cannot read yet (their layout is not decoded).");
+    if (original.length > 0) say.push(original.join(", ") + ": saved games of the original SimGolf; they are brought over as \"(imported)\" games when you open Load Previous Game.");
     if (unknown.length > 0) say.push(unknown.join(", ") + ": not a saved game or a backup (left out).");
     sgSaveStatus(say.join(" ") || "Nothing to restore.");
     sgSaveCount();
@@ -728,6 +859,9 @@ function sgStart() {
     // the page under the game must not scroll (Safari moves a fixed canvas with it while its bars slide)
     document.documentElement.style.overflow = "hidden";
     document.body.style.overflow = "hidden";
+    // black round the game where it does not fill the view (an upright phone after "Play anyway", sgCanvasRect)
+    document.documentElement.style.background = "#000";
+    document.body.style.background = "#000";
     sgFitCanvas();
     canvas.focus();
     // the sound output (see sgStartAudio)
@@ -743,24 +877,102 @@ function sgStart() {
 function sgFitCanvas() {
     const c = document.getElementById("glcanvas");
     if (!c || c.style.display !== "block") return;
-    const vv = window.visualViewport;
-    const w = vv ? vv.width : window.innerWidth, h = vv ? vv.height : window.innerHeight;
+    const win = sgWindowBox();
+    // a web app opened from the home screen has no bars to follow, and there the visual viewport can keep the size it had
+    // before the device turned (a band left over at the top or bottom until the app was started again): the window as the
+    // page lays it out instead. While the game wants the phone's keyboard (naming a course or a save) the visual viewport is
+    // followed all the same, so the keyboard shrinks the game rather than covering the name being typed.
+    const vv = sgHomeScreenApp() && !sgKbdWanted ? null : window.visualViewport;
+    const w = vv ? vv.width : win.width || window.innerWidth, h = vv ? vv.height : win.height || window.innerHeight;
+    // a phone or tablet held upright: the "turn sideways" card, and after "Play anyway" the game in a 4:3 band (files.js)
+    const touch = sgTouchDevice();
+    sgRotateCard(sgPortraitAsk(touch, w, h, sgRotateDismissed()));
+    const r = sgCanvasRect(touch, w, h, vv ? vv.offsetLeft : 0, vv ? vv.offsetTop : 0);
+    // what of the canvas the phone hides, for the game to keep its edge pieces clear of (env.sg_safe_area)
+    sgSafe = sgSafeInsets(win.insets, r, win.width || w, win.height || h);
     const css = (k, v) => { if (c.style[k] !== v) c.style[k] = v; };
-    css("width", Math.round(w) + "px");
-    css("height", Math.round(h) + "px");
-    css("left", Math.round(vv ? vv.offsetLeft : 0) + "px");
-    css("top", Math.round(vv ? vv.offsetTop : 0) + "px");
+    css("width", r.width + "px");
+    css("height", r.height + "px");
+    css("left", r.left + "px");
+    css("top", r.top + "px");
     // gl.js's own resize (it listens to the window's resize only, which Safari does not send for its bars)
     if (typeof resize === "function" && typeof wasm_exports !== "undefined" && wasm_exports.resize) resize(c, wasm_exports.resize);
 }
+// The edges of the canvas the phone hides, as fractions of its width and height (left, top, right, bottom; files.js
+// sgSafeInsets): what the game asks through env.sg_safe_area each frame.
+let sgSafe = [0, 0, 0, 0];
+// A box fixed over the whole window, never seen: its size is the window as the page lays it out, and its padding the
+// window's safe-area insets (the camera cut-out, the rounded corners and the home bar of a phone held sideways, which the
+// page draws under with viewport-fit=cover; 0 everywhere else).
+let sgWindowProbe = null;
+function sgWindowBox() {
+    if (!sgWindowProbe) {
+        sgWindowProbe = document.createElement("div");
+        sgWindowProbe.setAttribute("aria-hidden", "true");
+        sgWindowProbe.style.cssText = "position:fixed;left:0;top:0;right:0;bottom:0;visibility:hidden;pointer-events:none;" +
+            "box-sizing:border-box;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) " +
+            "env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)";
+        document.body.appendChild(sgWindowProbe);
+    }
+    const b = sgWindowProbe.getBoundingClientRect(), st = getComputedStyle(sgWindowProbe);
+    const px = k => parseFloat(st[k]) || 0;
+    return { width: b.width, height: b.height, insets: [px("paddingLeft"), px("paddingTop"), px("paddingRight"), px("paddingBottom")] };
+}
+// Opened from the home screen as a web app (iPhone and iPad's Add to Home Screen, an installed web app elsewhere): no
+// browser bars round the page.
+function sgHomeScreenApp() {
+    if (navigator.standalone === true) return true;
+    try {
+        return !!window.matchMedia && (matchMedia("(display-mode: standalone)").matches || matchMedia("(display-mode: fullscreen)").matches);
+    } catch (e) {
+        return false;
+    }
+}
+// Sized again a few times after a turn: iOS Safari reports the new size late (the first resize after a turn can still
+// carry the old one, and a bar sliding away does not always send an event).
+function sgFitSoon() {
+    sgFitCanvas();
+    for (const ms of [100, 300, 700, 1200]) setTimeout(sgFitCanvas, ms);
+}
 if (window.visualViewport) {
-    window.visualViewport.addEventListener("resize", sgFitCanvas);
+    window.visualViewport.addEventListener("resize", sgFitSoon);
     window.visualViewport.addEventListener("scroll", sgFitCanvas);
 }
-window.addEventListener("resize", sgFitCanvas);
-// (the new size comes a moment after the turn on older iOS, and a bar sliding away does not always send an event)
-window.addEventListener("orientationchange", () => { sgFitCanvas(); setTimeout(sgFitCanvas, 300); });
+window.addEventListener("resize", sgFitSoon);
+window.addEventListener("orientationchange", sgFitSoon);
+if (window.screen && screen.orientation && screen.orientation.addEventListener) screen.orientation.addEventListener("change", sgFitSoon);
 setInterval(sgFitCanvas, 500);
+
+// A phone or tablet: a coarse pointer (a finger), or an iPad, which says it is a Mac but has a touch screen. A desktop with
+// a touch screen keeps its fine pointer (the mouse) and is not one.
+function sgTouchDevice() {
+    try {
+        if (window.matchMedia && matchMedia("(pointer: coarse)").matches) return true;
+    } catch (e) {}
+    return navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent);
+}
+
+// "Play anyway" holds for the tab's session (sessionStorage, which a private window may refuse: then for the page).
+let sgRotateAnyway = false;
+function sgRotateDismissed() {
+    if (sgRotateAnyway) return true;
+    try { return sessionStorage.getItem("sg_rotate_anyway") === "1"; } catch (e) { return false; }
+}
+function sgRotateDismiss() {
+    sgRotateAnyway = true;
+    try { sessionStorage.setItem("sg_rotate_anyway", "1"); } catch (e) {}
+    sgFitSoon();
+    const c = document.getElementById("glcanvas");
+    if (c) c.focus();
+}
+// Shows or hides the "turn your device sideways" card (index.html #rotate). It lies over the game, so no tap reaches it.
+function sgRotateCard(show) {
+    const el = document.getElementById("rotate");
+    if (!el || el.hidden === !show) return;
+    el.hidden = !show;
+    // (no keys to the game under it either)
+    if (show && document.activeElement && document.activeElement.blur) document.activeElement.blur();
+}
 
 // No game folder: the game finds no original files under game/ and plays on the free base set (opensgolf-free), which it
 // draws itself.
@@ -797,13 +1009,16 @@ async function sgUse(entries, skipped = [], stat = {}) {
     }
     // the sound files the player's files held anywhere, used or not
     const found = entries.filter(([p]) => sgIsSound(p)).length + skipped.filter(([n]) => sgIsSound(n)).length;
-    const sum = sgFilesSummary(keep.map(([p]) => p), skipped, found);
+    const bad = sgSoundCodings(keep);
+    if (bad.n) console.warn("files: " + bad.n + " sound files in a coding the game cannot play (e.g. " + bad.example + ")");
+    const sum = sgFilesSummary(keep.map(([p]) => p), skipped, found, bad);
     const how = stat.methods ? Object.entries(stat.methods).map(([m, n]) => n + " " + m).join(", ") : "";
     console.log("files: " + sum.text + (how ? " (zip: " + how + (stat.fallback ? "; " + stat.fallback + " deflated by the page" : "") +
         (stat.crc ? "; " + stat.crc + " with a bad checksum" : "") + ")" : ""));
     sgSummary(sum, true);
     // play at once; the copy kept for next time is written in the background (it can take minutes for a whole game folder)
     const remember = document.getElementById("remember").checked;
+    sgProgress("Starting the game", 0, 0);
     sgStart();
     sgNote(sum.text, sum.problem);
     if (remember) sgStoreAll(keep);
@@ -842,9 +1057,12 @@ async function sgLoadFolder(fileList) {
     }
     const entries = [];
     let bytes = 0;
+    const total = Math.max(1, Math.round(files.reduce((t, f) => t + f.size, 0) / 1048576));
     for (let i = 0; i < files.length; i++) {
         entries.push([files[i].webkitRelativePath, new Uint8Array(await files[i].arrayBuffer())]);
         bytes += files[i].size;
+        // by size: the big sound files come last, and a count of files would say "1 s left" for a while
+        if (i % 10 === 0 || i === files.length - 1) sgProgress("Reading your game files", Math.round(bytes / 1048576), total, "MB");
         if (i % 50 === 0 || i === files.length - 1) {
             sgStatus("Reading your game files: " + (i + 1) + " of " + files.length + " (" + Math.round(bytes / 1048576) + " MB)");
             await new Promise(r => setTimeout(r, 0));
@@ -878,6 +1096,7 @@ async function sgLoadZip(file) {
         return;
     }
     sgStatus("Opening " + file.name + "...");
+    sgProgress("Opening " + file.name, 0, 0);
     let list;
     try {
         list = await sgZipEntries(file);
@@ -892,6 +1111,7 @@ async function sgLoadZip(file) {
     try {
         await sgUnzip(file, async (name, bytes, i, n) => {
             entries.push([name, bytes]);
+            if (i % 10 === 0) sgProgress("Unpacking your game files", i + 1, n);
             if (i % 50 === 0) {
                 sgStatus("Unpacking your game files: " + (i + 1) + " of " + n);
                 await new Promise(r => setTimeout(r, 0));
@@ -1144,6 +1364,7 @@ async function sgUseCd(from, unpack) {
     const entries = [];
     try {
         await unpack(async (path, bytes) => { entries.push([path, bytes]); }, async (i, n) => {
+            sgProgress("Unpacking your SimGolf CD", i, n);
             if (i % 25 === 0 || i === n) {
                 sgStatus("Unpacking the CD (" + from + "): " + i + " of " + n + " files");
                 await new Promise(r => setTimeout(r, 0));
@@ -1274,6 +1495,45 @@ async function sgLoadHdZip(file) {
     }
     await sgUseHd(entries);
 }
+// The files of the HD pack the game makes (sg_fs_write), kept in IndexedDB in batches, in the order written (the manifest
+// after the pictures it lists); null bytes remove a file.
+const sgHdQueue = [];
+let sgHdFlushing = false;
+function sgHdKeep(path, bytes) {
+    sgHdQueue.push([path, bytes]);
+    if (!sgHdFlushing) {
+        sgHdFlushing = true;
+        setTimeout(sgHdFlush, 0);
+    }
+}
+async function sgHdFlush() {
+    try {
+        if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+        const db = await sgDb();
+        while (sgHdQueue.length > 0) {
+            const part = sgHdQueue.splice(0, 100);
+            await new Promise((ok, fail) => {
+                const tx = db.transaction("hd", "readwrite");
+                const st = tx.objectStore("hd");
+                // (a pack picked earlier and cut short leaves its marker: this store is complete again as the game writes it)
+                st.delete(SG_STORE_PARTIAL);
+                for (const [path, bytes] of part) {
+                    if (bytes === null) st.delete(path);
+                    else st.put(bytes, path);
+                }
+                tx.oncomplete = ok;
+                tx.onerror = () => fail(tx.error);
+                tx.onabort = () => fail(tx.error);
+            });
+        }
+    } catch (e) {
+        sgHdQueue.length = 0;
+        console.warn("could not keep the HD pack in this browser", e);
+        sgNote("The HD graphics could not be kept in this browser (" + (e && e.name === "QuotaExceededError" ?
+            "not enough storage space" : (e && e.message) || "storage refused") + "): they last until the page is closed.", true);
+    }
+    sgHdFlushing = false;
+}
 async function sgForgetHd() {
     try {
         const db = await sgDb();
@@ -1359,8 +1619,37 @@ function sgResetGraphics() {
     sgStatus("The graphics settings were put back to their defaults (Classic, no frame rate cap). Your saved games are kept.");
 }
 
+// The Latest news box: the newest entries of whatsnew.json (the same list as the game's What's new box), from GitHub so a
+// change there shows without publishing the page again, else the copy published with the page; without either the
+// page's own entries stay.
+const SG_NEWS_URL = "https://raw.githubusercontent.com/crspytopgn/opensgolf/main/whatsnew.json";
+function sgNewsHtml(news, now) {
+    const esc = t => String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+    return news.slice(0, 2).map((n, k) => {
+        const fresh = k === 0 && n.iso && now - Date.parse(n.iso) < 21 * 864e5;
+        const more = k === 0 ? ' <a href="https://github.com/crspytopgn/opensgolf/blob/main/CHANGELOG.md" target="_blank" rel="noopener">What\'s new</a>' : "";
+        return "<dt>" + esc(n.date) + (fresh ? ' <span class="new">NEW!</span>' : "") + "</dt><dd><b>" + esc(n.title) + "</b> " + esc(n.text) + more + "</dd>";
+    }).join("");
+}
+async function sgNews() {
+    const box = document.getElementById("news");
+    if (!box) return;
+    for (const url of [SG_NEWS_URL, "whatsnew.json"]) {
+        try {
+            const r = await fetch(url, { cache: "no-cache" });
+            if (!r.ok) continue;
+            const j = await r.json();
+            if (Array.isArray(j.news) && j.news.length && j.news.every(n => n && n.date && n.title && n.text)) {
+                box.innerHTML = sgNewsHtml(j.news, Date.now());
+                return;
+            }
+        } catch (e) {}
+    }
+}
+
 async function sgInit() {
     sgSaveCount();
+    sgNews();
     const ver = document.getElementById("version");
     if (ver) ver.textContent = "OpenSGolf " + sgVersion();
     // what the last files picked held (said again until other files are picked)
@@ -1386,7 +1675,7 @@ async function sgInit() {
         document.getElementById("playstored").onclick = () => {
             sgStatus("Starting...");
             for (const [path, bytes] of stored) sgAddFile(path, bytes);
-            const sum = sgFilesSummary(stored.map(([p]) => p));
+            const sum = sgFilesSummary(stored.map(([p]) => p), [], null, sgSoundCodings(stored));
             console.log("files: " + sum.text);
             sgSummary(sum, false);
             sgStart();
@@ -1440,16 +1729,17 @@ class SgOut extends AudioWorkletProcessor {
 registerProcessor("sg-out", SgOut);
 `;
 const sgSnd = { ctx: null, node: null, rate: 44100, posted: 0, rep: null, lead: SG_LEAD, calm: 0, under: 0, failed: false, shown: 0, since: 0, note: null,
-    gameOn: false, repAt: 0, postAt: 0, clock: -1, clockAt: 0, tick: 0, restarts: 0 };
+    gameOn: false, repAt: 0, postAt: 0, clock: -1, clockAt: 0, tick: 0, restarts: 0, asleep: false };
 
 function sgStartAudio() {
     const s = sgSnd;
     if (!s.gameOn) return; // made when the game starts (sgStart), see above
     // a context made before the browser counted a gesture, or suspended by it later (Safari after a call or with the
     // tab in the background: "interrupted"), stays silent until resumed inside a gesture, so every gesture resumes it
+    // (unless the game has its sound asleep: sgSoundSleep)
     if (s.ctx && s.ctx.state === "closed") { s.ctx = null; s.node = null; s.posted = 0; s.rep = null; }
     if (s.ctx) {
-        if (s.ctx.state !== "running") s.ctx.resume().catch(() => {});
+        sgSoundFollow();
         return;
     }
     if (s.failed) return;
@@ -1498,8 +1788,8 @@ function sgStartAudio() {
             if (e.data[3]) {
                 s.under++;
                 // the game's frames are longer here than the lead covers: keep more ready for a while (not for a tab in
-                // the background, whose timers the browser slows down)
-                if (!document.hidden) s.lead = Math.min(SG_LEAD_MAX, s.lead + 0.05);
+                // the background, whose timers the browser slows down, nor while the game's sound is falling asleep)
+                if (!document.hidden && !s.asleep) s.lead = Math.min(SG_LEAD_MAX, s.lead + 0.05);
                 s.calm = performance.now();
             } else if (s.lead > SG_LEAD && performance.now() - s.calm > 10000) {
                 // ten seconds without a gap: back towards the short lead (a click's sound follows the click sooner)
@@ -1520,10 +1810,11 @@ function sgStartAudio() {
 
 // Mixes the game's sound up to the lead ahead of what the worklet has played. What it still holds is reckoned from its last
 // report and the audio clock since (its reports wait while this thread is busy, the clock does not), plus what is on the
-// way to it.
+// way to it. Nothing while the game has its sound asleep (sgSoundSleep), whose context may still run for a moment: the
+// sound queued before goes on when it wakes, with no stretch of the paused mixer's silence after it.
 function sgPump() {
     const s = sgSnd;
-    if (!s.node || !s.node.port || s.ctx.state !== "running" || typeof wasm_exports === "undefined" || !wasm_exports.sg_audio_fill) return;
+    if (!s.node || !s.node.port || s.ctx.state !== "running" || s.asleep || typeof wasm_exports === "undefined" || !wasm_exports.sg_audio_fill) return;
     const queued = s.rep ? Math.max(0, s.posted - s.rep[0] + s.rep[1] - (s.ctx.currentTime * s.rate - s.rep[2])) : s.posted;
     let need = Math.round((document.hidden ? SG_LEAD_HIDDEN : s.lead) * s.rate) - queued;
     while (need >= 256) {
@@ -1550,7 +1841,7 @@ function sgSoundNote() {
         s.note = null;
         s.shown = 2;
     }
-    if (s.shown || playing || !canvas || canvas.style.display !== "block" || typeof wasm_exports === "undefined") return;
+    if (s.shown || playing || s.asleep || !canvas || canvas.style.display !== "block" || typeof wasm_exports === "undefined") return;
     if (!s.since) s.since = performance.now();
     if (performance.now() - s.since < 1500) return;
     s.shown = 1;
@@ -1571,7 +1862,9 @@ function sgAudioWatch() {
     const s = sgSnd, now = performance.now();
     const held = s.tick && now - s.tick > 500;
     s.tick = now;
-    if (!s.ctx || s.ctx.state !== "running" || document.hidden || held) { s.clock = -1; return; }
+    // (a suspended context's worklet reports nothing, asleep for the game or held by the browser: its silence is counted
+    // from when it runs again)
+    if (!s.ctx || s.ctx.state !== "running" || document.hidden || held) { s.clock = -1; s.repAt = now; return; }
     if (s.ctx.currentTime !== s.clock) { s.clock = s.ctx.currentTime; s.clockAt = now; }
     const stuckClock = now - s.clockAt > 3000;
     const isWorklet = typeof AudioWorkletNode !== "undefined" && s.node instanceof AudioWorkletNode;
@@ -1588,13 +1881,38 @@ function sgAudioWatch() {
     sgStartAudio();
 }
 
+// The Pause in the background extra (crates/simgolf/src/comfort.rs) pauses the game's sound while its window is in the
+// background, and says so (sg_sound_sleep): the sound context is suspended until the game wakes it, so nothing plays
+// to keep the page running (iOS keeps a page that plays sound running in the background, on the battery). The game says
+// it from its window_minimized_event, which gl.js sends from inside the page's visibilitychange and blur events, so the
+// context is suspended there and then, before the browser freezes the page. The game wakes it from inside the
+// visibilitychange or focus event that brings the window back; a browser that wants a gesture for that (Safari, after
+// interrupting the context) gets one from the next click or tap (sgStartAudio). Without the extra the page feeds the
+// sound on in the background as before.
+function sgSoundSleep(asleep) {
+    const s = sgSnd;
+    s.asleep = asleep;
+    // the note's wait (sgSoundNote) counts from the waking
+    if (!asleep) s.since = 0;
+    sgSoundFollow();
+}
+
+// The sound context suspended or resumed as the game's sound and the page's visibility want it (sgSoundAction).
+function sgSoundFollow() {
+    const s = sgSnd;
+    const act = sgSoundAction(s.ctx && s.ctx.state, s.asleep, document.hidden);
+    if (act === "suspend") s.ctx.suspend().catch(() => {});
+    else if (act === "resume") s.ctx.resume().catch(() => {});
+}
+
 // the timer keeps a tab in the background fed; once a frame as well, as a browser busy drawing can hold timers back
 setInterval(() => { sgPump(); sgSoundNote(); sgAudioWatch(); }, 20);
 (function frame() { sgPump(); sgRequestFrame(frame); })();
 for (const type of ["mousedown", "pointerdown", "pointerup", "click", "keydown", "touchend"]) window.addEventListener(type, sgStartAudio, true);
 window.addEventListener("touchstart", sgStartAudio, { passive: true, capture: true });
+// (registered before gl.js's own, which tells the game: shown again with the sound asleep, the context waits for the game)
 document.addEventListener("visibilitychange", () => {
-    if (!document.hidden && sgSnd.ctx && sgSnd.ctx.state !== "running" && sgSnd.ctx.state !== "closed") sgSnd.ctx.resume().catch(() => {});
+    sgSoundFollow();
     sgPump();
 });
 
@@ -1648,7 +1966,9 @@ let sgKbd = null;
 let sgKbdWanted = false;
 for (const type of ["touchend", "pointerup"]) {
     window.addEventListener(type, () => {
-        if (sgKbdWanted && sgKbd && document.activeElement !== sgKbd) {
+        // (not for a tap on the "turn sideways" card over the game)
+        const card = document.getElementById("rotate");
+        if (sgKbdWanted && sgKbd && document.activeElement !== sgKbd && !(card && !card.hidden)) {
             sgKbd.value = " ";
             sgKbd.focus();
         }
@@ -1696,7 +2016,9 @@ let sgPadWas = false;
 function sgPadPoll() {
     sgRequestFrame(sgPadPoll);
     if (typeof wasm_exports === "undefined" || !wasm_exports.sg_gamepad || !navigator.getGamepads) return;
-    const p = Array.from(navigator.getGamepads()).find(g => g && g.connected);
+    // racing wheels, pedals and flight sticks are left alone (gamepad.rs `not_a_gamepad`, #169)
+    const notPad = /wheel|pedal|racing|driving force|g29|g920|g923|g27|g25|fanatec|thrustmaster t|flight|hotas|throttle|rudder|yoke/i;
+    const p = Array.from(navigator.getGamepads()).find(g => g && g.connected && !notPad.test(g.id));
     if (!p) {
         if (sgPadWas) wasm_exports.sg_gamepad(0, 0, 0, 0, 0);
         sgPadWas = false;

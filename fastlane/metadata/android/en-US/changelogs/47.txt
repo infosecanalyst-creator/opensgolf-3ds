@@ -1,0 +1,3 @@
+* Fixed the picture going black or jumbled after resizing or maximising the window
+* Hills are shaded smoothly in Classic graphics, as in the original
+* Each theme's own buildings have their own names again (Spa, Helipad, Casino, Castle and more)

@@ -36,7 +36,7 @@ fn hp() -> i32 {
 
 /// The exe's random number generator: a 32-bit LCG (x * 1103515245 + 12345), seeded with the Windows millisecond clock times 37.
 /// A draw takes bits 16..30 as a fraction of 1 and scales it by the (16-bit) range, truncating.
-#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ExeRng {
     pub state: u32,
 }
@@ -76,6 +76,21 @@ impl Noise {
         }
         g[16] = g[0];
         Noise { g }
+    }
+
+    /// The grid as the exe keeps it (0x838c1c: 19 x 19 signed bytes, row r at r * 19, of which the 17 x 17 corner is read),
+    /// as an original saved game holds it (sve.rs). None when the bytes are too few.
+    pub fn from_exe_grid(b: &[u8]) -> Option<Noise> {
+        if b.len() < 17 * 19 {
+            return None;
+        }
+        let mut g = [[0i32; 17]; 17];
+        for (r, row) in g.iter_mut().enumerate() {
+            for (c, v) in row.iter_mut().enumerate() {
+                *v = b[r * 19 + c] as i8 as i32;
+            }
+        }
+        Some(Noise { g })
     }
 
     fn sample(&self, x: i32, y: i32) -> i32 {
@@ -318,18 +333,96 @@ pub const T_HOME_SITE: u8 = 21;
 pub const T_BUILDING: u8 = 22;
 
 /// Border class of a tile type as the exe hands it to Terrain.dll, with the Desert override.
+///
+/// The exe builds the classes it hands over (0x449400, run after the theme is loaded) from the runtime terrain table: byte
+/// +0x26 of each type, except that in the Desert every type with a positive byte +0x22 is sent as class 4, deep rough and
+/// sand trap excepted. The Desert's theme loader (0x43dbe0) has already set deep rough's class byte to 5 (it writes 5 to
+/// 0x578466, record 5 +0x26), so there deep rough, which the Desert draws as its green "Rough", is a class of its own:
+/// next to the sandy desert ground, the out-of-bounds land at the map's edge, buildings and landmarks (all class 4 there)
+/// it draws the darker grass collar, as the original does, rather than the same-class pieces that show sand round their
+/// edges (issue #118). The other themes keep deep rough in class 4 with the rough.
 pub fn border_class(ty: u8, desert: bool) -> u8 {
     let Some(t) = crate::data::get().land_types.get(ty as usize) else { return ty };
-    if desert && t.desert_group > 0 && ty != 5 && ty != 7 {
+    if desert && ty == T_DEEP_ROUGH {
+        5
+    } else if desert && t.desert_group > 0 && ty != 7 {
         4
     } else {
         t.class
     }
 }
 
-/// The name of a building or object kind (the data tables' `BUILDINGS`), "" for an unknown kind.
+/// A terrain type's class as the game's own rules read it (golfer thoughts, spectators, stories, weeds): the type table's,
+/// but for the desert's deep rough, 5 instead of 4. The exe's theme loader (0x43dbe0) writes that 5 into the table itself
+/// (0x578466: the class byte of type 5 in the 0x30-byte rows at 0x578376, the table the game's rules read, e.g. the water
+/// test at 0x578376 + type * 0x30 == 0x11), so on a desert course deep rough is no class-4 ground for any of them (#118;
+/// the drawing's border classes follow it in [`border_class`]).
+pub fn class(ty: u8) -> u8 {
+    class_in(ty, NAME_THEME.load(std::sync::atomic::Ordering::Relaxed))
+}
+
+/// [`class`] in the exe's theme `theme` (1 is the desert).
+pub fn class_in(ty: u8, theme: u8) -> u8 {
+    if ty == T_DEEP_ROUGH && theme == 1 {
+        5
+    } else {
+        crate::data::get().land_types.get(ty as usize).map_or(0, |r| r.class)
+    }
+}
+
+/// The theme whose building names [`building_name`] gives (the exe's theme number: 0 Parkland, 1 Desert, 2 Tropical, 3
+/// Links); `NO_THEME` until a theme is loaded, which keeps the table's own names.
+static NAME_THEME: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(NO_THEME);
+const NO_THEME: u8 = 0xff;
+
+/// Sets the theme the building names follow. The exe does this as it loads a theme (the theme loader 0x43dbe0): it
+/// copies that theme's names over four entries of its object table, so every screen that names a building from the table
+/// (the Add Buildings panel, the hover box, the unlock message, the ledger, Home Values) shows the theme's name.
+pub fn set_name_theme(exe_theme: u8) {
+    NAME_THEME.store(exe_theme.min(3), std::sync::atomic::Ordering::Relaxed);
+}
+
+/// The kinds whose name depends on the theme, and each theme's name for them (EXACT: the strings the theme loader 0x43dbe0 copies
+/// over the table's Snack Bar, Swim Club, Marina and Airstrip entries), by the exe's theme number.
+const THEMED_KINDS: [i32; 4] = [7, 9, 12, 14];
+const THEMED_NAMES: [[&str; 4]; 4] = [
+    ["STR_BUILDING_SNACK_BAR", "STR_BUILDING_TENNIS_COURT", "STR_BUILDING_MARINA", "STR_BUILDING_AIRSTRIP"],
+    ["STR_BUILDING_SNACK_BAR", "STR_BUILDING_SPA", "STR_BUILDING_HELIPAD", "STR_BUILDING_CASINO"],
+    ["STR_BUILDING_SNACK_BAR", "STR_BUILDING_SWIM_CLUB", "STR_BUILDING_MARINA", "STR_BUILDING_THEME_PARK"],
+    ["STR_BUILDING_PUB", "STR_BUILDING_STABLE", "STR_BUILDING_CHURCH", "STR_BUILDING_CASTLE"],
+];
+
+/// The name of a building or object kind in a theme (the exe's theme number; `NO_THEME` for the table's own names), "" for
+/// an unknown kind. A data pack's own name for a kind (docs/MODDING.md) is kept in every theme.
+pub fn building_name_in(kind: i32, exe_theme: u8) -> &'static str {
+    let Some(b) = crate::data::buildings().get(kind.max(0) as usize).filter(|_| kind >= 0) else { return "" };
+    let themed = THEMED_KINDS.iter().position(|&k| k == kind).filter(|_| exe_theme <= 3 && b.0 == BUILDINGS[kind as usize].0);
+    match themed {
+        Some(i) => tr(THEMED_NAMES[exe_theme as usize][i]),
+        None => crate::lang::text(b.0),
+    }
+}
+
+/// The name of a building or object kind (the data tables' `BUILDINGS`) in the loaded theme, "" for an unknown kind.
 pub fn building_name(kind: i32) -> &'static str {
-    crate::data::buildings().get(kind.max(0) as usize).filter(|_| kind >= 0).map(|b| crate::lang::text(b.0)).unwrap_or("")
+    building_name_in(kind, NAME_THEME.load(std::sync::atomic::Ordering::Relaxed))
+}
+
+/// A terrain type's name from the terrain table (crate::course::type_name) in the loaded theme: the theme loader renames some
+/// of the table's records (crate::tracts::theme_names: the desert's rough is its desert, its deep rough its rough, its
+/// wetlands a canyon...), so every screen that names a terrain type from the table (the undo's label, issue #116) shows the
+/// theme's name. "" for an unknown type.
+pub fn terrain_name(ty: i32) -> &'static str {
+    terrain_name_in(ty, NAME_THEME.load(std::sync::atomic::Ordering::Relaxed))
+}
+
+/// A terrain type's name in a theme (the exe's theme number; `NO_THEME` for the table's own names), "" for an unknown type.
+pub fn terrain_name_in(ty: i32, theme: u8) -> &'static str {
+    u8::try_from(ty)
+        .ok()
+        .filter(|_| theme <= 3)
+        .and_then(|t| crate::tracts::theme_names(t, theme))
+        .map_or_else(|| crate::course::type_name(ty), |(one, _)| one)
 }
 
 /// Buildings and objects: (name key, footprint edge in tiles, price in money units), by the exe's object kind.
@@ -373,6 +466,15 @@ pub const K_SNACK_BAR: i32 = 7;
 pub const K_MARINA: i32 = 12;
 pub const K_CLUBHOUSE: i32 = 15;
 
+/// Whether a kind keeps a building level, so that building it again upgrades the one standing (EXACT): the kinds from the
+/// Putting Green up except the Snack Bar. The exe raises the level table 0x5a8c38 from the records for every kind from 6 but
+/// the Snack Bar (the refresh 0x42f340 skips kind 7 at 0x42f41e, and the load zeroes its entry at 0x40fcf7), and the
+/// placement only removes the standing buildings of a kind whose level is not 0 (0x41f926). So the Snack Bar's level is
+/// always 0: it is never upgraded nor greyed out, every one costs the base price, and any number of them may stand.
+pub fn kind_has_levels(kind: i32) -> bool {
+    kind >= K_PUTTING_GREEN && kind != K_SNACK_BAR
+}
+
 /// Tile flag bits the generator uses.
 pub mod flag {
     /// A path is laid on the tile.
@@ -394,7 +496,7 @@ pub mod flag {
 }
 
 /// An object on the map (the exe's 16-byte object record): a building, a landmark or an obstacle.
-#[derive(Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Object {
     pub kind: i32,
     pub a: i32,
@@ -740,6 +842,61 @@ impl Land {
         }
     }
 
+    /// Takes away what was put down on land that the owned area then cut off (`cut`): the exe draws the landmarks, obstacles and
+    /// their paths anywhere on the map and marks the land it does not own only at the end (0x4720e8), so an island property
+    /// could start with a landmark and its garden standing out in the sea, and every property with obstacles past its edge
+    /// (issue #144). A coastal property's sea edge is made out of bounds before the patches (ponds, wetlands), whose walks
+    /// can turn it back into land past the map's edge. With "Fix original bugs" an object reaching a cut tile is removed and
+    /// the cut tiles are out of bounds (sea round an island) again, with no paths or marks; the draws are the same, so the
+    /// rest of the map is the exe's.
+    fn clear_cut(&mut self, cut: &[bool]) {
+        for i in 0..self.objects.len() {
+            let o = self.objects[i];
+            if o.kind < 0 || o.kind == K_CLUBHOUSE {
+                continue;
+            }
+            let s = self.footprint_size(&o).max(1);
+            let off = (0..s)
+                .any(|r| (0..s).any(|c| !(0..mn()).contains(&(o.a + r)) || !(0..mn()).contains(&(o.b + c)) || cut[idx(o.a + r, o.b + c)]));
+            if off {
+                self.remove_object(i);
+                // its corners, flattened to its anchor's height, go back to the ground round it (the commonest height on
+                // the ring just outside), so no step is left under the sea
+                let ring = |a: i32, b: i32| (0..=mn()).contains(&a) && (0..=mn()).contains(&b);
+                let mut count = [0u32; 256];
+                for r in -1..=s + 1 {
+                    for c in -1..=s + 1 {
+                        let edge = r == -1 || c == -1 || r == s + 1 || c == s + 1;
+                        if edge && ring(o.a + r, o.b + c) {
+                            count[self.h((o.a + r) * hp() + o.b + c) as usize] += 1;
+                        }
+                    }
+                }
+                if let Some(level) = (0..256).filter(|&v| count[v] > 0).max_by_key(|&v| (count[v], std::cmp::Reverse(v))) {
+                    for r in 0..=s {
+                        for c in 0..=s {
+                            if ring(o.a + r, o.b + c) {
+                                self.set_h((o.a + r) * hp() + o.b + c, level as u8);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let island = self.slot.record().coast == 2;
+        for i in (0..cut.len()).filter(|&i| cut[i]) {
+            // back to the cut tile's own type (the removal leaves rough), without paths, spots, borders, obstacles or an
+            // object's mark
+            let t = if island { T_WATER } else { T_OUT };
+            if self.ty[i] != t {
+                self.ty[i] = t;
+                self.layer[i] = crate::data::land_type(t).layer;
+            }
+            self.flags[i] &=
+                !(0x1f | flag::PATH | flag::JOINED | flag::SPOT | flag::PATH_ALT | flag::FOOTPRINT | flag::CREEK | flag::OBSTACLE);
+        }
+    }
+
     /// Marks a tile as outside the owned land: out of bounds, or water around an island.
     fn unown(&mut self, a: i32, b: i32) {
         let i = idx(a, b);
@@ -750,6 +907,22 @@ impl Land {
             self.flags[i] &= 0xfcdf;
         }
     }
+}
+
+/// The width of the unowned border round a property's owned square: a square of side 2r where 4r^2 tiles are about
+/// acres x 10. (The exe keeps the acres in a byte; a larger map's deal can be bigger.)
+fn owned_margin(slot: &Slot, size: i32) -> i32 {
+    let acres = if crate::mapsize::original() { slot.acres & 0xff } else { slot.acres };
+    let mut r = size / 2;
+    let mut m = 0;
+    loop {
+        m += 1;
+        r -= 1;
+        if acres * 10 >= r * r * 4 {
+            break;
+        }
+    }
+    m
 }
 
 /// Upper bound on retries in the generator's "draw until it fits" loops; the exe loops without a bound.
@@ -1242,7 +1415,20 @@ pub fn generate(slot_index: usize, slot: Slot, difficulty: i32, sandbox: bool, r
     if let Some(kind) = free_building {
         // Beside the clubhouse, with a short path to it.
         // (the exe writes these from the anchor less 15: ra + 14, rb + 19 and so on)
-        if !land.blocked(ca, cb + 5) {
+        // The exe asks whether the tile past that side is off the land, but it marks the land it does not own only at the
+        // end (0x4720e8, after the clubhouse at 0x471618), so on a small property the building could stand past the owned
+        // edge, over the cliff (#125). With "Fix original bugs" the side is the one whose 4 x 4 lot is all on the land
+        // that will be owned (the same draws, so the rest of the map is the exe's).
+        let past = if crate::fixes::on() && rec.coast != 2 {
+            let m = owned_margin(&slot, size);
+            let lo = if rec.coast == 0 { m } else { 0 };
+            let owned = |a: i32, b: i32| (m..size - m).contains(&a) && (lo..size - m).contains(&b);
+            let fits = |b0: i32| (0..4).all(|r| (0..4).all(|c| owned(ca - 1 + r, b0 + c)));
+            !fits(cb + 4) && fits(cb - 5)
+        } else {
+            land.blocked(ca, cb + 5)
+        };
+        if !past {
             land.place(rng, ca - 1, cb + 4, kind, 0, theme);
             for k in 2..=4 {
                 land.flags_or(ci as i32 + k, flag::PATH);
@@ -1304,27 +1490,23 @@ pub fn generate(slot_index: usize, slot: Slot, difficulty: i32, sandbox: bool, r
 
     // The owned land: a square of side 2r where 4r^2 tiles are about acres x 10; the rest is out of bounds. (The exe keeps the
     // acres in a byte; a larger map's deal can be bigger.)
-    let acres = if crate::mapsize::original() { slot.acres & 0xff } else { slot.acres };
-    let mut r = size / 2;
-    let mut m = 0;
-    loop {
-        m += 1;
-        r -= 1;
-        if acres * 10 >= r * r * 4 {
-            break;
-        }
-    }
+    let m = owned_margin(&slot, size);
     land.margin = m;
     land.original = land.ty.clone();
+    let mut cut = vec![false; nn()];
+    let mut unown = |land: &mut Land, a: i32, b: i32| {
+        land.unown(a, b);
+        cut[idx(a, b)] = true;
+    };
     if rec.coast != 2 {
         for i in 0..m {
             for j in 0..mn() {
-                land.unown(i, j);
+                unown(&mut land, i, j);
                 if rec.coast == 0 {
-                    land.unown(j, i);
+                    unown(&mut land, j, i);
                 }
-                land.unown(j, size - 1 - i);
-                land.unown(size - 1 - i, j);
+                unown(&mut land, j, size - 1 - i);
+                unown(&mut land, size - 1 - i, j);
             }
         }
     } else {
@@ -1336,12 +1518,23 @@ pub fn generate(slot_index: usize, slot: Slot, difficulty: i32, sandbox: bool, r
                 if j >= mn() {
                     break;
                 }
-                land.unown(j, row);
-                land.unown(row, j);
-                land.unown(row, size - 1 - j);
-                land.unown(size - 1 - j, row);
+                unown(&mut land, j, row);
+                unown(&mut land, row, j);
+                unown(&mut land, row, size - 1 - j);
+                unown(&mut land, size - 1 - j, row);
             }
         }
+    }
+    if crate::fixes::on() {
+        if rec.coast == 1 {
+            // the sea's first tile in each row was made out of bounds before the patches, whose walks can turn it back into a
+            // wetland or a pond past the map's edge
+            for a in 0..mn() {
+                cut[idx(a, 0)] = true;
+                land.original[idx(a, 0)] = T_OUT;
+            }
+        }
+        land.clear_cut(&cut);
     }
     land.water_depth();
     land
@@ -1470,6 +1663,32 @@ fn landmark(land: &mut Land, rng: &mut ExeRng, prop: i32, n: i32, a: i32, b: i32
 impl Land {
     /// Land for a course that was not generated (the demo course, a loaded course file): the terrain's tiles, paths and heights,
     /// no objects. Slot 0 of a Parkland property stands in for the deal.
+    /// Land whose arrays are all filled in afterwards by whoever builds it (an original saved game, sve.rs): rough
+    /// everywhere, sea-level corners, no objects, at the map size in play.
+    pub fn blank(slot_index: usize, slot: Slot, difficulty: i32) -> Land {
+        Land {
+            n: mn(),
+            slot_index,
+            slot,
+            difficulty,
+            ty: vec![T_ROUGH; nn()],
+            flags: vec![0; nn()],
+            layer: vec![crate::data::land_type(T_ROUGH).layer; nn()],
+            var: vec![0; nn()],
+            height: vec![3; hn()],
+            original: vec![T_ROUGH; nn()],
+            objects: Vec::new(),
+            clubhouse: (-1, -1),
+            staff_start: (-1, -1),
+            view: (-1, -1),
+            margin: 0,
+            hill: 48,
+            undo: vec![UNDO_NONE; nn()],
+            refund: vec![0; nn()],
+            growth: vec![0; nn()],
+        }
+    }
+
     pub fn from_terrain(t: &Terrain, theme: u8) -> Land {
         let property = crate::data::records().iter().position(|r| r.theme == theme).unwrap_or(0);
         let mut land = Land {
@@ -1496,6 +1715,37 @@ impl Land {
         land.sync_from_terrain(t);
         land.original = land.ty.clone();
         land
+    }
+
+    /// Gives the terrain's greens the land's variant byte, whose bit 0x80 draws them as tricky greens. Games saved before the
+    /// green brush's Tab reached the terrain have their tricky greens only in the land.
+    /// Marks the tiles of the lots that keep open ground in the terrain (`Terrain::lot`): putting greens and driving ranges.
+    /// (A marina's water stays one with the lake it stands in.)
+    pub fn lots_to(&self, t: &mut Terrain) {
+        t.lot = vec![0; t.ty.len()];
+        for o in self.objects.iter().filter(|o| o.kind == K_PUTTING_GREEN || o.kind == K_DRIVING_RANGE) {
+            let s = self.footprint_size(o);
+            for a in o.a..o.a + s {
+                for b in o.b..o.b + s {
+                    if t.inside(a, b) {
+                        let i = t.tile_index(a, b);
+                        t.lot[i] = o.kind as u8;
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn green_looks_to(&self, t: &mut Terrain) {
+        for a in 0..mn().min(t.w) {
+            for b in 0..mn().min(t.h) {
+                let (i, o) = (idx(a, b), t.tile_index(a, b));
+                if self.ty[i] == T_GREEN && t.ty[o] == T_GREEN {
+                    t.variation[o] = self.var[i];
+                }
+            }
+        }
+        self.lots_to(t);
     }
 
     /// Takes the player's terrain edits (tile types, paths, corner heights) into the land, keeping objects and their footprints.
@@ -1554,6 +1804,7 @@ impl Land {
                 t.corner[(cy * (t.w + 1) + cx) as usize] = v.clamp(0, crate::terrain::MAX_LEVEL) as i8;
             }
         }
+        self.lots_to(t);
     }
 
     /// Edge of an object's footprint in tiles as the exe counts it for lookup and removal: an upgraded building (kinds 6 and
@@ -1707,6 +1958,8 @@ impl Land {
             sand_phase: 0,
             water_one: false,
             tile_corner: Vec::new(),
+            own_tile_normals: false,
+            lot: Vec::new(),
         };
         let mut seed = crate::rng::Rng::new(0x9e37_79b9 ^ self.slot.property as u32);
         for a in 0..mn() {
@@ -1715,7 +1968,8 @@ impl Land {
                 let o = t.tile_index(a, b);
                 t.ty[o] = self.ty[i];
                 t.set[o] = seed.range(5) as u8;
-                if self.ty[i] == T_WATER {
+                // water keeps its depth in this byte, a green its tricky bit (0x80, Terrain.dll's TrickyGreen textures)
+                if self.ty[i] == T_WATER || self.ty[i] == T_GREEN {
                     t.variation[o] = self.var[i];
                 }
                 let building = self.ty[i] == T_BUILDING || self.ty[i] == T_HOME_SITE;
@@ -1730,6 +1984,7 @@ impl Land {
                 t.corner[(cy * (w + 1) + cx) as usize] = v.clamp(0, crate::terrain::MAX_LEVEL) as i8;
             }
         }
+        self.lots_to(&mut t);
         // The clubhouse sprite stands in the middle of its 4 x 4 footprint.
         t.clubhouse_x = self.clubhouse.0 + 2;
         t.clubhouse_y = self.clubhouse.1 + 2;
@@ -1741,6 +1996,38 @@ impl Land {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_deserts_deep_rough_is_no_class_4_ground_for_the_rules() {
+        // the exe's theme loader writes 5 over deep rough's class on the desert only (0x578466)
+        assert_eq!(class_in(T_DEEP_ROUGH, 1), 5);
+        for theme in [0, 2, 3, NO_THEME] {
+            assert_eq!(class_in(T_DEEP_ROUGH, theme), 4, "theme {theme}");
+        }
+        // every other type keeps its table class in the desert
+        for ty in 0..23u8 {
+            if ty != T_DEEP_ROUGH {
+                assert_eq!(class_in(ty, 1), class_in(ty, 0), "type {ty}");
+            }
+        }
+    }
+
+    #[test]
+    fn desert_deep_rough_borders_as_a_class_of_its_own() {
+        // the Desert: deep rough (its green "Rough") is class 5, so it shows the grass collar against the desert ground, the
+        // map's edge and buildings (issue #118)
+        assert_eq!(border_class(T_DEEP_ROUGH, true), 5);
+        for ty in [T_ROUGH, T_OUT, T_HOME_SITE, T_BUILDING, T_BRUSH] {
+            assert_eq!(border_class(ty, true), 4, "type {ty}");
+        }
+        assert_eq!(border_class(7, true), 7);
+        assert_eq!(border_class(T_GREEN, true), 1);
+        // the other themes: the table's own classes
+        assert_eq!(border_class(T_DEEP_ROUGH, false), 4);
+        assert_eq!(border_class(T_ROUGH, false), 4);
+        assert_eq!(border_class(T_BUILDING, false), 18);
+        assert_eq!(border_class(T_OUT, false), 18);
+    }
 
     #[test]
     fn rng_matches_the_exe_formula() {
@@ -1803,6 +2090,58 @@ mod tests {
     }
 
     #[test]
+    fn nothing_stands_past_the_owned_land() {
+        // issue #144: the landmarks and obstacles are drawn anywhere on the map and the land outside the property is cut away
+        // only at the end, so an island could start with a landmark and its garden out in the sea; with "Fix original bugs"
+        // they go, and the rest of the map is the exe's
+        let make = |p: usize, c: u32| {
+            let mut rng = ExeRng::from_clock(c);
+            let noise = Noise::new(&mut rng);
+            let land = generate(7, Slot { property: p, acres: slot_acres(7, p, false) }, 1, false, &mut rng, &noise);
+            (land, rng)
+        };
+        let mut gone = 0;
+        let mut edge = 0;
+        for p in [6, 12, 5, 14, 15] {
+            for c in 0..40 {
+                let (exe, exe_rng) = make(p, c * 977 + 5);
+                crate::fixes::set(true);
+                let (fixed, fixed_rng) = make(p, c * 977 + 5);
+                crate::fixes::set(false);
+                assert_eq!(exe_rng.state, fixed_rng.state, "the same draws");
+                // nothing stands on the cut land: out of bounds, or the sea round an island (a marina's edge is its own water)
+                for o in fixed.objects.iter().filter(|o| o.kind >= 0 && o.kind != K_MARINA) {
+                    let s = fixed.footprint_size(o).max(1);
+                    for r in 0..s {
+                        for k in 0..s {
+                            let (a, b) = (o.a + r, o.b + k);
+                            assert!(
+                                fixed.in_play(a, b) && fixed.tile(a, b) != T_WATER,
+                                "property {p} clock {c}: kind {} at {a},{b}",
+                                o.kind
+                            );
+                        }
+                    }
+                }
+                gone += exe.objects.iter().filter(|o| o.kind >= 0).count() - fixed.objects.iter().filter(|o| o.kind >= 0).count();
+                // a coastal property's sea edge stays out of bounds (the reporter's Florida had a wetland past it)
+                if crate::data::records()[p].coast == 1 {
+                    assert!((0..mn()).all(|a| fixed.tile(a, 0) == T_OUT), "property {p} clock {c}");
+                    edge += (0..mn()).filter(|&a| exe.tile(a, 0) != T_OUT).count();
+                }
+                // the land is the exe's but for what stood on the cut tiles
+                for i in 0..nn() {
+                    if exe.flags[i] & flag::FOOTPRINT == 0 && (crate::data::records()[p].coast != 1 || i % mn() as usize != 0) {
+                        assert_eq!(exe.ty[i], fixed.ty[i], "property {p} clock {c}: tile {i}");
+                    }
+                }
+            }
+        }
+        assert!(gone > 0, "some objects stood past the edge");
+        assert!(edge > 0, "some patches reached the sea's edge");
+    }
+
+    #[test]
     fn unlocks_follow_holes() {
         assert_eq!(unlocked_kinds(1, false), 6);
         assert_eq!(unlocked_kinds(2, false), 7);
@@ -1811,6 +2150,36 @@ mod tests {
         assert_eq!(unlocked_kinds(9, false), 13);
         assert_eq!(unlocked_kinds(12, false), 15);
         assert_eq!(unlocked_kinds(18, false), 15);
+    }
+
+    /// #125: on a small property the free building beside the clubhouse (Jurassic Springs' kind 13) could stand past the
+    /// owned edge, as in the exe; with "Fix original bugs" it takes the other side, and nothing else of the map changes.
+    #[test]
+    fn free_building_stays_on_the_owned_land() {
+        let slot = Slot { property: 2, acres: 50 };
+        let (mut over, mut moved) = (0, 0);
+        for seed in 0..200 {
+            let make = |fix: bool| {
+                crate::fixes::set(fix);
+                let mut rng = ExeRng::from_clock(seed);
+                let noise = Noise::new(&mut rng);
+                generate(0, slot, 0, false, &mut rng, &noise)
+            };
+            let (exe, fixed) = (make(false), make(true));
+            crate::fixes::set(false);
+            let out = |l: &Land| {
+                let o = l.objects.iter().find(|o| o.kind == 0xd).unwrap();
+                (0..4).any(|r| (0..4).any(|c| l.tile(o.a + r, o.b + c) == T_OUT))
+            };
+            over += out(&exe) as i32;
+            assert!(!out(&fixed), "seed {seed}");
+            if exe.objects.iter().zip(&fixed.objects).any(|(x, y)| (x.a, x.b) != (y.a, y.b)) {
+                moved += 1;
+                assert!(out(&exe), "seed {seed}: moved a building that was on the land");
+            }
+            assert_eq!(exe.objects.len(), fixed.objects.len());
+        }
+        assert!(over > 0 && moved == over, "{over} {moved}");
     }
 
     #[test]
@@ -2005,7 +2374,7 @@ impl Land {
             return (s.into(), true);
         }
         if code < 0x7d {
-            return (trf("STR_UNDO_RESET_TO", &[("TERRAIN", &crate::course::type_name(code as i32))]), true);
+            return (trf("STR_UNDO_RESET_TO", &[("TERRAIN", &terrain_name(code as i32))]), true);
         }
         let s = if f & 0x200 != 0 {
             tr("STR_UNDO_REMOVE_BENCH")
@@ -2099,8 +2468,68 @@ mod tile_item_tests {
             sand_phase: 0,
             water_one: false,
             tile_corner: Vec::new(),
+            own_tile_normals: false,
+            lot: Vec::new(),
         };
         Land::from_terrain(&t, 0)
+    }
+
+    /// #128: a green painted beside a putting green blends into it as in the exe; with "Fix original bugs" the putting
+    /// green keeps its border.
+    #[test]
+    fn putting_green_keeps_its_border() {
+        let mut l = rough_land();
+        let mut rng = ExeRng::from_clock(1);
+        l.place(&mut rng, 10, 10, K_PUTTING_GREEN, 0, 0);
+        l.ty[idx(13, 11)] = T_GREEN;
+        let t = l.to_terrain();
+        assert!(t.on_putting_green(12, 11) && !t.on_putting_green(13, 11));
+        crate::fixes::set(false);
+        assert_eq!(crate::terrain::tile_relation(&t, 12, 11, 13, 11), 0);
+        crate::fixes::set(true);
+        assert_eq!(crate::terrain::tile_relation(&t, 12, 11, 13, 11), 1);
+        assert_eq!(crate::terrain::tile_relation(&t, 11, 11, 12, 11), 0, "inside the putting green");
+        crate::fixes::set(false);
+    }
+
+    /// #139: rough painted beside a driving range blends into its rough as in the exe; fixed, the range keeps its border.
+    #[test]
+    fn driving_range_keeps_its_border() {
+        let mut l = rough_land();
+        let mut rng = ExeRng::from_clock(1);
+        l.place(&mut rng, 10, 10, K_DRIVING_RANGE, 0, 0);
+        let s = l.footprint_size(l.objects.last().unwrap());
+        let (a, b) = (10 + s, 12);
+        l.ty[idx(a, b)] = T_ROUGH;
+        let inner = l.ty[idx(a - 1, b)];
+        let t = l.to_terrain();
+        assert_eq!(t.lot_at(a - 1, b), K_DRIVING_RANGE as u8);
+        assert_eq!(t.lot_at(a, b), 0);
+        crate::fixes::set(false);
+        let off = crate::terrain::tile_relation(&t, a - 1, b, a, b);
+        crate::fixes::set(true);
+        assert_eq!(crate::terrain::tile_relation(&t, a - 1, b, a, b), 1, "the range's {inner} against painted rough");
+        crate::fixes::set(false);
+        assert_ne!(off, 1, "the exe blends them");
+    }
+
+    /// Issue #69: a tricky green (variant byte 0xff, 0x420561) keeps its byte on the way to the terrain, where bit 0x80
+    /// selects the TrickyGreen textures, including in games saved before the terrain carried it.
+    #[test]
+    fn tricky_greens_reach_the_terrain() {
+        let mut l = rough_land();
+        let (i, j) = (idx(12, 14), idx(13, 14));
+        l.ty[i] = T_GREEN;
+        l.ty[j] = T_GREEN;
+        l.var[i] = 0xff;
+        l.var[j] = 0;
+        let mut t = l.to_terrain();
+        assert_eq!(t.variation[t.tile_index(12, 14)], 0xff);
+        assert_eq!(t.variation[t.tile_index(13, 14)], 0);
+        let o = t.tile_index(12, 14);
+        t.variation[o] = 0;
+        l.green_looks_to(&mut t);
+        assert_eq!(t.variation[o], 0xff);
     }
 
     #[test]
@@ -2149,5 +2578,78 @@ mod tile_item_tests {
         // A fairway tile on the path still gets marked but passes nothing on.
         l.ty[idx(16, 10)] = 2;
         assert_eq!(l.joined_objects(), vec![true, false]);
+    }
+
+    #[test]
+    fn snack_bars_have_no_level_and_golfers_take_the_nearest() {
+        // the Snack Bar is the one building from the Putting Green up without levels (0x42f41e, 0x40fce9, 0x41f926)
+        assert!(!kind_has_levels(K_SNACK_BAR));
+        for k in [K_PUTTING_GREEN, 8, 9, K_DRIVING_RANGE, 11, K_MARINA, 13, 14] {
+            assert!(kind_has_levels(k), "kind {k}");
+        }
+        for k in 0..K_PUTTING_GREEN {
+            assert!(!kind_has_levels(k), "kind {k}");
+        }
+        let mut l = rough_land();
+        l.objects.clear();
+        let put = |l: &mut Land, kind: i32, a: i32, b: i32| {
+            l.objects.push(Object { kind, a, b, dir: 0, flags: 0, sub: 0, val: 0 });
+        };
+        put(&mut l, K_CLUBHOUSE, 10, 10);
+        put(&mut l, K_SNACK_BAR, 20, 10);
+        put(&mut l, K_SNACK_BAR, 30, 30);
+        put(&mut l, K_SNACK_BAR, 5, 35);
+        put(&mut l, 8, 40, 10);
+        let mut c = crate::course::Course::default();
+        c.sync(&l, true);
+        // several Snack Bars leave its level at 0, a Pro Shop has level 1
+        assert_eq!((c.level[K_SNACK_BAR as usize], c.oper[K_SNACK_BAR as usize]), (0, 0));
+        assert_eq!(c.level[8], 1);
+        // a hungry golfer is sent to the nearest one (0x40ddb0), wherever it stands
+        let at = |a: i32, b: i32| (a * 1024 + 512, b * 1024 + 512);
+        for (tile, want) in [((21, 12), 1), ((29, 28), 2), ((6, 33), 3)] {
+            let (x, y) = at(tile.0, tile.1);
+            assert_eq!(c.nearest(K_SNACK_BAR, x, y).0, want, "from {tile:?}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod building_name_tests {
+    use super::*;
+
+    /// Issue #110: the four themed kinds take the loaded theme's names (the exe's theme switch), every other kind keeps its
+    /// own, and with no theme loaded the table's names stand.
+    #[test]
+    fn themed_names_follow_the_theme() {
+        let names = |t: u8| THEMED_KINDS.map(|k| building_name_in(k, t));
+        assert_eq!(names(0), ["Snack Bar", "Tennis Court", "Marina", "Airstrip"]);
+        assert_eq!(names(1), ["Snack Bar", "Spa", "Helipad", "Casino"]);
+        assert_eq!(names(2), ["Snack Bar", "Swim Club", "Marina", "Theme Park"]);
+        assert_eq!(names(3), ["Pub", "Stable", "Church", "Castle"]);
+        assert_eq!(names(NO_THEME), ["Snack Bar", "Swim Club", "Marina", "Airstrip"]);
+        for t in [0, 1, 2, 3, NO_THEME] {
+            assert_eq!(building_name_in(K_CLUBHOUSE, t), "Clubhouse");
+            assert_eq!(building_name_in(6, t), "Putting Green");
+            assert_eq!(building_name_in(13, t), "Resort Hotel");
+            assert_eq!(building_name_in(-1, t), "");
+            assert_eq!(building_name_in(99, t), "");
+        }
+    }
+
+    /// Issue #116: the undo's "Reset to" names the terrain as the theme does (the desert's canyon, desert and rough, not
+    /// wetlands, rough and deep rough), and with no theme loaded the table's names stand.
+    #[test]
+    fn terrain_names_follow_the_theme() {
+        let names = |t: u8| [4, 5, 10, 11, 18].map(|ty| terrain_name_in(ty, t));
+        assert_eq!(names(1), ["desert", "rough", "brush", "ravine", "canyon"]);
+        assert_eq!(names(0), ["rough", "deep rough", "stream", "brush", "wetlands"]);
+        assert_eq!(names(3), ["rough", "deep rough", "burn", "gorse", "wetlands"]);
+        assert_eq!(names(NO_THEME), ["rough", "deep rough", "ravine", "brush", "wetlands"]);
+        for t in [0, 1, 2, 3, NO_THEME] {
+            assert_eq!(terrain_name_in(9, t), "pot bunker");
+            assert_eq!(terrain_name_in(-1, t), "");
+            assert_eq!(terrain_name_in(300, t), "");
+        }
     }
 }

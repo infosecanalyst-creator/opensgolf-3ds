@@ -30,8 +30,14 @@ pub const TEST_URL_ENV: &str = "SG_UPDATE_URL";
 /// The title button's hover value (after gamefiles::FILES_HOVER).
 pub const UPDATE_HOVER: i32 = 8;
 
-/// True where the button is offered: a build that can make HTTPS requests itself, not the browser version.
-pub const AVAILABLE: bool = cfg!(all(not(target_arch = "wasm32"), feature = "net"));
+/// True where the button is offered: a build that can make HTTPS requests itself, not the browser version, and not a
+/// store's or package manager's build ([`STORE_BUILD`]).
+pub const AVAILABLE: bool = cfg!(all(not(target_arch = "wasm32"), feature = "net")) && !STORE_BUILD;
+
+/// The port's own: a build made for a store or a package manager (Flathub, F-Droid; packaging/README.md), where the store
+/// installs the updates, so Check for updates and Update now are left out. Set by building with `OPENSGOLF_NO_SELF_UPDATE=1`;
+/// downloading content packs (Preferences > Content > Find more) stays.
+pub const STORE_BUILD: bool = matches!(option_env!("OPENSGOLF_NO_SELF_UPDATE"), Some(v) if !v.is_empty() && !matches!(v.as_bytes(), b"0"));
 
 /// A version as compared: major, minor, patch, then true for a release (a prerelease such as 0.4.0-rc1 comes before
 /// 0.4.0).
@@ -204,31 +210,54 @@ pub fn open_url(url: &str) -> bool {
     }
     #[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
     {
-        let mut cmd = if cfg!(target_os = "windows") {
+        let cmd = if cfg!(target_os = "windows") {
             // the shell's own handler for an address (no console window, unlike `cmd /c start`)
             let mut c = std::process::Command::new("rundll32");
             c.args(["url.dll,FileProtocolHandler", url]);
             c
-        } else if cfg!(target_os = "macos") {
-            let mut c = std::process::Command::new("open");
-            c.arg(url);
-            c
         } else {
-            let mut c = std::process::Command::new("xdg-open");
-            c.arg(url);
-            c
+            opener(url)
         };
-        cmd.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
-        match cmd.spawn() {
-            // reaped on a thread of its own so no zombie is left behind
-            Ok(mut child) => {
-                let _ = std::thread::Builder::new().name("opensgolf-open".into()).spawn(move || child.wait());
-                true
-            }
-            Err(e) => {
-                eprintln!("open {url}: {e}");
-                false
-            }
+        spawn_opener(cmd, url)
+    }
+}
+
+/// Opens a folder in the system's file manager (Explorer, the Finder, the desktop's own through xdg-open); false when
+/// that could not be started. The desktop only (bugreport.rs).
+#[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
+pub fn open_folder(dir: &std::path::Path) -> bool {
+    let p = dir.to_string_lossy();
+    let cmd = if cfg!(target_os = "windows") {
+        let mut c = std::process::Command::new("explorer");
+        c.arg(dir);
+        c
+    } else {
+        opener(&p)
+    };
+    spawn_opener(cmd, &p)
+}
+
+/// `open` (macOS) or `xdg-open` (Linux and the other Unixes) with `what`.
+#[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
+fn opener(what: &str) -> std::process::Command {
+    let mut c = std::process::Command::new(if cfg!(target_os = "macos") { "open" } else { "xdg-open" });
+    c.arg(what);
+    c
+}
+
+/// Starts an opener without a console's input or output.
+#[cfg(not(any(target_os = "android", target_arch = "wasm32")))]
+fn spawn_opener(mut cmd: std::process::Command, url: &str) -> bool {
+    cmd.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+    match cmd.spawn() {
+        // reaped on a thread of its own so no zombie is left behind
+        Ok(mut child) => {
+            let _ = std::thread::Builder::new().name("opensgolf-open".into()).spawn(move || child.wait());
+            true
+        }
+        Err(e) => {
+            crate::bugreport::warn(&format!("open {url}: {e}"));
+            false
         }
     }
 }
@@ -331,9 +360,9 @@ impl App {
                     self.update_now();
                 }
             }
-            Outcome::Failed(e) if auto => eprintln!("update check at start: {e}"),
+            Outcome::Failed(e) if auto => crate::bugreport::warn(&format!("update check at start: {e}")),
             Outcome::Failed(e) => {
-                eprintln!("update check: {e}");
+                crate::bugreport::warn(&format!("update check: {e}"));
                 // the address is not news to the player (net.rs puts it first)
                 let e = e.split_once(": ").filter(|(url, _)| url.contains("://")).map_or(e.as_str(), |(_, why)| why);
                 self.show_notice(&trf("STR_UPDATE_FAILED", &[("ERROR", &e)]));

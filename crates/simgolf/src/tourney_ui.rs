@@ -54,6 +54,11 @@ impl App {
     /// Panel button 3, Begin Tournament (main frame command 0x4a): the SGA evaluates the course again; a failing course shows
     /// the report, a passing one the offer.
     pub fn begin_tournament(&mut self) {
+        // the interface's call is an action (replay.rs): logged, then applied by App::apply
+        if self.rec.depth_zero() {
+            self.act(sg_core::action::Action::BeginTournament);
+            return;
+        }
         if !self.club.can_begin_tournament() {
             self.show_toast(tr("STR_TOAST_NO_TOURNAMENT_OFFER"));
             return;
@@ -75,6 +80,11 @@ impl App {
 
     /// F7: the SGA evaluation as a report (a passing course is offered a tournament, as in the exe).
     pub fn sga_report(&mut self) {
+        // the evaluation keeps its figures in the club (Club::sga_evaluate): an action (replay.rs)
+        if self.rec.depth_zero() {
+            self.act(sg_core::action::Action::SgaReport);
+            return;
+        }
         let fac = self.facilities();
         let report = self.club.sga_evaluate(fac);
         if self.ui_ok {
@@ -87,6 +97,11 @@ impl App {
     /// mask of the pro's twelve skill bytes (0x4c2c9c) and, when none is set, runs the first allocation 0x4065c0 (10 points
     /// and 3 per accomplishment, the card with its explanation box) before 0x46c970 draws the field.
     pub fn accept_tournament(&mut self) {
+        // the interface's call is an action (replay.rs): logged, then applied by App::apply
+        if self.rec.depth_zero() {
+            self.act(sg_core::action::Action::AcceptTournament);
+            return;
+        }
         if self.club.pro_skill[..12].iter().all(|&v| v == 0) {
             let pts = self.club.first_skill_points();
             self.open_skills(pts, None);
@@ -152,7 +167,7 @@ impl App {
         }
     }
 
-    fn finish_prep(&mut self, prep: Prep, mask: i32) {
+    pub(crate) fn finish_prep(&mut self, prep: Prep, mask: i32) {
         let sites = self.club.apply_prep(&self.course, &mut self.exe_rng, &prep, mask);
         for l in prep.lines() {
             println!("  prep: {l}");
@@ -193,6 +208,11 @@ impl App {
 
     /// 'n' during a tournament: it ends with no prizes.
     pub fn cancel_tournament(&mut self) {
+        // the interface's call is an action (replay.rs): logged, then applied by App::apply
+        if self.rec.depth_zero() {
+            self.act(sg_core::action::Action::CancelTournament);
+            return;
+        }
         if self.club.cancel_tournament(&mut self.exe_rng, &self.course) {
             self.remove_tv();
             self.show_toast(tr("STR_TOAST_TOURNAMENT_CANCELED"));
@@ -245,7 +265,12 @@ impl App {
 
     /// "Great, let the games begin!" starts the tournament; "I think I need more practice." only drops the prize (the offer
     /// stays and the button can be pressed again).
-    fn offer_answer(&mut self, k: usize) {
+    pub(crate) fn offer_answer(&mut self, k: usize) {
+        // the interface's call is an action (replay.rs): logged, then applied by App::apply
+        if self.rec.depth_zero() {
+            self.act(sg_core::action::Action::TourneyAnswer(k));
+            return;
+        }
         self.sga = None;
         self.screen = Screen::Play;
         if k == 0 {
@@ -276,9 +301,10 @@ impl App {
                     mask ^= 1 << k;
                 }
                 if b.ok_tick().has(vx, vy) || vx < 0.0 {
-                    // bits 0..2 are the three options, the par changes follow from bit 3
+                    // bits 0..2 are the three options, the par changes follow from bit 3 (an action, replay.rs)
                     self.screen = Screen::Play;
-                    self.finish_prep(prep, mask);
+                    self.prep = Some((prep, mask));
+                    self.act(sg_core::action::Action::TourneyPrep(mask));
                 } else {
                     self.prep = Some((prep, mask));
                 }
@@ -293,7 +319,7 @@ impl App {
                 self.screen = Screen::Play;
                 if self.club.championship() {
                     // the championship is over: back to the title menu, nothing saved
-                    self.club.game = 0;
+                    self.act(sg_core::action::Action::TourneyDone);
                     self.screen = Screen::Menu;
                     self.hover = -1;
                 }
@@ -354,13 +380,16 @@ impl App {
         s.put(g, F_INFO_TITLE, 190.0, 42.0, tr("STR_SGA_TITLE"), ink);
         let c = r.class.clamp(0, 3);
         let class = sg_core::economy::rank_name(c as usize);
-        s.put(g, F_INFO14, 75.0, 77.0, &trf("STR_SGA_SELECTION", &[("CLASS", &class)]), ink);
+        // a line wider than its pill (a translation, issue #164): a little smaller or cut (ui.rs fit_line)
+        s.put_fit(g, F_INFO14, 75.0, 77.0, SGA_SELECTION_ROOM, &trf("STR_SGA_SELECTION", &[("CLASS", &class)]), ink);
         // "Grade:" at (306, 77); the score out of 100 right-aligned at 396, or a failed course's red "0/100" at (370, 80)
-        s.put(g, F_INFO14, 306.0, 77.0, tr("STR_SGA_GRADE"), ink);
+        // a word wider than the room a score leaves it (a translation, issue #164): a little smaller or cut
+        let score = format!("{}/100", r.score);
+        s.put_fit(g, F_INFO14, 306.0, 77.0, SGA_GRADE_ROOM, tr("STR_SGA_GRADE"), ink);
         if r.score <= 0 {
             s.put(g, F_INFO14, 370.0, 80.0, "0/100", red);
         } else {
-            s.put_right(g, F_INFO14, 396.0, 77.0, &format!("{}/100", r.score), ink);
+            s.put_right(g, F_INFO14, 396.0, 77.0, &score, ink);
         }
         s.put(g, F_INFO14, 497.0, 77.0, tr("STR_SGA_IDEAL_MINIMUM"), ink);
         // the ideal, then the minimum in brackets (0x44fb30): the length grouped by thousands with a "+"
@@ -384,7 +413,9 @@ impl App {
         for (i, label) in SGA_ROWS.iter().enumerate() {
             let y = 104.0 + 17.0 * i as f32;
             let ty = y + 10.0;
-            s.text_centered(g, 119.0, ty, tr(label), 14.0, ink);
+            // a criterion or value wider than its pill, or an ideal wider than the frame leaves it (a translation, issue
+            // #164): a little smaller or cut
+            s.text_centered_fit(g, 119.0, ty, SGA_LABEL_ROOM, tr(label), 14.0, ink);
             let v = r.values[i];
             let value = match i {
                 0 => trf("STR_SGA_VALUE_YARDS", &[("YARDS", &num(v))]),
@@ -393,7 +424,7 @@ impl App {
                 3 => format!("{v}%"),
                 _ => v.to_string(),
             };
-            s.text_centered(g, 238.0, ty, &value, 14.0, ink);
+            s.text_centered_fit(g, 238.0, ty, SGA_VALUE_ROOM, &value, 14.0, ink);
             if r.scores[i] == 0 {
                 s.text_centered(g, 386.0, ty, tr("STR_SGA_NOT_ACCEPTABLE"), 14.0, red);
             } else {
@@ -407,13 +438,13 @@ impl App {
                     }
                 }
             }
-            s.text(g, 490.0, ty, &ideals[i], 14.0, ink);
+            s.text_fit(g, 490.0, ty, SGA_IDEAL_ROOM, &ideals[i], 14.0, ink);
         }
         s.put(g, F_INFO14, 174.0, 288.0, tr("STR_SGA_RECOMMENDATION"), ink);
         if r.score <= 0 {
             s.put_centered(g, F_INFO16, 400.0, 310.0, tr("STR_SGA_IMPROVEMENT_REQUIRED"), red);
         } else {
-            s.put_centered(g, F_INFO_TITLE, 400.0, 310.0, r.event, ink);
+            s.put_centered_fit(g, F_INFO_TITLE, 400.0, 310.0, crate::ui::TITLE_ROOM, r.event, ink);
             s.put_centered(
                 g,
                 F_INFO16,
@@ -507,7 +538,7 @@ impl App {
         // fonts (0x45a090): the title in 0x821020 (Klepto 24) centred at (320, 16), the rest in 0x821ee8 (Manual SSi 14),
         // every y below the text's top
         use crate::ui::F_INFO14 as F;
-        s.put_centered(g, crate::ui::F_INFO_TITLE, 320.0, 16.0, tr("STR_RESULTS_TITLE"), ink);
+        s.put_centered_fit(g, crate::ui::F_INFO_TITLE, 320.0, 16.0, crate::ui::TITLE_ROOM, tr("STR_RESULTS_TITLE"), ink);
         let nh = (1..19).filter(|&h| res.pars[h] != 0).count();
         // the headings at y 50: "Ranking" from x 25, each open hole's number centred on its column (175 + 27 (h - 1), by
         // hole number), "F" on 667 and "Prize" from 700
@@ -574,6 +605,18 @@ const OK_X: f32 = 732.0;
 /// cutter trims (0x492000) and its draw does not put back.
 const TRIM_X: f32 = 2.0;
 const HEADER_TRIM_Y: f32 = 10.0;
+
+/// The rooms of the SGA report's words (the port's own, issue #164), read off the art's pills (SGA.pcx): the Selection
+/// Criteria line from x 75 to the end of its pill at 279; a criterion's name centred on 119 in its pill (x 58 to 180, and
+/// the pill's outline either side: "Holes with Variety" is 126 pixels wide in the free set's face), its value on 238 in
+/// its pill (196 to 280); an ideal from x 490 to the frame's inner edge.
+const SGA_SELECTION_ROOM: f32 = 204.0;
+/// "Grade:" from x 306 up to where a two-digit score right-aligned at 396 starts ("Grade:" is 45 pixels wide in the free
+/// set's face, 39 in Manual SSi).
+const SGA_GRADE_ROOM: f32 = 45.0;
+const SGA_LABEL_ROOM: f32 = 128.0;
+const SGA_VALUE_ROOM: f32 = 84.0;
+const SGA_IDEAL_ROOM: f32 = 265.0;
 
 const SGA_ROWS: [&str; 10] = [
     "STR_SGA_ROW_LENGTH",

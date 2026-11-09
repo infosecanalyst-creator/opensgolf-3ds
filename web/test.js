@@ -210,8 +210,113 @@ test("the summary counts the sounds found, used and skipped, and why", () => {
     assert.ok(s.problem);
     const none = f.sgFilesSummary(["game/Flics/a.fli"], [], 0);
     assert.ok(none.problem && /found 0, used 0, skipped 0/.test(none.text) && /free OpenSGolf sounds/.test(none.text), none.text);
-    const fine = f.sgFilesSummary(paths, [], 3);
-    assert.ok(!fine.problem && /found 3, used 3, skipped 0\./.test(fine.text), fine.text);
+    const full = paths.concat(Array.from({ length: 120 }, (_, i) => "game/Sounds/Effects/s" + i + ".wav"));
+    const fine = f.sgFilesSummary(full, [], 123);
+    assert.ok(!fine.problem && /found 123, used 123, skipped 0\./.test(fine.text), fine.text);
+    // a downloaded copy with the sounds left out but for a stray one or two points at the CD or its .iso
+    const few = f.sgFilesSummary(paths, [], 3);
+    assert.ok(few.problem && /Only 3 sounds in your files/.test(few.text) && /\.iso/.test(few.text), few.text);
+});
+
+test("sounds in a coding the game cannot play are counted and named", () => {
+    const gsm = fs.readFileSync(data + "tone_gsm.wav"), mp2 = fs.readFileSync(data + "tone_mp2.wav");
+    const ts = Buffer.from(gsm);
+    ts[20] = 0x22;
+    assert.strictEqual(f.sgSoundCoding(gsm), null);
+    assert.strictEqual(f.sgSoundCoding(mp2), null);
+    assert.strictEqual(f.sgSoundCoding(fs.readFileSync(data + "tone.ogg")), null);
+    assert.strictEqual(f.sgSoundCoding(ts), "DSP Group TrueSpeech");
+    assert.strictEqual(f.sgSoundCoding(Buffer.from("fLaC....")), "FLAC");
+    const bad = f.sgSoundCodings([["game/Sounds/a.wav", gsm], ["game/Sounds/b.wav", ts], ["game/SimsFX/c.wav", ts], ["game/Data/d.wav", ts]]);
+    assert.deepStrictEqual(bad, { n: 2, example: "DSP Group TrueSpeech" });
+    const s = f.sgFilesSummary(["game/Flics/a.fli", "game/Sounds/a.wav", "game/Sounds/b.wav"], [], 2, bad);
+    assert.ok(s.problem && /2 of your sounds use a format OpenSGolf can't play yet \(e\.g\. DSP Group TrueSpeech\)/.test(s.text), s.text);
+});
+
+test("a phone or tablet held upright is asked to turn; a desktop window never is", () => {
+    assert.strictEqual(f.sgPortraitAsk(true, 390, 664, false), true); // iPhone 13 upright
+    assert.strictEqual(f.sgPortraitAsk(true, 820, 1180, false), true); // iPad Air upright
+    assert.strictEqual(f.sgPortraitAsk(true, 750, 342, false), false); // sideways
+    assert.strictEqual(f.sgPortraitAsk(true, 500, 500, false), false); // square is not upright
+    assert.strictEqual(f.sgPortraitAsk(true, 390, 664, true), false); // "Play anyway"
+    assert.strictEqual(f.sgPortraitAsk(false, 600, 1000, false), false); // a tall desktop window
+});
+
+test("the canvas fills the view, or a 4:3 band across the middle of an upright touch screen", () => {
+    assert.deepStrictEqual(f.sgCanvasRect(true, 750, 342, 0, 0), { left: 0, top: 0, width: 750, height: 342 });
+    assert.deepStrictEqual(f.sgCanvasRect(false, 600, 1000, 0, 0), { left: 0, top: 0, width: 600, height: 1000 });
+    assert.deepStrictEqual(f.sgCanvasRect(true, 390, 664, 0, 0), { left: 0, top: 186, width: 390, height: 293 });
+    // the visual viewport's offset (Safari's bars, a pinch) carries over
+    assert.deepStrictEqual(f.sgCanvasRect(true, 400, 700, 0, 10), { left: 0, top: 210, width: 400, height: 300 });
+    // never taller than the view (a nearly square upright view)
+    const r = f.sgCanvasRect(true, 600, 610, 0, 0);
+    assert.ok(r.height <= 610 && r.top >= 0 && r.width === 600, JSON.stringify(r));
+});
+
+test("the edges a phone hides are the safe-area insets where they fall on the canvas", () => {
+    // an iPhone 16 Pro Max sideways (956 x 440, the camera on the left): the whole window is the canvas
+    const wide = { left: 0, top: 0, width: 956, height: 440 };
+    const s = f.sgSafeInsets([62, 0, 62, 21], wide, 956, 440);
+    assert.deepStrictEqual(s.map(v => Math.round(v * 1000) / 1000), [0.065, 0, 0.065, 0.048]);
+    // no insets (a desktop, an iPad), or a canvas not drawn yet
+    assert.deepStrictEqual(f.sgSafeInsets([0, 0, 0, 0], wide, 956, 440), [0, 0, 0, 0]);
+    assert.deepStrictEqual(f.sgSafeInsets([62, 0, 62, 21], { left: 0, top: 0, width: 0, height: 0 }, 956, 440), [0, 0, 0, 0]);
+    // upright, "Play anyway": the 4:3 band across the middle is clear of the cut-out at the top and the home bar
+    const band = f.sgCanvasRect(true, 440, 956, 0, 0);
+    assert.deepStrictEqual(f.sgSafeInsets([0, 62, 0, 34], band, 440, 956), [0, 0, 0, 0]);
+    // a canvas that stops short of the edge takes only what is left of the inset
+    assert.deepStrictEqual(f.sgSafeInsets([40, 0, 0, 0], { left: 30, top: 0, width: 100, height: 100 }, 130, 100), [0.1, 0, 0, 0]);
+});
+
+test("the start page's dark palette is the same for the device's dark scheme and the theme button's Dark", () => {
+    const html = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+    const block = re => {
+        const m = html.match(re);
+        assert.ok(m, "no block for " + re);
+        return m[1].replace(/\s+/g, " ").trim();
+    };
+    const device = block(/@media \(prefers-color-scheme: dark\) \{\s*:root:not\(\[data-theme="light"\]\) \{([^}]*)\}\s*\}/);
+    const button = block(/\n\s*:root\[data-theme="dark"\] \{([^}]*)\}/);
+    assert.ok(device.includes("--panel:"), device);
+    assert.strictEqual(button, device);
+    // and no other dark-only rules that the button's Dark would miss
+    assert.strictEqual(html.match(/prefers-color-scheme/g).length, 1);
+});
+
+test("the sound context sleeps while the game has its sound asleep, and only the game wakes it", () => {
+    const act = f.sgSoundAction;
+    // asleep (the Pause in the background extra, the window in the background): a running context is suspended, in a
+    // hidden page and in a shown one that lost the focus
+    assert.strictEqual(act("running", true, true), "suspend");
+    assert.strictEqual(act("running", true, false), "suspend");
+    // and stays suspended, the page shown again or tapped, until the game wakes it
+    assert.strictEqual(act("suspended", true, false), "");
+    assert.strictEqual(act("interrupted", true, false), "");
+    // awake: resumed while shown, as before
+    assert.strictEqual(act("suspended", false, false), "resume");
+    assert.strictEqual(act("interrupted", false, false), "resume");
+    assert.strictEqual(act("suspended", false, true), "");
+    assert.strictEqual(act("running", false, false), "");
+    // without the extra a page in the background plays on
+    assert.strictEqual(act("running", false, true), "");
+    // no context made yet, or one closed (sgStartAudio makes another)
+    for (const asleep of [false, true]) {
+        for (const state of [undefined, null, "closed"]) assert.strictEqual(act(state, asleep, false), "", state + " " + asleep);
+    }
+});
+
+test("every function the game asks of the page is one the page gives it", () => {
+    // (gl.js links a function the page does not give to a stand-in that does nothing, so a misspelt one fails silently)
+    const crates = path.join(__dirname, "../crates");
+    const asked = new Set();
+    for (const file of fs.readdirSync(crates, { recursive: true })) {
+        if (!file.endsWith(".rs")) continue;
+        const src = fs.readFileSync(path.join(crates, file), "utf8");
+        for (const m of src.matchAll(/^\s*(?:pub\s+)?fn\s+(sg_\w+)\s*\([^)]*\)\s*(?:->\s*[\w:]+\s*)?;/gm)) asked.add(m[1]);
+    }
+    assert.ok(asked.has("sg_sound_sleep") && asked.has("sg_fs_write"), [...asked].join(" "));
+    const page = fs.readFileSync(path.join(__dirname, "opensgolf.js"), "utf8");
+    for (const name of asked) assert.ok(page.includes("env." + name + " = function"), name + " is not given by web/opensgolf.js");
 });
 
 (async () => {

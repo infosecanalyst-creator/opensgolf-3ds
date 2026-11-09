@@ -173,6 +173,7 @@ impl App {
                 view,
                 lift,
                 track: 0x5000_0000 | fi as u32,
+                level: f.kind == wildlife::BLIMP,
                 ..Default::default()
             });
         }
@@ -383,7 +384,7 @@ impl App {
         let theme = self.exe_theme();
         let mv = self.mv;
         let (rx, ry, rz, ux, uy, uz) = (mv[0], mv[4], mv[8], mv[1], mv[5], mv[9]);
-        let vscale = (self.draw_w / 800.0).min(self.draw_h / 600.0);
+        let vscale = crate::ui::view_scale(self.draw_w, self.draw_h);
         // world units per 800 x 600 pixel, times the queue's scale
         let k = self.upp * vscale * self.exe_zoom() / 4.0;
         // a step along the ground towards the viewer: how far it moves the depth key per unit it moves the point down the

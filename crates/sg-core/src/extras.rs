@@ -30,9 +30,30 @@
 //!   Enhanced graphics' time of day.
 //! * `more_visitors`: More visitors: touring pros and invented celebrities come to play now and then (sg_core::visitors,
 //!   data/visitors.toml); pros pay more and rate the course, celebrities draw a few extra golfers.
+//! * `no_weeds`: Sandbox: no new dandelions. Weeds no longer spread over the course (staff::spread_weeds is not run) and
+//!   unhappy golfers no longer start them where they stand (Club's mood change), so
+//!   a course needs no groundskeepers or landmarks to keep it clear (issue #105); the ones already there stay until
+//!   pulled.
+//! * `keep_land`: Keep the land offer: when the County commissioner approves an expansion, the approval waits until land
+//!   is bought (`Club::land_kept`). Saying No to his question, closing it, or leaving the land screen without buying keeps
+//!   it, and the Information menu's Buy land line opens the land screen whenever the player likes. In the original the
+//!   approval is gone once the question is answered, though he comes again on a later visitor turn while the club's
+//!   rating stays over his mark (vips.rs `vip_check`). At most one approval waits; buying a tract uses it.
+//! * `second_course`: Second course: once Course A's 18 holes are open, the hole tool can build a Course B of up to 18
+//!   more holes on the same property (sg_core::second); golfers play one course or the other. The SGA, tournaments,
+//!   ratings and the original's reports keep to Course A.
+//! * `tees`: Multiple tees: besides its own tee (the back tee), a hole may have a forward and a middle tee, placed with the
+//!   Tees tool (`Club::place_extra_tee`), and ordinary golfers tee off from the one that suits their skill
+//!   (`Tee::for_golfer`). The hole's length, par, statistics and ratings stay the back tee's, the hole as the original
+//!   defines it, and tournaments play from the back tee. See `Tee`.
 //!
-//! Pause the calendar, Freeze happiness and Unlock all are named "Sandbox: ..." in the Extras box as they are what a sandbox
-//! player wants most, but each works in a normal game too.
+//! Freeze happiness and Unlock all are named "Sandbox: ..." in the Extras box as they are what a sandbox player wants
+//! most, but each works in a normal game too. The Extras box shows Slower seasons and Pause the calendar as one line,
+//! *Calendar: normal / half speed / quarter speed / stopped* (`Extras::calendar`), over the same two stored fields, so
+//! saves and settings keep their format and older versions read a newer save's calendar as it was meant.
+//!
+//! Of these, `rotate` (only the picture turns) and `path_style` (only the look of paths, and lamps for decoration) change
+//! how the game looks, not how it plays: the Extras box lists them on its Looks page and the presets treat them as looks.
 
 use serde::{Deserialize, Serialize};
 
@@ -56,13 +77,20 @@ pub struct Extras {
     /// Path styles and lamps: 0 off, else 1 + the course's path style (`PATH_STYLE_KEYS`).
     pub path_style: u8,
     pub more_visitors: bool,
+    pub no_weeds: bool,
+    pub keep_land: bool,
+    pub second_course: bool,
+    /// Multiple tees: a hole may have a forward and a middle tee besides its own (`Tee`). Saved only when on, so the
+    /// extras of a game that never ticks it are written as before.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub tees: bool,
 }
 
 /// The options in the order the Extras box lists them (text keys of their lines). Option 6 has three values (a line with
 /// {VALUE}, `SPEED_KEYS`), the others are ticks; `Extras::option` and `Extras::set_option` read and set them by index.
 /// New options are appended so bits and saves keep working; the page each is shown on (Gameplay, Sandbox or Looks) is
 /// extras_ui.rs `PAGE_LINES`'s.
-pub const OPTION_KEYS: [&str; 14] = [
+pub const OPTION_KEYS: [&str; 18] = [
     "STR_EXTRAS_ROTATE",
     "STR_EXTRAS_CUT_CONTENT",
     "STR_EXTRAS_HARDCORE",
@@ -77,6 +105,10 @@ pub const OPTION_KEYS: [&str; 14] = [
     "STR_EXTRAS_WEATHER",
     "STR_EXTRAS_PATHS",
     "STR_EXTRAS_MORE_VISITORS",
+    "STR_EXTRAS_NO_WEEDS",
+    "STR_EXTRAS_KEEP_LAND",
+    "STR_EXTRAS_SECOND_COURSE",
+    "STR_EXTRAS_TEES",
 ];
 
 /// The option of `OPTION_KEYS` that is Weather that matters.
@@ -89,6 +121,14 @@ pub const LEFTIES: usize = 10;
 pub const PATHS: usize = 12;
 /// The option of `OPTION_KEYS` that is More visitors.
 pub const MORE_VISITORS: usize = 13;
+/// The option of `OPTION_KEYS` that is Sandbox: no new dandelions.
+pub const NO_WEEDS: usize = 14;
+/// The option of `OPTION_KEYS` that is Keep the land offer.
+pub const KEEP_LAND: usize = 15;
+/// The option of `OPTION_KEYS` that is Second course.
+pub const SECOND_COURSE: usize = 16;
+/// The option of `OPTION_KEYS` that is Multiple tees.
+pub const TEES: usize = 17;
 
 /// The option of `OPTION_KEYS` that is the calendar speed.
 pub const SEASON_SPEED: usize = 6;
@@ -96,10 +136,42 @@ pub const SEASON_SPEED: usize = 6;
 /// The calendar speeds' names ({VALUE} of the Slower seasons line), by `season_speed`.
 pub const SPEED_KEYS: [&str; 3] = ["STR_EXTRAS_SPEED_1", "STR_EXTRAS_SPEED_HALF", "STR_EXTRAS_SPEED_QUARTER"];
 
+/// The Calendar line's values ({VALUE} of STR_EXTRAS_CALENDAR), by `Extras::calendar`: normal (the original), half speed,
+/// quarter speed, stopped.
+pub const CALENDAR_KEYS: [&str; 4] =
+    ["STR_EXTRAS_CALENDAR_NORMAL", "STR_EXTRAS_CALENDAR_HALF", "STR_EXTRAS_CALENDAR_QUARTER", "STR_EXTRAS_CALENDAR_STOPPED"];
+/// The Calendar line's value for a stopped calendar (Pause the calendar).
+pub const CALENDAR_STOPPED: u8 = 3;
+
 impl Extras {
-    /// The gameplay extras of the "OpenSGolf extras" choice on Select Difficulty: the ones that add to the game without
-    /// changing its balance (not Hardcore, not the unfinished cut content, not More visitors, whose higher fees and extra
-    /// golfers change the club's takings).
+    /// The extras of the "Original + helpers" preset (the simgolf crate's extras_ui.rs `Preset`): only the two that change
+    /// how the game looks, not how it plays (Tab turns a building's picture; path styles and lamps, with the original's
+    /// paths until the player picks another style).
+    pub const LOOKS: Extras = Extras {
+        rotate: true,
+        cut_content: false,
+        hardcore: false,
+        more_staff: false,
+        animals: false,
+        set_par: false,
+        season_speed: 0,
+        pause_calendar: false,
+        freeze_moods: false,
+        unlock_all: false,
+        lefties: false,
+        weather: false,
+        path_style: 1,
+        more_visitors: false,
+        no_weeds: false,
+        keep_land: false,
+        second_course: false,
+        tees: false,
+    };
+
+    /// The extras of the "OpenSGolf" preset, the game with OpenSGolf's own additions: the looks, higher staff limits,
+    /// buyable animals, weather that matters, forward and middle tees and the second course. Not Hardcore, not the
+    /// experimental cut content, not More visitors, Set par, Left-handed golfers, Keep the land offer or the sandbox
+    /// switches.
     pub const OPENSGOLF: Extras = Extras {
         rotate: true,
         cut_content: false,
@@ -112,11 +184,17 @@ impl Extras {
         freeze_moods: false,
         unlock_all: false,
         lefties: false,
-        // it changes the balance: not part of the preset
-        weather: false,
+        weather: true,
         // purely cosmetic and nothing changes until the player picks a style or places a lamp
         path_style: 1,
         more_visitors: false,
+        no_weeds: false,
+        // it changes when land can be bought: not part of the preset
+        keep_land: false,
+        // nothing changes until the first 18 holes are open and the player builds on
+        second_course: true,
+        // nothing changes until the player places a forward or middle tee
+        tees: true,
     };
 
     /// Everything off (the original game).
@@ -126,7 +204,8 @@ impl Extras {
 
     /// The options as bits (the `X:` test hook and `--extras`): one bit per tick in `OPTION_KEYS` order, except that the
     /// calendar speed takes two (bits 6 and 7), so the ticks after it sit one bit further on (8 to 12), Path styles and lamps
-    /// takes three (13 to 15) and More visitors is bit 16. The first six keep the bits they always had.
+    /// takes three (13 to 15), More visitors is bit 16, Sandbox: no new dandelions bit 17, Keep the land offer bit 18,
+    /// Second course bit 19 and Multiple tees bit 20. The first six keep the bits they always had.
     pub fn bits(&self) -> u32 {
         self.rotate as u32
             | (self.cut_content as u32) << 1
@@ -142,6 +221,10 @@ impl Extras {
             | (self.weather as u32) << 12
             | (self.path_style.min(PATH_STYLES) as u32) << 13
             | (self.more_visitors as u32) << 16
+            | (self.no_weeds as u32) << 17
+            | (self.keep_land as u32) << 18
+            | (self.second_course as u32) << 19
+            | (self.tees as u32) << 20
     }
 
     pub fn from_bits(b: u32) -> Extras {
@@ -160,6 +243,10 @@ impl Extras {
             weather: b & 1 << 12 != 0,
             path_style: ((b >> 13) & 7).min(PATH_STYLES as u32) as u8,
             more_visitors: b & 1 << 16 != 0,
+            no_weeds: b & 1 << 17 != 0,
+            keep_land: b & 1 << 18 != 0,
+            second_course: b & 1 << 19 != 0,
+            tees: b & 1 << 20 != 0,
         }
     }
 
@@ -180,6 +267,10 @@ impl Extras {
             WEATHER => self.weather as u8,
             PATHS => self.path_style.min(PATH_STYLES),
             MORE_VISITORS => self.more_visitors as u8,
+            NO_WEEDS => self.no_weeds as u8,
+            KEEP_LAND => self.keep_land as u8,
+            SECOND_COURSE => self.second_course as u8,
+            TEES => self.tees as u8,
             _ => 0,
         }
     }
@@ -202,6 +293,10 @@ impl Extras {
             WEATHER => self.weather = on,
             PATHS => self.path_style = v.min(PATH_STYLES),
             MORE_VISITORS => self.more_visitors = on,
+            NO_WEEDS => self.no_weeds = on,
+            KEEP_LAND => self.keep_land = on,
+            SECOND_COURSE => self.second_course = on,
+            TEES => self.tees = on,
             _ => {}
         }
     }
@@ -221,6 +316,34 @@ impl Extras {
     pub fn step_option(&mut self, i: usize) {
         let v = self.option(i);
         self.set_option(i, (v + 1) % Self::choices(i));
+    }
+
+    /// The Calendar line of the Extras box: 0 normal (the original), 1 half speed, 2 quarter speed, 3 stopped
+    /// (`CALENDAR_STOPPED`). A stopped calendar wins over the speed, as `Calendar::step` has it, so a game saved with both
+    /// Slower seasons and Pause the calendar on reads as stopped.
+    pub fn calendar(&self) -> u8 {
+        if self.pause_calendar {
+            CALENDAR_STOPPED
+        } else {
+            self.season_speed.min(2)
+        }
+    }
+
+    /// Sets the Calendar line's value: stopped is Pause the calendar with the speed back at normal; the speeds untick the
+    /// pause. Only the two stored fields change, so the save's format is the one older versions read.
+    pub fn set_calendar(&mut self, v: u8) {
+        if v >= CALENDAR_STOPPED {
+            self.pause_calendar = true;
+            self.season_speed = 0;
+        } else {
+            self.pause_calendar = false;
+            self.season_speed = v;
+        }
+    }
+
+    /// A click on the Calendar line: normal, half, quarter, stopped, normal.
+    pub fn step_calendar(&mut self) {
+        self.set_calendar((self.calendar() + 1) % CALENDAR_KEYS.len() as u8);
     }
 
     /// Game ticks to one tick of the calendar: 1 (the original), 2 or 4.
@@ -314,8 +437,9 @@ impl Extras {
 #[serde(default)]
 pub struct Calendar {
     pub lag: u32,
-    /// The last game tick stepped did not move the date (so a month start the date stands on is not taken again).
-    #[serde(skip)]
+    /// The last game tick stepped did not move the date (so a month start the date stands on is not taken again). Saved
+    /// while set, as the next game tick's golfers read it before the calendar steps again (older saves: not held).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub held: bool,
 }
 
@@ -563,6 +687,16 @@ mod tests {
         // pause wins over the slower speeds
         let e = Extras { pause_calendar: true, season_speed: 2, ..Default::default() };
         assert!(!cal.step(0x10004, &e));
+        // the hold is saved with the club while set, so a loaded game does not begin the month the date stands on again
+        let mut club = crate::golfer::Club::default();
+        club.cal = cal;
+        let json = serde_json::to_string(&club).unwrap();
+        let back: crate::golfer::Club = serde_json::from_str(&json).unwrap();
+        assert!(back.cal.held && !back.cal.new_month(0x10000));
+        // not held: nothing more is written (a Classic save has no calendar at all)
+        club.cal.held = false;
+        assert!(!serde_json::to_string(&club.cal).unwrap().contains("held"));
+        assert!(!serde_json::to_string(&crate::golfer::Club::default()).unwrap().contains("\"cal\""));
     }
 
     #[test]
@@ -600,6 +734,35 @@ mod tests {
             econ.on_tick_dated(t, &cal, 1, 0, &[], &mut rng);
         }
         assert_eq!(econ.debt_stage, 1);
+    }
+
+    #[test]
+    fn the_calendar_line_reads_and_writes_the_two_stored_fields() {
+        // old saves with either bit read as the matching value, and with both as stopped (the pause wins, as it plays)
+        for (bits, want) in [(0u32, 0u8), (1 << 6, 1), (2 << 6, 2), (1 << 8, 3), (1 << 8 | 2 << 6, 3), (1 << 8 | 1 << 6, 3)] {
+            assert_eq!(Extras::from_bits(bits).calendar(), want, "bits {bits:#x}");
+        }
+        let old: Extras = serde_json::from_str(r#"{"season_speed":2,"pause_calendar":true}"#).unwrap();
+        assert_eq!(old.calendar(), CALENDAR_STOPPED);
+        assert!(!Calendar::default().step(4, &old), "plays stopped");
+        // each value is stored as the fields older versions know
+        let mut e = Extras::default();
+        let mut seen = Vec::new();
+        for _ in 0..4 {
+            e.step_calendar();
+            seen.push((e.calendar(), e.season_speed, e.pause_calendar));
+        }
+        assert_eq!(seen, vec![(1, 1, false), (2, 2, false), (3, 0, true), (0, 0, false)]);
+        assert!(e.is_off());
+        for v in 0..4 {
+            let mut e = Extras::default();
+            e.set_calendar(v);
+            assert_eq!(Extras::from_bits(e.bits()).calendar(), v);
+            // the date moves as the two old ticks made it move
+            assert_eq!(Calendar::rate(&e), [1.0, 0.5, 0.25, 0.0][v as usize]);
+        }
+        // the presets leave the calendar alone (the original's)
+        assert_eq!((Extras::LOOKS.calendar(), Extras::OPENSGOLF.calendar()), (0, 0));
     }
 
     #[test]
@@ -796,5 +959,492 @@ mod path_tests {
         assert!(club.remove_lamp(1, 2) && club.remove_lamp(4, 2) && !club.remove_lamp(4, 2));
         club.extras.path_style = 0;
         assert_eq!(serde_json::to_string(&club).unwrap(), plain);
+    }
+
+    #[test]
+    fn second_course_has_its_own_bit_and_is_only_in_the_opensgolf_preset() {
+        let e = Extras { second_course: true, ..Default::default() };
+        assert_eq!(e.bits(), 1 << 19);
+        assert_eq!(Extras::from_bits(e.bits()), e);
+        assert_eq!(e.option(SECOND_COURSE), 1);
+        const { assert!(Extras::OPENSGOLF.second_course && !Extras::LOOKS.second_course, "only in OpenSGolf") };
+    }
+
+    #[test]
+    fn keep_the_land_offer_has_its_own_bit_and_saves_its_approval_only_while_it_waits() {
+        let e = Extras { keep_land: true, ..Default::default() };
+        assert_eq!(e.bits(), 1 << 18);
+        assert_eq!(Extras::from_bits(e.bits()), e);
+        assert_eq!(e.option(KEEP_LAND), 1);
+        const { assert!(!Extras::OPENSGOLF.keep_land && !Extras::LOOKS.keep_land, "in no preset") };
+        let mut club = crate::golfer::Club::default();
+        let plain = serde_json::to_string(&club).unwrap();
+        assert!(!plain.contains("land_kept"));
+        club.land_kept = true;
+        let back: crate::golfer::Club = serde_json::from_str(&serde_json::to_string(&club).unwrap()).unwrap();
+        assert!(back.land_kept);
+        // a save from before the extra has none waiting
+        let old: crate::golfer::Club = serde_json::from_str(&plain).unwrap();
+        assert!(!old.land_kept);
+    }
+}
+
+// ---- Multiple tees (the port's own) ---------------------------------------------------------------------------------------
+
+/// One of a hole's tees under the Multiple tees extra. `Back` is the hole's own tee, the one the original has: the hole's
+/// length, par, statistics, ratings and the SGA's report all stay the back tee's, and tournaments always play from it. A
+/// hole may also have a `Forward` and a `Middle` tee (`Hole::front_tee`, `Hole::middle_tee`), each one tee tile placed with
+/// the Tees tool (Tab steps the tool from the hole's tee to the forward tee and the middle tee) nearer the cup than the
+/// back tee, the forward tee nearer than the middle one. Ordinary golfers play from the tee of their skill
+/// (`Tee::for_golfer`); a missing forward tee sends its golfers to the middle tee, and a missing middle tee to the back
+/// tee. With the extra off, or on a hole without either, every golfer tees off as in the original.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Tee {
+    Back,
+    Middle,
+    Forward,
+}
+
+/// How far (tiles) a forward or middle tee may be from the line from its hole's back tee to the cup.
+pub const TEE_REACH: i32 = 6;
+
+/// Why the Tees tool did not place a forward or middle tee.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TeeRefusal {
+    /// The extra is off, or the tool is placing the hole's own tee.
+    Off,
+    /// Tees cannot change during a tournament.
+    Tournament,
+    /// No hole with a tee and a cup passes near enough, with its back tee farther from the cup than this tile.
+    NoHole,
+    /// The tile is a tee or a green already.
+    Taken,
+    /// The hole has this tee already (paint over it to move it).
+    Has(usize),
+    /// A forward tee must be nearer the cup than the hole's middle tee, a middle tee farther than its forward tee.
+    Order(usize),
+}
+
+impl Tee {
+    /// The tee an ordinary golfer plays from, by his skill: his level (the game's own 0 to 2 for each golfer, the exe's
+    /// "tee set" byte, which on Normal and harder adds to his driving distance) plus one for each of the Length, Accuracy
+    /// and Imagination classes he has beyond the first. Skill 0 or 1 plays the forward tee, 2 the middle tee, 3 and up the
+    /// back tee. Pros, VIPs and the player's pro (any golfer of a kind other than ordinary) play the back tee.
+    pub fn for_golfer(g: &crate::golfer::Golfer) -> Tee {
+        if g.kind != 0 {
+            return Tee::Back;
+        }
+        let skill = g.level.clamp(0, 2) + ((g.class & 7).count_ones() as i32 - 1).max(0);
+        match skill {
+            ..=1 => Tee::Forward,
+            2 => Tee::Middle,
+            _ => Tee::Back,
+        }
+    }
+
+    /// The tee's name ({TEE} of the Tees tool's words).
+    pub fn key(self) -> &'static str {
+        match self {
+            Tee::Back => "STR_TEE_BACK",
+            Tee::Middle => "STR_TEE_MIDDLE",
+            Tee::Forward => "STR_TEE_FORWARD",
+        }
+    }
+
+    /// The Tees tool's step (Tab with the extra on): 0 the hole's own tee (the original's tool), 1 forward, 2 middle.
+    pub fn of_step(step: u8) -> Tee {
+        match step % 3 {
+            1 => Tee::Forward,
+            2 => Tee::Middle,
+            _ => Tee::Back,
+        }
+    }
+}
+
+fn dist2(p: (i32, i32), q: (i32, i32)) -> i64 {
+    let (dx, dy) = ((p.0 - q.0) as i64, (p.1 - q.1) as i64);
+    dx * dx + dy * dy
+}
+
+/// Squared distance (tiles) from p to the segment from a to b, scaled by |ab|^2 to stay in integers.
+fn seg_dist2_scaled(p: (i32, i32), a: (i32, i32), b: (i32, i32)) -> (i64, i64) {
+    let l = dist2(a, b).max(1);
+    let (abx, aby) = ((b.0 - a.0) as i64, (b.1 - a.1) as i64);
+    let (apx, apy) = ((p.0 - a.0) as i64, (p.1 - a.1) as i64);
+    let t = (apx * abx + apy * aby).clamp(0, l);
+    // p - (a + ab * t / l), times l
+    let (qx, qy) = (apx * l - abx * t, apy * l - aby * t);
+    (qx * qx + qy * qy, l * l)
+}
+
+impl crate::golfer::Hole {
+    /// The hole's forward or middle tee (none for the back tee, which is `back`).
+    pub fn extra_tee(&self, t: Tee) -> Option<(i32, i32)> {
+        match t {
+            Tee::Back => None,
+            Tee::Middle => self.middle_tee,
+            Tee::Forward => self.front_tee,
+        }
+    }
+
+    fn extra_tee_mut(&mut self, t: Tee) -> Option<&mut Option<(i32, i32)>> {
+        match t {
+            Tee::Back => None,
+            Tee::Middle => Some(&mut self.middle_tee),
+            Tee::Forward => Some(&mut self.front_tee),
+        }
+    }
+
+    /// The facing of the hole's forward or middle tee on tile `at`: toward the hole's cup (none for any other tile).
+    pub fn extra_tee_facing(&self, at: (i32, i32)) -> Option<i32> {
+        self.extra_tees().find(|&(_, p)| p == at)?;
+        Some(crate::geom::dir8(crate::geom::angle(self.pin.0 - at.0, self.pin.1 - at.1)))
+    }
+
+    /// The hole's forward and middle tees that are set, with which each is.
+    pub fn extra_tees(&self) -> impl Iterator<Item = (Tee, (i32, i32))> + '_ {
+        [Tee::Forward, Tee::Middle].into_iter().filter_map(|t| self.extra_tee(t).map(|p| (t, p)))
+    }
+}
+
+impl crate::golfer::Club {
+    /// Where golfer `me` tees off on hole `h` under the Multiple tees extra: the forward or middle tee of his skill
+    /// (`Tee::for_golfer`; a missing forward tee falls back to the middle one). None, the original's choice, with the extra
+    /// off, during a tournament, for the back tee's golfers and on a hole without the tee wanted.
+    pub fn extra_tee_for(&self, me: &crate::golfer::Golfer, h: i32) -> Option<(i32, i32)> {
+        if !self.extras.tees || self.game & crate::golfer::game::TOURNAMENT != 0 || !(1..19).contains(&h) {
+            return None;
+        }
+        let hr = &self.holes[h as usize];
+        match Tee::for_golfer(me) {
+            Tee::Back => None,
+            Tee::Middle => hr.middle_tee,
+            Tee::Forward => hr.front_tee.or(hr.middle_tee),
+        }
+    }
+
+    /// The hole and tee whose forward or middle tee is on tile (a, b), if any, on the course shown (`holes`).
+    pub fn extra_tee_at(&self, a: i32, b: i32) -> Option<(usize, Tee)> {
+        extra_tee_in(&self.holes, a, b)
+    }
+
+    /// The hole a forward or middle tee on tile (a, b) would belong to, on the course shown: of the holes with a tee and a
+    /// cup (open, or the hole being built), the one whose line from the back tee to the cup passes nearest the tile, no
+    /// farther than `TEE_REACH` tiles, with its back tee farther from the cup than the tile.
+    pub fn extra_tee_hole(&self, a: i32, b: i32) -> Option<usize> {
+        tee_hole_in(&self.holes, self.next_hole, a, b)
+    }
+
+    /// Whether the Tees tool may put tee `t` on tile (a, b) of type `old`, and for which hole of the course shown
+    /// (`place_extra_tee`'s checks, without placing it).
+    pub fn extra_tee_check(&self, c: &crate::course::Course, t: Tee, a: i32, b: i32, old: u8) -> Result<usize, TeeRefusal> {
+        self.extra_tee_check_on(self.b_shown(), c, t, a, b, old)
+    }
+
+    /// `extra_tee_check` on Course B (`course_b`, the Second course extra: sg_core::second) or Course A, whichever is
+    /// shown (the pointer's label asks without swapping the records).
+    pub fn extra_tee_check_on(
+        &self,
+        course_b: bool,
+        c: &crate::course::Course,
+        t: Tee,
+        a: i32,
+        b: i32,
+        old: u8,
+    ) -> Result<usize, TeeRefusal> {
+        use crate::course::{idx, inside, t as ty};
+        if !self.extras.tees || t == Tee::Back {
+            return Err(TeeRefusal::Off);
+        }
+        if self.game & crate::golfer::game::TOURNAMENT != 0 {
+            return Err(TeeRefusal::Tournament);
+        }
+        if !inside(a, b) || old == ty::TEE || old == ty::GREEN || c.flags[idx(a, b)] & crate::course::f::CUP != 0 {
+            return Err(TeeRefusal::Taken);
+        }
+        let holes = self.course_holes(course_b);
+        let h = tee_hole_in(holes, self.course_next_hole(course_b), a, b).ok_or(TeeRefusal::NoHole)?;
+        let hr = &holes[h];
+        if hr.extra_tee(t).is_some() {
+            return Err(TeeRefusal::Has(h));
+        }
+        let d = dist2((a, b), hr.pin);
+        let ordered = match t {
+            Tee::Forward => hr.middle_tee.is_none_or(|m| d < dist2(m, hr.pin)),
+            _ => hr.front_tee.is_none_or(|f| d > dist2(f, hr.pin)),
+        };
+        if !ordered {
+            return Err(TeeRefusal::Order(h));
+        }
+        Ok(h)
+    }
+
+    /// The Tees tool with the Multiple tees extra stepped to the forward or middle tee: tile (a, b), of type `old`, becomes
+    /// that tee of the hole `extra_tee_hole` finds on the course shown. The tile carries the hole's number as its other
+    /// tees do. Returns the hole; the caller paints the tile a tee and charges for it.
+    pub fn place_extra_tee(&mut self, c: &mut crate::course::Course, t: Tee, a: i32, b: i32, old: u8) -> Result<usize, TeeRefusal> {
+        let h = self.extra_tee_check(c, t, a, b, old)?;
+        if let Some(slot) = self.holes[h].extra_tee_mut(t) {
+            *slot = Some((a, b));
+        }
+        let i = crate::course::idx(a, b);
+        c.flags[i] = (c.flags[i] & !crate::course::f::LOW) | h as u16;
+        Ok(h)
+    }
+
+    /// Takes the forward or middle tee on tile (a, b) from its hole, of either course (the tile is being painted over).
+    /// Returns whether there was one. The hole stays open: only its own tee and cup green take it out of play.
+    pub fn remove_extra_tee(&mut self, a: i32, b: i32) -> bool {
+        let shown = self.b_shown();
+        for course_b in [shown, !shown] {
+            let Some((h, t)) = extra_tee_in(self.course_holes(course_b), a, b) else { continue };
+            if let Some(slot) = self.course_hole_mut(course_b, h).and_then(|r| r.extra_tee_mut(t)) {
+                *slot = None;
+            }
+            return true;
+        }
+        false
+    }
+
+    /// After the course changed (`sync_course`): a forward or middle tee whose tile is no longer a tee (an undo, a course
+    /// edit) is dropped, and with the extra on the tiles of the others carry their hole's number. Both courses (the Second
+    /// course extra's Course B too); nothing is done on a course that has none.
+    pub fn sync_extra_tees(&mut self, c: &mut crate::course::Course) {
+        let on = self.extras.tees;
+        sync_tees_in(&mut self.holes, c, on);
+        if let Some(cb) = self.course_b.as_mut() {
+            sync_tees_in(&mut cb.holes, c, on);
+        }
+    }
+}
+
+fn extra_tee_in(holes: &[crate::golfer::Hole], a: i32, b: i32) -> Option<(usize, Tee)> {
+    (1..19.min(holes.len())).find_map(|h| holes[h].extra_tees().find(|&(_, p)| p == (a, b)).map(|(t, _)| (h, t)))
+}
+
+fn tee_hole_in(holes: &[crate::golfer::Hole], next_hole: i32, a: i32, b: i32) -> Option<usize> {
+    let p = (a, b);
+    let mut best: Option<(usize, (i64, i64))> = None;
+    for (h, hr) in holes.iter().enumerate().take(19).skip(1) {
+        if hr.back.0 == 0 || hr.pin.0 == 0 || (hr.par == 0 && h as i32 != next_hole) || p == hr.back {
+            continue;
+        }
+        if dist2(p, hr.pin) >= dist2(hr.back, hr.pin) {
+            continue;
+        }
+        let (d, l) = seg_dist2_scaled(p, hr.back, hr.pin);
+        if d > (TEE_REACH as i64 * TEE_REACH as i64) * l {
+            continue;
+        }
+        // nearest first (d / l against the best's, cross-multiplied), the lower hole number on a tie
+        if best.is_none_or(|(_, (bd, bl))| (d as i128) * (bl as i128) < (bd as i128) * (l as i128)) {
+            best = Some((h, (d, l)));
+        }
+    }
+    best.map(|(h, _)| h)
+}
+
+fn sync_tees_in(holes: &mut [crate::golfer::Hole], c: &mut crate::course::Course, on: bool) {
+    use crate::course::{idx, inside, t as ty};
+    for (h, hr) in holes.iter_mut().enumerate().take(19).skip(1) {
+        for t in [Tee::Forward, Tee::Middle] {
+            let Some((a, b)) = hr.extra_tee(t) else { continue };
+            if !inside(a, b) || c.ty[idx(a, b)] != ty::TEE || (a, b) == hr.back || (a, b) == hr.fwd {
+                if let Some(slot) = hr.extra_tee_mut(t) {
+                    *slot = None;
+                }
+                continue;
+            }
+            if on {
+                let i = idx(a, b);
+                c.flags[i] = (c.flags[i] & !crate::course::f::LOW) | h as u16;
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tee_tests {
+    use super::*;
+    use crate::course::{idx, t as ty, Course};
+    use crate::golfer::{Club, Golfer, Hole};
+
+    /// A club with hole 1 open from the back tee at (10, 10) to the cup at (10, 30), on a course of grass with those tiles
+    /// a tee and a green.
+    fn club_and_course() -> (Club, Course) {
+        let mut club = Club::default();
+        club.holes[1] = Hole { par: 4, length: 500, back: (10, 10), fwd: (10, 10), pin: (10, 30), ..club.holes[1].clone() };
+        club.next_hole = 2;
+        let mut c = Course::default();
+        c.ty[idx(10, 10)] = ty::TEE;
+        c.ty[idx(10, 30)] = ty::GREEN;
+        c.flags[idx(10, 30)] |= crate::course::f::CUP | 1;
+        (club, c)
+    }
+
+    fn golfer(class: u8, level: i32, kind: u8) -> Golfer {
+        Golfer { class, level, kind, ..Default::default() }
+    }
+
+    #[test]
+    fn golfers_choose_a_tee_by_skill() {
+        // two skill classes: level 0 forward, 1 middle, 2 back
+        assert_eq!(Tee::for_golfer(&golfer(3, 0, 0)), Tee::Forward);
+        assert_eq!(Tee::for_golfer(&golfer(6, 1, 0)), Tee::Middle);
+        assert_eq!(Tee::for_golfer(&golfer(5, 2, 0)), Tee::Back);
+        // all three: one tee further back
+        assert_eq!(Tee::for_golfer(&golfer(7, 0, 0)), Tee::Middle);
+        assert_eq!(Tee::for_golfer(&golfer(7, 1, 0)), Tee::Back);
+        // a single class (a person of a fixed class) plays as two at the same level, and the wager nibble is no skill
+        assert_eq!(Tee::for_golfer(&golfer(1, 1, 0)), Tee::Forward);
+        assert_eq!(Tee::for_golfer(&golfer(0x23, 1, 0)), Tee::Middle);
+        // pros, VIPs and the player's pro: the back tee whatever their numbers
+        for kind in [0x20, 0x24, 0x40, 0x60, 0x80] {
+            assert_eq!(Tee::for_golfer(&golfer(3, 0, kind)), Tee::Back);
+        }
+    }
+
+    #[test]
+    fn the_tee_played_follows_the_skill_the_extra_and_the_tournament() {
+        let (mut club, mut c) = club_and_course();
+        let weak = golfer(3, 0, 0);
+        let average = golfer(3, 1, 0);
+        let strong = golfer(7, 2, 0);
+        // nothing placed, or the extra off: the original's choice
+        club.extras.tees = true;
+        assert_eq!(club.extra_tee_for(&weak, 1), None);
+        assert_eq!(club.place_extra_tee(&mut c, Tee::Middle, 10, 20, ty::ROUGH), Ok(1));
+        assert_eq!(c.flags[idx(10, 20)] & crate::course::f::LOW, 1, "the tile carries the hole's number");
+        // the forward tee's golfers go to the middle tee while there is no forward tee
+        assert_eq!(club.extra_tee_for(&weak, 1), Some((10, 20)));
+        assert_eq!(club.extra_tee_for(&average, 1), Some((10, 20)));
+        assert_eq!(club.extra_tee_for(&strong, 1), None);
+        assert_eq!(club.place_extra_tee(&mut c, Tee::Forward, 10, 24, ty::ROUGH), Ok(1));
+        assert_eq!(club.extra_tee_for(&weak, 1), Some((10, 24)));
+        assert_eq!(club.extra_tee_for(&average, 1), Some((10, 20)));
+        // tournaments play from the back tee, and so does everybody with the extra off
+        club.game |= crate::golfer::game::TOURNAMENT;
+        assert_eq!(club.extra_tee_for(&weak, 1), None);
+        club.game &= !crate::golfer::game::TOURNAMENT;
+        club.extras.tees = false;
+        assert_eq!(club.extra_tee_for(&weak, 1), None);
+        // the hole as the original defines it is untouched
+        let h = &club.holes[1];
+        assert_eq!((h.par, h.length, h.back, h.fwd, h.pin), (4, 500, (10, 10), (10, 10), (10, 30)));
+    }
+
+    #[test]
+    fn extra_tees_go_in_front_of_the_back_tee_of_a_near_hole_in_order() {
+        let (mut club, mut c) = club_and_course();
+        assert_eq!(club.extra_tee_check(&c, Tee::Forward, 10, 20, ty::ROUGH), Err(TeeRefusal::Off));
+        club.extras.tees = true;
+        assert_eq!(club.extra_tee_check(&c, Tee::Back, 10, 20, ty::ROUGH), Err(TeeRefusal::Off));
+        // behind the back tee, too far from the line, on the green or a tee: no
+        assert_eq!(club.extra_tee_check(&c, Tee::Forward, 10, 8, ty::ROUGH), Err(TeeRefusal::NoHole));
+        assert_eq!(club.extra_tee_check(&c, Tee::Forward, 10 + TEE_REACH + 1, 20, ty::ROUGH), Err(TeeRefusal::NoHole));
+        assert_eq!(club.extra_tee_check(&c, Tee::Forward, 10 + TEE_REACH, 20, ty::ROUGH), Ok(1));
+        assert_eq!(club.extra_tee_check(&c, Tee::Forward, 10, 30, ty::GREEN), Err(TeeRefusal::Taken));
+        assert_eq!(club.extra_tee_check(&c, Tee::Forward, 10, 10, ty::TEE), Err(TeeRefusal::Taken));
+        // the forward tee nearer the cup than the middle one
+        assert_eq!(club.place_extra_tee(&mut c, Tee::Forward, 10, 22, ty::ROUGH), Ok(1));
+        assert_eq!(club.extra_tee_check(&c, Tee::Forward, 10, 25, ty::ROUGH), Err(TeeRefusal::Has(1)));
+        assert_eq!(club.extra_tee_check(&c, Tee::Middle, 10, 25, ty::ROUGH), Err(TeeRefusal::Order(1)));
+        assert_eq!(club.extra_tee_check(&c, Tee::Middle, 10, 16, ty::ROUGH), Ok(1));
+        // a tournament keeps the tees as they are
+        club.game |= crate::golfer::game::TOURNAMENT;
+        assert_eq!(club.extra_tee_check(&c, Tee::Middle, 10, 16, ty::ROUGH), Err(TeeRefusal::Tournament));
+        club.game &= !crate::golfer::game::TOURNAMENT;
+        // of two holes, the one whose line passes nearer
+        club.holes[2] = Hole { par: 3, back: (14, 12), fwd: (14, 12), pin: (14, 22), ..club.holes[2].clone() };
+        club.next_hole = 3;
+        assert_eq!(club.extra_tee_hole(13, 16), Some(2));
+        assert_eq!(club.extra_tee_hole(11, 16), Some(1));
+        // a closed hole other than the one being built takes none
+        club.holes[2].par = 0;
+        assert_eq!(club.extra_tee_hole(13, 16), Some(1));
+    }
+
+    #[test]
+    fn painting_over_an_extra_tee_takes_only_that_tee_and_the_hole_stays_open() {
+        let (mut club, mut c) = club_and_course();
+        club.extras.tees = true;
+        club.place_extra_tee(&mut c, Tee::Forward, 10, 22, ty::ROUGH).unwrap();
+        c.ty[idx(10, 22)] = ty::TEE;
+        assert_eq!(club.extra_tee_at(10, 22), Some((1, Tee::Forward)));
+        assert!(club.paint_hole_tile(&mut c, 10, 22, ty::TEE, ty::FAIRWAY, false));
+        assert_eq!(club.holes[1].front_tee, None);
+        assert_eq!(club.holes[1].par, 4, "the hole stays open");
+        assert_eq!(club.next_hole, 2);
+        assert_eq!(c.flags[idx(10, 22)] & crate::course::f::LOW, 0);
+        // a green painted over it is no cup of a new hole either
+        club.place_extra_tee(&mut c, Tee::Middle, 10, 18, ty::ROUGH).unwrap();
+        c.ty[idx(10, 18)] = ty::TEE;
+        assert!(club.paint_hole_tile(&mut c, 10, 18, ty::TEE, ty::GREEN, false));
+        assert_eq!((club.holes[1].middle_tee, club.holes[1].par, club.holes[1].back), (None, 4, (10, 10)));
+        // a tee tile that stopped being a tee (an undo) is dropped on the next sync
+        club.place_extra_tee(&mut c, Tee::Middle, 10, 16, ty::ROUGH).unwrap();
+        club.sync_extra_tees(&mut c);
+        assert_eq!(club.holes[1].middle_tee, None);
+    }
+
+    #[test]
+    fn course_b_holes_take_extra_tees_and_its_golfers_choose_them_alike() {
+        let (mut club, mut c) = club_and_course();
+        club.extras.tees = true;
+        club.extras.second_course = true;
+        let mut cb = crate::second::SecondCourse::new();
+        cb.holes[1] = Hole { par: 4, length: 400, back: (30, 10), fwd: (30, 10), pin: (30, 26), ..cb.holes[1].clone() };
+        cb.next_hole = 2;
+        club.course_b = Some(cb);
+        c.ty[idx(30, 10)] = ty::TEE;
+        // with Course A shown the tile is no hole's: Course A's hole 1 is far
+        assert_eq!(club.extra_tee_check(&c, Tee::Forward, 30, 20, ty::ROUGH), Err(TeeRefusal::NoHole));
+        assert_eq!(club.extra_tee_check_on(true, &c, Tee::Forward, 30, 20, ty::ROUGH), Ok(1));
+        assert_eq!(club.on_course(true, |cl| cl.place_extra_tee(&mut c, Tee::Forward, 30, 20, ty::ROUGH)), Ok(1));
+        assert_eq!(club.course_holes(true)[1].front_tee, Some((30, 20)));
+        assert_eq!(club.holes[1].front_tee, None, "Course A's hole 1 is untouched");
+        c.ty[idx(30, 20)] = ty::TEE;
+        assert!(club.tile_course(1, 30, 20), "the tile is Course B's");
+        // a Course B golfer (Course B shown around his update) plays it by the same rule
+        let weak = golfer(3, 0, 0);
+        assert_eq!(club.on_course(true, |cl| cl.extra_tee_for(&weak, 1)), Some((30, 20)));
+        assert_eq!(club.extra_tee_for(&weak, 1), None);
+        // the sync keeps it and numbers its tile; painting over it with Course A shown still takes it from Course B
+        club.sync_extra_tees(&mut c);
+        assert_eq!(c.flags[idx(30, 20)] & crate::course::f::LOW, 1);
+        assert!(club.paint_hole_tile(&mut c, 30, 20, ty::TEE, ty::FAIRWAY, false));
+        assert_eq!(club.course_holes(true)[1].front_tee, None);
+        assert_eq!((club.course_holes(true)[1].par, club.holes[1].par), (4, 4));
+    }
+
+    #[test]
+    fn saves_without_extra_tees_are_as_before_and_extra_tees_round_trip() {
+        let (mut club, mut c) = club_and_course();
+        let plain = serde_json::to_string(&club).unwrap();
+        assert!(!plain.contains("front_tee") && !plain.contains("middle_tee") && !plain.contains("tees"));
+        // the extra on with nothing placed changes nothing of the holes
+        let hole = serde_json::to_string(&club.holes[1]).unwrap();
+        club.extras.tees = true;
+        assert_eq!(serde_json::to_string(&club.holes[1]).unwrap(), hole);
+        // an older save (no such fields) reads as no extra tees and the extra off
+        let old: Club = serde_json::from_str(&plain).unwrap();
+        assert!(old.holes.iter().all(|h| h.front_tee.is_none() && h.middle_tee.is_none()));
+        assert!(!old.extras.tees && old.extras.is_off());
+        assert_eq!(serde_json::to_string(&old).unwrap(), plain, "an old save writes back unchanged");
+        // the tees placed are kept with the game
+        club.place_extra_tee(&mut c, Tee::Forward, 10, 24, ty::ROUGH).unwrap();
+        club.place_extra_tee(&mut c, Tee::Middle, 10, 18, ty::ROUGH).unwrap();
+        let back: Club = serde_json::from_str(&serde_json::to_string(&club).unwrap()).unwrap();
+        assert_eq!((back.holes[1].front_tee, back.holes[1].middle_tee), (Some((10, 24)), Some((10, 18))));
+        assert!(back.extras.tees);
+        // the bit and the option
+        let e = Extras { tees: true, ..Default::default() };
+        assert_eq!(e.bits(), 1 << 20);
+        assert_eq!(Extras::from_bits(e.bits()), e);
+        assert_eq!(e.option(TEES), 1);
+        const { assert!(Extras::OPENSGOLF.tees && !Extras::LOOKS.tees, "only in OpenSGolf") };
+        // other extras' saves do not gain the tick while it is off
+        let other = serde_json::to_string(&Extras { weather: true, ..Default::default() }).unwrap();
+        assert!(!other.contains("tees"));
     }
 }

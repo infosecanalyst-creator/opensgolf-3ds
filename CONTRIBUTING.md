@@ -134,6 +134,43 @@ the game's Preferences > Content > *Find more* reads: open a pull request there 
 nothing from the original game. Engine changes for packs (the loader, scenarios, the Rhai API, the index) come to this
 repository with tests, like any other code.
 
+## Replays
+
+Everything the player does to a game is an `Action` (`crates/sg-core/src/action.rs`: plain serde data with fixed short
+names and a version, holding only game values such as tiles, hole numbers, employee and golfer records, terrain types and
+amounts). The interface builds the action and hands it to `App::act` (`crates/simgolf/src/replay.rs`), which logs it with
+the game tick and applies it through `App::apply`, the one place where the player's doing changes the game; the methods
+the interface used to call directly (`paint_tiles`, `edit_building`, `open_hole`, `hire_employee`, `undo_step`, ...) turn
+a direct call into that action themselves. The Second course extra's A/B switch is an action too, and a paint stroke
+holds the tee the Multiple tees extra's Tees tool places, so Course B and forward and middle tees replay as well. The
+game also logs what the game around the simulation hands it, which no save
+keeps: the pointer's tile while the pro's employee follows it, the flags set before each tick (the ticker's, the advisor's,
+the close view's), the view the golfers' places on the screen are measured in after a drawn frame, a redraw's refresh of
+the course (it plans the hole being built again after a terrain change), the tees' arrows and grown plants as the drawing
+records them, and the settings that change the rules (Fix original bugs, Random trees). Every 256 game ticks a hash of
+the game goes on the log too.
+
+**When an action is applied:** between two game ticks, never inside one. An entry stamped `t` was applied when the game
+had played `t` ticks; a replay applies every entry stamped `t`, in the order logged, before it plays that tick.
+
+**Where the log goes:** the actions since the last load or new game are kept in memory (up to 400,000 entries; past that
+the log starts again from the game as it then is). *Report a problem* writes them, with the game they start from, as
+`<report>.sgr` next to the report's saved game. Nothing is sent anywhere.
+
+**Playing a report again:** `opensgolf --game ... --replay "OpenSGolf report <date>.sgr"` loads the game the log starts
+from and plays its actions at their ticks, refusing the player's own until the log is played through (the speed keys
+still work). It prints `replay: done at tick T, the game matched at all N checks`, or `replay diverged at tick T` at the
+first logged hash its own game does not have (the loaded game's sections and fields are compared too, and named when they
+differ). Use the same kind of game files as the report (the original's or the free set) and the same content packs:
+they decide the game's data. Test hooks: `SG_REPLAY_OUT=FILE` writes the replay file when a scripted still ends;
+`SG_ACTION_CHECK=1` compares the game's hash around each frame's input (and around the `SG_CLICK` and `SG_PRESS` test
+inputs) and warns when the game changed with no action applied. `tools/determinism_check.sh` replays its scripted game in
+a window of another size and checks every tick's fingerprint.
+
+**What is not logged:** the course editor (it keeps no log), and these, which a replay can still miss: the looks of trees
+planted with Random trees in a stroke whose tiles are on screen (the looks' generator also picks each paint sound's pitch
+by where the tile is on the screen), and changes made while the log is full and starting again.
+
 ## Reporting bugs and differences from the original
 
 Use the issue templates. For a difference from the original game, a screenshot or a video timestamp of the original next to

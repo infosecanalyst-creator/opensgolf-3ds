@@ -98,7 +98,7 @@ impl App {
             }
         }
         let sp = &self.sprites[si].s;
-        let img = outline(&sp.frames[frame_index], sp.anchor_y);
+        let img = outline(&sp.frame(frame_index), sp.anchor_y);
         let t = g.texture(&img, false);
         crate::fx::plain_texture(t); // a soft shadow: the pixel-art scaler leaves it alone
         self.fx.cast.outlines.insert((si, frame_index), t);
@@ -128,7 +128,7 @@ impl App {
         let (sx, sz) = (atm.shadow_dir[0] * reach, atm.shadow_dir[1] * reach);
         let lift_k = atm.shadow_len;
         let quarter = ((self.view_rot() / 90.0).round() as i32 % 4 + 4) % 4;
-        let px = self.upp * (self.draw_w / 800.0).min(self.draw_h / 600.0);
+        let px = self.upp * crate::ui::view_scale(self.draw_w, self.draw_h);
         // what to cast: on screen (with a margin for the shadow's length), standing (not ground overlays), not in water
         let mut quads: Vec<(TextureId, [Vert; 8])> = Vec::new();
         for &(_, i) in items {

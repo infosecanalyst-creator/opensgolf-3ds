@@ -226,7 +226,7 @@ impl App {
         let a = self.fx.atmos;
         let t = self.fx.time;
         let mv = self.mv;
-        let vscale = (self.draw_w / 800.0).min(self.draw_h / 600.0);
+        let vscale = crate::ui::view_scale(self.draw_w, self.draw_h);
         // sizes in the art's pixels as the view draws them (the exe's zoom 4 draws them one to one; Enhanced's closer
         // smooth zoom magnifies them, whole pixels from there on)
         let z = self.view_zoom() / crate::app::ZOOM_UNIT / 4.0;
@@ -269,38 +269,60 @@ impl App {
                         else {
                             continue;
                         };
-                        let off = 0.22 + 0.12 * hash(hs, 2);
+                        // at the water's edge, so the clump stands in the shallows against the bank
+                        let off = 0.3 + 0.1 * hash(hs, 2);
                         let side = (hash(hs, 3) - 0.5) * 0.6;
                         let (x, zz) =
                             (mx + (lx as f32 * off + ly as f32 * side) * TILE_SIZE, mz + (ly as f32 * off + lx as f32 * side) * TILE_SIZE);
                         let c = level(self, x, zz);
-                        let n = 4 + (hash(hs, 4) * 4.0) as u32;
+                        let n = 5 + (hash(hs, 4) * 4.0) as u32;
                         let (dark, light) = match theme {
                             1 => ([0.36, 0.42, 0.18], [0.55, 0.60, 0.26]),
                             3 => ([0.40, 0.44, 0.24], [0.58, 0.60, 0.34]),
                             _ => ([0.20, 0.38, 0.14], [0.38, 0.56, 0.20]),
                         };
                         let autumn = a.season.autumn;
+                        let tone = |k: f32| {
+                            let b = [
+                                dark[0] + (light[0] - dark[0]) * k,
+                                dark[1] + (light[1] - dark[1]) * k,
+                                dark[2] + (light[2] - dark[2]) * k,
+                            ];
+                            tc([b[0] + 0.25 * autumn * (0.75 - b[0]), b[1] + 0.1 * autumn, b[2]], 0.95)
+                        };
+                        // the clump's own little shadow on the water
+                        d.pixel(c, -(n as f32 * 0.5).round() - 1.0, -1.0, n as f32 + 2.0, 1.0, z, tc([0.05, 0.16, 0.20], 0.35));
+                        // a tuft of stems fanning out from one root, the middle ones tallest, each darker at the foot and
+                        // lit towards the tip (upright bars in alternating colours read as a fence)
+                        let half = (n as f32 - 1.0) * 0.5;
                         for b in 0..n {
-                            let bx = (b as f32 - n as f32 * 0.5).round() + (hash(hs, 10 + b) - 0.5).round();
-                            let h = (4.0 + 5.0 * hash(hs, 20 + b)).round() * if ice > 0.0 { 0.7 } else { 1.0 };
-                            let base = if b % 2 == 0 { dark } else { light };
-                            let base = [base[0] + 0.25 * autumn * (0.75 - base[0]), base[1] + 0.1 * autumn, base[2], 1.0];
-                            let col = tc([base[0], base[1], base[2]], 0.95);
-                            let sway =
-                                (wind.k * wind.screen_x * 1.4 + 0.7 * (t * 1.9 + hash(hs, 30 + b) * 6.3).sin() * wind.k.max(0.15)).round();
-                            d.pixel(c, bx, 0.0, 1.0, (h - 2.0).max(1.0), z, col);
-                            d.pixel(c, bx + (sway * 0.5).round(), h - 2.0, 1.0, 1.0, z, col);
-                            d.pixel(c, bx + sway, h - 1.0, 1.0, 1.0, z, col);
+                            let rel = (b as f32 - half) / half.max(1.0);
+                            let root = (rel * half * 0.5).round();
+                            let h = ((5.0 + 4.0 * (1.0 - rel.abs()) + 2.0 * hash(hs, 20 + b)).round() * if ice > 0.0 { 0.7 } else { 1.0 })
+                                .max(3.0);
+                            let sway = wind.k * wind.screen_x * 1.4 + 0.7 * (t * 1.9 + hash(hs, 30 + b) * 6.3).sin() * wind.k.max(0.15);
+                            let lean = rel * h * 0.4 + sway;
+                            let lit = hash(hs, 40 + b) * 0.3 + if b % 3 == 1 { 0.4 } else { 0.1 };
+                            for y in 0..h as u32 {
+                                let u = y as f32 / h;
+                                // the stem bends more towards its tip
+                                d.pixel(c, (root + lean * u * u).round(), y as f32, 1.0, 1.0, z, tone((lit + u * 0.6).min(1.0)));
+                            }
+                            let top = (root + lean).round();
                             // a bulrush's brown head on a tall stem in summer and autumn (papyrus tufts in the desert)
-                            if h >= 7.0 && month >= 6.0 && theme != 1 {
-                                d.pixel(c, bx + sway, h, 1.0, 2.0, z, tc([0.36, 0.22, 0.12], 1.0));
-                            } else if h >= 7.0 && theme == 1 {
-                                d.pixel(c, bx + sway - 1.0, h, 3.0, 1.0, z, tc([0.56, 0.62, 0.30], 1.0));
+                            if h >= 8.0 && month >= 6.0 && theme != 1 && b % 2 == 0 {
+                                d.pixel(c, top, h - 2.0, 1.0, 2.0, z, tc([0.36, 0.22, 0.12], 1.0));
+                            } else if h >= 8.0 && theme == 1 {
+                                d.pixel(c, top - 1.0, h, 3.0, 1.0, z, tc([0.56, 0.62, 0.30], 1.0));
                             }
                         }
-                        // the clump's own little shadow on the water
-                        d.pixel(c, -(n as f32 * 0.5).round(), -1.0, n as f32 + 1.0, 1.0, z, tc([0.05, 0.16, 0.20], 0.35));
+                        // the leaves at the foot, arching out to both sides
+                        for (k, dir) in [(0u32, -1.0f32), (1, 1.0)] {
+                            let x0 = dir * (half * 0.5).round();
+                            d.pixel(c, x0 + dir, 2.0, 1.0, 1.0, z, tone(0.5));
+                            d.pixel(c, x0 + 2.0 * dir, 2.0 + (hash(hs, 60 + k) < 0.5) as i32 as f32, 1.0, 1.0, z, tone(0.7));
+                            d.pixel(c, x0 + 3.0 * dir, 1.0, 1.0, 1.0, z, tone(0.6));
+                        }
                     } else if (1..=2).contains(&dist) && hash(hs, 5) < 0.16 && (4.3..10.6).contains(&month) && ice <= 0.0 {
                         // lily pads in the sheltered shallows, flowering in high summer
                         let k = 2 + (hash(hs, 6) * 3.0) as u32;

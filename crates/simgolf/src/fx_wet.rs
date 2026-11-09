@@ -22,6 +22,13 @@ fn unit(h: u32) -> f32 {
     (h >> 8) as f32 / (1u32 << 24) as f32
 }
 
+/// A rainbow band's strength `t` of the way across it (0 inside .. 1 outside): none at its edges, most in the middle. The
+/// sine is held at 0 or more: f32's pi is a hair over pi, so sin(pi) is a tiny negative, whose power 0.8 is NaN, and an
+/// iPhone drew the bands' outermost rings with that NaN alpha solid: a hard red and a hard purple circle on the sky.
+fn band_alpha(t: f32) -> f32 {
+    (std::f32::consts::PI * t).sin().max(0.0).powf(0.8)
+}
+
 /// Smooth value noise on a lattice of `cell` world units (0..1), the same every run.
 fn vnoise(x: f32, z: f32, cell: f32, salt: u32) -> f32 {
     let (fx, fz) = (x / cell, z / cell);
@@ -233,7 +240,7 @@ impl App {
                 let (t0, t1) = (i as f32 / rings as f32, (i + 1) as f32 / rings as f32);
                 let col = |t: f32| {
                     let c = spectrum(if reverse { 1.0 - t } else { t });
-                    (c, (std::f32::consts::PI * t).sin().powf(0.8) * strength)
+                    (c, band_alpha(t) * strength)
                 };
                 let (c0, a0) = col(t0);
                 let (c1, a1) = col(t1);
@@ -287,5 +294,16 @@ mod tests {
         assert_eq!((at(12, 4, 0), at(12, 4, 1)), (0, 0));
         assert_eq!(at(2, 4, 1), 255);
         assert!((0..8).any(|i| at(i, 6, 0) > 0));
+    }
+
+    #[test]
+    fn a_rainbow_band_fades_to_nothing_at_both_edges_and_is_never_nan() {
+        // the bow is drawn in 18 rings: every ring's edge, the outermost (t = 1) included
+        for i in 0..=18 {
+            let a = band_alpha(i as f32 / 18.0);
+            assert!(a.is_finite() && (0.0..=1.0).contains(&a), "ring edge {i}: {a}");
+        }
+        assert!(band_alpha(0.0) == 0.0 && band_alpha(1.0) == 0.0);
+        assert!(band_alpha(0.5) > 0.99);
     }
 }

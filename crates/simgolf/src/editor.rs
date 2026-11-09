@@ -429,6 +429,8 @@ impl App {
         self.club.landmarks_owned = 0x3fff;
         self.paused = false;
         self.speed = 1;
+        // (the exe's fast mode follows the speed played at: replay.rs)
+        self.rec.sim_speed = 1;
         self.undo.clear();
         self.screen = Screen::Play;
         self.hover = -1;

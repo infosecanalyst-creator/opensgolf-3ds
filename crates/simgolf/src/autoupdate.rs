@@ -33,10 +33,9 @@ use std::sync::{Arc, Mutex};
 
 /// OpenSGolf's release signing key: the ed25519 public key, as 64 hex digits, that `sgtool update-keygen` prints.
 ///
-/// TODO(owner): this is a PLACEHOLDER (all zeros). Replace it with the public key of the pair whose private half is the
-/// GitHub Actions secret OPENSGOLF_UPDATE_KEY (docs/RELEASING.md). Until then Update now refuses every release and offers
-/// the download page, so nothing unsigned can be installed.
-pub const PUBLIC_KEY_HEX: &str = "0000000000000000000000000000000000000000000000000000000000000000";
+/// The public half of the release key; its private half is the GitHub Actions secret OPENSGOLF_UPDATE_KEY
+/// (docs/RELEASING.md). All zeros would be the placeholder, which refuses every release.
+pub const PUBLIC_KEY_HEX: &str = "abec305dfffe4c661d2d922f159624050f99c2e0e76421d015aac5893d210736";
 
 /// The test hook's variable: a public key (hex) used instead of [`PUBLIC_KEY_HEX`].
 pub const KEY_ENV: &str = "SG_UPDATE_KEY";
@@ -522,19 +521,173 @@ pub fn install(place: &Place, name: &str, data: Vec<u8>) -> Result<Installed, Er
     }
 }
 
+// ---- selective updates (GitHub issue #65) ---------------------------------------------------------------------------------
+//
+// The port's own. A Windows .zip or Linux .tar.gz package is mostly `packs/` (the free set's art, ~19 MB in ~1900 files),
+// which few releases change. Beside each such package the release workflow puts the same package without `packs/`
+// (NAME-bin.zip, NAME-bin.tar.gz: the programs, lang and the documents) and `opensgolf-packs.sha256`, the SHA-256 of every
+// file in `packs/` (both listed in the signed SHA256SUMS). Update now in a folder install then downloads the -bin package
+// and only the pack files whose checksum differs from the copy's own (from the release's tag in the repository, each
+// checked against the signed list); when the release has no such files, more than a quarter of the packs changed, or any
+// of it fails short of the folder being read-only, it downloads the whole package as before. AppImage, macOS (a signed
+// .app is replaced whole) and Android always take the whole package.
+
+/// The signed list of the release's `packs/` files (`sha256sum` lines, names starting "packs/").
+pub const PACKS_LIST: &str = "opensgolf-packs.sha256";
+const MAX_PACKS_LIST: u64 = 4 << 20;
+/// Where single pack files are fetched from: `{RAW_BASE}/{tag}/{path}`.
+pub const RAW_BASE: &str = "https://raw.githubusercontent.com/crspytopgn/opensgolf";
+/// The test hook's variable: a folder or address used instead of `{RAW_BASE}/{tag}` (`SG_UPDATE_RAW=file:///dir`).
+pub const RAW_ENV: &str = "SG_UPDATE_RAW";
+
+/// The program-only package that goes with the package `name` (release.yml): NAME-bin.zip, NAME-bin.tar.gz.
+pub fn bin_name(name: &str) -> Option<String> {
+    if let Some(b) = name.strip_suffix(".tar.gz") {
+        return Some(format!("{b}-bin.tar.gz"));
+    }
+    name.strip_suffix(".zip").map(|b| format!("{b}-bin.zip"))
+}
+
+/// `PACKS_LIST`'s lines; every name must be a plain relative path under `packs/`.
+pub fn parse_packs_list(text: &[u8]) -> Result<Vec<(String, String)>, Error> {
+    let list = parse_sums(text).map_err(Error::Failed)?;
+    for (n, _) in &list {
+        let plain = n.starts_with("packs/") && safe_rel(n).is_some_and(|p| p.components().count() == n.split('/').count());
+        if !plain {
+            return Err(Error::Failed(format!("{PACKS_LIST}: bad name \"{n}\"")));
+        }
+    }
+    Ok(list)
+}
+
+/// The entries of `list` whose file in the install folder `dir` is missing or differs.
+pub fn changed_packs(dir: &Path, list: &[(String, String)]) -> Vec<usize> {
+    let same = |n: &str, h: &str| std::fs::read(dir.join(n)).is_ok_and(|d| sg_core::index::sha256_hex(&d) == h);
+    (0..list.len()).filter(|&i| !same(&list[i].0, &list[i].1)).collect()
+}
+
+/// The address of the pack file `rel` at release `tag` (the test hook's folder: as it is, without escapes).
+pub fn raw_url(base: Option<&str>, tag: &str, rel: &str) -> String {
+    match base {
+        Some(b) => format!("{}/{rel}", b.trim_end_matches('/')),
+        None => {
+            let mut path = String::new();
+            for b in rel.bytes() {
+                if b.is_ascii_alphanumeric() || b"/-_.~".contains(&b) {
+                    path.push(b as char);
+                } else {
+                    path.push_str(&format!("%{b:02X}"));
+                }
+            }
+            format!("{RAW_BASE}/{tag}/{path}")
+        }
+    }
+}
+
+/// Installs the program-only package `bin` (`data`) in `dir`; when `fetched` holds changed pack files, `packs/` is
+/// rebuilt as the release's (`list`: the unchanged files from this copy, each checked again, and the fetched ones) and
+/// swapped in with the rest; otherwise `packs/` is not touched.
+pub fn install_selective(
+    dir: &Path,
+    exe: &str,
+    bin: &str,
+    data: Vec<u8>,
+    list: &[(String, String)],
+    fetched: &std::collections::HashMap<String, Vec<u8>>,
+) -> Result<Installed, Error> {
+    let staging = staging_in(dir)?;
+    let r = (|| {
+        unpack(bin, data, &staging)?;
+        let root = find_root(&staging, &|d| d.join(exe).is_file()).ok_or_else(|| Error::Failed(format!("{bin} does not hold {exe}")))?;
+        remove_any(&root.join("packs")).map_err(io_err)?;
+        if !fetched.is_empty() {
+            for (n, h) in list {
+                let d = match fetched.get(n) {
+                    Some(d) => d.clone(),
+                    None => std::fs::read(dir.join(n)).map_err(io_err)?,
+                };
+                if sg_core::index::sha256_hex(&d) != *h {
+                    return Err(Error::HashMismatch(n.clone()));
+                }
+                write_file(&root.join(n), &d, None)?;
+            }
+        }
+        let backups = swap_in(&root, dir)?;
+        Ok(Installed { exe: dir.join(exe), backups })
+    })();
+    let _ = remove_any(&staging);
+    r
+}
+
+/// The selective update of a folder install, or None when the whole package is the way (see above).
+#[allow(clippy::too_many_arguments)]
+fn run_selective(
+    release: &Release,
+    name: &str,
+    dir: &Path,
+    exe: &str,
+    sums: &[u8],
+    sig: &[u8],
+    key: &[u8; 32],
+    stage: &dyn Fn(Stage),
+) -> Result<Option<Installed>, Error> {
+    let Some(bin) = bin_name(name) else { return Ok(None) };
+    let (Some(bin_url), Some(list_url)) = (release.asset_url(&bin), release.asset_url(PACKS_LIST)) else {
+        println!("update: the release has no {bin} and {PACKS_LIST}; downloading the whole package");
+        return Ok(None);
+    };
+    let quiet = |_: u64, _: Option<u64>| {};
+    let list_data = crate::net::fetch(list_url, MAX_PACKS_LIST, &quiet).map_err(Error::Failed)?;
+    check_package(sums, sig, key, PACKS_LIST, &list_data)?;
+    let list = parse_packs_list(&list_data)?;
+    stage(Stage::Comparing);
+    let changed = changed_packs(dir, &list);
+    if changed.len() * 4 > list.len() {
+        println!("update: {} of {} pack files changed; downloading the whole package", changed.len(), list.len());
+        return Ok(None);
+    }
+    let want = signed_hash(sums, sig, key, &bin)?;
+    let data = crate::net::fetch(bin_url, MAX_PACKAGE, &|done, total| stage(Stage::Downloading { done, total })).map_err(Error::Failed)?;
+    if sg_core::index::sha256_hex(&data) != want {
+        return Err(Error::HashMismatch(bin));
+    }
+    let base = std::env::var(RAW_ENV).ok().filter(|b| !b.is_empty());
+    let mut fetched = std::collections::HashMap::new();
+    let mut done = data.len() as u64;
+    for &i in &changed {
+        let (n, h) = &list[i];
+        let d = crate::net::fetch(&raw_url(base.as_deref(), &release.tag, n), MAX_PACKAGE, &quiet).map_err(Error::Failed)?;
+        if sg_core::index::sha256_hex(&d) != *h {
+            return Err(Error::HashMismatch(n.clone()));
+        }
+        done += d.len() as u64;
+        stage(Stage::Downloading { done, total: None });
+        fetched.insert(n.clone(), d);
+    }
+    println!("update: selective: {bin} and {} of {} pack files, {:.1} MB in all", changed.len(), list.len(), done as f64 / 1048576.0);
+    stage(Stage::Installing);
+    install_selective(dir, exe, &bin, data, &list, &fetched).map(Some)
+}
+
 // ---- the whole update ------------------------------------------------------------------------------------------------------
 
 /// How far an update is.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Stage {
     Checksums,
-    Downloading { done: u64, total: Option<u64> },
+    /// Comparing this copy's packs with the release's (a selective update).
+    Comparing,
+    Downloading {
+        done: u64,
+        total: Option<u64>,
+    },
     Verifying,
     Installing,
 }
 
 /// Downloads, checks and installs `release`'s package `name` in `place`, telling `stage` how far it is. The checksums'
-/// signature is checked before the package is downloaded, and the package before anything is installed.
+/// signature is checked before the package is downloaded, and the package before anything is installed. A folder install
+/// takes only what changed where the release allows (`run_selective`).
 pub fn run(release: &Release, name: &str, place: &Place, key: &[u8; 32], stage: &dyn Fn(Stage)) -> Result<Installed, Error> {
     let url = release.asset_url(name).ok_or_else(|| Error::NoPackage(name.to_string()))?;
     let (Some(sums_url), Some(sig_url)) = (release.asset_url(SUMS), release.asset_url(SUMS_SIG)) else { return Err(Error::Unsigned) };
@@ -544,6 +697,14 @@ pub fn run(release: &Release, name: &str, place: &Place, key: &[u8; 32], stage: 
     let sig = crate::net::fetch(sig_url, 1024, &quiet).map_err(Error::Failed)?;
     // nothing big is downloaded for a release that is not OpenSGolf's
     signed_hash(&sums, &sig, key, name)?;
+    if let Place::Folder { dir, exe } = place {
+        match run_selective(release, name, dir, exe, &sums, &sig, key, stage) {
+            Ok(Some(i)) => return Ok(i),
+            Ok(None) => {}
+            Err(e @ Error::NoAccess(_)) => return Err(e),
+            Err(e) => println!("update: the selective update did not work ({e:?}); downloading the whole package"),
+        }
+    }
     let data = crate::net::fetch(url, MAX_PACKAGE, &|done, total| stage(Stage::Downloading { done, total })).map_err(Error::Failed)?;
     stage(Stage::Verifying);
     check_package(&sums, &sig, key, name, &data)?;
@@ -663,6 +824,7 @@ impl Job {
             Stage::Downloading { done, total: None } => {
                 trf("STR_UPDATE_STAGE_DOWNLOAD_MB", &[("VERSION", v), ("DONE", &format!("{:.1}", done as f64 / 1048576.0))])
             }
+            Stage::Comparing => trf("STR_UPDATE_STAGE_COMPARE", &[("VERSION", v)]),
             Stage::Verifying => trf("STR_UPDATE_STAGE_VERIFY", &[("VERSION", v)]),
             Stage::Installing => trf("STR_UPDATE_STAGE_INSTALL", &[("VERSION", v)]),
         }
@@ -818,7 +980,8 @@ mod tests {
 
     #[test]
     fn keys_and_the_placeholder() {
-        assert_eq!(parse_key(PUBLIC_KEY_HEX), None, "the placeholder is no key");
+        assert_eq!(parse_key(&"0".repeat(64)), None, "the placeholder is no key");
+        assert!(parse_key(PUBLIC_KEY_HEX).is_some(), "the built-in release key");
         let kp = keys(3);
         let hex: String = kp.pk.iter().map(|b| format!("{b:02x}")).collect();
         assert_eq!(parse_key(&hex), Some(*kp.pk));
@@ -987,6 +1150,115 @@ mod tests {
         write_journal(&save, "1.0.0", &[dir.join("README.md")]);
         assert_eq!(finish_after_restart(&save, "9.9.9"), None, "another version: the update did not take");
         assert!(dir.join("README.md").exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn names_and_lists_for_selective_updates() {
+        assert_eq!(bin_name("opensgolf-windows.zip").as_deref(), Some("opensgolf-windows-bin.zip"));
+        assert_eq!(bin_name("opensgolf-linux-arm64.tar.gz").as_deref(), Some("opensgolf-linux-arm64-bin.tar.gz"));
+        assert_eq!(bin_name("opensgolf-linux-x86_64.AppImage"), None);
+        assert_eq!(
+            raw_url(None, "v0.4.8", "packs/free/art/tacs&tees one's.png"),
+            "https://raw.githubusercontent.com/crspytopgn/opensgolf/v0.4.8/packs/free/art/tacs%26tees%20one%27s.png"
+        );
+        assert_eq!(raw_url(Some("file:///r/"), "v1", "packs/a b"), "file:///r/packs/a b");
+        let h = "0".repeat(64);
+        assert!(parse_packs_list(format!("{h}  packs/free/a b.png\n").as_bytes()).is_ok());
+        for bad in ["lang/en.txt", "packs/../x", "packs//a", "/packs/a", "packs/a\\b", "packs/./a"] {
+            assert!(parse_packs_list(format!("{h}  {bad}\n").as_bytes()).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn a_selective_update_takes_only_what_changed() {
+        let root = tmp("e2e-selective");
+        let kp = keys(9);
+        let name = "opensgolf-linux-x86_64.tar.gz";
+        let bin = "opensgolf-linux-x86_64-bin.tar.gz";
+        let rel = root.join("release");
+        let raw = root.join("raw");
+        // the release's packs: ten files, two of them new or changed since the installed copy
+        let packs: Vec<(String, Vec<u8>)> = (0..10)
+            .map(|i| match i {
+                0 => ("packs/free/art/a b&c.png".to_string(), b"changed".to_vec()),
+                1 => ("packs/free/new.toml".to_string(), b"new file".to_vec()),
+                i => (format!("packs/free/f{i}"), format!("same {i}").into_bytes()),
+            })
+            .collect();
+        for (n, d) in &packs {
+            write_file(&raw.join(n), d, None).unwrap();
+        }
+        let list: Vec<u8> = packs.iter().map(|(n, d)| format!("{}  {n}\n", sg_core::index::sha256_hex(d))).collect::<String>().into_bytes();
+        let full = tar_gz(&[("opensgolf-linux-x86_64/opensgolf", b"full", 0o755)]);
+        let bin_pkg = tar_gz(&[
+            ("opensgolf-linux-x86_64/opensgolf", b"new program", 0o755),
+            ("opensgolf-linux-x86_64/lang/en.txt", b"new text", 0o644),
+        ]);
+        std::fs::create_dir_all(&rel).unwrap();
+        let sums = sums_for(&[(name, &full), (bin, &bin_pkg), (PACKS_LIST, &list)]);
+        let url = |n: &str| format!("file://{}", rel.join(n).display());
+        for (n, d) in [(name, &full), (bin, &bin_pkg), (PACKS_LIST, &list), (SUMS, &sums)] {
+            std::fs::write(rel.join(n), d).unwrap();
+        }
+        std::fs::write(rel.join(SUMS_SIG), sign(&kp, &sums)).unwrap();
+        let release = Release {
+            tag: "v9.9.9".into(),
+            assets: [name, bin, PACKS_LIST, SUMS, SUMS_SIG].iter().map(|n| (n.to_string(), url(n))).collect(),
+        };
+        // the installed copy: the old versions of the two, the eight unchanged, and one the release dropped
+        let dir = root.join("install");
+        fake_install(&dir);
+        for (n, d) in &packs[2..] {
+            write_file(&dir.join(n), d, None).unwrap();
+        }
+        write_file(&dir.join("packs/free/art/a b&c.png"), b"old", None).unwrap();
+        write_file(&dir.join("packs/free/dropped"), b"gone", None).unwrap();
+        assert_eq!(changed_packs(&dir, &parse_packs_list(&list).unwrap()), vec![0, 1]);
+        std::env::set_var(RAW_ENV, format!("file://{}", raw.display()));
+        let place = place_for("linux", &dir.join("opensgolf"), None).unwrap();
+        let stages = std::cell::RefCell::new(Vec::new());
+        let got = run(&release, name, &place, &kp.pk, &|s| stages.borrow_mut().push(s)).unwrap();
+        assert_eq!(std::fs::read(dir.join("opensgolf")).unwrap(), b"new program", "the -bin package, not the full one");
+        assert_eq!(std::fs::read(dir.join("lang/en.txt")).unwrap(), b"new text");
+        for (n, d) in &packs {
+            assert_eq!(&std::fs::read(dir.join(n)).unwrap(), d, "{n}");
+        }
+        assert!(!dir.join("packs/free/dropped").exists(), "packs/ is the release's");
+        assert!(got.backups.contains(&dir.join("packs.old")));
+        let st = stages.into_inner();
+        assert!(st.contains(&Stage::Comparing));
+        assert!(st.contains(&Stage::Downloading { done: bin_pkg.len() as u64, total: Some(bin_pkg.len() as u64) }));
+
+        // nothing in packs/ changed: packs/ is left alone (not even renamed)
+        let dir2 = root.join("install2");
+        fake_install(&dir2);
+        for (n, d) in &packs {
+            write_file(&dir2.join(n), d, None).unwrap();
+        }
+        let place2 = place_for("linux", &dir2.join("opensgolf"), None).unwrap();
+        let got2 = run(&release, name, &place2, &kp.pk, &|_| {}).unwrap();
+        assert_eq!(got2.backups, vec![dir2.join("lang.old"), dir2.join("opensgolf.old")]);
+        assert_eq!(std::fs::read(dir2.join("opensgolf")).unwrap(), b"new program");
+
+        // most packs changed: the whole package
+        let dir3 = root.join("install3");
+        fake_install(&dir3);
+        let place3 = place_for("linux", &dir3.join("opensgolf"), None).unwrap();
+        run(&release, name, &place3, &kp.pk, &|_| {}).unwrap();
+        assert_eq!(std::fs::read(dir3.join("opensgolf")).unwrap(), b"full");
+
+        // a pack file that does not match its signed checksum: the whole package instead
+        let dir4 = root.join("install4");
+        fake_install(&dir4);
+        for (n, d) in &packs[1..] {
+            write_file(&dir4.join(n), d, None).unwrap();
+        }
+        std::fs::write(raw.join(&packs[0].0), b"tampered").unwrap();
+        let place4 = place_for("linux", &dir4.join("opensgolf"), None).unwrap();
+        run(&release, name, &place4, &kp.pk, &|_| {}).unwrap();
+        assert_eq!(std::fs::read(dir4.join("opensgolf")).unwrap(), b"full");
+        std::env::remove_var(RAW_ENV);
         let _ = std::fs::remove_dir_all(&root);
     }
 

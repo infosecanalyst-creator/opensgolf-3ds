@@ -352,7 +352,10 @@ the theme (for example the Links set draws the Airstrip slot as a castle); that 
 At start-up the exe hands Terrain.dll one class per tile type (byte +0x26 of the terrain table): tee 0, green 1, fairway and
 firm fairway 2, rough, deep rough, mound, ravine, brush, rocks, wetlands and marsh 4, sand trap and pot bunker 7, waste bunker 8,
 the four tree types 13, water 17, out of bounds and buildings 18. In the Desert theme every type with a positive byte +0x22,
-except deep rough and sand trap, is sent as class 4. Terrain.dll does not draw out-of-bounds tiles at all.
+except deep rough and sand trap, is sent as class 4. The classes are sent (0x449400) after the theme is loaded, and the Desert's
+theme loader (0x43dbe0) has set deep rough's class byte to 5 (0x578466), so in the Desert deep rough (drawn as the green
+"Rough") is a class of its own and shows its grass collar against the desert ground, buildings, landmarks and the map's edge
+(issue #118). Terrain.dll does not draw out-of-bounds tiles at all.
 
 ### Re-check of the facts taken from the first decompile
 The routines the port relies on were compared between the earlier decompile and the complete one: 14 are identical, and two
@@ -453,9 +456,12 @@ Confidence: high for the rules listed; the per-kind special cases (flower bed, l
   under it; halved for a path). The cost is price x (level + 2) / 2 + clearing, booked to Facilities when placed. There is no
   "building lot" and no path needed to build; without a path joining it to the clubhouse a building is not operational
   (no income, monthly warning on Moderate and up).
-- Each kind from the Putting Green up exists once: building it again removes the old one and places a new one at level + 1
-  (an upgrade, with its cost); the exe only allows that from 10 holes ("Sorry, upgraded buildings are not available until you
-  build beyond 9 holes.").
+- Each kind from the Putting Green up exists once, except the Snack Bar: building it again removes the old one and places a
+  new one at level + 1 (an upgrade, with its cost); the exe only allows that from 10 holes ("Sorry, upgraded buildings are not
+  available until you build beyond 9 holes."). The removal runs only when the kind's level (0x5a8c38) is not 0 (0x41f926,
+  every record of the kind goes), and the Snack Bar's level is always 0: the refresh 0x42f340 raises the level of kinds 6 to
+  16 but skips 7 (0x42f41e), and the load zeroes entry 7 of both tables (0x40fce9). So any number of Snack Bars may stand,
+  each at the base price, its lot never greys out, and their look follows the course size (above), not a level (EXACT).
 - Landmark cost (5 x id + 25) x 2 units, free when donated. Home sites need a site value of at least 50 (0x42ef40).
 - Removal frees the record and turns the footprint into rough (deep rough on slots 12..15; water under a Marina in Parkland
   and Tropical), clearing its path marks; kinds 0..5 give their price back (landmark (level + 5) x 10).
@@ -497,7 +503,10 @@ Confidence: high (layout pass read from the machine code, where the decompiler l
 - While the hole being built has a tee and a cup, the main frame plans it with a trial golfer record (0x9a): first a golfer of
   the Length and Accuracy classes plans the tee shot only, then one of all three classes plays up to five shots from the tee,
   stopping when a landing is in a hazard (hazard byte above 1) or at the cup. The landings are kept and replayed until a
-  terrain refresh clears game flag 0x40000. From them: the tee facing (heading to the first landing), the length (sum of the
+  terrain refresh clears game flag 0x40000. That refresh is 0x42f7a0 (its `and` at 0x42f929 is the only code that masks
+  0x40000 out of the flag word); it has 16 call sites, among them the load (0x40bb19) and the championship course loader (0x40b99a). Neither the Course
+  Report (0x44fb30) nor the instant shot analysis (0x41d0e3..0x41d8f3) reaches it through direct calls, so opening them
+  plans nothing again (DERIVED: a call graph of direct calls; calls through pointers were not followed). From them: the tee facing (heading to the first landing), the length (sum of the
   shot distances in range units, only when the shots reach the cup), flags 0x1000 / 0x2000 when the cup is more than one height
   step above / below the tee, flags 0x20 / 0x40 when the line to the cup bends more than 1/36 of a turn one way or the other
   (holes shorter than 250 count as straight), and three yardage markers 4, 6 and 8 tiles from the cup on holes longer than 150,
@@ -524,7 +533,54 @@ Confidence: high for the choice of sprite, palette and placement; screen offsets
 - Small pines and palms are drawn as two trees on the tile; other trees once, nudged sideways by ((a + 3b) % 5 - 2) zoom
   units. The view is (a - 2b) & 3.
 - A painted tile restarts its growth counter (flag 0x4000); a growing tree shows the counter as its frame, plays its sound
-  (0x93 broadleaf, 0x91 pine, 0x92 palm) when it starts and stops growing at its last frame.
+  (0x93 broadleaf, 0x91 pine, 0x92 palm) when it starts and stops growing at its last frame. See "Planting: trees grow".
+
+## Planting: trees grow (tile loops 0x412354 and 0x413da3, brush 0x420561)
+
+Confidence: EXACT for the counter, the frames, the end and the sound (read from the machine code at the addresses given);
+DERIVED for the rate (the tile loops are inside the main loop with no branch around them, so they run on every pass);
+WEAK for a game loaded mid-growth (the save format was not checked for the counter). Implemented in
+`sg_core::decor::sprout_frame` and `App::update_tree_growth`.
+- A newly planted tree springs up from a seedling: the tree sprites hold their growth in their own frames. Every tree file has
+  4 views of 11 to 16 frames (`Flics/Trees/*.flc`: maples 16, Scots pines 15, palms and tree cacti 13, pines, firs, Joshua
+  trees, cacti and the Links trees 12, small and medium spruces 11; the scenic trees: plum and dogwood 15, willow 14,
+  scenic elm, Japanese maple and peach 13, cypress and scenic tree 12), frame 0 a sprig a few pixels high and the last the
+  grown tree, and
+  each `...Shadow.flc` has the same frames, so the shadow grows with the tree (the shadow is drawn with the body's frame).
+  Nothing is scaled. The free set's tree sheets have the same frame counts, also drawn as a growing tree. The
+  scenic elm (`Flics/Scenic/ScenicElm.flc`) is the one file whose header does not add up: 4 views of 12 frames, but a
+  frame count of 52 and 56 frames stored. The exe takes the header as it is (EXACT: the FLC open 0x482c07 keeps the crop
+  origin and canvas, 0x48236d builds the view table from offsets 96 and 98 with frames per view + 1 frames per view, the
+  sprite loader 0x404120 keeps 12 as the frames per view), so view v starts at stored frame 13 v, and the lone broadleaf
+  branch (0x4143d5) draws frame 11 of view (a - 2b) & 3 queued at the tile's point (0x462a30, box 100 x 100, zoom 4,
+  palette 0xa6), the trunk's foot (crop origin (199, 168): pixel (41, 72)) on the tile centre. The port read the file as a
+  plain animation until 0.5.6 (52 frames, anchored at the middle of the bottom edge), which put the trunk 14 px left of
+  and 13 px above the tile centre (issue #93). The free set's elm keeps its own plain 52-frame layout.
+- The brush (0x420608) sets the tile's flag 0x4000 and its counter (byte array 0x578804) to 0 on every tile whose type it
+  changes, whatever the brush; the same tile repainted with its own type is left alone. The building tool does the same for a
+  scenic tree (the willow tool, `place_tile_item`) and for a new flower bed.
+- The main loop draws a frame every (0xaf, or 0xfa with game flag 0x20000) / 2 = 87 (125) ms (wait at 0x41e65f, without the
+  wait in the fast mode). In each frame the tile loop 0x413da3 reads the counter of a flagged tile and adds one
+  (0x413df7; one in eight chances only while a weed stands there), clearing the flag once it is past 24 (0x413dfd). The
+  drawing does not stop for the pause (flag 4 only stops the tick at 0x41762f), so a tree planted while paused grows too.
+- Tree, pine and palm tiles (0x4142a0, 0x41456b, 0x41477d) draw the counter as the frame of the tree (both trees of a pair),
+  play the tree's sound (0x93 / 0x91 / 0x92, volume 100 / 50 / 50, 0x4481b0) when the counter is 0, and clear the flag when the
+  counter equals the sprite's frames per view less one (0x53f3e8). So a tree grows in 11 to 16 frames, about 1.0 to 1.4 s, the
+  same in every theme and for every brush (woods, pine, palm: maples, Joshua trees, tropical brush, pines, firs, spruces,
+  cacti, palms). While growing, a broadleaf is never swapped for the lone scenic elm (that test is in the grown branch,
+  0x41439c), so a lone broadleaf grows as a maple and then stands as the elm.
+- A scenic tree (scenic elm tile, 0x412c59) grows the same way with sound 0x93; its bed of flowers (0xfc) does not. A flower bed
+  piece (0x41338d) shows the counter as its frame and ends the growing at its last frame (counter set to 0xff).
+- A weed on the tile: the weed branch (0x41404e) sets the tree's counter to -1, so the tree is drawn grown.
+- A tile off the screen (0x42f940 fails, 0x413e23) drops the flag once its counter is past 0: trees planted out of sight are
+  grown when next seen, without the sound.
+- Gameplay: the flag is read elsewhere only by the golfers' weed complaint (0x425900: a weed counts once its tile is no longer
+  flagged), the groundskeeper (0x40342f) and the pointer's tool picture (0x419d53, 0x41a9c8: none over a growing tile). The
+  golfers, the ball and the ratings read the tile's type, which changes at once: the tree is there from the click.
+- The land generator never sets the flag, so the trees of a new course stand grown.
+- The port keeps the frames drawn per planted tile for the drawing only (`App::sprouts`), advanced by the exe's 87 ms frames
+  on the clock or by the game's ticks when they come faster, so a grown tree is drawn exactly as before and the simulation's
+  tiles are not touched by the drawing; a game loaded shows its trees grown.
 - Weeds: crabgrass (0x184) on types that are no hazard, the theme's weed (0x190: dandelion, oil slick in Desert, dry grass in
   Tropical) elsewhere; frame = last frame - (b & 2) - (a & 1), never below (a + 2b) & 3, the growth counter while growing.
 
@@ -577,10 +633,21 @@ Confidence: high.
   the opening pair before tick 0x800 gets the tutorial. After N Happy Endings a pair keeps its story with chance 7/N.
 - Pairing also sets both moods to 2 + compatibility (5 less the differing trait bits).
 - A beat needs the pair on one hole, both standing, within 0x3000 / (scene + 6) map units, 150 ticks since the last beat on
-  the course and the owner's smoothed mood above 4 * scene + 4 (the exe also needs the owner on screen). The partner's reply is
+  the course and the owner's smoothed mood above 4 * scene + 4. The player must be watching (0x428c07..0x428c8e): no ticker
+  message up (0x569498), the closest zoom (0x4c2844 at 4) and the owner's screen point, as the golfer drawing last stored it
+  (+0x08/+0x0c, -1 when not drawn), inside x 51..749, y 51..449 of the 800 x 600 screen. The partner's reply is
   (mood - 1) / 2, capped below the best after scene 1, nudged by the newest thought and a "stories go well" landmark. The best
   reply passes the scene (owner mood + 1), one less fails quietly, lower fails with owner mood - 1; a failed scene goes back
   and the owner's smoothed mood loses a third.
+- The lines show only as bubbles over the two golfers (thought type 0x32 in the thought pass 0x416a15, 0x416b5e..0x416d38),
+  at zoom above 2 whatever the thoughts option, while the golfer's bubble timer is 1..7 (7 at the line, one less every 8
+  ticks; the partner's starts at 10, so its reply appears about 24 ticks after the opening line). Each is the line, centred
+  12 pixels left of the owner or right of the partner, its top at zoom * 10 + 7 (owner) or - 7 (partner) above the pair's
+  mid height ((partner y - own y) / 2), on an 11 pixel bar of 15-bit 0x2008 the text's width + 8 wide (0x480b00), with the
+  ball piece (0x5a58c4) and the halo head of the golfer's face of the moment at half size (0x473cb0 scale 1/2) 42 pixels
+  above the bar: left of the owner's bar (x = bar left - 56), right of the partner's (x = bar right - 12) with the head
+  mirrored (scale -1/2, anchored 36 pixels in; where the mirrored draw lands is not decoded, the port centres it there).
+  Font and colour as the other thoughts. Nothing else on screen shows them.
 - Passing scene 4 is a Happy Ending: the hole is marked in both members' records (worth membership points and a good thought
   later) and the story's landmark type becomes available and free once, if a random walk from the owner reaches rough.
 
@@ -613,9 +680,12 @@ Confidence: high unless marked.
   15, 16 and 20 of the distance over 20 (16 for the high shot), bending by a sixth of a turn times the shot shape (the
   second point's bend and the heights are medium confidence).
 - When a shot of the pro ends on a playable lie and beats (D + 1) times a bar that grows with his skills, difficulty and the
-  shot's difficulty, one skill grows (picked at random among those the shot showed: putting on the green, recovery from a
-  hazard, luck after a tree or a hole-out, driving off the tee, the shot shape, power when the shot beat his range, irons
-  for middle clubs), up to 6, 8, 10 or 99 by course rank; a new skill starts at 3 - difficulty. Ending in a hazard may
+  shot's difficulty, one skill grows (picked at random among those the shot showed: putting for a shot played from the
+  green, recovery from a hazard, luck after a tree or a hole-out, driving off the tee, the shot shape, power when the shot
+  beat his range, irons for clubs 3..10; up to 100 draws of rand(12), cases by the table at 0x4095f4, and only after 50
+  draws, or at once for a hole-out, the fallback: putting when the ball rests on the green, else luck. So a straight Lob
+  Wedge approach onto the green, or one whose skills are capped, grows putting: re-read for issues #82 and #83), up to
+  6, 8, 10 or 99 by course rank; a new skill starts at 3 - difficulty. Ending in a hazard may
   cost a skill above 3 one point and his momentum.
 - A famous golfer challenges when a newcomer with all three skills arrives after the first year, hole L + 3 exists and no
   pro is out; the challenger's skill total is close to 20 + 5L. Each hole of the match is worth 20L units, and the match

@@ -131,6 +131,8 @@ const ROWS: &[Row] = &[
     Key("STR_KEYS_K_VIEW_KEEP", "STR_KEYS_VIEW_KEEP"),
     // the course editor (editor.rs)
     Key("STR_KEYS_K_EDITOR", "STR_KEYS_EDITOR"),
+    // Report a problem (bugreport.rs)
+    Key("STR_KEYS_K_REPORT_PROBLEM", "STR_KEYS_REPORT_PROBLEM"),
     Head("STR_KEYS_HEAD_OTHER"),
     Key("STR_KEYS_K_ESC", "STR_KEYS_ESC"),
     Key("STR_KEYS_K_MENU_MOVE", "STR_KEYS_MENU_MOVE"),
@@ -256,6 +258,7 @@ impl App {
     fn close_keys(&mut self) {
         self.screen = self.keys_back;
         self.hover = -1;
+        self.return_to_prefs();
     }
 
     fn keys_turn(&mut self, forward: bool) {

@@ -1,0 +1,1 @@
+A launcher before the title menu for game files, presets, display, sound and news. What's new shows 0.7's highlights again. Start New Game goes straight to Choose Difficulty, as in the original. Original + helpers is the recommended preset.

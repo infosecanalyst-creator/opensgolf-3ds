@@ -1,0 +1,9 @@
+* The view stays on the map; the screen's edge scrolls it
+* Painting over a flower bed takes it away
+* A game's options stay with that game
+* A driving range no longer joins rough beside it
+* Celebrities wear their own colours; homes show who lives there
+* Build panel buttons answer only at their foot
+* Sandbox goes straight to the world map; cards keep their places
+* No land past the property's edge in new games
+* Raise and lower keys work only with a tool armed

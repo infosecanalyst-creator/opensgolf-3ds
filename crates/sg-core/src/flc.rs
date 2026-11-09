@@ -216,6 +216,26 @@ fn delta_flc(c: &mut Cur, f: &mut Indexed) {
     }
 }
 
+/// The frames per view a sprite FLC's Firaxis header extension names, read from the header alone (no frame is decoded);
+/// None when the file has no such extension or a header decode_flc refuses. load_sprite gives the same value for it.
+pub fn header_frames_per_view(d: &[u8]) -> Option<u32> {
+    if d.len() < 128 {
+        return None;
+    }
+    let magic = u16le(d, 4);
+    if (magic != 0xAF12 && magic != 0xAF11) || u16le(d, 12) != 8 {
+        return None;
+    }
+    let (w, h) = (u16le(d, 8), u16le(d, 10));
+    if w == 0 || h == 0 || w > 4096 || h > 4096 {
+        return None;
+    }
+    let nframes = u16le(d, 6) as u32;
+    let v = u16le(d, 96) as u32;
+    let fpv = u16le(d, 98) as u32;
+    ((1..=8).contains(&v) && fpv >= 1 && v * fpv <= nframes && u16le(d, 104) == 480 && u16le(d, 106) == 480).then_some(fpv)
+}
+
 pub fn decode_flc(d: &[u8]) -> Result<Flc, String> {
     if d.len() < 128 {
         return Err("short FLC".into());
@@ -231,10 +251,14 @@ pub fn decode_flc(d: &[u8]) -> Result<Flc, String> {
     }
     let speed = u32le(d, 16);
     {
-        // Firaxis header extension, accepted only when it is self-consistent.
+        // Firaxis header extension, accepted when it names 1 to 8 views over a 480x480 canvas and the file holds the frames
+        // it promises. The exe reads views, frames per view and the crop origin straight from the header with no check
+        // (FLC open 0x482c07 takes the crop origin and canvas size, 0x48236d builds the view table, frames per view + 1
+        // chunks per view, from offsets 96 and 98, the sprite loader 0x404120 keeps offset 98 as the frames per view), so a header
+        // whose frame count says more (the scenic elm: 4 views of 12 over 52 frames) is laid out by it all the same.
         let v = u16le(d, 96) as u32;
         let fpv = u16le(d, 98) as u32;
-        if (1..=8).contains(&v) && fpv >= 1 && v * fpv == nframes && u16le(d, 104) == 480 && u16le(d, 106) == 480 {
+        if (1..=8).contains(&v) && fpv >= 1 && v * fpv <= nframes && u16le(d, 104) == 480 && u16le(d, 106) == 480 {
             out.views = v;
             out.frames_per_view = fpv;
             out.has_ext = true;
@@ -387,5 +411,45 @@ mod tests {
         d.extend(f);
         let flc = decode_flc(&d).unwrap();
         assert_eq!(&flc.frames[0].pal[0..3], &[7, 8, 9]);
+    }
+
+    #[test]
+    fn a_header_promising_fewer_frames_than_stored_keeps_its_layout_and_anchor() {
+        // the scenic elm's header: 4 views of 12 frames, a frame count of 52 and the crop origin (199, 168); here 2 views of
+        // 2 frames, a count of 6, each view stored with its ring frame, then two spare frames
+        let mut d = header(6, 1, 1);
+        for (o, v) in [(96, 2u16), (98, 2), (100, 199), (102, 168), (104, 480), (106, 480), (112, 3)] {
+            d[o..o + 2].copy_from_slice(&v.to_le_bytes());
+        }
+        d.extend(frame(&[(4, vec![1, 0, 0, 1, 0, 0, 0]), (16, vec![10])]));
+        for k in 11..=17u8 {
+            d.extend(frame(&[(16, vec![k])]));
+        }
+        let f = decode_flc(&d).unwrap();
+        assert!(f.has_ext);
+        assert_eq!((f.views, f.frames_per_view, f.crop_x, f.crop_y), (2, 2, 199, 168));
+        // view v starts at stored frame (2 + 1) * v and its ring frame is dropped, as the exe's view table (0x481e40) has it
+        let px: Vec<u8> = f.frames.iter().map(|fr| fr.idx[0]).collect();
+        assert_eq!(px, vec![10, 11, 13, 14]);
+    }
+}
+
+#[cfg(test)]
+mod header_tests {
+    use super::*;
+
+    /// The header-only clip length is the one a full decode gives, for every sprite of the free set that has the
+    /// extension, and nothing for the rest.
+    #[test]
+    fn header_frames_per_view_matches_decode() {
+        let mut ext = 0;
+        for f in crate::freeset::files().iter().filter(|f| f.to_lowercase().ends_with(".flc")) {
+            let d = crate::freeset::read(f).unwrap();
+            let full = decode_flc(&d).unwrap();
+            let head = header_frames_per_view(&d);
+            assert_eq!(head, full.has_ext.then_some(full.frames_per_view), "{f}");
+            ext += head.is_some() as usize;
+        }
+        assert!(ext > 50, "{ext}");
     }
 }

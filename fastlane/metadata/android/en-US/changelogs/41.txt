@@ -1,0 +1,3 @@
+* Analyze Golf Shot works from the Elevation panel's button: click near a hole to see the sample shots
+* On the tropical and Links courses, the tree and stream buttons show their own names and descriptions
+* A lone elm tree stands in the middle of its square again, and turns with the view

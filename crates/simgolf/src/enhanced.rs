@@ -130,6 +130,16 @@ pub struct Settings {
     pub frame_cap: u8,
     /// V-sync (the window's swap interval, from the next start; browsers always have it). Counts in Classic too.
     pub vsync: bool,
+    /// The buildings' windows lit warm from dusk to dawn, with the time of day (fx_night.rs; the port's own).
+    pub fx_window_lights: bool,
+    /// Sprinklers watering a few fairway, green and tee tiles at dawn, with the time of day (fx_dawn.rs; the port's own).
+    pub fx_sprinklers: bool,
+    /// Frost on the grass on cold mornings early and late in the year where the theme has a winter, melting by late
+    /// morning, with the time of day (fx_nature.rs, the terrain shader; the port's own).
+    pub fx_frost: bool,
+    /// Pixel-perfect scaling (the port's own): the 800 x 600 picture scaled by whole numbers only, its art sharp
+    /// (nearest-neighbour), a border round it. Off by default; counts in Classic too, like the frame rate cap.
+    pub pixel_perfect: bool,
 }
 
 impl Settings {
@@ -190,6 +200,11 @@ impl Settings {
         fix_original_bugs: true,
         frame_cap: crate::framerate::UNCAPPED,
         vsync: true,
+        fx_window_lights: true,
+        fx_sprinklers: true,
+        fx_frost: true,
+        // a different look of the whole picture: offered, not on by default
+        pixel_perfect: false,
     };
 }
 
@@ -274,7 +289,10 @@ pub fn smooth_edges() -> bool {
     smooth_ui()
 }
 pub fn widescreen() -> bool {
-    on(|s| s.widescreen)
+    // pixel-perfect scaling keeps the picture 800 x 600 in its border: the HUD stays in it. With Classic graphics the
+    // interface extra "the interface at the screen's edges" asks for the same (extras.rs wide_ui).
+    let s = settings();
+    !s.pixel_perfect && ((s.enabled && s.widescreen) || crate::extras::wide_ui())
 }
 pub fn terrain_filter() -> bool {
     on(|s| s.terrain_filter)
@@ -290,6 +308,10 @@ pub fn smooth_motion() -> bool {
 }
 pub fn photo_mode() -> bool {
     on(|s| s.photo_mode)
+}
+/// Pixel-perfect scaling (the port's own; ui::view_scale): not under the master switch, so Classic can have it too.
+pub fn pixel_perfect() -> bool {
+    settings().pixel_perfect
 }
 /// "Fix original bugs" (docs/FIXES.md): not under the master switch, so Classic gets the fixes too unless it is turned off.
 pub fn fix_bugs() -> bool {
@@ -362,7 +384,8 @@ pub const OPTIONS: &[OptionEntry] = &[
     tick!("smooth_camera", "STR_ENHANCED_SMOOTH_CAMERA", DISPLAY, smooth_camera),
     tick!("smooth_motion", "STR_ENHANCED_SMOOTH_MOTION", DISPLAY, smooth_motion),
     tick!("photo_mode", "STR_ENHANCED_PHOTO_MODE", DISPLAY, photo_mode),
-    tick!("fix_original_bugs", "STR_ENHANCED_FIX_BUGS", DISPLAY, fix_original_bugs),
+    // "Fix the original game's bugs" (`fix_original_bugs`) is kept with these settings but is a plain Preferences line
+    // (Preferences > More, prefs_ui.rs): it is no graphics option and counts in Classic too
     // the port's frame rate settings (framerate.rs): they count with Enhanced graphics off too
     OptionEntry {
         key: "frame_cap",
@@ -456,6 +479,12 @@ pub const OPTIONS: &[OptionEntry] = &[
     tick!("fx_water_life", "STR_ENHANCED_FX_WATER_LIFE", WATER, fx_water_life),
     tick!("fx_ice", "STR_ENHANCED_FX_ICE", WATER, fx_ice),
     tick!("fx_spray", "STR_ENHANCED_FX_SPRAY", WATER, fx_spray),
+    // the port's own looks of 0.5: lit windows and dawn sprinklers (with the time of day), winter frost, and pixel-perfect
+    // scaling (which counts with Enhanced graphics off too, like the frame rate settings)
+    tick!("fx_window_lights", "STR_ENHANCED_FX_WINDOW_LIGHTS", ATMOSPHERE, fx_window_lights),
+    tick!("fx_sprinklers", "STR_ENHANCED_FX_SPRINKLERS", ATMOSPHERE, fx_sprinklers),
+    tick!("fx_frost", "STR_ENHANCED_FX_FROST", WEATHER, fx_frost),
+    tick!("pixel_perfect", "STR_ENHANCED_PIXEL_PERFECT", DISPLAY, pixel_perfect, Reload::Art),
 ];
 
 // ---- the settings file ------------------------------------------------------------------------------------------------------
@@ -552,11 +581,11 @@ pub fn trial_clean_exit() {
 }
 
 /// The frame rate guard (issue #55): with Enhanced on, a graphics chip too slow for an option shows a game that hardly
-/// moves (on a laptop's chip in a browser the pixel-art scaler alone costs five times the frame). When the game draws
-/// fewer than [`GUARD_FPS`] frames a second over [`GUARD_SECS`] seconds, the costliest options go, one step at a time
-/// (the scaler, multisampling, the heavier effects, then Enhanced itself), saved and said in the ticker. Not in a window
+/// moves (on a laptop's chip in a browser the pixel-art scaler alone costs five times the frame), and one that only just
+/// keeps up stutters. When the game draws fewer than [`GUARD_FPS`] frames a second (below the lowest frame rate cap, 30) over [`GUARD_SECS`] seconds, the costliest options go, one step at a time
+/// (the scaler's quicker filter, the scaler, multisampling, the heavier effects, then Enhanced itself), saved and said in the ticker. Not in a window
 /// the browser stopped drawing (a hidden tab): a gap of over two seconds between frames starts the count again.
-const GUARD_FPS: f64 = 10.0;
+const GUARD_FPS: f64 = 20.0;
 const GUARD_SECS: f64 = 4.0;
 
 thread_local! {
@@ -611,6 +640,12 @@ const MSAA_COUNTS: bool = !cfg!(target_arch = "wasm32");
 
 /// The next step down from these settings: what to turn off, or None when nothing is left but Classic itself.
 fn slower(mut s: Settings, msaa_counts: bool) -> Option<(Settings, &'static str)> {
+    // the Smooth filter reads sixteen texels for each pixel it draws; the sharp one, one
+    if s.fx_scaler && s.scaler_mode() != 0 {
+        s.fx_scaler_mode = 0;
+        s.fx_scaler_sharp = false;
+        return Some((s, "STR_ENHANCED_SLOW_SCALER_SHARP"));
+    }
     if s.fx_scaler {
         s.fx_scaler = false;
         return Some((s, "STR_ENHANCED_SLOW_SCALER"));
@@ -786,6 +821,8 @@ impl App {
         let art = |s: &Settings| {
             let mut k: Vec<bool> = OPTIONS.iter().filter(|o| o.reload == Reload::Art).map(|o| s.enabled && (o.get)(s) != 0).collect();
             k.push(s.enabled);
+            // pixel-perfect scaling's sharp art counts in Classic too
+            k.push(s.pixel_perfect);
             k
         };
         if art(&old) == art(&new) {
@@ -814,6 +851,7 @@ impl App {
         for (_, t) in self.outfit_tex.drain() {
             g.ctx.delete_texture(t);
         }
+        self.forget_atlas(g);
     }
 }
 
@@ -904,11 +942,22 @@ pub fn record(x0: f32, y0: f32, x1: f32, y1: f32, shift: (f32, f32)) {
 }
 
 /// The 800 x 600 point a pointer at (vx, vy) (centred 800 x 600 units) means: under a piece of the interface drawn at a
-/// window edge, the point in that piece's own layout; elsewhere the point itself. The topmost piece (drawn last) wins.
+/// window edge, the point in that piece's own layout; elsewhere the point itself. The topmost piece (drawn last) wins. A
+/// point on the place a moved piece left (its rectangle in the centred layout) is no point of the interface: the course
+/// shows there, so it comes back far off the screen, and the piece's buttons are not under it (#130: right of the build
+/// panel moved to the left edge, the pointer lit and picked the tree buttons of the panel's centred place).
 pub fn unshift(vx: f32, vy: f32) -> (f32, f32) {
     REGIONS.with(|r| {
         let r = r.borrow();
-        r.1.iter().rev().find(|g| vx >= g.x0 && vx < g.x1 && vy >= g.y0 && vy < g.y1).map(|g| (vx - g.dx, vy - g.dy)).unwrap_or((vx, vy))
+        if let Some(g) = r.1.iter().rev().find(|g| vx >= g.x0 && vx < g.x1 && vy >= g.y0 && vy < g.y1) {
+            return (vx - g.dx, vy - g.dy);
+        }
+        let left =
+            |g: &&Region| (g.dx != 0.0 || g.dy != 0.0) && vx >= g.x0 - g.dx && vx < g.x1 - g.dx && vy >= g.y0 - g.dy && vy < g.y1 - g.dy;
+        if r.1.iter().any(|g| left(&g)) {
+            return (-10_000.0, -10_000.0);
+        }
+        (vx, vy)
     })
 }
 
@@ -1155,7 +1204,8 @@ impl App {
         }
         self.enh.tracks = seen;
         // the balls, by golfer (in the simulation's units: x, y along the ground and the height)
-        let n = self.club.g.len();
+        // (the golfers' only: not the hole tool's trial golfer past them, render.rs draw_balls)
+        let n = self.club.g.len().min(sg_core::golfer::SLOTS);
         self.enh.balls.resize(n, None);
         for i in 0..n {
             let gl = &self.club.g[i];
@@ -1269,6 +1319,22 @@ pub fn anisotropy(g: &mut Gfx, tex: miniquad::TextureId) {
 mod tests {
     use super::*;
 
+    /// #130: the build panel drawn 300 units left of its place; a pointer on the place it left hits none of its buttons,
+    /// one on the panel as drawn is in the panel's own layout, and the rest of the screen is itself.
+    #[test]
+    fn a_moved_piece_leaves_no_buttons_behind() {
+        begin_frame();
+        record(-74.0, 452.0, 496.0, 600.0, (-300.0, 0.0));
+        record(0.0, 0.0, 100.0, 40.0, (0.0, 0.0));
+        end_frame();
+        assert_eq!(unshift(400.0, 500.0), (700.0, 500.0), "on the panel as drawn");
+        assert_eq!(unshift(750.0, 550.0), (-10_000.0, -10_000.0), "where the panel's trees would be");
+        assert_eq!(unshift(50.0, 20.0), (50.0, 20.0), "a piece in its own place");
+        assert_eq!(unshift(400.0, 200.0), (400.0, 200.0), "the course");
+        begin_frame();
+        end_frame();
+    }
+
     #[test]
     fn pages_toggle() {
         let mut s = Settings::DEFAULT;
@@ -1315,11 +1381,36 @@ mod tests {
     }
 
     #[test]
+    fn pixel_perfect_scales_by_whole_numbers() {
+        use crate::ui::view_scale;
+        set(Settings::DEFAULT);
+        // off (the default): the fraction that fits, as Classic always scaled
+        assert_eq!(view_scale(1280.0, 800.0), 800.0 / 600.0);
+        assert_eq!(view_scale(3840.0, 2160.0), 3.6);
+        // on, Classic too: the largest whole number that fits; a small window still shrinks
+        set(Settings { pixel_perfect: true, ..Settings::DEFAULT });
+        assert_eq!(view_scale(800.0, 600.0), 1.0);
+        assert_eq!(view_scale(1280.0, 800.0), 1.0);
+        assert_eq!(view_scale(1920.0, 1080.0), 1.0);
+        assert_eq!(view_scale(1600.0, 1200.0), 2.0);
+        assert_eq!(view_scale(3840.0, 2160.0), 3.0);
+        assert_eq!(view_scale(640.0, 480.0), 0.8);
+        // the picture's corner on a whole pixel, and Enhanced widescreen kept off
+        let v = crate::ui::Screen::new(1281.0, 801.0).view;
+        assert_eq!((v.ox, v.oy), (240.0, 100.0));
+        set(Settings { pixel_perfect: true, enabled: true, ..Settings::DEFAULT });
+        assert!(!widescreen());
+        set(Settings::DEFAULT);
+    }
+
+    #[test]
     fn option_keys_are_settings_fields() {
         let v = serde_json::to_value(Settings::DEFAULT).unwrap();
         for o in OPTIONS {
             assert!(v.get(o.key).is_some(), "{}", o.key);
         }
+        // the bug fixes are kept here but shown in Preferences > More (prefs_ui.rs)
+        assert!(v.get("fix_original_bugs").is_some() && !OPTIONS.iter().any(|o| o.key == "fix_original_bugs"));
     }
 
     #[test]
@@ -1359,7 +1450,16 @@ mod guard_tests {
                 break;
             }
         }
-        assert_eq!(steps, ["STR_ENHANCED_SLOW_SCALER", "STR_ENHANCED_SLOW_MSAA", "STR_ENHANCED_SLOW_EFFECTS", "STR_ENHANCED_SLOW_OFF"]);
+        assert_eq!(
+            steps,
+            [
+                "STR_ENHANCED_SLOW_SCALER_SHARP",
+                "STR_ENHANCED_SLOW_SCALER",
+                "STR_ENHANCED_SLOW_MSAA",
+                "STR_ENHANCED_SLOW_EFFECTS",
+                "STR_ENHANCED_SLOW_OFF"
+            ]
+        );
     }
 
     #[test]
@@ -1421,13 +1521,13 @@ mod guard_tests {
             assert!(guard_frame(t).is_none());
             t += 1.0 / 30.0;
         }
-        // two frames a second: the scaler goes after the window
+        // fifteen frames a second (under the guard's twenty): the scaler's quicker filter after the window
         let mut hit = None;
-        for _ in 0..12 {
-            t += 0.5;
+        for _ in 0..90 {
+            t += 1.0 / 15.0;
             hit = hit.or(guard_frame(t));
         }
-        assert_eq!(hit.map(|h| h.1), Some("STR_ENHANCED_SLOW_SCALER"));
+        assert_eq!(hit.map(|h| h.1), Some("STR_ENHANCED_SLOW_SCALER_SHARP"));
         set(Settings::default());
     }
 }

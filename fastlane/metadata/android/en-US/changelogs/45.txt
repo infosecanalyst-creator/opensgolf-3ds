@@ -1,0 +1,6 @@
+* Placing a landmark, flower bed or scenic tree places the one you chose
+* Paths join up as in the original, grey when joined to the clubhouse
+* Tees of open holes show the arrow toward the hole
+* Sand traps keep the shape you turned them to
+* Fixed a flash of large, blocky shadows with Enhanced graphics
+* No more twinkling white dots on the ground on spring and autumn mornings

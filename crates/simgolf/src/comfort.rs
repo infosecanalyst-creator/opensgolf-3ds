@@ -5,7 +5,10 @@
 //!   (STR_TOAST_CHAMP_NO_SAVE_IN_TOURNAMENT). The save goes where the Save dialog's do (the browser's store on the web);
 //! * pause in the background (an interface extra, extras.rs): the game pauses when its window loses the focus (miniquad's
 //!   window_minimized_event: focus out on X11, Windows and macOS, the page hidden or blurred in the browser, the app
-//!   paused on Android) and goes on when it comes back, unless the player paused or unpaused it meanwhile;
+//!   paused on Android) and goes on when it comes back, unless the player paused or unpaused it meanwhile. Its sound
+//!   stops too, on any screen and whoever paused the game: the mixer is paused, so the ambience, music and effects go on
+//!   from where they were when the window is back, and in a browser the page's sound output sleeps (audio.rs
+//!   output_asleep), so that a phone has no sound playing to keep the page running in the background;
 //! * pause on big news (an interface extra): the game pauses after the club's tick that brings a VIP (CEO, commissioner,
 //!   heiress), a famous golfer's challenge, the SGA's tournament offer, a step of the board's debt warning, or cash going
 //!   below zero. The news is on the ticker or the year-end report as before; the game waits there.
@@ -33,6 +36,8 @@ pub struct State {
     pub paused_for: Option<Why>,
     /// A pause for news happened during this frame's ticks: the remaining ticks are dropped.
     pub hold: bool,
+    /// The sound stopped while the window is in the background (`window_hidden`), until `window_shown`.
+    pub quiet: bool,
     /// The staff areas view (Shift+A, staffview_ui.rs) and its tiles, made again every few frames.
     pub staff_view: bool,
     pub staff_marks: Option<crate::staffview_ui::Marks>,
@@ -86,15 +91,21 @@ impl App {
         self.comfort.hold = true;
     }
 
-    /// The window went to the background (the Pause in the background extra): the game pauses when it runs.
+    /// The window went to the background (the Pause in the background extra): the game pauses when it runs, and its sound
+    /// stops whether it ran or not (a game the player had paused, or the title tune, would otherwise sound on in the
+    /// background and keep a phone's page awake).
     pub fn window_hidden(&mut self) {
-        if crate::extras::pause_background() && !self.paused && self.land.is_some() {
+        if !crate::extras::pause_background() {
+            return;
+        }
+        if !self.paused && self.land.is_some() {
             self.paused = true;
             self.comfort.paused_for = Some(Why::Background);
         }
+        self.set_quiet(true);
     }
 
-    /// The window is back: a pause made by `window_hidden` ends.
+    /// The window is back: a pause made by `window_hidden` ends, and the sound it stopped goes on.
     pub fn window_shown(&mut self) {
         if self.comfort.paused_for == Some(Why::Background) && self.paused {
             self.paused = false;
@@ -102,6 +113,19 @@ impl App {
         if self.comfort.paused_for == Some(Why::Background) {
             self.comfort.paused_for = None;
         }
+        if self.comfort.quiet {
+            self.set_quiet(false);
+        }
+    }
+
+    /// The sound stopped for the background or started again: the mixer is paused, where the Sound preference stops its
+    /// voices, so the ambience, the music when it is on and a clip half played go on where they were.
+    fn set_quiet(&mut self, quiet: bool) {
+        self.comfort.quiet = quiet;
+        if let Some(m) = &self.mixer {
+            m.set_paused(quiet);
+        }
+        crate::audio::output_asleep(quiet);
     }
 
     /// Shift+F5: the game saved to the quick save, with a message on the ticker.
@@ -186,5 +210,63 @@ mod tests {
         assert!(!big_news(&red, &red));
         assert!(big_news(&red, &News { debt_stage: 1, ..red }));
         assert!(!big_news(&News { debt_stage: 1, ..red }, &News { debt_stage: 0, ..calm }));
+    }
+
+    /// A game under way on the course, with a mixer, the ambience and the music on.
+    fn a_game() -> App {
+        let mut a = App::with_clock(std::path::PathBuf::new(), 4242);
+        a.land = Some(sg_core::land::Land::from_terrain(&a.terrain, 0));
+        a.mixer = Some(std::sync::Arc::new(sg_core::mixer::Mixer::new(std::path::Path::new("/nonexistent"))));
+        (a.ambience, a.music, a.music_on) = (3, 4, true);
+        a
+    }
+
+    fn pause_background(on: bool) {
+        crate::extras::set(crate::extras::Settings { pause_background: on, ..crate::extras::Settings::ALL_OFF });
+    }
+
+    /// (paused, why, the sound stopped for the background, the mixer paused, the ambience's voice, the music's voice, the
+    /// music on)
+    fn state(a: &App) -> (bool, Option<Why>, bool, bool, i32, i32, bool) {
+        let mixer = a.mixer.as_ref().is_some_and(|m| m.paused());
+        (a.paused, a.comfort.paused_for, a.comfort.quiet, mixer, a.ambience, a.music, a.music_on)
+    }
+
+    #[test]
+    fn the_background_pauses_and_quiets_the_game_and_its_return_brings_both_back() {
+        pause_background(true);
+        let mut a = a_game();
+        a.window_hidden();
+        assert_eq!(state(&a), (true, Some(Why::Background), true, true, 3, 4, true));
+        a.window_shown();
+        // the ambience and the music are the voices they were, the mixer goes on with them
+        assert_eq!(state(&a), (false, None, false, false, 3, 4, true));
+        // a game the player had paused stays paused, but its sound stops in the background all the same
+        a.paused = true;
+        a.window_hidden();
+        assert_eq!(state(&a), (true, None, true, true, 3, 4, true));
+        a.window_shown();
+        assert_eq!(state(&a), (true, None, false, false, 3, 4, true));
+        // the title screens (no game): no pause, the sound stops
+        let mut t = a_game();
+        t.land = None;
+        t.window_hidden();
+        assert_eq!(state(&t), (false, None, true, true, 3, 4, true));
+        t.window_shown();
+        assert_eq!(state(&t), (false, None, false, false, 3, 4, true));
+    }
+
+    #[test]
+    fn without_the_extra_the_background_changes_nothing() {
+        pause_background(false);
+        let mut a = a_game();
+        a.window_hidden();
+        assert_eq!(state(&a), (false, None, false, false, 3, 4, true));
+        a.window_shown();
+        assert_eq!(state(&a), (false, None, false, false, 3, 4, true));
+        // the window coming back without having gone (the first focus) leaves the extra's sound alone too
+        pause_background(true);
+        a.window_shown();
+        assert_eq!(state(&a), (false, None, false, false, 3, 4, true));
     }
 }

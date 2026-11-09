@@ -2,148 +2,467 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<meta name="theme-color" content="#0f3d24">
-<meta name="description" content="OpenSGolf: Sid Meier's SimGolf, remastered. A free, open-source, fan-made golf resort game you can play right in your browser, with your own SimGolf files or free graphics.">
-<title>OpenSGolf: SimGolf, remastered, in your browser</title>
+<!-- viewport-fit=cover: a phone held sideways lets the game reach both sides of the screen, under its camera cut-out and
+     rounded corners, instead of leaving a band down each; the game keeps its own pieces clear of them (opensgolf.js
+     sgWindowBox, ui.rs safe_extent) -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1f6b3f">
+<meta name="description" content="OpenSGolf: the classic golf course builder, rebuilt. A free, open-source, fan-made golf resort game you can play right in your browser, with your own SimGolf files or free graphics.">
+<title>OpenSGolf: the classic golf course builder, rebuilt, in your browser</title>
+<script>
+  // the colour theme picked with the page's theme button (the port's own): "light" or "dark" set on <html> before anything
+  // is drawn, so the page never flashes the other palette; nothing kept follows the device's scheme
+  try { var t = localStorage.getItem("opensgolf-theme"); if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t); } catch (e) {}
+</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%232f8f4e'/%3E%3Crect x='30' y='12' width='3' height='34' fill='%23fff'/%3E%3Cpath d='M33 12l16 6-16 6z' fill='%23e8423b'/%3E%3Ccircle cx='24' cy='46' r='6' fill='%23fff'/%3E%3C/svg%3E">
+<!-- the headline font (a free Google Font); without it the headlines fall back to the system's rounded or plain bold -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&display=swap">
 <style>
+  /* The page's look: an early-2000s game site (a centred "site" panel on a quiet green backdrop, gel buttons, glossy
+     section bars, a CD to load the game from), the port's own, drawn here in CSS and SVG; none of the original's box art, logos or pictures. */
   :root {
-    --bg: #0c2416;
-    --bg2: #12331f;
-    --card: rgba(255, 255, 255, 0.06);
-    --card-solid: rgba(14, 40, 25, 0.82);
-    --card-border: rgba(255, 255, 255, 0.12);
-    --text: #f1f6ef;
-    --muted: #a9c2ae;
-    --accent: #f4d35e;
-    --green: #3fae5f;
-    --green-dark: #2b8a46;
-    --flag: #e8423b;
-    --radius: 16px;
+    --head: "Baloo 2", "Arial Rounded MT Bold", "Trebuchet MS", system-ui, sans-serif;
+    --ui: Verdana, Tahoma, "DejaVu Sans", Geneva, sans-serif;
+    --bg1: #1f6b3f; --bg2: #164a42; --bg3: #102a4f;
+    --glow: rgba(150, 225, 160, 0.30); --dimple-lo: rgba(0, 20, 10, 0.16); --dimple-hi: rgba(255, 255, 255, 0.05);
+    --panel: #f5f9ee;
+    --panel-edge: #ffffff;
+    --ink: #1c2a1f;
+    --ink-soft: #3d4f41;
+    --inset: #ffffff;
+    --inset-hi: #ffffff;
+    --inset-lo: #b4c6ab;
+    --line: #c8d6bf;
+    --link: #0b5aa8;
+    --gold: #ffd23f;
+    --bar1: #3f9a4f; --bar2: #1d6b2f; --bar3: #155a25; --bar-edge: #0e4a1c;
+    --frame: #36b04a;
+    --tip-bg: #fff4c2; --tip-edge: #d89a00; --tip-ink: #2b2100;
+    --news-bg: #eef5fb; --news-edge: #8fb3d6;
+    --code-bg: #e8efe2; --code-ink: #1d3a1f;
+    --foot: #59625c;
+    --dark-band: #17452a;
+    --mast-sky:
+      radial-gradient(90px 34px at 72% 28%, rgba(255,255,255,0.9), transparent 70%),
+      radial-gradient(70px 26px at 78% 22%, rgba(255,255,255,0.85), transparent 70%),
+      radial-gradient(120px 30px at 18% 78%, rgba(255,255,255,0.55), transparent 70%),
+      linear-gradient(180deg, #1b5cae 0%, #3a86d4 55%, #8cc4ee 100%);
+    --card-head: var(--bar2);
+    --site-ring: rgba(255, 255, 255, 0.55);
+    color-scheme: light;
+  }
+  /* the dark palette: the device's dark scheme unless Light was picked with the theme button, or Dark picked with it. The
+     two blocks must stay the same (web/test.js checks); dark styles go in them as properties, not in rules of their own */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg1: #0f2a1b; --bg2: #0b1d1f; --bg3: #070f22;
+      --glow: rgba(90, 170, 110, 0.16); --dimple-lo: rgba(0, 0, 0, 0.22); --dimple-hi: rgba(255, 255, 255, 0.025);
+      --panel: #142019;
+      --panel-edge: #2c4434;
+      --ink: #e9f2e6;
+      --ink-soft: #bfd0c2;
+      --inset: #1c2b21;
+      --inset-hi: #2f4636;
+      --inset-lo: #0a120d;
+      --line: #2f4636;
+      --link: #8cc8ff;
+      --tip-bg: #3a2f0a; --tip-edge: #e0a800; --tip-ink: #fff1c2;
+      --news-bg: #15233a; --news-edge: #3c5f8c;
+      --code-bg: #24382a; --code-ink: #d9f0d0;
+      --foot: #a9b6ad;
+      --dark-band: #0e2a19;
+      --mast-sky:
+        radial-gradient(90px 34px at 72% 28%, rgba(255,255,255,0.12), transparent 70%),
+        linear-gradient(180deg, #0c1838 0%, #213a70 60%, #4b5b8f 100%);
+      --card-head: var(--gold);
+      --site-ring: rgba(255, 255, 255, 0.16);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg1: #0f2a1b; --bg2: #0b1d1f; --bg3: #070f22;
+    --glow: rgba(90, 170, 110, 0.16); --dimple-lo: rgba(0, 0, 0, 0.22); --dimple-hi: rgba(255, 255, 255, 0.025);
+    --panel: #142019;
+    --panel-edge: #2c4434;
+    --ink: #e9f2e6;
+    --ink-soft: #bfd0c2;
+    --inset: #1c2b21;
+    --inset-hi: #2f4636;
+    --inset-lo: #0a120d;
+    --line: #2f4636;
+    --link: #8cc8ff;
+    --tip-bg: #3a2f0a; --tip-edge: #e0a800; --tip-ink: #fff1c2;
+    --news-bg: #15233a; --news-edge: #3c5f8c;
+    --code-bg: #24382a; --code-ink: #d9f0d0;
+    --foot: #a9b6ad;
+    --dark-band: #0e2a19;
+    --mast-sky:
+      radial-gradient(90px 34px at 72% 28%, rgba(255,255,255,0.12), transparent 70%),
+      linear-gradient(180deg, #0c1838 0%, #213a70 60%, #4b5b8f 100%);
+    --card-head: var(--gold);
+    --site-ring: rgba(255, 255, 255, 0.16);
+    color-scheme: dark;
   }
   * { box-sizing: border-box; }
-  html { background: var(--bg); }
+  html { background: var(--bg3); scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
   html, body { margin: 0; padding: 0; min-height: 100%; }
-  body {
-    min-height: 100vh;
-    color: var(--text);
-    font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
-    line-height: 1.5;
-    background:
-      radial-gradient(1200px 600px at 50% -10%, rgba(120, 220, 140, 0.18), transparent 60%),
-      repeating-linear-gradient(135deg, rgba(255,255,255,0.025) 0 40px, rgba(0,0,0,0.025) 40px 80px),
-      linear-gradient(180deg, var(--bg2), var(--bg));
-  }
+  body { min-height: 100vh; color: var(--ink); font: 14px/1.55 var(--ui); background: var(--bg2); }
+  /* a phone held sideways (viewport-fit=cover): the site panel clear of the camera cut-out and the rounded corners; the
+     backdrop and the game, fixed over the window, still reach the edges */
+  body { padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
   /* the game: fixed over the whole window once it starts (the page below is hidden then) */
   /* (100dvh: iPad and iPhone Safari's 100vh is the height with their bars hidden, which put the bottom of the game, the
      dock and the panels, under the bars; opensgolf.js sgFitCanvas sizes it to the visible area as the bars come and go) */
   #glcanvas { display: none; position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; height: 100dvh; outline: none; touch-action: none;
     -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; background: #000; }
 
-  /* the hero: a real in-game picture (taken with the original SimGolf files) behind the title and the two ways to play */
-  .hero { position: relative; padding: 28px 16px 36px; overflow: hidden;
-    background: radial-gradient(ellipse at 50% 35%, #2f6b3a 0%, #0c2416 70%); }
-  .hero::before { content: ""; position: absolute; inset: 0;
+  /* the backdrop behind the site: deep green into navy, a faint dimple tile like a golf ball's and a soft light behind
+     the panel; still and low in contrast, so the panel is what the eye finds (inside #picker, so it goes with the page) */
+  #backdrop { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none;
     background:
-      linear-gradient(90deg, rgba(6, 26, 14, 0.92) 0%, rgba(6, 26, 14, 0.72) 45%, rgba(6, 26, 14, 0.35) 100%),
-      linear-gradient(180deg, rgba(6, 26, 14, 0) 55%, var(--bg2) 100%); }
-  .wrap { position: relative; max-width: 1040px; margin: 0 auto; }
-  .topbar { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
-  .topbar a { color: var(--text); text-decoration: none; font-size: 14px; font-weight: 600; padding: 6px 12px;
-    border-radius: 999px; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--card-border); }
-  .topbar a:hover { background: rgba(0, 0, 0, 0.45); }
-  .topbar a.coffee { background: #ffdd00; color: #1b1b1b; border-color: #ffdd00; }
+      radial-gradient(ellipse 760px 620px at 50% 340px, var(--glow), transparent 72%),
+      radial-gradient(circle at 45% 40%, var(--dimple-lo) 0 1.4px, var(--dimple-hi) 1.9px 2.3px, transparent 2.8px) 0 0 / 16px 14px,
+      radial-gradient(circle at 45% 40%, var(--dimple-lo) 0 1.4px, var(--dimple-hi) 1.9px 2.3px, transparent 2.8px) 8px 7px / 16px 14px,
+      linear-gradient(180deg, var(--bg1) 0%, var(--bg2) 48%, var(--bg3) 100%); }
+  #backdrop::after { content: ""; position: absolute; inset: 0;
+    background: radial-gradient(ellipse 120% 90% at 50% 40%, transparent 55%, rgba(0, 0, 0, 0.35) 100%); }
 
-  header { display: flex; align-items: center; gap: 18px; margin: 8px 0 6px; }
-  header svg { flex: 0 0 auto; width: 76px; height: 76px; filter: drop-shadow(0 6px 14px rgba(0,0,0,0.45)); }
-  h1 { margin: 0; font-size: clamp(38px, 8vw, 64px); letter-spacing: -1px; line-height: 1.02; text-shadow: 0 4px 18px rgba(0,0,0,0.5); }
-  h1 span { color: var(--accent); }
-  .kicker { margin: 14px 0 0; font-size: clamp(22px, 4.2vw, 34px); font-weight: 700; color: var(--accent); line-height: 1.15;
-    text-shadow: 0 3px 14px rgba(0,0,0,0.55); }
-  .tagline { margin: 8px 0 0; font-size: clamp(16px, 2.6vw, 20px); max-width: 640px; text-shadow: 0 2px 10px rgba(0,0,0,0.6); }
-  .fan { margin: 10px 0 0; color: #cfe0d2; font-size: 13px; text-shadow: 0 1px 6px rgba(0,0,0,0.7); }
-  .card .note { margin: 8px 0 0; color: var(--muted); font-size: 14px; }
+  /* the site panel: fixed width, centred, bevelled */
+  .site { position: relative; z-index: 1; max-width: 800px; margin: 24px auto 40px; background: var(--panel);
+    border: 1px solid #0d3b6e; border-radius: 14px; box-shadow: 0 0 0 4px var(--site-ring), 0 18px 50px rgba(5, 25, 60, 0.45);
+    overflow: hidden; }
 
-  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-top: 26px; }
-  .card { background: var(--card); border: 1px solid var(--card-border); border-radius: var(--radius); padding: 22px;
-    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); display: flex; flex-direction: column; gap: 10px; }
-  .hero .card { background: var(--card-solid); }
-  .card h2 { margin: 0; font-size: 20px; display: flex; align-items: center; gap: 10px; }
-  .card h2 .icon { font-size: 22px; }
-  .card p { margin: 0; color: var(--muted); font-size: 15px; }
-  .card .actions { margin-top: auto; display: flex; flex-wrap: wrap; gap: 10px; padding-top: 8px; }
-  .card.primary { border-color: rgba(244, 211, 94, 0.6); box-shadow: 0 0 0 1px rgba(244, 211, 94, 0.2), 0 18px 40px rgba(0,0,0,0.35); }
-  #again { border-color: rgba(63, 174, 95, 0.8); }
+  /* the masthead: a little sky and course of its own, the title and the in-game picture framed in green */
+  .mast { position: relative; padding: 14px 18px 46px; overflow: hidden; color: #fff; background: var(--mast-sky); }
+  .mast .hills { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 56px; display: block; }
+  .mast .row { position: relative; display: flex; align-items: center; gap: 18px; }
+  .mast .titles { flex: 1 1 auto; min-width: 0; }
+  .toplinks { position: relative; z-index: 2; display: flex; justify-content: flex-end; gap: 6px; flex-wrap: wrap; margin-bottom: 4px; }
+  .toplinks a { font: bold 12px var(--ui); color: #fff; text-decoration: none; padding: 5px 10px; border-radius: 4px;
+    background: rgba(8, 36, 80, 0.55); border: 1px solid rgba(255, 255, 255, 0.35); min-height: 28px; display: inline-flex; align-items: center; }
+  .toplinks a:hover { background: rgba(8, 36, 80, 0.8); text-decoration: underline; }
+  .toplinks a.coffee { background: #ffdd00; color: #1b1b1b; border-color: #b39b00; }
+  /* the theme button (the port's own): a glossy gel pill turning Auto (the device's scheme), Light and Dark in turn; it
+     shows the one in use from <html>'s data-theme, so it is right from the first paint; a taller tap area round it */
+  .theme { position: relative; display: inline-flex; align-items: center; min-height: 28px; padding: 0 11px 0 7px; border-radius: 14px;
+    font: bold 12px var(--ui); color: #0d2a52; cursor: pointer; border: 1px solid #5d7fa8;
+    background: linear-gradient(180deg, #ffffff 0%, #e6eff9 45%, #c9daef 52%, #dde9f6 100%);
+    box-shadow: inset 0 1px 0 #fff, inset 0 -2px 3px rgba(40, 80, 130, 0.22), 0 1px 2px rgba(0, 0, 0, 0.3); -webkit-tap-highlight-color: transparent; }
+  .theme::before { content: ""; position: absolute; inset: -8px -3px; }
+  .theme:hover { filter: brightness(1.06); }
+  .theme:active { box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.25); }
+  .theme:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+  .theme > span { display: inline-flex; align-items: center; gap: 5px; }
+  .theme svg { width: 16px; height: 16px; flex: 0 0 auto; }
+  .theme .t-light, .theme .t-dark,
+  :root[data-theme="light"] .theme .t-auto, :root[data-theme="dark"] .theme .t-auto { display: none; }
+  :root[data-theme="light"] .theme .t-light, :root[data-theme="dark"] .theme .t-dark { display: inline-flex; }
+  :root[data-theme="dark"] .theme { color: #fff; border-color: #0b1640; text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.5);
+    background: linear-gradient(180deg, #7d8cc8 0%, #3b4a8c 45%, #24326e 52%, #33428a 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), inset 0 -2px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.3); }
+  .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  header { display: flex; align-items: center; gap: 12px; }
+  header svg { flex: 0 0 auto; width: 62px; height: 62px; filter: drop-shadow(0 3px 4px rgba(0, 20, 50, 0.5)); }
+  h1 { margin: 0; font: 800 clamp(40px, 7vw, 58px)/1 var(--head); color: var(--gold); letter-spacing: 0.5px;
+    text-shadow: 0 2px 0 #8a5a00, 0 3px 0 #6b4400, 0 4px 10px rgba(0, 20, 50, 0.6); }
+  h1 span { color: #fff; }
+  .kicker { margin: 6px 0 0; font: 700 clamp(18px, 3vw, 23px)/1.15 var(--head); color: #fff;
+    text-shadow: 0 1px 0 #0b2f63, 0 2px 6px rgba(0, 20, 50, 0.8); }
+  .tagline { margin: 6px 0 0; font-size: 13px; max-width: 470px; color: #fff; padding: 6px 10px; border-radius: 6px;
+    background: rgba(8, 36, 80, 0.62); border: 1px solid rgba(255, 255, 255, 0.25); }
+  /* the changelog, beside the downloads (CHANGELOG.md) */
+  .dl .whatsnew { font: bold 12.5px/1.5 var(--ui); color: #fff; text-shadow: 0 1px 2px rgba(0, 20, 50, 0.9); text-decoration: none;
+    border: 1px solid rgba(255, 255, 255, 0.85); border-radius: 999px; padding: 0 9px; white-space: nowrap; }
+  .dl .whatsnew:hover { text-decoration: underline; }
+  .dl { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+  .dl .btn { min-height: 38px; padding: 0 16px; font-size: 14px; flex: 0 0 auto; }
+  .dl .btn[hidden] { display: none; }
+  .dl-more { font: 12.5px/1.5 var(--ui); color: #fff; text-shadow: 0 1px 2px rgba(0, 20, 50, 0.9); }
+  .dl-more a { color: #fff; font-weight: bold; }
+  .shot { flex: 0 0 auto; width: 220px; height: 150px; border: 4px solid var(--frame); border-radius: 14px; transform: rotate(2.5deg);
+    background: radial-gradient(ellipse at 50% 35%, #2f6b3a 0%, #0c2416 70%);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.5), 0 0 0 1px #1d6b2f, 0 8px 18px rgba(0, 20, 50, 0.45); }
 
-  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 22px;
-    border-radius: 999px; font-weight: 700; font-size: 16px; cursor: pointer; border: 1px solid transparent; color: #10240f;
-    background: var(--accent); transition: transform 0.08s ease, filter 0.15s ease; text-decoration: none;
-    -webkit-tap-highlight-color: transparent; font-family: inherit; }
-  .btn:hover { filter: brightness(1.07); }
-  .btn:active { transform: translateY(1px); }
-  .btn:focus-within, .btn:focus-visible { outline: 3px solid rgba(244, 211, 94, 0.55); outline-offset: 2px; }
-  .btn.green { background: var(--green); color: #fff; }
-  .btn.ghost { background: transparent; color: var(--text); border-color: var(--card-border); font-weight: 600; font-size: 15px; }
+  /* the tab bar */
+  nav.tabs { display: flex; flex-wrap: wrap; gap: 3px; padding: 6px 8px 0; position: relative;
+    background: linear-gradient(180deg, #2e7d3d 0%, #1b5f2b 100%); border-top: 1px solid #5cb86b; border-bottom: 3px solid var(--panel); }
+  nav.tabs a { flex: 1 1 auto; text-align: center; min-height: 40px; display: flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 6px 12px; font: bold 13px var(--ui); color: #fff; text-decoration: none; border-radius: 8px 8px 0 0;
+    background: linear-gradient(180deg, #4fae5e 0%, #2b8a3c 50%, #237a33 51%, #2c8a3d 100%);
+    border: 1px solid #0f4a1c; border-bottom: 0; box-shadow: inset 0 1px 0 rgba(255,255,255,0.45); text-shadow: 0 1px 0 rgba(0,0,0,0.45); }
+  nav.tabs a:hover { background: linear-gradient(180deg, #66c274 0%, #339a45 50%, #2a8a3b 51%, #34974a 100%); }
+  nav.tabs a.on { background: var(--panel); color: var(--ink); text-shadow: none; box-shadow: none; border-color: #0f4a1c; margin-bottom: -3px; padding-bottom: 9px; }
+  nav.tabs a:focus-visible { outline: 3px solid var(--gold); outline-offset: -3px; }
+  nav.tabs svg { width: 16px; height: 16px; flex: 0 0 auto; }
+
+  /* body: the main column and the sidebar */
+  .cols { display: grid; grid-template-columns: minmax(0, 1fr) 222px; gap: 16px; padding: 16px; }
+  .main, .side { min-width: 0; }
+
+  /* the glossy section bars */
+  .bar { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; padding: 5px 12px 4px; border-radius: 10px;
+    font: 700 19px/1.3 var(--head); color: var(--gold); letter-spacing: 0.2px;
+    background: linear-gradient(180deg, var(--bar1) 0%, var(--bar2) 50%, var(--bar3) 51%, var(--bar2) 100%);
+    border: 1px solid var(--bar-edge); box-shadow: inset 0 1px 0 rgba(255,255,255,0.4), 0 2px 3px rgba(0,0,0,0.15);
+    text-shadow: 0 1px 0 #072810, 0 2px 3px rgba(0,0,0,0.4); }
+  .bar svg { width: 22px; height: 22px; flex: 0 0 auto; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.4)); }
+  section.block { margin: 0 0 22px; scroll-margin-top: 10px; }
+
+  /* inset panels */
+  .card { background: var(--inset); border: 1px solid; border-color: var(--inset-lo) var(--inset-hi) var(--inset-hi) var(--inset-lo);
+    box-shadow: inset 1px 1px 0 rgba(0,0,0,0.06), 0 0 0 1px var(--line); border-radius: 8px; padding: 14px;
+    display: flex; flex-direction: column; gap: 8px; }
+  .card h2 { margin: 0; font: 700 19px/1.25 var(--head); color: var(--card-head); display: flex; align-items: center; gap: 8px; }
+  .card h2 .icon { font-size: 20px; }
+  .card p { margin: 0; color: var(--ink-soft); }
+  .card .actions { margin-top: auto; display: flex; flex-wrap: wrap; gap: 10px; padding-top: 6px; }
+  .cards { display: grid; gap: 12px; }
+  .card.primary { border: 3px solid var(--frame); border-radius: 14px; box-shadow: 0 0 0 1px #1d6b2f, 0 6px 16px rgba(20, 60, 30, 0.18); }
+  #again { border: 3px solid var(--frame); border-radius: 14px; }
+  .card .note { color: var(--ink-soft); font-size: 13px; }
+  /* the sounds tip: it must be seen */
+  .card .tip { position: relative; padding: 10px 12px 10px 48px; border: 2px solid var(--tip-edge); border-radius: 10px; color: var(--tip-ink);
+    background: var(--tip-bg); font-size: 14px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.5); }
+  .card .tip strong { display: block; font: 700 17px/1.3 var(--head); color: var(--tip-ink); }
+  .card .tip svg { position: absolute; left: 10px; top: 12px; width: 28px; height: 28px; }
+
+  /* gel buttons */
+  .btn { position: relative; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 46px;
+    padding: 0 20px; border-radius: 23px; font: bold 15px var(--ui); cursor: pointer; color: #2b1d00; text-decoration: none;
+    border: 1px solid #a87400;
+    background: linear-gradient(180deg, #fff6c4 0%, #ffe066 45%, #ffcc1f 52%, #ffd84a 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -2px 3px rgba(150, 90, 0, 0.25), 0 2px 3px rgba(0,0,0,0.2);
+    transition: filter 0.15s ease, transform 0.08s ease; -webkit-tap-highlight-color: transparent; }
+  .btn:hover { filter: brightness(1.06) saturate(1.05); }
+  .btn:active { transform: translateY(1px); box-shadow: inset 0 2px 4px rgba(0,0,0,0.25); }
+  .btn:focus-within, .btn:focus-visible { outline: 3px solid #0b5aa8; outline-offset: 2px; }
+  .btn.green { color: #fff; border-color: #0e4a1c; text-shadow: 0 -1px 0 rgba(0,0,0,0.45);
+    background: linear-gradient(180deg, #8fdc98 0%, #3d9e4e 22%, #1f7532 50%, #18672a 52%, #1f7632 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.6), inset 0 -2px 3px rgba(0,0,0,0.25), 0 2px 3px rgba(0,0,0,0.2); }
+  .btn.ghost { color: #14233a; border-color: #7d8fa3; font-size: 14px;
+    background: linear-gradient(180deg, #ffffff 0%, #eef3f8 45%, #d9e3ec 52%, #e8eff5 100%);
+    box-shadow: inset 0 1px 0 #fff, inset 0 -2px 3px rgba(60, 90, 120, 0.18), 0 1px 2px rgba(0,0,0,0.18); }
   .btn input { display: none; }
-  .linkish { color: var(--muted); font-size: 14px; background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; font-family: inherit; }
-
-  main.wrap { padding: 0 16px 48px; }
-  .remember { display: flex; align-items: center; gap: 10px; margin: 18px 2px 0; color: var(--muted); font-size: 14px; cursor: pointer; }
-  .remember input { width: 18px; height: 18px; accent-color: var(--green); }
-  #status { margin: 14px 0 0; min-height: 1.5em; font-weight: 600; color: var(--accent); }
-  #status:empty { display: none; }
-  .trouble { margin: 10px 2px 0; color: var(--muted); font-size: 14px; }
-  /* what the player's files held (opensgolf.js sgSummary): large, so it is read on an iPad, where there is no console */
-  #summary { margin: 18px 0 0; padding: 16px 20px; border-radius: var(--radius); background: var(--card-solid);
-    border: 1px solid var(--card-border); font-size: clamp(18px, 2.6vw, 22px); font-weight: 600; line-height: 1.4; }
-  #summary.problem { border: 2px solid var(--accent); }
-  #summary:empty { display: none; }
-  #version { font-weight: 600; color: var(--text); }
-
-  details { margin-top: 14px; background: var(--card); border: 1px solid var(--card-border); border-radius: var(--radius); }
-  details > summary { cursor: pointer; padding: 16px 20px; font-weight: 600; list-style: none; display: flex; align-items: center; gap: 10px; }
-  details > summary::-webkit-details-marker { display: none; }
-  details > summary::after { content: "+"; margin-left: auto; font-size: 20px; color: var(--muted); }
-  details[open] > summary::after { content: "–"; }
-  details .body { padding: 0 20px 18px; color: var(--muted); font-size: 14px; }
-  details .body p { margin: 0 0 12px; }
-  details .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-  #hdstatus, #packstatus, #savecount, #savestatus { margin-top: 10px; color: var(--text); }
-
-  h2.section { margin: 40px 0 14px; font-size: 24px; }
-  .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 14px; }
-  .feature { background: var(--card); border: 1px solid var(--card-border); border-radius: var(--radius); padding: 18px; }
-  .feature .icon { font-size: 26px; line-height: 1; }
-  .feature h3 { margin: 10px 0 6px; font-size: 16px; }
-  .feature p { margin: 0; color: var(--muted); font-size: 14px; }
-
-  .help { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-top: 16px; }
-  .help h3 { margin: 0 0 8px; font-size: 16px; }
-  .help ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 14px; }
-  kbd { background: rgba(255,255,255,0.1); border: 1px solid var(--card-border); border-bottom-width: 2px; border-radius: 6px;
-    padding: 0 6px; font-size: 12px; font-family: inherit; color: var(--text); }
-  code { color: #e6f0d0; background: rgba(255,255,255,0.08); padding: 0 5px; border-radius: 5px; font-size: 13px; }
-  a { color: var(--accent); }
-
-  .get { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-  .get .btn { min-height: 42px; font-size: 14px; padding: 0 16px; }
-  .btn.coffee { background: #ffdd00; color: #1b1b1b; }
-
-  footer { margin-top: 36px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--card-border); padding-top: 16px; }
-  footer p { margin: 0 0 8px; }
-
-  @media (max-width: 560px) {
-    .hero { padding: 16px 16px 28px; background-position: 70% 30%; }
-    .hero::before { background:
-      linear-gradient(180deg, rgba(6, 26, 14, 0.55) 0%, rgba(6, 26, 14, 0.82) 45%, var(--bg2) 100%); }
-    .topbar { justify-content: flex-start; }
-    header { gap: 12px; }
-    header svg { width: 54px; height: 54px; }
-    .btn { flex: 1 1 auto; }
+  /* the main Play button's shimmer */
+  .card.primary .btn:not(.ghost)::after { content: ""; position: absolute; top: 0; bottom: 0; left: -60%; width: 40%;
+    background: linear-gradient(100deg, transparent, rgba(255,255,255,0.75), transparent); transform: skewX(-20deg);
+    animation: sg-shine 4.5s ease-in-out 1.5s infinite; pointer-events: none; }
+  @keyframes sg-shine { 0% { left: -60%; } 30%, 100% { left: 130%; } }
+  @media (prefers-reduced-motion: reduce) { .card.primary .btn:not(.ghost)::after { animation: none; display: none; } }
+  /* the CD (the port's own drawing, no box art or logos): a silver disc with a rainbow sheen and our own printed label,
+     in a drive tray. Clicking it opens the game folder picker; files dropped on it load like the buttons'; it spins while
+     the files are read or unpacked (.loading, set by the page script below) */
+  .tray { display: flex; align-items: center; gap: 18px; padding: 14px 18px; border-radius: 14px; color: #e9f0ec;
+    background: linear-gradient(180deg, #4b555c 0%, #2c3338 8%, #232a2f 60%, #1b2125 100%);
+    border: 1px solid #0d1114; box-shadow: inset 0 2px 6px rgba(0,0,0,0.6), inset 0 -1px 0 rgba(255,255,255,0.12), 0 1px 0 rgba(255,255,255,0.6); }
+  .tray .side2 { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+  .tray .actions { margin: 0; padding: 0; }
+  .tray .hint { margin: 0; font-size: 12.5px; color: #c7d3cc; }
+  .tray .hint b { color: var(--gold); font: 700 15px/1.2 var(--head); display: block; }
+  /* while the CD spins: what it is doing, how far and how long (the line under the page says the same for screen readers) */
+  .tray.busy .hint, .tray.busy .actions { display: none; }
+  .progress { color: #e9f1ec; }
+  .tray .progress p { margin: 0; font-size: 12.5px; color: #e9f1ec; }
+  .pstage b { color: var(--gold); font: 700 15px/1.3 var(--head); display: block; }
+  .pbar { margin: 8px 0 6px; height: 14px; border-radius: 7px; background: rgba(255, 255, 255, 0.14); overflow: hidden;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4); }
+  .pbar span { display: block; height: 100%; width: 0; border-radius: 7px; transition: width 0.25s ease;
+    background: linear-gradient(180deg, #ffe27a, #ffc21f); }
+  .pbar.wait span { width: 35%; animation: pwait 1.2s ease-in-out infinite alternate; }
+  @keyframes pwait { from { margin-left: 0; } to { margin-left: 65%; } }
+  @media (prefers-reduced-motion: reduce) { .pbar.wait span { animation: none; width: 100%; opacity: 0.5; } }
+  .tray .progress .ptime { color: #c4d4ca; }
+  .cd { --cd: 184px; position: relative; flex: 0 0 auto; width: calc(var(--cd) + 12px); height: calc(var(--cd) + 12px); padding: 6px;
+    border: 0; border-radius: 50%; background: radial-gradient(circle, #101417 0 60%, #1a2024 70%, #2a3238 100%); cursor: pointer;
+    box-shadow: inset 0 3px 8px rgba(0,0,0,0.8), 0 1px 0 rgba(255,255,255,0.15); -webkit-tap-highlight-color: transparent; }
+  .cd:focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; }
+  .cd .lift { position: relative; display: block; width: var(--cd); height: var(--cd); border-radius: 50%;
+    transition: transform 0.25s cubic-bezier(.3,1.6,.5,1), filter 0.25s ease; filter: drop-shadow(0 3px 4px rgba(0,0,0,0.6)); }
+  .cd:hover .lift, .cd:focus-visible .lift, .cd.over .lift { transform: translateY(-7px) rotate(-4deg) scale(1.03);
+    filter: drop-shadow(0 12px 10px rgba(0,0,0,0.55)); }
+  .cd:active .lift { transform: translateY(-2px) scale(0.99); }
+  .cd.over { box-shadow: inset 0 3px 8px rgba(0,0,0,0.8), 0 0 0 3px var(--gold), 0 0 18px rgba(255, 210, 63, 0.6); }
+  /* the disc: silver, brushed round; the hole in the middle cut out with a mask */
+  .cd .disc, .cd .sheen { position: absolute; inset: 0; border-radius: 50%;
+    -webkit-mask: radial-gradient(circle, transparent 0 10.5%, #000 11%); mask: radial-gradient(circle, transparent 0 10.5%, #000 11%); }
+  .cd .disc { background:
+      radial-gradient(circle, transparent 0 21%, rgba(255,255,255,0.75) 21.5% 22.3%, transparent 22.8% 98%, rgba(120,130,140,0.9) 99%),
+      radial-gradient(circle, rgba(230,240,246,0.55) 0 21%, transparent 21.2%),
+      conic-gradient(from 0deg, #f7f9fa, #b4bfc6, #eef2f4, #9fabb3, #f9fbfc, #aeb9c0, #e9eef1, #a5b0b8, #f7f9fa); }
+  .cd .disc svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  /* the light on it stays still while the disc turns: two rainbow wedges and a white glint, on the shiny rim and hub */
+  .cd .sheen { pointer-events: none; mix-blend-mode: screen; opacity: 0.85; background:
+      conic-gradient(from 300deg, transparent 0deg, rgba(255,60,160,0.35) 16deg, rgba(255,210,40,0.4) 32deg, rgba(60,255,140,0.35) 48deg,
+        rgba(40,170,255,0.4) 64deg, rgba(170,70,255,0.3) 80deg, transparent 96deg 180deg, rgba(255,60,160,0.3) 196deg,
+        rgba(255,210,40,0.35) 212deg, rgba(60,255,140,0.3) 228deg, rgba(40,170,255,0.35) 244deg, rgba(170,70,255,0.25) 260deg, transparent 276deg),
+      linear-gradient(135deg, rgba(255,255,255,0.6) 0%, transparent 32%, transparent 68%, rgba(255,255,255,0.22) 100%); }
+  /* (on the bare silver, the rim and the clear hub, the rainbow shows strongest) */
+  .cd .sheen.rim { mix-blend-mode: normal; opacity: 1; background:
+      conic-gradient(from 290deg, transparent 0deg, #ff4fa8 18deg, #ffd23a 36deg, #4ff59a 54deg, #3fb2ff 72deg, #b46bff 90deg, transparent 110deg 170deg,
+        #ff4fa8 188deg, #ffd23a 206deg, #4ff59a 224deg, #3fb2ff 242deg, #b46bff 260deg, transparent 280deg);
+    -webkit-mask: radial-gradient(circle closest-side, transparent 0 15%, rgba(0,0,0,0.4) 16% 21%, transparent 22% 76.5%, rgba(0,0,0,0.5) 77.5% 98%, transparent 99%);
+    mask: radial-gradient(circle closest-side, transparent 0 15%, rgba(0,0,0,0.4) 16% 21%, transparent 22% 76.5%, rgba(0,0,0,0.5) 77.5% 98%, transparent 99%); }
+  .cd .sheen.glint { mix-blend-mode: normal; opacity: 1; background: linear-gradient(125deg, transparent 30%, rgba(255,255,255,0.32) 44%, transparent 52%); }
+  .cd.loading .disc { animation: sg-spin 0.9s linear infinite; }
+  .cd.loading { cursor: progress; }
+  .cd.loading .lift { transform: none; }
+  @keyframes sg-spin { to { transform: rotate(360deg); } }
+  @keyframes sg-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) {
+    .cd .lift { transition: none; }
+    .cd.loading .disc { animation: none; }
+    .cd.loading .sheen { animation: sg-pulse 1.6s ease-in-out infinite; }
   }
+  .linkish { color: var(--link); font: 13px var(--ui); background: none; border: 0; padding: 4px 0; cursor: pointer; text-decoration: underline; min-height: 32px; }
+
+  .remember { display: flex; align-items: center; gap: 10px; margin: 12px 2px 0; color: var(--ink-soft); cursor: pointer; min-height: 32px; }
+  .remember input { width: 20px; height: 20px; accent-color: #1f7532; flex: 0 0 auto; }
+  #status { margin: 10px 0 0; padding: 8px 12px; border-radius: 8px; font-weight: bold; color: var(--tip-ink); background: var(--tip-bg);
+    border: 1px solid var(--tip-edge); }
+  #status:empty { display: none; }
+  .trouble { margin: 8px 2px 0; color: var(--ink-soft); font-size: 13px; }
+  /* what the player's files held (opensgolf.js sgSummary): large, so it is read on an iPad, where there is no console */
+  #summary { position: relative; margin: 14px 0 0; padding: 14px 16px 14px 56px; border-radius: 12px; background: var(--inset);
+    border: 3px solid var(--frame); font: bold clamp(17px, 2.4vw, 21px)/1.4 var(--ui); color: var(--ink);
+    box-shadow: 0 0 0 1px #1d6b2f, inset 0 1px 0 rgba(255,255,255,0.4); }
+  #summary::before { content: "\2714"; position: absolute; left: 14px; top: 13px; width: 30px; height: 30px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; font-size: 17px; color: #fff;
+    background: radial-gradient(circle at 35% 30%, #8fdc98, #1f7532 70%); box-shadow: 0 1px 2px rgba(0,0,0,0.35); }
+  #summary.problem { border-color: var(--tip-edge); background: var(--tip-bg); color: var(--tip-ink); box-shadow: 0 0 0 1px #8a5a00; }
+  #summary.problem::before { content: "!"; font-family: var(--head); font-weight: 800; color: #2b1d00;
+    background: radial-gradient(circle at 35% 30%, #fff3a8, #f0b400 70%); }
+  #summary:empty { display: none; }
+
+  details { margin: 0 0 10px; background: var(--inset); border: 1px solid; border-color: var(--inset-lo) var(--inset-hi) var(--inset-hi) var(--inset-lo);
+    box-shadow: 0 0 0 1px var(--line); border-radius: 8px; scroll-margin-top: 10px; }
+  details > summary { cursor: pointer; padding: 12px 14px; font-weight: bold; list-style: none; display: flex; align-items: center; gap: 10px; min-height: 48px; }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary::after { content: "+"; margin-left: auto; flex: 0 0 auto; width: 24px; height: 24px; border-radius: 50%; display: flex;
+    align-items: center; justify-content: center; font: bold 16px/1 var(--ui); color: #fff; border: 1px solid #0e4a1c;
+    background: linear-gradient(180deg, #6cc77a, #1f7532 55%, #2a8a3c); }
+  details[open] > summary::after { content: "\2013"; }
+  details .body { padding: 0 14px 14px; color: var(--ink-soft); font-size: 13px; }
+  details .body p { margin: 0 0 10px; }
+  details .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  #hdstatus, #packstatus, #savecount, #savestatus { margin-top: 8px; color: var(--ink); }
+
+  /* NEW! starburst */
+  .new { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 46px; height: 46px; margin: -8px 0;
+    font: 800 12px/1 var(--head); color: #fff; letter-spacing: 0.3px; text-shadow: 0 1px 0 #6d0f00; transform: rotate(-12deg);
+    background: radial-gradient(circle at 40% 35%, #ff6a3d, #c8260f 70%);
+    clip-path: polygon(50% 0%, 59% 15%, 75% 7%, 76% 24%, 93% 25%, 85% 41%, 100% 50%, 85% 59%, 93% 75%, 76% 76%, 75% 93%, 59% 85%,
+      50% 100%, 41% 85%, 25% 93%, 24% 76%, 7% 75%, 15% 59%, 0% 50%, 15% 41%, 7% 25%, 24% 24%, 25% 7%, 41% 15%); }
+  .feature .new { position: absolute; right: -6px; top: -6px; margin: 0; }
+
+  /* the strip of what you do, on a dark band like the back of an old game box */
+  .strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 0; border-radius: 12px; overflow: hidden;
+    background: linear-gradient(180deg, #1e5a35, var(--dark-band)); border: 1px solid #0b2e17; box-shadow: inset 0 1px 0 rgba(255,255,255,0.2); }
+  .strip div { padding: 12px 12px 14px; border-left: 1px solid rgba(255,255,255,0.12); }
+  .strip div:first-child { border-left: 0; }
+  .strip h3 { margin: 0 0 4px; font: 800 17px/1.1 var(--head); letter-spacing: 0.5px; color: var(--gold); text-shadow: 0 2px 0 #062312; }
+  .strip p { margin: 0; color: #fff; font-size: 12.5px; line-height: 1.45; }
+
+  .features { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+  .feature { position: relative; background: var(--inset); border: 2px solid var(--frame); border-radius: 12px; padding: 12px; }
+  .feature .icon { font-size: 22px; line-height: 1; }
+  .feature h3 { margin: 6px 0 4px; font: 700 16px/1.25 var(--head); color: var(--ink); }
+  .feature p { margin: 0; color: var(--ink-soft); font-size: 13px; }
+
+  .help { display: grid; gap: 10px; }
+  .help h3 { margin: 0 0 6px; font: 700 16px var(--head); color: var(--ink); }
+  .help ul { margin: 0; padding-left: 18px; color: var(--ink-soft); font-size: 13px; }
+  kbd { background: linear-gradient(#fff, #e3e8ec); border: 1px solid #8f9ba6; border-bottom-width: 2px; border-radius: 4px;
+    padding: 0 5px; font: bold 11px var(--ui); color: #1b2733; white-space: nowrap; }
+  code { color: var(--code-ink); background: var(--code-bg); padding: 0 4px; border-radius: 3px; font: 12px "Lucida Console", Consolas, monospace; }
+  a { color: var(--link); }
+
+  /* the sidebar's boxes */
+  .box { margin: 0 0 16px; border-radius: 10px; overflow: hidden; background: var(--inset); border: 1px solid var(--inset-lo); box-shadow: 0 0 0 1px var(--line); }
+  .box .bar { margin: 0; border-radius: 0; font-size: 17px; border-width: 0 0 1px; }
+  .box .in { padding: 10px 12px 12px; font-size: 12.5px; color: var(--ink-soft); }
+  .news { background: var(--news-bg); border-color: var(--news-edge); }
+  .news .bar { background: linear-gradient(180deg, #4f8fd6 0%, #1f5ca8 50%, #174f95 51%, #1f5ca8 100%); border-color: #0d3b6e; }
+  .news dl { margin: 0; }
+  .news dt { min-height: 30px; display: flex; align-items: center; gap: 6px; font: bold 11px var(--ui); color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.5px; }
+  .news dd { margin: 2px 0 10px; color: var(--ink); }
+  .news dd:last-child { margin-bottom: 0; }
+  .news dd b { font: 700 15px/1.25 var(--head); display: block; margin-top: 4px; }
+  .get { display: flex; flex-direction: column; gap: 6px; }
+  .get .btn { min-height: 40px; font-size: 13px; padding: 0 12px; justify-content: flex-start; border-radius: 8px; }
+  .btn.coffee { color: #1b1b1b; border-color: #a38c00; background: linear-gradient(180deg, #fff59e 0%, #ffe600 45%, #ffd500 52%, #ffe233 100%); }
+
+  footer { padding: 12px 16px 16px; color: var(--foot); font-size: 11px; line-height: 1.6; text-align: center;
+    border-top: 1px solid var(--line); background: linear-gradient(180deg, transparent, rgba(0,0,0,0.03)); }
+  footer p { margin: 0 0 6px; }
+  footer a { color: var(--link); }
+  #version { font-weight: bold; color: var(--ink); font-size: 12px; }
+  .badges { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; margin: 8px 0 10px; }
+  .badges span { display: inline-flex; align-items: stretch; height: 31px; min-width: 88px; border: 1px solid #555; font: bold 10px/1 var(--ui);
+    box-shadow: inset 1px 1px 0 rgba(255,255,255,0.6); }
+  .badges span i { font-style: normal; display: flex; align-items: center; padding: 0 6px; background: #333; color: #fff; }
+  .badges span b { flex: 1; display: flex; align-items: center; justify-content: center; padding: 0 6px; background: linear-gradient(#ffe36b, #f2bf1d); color: #1d1600; }
+  .badges span.g b { background: linear-gradient(#9de2a5, #3fae51); color: #072b10; }
+  .badges span.b b { background: linear-gradient(#a8d4ff, #4e97df); color: #04203f; }
+  .viewed { font-style: italic; }
+
+  /* a phone or tablet held upright while the game runs (the port's own; opensgolf.js sgRotateCard): a card over the game
+     asking to turn it sideways, which also keeps taps off the game; "Play anyway" plays upright in a 4:3 band */
+  #rotate { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; padding: 24px 16px;
+    background:
+      repeating-linear-gradient(100deg, #3fa04f 0 46px, #47ad58 46px 92px) bottom / 100% 34% no-repeat,
+      radial-gradient(140px 40px at 25% 18%, rgba(255,255,255,0.9), transparent 70%),
+      radial-gradient(110px 32px at 78% 30%, rgba(255,255,255,0.8), transparent 70%),
+      linear-gradient(180deg, #1b5cae 0%, #3d8ad8 45%, #a9d4f3 66%);
+    touch-action: none; -webkit-user-select: none; user-select: none; color: var(--ink); font: 14px/1.5 var(--ui); }
+  #rotate[hidden] { display: none; }
+  #rotate .card { max-width: 340px; width: 100%; align-items: center; text-align: center; gap: 12px; background: var(--panel);
+    border: 3px solid var(--frame); border-radius: 16px; box-shadow: 0 0 0 1px #1d6b2f, 0 14px 40px rgba(5, 25, 60, 0.45); padding: 0 0 16px; overflow: hidden; }
+  #rotate h2 { margin: 0; width: 100%; color: var(--gold); justify-content: center; border-radius: 0; border-width: 0 0 1px; font-size: 21px; line-height: 1.25; padding: 8px 12px; }
+  #rotate p { margin: 0 16px; }
+  #rotate .btn { width: calc(100% - 32px); margin-top: 4px; }
+  #rotate svg { width: 120px; height: 120px; }
+  #rotate .phone { transform-origin: 60px 60px; animation: sg-turn 2.4s ease-in-out infinite; }
+  @keyframes sg-turn { 0%, 20% { transform: rotate(0deg); } 50%, 80% { transform: rotate(-90deg); } 100% { transform: rotate(0deg); } }
+  @media (prefers-reduced-motion: reduce) { #rotate .phone { animation: none; } }
+
+  @media (max-width: 760px) {
+    .site { margin: 0; border-radius: 0; border: 0; box-shadow: none; }
+    .cols { grid-template-columns: minmax(0, 1fr); }
+    .shot { width: 150px; height: 104px; }
+    .cd { --cd: 150px; }
+    .side { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0 14px; }
+    body { font-size: 15px; }
+    details .body, .help ul, .feature p, .card .note { font-size: 14px; }
+  }
+  @media (max-width: 560px) {
+    .strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .strip div:nth-child(3) { border-left: 0; }
+    .strip div:nth-child(n+3) { border-top: 1px solid rgba(255,255,255,0.12); }
+    .mast { padding: 10px 16px 44px; }
+    .shot { display: none; }
+    .toplinks { justify-content: flex-start; }
+    header svg { width: 48px; height: 48px; }
+    nav.tabs { padding: 6px 6px 0; }
+    nav.tabs a { padding: 6px 8px; font-size: 12.5px; }
+    nav.tabs svg { display: none; }
+    .cols { padding: 14px 12px; }
+    .features { grid-template-columns: minmax(0, 1fr); }
+    .btn { flex: 1 1 auto; }
+    .tray { flex-direction: column; padding: 14px 12px; text-align: center; }
+    .tray .side2 { width: 100%; }
+    .cd { --cd: 138px; }
+    .strip p { font-size: 13px; }
+  }
+.trailer{position:relative;display:block;border-radius:10px;overflow:hidden;border:2px solid rgba(255,255,255,.25);box-shadow:0 4px 18px rgba(0,0,0,.35)}
+.trailer img{display:block;width:100%;height:auto}
+.trailer .play{position:absolute;left:50%;top:50%;width:84px;height:60px;margin:-30px 0 0 -42px;border-radius:14px;background:rgba(204,0,0,.9);color:#fff;font-size:30px;line-height:60px;text-align:center}
+.trailer:hover .play,.trailer:focus .play{background:#e00}
 </style>
-<!-- Visit counter: GoatCounter (no cookies, no personal data); counts page visits and which start button is used -->
+<!-- Visit counter: GoatCounter (no cookies, no personal data); counts page visits, which start button is used and the game's
+     play-time count (sent by the game itself: opensgolf.js sg_playcount, which honours the #playcount tick below) -->
 <script data-goatcounter="https://opensgolf.goatcounter.com/count" async src="https://gc.zgo.at/count.js"></script>
 <script>
   // counts which way people start the game (free graphics, a folder or a zip); does nothing if the counter is blocked
@@ -153,221 +472,486 @@
     if (free) free.addEventListener('click', function () { count('start-free-graphics'); });
     if (folder) folder.addEventListener('change', function () { count('start-game-folder'); });
     if (zip) zip.addEventListener('change', function () { count('start-game-zip'); });
+    // anonymous play time: the game itself sends its counts (crates/simgolf/src/playcount.rs, opensgolf.js sg_playcount); this
+    // tick turns them off, remembered in this browser (as is the game's own Preferences > More tick: either off is off)
+    var tick = document.getElementById('playcount'), KEY = 'sg_playcount_off';
+    function off() { try { return localStorage.getItem(KEY) === '1'; } catch (e) { return false; } }
+    if (tick) {
+      tick.checked = !off();
+      tick.addEventListener('change', function () { try { localStorage.setItem(KEY, tick.checked ? '0' : '1'); } catch (e) {} });
+    }
   });
 </script>
 </head>
 <body>
+<!-- the page's little drawings: a golf ball, a flag, a club, a speaker -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <radialGradient id="ballg" cx="0.38" cy="0.32" r="0.7"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#cfd8d2"/></radialGradient>
+  </defs>
+  <symbol id="i-ball" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="url(#ballg)" stroke="#6b7a70" stroke-width="1"/>
+    <g fill="#a9b6ae"><circle cx="9" cy="9" r="1.1"/><circle cx="13" cy="8" r="1.1"/><circle cx="16" cy="11" r="1.1"/><circle cx="11" cy="12.5" r="1.1"/>
+    <circle cx="14.5" cy="15" r="1.1"/><circle cx="8.5" cy="15.5" r="1.1"/></g></symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24"><ellipse cx="11" cy="21" rx="9" ry="2.5" fill="#6cc96f"/><ellipse cx="11" cy="21" rx="2.4" ry="0.9" fill="#173d1d"/>
+    <rect x="10.2" y="2" width="1.8" height="19" rx="0.9" fill="#fff"/><path d="M12 2.5l9 3.5-9 3.6z" fill="#e8423b"/></symbol>
+  <symbol id="i-club" viewBox="0 0 24 24"><rect x="11" y="1" width="2" height="18" rx="1" transform="rotate(18 12 10)" fill="#e5ebee" stroke="#5d6b74" stroke-width="0.6"/>
+    <path d="M6.5 18.5c2-1 5-1 7.5-0.2 1 .3 1 1.9-.1 2.3-2.6.9-6 .9-7.9.2-1-.4-.7-1.9.5-2.3z" fill="#c8d2d8" stroke="#5d6b74" stroke-width="0.8"/>
+    <rect x="13.4" y="0.6" width="2.4" height="5" rx="1" transform="rotate(18 14.6 3)" fill="#1d2b33"/></symbol>
+  <symbol id="i-house" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M6 10v10h12V10" fill="currentColor"/><rect x="10.5" y="14" width="3" height="6" fill="#2b8a3c"/></symbol>
+  <symbol id="i-disk" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" fill="#2f5fa8" stroke="#fff" stroke-width="1"/><rect x="7" y="3.5" width="10" height="6" fill="#dfe6ee"/><rect x="13.5" y="4.5" width="2" height="4" fill="#2f5fa8"/><rect x="6" y="13" width="12" height="7" rx="1" fill="#fff"/></symbol>
+  <symbol id="i-box" viewBox="0 0 24 24"><path d="M3 8l9-4 9 4v9l-9 4-9-4z" fill="#e0a548" stroke="#fff" stroke-width="1"/><path d="M3 8l9 4 9-4M12 12v9" fill="none" stroke="#7a4f12" stroke-width="1"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#2f74c8" stroke="#fff" stroke-width="1.2"/><rect x="10.8" y="10" width="2.4" height="8" rx="1" fill="#fff"/><circle cx="12" cy="6.8" r="1.5" fill="#fff"/></symbol>
+  <symbol id="i-sound" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#f0b400" stroke="#8a5a00" stroke-width="1"/><path d="M5.5 9.5h3l4-3.5v12l-4-3.5h-3z" fill="#2b1d00"/>
+    <path d="M15 8.5a5 5 0 0 1 0 7M17.3 6.5a8 8 0 0 1 0 11" fill="none" stroke="#2b1d00" stroke-width="1.6" stroke-linecap="round"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><g stroke="#d98a00" stroke-width="2" stroke-linecap="round"><path d="M12 1.8v2.6M12 19.6v2.6M1.8 12h2.6M19.6 12h2.6M4.8 4.8l1.8 1.8M17.4 17.4l1.8 1.8M4.8 19.2l1.8-1.8M17.4 6.6l1.8-1.8"/></g>
+    <circle cx="12" cy="12" r="5.2" fill="#ffd23f" stroke="#d98a00" stroke-width="1.2"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M15.5 3a9 9 0 1 0 5.5 13.6A7.4 7.4 0 0 1 15.5 3z" fill="#ffe680" stroke="#c99a00" stroke-width="1"/>
+    <circle cx="18" cy="6" r="1" fill="#fff"/><circle cx="21" cy="10" r="0.7" fill="#fff"/></symbol>
+  <symbol id="i-auto" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5" fill="#ffd23f" stroke="#2c3a78" stroke-width="1.4"/>
+    <path d="M12 2.5a9.5 9.5 0 0 1 0 19z" fill="#2c3a78"/></symbol>
+</svg>
 <div id="picker">
-  <section class="hero">
-    <div class="wrap">
-      <nav class="topbar" aria-label="Links">
+  <div id="backdrop" aria-hidden="true">
+  </div>
+
+  <div class="site" id="top">
+    <div class="mast">
+      <nav class="toplinks" aria-label="Links">
         <a href="https://github.com/crspytopgn/opensgolf#download">Downloads</a>
         <a href="https://github.com/crspytopgn/opensgolf">GitHub</a>
         <a class="coffee" href="https://buymeacoffee.com/crspytopgn">☕ Buy me a coffee</a>
+        <button type="button" class="theme" id="theme"><span class="vh">Colour theme: </span><span class="t-auto"><svg aria-hidden="true"><use href="#i-auto"/></svg>Auto</span><span
+          class="t-light"><svg aria-hidden="true"><use href="#i-sun"/></svg>Light</span><span class="t-dark"><svg aria-hidden="true"><use href="#i-moon"/></svg>Dark</span></button>
       </nav>
-      <header>
-        <svg viewBox="0 0 64 64" aria-hidden="true">
-          <circle cx="32" cy="32" r="30" fill="#2f8f4e"/>
-          <ellipse cx="32" cy="47" rx="20" ry="7" fill="#58c27a"/>
-          <rect x="30.5" y="11" width="3" height="36" rx="1.5" fill="#fff"/>
-          <path d="M33.5 11l17 6.5-17 6.5z" fill="#e8423b"/>
-          <circle cx="22" cy="46" r="5.5" fill="#fff"/>
-          <circle cx="20.5" cy="44.5" r="0.9" fill="#d5dcd6"/><circle cx="23.5" cy="45" r="0.9" fill="#d5dcd6"/>
-          <circle cx="21.5" cy="47.5" r="0.9" fill="#d5dcd6"/>
-        </svg>
-        <h1>Open<span>S</span>Golf</h1>
-      </header>
-      <p class="kicker">Sid Meier's SimGolf, remastered</p>
-      <p class="tagline">Build the golf resort of your dreams. Free and open source, on PC, Mac, Linux, phones and right here in
-        your browser. Nothing to install.</p>
-      <p class="fan">An unofficial, fan-made project. Not affiliated with or endorsed by Electronic Arts, Firaxis Games or
-        Take-Two Interactive.</p>
+      <div class="row">
+        <div class="titles">
+          <header>
+            <svg viewBox="0 0 64 64" aria-hidden="true">
+              <circle cx="32" cy="32" r="30" fill="#2f8f4e" stroke="#fff" stroke-width="2.5"/>
+              <ellipse cx="32" cy="47" rx="20" ry="7" fill="#58c27a"/>
+              <rect x="30.5" y="11" width="3" height="36" rx="1.5" fill="#fff"/>
+              <path d="M33.5 11l17 6.5-17 6.5z" fill="#e8423b"/>
+              <circle cx="22" cy="46" r="5.5" fill="#fff"/>
+              <circle cx="20.5" cy="44.5" r="0.9" fill="#d5dcd6"/><circle cx="23.5" cy="45" r="0.9" fill="#d5dcd6"/>
+              <circle cx="21.5" cy="47.5" r="0.9" fill="#d5dcd6"/>
+            </svg>
+            <h1>Open<span>S</span>Golf</h1>
+          </header>
+          <p class="kicker">The classic golf course builder, rebuilt</p>
+          <p class="tagline">Build the golf resort of your dreams. Free and open source: play right here in your browser with
+            nothing to install, or download it for your computer or phone.</p>
+          <div class="dl">
+            <a class="btn green" id="dl-main" hidden href="https://github.com/crspytopgn/opensgolf/releases/latest">⬇ Download</a>
+            <span class="dl-more"><span id="dl-also">Download for</span>
+              <a data-os="windows" href="https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-windows.zip">Windows</a> ·
+              <a data-os="mac" href="https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-macos.zip">Mac</a> ·
+              <a data-os="linux" href="https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-linux-x86_64.AppImage">Linux</a> ·
+              <a data-os="android" href="https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-android.apk">Android</a> ·
+              <a href="https://github.com/crspytopgn/opensgolf/releases/latest">all downloads</a></span>
+            <a class="whatsnew" href="https://github.com/crspytopgn/opensgolf/blob/main/CHANGELOG.md" target="_blank" rel="noopener">★ What's new</a>
+          </div>
+        </div>
+        <div class="shot" role="img" aria-label="OpenSGolf playing with the original SimGolf files"></div>
+      </div>
+      <svg class="hills" viewBox="0 0 800 56" preserveAspectRatio="none" aria-hidden="true">
+        <defs><pattern id="mow3" width="40" height="40" patternUnits="userSpaceOnUse" patternTransform="rotate(-30)">
+          <rect width="20" height="40" fill="#3f9e4e"/><rect x="20" width="20" height="40" fill="#37944a"/></pattern></defs>
+        <path d="M0 30C140 6 260 18 400 24C540 30 660 8 800 18V56H0Z" fill="#7cbf86"/>
+        <path d="M0 40C180 22 360 46 520 38C640 32 720 26 800 32V56H0Z" fill="url(#mow3)"/>
+        <ellipse cx="300" cy="44" rx="46" ry="5" fill="#f1dda2"/>
+        <rect x="612" y="12" width="2" height="24" fill="#fff"/><path d="M614 12l13 4.5-13 4.5z" fill="#e8423b"/>
+      </svg>
+    </div>
 
-      <div class="cards">
-        <section class="card" id="again" style="display:none">
-          <h2><span class="icon">⛳</span> Welcome back</h2>
-          <p>Your game files are already saved in this browser. Jump straight in.</p>
-          <div class="actions">
-            <button class="btn green" id="playstored">Continue playing</button>
-            <button class="linkish" onclick="sgForget(); return false;">Forget my game files</button>
+    <nav class="tabs" aria-label="Sections">
+      <a href="#top" class="on"><svg aria-hidden="true"><use href="#i-house"/></svg>Home</a>
+      <a href="#play"><svg aria-hidden="true"><use href="#i-flag"/></svg>Play</a>
+      <a href="#saves"><svg aria-hidden="true"><use href="#i-disk"/></svg>Your saves</a>
+      <a href="#packs"><svg aria-hidden="true"><use href="#i-box"/></svg>Packs</a>
+      <a href="#about"><svg aria-hidden="true"><use href="#i-info"/></svg>About</a>
+    </nav>
+
+    <div class="cols">
+      <main class="main">
+        <section class="block" id="play">
+          <h2 class="bar"><svg aria-hidden="true"><use href="#i-flag"/></svg>Tee off</h2>
+          <div class="cards">
+            <section class="card" id="again" style="display:none">
+              <h2><span class="icon">⛳</span> Welcome back</h2>
+              <p>Your game files are already saved in this browser. Jump straight in.</p>
+              <div class="actions">
+                <button class="btn green" id="playstored">Continue playing</button>
+                <button class="linkish" onclick="sgForget(); return false;">Forget my game files</button>
+              </div>
+            </section>
+
+            <section class="card primary">
+              <h2><span class="icon">🏌️</span> Play with your SimGolf</h2>
+              <p>Pick the folder of your installed copy of SimGolf (the one holding <code>Data</code>, <code>Flics</code> and
+                <code>Sounds</code>, often <code>C:\Program Files\Maxis\SimGolf</code>). The original art, sound and music, made
+                new. Or the SimGolf CD: an image of it (<code>.iso</code>, or a Mac's <code>.cdr</code>), a .zip of either, or the
+                CD itself picked as a folder; it is unpacked here, nothing to install. The files are read in this tab only;
+                nothing is uploaded.</p>
+              <div class="tray">
+                <button type="button" class="cd" id="cd" aria-label="Insert your SimGolf: choose the game folder. You can also drop the folder, a .zip or a CD image here.">
+                  <span class="lift" aria-hidden="true">
+                    <span class="disc"><svg viewBox="0 0 200 200">
+                      <defs>
+                        <radialGradient id="cdlabel" cx="0.4" cy="0.3" r="0.8"><stop offset="0" stop-color="#3fae55"/><stop offset="0.6" stop-color="#1f7532"/><stop offset="1" stop-color="#145a24"/></radialGradient>
+                        <path id="cdtop" d="M46 100a54 54 0 0 1 108 0"/>
+                        <path id="cdbot" d="M39 100a61 61 0 0 0 122 0"/>
+                      </defs>
+                      <!-- the printed label: a ring between the clear hub and the shiny rim -->
+                      <path d="M100 24a76 76 0 1 1 0 152a76 76 0 1 1 0-152zM100 56a44 44 0 1 0 0 88a44 44 0 1 0 0-88z" fill="url(#cdlabel)" fill-rule="evenodd"/>
+                      <path d="M100 24a76 76 0 1 1 0 152a76 76 0 1 1 0-152z" fill="none" stroke="#0e4a1c" stroke-width="1.2"/>
+                      <circle cx="100" cy="100" r="44" fill="none" stroke="#0e4a1c" stroke-width="1"/>
+                      <text font-family="'Baloo 2', 'Arial Rounded MT Bold', sans-serif" font-weight="800" font-size="24" fill="#ffd23f" stroke="#6b4400" stroke-width="0.8"
+                        letter-spacing="0.5" text-anchor="middle"><textPath href="#cdtop" startOffset="50%">Open<tspan fill="#fff">S</tspan>Golf</textPath></text>
+                      <text font-family="Verdana, Tahoma, sans-serif" font-weight="bold" font-size="8.6" fill="#fff" letter-spacing="1.1"
+                        text-anchor="middle"><textPath href="#cdbot" startOffset="50%">INSERT YOUR SIMGOLF</textPath></text>
+                      <g transform="translate(160 104)"><ellipse cx="0" cy="6" rx="10" ry="3" fill="#58c27a"/><rect x="-1" y="-12" width="2" height="18" fill="#fff"/><path d="M1 -12l10 3.6-10 3.6z" fill="#e8423b"/></g>
+                      <ellipse cx="40" cy="106" rx="9" ry="3" fill="#58c27a"/><circle cx="40" cy="101" r="5" fill="#fff"/><circle cx="38.6" cy="99.6" r="0.9" fill="#c8d2cc"/><circle cx="41.4" cy="100" r="0.9" fill="#c8d2cc"/>
+                    </svg></span>
+                    <span class="sheen"></span><span class="sheen rim"></span><span class="sheen glint"></span>
+                  </span>
+                </button>
+                <div class="side2">
+                  <p class="hint"><b>Insert your SimGolf</b>Click the disc, or drop your game folder, a .zip or a CD image onto it.</p>
+                  <div class="actions">
+                    <label class="btn">Choose game folder<input id="folder" type="file" webkitdirectory directory multiple></label>
+                    <label class="btn ghost">Or a .zip or CD image<input id="zip" type="file" accept=".zip,.iso,.cdr,.dmg"></label>
+                  </div>
+                  <div class="progress" id="prog" hidden aria-hidden="true">
+                    <p class="pstage"><b id="pstage">Working</b><span id="pcount"></span></p>
+                    <div class="pbar"><span id="pfill"></span></div>
+                    <p class="ptime" id="ptime"></p>
+                  </div>
+                </div>
+              </div>
+              <p class="tip"><svg aria-hidden="true"><use href="#i-sound"/></svg><strong>Want the original sounds and music?</strong> Use the SimGolf CD or an image of it
+                (<code>.iso</code>), or a full installed copy. Some downloaded copies of SimGolf have the art but leave the sounds
+                out: their <code>Sounds</code> and <code>SimsFX</code> folders are empty. The game still plays with those, using
+                the free OpenSGolf sounds instead.</p>
+              <p class="note">Zips made with Windows, 7-Zip or a Mac's archivers (Deflate64, BZip2, LZMA) are unpacked
+                here even where the iPad's Files app cannot. After loading, the page says what it found.</p>
+            </section>
+
+            <section class="card">
+              <h2><span class="icon">✨</span> No SimGolf? Play free now</h2>
+              <p>Start straight away with OpenSGolf's own free graphics, sounds and text, made by the game itself. Simple for now
+                (an early beta), and getting better.</p>
+              <div class="actions">
+                <button class="btn green" id="playfree">Play with free graphics</button>
+              </div>
+            </section>
+          </div>
+          <div id="summary" role="status" aria-live="polite"></div>
+          <label class="remember"><input type="checkbox" id="remember" checked> Keep my files in this browser so next time starts at once</label>
+          <label class="remember"><input type="checkbox" id="playcount" checked> Count my play time, anonymously (one count per 15 minutes played and one at start; no cookies, no personal data)</label>
+          <div id="status" role="status" aria-live="polite"></div>
+          <p class="trouble">Game stuck on its first picture? <button class="linkish" id="resetgfx" onclick="sgResetGraphics(); return false;">Reset graphics settings</button> (your saved games are kept)</p>
+        </section>
+
+        <section class="block">
+          <h2 class="bar"><svg aria-hidden="true"><use href="#i-disk"/></svg>Saves and packs</h2>
+          <details id="saves">
+            <summary>💾 Your saved games: back up, restore, or move to another device <span class="new" title="New in 0.5: saved games of the original SimGolf">NEW!</span></summary>
+            <div class="body">
+              <p>The games you save here are kept in this browser's own storage for this site (not in a folder on your computer),
+                so clearing the site's data, a private window or another browser will not have them. <b>Back up my saves</b>
+                downloads all of them (with your settings, championship courses and records) as one .zip to keep anywhere.
+                <b>Restore saves...</b> brings such a backup back, here or in another browser, and also takes single saved games
+                (<code>.sgs</code>) from the desktop version (they are in <code>Saved Games</code> in its save folder) or a zip of
+                that whole folder. Saved games of the original SimGolf
+                (<code>.sve</code>) are taken too: each becomes a new game, "<i>name</i> (imported)", in Load Previous Game; so
+                is its Top 10 Designers table (<code>top10.sve</code>).</p>
+              <p><b>To carry on a game on another device</b> (another browser, computer, phone or tablet): Back up my saves here,
+                then Restore saves... there (or copy the files into the desktop version's <code>Saved Games</code>). In the game,
+                Load Previous Game's <b>Export this save...</b> and <b>Import a save file...</b> do the same for one game; tick
+                <i>Import and export saved games</i> in Preferences, OpenSGolf extras, Helpers to show them.</p>
+              <div class="actions">
+                <button class="btn ghost" id="backup">Back up my saves</button>
+                <label class="btn ghost">Restore saves...<input id="restore" type="file" multiple accept=".zip,.sgs,.sgch,.pro,.sve,.json"></label>
+              </div>
+              <div id="savecount"></div>
+              <div id="savestatus" role="status" aria-live="polite"></div>
+            </div>
+          </details>
+
+          <details>
+            <summary>🖼️ HD graphics (optional)</summary>
+            <div class="body">
+              <p>The game can make HD graphics itself from your own SimGolf files: in the game, System Functions, Preferences,
+                Graphics, <em>Make HD graphics from my SimGolf files...</em> It is kept in this browser with your game files.</p>
+              <p>Or add an AI-upscaled art pack you made yourself from your own copy (see <code>docs/HD.md</code>). Pick the pack's folder
+                (with <code>manifest.json</code>) or a .zip. It never leaves your browser and must not be shared. Switch between HD and
+                Classic in the game's Preferences.</p>
+              <div class="actions">
+                <label class="btn ghost">Choose HD pack folder<input id="hdfolder" type="file" webkitdirectory directory multiple></label>
+                <label class="btn ghost">Or a .zip<input id="hdzip" type="file" accept=".zip"></label>
+                <button class="linkish" onclick="sgForgetHd(); return false;">Forget my HD pack</button>
+              </div>
+              <div id="hdstatus"></div>
+            </div>
+          </details>
+
+          <details id="packs">
+            <summary>🧩 Mods and content packs (optional)</summary>
+            <div class="body">
+              <p>Content packs change the game's data, art, sounds, text or add scenarios (see <code>docs/MODDING.md</code>). Pick a
+                pack's folder (with <code>pack.toml</code>) or a .zip. New packs start switched off: turn them on in the game under
+                System Functions → Preferences → Content packs, then reload this page.</p>
+              <div class="actions">
+                <label class="btn ghost">Add a pack folder<input id="packfolder" type="file" webkitdirectory directory multiple></label>
+                <label class="btn ghost">Or a .zip<input id="packzip" type="file" accept=".zip"></label>
+                <button class="linkish" onclick="sgForgetPacks(); return false;">Forget my content packs</button>
+              </div>
+              <div id="packstatus"></div>
+            </div>
+          </details>
+        </section>
+
+        <section class="block" id="trailer">
+          <h2 class="bar"><svg aria-hidden="true"><use href="#i-ball"/></svg>Watch the trailer</h2>
+          <a class="trailer" href="https://www.youtube.com/watch?v=B0ZH-oHJd-w" target="_blank" rel="noopener">
+            <img src="https://img.youtube.com/vi/B0ZH-oHJd-w/maxresdefault.jpg" loading="lazy" width="1280" height="720" onerror="this.onerror=null;this.src='https://img.youtube.com/vi/B0ZH-oHJd-w/hqdefault.jpg'"
+              alt="OpenSGolf trailer: one minute of play with the original SimGolf files (opens YouTube)">
+            <span class="play" aria-hidden="true">&#9654;</span>
+          </a>
+        </section>
+
+        <section class="block" id="about">
+          <h2 class="bar"><svg aria-hidden="true"><use href="#i-ball"/></svg>What you get</h2>
+          <div class="strip">
+            <div><h3>BUILD</h3><p>Lay out tees, fairways and greens, then grow the resort round them: shops, lodges, staff.</p></div>
+            <div><h3>DESIGN</h3><p>Raise hills, dig lakes, rake bunkers and plant trees until every hole tells a story.</p></div>
+            <div><h3>PLAY</h3><p>Take your own pro onto the course, from friendly matches to championship Sundays.</p></div>
+            <div><h3>CUSTOMISE</h3><p>Optional extras, HD art, mods and scenarios. Switch any of it on, or keep it classic.</p></div>
+          </div>
+          <div class="features">
+            <div class="feature"><div class="icon">🏌️</div><h3>Plays like SimGolf</h3>
+              <p>Build holes, hire staff, please the board. Golfers chat, tell stories and pay more when they have fun. Your pro,
+                tournaments and championships too.</p></div>
+            <div class="feature"><div class="icon">✨</div><h3>Enhanced graphics</h3>
+              <p>Sharp on 4K and widescreen, smooth zoom and motion, living water, soft shadows. Classic is one tick away.</p></div>
+            <div class="feature"><div class="icon">🌅</div><h3>Time of day and weather</h3>
+              <p>Golden hours, rain and puddles, mist, wind in the palms, seasons, and lamps that light up at dusk.</p></div>
+            <div class="feature"><span class="new">NEW!</span><div class="icon">🌄</div><h3>Dawn to dusk details</h3>
+              <p>Warm lit windows at night, sprinklers at first light, frost on cold mornings: each its own tick.</p></div>
+            <div class="feature"><div class="icon">📸</div><h3>Photo mode</h3>
+              <p>Press <kbd>C</kbd>: hide the interface, frame your course, add a look and focus blur, save up to 4K.</p></div>
+            <div class="feature"><div class="icon">📱</div><h3>Play anywhere</h3>
+              <p>Windows, Mac, Linux, Android and any modern browser. Touch controls for phones and tablets.</p></div>
+            <div class="feature"><div class="icon">🧩</div><h3>Mods and scenarios</h3>
+              <p>Content packs, scenarios with goals, game scripts, and community packs to download from inside the game.</p></div>
+            <div class="feature"><span class="new">NEW!</span><div class="icon">💾</div><h3>Bring your old saves</h3>
+              <p>Saved games of the original SimGolf (<code>.sve</code>) and its Top 10 Designers come across as new games.</p></div>
           </div>
         </section>
 
-        <section class="card primary">
-          <h2><span class="icon">🏌️</span> Play with your SimGolf</h2>
-          <p>Pick the folder of your installed copy of SimGolf (the one holding <code>Data</code>, <code>Flics</code> and
-            <code>Sounds</code>, often <code>C:\Program Files\Maxis\SimGolf</code>). The original art, sound and music, made
-            new. Or the SimGolf CD: an image of it (<code>.iso</code>, or a Mac's <code>.cdr</code>), a .zip of either, or the
-            CD itself picked as a folder; it is unpacked here, nothing to install. The files are read in this tab only;
-            nothing is uploaded.</p>
-          <p class="note">If your copy's <code>Sounds</code> and <code>SimsFX</code> folders are empty (some downloaded
-            copies leave the sounds out), the game still plays, with the free OpenSGolf sounds; a full installed copy or the
-            CD has the original's. Zips made with Windows, 7-Zip or a Mac's archivers (Deflate64, BZip2, LZMA) are unpacked
-            here even where the iPad's Files app cannot. After loading, the page says what it found.</p>
-          <div class="actions">
-            <label class="btn">Choose game folder<input id="folder" type="file" webkitdirectory directory multiple></label>
-            <label class="btn ghost">Or a .zip or CD image<input id="zip" type="file" accept=".zip,.iso,.cdr,.dmg"></label>
+        <section class="block">
+          <h2 class="bar"><svg aria-hidden="true"><use href="#i-club"/></svg>How to play</h2>
+          <div class="help">
+            <section class="card">
+              <h3>⌨️ Mouse and keys</h3>
+              <ul>
+                <li>Click to build, drag to scroll, right click to undo or close</li>
+                <li>Wheel or <kbd>Z</kbd> / <kbd>X</kbd> zoom; <kbd>PgUp</kbd> / <kbd>Home</kbd> turn the view (Mac:
+                  <kbd>fn</kbd>+<kbd>↑</kbd> / <kbd>fn</kbd>+<kbd>←</kbd>); arrows scroll</li>
+                <li><kbd>G</kbd> green, again for a tee, <kbd>F</kbd> fairway, <kbd>H</kbd> opens the hole; <kbd>Space</kbd> drops
+                  the tool</li>
+                <li>Reports <kbd>F1</kbd>–<kbd>F10</kbd>, or <kbd>Alt</kbd>+<kbd>1</kbd>–<kbd>0</kbd> (Mac: <kbd>⌥ option</kbd>,
+                  no <kbd>fn</kbd> needed); <kbd>F8</kbd> lists every key</li>
+                <li><kbd>Esc</kbd> menu, <kbd>⇧</kbd>+<kbd>S</kbd> / <kbd>⇧</kbd>+<kbd>L</kbd> save and load, <kbd>]</kbd> game
+                  speed</li>
+                <li>Sharper 4K and widescreen: Preferences → Enhanced graphics</li>
+              </ul>
+            </section>
+            <section class="card">
+              <h3>👆 Touch</h3>
+              <ul>
+                <li>Tap to click, drag to scroll, hold for a right click</li>
+                <li>Aiming your pro or placing a building: drag to set the spot, then tap <b>Swing</b> or the tick</li>
+                <li>Pinch to zoom, twist two fingers to turn the view</li>
+                <li>On-screen buttons for open hole, turn, speed and messages</li>
+              </ul>
+            </section>
+            <section class="card">
+              <h3>💡 Good to know</h3>
+              <ul>
+                <li>Works in Chrome, Edge and Firefox on desktop, and on phones and tablets</li>
+                <li>Sound starts with your first click, key or tap</li>
+                <li>Saved games stay in this browser: back them up as a .zip under <a href="#saves">Your saved games</a>;
+                  screenshots and SimFotos download</li>
+              </ul>
+            </section>
           </div>
         </section>
+      </main>
 
-        <section class="card">
-          <h2><span class="icon">✨</span> No SimGolf? Play free now</h2>
-          <p>Start straight away with OpenSGolf's own free graphics, sounds and text, made by the game itself. Simple for now
-            (an early beta), and getting better.</p>
-          <div class="actions">
-            <button class="btn green" id="playfree">Play with free graphics</button>
+      <aside class="side">
+        <div class="box news">
+          <h2 class="bar"><svg aria-hidden="true"><use href="#i-info"/></svg>Latest news</h2>
+          <div class="in">
+            <!-- filled from whatsnew.json (the game's What's new list) by opensgolf.js; this is what shows without it -->
+            <dl id="news">
+              <dt>7 November 2026 <span class="new">NEW!</span></dt>
+              <dd><b>OpenSGolf 0.7 released</b> An optional second course of 18 more holes on the same land, forward and
+                middle tees picked by each golfer's skill, a flyover of any hole from Hole Stats, double-click to load a
+                save, and longer translations that fit their boxes.
+                <a href="https://github.com/crspytopgn/opensgolf/blob/main/CHANGELOG.md" target="_blank" rel="noopener">What's new</a></dd>
+              <dt>28 October 2026</dt>
+              <dd><b>OpenSGolf 0.6</b> Smoother play with no more short freezes, faster Enhanced graphics in the browser,
+                HD graphics made from your own SimGolf files (beta), new cartoon faces for the free graphics, and the
+                interface at the screen's edges on wide screens.</dd>
+            </dl>
           </div>
-        </section>
-      </div>
-      <div id="summary" role="status" aria-live="polite"></div>
-    </div>
-  </section>
-
-  <main class="wrap">
-    <label class="remember"><input type="checkbox" id="remember" checked> Keep my files in this browser so next time starts at once</label>
-    <div id="status" role="status" aria-live="polite"></div>
-    <p class="trouble">Game stuck on its first picture? <button class="linkish" id="resetgfx" onclick="sgResetGraphics(); return false;">Reset graphics settings</button> (your saved games are kept)</p>
-
-    <details id="saves">
-      <summary>💾 Your saved games: back up and restore</summary>
-      <div class="body">
-        <p>The games you save here are kept in this browser's own storage for this site (not in a folder on your computer),
-          so clearing the site's data, a private window or another browser will not have them. <b>Back up my saves</b>
-          downloads all of them (with your settings, championship courses and records) as one .zip to keep anywhere.
-          <b>Restore saves...</b> brings such a backup back, here or in another browser, and also takes single saved games
-          (<code>.sgs</code>) from the desktop version (they are in <code>Saved Games</code> in its save folder) or a zip of
-          that whole folder. In the game, Load Previous Game can export or import one save at a time (with the Course
-          sharing extra on). Saved games of the original SimGolf (<code>.sve</code>) cannot be read yet; its Top 10
-          Designers table (<code>top10.sve</code>) can.</p>
-        <div class="actions">
-          <button class="btn ghost" id="backup">Back up my saves</button>
-          <label class="btn ghost">Restore saves...<input id="restore" type="file" multiple accept=".zip,.sgs,.sgch,.pro,.sve,.json"></label>
         </div>
-        <div id="savecount"></div>
-        <div id="savestatus" role="status" aria-live="polite"></div>
-      </div>
-    </details>
-
-    <details>
-      <summary>🖼️ HD graphics (optional)</summary>
-      <div class="body">
-        <p>Add an AI-upscaled art pack you made yourself from your own copy (see <code>docs/HD.md</code>). Pick the pack's folder
-          (with <code>manifest.json</code>) or a .zip. It never leaves your browser and must not be shared. Switch between HD and
-          Classic in the game's Preferences.</p>
-        <div class="actions">
-          <label class="btn ghost">Choose HD pack folder<input id="hdfolder" type="file" webkitdirectory directory multiple></label>
-          <label class="btn ghost">Or a .zip<input id="hdzip" type="file" accept=".zip"></label>
-          <button class="linkish" onclick="sgForgetHd(); return false;">Forget my HD pack</button>
+        <div class="box">
+          <h2 class="bar"><svg aria-hidden="true"><use href="#i-ball"/></svg>Get it</h2>
+          <div class="in get">
+            <a class="btn ghost" href="https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-windows.zip">🪟 Windows</a>
+            <a class="btn ghost" href="https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-windows-arm64.zip">💻 Windows on ARM</a>
+            <a class="btn ghost" href="https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-macos.zip">🍎 Mac</a>
+            <a class="btn ghost" href="https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-linux-x86_64.AppImage">🐧 Linux</a>
+            <a class="btn ghost" href="https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-android.apk">🤖 Android</a>
+            <a class="btn ghost" href="https://github.com/crspytopgn/opensgolf">Source on GitHub</a>
+            <a class="btn coffee" href="https://buymeacoffee.com/crspytopgn">☕ Buy me a coffee</a>
+          </div>
         </div>
-        <div id="hdstatus"></div>
-      </div>
-    </details>
-
-    <details>
-      <summary>🧩 Mods and content packs (optional)</summary>
-      <div class="body">
-        <p>Content packs change the game's data, art, sounds, text or add scenarios (see <code>docs/MODDING.md</code>). Pick a
-          pack's folder (with <code>pack.toml</code>) or a .zip. New packs start switched off: turn them on in the game under
-          System Functions → Preferences → Content packs, then reload this page.</p>
-        <div class="actions">
-          <label class="btn ghost">Add a pack folder<input id="packfolder" type="file" webkitdirectory directory multiple></label>
-          <label class="btn ghost">Or a .zip<input id="packzip" type="file" accept=".zip"></label>
-          <button class="linkish" onclick="sgForgetPacks(); return false;">Forget my content packs</button>
-        </div>
-        <div id="packstatus"></div>
-      </div>
-    </details>
-
-    <h2 class="section">What you get</h2>
-    <div class="features">
-      <div class="feature"><div class="icon">🏌️</div><h3>Plays like SimGolf</h3>
-        <p>Build holes, hire staff, please the board. Golfers chat, tell stories and pay more when they have fun. Your pro,
-          tournaments and championships too.</p></div>
-      <div class="feature"><div class="icon">✨</div><h3>Enhanced graphics</h3>
-        <p>Sharp on 4K and widescreen, smooth zoom and motion, living water, soft shadows. Classic is one tick away.</p></div>
-      <div class="feature"><div class="icon">🌅</div><h3>Time of day and weather</h3>
-        <p>Golden hours, rain and puddles, mist, wind in the palms, seasons, and lamps that light up at dusk.</p></div>
-      <div class="feature"><div class="icon">📸</div><h3>Photo mode</h3>
-        <p>Press <kbd>C</kbd>: hide the interface, frame your course, add a look and focus blur, save up to 4K.</p></div>
-      <div class="feature"><div class="icon">📱</div><h3>Play anywhere</h3>
-        <p>Windows, Mac, Linux, Android and any modern browser. Touch controls for phones and tablets.</p></div>
-      <div class="feature"><div class="icon">🧩</div><h3>Mods and scenarios</h3>
-        <p>Content packs, scenarios with goals, game scripts, and community packs to download from inside the game.</p></div>
-    </div>
-
-    <h2 class="section">How to play</h2>
-    <div class="help">
-      <section class="card">
-        <h3>⌨️ Mouse and keys</h3>
-        <ul>
-          <li>Click to build, drag to scroll, right click to undo or close</li>
-          <li>Wheel or <kbd>Z</kbd> / <kbd>X</kbd> zoom; <kbd>PgUp</kbd> / <kbd>Home</kbd> turn the view (Mac:
-            <kbd>fn</kbd>+<kbd>↑</kbd> / <kbd>fn</kbd>+<kbd>←</kbd>); arrows scroll</li>
-          <li><kbd>G</kbd> green, again for a tee, <kbd>F</kbd> fairway, <kbd>H</kbd> opens the hole; <kbd>Space</kbd> drops
-            the tool</li>
-          <li>Reports <kbd>F1</kbd>–<kbd>F10</kbd>, or <kbd>Alt</kbd>+<kbd>1</kbd>–<kbd>0</kbd> (Mac: <kbd>⌥ option</kbd>,
-            no <kbd>fn</kbd> needed); <kbd>F8</kbd> lists every key</li>
-          <li><kbd>Esc</kbd> menu, <kbd>⇧</kbd>+<kbd>S</kbd> / <kbd>⇧</kbd>+<kbd>L</kbd> save and load, <kbd>]</kbd> game
-            speed</li>
-          <li>Sharper 4K and widescreen: Preferences → Enhanced graphics</li>
-        </ul>
-      </section>
-      <section class="card">
-        <h3>👆 Touch</h3>
-        <ul>
-          <li>Tap to click, drag to scroll, hold for a right click</li>
-          <li>Pinch to zoom, twist two fingers to turn the view</li>
-          <li>On-screen buttons for open hole, turn, speed and messages</li>
-        </ul>
-      </section>
-      <section class="card">
-        <h3>💡 Good to know</h3>
-        <ul>
-          <li>Works in Chrome, Edge and Firefox on desktop, and on phones and tablets</li>
-          <li>Sound starts with your first click, key or tap</li>
-          <li>Saved games stay in this browser: back them up as a .zip under <a href="#saves">Your saved games</a>;
-            screenshots and SimFotos download</li>
-        </ul>
-      </section>
-    </div>
-
-    <h2 class="section">Get it for your computer or phone</h2>
-    <div class="get">
-      <a class="btn ghost" href="https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-windows.zip">🪟 Windows</a>
-      <a class="btn ghost" href="https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-windows-arm64.zip">💻 Windows on ARM</a>
-      <a class="btn ghost" href="https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-macos.zip">🍎 Mac</a>
-      <a class="btn ghost" href="https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-linux-x86_64.AppImage">🐧 Linux</a>
-      <a class="btn ghost" href="https://github.com/crspytopgn/opensgolf/releases/latest/download/opensgolf-android.apk">🤖 Android</a>
-      <a class="btn ghost" href="https://github.com/crspytopgn/opensgolf">Source on GitHub</a>
-      <a class="btn coffee" href="https://buymeacoffee.com/crspytopgn">☕ Buy me a coffee</a>
+      </aside>
     </div>
 
     <footer>
-      <p><span id="version">OpenSGolf</span></p>
+      <p><span id="version">OpenSGolf</span> · <a href="https://github.com/crspytopgn/opensgolf/blob/main/CHANGELOG.md" target="_blank" rel="noopener">What's new</a></p>
+      <div class="badges" aria-hidden="true">
+        <span><i>GPL</i><b>FREE SOFTWARE</b></span>
+        <span class="g"><i>100%</i><b>FAN MADE</b></span>
+        <span class="b"><i>0</i><b>COOKIES</b></span>
+      </div>
       <p>OpenSGolf is free software (GPL-2.0-or-later), made by fans. Source, all downloads, help and docs:
         <a href="https://github.com/crspytopgn/opensgolf">github.com/crspytopgn/opensgolf</a>.</p>
       <p>An unofficial fan project; not affiliated with or endorsed by Electronic Arts, Firaxis Games or Take-Two Interactive.
         SimGolf's art, sounds and data belong to Electronic Arts and are not included; the page reads them from your own copy.
         The picture at the top is from the game running with the original SimGolf files.</p>
-      <p>Visits are counted with <a href="https://www.goatcounter.com">GoatCounter</a>: no cookies and no personal data.</p>
+      <p>Visits and play time are counted with <a href="https://www.goatcounter.com">GoatCounter</a>: no cookies and no
+        personal data. The game counts play time anonymously: one count per 15 minutes played and one at start, with only the
+        system and version. The tick under the start buttons or the game's Preferences &gt; More turns it off.</p>
+      <p class="viewed">Best viewed at any resolution, on any screen, with the sound on.</p>
     </footer>
-  </main>
+  </div>
 </div>
 <canvas id="glcanvas" tabindex="1"></canvas>
+<div id="rotate" hidden role="dialog" aria-modal="true" aria-labelledby="rotatetitle">
+  <section class="card">
+    <h2 class="bar" id="rotatetitle">Turn your device sideways to play</h2>
+    <svg viewBox="0 0 120 120" aria-hidden="true">
+      <path d="M22 36a40 40 0 0 1 30-18" fill="none" stroke="#2b8a3c" stroke-width="3" stroke-linecap="round"/>
+      <path d="M50 12l4 7-8 2" fill="none" stroke="#2b8a3c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      <g class="phone">
+        <rect x="40" y="22" width="40" height="76" rx="8" fill="#1d3a6b" stroke="#0d2448" stroke-width="4"/>
+        <rect x="46" y="32" width="28" height="56" rx="2" fill="#7cc0ee"/>
+        <rect x="46" y="64" width="28" height="24" fill="#3fae5f"/>
+        <ellipse cx="60" cy="74" rx="10" ry="4" fill="#58c27a"/>
+        <rect x="59.5" y="46" width="2" height="28" fill="#fff"/>
+        <path d="M61.5 46l9 3.5-9 3.5z" fill="#e8423b"/>
+      </g>
+    </svg>
+    <p>SimGolf is made for a wide screen. The game is waiting for you.</p>
+    <button class="btn" id="rotateanyway">Play anyway</button>
+  </section>
+</div>
 <script src="gl.js"></script>
 <script src="files.js"></script>
 <script src="opensgolf.js"></script>
 <script>
-  document.getElementById("folder").addEventListener("change", e => sgLoadFolder(e.target.files));
-  document.getElementById("zip").addEventListener("change", e => sgLoadZip(e.target.files[0]));
+  // the download row: a button for the visitor's own system, the others beside it (without scripts, just the list)
+  (() => {
+    const ua = navigator.userAgent, os = /Android/i.test(ua) ? "android" : /iPhone|iPad|iPod/i.test(ua) ? "ios"
+      : /Windows/i.test(ua) ? "windows" : /Mac/i.test(ua) && navigator.maxTouchPoints > 1 ? "ios"
+      : /Mac/i.test(ua) ? "mac" : /Linux|X11|CrOS/i.test(ua) ? "linux" : "";
+    const names = { windows: "Windows", mac: "Mac", linux: "Linux", android: "Android" };
+    const own = document.querySelector('.dl-more a[data-os="' + os + '"]');
+    if (own) {
+      const main = document.getElementById("dl-main");
+      main.href = own.href; main.textContent = "⬇ Download for " + names[os]; main.hidden = false;
+      document.getElementById("dl-also").textContent = "Also for";
+      // the visitor's own system once is enough: its link and the dot after it go
+      const dot = own.nextSibling;
+      if (dot && dot.nodeType === 3) dot.textContent = dot.textContent.replace("·", "");
+      own.remove();
+    } else if (os === "ios") {
+      document.getElementById("dl-also").textContent = "On iPhone and iPad, play right here. Download for";
+    }
+  })();
+  // the CD spins while the player's files are read or unpacked, and stops when the game starts or the page says why not
+  const cd = document.getElementById("cd");
+  function sgSpin(job) {
+    cd.classList.add("loading"); cd.setAttribute("aria-busy", "true");
+    sgProgressBegin();
+    return Promise.resolve(job).finally(() => {
+      cd.classList.remove("loading"); cd.removeAttribute("aria-busy"); sgProgressEnd();
+    });
+  }
+  document.getElementById("folder").addEventListener("change", e => sgSpin(sgLoadFolder(e.target.files)));
+  document.getElementById("zip").addEventListener("change", e => sgSpin(sgLoadZip(e.target.files[0])));
+  cd.addEventListener("click", () => { if (!cd.classList.contains("loading")) document.getElementById("folder").click(); });
+  // files dropped on the CD: one file goes the .zip or CD image way, a folder (or several files) the game folder way, its
+  // files given the paths a picked folder has
+  async function sgDropped(dt) {
+    const roots = Array.from(dt.items || []).map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+    if (roots.length === 1 && roots[0].isFile || !roots.length) return sgLoadZip(dt.files[0]);
+    const files = [];
+    const walk = async ent => {
+      if (ent.isFile) {
+        const f = await new Promise((ok, fail) => ent.file(ok, fail));
+        Object.defineProperty(f, "webkitRelativePath", { value: ent.fullPath.replace(/^\//, "") });
+        files.push(f);
+      } else if (ent.isDirectory) {
+        const r = ent.createReader();
+        for (;;) {
+          const batch = await new Promise((ok, fail) => r.readEntries(ok, fail));
+          if (!batch.length) break;
+          for (const c of batch) await walk(c);
+        }
+      }
+    };
+    sgStatus("Reading the dropped files...");
+    for (const r of roots) await walk(r);
+    return sgLoadFolder(files);
+  }
+  ["dragenter", "dragover"].forEach(t => cd.addEventListener(t, e => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; cd.classList.add("over"); }));
+  cd.addEventListener("dragleave", () => cd.classList.remove("over"));
+  cd.addEventListener("drop", e => {
+    e.preventDefault(); cd.classList.remove("over");
+    if (!cd.classList.contains("loading") && e.dataTransfer.files.length) sgSpin(sgDropped(e.dataTransfer).catch(err => sgStatus("Could not read the dropped files: " + err.message)));
+  });
   document.getElementById("hdfolder").addEventListener("change", e => sgLoadHdFolder(e.target.files));
   document.getElementById("hdzip").addEventListener("change", e => sgLoadHdZip(e.target.files[0]));
   document.getElementById("packfolder").addEventListener("change", e => sgLoadPackFolder(e.target.files));
   document.getElementById("packzip").addEventListener("change", e => sgLoadPackZip(e.target.files[0]));
   document.getElementById("playfree").addEventListener("click", () => sgPlayFree());
+  document.getElementById("rotateanyway").addEventListener("click", () => sgRotateDismiss());
   document.getElementById("backup").addEventListener("click", () => sgBackupSaves());
   document.getElementById("restore").addEventListener("change", e => { sgRestoreFiles(e.target.files).finally(() => { e.target.value = ""; }); });
-  document.querySelector('a[href="#saves"]').addEventListener("click", () => { document.getElementById("saves").open = true; });
+  // the theme button turns Auto (the device's scheme) → Light → Dark, kept in this browser for the head script to set early
+  const theme = document.getElementById("theme");
+  const sgThemeName = { auto: "Auto, following your device", light: "Light", dark: "Dark" };
+  const sgThemeNext = { auto: "light", light: "dark", dark: "auto" };
+  function sgThemeShow(mode) { theme.title = "Colour theme: " + sgThemeName[mode] + ". Click for " + sgThemeName[sgThemeNext[mode]].split(",")[0]; }
+  sgThemeShow(document.documentElement.getAttribute("data-theme") || "auto");
+  theme.addEventListener("click", () => {
+    const mode = sgThemeNext[document.documentElement.getAttribute("data-theme") || "auto"];
+    if (mode === "auto") document.documentElement.removeAttribute("data-theme"); else document.documentElement.setAttribute("data-theme", mode);
+    try { if (mode === "auto") localStorage.removeItem("opensgolf-theme"); else localStorage.setItem("opensgolf-theme", mode); } catch (e) {}
+    sgThemeShow(mode);
+  });
+  // links to a folded box (Your saved games, the packs) open it; the tab bar marks the section clicked
+  document.querySelectorAll('a[href^="#"]').forEach(a => a.addEventListener("click", () => {
+    const t = document.getElementById(a.getAttribute("href").slice(1));
+    if (t && t.tagName === "DETAILS") t.open = true;
+    if (a.closest("nav.tabs")) document.querySelectorAll("nav.tabs a").forEach(o => o.classList.toggle("on", o === a));
+  }));
   sgInit();
 </script>
 </body>

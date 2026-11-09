@@ -1,0 +1,349 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metadata for OpenSGolf (Flathub, GNOME Software, KDE Discover, distribution packages).
+     Check it with appstreamcli validate (packaging/README.md, "Checking the files").
+     Add a <release> at the top of <releases> for every new version (packaging/README.md). -->
+<component type="desktop-application">
+  <id>io.github.crspytopgn.OpenSGolf</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-2.0-or-later AND OFL-1.1</project_license>
+
+  <name>OpenSGolf</name>
+  <summary>Build and run your own golf resort</summary>
+
+  <developer id="io.github.crspytopgn">
+    <name>The OpenSGolf contributors</name>
+  </developer>
+
+  <description>
+    <p>
+      OpenSGolf is a free, open source engine for the golf course building game Sid Meier’s SimGolf (2002).
+      Lay out holes, plant trees and dig ponds, put up a clubhouse and shops, hire staff, and watch your golfers play
+      your course, chat, complain and come back for more.
+    </p>
+    <p>
+      It comes with its own complete set of free graphics and sounds, so you can start playing right away. If you own
+      SimGolf, you can choose “Use my SimGolf files…” in the game and pick your installed game folder, the CD, a CD image
+      or a .zip of the folder: OpenSGolf then plays with the original art and sounds. No game files are included.
+    </p>
+    <p>
+      With every option at its default it aims to play exactly like the original. On top of that it offers:
+    </p>
+    <ul>
+      <li>Any window size and full screen, with optional enhanced, high-resolution graphics</li>
+      <li>Optional fixes for bugs of the original game</li>
+      <li>Optional interface helpers and extras, all off until you turn them on</li>
+      <li>A course editor for your own scenarios, and content packs (mods)</li>
+      <li>Mouse, keyboard, touch screen and game controller support</li>
+    </ul>
+    <p>
+      OpenSGolf is not affiliated with or endorsed by Electronic Arts or Firaxis Games. SimGolf and Sid Meier’s are
+      trademarks of their owners and are named here only to say which game’s files OpenSGolf can use.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">io.github.crspytopgn.OpenSGolf.desktop</launchable>
+  <provides>
+    <binary>opensgolf</binary>
+  </provides>
+
+  <url type="homepage">https://github.com/crspytopgn/opensgolf</url>
+  <url type="bugtracker">https://github.com/crspytopgn/opensgolf/issues</url>
+  <url type="help">https://github.com/crspytopgn/opensgolf/blob/main/docs/PLAYING.md</url>
+  <url type="vcs-browser">https://github.com/crspytopgn/opensgolf</url>
+  <url type="contribute">https://github.com/crspytopgn/opensgolf/blob/main/CONTRIBUTING.md</url>
+  <url type="translate">https://github.com/crspytopgn/opensgolf/blob/main/docs/TRANSLATING.md</url>
+  <url type="donation">https://buymeacoffee.com/crspytopgn</url>
+
+  <categories>
+    <category>Game</category>
+    <category>Simulation</category>
+  </categories>
+  <keywords>
+    <keyword>golf</keyword>
+    <keyword>course</keyword>
+    <keyword>tycoon</keyword>
+    <keyword>management</keyword>
+    <keyword>building</keyword>
+    <keyword>SimGolf</keyword>
+  </keywords>
+
+  <branding>
+    <color type="primary" scheme_preference="light">#aad7f5</color>
+    <color type="primary" scheme_preference="dark">#2c6929</color>
+  </branding>
+
+  <!-- taken with the included free graphics (no original game files), at 1280 x 720 -->
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/crspytopgn/opensgolf/main/packaging/screenshots/02-course.jpg</image>
+      <caption>A course with its clubhouse, played with the included free graphics</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/crspytopgn/opensgolf/main/packaging/screenshots/01-title.png</image>
+      <caption>The title menu</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/crspytopgn/opensgolf/main/packaging/screenshots/03-golfers.jpg</image>
+      <caption>Golfers tell you what they think of your course</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/crspytopgn/opensgolf/main/packaging/screenshots/04-hole-stats.jpg</image>
+      <caption>Hole statistics and the golfers’ comments</caption>
+    </screenshot>
+  </screenshots>
+
+  <requires>
+    <display_length compare="ge">600</display_length>
+  </requires>
+  <recommends>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </recommends>
+  <supports>
+    <control>touch</control>
+    <control>gamepad</control>
+  </supports>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="0.7.3" date="2026-11-08">
+      <description>
+        <p>A launcher before the title menu for game files, presets, display, sound and news.</p>
+        <p>What's new shows this version's highlights again.</p>
+        <p>Start New Game goes straight to Choose Difficulty, as in the original.</p>
+      </description>
+    </release>
+    <release version="0.7.2" date="2026-11-08">
+      <description>
+        <p>Racing wheels and pedals no longer move the pointer or scroll the course.</p>
+        <p>Longer translated text also fits the scorecard, SGA report, routing map, roster and comments.</p>
+      </description>
+    </release>
+    <release version="0.7.1" date="2026-11-07">
+      <description>
+        <p>Longer translated text also fits the info boxes, golfer card, world map, shot panel and report legends.</p>
+      </description>
+    </release>
+    <release version="0.7.0" date="2026-11-07">
+      <description>
+        <p>An optional second course of 18 more holes on the same land.</p>
+        <p>Optional forward and middle tees, chosen by each golfer's skill.</p>
+        <p>An optional flyover of a hole from its Hole Stats.</p>
+        <p>Double-click a saved game to load it.</p>
+        <p>Longer translated text shrinks or wraps to fit its box.</p>
+        <p>An option to show celebrities' names over home sites only under the pointer.</p>
+        <p>Problem reports can include an exact replay of the game.</p>
+      </description>
+    </release>
+    <release version="0.6.10" date="2026-11-04">
+      <description>
+        <p>Desert ponds have sandy shores again, with grass only where they meet a tee, green, fairway or sand trap.</p>
+        <p>A golfer becoming a member plays the club's fanfare, as in the original.</p>
+      </description>
+    </release>
+    <release version="0.6.9" date="2026-11-03">
+      <description>
+        <p>Hungarian letters with double accents are drawn in the game's own fonts.</p>
+        <p>With Enhanced graphics, the blimp's reflection sits below the water's surface again.</p>
+      </description>
+    </release>
+    <release version="0.6.8" date="2026-11-02">
+      <description>
+        <p>The game's text draws Central European letters and typographic quotes, for translations.</p>
+        <p>A new optional extra, off by default: keep the County commissioner's land offer to buy land when you like.</p>
+      </description>
+    </release>
+    <release version="0.6.7" date="2026-11-02">
+      <description>
+        <p>On touch screens a one-finger drag only scrolls the view, and the aim's label no longer hides the end of the shot.</p>
+        <p>With Enhanced graphics, no hard red and purple circles after rain.</p>
+      </description>
+    </release>
+    <release version="0.6.6" date="2026-10-31">
+      <description>
+        <p>With Enhanced graphics, the blimp's reflection in the water points the way the blimp does.</p>
+      </description>
+    </release>
+    <release version="0.6.5" date="2026-10-31">
+      <description>
+        <p>Undo puts back only what the click changed and no longer winds the clock back; placing, removing and undoing show the money over each tile, as in the original.</p>
+        <p>Golfers swing along the ball's line; no ball is left by the pin; the SGA's tournament offer says where to begin it.</p>
+      </description>
+    </release>
+    <release version="0.6.4" date="2026-10-28">
+      <description>
+        <p>The view can no longer be scrolled off the map, and in full screen the pointer at the screen's edge scrolls it, as in the original.</p>
+        <p>Painting over a flower bed or a small object takes it away; a game's options stay that game's, so new games start with the ones chosen on the title screens.</p>
+        <p>Celebrities at their homes wear their own colours, and each home shows who lives there.</p>
+        <p>The build panel's buttons answer only at their foot; Sandbox Mode goes straight to the world map, where every property keeps its own card; new games no longer start with land past the property's edge.</p>
+        <p>The raise and lower land keys work only with a tool armed.</p>
+      </description>
+    </release>
+    <release version="0.6.3" date="2026-10-28">
+      <description>
+        <p>A green painted beside a putting green no longer joins it, and gets its flag.</p>
+        <p>Painting water over the sea keeps its depth and colour, and the pointer to the right of the build panel no longer picks a tree.</p>
+        <p>The game takes much less memory and Enhanced graphics run faster; Pause in the background also stops the sound, and Autosave saves when the game goes to the background.</p>
+      </description>
+    </release>
+    <release version="0.6.2" date="2026-10-28">
+      <description>
+        <p>The pine tree brush no longer shows a path tile under the pointer.</p>
+      </description>
+    </release>
+    <release version="0.6.1" date="2026-10-28">
+      <description>
+        <p>A first-start box helps choose how to play, and What's new is shown once after updating.</p>
+        <p>Loading a save in the browser no longer freezes for seconds, and typing in the bug report form opened from Report a problem no longer loses what you type.</p>
+        <p>Game options lists each page's most wanted options first, with Helpers split into Saves and Controls, and the title screen shows the version.</p>
+        <p>A new game's building beside the clubhouse no longer hangs over the edge of a small property.</p>
+      </description>
+    </release>
+    <release version="0.6.0" date="2026-10-28">
+      <description>
+        <p>Smoother play: the short freezes as golfers came and went are gone, and the course draws faster.</p>
+        <p>Enhanced graphics keep up better on large screens and slower machines (a browser draws them at up to 1440p and stretches them to a 4K screen), and ease off a step at a time by themselves when the game runs slowly.</p>
+        <p>Preferences can make HD graphics from your own SimGolf files, on your own device.</p>
+        <p>The free graphics' golfers have a new cast of cartoon faces, and the game says when some of your SimGolf files cannot be read.</p>
+        <p>The game now looks for a newer version when it starts and offers to install it, saying nothing if there is none (Preferences, More switches it off).</p>
+        <p>Two new options, both off until switched on: aim and swing with the mouse the way touch screens do, and no new dandelions in sandbox games.</p>
+      </description>
+    </release>
+    <release version="0.5.13" date="2026-10-27">
+      <description>
+        <p>Fixed the picture going black or jumbled after resizing or maximising the window (with multisampling, HD or some Enhanced effects on).</p>
+        <p>Classic graphics shade hills smoothly, as the original does, instead of in hard tile-sized steps.</p>
+        <p>Each theme's own buildings have their names again: the desert's Spa, Helipad and Casino, the links' Pub, Stable, Church and Castle, the parkland's Tennis Court and the tropical Theme Park.</p>
+      </description>
+    </release>
+    <release version="0.5.12" date="2026-10-26">
+      <description>
+        <p>Golfer stories play as in the original: the lines show in bubbles over the two golfers with their portraits, and a scene plays only while you watch the pair close up, instead of in a box in the middle of the screen wherever you look.</p>
+      </description>
+    </release>
+    <release version="0.5.11" date="2026-10-26">
+      <description>
+        <p>Placing a landmark, flower bed or scenic tree now places the one you chose: a click on the course no longer picks the item the pointer passed over on the way.</p>
+        <p>Paths are drawn with the original's pieces: ends and bends join up without loose round dots, and a path joined to the clubhouse is grey as in the original.</p>
+        <p>The tee of an open hole shows the original's arrow pointing the way to the hole, turning with the view.</p>
+        <p>Sand traps keep the shape you turned them to before placing them, as in the original.</p>
+        <p>Enhanced graphics: fixed a brief flash of large, blocky shadows on busy courses, and removed the twinkling white dots on the ground on spring and autumn mornings.</p>
+      </description>
+    </release>
+    <release version="0.5.10" date="2026-10-26">
+      <description>
+        <p>The tropical trees show again with retail CD installs, whose tree folders are named with spaces (Tree Cerc, Tree Drac) where other copies use underscores.</p>
+      </description>
+    </release>
+    <release version="0.5.9" date="2026-10-26">
+      <description>
+        <p>Problem reports now say why a game file could not be opened, and list what its folder holds, to track down missing pictures.</p>
+      </description>
+    </release>
+    <release version="0.5.8" date="2026-10-25">
+      <description>
+        <p>Builds from GitHub can count play time anonymously (one count per 15 minutes played, no personal data), with a notice and an off switch in Preferences. Store builds, including this one, leave it out entirely.</p>
+        <p>The support reminder now says how long you have played and what keeping OpenSGolf going costs.</p>
+        <p>The title menu and Preferences show your total time played, and option descriptions are no longer cut off on touch screens.</p>
+      </description>
+    </release>
+    <release version="0.5.7" date="2026-10-25">
+      <description>
+        <p>The Analyze Golf Shot button on the Elevation panel works: click near a hole to see golfers' sample shots. On the tropical and Links courses, the tree and stream buttons now show their own names and descriptions. A lone elm tree stands in the middle of its square again.</p>
+      </description>
+    </release>
+    <release version="0.5.6" date="2026-10-25">
+      <description>
+        <p>New Report a problem form, an optional Looks extra for the desert's Ravine and Brush art, more faithful saves (the hole plan and the calendar's hold are kept), each save checked as it is written, and, after an hour of play, a gentle note about supporting the project that asks at most twice.</p>
+      </description>
+    </release>
+    <release version="0.5.5" date="2026-10-24">
+      <description>
+        <p>On touch screens, dragging while moving an employee now scrolls the view instead of placing them.</p>
+      </description>
+    </release>
+    <release version="0.5.4" date="2026-10-24">
+      <description>
+        <p>Free graphics for the People panels, eagles and water banks; any number of Snack Bars.</p>
+      </description>
+    </release>
+    <release version="0.5.3" date="2026-10-22">
+      <description>
+        <p>The walking pro wears the body chosen in Customise.</p>
+      </description>
+    </release>
+    <release version="0.5.2" date="2026-10-22">
+      <description>
+        <p>High-resolution content packs, and tools for making your own art.</p>
+      </description>
+    </release>
+    <release version="0.5.1" date="2026-10-21">
+      <description>
+        <p>Look around while aiming on touch screens.</p>
+      </description>
+    </release>
+    <release version="0.5.0" date="2026-10-20"/>
+    <release version="0.4.9" date="2026-10-20">
+      <description>
+        <p>Points players to the CD or a CD image for the original sounds.</p>
+      </description>
+    </release>
+    <release version="0.4.8" date="2026-10-20"/>
+    <release version="0.4.7" date="2026-10-18">
+      <description>
+        <p>Reworked free graphics and sounds, and an interface overhaul.</p>
+      </description>
+    </release>
+    <release version="0.4.6" date="2026-10-17"/>
+    <release version="0.4.5" date="2026-10-17"/>
+    <release version="0.4.4" date="2026-10-17">
+      <description>
+        <p>Use the SimGolf CD itself, or a Mac .cdr image of it.</p>
+      </description>
+    </release>
+    <release version="0.4.3" date="2026-10-17"/>
+    <release version="0.4.2" date="2026-10-17">
+      <description>
+        <p>Optional extras: weather, visitors, drag to place, path styles and lamps, scorecards.</p>
+      </description>
+    </release>
+    <release version="0.4.1" date="2026-10-17">
+      <description>
+        <p>Use a CD image (.iso) of SimGolf.</p>
+      </description>
+    </release>
+    <release version="0.4.0" date="2026-10-17">
+      <description>
+        <p>Course editor, history graphs, camera controls, enhanced water, building tools and left-handed golfers.</p>
+      </description>
+    </release>
+    <release version="0.3.8" date="2026-10-16"/>
+    <release version="0.3.7" date="2026-10-16"/>
+    <release version="0.3.6" date="2026-10-16"/>
+    <release version="0.3.5" date="2026-10-16"/>
+    <release version="0.3.4" date="2026-10-15"/>
+    <release version="0.3.3" date="2026-10-15"/>
+    <release version="0.3.2" date="2026-10-15"/>
+    <release version="0.3.1" date="2026-10-15"/>
+    <release version="0.3.0" date="2026-10-15"/>
+    <release version="0.2.6" date="2026-10-14"/>
+    <release version="0.2.5" date="2026-10-14"/>
+    <release version="0.2.4" date="2026-10-14"/>
+    <release version="0.2.3" date="2026-10-14"/>
+    <release version="0.2.2" date="2026-10-13"/>
+    <release version="0.2.1" date="2026-10-13"/>
+    <release version="0.2.0" date="2026-10-13"/>
+    <release version="0.1.6" date="2026-10-13"/>
+    <release version="0.1.5" date="2026-10-13"/>
+    <release version="0.1.4" date="2026-10-13"/>
+    <release version="0.1.3" date="2026-10-13"/>
+    <release version="0.1.2" date="2026-10-13"/>
+    <release version="0.1.1" date="2026-10-13"/>
+    <release version="0.1.0" date="2026-10-12">
+      <description>
+        <p>First release.</p>
+      </description>
+    </release>
+  </releases>
+</component>

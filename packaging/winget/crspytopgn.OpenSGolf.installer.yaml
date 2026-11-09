@@ -1,0 +1,26 @@
+# DRAFT winget manifest (packaging/README.md, "winget"). The release's Windows packages are portable .zip files
+# (.github/workflows/release.yml); the SHA-256 of each is in the release's SHA256SUMS.
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.10.0.schema.json
+PackageIdentifier: crspytopgn.OpenSGolf
+PackageVersion: "@VERSION@"
+InstallerType: zip
+NestedInstallerType: portable
+# the program reads its packs and translations from beside it, so winget puts the folder itself on PATH instead of
+# linking the .exe on its own
+ArchiveBinariesDependOnPath: true
+ReleaseDate: "@DATE@"
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/crspytopgn/opensgolf/releases/download/v@VERSION@/opensgolf-windows.zip
+    InstallerSha256: "@SHA256_X64@"
+    NestedInstallerFiles:
+      - RelativeFilePath: opensgolf-windows\opensgolf.exe
+        PortableCommandAlias: opensgolf
+  - Architecture: arm64
+    InstallerUrl: https://github.com/crspytopgn/opensgolf/releases/download/v@VERSION@/opensgolf-windows-arm64.zip
+    InstallerSha256: "@SHA256_ARM64@"
+    NestedInstallerFiles:
+      - RelativeFilePath: opensgolf-windows-arm64\opensgolf.exe
+        PortableCommandAlias: opensgolf
+ManifestType: installer
+ManifestVersion: 1.10.0

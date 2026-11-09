@@ -1,6 +1,7 @@
-//! Preferences > Search (the port's own; docs/PLAYING.md, "Searching the Preferences"): one box that finds an option on any
-//! of the Preferences' pages by its words: the Enhanced graphics options (and its master switch), the OpenSGolf extras
-//! (gameplay, sandbox, looks, info, helpers) and the keyboard controls. Typing narrows the list, a click on a found option
+//! Preferences > More > Search (the port's own; docs/PLAYING.md, "Searching the Preferences"): one box that finds an option
+//! in any of the Preferences' boxes by its words: Graphics (HD, Enhanced graphics' master switch and its options), Game
+//! options (the OpenSGolf extras: gameplay, sandbox, looks, info, helpers), More (the bug fixes, the update check), the
+//! text size and the keyboard controls; each found option says where it is (prefs_ui.rs). Typing narrows the list, a click on a found option
 //! ticks it (or steps a setting with choices; a key opens Change keys), "Show only changed" keeps the options that differ
 //! from the original game, and "Reset to original..." asks, then puts every one of them back (`Prefs::original`).
 //! Nothing changes until the box's OK, as in the other Preferences boxes; Esc leaves everything as it was.
@@ -17,6 +18,10 @@ pub struct Prefs {
     pub ex: Extras,
     pub ui: extras::Settings,
     pub keys: controls::Settings,
+    /// The text size in percent (textsize.rs; 100 the original's).
+    pub text: u32,
+    /// HD graphics (hd.rs; off the original's).
+    pub hd: bool,
 }
 
 impl Prefs {
@@ -29,6 +34,8 @@ impl Prefs {
             ex: Extras::default(),
             ui: extras::Settings::ALL_OFF,
             keys: controls::Settings::default(),
+            text: 100,
+            hd: false,
         }
     }
 }
@@ -42,8 +49,14 @@ pub enum Hit {
     Enhanced(usize),
     /// A line of the Extras box.
     Extra(ExtrasLine),
+    /// The port's tick on Preferences itself: the bug fixes (false) or the update check (true).
+    Pref(bool),
     /// controls::ACTIONS[i]'s key.
     Key(usize),
+    /// The Preferences' text size line (textsize.rs).
+    TextSize,
+    /// Preferences > Graphics' HD graphics tick (hd.rs).
+    Hd,
 }
 
 /// The most found options the box lists at once (more: "type more to narrow").
@@ -52,9 +65,9 @@ pub const MAX_HITS: usize = 10;
 /// The width the box's lines are cut to (pixels of the popup's font), so it keeps one size.
 pub const LINE_W: f32 = 600.0;
 
-/// Every option, in the Preferences' order: Enhanced graphics, the extras' pages, the keys.
+/// Every option: the text size, More's ticks, Graphics (HD, Enhanced graphics and its pages), the extras' pages, the keys.
 pub fn all() -> Vec<Hit> {
-    let mut v = vec![Hit::EnhancedOn];
+    let mut v = vec![Hit::TextSize, Hit::Pref(false), Hit::Pref(true), Hit::Hd, Hit::EnhancedOn];
     for page in 0..enhanced::PAGES.len() as u8 {
         v.extend(enhanced::OPTIONS.iter().enumerate().filter(|(_, o)| o.page == page).map(|(i, _)| Hit::Enhanced(i)));
     }
@@ -65,21 +78,29 @@ pub fn all() -> Vec<Hit> {
     v
 }
 
-/// Where an option is: its category (the extras box's page, "Graphics" and the Enhanced graphics page, or "Keys"), with how
-/// much it changes the game for a gameplay or sandbox extra ("Gameplay · Noticeable").
+/// Where an option is: the Preferences line that leads to it (prefs_ui.rs: Graphics, Game options, Controls and keys,
+/// More, or Preferences itself for the text size), with the page of the Enhanced graphics or extras box it is on, and how
+/// much it changes the game for a gameplay or sandbox extra ("Game options > Gameplay · Noticeable").
 pub fn place(h: Hit) -> String {
+    use crate::prefs_ui::{place_key, Line};
     let two = |a: &str, b: &str| trf("STR_SEARCH_PLACE_TWO", &[("A", &a), ("B", &b)]);
+    let into = |a: &str, b: &str| trf("STR_SEARCH_PLACE_IN", &[("A", &a), ("B", &b)]);
     match h {
-        Hit::EnhancedOn => tr("STR_SEARCH_PLACE_ENHANCED").to_string(),
-        Hit::Enhanced(i) => two(tr("STR_SEARCH_PLACE_ENHANCED"), tr(enhanced::PAGES[enhanced::OPTIONS[i].page as usize])),
+        Hit::EnhancedOn => tr(place_key(Line::Enhanced)).to_string(),
+        Hit::Hd => tr(place_key(Line::Hd)).to_string(),
+        Hit::Enhanced(i) => into(tr(place_key(Line::EnhancedSettings)), tr(enhanced::PAGES[enhanced::OPTIONS[i].page as usize])),
         Hit::Extra(l) => {
-            let page = tr(crate::extras_ui::PAGES[crate::extras_ui::page_of(l) as usize]);
+            let page = crate::extras_ui::page_of(l).map_or("", |p| tr(crate::extras_ui::PAGES[p as usize]));
+            let page = into(tr("STR_SEARCH_PLACE_GAME_OPTIONS"), page);
             match crate::extras_ui::tag(l) {
-                Some(t) => two(page, tr(t.key())),
-                None => page.to_string(),
+                Some(t) => two(&page, tr(t.key())),
+                None => page,
             }
         }
+        Hit::Pref(false) => tr(place_key(Line::FixBugs)).to_string(),
+        Hit::Pref(true) => tr(place_key(Line::UpdateCheck)).to_string(),
         Hit::Key(_) => tr("STR_SEARCH_PLACE_KEYS").to_string(),
+        Hit::TextSize => tr(place_key(Line::TextSize)).to_string(),
     }
 }
 
@@ -95,10 +116,17 @@ pub fn text(h: Hit, p: &Prefs) -> (String, bool) {
             let (t, on) = crate::extras_ui::line_text(l, &p.ex, &p.ui);
             (t.trim().to_string(), on)
         }
+        Hit::Pref(false) => (tr("STR_MENU_PREFS_FIX_BUGS").trim().to_string(), p.enh.fix_original_bugs),
+        Hit::Pref(true) => (tr("STR_MENU_PREFS_UPDATE_CHECK").trim().to_string(), p.ui.update_check),
         Hit::Key(i) => {
             let key = p.keys.binding(i).map(controls::Binding::label).unwrap_or_else(|| "-".into());
             (trf("STR_SEARCH_KEY", &[("ACTION", &tr(controls::ACTIONS[i].text)), ("KEY", &key)]), false)
         }
+        Hit::TextSize => {
+            let size = tr(crate::textsize::name_key(p.text));
+            (trf("STR_MENU_PREFS_TEXT_SIZE", &[("SIZE", &size)]).trim().to_string(), p.text != 100)
+        }
+        Hit::Hd => (tr("STR_MENU_PREFS_HD").trim().to_string(), p.hd),
     }
 }
 
@@ -108,8 +136,11 @@ pub fn changed(h: Hit, p: &Prefs) -> bool {
     match h {
         Hit::EnhancedOn => p.enh.enabled != o.enh.enabled,
         Hit::Enhanced(i) => (enhanced::OPTIONS[i].get)(&p.enh) != (enhanced::OPTIONS[i].get)(&o.enh),
-        Hit::Extra(l) => crate::extras_ui::line_text(l, &p.ex, &p.ui).1 != crate::extras_ui::line_text(l, &o.ex, &o.ui).1,
+        Hit::Extra(l) => crate::extras_ui::line_value(l, &p.ex, &p.ui) != crate::extras_ui::line_value(l, &o.ex, &o.ui),
+        Hit::Pref(_) => text(h, p).1 != text(h, &o).1,
         Hit::Key(i) => p.keys.keys_of(i).collect::<Vec<_>>() != o.keys.keys_of(i).collect::<Vec<_>>(),
+        Hit::TextSize => p.text != o.text,
+        Hit::Hd => p.hd != o.hd,
     }
 }
 
@@ -119,9 +150,9 @@ pub fn plain(h: Hit) -> bool {
     match h {
         Hit::EnhancedOn => false,
         Hit::Enhanced(i) => !enhanced::OPTIONS[i].choices.is_empty(),
-        Hit::Extra(ExtrasLine::Game(i)) => Extras::choices(i) > 2,
-        Hit::Extra(ExtrasLine::Ui(_)) => false,
-        Hit::Key(_) => true,
+        Hit::Extra(l) => crate::extras_ui::is_plain(l),
+        Hit::Pref(_) | Hit::Hd => false,
+        Hit::Key(_) | Hit::TextSize => true,
     }
 }
 
@@ -149,13 +180,18 @@ pub fn toggle(h: Hit, p: &mut Prefs) {
             (o.set)(&mut p.enh, v);
         }
         Hit::Extra(l) => crate::extras_ui::toggle_line(l, &mut p.ex, &mut p.ui),
+        Hit::Pref(false) => p.enh.fix_original_bugs = !p.enh.fix_original_bugs,
+        Hit::Pref(true) => p.ui.update_check = !p.ui.update_check,
         Hit::Key(_) => {}
+        Hit::TextSize => p.text = crate::textsize::next(p.text),
+        Hit::Hd => p.hd = !p.hd,
     }
 }
 
 impl crate::app::App {
-    /// A character typed while a popup is open: the search box takes it into its words; on Preferences a letter or digit
-    /// opens the search box on it (the Preferences' "small search box": type to find).
+    /// A character typed while a popup is open: the search box takes it into its words; on Preferences (and its boxes) a
+    /// letter or digit opens the search box on it (the Preferences' "small search box": type to find), which goes back
+    /// there when done.
     pub fn search_char(&mut self, c: char) {
         use crate::popup_ui::PopupKind;
         let Some(p) = self.popup.as_mut().filter(|_| self.screen == crate::app::Screen::Popup) else { return };
@@ -164,9 +200,9 @@ impl crate::app::App {
                 p.query.push(c);
                 p.refresh();
             }
-            PopupKind::Prefs if c.is_alphanumeric() => {
+            k if crate::prefs_ui::is_prefs_box(k) && c.is_alphanumeric() => {
                 self.pref_query = c.to_string();
-                self.open_popup(PopupKind::Search);
+                self.open_prefs_child(k, PopupKind::Search);
             }
             _ => {}
         }
@@ -237,11 +273,18 @@ mod tests {
         let rain = search("rain", false, &p);
         assert!(rain.iter().any(|&h| matches!(h, Hit::Enhanced(i) if enhanced::OPTIONS[i].key == "fx_rain")));
         let sandbox = search("sandbox:", false, &p);
-        assert_eq!(sandbox, (7..=9).map(|i| Hit::Extra(ExtrasLine::Game(i))).collect::<Vec<_>>(), "the three sandbox switches");
+        let want: Vec<_> = [9, sg_core::extras::NO_WEEDS, 8].into_iter().map(|i| Hit::Extra(ExtrasLine::Game(i))).collect();
+        assert_eq!(sandbox, want, "the three sandbox switches");
         // words in any order and case, each must be there
-        assert_eq!(search("CALENDAR pause", false, &p), vec![Hit::Extra(ExtrasLine::Game(7))]);
+        assert_eq!(search("NORMAL calendar", false, &p), vec![Hit::Extra(ExtrasLine::Calendar)]);
+        // the ticks on Preferences itself, and the Info page's grouped lines by their words
+        assert_eq!(search("bugs", false, &p), vec![Hit::Pref(false)]);
+        assert_eq!(search("updates", false, &p), vec![Hit::Pref(true)]);
+        assert_eq!(search("scorecards", false, &p), vec![Hit::Extra(ExtrasLine::Group(0))]);
         assert!(search("zoom", false, &p).contains(&Hit::Key(controls::action("zoom_in"))));
+        assert_eq!(search("text size", false, &p), vec![Hit::TextSize]);
         assert!(search("no such option at all", false, &p).is_empty());
+        assert!(!search("desert ravine", false, &p).contains(&Hit::Extra(ExtrasLine::Ui(23))), "the retired desert art tick");
         // words are matched from their start
         assert!(!search("rain", false, &p)
             .iter()
@@ -261,7 +304,11 @@ mod tests {
         p.keys.bind(controls::action("zoom_in"), Some(controls::Binding { key: miniquad::KeyCode::Q, shift: false, ctrl: false }));
         let c = search("", true, &p);
         assert_eq!(c.len(), 5, "{c:?}");
-        assert!(c.contains(&Hit::Extra(ExtrasLine::Game(sg_core::extras::SEASON_SPEED))));
+        assert!(c.contains(&Hit::Extra(ExtrasLine::Calendar)));
+        // one tick of a group differs: the group's line differs (some on)
+        assert!(c.contains(&Hit::Extra(ExtrasLine::Group(0))));
+        p.enh.fix_original_bugs = false;
+        assert!(search("", true, &p).contains(&Hit::Pref(false)));
         assert!(c.contains(&Hit::Key(controls::action("zoom_in"))));
         // the Enhanced master switch off is the original, its options at their defaults are not changes
         assert!(!c.contains(&Hit::EnhancedOn));
@@ -272,38 +319,70 @@ mod tests {
     #[test]
     fn a_click_ticks_or_steps() {
         let mut p = Prefs::original();
-        let speed = Hit::Extra(ExtrasLine::Game(sg_core::extras::SEASON_SPEED));
-        for want in [1, 2, 0] {
+        let speed = Hit::Extra(ExtrasLine::Calendar);
+        for want in [1, 2, 3, 0] {
             toggle(speed, &mut p);
-            assert_eq!(p.ex.season_speed, want);
+            assert_eq!(p.ex.calendar(), want);
         }
         toggle(Hit::Extra(ExtrasLine::Game(9)), &mut p);
         assert!(p.ex.unlock_all);
-        toggle(Hit::Extra(ExtrasLine::Ui(0)), &mut p);
-        assert!(p.ui.people && !p.ui.history);
+        toggle(Hit::Extra(ExtrasLine::Ui(4)), &mut p);
+        assert!(p.ui.path_help && !p.ui.history);
+        toggle(Hit::Pref(true), &mut p);
+        assert!(p.ui.update_check);
         toggle(Hit::EnhancedOn, &mut p);
         assert!(p.enh.enabled);
+        // the text size steps through its sizes and back
+        for want in [125, 150, 100] {
+            toggle(Hit::TextSize, &mut p);
+            assert_eq!(p.text, want);
+        }
+        assert!(plain(Hit::TextSize));
         assert!(plain(speed) && plain(Hit::Key(0)) && !plain(Hit::EnhancedOn));
         assert!(plain(Hit::Extra(ExtrasLine::Game(sg_core::extras::PATHS))) && !plain(Hit::Extra(ExtrasLine::Game(9))));
     }
 
     #[test]
     fn found_options_say_their_category_and_tag() {
-        let tagged = |a: &'static str, b: &'static str| trf("STR_SEARCH_PLACE_TWO", &[("A", &tr(a)), ("B", &tr(b))]);
+        let into = |b: &'static str| trf("STR_SEARCH_PLACE_IN", &[("A", &tr("STR_SEARCH_PLACE_GAME_OPTIONS")), ("B", &tr(b))]);
+        let tagged = |a: &'static str, b: &'static str| trf("STR_SEARCH_PLACE_TWO", &[("A", &into(a)), ("B", &tr(b).to_string())]);
         let weather = Hit::Extra(ExtrasLine::Game(sg_core::extras::WEATHER));
         assert_eq!(place(weather), tagged("STR_EXTRAS_PAGE_GAMEPLAY", "STR_EXTRAS_TAG_NOTICEABLE"));
         assert_eq!(place(Hit::Extra(ExtrasLine::Game(9))), tagged("STR_EXTRAS_PAGE_SANDBOX", "STR_EXTRAS_TAG_BIG"));
-        assert_eq!(place(Hit::Extra(ExtrasLine::Game(sg_core::extras::PATHS))), tr("STR_EXTRAS_PAGE_LOOKS"));
-        assert_eq!(place(Hit::Extra(ExtrasLine::Ui(0))), tr("STR_EXTRAS_PAGE_INFO"));
+        assert_eq!(place(Hit::Extra(ExtrasLine::Game(sg_core::extras::PATHS))), into("STR_EXTRAS_PAGE_LOOKS"));
+        assert_eq!(place(Hit::Extra(ExtrasLine::Group(0))), into("STR_EXTRAS_PAGE_INFO"));
+        assert_eq!(place(Hit::Extra(ExtrasLine::Game(0))), into("STR_EXTRAS_PAGE_LOOKS"), "Tab turns buildings: a look");
         // the tag's words find the options so tagged
         let p = Prefs::original();
-        assert_eq!(search("big change", false, &p).len(), 4, "hardcore and three sandbox switches");
+        assert_eq!(search("big change", false, &p).len(), 4, "hardcore, the second course and two sandbox switches");
+    }
+
+    #[test]
+    fn found_options_say_which_preferences_box_they_are_in() {
+        let p = Prefs::original();
+        let graphics = tr("STR_SEARCH_PLACE_GRAPHICS");
+        let more = tr("STR_SEARCH_PLACE_MORE");
+        assert_eq!(place(Hit::Pref(false)), more, "the bug fixes are in More");
+        assert_eq!(place(Hit::Pref(true)), more, "so is the update check");
+        assert_eq!(place(Hit::EnhancedOn), graphics);
+        assert_eq!(place(Hit::Hd), graphics);
+        assert_eq!(place(Hit::TextSize), tr("STR_SEARCH_PLACE_PREFS"), "on Preferences itself");
+        assert_eq!(place(Hit::Key(0)), tr("STR_SEARCH_PLACE_KEYS"));
+        let water = enhanced::OPTIONS.iter().position(|o| o.page == enhanced::WATER).unwrap();
+        assert!(place(Hit::Enhanced(water)).starts_with(graphics));
+        // the box's name finds what is in it, and HD is found and ticked like the others
+        assert!(search("more", false, &p).contains(&Hit::Pref(false)));
+        assert_eq!(search("hd", false, &p), vec![Hit::Hd]);
+        let mut q = p.clone();
+        toggle(Hit::Hd, &mut q);
+        assert!(q.hd && changed(Hit::Hd, &q) && search("", true, &q) == vec![Hit::Hd]);
     }
 
     #[test]
     fn the_box_keeps_its_size() {
         let p = Prefs::original();
         let few = search("sandbox:", false, &p);
+        assert!(!few.is_empty());
         let many = search("", false, &p);
         assert_eq!(popup_lines("sandbox", true, &few, &p).len(), popup_lines("", false, &many, &p).len());
         assert_eq!(popup_lines("x", false, &[], &p).len(), MAX_HITS + 6);

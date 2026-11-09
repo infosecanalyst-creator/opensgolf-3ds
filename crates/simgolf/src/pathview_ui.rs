@@ -12,6 +12,8 @@ use sg_core::lang::{tr, trf};
 
 /// How near a joined path must come to a hole's tee (tiles, in either direction).
 const TEE_REACH: i32 = 3;
+/// The legend's height at normal size.
+const PATH_LEGEND_H: f32 = 96.0;
 
 /// A "No path" marker: the map point (units) and what it is about.
 #[derive(Clone, Debug, PartialEq)]
@@ -106,25 +108,62 @@ impl App {
         self.draw_path_legend(g, s, &m);
     }
 
+    /// Where the legends at the top right go (the path view's, and the staff areas' or the landing map's under it) and the
+    /// text size they share (textsize.rs): (factor, the path view legend's top, the lower legend's top). At normal size
+    /// the original places, y 140 and 244; with bigger text they grow as far as the pair still ends above the dock's
+    /// panel (y 446), and start under a message the bigger text made taller. `below` is the lower legend's height at
+    /// normal size.
+    pub fn legend_place(&self, below: f32) -> (f32, f32, f32) {
+        let path = self.xs.path_view && crate::extras::path_help();
+        let want = crate::textsize::scale();
+        if want == 1.0 {
+            return (1.0, 140.0, if path { 244.0 } else { 140.0 });
+        }
+        let mut top: f32 = 140.0;
+        if let Some(t) = self.ticker_rect() {
+            top = top.max(t.y + t.h + 4.0);
+        }
+        let need = if path { PATH_LEGEND_H + 8.0 } else { 0.0 } + below;
+        let k = (want.min((446.0 - top) / need.max(1.0)) * 20.0).floor() / 20.0;
+        let k = k.max(1.0);
+        let top = top.min(446.0 - need * k).max(140.0);
+        (k, top, if path { top + (PATH_LEGEND_H * k).round() + 8.0 } else { top })
+    }
+
+    /// The lower legend's height at normal size (the landing map's, else the staff areas'), for `legend_place`.
+    pub fn legend_below(&self) -> f32 {
+        if self.xs.insight.map && crate::extras::landing_map() {
+            crate::insight::LEGEND_H
+        } else if self.comfort.staff_view && self.land.is_some() {
+            crate::staffview_ui::LEGEND_H
+        } else {
+            0.0
+        }
+    }
+
     fn draw_path_legend(&self, g: &mut Gfx, s: &Ui, m: &Marks) {
         use crate::enhanced::Anchor;
         s.anchor(Anchor::TopRight);
-        let (x, y, w, h) = (566.0, 140.0, 224.0, 96.0);
+        let (k, y, _) = self.legend_place(self.legend_below());
+        let (w, h) = ((224.0 * k).round(), (PATH_LEGEND_H * k).round());
+        let x = 790.0 - w;
         self.art.trans_fill(g, s, x, y, w, h, true);
         let white = c15(0x7fff);
-        s.put_shadowed(g, F_MANUAL15, x + 10.0, y + 6.0, tr("STR_PATHVIEW_TITLE"), c15(0x7ff0), false);
+        let title = tr("STR_PATHVIEW_TITLE");
+        s.put_shadowed(g, crate::textsize::fit(F_MANUAL15, k, title, w - 20.0), x + 10.0, y + 6.0, title, c15(0x7ff0), false);
         let rows: [([f32; 4], String); 3] = [
             (c15(0x03e0), tr("STR_PATHVIEW_JOINED").to_string()),
             (c15(0x7e00), tr("STR_PATHVIEW_CUT").to_string()),
             (c15(0x7fe0), trf("STR_PATHVIEW_MARKS", &[("COUNT", &m.marks.len())])),
         ];
         for (i, (c, t)) in rows.iter().enumerate() {
-            let ry = y + 28.0 + 15.0 * i as f32;
-            s.fill(g, x + 11.0, ry + 2.0, 12.0, 7.0, rgba(0.0, 0.0, 0.0, 0.6));
-            s.fill(g, x + 12.0, ry + 3.0, 10.0, 5.0, *c);
-            s.put(g, F_ARIAL10, x + 30.0, ry, t, white);
+            let ry = y + (28.0 * k).round() + (15.0 * k).round() * i as f32;
+            s.fill(g, x + 11.0, ry + 2.0, 12.0, (7.0 * k).round(), rgba(0.0, 0.0, 0.0, 0.6));
+            s.fill(g, x + 12.0, ry + 3.0, 10.0, (7.0 * k).round() - 2.0, *c);
+            s.put(g, crate::textsize::fit(F_ARIAL10, k, t, w - 40.0), x + 30.0, ry, t, white);
         }
-        s.put(g, F_ARIAL10, x + 10.0, y + h - 18.0, tr("STR_PATHVIEW_CLOSE"), c15(0x6318));
+        let close = tr("STR_PATHVIEW_CLOSE");
+        s.put(g, crate::textsize::fit(F_ARIAL10, k, close, w - 20.0), x + 10.0, y + h - (18.0 * k).round(), close, c15(0x6318));
         s.anchor(Anchor::Centre);
     }
 }

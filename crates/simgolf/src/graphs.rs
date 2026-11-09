@@ -469,7 +469,7 @@ impl App {
         }
         let black = c15(0);
         let grey = c15(0x4210);
-        s.put_centered(g, F_INFO_TITLE, 400.0, 20.0, tr("STR_GRAPHS_TITLE"), black);
+        s.put_centered_fit(g, F_INFO_TITLE, 400.0, 20.0, crate::ui::TITLE_ROOM, tr("STR_GRAPHS_TITLE"), black);
         let (px, py) = self.info.pointer;
         let st = &self.xs.graphs;
         let (series, measure) = (st.series, st.measure);

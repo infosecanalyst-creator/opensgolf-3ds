@@ -182,6 +182,9 @@ pub struct Golfer {
     /// when set.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub left: bool,
+    /// The Second course extra (sg_core::second): the golfer plays Course B; saved only when set.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub course_b: bool,
 }
 
 impl Golfer {
@@ -236,6 +239,13 @@ pub struct Hole {
     /// `par` (0: the par is the game's own). Saved only when set.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub game_par: i32,
+    /// The port's Multiple tees extra (sg_core::extras `Tee`): the hole's forward and middle tees (tiles), besides its own
+    /// tee `back`. Not the exe's forward tee `fwd`, which the original's unused two-tee mode would fill and which stays
+    /// the back tee. Saved only when set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub front_tee: Option<(i32, i32)>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub middle_tee: Option<(i32, i32)>,
 }
 
 fn is_zero(v: &i32) -> bool {
@@ -446,6 +456,9 @@ pub struct Club {
     /// game before each tick.
     #[serde(skip)]
     pub view_close: bool,
+    /// A ticker message is up (0x569498), which holds back story beats (0x428c07); set by the game before each tick.
+    #[serde(skip)]
+    pub message_up: bool,
     /// The Preferences' "Show snapshots of great shots." option (bit 2 of 0x5a5a00), set by the game before each tick.
     #[serde(skip)]
     pub show_snapshots: bool,
@@ -484,6 +497,17 @@ pub struct Club {
     /// once a visitor has come.
     #[serde(default, skip_serializing_if = "crate::visitors::Visits::is_zero")]
     pub visits: crate::visitors::Visits,
+    /// The Keep the land offer extra (sg_core::extras): the County commissioner has approved an expansion and no land has
+    /// been bought since, so the Information menu's Buy land line opens the land screen; saved only while it waits.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub land_kept: bool,
+    /// The Second course extra (sg_core::second): Course B's hole records, saved only once Course B is started.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub course_b: Option<crate::second::SecondCourse>,
+    /// Course B's records are in `holes` and `next_hole` for the moment (sg_core::second, `Club::show_course`). Not saved:
+    /// Course A is always in place outside those moments.
+    #[serde(skip)]
+    pub(crate) b_shown: bool,
 }
 
 impl Default for Club {
@@ -499,15 +523,7 @@ impl Club {
     pub fn new(roster: Vec<Person>) -> Club {
         Club {
             g: vec![Golfer::default(); crate::holetool::TRIAL + 1],
-            holes: (0..HOLE_RECORDS)
-                .map(|_| Hole {
-                    hist: vec![0; 11 * 16],
-                    events: vec![0; 0x50],
-                    event_args: vec![0; 0x50],
-                    markers: [(-1, -1); 3],
-                    ..Default::default()
-                })
-                .collect(),
+            holes: crate::second::blank_holes(),
             next_hole: 1,
             members: vec![Member::default(); crate::roster::PEOPLE],
             roster,
@@ -584,6 +600,7 @@ impl Club {
             advisor: true,
             shot_recs: Vec::new(),
             view_close: true,
+            message_up: false,
             show_snapshots: true,
             extras: Default::default(),
             cal: Default::default(),
@@ -595,6 +612,9 @@ impl Club {
             announced: None,
             lamps: Vec::new(),
             visits: Default::default(),
+            land_kept: false,
+            course_b: None,
+            b_shown: false,
         }
     }
 
@@ -1025,6 +1045,8 @@ impl Club {
             && self.game & game::EDITOR == 0
             && id != 0x2f
             && c.landmark_bits(self.g[g].x, self.g[g].y) & 2 == 0
+            // OpenSGolf extras: Sandbox: no new dandelions (issue #105)
+            && !self.extras.no_weeds
         {
             let (a, b) = (self.g[g].x >> 10, self.g[g].y >> 10);
             if inside(a, b) {
@@ -1226,6 +1248,19 @@ impl Club {
         }
     }
 
+    /// The Second course extra (sg_core::second): the pair just sent to the first tee plays Course B, unless one of them is
+    /// a special visitor or the player's pro, who play Course A.
+    fn send_to_b(&mut self, u: usize) {
+        let v = u ^ 1;
+        if [u, v].iter().any(|&s| self.g[s].kind != 0 || self.g[s].flags & flag::GARY != 0) {
+            return;
+        }
+        for s in [u, v] {
+            self.g[s].course_b = true;
+            self.g[s].facing = self.course_holes(true).get(1).map_or(self.g[s].facing, |r| r.tee_facing);
+        }
+    }
+
     /// The pairing routine (0x45de80) for owner-to-be p1 and p2: a story, a possible visitor in p2's place, both moods from
     /// the pair's compatibility, the story kept only by chance once many have ended happily, the pair relationship.
     pub(crate) fn pair_setup(&mut self, rng: &mut ExeRng, p1: usize, p2: usize) {
@@ -1281,6 +1316,9 @@ impl Club {
         let mut waiting_pair: i32 = -1;
         let mut on_hole1 = 0;
         let mut can_tee = self.holes[1].par != 0;
+        // the Second course extra (sg_core::second): Course B's first tee, free while nobody on B1 has yet to tee off
+        let second = self.extras.second_course && self.course_b.as_ref().is_some_and(|b| b.holes.get(1).is_some_and(|r| r.par != 0));
+        let mut can_tee_b = second;
         for k in 0..SLOTS as i32 {
             let s = (self.last_created + SLOTS as i32 - k).rem_euclid(SLOTS as i32) as usize;
             if self.g[s].hole == -1 {
@@ -1292,7 +1330,11 @@ impl Club {
             if self.g[s].hole == 1 {
                 on_hole1 += 1;
                 if self.g[s].strokes == 0 {
-                    can_tee = false;
+                    if self.g[s].course_b {
+                        can_tee_b = false;
+                    } else {
+                        can_tee = false;
+                    }
                     queue += 1;
                 }
             }
@@ -1304,7 +1346,27 @@ impl Club {
         // Weather that matters: nobody tees off while a storm holds play
         let storm = self.today.is_some_and(|t| t.storm);
         if !tournament && on_hole1 == 0 && can_tee && waiting_pair != -1 && self.g[waiting_pair as usize ^ 1].hole == -1 && !storm {
+            // with a Course B open, a pair goes there instead when it has fewer golfers on it
+            let to_b = can_tee_b && {
+                let (a, b) = self.golfers_per_course();
+                b < a
+            };
             self.start_pair(c, rng, waiting_pair as usize);
+            if to_b {
+                self.send_to_b(waiting_pair as usize);
+            }
+        } else if second
+            && can_tee_b
+            && !tournament
+            && on_hole1 == 0
+            && waiting_pair != -1
+            && self.g[waiting_pair as usize ^ 1].hole == -1
+            && !storm
+            && self.holes[1].par != 0
+        {
+            // Course A's first tee is taken, Course B's is free
+            self.start_pair(c, rng, waiting_pair as usize);
+            self.send_to_b(waiting_pair as usize);
         }
         // the More visitors extra (sg_core::visitors): a celebrity's crowd arrives on top
         let crowd = self.visitor_crowd(false);
@@ -1476,7 +1538,8 @@ impl Club {
                 all = false;
             }
         }
-        if all {
+        // the Best Scores and the course record are Course A's (the Second course extra, sg_core::second)
+        if all && !self.b_shown {
             if let Some(i) = (0..10).find(|&i| self.top_rounds[i] == 0 || total < self.top_rounds[i]) {
                 for j in (i + 1..10).rev() {
                     self.top_rounds[j] = self.top_rounds[j - 1];
@@ -1537,6 +1600,9 @@ impl Club {
         };
         // the exe posts this with priority 0 and upgrades only when it shows (0x406670); here it always shows
         self.message_by(text, g as i32, 1);
+        // the club's fanfare, slot 0x38 (effects/tada 3.wav), with the message: heard in the original's recording on
+        // issue #162 (the clip matches it almost exactly), which the port had left silent
+        self.sound(0x38, None);
         self.invite_friend(rng);
     }
 
@@ -1591,6 +1657,8 @@ impl Club {
 
     /// One game tick for the golfers: arrivals, the animation pass of the drawing routine, then every golfer's update.
     pub fn tick(&mut self, c: &mut Course, rng: &mut ExeRng, tick: u32) {
+        // Course A's records in place (the Second course extra, sg_core::second; nothing to do without a Course B)
+        self.show_course(false);
         self.tick = tick;
         // the Weather that matters extra (the port's own): this tick's weather, the morning's forecast, a storm
         if self.extras.weather || self.today.is_some() {
@@ -1607,8 +1675,16 @@ impl Club {
         // the Freeze golfer happiness extra (the port's own): whatever lowered a mood this tick is undone (a pair's mood
         // set at the first tee from its compatibility, in `arrivals` above, is its starting mood)
         let moods: Option<Vec<i32>> = self.extras.freeze_moods.then(|| self.g.iter().take(SLOTS).map(|g| g.mood).collect());
+        // the Second course extra (sg_core::second): a golfer on Course B is updated with Course B's records in place
         for g in 0..SLOTS {
+            let b = self.g[g].course_b && self.course_b.is_some();
+            if b {
+                self.show_course(true);
+            }
             self.update(c, rng, g);
+            if b {
+                self.show_course(false);
+            }
         }
         if let Some(m) = moods {
             for (g, &before) in self.g.iter_mut().take(SLOTS).zip(m.iter()) {
@@ -1816,7 +1892,7 @@ impl Club {
             _ => (tr("STR_MSG_QUIT_DISGUST").to_string(), ("STR_MSG_QUIT_AFTER_HOLE", "STR_MSG_QUIT_AFTER_ROUND")),
         };
         let h = self.g[g].hole;
-        let at = if h < 19 { trf(word.0, &[("HOLE", &h)]) } else { tr(word.1).to_string() };
+        let at = if h < 19 { trf(word.0, &[("HOLE", &self.hole_label(h))]) } else { tr(word.1).to_string() };
         let name = self.name(g);
         // one ticker message, the resignation appended, said by the golfer; the exe frees the ticker first (0x40cb00 with
         // priority 0 right after clearing its busy flag), so it always shows
@@ -1887,7 +1963,14 @@ impl Club {
             if self.g[g].strokes == 0 {
                 for o in 0..SLOTS {
                     let og = &self.g[o];
-                    if og.hole > 0 && o != g && og.hole == h && og.strokes == 0 && og.tee_order <= self.g[g].tee_order && o != p {
+                    if og.hole > 0
+                        && o != g
+                        && og.hole == h
+                        && og.strokes == 0
+                        && og.tee_order <= self.g[g].tee_order
+                        && o != p
+                        && self.same_course(o, g)
+                    {
                         if (g as i32 == self.gary || p as i32 == self.gary) && self.game & game::REPEAT == 0 {
                             self.round_end(rng, o);
                             self.round_end(rng, o ^ 1);
@@ -1976,7 +2059,13 @@ impl Club {
                 }
             } else {
                 let hr = &self.holes[h.clamp(0, 19) as usize];
-                let tee = if me.class < 5 && me.class != 3 && me.kind == 0 { hr.fwd } else { hr.back };
+                // the port's Multiple tees extra: the forward or middle tee for golfers of their skill (sg_core::extras
+                // `Tee`); otherwise, and with the extra off, the exe's own choice
+                let tee = match self.extra_tee_for(&me, h) {
+                    Some(t) => t,
+                    None if me.class < 5 && me.class != 3 && me.kind == 0 => hr.fwd,
+                    None => hr.back,
+                };
                 tee_pos = (tee.0 * UNIT + 512, tee.1 * UNIT + 512);
                 let d = dir8(angle(pin_c.0 - tee_pos.0, pin_c.1 - tee_pos.1)) as usize;
                 let k = if d & 1 == 1 { 3 } else { 5 } * 0x40;
@@ -2415,6 +2504,7 @@ impl Club {
                     if og.hole <= me.hole
                         && og.tee_order <= me.tee_order
                         && (ou != p || (me.facing == pg.facing && pg.anim != anim::STAND && (ou != p || yield_)))
+                        && og.course_b == me.course_b
                     {
                         if og.hole == me.hole && og.strokes == 0 {
                             ahead += 1;
@@ -2837,6 +2927,7 @@ impl Club {
                 for o in 0..SLOTS {
                     let og = &self.g[o];
                     if !(og.hole == me.hole
+                        && og.course_b == me.course_b
                         && og.tee_order <= me.tee_order
                         && o != p
                         && o != g
@@ -3231,11 +3322,13 @@ impl Club {
             }
             if self.g[g].vz > 200 {
                 let my = self.g[g].hole;
+                let mine_b = self.g[g].course_b;
                 let (bx, by) = (self.g[g].bx, self.g[g].by);
                 let r = ((self.difficulty + 2) * 0x400) / 2;
                 for o in 0..SLOTS {
                     let og = &self.g[o];
-                    if og.hole != 0 && og.bx != 0 && og.hole != my && og.hole != 19 && len(bx - og.x, by - og.y) < r {
+                    let other = og.hole != my || og.course_b != mine_b;
+                    if og.hole != 0 && og.bx != 0 && other && og.hole != 19 && len(bx - og.x, by - og.y) < r {
                         self.event(c, rng, o, 9, 0x14);
                     }
                 }
@@ -3655,6 +3748,19 @@ pub(crate) mod tests {
     use super::*;
     use crate::land::Object;
 
+    #[test]
+    fn a_membership_plays_the_clubs_fanfare_with_its_message() {
+        // issue #162: the original sounds slot 0x38 (effects/tada 3.wav) as the member's message shows
+        let (_c, mut club) = test_course();
+        let mut rng = ExeRng { state: 7 };
+        club.new_game(&mut rng);
+        club.out.clear();
+        club.upgrade(&mut rng, 0);
+        assert!(club.out.iter().any(|e| matches!(e, Event::Message { .. })));
+        assert!(club.out.iter().any(|e| matches!(e, Event::Sound { slot: 0x38, at: None, .. })));
+        assert_eq!(crate::sounds::slot_file(0x38), Some("effects/tada 3.wav"));
+    }
+
     /// A flat one-hole course: fairway with a tee, a green and a clubhouse.
     pub(crate) fn test_course() -> (Course, Club) {
         let mut c = Course::default();
@@ -3815,6 +3921,65 @@ pub(crate) mod tests {
         assert!(club.left_handed(4));
         club.extras.lefties = false;
         assert!(!club.left_handed(4));
+    }
+
+    /// Issue #82: the pro's High Backspin shot, from the panel's oval to the ball at rest, in a practice round. Read again
+    /// from the publisher's exe for the issue: the oval sets 0x58f330 = 3 (0x436278), the aiming frame keeps it off a clean
+    /// lie and shortens the range to 13/18 (0x41b3c2), the planner flies it as the high shot (0x42546f: flag 0x80, vertical
+    /// speed (d + 50) / 400 more, type 3) with a 4 Iron at least (0x424b06), and the first bounce halves the speed and the
+    /// next one turns the ball back (0x42cf37). From the rough (hazard byte 1) the aiming frame refuses it (0x41b42a).
+    #[test]
+    fn the_pros_high_backspin_shot() {
+        let first_shot = |opt: i32, from: (i32, i32)| {
+            let (mut c, mut club) = test_course();
+            let mut rng = ExeRng { state: 12345 };
+            club.new_game(&mut rng);
+            club.pro_mask = 0x3ff;
+            club.pro_skill = [3; 16];
+            assert!(club.request_pro_round(false));
+            club.start_pro_round(&c, &mut rng, (8 * 1024, 25 * 1024), 2);
+            let g = club.gary as usize;
+            let (mut swing, mut turned, mut top) = (None, false, 0);
+            for tick in 1..3000u32 {
+                for gl in club.g.iter_mut().take(SLOTS) {
+                    gl.sx = 400;
+                    gl.sy = 300;
+                }
+                club.tick(&mut c, &mut rng, tick);
+                club.out.clear();
+                if club.pro_aiming().is_some() && swing.is_none() {
+                    let gg = &mut club.g[g];
+                    (gg.bx, gg.by) = (from.0 * 1024 + 512, from.1 * 1024 + 512);
+                    (gg.x, gg.y, gg.strokes) = (gg.bx, gg.by, 1);
+                    club.set_shot_option(opt);
+                    club.aim_frame(&c, (35, 25), false);
+                    club.commit_aim();
+                }
+                let gg = &club.g[g];
+                if gg.speed != 0 && swing.is_none() {
+                    swing = Some((club.planner.option, gg.shot_type, gg.flags & flag::BACKSPIN != 0, gg.club, gg.heading));
+                }
+                if let Some(s) = swing {
+                    top = top.max(gg.bz);
+                    turned |= gg.speed != 0 && (gg.heading ^ s.4) & 0x8000_0000 != 0;
+                    if gg.speed == 0 {
+                        return (s.0, s.1, s.2, s.3, top, turned);
+                    }
+                }
+            }
+            panic!("the shot never came to rest");
+        };
+        // 150 yards out on the fairway: a straight 2 Iron, or the high shot with a 4 Iron that flies higher and spins back
+        let (_, ty, spin, cl, top0, back0) = first_shot(0, (29, 25));
+        assert_eq!((ty, spin, cl), (0, false, 3));
+        assert!(!back0);
+        let (opt, ty, spin, cl, top, back) = first_shot(3, (29, 25));
+        assert_eq!((opt, ty, spin, cl), (3, 3, true, 5));
+        assert!(top > top0 * 3 / 2, "higher: {top} against {top0}");
+        assert!(back, "the backspin turns the ball back");
+        // from the rough the oval is refused while aiming: a straight shot
+        let (opt, ty, spin, ..) = first_shot(3, (29, 17));
+        assert_eq!((opt, ty, spin), (0, 0, false));
     }
 
     /// A left-hander's shot bends the other way: the same swing (the same draws from the generator) aimed the same way

@@ -81,7 +81,7 @@ bed, ball washer, landmark and home site are on the Amenities panel; the Clubhou
   the cut at x 200 (blue) exists but is never drawn. The exe also issues an "idle" pad blit from an object that is not cut from
   any sheet; treat it as blank.
 * **Level upgrade buttons**: there are none. The lot button itself is the upgrade button. Per building a level 0, 1 or 2 is kept
-  (`DAT_005a8c38[id]`). A lot is buildable when `id < unlock - level && level < 2 && (level == 0 || nextHole > 10)`, where `unlock`
+  (`DAT_005a8c38[id]`; always 0 for the Snack Bar, which 0x42f340 never raises, so it is never upgraded and can be built again and again). A lot is buildable when `id < unlock - level && level < 2 && (level == 0 || nextHole > 10)`, where `unlock`
   is 6 in a normal game (it grows as holes open) and 17 in sandbox. Clicking a not buildable lot arms nothing and shows one of three red
   popups (error sound 0x18), checked in this order: upgraded buildings need more than 9 holes, cannot upgrade further, will become available later
   (strings in the header). Price at placement is `cost * (level + 2) / 2` plus terrain cost under the footprint. The picture of a lot changes

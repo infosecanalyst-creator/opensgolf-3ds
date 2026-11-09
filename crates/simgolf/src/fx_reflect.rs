@@ -157,7 +157,7 @@ impl App {
         crate::fx::pause_scaler(true);
         let u = Uniforms::flat(proj, mv);
         let quarter = ((self.view_rot() / 90.0).round() as i32 % 4 + 4) % 4;
-        let vscale = (self.draw_w / 800.0).min(self.draw_h / 600.0);
+        let vscale = crate::ui::view_scale(self.draw_w, self.draw_h);
         let upp = 2.0 / (proj.0[0] * self.draw_w).max(1e-6);
         let px = upp * vscale;
         for &(_, i, x, z, lift, level) in &items {
@@ -168,7 +168,9 @@ impl App {
             let tex = match p.outfit {
                 Some(o) => self.outfit_texture(g, si, view, p.frame, o).unwrap_or_else(|| self.sprite_texture(g, si, view, p.frame)),
                 None => self.sprite_texture(g, si, view, p.frame),
-            };
+            }
+            // (whole textures: the atlas is Classic's, atlas.rs)
+            .id;
             let tex = self.fx_season_texture(g, si, fi, tex).unwrap_or(tex);
             let bend = self.fx_sway(si, fi, x, z).unwrap_or(crate::fx_nature::Bend { lean: 0.0, curve: 1.0, flip: false });
             let tint = self.fx_sprite_tint(x, z, false).unwrap_or([1.0; 4]);
@@ -182,12 +184,17 @@ impl App {
             let (bx, by, bz) = (x + rx * ox - ux * oy, 2.0 * level - gy + ry * ox - uy * oy, z + rz * ox - uz * oy);
             // a mirrored prop (a left-handed golfer's swing) is reflected mirrored
             let flip = if p.mirror { -1.0 } else { 1.0 };
+            // an upright thing is flipped up and down about its mirrored ground point. A level one (the blimp) keeps the
+            // picture the right way up, or its nose would point along the mirrored line (issue #147), over the same span
+            // below that point as the flipped picture: drawn at its own height it covered its shadow and looked like one
+            let lies_level = p.level;
             for q in crate::fx_nature::strips(l, r, t, b, bend) {
                 let v = q.map(|(cx, cy, tu, tv)| {
                     let cx = cx * flip;
                     // fainter towards the top, a little darker than the thing itself
                     let a = 0.95 * (1.0 - 0.3 * (cy / t.max(1e-3)).clamp(0.0, 1.0));
                     let c = [tint[0] * 0.95, tint[1] * 0.95, tint[2] * 0.97, a];
+                    let cy = if lies_level { t + b - cy } else { cy };
                     Vert::new(bx + rx * cx - ux * cy, by + ry * cx - uy * cy, bz + rz * cx - uz * cy, tu, tv).col(c)
                 });
                 g.quad(Mode::Flat, Some(tex), &u, v);

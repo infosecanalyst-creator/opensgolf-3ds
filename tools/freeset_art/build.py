@@ -94,6 +94,7 @@ def render_one(args):
     if r is None:
         return path, "skip"
     seed = seed_of(path)
+    ax, ay = r.anchor(w, h, ax, ay)
     nv = max(views, 1)
     step = 45.0 if nv >= 8 else 90.0
     # the scale: the largest at which every view of the frames the recipe names for fitting fits, with the shadow
