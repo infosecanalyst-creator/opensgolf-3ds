@@ -36,6 +36,25 @@ pub fn lefty() -> bool {
     on
 }
 
+/// Left-handed mode swaps the D-pad and A/B/X/Y: hint text names the button the player presses.
+pub fn lh(s: &'static str) -> &'static str {
+    const SW: &[(&str, &str)] = &[
+        ("D-pad choose   A select   B back", "A/B/X/Y choose   D-Right select   D-Down back"),
+        ("D-pad left / right", "X / A"),
+        ("D-pad up / down", "Y / B"),
+        ("choose it, then A", "choose it, then D-Right"),
+        ("B", "D-Down"),
+        ("X / Y", "D-Left / D-Up"),
+        ("Circle Pad: scroll    L / R: section    B: close", "Circle Pad: scroll    L / R: section    D-Down: close"),
+        ("B: back", "D-Down: back"),
+        ("A", "D-Right"),
+    ];
+    if !lefty() {
+        return s;
+    }
+    SW.iter().find(|(a, _)| *a == s).map(|(_, b)| *b).unwrap_or(s)
+}
+
 pub fn set_lefty(on: bool) {
     LEFTY.store(on as u8, Ordering::Relaxed);
     if on {

@@ -280,7 +280,7 @@ impl Manual {
         let page = format!("{} / {}", self.cur + 1, n);
         text.draw(g, &u, TW - MX - text.width(&page, Size::Small), 6.0, &page, Size::Small, DIM);
         rect(g, &u, 0.0, body_bot, TW, FOOT, [0.0, 0.05, 0.02, 1.0]);
-        let hint = "Circle Pad: scroll    L / R: section    B: close";
+        let hint = crate::input::lh("Circle Pad: scroll    L / R: section    B: close");
         text.draw(g, &u, (TW - text.width(hint, Size::Small)) * 0.5, body_bot + 3.0, hint, Size::Small, DIM);
         // the scroll bar
         let m = self.max_scroll();

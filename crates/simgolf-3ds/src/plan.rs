@@ -1317,9 +1317,9 @@ impl Plan {
         let (status, sc) = self.status(d, app, at);
         let chosen = row[sel];
         let key = if chosen.momentary() {
-            format!("A: {}", chosen.names().1)
+            format!("{}: {}", crate::input::lh("A"), chosen.names().1)
         } else {
-            let see = speaker.map(|n| format!("A: SEE {}", n.to_uppercase()));
+            let see = speaker.map(|n| format!("{}: SEE {}", crate::input::lh("A"), n.to_uppercase()));
             let brush = self.tool.sized().then(|| {
                 let n = self.size();
                 format!("BRUSH {n}x{n}")

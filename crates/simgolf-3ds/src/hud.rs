@@ -644,7 +644,7 @@ impl Hud {
                 let c = if on { [0.08, 0.08, 0.05, 1.0] } else { [1.0, 1.0, 1.0, 1.0] };
                 text.draw(g, &u, x + (w - text.width(label, Size::Normal)) * 0.5, ry + 2.0, label, Size::Normal, c);
             }
-            let hint = "D-pad choose   A select   B back";
+            let hint = crate::input::lh("D-pad choose   A select   B back");
             text.draw(g, &u, x + (w - text.width(hint, Size::Small)) * 0.5, y + h - 14.0, hint, Size::Small, [0.65, 0.7, 0.65, 1.0]);
         }
     }
@@ -741,7 +741,7 @@ impl Hud {
                     ("Money, holes, golfers, staff pages", "Select"),
                     ("Menu: save, load, manual, title, quit", "Start"),
                 ] {
-                    rows.push((l.to_string(), r.to_string(), white));
+                    rows.push((l.to_string(), crate::input::lh(r).to_string(), white));
                 }
                 ("Controls".into(), rows)
             }

@@ -486,7 +486,7 @@ impl Title {
     pub fn render_top(&self, g: &mut Gfx, text: &Text, app: &App, hud: &Hud) {
         let u = ui(W);
         if self.page == Page::Controls {
-            hud.draw_panel(g, text, app, Panel::Help, "B: back");
+            hud.draw_panel(g, text, app, Panel::Help, crate::input::lh("B: back"));
             return;
         }
         // the name, on a dark band
