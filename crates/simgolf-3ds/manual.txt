@@ -75,7 +75,7 @@ With the 3D slider up, the tools and pages float slightly in front of the screen
 | Y | Game speed 1x, 2x, 4x.
 | Circle Pad | Pan the view.
 | C-stick | Pan the view.
-| ZL | Swap the screens (3D and touch are off while swapped).
+| ZL | Swap the screens: the course fills the top screen and the touch screen becomes a touchpad (slide to move the pointer, tap to tap there). 3D is off while swapped.
 | ZR | Tap: zoom in. Hold: zoom out step by step.
 | Start | Pause menu.
 | Select | Next dashboard page.

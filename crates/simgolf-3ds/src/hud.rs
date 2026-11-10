@@ -184,6 +184,17 @@ impl Hud {
         (i < MENU.len() && y - my - i as f32 * pitch <= h).then_some(i)
     }
 
+    /// Swapped (UI rule 7): the touchpad's pointer, a white arrow with a black edge, over the course picture on top.
+    pub fn render_pointer(&self, g: &mut Gfx, (x, y): (f32, f32)) {
+        let u = Uniforms::flat(&Mat4::ortho(0.0, 320.0, 240.0, 0.0, -1.0, 1.0), &Mat4::identity());
+        let tri = |g: &mut Gfx, a: (f32, f32), b: (f32, f32), d: (f32, f32), c: [f32; 4]| {
+            let v = |p: (f32, f32)| Vert::new(p.0, p.1, 0.0, 0.0, 0.0).col(c);
+            g.tris(Mode::Flat, None, &u, &[v(a), v(b), v(d)]);
+        };
+        tri(g, (x - 1.0, y - 2.0), (x - 1.0, y + 13.0), (x + 10.0, y + 9.0), [0.0, 0.0, 0.0, 1.0]);
+        tri(g, (x, y), (x, y + 10.5), (x + 7.5, y + 7.8), [1.0, 1.0, 1.0, 1.0]);
+    }
+
     /// The pause menu as big rows on the bottom screen, over the course.
     pub fn render_menu_bottom(&self, g: &mut Gfx, text: &Text) {
         let Some(sel) = self.menu else { return };

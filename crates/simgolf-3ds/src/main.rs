@@ -1305,8 +1305,12 @@ fn main() {
         demo.sync_view(&app);
         let mut strokes: Vec<plan::Stroke> = Vec::new();
         let mut menu_pick: Option<usize> = None;
+        let ptr_before = input.ptr;
         let evs = input.poll(&hid, cstick);
         g.set_swapped(input.swapped);
+        if input.swapped && input.ptr != ptr_before {
+            dirty = true; // the touchpad's pointer moved
+        }
         for ev in evs {
             dirty = true;
             // the manual takes the controls while it is open; the game stays paused under it
@@ -1679,6 +1683,9 @@ fn main() {
         plan.render_overlay(&mut g, &demo);
         hud.render_bubbles(&mut g, &app, &demo);
         hud.render_menu_bottom(&mut g, &text);
+        if input.swapped {
+            hud.render_pointer(&mut g, input.ptr);
+        }
         let cpu = t.elapsed().as_secs_f32();
         let draws = g.draws;
         g.end_frame();

@@ -122,15 +122,25 @@ pub struct Input {
     /// L or R is down now, and whether a stylus drag has used it as the scroll modifier since it went down.
     shoulder_now: bool,
     shoulder_used: bool,
-    /// ZL swapped the screens (the touchscreen is then not read).
+    /// ZL swapped the screens (the touchscreen is then a touchpad for the course on top).
     pub swapped: bool,
     /// Frames ZR has been held (tap = zoom in, hold = zoom out).
     zr_frames: u32,
+    /// Swapped (UI rule 7): the touchpad's pointer on the course picture, in the touchscreen's pixels.
+    pub ptr: (f32, f32),
+    pad: Option<PadTouch>,
+}
+
+/// A finger on the touchpad (swapped): where it last was, how far it has slid, when it went down.
+struct PadTouch {
+    last: (f32, f32),
+    moved: f32,
+    since: std::time::Instant,
 }
 
 impl Input {
     pub fn new() -> Input {
-        Input { cursor: (TOP_W as f32 * 0.5, TOP_H as f32 * 0.5), touching: false, pen: (0.0, 0.0), held: [false; 2], shoulder_now: false, shoulder_used: false, swapped: false, zr_frames: 0 }
+        Input { cursor: (TOP_W as f32 * 0.5, TOP_H as f32 * 0.5), touching: false, pen: (0.0, 0.0), held: [false; 2], shoulder_now: false, shoulder_used: false, swapped: false, zr_frames: 0, ptr: (160.0, 120.0), pad: None }
     }
 
     /// L or R is held: the plan scrolls under a drag (plan.rs).
@@ -220,6 +230,36 @@ impl Input {
 
         // the touch screen: the bottom screen's interface
         let (tx, ty) = hid.touch_position();
+        if self.swapped {
+            // UI rule 7: the touchscreen is a touchpad for the course on top. Slide moves the pointer (relative, like a
+            // laptop's); a short tap is a pen tap where it points.
+            let down_now = held.contains(KeyPad::TOUCH);
+            let at = (tx as f32, ty as f32);
+            match (&mut self.pad, down_now) {
+                (None, true) => self.pad = Some(PadTouch { last: at, moved: 0.0, since: std::time::Instant::now() }),
+                (Some(p), true) => {
+                    let (dx, dy) = (at.0 - p.last.0, at.1 - p.last.1);
+                    p.moved += dx.abs() + dy.abs();
+                    p.last = at;
+                    self.ptr.0 = (self.ptr.0 + dx).clamp(0.0, 319.0);
+                    self.ptr.1 = (self.ptr.1 + dy).clamp(0.0, 239.0);
+                }
+                (Some(p), false) => {
+                    if p.moved < 6.0 && p.since.elapsed().as_millis() < 350 {
+                        let (vx, vy) = screens::touch_to_virtual(self.ptr.0, self.ptr.1);
+                        for phase in [TouchPhase::Started, TouchPhase::Ended] {
+                            ev.push(Event::Touch(phase, 0, vx, vy));
+                            ev.push(Event::Pen(phase, self.ptr.0, self.ptr.1));
+                        }
+                        self.pen = self.ptr;
+                    }
+                    self.pad = None;
+                }
+                (None, false) => {}
+            }
+        } else {
+            self.pad = None;
+        }
         let touching = held.contains(KeyPad::TOUCH) && !self.swapped;
         let (vx, vy) = screens::touch_to_virtual(tx as f32, ty as f32);
         let phase = match (self.touching, touching) {

@@ -1249,8 +1249,8 @@ impl Gfx {
         let m = if self.screen == Screen::Top && self.slider > 0.0 && self.world { self.shear_clip(mvp) } else { *mvp };
         if self.swapped {
             // the top picture (400 x 240) on the 320-wide touchscreen: full width, 0.8 of the height; the touchscreen picture
-            // (320 x 240) centred on the 400-wide top screen: 0.8 of the width. Bars take the clear colour.
-            let (sx, sy) = if self.screen == Screen::Top { (1.0, 0.8) } else { (0.8, 1.0) };
+            // (320 x 240) stretched across the whole 400-wide top screen (UI rule 8: no side bars).
+            let (sx, sy) = if self.screen == Screen::Top { (1.0, 0.8) } else { (1.0, 1.0) };
             let mut sc = Mat4::identity().0;
             sc[0] = sx;
             sc[5] = sy;
