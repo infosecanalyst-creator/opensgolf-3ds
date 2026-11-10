@@ -96,15 +96,16 @@ impl Manual {
         let n = self.sections.len();
         let lines = n.div_ceil(2);
         let (top, close_h, gap) = (6.0, 28.0, 4.0);
-        let pitch = ((H - top - close_h - 8.0) / lines.max(1) as f32).min(40.0);
+        // rule 11: 6 px from every edge, 4 px between buttons (the last section row ends 4 px above Close)
+        let pitch = ((H - top - close_h - 6.0) / lines.max(1) as f32).min(40.0);
         let (x0, full) = (8.0, BW - 16.0);
         let mut v: Vec<_> = (0..n)
             .map(|i| (x0 + (i % 2) as f32 * (full * 0.5 + gap * 0.5), top + (i / 2) as f32 * pitch, full * 0.5 - gap * 0.5, pitch - gap))
             .collect();
         // last row: the Left hand toggle, then Close
         let tw = full * 0.62;
-        v.push((x0, H - close_h - 4.0, tw, close_h));
-        v.push((x0 + tw + gap, H - close_h - 4.0, full - tw - gap, close_h));
+        v.push((x0, H - close_h - 6.0, tw, close_h));
+        v.push((x0 + tw + gap, H - close_h - 6.0, full - tw - gap, close_h));
         v
     }
 
