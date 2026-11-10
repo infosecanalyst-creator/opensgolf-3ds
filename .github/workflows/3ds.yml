@@ -1,5 +1,7 @@
-# Builds the New 3DS frontend (crates/simgolf-3ds) to check that it compiles. The .3dsx is NOT uploaded or released:
-# builds embed lang/en.txt, much of which is the original game's text (Electronic Arts'), so this fork publishes no builds.
+# Builds the New 3DS frontend (crates/simgolf-3ds). Builds embed lang/en.txt, much of which is the original game's text
+# (Electronic Arts'), so they are never released publicly: the .3dsx goes only to this PRIVATE repo's `builds` branch
+# (Ryan's own 3DS installs it from there, like every other port). If this repo is ever made public, delete that branch
+# and remove the publish step first.
 name: 3DS
 
 on:
@@ -18,7 +20,7 @@ jobs:
     # devkitARM, libctru, citro3d and picasso (the PICA200 shader assembler)
     container: devkitpro/devkitarm:latest
     permissions:
-      contents: read
+      contents: write
     env:
       CARGO_TERM_COLOR: always
       CARGO_HOME: /github/home/.cargo
@@ -56,9 +58,15 @@ jobs:
           ls -l simgolf-3ds.3dsx
 
 
-      # Private delivery to Ryan's own 3DS: a one-day artifact, not a published build.
-      - uses: actions/upload-artifact@v4
-        with:
-          name: simgolf-3ds
-          path: simgolf-3ds.3dsx
-          retention-days: 1
+      # Private delivery to Ryan's own 3DS: the private repo's `builds` branch (3dsx + SOURCE_COMMIT), as in every port.
+      - name: Publish to builds branch
+        if: github.event_name != 'pull_request'
+        run: |
+          git config --global --add safe.directory '*'
+          mkdir -p out && cp simgolf-3ds.3dsx out/ && echo "$GITHUB_SHA" > out/SOURCE_COMMIT
+          cd out
+          git init -q -b builds
+          git config user.name "build-bot"; git config user.email "build-bot@users.noreply.github.com"
+          git add -A; git commit -qm "build of ${GITHUB_SHA}"
+          branch=builds; [ "$GITHUB_REF_NAME" = main ] || branch="builds-${GITHUB_REF_NAME//\//-}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" "builds:$branch"
