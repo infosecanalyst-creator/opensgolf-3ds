@@ -1762,6 +1762,13 @@ fn main() {
         title.settings.save();
     }
     sg_core::preload::STOP.store(true, Ordering::Relaxed);
+    // let the preloader on the other core finish the file it is reading before the program ends (up to 3 s)
+    for _ in 0..300 {
+        if !sg_core::preload::RUNNING.load(Ordering::Relaxed) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
     drop(audio);
     if cstick {
         unsafe { ctru_sys::irrstExit() };
