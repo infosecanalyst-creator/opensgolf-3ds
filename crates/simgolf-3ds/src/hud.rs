@@ -69,8 +69,8 @@ const SPEAKER_FOR: Duration = Duration::from_secs(20);
 pub const MENU: [&str; 7] = ["RESUME", "SAVE GAME", "LOAD GAME", "CONTROLS", "MANUAL", "TITLE SCREEN", "EXIT GAME"];
 /// The menu's rows on the bottom screen (320 x 240): x, first y, width, height, pitch.
 const MB: (f32, f32, f32, f32, f32) = (50.0, 28.0, 220.0, 24.0, 27.5);
-/// The YES and NO buttons of the exit question: x of each, y, w, h.
-const CB: (f32, f32, f32, f32, f32) = (30.0, 170.0, 124.0, 110.0, 40.0);
+/// The YES and NO buttons of the exit question: x of YES (NO mirrors it), y, w, h.
+const CB: (f32, f32, f32, f32) = (40.0, 140.0, 110.0, 40.0);
 /// The panels Select steps through, then none.
 const CYCLE: [Panel; 4] = [Panel::Money, Panel::Holes, Panel::Golfers, Panel::Staff];
 
@@ -244,10 +244,9 @@ impl Hud {
             text.draw(g, &u, (320.0 - text.width(q, Size::Normal)) * 0.5, 70.0, q, Size::Normal, white);
             let q2 = "The game is saved first.";
             text.draw(g, &u, (320.0 - text.width(q2, Size::Small)) * 0.5, 96.0, q2, Size::Small, edge);
-            let (x0, x1, y, w, h) = CB;
-            let _ = x1;
-            button(g, x0, y - 50.0, w, h, "YES", c == 0);
-            button(g, 320.0 - x0 - w, y - 50.0, w, h, "NO", c == 1);
+            let (x0, y, w, h) = CB;
+            button(g, x0, y, w, h, "YES", c == 0);
+            button(g, 320.0 - x0 - w, y, w, h, "NO", c == 1);
             return;
         }
         let (mx, my, w, h, pitch) = MB;
@@ -258,8 +257,7 @@ impl Hud {
 
     /// The exit question's button under (x, y): 0 YES, 1 NO.
     pub fn confirm_hit(x: f32, y: f32) -> Option<usize> {
-        let (x0, _, cy, w, h) = CB;
-        let y0 = cy - 50.0;
+        let (x0, y0, w, h) = CB;
         if y < y0 || y > y0 + h {
             return None;
         }

@@ -240,6 +240,9 @@ static void st_watchdog(void* arg) {
             // quit (aptMainLoop false) crashed ScummVM on the real 3DS: its input
             // thread still read the buttons after HID was shut down (Nov 13 2026).
             if (!doneAt) doneAt = now;
+            // SimGolf quits by itself (aptMainLoop returns false, the game saves and returns);
+            // ending it from here brought up the system error screen. Give it 30 s first.
+            if (now - doneAt < 30000) continue;
             why = "";
         } else {
             if (st_beat != last) { last = st_beat; still = now; }
@@ -385,7 +388,11 @@ void __wrap_hidScanInput(void) {
     }
     st_step();
 }
-bool __wrap_aptMainLoop(void) {   // the watchdog ends the game after the script; no quit request
+bool __wrap_aptMainLoop(void) {
+    // SimGolf: ask the game to quit when the script is done. Its loop then saves and
+    // returns; being ended by the watchdog instead brought up the system's
+    // "an error has occurred" screen (the preloader thread on core 2 was still running).
+    if (st_done) return false;
     return __real_aptMainLoop();
 }
 u32 __wrap_hidKeysHeld(void) { return st_on == 1 ? st_held : __real_hidKeysHeld(); }
