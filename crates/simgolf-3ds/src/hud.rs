@@ -52,6 +52,8 @@ pub struct Hud {
     flash: Option<(f64, Instant)>,
     /// Start's pause menu is open, with this row chosen.
     pub menu: Option<usize>,
+    /// Quit was picked: the YES / NO question is up, with this one chosen (0 YES, 1 NO).
+    pub confirm: Option<usize>,
     /// The game month now, and the cash when it began: this month's cash flow.
     month: Option<(i32, f64)>,
     /// Golfers who just had a thought: who (golfer slot), the thought's colour, when. A bubble shows over each on the course
@@ -64,9 +66,11 @@ const BUBBLE_FOR: Duration = Duration::from_millis(2500);
 const SPEAKER_FOR: Duration = Duration::from_secs(20);
 
 /// Start's pause menu, in order.
-pub const MENU: [&str; 7] = ["Resume", "Save game", "Load game", "Controls", "Manual", "Title screen", "Quit"];
+pub const MENU: [&str; 7] = ["RESUME", "SAVE GAME", "LOAD GAME", "CONTROLS", "MANUAL", "TITLE SCREEN", "EXIT GAME"];
 /// The menu's rows on the bottom screen (320 x 240): x, first y, width, height, pitch.
-const MB: (f32, f32, f32, f32, f32) = (40.0, 24.0, 240.0, 27.0, 30.5);
+const MB: (f32, f32, f32, f32, f32) = (50.0, 28.0, 220.0, 24.0, 27.5);
+/// The YES and NO buttons of the exit question: x of each, y, w, h.
+const CB: (f32, f32, f32, f32, f32) = (30.0, 170.0, 124.0, 110.0, 40.0);
 /// The panels Select steps through, then none.
 const CYCLE: [Panel; 4] = [Panel::Money, Panel::Holes, Panel::Golfers, Panel::Staff];
 
@@ -128,7 +132,7 @@ fn ty_name(ty: i32) -> &'static str {
 
 impl Hud {
     pub fn new() -> Hud {
-        Hud { panel: None, card: None, note: None, thoughts: VecDeque::new(), seen: vec![(0, 0); SLOTS], last_cash: None, flash: None, menu: None, month: None, spoke: Vec::new() }
+        Hud { panel: None, card: None, note: None, thoughts: VecDeque::new(), seen: vec![(0, 0); SLOTS], last_cash: None, flash: None, menu: None, confirm: None, month: None, spoke: Vec::new() }
     }
 
     pub fn toggle(&mut self, p: Panel) {
@@ -203,18 +207,68 @@ impl Hud {
             let v = |x: f32, y: f32| Vert::new(x, y, 0.0, 0.0, 0.0).col(c);
             g.quad(Mode::Flat, None, &u, [v(x, y), v(x + w, y), v(x + w, y + h), v(x, y + h)]);
         };
-        rect(g, 0.0, 0.0, 320.0, 240.0, [0.0, 0.0, 0.0, 0.9]);
-        let t = "PAUSED";
-        text.draw(g, &u, (320.0 - text.width(t, Size::Normal)) * 0.5, 8.0, t, Size::Normal, [1.0, 0.85, 0.3, 1.0]);
+        // house style (claude/3ds-look-and-feel.md): navy, header bar, blue faces with a light edge, gold focus, hint strip
+        let navy = [8.0 / 255.0, 12.0 / 255.0, 40.0 / 255.0, 1.0];
+        let face = [40.0 / 255.0, 56.0 / 255.0, 120.0 / 255.0, 1.0];
+        let edge = [120.0 / 255.0, 150.0 / 255.0, 230.0 / 255.0, 1.0];
+        let shadow = [20.0 / 255.0, 30.0 / 255.0, 70.0 / 255.0, 1.0];
+        let gold = [1.0, 204.0 / 255.0, 64.0 / 255.0, 1.0];
+        let white = [235.0 / 255.0, 240.0 / 255.0, 250.0 / 255.0, 1.0];
+        let button = |g: &mut Gfx, x: f32, y: f32, w: f32, h: f32, label: &str, on: bool| {
+            rect(g, x + 2.0, y + 2.0, w, h, shadow);
+            rect(g, x, y, w, h, face);
+            rect(g, x, y, w, 1.0, edge);
+            rect(g, x, y + h - 1.0, w, 1.0, edge);
+            rect(g, x, y, 1.0, h, edge);
+            rect(g, x + w - 1.0, y, 1.0, h, edge);
+            if on {
+                rect(g, x - 3.0, y - 3.0, w + 6.0, 2.0, gold);
+                rect(g, x - 3.0, y + h + 1.0, w + 6.0, 2.0, gold);
+                rect(g, x - 3.0, y - 3.0, 2.0, h + 6.0, gold);
+                rect(g, x + w + 1.0, y - 3.0, 2.0, h + 6.0, gold);
+            }
+            let lw = text.width(label, Size::Normal);
+            text.draw(g, &u, x + (w - lw) * 0.5, y + (h - text.line_height(Size::Normal)) * 0.5, label, Size::Normal, white);
+        };
+        rect(g, 0.0, 0.0, 320.0, 240.0, navy);
+        rect(g, 0.0, 0.0, 320.0, 22.0, face);
+        rect(g, 0.0, 22.0, 320.0, 1.0, edge);
+        let title = if self.confirm.is_some() { "EXIT GAME" } else { "MENU" };
+        text.draw(g, &u, 8.0, 3.0, title, Size::Normal, gold);
+        rect(g, 0.0, 224.0, 320.0, 16.0, face);
+        rect(g, 0.0, 224.0, 320.0, 1.0, edge);
+        let hint = "A Select   B Back";
+        text.draw(g, &u, (320.0 - text.width(hint, Size::Small)) * 0.5, 226.0, hint, Size::Small, gold);
+        if let Some(c) = self.confirm {
+            let q = "Exit SimGolf?";
+            text.draw(g, &u, (320.0 - text.width(q, Size::Normal)) * 0.5, 70.0, q, Size::Normal, white);
+            let q2 = "The game is saved first.";
+            text.draw(g, &u, (320.0 - text.width(q2, Size::Small)) * 0.5, 96.0, q2, Size::Small, edge);
+            let (x0, x1, y, w, h) = CB;
+            let _ = x1;
+            button(g, x0, y - 50.0, w, h, "YES", c == 0);
+            button(g, 320.0 - x0 - w, y - 50.0, w, h, "NO", c == 1);
+            return;
+        }
         let (mx, my, w, h, pitch) = MB;
         for (i, label) in MENU.iter().enumerate() {
-            let y = my + i as f32 * pitch;
-            let on = i == sel;
-            rect(g, mx, y, w, h, if on { [0.95, 0.8, 0.25, 1.0] } else { [0.12, 0.3, 0.16, 1.0] });
-            rect(g, mx, y + h - 2.0, w, 2.0, [0.0, 0.0, 0.0, 0.35]);
-            let c = if on { [0.08, 0.08, 0.05, 1.0] } else { [1.0, 1.0, 1.0, 1.0] };
-            let lw = text.width(label, Size::Normal);
-            text.draw(g, &u, mx + (w - lw) * 0.5, y + (h - text.line_height(Size::Normal)) * 0.5, label, Size::Normal, c);
+            button(g, mx, my + i as f32 * pitch, w, h, label, i == sel);
+        }
+    }
+
+    /// The exit question's button under (x, y): 0 YES, 1 NO.
+    pub fn confirm_hit(x: f32, y: f32) -> Option<usize> {
+        let (x0, _, cy, w, h) = CB;
+        let y0 = cy - 50.0;
+        if y < y0 || y > y0 + h {
+            return None;
+        }
+        if x >= x0 && x <= x0 + w {
+            Some(0)
+        } else if x >= 320.0 - x0 - w && x <= 320.0 - x0 {
+            Some(1)
+        } else {
+            None
         }
     }
 

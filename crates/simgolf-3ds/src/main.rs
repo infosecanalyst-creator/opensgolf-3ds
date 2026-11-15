@@ -1323,6 +1323,48 @@ fn main() {
             }
             // Start's pause menu takes the controls while it is open: D-pad or a tap to choose, A or a tap to pick, B or
             // Start to go back
+            if let (Some(_), Some(c)) = (hud.menu, hud.confirm) {
+                // the exit question: Left / Right choose, A or a tap picks, B goes back to the menu (on EXIT GAME)
+                let mut picked: Option<usize> = None;
+                match ev {
+                    input::Event::KeyDown(shim::KeyCode::Left | shim::KeyCode::Right, _) => {
+                        hud.confirm = Some(1 - c);
+                        mixer.play("Interface/Button2.wav", 0.5, false);
+                    }
+                    input::Event::MouseDown(shim::MouseButton::Left, _, _) => picked = Some(c),
+                    input::Event::MouseDown(shim::MouseButton::Right, _, _) | input::Event::KeyDown(shim::KeyCode::Escape, _) => {
+                        picked = Some(1)
+                    }
+                    input::Event::Pen(phase, x, y) => {
+                        if matches!(phase, shim::TouchPhase::Started) {
+                            menu_pen = true;
+                        }
+                        let ended = matches!(phase, shim::TouchPhase::Ended | shim::TouchPhase::Cancelled);
+                        if menu_pen {
+                            if let Some(i) = hud::Hud::confirm_hit(x, y) {
+                                hud.confirm = Some(i);
+                                if ended {
+                                    picked = Some(i);
+                                }
+                            }
+                        }
+                        if ended {
+                            menu_pen = false;
+                        }
+                    }
+                    _ => {}
+                }
+                if let Some(p) = picked {
+                    mixer.play("Interface/Button1.wav", 0.7, false);
+                    hud.confirm = None;
+                    if p == 0 {
+                        hud.menu = None;
+                        app.paused = menu_was_paused;
+                        QUIT.store(true, Ordering::Relaxed);   // the game is saved after the loop
+                    }
+                }
+                continue;
+            }
             if let Some(sel) = hud.menu {
                 let n = hud::MENU.len();
                 match ev {
@@ -1484,8 +1526,12 @@ fn main() {
                     in_game = false;
                     continue;
                 }
-                // Quit: the game is saved after the loop
-                6 => QUIT.store(true, Ordering::Relaxed),
+                // Exit game: asks first (YES / NO, NO chosen); the game is saved after the loop
+                6 => {
+                    hud.menu = Some(6);
+                    hud.confirm = Some(1);
+                    app.paused = true;
+                }
                 _ => {}
             }
         }
