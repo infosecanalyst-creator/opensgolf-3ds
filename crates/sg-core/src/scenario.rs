@@ -300,6 +300,10 @@ impl Scenario {
 
 // ---- the goals of a game ------------------------------------------------------------------------------------------------------
 
+/// The owner of the goals the port's built-in challenges set (the Challenges page, an interface extra). A scenario is won
+/// or lost on its own goals only: a challenge taken on the side never decides it.
+pub const CHALLENGES: &str = "*challenges";
+
 /// What the goal checks read of the game.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Facts {
@@ -413,12 +417,16 @@ impl Goals {
         if self.scenario.is_none() || self.outcome.is_some() || self.list.is_empty() {
             return None;
         }
-        if self.list.iter().any(|g| g.state == GoalState::Failed) {
+        let own = || self.list.iter().filter(|g| g.owner != CHALLENGES);
+        if own().next().is_none() {
+            return None;
+        }
+        if own().any(|g| g.state == GoalState::Failed) {
             self.outcome = Some(Outcome::Lost);
             let t = if self.lose_text.is_empty() { crate::lang::tr("STR_SCENARIO_LOST_DEFAULT") } else { &self.lose_text };
             return Some(Note::Lost(t.to_string()));
         }
-        if self.list.iter().all(|g| g.state == GoalState::Done) {
+        if own().all(|g| g.state == GoalState::Done) {
             self.outcome = Some(Outcome::Won);
             let t = if self.win_text.is_empty() { crate::lang::tr("STR_SCENARIO_WON_DEFAULT") } else { &self.win_text };
             return Some(Note::Won(t.to_string()));
@@ -573,6 +581,17 @@ by_year = 2003
         let n = g.check(&facts(9, 0, 0), Some(2003));
         assert!(matches!(n[0], Note::Failed(_)) && matches!(n[1], Note::Lost(_)));
         assert_eq!(g.outcome, Some(Outcome::Lost));
+    }
+
+    #[test]
+    fn a_challenge_never_decides_a_scenario() {
+        let s = Scenario::parse(EXAMPLE).unwrap();
+        let mut g = s.start_goals("pack", "Test");
+        g.set(CHALLENGES, "par3", "Perfect par 3");
+        assert_eq!(g.finish(CHALLENGES, "par3", false).len(), 1, "a missed challenge does not lose it");
+        assert_eq!(g.outcome, None);
+        let n = g.check(&facts(9, 200000, 25), None);
+        assert_eq!(n.last(), Some(&Note::Won("Won!".into())), "won on its own goals with a challenge missed");
     }
 
     #[test]

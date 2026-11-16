@@ -281,6 +281,10 @@ pub enum Screen {
     HoleComments,
     /// OpenSGolf extras: history graphs (graphs.rs).
     Graphs,
+    /// OpenSGolf extras: the course review (review_ui.rs).
+    Review,
+    /// OpenSGolf extras: the challenges (challenges.rs).
+    Challenges,
     /// The course editor's box over the course (editor.rs; the port's own).
     Editor,
 }
@@ -305,6 +309,11 @@ pub fn save_dir() -> PathBuf {
         if let Some(d) = env("OPENSGOLF_SAVE_DIR").or_else(|| env("SIMGOLF_SAVE_DIR")) {
             return d;
         }
+        // portable mode: a file named portable.txt beside the program (or beside OpenSGolf.app) keeps everything in a
+        // "save" folder there, nothing in the user's data folder
+        if let Some(d) = portable_dir() {
+            return d;
+        }
         let (base, new, old) = if cfg!(target_os = "windows") {
             (env("APPDATA"), "OpenSGolf", "SimGolf")
         } else if cfg!(target_os = "macos") {
@@ -319,6 +328,30 @@ pub fn save_dir() -> PathBuf {
         }
         new
     }
+}
+
+/// Portable mode's folder: "save" beside the program, when a file named portable.txt is there (on a Mac, beside the
+/// program inside OpenSGolf.app or beside the app itself).
+#[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+pub fn portable_dir() -> Option<PathBuf> {
+    let exe_dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    let mut dirs = vec![exe_dir.clone()];
+    if cfg!(target_os = "macos") {
+        // OpenSGolf.app/Contents/MacOS: the folder the app is in
+        if let Some(beside) = exe_dir.parent().and_then(|c| c.parent()).and_then(|a| a.parent()) {
+            dirs.push(beside.to_path_buf());
+        }
+    }
+    if let Some(a) = std::env::var_os("APPIMAGE").map(PathBuf::from).and_then(|a| a.parent().map(|p| p.to_path_buf())) {
+        dirs.push(a);
+    }
+    portable_in(&dirs)
+}
+
+/// The first of `dirs` with portable.txt in it, as its "save" folder.
+#[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+pub fn portable_in(dirs: &[PathBuf]) -> Option<PathBuf> {
+    dirs.iter().find(|d| d.join("portable.txt").is_file()).map(|d| d.join("save"))
 }
 
 /// A whole game as saved: the land and terrain, the golfers and holes, the staff, the money and calendar, and the exe's random
@@ -641,6 +674,8 @@ pub struct App {
     pub analysis_hole: i32,
     /// The pro's skill dialog while open, and the shot preview while he waits for the player's aim.
     pub skill_dialog: Option<crate::pro_ui::SkillDialog>,
+    /// The skill points left when the skill card last closed: it opens by itself again only when more are won (#172).
+    pub skills_kept: i32,
     pub aim: Option<sg_core::pro::AimPreview>,
     /// The pro was waiting for the player's aim at the last tick (a new shot drops an armed tool, pro_after_tick).
     pub was_aiming: bool,
@@ -884,6 +919,10 @@ pub struct App {
     pub extras_next: sg_core::extras::Extras,
     /// The Set par extra's change waiting for its confirmation box: hole and new par (extras_ui.rs).
     pub par_change: Option<(usize, i32)>,
+    /// The Eyesore demolition extra's question (demolish.rs): the tile and the eyesore's type.
+    pub demolish_at: Option<(i32, i32, i32)>,
+    /// The Move the clubhouse extra (clubhouse_move.rs): the building the tool held before the clubhouse was put in it.
+    pub clubhouse_tool_was: Option<usize>,
     /// The words the Preferences' search box opens on (prefs_search.rs).
     pub pref_query: String,
     /// Undo for building and terrain (undo.rs).
@@ -935,6 +974,9 @@ pub struct App {
     pub slot_voices: std::collections::HashMap<i32, i32>,
     /// The painting tune's note counter (0x5a9cdc): counts up for every fairway tile painted on screen, never reset.
     pub tune_note: i32,
+    /// Where the player listens from in the walk camera (walk.rs): the eye's ground point (world units) and its heading
+    /// (degrees, walk.rs `Cam::yaw`). None in the overhead view, whose screen places and gates the sounds.
+    pub ear: Option<(f32, f32, f32)>,
     pub music: i32,
     pub music_idx: usize,
     /// Wall clock (seconds) used for toasts and the story timer.
@@ -1045,6 +1087,7 @@ impl App {
             analysis_shown: 0,
             analysis_hole: 0,
             skill_dialog: None,
+            skills_kept: 0,
             aim: None,
             was_aiming: false,
             touch_target: Default::default(),
@@ -1177,6 +1220,8 @@ impl App {
             design_hover: -1,
             extras_next: crate::extras_ui::saved(),
             par_change: None,
+            demolish_at: None,
+            clubhouse_tool_was: None,
             pref_query: String::new(),
             undo: Default::default(),
             bt: Default::default(),
@@ -1208,6 +1253,7 @@ impl App {
             jingle: None,
             slot_voices: Default::default(),
             tune_note: 0,
+            ear: None,
             music: -1,
             music_idx: 0,
             clock: 0.0,
@@ -1250,11 +1296,15 @@ impl App {
         Some((msg, boxed))
     }
 
-    /// The port's own game speed one step faster or slower (normal, x2, x4), stopping at either end; says the speed.
+    /// The port's own game speed one step faster or slower (normal, x2, x4, x8), stopping at either end; says the speed.
+    /// x8 is for passing long stretches (a winter, the months before a tournament); how fast it really goes depends on
+    /// the machine, as the simulation's ticks are all still run.
     pub fn step_speed(&mut self, faster: bool) {
         let s = match (self.speed, faster) {
             (1, true) => 2,
-            (_, true) => 4,
+            (2, true) => 4,
+            (_, true) => 8,
+            (8, false) => 4,
             (4, false) => 2,
             (_, false) => 1,
         };
@@ -1262,11 +1312,12 @@ impl App {
         self.say_speed();
     }
 
-    /// The game speed's single button (a controller's Y, the touch button): normal, x2, x4, then normal again.
+    /// The game speed's single button (a controller's Y, the touch button): normal, x2, x4, x8, then normal again.
     pub fn cycle_speed(&mut self) {
         let s = match self.speed {
             1 => 2,
             2 => 4,
+            4 => 8,
             _ => 1,
         };
         self.act(sg_core::action::Action::Speed(s));
@@ -1277,7 +1328,8 @@ impl App {
         let name = match self.speed {
             1 => tr("STR_TOAST_SPEED_NORMAL"),
             2 => tr("STR_TOAST_SPEED_FAST"),
-            _ => tr("STR_TOAST_SPEED_FASTEST"),
+            4 => tr("STR_TOAST_SPEED_FASTEST"),
+            _ => tr("STR_TOAST_SPEED_X8"),
         };
         self.show_toast(name);
     }
@@ -1362,14 +1414,21 @@ impl App {
         const TUNE: [i8; 36] =
             [0, 2, 4, 7, 5, 5, 9, 7, 7, 12, 11, 12, 7, 4, 0, 2, 4, 5, 7, 9, 7, 5, 4, 2, 4, 0, -1, 0, 2, -5, -1, 2, 5, 4, 2, 4];
         let Some(file) = sg_core::sounds::slot_file(slot) else { return -1 };
-        let (sx, sy) = match at {
+        let (sx, sy, gain) = match at {
+            // in the walk camera a sound is placed by where it is from the eye, not by the overhead view (which is not
+            // shown and stays where it was): heard within the distance the overhead view spans, panned by its bearing
+            // and fading with distance
+            Some((x, z)) if self.ear.is_some() => match self.ear.and_then(|e| walk_hearing(e, x, z)) {
+                Some(p) => p,
+                None => return -1,
+            },
             Some((x, z)) => match self.screen_of_world(x, z) {
-                Some((vx, vy)) if (0.0..800.0).contains(&vx) && (0.0..=500.0).contains(&vy) => (vx, vy),
+                Some((vx, vy)) if (0.0..800.0).contains(&vx) && (0.0..=500.0).contains(&vy) => (vx, vy, 1.0),
                 _ => return -1,
             },
-            None => (400.0, 300.0),
+            None => (400.0, 300.0, 1.0),
         };
-        let mut vol = (((sx - 400.0).abs() as i32 >> 4) + 50) as f32 / 127.0 * 1.3;
+        let mut vol = (((sx - 400.0).abs() as i32 >> 4) + 50) as f32 / 127.0 * 1.3 * gain;
         let pan = (sx * 127.0 / 800.0 - 64.0) / 64.0;
         let cents = if tune {
             let note = TUNE[(self.tune_note % 36) as usize] as i32;
@@ -2267,6 +2326,18 @@ impl App {
         self.club.unlocked.max(land::unlocked_kinds(self.hole_numbers.len(), false))
     }
 
+    /// A locked building's message: the original's `key`, or with the What unlocks it extra the holes that open it.
+    pub fn locked_text(&self, kind: i32, key: &'static str) -> String {
+        if crate::extras::unlock_info() && (6..=17).contains(&kind) {
+            let have = self.hole_numbers.len();
+            if let Some(need) = (have + 1..=36).find(|&n| land::unlocked_kinds(n, false) > kind) {
+                let what = land::building_name(kind);
+                return trf("STR_UNLOCK_AT_HOLES", &[("WHAT", &what), ("NEED", &need), ("HAVE", &have)]);
+            }
+        }
+        tr(key).to_string()
+    }
+
     pub fn build_available(&self, kind: usize) -> bool {
         // The garden page (kinds up to 5, the willow and the bridge) is always open; buildings unlock with holes.
         let k = kind as i32;
@@ -2915,6 +2986,8 @@ impl App {
                 golf::Event::HoleDone { g, .. } if self.club.g.get(g).is_some_and(|gg| gg.course_b) => {}
                 golf::Event::HoleDone { g, hole, strokes, mood, fee } => {
                     self.script_hole_done(g, hole, strokes);
+                    // the club records (records.rs)
+                    self.records_hole_done(g, hole, strokes);
                     if crate::extras::graphs() {
                         self.graphs_hole_done(hole, strokes, mood, fee);
                     }
@@ -2932,6 +3005,12 @@ impl App {
                         hs.mood += mood as f64 * 10.0;
                         hs.hist[(strokes - 3).clamp(0, 5) as usize] += 1;
                         hs.mood_sum = mood_sum;
+                    }
+                }
+                // the golfer profile's Rounds list (profile_ui.rs); a Course B round too
+                golf::Event::RoundDone { g, holes, strokes, par } => {
+                    if crate::extras::people() {
+                        self.keep_round(g, holes, strokes, par);
                     }
                 }
                 golf::Event::Thought { g, id: 0x32, arg } => {
@@ -3341,7 +3420,15 @@ impl App {
     /// Saves the whole game.
     pub fn save_game(&self, path: &Path) -> Result<(), String> {
         let out = self.save_bytes(6)?;
+        // the Saves newest first extra (backups.rs): the game saved over is kept as a backup, and the time is recorded
+        let dated = crate::extras::save_newest() && path.parent() == Some(crate::files_ui::saved_games_dir().as_path());
+        if dated {
+            crate::backups::keep_backup(path);
+        }
         if sg_core::fsutil::write_file(path, &out) {
+            if dated {
+                crate::backups::stamp(path, miniquad::date::now());
+            }
             self.fingerprint_note("save");
             // the save self-check reads the file back over the next frames (selfcheck.rs)
             self.selfcheck_after_save(&out);
@@ -4160,6 +4247,10 @@ impl App {
     pub fn undo_tile(&mut self, x: i32, y: i32) {
         // the interface's call is an action (replay.rs): logged, then applied by App::apply
         if self.rec.depth_zero() {
+            // an eyesore with the Eyesore demolition extra: asked first (demolish.rs)
+            if self.ask_demolish(x, y) || self.ask_move_clubhouse(x, y) {
+                return;
+            }
             self.act(Action::TakeBack { x, y });
             return;
         }
@@ -4259,6 +4350,11 @@ impl App {
             return self.undo_tile(tx, ty);
         }
         let kind = self.build_idx as i32;
+        // the Move the clubhouse extra's tool (clubhouse_move.rs)
+        if kind == land::K_CLUBHOUSE {
+            self.move_clubhouse(tx, ty);
+            return;
+        }
         if kind == land::K_LANDMARK && self.chosen_landmark().is_none() {
             // a click on the course before a landmark is chosen puts the tool down (0x41fc7c)
             self.edit = false;
@@ -4279,7 +4375,8 @@ impl App {
         let Some(land) = self.land.as_mut() else { return };
         land.sync_from_terrain(&self.terrain);
         if !self.build_available(kind as usize) {
-            return self.show_toast(tr("STR_TOAST_BUILD_MORE_HOLES"));
+            let m = self.locked_text(kind, "STR_TOAST_BUILD_MORE_HOLES");
+            return self.show_toast(&m);
         }
         let Some(land) = self.land.as_mut() else { return };
         // a Snack Bar never upgrades the one standing: any number may be built (land::kind_has_levels, 0x41f926)
@@ -4706,8 +4803,13 @@ fn slots_of(offer: &[Slot; 16]) -> [usize; 16] {
 
 impl App {
     pub fn units_to_world(&self, x: i32, y: i32) -> (f32, f32) {
+        self.units_to_world_f(x as f32, y as f32)
+    }
+
+    /// As `units_to_world`, for a place between whole units (an eased one).
+    pub fn units_to_world_f(&self, x: f32, y: f32) -> (f32, f32) {
         let k = TILE_SIZE / staff::UNIT as f32;
-        (x as f32 * k - self.terrain.w as f32 * TILE_SIZE * 0.5, y as f32 * k - self.terrain.h as f32 * TILE_SIZE * 0.5)
+        (x * k - self.terrain.w as f32 * TILE_SIZE * 0.5, y * k - self.terrain.h as f32 * TILE_SIZE * 0.5)
     }
 
     /// Clubhouse anchor tile (the exe's first object), from the generated land or the demo course's clubhouse.
@@ -5442,6 +5544,17 @@ impl App {
 mod tests {
     use super::*;
 
+    #[test]
+    fn portable_txt_beside_the_program_keeps_everything_in_save_there() {
+        let d = std::env::temp_dir().join(format!("sg-portable-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        assert_eq!(portable_in(std::slice::from_ref(&d)), None);
+        std::fs::write(d.join("portable.txt"), b"").unwrap();
+        assert_eq!(portable_in(std::slice::from_ref(&d)), Some(d.join("save")));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
     /// A game on a flat fairway with hole 1's tee at 10,10 and its cup green at 10,30, planned but not opened.
     fn building_game() -> App {
         let mut a = App::with_clock(PathBuf::new(), 4242);
@@ -5817,5 +5930,50 @@ mod tests {
         let loaded = plan_of(&b);
         b.sync_course();
         assert_eq!(plan_of(&b), loaded);
+    }
+}
+
+/// How far the walk camera hears, in world units: about the width the overhead view shows at its middle zoom.
+const WALK_HEARING: f32 = 160.0 * crate::walk::METRE;
+
+/// Where a sound at (x, z) sits for the walk camera's ear (x, z, heading in degrees), as the overhead view's screen point
+/// the exe's positional play reads (800 x 600, centred at 400): across by its bearing (left of the eye left), and
+/// nearer the screen's middle the closer it is, and how much quieter it is for its distance: full within a few metres,
+/// a third at the edge of hearing. None beyond hearing.
+pub fn walk_hearing(ear: (f32, f32, f32), x: f32, z: f32) -> Option<(f32, f32, f32)> {
+    let (dx, dz) = (x - ear.0, z - ear.1);
+    let d = (dx * dx + dz * dz).sqrt();
+    if d > WALK_HEARING {
+        return None;
+    }
+    // the eye's right, as walk.rs Cam::axes has it
+    let (s, c) = ear.2.to_radians().sin_cos();
+    let across = if d > 1e-3 { (dx * c + dz * s) / d } else { 0.0 };
+    let near = 10.0 * crate::walk::METRE;
+    let gain = if d <= near { 1.0 } else { 1.0 - 0.67 * ((d - near) / (WALK_HEARING - near)).sqrt() };
+    Some((400.0 + across * 360.0 * (d / (8.0 * crate::walk::METRE)).min(1.0), 300.0, gain))
+}
+
+#[cfg(test)]
+mod hearing_tests {
+    use super::walk_hearing;
+    use crate::walk::METRE as M;
+
+    #[test]
+    fn the_walk_camera_hears_round_the_eye_and_pans_by_bearing() {
+        // the eye at the origin looking towards -Z (heading 0): its right is +X
+        let ear = (0.0, 0.0, 0.0);
+        let (right, _, near) = walk_hearing(ear, 20.0 * M, 0.0).unwrap();
+        let (left, _, _) = walk_hearing(ear, -20.0 * M, 0.0).unwrap();
+        let (ahead, _, far) = walk_hearing(ear, 0.0, -120.0 * M).unwrap();
+        assert!(right > 700.0 && left < 100.0, "{right} {left}");
+        assert!((ahead - 400.0).abs() < 1.0);
+        assert!(near > far && far > 0.3);
+        // beyond hearing, silent; behind the eye still heard
+        assert!(walk_hearing(ear, 0.0, 400.0 * M).is_none());
+        assert!(walk_hearing(ear, 0.0, 30.0 * M).is_some());
+        // turned to face +X, a sound at +X is ahead
+        let (sx, _, _) = walk_hearing((0.0, 0.0, 90.0), 30.0 * M, 0.0).unwrap();
+        assert!((sx - 400.0).abs() < 1.0, "{sx}");
     }
 }

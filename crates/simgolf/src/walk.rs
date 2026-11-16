@@ -1,5 +1,5 @@
-//! The walk camera: a hidden test view of the course from a golfer's eye height, with a perspective projection, reached only
-//! with the `--walk` command-line switch on the desktop (it is in no menu, setting or help text). F12 turns it on and off on
+//! The walk camera: the course from a golfer's eye height, with a perspective projection, on computers. The First-person
+//! view interface extra (Looks page, off by default) or the `--walk` command-line switch makes it available. F12 (or `, which needs no fn on a laptop) turns it on and off on
 //! the course screen, Esc turns it off; W A S D or the arrows walk (Shift faster), a drag with a mouse button held turns
 //! and looks up and down, and the eye follows the ground. G follows the golfers on the course one after another (Shift+G
 //! back): the camera walks behind the one chosen and, when they hit, follows the ball's flight and roll, then goes back to
@@ -14,17 +14,18 @@
 //!   and the sun's glints; and the land beyond the property, out to the theme's hills or down into the sea;
 //! * the sky (walk_gl.rs `sky_fs`): the theme's colours, the sun and drifting clouds, and a haze of the same colours over
 //!   everything with distance;
-//! * what stands on the ground (walk_objects.rs): buildings as solids with their own sprites projected onto them, trees and
-//!   people as cards, flags, tee markers and balls as small solids, shadows on the ground.
+//! * what stands on the ground (walk_objects.rs): buildings as modelled solids (walk_models.rs; one without a model as its
+//!   picture, upright), small objects as solids with their own sprites projected onto them, trees and people as cards,
+//!   flags, tee markers and balls as small solids, shadows on the ground.
 //!
-//! Nothing here runs without the switch, and nothing in the game's state changes: the walk only reads it, and leaving
+//! Nothing here runs without the extra or the switch, and nothing in the game's state changes: the walk only reads it, and leaving
 //! puts the overhead camera back where it was.
 //!
 //! With the switch on a scripted still (`--png`), the still is taken from the walk camera; `SG_WALK_AT=TX,TY,YAW[,PITCH]`
 //! (tiles and degrees) places it, `SG_WALK_FOLLOW=N` follows the golfer in slot N (`next`: whoever hits next) and
 //! `SG_WALK_SHOT=S` waits for their ball to have flown S seconds, `SG_WALK_BENCH=1` prints the frame times (with
 //! `SG_FX_BENCH`), `SG_WALK_ISO=Q` draws the scene through the overhead camera of quarter turn Q (there each building's
-//! solid must look exactly as its sprite does), `SG_WALK_CARDS=1` draws every object as its card, and `SG_WALK_DUMP=1`
+//! solid must look exactly as its sprite does), `SG_WALK_CARDS=1` draws every object as its card, `SG_WALK_NO_MODELS=1` draws buildings as though none had a model, `SG_WALK_FLAT_TREES=1` draws every tree as its upright picture, `SG_WALK_FLAT_PEOPLE=1` draws people flat (golfers as pictures, not 3D bodies), `SG_WALK_POSE=CLIP:T[:DEG]` puts every golfer in a clip's pose (turned DEG degrees, to see faces), `SG_WALK_NO_TOON=1` draws the models without the drawn look (outlines and bands of shade), `SG_WALK_NO_PORTRAITS=1` gives golfers their outfit's colours rather than their portrait's hair and skin, and `SG_WALK_DUMP=1`
 //! prints the fitted solids (`SG_WALK_DUMP_DIR` writes the frames fitted).
 use crate::app::{App, Screen};
 use crate::gfx::{Gfx, Mat4};
@@ -52,7 +53,7 @@ const LOOK: f32 = 0.25;
 /// The steepest look up or down, degrees.
 const MAX_PITCH: f32 = 75.0;
 /// Vertical field of view, degrees.
-const FOV: f32 = 60.0;
+pub(crate) const FOV: f32 = 60.0;
 /// The near plane (world units).
 const NEAR: f32 = 0.3 * METRE;
 /// The far plane: past the hills on the horizon.
@@ -64,6 +65,13 @@ const BOB: f32 = 0.03 * METRE;
 const STEP: f32 = 0.75 * METRE;
 /// The key that turns the walk camera on and off (one the game leaves unused).
 pub const KEY: KeyCode = KeyCode::F12;
+/// The same, a key that needs no fn on a laptop (a Mac's F12 is its volume key): ` (the key left of 1, or of Z on a Mac's
+/// ISO keyboard). No action of the course screen uses it.
+pub const ALT_KEY: KeyCode = KeyCode::GraveAccent;
+
+fn is_key(k: KeyCode) -> bool {
+    k == KEY || k == ALT_KEY
+}
 /// The key that follows the golfers.
 pub const FOLLOW_KEY: KeyCode = KeyCode::G;
 
@@ -75,7 +83,13 @@ pub fn enable() {
     ENABLED.store(true, Ordering::Relaxed);
 }
 
+/// Whether the walk camera can be used: the `--walk` switch, or the First-person view extra (extras.rs).
 pub fn enabled() -> bool {
+    ENABLED.load(Ordering::Relaxed) || crate::extras::first_person()
+}
+
+/// Whether the `--walk` switch was given (a scripted still is taken from the walk camera only then).
+pub fn switch_given() -> bool {
     ENABLED.load(Ordering::Relaxed)
 }
 
@@ -378,6 +392,7 @@ impl Stage {
 
     fn walk_end(&mut self) {
         self.walk.cam = None;
+        self.app.ear = None;
         self.walk.follow = None;
         let a = &mut self.app;
         (a.cam_x, a.cam_z, a.zoom, a.rot) = self.walk.saved;
@@ -419,8 +434,12 @@ impl Stage {
         if !enabled() {
             return false;
         }
+        // a great shot's picture over the walk waits for any key, as over the overhead view (main.rs), and the walk goes on
+        if self.app.great_shot.is_some() {
+            return false;
+        }
         if self.walk_shown() {
-            if k == KEY {
+            if is_key(k) {
                 self.walk_end();
             } else if k == KeyCode::Escape {
                 if self.walk.follow.take().is_none() {
@@ -445,7 +464,7 @@ impl Stage {
             }
             return true;
         }
-        if k == KEY && walk_screen(&self.app) {
+        if is_key(k) && walk_screen(&self.app) {
             self.walk_begin();
             return true;
         }
@@ -463,6 +482,10 @@ impl Stage {
         if !self.walk_shown() {
             // the release of a button held when the walk ended is the walk's too
             return std::mem::take(&mut self.walk.looking) && !down;
+        }
+        // a click puts a great shot's picture away (main.rs), and the walk goes on
+        if down && self.app.great_shot.is_some() {
+            return false;
         }
         self.walk.looking = down;
         true
@@ -484,12 +507,14 @@ impl Stage {
 
     /// Once a frame: the walk's steps, the eye's easing and the following, and a scripted still's start in the walk camera.
     pub(crate) fn walk_update(&mut self, t: f64) {
-        if enabled() && self.png_out.is_some() && !self.walk.still_begun && walk_screen(&self.app) {
+        if switch_given() && self.png_out.is_some() && !self.walk.still_begun && walk_screen(&self.app) {
             self.walk.still_begun = true;
             self.walk_begin();
         }
         let dt = (t - self.walk.last).clamp(0.0, 0.1) as f32;
         self.walk.last = t;
+        // the sounds are heard from the eye while the walk is shown (app.rs `walk_hearing`)
+        self.app.ear = self.walk.cam.filter(|_| self.walk_shown()).map(|c| (c.x, c.z, c.yaw));
         if !self.walk_shown() {
             return;
         }
@@ -968,7 +993,17 @@ impl App {
         let w = F_INFO14.width(&line) + 16.0;
         s.fill(g, l + 8.0, tp + 8.0, w, 22.0, shade);
         s.put(g, F_INFO14, l + 16.0, tp + 11.0, &line, white);
-        let help = "Walk camera: W A S D or arrows walk, Shift run, drag to look, G follow a golfer (Shift+G back), F12 or Esc back";
+        if self.great_shot.is_some() {
+            // over a great shot's picture: how to carry on walking, plainly
+            let go = "Click or press any key to carry on walking   (F10 saves the picture)";
+            let w = F_INFO14.width(go) + 20.0;
+            let x = ((l + rt) - w) * 0.5;
+            s.fill(g, x, bt - 34.0, w, 24.0, rgba(0.0, 0.0, 0.0, 0.7));
+            s.put(g, F_INFO14, x + 10.0, bt - 30.0, go, white);
+            g.flush();
+            return;
+        }
+        let help = "Walk camera: W A S D or arrows walk, Shift run, drag to look, G follow a golfer (Shift+G back), F12, ` or Esc back";
         let w = F_ARIAL10.width(help) + 12.0;
         s.fill(g, l + 6.0, bt - 20.0, w, 14.0, shade);
         s.put(g, F_ARIAL10, l + 12.0, bt - 18.0, help, rgba(1.0, 1.0, 1.0, 0.85));

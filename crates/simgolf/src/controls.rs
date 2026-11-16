@@ -296,6 +296,7 @@ pub const ACTIONS: &[Action] = {
         act!("quick_load", "STR_CTL_QUICK_LOAD", shifted(F9)),
         act!("staff_view", "STR_CTL_STAFF_VIEW", shifted(A)),
         act!("landing_map", "STR_CTL_LANDING_MAP", shifted(D)),
+        act!("height_view", "STR_CTL_HEIGHT_VIEW", shifted(K)),
         act!("hole_comments", "STR_CTL_HOLE_COMMENTS", shifted(I)),
         // the history graphs (graphs.rs), and the camera bookmarks (views.rs) on Shift+F1 to F4, which the original leaves
         // unused (Ctrl with a bookmark's key keeps the view there)
@@ -527,6 +528,7 @@ const ROW_ACTIONS: &[(&str, &[&str])] = &[
     ("STR_KEYS_K_QUICK_SAVE", &["quick_save"]),
     ("STR_KEYS_K_QUICK_LOAD", &["quick_load"]),
     ("STR_KEYS_K_STAFF_VIEW", &["staff_view"]),
+    ("STR_KEYS_K_HEIGHT_VIEW", &["height_view"]),
     ("STR_KEYS_K_LANDING_MAP", &["landing_map"]),
     ("STR_KEYS_K_HOLE_COMMENTS", &["hole_comments"]),
     ("STR_KEYS_K_GRAPHS", &["graphs"]),
@@ -700,7 +702,7 @@ mod tests {
             assert_eq!((k, sh), (a.default.key, a.default.shift), "{}", a.id);
         }
         // keys no action owns: holes, the keypad, a free letter (O is free, Shift+O the showcase's)
-        for k in [KeyCode::Key1, KeyCode::KpAdd, KeyCode::K] {
+        for k in [KeyCode::Key1, KeyCode::KpAdd, KeyCode::Q] {
             assert_eq!(s.translate(k, false, false, false), Some((k, false, None)));
             assert_eq!(s.translate(k, true, false, false), Some((k, true, None)));
         }

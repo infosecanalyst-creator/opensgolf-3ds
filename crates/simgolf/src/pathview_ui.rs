@@ -38,7 +38,7 @@ impl App {
         self.show_toast(tr(if self.xs.path_view { "STR_PATHVIEW_ON" } else { "STR_PATHVIEW_OFF" }));
     }
 
-    fn path_marks(&self) -> Marks {
+    pub(crate) fn path_marks(&self) -> Marks {
         let t = &self.terrain;
         let joined: Vec<bool> = self
             .land
@@ -136,6 +136,8 @@ impl App {
             crate::insight::LEGEND_H
         } else if self.comfort.staff_view && self.land.is_some() {
             crate::staffview_ui::LEGEND_H
+        } else if self.comfort.height_view {
+            crate::heightview_ui::LEGEND_H
         } else {
             0.0
         }

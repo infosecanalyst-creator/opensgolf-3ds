@@ -8,6 +8,52 @@ Almost everything OpenSGolf adds to the original game is **off until you switch 
 unless you choose otherwise. Most of it is in Preferences: *Game options* holds the extras and presets, *Graphics* holds
 Enhanced graphics and HD.
 
+## 0.8 (13 November 2026)
+
+**Highlights**
+
+- **Walk your course in first person:** with *First-person view (F12)* (Preferences > Game options, Looks; off unless
+  you tick it, on computers), F12 on the course puts you on the ground at a golfer's eye height. Every building in every
+  theme is a 3D model, near trees are drawn in the round, and golfers are cartoon 3D figures that walk, swing, chip,
+  putt, cheer and sulk. W A S D walk, a drag looks round, G follows a golfer and their ball's flight, F12 or Esc goes
+  back to the overhead view.
+- **The browser version installs as an app and plays offline:** add it to your home screen (or install it from the
+  browser's menu) and after the first visit it starts with no connection. Only one tab runs the game at a time, saving a
+  file on a phone opens the share sheet, and the game files can be given as a `.7z` too.
+- **Play upright on phones and tablets:** with *Play upright on phones and tablets* (an interface extra, off unless you
+  tick it) there is no "turn sideways" card and the game takes the whole tall screen, with the interface at its edges.
+- **Pause while you aim** (off unless you tick it): the club stands still while your pro waits for your shot.
+- **Saves newest first, with backups:** Load Previous Game lists saves newest first with how long ago each was made, and
+  saving over a game keeps the last 3 versions as backups. The title menu gets *Continue*, which loads your newest save.
+- **Challenges and the design lab** (an Info page tick, off by default): *Information, Challenges* offers six course
+  design aims, from a perfect par 3 to a cash turnaround, checked every month. Hole Stats' *Mark before* keeps a hole's
+  figures to compare with play since.
+- **Pull down eyesores and move the clubhouse** (two Sandbox extras, off by default): right-click (or long-press) a
+  water tower, radio mast or oil pump to demolish it for §10,000, or the clubhouse to move it somewhere else.
+- **Speed up to x8**, and a **height map** (Shift+K) that tints the land by height.
+- **More to read about your club:** a golfer's *Rounds* on their profile, club records and holes in one in Hole Stats,
+  a *Course review* page of what to look at next, and *What unlocks it* on locked buildings.
+- **A feature guide** on the website ([crspytopgn.github.io/opensgolf/guide.html](https://crspytopgn.github.io/opensgolf/guide.html)):
+  every feature OpenSGolf adds, whether it starts on, and exactly where to switch it on, with every option and key listed
+  from the game itself, so it keeps up with each new version. Linked from the start page.
+- **The launcher's Features tab:** every option of Preferences in one scrolling list, grouped, each with what it does and a
+  tick to switch it on there and then, and a side list to jump to each group. Its *Feature guide* button opens the guide.
+- **Fixed (#176):** with *Right click puts the tool away* on, the elevation tools keep their right-click lower again;
+  Space or Esc puts them away. Brushes and buildings still drop on a right click.
+- **Fixed (#181):** the 16th *Play vs. a pro* match pays out again: its holes are announced and its stake changes hands,
+  where it used to play for nothing.
+- **Translations (#164):** a language file can describe the Course Terrain tiles theme by theme
+  (`STR_TILE_<TILE>_DESC_<THEME>`), as the four themes' own files do; docs/TRANSLATING.md lists the keys.
+
+**Fix releases**
+
+- **0.8.1:** the first-person view gets golfers of a person's height in real clothes (collars, belts, striped,
+  checked or knit shirts, leather shoes) with softer faces; your own pro in 3D; course sounds heard from where you stand;
+  the blimp, the hot air balloons and the desert oil pump as 3D models; smooth balls; mowing stripes that follow the
+  fairway's edge; the great-shot photo shown in first person; and the backtick key (`` ` ``) as well as F12, for Macs.
+- **0.8.2:** the anonymous play-time count goes to the project's own counter, with a random number made fresh at each
+  start (never saved) so it can tell how long people play at a time; see docs/PLAYING.md, *Play-time count*.
+
 ## 0.7 (7 November 2026)
 
 **Highlights**
@@ -33,6 +79,15 @@ Enhanced graphics and HD.
 
 **Fix releases**
 
+- **0.7.6:** name your holes: a click on an open hole's Hole Stats title gives it a name of your own; the launcher can
+  make a desktop shortcut that starts straight on the title menu with its settings (`--play` does the same); a
+  *Support future updates* button beside the launcher's Play, and the web page's support box.
+- **0.7.5:** portable mode: an empty `portable.txt` beside the program keeps saves, settings and packs in a `save`
+  folder there, with your SimGolf folder beside it as `SimGolf` or `game`, so nothing is written to the user's data
+  folder (docs/INSTALL.md).
+- **0.7.4:** the skill points card no longer comes back again and again when points are left that no skill can take
+  or that you chose to keep; it opens by itself only when new points are won (#172); a longer translated name fits the
+  Course Terrain tooltip, and a language file can give the tooltips' descriptions (#164).
 - **0.7.3:** a launcher before the title menu (game files, how to play, display and sound, news), shown at each start
   unless unticked; What's new shows 0.7's highlights (it still showed 0.6's) and reads them from GitHub, as the web
   page's Latest news now does; Start New Game goes straight to Choose Difficulty unless you have scenario packs of your

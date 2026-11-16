@@ -1,0 +1,18 @@
+# OpenSGolf's play-time stats Worker (stats/README.md). Deploy from this folder: npx wrangler@4.152.0 deploy
+name = "opensgolf-stats"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+# The weekly GoatCounter import of older builds' counts: Mondays 04:00 UTC. Remove this to retire it (the stats page says
+# when), then deploy again.
+[triggers]
+crons = ["0 4 * * 1"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "opensgolf-stats"
+database_id = "4feb91e9-dbbd-4110-aee0-14d1d8f31b6e"
+
+[observability]
+enabled = true

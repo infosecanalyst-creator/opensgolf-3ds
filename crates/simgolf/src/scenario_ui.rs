@@ -85,7 +85,7 @@ pub fn find_scenarios(c: &crate::content::ContentState) -> Vec<ScenarioEntry> {
 }
 
 /// The facts the goals are checked against.
-fn facts(app: &App) -> Facts {
+pub(crate) fn facts(app: &App) -> Facts {
     Facts {
         year: 2001 + app.econ.year_index() as i32,
         cash: app.econ.cash as i64,
@@ -480,8 +480,9 @@ impl App {
         if self.scen.goals.list.is_empty() {
             return;
         }
+        let mut notes = self.check_challenges();
         let f = facts(self);
-        let notes = self.scen.goals.check(&f, year_ended);
+        notes.extend(self.scen.goals.check(&f, year_ended));
         self.goal_notes(notes);
     }
 
@@ -641,7 +642,7 @@ impl App {
             lose_text: g.lose_text.clone(),
         };
         // the game's goals that the engine checks (a script's goals belong to its script)
-        let goals = g.list.iter().filter(|x| !x.when.is_empty()).map(goal_def).collect();
+        let goals = g.list.iter().filter(|x| !x.when.is_empty() && x.owner != sg_core::scenario::CHALLENGES).map(goal_def).collect();
         let sc = Scenario { scenario: d, goals };
         let header = format!("# {}\n# docs/MODDING.md, section 5, explains every field; add [[goal]] tables for the goals.\n\n", name);
         let ok = sg_core::fsutil::write_file(dir.join("pack.toml"), scenario::export_manifest(&id, &name, &self.pro_name()).as_bytes())

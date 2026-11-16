@@ -1,6 +1,12 @@
 {
   "news": [
     {
+      "date": "13 November 2026",
+      "iso": "2026-11-13",
+      "title": "OpenSGolf 0.8 released",
+      "text": "Walk your course in first person in 3D, play offline as an app in the browser, play upright on phones, pause while you aim, saves newest first with backups, course challenges, demolish eyesores or move the clubhouse, and speed x8."
+    },
+    {
       "date": "7 November 2026",
       "iso": "2026-11-07",
       "title": "OpenSGolf 0.7 released",
@@ -48,6 +54,46 @@
       {
         "line": "And more",
         "note": "Longer translations fit, replays in problem reports, controller fixes."
+      }
+    ],
+    "0.8": [
+      {
+        "line": "Walk your course in first person",
+        "note": "On a computer, F12 walks the course in 3D and G follows a golfer's shot.",
+        "try": "first_person"
+      },
+      {
+        "line": "Play offline in the browser",
+        "note": "Add the web version to your home screen; it plays with no connection."
+      },
+      {
+        "line": "Pause while you aim",
+        "note": "The game stands still while your pro waits for you to take a shot.",
+        "try": "pause_aim"
+      },
+      {
+        "line": "Saves newest first",
+        "note": "Saves sorted by age, 3 backups of each, and Continue on the title screen.",
+        "try": "saves_newest"
+      },
+      {
+        "line": "Challenges",
+        "note": "Six course design aims in the Information menu, checked every month.",
+        "try": "challenges"
+      },
+      {
+        "line": "Pull down eyesores",
+        "note": "Right-click a water tower, radio mast or oil pump to pull it down (new games).",
+        "try": "demolish"
+      },
+      {
+        "line": "Play upright on phones",
+        "note": "Phones and tablets can play in portrait, with the interface at the screen's edges.",
+        "try": "portrait"
+      },
+      {
+        "line": "And more",
+        "note": "Speed x8, a height map, club records, a course review, a feature guide."
       }
     ]
   }

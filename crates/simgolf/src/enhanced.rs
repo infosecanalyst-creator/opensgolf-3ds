@@ -292,7 +292,8 @@ pub fn widescreen() -> bool {
     // pixel-perfect scaling keeps the picture 800 x 600 in its border: the HUD stays in it. With Classic graphics the
     // interface extra "the interface at the screen's edges" asks for the same (extras.rs wide_ui).
     let s = settings();
-    !s.pixel_perfect && ((s.enabled && s.widescreen) || crate::extras::wide_ui())
+    // Playing upright (extras.rs portrait) needs the interface at the edges of the tall screen too.
+    !s.pixel_perfect && ((s.enabled && s.widescreen) || crate::extras::wide_ui() || crate::extras::portrait())
 }
 pub fn terrain_filter() -> bool {
     on(|s| s.terrain_filter)
@@ -741,6 +742,67 @@ fn most_options() -> usize {
 }
 
 /// An option's line as shown: its text, with the current value of a setting with choices.
+/// The text key of what an option does, by its settings key (the launcher's Features tab and the web site's feature guide,
+/// guide.rs; the box itself has no room for descriptions). Every option has one (guide.rs's test).
+pub fn desc_key(key: &str) -> Option<&'static str> {
+    Some(match key {
+        "native_text" => "STR_ENHANCED_DESC_NATIVE_TEXT",
+        "smooth_ui" => "STR_ENHANCED_DESC_SMOOTH_UI",
+        "widescreen" => "STR_ENHANCED_DESC_WIDESCREEN",
+        "terrain_filter" => "STR_ENHANCED_DESC_TERRAIN_FILTER",
+        "msaa" => "STR_ENHANCED_DESC_MSAA",
+        "smooth_camera" => "STR_ENHANCED_DESC_SMOOTH_CAMERA",
+        "smooth_motion" => "STR_ENHANCED_DESC_SMOOTH_MOTION",
+        "photo_mode" => "STR_ENHANCED_DESC_PHOTO_MODE",
+        "frame_cap" => "STR_ENHANCED_DESC_FRAME_CAP",
+        "vsync" => "STR_ENHANCED_DESC_VSYNC",
+        "pixel_perfect" => "STR_ENHANCED_DESC_PIXEL_PERFECT",
+        "fx_scaler" => "STR_ENHANCED_DESC_FX_SCALER",
+        "fx_scaler_mode" => "STR_ENHANCED_DESC_FX_SCALER_MODE",
+        "fx_water" => "STR_ENHANCED_DESC_FX_WATER",
+        "fx_terrain_light" => "STR_ENHANCED_DESC_FX_TERRAIN_LIGHT",
+        "fx_sprite_shadows" => "STR_ENHANCED_DESC_FX_SPRITE_SHADOWS",
+        "fx_cast_shadows" => "STR_ENHANCED_DESC_FX_CAST_SHADOWS",
+        "fx_ball_trail" => "STR_ENHANCED_DESC_FX_BALL_TRAIL",
+        "fx_ball_impacts" => "STR_ENHANCED_DESC_FX_BALL_IMPACTS",
+        "fx_quality" => "STR_ENHANCED_DESC_FX_QUALITY",
+        "fx_grass" => "STR_ENHANCED_DESC_FX_GRASS",
+        "fx_sharpen" => "STR_ENHANCED_DESC_FX_SHARPEN",
+        "fx_crowds" => "STR_ENHANCED_DESC_FX_CROWDS",
+        "fx_life" => "STR_ENHANCED_DESC_FX_LIFE",
+        "fx_sky" => "STR_ENHANCED_DESC_FX_SKY",
+        "fx_time_of_day" => "STR_ENHANCED_DESC_FX_TIME_OF_DAY",
+        "fx_day_length" => "STR_ENHANCED_DESC_FX_DAY_LENGTH",
+        "fx_evening_lights" => "STR_ENHANCED_DESC_FX_EVENING_LIGHTS",
+        "fx_window_lights" => "STR_ENHANCED_DESC_FX_WINDOW_LIGHTS",
+        "fx_sprinklers" => "STR_ENHANCED_DESC_FX_SPRINKLERS",
+        "fx_clouds" => "STR_ENHANCED_DESC_FX_CLOUDS",
+        "fx_haze" => "STR_ENHANCED_DESC_FX_HAZE",
+        "fx_reflections" => "STR_ENHANCED_DESC_FX_REFLECTIONS",
+        "fx_tilt_shift" => "STR_ENHANCED_DESC_FX_TILT_SHIFT",
+        "fx_grading" => "STR_ENHANCED_DESC_FX_GRADING",
+        "fx_bloom" => "STR_ENHANCED_DESC_FX_BLOOM",
+        "fx_rain" => "STR_ENHANCED_DESC_FX_RAIN",
+        "fx_after_rain" => "STR_ENHANCED_DESC_FX_AFTER_RAIN",
+        "fx_lightning" => "STR_ENHANCED_DESC_FX_LIGHTNING",
+        "fx_heat" => "STR_ENHANCED_DESC_FX_HEAT",
+        "fx_winter" => "STR_ENHANCED_DESC_FX_WINTER",
+        "fx_frost" => "STR_ENHANCED_DESC_FX_FROST",
+        "fx_mist" => "STR_ENHANCED_DESC_FX_MIST",
+        "fx_wind" => "STR_ENHANCED_DESC_FX_WIND",
+        "fx_seasons" => "STR_ENHANCED_DESC_FX_SEASONS",
+        "fx_water_colour" => "STR_ENHANCED_DESC_FX_WATER_COLOUR",
+        "fx_waves" => "STR_ENHANCED_DESC_FX_WAVES",
+        "fx_shoreline" => "STR_ENHANCED_DESC_FX_SHORELINE",
+        "fx_caustics" => "STR_ENHANCED_DESC_FX_CAUSTICS",
+        "fx_rain_rings" => "STR_ENHANCED_DESC_FX_RAIN_RINGS",
+        "fx_water_life" => "STR_ENHANCED_DESC_FX_WATER_LIFE",
+        "fx_ice" => "STR_ENHANCED_DESC_FX_ICE",
+        "fx_spray" => "STR_ENHANCED_DESC_FX_SPRAY",
+        _ => return None,
+    })
+}
+
 pub fn option_line(o: &OptionEntry, s: &Settings) -> String {
     use sg_core::lang::{tr, trf};
     match o.choices.get((o.get)(s) as usize) {
@@ -1175,7 +1237,8 @@ impl App {
     /// The simulation advanced: the positions at this tick become the newest of the two kept (smooth motion only). Called
     /// after `update_props` has pointed the props at the simulation.
     pub fn track_motion(&mut self) {
-        if !smooth_motion() {
+        // (the walk camera always eases the balls: seen from the ground a ball's flight stepping tick by tick judders)
+        if !smooth_motion() && self.ear.is_none() {
             self.enh.tracks.clear();
             self.enh.balls.clear();
             return;
@@ -1245,7 +1308,7 @@ impl App {
 
     /// Where golfer `i`'s ball is drawn, in the simulation's units (x, y, height).
     pub fn shown_ball(&self, i: usize) -> Option<(f32, f32, f32)> {
-        let t = self.enh.balls.get(i).copied().flatten().filter(|_| smooth_motion())?;
+        let t = self.enh.balls.get(i).copied().flatten().filter(|_| smooth_motion() || self.ear.is_some())?;
         let f = self.tick_fraction();
         let l = |k: usize| t.prev[k] + (t.cur[k] - t.prev[k]) * f;
         let _ = t.seen;

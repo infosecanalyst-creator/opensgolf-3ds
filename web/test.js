@@ -103,6 +103,32 @@ test("all the method zips unpack to the same files", async () => {
     }
 });
 
+// Unpacks a .7z (bytes) as the page does; returns { files, skipped, stat }. The archives were made with p7zip 16.02 from
+// bzip2.zip's files: `7z a -m0=lzma2`, `-m0=bcj -m1=lzma2:d=64k -mmt=2` (the filter and a dictionary small enough for
+// chunks with resets), `-m0=lzma -mhc=off` (a plain header) and `-m0=ppmd`.
+async function un7z(bytes) {
+    const files = {}, skipped = [], stat = {};
+    await f.sgUn7z(new Blob([bytes]), async (name, b) => { files[name] = b; }, skipped, stat);
+    return { files, skipped, stat };
+}
+
+test("the .7z archives unpack to the zip's files", async () => {
+    const want = (await unzip(fs.readFileSync(data + "bzip2.zip"))).files;
+    for (const file of ["game-lzma2.7z", "game-bcj.7z", "game-lzma.7z"]) {
+        const { files, skipped } = await un7z(fs.readFileSync(data + file));
+        assert.deepStrictEqual(skipped, [], file);
+        assert.deepStrictEqual(Object.keys(files).sort(), Object.keys(want).sort(), file);
+        for (const k of Object.keys(want)) assert.ok(Buffer.from(want[k]).equals(Buffer.from(files[k])), file + ": " + k);
+    }
+});
+
+test("a .7z folder packed a way the page cannot unpack is skipped with the method's name", async () => {
+    const { files, skipped } = await un7z(fs.readFileSync(data + "game-ppmd.7z"));
+    assert.deepStrictEqual(Object.keys(files), []);
+    assert.ok(skipped.length > 0 && skipped.every(s => s[1] === "PPMd is not supported"));
+    assert.ok(f.sg7zIs(fs.readFileSync(data + "game-lzma2.7z")) && !f.sg7zIs(fs.readFileSync(data + "bzip2.zip")));
+});
+
 test("a method the page does not know is skipped with its name", async () => {
     const z = zip([{ name: "SimGolf/Flics/a.fli", data: bytes("art") }, { name: "SimGolf/Sounds/x.wav", data: bytes("RIFF"), method: 93 }]);
     const { files, skipped } = await unzip(z);
@@ -240,12 +266,14 @@ test("a phone or tablet held upright is asked to turn; a desktop window never is
     assert.strictEqual(f.sgPortraitAsk(true, 500, 500, false), false); // square is not upright
     assert.strictEqual(f.sgPortraitAsk(true, 390, 664, true), false); // "Play anyway"
     assert.strictEqual(f.sgPortraitAsk(false, 600, 1000, false), false); // a tall desktop window
+    assert.strictEqual(f.sgPortraitAsk(true, 390, 664, false, true), false); // the "Play upright" extra
 });
 
 test("the canvas fills the view, or a 4:3 band across the middle of an upright touch screen", () => {
     assert.deepStrictEqual(f.sgCanvasRect(true, 750, 342, 0, 0), { left: 0, top: 0, width: 750, height: 342 });
     assert.deepStrictEqual(f.sgCanvasRect(false, 600, 1000, 0, 0), { left: 0, top: 0, width: 600, height: 1000 });
     assert.deepStrictEqual(f.sgCanvasRect(true, 390, 664, 0, 0), { left: 0, top: 186, width: 390, height: 293 });
+    assert.deepStrictEqual(f.sgCanvasRect(true, 390, 664, 0, 0, true), { left: 0, top: 0, width: 390, height: 664 }); // upright
     // the visual viewport's offset (Safari's bars, a pinch) carries over
     assert.deepStrictEqual(f.sgCanvasRect(true, 400, 700, 0, 10), { left: 0, top: 210, width: 400, height: 300 });
     // never taller than the view (a nearly square upright view)
@@ -268,20 +296,22 @@ test("the edges a phone hides are the safe-area insets where they fall on the ca
     assert.deepStrictEqual(f.sgSafeInsets([40, 0, 0, 0], { left: 30, top: 0, width: 100, height: 100 }, 130, 100), [0.1, 0, 0, 0]);
 });
 
-test("the start page's dark palette is the same for the device's dark scheme and the theme button's Dark", () => {
-    const html = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
-    const block = re => {
-        const m = html.match(re);
-        assert.ok(m, "no block for " + re);
-        return m[1].replace(/\s+/g, " ").trim();
-    };
-    const device = block(/@media \(prefers-color-scheme: dark\) \{\s*:root:not\(\[data-theme="light"\]\) \{([^}]*)\}\s*\}/);
-    const button = block(/\n\s*:root\[data-theme="dark"\] \{([^}]*)\}/);
-    assert.ok(device.includes("--panel:"), device);
-    assert.strictEqual(button, device);
-    // and no other dark-only rules that the button's Dark would miss
-    assert.strictEqual(html.match(/prefers-color-scheme/g).length, 1);
-});
+for (const page of ["index.html", "guide.html"]) {
+    test(page + "'s dark palette is the same for the device's dark scheme and the theme button's Dark", () => {
+        const html = fs.readFileSync(path.join(__dirname, page), "utf8");
+        const block = re => {
+            const m = html.match(re);
+            assert.ok(m, "no block for " + re);
+            return m[1].replace(/\s+/g, " ").trim();
+        };
+        const device = block(/@media \(prefers-color-scheme: dark\) \{\s*:root:not\(\[data-theme="light"\]\) \{([^}]*)\}\s*\}/);
+        const button = block(/\n\s*:root\[data-theme="dark"\] \{([^}]*)\}/);
+        assert.ok(device.includes("--panel:"), device);
+        assert.strictEqual(button, device);
+        // and no other dark-only rules that the button's Dark would miss
+        assert.strictEqual(html.match(/prefers-color-scheme/g).length, 1);
+    });
+}
 
 test("the sound context sleeps while the game has its sound asleep, and only the game wakes it", () => {
     const act = f.sgSoundAction;

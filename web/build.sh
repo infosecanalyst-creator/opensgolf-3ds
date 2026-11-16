@@ -12,7 +12,13 @@ META=$(cargo metadata --format-version 1)
 MQ=$(printf "%s" "$META" | python3 -c 'import json,sys; m=json.load(sys.stdin); print([p["manifest_path"] for p in m["packages"] if p["name"]=="miniquad"][0])')
 VERSION=$(printf "%s" "$META" | python3 -c 'import json,sys; m=json.load(sys.stdin); print([p["version"] for p in m["packages"] if p["name"]=="opensgolf"][0])')
 cp "$(dirname "$MQ")/js/gl.js" web/dist/
-cp web/index.html web/files.js web/opensgolf.js web/dist/
+cp web/index.html web/files.js web/opensgolf.js web/start-walk.jpg web/dist/
+# the feature guide (its option and key reference made from the game by crates/simgolf/src/guide.rs's test)
+cp web/guide.html web/dist/
+# the home-screen app and offline play (web/sw.js, web/manifest.webmanifest; the icons are the app icon, written by tools/make_icons.sh)
+cp web/sw.js web/manifest.webmanifest web/dist/
+mkdir -p web/dist/icons
+cp web/icons/*.png web/dist/icons/
 # the Latest news box's copy of the game's What's new list (opensgolf.js sgNews)
 cp whatsnew.json web/dist/
 # the page's version, and every file it loads named with the version and a hash of the published files in its address, so
@@ -22,7 +28,7 @@ import hashlib, sys
 version = sys.argv[1]
 d = "web/dist/"
 h = hashlib.sha256()
-for f in ["opensgolf.wasm", "gl.js", "files.js", "opensgolf.js", "index.html"]:
+for f in ["opensgolf.wasm", "gl.js", "files.js", "opensgolf.js", "index.html", "start-walk.jpg", "sw.js", "manifest.webmanifest"]:
     h.update(open(d + f, "rb").read())
 tag = version + "-" + h.hexdigest()[:10]
 def stamp(name, pairs):
@@ -35,11 +41,14 @@ def stamp(name, pairs):
 stamp("files.js", [('"%SG_VERSION%"', '"' + version + '"')])
 stamp("opensgolf.js", [('load("opensgolf.wasm")', 'load("opensgolf.wasm?v=' + tag + '")')])
 stamp("index.html", [('src="%s"' % f, 'src="%s?v=%s"' % (f, tag)) for f in ["gl.js", "files.js", "opensgolf.js"]] +
-    [])
+    [('url("%s")' % f, 'url("%s?v=%s")' % (f, tag)) for f in ["start-walk.jpg"]])
+# the service worker keeps this version's files under its own name, and keeps the start page's at once
+stamp("sw.js", [('"%SG_TAG%"', '"' + tag + '"'),
+    ('"%SG_SHELL%"', ", ".join('"%s?v=%s"' % (f, tag) for f in ["gl.js", "files.js", "opensgolf.js", "start-walk.jpg"]))])
 print("web/dist: version " + version + ", files tagged " + tag)
 PY
 # the player's own art and HD packs (docs/HD.md) must never end up in the published folder
-if find web/dist -iname '*.png' -o -iname '*.pcx' -o -iname 'manifest.json' -o -iname 'HD' | grep -q .; then
+if find web/dist -path web/dist/icons -prune -o \( -iname '*.png' -o -iname '*.pcx' -o -iname 'manifest.json' -o -iname 'HD' \) -print | grep -q .; then
     echo "web/dist contains game art or an HD pack: remove it before publishing" >&2
     exit 1
 fi

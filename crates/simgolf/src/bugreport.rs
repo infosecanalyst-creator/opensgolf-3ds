@@ -173,8 +173,11 @@ pub fn reports_dir() -> PathBuf {
 /// popup returns for OK.
 pub const BOX_SHOT: usize = 0;
 pub const BOX_GO: usize = 1;
-pub const BOX_CANCEL: usize = 2;
-pub const BOX_PLAIN: u32 = 1 << BOX_GO | 1 << BOX_CANCEL;
+/// Copy the details: the system line on the clipboard, for a post on Discord or a forum (the port's
+/// own).
+pub const BOX_COPY: usize = 2;
+pub const BOX_CANCEL: usize = 3;
+pub const BOX_PLAIN: u32 = 1 << BOX_GO | 1 << BOX_COPY | 1 << BOX_CANCEL;
 
 /// The width the box's explanation is wrapped to.
 const BOX_TEXT_W: f32 = 430.0;
@@ -194,7 +197,10 @@ pub fn box_lines() -> Vec<String> {
     for para in tr(key).split('\n') {
         v.extend(crate::extras::wrap(crate::popup_ui::NOTE_FONT, para, BOX_TEXT_W).into_iter().map(|l| format!("\t{l}")));
     }
-    v.extend([tr("STR_BUGREPORT_SCREENSHOT"), tr("STR_BUGREPORT_OPEN"), tr("STR_BUGREPORT_CANCEL")].map(str::to_string));
+    v.extend(
+        [tr("STR_BUGREPORT_SCREENSHOT"), tr("STR_BUGREPORT_OPEN"), tr("STR_BUGREPORT_COPY"), tr("STR_BUGREPORT_CANCEL")]
+            .map(str::to_string),
+    );
     v
 }
 
@@ -285,6 +291,14 @@ impl App {
             self.draw_w as u32,
             self.draw_h as u32
         )
+    }
+
+    /// The box's Copy the details: the system line (and the platform) on the clipboard, said in a toast.
+    pub fn copy_report_details(&mut self, gl: &str) {
+        let text = format!("{} ({})", self.report_system_line(gl), platform_here());
+        miniquad::window::clipboard_set(&text);
+        println!("report details copied: {text}");
+        self.show_toast(tr("STR_BUGREPORT_COPIED"));
     }
 
     /// The box's OK: the files written (the game being played, and `shot` as a PNG), the form opened with them named, and a
@@ -454,13 +468,13 @@ mod tests {
     }
 
     #[test]
-    fn the_box_has_its_tick_ok_and_cancel_in_order() {
+    fn the_box_has_its_tick_ok_copy_and_cancel_in_order() {
         let l = box_lines();
         let opts: Vec<&String> = l.iter().filter(|s| s.starts_with(' ')).collect();
-        assert_eq!(opts, [tr("STR_BUGREPORT_SCREENSHOT"), tr("STR_BUGREPORT_OPEN"), tr("STR_BUGREPORT_CANCEL")]);
+        assert_eq!(opts, [tr("STR_BUGREPORT_SCREENSHOT"), tr("STR_BUGREPORT_OPEN"), tr("STR_BUGREPORT_COPY"), tr("STR_BUGREPORT_CANCEL")]);
         assert_eq!(l[0], tr("STR_BUGREPORT_TITLE"));
-        assert!(l[1..l.len() - 3].iter().all(|s| s.starts_with('\t')), "the explanation is notes");
-        assert_eq!(BOX_PLAIN, 0b110);
+        assert!(l[1..l.len() - 4].iter().all(|s| s.starts_with('\t')), "the explanation is notes");
+        assert_eq!(BOX_PLAIN, 0b1110);
         let top = box_top(l.len());
         assert!(top >= 4.0 && top as i32 % 2 == 0 && top + (l.len() as f32 * 3.0 + 3.0) * 8.0 <= 596.0);
     }

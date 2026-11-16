@@ -1,0 +1,1 @@
+The anonymous play-time count now goes to the project's own counter.

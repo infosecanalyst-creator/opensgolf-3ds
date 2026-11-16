@@ -43,7 +43,7 @@ impl App {
         self.show_toast(tr(if self.comfort.staff_view { "STR_STAFF_VIEW_ON" } else { "STR_STAFF_VIEW_OFF" }));
     }
 
-    fn staff_marks(&self) -> Marks {
+    pub(crate) fn staff_marks(&self) -> Marks {
         let rings: Vec<((i32, i32), i32, i8)> = self
             .employees
             .iter()

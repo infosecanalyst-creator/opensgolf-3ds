@@ -16,16 +16,18 @@ function sgVersion() {
 // --- phones and tablets held upright (the port's own; web/opensgolf.js sgFitCanvas) ------------------------------------------
 // SimGolf is a landscape game: its screens are 800 x 600. A phone or tablet (a touch device: a coarse pointer, or an iPad
 // that calls itself a Mac) held upright (taller than wide) is asked to turn sideways, until the player picks "Play anyway"
-// for the session. A desktop window, however tall, is never asked.
-function sgPortraitAsk(touch, w, h, dismissed) {
-    return !!touch && h > w && !dismissed;
+// for the session. A desktop window, however tall, is never asked, and nor is anyone with the game's "Play upright on phones
+// and tablets" extra on (`upright`; portrait.rs).
+function sgPortraitAsk(touch, w, h, dismissed, upright) {
+    return !!touch && h > w && !dismissed && !upright;
 }
 
 // Where the game's canvas goes in the visible area (w x h at left, top): all of it, except on a touch device held upright,
 // where the game plays in a 4:3 band across the middle (the 800 x 600 screens fill its width; the rest is black), so the
-// whole game shows at the largest size the width allows, neither cut off nor stretched.
-function sgCanvasRect(touch, w, h, left, top) {
-    if (!touch || h <= w) return { left: Math.round(left), top: Math.round(top), width: Math.round(w), height: Math.round(h) };
+// whole game shows at the largest size the width allows, neither cut off nor stretched. With the "Play upright" extra on
+// (`upright`) the game has the whole tall screen and lays its interface out at the edges.
+function sgCanvasRect(touch, w, h, left, top, upright) {
+    if (!touch || h <= w || upright) return { left: Math.round(left), top: Math.round(top), width: Math.round(w), height: Math.round(h) };
     const bh = Math.min(h, w * 3 / 4);
     return { left: Math.round(left), top: Math.round(top + (h - bh) / 2), width: Math.round(w), height: Math.round(bh) };
 }
@@ -1759,8 +1761,634 @@ function sgFilesSummary(paths, skipped = [], found = null, bad = null) {
     return { text: say.join(" "), problem };
 }
 
+// --- reading a .7z ------------------------------------------------------------------------------------------------------------
+// 7-Zip's own archives: the port's own reader after the format as 7-Zip's 7zFormat.txt describes it (signature header,
+// the header's property records, folders of coders bound to each other, substreams). Folders packed with LZMA2 (7-Zip's
+// default, also in blocks with their dictionary reset, as its multithreaded packing writes them), LZMA, Deflate, BZip2 or
+// stored, each behind an optional x86 BCJ filter (7-Zip's default for programs), are unpacked; a header packed with LZMA
+// too. Files in a folder packed another way (PPMd, BCJ2, encrypted) are skipped with the method's name, as a zip's are.
+// A folder is unpacked whole into one buffer (a solid archive's files follow each other in it), so a folder is held at
+// once, and every file's CRC is checked.
+
+// LZMA2: chunks of LZMA (each with its own range coder, and a state, properties or dictionary reset as its control byte
+// says) or of stored bytes, into `size` bytes. `dictByte` is the coder's one property byte (not needed: the whole output is
+// the dictionary).
+function sgUnlzma2(src, size) {
+    const fail = why => { throw new Error("LZMA2: " + why); };
+    const out = new Uint8Array(size);
+    let pos = 0, o = 0, base = 0;
+    let lc = 0, lp = 0, pb = 0, p = null;
+    let state = 0, rep0 = 0, rep1 = 0, rep2 = 0, rep3 = 0;
+    const resetState = () => {
+        p = new Uint16Array(1847 + (0x300 << (lc + lp))).fill(1024);
+        state = 0;
+        rep0 = rep1 = rep2 = rep3 = 0;
+    };
+    while (true) {
+        if (pos >= src.length) fail("the data ends early");
+        const c = src[pos++];
+        if (c === 0) break;
+        if (c === 1 || c === 2) {
+            if (pos + 2 > src.length) fail("the data ends early");
+            const n = ((src[pos] << 8) | src[pos + 1]) + 1;
+            pos += 2;
+            if (c === 1) base = o;
+            if (pos + n > src.length || o + n > size) fail("a stored chunk runs past the end");
+            out.set(src.subarray(pos, pos + n), o);
+            pos += n;
+            o += n;
+            continue;
+        }
+        if (c < 0x80) fail("a bad chunk");
+        if (pos + 4 > src.length) fail("the data ends early");
+        const unpacked = ((c & 0x1f) << 16) + ((src[pos] << 8) | src[pos + 1]) + 1;
+        const packed = ((src[pos + 2] << 8) | src[pos + 3]) + 1;
+        pos += 4;
+        const mode = (c >> 5) & 3;
+        if (mode === 3) base = o;
+        if (mode >= 2) {
+            let d = src[pos++];
+            if (d >= 225) fail("bad properties");
+            lc = d % 9;
+            d = (d / 9) | 0;
+            lp = d % 5;
+            pb = (d / 5) | 0;
+            if (lc + lp > 4) fail("bad properties");
+        }
+        if (mode >= 1) resetState();
+        if (!p) fail("a chunk before any properties");
+        if (o + unpacked > size) fail("more data than the archive says");
+        const end = pos + packed;
+        if (end > src.length) fail("the data ends early");
+        // the chunk's range coder
+        let range = 0xffffffff, code = 0;
+        if (src[pos] !== 0) fail("a bad start of a chunk");
+        for (let i = 1; i <= 4; i++) code = ((code << 8) | src[pos + i]) >>> 0;
+        pos += 5;
+        const IS_MATCH = 0, IS_REP = 192, IS_REP_G0 = 204, IS_REP_G1 = 216, IS_REP_G2 = 228, IS_REP0_LONG = 240, POS_SLOT = 432,
+            SPEC_POS = 688, ALIGN = 803, LEN = 819, REP_LEN = 1333, LIT = 1847;
+        const norm = () => {
+            if (range < 0x1000000) {
+                range = (range << 8) >>> 0;
+                code = ((code << 8) | (pos < end ? src[pos] : 0)) >>> 0;
+                pos++;
+            }
+        };
+        const bit = i => {
+            const v = p[i], bound = (range >>> 11) * v;
+            let b;
+            if (code < bound) {
+                range = bound;
+                p[i] = v + ((2048 - v) >> 5);
+                b = 0;
+            } else {
+                range -= bound;
+                code -= bound;
+                p[i] = v - (v >> 5);
+                b = 1;
+            }
+            norm();
+            return b;
+        };
+        const direct = k => {
+            let r = 0;
+            for (let i = 0; i < k; i++) {
+                range >>>= 1;
+                let b = 0;
+                if (code >= range) {
+                    code -= range;
+                    b = 1;
+                }
+                r = r * 2 + b;
+                norm();
+            }
+            return r;
+        };
+        const tree = (b0, k) => {
+            let m = 1;
+            for (let i = 0; i < k; i++) m = (m << 1) + bit(b0 + m);
+            return m - (1 << k);
+        };
+        const reverse = (b0, k) => {
+            let m = 1, r = 0;
+            for (let i = 0; i < k; i++) {
+                const b = bit(b0 + m);
+                m = (m << 1) + b;
+                r |= b << i;
+            }
+            return r;
+        };
+        const length = (b0, ps) => {
+            if (!bit(b0)) return tree(b0 + 2 + (ps << 3), 3);
+            if (!bit(b0 + 1)) return 8 + tree(b0 + 130 + (ps << 3), 3);
+            return 16 + tree(b0 + 258, 8);
+        };
+        const pbMask = (1 << pb) - 1, lpMask = (1 << lp) - 1;
+        const stop = o + unpacked;
+        while (o < stop) {
+            const at = o - base;
+            const ps = at & pbMask;
+            if (!bit(IS_MATCH + (state << 4) + ps)) {
+                const prev = at > 0 ? out[o - 1] : 0;
+                const lb = LIT + 0x300 * (((at & lpMask) << lc) + (prev >> (8 - lc)));
+                let sym = 1;
+                if (state >= 7) {
+                    let mb = out[o - rep0 - 1];
+                    do {
+                        const m = (mb >> 7) & 1;
+                        mb <<= 1;
+                        const b = bit(lb + ((1 + m) << 8) + sym);
+                        sym = (sym << 1) | b;
+                        if (m !== b) break;
+                    } while (sym < 0x100);
+                }
+                while (sym < 0x100) sym = (sym << 1) | bit(lb + sym);
+                out[o++] = sym & 0xff;
+                state = state < 4 ? 0 : state < 10 ? state - 3 : state - 6;
+                continue;
+            }
+            let len;
+            if (bit(IS_REP + state)) {
+                if (at === 0) fail("a repeat at the start");
+                if (!bit(IS_REP_G0 + state)) {
+                    if (!bit(IS_REP0_LONG + (state << 4) + ps)) {
+                        state = state < 7 ? 9 : 11;
+                        out[o] = out[o - rep0 - 1];
+                        o++;
+                        continue;
+                    }
+                } else {
+                    let dist;
+                    if (!bit(IS_REP_G1 + state)) dist = rep1;
+                    else {
+                        if (!bit(IS_REP_G2 + state)) dist = rep2;
+                        else {
+                            dist = rep3;
+                            rep3 = rep2;
+                        }
+                        rep2 = rep1;
+                    }
+                    rep1 = rep0;
+                    rep0 = dist;
+                }
+                len = length(REP_LEN, ps);
+                state = state < 7 ? 8 : 11;
+            } else {
+                rep3 = rep2;
+                rep2 = rep1;
+                rep1 = rep0;
+                len = length(LEN, ps);
+                state = state < 7 ? 7 : 10;
+                const slot = tree(POS_SLOT + (Math.min(len, 3) << 6), 6);
+                if (slot < 4) rep0 = slot;
+                else {
+                    const k = (slot >> 1) - 1;
+                    let dist = (2 | (slot & 1)) * 2 ** k;
+                    if (slot < 14) dist += reverse(SPEC_POS + dist - slot, k);
+                    else dist += direct(k - 4) * 16 + reverse(ALIGN, 4);
+                    if (dist === 0xffffffff) fail("an end marker inside a chunk");
+                    rep0 = dist;
+                }
+            }
+            len += 2;
+            if (rep0 >= o - base) fail("a distance too far back");
+            if (o + len > stop) fail("a match runs past its chunk");
+            for (let k = 0; k < len; k++, o++) out[o] = out[o - rep0 - 1];
+        }
+        pos = end;
+    }
+    if (o !== size) fail("less data than the archive says");
+    return out;
+}
+
+// The x86 BCJ filter undone (7-Zip's Bra86.c, after the format): the relative addresses of CALL and JMP (E8, E9) that the
+// packer made absolute are made relative again, in place.
+function sgUnbcj(buf) {
+    const ALLOWED = [1, 1, 1, 0, 1, 0, 0, 0];
+    const BIT = [0, 1, 2, 2, 3, 3, 3, 3];
+    const ms = b => b === 0 || b === 0xff;
+    const size = buf.length;
+    if (size < 5) return buf;
+    const ip = 5;
+    let pos = 0, prevPos = -1, prevMask = 0;
+    for (;;) {
+        while (pos < size - 4 && (buf[pos] & 0xfe) !== 0xe8) pos++;
+        if (pos >= size - 4) break;
+        const gap = pos - prevPos;
+        if (gap > 3) prevMask = 0;
+        else {
+            prevMask = (prevMask << (gap - 1)) & 7;
+            if (prevMask !== 0) {
+                const b = buf[pos + 4 - BIT[prevMask]];
+                if (!ALLOWED[prevMask] || ms(b)) {
+                    prevPos = pos;
+                    prevMask = ((prevMask << 1) & 7) | 1;
+                    pos++;
+                    continue;
+                }
+            }
+        }
+        prevPos = pos;
+        if (ms(buf[pos + 4])) {
+            let src = ((buf[pos + 4] << 24) | (buf[pos + 3] << 16) | (buf[pos + 2] << 8) | buf[pos + 1]) >>> 0;
+            let dest;
+            for (;;) {
+                dest = (src - (ip + pos)) >>> 0;
+                if (prevMask === 0) break;
+                const index = BIT[prevMask] * 8;
+                const b = (dest >>> (24 - index)) & 0xff;
+                if (!ms(b)) break;
+                src = (dest ^ (2 ** (32 - index) - 1)) >>> 0;
+            }
+            buf[pos + 4] = ~(((dest >>> 24) & 1) - 1) & 0xff;
+            buf[pos + 3] = (dest >>> 16) & 0xff;
+            buf[pos + 2] = (dest >>> 8) & 0xff;
+            buf[pos + 1] = dest & 0xff;
+            pos += 5;
+        } else {
+            prevMask = ((prevMask << 1) & 7) | 1;
+            pos++;
+        }
+    }
+    return buf;
+}
+
+const SG_7Z_SIG = [0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c];
+const SG_7Z_METHODS = { "00": "stored", "21": "LZMA2", "030101": "LZMA", "03030103": "BCJ", "0303011b": "BCJ2", "030401": "PPMd",
+    "040108": "Deflate", "040109": "Deflate64", "040202": "BZip2", "06f10701": "AES (encrypted)" };
+
+function sg7zIs(head) {
+    return SG_7Z_SIG.every((b, i) => head[i] === b);
+}
+
+// A reader of the header's numbers and records.
+function sg7zReader(d) {
+    let at = 0;
+    const fail = why => { throw new Error("7z: " + why); };
+    const r = {
+        get at() { return at; },
+        byte() {
+            if (at >= d.length) fail("the header ends early");
+            return d[at++];
+        },
+        bytes(n) {
+            if (at + n > d.length) fail("the header ends early");
+            const b = d.subarray(at, at + n);
+            at += n;
+            return b;
+        },
+        u32() {
+            const b = r.bytes(4);
+            return (b[0] | (b[1] << 8) | (b[2] << 16) | (b[3] << 24)) >>> 0;
+        },
+        // 7zFormat.txt's NUMBER: the first byte's leading ones say how many bytes follow
+        num() {
+            const first = r.byte();
+            let mask = 0x80, v = 0;
+            for (let i = 0; i < 8; i++) {
+                if ((first & mask) === 0) {
+                    const high = first & (mask - 1);
+                    return v + high * 2 ** (8 * i);
+                }
+                v += r.byte() * 2 ** (8 * i);
+                mask >>= 1;
+            }
+            return v;
+        },
+        bits(n) {
+            const out = [];
+            let b = 0, m = 0;
+            for (let i = 0; i < n; i++) {
+                if (m === 0) {
+                    b = r.byte();
+                    m = 0x80;
+                }
+                out.push((b & m) !== 0);
+                m >>= 1;
+            }
+            return out;
+        },
+        // AllAreDefined, then the defined CRCs
+        digests(n) {
+            const all = r.byte();
+            const def = all ? new Array(n).fill(true) : r.bits(n);
+            return def.map(x => (x ? r.u32() : null));
+        },
+        skip(n) {
+            r.bytes(n);
+        },
+        fail,
+    };
+    return r;
+}
+
+function sg7zFolder(r) {
+    const coders = [];
+    let ins = 0, outs = 0;
+    const n = r.num();
+    for (let i = 0; i < n; i++) {
+        const flag = r.byte();
+        if (flag & 0x80) r.fail("alternative methods are not supported");
+        const id = Array.from(r.bytes(flag & 0x0f), b => b.toString(16).padStart(2, "0")).join("");
+        const nIn = flag & 0x10 ? r.num() : 1, nOut = flag & 0x10 ? r.num() : 1;
+        const props = flag & 0x20 ? r.bytes(r.num()) : new Uint8Array(0);
+        coders.push({ id, nIn, nOut, props, firstIn: ins, firstOut: outs });
+        ins += nIn;
+        outs += nOut;
+    }
+    const binds = [];
+    for (let i = 0; i < outs - 1; i++) binds.push({ inIndex: r.num(), outIndex: r.num() });
+    const nPacked = ins - binds.length;
+    let packed = [];
+    if (nPacked === 1) {
+        for (let i = 0; i < ins; i++) if (!binds.some(b => b.inIndex === i)) packed = [i];
+    } else for (let i = 0; i < nPacked; i++) packed.push(r.num());
+    return { coders, binds, packed, ins, outs, sizes: [], crc: null };
+}
+
+// StreamsInfo: { packPos, packSizes, folders, sub: [{ size, crc }] per file stream in order }
+function sg7zStreams(r) {
+    const s = { packPos: 0, packSizes: [], folders: [], counts: null, subSizes: null, subCrcs: null };
+    for (;;) {
+        const id = r.byte();
+        if (id === 0x00) break;
+        if (id === 0x06) {
+            s.packPos = r.num();
+            const n = r.num();
+            for (;;) {
+                const t = r.byte();
+                if (t === 0x00) break;
+                if (t === 0x09) for (let i = 0; i < n; i++) s.packSizes.push(r.num());
+                else if (t === 0x0a) r.digests(n);
+                else r.fail("an unknown pack record");
+            }
+        } else if (id === 0x07) {
+            if (r.byte() !== 0x0b) r.fail("no folders");
+            const n = r.num();
+            if (r.byte() !== 0) r.fail("external folders are not supported");
+            for (let i = 0; i < n; i++) s.folders.push(sg7zFolder(r));
+            if (r.byte() !== 0x0c) r.fail("no unpacked sizes");
+            for (const f of s.folders) for (let i = 0; i < f.outs; i++) f.sizes.push(r.num());
+            for (;;) {
+                const t = r.byte();
+                if (t === 0x00) break;
+                if (t === 0x0a) r.digests(s.folders.length).forEach((c, i) => (s.folders[i].crc = c));
+                else r.fail("an unknown folder record");
+            }
+        } else if (id === 0x08) {
+            s.counts = s.folders.map(() => 1);
+            let t = r.byte();
+            if (t === 0x0d) {
+                s.counts = s.folders.map(() => r.num());
+                t = r.byte();
+            }
+            s.subSizes = [];
+            const sizes = t === 0x09;
+            s.folders.forEach((f, k) => {
+                const n = s.counts[k];
+                if (n === 0) return;
+                let sum = 0;
+                for (let i = 0; i < n - 1 && sizes; i++) {
+                    const v = r.num();
+                    s.subSizes.push(v);
+                    sum += v;
+                }
+                s.subSizes.push(sg7zUnpackSize(f) - sum);
+            });
+            if (sizes) t = r.byte();
+            // the CRCs of the streams whose folder has no single CRC for them
+            s.subCrcs = [];
+            const unknown = [];
+            s.folders.forEach((f, k) => {
+                const n = s.counts[k];
+                for (let i = 0; i < n; i++) unknown.push(!(n === 1 && f.crc !== null));
+            });
+            const nUnknown = unknown.filter(x => x).length;
+            let given = null;
+            while (t !== 0x00) {
+                if (t === 0x0a) given = r.digests(nUnknown);
+                else r.fail("an unknown substream record");
+                t = r.byte();
+            }
+            let g = 0, idx = 0;
+            s.folders.forEach((f, k) => {
+                for (let i = 0; i < s.counts[k]; i++, idx++) {
+                    s.subCrcs.push(unknown[idx] ? (given ? given[g++] : null) : f.crc);
+                }
+            });
+        } else r.fail("an unknown streams record");
+    }
+    if (!s.counts) {
+        s.counts = s.folders.map(() => 1);
+        s.subSizes = s.folders.map(sg7zUnpackSize);
+        s.subCrcs = s.folders.map(f => f.crc);
+    }
+    return s;
+}
+
+// The folder's final output: the out stream no bind pair takes.
+function sg7zMainOut(f) {
+    for (let i = 0; i < f.outs; i++) if (!f.binds.some(b => b.outIndex === i)) return i;
+    return 0;
+}
+function sg7zUnpackSize(f) {
+    return f.sizes[sg7zMainOut(f)];
+}
+
+// Why a folder cannot be unpacked here (the method's name), or null.
+function sg7zUnsupported(f) {
+    for (const c of f.coders) {
+        if (c.nIn !== 1 || c.nOut !== 1) return SG_7Z_METHODS[c.id] || "method " + c.id;
+        if (!["00", "21", "030101", "03030103", "040108", "040202"].includes(c.id)) return SG_7Z_METHODS[c.id] || "method " + c.id;
+    }
+    return null;
+}
+
+// A folder unpacked: `packed(i)` gives the bytes of the folder's i-th packed stream.
+async function sg7zUnpackFolder(f, packed) {
+    const why = sg7zUnsupported(f);
+    if (why) throw new Error("7z: " + why + " is not supported");
+    const outOf = async outIndex => {
+        const ci = f.coders.findIndex(c => outIndex >= c.firstOut && outIndex < c.firstOut + c.nOut);
+        const c = f.coders[ci];
+        const inIndex = c.firstIn;
+        const pk = f.packed.indexOf(inIndex);
+        let src;
+        if (pk >= 0) src = await packed(pk);
+        else {
+            const b = f.binds.find(x => x.inIndex === inIndex);
+            if (!b) throw new Error("7z: a coder with no input");
+            src = await outOf(b.outIndex);
+        }
+        const size = f.sizes[outIndex];
+        switch (c.id) {
+            case "00":
+                return src.subarray(0, size);
+            case "21":
+                return sgUnlzma2(src, size);
+            case "030101": {
+                // the zip's way of carrying LZMA: 4 bytes (version, the properties' size), the properties, the stream
+                const z = new Uint8Array(4 + c.props.length + src.length);
+                z.set([9, 20, c.props.length, 0]);
+                z.set(c.props, 4);
+                z.set(src, 4 + c.props.length);
+                return sgUnlzma(z, size);
+            }
+            case "03030103":
+                return sgUnbcj(src.slice(0, size));
+            case "040108":
+                return sgInflate(src, size, false);
+            case "040202":
+                return sgBunzip2(src, size);
+        }
+        throw new Error("7z: method " + c.id);
+    };
+    const out = await outOf(sg7zMainOut(f));
+    if (f.crc !== null && sgCrc32(out) !== f.crc) throw new Error("7z: a folder fails its checksum");
+    return out;
+}
+
+// The archive's files: [{ name, dir, size, folder, offset, crc }] and what reading them needs.
+async function sg7zEntries(blob) {
+    const head = await sgSlice(blob, 0, 32);
+    if (!sg7zIs(head)) throw new Error("7z: not a 7-Zip archive");
+    const le32 = at => (head[at] | (head[at + 1] << 8) | (head[at + 2] << 16) | (head[at + 3] << 24)) >>> 0;
+    const nextOff = le32(12) + le32(16) * 4294967296, nextSize = le32(20) + le32(24) * 4294967296;
+    if (32 + nextOff + nextSize > blob.size) throw new Error("7z: the archive is cut short");
+    let hdr = await sgSlice(blob, 32 + nextOff, nextSize);
+    if (sgCrc32(hdr) !== le32(28)) throw new Error("7z: the header fails its checksum");
+    const packedOf = (s, f, base) => async i => {
+        // the folder's packed streams follow the earlier folders' in the archive
+        let first = 0;
+        for (const g of s.folders.slice(0, s.folders.indexOf(f))) first += g.packed.length;
+        let at = 32 + s.packPos;
+        for (let k = 0; k < first + i; k++) at += s.packSizes[k];
+        return sgSlice(blob, at, s.packSizes[first + i]);
+    };
+    let r = sg7zReader(hdr);
+    let id = r.byte();
+    // a packed header: unpacked first, then read as the header
+    while (id === 0x17) {
+        const s = sg7zStreams(r);
+        hdr = await sg7zUnpackFolder(s.folders[0], packedOf(s, s.folders[0]));
+        r = sg7zReader(hdr);
+        id = r.byte();
+    }
+    if (id !== 0x01) r.fail("no header");
+    let main = null;
+    const files = [];
+    for (;;) {
+        const t = r.byte();
+        if (t === 0x00) break;
+        if (t === 0x02 || t === 0x03) {
+            // archive properties or additional streams: not used by 7-Zip's archives of plain files
+            r.fail("archive properties are not supported");
+        } else if (t === 0x04) main = sg7zStreams(r);
+        else if (t === 0x05) {
+            const n = r.num();
+            for (let i = 0; i < n; i++) files.push({ name: "", empty: false, emptyFile: false, dir: false });
+            let empties = [];
+            for (;;) {
+                const p = r.byte();
+                if (p === 0x00) break;
+                const size = r.num();
+                const start = r.at;
+                if (p === 0x0e) {
+                    const b = r.bits(n);
+                    b.forEach((e, i) => (files[i].empty = e));
+                    empties = files.filter(f => f.empty);
+                } else if (p === 0x0f) {
+                    r.bits(empties.length).forEach((e, i) => (empties[i].emptyFile = e));
+                } else if (p === 0x11) {
+                    if (r.byte() !== 0) r.fail("external names are not supported");
+                    const raw = r.bytes(size - 1);
+                    let k = 0, cur = [];
+                    for (let i = 0; i + 1 < raw.length; i += 2) {
+                        const c = raw[i] | (raw[i + 1] << 8);
+                        if (c === 0) {
+                            if (k < n) files[k++].name = String.fromCharCode(...cur);
+                            cur = [];
+                        } else cur.push(c);
+                    }
+                }
+                const used = r.at - start;
+                if (used < size) r.skip(size - used);
+            }
+        } else r.fail("an unknown header record");
+    }
+    // the files with data take the substreams in order, folder by folder
+    const out = [];
+    let fi = 0, si = 0, within = 0, offset = 0;
+    for (const f of files) {
+        const name = f.name.replace(/\\/g, "/");
+        if (f.empty) {
+            out.push({ name, dir: !f.emptyFile, size: 0, folder: -1, offset: 0, crc: null });
+            continue;
+        }
+        if (!main) r.fail("files with no streams");
+        while (fi < main.folders.length && within >= main.counts[fi]) {
+            fi++;
+            within = 0;
+            offset = 0;
+        }
+        if (fi >= main.folders.length) r.fail("more files than streams");
+        const size = main.subSizes[si];
+        out.push({ name, dir: false, size, folder: fi, offset, crc: main.subCrcs[si] });
+        offset += size;
+        within++;
+        si++;
+    }
+    return { files: out, main, packedOf };
+}
+
+// Every file of a .7z through `onEntry(name, bytes, i, n)`, as sgUnzip does a zip's; files of a folder that cannot be
+// unpacked (or fails) go to `skipped` with the reason.
+async function sgUn7z(blob, onEntry, skipped = [], stat = {}) {
+    const { files, main, packedOf } = await sg7zEntries(blob);
+    stat.methods = stat.methods || {};
+    const n = files.length;
+    let folder = -1, data = null, why = null, method = "";
+    for (let i = 0; i < n; i++) {
+        const e = files[i];
+        if (e.dir || sgSkip(e.name.toLowerCase())) continue;
+        if (e.folder < 0) {
+            await onEntry(e.name, new Uint8Array(0), i, n);
+            continue;
+        }
+        if (e.folder !== folder) {
+            folder = e.folder;
+            data = null;
+            why = null;
+            const f = main.folders[folder];
+            method = f.coders.map(c => SG_7Z_METHODS[c.id] || c.id).reverse().join("+");
+            // a folder of nothing but skipped files (videos, programs) is not unpacked at all
+            const wanted = files.some(x => x.folder === folder && !sgSkip(x.name.toLowerCase()));
+            if (wanted) {
+                try {
+                    data = await sg7zUnpackFolder(f, packedOf(main, f));
+                } catch (err) {
+                    why = err.message.replace(/^7z: /, "");
+                }
+            }
+        }
+        if (!data) {
+            if (skipped.length < 5) console.warn("7z: cannot unpack " + e.name + " (" + why + ")");
+            skipped.push([e.name, why || "not unpacked"]);
+            continue;
+        }
+        stat.methods[method] = (stat.methods[method] || 0) + 1;
+        const bytes = data.slice(e.offset, e.offset + e.size);
+        if (e.crc !== null && sgCrc32(bytes) !== e.crc) {
+            skipped.push([e.name, "damaged"]);
+            continue;
+        }
+        await onEntry(e.name, bytes, i, n);
+    }
+    return skipped.length;
+}
+
 if (typeof module !== "undefined") {
     module.exports = { sgKey, sgSkip, sgRootOf, sgStraySound, sgPlace, sgZipEntries, sgZipRead, sgUnzip, sgInflate, sgInflateInto,
         sgBunzip2, sgUnlzma, sgUnppmd, sgZipName, sgZipPath, sgCrc32, sgFilesSummary, sgVersion, sgSoundCoding,
-        sgSoundCodings, sgPortraitAsk, sgCanvasRect, sgSafeInsets, sgSoundAction };
+        sgSoundCodings, sgPortraitAsk, sgCanvasRect, sgSafeInsets, sgSoundAction, sgUn7z, sg7zEntries, sg7zIs, sgUnlzma2, sgUnbcj };
 }

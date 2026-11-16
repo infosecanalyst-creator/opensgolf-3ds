@@ -1,0 +1,1 @@
+The skill points card no longer gets stuck reopening when points are left over. Longer translated names fit the Course Terrain tooltip, and its descriptions can be translated.

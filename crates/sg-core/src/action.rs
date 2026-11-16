@@ -279,6 +279,9 @@ pub enum Action {
         #[serde(rename = "p")]
         par: i32,
     },
+    /// The Eyesore demolition extra: the eyesore on tile x, y pulled down and paid for.
+    #[serde(rename = "demolish")]
+    Demolish { x: i32, y: i32 },
 
     // --- staff
     /// An employee hired: `kind` 0 groundskeeper .. 3, `skilled` the experienced one.
@@ -454,6 +457,9 @@ pub enum Action {
     /// The course renamed.
     #[serde(rename = "name")]
     Rename(String),
+    /// A hole given the player's own name (empty: the original's name again).
+    #[serde(rename = "hole_name")]
+    HoleName { hole: usize, name: String },
     /// The career over: the game goes on as a sandbox.
     #[serde(rename = "sandbox")]
     ContinueSandbox,

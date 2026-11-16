@@ -419,7 +419,14 @@ impl App {
                                         Some(img) => {
                                             let c = art_texture(g, &clean_image(&img, false), false);
                                             own.push(c);
-                                            if let Some(a) = crate::walk_gl::average_colour(&img) {
+                                            // (a tee's colour is its grass's, without the dark rim and arrow the
+                                            // picture paints on it, walk_gl.rs `grass_colour`)
+                                            let a = if t.tex_type == sg_core::terrain::TT_TEE as i32 {
+                                                crate::walk_gl::grass_colour(&img)
+                                            } else {
+                                                crate::walk_gl::average_colour(&img)
+                                            };
+                                            if let Some(a) = a {
                                                 averages.insert(tex, a);
                                             }
                                             c

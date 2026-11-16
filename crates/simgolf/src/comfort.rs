@@ -41,6 +41,8 @@ pub struct State {
     /// The staff areas view (Shift+A, staffview_ui.rs) and its tiles, made again every few frames.
     pub staff_view: bool,
     pub staff_marks: Option<crate::staffview_ui::Marks>,
+    /// The height map (Shift+K, heightview_ui.rs).
+    pub height_view: bool,
 }
 
 /// What the club looks like for the news the pause watches.

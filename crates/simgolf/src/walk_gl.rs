@@ -178,6 +178,21 @@ float grain(float k, float dist) {
         // path, water's edge
         g += ((f.a - 0.5) * 0.24 + (f.b - 0.5) * 0.14) * near;
     }
+    // and at the feet the finest grain: blades a few centimetres across on the grasses, so the ground under the eye is
+    // crisp rather than a smooth wash of the art's colour
+    float feet = 1.0 - smoothstep(2.0 * M, 22.0 * M, dist);
+    if (feet > 0.0 && k < 7.5 && (k < 3.5 || k > 5.5)) {
+        float b1 = texture2D(detail, w / (0.55 * M)).r;
+        float b2 = texture2D(detail, w.yx / (0.31 * M) + vec2(0.37, 0.11)).g;
+        float amount = k > 2.5 && k < 3.5 ? 0.30 : (k > 0.5 && k < 2.5 ? 0.12 : 0.22);
+        g += ((b1 - 0.5) * 0.6 + (b2 - 0.5) * 0.4) * amount * feet;
+        // single blades: thin streaks, longer than wide, lit at their tips and dark at their roots
+        vec2 bw = vec2(w.x * 0.8 + w.y * 0.6, w.y * 0.8 - w.x * 0.6);
+        float blade = texture2D(detail, vec2(bw.x / (0.06 * M), bw.y / (0.22 * M))).r;
+        float tip = texture2D(detail, vec2(bw.y / (0.05 * M), bw.x / (0.2 * M)) + vec2(0.5, 0.2)).g;
+        float near_feet = 1.0 - smoothstep(1.5 * M, 14.0 * M, dist);
+        g += ((blade - 0.5) * 1.1 + (tip - 0.5) * 0.6) * amount * near_feet;
+    }
     return 1.0 + g;
 }
 
@@ -223,6 +238,49 @@ float shore_wet(vec2 t) {
     return smoothstep(0.25, 0.75, w + n * 0.55);
 }
 
+// a modelled golfer's cloth (walk_golfer.rs `Cloth`): its kind in the texture coordinate's 64s, the place on the part
+// in metres round it (x) and along it (y). The pattern fades out with distance before it would shimmer.
+vec3 cloth(vec3 c, float dist) {
+    float k = floor(uv.y / 64.0 + 0.001);
+    if (k < 0.5) return c;
+    vec2 q = vec2(uv.x, uv.y - k * 64.0);
+    float near = 1.0 - smoothstep(5.0 * M, 26.0 * M, dist);
+    if (near <= 0.0) return c;
+    float top = max(c.r, max(c.g, c.b));
+    vec3 r = c;
+    if (k < 1.5) {
+        // stripes along the part: a pale stripe and a thin dark pinstripe
+        float f = fract(q.x / 0.05);
+        float pale = smoothstep(0.0, 0.06, f) * (1.0 - smoothstep(0.3, 0.36, f));
+        float pin = smoothstep(0.62, 0.65, f) * (1.0 - smoothstep(0.69, 0.72, f));
+        r = mix(c, mix(c, vec3(top * 1.05), 0.7), pale * 0.75) * (1.0 - 0.3 * pin);
+    } else if (k < 2.5) {
+        // gingham: bands each way, darker where they cross, a pale ground between
+        vec2 f = smoothstep(0.45, 0.55, fract(q / 0.055)) * (1.0 - smoothstep(0.95, 1.0, fract(q / 0.055)));
+        float n = f.x + f.y;
+        r = mix(mix(c, vec3(top * 1.05), 0.65), c * 0.8, n * 0.5);
+    } else if (k < 3.5) {
+        // pique knit: a fine cellular texture
+        vec2 f = fract(q / 0.009) - 0.5;
+        r = c * (0.95 + 0.25 * (0.2 - dot(f, f)));
+    } else if (k < 4.5) {
+        // twill: fine diagonal ribs close up, soft creases and folds down the leg
+        float rib = sin((q.x + q.y) * 1400.0) * (1.0 - smoothstep(1.0 * M, 4.0 * M, dist));
+        float fold = texture2D(noise, vec2(q.x * 1.6, q.y * 0.35)).r;
+        r = c * (1.0 + 0.035 * rib) * (0.9 + 0.2 * smoothstep(0.25, 0.75, fold));
+    } else if (k < 5.5) {
+        // leather: a fine grain under a soft sheen
+        float g = texture2D(noise, q * 6.0).g;
+        r = c * (0.9 + 0.2 * g);
+    } else if (k > 6.5) {
+        // hair: fine strands combed down from the crown, a soft sheen across them
+        float strand = sin(q.x * 700.0 + sin(q.y * 60.0) * 2.0) * 0.5 + 0.5;
+        float tuft = texture2D(noise, vec2(q.x * 4.0, q.y * 1.5)).r;
+        r = c * (0.82 + 0.22 * strand * (1.0 - smoothstep(1.5 * M, 6.0 * M, dist)) + 0.18 * tuft);
+    }
+    return mix(c, r, near);
+}
+
 void main() {
     vec3 d = wpos - eye.xyz;
     float dist = length(d);
@@ -235,10 +293,20 @@ void main() {
         float k = floor((color.a - 0.5 * shore) * 32.0 + 0.5);
         // fairways and greens keep more of their art (their mowing); a tee's raised bevel and everything else is evened
         bool cut = k > 0.5 && k < 2.5;
-        // (a tee's picture has a dark rim round its raised box, which round the eye standing on it would be a dark ring)
         bool tee = k > 5.5 && k < 6.5;
-        vec4 c = art(uv, dist, cut ? 0.45 : 0.1, tee ? 0.85 : cut ? 0.15 : 0.5, color.rgb);
-        vec3 g = lit(c.rgb * grain(k, dist), nrm);
+        // how much this texel of the art is its tile's own kind of ground (near the kind's average colour): a fairway tile's
+        // painted rough at its edge is not, so the fairway's evening and stripes follow the painted edge rather than
+        // stopping in a straight line along the tile's
+        vec3 cl = texture2D(clean, uv).rgb;
+        float own = 1.0 - smoothstep(0.045, 0.15, length(cl - color.rgb));
+        vec4 c = art(uv, dist, cut ? 0.45 : 0.1, (cut ? 0.15 : 0.5) * own, color.rgb);
+        // a tee's picture is drawn for the view from above: a dark rim round its raised box and the hole's arrow on it. Seen
+        // from the ground the rim would lie on the tee as a dark band, so a tee is its grass's colour at every distance (its
+        // category colour, walk_ground.rs `grass_colour`), with only the de-featured art's light and shade left on it
+        if (tee) c = mix(texture2D(clean, uv), vec4(color.rgb, 1.0), 0.9);
+        // (a cut tile's texels of other ground take the rough's grain)
+        float gr = cut || tee ? mix(grain(3.0, dist), grain(k, dist), own) : grain(k, dist);
+        vec3 g = lit(c.rgb * gr, nrm);
         if (shore > 0.5) {
             // the water drawn into these tiles' art, wherever it is
             vec4 a = art(uv, dist, 0.0, 0.0, vec3(0.0));
@@ -260,12 +328,23 @@ void main() {
         vec4 c = art(uv, dist, 0.0, 0.0, vec3(0.0));
         o = vec4(water_at(c.rgb, v), 1.0);
     } else if (m < 4.5) {
-        float l = 1.0;
         if (dot(nrm, nrm) > 0.25) {
             vec3 n = normalize(nrm);
-            l = 0.62 + 0.45 * max(dot(n, sun.xyz), 0.0);
+            o = vec4(color.rgb * (0.62 + 0.45 * max(dot(n, sun.xyz), 0.0)), color.a);
+        } else {
+            // a drawn model (walk_toon.rs: its light already banded into its colour) set in the painted scene: tinted by the
+            // scene's light as the ground under it is, and given a little of the ground's painted grain, so it sits in the
+            // picture rather than on it
+            vec3 g = lit(vec3(1.0), vec3(0.0, 1.0, 0.0));
+            float top = max(g.r, max(g.g, g.b));
+            vec3 tint = mix(vec3(1.0), g / max(top, 0.05), 0.75) * mix(1.0, top, 0.35);
+            float near = 1.0 - smoothstep(6.0 * M, 60.0 * M, dist);
+            vec2 p = (wpos.xz + vec2(wpos.y, -wpos.y)) / (0.45 * M);
+            float gr = (texture2D(detail, p).r - 0.5) * 0.16 + (texture2D(detail, p * 0.31).g - 0.5) * 0.1;
+            // a golfer's cloth draws its own surface in place of the grain
+            float bare = step(uv.y, 63.5);
+            o = vec4(cloth(color.rgb, dist) * tint * (1.0 + gr * near * bare), color.a);
         }
-        o = vec4(color.rgb * l, color.a);
     } else if (m < 5.5) {
         vec4 c = unpremul(texture2D(tex, uv)) * color;
         if (c.a < 0.01) discard;
@@ -836,6 +915,26 @@ pub fn noise_image(size: usize, seed: u32) -> Rgba {
         }
     }
     img
+}
+
+/// The average colour of the lighter half (by brightness) of a picture's opaque texels (0..1): a tee's mown grass, without
+/// the dark rim the overhead art paints round the raised box and the arrow on it. None when it has no opaque texels.
+pub fn grass_colour(img: &Rgba) -> Option<[f32; 3]> {
+    let lum = |p: &[u8]| 3 * p[0] as u32 + 6 * p[1] as u32 + p[2] as u32;
+    let mut l: Vec<u32> = img.px.chunks_exact(4).filter(|p| p[3] > 127).map(lum).collect();
+    if l.is_empty() {
+        return None;
+    }
+    let mid = l.len() / 2;
+    let cut = *l.select_nth_unstable(mid).1;
+    let (mut s, mut n) = ([0.0f32; 3], 0.0f32);
+    for p in img.px.chunks_exact(4).filter(|p| p[3] > 127 && lum(p) >= cut) {
+        for k in 0..3 {
+            s[k] += p[k] as f32;
+        }
+        n += 1.0;
+    }
+    Some(s.map(|v| v / n / 255.0))
 }
 
 /// The average colour of a picture's opaque texels (0..1), None when it has none.

@@ -24,10 +24,13 @@ mod autorelease;
 mod autosave;
 #[cfg(all(not(target_arch = "wasm32"), feature = "net"))]
 mod autoupdate;
+mod backups;
 mod bugreport;
 mod build_tools;
+mod challenges;
 mod champ_ui;
 mod cheats_ui;
+mod clubhouse_move;
 mod comfort;
 mod content;
 mod content_profiles;
@@ -35,6 +38,7 @@ mod controls;
 mod controls_ui;
 mod cursor_ui;
 mod cust_ui;
+mod demolish;
 mod edges;
 mod editor;
 mod enhanced;
@@ -66,6 +70,7 @@ mod glass_ui;
 mod graphs;
 mod hd;
 mod hd_make;
+mod heightview_ui;
 mod history_ui;
 mod holemarks;
 mod homes_ui;
@@ -90,19 +95,26 @@ mod photo;
 mod playcount;
 mod player_panel;
 mod popup_ui;
+mod portrait;
 mod prefs_search;
+// the web site's feature guide's reference (web/guide.html), made and checked by its tests
+#[cfg(test)]
+mod guide;
 mod prefs_ui;
 mod pro_ui;
 mod profile_ui;
+mod records;
 mod render;
 mod replay;
 mod report_tabs;
 mod reports_ui;
+mod review_ui;
 mod scenario_ui;
 mod scorecard_ui;
 mod screens_ui;
 mod selfcheck;
 mod share;
+mod shortcut;
 mod showcase;
 mod staffview_ui;
 mod support;
@@ -119,8 +131,14 @@ mod update;
 mod views;
 mod walk;
 mod walk_gl;
+mod walk_golfer;
 mod walk_ground;
+mod walk_models;
 mod walk_objects;
+mod walk_relief;
+mod walk_sky;
+mod walk_toon;
+mod walk_trees;
 mod welcome;
 mod wild_ui;
 mod world_ui;
@@ -156,6 +174,8 @@ struct Options {
     follow: bool,
     golfer: Option<String>,
     mute: bool,
+    /// --play: straight to the title menu this time, without the launcher (its desktop shortcut, shortcut.rs).
+    play: bool,
     sound_log: bool,
     sandbox: bool,
     /// --course-size N: the map edge in tiles of a new game (sg_core::mapsize; default the original's 50).
@@ -257,6 +277,7 @@ fn parse_args() -> Options {
         follow: false,
         golfer: None,
         mute: false,
+        play: false,
         sound_log: false,
         sandbox: false,
         course_size: sg_core::mapsize::ORIGINAL,
@@ -333,6 +354,7 @@ fn parse_args() -> Options {
             "--follow" => o.follow = true,
             "--golfer" => o.golfer = Some(next()),
             "--mute" => o.mute = true,
+            "--play" => o.play = true,
             "--perf" => perf::enable(5.0), // the performance log (perf.rs)
             "--sound-log" => o.sound_log = true,
             "--sandbox" => o.sandbox = true,
@@ -655,9 +677,28 @@ fn open_screen(app: &mut App, screen: Option<&str>) {
             }
         }
         Some("golfers") if app.ui_ok => app.panel = 4,
+        Some("review") if app.ui_ok => app.open_review(),
+        Some("challenges") if app.ui_ok => {
+            app.open_challenges();
+            // test hook: SG_CHALLENGES=0,5 takes those challenges on (challenges.rs)
+            for k in std::env::var("SG_CHALLENGES").unwrap_or_default().split(',').filter_map(|v| v.parse().ok()) {
+                app.toggle_challenge(k);
+            }
+        }
         Some("holestats") if app.ui_ok => {
             app.info.stats_hole = (1..19).find(|&h| app.club.holes[h].par != 0).unwrap_or(1);
             app.screen = Screen::HoleStats;
+            // test hook: SG_LAB=1 marks the hole's figures for the design lab (challenges.rs)
+            if std::env::var_os("SG_LAB").is_some() {
+                app.lab_mark();
+            }
+            // test hook: SG_HOLE_NAME=TEXT names the hole and shows the prompt with TEXT in it (extras_ui.rs)
+            if let Ok(n) = std::env::var("SG_HOLE_NAME") {
+                let h = app.info.stats_hole;
+                app.club.holes[h].name = n.clone();
+                app.xs.rename_for = Some(extras::RenameFor::Hole(h));
+                app.rename = Some(n);
+            }
         }
         Some("sgaoffer") if app.ui_ok => {
             // the offer over the report, whatever the course scores
@@ -1241,6 +1282,39 @@ fn apply_edit_spec(app: &mut App, spec: &str) {
                     println!("ejected golfer {gi} (hole now {})", app.club.g[gi].hole);
                 }
             }
+            b'Q' => {
+                // test hook: the Move the clubhouse extra (clubhouse_move.rs): Q:x,y moves it there through the box's Yes
+                // and the building tool's click
+                let before = app.land.as_ref().map(|l| l.clubhouse);
+                app.start_move_clubhouse();
+                app.edit_building(at(0), at(1), false);
+                let after = app.land.as_ref().map(|l| l.clubhouse);
+                println!("clubhouse {before:?} -> {after:?}, door {:?}, cash {}", app.course.door, app.econ.cash);
+            }
+            b'E' => {
+                // test hook: the eyesores on the club's land (the Eyesore demolition extra, demolish.rs); E:1 pulls the first
+                // one down through the confirmation box's Yes, E:2 opens the box
+                let found: Vec<(i32, i32, i32)> = app.land.as_ref().map_or_else(Vec::new, |l| {
+                    l.objects
+                        .iter()
+                        .filter(|o| o.kind == sg_core::land::K_LANDMARK && demolish::eyesore(o.sub) && l.in_play(o.a, o.b))
+                        .map(|o| (o.a, o.b, o.sub))
+                        .collect()
+                });
+                println!("eyesores {found:?}, cash {}", app.econ.cash);
+                if let (Some(&(a, b, _)), 2) = (found.first(), at(0)) {
+                    app.ask_demolish(a, b); // E:2 leaves the box open
+                }
+                if let (Some(&(a, b, _)), true) = (found.first(), at(0) == 1) {
+                    // (the edit spec runs inside an action, so undo_tile's right-click path is taken by hand here)
+                    if app.ask_demolish(a, b) && app.popup.as_ref().is_some_and(|p| p.kind == popup_ui::PopupKind::Demolish) {
+                        app.popup = None;
+                        app.confirm_demolish();
+                    }
+                    let left = app.eyesore_at(a, b).is_some();
+                    println!("demolish {a},{b}: still there {left}, cash {}", app.econ.cash);
+                }
+            }
             b'o' => {
                 let ok = app.open_hole();
                 println!("open hole: {ok}, next hole {}", app.club.next_hole);
@@ -1661,6 +1735,10 @@ impl Stage {
         if std::env::var_os("SG_STAFF_VIEW").is_some() {
             app.comfort.staff_view = true;
         }
+        // SG_HEIGHT_VIEW=1 shows the height map (Shift+K, heightview_ui.rs), for stills
+        if std::env::var_os("SG_HEIGHT_VIEW").is_some() {
+            app.comfort.height_view = true;
+        }
         if let Some(f) = &o.save {
             if let Err(e) = app.terrain.save(f) {
                 eprintln!("error: {e}");
@@ -1732,7 +1810,10 @@ impl Stage {
         // never in scripted runs unless --screen launcher or SG_LAUNCHER asks
         let launcher_forced = o.screen.as_deref() == Some("launcher") || launcher::forced_by_env();
         let still = o.png_out.is_some() || o.time != 0.0 || o.screen.is_some();
-        if (app.screen == Screen::Menu || launcher_forced) && launcher::decide(&welcome::settings_at_start(), still, launcher_forced) {
+        if (app.screen == Screen::Menu || launcher_forced)
+            && (!o.play || launcher_forced)
+            && launcher::decide(&welcome::settings_at_start(), still, launcher_forced)
+        {
             app.open_launcher(true, launcher_forced);
         }
         // test hook: SG_PICK_FOLDER=DIR takes DIR as the folder picked in "Use my SimGolf files..." ("free": Use the free
@@ -1850,6 +1931,9 @@ impl Stage {
             PopupKind::Info if line == tr("STR_MENU_INFO_HISTORY") => self.app.open_history(),
             PopupKind::Info if line == tr("STR_MENU_INFO_PATH_VIEW") => self.app.toggle_path_view(),
             PopupKind::Info if line == tr("STR_MENU_INFO_LANDING_MAP") => self.app.toggle_landing_map(),
+            PopupKind::Info if line == tr("STR_MENU_INFO_HEIGHT_VIEW") => self.app.toggle_height_view(),
+            PopupKind::Info if line == tr("STR_MENU_INFO_REVIEW") => self.app.open_review(),
+            PopupKind::Info if line == tr("STR_MENU_INFO_CHALLENGES") => self.app.open_challenges(),
             PopupKind::Info if line == tr("STR_MENU_INFO_HOLE_COMMENTS") => self.app.open_hole_comments(),
             PopupKind::Info if line == tr("STR_MENU_INFO_GRAPHS") => self.app.open_graphs(),
             PopupKind::Info => match k {
@@ -1895,6 +1979,20 @@ impl Stage {
                     self.app.quick_load(&mut self.g);
                 }
             }
+            // the Eyesore demolition extra's confirmation (demolish.rs)
+            PopupKind::Demolish => {
+                if k == 0 {
+                    self.app.confirm_demolish();
+                } else {
+                    self.app.demolish_at = None;
+                }
+            }
+            // the Move the clubhouse extra's question (clubhouse_move.rs)
+            PopupKind::MoveClubhouse => {
+                if k == 0 {
+                    self.app.start_move_clubhouse();
+                }
+            }
             PopupKind::CareerOver => {
                 if k == 0 {
                     self.app.act(sg_core::action::Action::ContinueSandbox);
@@ -1923,6 +2021,9 @@ impl Stage {
             PopupKind::Report => {
                 if k == bugreport::BOX_GO {
                     self.report_problem(checks & 1 << bugreport::BOX_SHOT != 0);
+                } else if k == bugreport::BOX_COPY {
+                    let gl = self.gl_names();
+                    self.app.copy_report_details(&gl);
                 }
             }
             // Preferences > Enhanced graphics: the ticks become the settings (enhanced.rs)
@@ -2078,6 +2179,14 @@ impl Stage {
                 }
             }
             Hit::GameOptions => self.app.open_popup(popup_ui::PopupKind::Extras),
+            // a line of Features: the option ticked or stepped as Preferences' Search does it, and put in use at once
+            Hit::Feature(i) => {
+                let mut p = self.app.current_prefs();
+                if let Some(row) = launcher::feature_rows(&p, !self.app.on_free_set()).get(i) {
+                    prefs_search::toggle(row.hit, &mut p);
+                    self.apply_prefs(&p);
+                }
+            }
             #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
             Hit::Fullscreen(on) => {
                 if on != self.fullscreen {
@@ -2236,8 +2345,10 @@ impl Stage {
     /// away; otherwise it is the undo's: the first right click on a tile names what an undo there would do, the second
     /// undoes it (App::right_click_undo). A terrain brush and the Undo button's undo mode stay in hand.
     fn right_click(&mut self, x: f32, y: f32) {
-        // Right click puts the tool away (OpenSGolf extras): any tool in hand is put down, as Space puts it down
-        if extras::right_drop() && self.app.edit {
+        // Right click puts the tool away (OpenSGolf extras): a tool in hand is put down, as Space puts it down. The
+        // elevation tools keep the original's right click (lowering the ground, Analyze Golf Shot's / key), which is
+        // their only way to lower with the mouse (issue #176); Space or Esc puts them away.
+        if extras::right_drop() && self.app.edit && self.app.tool != 1 {
             self.app.edit = false;
             return;
         }
@@ -2518,6 +2629,10 @@ impl Stage {
             if app.update_button().is_some_and(|r| r.has(vx, vy)) {
                 hit = update::UPDATE_HOVER;
             }
+            // the port's own: "Continue" with the newest save (backups.rs, the Saves newest first extra)
+            if app.continue_button().is_some_and(|(r, ..)| r.has(vx, vy)) {
+                hit = backups::CONTINUE_HOVER;
+            }
             // the port's own: "Course editor..." (editor.rs)
             if editor::title_button_rect().has(vx, vy) {
                 hit = editor::EDITOR_HOVER;
@@ -2598,6 +2713,7 @@ impl Stage {
                     }
                 }
                 update::UPDATE_HOVER => app.check_for_updates(),
+                backups::CONTINUE_HOVER => app.continue_click(),
                 launcher::TITLE_HOVER => app.open_launcher(false, false),
                 editor::EDITOR_HOVER => app.open_editor_start(),
                 _ => quit_game(),
@@ -2755,6 +2871,7 @@ impl Stage {
                 KeyCode::F5 => app.quick_save(),
                 KeyCode::F9 => app.ask_quick_load(),
                 KeyCode::A => app.toggle_staff_view(),
+                KeyCode::K => app.toggle_height_view(),
                 // the insight extras (insight.rs): the landing map and comments by hole
                 KeyCode::D if extras::landing_map() => app.toggle_landing_map(),
                 KeyCode::I if extras::hole_comments() => app.open_hole_comments(),
@@ -2993,6 +3110,13 @@ impl Stage {
         } else if self.walk.cam.is_some() && walk::walk_screen(app) {
             // the walk camera, a hidden test view (walk.rs): the course alone and a line of help
             walk::draw(app, &mut self.g, &mut self.walk);
+            // a great shot's SimFoto over the walk as over the overhead view: the game waits for it to be seen and put
+            // away (screens_ui.rs great_shot_frame), and the walk goes on after
+            if app.great_shot.is_some() && app.ui_ok {
+                let s = ui::Screen::new(app.draw_w, app.draw_h);
+                app.draw_great_shot(&mut self.g, &s);
+                self.g.flush();
+            }
         } else if app.photo.is_some() {
             // Enhanced graphics' photo mode: the course alone (photo.rs)
             self.draw_photo(target);
@@ -3033,7 +3157,7 @@ impl Stage {
                 }
                 app.draw_popup(&mut self.g);
             }
-            if !matches!(app.screen, Screen::People | Screen::Profile) {
+            if !matches!(app.screen, Screen::People | Screen::Profile | Screen::HoleStats) {
                 app.draw_rename(&mut self.g);
             }
             app.draw_save_dialog(&mut self.g);
@@ -3072,7 +3196,11 @@ impl Stage {
                 Screen::Keys => app.draw_keys(&mut self.g),
                 Screen::Goals => app.draw_goals(&mut self.g),
                 Screen::Editor => app.draw_editor_box(&mut self.g),
-                Screen::HoleStats => app.draw_hole_stats(&mut self.g),
+                // the hole's name prompt (extras_ui.rs) goes over Hole Stats
+                Screen::HoleStats => {
+                    app.draw_hole_stats(&mut self.g);
+                    app.draw_rename(&mut self.g);
+                }
                 Screen::BestScores => app.draw_best_scores(&mut self.g),
                 Screen::Top10 => app.draw_top10(&mut self.g),
                 Screen::Customise => app.draw_customise(&mut self.g),
@@ -3084,6 +3212,8 @@ impl Stage {
                 Screen::History => app.draw_history(&mut self.g),
                 Screen::HoleComments => app.draw_hole_comments(&mut self.g),
                 Screen::Graphs => app.draw_graphs(&mut self.g),
+                Screen::Review => app.draw_review(&mut self.g),
+                Screen::Challenges => app.draw_challenges(&mut self.g),
                 Screen::Profile => {
                     app.draw_profile(&mut self.g);
                     app.draw_rename(&mut self.g);
@@ -3113,13 +3243,18 @@ impl Stage {
     /// driver's names for the system line.
     fn report_problem(&mut self, shot: bool) {
         let img = shot.then(|| self.grab());
-        let gl = if self.g.ctx.info().backend == miniquad::Backend::OpenGl {
+        let gl = self.gl_names();
+        self.app.report_problem(img, &gl);
+    }
+
+    /// The graphics driver's names, for the report's system line.
+    fn gl_names(&self) -> String {
+        if self.g.ctx.info().backend == miniquad::Backend::OpenGl {
             let [vendor, renderer, version, _] = sysdiag::gl_strings();
             format!("{vendor} / {renderer} / {version}")
         } else {
             format!("{:?}", self.g.ctx.info().backend)
-        };
-        self.app.report_problem(img, &gl);
+        }
     }
 
     /// Renders the current frame offscreen and writes it as a PNG.
@@ -3491,7 +3626,9 @@ impl EventHandler for Stage {
             && app.analysis.is_none()
             && app.simfoto.is_none_or(|f| f.frames < 2)
             && app.great_shot.is_none()
-            && app.launcher.is_none();
+            && app.launcher.is_none()
+            // the Pause while you aim extra: the club waits while the pro waits for the player's shot (not while building)
+            && !(extras::pause_aim() && !app.edit && app.club.pro_aiming().is_some());
         if playing {
             app.time += dt * app.speed.max(1) as f64 * perf::speed();
         }
@@ -3736,7 +3873,12 @@ impl EventHandler for Stage {
     }
 
     fn mouse_wheel_event(&mut self, _x: f32, y: f32) {
-        if self.walk_shown() || self.app.launcher.is_some() && self.app.screen != Screen::Popup {
+        // the launcher's Features list scrolls (y: notches, up positive)
+        if self.app.launcher.is_some() && self.app.screen != Screen::Popup {
+            self.app.launcher_scroll(-y * launcher::WHEEL_STEP);
+            return;
+        }
+        if self.walk_shown() {
             return;
         }
         if self.app.photo.is_some() {
@@ -3749,6 +3891,8 @@ impl EventHandler for Stage {
                 Screen::History => return self.app.history_wheel(y),
                 Screen::HoleComments => return self.app.hole_comments_wheel(y),
                 Screen::Graphs => return self.app.graphs_wheel(y),
+                Screen::Review => return self.app.review_wheel(y),
+                Screen::Challenges => return self.app.challenges_wheel(y),
                 Screen::Profile => return self.app.profile_wheel(y),
                 _ => {}
             }
@@ -3883,6 +4027,12 @@ impl EventHandler for Stage {
             } else if self.app.screen == Screen::Graphs {
                 let (vx, vy) = self.app.view.to_virtual(x, y);
                 self.app.graphs_click(vx, vy, button == MouseButton::Right);
+            } else if self.app.screen == Screen::Review {
+                let (vx, vy) = self.app.view.to_virtual(x, y);
+                self.app.review_click(vx, vy, button == MouseButton::Right);
+            } else if self.app.screen == Screen::Challenges {
+                let (vx, vy) = self.app.view.to_virtual(x, y);
+                self.app.challenges_click(vx, vy, button == MouseButton::Right);
             } else if self.app.screen == Screen::Report {
                 let (vx, vy) = self.app.view.to_virtual(x, y);
                 self.app.report_click(vx, vy);
@@ -4081,7 +4231,13 @@ impl EventHandler for Stage {
             self.photo_button(false, button, x, y);
             return;
         }
+        // the launcher's Features list: a press that did not drag is a click on its line
         if self.app.launcher.is_some() && self.app.screen != Screen::Popup {
+            if button == MouseButton::Left {
+                if let Some(h) = self.app.launcher_release(x, y) {
+                    self.launcher_act(h);
+                }
+            }
             return;
         }
         // the Right-drag panning extra: a right button that did not drag is the original's right click
@@ -4314,6 +4470,10 @@ impl Stage {
                 app.hole_comments_key(k);
             } else if app.screen == Screen::Graphs {
                 app.graphs_key(k);
+            } else if app.screen == Screen::Review {
+                app.review_key(k);
+            } else if app.screen == Screen::Challenges {
+                app.challenges_key(k);
             } else if app.screen == Screen::Report {
                 if k == KeyCode::Escape || k == KeyCode::F1 {
                     app.screen = Screen::Play;

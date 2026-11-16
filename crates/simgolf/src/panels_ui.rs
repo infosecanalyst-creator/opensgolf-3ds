@@ -600,6 +600,26 @@ fn terrain_text(app: &App, theme: usize, name: &str) -> String {
     })
 }
 
+/// The theme names a language file adds to a tile's `_DESC` key for that theme's own description (TRANSLATING.md): the
+/// four theme files describe the shared tiles (Tees, Green, Sand trap, Fairway...) each in their own words (#164).
+const DESC_THEMES: [&str; 4] = ["PARKLANDS", "DESERT", "TROPICAL", "LINKS"];
+
+/// The language file's own description of a tile in a theme: its key with `_DESC_` and the theme's name
+/// (STR_TILE_TEES_DESC_LINKS), else its key with `_DESC` (STR_TILE_TEES_DESC, for every theme), when the file has one.
+fn desc_key(key: &'static str, theme: usize) -> Option<&'static str> {
+    thread_local! {
+        static KEYS: std::cell::RefCell<std::collections::HashMap<(&'static str, usize), [&'static str; 2]>> =
+            Default::default();
+    }
+    let t = theme.min(3);
+    let [own, any] = KEYS.with(|m| {
+        *m.borrow_mut().entry((key, t)).or_insert_with(|| {
+            [Box::leak(format!("{key}_DESC_{}", DESC_THEMES[t]).into_boxed_str()), Box::leak(format!("{key}_DESC").into_boxed_str())]
+        })
+    });
+    [own, any].into_iter().find(|d| sg_core::lang::has(d))
+}
+
 /// The line after the one that reads "*" and `name` (without case), the description of that tile.
 fn text_entry(lines: &[String], name: &str) -> Option<String> {
     let key = format!("*{name}");
@@ -632,13 +652,19 @@ impl App {
         let name = tr(key);
         // footage of the original shows "Fairway 300", "Pot bunker 800": no money sign
         let title = format!("{} {}", capitalised(name), Economy::terrain_cost_units(id) * 100);
-        s.put_centered(g, F_MANUAL15, x - 12.0, 394.0, &title, rgb(0.0, 0.0, 0.0));
+        // a translated name wider than the widest English one (Tropical bush 1000) shrinks, then is cut (#164)
+        s.put_centered_fit(g, F_MANUAL15, x - 12.0, 394.0, 140.0, &title, rgb(0.0, 0.0, 0.0));
         let row = sg_core::data::get().rows.get(id as usize).copied().unwrap_or(sg_core::data::get().rows[4]);
         let k = ((4 - row.hazard as i32) * 2).clamp(1, 10);
         s.image_part(g, &self.hud.faces, x - 90.0, 391.0, 594.0 - 16.0 * (k - 1) as f32, 100.0, 16.0, 16.0);
         // 0x45b0d0: greedy lines of at most 16 * 8 pixels, the line height less 4 (at least 10) apart, while above y 584
-        // the theme's text file names the tiles in English
-        let text = terrain_text(self, theme, sg_core::lang::en(key));
+        // the theme's text file names the tiles in English; a language file may give its own description as the tile's
+        // key with _DESC and the theme (STR_TILE_FIRM_FAIRWAY_DESC_LINKS) or with _DESC alone for every theme
+        // (STR_TILE_FIRM_FAIRWAY_DESC), as the theme's file is in English only (#164)
+        let text = match desc_key(key, theme) {
+            Some(d) => sg_core::lang::tr(d).to_string(),
+            None => terrain_text(self, theme, sg_core::lang::en(key)),
+        };
         let pitch = (F_ARIAL10.line() - 4.0).max(10.0);
         let mut y = 410.0;
         let mut line = String::new();
@@ -760,7 +786,8 @@ impl App {
     /// The level the next building of a kind would have: 0 when none stands, 1 for an upgrade, 2 when it is upgraded already.
     /// Always 0 for the Snack Bar, which the exe never levels (land::kind_has_levels).
     pub(crate) fn lot_level(&self, kind: i32) -> i32 {
-        if !land::kind_has_levels(kind) {
+        // (the clubhouse, in hand only with the Move the clubhouse extra, moves as it is)
+        if !land::kind_has_levels(kind) || kind == land::K_CLUBHOUSE {
             return 0;
         }
         self.land.as_ref().and_then(|l| l.objects.iter().find(|o| o.kind == kind)).map(|o| o.sub + 1).unwrap_or(0)
@@ -1678,15 +1705,15 @@ impl App {
                 let kind = 6 + i;
                 let level = self.lot_level(kind);
                 let refusal = if (level != 0 && economy::rank(self.hole_numbers.len()) < 2) || level > 1 {
-                    Some(tr(if level < 2 { MSG_UPGRADE_EARLY } else { MSG_MAX_LEVEL }))
+                    Some(tr(if level < 2 { MSG_UPGRADE_EARLY } else { MSG_MAX_LEVEL }).to_string())
                 } else if !self.build_available(kind as usize) {
-                    Some(tr(MSG_LOCKED))
+                    Some(self.locked_text(kind, MSG_LOCKED))
                 } else {
                     None
                 };
                 if let Some(m) = refusal {
                     self.ui_sound(0x18);
-                    self.show_toast(m);
+                    self.show_toast(&m);
                     if self.tool == 4 && self.build_idx == kind as usize {
                         self.edit = false;
                     }
@@ -1824,6 +1851,31 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_english_terrain_title_fits_its_tab_as_before() {
+        // #164: the fitting only touches longer translations; every tile's English name and cost fits at full size
+        for theme in 0..4 {
+            for id in 0..32 {
+                let key = tile_key(id, theme);
+                let title = format!("{} {}", capitalised(sg_core::lang::en(key)), Economy::terrain_cost_units(id) * 100);
+                assert!(crate::ui::F_MANUAL15.width(&title) <= 140.0, "{title}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_theme_s_own_description_wins_over_the_shared_one() {
+        // a language file gives each theme its own words for a shared tile, else one text for all four (#164); the keys
+        // here are made up so the overlay touches no other test
+        let k: &'static str = "TEST_TILE_164";
+        assert_eq!(desc_key(k, 3), None);
+        sg_core::lang::load_overlay("TEST_TILE_164_DESC:all\nTEST_TILE_164_DESC_LINKS:links\n");
+        assert_eq!(desc_key(k, 3), Some("TEST_TILE_164_DESC_LINKS"));
+        assert_eq!(desc_key(k, 1), Some("TEST_TILE_164_DESC"));
+        assert_eq!(desc_key(k, 0), Some("TEST_TILE_164_DESC"));
+        assert_eq!(DESC_THEMES.len(), 4);
+    }
 
     #[test]
     fn only_a_click_in_the_panel_band_re_applies_the_strip_design() {

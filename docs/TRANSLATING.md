@@ -80,7 +80,38 @@ The boxes and places this covers:
 * the Player Comments report: the three headings in their pills, and each comment in its column (a little smaller, else
   cut, so the rows stay in line and never run under the hole's number);
 * the Membership Roster's legend (member levels, Photo Opp, Happy Ending): each word in its pill between the marks, on
-  two lines in the pill if it does not fit on one.
+  two lines in the pill if it does not fit on one;
+* the Course Terrain tooltip's title (the tile's name and cost) on its tab.
+
+## Course Terrain descriptions
+
+The text under a Course Terrain tooltip's title comes from your SimGolf files, in English. Each of the four themes has
+its own file, and they describe the same tile in different words (the Links tees are not described like the Desert
+tees), so there are 64 descriptions in all. To give your own, add the tile's name key with `_DESC` and the theme's
+name to your file:
+
+```
+STR_TILE_FIRM_FAIRWAY_DESC_PARKLANDS    :Watered less often and cut shorter than the fairway...
+STR_TILE_FIRM_FAIRWAY_DESC_DESERT       :More freeway than fairway...
+STR_TILE_FIRM_FAIRWAY_DESC_TROPICAL     :Like a fairway, with more zip...
+STR_TILE_FIRM_FAIRWAY_DESC_LINKS        :Short, tight grass on compacted soil...
+```
+
+The theme names are `PARKLANDS`, `DESERT`, `TROPICAL` and `LINKS`. A key with `_DESC` alone (`STR_TILE_FIRM_FAIRWAY_DESC`,
+as 0.7.4 read it) is still read, for every theme that has no key of its own, so a file written for 0.7.4 keeps working.
+A tile with neither keeps the English text.
+
+These are the 64 keys, by theme (Mound has no description in any theme):
+
+| Theme | Keys (add `_DESC_<THEME>`) |
+|---|---|
+| Parklands | STR_TILE_TEES, STR_TILE_GREEN, STR_TILE_SAND_TRAP, STR_TILE_ROUGH, STR_TILE_POT_BUNKER, STR_TILE_STREAM, STR_TILE_WATER, STR_TILE_TREE, STR_TILE_PINE_TREE, STR_TILE_PALM_TREE, STR_TILE_FAIRWAY, STR_TILE_FIRM_FAIRWAY, STR_TILE_DEEP_ROUGH, STR_TILE_WASTE_BUNKER, STR_TILE_BRUSH, STR_TILE_ROCKS |
+| Desert | STR_TILE_TEES, STR_TILE_GREEN, STR_TILE_SAND_TRAP, STR_TILE_DESERT, STR_TILE_POT_BUNKER, STR_TILE_RAVINE, STR_TILE_WATER, STR_TILE_JOSHUA_TREE, STR_TILE_CACTUS, STR_TILE_PALM_TREE, STR_TILE_FAIRWAY, STR_TILE_FIRM_FAIRWAY, STR_TILE_DESERT_ROUGH, STR_TILE_WASTE_BUNKER, STR_TILE_BRUSH, STR_TILE_ROCKS |
+| Tropical | STR_TILE_TEES, STR_TILE_GREEN, STR_TILE_SAND_TRAP, STR_TILE_ROUGH, STR_TILE_POT_BUNKER, STR_TILE_STREAM, STR_TILE_WATER, STR_TILE_TROPICAL_BUSH, STR_TILE_TROPICAL_TREE, STR_TILE_PALM_TREE, STR_TILE_FAIRWAY, STR_TILE_FIRM_FAIRWAY, STR_TILE_DEEP_ROUGH, STR_TILE_WASTE_BUNKER, STR_TILE_BRUSH, STR_TILE_ROCKS |
+| Links | STR_TILE_TEES, STR_TILE_GREEN, STR_TILE_SAND_TRAP, STR_TILE_ROUGH, STR_TILE_POT_BUNKER, STR_TILE_BURN, STR_TILE_WATER, STR_TILE_MAPLE_TREE, STR_TILE_PINE, STR_TILE_SCOTS_PINE, STR_TILE_FAIRWAY, STR_TILE_FIRM_FAIRWAY, STR_TILE_DEEP_ROUGH, STR_TILE_WASTE_BUNKER, STR_TILE_GORSE, STR_TILE_ROCKS |
+
+So the Links tees are `STR_TILE_TEES_DESC_LINKS` and the Desert cactus `STR_TILE_CACTUS_DESC_DESERT`. The Desert's
+"Desert" and "Rough" tiles are `STR_TILE_DESERT` and `STR_TILE_DESERT_ROUGH`.
 
 ## Parameters
 

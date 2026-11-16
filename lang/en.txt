@@ -53,6 +53,13 @@ STR_FILES_AUTOSAVE                      :autosave ({NAME})
 STR_FILES_AUTOSAVE_2                    :autosave (Latest, one before)
 STR_FILES_AUTOSAVE_3                    :autosave (Latest, two before)
 STR_FILES_QUICK                         :quick save
+STR_FILES_BACKUP                        :{NAME} (backup {N})
+STR_FILES_AGE_NOW                       :just now
+STR_FILES_AGE_MIN                       :{N} min ago
+STR_FILES_AGE_HOURS                     :{N} hours ago
+STR_FILES_AGE_YESTERDAY                 :yesterday
+STR_FILES_AGE_DAYS                      :{N} days ago
+STR_TITLE_CONTINUE_SAVE                 :Continue {NAME} ({AGE})
 STR_FILES_LOAD                          :Load
 STR_FILES_CANCEL                        :Cancel
 STR_FILES_DELETE                        :Delete
@@ -774,6 +781,7 @@ STR_TOAST_EMPLOYEE_POSTED               :{EMPLOYEE} will work around here
 STR_TOAST_EMPLOYEE_CLICK                :Click the course where the {EMPLOYEE} should work
 # the typo is the exe's
 STR_TOAST_BUILDING_LOCKED               :This building is will become available as you build additional holes.
+STR_UNLOCK_AT_HOLES                     :The {WHAT} opens when the course has {NEED} holes. It has {HAVE}.
 STR_TOAST_NO_HOME_SITES                 :No home sites are free: each Silver (or better) member buys one lot.
 STR_TOAST_NO_LANDMARK                   :The club has no landmark to place yet.
 STR_TOAST_CANNOT_RENAME                 :Employees cannot be renamed yet
@@ -793,6 +801,7 @@ STR_TOAST_CANCEL_ROUND                  :Are you sure you want to cancel this ro
 STR_TOAST_SPEED_NORMAL                  :Normal speed
 STR_TOAST_SPEED_FAST                    :Fast (x2)
 STR_TOAST_SPEED_FASTEST                 :Fastest (x4)
+STR_TOAST_SPEED_X8                      :Top speed (x8)
 STR_TOAST_HOLE_NEEDS_TEE_GREEN          :A new hole needs a tee and a green
 
 # Why an item cannot go on a tile (the building tool, 0x41f34e)
@@ -1467,6 +1476,25 @@ STR_TOAST_COURSE_B                      :The hole tools now work on Course B, ho
 # Multiple tees (sg_core::extras): forward and middle tees, placed with the Tees tool after Tab
 STR_EXTRAS_TEES                         : Multiple tees: forward and middle tees
 STR_EXTRAS_DESC_TEES                    :Tab with the Tees tool places a forward or middle tee in front of a hole's tee. Weaker golfers play the shorter tees; par, length and tournaments stay as they were.
+STR_EXTRAS_DEMOLISH                     : Eyesore demolition: pull down water towers and oil pumps
+STR_EXTRAS_DESC_DEMOLISH                :A right click (a long press) on an eyesore on your land offers to pull it down for §10,000, booked to Build course.
+STR_DEMOLISH_1                          :Pull down this {WHAT} for {COST}?
+STR_DEMOLISH_2                          :Golfers will stop complaining about it, and the ground is yours to build on.
+STR_DEMOLISH_YES                        : Yes, pull it down
+STR_DEMOLISH_NO                         : No
+STR_DEMOLISH_DONE                       :The {WHAT} is gone.
+STR_DEMOLISH_WATER_TOWER                :water tower
+STR_DEMOLISH_RADIO_MAST                 :radio mast
+STR_DEMOLISH_OIL_PUMP                   :oil pump
+STR_EXTRAS_MOVE_CLUBHOUSE               : Move the clubhouse
+STR_EXTRAS_DESC_MOVE_CLUBHOUSE          :A right click (a long press) on the clubhouse offers to move it anywhere on your land, for what a new clubhouse costs.
+STR_MOVE_CLUBHOUSE_1                    :Move the clubhouse for {COST}?
+STR_MOVE_CLUBHOUSE_2                    :Pick its new spot next. Paths to the old spot stay where they are.
+STR_MOVE_CLUBHOUSE_YES                  : Yes, pick a spot
+STR_MOVE_CLUBHOUSE_NO                   : No
+STR_MOVE_CLUBHOUSE_PICK                 :Click where the clubhouse should go.
+STR_MOVE_CLUBHOUSE_DONE                 :The clubhouse has moved.
+STR_MOVE_CLUBHOUSE_TOURNAMENT           :The clubhouse cannot move during a tournament.
 STR_TEE_BACK                            :back tee
 STR_TEE_MIDDLE                          :middle tee
 STR_TEE_FORWARD                         :forward tee
@@ -1513,6 +1541,60 @@ STR_ENHANCED_BANNER                     :Graphics only: play is never changed.
 STR_ENHANCED_NATIVE_TEXT                : Sharp text at the screen's resolution
 STR_ENHANCED_SMOOTH_UI                  : Smooth interface art at any size
 STR_ENHANCED_WIDESCREEN                 : Widescreen: interface at the window's edges
+# what each Enhanced graphics option does (the launcher's Features tab, the web site's feature guide)
+STR_ENHANCED_DESC_NATIVE_TEXT           :Draws text from the fonts at your screen's real resolution, so it stays sharp at any window size. Layouts stay the original's.
+STR_ENHANCED_DESC_SMOOTH_UI             :Interface art, sprites and portraits scale smoothly, with clean edges and no shimmer when drawn small.
+STR_ENHANCED_DESC_WIDESCREEN            :On a wide window the course badge, dock, panels and buttons move out to the window's edges instead of sitting in a 4:3 box in the middle.
+STR_ENHANCED_DESC_TERRAIN_FILTER        :Anisotropic filtering keeps the course sharp towards the top of the screen. Desktop only.
+STR_ENHANCED_DESC_MSAA                  :4x multisampling smooths the edges of terrain, cliffs and lines. Desktop only.
+STR_ENHANCED_DESC_SMOOTH_CAMERA         :Continuous wheel and pinch zoom, animated quarter turns and gliding scrolls. The game's rules still use the original's three zoom levels.
+STR_ENHANCED_DESC_SMOOTH_MOTION         :Golfers, staff, carts, animals and balls move smoothly between the game's 11.5 ticks a second instead of jumping once a tick. Drawing only.
+STR_ENHANCED_DESC_PHOTO_MODE            :Lets the C key or the camera button open photo mode: hide the interface, frame the shot, add a look and a focus blur, and save a picture up to 4K.
+STR_ENHANCED_DESC_FRAME_CAP             :The most frames a second the game draws: 30, 60, 120, 144, 240 or no cap. Counts with Classic graphics too.
+STR_ENHANCED_DESC_VSYNC                 :Waits for the display's refresh, so the picture never tears. Takes effect from the next start; always on in a browser. Counts with Classic graphics too.
+STR_ENHANCED_DESC_PIXEL_PERFECT         :Scales the 800 x 600 picture by whole numbers only, so every art pixel is the same size, with bars round it. Also a line of Preferences > Graphics; counts with Classic graphics too.
+STR_ENHANCED_DESC_FX_SCALER             :Sprites and pictures drawn larger than their pixels go through a pixel-art scaler instead of a plain blur.
+STR_ENHANCED_DESC_FX_SCALER_MODE        :Which scaler: Sharp (crisp pixels), Edge-directed (smooths diagonals) or Smooth (follows the art's own edges; the strongest).
+STR_ENHANCED_DESC_FX_WATER              :Water gets moving waves, sky reflections, glints and foam along the shore, over the theme's own water art.
+STR_ENHANCED_DESC_FX_TERRAIN_LIGHT      :Per-pixel light, ambient occlusion in valleys and soft shadows of the hills on the ground.
+STR_ENHANCED_DESC_FX_SPRITE_SHADOWS     :Softens the edges of the art's own shadows under buildings, trees and people.
+STR_ENHANCED_DESC_FX_CAST_SHADOWS       :Buildings, trees and people cast their own outline along the sun onto the ground.
+STR_ENHANCED_DESC_FX_BALL_TRAIL         :A soft trail fades out behind a ball in the air.
+STR_ENHANCED_DESC_FX_BALL_IMPACTS       :A puff of sand in a bunker, rings and drops on water, a flick of grass where a ball comes down.
+STR_ENHANCED_DESC_FX_QUALITY            :Low, medium or high: the detail of the light map, the blurs and the shadows. Lower is quicker on slow machines.
+STR_ENHANCED_DESC_FX_GRASS              :Tiny tufts of grass standing up from the rough and swaying in the wind, at the closest zoom.
+STR_ENHANCED_DESC_FX_SHARPEN            :Contrast-adaptive sharpening brings out the art's own detail on big screens, without halos. Desktop only.
+STR_ENHANCED_DESC_FX_CROWDS             :Spectators round the greens and fairways of the holes in play during tournaments and championships, cheering now and then.
+STR_ENHANCED_DESC_FX_LIFE               :Flocks of birds crossing the sky, butterflies over flower beds in summer, leaves falling in autumn.
+STR_ENHANCED_DESC_FX_SKY                :A sky gradient beyond the property and below its cliff instead of the original's black.
+STR_ENHANCED_DESC_FX_TIME_OF_DAY        :Morning, midday, golden hour, sunset and a short blue dusk pass over the course.
+STR_ENHANCED_DESC_FX_DAY_LENGTH         :How long a day of light lasts with Time of day: short (one game month), normal (three) or long (six).
+STR_ENHANCED_DESC_FX_EVENING_LIGHTS     :With Time of day: lamps with pools of light and fireflies at dusk.
+STR_ENHANCED_DESC_FX_WINDOW_LIGHTS      :With Time of day: a warm light in the buildings' windows at night.
+STR_ENHANCED_DESC_FX_SPRINKLERS         :With Time of day: sprinklers watering the fairways and greens at first light.
+STR_ENHANCED_DESC_FX_CLOUDS             :Soft cloud shadows drift over the course and dim what is under them.
+STR_ENHANCED_DESC_FX_HAZE               :The far part of the view pales towards the horizon's colour, more when zoomed out.
+STR_ENHANCED_DESC_FX_REFLECTIONS        :Trees, buildings and golfers mirrored in the water, rippling, with sun glitter.
+STR_ENHANCED_DESC_FX_TILT_SHIFT         :Blurs the top and bottom of the screen for a miniature look.
+STR_ENHANCED_DESC_FX_GRADING            :Gentle contrast, vibrance and a tint for each theme, with slightly darker corners.
+STR_ENHANCED_DESC_FX_BLOOM              :The brightest parts (sparkle, white sand, highlights) glow a little.
+STR_ENHANCED_DESC_FX_RAIN               :Light rain on some days (the same days for a save), with greyer light and faint shadows. Looks only: see Weather that matters for rain that changes play.
+STR_ENHANCED_DESC_FX_AFTER_RAIN         :With Rain: wet, glossy ground and puddles during and after a rainy day, and now and then a rainbow.
+STR_ENHANCED_DESC_FX_LIGHTNING          :Flashes and distant flicker in heavy rain where the climate is wet; never in the desert.
+STR_ENHANCED_DESC_FX_HEAT               :On a desert course's hot summer days: bleached midday light, heat haze, and parched grass on the hottest days.
+STR_ENHANCED_DESC_FX_WINTER             :The first days of March on parkland and links courses: morning frost, snow showers instead of rain, a light dusting some mornings.
+STR_ENHANCED_DESC_FX_FROST              :Frost on cold spring and autumn mornings, melting by late morning.
+STR_ENHANCED_DESC_FX_MIST               :Mist pooling in hollows and over water, thick at dawn and gone by late morning.
+STR_ENHANCED_DESC_FX_WIND               :A wind for each day: trees, palms and grasses sway, flags fly downwind, and the rain and clouds follow it.
+STR_ENHANCED_DESC_FX_SEASONS            :Blossom and fresh greens in spring, autumn colours in September and October, dew on the grass.
+STR_ENHANCED_DESC_FX_WATER_COLOUR       :Lighter, more turquoise shallows and a deeper blue in the middle, from the theme's own water colour.
+STR_ENHANCED_DESC_FX_WAVES              :Soft waves lying across the wind, drifting downwind: glassy at dawn and dusk, choppy in a storm.
+STR_ENHANCED_DESC_FX_SHORELINE          :Water lapping in and out along the shore, with a wet band on the bank.
+STR_ENHANCED_DESC_FX_CAUSTICS           :Sunlight rippling in a web over the bottom of shallow water.
+STR_ENHANCED_DESC_FX_RAIN_RINGS         :With Rain: rings opening on the water where drops fall.
+STR_ENHANCED_DESC_FX_WATER_LIFE         :Reeds and lily pads at the edges of ponds, ducks and swans on the larger lakes, and now and then a jumping fish.
+STR_ENHANCED_DESC_FX_ICE                :With Winter: small ponds ice over in the late-winter cold snap, and larger water gets a rim of ice.
+STR_ENHANCED_DESC_FX_SPRAY              :Foam, drops and rings round fountains and at the foot of waterfalls.
 STR_ENHANCED_TERRAIN_FILTER             : Sharper course textures
 STR_ENHANCED_MSAA                       : Anti-aliasing
 STR_ENHANCED_SMOOTH_CAMERA              : Smooth camera: zoom, turns and panning
@@ -2454,7 +2536,7 @@ STR_KEYS_HEAD_TIME                      :Time
 STR_KEYS_K_PAUSE                        :Shift+P
 STR_KEYS_PAUSE                          :Pause / go on
 STR_KEYS_K_SPEED                        :[ / ]
-STR_KEYS_SPEED                          :Game speed slower / faster (normal, x2, x4)
+STR_KEYS_SPEED                          :Game speed slower / faster (normal, x2, x4, x8)
 STR_KEYS_HEAD_BUILD                     :Building the course
 STR_KEYS_K_GREEN                        :g
 STR_KEYS_GREEN                          :Green tool; again: tee tool
@@ -2653,6 +2735,7 @@ STR_CTL_TAPE                            :Measuring tape
 STR_CTL_QUICK_SAVE                      :Quick save
 STR_CTL_QUICK_LOAD                      :Quick load
 STR_CTL_STAFF_VIEW                      :Staff areas off / on
+STR_CTL_HEIGHT_VIEW                     :Height map off / on
 STR_CTL_LANDING_MAP                     :Landing map off / on
 STR_CTL_HOLE_COMMENTS                   :Comments by hole
 STR_CTL_GRAPHS                          :History graphs
@@ -2852,6 +2935,9 @@ STR_MENU_INFO_PEOPLE                    : People
 STR_MENU_INFO_HISTORY                   : Message history
 STR_MENU_INFO_PATH_VIEW                 : Path view on / off
 STR_MENU_INFO_LANDING_MAP               : Landing map on / off
+STR_MENU_INFO_HEIGHT_VIEW               : Height map on / off
+STR_MENU_INFO_REVIEW                    : Course review
+STR_MENU_INFO_CHALLENGES                : Challenges
 STR_MENU_INFO_HOLE_COMMENTS             : Comments by hole
 STR_MENU_INFO_GRAPHS                    : History graphs
 # The message history
@@ -2922,9 +3008,57 @@ STR_GPROFILE_NO_BIO                      :No bio yet: Edit bio writes one.
 STR_GPROFILE_EDIT_BIO                    :Edit bio
 STR_GPROFILE_SAID                        :What {GOLFER} has said
 STR_GPROFILE_NOTHING_SAID                :Nothing heard yet this game.
-STR_GPROFILE_HELP                        :L locate, C card, B edit bio, Up/Down scroll; Esc, Enter or a click outside the box goes back.
+STR_GPROFILE_ROUNDS                      :Rounds
+STR_GPROFILE_SAID_BUTTON                 :Said
+STR_GPROFILE_ROUNDS_HEAD                 :{GOLFER}'s rounds here ({COUNT})
+STR_GPROFILE_NO_ROUNDS                   :No round finished here yet this game.
+STR_GPROFILE_ROUND                       :{STROKES} ({VS}) over {HOLES} holes, spent {SPENT}
+STR_GPROFILE_EVEN                        :even
+STR_RECORDS_ACE                          :Hole in one! {GOLFER} aces hole {HOLE}.
+STR_RECORDS_BEST                         :Hole record: {STROKES} by {GOLFER}, {DATE}
+STR_RECORDS_ACES                         :. Holes in one: {COUNT}, the last by {GOLFER}, {DATE}
+STR_REVIEW_TITLE                         :COURSE REVIEW
+STR_REVIEW_NO_HOLES                      :The course has no holes open yet: paint a tee and a green, then open the hole.
+STR_REVIEW_BUILDINGS_OK                  :Every building is joined to the clubhouse by a path.
+STR_REVIEW_BUILDINGS_OFF                 :Off the paths, so closed: {LIST}. Lay a path from the clubhouse to each (Shift+V shows them).
+STR_REVIEW_TEES_OK                       :Every tee has a path within three tiles.
+STR_REVIEW_TEES_FAR                      :No path comes near the tee of hole {LIST}.
+STR_REVIEW_KEPT_OK                       :Your groundskeepers reach every fairway, green and tee.
+STR_REVIEW_KEPT_BARE                     :{COUNT} fairway, green and tee tiles are out of every groundskeeper's reach (Shift+A shows them).
+STR_REVIEW_FUN_OK                        :No hole is dull: every fun factor is 40% or more.
+STR_REVIEW_FUN_DULL                      :Golfers find these holes dull: {LIST}. Hole Stats shows what golfers say about each.
+STR_REVIEW_COMPLAINT                     :Hole {HOLE}: "{WHAT}" heard {COUNT} times this year.
+STR_REVIEW_NO_COMPLAINTS                 :No complaints heard on the course this year.
+STR_REVIEW_HELP                          :Up/Down scroll; Esc, Enter or a click outside the box goes back.
+# Information > Challenges and Hole Stats' design lab (the Challenges extra)
+STR_CHALLENGES_TITLE                     :CHALLENGES
+STR_CHALLENGES_HELP                      :Click a challenge (or press 1 to 6) to take it on, again to give it up. Checked at each month start.
+STR_CHALLENGE_TAKE                       :Take
+STR_CHALLENGE_TAKEN                      :Taken
+STR_CHALLENGE_DONE                       :Done
+STR_CHALLENGE_MISSED                     :Missed
+STR_CHALLENGE_PAR3                       :Perfect par 3
+STR_CHALLENGE_PAR3_DESC                  :a par 3 that golfers rate Outstanding (fun 60% or more) after 20 rounds.
+STR_CHALLENGE_PAR5                       :Signature par 5
+STR_CHALLENGE_PAR5_DESC                  :a par 5 of 500 yards or more, rated Outstanding after 20 rounds, that golfers average 6 or less on.
+STR_CHALLENGE_TOUGH                      :Tough but fair
+STR_CHALLENGE_TOUGH_DESC                 :a hole that golfers average a stroke or more over par on and still rate Very good (fun 40% or more) after 20 rounds.
+STR_CHALLENGE_BALANCED                   :Balanced eighteen
+STR_CHALLENGE_BALANCED_DESC              :18 holes with four or five par 3s and four or five par 5s, every one rated Good (fun 20% or more) after 20 rounds.
+STR_CHALLENGE_NINE                       :Nine-hole test
+STR_CHALLENGE_NINE_DESC                  :a course of 9 to 17 holes with a total par of 34 to 37, every hole rated Good after 20 rounds.
+STR_CHALLENGE_TURNAROUND                 :Turnaround
+STR_CHALLENGE_TURNAROUND_DESC            :have §100,000 more cash than when you take it on, by the end of next year.
+STR_CHALLENGE_TURNAROUND_GOAL            :Turnaround: have {MONEY} cash by the end of {YEAR}
+STR_LAB_MARK                             :Mark before
+STR_LAB_NO_ROUNDS                        :no rounds played yet
+STR_LAB_FIGURES                          :fun {FUN}, average {AVG} over {ROUNDS} rounds
+STR_LAB_BEFORE                           :Before ({DATE}): {YARDS} yds, par {PAR}, {FIGURES}
+STR_LAB_SINCE                            :Since: {YARDS} yds, par {PAR}, {FIGURES}
+STR_GPROFILE_HELP                        :L locate, C card, B edit bio, R rounds, Up/Down scroll; Esc, Enter or a click outside the box goes back.
 STR_RENAME_EMPLOYEE                     :Rename the employee:
 STR_RENAME_BIO                          :The golfer's bio:
+STR_RENAME_HOLE                         :Name this hole (empty for its own name):
 # The path view
 STR_PATHVIEW_TITLE                      :Path view (Shift+V)
 STR_PATHVIEW_JOINED                     :Path joined to the clubhouse
@@ -3054,6 +3188,8 @@ STR_KEYS_K_QUICK_LOAD                   :Shift+F9
 STR_KEYS_QUICK_LOAD                     :Quick load (asks first)
 STR_KEYS_K_STAFF_VIEW                   :Shift+A
 STR_KEYS_STAFF_VIEW                     :Staff areas: every employee's ring, and the course no groundskeeper reaches
+STR_KEYS_K_HEIGHT_VIEW                  :Shift+K
+STR_KEYS_HEIGHT_VIEW                    :Height map: the course tinted from its lowest ground to its highest
 STR_KEYS_K_VIEWS                        :Shift+F1 .. F4
 STR_KEYS_VIEWS                          :Camera bookmarks: back to a kept view (centre, zoom and turn)
 STR_KEYS_K_VIEW_KEEP                    :Ctrl+bookmark key
@@ -3080,6 +3216,13 @@ STR_STAFF_VIEW_PROS                     :Club pros: {COUNT}
 STR_STAFF_VIEW_BARE                     :Unkept fairway, green, tee: {COUNT} tiles
 STR_STAFF_VIEW_ON                       :Staff areas on: Shift+A hides them.
 STR_STAFF_VIEW_OFF                      :Staff areas off.
+STR_HEIGHT_VIEW_TITLE                   :Height map (Shift+K)
+STR_HEIGHT_VIEW_LOW                     :Lowest: {LEVEL}
+STR_HEIGHT_VIEW_HIGH                    :Highest: {LEVEL}
+STR_HEIGHT_VIEW_HERE                    :Under the pointer: {LEVEL} levels (green: the usual ground)
+STR_HEIGHT_VIEW_CLOSE                   :Shift+K or the Information menu hides it.
+STR_HEIGHT_VIEW_ON                      :Height map on: Shift+K hides it.
+STR_HEIGHT_VIEW_OFF                     :Height map off.
 # The course editor (editor.rs; the port's own): the title button, the editor box, heightmap import, saving scenarios
 STR_EDITOR_HM_NOT_PNG                   :This is not a PNG picture OpenSGolf can read (8 or 16 bits per channel, not interlaced).
 STR_EDITOR_TITLE_BUTTON                 :Course editor...
@@ -3394,6 +3537,9 @@ STR_TOUCH_AIM_LABEL                     :{YARDS} yds, {CLUB}
 STR_TOUCH_PLACE                         :Place
 STR_TOUCH_CENTRE                        :Centre on my pro
 STR_TOUCH_UNDO                          :Undo
+STR_TOUCH_SOUND                         :Sound
+STR_TOUCH_SOUND_OFF                     :Sound off
+STR_TOUCH_SOUND_ON                      :Sound on
 STR_TOUCH_LOOK_HINT                     :Drag the course to look round, drag the target to aim. Two fingers move the view.
 STR_SELFCHECK_FOUND                     :OpenSGolf found a problem with a saved game and kept a report. Preferences > More > Report a problem can send it.
 
@@ -3411,6 +3557,8 @@ STR_BUGREPORT_EXPLAIN_WEB               :This opens the project's bug report for
 STR_BUGREPORT_EXPLAIN_ANDROID           :This opens the project's bug report form on GitHub in your browser, filled in with the game's version and your phone.\nA copy of this game, its recent warnings (and a screenshot, if ticked) go in the Reports folder next to the game's Photos, for you to attach.\nNothing is sent automatically: you read the form, say what happened and submit it yourself.
 STR_BUGREPORT_SCREENSHOT                : Include a screenshot
 STR_BUGREPORT_OPEN                      : OK, open the form
+STR_BUGREPORT_COPY                      : Copy the details only (for Discord or a forum post)
+STR_BUGREPORT_COPIED                    :The version and system details are on the clipboard: paste them into your post.
 STR_BUGREPORT_CANCEL                    : Cancel
 STR_BUGREPORT_DONE                      :The bug report form is open in your browser. Drag these files from the Reports folder (just opened) into its "Screenshots, save file, log" box: {FILES}.\nThe folder: {FOLDER}
 STR_BUGREPORT_DONE_WEB                  :The bug report form is open in a new tab, and these files were downloaded: {FILES}. Drag them into the form's "Screenshots, save file, log" box.
@@ -3426,7 +3574,7 @@ STR_KEYS_REPORT_PROBLEM                 :Report a problem (the bug report form, 
 STR_SUPPORT_TITLE                       :Enjoying OpenSGolf?
 STR_SUPPORT_PLAYED_1                    :You've played for about an hour.
 STR_SUPPORT_PLAYED                      :You've played for about {HOURS} hours.
-STR_SUPPORT_BODY                        :Thanks for playing! OpenSGolf is free and always will be, with no ads. It's made by one person, and the tools cost about £90 a month. If it's given you some good hours, a coffee helps keep the updates coming. No pressure either way: enjoy your course!
+STR_SUPPORT_BODY                        :Thanks for playing! OpenSGolf is free and always will be, with no ads. It's made by one person with the help of paid AI tools, a cost that comes round every month. If it's given you some good hours, a coffee helps pay for future updates. No pressure either way: enjoy your course!
 STR_SUPPORT_YES                         : Support on Buy Me a Coffee
 STR_SUPPORT_LATER                       : Maybe later
 STR_SUPPORT_NEVER                       : Don't ask again
@@ -3439,7 +3587,7 @@ STR_TIME_HOUR                           :1 hour
 STR_TIME_HOURS                          :{N} hours
 STR_TIME_MINUTE                         :1 minute
 STR_TIME_MINUTES                        :{N} minutes
-STR_PREFS_DESC_SUPPORT                  :Opens OpenSGolf's Buy Me a Coffee page in your browser. The game stays free and complete either way.
+STR_PREFS_DESC_SUPPORT                  :Buy Me a Coffee: OpenSGolf is built with paid AI tools, so a coffee helps future updates.
 # The welcome boxes (the port's own, welcome.rs; docs/PLAYING.md "How would you like to play?"). The choices start with a
 # space (options); the notes under them are wrapped by the game. The four choices are the four presets (STR_PRESET_*).
 STR_WELCOME_TITLE                       :How would you like to play?
@@ -3478,6 +3626,22 @@ STR_WHATSNEW_DOUBLE                     : Double-click a save to load it
 STR_WHATSNEW_DOUBLE_NOTE                :Or double-tap it on a touch screen.
 STR_WHATSNEW_MORE07                     : And more
 STR_WHATSNEW_MORE07_NOTE                :Longer translations fit, replays in problem reports, controller fixes.
+STR_WHATSNEW_FIRSTPERSON                : Walk your course in first person
+STR_WHATSNEW_FIRSTPERSON_NOTE           :On a computer, F12 walks the course in 3D and G follows a golfer's shot.
+STR_WHATSNEW_WEBAPP                     : Play offline in the browser
+STR_WHATSNEW_WEBAPP_NOTE                :Add the web version to your home screen; it plays with no connection.
+STR_WHATSNEW_PAUSEAIM                   : Pause while you aim
+STR_WHATSNEW_PAUSEAIM_NOTE              :The game stands still while your pro waits for you to take a shot.
+STR_WHATSNEW_SAVES                      : Saves newest first
+STR_WHATSNEW_SAVES_NOTE                 :Saves sorted by age, 3 backups of each, and Continue on the title screen.
+STR_WHATSNEW_CHALLENGES                 : Challenges
+STR_WHATSNEW_CHALLENGES_NOTE            :Six course design aims in the Information menu, checked every month.
+STR_WHATSNEW_DEMOLISH                   : Pull down eyesores
+STR_WHATSNEW_DEMOLISH_NOTE              :Right-click a water tower, radio mast or oil pump to pull it down (new games).
+STR_WHATSNEW_PORTRAIT                   : Play upright on phones
+STR_WHATSNEW_PORTRAIT_NOTE              :Phones and tablets can play in portrait, with the interface at the screen's edges.
+STR_WHATSNEW_MORE08                     : And more
+STR_WHATSNEW_MORE08_NOTE                :Speed x8, a height map, club records, a course review, a feature guide.
 STR_WHATSNEW_ALL                        : See everything that's new
 STR_WHATSNEW_OK                         : OK
 STR_WHATSNEW_TRY                        :Try it
@@ -3527,10 +3691,14 @@ STR_EXTRAS_DESC_MOUSE_SWING             :Aim your pro as on a touch screen: a cl
 STR_MOUSE_SWING_HINT                    :Click to set the target, drag it to aim, drag the course to look round. Then click Swing.
 # Right click puts the tool away (OpenSGolf extras, extras.rs right_drop; main.rs right_click)
 STR_EXTRAS_RIGHT_DROP                   : Right click puts the tool away
-STR_EXTRAS_DESC_RIGHT_DROP              :A right click (B on a controller) drops the brush or tool in hand, as Space does, instead of the original's undo.
+STR_EXTRAS_DESC_RIGHT_DROP              :A right click (B on a controller) drops the brush or tool in hand, as Space does, instead of the original's undo. The elevation tools still lower the ground with a right click.
 # The interface at the screen's edges (OpenSGolf extras, extras.rs wide_ui; enhanced.rs widescreen)
 STR_EXTRAS_WIDE_UI                      : Interface at the screen's edges
 STR_EXTRAS_DESC_WIDE_UI                 :On a wide screen the dock, panels and money sit at the screen's edges (on by default; off keeps them in the 4:3 middle).
+STR_EXTRAS_PORTRAIT                     : Play upright on phones and tablets
+STR_EXTRAS_DESC_PORTRAIT                :A phone or tablet held upright plays on the whole tall screen, with the dock, panels and money at its edges, instead of asking you to turn it sideways.
+STR_EXTRAS_FIRST_PERSON                 : First-person view (F12 or `)
+STR_EXTRAS_DESC_FIRST_PERSON            :On a computer, F12 (or `, handy on a Mac) on the course walks it at a golfer's eye height in 3D: W A S D walk, a drag looks round, G follows a golfer's shot, F12, ` or Esc goes back.
 # Edge scrolling (OpenSGolf extras, extras.rs edge_scroll; main.rs edge_scroll)
 STR_EXTRAS_EDGE_SCROLL                  : Edge scrolling
 STR_EXTRAS_DESC_EDGE_SCROLL             :In full screen the pointer at the screen's edge scrolls the view, as in the original (on by default).
@@ -3540,6 +3708,14 @@ STR_EXTRAS_DESC_HOME_LABELS_HOVER       :A celebrity's name shows over a home si
 # The Hole flyover (OpenSGolf extras, showcase.rs; docs/PLAYING.md)
 STR_EXTRAS_HOLE_FLYOVER                 : Hole flyover: fly down a hole from its Hole Stats
 STR_EXTRAS_DESC_HOLE_FLYOVER            :Hole Stats gets a Fly over button: the camera flies from the tee down the hole to the green, then back. A key or a click ends it.
+STR_EXTRAS_PAUSE_AIM                    : Pause while you aim your pro
+STR_EXTRAS_DESC_PAUSE_AIM               :The game stands still while your pro waits for your shot, in tournaments too, and goes on as you swing.
+STR_EXTRAS_SAVE_NEWEST                  : Saves newest first, with dates and backups
+STR_EXTRAS_UNLOCK_INFO                  : What unlocks it: how many holes open a building
+STR_EXTRAS_CHALLENGES                   : Challenges and the design lab
+STR_EXTRAS_DESC_SAVE_NEWEST             :Load Previous Game lists your saves newest first with when each was saved, and saving over a game keeps its last three versions as backups.
+STR_EXTRAS_DESC_UNLOCK_INFO             :A locked building says how many holes open it and how many the course has, where the original only asks for more holes.
+STR_EXTRAS_DESC_CHALLENGES              :Information > Challenges sets design and business aims to take on, and Hole Stats' Mark before keeps a hole's figures to compare after you change it.
 STR_HOLESTATS_FLY_OVER                  :Fly over
 
 # The launcher (the port's own, launcher.rs; docs/PLAYING.md "The launcher"): the screen before the title menu. Its tabs,
@@ -3547,6 +3723,12 @@ STR_HOLESTATS_FLY_OVER                  :Fly over
 STR_LAUNCHER_KICKER                     :The classic golf course builder, rebuilt
 STR_LAUNCHER_TAB_FILES                  :Game files
 STR_LAUNCHER_TAB_PLAY                   :How to play
+STR_LAUNCHER_TAB_FEATURES               :Features
+STR_FEATURES_GENERAL                    :General
+STR_FEATURES_GENERAL_BANNER             :The fixes for the original's bugs and the update check.
+STR_FEATURES_GRAPHICS_PAGE              :Graphics: {PAGE}
+STR_FEATURES_NEEDS_ENHANCED             :These need Enhanced graphics on: the first line of Graphics: Display, or Display & sound.
+STR_FEATURES_GRAPHICS                   :Graphics
 STR_LAUNCHER_TAB_DISPLAY                :Display & sound
 STR_LAUNCHER_TAB_NEWS                   :News & updates
 STR_LAUNCHER_PLAY                       :Play
@@ -3576,6 +3758,7 @@ STR_LAUNCHER_IN_USE                     :In use
 STR_LAUNCHER_NOT_HERE                   :Not offered on this device.
 # How to play (the choices are STR_WELCOME_*)
 STR_LAUNCHER_GAME_OPTIONS               :Game options...
+STR_LAUNCHER_GUIDE                      :Feature guide
 # Display & sound
 STR_LAUNCHER_DISPLAY                    :Display
 STR_LAUNCHER_WINDOW                     :Window
@@ -3590,11 +3773,17 @@ STR_LAUNCHER_SOUND                      :Sound
 STR_LAUNCHER_ON                         :On
 STR_LAUNCHER_OFF                        :Off
 STR_LAUNCHER_LANGUAGE                   :Language
+STR_LAUNCHER_SHORTCUT                   :Shortcut
+STR_LAUNCHER_SHORTCUT_MAKE              :Make a desktop shortcut
+STR_LAUNCHER_SHORTCUT_MADE              :Desktop shortcut made: {PATH}. It starts the game straight on the title menu, with these settings.
+STR_LAUNCHER_SHORTCUT_FAILED            :The desktop shortcut could not be made: {ERROR}
 STR_LAUNCHER_DISPLAY_NOTE               :The same settings as in Preferences: Graphics there has Enhanced graphics' own settings, and F11 switches full screen at any time.
 # News & updates
 STR_LAUNCHER_UPDATE                     :Check for updates
 STR_LAUNCHER_CHANGELOG                  :See everything that's new
 STR_LAUNCHER_COFFEE_BUTTON              :Buy me a coffee
+STR_LAUNCHER_SUPPORT_BUTTON             :Support future updates
+STR_LAUNCHER_SUPPORT_NOTE               :OpenSGolf is free and always will be. It's built with paid AI tools, so a coffee helps pay for future updates.
 STR_MENU_PREFS_LAUNCHER                 : Launcher...
 STR_PREFS_DESC_LAUNCHER                 :Shows the launcher again: your game files, how to play, display and sound, and what's new.
 STR_LAUNCHER_TIP_TITLE                  :Want the original sounds and music?

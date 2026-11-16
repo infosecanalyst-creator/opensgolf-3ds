@@ -322,12 +322,15 @@ enum Btn {
     Centre,
     /// Ctrl+Z (undo.rs), which a phone has no key for: while building, with a click to undo. Left of Speed, clear of Place.
     Undo,
+    /// The original's Sound tick in one tap (Preferences' Sound; the port's own button):
+    /// left of Message, under Undo. Hidden while a target is out (aiming or placing), when Place and Centre need the room.
+    Mute,
 }
 /// The column's buttons: those before Swing.
 #[cfg(test)]
 const COLUMN: usize = 5;
-const BUTTONS: [Btn; 9] =
-    [Btn::Speed, Btn::Message, Btn::Turn, Btn::OpenHole, Btn::Showcase, Btn::Swing, Btn::Place, Btn::Centre, Btn::Undo];
+const BUTTONS: [Btn; 10] =
+    [Btn::Speed, Btn::Message, Btn::Turn, Btn::OpenHole, Btn::Showcase, Btn::Swing, Btn::Place, Btn::Centre, Btn::Undo, Btn::Mute];
 
 impl Btn {
     fn action(self) -> &'static str {
@@ -341,6 +344,8 @@ impl Btn {
             Btn::Swing | Btn::Place | Btn::Centre => "",
             // Ctrl+Z is not one of the keys to set (main.rs key_down_event; touch_button_press)
             Btn::Undo => "",
+            // the Sound tick (touch_button_press)
+            Btn::Mute => "",
         }
     }
     fn label(self) -> &'static str {
@@ -354,6 +359,7 @@ impl Btn {
             Btn::Place => "STR_TOUCH_PLACE",
             Btn::Centre => "STR_TOUCH_CENTRE",
             Btn::Undo => "STR_TOUCH_UNDO",
+            Btn::Mute => "STR_TOUCH_SOUND",
         }
     }
 }
@@ -413,6 +419,12 @@ fn centre_centre(r: f32, right: f32) -> (f32, f32) {
 /// The Undo button's centre: to the left of Speed (slot 0), two rows above Place, so the two never touch.
 fn undo_centre(r: f32, right: f32) -> (f32, f32) {
     let (x, y) = button_centre(0, r, right);
+    (x - 2.0 * r - 14.0, y)
+}
+
+/// The Mute button's centre: to the left of Message (slot 1), under Undo.
+fn mute_centre(r: f32, right: f32) -> (f32, f32) {
+    let (x, y) = button_centre(1, r, right);
     (x - 2.0 * r - 14.0, y)
 }
 
@@ -745,7 +757,7 @@ impl Stage {
     /// target and the point is on the course where the pointer would preview it (above the panel, off the dock).
     fn targets_here(&self, p: (f32, f32)) -> bool {
         let a = &self.app;
-        if a.popup.is_some() || a.notice.is_some() || a.touch_target_for().is_none() {
+        if a.launcher.is_some() || a.popup.is_some() || a.notice.is_some() || a.touch_target_for().is_none() {
             return false;
         }
         let (vx, vy) = a.view.to_virtual(p.0, p.1);
@@ -757,7 +769,7 @@ impl Stage {
     /// on its new spot.
     fn picks_spot(&self, p: (f32, f32)) -> bool {
         let a = &self.app;
-        if a.screen != Screen::Play || a.popup.is_some() || a.notice.is_some() {
+        if a.screen != Screen::Play || a.launcher.is_some() || a.popup.is_some() || a.notice.is_some() {
             return false;
         }
         if a.moving_employee.is_none() && a.card_ui.held.is_none() {
@@ -779,7 +791,7 @@ impl Stage {
             || a.analysis.is_some()
             || a.bt.tape.is_some()
             || a.typing();
-        if a.screen != Screen::Play || a.edit || a.popup.is_some() || a.notice.is_some() || over {
+        if a.screen != Screen::Play || a.edit || a.launcher.is_some() || a.popup.is_some() || a.notice.is_some() || over {
             return false;
         }
         let (vx, vy) = a.view.to_virtual(p.0, p.1);
@@ -875,6 +887,7 @@ impl Stage {
             Btn::Place => (place_centre(r, right), big_radius(r)),
             Btn::Centre => (centre_centre(r, right), r),
             Btn::Undo => (undo_centre(r, right), r),
+            Btn::Mute => (mute_centre(r, right), r),
             _ => (button_centre(i, r, right), r),
         }
     }
@@ -937,9 +950,15 @@ impl Stage {
             self.app.centre_on_pro();
             return;
         }
-        // the speed's one button cycles normal, x2 and x4 (the keys step and stop: App::step_speed)
+        // the speed's one button cycles normal, x2, x4 and x8 (the keys step and stop: App::step_speed)
         if b == Btn::Speed {
             self.app.cycle_speed();
+            return;
+        }
+        if b == Btn::Mute {
+            // the original's Sound tick, as Preferences sets it
+            self.set_sound(self.app.mute);
+            self.app.show_toast(tr(if self.app.mute { "STR_TOUCH_SOUND_OFF" } else { "STR_TOUCH_SOUND_ON" }));
             return;
         }
         if b == Btn::Undo {
@@ -1285,6 +1304,7 @@ impl Stage {
                 Btn::Place => icon_tick(g, &s, cx, cy, r, ink),
                 Btn::Centre => icon_centre(g, &s, cx, cy, r, ink),
                 Btn::Undo => icon_undo(g, &s, cx, cy, r, ink),
+                Btn::Mute => icon_sound(g, &s, cx, cy, r, ink, self.app.mute),
                 // its name on its face: the one button that acts on the game, it says what it does
                 Btn::Swing => {
                     let name = tr(b.label());
@@ -1444,12 +1464,13 @@ fn shaded(g: &mut Gfx, ink: [f32; 4], draw: impl Fn(&mut Gfx, f32, f32, [f32; 4]
     draw(g, 0.0, 0.0, ink);
 }
 
-/// Speed: one, two or three play arrows for normal, x2 and x4.
+/// Speed: one to four play arrows for normal, x2, x4 and x8.
 fn icon_speed(g: &mut Gfx, s: &Ui, cx: f32, cy: f32, r: f32, speed: u8, ink: [f32; 4]) {
     let n = match speed {
         1 => 1,
         2 => 2,
-        _ => 3,
+        4 => 3,
+        _ => 4,
     };
     let h = r * 0.42;
     let w = r * 0.38;
@@ -1532,6 +1553,36 @@ fn icon_undo(g: &mut Gfx, s: &Ui, cx: f32, cy: f32, r: f32, ink: [f32; 4]) {
         let (tx, ty) = (ox + dx, oy + dy - rad);
         let (hw, len) = (w * 2.3, r * 0.36);
         s.quad(g, [(tx, ty - hw), (tx, ty + hw), (tx - len, ty), (tx - len, ty)], c);
+    });
+}
+
+/// Sound: a speaker with two waves, or with a cross when the sound is off.
+fn icon_sound(g: &mut Gfx, s: &Ui, cx: f32, cy: f32, r: f32, ink: [f32; 4], off: bool) {
+    let (bx, bh, bw) = (cx - r * 0.42, r * 0.17, r * 0.18);
+    let (cone, ch) = (r * 0.26, r * 0.38);
+    let w = r * 0.09;
+    shaded(g, ink, |g, dx, dy, c| {
+        let (x, y) = (bx + dx, cy + dy);
+        // the box and the cone
+        s.quad(g, [(x, y - bh), (x + bw, y - bh), (x + bw, y + bh), (x, y + bh)], c);
+        s.quad(g, [(x + bw, y - bh), (x + bw + cone, y - ch), (x + bw + cone, y + ch), (x + bw, y + bh)], c);
+        let ox = x + bw + cone + r * 0.12;
+        if off {
+            let k = r * 0.2;
+            s.line(g, ox, y - k, ox + 2.0 * k, y + k, w * 1.6, c);
+            s.line(g, ox, y + k, ox + 2.0 * k, y - k, w * 1.6, c);
+        } else {
+            // two arcs to the right
+            for (rad, n) in [(r * 0.22, 6), (r * 0.4, 8)] {
+                let (from, to) = (-0.9f32, 0.9f32);
+                for k in 0..n {
+                    let a0 = from + (to - from) * k as f32 / n as f32;
+                    let a1 = from + (to - from) * (k + 1) as f32 / n as f32;
+                    let p = |a: f32, rr: f32| (ox - r * 0.1 + rr * a.cos(), y + rr * a.sin());
+                    s.quad(g, [p(a0, rad - w), p(a0, rad + w), p(a1, rad + w), p(a1, rad - w)], c);
+                }
+            }
+        }
     });
 }
 
@@ -1641,6 +1692,8 @@ impl App {
             Btn::OpenHole => self.club.can_open_course_hole(self.hole_b()),
             Btn::Showcase => self.club.holes.iter().skip(1).take(18).any(|h| h.par != 0),
             Btn::Undo => self.undo.can_undo() && (self.edit || matches!(self.panel, 1 | 2)),
+            // out of the way of Place and Centre while a target is out
+            Btn::Mute => self.touch_target_for().is_none(),
             // shown on their own terms (Stage::button_shown)
             Btn::Swing | Btn::Place | Btn::Centre => false,
         }
@@ -1649,6 +1702,7 @@ impl App {
     /// Whether one of the extras' legends is up at the top right, under the gauges (pathview_ui, staffview_ui, insight).
     fn right_legend_up(&self) -> bool {
         (self.comfort.staff_view && self.land.is_some())
+            || self.comfort.height_view
             || (self.xs.path_view && crate::extras::path_help())
             || (self.xs.insight.map && crate::extras::landing_map())
     }
@@ -1761,6 +1815,23 @@ mod tests {
                 }
                 // Place stands level with Turn, which turns what it places
                 assert_eq!(place_centre(r, right).1, button_centre(2, r, right).1);
+            }
+        }
+    }
+
+    #[test]
+    fn mute_sits_left_of_message_clear_of_the_column_and_undo() {
+        for px in [0.3, 0.65, 1.0, 1.37, 1.71, 2.4, 3.6] {
+            let r = button_radius(px);
+            for right in [800.0, LEGEND_LEFT] {
+                let (x, y) = mute_centre(r, right);
+                assert_eq!(y, button_centre(1, r, right).1);
+                assert!(x - r > 0.0);
+                let apart = |c: (f32, f32)| (x - c.0).abs() >= 2.0 * r + 2.0 * HIT_PAD || (y - c.1).abs() >= 2.0 * r + 2.0 * HIT_PAD;
+                for i in 0..COLUMN {
+                    assert!(apart(button_centre(i, r, right)), "mute on slot {i} at {px}");
+                }
+                assert!(apart(undo_centre(r, right)), "mute on undo at {px}");
             }
         }
     }

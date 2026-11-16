@@ -46,6 +46,11 @@
 //!   Tees tool (`Club::place_extra_tee`), and ordinary golfers tee off from the one that suits their skill
 //!   (`Tee::for_golfer`). The hole's length, par, statistics and ratings stay the back tee's, the hole as the original
 //!   defines it, and tournaments play from the back tee. See `Tee`.
+//! * `demolish`: Eyesore demolition: an eyesore on land the club owns (the water tower, radio mast or oil pump each
+//!   property's difficulty puts there, which the original never lets go) can be pulled down for `DEMOLISH_UNITS`, booked
+//!   to Build course; the tile is free to build on. The port's own.
+//! * `move_clubhouse`: Move the clubhouse: a right click on it offers to move it, for a new clubhouse's price, to a spot
+//!   the player picks with the building tool (simgolf's clubhouse_move.rs). The port's own.
 //!
 //! Freeze happiness and Unlock all are named "Sandbox: ..." in the Extras box as they are what a sandbox player wants
 //! most, but each works in a normal game too. The Extras box shows Slower seasons and Pause the calendar as one line,
@@ -84,13 +89,19 @@ pub struct Extras {
     /// extras of a game that never ticks it are written as before.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub tees: bool,
+    /// Eyesore demolition (`DEMOLISH_UNITS`). Saved only when on.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub demolish: bool,
+    /// Move the clubhouse (its price is a new clubhouse's). Saved only when on.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub move_clubhouse: bool,
 }
 
 /// The options in the order the Extras box lists them (text keys of their lines). Option 6 has three values (a line with
 /// {VALUE}, `SPEED_KEYS`), the others are ticks; `Extras::option` and `Extras::set_option` read and set them by index.
 /// New options are appended so bits and saves keep working; the page each is shown on (Gameplay, Sandbox or Looks) is
 /// extras_ui.rs `PAGE_LINES`'s.
-pub const OPTION_KEYS: [&str; 18] = [
+pub const OPTION_KEYS: [&str; 20] = [
     "STR_EXTRAS_ROTATE",
     "STR_EXTRAS_CUT_CONTENT",
     "STR_EXTRAS_HARDCORE",
@@ -109,7 +120,19 @@ pub const OPTION_KEYS: [&str; 18] = [
     "STR_EXTRAS_KEEP_LAND",
     "STR_EXTRAS_SECOND_COURSE",
     "STR_EXTRAS_TEES",
+    "STR_EXTRAS_DEMOLISH",
+    "STR_EXTRAS_MOVE_CLUBHOUSE",
 ];
+
+/// The option of `OPTION_KEYS` that is Move the clubhouse.
+pub const MOVE_CLUBHOUSE: usize = 19;
+
+/// The option of `OPTION_KEYS` that is Eyesore demolition.
+pub const DEMOLISH: usize = 18;
+
+/// What pulling down an eyesore costs, in the economy's units of $100 (the port's own price: $10,000, two of the dearest
+/// landmarks' worth, so an eyesore is still worth planning round on a tight budget).
+pub const DEMOLISH_UNITS: i64 = 100;
 
 /// The option of `OPTION_KEYS` that is Weather that matters.
 pub const WEATHER: usize = 11;
@@ -166,6 +189,8 @@ impl Extras {
         keep_land: false,
         second_course: false,
         tees: false,
+        demolish: false,
+        move_clubhouse: false,
     };
 
     /// The extras of the "OpenSGolf" preset, the game with OpenSGolf's own additions: the looks, higher staff limits,
@@ -195,6 +220,9 @@ impl Extras {
         second_course: true,
         // nothing changes until the player places a forward or middle tee
         tees: true,
+        // it changes what can be removed: not part of the preset
+        demolish: false,
+        move_clubhouse: false,
     };
 
     /// Everything off (the original game).
@@ -225,6 +253,8 @@ impl Extras {
             | (self.keep_land as u32) << 18
             | (self.second_course as u32) << 19
             | (self.tees as u32) << 20
+            | (self.demolish as u32) << 21
+            | (self.move_clubhouse as u32) << 22
     }
 
     pub fn from_bits(b: u32) -> Extras {
@@ -247,6 +277,8 @@ impl Extras {
             keep_land: b & 1 << 18 != 0,
             second_course: b & 1 << 19 != 0,
             tees: b & 1 << 20 != 0,
+            demolish: b & 1 << 21 != 0,
+            move_clubhouse: b & 1 << 22 != 0,
         }
     }
 
@@ -271,6 +303,8 @@ impl Extras {
             KEEP_LAND => self.keep_land as u8,
             SECOND_COURSE => self.second_course as u8,
             TEES => self.tees as u8,
+            DEMOLISH => self.demolish as u8,
+            MOVE_CLUBHOUSE => self.move_clubhouse as u8,
             _ => 0,
         }
     }
@@ -297,6 +331,8 @@ impl Extras {
             KEEP_LAND => self.keep_land = on,
             SECOND_COURSE => self.second_course = on,
             TEES => self.tees = on,
+            DEMOLISH => self.demolish = on,
+            MOVE_CLUBHOUSE => self.move_clubhouse = on,
             _ => {}
         }
     }

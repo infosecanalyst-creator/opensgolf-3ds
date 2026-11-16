@@ -47,7 +47,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - name: Linux packages
-        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev
+        # the runners' own resolver has failed to look up Ubuntu's mirrors (November 2026): ask public DNS servers too, and let apt retry
+        run: |
+          sudo mkdir -p /etc/systemd/resolved.conf.d
+          printf '[Resolve]\nDNS=1.1.1.1 8.8.8.8\nFallbackDNS=9.9.9.9\n' | sudo tee /etc/systemd/resolved.conf.d/public.conf >/dev/null || true
+          sudo systemctl restart systemd-resolved || true
+          sudo apt-get -o Acquire::Retries=5 update
+          sudo apt-get -o Acquire::Retries=5 install -y libasound2-dev libudev-dev
       - name: Build
         run: cargo build --release -p opensgolf -p sgtool
       - name: glibc check

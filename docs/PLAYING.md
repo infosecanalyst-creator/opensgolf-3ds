@@ -46,8 +46,14 @@ the same: an .iso or .cdr (picked as a .zip is, or inside a .zip), a .zip of the
 It reads the image a part at a time from the picked file (never whole: iPad Safari could not hold it with the game's
 files) and unpacks the installer there, with the same reading as iso.rs ported to the page (web/opensgolf.js, "the SimGolf
 CD in the browser"; the page unpacks before the game's WebAssembly starts), showing "Unpacking the CD: N of M files"; the
-files are the desktop import's byte for byte. A .dmg gets the message on making a .cdr; .7z and RAR archives are refused
-with a message (unpack them on a computer first).
+files are the desktop import's byte for byte. A .dmg gets the message on making a .cdr; RAR archives are refused with a
+message (unpack them on a computer first). **A .7z of the game folder** is read by the browser page (web/files.js
+`sgUn7z`, the port's own reader): folders packed with LZMA2 (7-Zip's default, including its multithreaded blocks), LZMA,
+Deflate, BZip2 or stored, behind 7-Zip's x86 filter (BCJ) or not, and packed headers. Files in a folder packed another
+way (PPMd, BCJ2, encrypted) are skipped and named in the summary, as a zip's are; 7-Zip's Ultra setting puts only the
+programs (which the game does not need) behind BCJ2, so such an archive still gives every game file. Each folder is
+unpacked whole, so a solid archive needs the memory of its game files at once. The desktop and Android imports do not
+read .7z yet.
 
 **Sounds the copy lacks.** The original's own sound plays wherever the player's copy has the clip; a clip it lacks or
 cannot decode (WAV in PCM, float, A-law, mu-law, MS or IMA ADPCM, GSM 6.10, MP2 or MP3, AIFF, or an .ogg, .mp3 or .mp2
@@ -59,7 +65,7 @@ copies leave them out), only the Sims' voices in `SimsFX`, or lacks more than a 
 when the game starts and the ticker on every start (sg_core::mixer `shortfall`; the console or log has a `sound:` line
 with the counts). The browser page also sums up what it found after loading the files, in large type on the start page
 (and again there on the next visit, as "Last time: ...") and over the game once (20 seconds, or until tapped when
-something is missing): "OpenSGolf 0.7.3. Sounds: found N, used N, skipped N (why: the compression's name, damaged, too
+something is missing): "OpenSGolf 0.7.6. Sounds: found N, used N, skipped N (why: the compression's name, damaged, too
 big). Art ✓, music: N, Sims' voices: N." The console's `files:` line adds the compression methods the zip used.
 Deflate64 (Windows' own zipper, for big files such as the sounds), BZip2, LZMA and PPMd (7-Zip's, Keka's and The
 Unarchiver's stronger settings), which iPad's Files app cannot unpack (it shows such folders empty), are read by the
@@ -84,7 +90,7 @@ When OpenSGolf starts it first shows its **launcher** (the port's own screen, no
 the browser version's start page: the sky with the gold *OpenSGolf* heading, the green tabs and the glossy buttons. It is
 drawn by the game from shapes and its own free fonts, so it looks the same with or without your SimGolf files and shows
 none of the original's art. It fits any window, from a phone held sideways to a 4K screen, and works with the mouse, a
-finger (a tap is a click) and a controller (the stick moves the pointer, A clicks, Start plays). Four tabs:
+finger (a tap is a click) and a controller (the stick moves the pointer, A clicks, Start plays). Five tabs:
 
 - **Game files**: what is in use and what was found (e.g. *Your SimGolf files: all art and 320 sounds*, or *Free
   graphics* with *No SimGolf files were found on this device*), then two choices: **Use my SimGolf files...** (the same
@@ -95,14 +101,28 @@ finger (a tap is a click) and a controller (the stick moves the pointer, A click
 - **How to play**: the four choices of *How would you like to play?* (*The original game*, *Original + helpers*,
   *OpenSGolf*, *Custom*; see below), the one in use marked. A choice is put in use exactly as Game options puts it;
   *Custom* opens Game options when you have no mix of your own yet, and *Game options...* opens it at any time.
+- **Features**: every option OpenSGolf adds in one list that scrolls (the mouse wheel, a drag with the mouse or a
+  finger, the Up, Down, PageUp, PageDown, Home and End keys, with a scroll bar at the right), in groups: *General* (the
+  bug fixes and the update check), the pages of Game options (*Gameplay*, *Sandbox*, *Looks*, *Info*, *Saves*,
+  *Controls*), then the pages of the Enhanced graphics settings, starting with Enhanced graphics' own switch. Each group
+  has a heading saying what it changes; each line has its tick (or, for a setting with choices, its value, stepped by a
+  click) and what it does. A click (a tap that does not drag) puts the change in use at once, saved as Preferences
+  saves it. On the left, a button for each section (the Enhanced graphics pages are one, *Graphics*) scrolls to it,
+  the one in view marked (on a window too short for them, the list has the room alone), and **Feature guide** opens
+  the website's guide to every feature, with where each one is in Preferences. The lines are Preferences' own (the list *Search options...* finds in), so a new option
+  appears here by itself.
 - **Display & sound**: *Window* or *Full screen* and the window's size (on a computer: kept for the next start, as F11
   and Alt+Enter now are too), *Classic*, *Enhanced* and *HD* graphics (HD only once you have made an HD pack; as
   Preferences > Graphics, Enhanced and HD can be on together, Classic is both off), the text size, *Sound* on or off
   (the original's own Sound tick) and the language (each translation the game finds). These are the same settings as in
-  Preferences, saved the same way.
+  Preferences, saved the same way. On a computer, **Make a desktop shortcut** puts a shortcut on the desktop that starts
+  this copy straight on the title menu, with these settings and without the launcher (Windows: a shortcut; Linux: a
+  desktop entry; Mac: an alias of the app, which starts as the app does). The same works from a command line with
+  `--play`.
 - **News & updates**: the version you have and its *What's new* highlights, **Check for updates** (where the title menu
   has that button), **See everything that's new** (the changelog in your browser) and **Buy me a coffee** (see
-  *Supporting OpenSGolf*).
+  *Supporting OpenSGolf*), with a line on why it helps: OpenSGolf is built with paid AI tools, so a coffee pays for
+  future updates. A **Support future updates** button sits beside Play on every tab, where there is room.
 
 **Play** (or Enter, Esc, or Android's back button) goes on to the title menu. **Show this at start** (settings.json's
 `launcher_at_start`, on until you untick it) decides whether it shows at the next start; a new player always gets it.
@@ -112,7 +132,7 @@ asks first, as the Preferences line does). On a new player's first start it take
 to play?* box, and after an update it opens on its News tab in place of the *What's new* box; both are recorded as shown.
 
 It never shows in scripted runs (`--png`, `--time`, `--screen`), nor when the game starts on a saved game. Test hooks for
-stills: `--screen launcher` or `SG_LAUNCHER=1` show it (nothing is written), `SG_LAUNCHER_TAB=files|play|display|news`
+stills: `--screen launcher` or `SG_LAUNCHER=1` show it (nothing is written), `SG_LAUNCHER_TAB=files|play|features|display|news`
 picks the tab, and `SG_LAUNCHER_FILES=mine:320` shows the game files as your own with 320 sounds
 (`BIN --game DIR --screen launcher --size 844x390 --png out.png`).
 
@@ -589,6 +609,19 @@ On the **Gameplay** page:
   before (a drive from the forward tee counts in the hole's driving figures). The tees are saved with the game; a game that
   never places one saves exactly as before, and switching the extra off sends every golfer back to the back tee (the tee
   tiles stay, and come back into play when it is switched on again).
+- **Eyesore demolition.** *(Light touch)* On harder properties the land comes with water towers, radio masts and oil
+  pumps that golfers dislike and the original never lets you remove. With this on, right-click one (on a touch screen,
+  long press it) and a box asks whether to pull it down for §10,000; Yes takes it away, frees its tiles for building and
+  painting, and books the cost to Build course. It works only on land the club owns, and only when the club can pay
+  (as with building, the price is not checked before the third hole is open). Switching the extra off leaves anything
+  already pulled down gone.
+- **Move the clubhouse.** *(Light touch)* The original leaves the clubhouse wherever the property put it. With this on,
+  right-click it (on a touch screen, long press it) and a box offers to move it for what a new clubhouse costs
+  (§20,000, plus clearing the new spot). Yes puts the clubhouse in the building tool: its see-through picture follows the
+  pointer, red where it will not fit, and a click on land the club owns puts it down there, turned as Tab sets it. The old
+  spot goes back to rough. Paths are not moved, so buildings joined only through the old spot show as unjoined until a path
+  reaches the new one; golfers already out finish their round, and the next pair starts from the new clubhouse. Not
+  during a tournament.
 - **Left-handed golfers.** *(Light touch)* About one golfer in ten who arrives from now on is left-handed (decided by the game's own
   random draws when the golfer is made, and kept with the saved game). A left-hander is drawn as the mirror image of a
   right-hander while addressing the ball, swinging and following through, still facing the shot's target; walking,
@@ -804,7 +837,7 @@ Test hooks: `--edit "M:7"` opens the search box (`SG_PREFS_SEARCH="words"` types
 ## In-game interface (dock, panels, advisor, stories)
 
 The lower left of the course screen now shows the game's own dock art (Interface/3mainLowerLeft.pcx). The three big round buttons open panels along the bottom: **Build Course** (terrain brushes, paths, raise and lower, each with its cost), **Add Buildings** (the amenities for the theme) and **People** (click to hire, right click to fire a club pro, ranger, groundskeeper or soda vendor). Click an item, then click the map. On a Mac, Ctrl+click is a right click (in the app and in the browser), as is a two-finger click on a trackpad with *Secondary click* on. The small buttons zoom, rotate, open the course report, pause, and save the course. The keys are the original's (its F8 screen lists them): g f r s t w p b pick the green/tee, fairway, rough, sand, trees, water, path and bench tools (v the ravine), e the elevation tools, = and - raise and lower the ground under the pointer (Tab steps the elevation brush), h opens the hole being built; z and x zoom between the original's three levels, PageUp and Home turn the view a quarter (0 turns it back), the arrows scroll four tiles, 1 to 9 and Shift+1 to 9 jump to holes 1 to 18; Space drops the tool (and with the Info page's *right click puts the tool away* extra, so does a right click or a
-controller's B; otherwise a right click is the original's undo, which twice on a tee or green takes the hole away); Shift+P pause, Shift+T trees, Shift+N names, Shift+R routing map, Shift+W world map, Shift+J begin a tournament, Shift+C save the course for championship play, Shift+S and Shift+L save and load. The original has no game speed control; the port's own ] speeds it up (normal, x2, x4) and [ slows it down, each stopping at the end (a controller's Y and the touch button cycle). With Enhanced graphics on, the port's own c (a key the original leaves unused) opens photo mode (see *Photo mode* below).
+controller's B; otherwise a right click is the original's undo, which twice on a tee or green takes the hole away); Shift+P pause, Shift+T trees, Shift+N names, Shift+R routing map, Shift+W world map, Shift+J begin a tournament, Shift+C save the course for championship play, Shift+S and Shift+L save and load. The original has no game speed control; the port's own ] speeds it up (normal, x2, x4, x8) and [ slows it down, each stopping at the end (a controller's Y and the touch button cycle). With Enhanced graphics on, the port's own c (a key the original leaves unused) opens photo mode (see *Photo mode* below).
 
 System Functions → Preferences → *Controls and keys...* (the port's own screen) lists every key the game takes, grouped:
 moving around the course, time, building, holes and messages, reports and maps, your pro and the golfers, saving and
@@ -884,7 +917,9 @@ compare pixel for pixel with the build before the extras).
 - **Golfer profile** (People's *Profile*, or the golfer card's *Profile* button): the portrait, the card's identity lines,
   the roster's record (rounds, best, handicap), the round in progress, the golfer's bio (the person record's own, which
   Customise's Update Bio edits; *Edit bio* or B types one here) and everything the golfer has said on the course this game,
-  newest first, good thoughts in green and bad ones in red (kept with the save, the last 60 per golfer).
+  newest first, good thoughts in green and bad ones in red (kept with the save, the last 60 per golfer). *Rounds* (or R)
+  turns that list into the golfer's rounds here, newest first: the date it ended, the score against the par of the holes
+  played, the holes and what the golfer spent (kept with the save, the last 40 per golfer); *Said* turns it back.
 - **Message history** (**Shift+M**, *Information, Message history*, or a click on the ticker): every ticker message with
   its date and its speaker's portrait or picture, and each golfer story line (speaker, story and line), newest first, the
   last thousand, saved with the game. A click on a message
@@ -901,6 +936,9 @@ compare pixel for pixel with the build before the extras).
   original leaves closed) and on each hole with no joined path within three tiles of its tee, with a legend in the upper
   right. The original's monthly warning that a building is not operational gets a **Show** button on the ticker that takes
   the camera to the building.
+- **What unlocks it** (Info page; on in the helper presets): clicking a building that is still locked says how many holes
+  open it and how many the course has (*The Marina opens when the course has 9 holes. It has 4.*), where the original only
+  asks for more holes.
 - **Autosave**: every five minutes of play (time on the course, not in reports or menus) the game is saved to Saved Games
   as *autosave (Latest)*, so a crash or a closed tab loses at most five minutes. The two autosaves before it are kept too,
   as *autosave (Latest, one before)* and *autosave (Latest, two before)* (files `&Latest.sgs`, `&Latest-2.sgs`,
@@ -929,6 +967,13 @@ compare pixel for pixel with the build before the extras).
   course, a course code file or the original's `.sve`) and *Export this save...* (a copy of the selected save where you
   choose; the browser downloads it). Dropping such a file on the window works too. See "Saved games: where they are,
   backups and imports". Up to 0.4.9 these came with Course sharing: settings saved then follow its tick.
+- **Saves newest first, with dates and backups**: Load Previous Game lists your saved games newest first, each with how
+  long ago it was saved ("5 min ago", "yesterday", then the date). Saving over a game keeps the one that was there as a
+  backup, up to three of each, in `Saved Games/Backups` (`My Club~1.sgs` is the newest); they are listed at the foot of
+  the Load list as *My Club (backup 1)* and load as a game of their own, so saving one never replaces the original. When
+  each save was made is kept in `Saved Games/saves.json`. Autosaves keep their own three and are not backed up. The
+  title menu also gets **Continue** under Check for updates, naming your newest save (autosaves too) and how long ago it
+  was made: a click loads it.
 - **Landing map** (**Shift+D**, or *Information, Landing map on / off*): where the golfers' shots on a hole come to rest,
   as small dots on the course for the hole under the pointer (or the last one pointed at, or the one Hole Stats showed
   last): white the tee shots, yellow the second shots, orange the third, red the fourth and later, with a fainter pip
@@ -955,6 +1000,25 @@ compare pixel for pixel with the build before the extras).
   the wheel scroll through the holes. The words are the Customise screen's dialogue labels where a thought has one, else
   the F2 report's line. With the landing map on too, a click on a hole's block shows its landing map. Kept with the
   save while the extra is on.
+  With it on the club also keeps **club records**: each hole's best score with who made it and when, and every hole in
+  one (the ticker announces it). Hole Stats shows the hole's record and its holes in one under the comments. They are
+  Course A's and kept by hole number, with the save.
+- **Course review** (*Information, Course review*, with Comments by hole on): one page of what to look at next, from
+  what the other helpers already know: buildings off the paths, tees with no path near them, fairway, green and tee
+  tiles no groundskeeper reaches, holes golfers find dull (fun factor under 40%) and each hole's commonest complaint this
+  year. Each line has a green OK when all is well or a red ! when there is something to do. It only reads the game.
+- **Challenges and the design lab** (an Info page tick, off by default): *Information, Challenges* lists six aims to
+  take on. Click one (or press 1 to 6) to take it on and again to give it up. *Perfect par 3*: a par 3 rated Outstanding
+  (fun 60% or more). *Signature par 5*: a par 5 of 500 yards or more rated Outstanding that golfers average 6 or less
+  on. *Tough but fair*: a hole golfers average a stroke or more over par on and still rate Very good (40%). *Balanced
+  eighteen*: 18 holes with four or five par 3s and four or five par 5s, every one rated Good (20%). *Nine-hole test*:
+  9 to 17 holes with a total par of 34 to 37, every one rated Good. A hole counts only after 20 rounds. *Turnaround*:
+  §100,000 more cash than when you took it on, by the end of the next year. Taken challenges are checked at each month
+  start and listed with the goals under *Information, Scenario goals*; in a scenario they never win or lose it.
+  Hole Stats gets a **Mark before** button: it keeps the hole's figures (length, par, fun, stroke average, rounds) with
+  the date, and Hole Stats then shows them beside the figures since, so you can see whether a change helped. Rebuilding
+  a hole starts its figures again; on a hole only played on, the rounds since the mark are worked out from the
+  difference. Marks are kept with the save.
 - **History graphs** (**Shift+Y**, *Information, History graphs*, or the *Graphs* tab after the others on the tabbed
   reports): from the moment the extra is on, every game month is recorded for the club (rounds finished, holes played,
   revenue and costs as the F4 Financial Report's ledger books them, profit, cash at the month's end, golfer happiness
@@ -983,6 +1047,9 @@ compare pixel for pixel with the build before the extras).
   warns about debt at the end of the year (the year-end report follows when the game goes on), or the cash goes below
   zero (not in Sandbox Mode). The news is where the original puts it, on the ticker or the report; *Paused for big news*
   under the Paused caption. Unpause as usual (Shift+P or the dock's pause button).
+- **Pause while you aim your pro** (off; the presets leave it as you set it): the club stands still while your pro waits
+  for your shot, in a tournament too, and goes on the moment you swing. Building with your pro on the course is not
+  held up: the pause is only for the shot.
 - **Check for updates when the game starts** (a tick of Preferences > More, not in the extras box; on from 0.6, and the presets leave
   it as you set it: it goes online, which is yours to choose): the title menu's *Check for updates* (see *The title menu*), once in the background when the game
   starts. It says nothing unless a newer version is out; then a box offers **Update now**, **Skip this version** (that
@@ -1062,6 +1129,12 @@ The port's own keys, not in the original; nothing changes until you press them, 
   cyan Soda Vendors, grey Club Pros), and tints red every fairway, green and tee tile that no Groundskeeper's ring reaches:
   that is where the next one is wanted. A legend in the upper right counts the staff and the unkept tiles. Press Shift+A
   again to hide it. It only shows; nothing of the game changes. Test hook: `SG_STAFF_VIEW=1` shows it from the start.
+- **Height map (Shift+K)** tints the club's land by how high it stands: the usual ground (the commonest level) green,
+  each level lower bluer, each level higher through yellow and brown to white, so hills, slopes and hollows show at any
+  zoom. The legend in the upper right gives the lowest and highest tile and the tile under the pointer, in levels above
+  or below the usual ground. With the Landing map extra on, the Information menu has a Height map line too (for touch
+  screens). It shares the legend's place with Staff areas and the Landing map, so turning it on puts those away. It only
+  shows; nothing of the game changes. Test hook: `SG_HEIGHT_VIEW=1`.
 
 ## Camera bookmarks and the mouse
 
@@ -1232,6 +1305,10 @@ changed every key does what it did before.
   in a caption, round and round until any key, click or tap ends it; the camera, the zoom and the tool in hand then come
   back as they were. The golfers play on. Classic and Enhanced graphics alike (with the smooth camera the zoom eases in);
   it needs an open hole. Test hook: `SG_SHOWCASE=T` starts it held T seconds in, for stills.
+* **Name your holes** (the port's own): a click on the title of an open hole's Hole Stats asks for a name of your own
+  (up to 24 letters; Enter keeps it, Esc leaves it as it was, an empty name gives the hole its own name back). The name
+  shows wherever the game names the hole (Hole Stats, the Course Report, the pro's shots) with the hole's number after
+  it, and is saved with the game. Test hook: `SG_HOLE_NAME=TEXT` with `--screen holestats`.
 * **Hole flyover** (an OpenSGolf extra on the Looks page, off by default; on in the *Original + helpers* and *OpenSGolf*
   presets): Hole Stats (a click on an open hole's flag, or the Course Report) gets a *Fly over* button. It shows that one
   hole from the air: the interface goes and the camera glides from where it is to the back tee, down the hole over the
@@ -1262,7 +1339,8 @@ after `SG_CLICK`; letters and Space also type their character.
 The port's own helper (crates/simgolf/src/bugreport.rs); nothing changes until you use it (the original's System
 Functions menu is left as it is). System Functions → Preferences → *More...* → *Report a problem...*, or **Shift+F8** on
 the course (Change keys can move it), open a small box that says what will happen, with an *Include a screenshot* tick (ticked), *OK, open the form* (the
-box's tick and Enter too) and *Cancel* (Esc too). OK:
+box's tick and Enter too), *Copy the details only* and *Cancel* (Esc too). *Copy the details only* puts the version, the
+platform and the system line below on the clipboard and nothing else, for a post on Discord or a forum. OK:
 
 - opens the project's bug report form on GitHub in your browser with its one-line fields filled in: the version, the
   platform, the base set (your SimGolf files or the free set) and *System*, a short system line (system and processor,
@@ -1311,19 +1389,24 @@ counter, for stills (`SG_SUPPORT=1 BIN --game DIR --png out.png --time 2`). A sh
 
 ## Play-time count
 
-So the project can see how many hours are played on each system and version, the game sends an anonymous count to
-OpenSGolf's [GoatCounter](https://www.goatcounter.com) (the same counter as the web page's visits; the port's own,
-crates/simgolf/src/playcount.rs). Exactly this is sent, and nothing else:
+So the project can see how many hours are played on each system and version, and for how long at a time, the game sends
+an anonymous count to OpenSGolf's own play-time counter, a small Cloudflare Worker (`stats/` in the source; the port's
+own, crates/simgolf/src/playcount.rs). Exactly this is sent, and nothing else:
 
 - once when the game starts: `start/<platform>/<version>`, e.g. `start/windows/0.6.0`;
 - once for every **15 minutes of play**: `play-15min/<platform>`, e.g. `play-15min/linux`.
 
 `<platform>` is `windows`, `macos`, `linux`, `android` or `web`, with `-arm64` on 64-bit ARM computers. The play time is
 the support reminder's clock (see *Supporting OpenSGolf*): time on the course with the game running, not paused, not in
-the background and not on the menus. No ids, names, saved games or course data are sent, and no cookies are set. On the
-desktop and Android each count is one request to GoatCounter's count address with a User-Agent of
-`OpenSGolf/<version> (<platform>)`, made in the background with a short timeout; in the browser the page's own
-GoatCounter counts it. The game never waits for a count. On the desktop and Android a 15-minute count that does not get
+the background and not on the menus. Each count also carries the game's version, its number in this run (1 for the first
+15 minutes, 2 for the next...) and a **run id**: a random number made each time the game starts and never saved, so the
+counts of one run can be told apart (how long people play at a time) but never linked to a player or to another run.
+Counts kept from an earlier run (below) carry `kept` instead. No names, saved games or course data are sent, and no
+cookies are set; the counter keeps the country Cloudflare reads from the address, never the address itself. Each count
+is one request to the counter's address (on the desktop and Android with a User-Agent of
+`OpenSGolf/<version> (<platform>)`), made in the background with a short timeout. The game never waits for a count.
+Versions before 0.8.2 sent the same counts, without the version, number and run id, to OpenSGolf's
+[GoatCounter](https://www.goatcounter.com) instead; the counter imports those every week. On the desktop and Android a 15-minute count that does not get
 through (no internet) is kept, as a number only (`"pending"` under `"playcount"` in `settings.json`, a week of play at
 most), and sent later along with the next count that does, up to 16 at a time a second apart: the same counts, nothing
 more. Taking the tick off throws the kept ones away. The start count and the browser's counts are not kept.
@@ -1391,6 +1474,23 @@ plays upright for the rest of the browser tab's session: the whole game in a 4:3
 black above and below (web/files.js `sgPortraitAsk`, `sgCanvasRect`). Only touch devices are asked (a coarse pointer, or
 an iPad); a desktop window, however tall, never is. The Android app is held in landscape by the system (either way up).
 
+**First-person view (F12)** (an interface extra on the Extras box's Looks page, off by default; on computers, not in
+the browser or on Android; walk.rs): F12 on the course walks it at a golfer's eye height in a perspective view. Every
+building has a 3D model of the project's own in each theme (walk_models.rs), trees near the eye are solids built from
+their own pictures (walk_trees.rs), golfers within 220 m are jointed cartoon 3D figures coloured from their outfits and
+posed by what they are doing (walk_golfer.rs), and staff and residents are drawn in relief. W A S D or the arrows walk
+(Shift runs), a drag with a mouse button held looks round, G follows the golfers one after another (Shift+G back) and
+their ball's flight and roll, and F12 or Esc goes back to the overhead camera where it was. It only reads the game. The
+`--walk` command-line switch makes F12 work without the tick (and takes scripted stills from the walk camera).
+
+**Play upright on phones and tablets** (an interface extra on the Extras box's edges page, off by default; portrait.rs)
+lets a phone or tablet play held upright on the whole tall screen: no card in the browser, and the Android app turns every
+way the device does. The course view fills the screen and the interface is laid out at its edges, as with the interface at
+the screen's edges: the dock and build palette along the bottom, the date, money and ratings at the top corners, and the
+boxes and reports across the width in the middle. The interface is drawn at the size the screen's width allows, so it is
+smaller than when the device is held sideways. An installed web app is held landscape with the extra off where the browser
+allows it.
+
 Tap for a click; drag one finger to scroll the course (or to paint with the selected tool); hold a finger still for half a
 second for a right click (undo, remove, close a screen). While an employee (Move) or a golfer (the card's Move or Eject)
 waits for its new spot, dragging only scrolls the course and the next tap is the spot (issue #86). With no tool in hand a drag over the course only scrolls it too: it no longer picks up the employee, or opens the golfer's card or the flag's Hole Stats, under the finger where it starts (a tap still does). With the raise / lower tool (the Elevation panel, or =), a tap raises
@@ -1410,6 +1510,9 @@ phone's keyboard (in the browser through a hidden text box on the page, on Andro
 the game also draws its own keyboard across the bottom of the screen while a name is typed, with **OK** (Enter) and
 **Cancel** (Esc), because Safari on an iPad raises its keyboard only for some taps and a name box closes only with those
 keys (issue #50).
+
+**Sound in one tap.** A round speaker button left of the Message button turns the sound off and on, as Preferences'
+Sound tick does (the port's own). It steps aside while you aim your pro or place a building.
 
 **Aiming your pro and placing buildings by touch.** With a mouse the shot's aim (and a building's footprint) follows the
 pointer and a click shoots (or places); a finger cannot hover, so with a finger the two are apart. While your pro waits
@@ -1447,6 +1550,20 @@ and ball, the cash, the view's position, the employee being moved and the golfer
 starts a practice round left for you to aim, `j:1,3,1` a match (the challenge brought first by famous pro 0). For
 example, with `--size 800x600 --property 0 --clock 4242 --edit "h:2,24,27" --time 20` (a groundskeeper),
 `SG_TAP="staff;drag:400,295,520,360"` scrolls the view and leaves him where he is, where `staff;400,295` picks him up.
+
+### The browser version as an app
+
+The browser version can be installed as an app: on an iPhone or iPad tap **Share**, then **Add to Home Screen**; in Chrome
+and Edge (Android, Windows, macOS, Linux) the start page shows **Install OpenSGolf** under the start buttons. The app opens
+without the browser's bars, in landscape, from its own icon. Once the game has been started once, it starts again without a
+connection: a service worker (`web/sw.js`) keeps the page and the game, and your game files, saves and packs are in the
+browser's storage as before. A new version is fetched at the next start that has a connection; one that arrives while you
+play says so, and plays after you close and open the game again. `?nosw` in the address turns this off for a test.
+
+One game at a time: two tabs or windows of the game share one save folder, so a second one asks first ("OpenSGolf is already
+open") and plays only after the other is closed, or with **Play here anyway**. On a phone or tablet, an exported save, a
+picture and **Back up my saves** come with the system's share sheet (Save to Files, AirDrop, a cloud drive) as well as a
+download.
 
 ### Android
 

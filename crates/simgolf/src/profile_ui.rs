@@ -2,7 +2,9 @@
 //! golfer's ball portrait and the golfer card's identity lines (name and job, marital status and age, traits, the skills
 //! liked), the membership record (the roster's), the round in progress, the golfer's bio (the person record's own, which
 //! the original's Customise edits with Update Bio; here Edit bio opens a one-line prompt for it), and everything the
-//! golfer has said on the course this game, newest first, in the golfer card's colours for good and bad thoughts.
+//! golfer has said on the course this game, newest first, in the golfer card's colours for good and bad thoughts. The
+//! Rounds button turns that list into the golfer's rounds here (extras.rs `Round`, kept as each round ends): when, the
+//! score against the par of the holes played, and what the golfer spent; Said turns it back.
 //!
 //! In the look of the port's other own screens (keys_ui). Keys: Up, Down, PageUp, PageDown and the wheel scroll what was
 //! said; L locates, C opens the card, B edits the bio; Esc, Enter, a right click or the OK tick go back.
@@ -34,7 +36,7 @@ fn button_rect(i: usize) -> Rect {
     Rect::new(BOX.x + 24.0 + 92.0 * i as f32, BUTTON_Y, 84.0, 20.0)
 }
 
-const BUTTONS: [&str; 3] = ["STR_PEOPLE_LOCATE", "STR_PEOPLE_CARD", "STR_GPROFILE_EDIT_BIO"];
+const BUTTONS: [&str; 4] = ["STR_PEOPLE_LOCATE", "STR_PEOPLE_CARD", "STR_GPROFILE_EDIT_BIO", "STR_GPROFILE_ROUNDS"];
 
 /// The page's state: the golfer's person record, the newest thing said shown at the top, and the screen to go back to.
 #[derive(Default)]
@@ -42,6 +44,8 @@ pub struct ProfileUi {
     pub roster: i32,
     pub off: usize,
     pub back: Option<Screen>,
+    /// The list shows the rounds here instead of what was said.
+    pub rounds: bool,
 }
 
 impl App {
@@ -62,7 +66,19 @@ impl App {
     }
 
     fn profile_said_len(&self) -> usize {
-        self.xs.kept.said.get(&self.xs.profile.roster).map(|v| v.len()).unwrap_or(0)
+        let r = &self.xs.profile.roster;
+        if self.xs.profile.rounds {
+            self.xs.kept.rounds.get(r).map(|v| v.len()).unwrap_or(0)
+        } else {
+            self.xs.kept.said.get(r).map(|v| v.len()).unwrap_or(0)
+        }
+    }
+
+    /// A kept round as the list shows it: the score against par, the holes, what was spent.
+    fn round_words(r: &crate::extras::Round) -> String {
+        let over = r.strokes as i32 - r.par as i32;
+        let vs = if over == 0 { tr("STR_GPROFILE_EVEN").to_string() } else { format!("{over:+}") };
+        trf("STR_GPROFILE_ROUND", &[("STROKES", &r.strokes), ("VS", &vs), ("HOLES", &r.holes), ("SPENT", &crate::ui::money(r.spent))])
     }
 
     fn profile_scroll(&mut self, d: i32) {
@@ -86,6 +102,10 @@ impl App {
                 if b == 1 {
                     self.card = Some(g);
                 }
+            }
+            3 => {
+                self.xs.profile.rounds = !self.xs.profile.rounds;
+                self.xs.profile.off = 0;
             }
             _ => {
                 if r < 0 || r as usize >= self.club.roster.len() {
@@ -123,6 +143,7 @@ impl App {
             KeyCode::L => self.profile_action(0),
             KeyCode::C => self.profile_action(1),
             KeyCode::B => self.profile_action(2),
+            KeyCode::R => self.profile_action(3),
             _ => {}
         }
     }
@@ -191,12 +212,25 @@ impl App {
         for (k, l) in bio_lines.iter().take(4).enumerate() {
             s.put(g, F_MANUAL15, SAID_X - 40.0, by + LINE * k as f32, l, if bio.is_empty() { grey } else { white });
         }
-        // what the golfer has said, newest first
-        s.put_shadowed(g, F_MANUAL15, BOX.x + 24.0, SAID_TOP - 20.0, &trf("STR_GPROFILE_SAID", &[("GOLFER", &name)]), yellow, false);
+        // what the golfer has said, or (Rounds) the rounds played here, newest first
+        let rounds = self.xs.profile.rounds;
+        let head = if rounds {
+            let n = self.xs.kept.rounds.get(&r).map_or(0, |v| v.len());
+            trf("STR_GPROFILE_ROUNDS_HEAD", &[("GOLFER", &name), ("COUNT", &n)])
+        } else {
+            trf("STR_GPROFILE_SAID", &[("GOLFER", &name)])
+        };
+        s.put_shadowed(g, F_MANUAL15, BOX.x + 24.0, SAID_TOP - 20.0, &head, yellow, false);
         s.fill(g, BOX.x + 24.0, SAID_TOP - 3.0, UP.x - BOX.x - 32.0, 1.0, rgba(0.0, 0.0, 0.3, 0.4));
-        let said = self.xs.kept.said.get(&r).cloned().unwrap_or_default();
+        let said: Vec<crate::extras::Said> = if rounds {
+            let kept = self.xs.kept.rounds.get(&r).cloned().unwrap_or_default();
+            kept.iter().map(|k| crate::extras::Said { tick: k.tick, text: Self::round_words(k), tone: 0 }).collect()
+        } else {
+            self.xs.kept.said.get(&r).cloned().unwrap_or_default()
+        };
         if said.is_empty() {
-            s.put(g, F_MANUAL15, SAID_X, SAID_TOP + 4.0, tr("STR_GPROFILE_NOTHING_SAID"), grey);
+            let none = tr(if rounds { "STR_GPROFILE_NO_ROUNDS" } else { "STR_GPROFILE_NOTHING_SAID" });
+            s.put(g, F_MANUAL15, SAID_X, SAID_TOP + 4.0, none, grey);
         }
         let mut y = SAID_TOP + 2.0;
         let mut shown = 0;
@@ -227,7 +261,8 @@ impl App {
         }
         for (b, label) in BUTTONS.iter().enumerate() {
             let rr = button_rect(b);
-            let ok = b == 2 || slot.is_some();
+            let ok = b >= 2 || slot.is_some();
+            let label = if b == 3 && self.xs.profile.rounds { "STR_GPROFILE_SAID_BUTTON" } else { label };
             draw_button(g, &s, rr, tr(label), ok, rr.has(px, py));
         }
         s.put(g, F_ARIAL10, BOX.x + 24.0, BOX.y + BOX.h - 24.0, tr("STR_GPROFILE_HELP"), navy);

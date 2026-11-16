@@ -1,12 +1,16 @@
 //! The play-time count (the port's own, none of it in the original; docs/PLAYING.md "Play-time count"): so the project can
-//! see how many hours are played on each system and version, the game sends one anonymous count to the project's
-//! GoatCounter ([`COUNT_URL`], the same counter as the web page's) for every 15 minutes of play, and one when it starts:
+//! see how many hours are played on each system and version, the game sends one anonymous count to the project's own
+//! play-time counter ([`COUNT_URL`], a Cloudflare Worker: stats/README.md) for every 15 minutes of play, and one when it
+//! starts:
 //!
 //! * `start/<platform>/<version>` once at start, e.g. `start/windows/0.6.0`;
 //! * `play-15min/<platform>` for each 15 minutes of play time, e.g. `play-15min/linux-arm64`.
 //!
 //! The play time is the support reminder's clock (support.rs): real seconds on the course, not paused, not in the
-//! background, not on the menus. Nothing else is sent: no ids, names, saved games or course data, and no cookies.
+//! background, not on the menus. Each count also carries the version, the count's number in this run and a run id: a random
+//! number made at each start and never saved, so one run's counts can be told apart (how long people play at a time)
+//! but never linked to a player or to another run. Nothing else is sent: no names, saved games or course data, and no
+//! cookies. Builds before 0.8.2 counted with GoatCounter instead; the Worker imports those counts every week.
 //! `<platform>` is windows, macos, linux, android or web, with `-arm64` on 64-bit ARM (but Android).
 //!
 //! It is on by default; the first time a course is played the ticker says so once, and Preferences > More > "Count my play
@@ -14,11 +18,11 @@
 //! manager (`OPENSGOLF_NO_SELF_UPDATE=1`: the `opensgolf_store` cfg, build.rs) have none of it: no tick, no notice, nothing
 //! sent, and no address in the program.
 //!
-//! On the desktop and Android each count is one GET of GoatCounter's count address (its documented `/count` pixel: `p` the
-//! event's name, `t` its title, `e` an event, `ns` counted every time rather than once a visit, `rnd` against caching),
-//! by ureq as the update check uses it (net.rs), on a thread of its own with a short timeout; in the browser the page's
-//! own GoatCounter script counts it (web/opensgolf.js sg_playcount; the game is the only one counting play time there, and
-//! the page's own "Count my play time" tick off turns it off as the game's tick does). On the desktop and Android a
+//! Each count is one GET of the counter's address ([`count_url`]: `e` the event, `v` the version, `s` the run id or `kept`,
+//! `n` the count's number in the run, `rnd` against caching): on the desktop and Android by ureq as the update check uses
+//! it (net.rs), on a thread of its own with a short timeout; in the browser by the page (web/opensgolf.js sg_playcount,
+//! which makes the run id too: sg_random; the page's own "Count my play time" tick off turns it off as the game's tick
+//! does). On the desktop and Android a
 //! 15-minute count that does not get through (no internet) is kept as a number in settings.json ([`Record::pending`], at
 //! most [`MAX_PENDING`], a week's play) and sent with the next count that does, [`BATCH`] at a time a second apart:
 //! nothing but the same counts, later; taking the tick off deletes them. The start count is not kept. Nothing is ever
@@ -33,9 +37,11 @@ use serde::{Deserialize, Serialize};
 
 /// Whether this build has the count at all (not a store's build).
 pub const AVAILABLE: bool = cfg!(not(opensgolf_store));
-/// GoatCounter's count address of the project's counter (web/index.html's data-goatcounter).
+/// The project's play-time counter (stats/: a Cloudflare Worker).
 #[cfg(not(opensgolf_store))]
-pub const COUNT_URL: &str = "https://opensgolf.goatcounter.com/count";
+pub const COUNT_URL: &str = "https://opensgolf-stats.openmcm2-laps.workers.dev/count";
+/// The run id of counts kept from an earlier run (they belong to none).
+pub const KEPT_RUN: &str = "kept";
 /// settings.json's key.
 pub const SETTINGS_KEY: &str = "playcount";
 /// The play time between two counts, in seconds.
@@ -179,20 +185,53 @@ pub fn local_test_url(v: Option<&str>) -> Option<String> {
     local.iter().any(|p| v.starts_with(p)).then(|| v.to_string())
 }
 
-/// The address that counts `event` (GoatCounter's pixel parameters); `rnd` against caching.
+/// The address that counts `event` of `version`, count `n` of the run `run` ([`KEPT_RUN`] for kept counts); `rnd`
+/// against caching.
 #[cfg(not(opensgolf_store))]
-pub fn count_url(event: &str, rnd: u64) -> String {
+pub fn count_url(event: &str, version: &str, run: &str, n: u32, rnd: u64) -> String {
     let e = query_value(event);
+    let (v, s) = (query_value(version), query_value(run));
     #[cfg(not(target_arch = "wasm32"))]
     let base = local_test_url(std::env::var(TEST_URL_ENV).ok().as_deref()).unwrap_or_else(|| COUNT_URL.to_string());
     #[cfg(target_arch = "wasm32")]
     let base = COUNT_URL;
-    format!("{base}?p={e}&t={e}&e=true&ns=1&rnd={rnd:x}")
+    format!("{base}?e={e}&v={v}&s={s}&n={n}&rnd={rnd:x}")
 }
 
-/// The User-Agent of a count, e.g. "OpenSGolf/0.6.0 (linux)" (GoatCounter takes a name with a slash and a space as no bot).
+/// The User-Agent of a count, e.g. "OpenSGolf/0.6.0 (linux)".
 pub fn user_agent(version: &str, platform: &str) -> String {
     format!("OpenSGolf/{version} ({platform})")
+}
+
+/// 64 random bits as 16 hex digits: the run id, made at each start and never saved.
+pub fn run_id_hex(bits: u64) -> String {
+    format!("{bits:016x}")
+}
+
+/// A fresh run id: the standard library's random hash keys (and the clock) on the desktop and Android, the browser's
+/// crypto.getRandomValues in the browser (web/opensgolf.js sg_random).
+pub fn new_run_id() -> String {
+    #[cfg(not(target_arch = "wasm32"))]
+    let bits = {
+        use std::hash::{BuildHasher, Hasher};
+        let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+        h.write_u128(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos()));
+        h.write_u32(std::process::id());
+        h.finish()
+    };
+    #[cfg(all(target_arch = "wasm32", not(opensgolf_store)))]
+    let bits = {
+        #[link(wasm_import_module = "env")]
+        extern "C" {
+            /// 32 random bits from the browser (web/opensgolf.js).
+            fn sg_random() -> u32;
+        }
+        // SAFETY: no arguments
+        unsafe { (u64::from(sg_random()) << 32) | u64::from(sg_random()) }
+    };
+    #[cfg(all(target_arch = "wasm32", opensgolf_store))]
+    let bits = 0u64;
+    run_id_hex(bits)
 }
 
 /// The play-time count's state (`App::playcount`).
@@ -206,11 +245,23 @@ pub struct State {
     /// The browser page's own "Count my play time" tick is off (web/index.html #playcount): off as with the game's tick.
     page_off: bool,
     platform: String,
+    /// This run's id ([`new_run_id`]; empty until a count is sent).
+    run: String,
+    /// 15-minute counts sent (or tried) in this run: the next one's number less one.
+    marks: u32,
 }
 
 impl Default for State {
     fn default() -> State {
-        State { record: Record::default(), base: Mode::Off, next: EVERY, page_off: false, platform: String::new() }
+        State {
+            record: Record::default(),
+            base: Mode::Off,
+            next: EVERY,
+            page_off: false,
+            platform: String::new(),
+            run: String::new(),
+            marks: 0,
+        }
     }
 }
 
@@ -277,7 +328,8 @@ pub fn init(played: f64, scripted: bool) -> State {
     let log = log_hook();
     let scripted = scripted || cfg!(test) || test_hooks();
     let base = mode(AVAILABLE, false, log, scripted);
-    let mut s = State { record, base, next: first_mark(played), page_off: page_off(), platform: platform_here() };
+    let mut s =
+        State { record, base, next: first_mark(played), page_off: page_off(), platform: platform_here(), run: String::new(), marks: 0 };
     if log {
         println!("play count: {:?} (platform {}, next count at {:.0} s of play)", s.mode(), s.platform, s.next);
     }
@@ -294,6 +346,15 @@ impl State {
         if !matches!(mode, Mode::Send | Mode::Log) {
             return;
         }
+        if self.run.is_empty() {
+            self.run = new_run_id();
+        }
+        let n = if play {
+            self.marks += 1;
+            self.marks
+        } else {
+            0
+        };
         // the browser keeps nothing: its page is online to have loaded at all, and it tells the game nothing back
         let later = if cfg!(target_arch = "wasm32") { 0 } else { batch(self.record.pending) };
         if later > 0 {
@@ -303,8 +364,12 @@ impl State {
             }
         }
         match mode {
-            Mode::Log => println!("play count: would send {event}{}", if later > 0 { format!(" and {later} kept") } else { String::new() }),
-            _ => send_now(event, play, later, &self.platform),
+            Mode::Log => println!(
+                "play count: would send {event} (run {}, count {n}){}",
+                self.run,
+                if later > 0 { format!(" and {later} kept") } else { String::new() }
+            ),
+            _ => send_now(event, play, later, &self.platform, &self.run, n),
         }
     }
 }
@@ -326,13 +391,14 @@ fn page_off() -> bool {
 }
 
 /// The count on its way, then `later` kept 15-minute counts: a thread's GETs on the desktop and Android (what does not get
-/// through is given back to [`RETURNED`]: the event if `play`, and the kept counts not yet sent), the page's GoatCounter
-/// in the browser.
+/// through is given back to [`RETURNED`]: the event if `play`, and the kept counts not yet sent), the page's fetch in the
+/// browser. `run` and `n`: the run id and the count's number in it.
 #[allow(unused_variables)]
-fn send_now(event: &str, play: bool, later: u32, platform: &str) {
+fn send_now(event: &str, play: bool, later: u32, platform: &str, run: &str, n: u32) {
     #[cfg(all(not(opensgolf_store), not(target_arch = "wasm32"), feature = "net"))]
     {
         let event = event.to_string();
+        let run = run.to_string();
         let kept = play_event(platform);
         let agent_name = user_agent(crate::update::VERSION, platform);
         // named: a panic in it ends only the count (android.rs); the answer is read only for whether it got through
@@ -340,17 +406,18 @@ fn send_now(event: &str, play: bool, later: u32, platform: &str) {
             use std::sync::atomic::Ordering;
             let agent: ureq::Agent =
                 ureq::Agent::config_builder().timeout_global(Some(std::time::Duration::from_secs(TIMEOUT_S))).build().into();
-            let get = |e: &str| {
+            let get = |e: &str, run: &str, n: u32| {
                 let rnd = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos() as u64);
-                agent.get(&count_url(e, rnd)).header("User-Agent", &agent_name).call().is_ok()
+                let url = count_url(e, crate::update::VERSION, run, n, rnd);
+                agent.get(&url).header("User-Agent", &agent_name).call().is_ok()
             };
-            if !get(&event) {
+            if !get(&event, &run, n) {
                 RETURNED.fetch_add(u32::from(play) + later, Ordering::Relaxed);
                 return;
             }
             for i in 0..later {
                 std::thread::sleep(std::time::Duration::from_secs(1));
-                if !get(&kept) {
+                if !get(&kept, KEPT_RUN, 0) {
                     RETURNED.fetch_add(later - i, Ordering::Relaxed);
                     return;
                 }
@@ -364,11 +431,12 @@ fn send_now(event: &str, play: bool, later: u32, platform: &str) {
     {
         #[link(wasm_import_module = "env")]
         extern "C" {
-            /// Counts an event with the page's GoatCounter (web/opensgolf.js); nothing when the page has none.
+            /// Sends a count: the page fetches the address (web/opensgolf.js).
             fn sg_playcount(ptr: *const u8, len: usize);
         }
+        let url = count_url(event, crate::update::VERSION, run, n, u64::from(n));
         // SAFETY: the page reads `len` bytes at `ptr`, which live for the call
-        unsafe { sg_playcount(event.as_ptr(), event.len()) };
+        unsafe { sg_playcount(url.as_ptr(), url.len()) };
     }
 }
 
@@ -538,8 +606,15 @@ mod tests {
         assert_eq!(user_agent("0.6.0", "linux"), "OpenSGolf/0.6.0 (linux)");
         #[cfg(not(opensgolf_store))]
         assert_eq!(
-            count_url("play-15min/linux", 255),
-            "https://opensgolf.goatcounter.com/count?p=play-15min%2Flinux&t=play-15min%2Flinux&e=true&ns=1&rnd=ff"
+            count_url("play-15min/linux", "0.8.2", "00ff00ff00ff00ff", 3, 255),
+            format!("{COUNT_URL}?e=play-15min%2Flinux&v=0.8.2&s=00ff00ff00ff00ff&n=3&rnd=ff")
         );
+        assert!(count_url("play-15min/web", "0.8.2", KEPT_RUN, 0, 1).contains("&s=kept&n=0&"));
+        // a run id is 16 hex digits (the counter takes 8 to 32), different each run
+        assert_eq!(run_id_hex(0xab), "00000000000000ab");
+        let (a, b) = (new_run_id(), new_run_id());
+        assert_eq!(a.len(), 16);
+        assert!(a.bytes().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+        assert_ne!(a, b);
     }
 }

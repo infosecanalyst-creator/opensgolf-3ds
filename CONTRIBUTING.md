@@ -21,7 +21,12 @@ be modded. Code, art, sound, text, translations, courses, testing and bug report
 2. `cargo build --release`, then `target/release/opensgolf --game "/path/to/your/SimGolf/Program_Files_(ENGLISH)"`.
 3. Before a pull request: `cargo fmt`, `cargo clippy --release --workspace`, `cargo test --release --workspace`, and for
    browser changes `web/build.sh`.
-4. Match the style of the code around your change. Comments say where a rule comes from (an exe address, the manual, footage
+4. A new feature goes in the website's feature guide (`web/guide.html`, published at
+   https://crspytopgn.github.io/opensgolf/guide.html). Its option and key reference is made from the game: after adding or
+   renaming an option or a key, `OPENSGOLF_WRITE_GUIDE=1 cargo test -p opensgolf guide` rewrites it (`cargo test` fails until
+   you do; a new Enhanced graphics option also needs a line in `crates/simgolf/src/guide.rs`). Add a card to the right
+   section of the page's hand-written half for anything a player would look for, with `data-since` set to the version.
+5. Match the style of the code around your change. Comments say where a rule comes from (an exe address, the manual, footage
    of the original) or that it is the project's own choice.
 
 Layout: `crates/sg-core` is the game rules and file formats (no window, unit tested); `crates/simgolf` is the game

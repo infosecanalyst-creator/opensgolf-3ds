@@ -31,10 +31,28 @@ use std::collections::HashMap;
 
 /// World units per metre (walk.rs).
 const M: f32 = crate::walk::METRE;
+
+/// A fly-over or landmark drawn as a model of its own (walk_sky.rs).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Sky {
+    Blimp,
+    Balloon,
+    Pump,
+}
+/// How much bigger than the game's own scale a 3D golfer is drawn, so seen from eye height they stand as tall as the
+/// walker rather than looking like children (the sprites are drawn small against the course).
+const GOLFER: f32 = 1.04;
 /// A person's height.
 const PERSON: f32 = 1.8 * M;
 /// Trees' size against the overhead art's (whose trees are drawn far larger than the ground they stand on).
 const TREE_SCALE: f32 = 0.42;
+/// Trees nearer than this are drawn in the round (walk_trees.rs); further ones as upright pictures, which look the same
+/// from so far and cost far less.
+const TREE_SOLID_NEAR: f32 = 110.0 * M;
+/// Golfers nearer than this are drawn as 3D bodies (walk_golfer.rs); further ones as pictures.
+const GOLFER_BODY_NEAR: f32 = 220.0 * M;
+/// People nearer than this are drawn in relief (walk_relief.rs); further ones as flat pictures.
+const PERSON_RELIEF_NEAR: f32 = 70.0 * M;
 /// Other small things' size against the art's (animals, weeds and the like).
 const SMALL_SCALE: f32 = 0.4;
 /// The least fit for which a building keeps a roof (`raise_roof`).
@@ -589,14 +607,34 @@ struct FrameInfo {
     vivid: [f32; 3],
 }
 
+/// A golfer's head as their portrait shows it: the hair's colour, the skin's, their facial hair and its colour.
+type Portrait = ([f32; 3], [f32; 3], crate::walk_golfer::Beard, [f32; 3]);
+
 /// The objects' caches: textures of their frames, fitted solids, per-frame facts, and people's eased positions.
 #[derive(Default)]
 pub struct Objects {
     tex: HashMap<(usize, usize), TextureId>,
+    /// Frames scaled up smoothly (xBRZ) for the things seen large up close: the trees and the pictures of buildings with no
+    /// model, whose pixels would otherwise show as jagged steps.
+    smooth: HashMap<(usize, usize), TextureId>,
     people: HashMap<(usize, usize, sg_core::bodies::Outfit), TextureId>,
     fits: HashMap<(usize, [usize; 4], i32), Option<Fit>>,
     info: HashMap<(usize, usize), FrameInfo>,
     person_scale: HashMap<usize, f32>,
+    /// The buildings' models (walk_models.rs) by kind and theme, built once.
+    models: HashMap<(usize, usize, usize), Option<Vec<Vert>>>,
+    /// The trees' solids (walk_trees.rs) by sprite and frame, in the picture's pixels, built once.
+    trees: HashMap<(usize, usize), Option<Vec<Vert>>>,
+    /// People's frames raised in relief (walk_relief.rs) by sprite and frame, in the picture's pixels, built once.
+    reliefs: HashMap<(usize, usize), Option<Vec<Vert>>>,
+    /// Golfers' colours by outfit, for their 3D bodies (walk_golfer.rs).
+    looks: HashMap<sg_core::bodies::Outfit, crate::walk_golfer::Look>,
+    /// Each golfer body's build (height, girth) from its walking pictures, by the body's number (`app::GOLFER_BODIES`).
+    builds: Option<Vec<(f32, f32)>>,
+    /// The golfers' heads as their portraits show them (the game's own, Heads/golfballhalopage_*.pcx) by gender and head.
+    portraits: HashMap<(bool, u8), Option<Portrait>>,
+    /// The portrait pages, read once by gender.
+    halo: HashMap<bool, Option<Rgba>>,
     /// A moving prop's shown place (x, z) by its identity, eased between the simulation's ticks.
     eased: HashMap<u32, (f32, f32)>,
     /// The trees beyond the property (built with the ground, `walk_far_trees`).
@@ -619,7 +657,7 @@ impl Objects {
                 g.delete_mesh(m);
             }
         }
-        for t in self.tex.drain().map(|e| e.1).chain(self.people.drain().map(|e| e.1)) {
+        for t in self.tex.drain().map(|e| e.1).chain(self.people.drain().map(|e| e.1)).chain(self.smooth.drain().map(|e| e.1)) {
             g.ctx.delete_texture(t);
         }
     }
@@ -754,6 +792,32 @@ fn blob(app: &App, x: f32, z: f32, r: f32, alpha: f32, out: &mut Vec<Vert>) {
     }
 }
 
+/// A soft shadow under a building: darkest over its foot (half sizes `hx`, `hz` round (x, z)) and fading out over `spread`
+/// beyond it, following the ground in a grid. Drawn flat and blended (its alpha is the shade).
+fn shadow_rect(app: &App, (x, z): (f32, f32), (hx, hz): (f32, f32), spread: f32, alpha: f32, out: &mut Vec<Vert>) {
+    let n = 12;
+    let (ex, ez) = (hx + spread, hz + spread);
+    let shade = |px: f32, pz: f32| {
+        // the distance out from the foot's edge, over the spread
+        let (dx, dz) = (((px - x).abs() - hx).max(0.0), ((pz - z).abs() - hz).max(0.0));
+        let d = ((dx * dx + dz * dz).sqrt() / spread).min(1.0);
+        alpha * (1.0 - d).powf(1.5)
+    };
+    for j in 0..n {
+        for i in 0..n {
+            let q = |a: usize, b: usize| {
+                let (px, pz) = (x - ex + 2.0 * ex * a as f32 / n as f32, z - ez + 2.0 * ez * b as f32 / n as f32);
+                // (over the building's lot, a decal 0.2 above the ground)
+                let mut v = Vert::new(px, app.terrain.height_at(px, pz) + 0.35, pz, 0.0, 0.0).col([0.0, 0.0, 0.0, shade(px, pz)]);
+                v.normal = [0.0, 1.0, 0.0];
+                v
+            };
+            let (a, b, c, d) = (q(i, j), q(i + 1, j), q(i + 1, j + 1), q(i, j + 1));
+            out.extend([a, c, b, a, d, c]);
+        }
+    }
+}
+
 impl App {
     /// A frame's texture of the walk camera's own (walk_gl::sprite_texture).
     fn walk_tex(&self, g: &mut Gfx, o: &mut Objects, si: usize, i: usize) -> TextureId {
@@ -762,6 +826,17 @@ impl App {
         }
         let t = sprite_texture(g, &self.sprites[si].s.frame(i));
         o.tex.insert((si, i), t);
+        t
+    }
+
+    /// `walk_tex`, scaled up four times by xBRZ, which keeps the art's own edges and colours but rounds off its pixels.
+    fn walk_tex_smooth(&self, g: &mut Gfx, o: &mut Objects, si: usize, i: usize) -> TextureId {
+        if let Some(&t) = o.smooth.get(&(si, i)) {
+            return t;
+        }
+        let img = self.sprites[si].s.frame(i);
+        let t = if img.w * img.h <= 256 * 256 { sprite_texture(g, &sg_core::xbrz::scale(&img, 4)) } else { sprite_texture(g, &img) };
+        o.smooth.insert((si, i), t);
         t
     }
 
@@ -844,6 +919,21 @@ impl App {
         let k = PERSON * art_pitch().to_radians().cos() / (h * SPRITE_UNITS_PER_PIXEL);
         o.person_scale.insert(si, k);
         k
+    }
+
+    /// The land objects' kinds, and a variant of their look (0..4, from their place), by their footprint's centre.
+    fn walk_kinds(&self) -> Vec<((f32, f32), (usize, usize))> {
+        let Some(land) = &self.land else { return Vec::new() };
+        land.objects
+            .iter()
+            .filter(|o| o.kind >= 0)
+            .map(|o| {
+                let size = sg_core::data::buildings().get(o.kind as usize).map(|b| b.1).unwrap_or(1).max(1);
+                let (cx, cz) = self.terrain.tile_centre(o.a, o.b);
+                let off = (size - 1) as f32 * TILE_SIZE * 0.5;
+                ((cx + off, cz + off), (o.kind as usize, (o.a * 7 + o.b * 13).rem_euclid(4) as usize))
+            })
+            .collect()
     }
 
     /// The land objects' footprints: half their size in tiles (world units) by their ground point.
@@ -990,6 +1080,31 @@ impl App {
         }
         let foot = self.walk_footprints();
         let half_at = |x: f32, z: f32| foot.iter().find(|((fx, fz), _)| (fx - x).abs() < 1.0 && (fz - z).abs() < 1.0).map(|f| f.1);
+        let kinds = self.walk_kinds();
+        let kind_at = |x: f32, z: f32| kinds.iter().find(|((fx, fz), _)| (fx - x).abs() < 1.0 && (fz - z).abs() < 1.0).map(|f| f.1);
+        let mut modelled = std::collections::HashSet::new();
+        let flat_trees = std::env::var_os("SG_WALK_FLAT_TREES").is_some();
+        let flat_people = std::env::var_os("SG_WALK_FLAT_PEOPLE").is_some();
+        if o.builds.is_none() {
+            // each body's walking picture: how tall it stands and how broad it is for its height, against the others'
+            let sizes: Vec<Option<(f32, f32)>> = (0..crate::app::GOLFER_BODIES.len() as i32)
+                .map(|b| {
+                    let si = self.golfer_clip(b).0?;
+                    let m = Mask::new(&self.sprites[si].s.frame(0));
+                    let (w, h) = ((m.bbox.2.saturating_sub(m.bbox.0)) as f32, (m.bbox.3.saturating_sub(m.bbox.1)) as f32);
+                    (h > 4.0).then_some((h, w / h))
+                })
+                .collect();
+            let found: Vec<(f32, f32)> = sizes.iter().flatten().copied().collect();
+            let n = found.len().max(1) as f32;
+            let (mh, mr) = found.iter().fold((0.0, 0.0), |a, s| (a.0 + s.0 / n, a.1 + s.1 / n));
+            o.builds = Some(
+                sizes
+                    .iter()
+                    .map(|s| s.map(|(h, r)| (1.0 + (h / mh - 1.0) * 0.8, 1.0 + (r / mr - 1.0) * 1.2)).unwrap_or((1.0, 1.0)))
+                    .collect(),
+            );
+        }
         let eye = sc.eye;
         let up = [0.0, 1.0, 0.0];
         let right = [sc.right[0], 0.0, sc.right[1]];
@@ -998,11 +1113,37 @@ impl App {
         // people and small things stand where a tree or a building's picture may stand too (an animal at a cactus): they
         // are drawn a little towards the eye, in front, as the overhead view draws them over it
         let mut front = Lists::default();
-        let (mut blobs, mut solids) = (Vec::new(), Vec::new());
+        let (mut blobs, mut solids, mut shadows) = (Vec::new(), Vec::new(), Vec::new());
+        // the drawn look of the models (walk_toon.rs): flat bands of light, their outlines drawn pushed back
+        let toon = std::env::var_os("SG_WALK_NO_TOON").is_none();
+        let sun = [sc.u.sun[0], sc.u.sun[1], sc.u.sun[2]];
+        let mut inks: Vec<Vert> = Vec::new();
         let mut proxies: Vec<((f32, f32), Fit)> = Vec::new();
         let mut eased: HashMap<u32, (f32, f32)> = HashMap::new();
         let white = [1.0; 4];
         let near_obstacle = 120.0 * M;
+        // the fly-overs and landmarks drawn as models of their own (walk_sky.rs), by their pictures
+        // (test hook: SG_WALK_NO_MODELS draws them as their cards too)
+        let sky: HashMap<usize, Sky> = if std::env::var_os("SG_WALK_NO_MODELS").is_some() {
+            HashMap::new()
+        } else {
+            self.sprite_index
+                .iter()
+                .filter_map(|(k, v)| {
+                    let name = k.split('|').next().unwrap_or("");
+                    let kind = if name.starts_with("Scenic/blimp") && !name.contains("Shadow") {
+                        Sky::Blimp
+                    } else if name.starts_with("Scenic/hotair") && !name.contains("Shadow") {
+                        Sky::Balloon
+                    } else if name.starts_with("Landmarks/Red Oil Pump") && !name.contains("Shadow") {
+                        Sky::Pump
+                    } else {
+                        return None;
+                    };
+                    v.map(|si| (si, kind))
+                })
+                .collect()
+        };
         for idx in 0..self.props.len() {
             let p = self.props[idx].clone();
             if p.hidden {
@@ -1039,6 +1180,47 @@ impl App {
                 continue;
             }
             let s = SPRITE_UNITS_PER_PIXEL * p.scale;
+            if let Some(&kind) = sky.get(&si) {
+                // sized by the picture: its width is the blimp's length or the pump's, its height the balloon's
+                let (model, size, foot) = match kind {
+                    Sky::Blimp => (crate::walk_sky::blimp(), 52.0, 0.0),
+                    Sky::Balloon => (crate::walk_sky::balloon(p.view.unwrap_or(0).rem_euclid(4) as usize), 22.0, 0.0),
+                    Sky::Pump => (crate::walk_sky::pump_jack(sc.time), 9.0, 0.0),
+                };
+                let span = match kind {
+                    Sky::Balloon => h * s * 0.85,
+                    _ => w * s * 0.8,
+                };
+                let k = span / size;
+                let at = [x, ground + p.lift + foot, z];
+                if !sphere_visible(&sc.planes, at, span) {
+                    o.culled += 1;
+                    continue;
+                }
+                o.drawn += 1;
+                let heading = match kind {
+                    Sky::Blimp => p.heading.to_radians(),
+                    // the pump stands as the picture's quarter turn has it, its head towards the camera's right
+                    Sky::Pump => p.facing as f32 * std::f32::consts::FRAC_PI_2 + std::f32::consts::FRAC_PI_4,
+                    Sky::Balloon => 0.0,
+                };
+                let mut mv: Vec<Vert> = crate::walk_sky::place(&model, heading, k, at).collect();
+                if toon {
+                    crate::walk_toon::outline(&mv, crate::walk_toon::width(dist, 0.04 * M), &mut inks);
+                    crate::walk_toon::soft(&mut mv, sun, eye);
+                }
+                solids.extend(mv);
+                let r = match kind {
+                    Sky::Blimp => 14.0,
+                    Sky::Balloon => 4.0,
+                    Sky::Pump => 5.5,
+                } * k;
+                blob(self, x, z, r, if kind == Sky::Pump { 0.4 } else { 0.25 }, &mut blobs);
+                if kind == Sky::Pump && dist < near_obstacle {
+                    o.obstacles.push(Obstacle::Box { cx: x, cz: z, hx: 3.0 * k, hz: 3.0 * k });
+                }
+                continue;
+            }
             if p.decor {
                 self.walk_marker(o, &p, si, x, z, dist, &mut solids, &mut blobs);
                 continue;
@@ -1059,6 +1241,48 @@ impl App {
             }
             let anchor = [x, ground + p.lift, z];
             if p.object {
+                // a building with a model of its own is drawn as that (walk_models.rs), once: the other pictures at its
+                // place (its animations, its parts) are left out
+                // (test hook: SG_WALK_NO_MODELS draws the buildings as though none had a model)
+                if let Some((kind, variant)) = kind_at(x, z).filter(|_| std::env::var_os("SG_WALK_NO_MODELS").is_none()) {
+                    let theme = self.theme;
+                    let model = o.models.entry((kind, theme, variant)).or_insert_with(|| crate::walk_models::model(kind, theme, variant));
+                    if let (Some(m), Some((cx, cz, hx, hz))) = (model.as_ref(), crate::walk_models::model_half(kind, theme)) {
+                        if !modelled.insert(((x * 4.0) as i64, (z * 4.0) as i64)) {
+                            continue;
+                        }
+                        let turn = |a: f32, b: f32| match p.facing.rem_euclid(4) {
+                            0 => (a, b),
+                            1 => (b, -a),
+                            2 => (-a, -b),
+                            _ => (-b, a),
+                        };
+                        if dist < near_obstacle {
+                            let (ox, oz) = turn(cx, cz);
+                            let (bx, bz) = if p.facing.rem_euclid(2) == 1 { (hz, hx) } else { (hx, hz) };
+                            o.obstacles.push(Obstacle::Box { cx: x + ox, cz: z + oz, hx: bx, hz: bz });
+                        }
+                        let r = half_at(x, z).unwrap_or(hx.max(hz)) * 1.5;
+                        if !sphere_visible(&sc.planes, [x, ground, z], r) {
+                            o.culled += 1;
+                            continue;
+                        }
+                        o.drawn += 1;
+                        let mut mv: Vec<Vert> = crate::walk_models::placed(m, p.facing, [x, ground, z]).collect();
+                        if toon {
+                            crate::walk_toon::outline(&mv, crate::walk_toon::width(dist, 0.05 * M), &mut inks);
+                            crate::walk_toon::cel(&mut mv, sun);
+                        }
+                        solids.extend(mv);
+                        // its shadow, soft, on the ground round its foot
+                        let (ox, oz) = turn(cx, cz);
+                        let (bx, bz) = if p.facing.rem_euclid(2) == 1 { (hz, hx) } else { (hx, hz) };
+                        if bx > 0.0 && bz > 0.0 {
+                            shadow_rect(self, (x + ox, z + oz), (bx, bz), 5.0 * M, 0.6, &mut shadows);
+                        }
+                        continue;
+                    }
+                }
                 let half = half_at(x, z);
                 let frames = [0, 1, 2, 3].map(|q| self.sprites[si].s.frame_index(self.prop_view(&p, si, q), 0));
                 let layer = proxies.iter().find(|((px, pz), _)| (px - x).abs() < 0.5 && (pz - z).abs() < 0.5).map(|f| f.1);
@@ -1066,6 +1290,9 @@ impl App {
                     Some(f) => Some(f),
                     // (test hook: SG_WALK_CARDS draws every object as its card)
                     None if std::env::var_os("SG_WALK_CARDS").is_some() => None,
+                    // (a building of several tiles with no model of its own stands as its picture: a solid fitted to one
+                    // picture from above wears its roofs and garden smeared down its walls)
+                    None if half.is_some_and(|hf| hf > TILE_SIZE * 0.75) => None,
                     None => self.walk_fit(o, si, frames, p.scale, half),
                 };
                 let radius = (w.max(h)) * s;
@@ -1119,16 +1346,16 @@ impl App {
                         let k = if small { s * SMALL_OBJECT } else { s };
                         let iq = iso(sc.quarter);
                         let i = self.sprites[si].s.frame_index(self.prop_view(&p, si, sc.quarter), p.frame);
-                        let t = self.walk_tex(g, o, si, i);
+                        let t = if small { self.walk_tex(g, o, si, i) } else { self.walk_tex_smooth(g, o, si, i) };
                         if small {
                             let rect = (-ax * k, (w - ax) * k, ay * k, -(h - ay) * k);
                             card(cut.get(t), anchor, iq.r, iq.u, rect, false, 0.0, white);
                         } else {
-                            // a building: bent at its ground point, its picture above leaning back at the art's angle and
-                            // below (its front, its deck, the planting before it) laid on the ground, so from the overhead
-                            // camera it is the sprite itself and nothing of it sinks into the ground
+                            // a building with no model: bent at its ground point, its picture above standing upright and
+                            // turned to the eye, and below (its front, its deck, the planting before it) laid on the
+                            // ground, so nothing of it sinks into the ground
                             let c = |cx: f32, cy: f32, tu: f32, tv: f32| {
-                                let p = |a: usize| anchor[a] + iq.r[a] * cx + iq.u[a] * cy;
+                                let p = |a: usize| anchor[a] + right[a] * cx + up[a] * cy;
                                 Vert::new(p(0), p(1), p(2), tu, tv)
                             };
                             let (l, r, top, v1) = (-ax * k, (w - ax) * k, ay * k, ay / h);
@@ -1156,13 +1383,47 @@ impl App {
                     continue;
                 }
                 o.drawn += 1;
-                let i = self.sprites[si].s.frame_index(self.prop_view(&p, si, sc.quarter), p.frame);
-                let t = self.walk_tex(g, o, si, i);
                 let ph = place_hash(x, z);
                 let sway =
                     ((sc.time * (0.9 + ph * 0.5) + ph * std::f32::consts::TAU).sin() * 0.12 + (sc.time * 2.3 + ph * 3.0).sin() * 0.04) * M;
-                let rect = (-ax * k, (w - ax) * k, ay * k * v, -(h - ay) * k * v);
-                card(cut.get(t), anchor, right, up, rect, false, sway, white);
+                // near, in the round: the solid built from the tree's own picture (one view, so it never changes as the
+                // eye walks round it), turned by the place so a row of one kind isn't all alike
+                let solid = if dist < TREE_SOLID_NEAR && !flat_trees {
+                    let i = self.sprites[si].s.frame_index(0, p.frame);
+                    let body =
+                        o.trees.entry((si, i)).or_insert_with(|| crate::walk_trees::solid(&self.sprites[si].s.frame(i), ax, ay)).is_some();
+                    body.then_some(i)
+                } else {
+                    None
+                };
+                if let Some(i) = solid {
+                    let t = self.walk_tex_smooth(g, o, si, i);
+                    let (sn, cs) = (ph * std::f32::consts::TAU).sin_cos();
+                    let tall = ay.max(1.0);
+                    let l = cut.get(t);
+                    for q in o.trees[&(si, i)].iter().flatten() {
+                        let (px, py, pz) = (q.pos[0], q.pos[1], q.pos[2]);
+                        let bend = sway * (py / tall).powi(2);
+                        let (rx, rz) = (px * cs - pz * sn, px * sn + pz * cs);
+                        let mut vv =
+                            Vert::new(x + rx * k + right[0] * bend, ground + py * k * v, z + rz * k + right[2] * bend, q.uv[0], q.uv[1])
+                                .col(white);
+                        let n = q.normal;
+                        vv.normal = [n[0] * cs - n[2] * sn, n[1], n[0] * sn + n[2] * cs];
+                        l.push(vv);
+                    }
+                    // and its picture through its middle, turned to the eye: the solid's rings follow the outline's mean,
+                    // so the picture's leafy edge stands out round it as the crown's sprigs
+                    let i = self.sprites[si].s.frame_index(self.prop_view(&p, si, sc.quarter), p.frame);
+                    let t = self.walk_tex_smooth(g, o, si, i);
+                    let rect = (-ax * k, (w - ax) * k, ay * k * v, -(h - ay) * k * v);
+                    card(cut.get(t), anchor, right, up, rect, false, sway, white);
+                } else {
+                    let i = self.sprites[si].s.frame_index(self.prop_view(&p, si, sc.quarter), p.frame);
+                    let t = self.walk_tex_smooth(g, o, si, i);
+                    let rect = (-ax * k, (w - ax) * k, ay * k * v, -(h - ay) * k * v);
+                    card(cut.get(t), anchor, right, up, rect, false, sway, white);
+                }
                 if level != Detail::Far {
                     if let Some(sh) = p.shadow {
                         let i = self.sprites[sh].s.frame_index(self.prop_view(&p, sh, 0), p.frame);
@@ -1191,6 +1452,118 @@ impl App {
                     continue;
                 }
                 o.drawn += 1;
+                // a golfer near enough: a 3D body acting out their clip
+                // (and the player's own pro walking the course between rounds: an employee wearing a golfer's clips)
+                let owner = p
+                    .employee
+                    .and_then(|ei| self.employees.get(ei))
+                    .filter(|e| e.job == sg_core::staff::job::OWNER)
+                    .map(|e| self.staff_clip_of(e).1);
+                if let (Some(gi), true) = (p.golfer.or(owner.map(|_| usize::MAX)), dist < GOLFER_BODY_NEAR && !flat_people) {
+                    // the player's pro, in a round or walking: drawn as the star he is
+                    let star = owner.is_some() || (self.club.gary >= 0 && gi == self.club.gary as usize);
+                    let (id, frame) = self.club.drawn.get(gi).copied().unwrap_or((0, 0));
+                    let clip = match owner {
+                        Some(state) => ["NormalWalk", "Fidget", "Happy"][state.min(2)],
+                        None => crate::app::GOLFER_CLIPS.iter().rev().find(|(b, _)| *b <= id && id - *b <= 8).map(|c| c.1).unwrap_or(""),
+                    };
+                    let mut t = match owner {
+                        Some(_) => {
+                            let n = p.body.map(|b| self.sprites[b].s.frames_per_view).unwrap_or(1).max(1);
+                            if n > 1 {
+                                p.frame as f32 / (n - 1) as f32
+                            } else {
+                                0.0
+                            }
+                        }
+                        None => {
+                            let n = self.club.clip_frames.get(id as usize).copied().unwrap_or(1).max(1);
+                            if n > 1 {
+                                frame as f32 / (n - 1) as f32
+                            } else {
+                                0.0
+                            }
+                        }
+                    };
+                    // (SG_WALK_POSE=CLIP:T puts every golfer in that clip's pose, T of the way through it, for stills)
+                    let forced = std::env::var("SG_WALK_POSE").ok();
+                    let clip = match forced.as_deref().and_then(|f| f.split_once(':')) {
+                        Some((c, ft)) => {
+                            t = ft.split(':').next().and_then(|v| v.parse().ok()).unwrap_or(0.0);
+                            crate::app::GOLFER_CLIPS.iter().find(|g| g.1 == c).map(|g| g.1).unwrap_or(clip)
+                        }
+                        None => clip,
+                    };
+                    let act = crate::walk_golfer::Act::of_clip(clip);
+                    let of = p.outfit.unwrap_or_default();
+                    let look = *o.looks.entry(of).or_insert_with(|| match self.swaps.compose(&of) {
+                        Some(pal) => crate::walk_golfer::Look::from_palette(&pal, of.female),
+                        None => crate::walk_golfer::Look::plain(&of),
+                    });
+                    let club = self.club.g.get(gi).map(|g| g.club).unwrap_or(0);
+                    let ph = place_hash(gi as f32, 3.0);
+                    let base_id = crate::app::GOLFER_CLIPS.iter().rev().find(|(b, _)| *b <= id && id - *b <= 8).map(|c| c.0).unwrap_or(id);
+                    let (height, girth) = o.builds.as_ref().and_then(|b| b.get((id - base_id) as usize)).copied().unwrap_or((1.0, 1.0));
+                    let (kind, mood) = self.club.g.get(gi).map(|g| (g.kind, g.mood)).unwrap_or((0x20, 4));
+                    // the golfer's own head: the hair, skin and beard their portrait shows (the pro's: the roster's first)
+                    let roster = self.club.g.get(gi).map(|g| g.roster).unwrap_or(if owner.is_some() { 0 } else { -1 });
+                    let face = if roster >= 0 && std::env::var_os("SG_WALK_NO_PORTRAITS").is_none() {
+                        let person = self.club.roster.get(roster as usize).cloned().unwrap_or_default();
+                        self.walk_portrait(o, person.female(), person.head_index(roster as usize))
+                    } else {
+                        None
+                    };
+                    let mut look = look;
+                    if let Some((hair, skin, ..)) = face {
+                        if look.hands == look.skin {
+                            look.hands = skin;
+                        }
+                        look.skin = skin;
+                        look.hair = hair;
+                    }
+                    let (beard, whiskers) = face.map(|f| (f.2, f.3)).unwrap_or((crate::walk_golfer::Beard::None, look.hair));
+                    // as finely made as the golfer is big on the screen (sc.u.info[2]: the focal length in pixels)
+                    let pixels = 1.5 * GOLFER * M * p.scale.max(0.1) * sc.u.info[2] / dist.max(1.0);
+                    let detail = crate::walk_golfer::detail_for(pixels);
+                    let who = crate::walk_golfer::Who { look, height, girth, kind, mood, beard, whiskers, detail, star };
+                    let v = crate::walk_golfer::figure(&who, act, t, sc.time + ph * 10.0, club);
+                    // facing: along the heading, or side on to it at the ball (the target on a right-hander's left)
+                    let (hs, hc) = p.heading.to_radians().sin_cos();
+                    let mut fwd = if act.at_ball() { [-hs, hc] } else { [hc, hs] };
+                    // (SG_WALK_POSE=CLIP:T:DEG also turns every golfer DEG degrees, to see their faces in stills)
+                    if let Some(deg) = forced.as_deref().and_then(|f| f.split(':').nth(2)).and_then(|d| d.parse::<f32>().ok()) {
+                        let (s2, c2) = deg.to_radians().sin_cos();
+                        fwd = [fwd[0] * c2 - fwd[1] * s2, fwd[0] * s2 + fwd[1] * c2];
+                    }
+                    if p.mirror && act.at_ball() {
+                        fwd = [-fwd[0], -fwd[1]];
+                    }
+                    let rt = [-fwd[1], fwd[0]];
+                    // a left-hander is the mirror image: the body built right-handed, its right and left swapped
+                    let fl = if p.mirror && act.at_ball() { -1.0 } else { 1.0 };
+                    let k = GOLFER * M * p.scale.max(0.1);
+                    // at the ball the golfer stands back from it (the game keeps the ball at the golfer's own place until it
+                    // is struck), so the club meets it
+                    let [sx, sz] = if act.at_ball() { crate::walk_golfer::ball_spot(act, club, of.female) } else { [0.0, 0.0] };
+                    let (bx, bz) = (x - (rt[0] * sx * fl + fwd[0] * sz) * k, z - (rt[1] * sx * fl + fwd[1] * sz) * k);
+                    let base = [bx, self.terrain.height_at(bx, bz) + lift, bz];
+                    let place = |q: Vert| {
+                        let (lx, ly, lz) = (q.pos[0] * fl, q.pos[1], q.pos[2]);
+                        let mut w = q;
+                        w.pos = [base[0] + (rt[0] * lx + fwd[0] * lz) * k, base[1] + ly * k, base[2] + (rt[1] * lx + fwd[1] * lz) * k];
+                        let n = q.normal;
+                        w.normal = [rt[0] * n[0] * fl + fwd[0] * n[2], n[1], rt[1] * n[0] * fl + fwd[1] * n[2]];
+                        w
+                    };
+                    let mut gv: Vec<Vert> = v.into_iter().map(place).collect();
+                    if toon {
+                        crate::walk_toon::outline(&gv, crate::walk_toon::width(dist, 0.011 * M), &mut inks);
+                        crate::walk_toon::soft(&mut gv, sun, eye);
+                    }
+                    solids.extend(gv);
+                    blob(self, x, z, 0.5 * M, 0.38, &mut blobs);
+                    continue;
+                }
                 let view = match p.view {
                     Some(v) => v.rem_euclid(views.max(1)),
                     None if views >= 8 && p.heading > -999.0 => person_view(p.heading, sc.yaw, p.mirror),
@@ -1199,11 +1572,38 @@ impl App {
                 let i = self.sprites[si].s.frame_index(view, p.frame);
                 let t = match p.outfit {
                     Some(of) => self.walk_person_tex(g, o, si, i, of),
-                    None => self.walk_tex(g, o, si, i),
+                    None => self.walk_tex_smooth(g, o, si, i),
                 };
                 let flip = p.mirror && views < 8;
-                let rect = (-ax * sh, (w - ax) * sh, ay * sv, -(h - ay) * sv);
-                card(front.get(t), [x, ground + lift, z], right, up, rect, flip, 0.0, white);
+                let near = dist < PERSON_RELIEF_NEAR && !flat_people;
+                let body = near
+                    && o.reliefs
+                        .entry((si, i))
+                        .or_insert_with(|| crate::walk_relief::relief(&self.sprites[si].s.frame(i), ax, ay))
+                        .is_some();
+                if body {
+                    // in relief, turned to the eye as the picture is: across the picture along the eye's right, out of it
+                    // towards the eye
+                    let mut out = [-right[2], 0.0, right[0]];
+                    if out[0] * (eye[0] - x) + out[2] * (eye[2] - z) < 0.0 {
+                        out = out.map(|v| -v);
+                    }
+                    let f = if flip { -1.0 } else { 1.0 };
+                    let base = [x, ground + lift, z];
+                    let l = front.get(t);
+                    for q in o.reliefs[&(si, i)].iter().flatten() {
+                        let (px, py, pz) = (q.pos[0] * f * sh, q.pos[1] * sv, q.pos[2] * sh);
+                        let at = |a: usize| base[a] + right[a] * px + up[a] * py + out[a] * pz;
+                        let mut v = Vert::new(at(0), at(1), at(2), q.uv[0], q.uv[1]).col(q.color);
+                        // (tipped up, so a person is as bright as the picture overall, lit and shaded at the sides)
+                        let n = q.normal;
+                        v.normal = [right[0] * n[0] * f + out[0] * n[2], n[1] + 0.8, right[2] * n[0] * f + out[2] * n[2]];
+                        l.push(v);
+                    }
+                } else {
+                    let rect = (-ax * sh, (w - ax) * sh, ay * sv, -(h - ay) * sv);
+                    card(front.get(t), [x, ground + lift, z], right, up, rect, flip, 0.0, white);
+                }
                 blob(self, x, z, 0.5 * M, 0.38, &mut blobs);
                 continue;
             }
@@ -1228,6 +1628,7 @@ impl App {
         u.pull[3] = 0.0012;
         decals.draw(gpu, Pipe::Blend, &u.with_mode(mode::DECAL));
         gpu.tris(Pipe::Blend, g.white, &u.with_mode(mode::BLOB), &blobs);
+        gpu.tris(Pipe::Blend, g.white, &u.with_mode(mode::FLAT), &shadows);
         let mut uc = sc.u.with_mode(mode::CUTOUT);
         uc.zenith[3] = 0.5;
         cut.draw(gpu, Pipe::Solid, &uc);
@@ -1236,7 +1637,92 @@ impl App {
         uf.pull[3] = 0.004;
         front.draw(gpu, Pipe::Solid, &uf);
         gpu.tris(Pipe::Solid, g.white, &sc.u.with_mode(mode::FLAT), &solids);
+        // the outlines: pushed back from the eye by more than a model is deep, so only their rims show round the models
+        let mut ui = sc.u.with_mode(mode::FLAT);
+        ui.pull = [sc.eye[0], sc.eye[1], sc.eye[2], -0.035];
+        gpu.tris(Pipe::Solid, g.white, &ui, &inks);
         gpu.tris(Pipe::Blend, g.white, &sc.u.with_mode(mode::FLAT), &trails);
+    }
+
+    /// A stock head's colours (0..18), read from the game's own portrait of it (the halo page the screens draw from,
+    /// `Art::halo_cell_in`): its hair, its skin, and its facial hair (by the stock head) and that hair's colour. None for a custom head or when the page is
+    /// missing.
+    fn walk_portrait(&self, o: &mut Objects, female: bool, head: u8) -> Option<Portrait> {
+        if let Some(p) = o.portraits.get(&(female, head)) {
+            return *p;
+        }
+        if head >= 19 {
+            o.portraits.insert((female, head), None);
+            return None;
+        }
+        let page = o
+            .halo
+            .entry(female)
+            .or_insert_with(|| {
+                let sheet = if female { "Heads/golfballhalopage_female.pcx" } else { "Heads/golfballhalopage_male .pcx" };
+                let d = sg_core::fsutil::read_file(self.game_path(sheet))?;
+                let mut img = sg_core::assets::decode_pcx(&d).ok()?;
+                for p in img.px.chunks_exact_mut(4) {
+                    if (p[0] >= 0xf8 && p[1] == 0 && p[2] >= 0xf8) || (p[0] == 255 && p[1] == 0 && p[2] == 255) {
+                        p[3] = 0;
+                    }
+                }
+                Some(img)
+            })
+            .clone();
+        let made = page.and_then(|page| {
+            // the neutral face's cell
+            let (x0, y0) = ((head / 2) as usize * 140, (head & 1) as usize * 420 + 140);
+            if x0 + 140 > page.w as usize || y0 + 140 > page.h as usize {
+                return None;
+            }
+            let mut px = vec![0u8; 140 * 140 * 4];
+            for y in 0..140 {
+                let s = ((y0 + y) * page.w as usize + x0) * 4;
+                px[y * 560..y * 560 + 560].copy_from_slice(&page.px[s..s + 560]);
+            }
+            let cell = Rgba { w: 140, h: 140, px };
+            let (bx0, by0, bx1, by1) = Mask::new(&cell).bbox;
+            if bx1 <= bx0 + 8 || by1 <= by0 + 8 {
+                return None;
+            }
+            let (bw, bh) = (bx1 - bx0, by1 - by0);
+            // the opaque colours in a part of the head (fractions of its box across and down)
+            let part = |x: (usize, usize), y: (usize, usize)| {
+                let mut v = Vec::new();
+                for yy in by0 + bh * y.0 / 100..by0 + bh * y.1 / 100 {
+                    for xx in bx0 + bw * x.0 / 100..bx0 + bw * x.1 / 100 {
+                        let p = &cell.px[(yy * 140 + xx) * 4..(yy * 140 + xx) * 4 + 4];
+                        if p[3] > 127 {
+                            v.push([p[0] as f32 / 255.0, p[1] as f32 / 255.0, p[2] as f32 / 255.0]);
+                        }
+                    }
+                }
+                v
+            };
+            let mean = |v: &[[f32; 3]]| {
+                (!v.is_empty()).then(|| {
+                    let n = v.len() as f32;
+                    v.iter().fold([0.0; 3], |a, c| [a[0] + c[0] / n, a[1] + c[1] / n, a[2] + c[2] / n])
+                })
+            };
+            let lum = |c: &[f32; 3]| c[0] * 0.3 + c[1] * 0.59 + c[2] * 0.11;
+            let hair = mean(&part((25, 75), (4, 16))).unwrap_or([0.3, 0.2, 0.12]);
+            // the skin: the cheeks and brow, skin-coloured texels only (not the eyes, brows or shadow), the lighter half
+            let mut sk: Vec<[f32; 3]> = part((28, 72), (35, 62)).into_iter().filter(|c| c[0] > c[1] && c[1] >= c[2] * 0.9).collect();
+            sk.sort_by(|a, b| lum(b).total_cmp(&lum(a)));
+            sk.truncate(sk.len().div_ceil(2));
+            let skin = mean(&sk).unwrap_or([0.85, 0.65, 0.5]);
+            // the facial hair's colour: the darker half of the chin and lip, not the lips' red
+            let mut wh: Vec<[f32; 3]> = part((30, 70), (64, 96)).into_iter().filter(|c| c[0] < c[1] * 1.6).collect();
+            wh.sort_by(|a, b| lum(a).total_cmp(&lum(b)));
+            wh.truncate(wh.len().div_ceil(3));
+            let whiskers = mean(&wh).unwrap_or(hair);
+            let beard = if female { crate::walk_golfer::Beard::None } else { crate::walk_golfer::Beard::of_stock_head(head) };
+            Some((hair, skin, beard, whiskers))
+        });
+        o.portraits.insert((female, head), made);
+        made
     }
 
     /// A person's frame in an outfit's colours, as a texture of the walk camera's own (cached).
@@ -1246,7 +1732,7 @@ impl App {
         }
         let img = match self.swaps.compose(&of).and_then(|pal| sg_core::sprites::recolour(&self.sprites[si].s, i, &pal)) {
             Some(img) => img,
-            None => return self.walk_tex(g, o, si, i),
+            None => return self.walk_tex_smooth(g, o, si, i),
         };
         if o.people.len() > 4000 {
             let keys: Vec<_> = o.people.keys().copied().take(2000).collect();
@@ -1256,7 +1742,8 @@ impl App {
                 }
             }
         }
-        let t = sprite_texture(g, &img);
+        // smoothed like the trees' (xBRZ): a person seen a few paces off covers many pixels a texel
+        let t = if img.w * img.h <= 128 * 128 { sprite_texture(g, &sg_core::xbrz::scale(&img, 4)) } else { sprite_texture(g, &img) };
         o.people.insert((si, i, of), t);
         t
     }
@@ -1337,8 +1824,10 @@ impl App {
         if gl.bx == 0 || gl.hole <= 0 || gl.hole >= 19 || gl.flags & flag::PENALTY != 0 {
             return None;
         }
-        let (bx, bz) = self.units_to_world(gl.bx, gl.by);
-        Some([bx, self.terrain.height_at(bx, bz) + gl.bz as f32 * sg_core::terrain::HEIGHT_STEP / 20.0, bz])
+        // eased between the simulation's ticks (enhanced.rs `shown_ball`), so a flight is smooth at any frame rate
+        let (ux, uy, uz) = self.shown_ball(i).unwrap_or((gl.bx as f32, gl.by as f32, gl.bz as f32));
+        let (bx, bz) = self.units_to_world_f(ux, uy);
+        Some([bx, self.terrain.height_at(bx, bz) + uz * sg_core::terrain::HEIGHT_STEP / 20.0, bz])
     }
 
     fn walk_balls(

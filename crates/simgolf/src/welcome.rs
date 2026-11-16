@@ -35,6 +35,8 @@ use std::cell::RefCell;
 
 /// The changelog (box B's See everything that's new, Preferences > More > What's new...).
 pub const CHANGELOG_URL: &str = "https://github.com/crspytopgn/opensgolf/blob/main/CHANGELOG.md";
+/// The website's feature guide (web/guide.html): every OpenSGolf feature, where it is and whether it starts on.
+pub const GUIDE_URL: &str = "https://crspytopgn.github.io/opensgolf/guide.html";
 /// settings.json's keys: "welcome_shown" is false from a new player's first start until the first box has shown (a
 /// player who quits before it is still new next time), true after; "last_version_seen" the minor version last shown.
 pub const WELCOME_KEY: &str = "welcome_shown";
@@ -64,6 +66,18 @@ pub enum Try {
     Flyover,
     /// Home names only under the pointer on (extras.rs).
     HomeHover,
+    /// Pause while you aim on (extras.rs).
+    PauseAim,
+    /// Saves newest first on (extras.rs).
+    SaveNewest,
+    /// Challenges and the design lab on (extras.rs).
+    Challenges,
+    /// Play upright on phones and tablets on (extras.rs).
+    Portrait,
+    /// Eyesore demolition on for the next games (sg_core::extras).
+    Demolish,
+    /// The First-person view extra on (extras.rs; computers only).
+    FirstPerson,
 }
 
 /// One of a version's highlights: its line, the note under it, and what its Try it does (none: no option to try).
@@ -103,6 +117,19 @@ pub const HIGHLIGHTS: &[(&str, &[Highlight])] = &[
             hl("STR_WHATSNEW_MORE07", "STR_WHATSNEW_MORE07_NOTE", None),
         ],
     ),
+    (
+        "0.8",
+        &[
+            hl("STR_WHATSNEW_FIRSTPERSON", "STR_WHATSNEW_FIRSTPERSON_NOTE", Some(Try::FirstPerson)),
+            hl("STR_WHATSNEW_WEBAPP", "STR_WHATSNEW_WEBAPP_NOTE", None),
+            hl("STR_WHATSNEW_PAUSEAIM", "STR_WHATSNEW_PAUSEAIM_NOTE", Some(Try::PauseAim)),
+            hl("STR_WHATSNEW_SAVES", "STR_WHATSNEW_SAVES_NOTE", Some(Try::SaveNewest)),
+            hl("STR_WHATSNEW_CHALLENGES", "STR_WHATSNEW_CHALLENGES_NOTE", Some(Try::Challenges)),
+            hl("STR_WHATSNEW_DEMOLISH", "STR_WHATSNEW_DEMOLISH_NOTE", Some(Try::Demolish)),
+            hl("STR_WHATSNEW_PORTRAIT", "STR_WHATSNEW_PORTRAIT_NOTE", Some(Try::Portrait)),
+            hl("STR_WHATSNEW_MORE08", "STR_WHATSNEW_MORE08_NOTE", None),
+        ],
+    ),
 ];
 
 /// The highlights file on GitHub (and its copy in the save folder), and the test hook that names another address.
@@ -128,6 +155,12 @@ pub fn try_named(name: &str) -> Option<Try> {
         "tees" => Try::Tees,
         "hole_flyover" => Try::Flyover,
         "home_names_hover" => Try::HomeHover,
+        "pause_aim" => Try::PauseAim,
+        "saves_newest" => Try::SaveNewest,
+        "challenges" => Try::Challenges,
+        "portrait" => Try::Portrait,
+        "demolish" => Try::Demolish,
+        "first_person" => Try::FirstPerson,
         _ => return None,
     })
 }
@@ -465,6 +498,15 @@ impl App {
         }
     }
 
+    /// Opens the feature guide in the browser (the launcher's How to play tab), or copies its address where there is none.
+    pub fn open_guide(&mut self) {
+        if !crate::bugreport::open_link(GUIDE_URL) {
+            #[cfg(not(target_arch = "wasm32"))]
+            miniquad::window::clipboard_set(GUIDE_URL);
+            self.show_toast(&trf("STR_SUPPORT_NO_BROWSER", &[("URL", &GUIDE_URL)]));
+        }
+    }
+
     /// The highlights the What's new box shows (none once it is answered).
     pub fn whatsnew_shown(&self) -> &'static [Highlight] {
         self.welcome.news.map_or(&[], |n| n.1)
@@ -473,7 +515,12 @@ impl App {
     /// Whether a highlight's Try it can be offered here (the HD maker only with the original game's files, not in a
     /// browser).
     pub fn can_try(&self, t: Try) -> bool {
-        t != Try::MakeHd || self.hd_make_offer().is_some()
+        match t {
+            Try::MakeHd => self.hd_make_offer().is_some(),
+            // the first-person view is a computer's (extras.rs `first_person`)
+            Try::FirstPerson => cfg!(not(any(target_arch = "wasm32", target_os = "android"))),
+            _ => true,
+        }
     }
 
     /// The What's new box's options that only tell (`whatsnew_plain`).
@@ -492,6 +539,12 @@ impl App {
             Try::Tees => self.extras_next.tees,
             Try::Flyover => crate::extras::settings().hole_flyover,
             Try::HomeHover => crate::extras::settings().home_labels_hover,
+            Try::PauseAim => crate::extras::settings().pause_aim,
+            Try::SaveNewest => crate::extras::settings().save_newest,
+            Try::Challenges => crate::extras::settings().challenges,
+            Try::Portrait => crate::extras::settings().portrait,
+            Try::Demolish => self.extras_next.demolish,
+            Try::FirstPerson => crate::extras::settings().first_person,
         }
     }
 
@@ -521,23 +574,39 @@ impl App {
                 self.hd_make_open();
                 false
             }
-            Some(t @ (Try::MouseSwing | Try::RightDrop | Try::Flyover | Try::HomeHover)) => {
+            Some(
+                t @ (Try::MouseSwing
+                | Try::RightDrop
+                | Try::Flyover
+                | Try::HomeHover
+                | Try::PauseAim
+                | Try::SaveNewest
+                | Try::Challenges
+                | Try::Portrait
+                | Try::FirstPerson),
+            ) => {
                 let mut ui = crate::extras::settings();
                 match t {
                     Try::MouseSwing => ui.mouse_swing = true,
                     Try::RightDrop => ui.right_drop = true,
                     Try::Flyover => ui.hole_flyover = true,
+                    Try::PauseAim => ui.pause_aim = true,
+                    Try::SaveNewest => ui.save_newest = true,
+                    Try::Challenges => ui.challenges = true,
+                    Try::Portrait => ui.portrait = true,
+                    Try::FirstPerson => ui.first_person = true,
                     _ => ui.home_labels_hover = true,
                 }
                 crate::extras::set(ui);
                 crate::extras::save(&ui);
                 true
             }
-            Some(t @ (Try::NoWeeds | Try::SecondCourse | Try::Tees)) => {
+            Some(t @ (Try::NoWeeds | Try::SecondCourse | Try::Tees | Try::Demolish)) => {
                 let mut e = self.extras_next;
                 match t {
                     Try::NoWeeds => e.no_weeds = true,
                     Try::SecondCourse => e.second_course = true,
+                    Try::Demolish => e.demolish = true,
                     _ => e.tees = true,
                 }
                 self.extras_next = e;

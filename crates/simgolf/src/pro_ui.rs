@@ -60,6 +60,11 @@ fn pad_hit(vx: f32, vy: f32) -> Option<(usize, bool)> {
     })
 }
 
+/// Whether a skill point can still go anywhere: a skill of the card below its top.
+pub fn can_spend(skills: &[u8]) -> bool {
+    skills.iter().take(10).any(|&v| v < 10)
+}
+
 /// The OK ball: within 20 of (x0 + 350, 334) both ways.
 fn ok_hit(vx: f32, vy: f32) -> bool {
     (vx - X0 - 350.0).abs() < 20.0 && (vy - 334.0).abs() < 20.0
@@ -229,6 +234,7 @@ impl App {
 
     fn close_skills(&mut self, d: SkillDialog) {
         self.screen = Screen::Play;
+        self.skills_kept = d.points;
         self.act(sg_core::action::Action::SkillsDone { points: d.points, then: d.then });
     }
 
@@ -380,7 +386,17 @@ impl App {
                 }
             }
         }
-        if self.club.skill_points > 0 && self.club.pro_mask != 0 && self.ui_ok && self.screen == Screen::Play && self.club.award_pending < 0
+        // the card comes up by itself when points are won, not again for points the player chose to keep or that no
+        // skill can take (every skill at its top): those wait for the pro panel's Skills button (#172)
+        if self.club.skill_points < self.skills_kept {
+            self.skills_kept = self.club.skill_points;
+        }
+        if self.club.skill_points > self.skills_kept
+            && can_spend(&self.club.pro_skill)
+            && self.club.pro_mask != 0
+            && self.ui_ok
+            && self.screen == Screen::Play
+            && self.club.award_pending < 0
         {
             let pts = self.club.skill_points;
             self.open_skills(pts, None);
@@ -470,6 +486,16 @@ pub type AimText = ([String; 4], Vec<(String, bool)>);
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn points_no_skill_can_take_do_not_bring_the_card_back() {
+        // #172: every skill at its top but one at 8: two points go there, the third has nowhere to go
+        let mut k = [10u8; 16];
+        k[3] = 8;
+        assert!(can_spend(&k));
+        k[3] = 10;
+        assert!(!can_spend(&k));
+    }
 
     #[test]
     fn pads_and_ok() {

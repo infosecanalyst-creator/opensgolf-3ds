@@ -26,6 +26,7 @@ import android.content.Intent;
 import android.content.res.Configuration;
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.pm.ActivityInfo;
 import android.content.pm.PackageInstaller;
 
 import android.database.Cursor;
@@ -565,6 +566,18 @@ public class MainActivity extends Activity {
 
     public String installState() {
         return installState;
+    }
+
+    // Playing upright (crates/simgolf/src/portrait.rs): every way the sensor says with the extra on, else landscape either
+    // way up as the manifest asks (Cargo.toml "sensorLandscape").
+    public void setPortrait(final boolean on) {
+        runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    setRequestedOrientation(on ? ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+                                               : ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+                }
+            });
     }
 
     public void installApk(final String path) {

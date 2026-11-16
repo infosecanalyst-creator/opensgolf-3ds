@@ -16,6 +16,8 @@ game/
 !crates/simgolf/fonts/LiberationSans-Bold.ttf
 # the Android launcher icon is our own drawing (tools/make_icons.sh)
 !crates/simgolf/android/res/**/*.png
+# and the browser version's home-screen icons, the same drawing (tools/make_icons.sh)
+!web/icons/*.png
 # the store icons and screenshots: our own drawing and pictures of the free set only (packaging/README.md)
 !packaging/**/*.png
 !fastlane/**/*.png
@@ -51,3 +53,6 @@ selfcheck-test/
 build_asan/
 __pycache__/
 *.pyc
+
+# Python wheels (downloaded while making test fixtures; never part of the project)
+*.whl

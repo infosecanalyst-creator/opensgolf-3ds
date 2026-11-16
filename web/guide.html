@@ -1,0 +1,1046 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1f6b3f">
+<meta name="description" content="Every feature OpenSGolf adds to SimGolf: what it does, whether it is on by default, and where to switch it on.">
+<title>OpenSGolf feature guide</title>
+<!--
+  The feature guide (the port's own page, published beside the browser version by web/build.sh).
+
+  Two halves:
+  * the feature sections (hand-written, here): one <article class="feat"> per feature, grouped by what a player wants to
+    do. Each says where it is, whether it is on for a new player, and what it does, and may link to its row in the
+    reference (#opt-...). To add a feature, copy an article into the section it belongs to; put data-since="0.x" on it
+    so the "New in" pill shows. Keep to what is merged on main.
+  * the reference (generated, between the reference markers): every option of Preferences, Game options and the Enhanced
+    graphics settings, and every key, made from the game's own lists by crates/simgolf/src/guide.rs. Never edit it by
+    hand: after changing an option or a key, run  OPENSGOLF_WRITE_GUIDE=1 cargo test -p opensgolf guide  (the test fails
+    while it is out of date).
+-->
+<script>
+  // the colour theme picked with the start page's theme button (the same setting, so both pages follow it)
+  try { var t = localStorage.getItem("opensgolf-theme"); if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t); } catch (e) {}
+</script>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%232f8f4e'/%3E%3Crect x='30' y='12' width='3' height='34' fill='%23fff'/%3E%3Cpath d='M33 12l16 6-16 6z' fill='%23e8423b'/%3E%3Ccircle cx='24' cy='46' r='6' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&display=swap">
+<style>
+  /* the start page's look (web/index.html): a centred site panel on the green backdrop, glossy section bars */
+  :root {
+    --head: "Baloo 2", "Arial Rounded MT Bold", "Trebuchet MS", system-ui, sans-serif;
+    --ui: Verdana, Tahoma, "DejaVu Sans", Geneva, sans-serif;
+    --bg1: #1f6b3f; --bg2: #164a42; --bg3: #102a4f;
+    --panel: #f5f9ee;
+    --ink: #1c2a1f;
+    --ink-soft: #3d4f41;
+    --inset: #ffffff;
+    --inset-hi: #ffffff;
+    --inset-lo: #b4c6ab;
+    --line: #c8d6bf;
+    --link: #0b5aa8;
+    --gold: #ffd23f;
+    --bar1: #3f9a4f; --bar2: #1d6b2f; --bar3: #155a25; --bar-edge: #0e4a1c;
+    --code-bg: #e8efe2; --code-ink: #1d3a1f;
+    --on-bg: #d7f0d4; --on-ink: #145a1e; --off-bg: #eceee9; --off-ink: #4c574e; --act-bg: #dfeaf8; --act-ink: #17406f;
+    --tag-bg: #fff1c9; --tag-ink: #6b4b00; --row-alt: #f6faf2; --target: #fff4c2;
+    --foot: #59625c;
+    --card-head: var(--bar2);
+    --mast-sky: linear-gradient(180deg, #1b5cae 0%, #3a86d4 60%, #8cc4ee 100%);
+    color-scheme: light;
+  }
+  /* the dark palette: the two blocks must stay the same (web/test.js checks) */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg1: #0f2a1b; --bg2: #0b1d1f; --bg3: #070f22;
+      --panel: #142019;
+      --ink: #e9f2e6;
+      --ink-soft: #bfd0c2;
+      --inset: #1c2b21;
+      --inset-hi: #2f4636;
+      --inset-lo: #0a120d;
+      --line: #2f4636;
+      --link: #8cc8ff;
+      --code-bg: #24382a; --code-ink: #d9f0d0;
+      --on-bg: #1f4a28; --on-ink: #c9f2c4; --off-bg: #2a332c; --off-ink: #c3cec5; --act-bg: #1d3352; --act-ink: #cfe2ff;
+      --tag-bg: #4a3a0c; --tag-ink: #ffe9a8; --row-alt: #18261d; --target: #3a2f0a;
+      --foot: #a9b6ad;
+      --card-head: var(--gold);
+      --mast-sky: linear-gradient(180deg, #0c1838 0%, #213a70 60%, #4b5b8f 100%);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg1: #0f2a1b; --bg2: #0b1d1f; --bg3: #070f22;
+    --panel: #142019;
+    --ink: #e9f2e6;
+    --ink-soft: #bfd0c2;
+    --inset: #1c2b21;
+    --inset-hi: #2f4636;
+    --inset-lo: #0a120d;
+    --line: #2f4636;
+    --link: #8cc8ff;
+    --code-bg: #24382a; --code-ink: #d9f0d0;
+    --on-bg: #1f4a28; --on-ink: #c9f2c4; --off-bg: #2a332c; --off-ink: #c3cec5; --act-bg: #1d3352; --act-ink: #cfe2ff;
+    --tag-bg: #4a3a0c; --tag-ink: #ffe9a8; --row-alt: #18261d; --target: #3a2f0a;
+    --foot: #a9b6ad;
+    --card-head: var(--gold);
+    --mast-sky: linear-gradient(180deg, #0c1838 0%, #213a70 60%, #4b5b8f 100%);
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--bg3); scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body { margin: 0; min-height: 100vh; color: var(--ink); font: 14px/1.55 var(--ui);
+    background: linear-gradient(180deg, var(--bg1) 0%, var(--bg2) 48%, var(--bg3) 100%) fixed; }
+  a { color: var(--link); }
+  code, kbd { font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; background: var(--code-bg); color: var(--code-ink);
+    padding: 1px 5px; border-radius: 4px; }
+  kbd { border: 1px solid var(--line); border-bottom-width: 2px; white-space: nowrap; }
+  .site { max-width: 1000px; margin: 24px auto 40px; background: var(--panel); border: 1px solid #0d3b6e; border-radius: 14px;
+    box-shadow: 0 18px 50px rgba(5, 25, 60, 0.45); overflow: hidden; }
+  .mast { padding: 14px 22px 22px; color: #fff; background: var(--mast-sky); }
+  .toplinks { display: flex; justify-content: flex-end; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+  .toplinks a, .toplinks button { font: bold 12px var(--ui); color: #fff; text-decoration: none; padding: 5px 10px; border-radius: 4px;
+    background: rgba(8, 36, 80, 0.55); border: 1px solid rgba(255, 255, 255, 0.35); min-height: 28px; display: inline-flex;
+    align-items: center; cursor: pointer; }
+  .toplinks a:hover, .toplinks button:hover { background: rgba(8, 36, 80, 0.8); }
+  h1 { margin: 0; font: 800 clamp(34px, 6vw, 50px)/1.05 var(--head); color: var(--gold);
+    text-shadow: 0 2px 0 #8a5a00, 0 3px 0 #6b4400, 0 4px 10px rgba(0, 20, 50, 0.6); }
+  h1 span { color: #fff; }
+  /* beside the title, index.html's picture: a plain green (no original-game screenshots in this fork) with the first-person view in its corner */
+  .mast { position: relative; }
+  .mast .shot { position: absolute; right: 26px; top: 64px; width: 250px; height: 156px; border: 4px solid #fff; border-radius: 14px;
+    transform: rotate(2.5deg); background: radial-gradient(ellipse at 50% 35%, #2f6b3a 0%, #0c2416 70%);
+    box-shadow: 0 0 0 1px #1d6b2f, 0 8px 18px rgba(0, 20, 50, 0.45); }
+  .mast .shot .inset { position: absolute; right: -14px; bottom: -16px; width: 110px; height: 69px; border: 3px solid #fff; border-radius: 8px;
+    transform: rotate(-5deg); background: #0c2416 url("start-walk.jpg") center / cover no-repeat;
+    box-shadow: 0 0 0 1px #1d6b2f, 0 6px 14px rgba(0, 20, 50, 0.5); }
+  @media (max-width: 960px) { .mast .shot { display: none; } }
+  .mast p { margin: 8px 0 0; max-width: 640px; padding: 6px 10px; border-radius: 6px; background: rgba(8, 36, 80, 0.62);
+    border: 1px solid rgba(255, 255, 255, 0.25); }
+  main { padding: 18px 22px 8px; }
+  .bar { margin: 26px 0 12px; padding: 5px 12px 4px; border-radius: 10px; color: #fff; font: 700 21px/1.3 var(--head);
+    background: linear-gradient(180deg, var(--bar1) 0%, var(--bar2) 50%, var(--bar3) 51%, var(--bar2) 100%);
+    border: 1px solid var(--bar-edge); text-shadow: 0 1px 1px rgba(0, 0, 0, 0.45); scroll-margin-top: 10px; }
+  .intro { color: var(--ink-soft); margin: 0 0 10px; }
+  .toc { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px 16px; margin: 6px 0 0; padding: 12px 16px;
+    list-style: none; background: var(--inset); border: 1px solid var(--line); border-radius: 10px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin: 10px 0 0; color: var(--ink-soft); font-size: 13px; }
+  .feats { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }
+  .feat { position: relative; background: var(--inset); border: 1px solid; border-color: var(--inset-lo) var(--inset-hi) var(--inset-hi) var(--inset-lo);
+    border-radius: 10px; padding: 12px 14px; scroll-margin-top: 10px; }
+  .feat h3 { margin: 0 0 4px; font: 700 18px/1.25 var(--head); color: var(--card-head); }
+  .feat .meta { margin: 0 0 6px; font-size: 12.5px; color: var(--ink-soft); }
+  .feat .meta b { color: var(--ink); }
+  .feat p { margin: 0 0 6px; }
+  .feat p:last-child { margin-bottom: 0; }
+  .feat[data-since]::after { content: "New in " attr(data-since); position: absolute; top: 10px; right: 10px; font: bold 11px var(--ui);
+    padding: 1px 7px; border-radius: 9px; background: #e8423b; color: #fff; }
+  .feat[data-since] h3 { padding-right: 82px; }
+  .feat:target, tr:target td { background: var(--target); }
+  .pill { display: inline-block; font: bold 11px/1.6 var(--ui); padding: 0 8px; border-radius: 9px; white-space: nowrap; }
+  .pill.on { background: var(--on-bg); color: var(--on-ink); }
+  .pill.off { background: var(--off-bg); color: var(--off-ink); }
+  .pill.act, .pill.kept { background: var(--act-bg); color: var(--act-ink); }
+  .tag { display: inline-block; font: bold 10.5px/1.6 var(--ui); padding: 0 7px; border-radius: 9px; background: var(--tag-bg); color: var(--tag-ink); }
+  .when { display: block; font-size: 12px; color: var(--ink-soft); font-style: italic; }
+  .where { display: block; font-size: 12px; color: var(--ink-soft); font-weight: normal; }
+  /* the reference */
+  .ref h3 { margin: 22px 0 6px; font: 700 20px/1.25 var(--head); color: var(--card-head); scroll-margin-top: 10px; }
+  .ref h4 { margin: 16px 0 6px; font: 700 16px/1.25 var(--head); scroll-margin-top: 10px; }
+  .ref h4 .banner { font: italic 12.5px var(--ui); color: var(--ink-soft); margin-left: 6px; }
+  .ref .lede { margin: 0 0 8px; color: var(--ink-soft); }
+  .tw { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--inset); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; vertical-align: top; padding: 7px 10px; border-bottom: 1px solid var(--line); }
+  th { font-size: 12px; color: var(--ink-soft); background: var(--row-alt); white-space: nowrap; }
+  tbody tr:nth-child(even) td { background: var(--row-alt); }
+  tbody tr:last-child td { border-bottom: 0; }
+  td:first-child { min-width: 180px; }
+  td:nth-child(n+3) { white-space: nowrap; }
+  table.keys td:nth-child(2) { white-space: normal; }
+  #find { width: 100%; max-width: 420px; font: 14px var(--ui); padding: 8px 10px; border-radius: 8px; border: 1px solid var(--inset-lo);
+    background: var(--inset); color: var(--ink); }
+  .hidden { display: none !important; }
+  footer { padding: 14px 22px 20px; color: var(--foot); font-size: 12.5px; border-top: 1px solid var(--line); }
+  @media (max-width: 640px) {
+    .site { margin: 0; border-radius: 0; border: 0; }
+    .mast, main, footer { padding-left: 16px; padding-right: 16px; }
+  }
+</style>
+</head>
+<body>
+<div class="site">
+  <div class="mast">
+    <nav class="toplinks" aria-label="Links">
+      <a href="./">Play OpenSGolf</a>
+      <a href="https://github.com/crspytopgn/opensgolf#playing">Downloads</a>
+      <a href="https://github.com/crspytopgn/opensgolf/blob/main/CHANGELOG.md">What's new</a>
+      <button type="button" id="theme" aria-label="Colour theme">Theme: Auto</button>
+    </nav>
+    <div class="shot" role="img" aria-label="A course from above, and in the corner the first-person view of your pro walking in front of the clubhouse"><div class="inset"></div></div>
+    <h1>Open<span>SGolf</span> feature guide</h1>
+    <p>Everything OpenSGolf adds to Sid Meier's SimGolf: what each feature does, whether it is on when you first play, and
+      exactly where to switch it on. The original game is always the default and always one click away.</p>
+  </div>
+
+  <main>
+    <h2 class="bar" id="start">How to use this guide</h2>
+    <p class="intro">With every option at its default, OpenSGolf plays like the 2002 game, apart from its fixes for the
+      original's own bugs. Everything else on this page is something you choose. Most of it lives in one place:
+      <b>Preferences</b>, opened in a game from the dock's <b>System Functions</b> button. Typing any letter while
+      Preferences is open searches every option by name.</p>
+    <div class="legend">
+      <span><span class="pill on">On</span> on for a new player</span>
+      <span><span class="pill off">Off</span> off until you switch it on</span>
+      <span><span class="pill act">Always there</span> part of the game, nothing to switch on</span>
+      <span><span class="tag">Noticeable</span> how much a gameplay option changes play</span>
+    </div>
+    <ul class="toc">
+      <li><a href="#start-here">Start here: the launcher and presets</a></li>
+      <li><a href="#devices">Playing on today's devices</a></li>
+      <li><a href="#building">Building your course</a></li>
+      <li><a href="#gameplay">New gameplay</a></li>
+      <li><a href="#info">Knowing your club</a></li>
+      <li><a href="#saves">Saves and sharing</a></li>
+      <li><a href="#graphics">Graphics</a></li>
+      <li><a href="#mods">Mods, packs and scenarios</a></li>
+      <li><a href="#browser">The browser version</a></li>
+      <li><a href="#help">Help and updates</a></li>
+      <li><a href="#reference">Every option and key</a></li>
+    </ul>
+
+    <!-- ===================================================================================================== -->
+    <h2 class="bar" id="start-here">Start here: the launcher and presets</h2>
+    <div class="feats">
+      <article class="feat" id="launcher">
+        <h3>The launcher</h3>
+        <p class="meta"><span class="pill on">On</span> Shown at each start. <b>Where:</b> Preferences › More › Launcher..., or the title menu's Launcher... button</p>
+        <p>A screen before the title menu with five tabs: <b>Game files</b> (your SimGolf files or the free graphics),
+          <b>How to play</b> (the presets below), <b>Features</b> (see below), <b>Display &amp; sound</b> (window or full
+          screen, Classic, Enhanced or HD graphics, text size, sound, language) and <b>News &amp; updates</b>. Untick
+          <b>Show this at start</b> to go straight to the title menu.</p>
+      </article>
+      <article class="feat" id="features-tab" data-since="0.8">
+        <h3>Switch features on from the launcher</h3>
+        <p class="meta"><span class="pill act">Always there</span> <b>Where:</b> the launcher's Features tab</p>
+        <p>Every option on this page's <a href="#reference">reference</a> in one scrolling list, grouped, each with what
+          it does and its tick. The buttons on the left jump to each group. A click switches it on or off at once. Its <b>Feature guide</b> button opens this page.</p>
+      </article>
+      <article class="feat" id="presets">
+        <h3>Presets: how would you like to play?</h3>
+        <p class="meta"><span class="pill off">Original</span> for a new player. <b>Where:</b> the launcher's How to play tab, the Game box on Select Difficulty, or the first line of Preferences › Game options</p>
+        <p><b>Original</b>: every extra off, Classic graphics. <b>Original + helpers</b> (recommended): every helper and
+          look on, nothing that changes play. <b>OpenSGolf</b>: the helpers plus weather that matters, forward and middle
+          tees, a second course, more staff and animals to buy. <b>Custom</b>: your own mix. Presets never touch your
+          pauses, controls or the bug fixes. <a href="#ref-game-options">See which options each preset sets</a>.</p>
+      </article>
+      <article class="feat" id="bug-fixes">
+        <h3>Fixes for the original's bugs</h3>
+        <p class="meta"><span class="pill on">On</span> <b>Where:</b> Preferences › More › Fix the original game's bugs</p>
+        <p>Mends glitches of the 2002 game itself, such as gaps at waterfalls, costs charged twice and the golfer list
+          picking the wrong golfer. Untick it to play the bugs exactly as the original had them.</p>
+      </article>
+      <article class="feat" id="search">
+        <h3>Search every option</h3>
+        <p class="meta"><span class="pill act">Always there</span> <b>Where:</b> Preferences › More › Search options..., or type a letter in Preferences</p>
+        <p>One box that finds any option by its words and says where it is. <b>Show only changed</b> lists what differs
+          from the original, and <b>Reset to original...</b> puts it all back.</p>
+      </article>
+      <article class="feat" id="course-size">
+        <h3>Bigger courses</h3>
+        <p class="meta"><span class="pill off">Original</span> size. <b>Where:</b> the Course size box on Select Difficulty (the world map for Sandbox Mode)</p>
+        <p>Start on a Large (74 x 74 tiles), Huge (98 x 98) or Giant (128 x 128) map instead of the original's 50 x 50.
+          The view zooms further out and golfers and staff cover the whole map. Scenarios and championships keep their own
+          size.</p>
+      </article>
+    </div>
+
+    <!-- ===================================================================================================== -->
+    <h2 class="bar" id="devices">Playing on today's devices</h2>
+    <div class="feats">
+      <article class="feat" id="save-anywhere">
+        <h3>Save anywhere, quick save</h3>
+        <p class="meta"><span class="pill act">Always there</span> <b>Keys:</b> <kbd>Shift+S</kbd> save, <kbd>Shift+L</kbd> load, <kbd>Shift+F5</kbd> quick save, <kbd>Shift+F9</kbd> quick load</p>
+        <p>Save at any moment, not only between rounds. Quick save writes a <i>quick save</i> slot at once without the
+          Save dialog; quick load brings it back.</p>
+      </article>
+      <article class="feat" id="undo">
+        <h3>Undo</h3>
+        <p class="meta"><span class="pill act">Always there</span> <b>Keys:</b> <kbd>Ctrl+Z</kbd> (<kbd>Cmd+Z</kbd> on a Mac), or the touch Undo button</p>
+        <p>Takes back the last click or drag with a building or terrain tool, and its money. Golfers, the clock and money
+          earned since are left as they are.</p>
+      </article>
+      <article class="feat" id="speed">
+        <h3>Faster and slower game speeds</h3>
+        <p class="meta"><span class="pill act">Always there</span> <b>Keys:</b> <kbd>]</kbd> faster, <kbd>[</kbd> slower</p>
+        <p>Adds x2 and x4 speeds to the original's. Each key stops at the end instead of going round.</p>
+      </article>
+      <article class="feat" id="full-screen">
+        <h3>Full screen and any window size</h3>
+        <p class="meta"><span class="pill act">Always there</span> <b>Keys:</b> <kbd>F11</kbd> or <kbd>Alt+Enter</kbd>; also the launcher's Display &amp; sound tab</p>
+        <p>Plays in a window of any size or full screen, kept for the next start. In full screen, the pointer at the
+          screen's edge scrolls as in the original (<a href="#opt-extras-edge-scroll">Edge scrolling</a>, on).</p>
+      </article>
+      <article class="feat" id="touch">
+        <h3>Touch controls</h3>
+        <p class="meta"><span class="pill act">Always there</span> On phones and tablets</p>
+        <p>Tap to click, drag to scroll, hold for a right click, pinch to zoom, twist two fingers to turn the view. To aim
+          your pro or place a building, drag to set the spot, then tap Swing or the tick. On-screen buttons open holes,
+          turn, change speed and undo.</p>
+      </article>
+      <article class="feat" id="controllers">
+        <h3>Controllers and the Steam Deck</h3>
+        <p class="meta"><span class="pill act">Always there</span> Windows, macOS, Linux and the browser</p>
+        <p>Xbox, PlayStation, Switch and Steam Deck controls: the stick moves the pointer, A clicks, B puts the tool away.
+          On the Deck the Linux AppImage starts full screen in Game Mode.</p>
+      </article>
+      <article class="feat" id="keys">
+        <h3>Change any key</h3>
+        <p class="meta"><span class="pill act">Always there</span> <b>Where:</b> Preferences › Controls and keys › Change keys...</p>
+        <p>Give any action another key. <b>Original controls</b> and <b>Modern controls</b> presets switch between the
+          original's mouse and keys and a modern set (WASD camera, zoom towards the pointer, drag to place, right-drag
+          panning). <a href="#ref-keys">Every key is listed below</a>.</p>
+      </article>
+      <article class="feat" id="mouse-helpers">
+        <h3>Modern mouse controls</h3>
+        <p class="meta"><span class="pill off">Off</span> <b>Where:</b> Preferences › Game options › Controls</p>
+        <p>Zoom towards the pointer, right click puts the tool away, right-drag panning, and aim and swing your pro with the
+          mouse as on a touch screen. Dragging with the middle button always moves the course.
+          <a href="#ref-game-options-controls">Details</a>.</p>
+      </article>
+      <article class="feat" id="camera-bookmarks">
+        <h3>Camera bookmarks</h3>
+        <p class="meta"><span class="pill act">Always there</span> <b>Keys:</b> <kbd>Ctrl+Shift+F1</kbd>–<kbd>F4</kbd> keep a view, <kbd>Shift+F1</kbd>–<kbd>F4</kbd> go back to it</p>
+        <p>Four kept views of the course: where you were looking, the zoom and the turn.</p>
+      </article>
+      <article class="feat" id="text-size">
+        <h3>Bigger text</h3>
+        <p class="meta"><span class="pill off">Normal</span> <b>Where:</b> Preferences › Text size (each click steps)</p>
+        <p>Normal, 125% or 150% text in messages, boxes, tooltips, name tags, touch labels and OpenSGolf's own pages; the
+          boxes grow with it and stay on screen.</p>
+      </article>
+      <article class="feat" id="language">
+        <h3>Translations</h3>
+        <p class="meta"><span class="pill act">Always there</span> <b>Where:</b> Preferences › Game files › Language, or the launcher</p>
+        <p>The game's own text in any installed translation, with Central European letters drawn in the game's fonts.
+          Longer translations shrink or wrap to fit.</p>
+      </article>
+      <article class="feat" id="pauses">
+        <h3>Pause in the background, pause on big news</h3>
+        <p class="meta"><span class="pill off">Off</span> <b>Where:</b> Preferences › Game options › Controls</p>
+        <p>Stops the game (and its sound) while its window is in the background, and pauses after a VIP visit, a tournament
+          or a land offer so you never miss them.</p>
+      </article>
+      <article class="feat" id="pause-aim" data-since="0.8">
+        <h3>Pause while you aim</h3>
+        <p class="meta"><span class="pill off">Off</span> <b>Where:</b> Preferences › Game options › Controls › Pause while you aim your pro</p>
+        <p>The game stands still while your pro waits for your shot, in tournaments too, and goes on as you swing. <a href="#opt-extras-pause-aim">Reference</a>.</p>
+      </article>
+      <article class="feat" id="speed8" data-since="0.8">
+        <h3>Speed up to x8</h3>
+        <p class="meta"><span class="pill act">Always there</span> <b>Key:</b> <kbd>]</kbd> speeds up, <kbd>[</kbd> slows down</p>
+        <p>The game speed now goes up to eight times normal, as well as x2 and x4.</p>
+      </article>
+      <article class="feat" id="portrait" data-since="0.8">
+        <h3>Play upright on phones and tablets</h3>
+        <p class="meta"><span class="pill off">Off</span> <b>Where:</b> Preferences › Game options › Looks › Play upright on phones and tablets</p>
+        <p>A phone or tablet held upright plays on the whole tall screen, with the dock, panels and money at its edges, instead of asking you to turn it sideways. <a href="#opt-extras-portrait">Reference</a>.</p>
+      </article>
+      <article class="feat" id="desktop-shortcut" data-since="0.7.6">
+        <h3>Desktop shortcut</h3>
+        <p class="meta"><span class="pill act">Always there</span> <b>Where:</b> the launcher's Display &amp; sound tab, Make a desktop shortcut (computers)</p>
+        <p>A shortcut that starts straight on the title menu with your display settings, skipping the launcher. From a
+          command line, <code>--play</code> does the same.</p>
+      </article>
+      <article class="feat" id="portable">
+        <h3>Portable mode</h3>
+        <p class="meta"><span class="pill off">Off</span> <b>Where:</b> an empty <code>portable.txt</code> beside the program (computers)</p>
+        <p>Keeps saves, settings and packs in a <code>save</code> folder beside the program, with your SimGolf folder
+          beside it as <code>SimGolf</code> or <code>game</code>: good for a USB stick.</p>
+      </article>
+    </div>
+
+    <!-- ===================================================================================================== -->
+    <h2 class="bar" id="building">Building your course</h2>
+    <div class="feats">
+      <article class="feat" id="tape">
+        <h3>Measuring tape</h3>
+        <p class="meta"><span class="pill act">Always there</span> <b>Key:</b> hold <kbd>'</kbd> and move the pointer</p>
+        <p>Measures distances on the course in yards.</p>
+      </article>
+      <article class="feat" id="brush-shapes">
+        <h3>Rectangles and fills</h3>
+        <p class="meta"><span class="pill act">Always there</span> With a terrain brush: <kbd>Shift</kbd>+drag for a rectangle, <kbd>Alt</kbd>+click (<kbd>Option</kbd> on a Mac) to fill</p>
+        <p>Paints a whole rectangle, or the whole connected region of one kind of ground, with the cost shown before you
+          let go.</p>
+      </article>
+      <article class="feat" id="drag-place">
+        <h3>Drag to place</h3>
+        <p class="meta"><span class="pill off">Off</span> <b>Where:</b> Preferences › Game options › Controls, or the Modern controls preset</p>
+        <p>Drag to lay a row of benches, flower beds, ball washers, willows or bridges, with the row and its cost shown
+          before you let go.</p>
+      </article>
+      <article class="feat" id="course-editor">
+        <h3>Course editor</h3>
+        <p class="meta"><span class="pill act">Always there</span> <b>Where:</b> the title menu's Course editor... button; <kbd>Shift+E</kbd> opens its scenario settings</p>
+        <p>Build a course free of charge with the game's own tools, import a heightmap picture, choose the land owned at the
+          start, the cash, the difficulty and the goals, and save it as a scenario to play and share.</p>
+      </article>
+      <article class="feat" id="name-holes" data-since="0.7.6">
+        <h3>Name your holes</h3>
+        <p class="meta"><span class="pill act">Always there</span> <b>Where:</b> click the title of an open hole's Hole Stats</p>
+        <p>Gives a hole a name of your own, kept with the save.</p>
+      </article>
+      <article class="feat" id="tees" data-since="0.7">
+        <h3>Forward and middle tees</h3>
+        <p class="meta"><span class="pill off">Off</span> (on in the OpenSGolf preset). <b>Where:</b> Preferences › Game options › Gameplay › Multiple tees</p>
+        <p>Tab with the Tees tool places a forward or middle tee. Less skilled golfers play from the front, strong golfers,
+          pros and tournaments from the back. <a href="#opt-extras-tees">Reference</a>.</p>
+      </article>
+      <article class="feat" id="second-course" data-since="0.7">
+        <h3>A second course</h3>
+        <p class="meta"><span class="pill off">Off</span> (on in the OpenSGolf preset). <b>Where:</b> Preferences › Game options › Gameplay › Second course</p>
+        <p>Once your 18 holes are open, a Course A | Course B switch appears over the Build Course panel and you build
+          holes B1 to B18 on the same land, with their own Course Report and Hole Stats.
+          <a href="#opt-extras-second-course">Reference</a>.</p>
+      </article>
+      <article class="feat" id="set-par">
+        <h3>Set a hole's par</h3>
+        <p class="meta"><span class="pill off">Off</span> <b>Where:</b> Preferences › Game options › Gameplay › Set par</p>
+        <p>Minus and plus buttons on Hole Stats set a hole's par from 2 to 6. <a href="#opt-extras-set-par">Reference</a>.</p>
+      </article>
+      <article class="feat" id="looks">
+        <h3>Turning buildings, path styles, lamps, random trees</h3>
+        <p class="meta"><span class="pill off">Off</span> (on in both helper presets). <b>Where:</b> Preferences › Game options › Looks</p>
+        <p>Tab turns a placed building or the clubhouse; paths in brick, gravel, dark stone or boardwalk, with lamp posts
+          to place; every tree planted takes a random size and species. Looks only: play is unchanged.
+          <a href="#ref-game-options-looks">Details</a>.</p>
+      </article>
+      <article class="feat" id="staff-areas">
+        <h3>Staff areas</h3>
+        <p class="meta"><span class="pill act">Always there</span> <b>Key:</b> <kbd>Shift+A</kbd></p>
+        <p>Shows every employee's work ring at once, and the fairways and greens no groundskeeper reaches.</p>
+      </article>
+      <article class="feat" id="flyover" data-since="0.7">
+        <h3>Hole flyover and showcase</h3>
+        <p class="meta">Flyover <span class="pill off">Off</span> (Preferences › Game options › Looks); showcase <span class="pill act">Always there</span> (<kbd>Shift+O</kbd>)</p>
+        <p>The flyover adds a Fly over button to Hole Stats that flies the camera from the tee to the green and back. The
+          showcase flies over the whole course hole by hole with the interface hidden.</p>
+      </article>
+    </div>
+
+    <!-- ===================================================================================================== -->
+    <h2 class="bar" id="gameplay">New gameplay</h2>
+    <p class="intro">All off for a new player, and all in <b>Preferences › Game options</b>, on the <b>Gameplay</b> and
+      <b>Sandbox</b> pages. Each carries a tag saying how much it changes the game. The full list, with what each preset
+      sets, is in the <a href="#ref-game-options-gameplay">reference</a>.</p>
+    <div class="feats">
+      <article class="feat" id="weather">
+        <h3>Weather that matters</h3>
+        <p class="meta"><span class="pill off">Off</span> (on in the OpenSGolf preset) <span class="tag">Noticeable</span></p>
+        <p>Rain and snow slow the ball and keep some golfers at home; desert heat waves make it run. Pairs well with
+          Enhanced graphics' rain and seasons, which are looks only.</p>
+      </article>
+      <article class="feat" id="visitors">
+        <h3>More visitors</h3>
+        <p class="meta"><span class="pill off">Off</span> <span class="tag">Noticeable</span></p>
+        <p>Touring pros and invented celebrities drop in, pay more, draw crowds and say what they thought. Moddable through
+          <code>data/visitors.toml</code>.</p>
+      </article>
+      <article class="feat" id="lefties">
+        <h3>Left-handed golfers</h3>
+        <p class="meta"><span class="pill off">Off</span> <span class="tag">Light touch</span></p>
+        <p>About one golfer in ten swings left-handed and curves the ball the other way. Your pro can be one too.</p>
+      </article>
+      <article class="feat" id="staff-animals">
+        <h3>More staff, animals to buy</h3>
+        <p class="meta"><span class="pill off">Off</span> (both on in the OpenSGolf preset)</p>
+        <p>Hire up to 40 employees instead of 20, and buy pairs of the theme's animals from the landmark strip to cheer
+          golfers up.</p>
+      </article>
+      <article class="feat" id="hardcore">
+        <h3>Hardcore economy</h3>
+        <p class="meta"><span class="pill off">Off</span> <span class="tag">Big change</span></p>
+        <p>Higher wages, upkeep and land prices, more interest, lower fees, choosier golfers and at most 12 staff.</p>
+      </article>
+      <article class="feat" id="keep-land">
+        <h3>Keep the land offer</h3>
+        <p class="meta"><span class="pill off">Off</span> <b>Where:</b> the Sandbox page <span class="tag">Light touch</span></p>
+        <p>Saying No to the County commissioner's land offer keeps his approval, so you can buy land later from
+          Information › Buy land.</p>
+      </article>
+      <article class="feat" id="sandbox">
+        <h3>Sandbox switches and the calendar</h3>
+        <p class="meta"><span class="pill off">Off</span> <b>Where:</b> the Sandbox page</p>
+        <p>Unlock every building and landmark, stop new dandelions, freeze golfer happiness, and run the calendar at half
+          or quarter speed or stop it. <a href="#ref-game-options-sandbox">Details</a>.</p>
+      </article>
+      <article class="feat" id="demolish" data-since="0.8">
+        <h3>Pull down eyesores</h3>
+        <p class="meta"><span class="pill off">Off</span> <b>Where:</b> the Sandbox page <span class="tag">Light touch</span></p>
+        <p>Right-click (or long-press) a water tower, radio mast or oil pump on your land and pull it down for §10,000, freeing its tiles. <a href="#opt-extras-demolish">Reference</a>.</p>
+      </article>
+      <article class="feat" id="move-clubhouse" data-since="0.8">
+        <h3>Move the clubhouse</h3>
+        <p class="meta"><span class="pill off">Off</span> <b>Where:</b> the Sandbox page <span class="tag">Light touch</span></p>
+        <p>Right-click (or long-press) the clubhouse to pick it up and put it down anywhere on your land, for what a new clubhouse costs. Not during a tournament. <a href="#opt-extras-move-clubhouse">Reference</a>.</p>
+      </article>
+      <article class="feat" id="cut-content">
+        <h3>Cut content</h3>
+        <p class="meta"><span class="pill off">Off</span> <span class="tag">Experimental</span> Only with your own SimGolf files</p>
+        <p>Fourteen landmarks the original shipped but never used join the landmark strip, as decoration only.</p>
+      </article>
+      <article class="feat" id="cheats">
+        <h3>Cheats</h3>
+        <p class="meta"><span class="pill act">Hidden</span> <b>Key:</b> <kbd>Ctrl+Shift+C</kbd> on the course</p>
+        <p>Add or take away money, force a VIP visit, buy all the land, and the sandbox switches. A game in which a cheat
+          was used says so on the Load list, and its course record is no shared challenge.</p>
+      </article>
+    </div>
+
+    <!-- ===================================================================================================== -->
+    <h2 class="bar" id="info">Knowing your club</h2>
+    <p class="intro">Helpers that show you more and leave play exactly as it was. All are in <b>Preferences › Game
+      options › Info</b>, off for a new player and on in both helper presets.</p>
+    <div class="feats">
+      <article class="feat" id="people">
+        <h3>People screen, name tags, live scorecards</h3>
+        <p class="meta"><b>Keys:</b> <kbd>Shift+G</kbd> People, <kbd>Shift+H</kbd> name tags</p>
+        <p>Every golfer and employee in a sortable list with profiles, a name tag under the pointer, and any golfer's
+          round so far on the original's scorecard.</p>
+      </article>
+      <article class="feat" id="insight">
+        <h3>Landing map and comments by hole</h3>
+        <p class="meta"><b>Keys:</b> <kbd>Shift+D</kbd> landing map, <kbd>Shift+I</kbd> comments by hole</p>
+        <p>Where golfers' shots on each hole end up, with heat maps of where balls land, golfers wait and golfers complain,
+          and each hole's most frequent comments this month, last month and this year.</p>
+      </article>
+      <article class="feat" id="graphs">
+        <h3>History graphs, the year in numbers, report tabs</h3>
+        <p class="meta"><b>Key:</b> <kbd>Shift+Y</kbd> graphs</p>
+        <p>The club's and each hole's months as line graphs, a page after the End of Year report comparing the year with
+          the last, and tabs over the F1 to F10 reports to flip between them.</p>
+      </article>
+      <article class="feat" id="messages">
+        <h3>Message history and a clickable ticker</h3>
+        <p class="meta"><b>Key:</b> <kbd>Shift+M</kbd></p>
+        <p>Every ticker message kept to read back, and a click on one takes the camera to the golfer or place it is about.</p>
+      </article>
+      <article class="feat" id="home-details">
+        <h3>Home-site details</h3>
+        <p class="meta">Point at a home site with no tool in hand</p>
+        <p>Whose it is, what it cost, what it sold for and what it is worth now.</p>
+      </article>
+      <article class="feat" id="path-help">
+        <h3>Path help</h3>
+        <p class="meta"><b>Key:</b> <kbd>Shift+V</kbd></p>
+        <p>Marks the paths that reach the clubhouse and the buildings they miss; a Show button finds a closed building.</p>
+      </article>
+      <article class="feat" id="height-map" data-since="0.8">
+        <h3>Height map</h3>
+        <p class="meta"><span class="pill act">Always there</span> <b>Key:</b> <kbd>Shift+K</kbd> (with the Landing map on, also in the Information menu)</p>
+        <p>Tints the land by how high it stands against the usual ground, so you can see slopes, hollows and ridges before you build. View only.</p>
+      </article>
+      <article class="feat" id="unlock-info" data-since="0.8">
+        <h3>What unlocks it</h3>
+        <p class="meta"><span class="pill off">Off</span> (on in the helper presets). <b>Where:</b> Preferences › Game options › Info</p>
+        <p>Clicking a building that is still locked says how many holes open it and how many the course has. <a href="#opt-extras-unlock-info">Reference</a>.</p>
+      </article>
+      <article class="feat" id="challenges" data-since="0.8">
+        <h3>Challenges and the design lab</h3>
+        <p class="meta"><span class="pill off">Off</span> <b>Where:</b> Preferences › Game options › Info › Challenges and the design lab</p>
+        <p>Information › Challenges offers six aims, from a perfect par 3 and a signature par 5 to a balanced eighteen and a cash turnaround, checked every month. Hole Stats' <b>Mark before</b> keeps a hole's figures to compare with play after you change it. <a href="#opt-extras-challenges">Reference</a>.</p>
+      </article>
+      <article class="feat" id="club-records" data-since="0.8">
+        <h3>Rounds, club records and the course review</h3>
+        <p class="meta"><span class="pill act">Always there</span> <b>Where:</b> a golfer's profile (Rounds); with Comments by hole on, Hole Stats and Information › Course review</p>
+        <p>A golfer's profile lists their <b>Rounds</b> at your club. Hole Stats shows each hole's best score and its holes in one, and the ticker announces an ace. <b>Course review</b> is one page of what to look at next: buildings off the paths, tees far from a path, tiles no groundskeeper reaches, dull holes and each hole's top complaint.</p>
+      </article>
+    </div>
+
+    <!-- ===================================================================================================== -->
+    <h2 class="bar" id="saves">Saves and sharing</h2>
+    <div class="feats">
+      <article class="feat" id="autosave">
+        <h3>Autosave</h3>
+        <p class="meta"><span class="pill off">Off</span> (on in both helper presets). <b>Where:</b> Preferences › Game options › Saves</p>
+        <p>Saves every five minutes of play and as the window goes to the background, keeping the last three.</p>
+      </article>
+      <article class="feat" id="save-newest" data-since="0.8">
+        <h3>Saves newest first, with backups</h3>
+        <p class="meta"><span class="pill off">Off</span> (on in the helper presets). <b>Where:</b> Preferences › Game options › Saves</p>
+        <p>Load Previous Game lists saves newest first with how long ago each was made, saving over a game keeps its last three versions as backups, and the title menu's <b>Continue</b> loads your newest save. <a href="#opt-extras-save-newest">Reference</a>.</p>
+      </article>
+      <article class="feat" id="save-pictures">
+        <h3>Save pictures</h3>
+        <p class="meta"><span class="pill off">Off</span> (on in both helper presets). <b>Where:</b> Preferences › Game options › Saves</p>
+        <p>Load Previous Game draws a map of the selected save's course. Double-click (or double-tap) a save to load it.</p>
+      </article>
+      <article class="feat" id="sharing">
+        <h3>Course sharing and challenges</h3>
+        <p class="meta"><span class="pill off">Off</span> (on in both helper presets). <b>Where:</b> System Functions › Share course</p>
+        <p>Copies a course code to send a friend. They press <kbd>Ctrl+V</kbd> anywhere in OpenSGolf and your course joins
+          their championship courses, with your course record as the score to beat.</p>
+      </article>
+      <article class="feat" id="import-export">
+        <h3>Import and export saved games</h3>
+        <p class="meta"><span class="pill off">Off</span> (on in both helper presets). <b>Where:</b> buttons in Load Previous Game</p>
+        <p>Move games between the browser, a computer and a phone. A save file is complete on its own and loads on any
+          version.</p>
+      </article>
+      <article class="feat" id="sve">
+        <h3>Bring your old SimGolf saves</h3>
+        <p class="meta"><span class="pill act">Always there</span> Copy <code>.sve</code> files into Saved Games, pick them with Import, or drop them on the window</p>
+        <p>Saved games of the original come over as new games: course, holes, buildings, money, date, members, people and
+          staff. The original's Top 10 Designers come too.</p>
+      </article>
+    </div>
+
+    <!-- ===================================================================================================== -->
+    <h2 class="bar" id="graphics">Graphics</h2>
+    <p class="intro">With both <b>Enhanced</b> and <b>HD</b> off you play in <b>Classic</b>, the original's own graphics,
+      pixel for pixel. Both switches are in <b>Preferences › Graphics</b> and on the launcher, and they can be on
+      together. None of them changes how the game plays.</p>
+    <div class="feats">
+      <article class="feat" id="first-person" data-since="0.8">
+        <h3>Walk your course in first person</h3>
+        <p class="meta"><span class="pill off">Off</span> <b>Where:</b> Preferences › Game options › Looks › First-person view (F12), on computers</p>
+        <p>F12 on the course puts you on the ground at a golfer's eye height, with 3D buildings for every theme, trees in the
+          round and cartoon 3D golfers that swing, putt and cheer. <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> walk,
+          a drag looks round, <kbd>G</kbd> follows a golfer and their shot, <kbd>F12</kbd> or <kbd>Esc</kbd> goes back.
+          <a href="#opt-extras-first-person">Reference</a>.</p>
+      </article>
+      <article class="feat" id="enhanced">
+        <h3>Enhanced graphics</h3>
+        <p class="meta"><span class="pill off">Off</span> <b>Where:</b> Preferences › Graphics › Enhanced graphics; its options under Enhanced graphics settings...</p>
+        <p>Draws the same art for today's screens: sharp text and art at 4K, the interface at a wide screen's edges, smooth
+          zoom and motion, and over fifty optional effects on five pages (Display, Effects, Atmosphere, Weather, Water):
+          living water with ducks and reeds, shadows, time of day, rain, mist, wind, seasons, late-winter snow, lit windows
+          and more. If the game runs slowly it eases off by itself. <a href="#ref-enhanced">Every option</a>.</p>
+      </article>
+      <article class="feat" id="hd">
+        <h3>HD graphics, made from your files</h3>
+        <p class="meta"><span class="pill off">Off</span> <b>Where:</b> Preferences › Graphics › Make HD graphics from my SimGolf files (beta)...</p>
+        <p>An AI upscaler built into the game redraws your own SimGolf art sharper, on your own device, while you play,
+          then switches HD on. <b>Remove HD graphics...</b> undoes it. Needs your own SimGolf files; not in browsers yet.</p>
+      </article>
+      <article class="feat" id="pixel-perfect">
+        <h3>Pixel-perfect scaling</h3>
+        <p class="meta"><span class="pill off">Off</span> <b>Where:</b> Preferences › Graphics</p>
+        <p>Scales the picture by whole numbers only, so every pixel of the art is the same size. Works with Classic too.</p>
+      </article>
+      <article class="feat" id="wide-ui">
+        <h3>Interface at the screen's edges</h3>
+        <p class="meta"><span class="pill on">On</span> <b>Where:</b> Preferences › Game options › Looks</p>
+        <p>On a wide screen the dock, panels and money sit at the screen's edges instead of in a 4:3 box in the middle,
+          with Classic graphics too.</p>
+      </article>
+      <article class="feat" id="photo-mode">
+        <h3>Photo mode</h3>
+        <p class="meta">With Enhanced graphics <span class="pill on">On</span> <b>Key:</b> <kbd>C</kbd>, or the camera button over the course</p>
+        <p>Hide the interface, frame your course, add a look and a focus blur, and save a picture up to 4K.
+          <kbd>U</kbd> hides the interface at any time and <kbd>Shift+F6</kbd> takes a screenshot.</p>
+      </article>
+      <article class="feat" id="frame-rate">
+        <h3>Frame rate cap and V-sync</h3>
+        <p class="meta"><span class="pill act">Uncapped</span> <b>Where:</b> Enhanced graphics settings › Display (they count in Classic too)</p>
+        <p>Cap the game at 30 to 240 frames a second to save battery, or leave it uncapped.</p>
+      </article>
+    </div>
+
+    <!-- ===================================================================================================== -->
+    <h2 class="bar" id="mods">Mods, packs and scenarios</h2>
+    <div class="feats">
+      <article class="feat" id="content-packs">
+        <h3>Content packs and game scripts</h3>
+        <p class="meta"><span class="pill act">Always there</span> <b>Where:</b> Preferences › Game files › Content packs...</p>
+        <p>Packs change prices, buildings, terrain, golfers, text, art and sounds, add scenarios, and can be downloaded from
+          inside the game. Switch each on or off and set their order. How to make one:
+          <a href="https://github.com/crspytopgn/opensgolf/blob/main/docs/MODDING.md">MODDING.md</a>.</p>
+      </article>
+      <article class="feat" id="hd-packs">
+        <h3>Your own high-resolution art</h3>
+        <p class="meta"><span class="pill act">Always there</span> Through a content pack</p>
+        <p>A pack can bring hand-drawn pictures and sprite sheets at 2x or 4x the original's size, drawn sharp at any window
+          size. <code>sgtool hd-kit</code> makes a starter kit and <code>sgtool pack-check</code> checks it.</p>
+      </article>
+      <article class="feat" id="free-set">
+        <h3>The free graphics</h3>
+        <p class="meta"><span class="pill act">Always there</span> Used when no SimGolf files are found</p>
+        <p>OpenSGolf's own art, sounds and text, with nothing from the original, so anyone can play. Your own SimGolf files
+          (a folder, a .zip, the CD or an image of it) can be picked on the launcher at any time.</p>
+      </article>
+    </div>
+
+    <!-- ===================================================================================================== -->
+    <h2 class="bar" id="browser">The browser version</h2>
+    <div class="feats">
+      <article class="feat" id="browser-files">
+        <h3>Your files stay on your device</h3>
+        <p class="meta"><span class="pill act">Always there</span> <b>Where:</b> the start page's Choose game folder, or the free graphics</p>
+        <p>Pick your SimGolf folder, a .zip of it or the CD image: it is read in the browser and never uploaded.</p>
+      </article>
+      <article class="feat" id="web-app" data-since="0.8">
+        <h3>Install it as an app and play offline</h3>
+        <p class="meta"><span class="pill act">Always there</span> <b>Where:</b> your browser's Add to Home Screen or Install</p>
+        <p>The page installs like an app and, after the first visit, starts with no connection. Only one tab plays at a time, a phone saves files through its share sheet, and the game files can be a .7z as well as a .zip or CD image.</p>
+      </article>
+      <article class="feat" id="browser-saves">
+        <h3>Saves in the browser, and backups</h3>
+        <p class="meta"><span class="pill act">Always there</span> <b>Where:</b> the start page's Saves and packs section</p>
+        <p>Saved games stay in this browser. Back them up as a .zip and restore them, or move them to the desktop version;
+          screenshots and SimFotos download.</p>
+      </article>
+      <article class="feat" id="browser-theme">
+        <h3>Light and dark pages</h3>
+        <p class="meta"><span class="pill act">Auto</span> <b>Where:</b> the Theme button at the top of these pages</p>
+        <p>Follows your device's scheme, or stays light or dark.</p>
+      </article>
+    </div>
+
+    <!-- ===================================================================================================== -->
+    <h2 class="bar" id="help">Help and updates</h2>
+    <div class="feats">
+      <article class="feat" id="updates">
+        <h3>Updates from inside the game</h3>
+        <p class="meta"><span class="pill on">On</span> check at start. <b>Where:</b> the title menu's Check for updates; Preferences › More</p>
+        <p><b>Update now</b> downloads the new version, checks its signature and installs it in place on Windows, macOS,
+          Linux and Android. Only GitHub is contacted, and only then. The browser version is always the newest.</p>
+      </article>
+      <article class="feat" id="report">
+        <h3>Report a problem</h3>
+        <p class="meta"><span class="pill act">Always there</span> <b>Where:</b> Preferences › More › Report a problem..., or <kbd>Shift+F8</kbd></p>
+        <p>Opens the bug report form filled in with your version and system, and keeps a copy of your game, a screenshot
+          and an exact replay to attach. Nothing is sent until you submit the form.</p>
+      </article>
+      <article class="feat" id="whats-new">
+        <h3>What's new</h3>
+        <p class="meta"><span class="pill act">Always there</span> <b>Where:</b> Preferences › More › What's new..., or the launcher's News tab</p>
+        <p>This version's highlights, with a Try it button for new options, and the full
+          <a href="https://github.com/crspytopgn/opensgolf/blob/main/CHANGELOG.md">changelog</a>.</p>
+      </article>
+    </div>
+
+    <!-- ===================================================================================================== -->
+    <h2 class="bar" id="reference">Every option and key</h2>
+    <p class="intro">This part is made from the game itself, so it always matches the version on <code>main</code>: the
+      option names are the game's own words. Type to filter it.</p>
+    <p><input id="find" type="search" placeholder="Filter options and keys, e.g. rain, autosave, Shift" aria-label="Filter options and keys"></p>
+    <div class="ref" id="ref">
+<!-- reference:begin (made by crates/simgolf/src/guide.rs: OPENSGOLF_WRITE_GUIDE=1 cargo test -p opensgolf guide) -->
+<h3 id="ref-preferences">Preferences and its boxes</h3>
+<p class="lede">In a game: <b>System Functions › Preferences</b> (the dock's System Functions button). The original's four ticks come first; these are OpenSGolf's own lines under them.</p>
+<div class="tw"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>New player</th></tr></thead>
+<tbody>
+<tr><td><b>Text size</b><span class="where">Preferences</span></td><td>Bigger text in the boxes, messages and tooltips. Each click steps: normal, 125%, 150%.</td><td><span class="pill off">normal</span></td></tr>
+<tr><td><b>HD graphics (off: Classic)</b><span class="where">Preferences › Graphics</span></td><td>The game's art upscaled from an HD pack you make from your own copy (docs/HD.md); play is unchanged.</td><td><span class="pill off">Off</span></td></tr>
+<tr><td><b>Make HD graphics from my SimGolf files (beta)...</b><span class="where">Preferences › Graphics</span></td><td>Beta: an AI upscaler in the game redraws the art from your files, on this device, then turns HD on. <span class="when">With your own SimGolf files in use; not in browsers yet.</span></td><td><span class="pill act">Opens</span></td></tr>
+<tr><td><b>Remove HD graphics...</b><span class="where">Preferences › Graphics</span></td><td>Back to Classic graphics, and the HD pack deleted to free its space. You can make it again. <span class="when">Once you have made an HD pack.</span></td><td><span class="pill act">Opens</span></td></tr>
+<tr><td><b>Enhanced graphics (off: Classic)</b><span class="where">Preferences › Graphics</span></td><td>Sharp at any screen size and widescreen, with optional effects; play is unchanged. Off: Classic.</td><td><span class="pill off">Off</span></td></tr>
+<tr><td><b>Pixel-perfect scaling: whole sizes only (Classic too)</b><span class="where">Preferences › Graphics</span></td><td>Scales the picture by whole sizes only, so every pixel stays the same size; counts in Classic too.</td><td><span class="pill off">Off</span></td></tr>
+<tr><td><b>Enhanced graphics settings...</b><span class="where">Preferences › Graphics</span></td><td>What Enhanced graphics does, page by page: display, effects, atmosphere, weather and water.</td><td><span class="pill act">Opens</span></td></tr>
+<tr><td><b>Use my SimGolf files... / Use the free graphics</b><span class="where">Preferences › Game files</span></td><td>Plays on your own copy of SimGolf's files instead of the free graphics (the game starts again). <span class="when">Not in the browser: there you choose the files on the start page.</span></td><td><span class="pill act">Opens</span></td></tr>
+<tr><td><b>Content packs...</b><span class="where">Preferences › Game files</span></td><td>Your content packs (mods): switch them on or off and set their order, from the next start.</td><td><span class="pill act">Opens</span></td></tr>
+<tr><td><b>Language</b><span class="where">Preferences › Game files</span></td><td>The game's language: each click steps to the next installed translation. <span class="when">When a translation is installed.</span></td><td><span class="pill off">English</span></td></tr>
+<tr><td><b>Fix the original game's bugs</b><span class="where">Preferences › More</span></td><td>Mends glitches of the original game itself (docs/FIXES.md); on at first. Off: the game as it was in 2002.</td><td><span class="pill on">On</span></td></tr>
+<tr><td><b>Check for updates when the game starts (online)</b><span class="where">Preferences › More</span></td><td>Looks online for a newer OpenSGolf when the game starts, and offers it only if there is one.</td><td><span class="pill on">On</span></td></tr>
+<tr><td><b>Check for updates now (online)</b><span class="where">Preferences › More</span></td><td>Asks GitHub now whether a newer OpenSGolf is out, as the title menu's button does. <span class="when">Not in the browser, which is always the newest version.</span></td><td><span class="pill act">Opens</span></td></tr>
+<tr><td><b>Search options...</b><span class="where">Preferences › More</span></td><td>Finds any option by its words, shows what differs from the original, or resets it all.</td><td><span class="pill act">Opens</span></td></tr>
+<tr><td><b>Report a problem...</b><span class="where">Preferences › More</span></td><td>Opens a filled-in bug report form and keeps a copy of this game to attach. Nothing is sent until you submit.</td><td><span class="pill act">Opens</span></td></tr>
+<tr><td><b>Launcher...</b><span class="where">Preferences › More</span></td><td>Shows the launcher again: your game files, how to play, display and sound, and what's new.</td><td><span class="pill act">Opens</span></td></tr>
+<tr><td><b>What's new...</b><span class="where">Preferences › More</span></td><td>What's new in this version, with Try it for its new options and a link to the full changelog.</td><td><span class="pill act">Opens</span></td></tr>
+<tr><td><b>Support OpenSGolf...</b><span class="where">Preferences › More</span></td><td>Buy Me a Coffee: OpenSGolf is built with paid AI tools, so a coffee helps future updates.</td><td><span class="pill act">Opens</span></td></tr>
+<tr><td><b>Count my play time (anonymous)</b><span class="where">Preferences › More</span></td><td>One count per 15 minutes played and one at start: only system and version, no names or saves. Offline counts are sent later. <span class="when">Not in store builds.</span></td><td><span class="pill on">On</span></td></tr>
+</tbody></table></div>
+<h3 id="ref-game-options">Game options</h3>
+<p class="lede"><b>Preferences › Game options</b>. The first line steps through the presets: <b>Original</b>, <b>Original + helpers</b>, <b>OpenSGolf</b> and <b>Custom</b>. The same choice is the <b>Game</b> box on Select Difficulty and the launcher's <b>How to play</b> tab. Lines that change how the game plays carry a tag: <i>Light touch</i>, <i>Noticeable</i>, <i>Big change</i> or <i>Experimental</i>.</p>
+<h4 id="ref-game-options-gameplay">Gameplay <span class="banner">Changes how the game plays.</span></h4>
+<div class="tw"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>New player</th><th>Original + helpers</th><th>OpenSGolf</th></tr></thead>
+<tbody>
+<tr id="opt-extras-weather"><td><b>Weather that matters (rain, snow, heat, storms)</b> <span class="tag">Noticeable</span></td><td>Rain and snow slow the ball and keep some golfers at home; desert heat waves speed it up. Gentle over a year.</td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-extras-more-visitors"><td><b>More visitors: touring pros and celebrities</b> <span class="tag">Noticeable</span></td><td>Touring pros and celebrities drop in now and then. They pay more, draw crowds and say what they thought of your course.</td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td></tr>
+<tr id="opt-extras-lefties"><td><b>Left-handed golfers</b> <span class="tag">Light touch</span></td><td>About one golfer in ten is left-handed: a mirrored swing, and the ball curves the other way. Your pro can be one too.</td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td></tr>
+<tr id="opt-extras-more-staff"><td><b>Higher staff limits</b> <span class="tag">Noticeable</span></td><td>Your club may hire up to 40 employees instead of the original's 20.</td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-extras-set-par"><td><b>Set par: change a hole's par on its Hole Stats</b> <span class="tag">Noticeable</span></td><td>Minus and plus buttons on Hole Stats change a hole's par (2 to 6), and golfers are scored against your par.</td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td></tr>
+<tr id="opt-extras-tees"><td><b>Multiple tees: forward and middle tees</b> <span class="tag">Light touch</span></td><td>Tab with the Tees tool places a forward or middle tee in front of a hole's tee. Weaker golfers play the shorter tees; par, length and tournaments stay as they were.</td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-extras-animals"><td><b>Buyable animals</b> <span class="tag">Light touch</span></td><td>Buy pairs of the theme's animals from the landmark strip. They stay near where you set them down and cheer golfers up.</td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-extras-second-course"><td><b>Second course: 18 more holes</b> <span class="tag">Big change</span></td><td>Once your 18 holes are open, build a Course B of 18 more on the same land. The A/B switch above the Build Course panel picks the course to build and report on.</td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-extras-hardcore"><td><b>Hardcore economy</b> <span class="tag">Big change</span></td><td>Tighter money and choosier golfers: higher wages, upkeep and land prices, more interest, lower fees and at most 12 staff.</td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td></tr>
+<tr id="opt-extras-cut-content"><td><b>Cut content: unused landmarks (decoration only)</b> <span class="tag">Experimental</span></td><td>Experimental: decoration only, no landmark powers. Fourteen landmarks the original never used join the landmark strip; golfers enjoy the view. <span class="when">Listed only with your own SimGolf files.</span></td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td></tr>
+</tbody></table></div>
+<h4 id="ref-game-options-sandbox">Sandbox <span class="banner">Bends the rules for relaxed play.</span></h4>
+<div class="tw"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>New player</th><th>Original + helpers</th><th>OpenSGolf</th></tr></thead>
+<tbody>
+<tr id="opt-extras-unlock-all"><td><b>Sandbox: unlock all buildings and landmarks</b> <span class="tag">Big change</span></td><td>Every building, home site and landmark of the theme is on the panels from the start, as in Sandbox Mode.</td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td></tr>
+<tr id="opt-extras-no-weeds"><td><b>Sandbox: no new dandelions</b> <span class="tag">Noticeable</span></td><td>Dandelions stop spreading and unhappy golfers no longer start them, so the course stays clear without groundskeepers. The ones already there stay until pulled.</td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td></tr>
+<tr id="opt-extras-freeze-moods"><td><b>Sandbox: freeze golfer happiness</b> <span class="tag">Big change</span></td><td>Golfers' moods never drop. Good moments still cheer them up, and nobody leaves unhappy.</td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td></tr>
+<tr id="opt-extras-calendar"><td><b>Calendar</b> <span class="tag">Noticeable</span></td><td>Half or quarter speed: each year holds more golf while golfers, staff and bills keep their pace. Stopped: no month or year ever ends.</td><td><span class="pill off">normal</span></td><td><span class="pill off">normal</span></td><td><span class="pill off">normal</span></td></tr>
+<tr id="opt-extras-keep-land"><td><b>Keep the land offer: buy land when you like</b> <span class="tag">Light touch</span></td><td>Saying No to the County commissioner's land offer keeps his approval: Information, Buy land opens the land for sale until you buy a tract.</td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td></tr>
+<tr id="opt-extras-demolish"><td><b>Eyesore demolition: pull down water towers and oil pumps</b> <span class="tag">Light touch</span></td><td>A right click (a long press) on an eyesore on your land offers to pull it down for §10,000, booked to Build course.</td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td></tr>
+<tr id="opt-extras-move-clubhouse"><td><b>Move the clubhouse</b> <span class="tag">Light touch</span></td><td>A right click (a long press) on the clubhouse offers to move it anywhere on your land, for what a new clubhouse costs.</td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td></tr>
+</tbody></table></div>
+<h4 id="ref-game-options-looks">Looks <span class="banner">Changes how it looks. Play is unchanged.</span></h4>
+<div class="tw"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>New player</th><th>Original + helpers</th><th>OpenSGolf</th></tr></thead>
+<tbody>
+<tr id="opt-extras-wide-ui"><td><b>Interface at the screen's edges</b></td><td>On a wide screen the dock, panels and money sit at the screen's edges (on by default; off keeps them in the 4:3 middle).</td><td><span class="pill on">On</span></td><td><span class="pill kept">Your choice</span></td><td><span class="pill kept">Your choice</span></td></tr>
+<tr id="opt-extras-paths"><td><b>Path styles and lamps</b></td><td>Draws every path in brick, gravel, dark stone or boardwalk, and adds lamp posts to the landmark strip. A click picks the style.</td><td><span class="pill off">off</span></td><td><span class="pill on">original paths</span></td><td><span class="pill on">original paths</span></td></tr>
+<tr id="opt-extras-random-trees"><td><b>Random trees: each tree planted gets a random look</b></td><td>Every tree the woods, pine and palm brushes plant gets a random size (and pines a random species), and every scenic tree a random one of the seven, for a more natural course. The look under the pointer is the next one.</td><td><span class="pill off">Off</span></td><td><span class="pill on">On</span></td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-extras-rotate"><td><b>Tab turns placed buildings and the clubhouse</b></td><td>Tab turns a placed building or the clubhouse a quarter, or steps through the designs of the item in hand. Only the picture turns.</td><td><span class="pill off">Off</span></td><td><span class="pill on">On</span></td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-extras-home-labels-hover"><td><b>Home names only under the pointer</b></td><td>A celebrity's name shows over a home site only while the pointer is on it, instead of the names taking turns over every home.</td><td><span class="pill off">Off</span></td><td><span class="pill kept">Your choice</span></td><td><span class="pill kept">Your choice</span></td></tr>
+<tr id="opt-extras-hole-flyover"><td><b>Hole flyover: fly down a hole from its Hole Stats</b></td><td>Hole Stats gets a Fly over button: the camera flies from the tee down the hole to the green, then back. A key or a click ends it.</td><td><span class="pill off">Off</span></td><td><span class="pill on">On</span></td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-extras-portrait"><td><b>Play upright on phones and tablets</b></td><td>A phone or tablet held upright plays on the whole tall screen, with the dock, panels and money at its edges, instead of asking you to turn it sideways.</td><td><span class="pill off">Off</span></td><td><span class="pill kept">Your choice</span></td><td><span class="pill kept">Your choice</span></td></tr>
+<tr id="opt-extras-first-person"><td><b>First-person view (F12 or `)</b></td><td>On a computer, F12 (or `, handy on a Mac) on the course walks it at a golfer's eye height in 3D: W A S D walk, a drag looks round, G follows a golfer's shot, F12, ` or Esc goes back.</td><td><span class="pill off">Off</span></td><td><span class="pill kept">Your choice</span></td><td><span class="pill kept">Your choice</span></td></tr>
+</tbody></table></div>
+<h4 id="ref-game-options-info">Info <span class="banner">Shows more about your club. Play is unchanged.</span></h4>
+<div class="tw"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>New player</th><th>Original + helpers</th><th>OpenSGolf</th></tr></thead>
+<tbody>
+<tr id="opt-extras-group-people"><td><b>People screen, name tags and live scorecards</b></td><td>Every golfer and employee in a sortable list (Shift+G), a name tag under the pointer (Shift+H hides them) and the round so far under a golfer card.</td><td><span class="pill off">Off</span></td><td><span class="pill on">On</span></td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-extras-group-reports"><td><b>Extra reports: landing map, hole comments, graphs...</b></td><td>Landing map (Shift+D), comments by hole (Shift+I), history graphs (Shift+Y), the year in numbers after End of Year, and tabs over the F1 to F10 reports.</td><td><span class="pill off">Off</span></td><td><span class="pill on">On</span></td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-extras-group-messages"><td><b>Message history and clickable ticker (Shift+M)</b></td><td>Keeps every ticker message to read back (Shift+M); a click on a ticker message takes the camera to the golfer or place it is about.</td><td><span class="pill off">Off</span></td><td><span class="pill on">On</span></td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-extras-home-details"><td><b>Home-site details (cost, sale and value under the pointer)</b></td><td>Point at a home site to see whose it is, what it cost, what it sold for and what it is worth now.</td><td><span class="pill off">Off</span></td><td><span class="pill on">On</span></td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-extras-path-help"><td><b>Path help: path view (Shift+V) and Show buttons</b></td><td>Path view (Shift+V) marks paths that reach the clubhouse and buildings they miss; a Show button finds a closed building.</td><td><span class="pill off">Off</span></td><td><span class="pill on">On</span></td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-extras-unlock-info"><td><b>What unlocks it: how many holes open a building</b></td><td>A locked building says how many holes open it and how many the course has, where the original only asks for more holes.</td><td><span class="pill off">Off</span></td><td><span class="pill on">On</span></td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-extras-challenges"><td><b>Challenges and the design lab</b></td><td>Information &gt; Challenges sets design and business aims to take on, and Hole Stats' Mark before keeps a hole's figures to compare after you change it.</td><td><span class="pill off">Off</span></td><td><span class="pill on">On</span></td><td><span class="pill on">On</span></td></tr>
+</tbody></table></div>
+<h4 id="ref-game-options-saves">Saves <span class="banner">Keeps, shows and shares your games. Play is unchanged.</span></h4>
+<div class="tw"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>New player</th><th>Original + helpers</th><th>OpenSGolf</th></tr></thead>
+<tbody>
+<tr id="opt-extras-autosave"><td><b>Autosave every five minutes (the last three kept)</b></td><td>Saves the game every five minutes of play and as its window goes to the background, keeping the last three, so a crash or a closed page loses little.</td><td><span class="pill off">Off</span></td><td><span class="pill on">On</span></td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-extras-save-newest"><td><b>Saves newest first, with dates and backups</b></td><td>Load Previous Game lists your saves newest first with when each was saved, and saving over a game keeps its last three versions as backups.</td><td><span class="pill off">Off</span></td><td><span class="pill on">On</span></td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-extras-save-files"><td><b>Import and export saved games (buttons in Load Previous Game)</b></td><td>For moving your games to another device (computer, phone, tablet, browser): Load Previous Game gets Import a save file... and Export this save...</td><td><span class="pill off">Off</span></td><td><span class="pill on">On</span></td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-extras-sharing"><td><b>Course sharing: course codes and challenges (Ctrl+V pastes one)</b></td><td>Copy a code for your course to send to a friend; paste one (Ctrl+V) to play theirs and try to beat their record.</td><td><span class="pill off">Off</span></td><td><span class="pill on">On</span></td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-extras-save-pictures"><td><b>A map of the course beside each saved game</b></td><td>Load Previous Game shows a small map of each saved game's course.</td><td><span class="pill off">Off</span></td><td><span class="pill on">On</span></td><td><span class="pill on">On</span></td></tr>
+</tbody></table></div>
+<h4 id="ref-game-options-controls">Controls <span class="banner">Changes what the mouse does and when the game pauses. Play is unchanged.</span></h4>
+<div class="tw"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>New player</th><th>Original + helpers</th><th>OpenSGolf</th></tr></thead>
+<tbody>
+<tr id="opt-extras-zoom-pointer"><td><b>Zoom towards the pointer</b></td><td>The mouse wheel and a pinch zoom towards the spot you point at. Part of the Modern controls preset (Keyboard controls, Change keys).</td><td><span class="pill off">Off</span></td><td><span class="pill kept">Your choice</span></td><td><span class="pill kept">Your choice</span></td></tr>
+<tr id="opt-extras-right-drop"><td><b>Right click puts the tool away</b></td><td>A right click (B on a controller) drops the brush or tool in hand, as Space does, instead of the original's undo. The elevation tools still lower the ground with a right click.</td><td><span class="pill off">Off</span></td><td><span class="pill kept">Your choice</span></td><td><span class="pill kept">Your choice</span></td></tr>
+<tr id="opt-extras-drag-place"><td><b>Drag to place rows of benches and the like</b></td><td>Drag with benches, flower beds and the like in hand to lay a straight row of them. Part of the Modern controls preset (Change keys).</td><td><span class="pill off">Off</span></td><td><span class="pill kept">Your choice</span></td><td><span class="pill kept">Your choice</span></td></tr>
+<tr id="opt-extras-right-drag"><td><b>Right-drag moves the course</b></td><td>Drag with the right button to move the course; a right click still undoes, as in the original. Part of the Modern controls preset (Change keys).</td><td><span class="pill off">Off</span></td><td><span class="pill kept">Your choice</span></td><td><span class="pill kept">Your choice</span></td></tr>
+<tr id="opt-extras-edge-scroll"><td><b>Edge scrolling</b></td><td>In full screen the pointer at the screen's edge scrolls the view, as in the original (on by default).</td><td><span class="pill on">On</span></td><td><span class="pill kept">Your choice</span></td><td><span class="pill kept">Your choice</span></td></tr>
+<tr id="opt-extras-mouse-swing"><td><b>Aim and swing with the mouse as by touch</b></td><td>Aim your pro as on a touch screen: a click sets the target, a drag moves it or looks round, the round Swing button shoots.</td><td><span class="pill off">Off</span></td><td><span class="pill kept">Your choice</span></td><td><span class="pill kept">Your choice</span></td></tr>
+<tr id="opt-extras-pause-background"><td><b>Pause while the game's window is in the background</b></td><td>The game and its sound pause while its window is in the background, and go on when you come back.</td><td><span class="pill off">Off</span></td><td><span class="pill kept">Your choice</span></td><td><span class="pill kept">Your choice</span></td></tr>
+<tr id="opt-extras-pause-events"><td><b>Pause on big news: VIPs, challenges, offers, debt</b></td><td>The game pauses when a VIP arrives, a famous golfer challenges your pro, the SGA makes an offer or money runs short.</td><td><span class="pill off">Off</span></td><td><span class="pill kept">Your choice</span></td><td><span class="pill kept">Your choice</span></td></tr>
+<tr id="opt-extras-pause-aim"><td><b>Pause while you aim your pro</b></td><td>The game stands still while your pro waits for your shot, in tournaments too, and goes on as you swing.</td><td><span class="pill off">Off</span></td><td><span class="pill kept">Your choice</span></td><td><span class="pill kept">Your choice</span></td></tr>
+</tbody></table></div>
+<h3 id="ref-enhanced">Enhanced graphics settings</h3>
+<p class="lede"><b>Preferences › Graphics › Enhanced graphics settings</b>. Every page starts with the master switch, <b>Enhanced graphics (off: Classic)</b>, which is <b>off</b> for a new player: with it off you play in Classic and none of these draw, except the three marked as counting with Classic too. The last column is what each option is set to once you switch Enhanced graphics on. Graphics only: play is never changed.</p>
+<h4 id="ref-enhanced-display">Display</h4>
+<div class="tw"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>With Enhanced on</th></tr></thead>
+<tbody>
+<tr id="opt-enhanced-native-text"><td><b>Sharp text at the screen's resolution</b></td><td>Draws text from the fonts at your screen's real resolution, so it stays sharp at any window size. Layouts stay the original's.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-smooth-ui"><td><b>Smooth interface art at any size</b></td><td>Interface art, sprites and portraits scale smoothly, with clean edges and no shimmer when drawn small.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-widescreen"><td><b>Widescreen: interface at the window's edges</b></td><td>On a wide window the course badge, dock, panels and buttons move out to the window's edges instead of sitting in a 4:3 box in the middle.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-terrain-filter"><td><b>Sharper course textures</b></td><td>Anisotropic filtering keeps the course sharp towards the top of the screen. Desktop only.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-msaa"><td><b>Anti-aliasing</b></td><td>4x multisampling smooths the edges of terrain, cliffs and lines. Desktop only.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-smooth-camera"><td><b>Smooth camera: zoom, turns and panning</b></td><td>Continuous wheel and pinch zoom, animated quarter turns and gliding scrolls. The game's rules still use the original's three zoom levels.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-smooth-motion"><td><b>Smooth motion between game ticks</b></td><td>Golfers, staff, carts, animals and balls move smoothly between the game's 11.5 ticks a second instead of jumping once a tick. Drawing only.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-photo-mode"><td><b>Photo mode (the C key or the camera button)</b></td><td>Lets the C key or the camera button open photo mode: hide the interface, frame the shot, add a look and a focus blur, and save a picture up to 4K.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-frame-cap"><td><b>Frame rate cap</b></td><td>The most frames a second the game draws: 30, 60, 120, 144, 240 or no cap. Counts with Classic graphics too.</td><td><span class="pill on">Uncapped</span></td></tr>
+<tr id="opt-enhanced-vsync"><td><b>V-sync (from the next start)</b></td><td>Waits for the display's refresh, so the picture never tears. Takes effect from the next start; always on in a browser. Counts with Classic graphics too.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-pixel-perfect"><td><b>Pixel-perfect scaling: whole sizes only (Classic too)</b></td><td>Scales the 800 x 600 picture by whole numbers only, so every art pixel is the same size, with bars round it. Also a line of Preferences &gt; Graphics; counts with Classic graphics too.</td><td><span class="pill off">Off</span></td></tr>
+</tbody></table></div>
+<h4 id="ref-enhanced-effects">Effects</h4>
+<div class="tw"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>With Enhanced on</th></tr></thead>
+<tbody>
+<tr id="opt-enhanced-fx-scaler"><td><b>Pixel-art scaling of sprites and pictures</b></td><td>Sprites and pictures drawn larger than their pixels go through a pixel-art scaler instead of a plain blur.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-fx-scaler-mode"><td><b>Pixel-art scaler</b></td><td>Which scaler: Sharp (crisp pixels), Edge-directed (smooths diagonals) or Smooth (follows the art's own edges; the strongest).</td><td><span class="pill on">Smooth (strongest)</span></td></tr>
+<tr id="opt-enhanced-fx-water"><td><b>Animated water</b></td><td>Water gets moving waves, sky reflections, glints and foam along the shore, over the theme's own water art.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-fx-terrain-light"><td><b>Terrain light, occlusion and shadows</b></td><td>Per-pixel light, ambient occlusion in valleys and soft shadows of the hills on the ground.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-fx-sprite-shadows"><td><b>Soft sprite shadows</b></td><td>Softens the edges of the art's own shadows under buildings, trees and people.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-fx-cast-shadows"><td><b>Cast shadows from buildings and trees</b></td><td>Buildings, trees and people cast their own outline along the sun onto the ground.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-fx-ball-trail"><td><b>Trail behind balls in flight</b></td><td>A soft trail fades out behind a ball in the air.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-fx-ball-impacts"><td><b>Sand, splash and grass where balls land</b></td><td>A puff of sand in a bunker, rings and drops on water, a flick of grass where a ball comes down.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-fx-quality"><td><b>Effects quality</b></td><td>Low, medium or high: the detail of the light map, the blurs and the shadows. Lower is quicker on slow machines.</td><td><span class="pill on">Medium</span></td></tr>
+<tr id="opt-enhanced-fx-grass"><td><b>Grass tufts in the rough</b></td><td>Tiny tufts of grass standing up from the rough and swaying in the wind, at the closest zoom.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-fx-sharpen"><td><b>Sharper art: contrast-adaptive sharpening</b></td><td>Contrast-adaptive sharpening brings out the art's own detail on big screens, without halos. Desktop only.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-fx-crowds"><td><b>Crowds at tournaments and championships</b></td><td>Spectators round the greens and fairways of the holes in play during tournaments and championships, cheering now and then.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-fx-life"><td><b>Birds, butterflies and falling leaves</b></td><td>Flocks of birds crossing the sky, butterflies over flower beds in summer, leaves falling in autumn.</td><td><span class="pill on">On</span></td></tr>
+</tbody></table></div>
+<h4 id="ref-enhanced-atmosphere">Atmosphere</h4>
+<div class="tw"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>With Enhanced on</th></tr></thead>
+<tbody>
+<tr id="opt-enhanced-fx-sky"><td><b>Sky beyond the map</b></td><td>A sky gradient beyond the property and below its cliff instead of the original's black.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-fx-time-of-day"><td><b>Time of day: morning, sunset and dusk</b></td><td>Morning, midday, golden hour, sunset and a short blue dusk pass over the course.</td><td><span class="pill off">Off</span></td></tr>
+<tr id="opt-enhanced-fx-day-length"><td><b>Day length</b></td><td>How long a day of light lasts with Time of day: short (one game month), normal (three) or long (six).</td><td><span class="pill on">Normal (three months)</span></td></tr>
+<tr id="opt-enhanced-fx-evening-lights"><td><b>Lamps and fireflies at dusk</b></td><td>With Time of day: lamps with pools of light and fireflies at dusk.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-fx-clouds"><td><b>Drifting cloud shadows</b></td><td>Soft cloud shadows drift over the course and dim what is under them.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-fx-haze"><td><b>Distance haze</b></td><td>The far part of the view pales towards the horizon's colour, more when zoomed out.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-fx-reflections"><td><b>Reflections and sun glitter on the water</b></td><td>Trees, buildings and golfers mirrored in the water, rippling, with sun glitter.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-fx-tilt-shift"><td><b>Tilt-shift (miniature look)</b></td><td>Blurs the top and bottom of the screen for a miniature look.</td><td><span class="pill off">Off</span></td></tr>
+<tr id="opt-enhanced-fx-grading"><td><b>Colour grading and vignette</b></td><td>Gentle contrast, vibrance and a tint for each theme, with slightly darker corners.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-fx-bloom"><td><b>Bloom</b></td><td>The brightest parts (sparkle, white sand, highlights) glow a little.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-fx-window-lights"><td><b>Warm light in the buildings' windows at night</b></td><td>With Time of day: a warm light in the buildings' windows at night.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-fx-sprinklers"><td><b>Sprinklers on the fairways and greens at dawn</b></td><td>With Time of day: sprinklers watering the fairways and greens at first light.</td><td><span class="pill on">On</span></td></tr>
+</tbody></table></div>
+<h4 id="ref-enhanced-weather">Weather</h4>
+<div class="tw"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>With Enhanced on</th></tr></thead>
+<tbody>
+<tr id="opt-enhanced-fx-rain"><td><b>Rain on some days</b></td><td>Light rain on some days (the same days for a save), with greyer light and faint shadows. Looks only: see Weather that matters for rain that changes play.</td><td><span class="pill off">Off</span></td></tr>
+<tr id="opt-enhanced-fx-after-rain"><td><b>Wet ground, puddles and rainbows</b></td><td>With Rain: wet, glossy ground and puddles during and after a rainy day, and now and then a rainbow.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-fx-lightning"><td><b>Lightning in heavy rain</b></td><td>Flashes and distant flicker in heavy rain where the climate is wet; never in the desert.</td><td><span class="pill off">Off</span></td></tr>
+<tr id="opt-enhanced-fx-heat"><td><b>Heat waves in the desert: bleached light, parched grass</b></td><td>On a desert course's hot summer days: bleached midday light, heat haze, and parched grass on the hottest days.</td><td><span class="pill off">Off</span></td></tr>
+<tr id="opt-enhanced-fx-winter"><td><b>Late-winter frost and snow in early March</b></td><td>The first days of March on parkland and links courses: morning frost, snow showers instead of rain, a light dusting some mornings.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-fx-mist"><td><b>Morning mist in low ground</b></td><td>Mist pooling in hollows and over water, thick at dawn and gone by late morning.</td><td><span class="pill off">Off</span></td></tr>
+<tr id="opt-enhanced-fx-wind"><td><b>Wind: trees, palms and flags sway</b></td><td>A wind for each day: trees, palms and grasses sway, flags fly downwind, and the rain and clouds follow it.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-fx-seasons"><td><b>Seasons: blossom, autumn colours, dew</b></td><td>Blossom and fresh greens in spring, autumn colours in September and October, dew on the grass.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-fx-frost"><td><b>Frost on cold mornings, melting by late morning</b></td><td>Frost on cold spring and autumn mornings, melting by late morning.</td><td><span class="pill on">On</span></td></tr>
+</tbody></table></div>
+<h4 id="ref-enhanced-water">Water</h4>
+<div class="tw"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>With Enhanced on</th></tr></thead>
+<tbody>
+<tr id="opt-enhanced-fx-water-colour"><td><b>Truer water colour: light shallows, deep middle</b></td><td>Lighter, more turquoise shallows and a deeper blue in the middle, from the theme's own water colour.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-fx-waves"><td><b>Waves that follow the wind and the weather</b></td><td>Soft waves lying across the wind, drifting downwind: glassy at dawn and dusk, choppy in a storm.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-fx-shoreline"><td><b>Water lapping at the shore, a wet bank</b></td><td>Water lapping in and out along the shore, with a wet band on the bank.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-fx-caustics"><td><b>Sunlight rippling on the bottom of shallows</b></td><td>Sunlight rippling in a web over the bottom of shallow water.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-fx-rain-rings"><td><b>Raindrop rings on the water</b></td><td>With Rain: rings opening on the water where drops fall.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-fx-water-life"><td><b>Reeds, lily pads, ducks, swans and fish</b></td><td>Reeds and lily pads at the edges of ponds, ducks and swans on the larger lakes, and now and then a jumping fish.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-fx-ice"><td><b>Ponds icing over in a late-winter cold snap</b></td><td>With Winter: small ponds ice over in the late-winter cold snap, and larger water gets a rim of ice.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-fx-spray"><td><b>Spray at fountains and waterfalls</b></td><td>Foam, drops and rings round fountains and at the foot of waterfalls.</td><td><span class="pill on">On</span></td></tr>
+</tbody></table></div>
+<h3 id="ref-keys">Every key</h3>
+<p class="lede">Each can be given another key on <b>Preferences › Controls and keys › Change keys</b>, which also has the <b>Original</b> and <b>Modern controls</b> presets and the <b>WASD camera</b>. F8 in a game lists them too.</p>
+<div class="tw"><table class="keys">
+<thead><tr><th>Action</th><th>Key</th></tr></thead>
+<tbody>
+<tr><td>Scroll up</td><td><kbd>Up</kbd> <span class="when">WASD camera: also W</span></td></tr>
+<tr><td>Scroll down</td><td><kbd>Down</kbd> <span class="when">WASD camera: also S</span></td></tr>
+<tr><td>Scroll left</td><td><kbd>Left</kbd> <span class="when">WASD camera: also A</span></td></tr>
+<tr><td>Scroll right</td><td><kbd>Right</kbd> <span class="when">WASD camera: also D</span></td></tr>
+<tr><td>Zoom in</td><td><kbd>Z</kbd></td></tr>
+<tr><td>Zoom out</td><td><kbd>X</kbd></td></tr>
+<tr><td>Turn the view</td><td><kbd>PageUp</kbd></td></tr>
+<tr><td>Turn the view back</td><td><kbd>Home</kbd></td></tr>
+<tr><td>Turn back / clubhouse</td><td><kbd>0</kbd></td></tr>
+<tr><td>Photo mode</td><td><kbd>C</kbd></td></tr>
+<tr><td>Hide the interface</td><td><kbd>U</kbd></td></tr>
+<tr><td>Pause</td><td><kbd>Shift+P</kbd></td></tr>
+<tr><td>Game speed: slower</td><td><kbd>[</kbd></td></tr>
+<tr><td>Game speed: faster</td><td><kbd>]</kbd></td></tr>
+<tr><td>Green / tee tool</td><td><kbd>G</kbd></td></tr>
+<tr><td>Fairway tool</td><td><kbd>F</kbd></td></tr>
+<tr><td>Rough tool</td><td><kbd>R</kbd></td></tr>
+<tr><td>Sand trap tool</td><td><kbd>S</kbd> <span class="when">WASD camera: K</span></td></tr>
+<tr><td>Trees tool</td><td><kbd>T</kbd></td></tr>
+<tr><td>Water tool</td><td><kbd>W</kbd> <span class="when">WASD camera: Q</span></td></tr>
+<tr><td>Ravine tool</td><td><kbd>V</kbd></td></tr>
+<tr><td>Path tool</td><td><kbd>P</kbd></td></tr>
+<tr><td>Bench tool</td><td><kbd>B</kbd></td></tr>
+<tr><td>Home site tool</td><td><kbd>Shift+B</kbd></td></tr>
+<tr><td>Elevation tools</td><td><kbd>E</kbd></td></tr>
+<tr><td>Raise the ground</td><td><kbd>=</kbd></td></tr>
+<tr><td>Lower the ground</td><td><kbd>-</kbd></td></tr>
+<tr><td>Turn a building</td><td><kbd>Tab</kbd></td></tr>
+<tr><td>Put the tool down</td><td><kbd>Space</kbd></td></tr>
+<tr><td>Open the hole</td><td><kbd>H</kbd></td></tr>
+<tr><td>Shot analysis</td><td><kbd>/</kbd></td></tr>
+<tr><td>Last shot analysis</td><td><kbd>.</kbd></td></tr>
+<tr><td>Trees off / on</td><td><kbd>Shift+T</kbd></td></tr>
+<tr><td>Names off / on</td><td><kbd>Shift+N</kbd></td></tr>
+<tr><td>Repeat the last message</td><td><kbd>?</kbd></td></tr>
+<tr><td>Music off / on</td><td><kbd>M</kbd></td></tr>
+<tr><td>Aiming: straight shot <span class="when">While aiming your pro</span></td><td><kbd>S</kbd></td></tr>
+<tr><td>Aiming: fade <span class="when">While aiming your pro</span></td><td><kbd>F</kbd></td></tr>
+<tr><td>Aiming: draw <span class="when">While aiming your pro</span></td><td><kbd>D</kbd></td></tr>
+<tr><td>Aiming: high shot <span class="when">While aiming your pro</span></td><td><kbd>H</kbd></td></tr>
+<tr><td>Aiming: low shot <span class="when">While aiming your pro</span></td><td><kbd>L</kbd></td></tr>
+<tr><td>Cancel the pro's round</td><td><kbd>N</kbd></td></tr>
+<tr><td>Begin a tournament</td><td><kbd>Shift+J</kbd></td></tr>
+<tr><td>Save the game</td><td><kbd>Shift+S</kbd></td></tr>
+<tr><td>Load a game</td><td><kbd>Shift+L</kbd></td></tr>
+<tr><td>Save a championship course</td><td><kbd>Shift+C</kbd></td></tr>
+<tr><td>Screenshot</td><td><kbd>Shift+F6</kbd></td></tr>
+<tr><td>Routing Map</td><td><kbd>Shift+R</kbd></td></tr>
+<tr><td>World Map</td><td><kbd>Shift+W</kbd></td></tr>
+<tr><td>Course Report</td><td><kbd>F1</kbd></td></tr>
+<tr><td>Player Comments</td><td><kbd>F2</kbd></td></tr>
+<tr><td>Histograph</td><td><kbd>F3</kbd></td></tr>
+<tr><td>Financial Report</td><td><kbd>F4</kbd></td></tr>
+<tr><td>Routing Map</td><td><kbd>F5</kbd></td></tr>
+<tr><td>World Map (move the club)</td><td><kbd>F6</kbd></td></tr>
+<tr><td>SGA Evaluation</td><td><kbd>F7</kbd></td></tr>
+<tr><td>The original's Keyboard Shortcuts</td><td><kbd>F8</kbd></td></tr>
+<tr><td>Membership Roster</td><td><kbd>F9</kbd></td></tr>
+<tr><td>Professional Accomplishments</td><td><kbd>F10</kbd></td></tr>
+<tr><td>People screen</td><td><kbd>Shift+G</kbd></td></tr>
+<tr><td>Message history</td><td><kbd>Shift+M</kbd></td></tr>
+<tr><td>Name tags off / on</td><td><kbd>Shift+H</kbd></td></tr>
+<tr><td>Path view off / on</td><td><kbd>Shift+V</kbd></td></tr>
+<tr><td>Measuring tape</td><td><kbd>'</kbd></td></tr>
+<tr><td>Quick save</td><td><kbd>Shift+F5</kbd></td></tr>
+<tr><td>Quick load</td><td><kbd>Shift+F9</kbd></td></tr>
+<tr><td>Staff areas off / on</td><td><kbd>Shift+A</kbd></td></tr>
+<tr><td>Landing map off / on</td><td><kbd>Shift+D</kbd></td></tr>
+<tr><td>Height map off / on</td><td><kbd>Shift+K</kbd></td></tr>
+<tr><td>Comments by hole</td><td><kbd>Shift+I</kbd></td></tr>
+<tr><td>History graphs</td><td><kbd>Shift+Y</kbd></td></tr>
+<tr><td>Camera bookmark 1 (Ctrl+key keeps it)</td><td><kbd>Shift+F1</kbd></td></tr>
+<tr><td>Camera bookmark 2 (Ctrl+key keeps it)</td><td><kbd>Shift+F2</kbd></td></tr>
+<tr><td>Camera bookmark 3 (Ctrl+key keeps it)</td><td><kbd>Shift+F3</kbd></td></tr>
+<tr><td>Camera bookmark 4 (Ctrl+key keeps it)</td><td><kbd>Shift+F4</kbd></td></tr>
+<tr><td>Course editor: scenario settings</td><td><kbd>Shift+E</kbd></td></tr>
+<tr><td>Cheats box</td><td><kbd>Ctrl+Shift+C</kbd></td></tr>
+<tr><td>Showcase: fly over the course hole by hole</td><td><kbd>Shift+O</kbd></td></tr>
+<tr><td>Report a problem (opens the bug report form, asks first)</td><td><kbd>Shift+F8</kbd></td></tr>
+</tbody></table></div>
+<!-- reference:end -->
+    </div>
+  </main>
+
+  <footer>
+    OpenSGolf is a free, open-source, fan-made game engine and is not affiliated with Firaxis, Maxis or Electronic Arts.
+    Spotted something missing or wrong here? <a href="https://github.com/crspytopgn/opensgolf/issues/new/choose">Tell us on GitHub</a>.
+  </footer>
+</div>
+<script>
+  // the theme button: Auto (the device's scheme), Light and Dark in turn, kept as the start page keeps it
+  (function () {
+    var b = document.getElementById("theme"), root = document.documentElement;
+    function show() { var t = root.getAttribute("data-theme"); b.textContent = "Theme: " + (t === "light" ? "Light" : t === "dark" ? "Dark" : "Auto"); }
+    b.addEventListener("click", function () {
+      var t = root.getAttribute("data-theme"), next = t === "light" ? "dark" : t === "dark" ? null : "light";
+      if (next) root.setAttribute("data-theme", next); else root.removeAttribute("data-theme");
+      try { if (next) localStorage.setItem("opensgolf-theme", next); else localStorage.removeItem("opensgolf-theme"); } catch (e) {}
+      show();
+    });
+    show();
+  })();
+  // the reference's filter: keeps the rows (and their tables' headings) that have every typed word
+  (function () {
+    var box = document.getElementById("find"), ref = document.getElementById("ref");
+    box.addEventListener("input", function () {
+      var words = box.value.toLowerCase().split(/\s+/).filter(Boolean);
+      ref.querySelectorAll(".tw").forEach(function (tw) {
+        var any = false;
+        tw.querySelectorAll("tbody tr").forEach(function (tr) {
+          var t = tr.textContent.toLowerCase(), ok = words.every(function (w) { return t.indexOf(w) >= 0; });
+          tr.classList.toggle("hidden", !ok);
+          any = any || ok;
+        });
+        tw.classList.toggle("hidden", !any);
+        for (var h = tw.previousElementSibling; h && h.tagName !== "DIV"; h = h.previousElementSibling) {
+          if (h.tagName === "H4" || h.tagName === "H3") { h.classList.toggle("hidden", !any && words.length > 0); break; }
+        }
+      });
+    });
+  })();
+</script>
+</body>
+</html>

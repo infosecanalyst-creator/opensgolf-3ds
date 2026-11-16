@@ -444,7 +444,7 @@ impl App {
         let ink = black();
         s.image_part(g, art, 0.0, 0.0, 0.0, 0.0, 800.0, 220.0);
         let mut title = trf("STR_HOLESTATS_TITLE", &[("HOLE", &self.report_hole_name(h, hole))]);
-        if hole.flags & 0x81 != 0 {
+        if hole.flags & 0x81 != 0 || !hole.name.is_empty() {
             title += &trf("STR_HOLESTATS_NUMBER", &[("HOLE", &h)]);
         }
         // fonts (0x453330): the title in 0x821020 (Klepto 24) centred at (385, 48), the rest in 0x821ee8 (Manual SSi 14)
@@ -492,6 +492,7 @@ impl App {
         s.text_centered(g, 536.0, 135.0, &hole.par.to_string(), 14.0, par_ink);
         self.draw_par_buttons(g, &s);
         self.draw_flyover_button(g, &s);
+        self.draw_lab_button(g, &s);
         s.text(g, 441.0, 156.0, tr("STR_HOLESTATS_STROKE_AVERAGE"), 14.0, ink);
         if let Some(a) = st.avg {
             s.text_centered(g, 591.0, 156.0, &hundredths(a), 14.0, ink);
@@ -523,6 +524,18 @@ impl App {
                 _ => ink,
             };
             s.text_centered(g, 400.0, y + 12.0, &format!("{pct}%   '{}'", line.text), 14.0, c);
+            y += 16.0;
+        }
+        // the club records' line (records.rs), with the comments by hole
+        if let Some(line) = self.records_line(h) {
+            s.image_part(g, art, 0.0, y, 0.0, 282.0, 800.0, 16.0);
+            s.text_centered(g, 400.0, y + 12.0, &line, 14.0, c15(0x0018));
+            y += 16.0;
+        }
+        // the design lab's lines (challenges.rs): the figures when marked, and since
+        for line in self.lab_lines(h) {
+            s.image_part(g, art, 0.0, y, 0.0, 282.0, 800.0, 16.0);
+            s.text_centered(g, 400.0, y + 12.0, &line, 14.0, c15(0x0018));
             y += 16.0;
         }
         s.image_part(g, art, 0.0, y, 0.0, 347.0, 800.0, 55.0);

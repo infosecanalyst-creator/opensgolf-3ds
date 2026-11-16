@@ -66,9 +66,10 @@
 //!   course aims and shoots at once as in the original. Left alone by the presets, as the controls presets' ticks are: it
 //!   changes what the original's click does.
 //!
-//! * right click puts the tool away (main.rs right_click): with a tool in hand (a terrain brush, the elevation tools,
-//!   a building), a right click on the course puts it down, as Space does, instead of the original's: a terrain brush's
-//!   right click is the undo's, which twice on a hole's tee or green takes the hole away. Left alone by the presets.
+//! * right click puts the tool away (main.rs right_click): with a tool in hand (a terrain brush, a building), a right
+//!   click on the course puts it down, as Space does, instead of the original's: a terrain brush's right click is the
+//!   undo's, which twice on a hole's tee or green takes the hole away. The elevation tools keep the original's right
+//!   click, which lowers the ground (issue #176). Left alone by the presets.
 //!
 //! * the interface at the screen's edges (enhanced.rs widescreen): on a wide screen with Classic graphics, the HUD goes
 //!   to the window's edges as Enhanced graphics' Widescreen tick puts it, instead of staying in the 800 x 600 middle. A
@@ -135,6 +136,29 @@ pub struct Settings {
     pub home_labels_hover: bool,
     /// Hole Stats' Fly over button: a short camera flight down the hole (showcase.rs). Off by default.
     pub hole_flyover: bool,
+    /// The game stands still while the player's pro waits for a shot (main.rs `playing`; the port's own, players'
+    /// request). Off by default: in the original the club goes on while the pro is aimed.
+    #[serde(default)]
+    pub pause_aim: bool,
+    /// Load Previous Game lists the saves newest first with the date and time each was saved, and a save made over an
+    /// older one keeps that one as a backup (files_ui.rs, backups.rs). Off by default: the original lists them by name.
+    #[serde(default)]
+    pub save_newest: bool,
+    /// A locked building's message says how many holes open it (`App::locked_text`). Off by default: the original only
+    /// says more holes are needed.
+    #[serde(default)]
+    pub unlock_info: bool,
+    /// Information > Challenges and Hole Stats' design lab (challenges.rs). Off by default: the original has neither.
+    #[serde(default)]
+    pub challenges: bool,
+    /// Phones and tablets play upright too, with the interface at the screen's edges (`portrait`). Off by default: the
+    /// original's screens are landscape, and an upright device is asked to turn sideways.
+    #[serde(default)]
+    pub portrait: bool,
+    /// F12 on the course walks it in first person (walk.rs), on computers. Off by default: the original has only the
+    /// overhead view.
+    #[serde(default)]
+    pub first_person: bool,
 }
 
 impl Settings {
@@ -174,6 +198,12 @@ impl Settings {
         edge_scroll: false,
         home_labels_hover: false,
         hole_flyover: true,
+        pause_aim: false,
+        save_newest: true,
+        unlock_info: true,
+        challenges: true,
+        portrait: false,
+        first_person: false,
     };
     pub const ALL_OFF: Settings = Settings {
         people: false,
@@ -206,10 +236,16 @@ impl Settings {
         edge_scroll: false,
         home_labels_hover: false,
         hole_flyover: false,
+        pause_aim: false,
+        save_newest: false,
+        unlock_info: false,
+        challenges: false,
+        portrait: false,
+        first_person: false,
     };
 
     /// The ticks as the Extras box's checkbox bits (in `UI_KEYS` order).
-    pub fn bits(&self) -> u32 {
+    pub fn bits(&self) -> u64 {
         [
             self.people,
             self.history,
@@ -241,13 +277,19 @@ impl Settings {
             self.edge_scroll,
             self.home_labels_hover,
             self.hole_flyover,
+            self.pause_aim,
+            self.save_newest,
+            self.unlock_info,
+            self.challenges,
+            self.portrait,
+            self.first_person,
         ]
         .iter()
         .enumerate()
-        .fold(0, |m, (i, &on)| m | (on as u32) << i)
+        .fold(0, |m, (i, &on)| m | (on as u64) << i)
     }
 
-    pub fn from_bits(m: u32) -> Settings {
+    pub fn from_bits(m: u64) -> Settings {
         let on = |i: u32| m & 1 << i != 0;
         Settings {
             people: on(0),
@@ -280,6 +322,12 @@ impl Settings {
             edge_scroll: on(27),
             home_labels_hover: on(28),
             hole_flyover: on(29),
+            pause_aim: on(30),
+            save_newest: on(31),
+            unlock_info: on(32),
+            challenges: on(33),
+            portrait: on(34),
+            first_person: on(35),
         }
     }
 
@@ -302,8 +350,11 @@ impl Settings {
             mouse_swing: from.mouse_swing,
             right_drop: from.right_drop,
             wide_ui: from.wide_ui,
+            portrait: from.portrait,
+            first_person: from.first_person,
             edge_scroll: from.edge_scroll,
             home_labels_hover: from.home_labels_hover,
+            pause_aim: from.pause_aim,
             ..*self
         }
     }
@@ -318,7 +369,7 @@ impl Default for Settings {
 
 /// The interface extras' lines on the Extras box's Interface page (extras_ui.rs), one tick per extra in `Settings::bits`
 /// order (text keys in lang/en.txt).
-pub const UI_KEYS: [&str; 30] = [
+pub const UI_KEYS: [&str; 36] = [
     "STR_EXTRAS_PEOPLE",
     "STR_EXTRAS_HISTORY",
     "STR_EXTRAS_NAME_TAGS",
@@ -349,6 +400,12 @@ pub const UI_KEYS: [&str; 30] = [
     "STR_EXTRAS_EDGE_SCROLL",
     "STR_EXTRAS_HOME_LABELS_HOVER",
     "STR_EXTRAS_HOLE_FLYOVER",
+    "STR_EXTRAS_PAUSE_AIM",
+    "STR_EXTRAS_SAVE_NEWEST",
+    "STR_EXTRAS_UNLOCK_INFO",
+    "STR_EXTRAS_CHALLENGES",
+    "STR_EXTRAS_PORTRAIT",
+    "STR_EXTRAS_FIRST_PERSON",
 ];
 
 /// The update check's value when settings.json has none (`Settings::update_check`).
@@ -365,7 +422,26 @@ pub fn settings() -> Settings {
 }
 
 pub fn set(s: Settings) {
+    let was = settings().portrait;
     SETTINGS.with(|c| c.set(s));
+    if s.portrait != was || !PORTRAIT_TOLD.with(|t| t.replace(true)) {
+        crate::portrait::tell_device(s.portrait);
+    }
+}
+
+thread_local! {
+    /// Whether the device has heard of the portrait tick yet (it is told once at the start, then on each change).
+    static PORTRAIT_TOLD: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Whether F12 walks the course in first person (walk.rs; computers only).
+pub fn first_person() -> bool {
+    cfg!(not(any(target_arch = "wasm32", target_os = "android"))) && settings().first_person
+}
+
+/// Whether phones and tablets may play upright (portrait.rs).
+pub fn portrait() -> bool {
+    settings().portrait
 }
 
 pub fn people() -> bool {
@@ -457,6 +533,21 @@ pub fn right_drop() -> bool {
 pub fn hole_flyover() -> bool {
     settings().hole_flyover
 }
+/// Whether the game stands still while the pro waits for a shot (main.rs `playing`).
+pub fn pause_aim() -> bool {
+    settings().pause_aim
+}
+/// Whether the Load list is newest first with dates, and saves keep backups (files_ui.rs, backups.rs).
+pub fn save_newest() -> bool {
+    settings().save_newest
+}
+pub fn unlock_info() -> bool {
+    settings().unlock_info
+}
+/// Whether Information > Challenges and Hole Stats' design lab are on (challenges.rs).
+pub fn challenges() -> bool {
+    settings().challenges
+}
 pub fn random_trees() -> bool {
     settings().random_trees
 }
@@ -479,6 +570,13 @@ pub fn saved() -> Settings {
         return Settings::ALL_OFF;
     }
     from_json(&settings_json()[SETTINGS_KEY])
+}
+
+/// The ticks a new player has once settings.json exists (the update check, the interface at the screen's edges and edge
+/// scrolling on): for the web site's feature guide (guide.rs).
+#[cfg(test)]
+pub(crate) fn new_player() -> Settings {
+    from_json(&serde_json::Value::Null)
 }
 
 /// The ticks in settings.json's "ui_extras" value: a tick missing there reads as off (`Settings::default`), except that
@@ -641,7 +739,30 @@ pub struct Kept {
     /// Home sites placed while the home-site details are on (homes_ui.rs): what each cost and sold for.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub homes: Vec<crate::homes_ui::Sale>,
+    /// Each golfer's rounds here, by person record, newest last (profile_ui.rs), while the People extras are on.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub rounds: BTreeMap<i32, Vec<Round>>,
+    /// The club records (records.rs), once a hole is finished with the comments by hole on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub records: Option<crate::records::Records>,
+    /// The design lab's marks (challenges.rs), by hole number.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub lab: BTreeMap<u8, crate::challenges::LabMark>,
 }
+
+/// A round a golfer played here: when it ended, the holes played, strokes, their par and what the golfer spent.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Round {
+    pub tick: u32,
+    pub holes: u8,
+    pub strokes: u16,
+    pub par: u16,
+    #[serde(default)]
+    pub spent: i64,
+}
+
+/// The most rounds kept for one golfer (the oldest go first).
+pub const MAX_ROUNDS: usize = 40;
 
 impl Kept {
     pub fn is_empty(&self) -> bool {
@@ -653,6 +774,9 @@ impl Kept {
             && self.views.is_empty()
             && self.years.is_none()
             && self.homes.is_empty()
+            && self.rounds.is_empty()
+            && self.records.is_none()
+            && self.lab.is_empty()
     }
 
     pub fn push_message(&mut self, m: Message) {
@@ -694,6 +818,8 @@ pub enum Follow {
 pub enum RenameFor {
     Employee(usize),
     Bio(i32),
+    /// A hole's own name (Hole Stats: a click on its title).
+    Hole(usize),
 }
 
 /// The extras' state in the game (`App::xs`).
@@ -714,6 +840,10 @@ pub struct State {
 
     /// The path view (Shift+V) and its marks, made again when the course changes.
     pub path_view: bool,
+    /// The course review's first item shown (review_ui.rs).
+    pub review_off: usize,
+    /// The Challenges page's first row shown (challenges.rs).
+    pub challenges_off: usize,
     /// The --screen test hook's extras screen, opened once the game has run (main.rs).
     pub test_open: Option<String>,
     /// The screen has been touched (touch.rs): no pointer to hover with, so no name tags.
@@ -938,6 +1068,17 @@ impl crate::app::App {
                     }
                 }
                 self.open_profile(self.club.g[g].roster);
+                // SG_PROFILE_ROUNDS=1: the Rounds list, with the golfers' kept rounds
+                if std::env::var_os("SG_PROFILE_ROUNDS").is_some() {
+                    self.xs.profile.rounds = true;
+                    let r = self.club.g[g].roster;
+                    if !self.xs.kept.rounds.contains_key(&r) {
+                        if let Some((_, v)) = self.xs.kept.rounds.iter().next() {
+                            let v = v.clone();
+                            self.xs.kept.rounds.insert(r, v);
+                        }
+                    }
+                }
             }
             "tags" => {
                 // the pointer on the first golfer on screen, every frame
@@ -999,6 +1140,26 @@ impl crate::app::App {
     /// Money a golfer slot has spent this round (dollars).
     pub fn spent_by(&self, g: usize) -> i64 {
         self.xs.spent.get(g).filter(|e| e.0 == self.club.g[g].roster).map(|e| e.1 * 100).unwrap_or(0)
+    }
+
+    /// A round a golfer finished, kept for the profile page's Rounds list.
+    pub fn keep_round(&mut self, g: usize, holes: i32, strokes: i32, par: i32) {
+        let roster = self.club.g[g].roster;
+        if roster < 0 || holes <= 0 {
+            return;
+        }
+        let r = Round {
+            tick: self.date(),
+            holes: holes as u8,
+            strokes: strokes.clamp(0, 999) as u16,
+            par: par.clamp(0, 999) as u16,
+            spent: self.spent_by(g),
+        };
+        let v = self.xs.kept.rounds.entry(roster).or_default();
+        v.push(r);
+        if v.len() > MAX_ROUNDS {
+            v.remove(0);
+        }
     }
 
     /// A thought a golfer had, kept for the profile page.
@@ -1206,7 +1367,7 @@ mod tests {
         let f = Settings { save_files: true, ..Settings::ALL_OFF };
         assert_eq!(f.bits(), 1 << 22);
         assert_eq!(Settings::from_bits(f.bits()), f);
-        assert_eq!(UI_KEYS.len(), 30);
+        assert_eq!(UI_KEYS.len(), 36);
     }
 
     #[test]

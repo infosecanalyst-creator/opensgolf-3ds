@@ -258,7 +258,7 @@ impl Club {
             ga.roster = crate::vips::ROSTER_CHALLENGER;
             ga.flags &= !0x1c;
             ga.level = clamp(self.difficulty, 0, 2);
-            ga.class = ((self.wager_level * 16 + 7) & 0xff) as u8;
+            ga.class = challenger_class(self.wager_level);
             ga.skill_mask = 0xe0;
             for k in 0..12 {
                 ga.skills[k] = pro.skills[k];
@@ -805,6 +805,14 @@ impl Club {
     }
 }
 
+/// The challenger's class byte (0x40f190): the three skill classes, and the stake (the wager level) in the top four
+/// bits, which `match_money` needs to be non-zero. Level * 16 wraps to 0 in those bits at level 16, the last match an
+/// 18-hole course offers, so that match paid nothing and showed no hole results (issue #181); the port keeps 15 in the
+/// byte, and the money still goes by the full level.
+pub(crate) fn challenger_class(level: i32) -> u8 {
+    (level.clamp(1, 15) * 16 + 7) as u8
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -966,6 +974,32 @@ mod tests {
         assert_eq!(cl.trophies, 1);
         assert_eq!(cl.gary, -1);
         assert!(cl.awards & (1 << 5) != 0);
+    }
+
+    #[test]
+    fn top_wager_level_keeps_the_stake() {
+        // issue #181: the 16th match (wager level 16) must still carry a stake, so holes and the match pay out
+        assert_eq!(challenger_class(2), 0x27);
+        for l in [1, 15, 16, 17] {
+            assert!(challenger_class(l) & 0xf0 != 0, "level {l}");
+        }
+        let mut cl = Club::default();
+        cl.holes[1].par = 4;
+        cl.holes[2].par = 3;
+        cl.next_hole = 3;
+        cl.wager_level = 16;
+        cl.gary = 3;
+        cl.g[2].class = challenger_class(16);
+        cl.g[3].class = 0x47;
+        cl.g[2].partner = 3;
+        cl.g[3].partner = 2;
+        cl.g[2].card[1] = 5;
+        cl.g[3].card[1] = 4;
+        cl.g[2].hole = 1;
+        cl.g[3].hole = 2;
+        cl.match_money(2);
+        let earned: i32 = cl.out.iter().map(|e| if let crate::golfer::Event::Earn { units, .. } = e { *units } else { 0 }).sum();
+        assert_eq!(earned, 320, "a hole won at level 16 pays 16 * 20 units");
     }
 
     #[test]

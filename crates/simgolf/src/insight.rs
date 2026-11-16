@@ -857,7 +857,7 @@ impl App {
 
     /// A thought's words and tone for the page: the Customise screen's label of its dialogue row when it has one ("Hit into
     /// the water"), else the line the F2 report shows for it; the tone is the F2 line's.
-    fn thought_label(&self, id: u8, arg: i32) -> (String, sg_core::thoughts::Tone) {
+    pub(crate) fn thought_label(&self, id: u8, arg: i32) -> (String, sg_core::thoughts::Tone) {
         use sg_core::roster::{SAYING_CODES, SAYING_LABEL_KEYS};
         let line = self.club.thought(&self.course, id as u32, arg, 0x98);
         let text = match SAYING_CODES.iter().position(|&c| c == id as u32).filter(|&r| r > 0) {
@@ -885,7 +885,7 @@ impl App {
     }
 
     /// The tally as of now (a month that has turned since the last thought shows as its own, empty, month).
-    fn tally_now(&self) -> Tally {
+    pub(crate) fn tally_now(&self) -> Tally {
         let mut t = self.xs.kept.insight.as_ref().map(|k| k.tally.clone()).unwrap_or_default();
         t.roll(self.game_tick >> 10);
         t

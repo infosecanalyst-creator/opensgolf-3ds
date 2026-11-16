@@ -903,6 +903,8 @@ impl App {
         self.draw_launcher_button(g, &s);
         // and "Check for updates" (update.rs)
         self.draw_update_button(g, &s);
+        // and "Continue" with the newest save under it (backups.rs)
+        self.draw_continue_button(g, &s);
         // and "Course editor..." (editor.rs)
         self.draw_editor_button(g, &s);
         // and the player's own time played (support.rs's counter; from a minute on): the free set's bottom left corner, the
@@ -1037,6 +1039,8 @@ impl App {
         // the OpenSGolf extras' landing map (insight.rs): dots on the course, under the golfers' names
         if self.great_shot.is_none() {
             self.draw_landing_map(g, &s);
+            // the height map (heightview_ui.rs), the same way
+            self.draw_height_view(g, &s);
         }
         // the golfers' names and thoughts belong to the course, under the HUD
         self.draw_names(g, &s);

@@ -421,7 +421,7 @@ mod tests {
     fn the_box_says_how_long_was_played() {
         assert_eq!(played_words(FIRST_ASK), tr("STR_SUPPORT_PLAYED_1"));
         assert_eq!(played_words(FIRST_ASK + SECOND_ASK + 1800.0), "You've played for about 6 hours.");
-        assert!(box_lines(FIRST_ASK).concat().contains("£90 a month"));
+        assert!(box_lines(FIRST_ASK).concat().contains("paid AI tools"));
     }
 
     #[test]

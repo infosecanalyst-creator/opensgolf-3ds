@@ -23,7 +23,7 @@ log = open(sys.argv[2], "a", buffering=1)
 class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-        log.write("%s %s %s\n" % (mode, q.get("p", ["?"])[0], self.headers.get("User-Agent")))
+        log.write("%s %s %s %s\n" % (mode, q.get("e", ["?"])[0], q.get("s", ["?"])[0], self.headers.get("User-Agent")))
         if mode == "hang":
             time.sleep(120); return
         self.send_response(200 if mode == "ok" else 500); self.end_headers(); self.wfile.write(b"ok")

@@ -311,6 +311,20 @@ pub fn restart() {
     }
 }
 
+/// Playing upright (portrait.rs): the activity follows the sensor every way with it on, else landscape either way up
+/// (MainActivity.setPortrait, on Android's UI thread).
+pub fn set_portrait(on: bool) {
+    unsafe {
+        let activity = android::ACTIVITY;
+        if activity.is_null() {
+            return;
+        }
+        let env = android::attach_jni_env();
+        miniquad::call_void_method!(env, activity, "setPortrait", "(Z)V", on as i32);
+        threw(env);
+    }
+}
+
 /// "Update now" (autoupdate.rs): hands the downloaded APK, its signature and checksum checked, to Android's package
 /// installer (MainActivity.installApk: a PackageInstaller session, so no file needs sharing through a FileProvider).
 /// Android asks the player to confirm, and installs it only over an app signed with the same key. False when the Java

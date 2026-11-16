@@ -280,6 +280,10 @@ fn course_map(t: &sg_core::terrain::Terrain, land: Option<&sg_core::land::Land>)
 /// A row's name: the file name without its extension; names starting with '&' are autosaves (the port's own two older
 /// autosaves and the quick save have names of their own, autosave.rs and comfort.rs).
 pub fn row_name(p: &Path) -> String {
+    // a backup (the Saves newest first extra, backups.rs)
+    if let Some((name, n)) = crate::backups::backup_of(p) {
+        return trf("STR_FILES_BACKUP", &[("NAME", &name), ("N", &n)]);
+    }
     let n = p.file_stem().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     match n.as_str() {
         "&Latest-2" => return tr("STR_FILES_AUTOSAVE_2").to_string(),
@@ -385,6 +389,11 @@ impl App {
                 if sg_core::fsutil::exists(self.game_file()) {
                     v.push(self.game_file());
                 }
+                // the Saves newest first extra: by date, then the backups (backups.rs)
+                if crate::extras::save_newest() {
+                    let dir = saved_games_dir();
+                    v = crate::backups::order(v, crate::backups::list(&dir), &crate::backups::index(&dir));
+                }
                 v
             }
             ListKind::Course => list(&self.championship_dir(), crate::champ_ui::COURSE_EXT),
@@ -489,6 +498,14 @@ impl App {
             f.confirm = Some(0);
         }
         true
+    }
+
+    /// Chooses a row and loads it, as a click on it and the tick do (backups.rs's Continue).
+    pub fn files_select_and_load(&mut self, row: usize) {
+        self.select_row(row);
+        if let Some(f) = self.title.files.as_mut().filter(|f| f.sel == Some(row)) {
+            f.loading = 1;
+        }
     }
 
     fn select_row(&mut self, row: usize) {
@@ -796,6 +813,10 @@ impl App {
         let room = if self.on_free_set() { 340.0 } else { crate::ui::TITLE_ROOM };
         s.put_centered_fit(g, font(24.0), 504.0, 42.0, room, title, BLACK);
         let n = f.files.len();
+        // the Saves newest first extra: how long ago each was saved, at the row's right (backups.rs)
+        let ages = crate::extras::save_newest() && f.kind == ListKind::Load;
+        let idx = if ages { crate::backups::index(&saved_games_dir()) } else { Default::default() };
+        let now = miniquad::date::now();
         for r in 0..ROWS.min(n.saturating_sub(f.scroll)) {
             let i = f.scroll + r;
             let y = 116.0 + 16.0 * r as f32;
@@ -804,7 +825,14 @@ impl App {
                 s.fill(g, 310.0, y - 1.0, 456.0, 15.0, c15(if pro { 0x1284 } else { 0x7b20 }));
             }
             // a name longer than the row (a long save name, or a translated autosave's) is fitted (ui.rs fit_line)
-            s.put_fit(g, font(13.0), 320.0, y, 440.0, &row_name(&f.files[i]), if on && pro { WHITE } else { BLACK });
+            let ink = if on && pro { WHITE } else { BLACK };
+            match ages.then(|| crate::backups::saved_at(&f.files[i], &idx)).flatten() {
+                Some(t) => {
+                    s.put_fit(g, font(13.0), 320.0, y, 320.0, &row_name(&f.files[i]), ink);
+                    s.put_right(g, font(12.0), 760.0, y + 1.0, &crate::backups::age_words(now, t), if on { ink } else { c15(0x4210) });
+                }
+                None => s.put_fit(g, font(13.0), 320.0, y, 440.0, &row_name(&f.files[i]), ink),
+            }
         }
         if n > f.scroll + ROWS {
             top(s, g, 320.0, 372.0, tr("STR_FILES_MORE"), 13.0, BLACK);

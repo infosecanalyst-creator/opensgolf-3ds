@@ -306,6 +306,7 @@ impl App {
                 true
             }
             Action::SetPar { hole, par } => self.club.set_par((*hole).clamp(1, 18) as usize, *par),
+            Action::Demolish { x, y } => self.demolish(*x, *y),
             Action::Hire { kind, skilled } => self.hire_employee(*kind, *skilled),
             Action::Fire { employee } => self.fire_employee(*employee),
             Action::Post { employee, x, y } => match self.employees.get_mut(*employee) {
@@ -455,6 +456,13 @@ impl App {
                 self.use_cheat(*k);
                 true
             }
+            Action::HoleName { hole, name } => match self.club.holes.get_mut(*hole) {
+                Some(h) if h.par != 0 => {
+                    h.name = name.clone();
+                    true
+                }
+                _ => false,
+            },
             Action::Rename(n) => {
                 self.club.course_name = n.clone();
                 self.course_name = n.clone();

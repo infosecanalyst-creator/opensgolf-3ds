@@ -1,0 +1,1 @@
+Portable mode on computers: a portable.txt file beside the game keeps saves and settings in a folder next to it.

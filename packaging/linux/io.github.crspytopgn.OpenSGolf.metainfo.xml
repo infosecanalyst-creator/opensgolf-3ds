@@ -107,6 +107,41 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.8.2" date="2026-11-15">
+      <description>
+        <p>The anonymous play-time count now goes to the project's own counter and can tell how long people play at a time.</p>
+      </description>
+    </release>
+    <release version="0.8.1" date="2026-11-13">
+      <description>
+        <p>First-person view: golfers with clothes and softer faces, your pro in 3D, course sounds heard from where you stand, 3D blimps, balloons and oil pumps, and the backtick key as well as F12.</p>
+      </description>
+    </release>
+    <release version="0.8.0" date="2026-11-13">
+      <description>
+        <p>Walk your course in first person: F12 shows it at eye height in 3D, with 3D buildings, trees and golfers (an option, off by default).</p>
+        <p>The browser version installs as an app and plays offline, and phones and tablets can play upright.</p>
+        <p>New options: pause while you aim, saves newest first with backups, course challenges, demolishing eyesores and moving the clubhouse, speed x8 and a height map.</p>
+        <p>A feature guide on the website and a Features tab in the launcher list every option OpenSGolf adds.</p>
+      </description>
+    </release>
+    <release version="0.7.6" date="2026-11-11">
+      <description>
+        <p>Name your holes from their Hole Stats.</p>
+        <p>The launcher can make a desktop shortcut that starts straight on the title menu.</p>
+      </description>
+    </release>
+    <release version="0.7.5" date="2026-11-10">
+      <description>
+        <p>Portable mode: a portable.txt file beside the game keeps saves and settings in a folder next to it.</p>
+      </description>
+    </release>
+    <release version="0.7.4" date="2026-11-10">
+      <description>
+        <p>The skill points card no longer gets stuck reopening when points are left over.</p>
+        <p>Longer translated names fit the Course Terrain tooltip, and its descriptions can be translated.</p>
+      </description>
+    </release>
     <release version="0.7.3" date="2026-11-08">
       <description>
         <p>A launcher before the title menu for game files, presets, display, sound and news.</p>

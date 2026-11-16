@@ -7,6 +7,14 @@
      sgWindowBox, ui.rs safe_extent) -->
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#1f6b3f">
+<!-- the home-screen app (web/manifest.webmanifest, web/sw.js): installed from the browser's menu, or Share > Add to Home Screen
+     on an iPhone or iPad, it opens without the browser's bars and starts without a connection once played -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="OpenSGolf">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="description" content="OpenSGolf: the classic golf course builder, rebuilt. A free, open-source, fan-made golf resort game you can play right in your browser, with your own SimGolf files or free graphics.">
 <title>OpenSGolf: the classic golf course builder, rebuilt, in your browser</title>
 <script>
@@ -182,9 +190,15 @@
   .dl .btn[hidden] { display: none; }
   .dl-more { font: 12.5px/1.5 var(--ui); color: #fff; text-shadow: 0 1px 2px rgba(0, 20, 50, 0.9); }
   .dl-more a { color: #fff; font-weight: bold; }
-  .shot { flex: 0 0 auto; width: 220px; height: 150px; border: 4px solid var(--frame); border-radius: 14px; transform: rotate(2.5deg);
+  /* the picture: a plain green (no screenshots of the original game's art in this fork), and in its corner the first-person
+     view, the player's pro walking in front of the clubhouse (free graphics) */
+  .shot { position: relative; flex: 0 0 auto; width: 256px; height: 160px; border: 4px solid var(--frame); border-radius: 14px; transform: rotate(2.5deg);
     background: radial-gradient(ellipse at 50% 35%, #2f6b3a 0%, #0c2416 70%);
     box-shadow: inset 0 0 0 1px rgba(255,255,255,0.5), 0 0 0 1px #1d6b2f, 0 8px 18px rgba(0, 20, 50, 0.45); }
+
+  .shot .inset { position: absolute; right: -14px; bottom: -16px; width: 112px; height: 70px; border: 3px solid #fff; border-radius: 8px;
+    transform: rotate(-5deg); background: #0c2416 url("start-walk.jpg") center / cover no-repeat;
+    box-shadow: 0 0 0 1px #1d6b2f, 0 6px 14px rgba(0, 20, 50, 0.5); }
 
   /* the tab bar */
   nav.tabs { display: flex; flex-wrap: wrap; gap: 3px; padding: 6px 8px 0; position: relative;
@@ -417,7 +431,15 @@
       radial-gradient(110px 32px at 78% 30%, rgba(255,255,255,0.8), transparent 70%),
       linear-gradient(180deg, #1b5cae 0%, #3d8ad8 45%, #a9d4f3 66%);
     touch-action: none; -webkit-user-select: none; user-select: none; color: var(--ink); font: 14px/1.5 var(--ui); }
-  #rotate[hidden] { display: none; }
+  #rotate[hidden], #twotabs[hidden] { display: none; }
+  /* the game already running in another tab (the port's own; opensgolf.js sgTabGuard): the same card over the start page */
+  #twotabs { position: fixed; inset: 0; z-index: 11; display: flex; align-items: center; justify-content: center; padding: 24px 16px;
+    background: rgba(5, 25, 15, 0.72); color: var(--ink); font: 14px/1.5 var(--ui); }
+  #twotabs .card { max-width: 380px; width: 100%; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px;
+    background: var(--panel); border: 3px solid var(--frame); border-radius: 16px; padding: 0 0 16px; overflow: hidden; }
+  #twotabs h2 { margin: 0; width: 100%; color: var(--gold); justify-content: center; border-radius: 0; border-width: 0 0 1px; font-size: 20px; line-height: 1.25; padding: 8px 12px; }
+  #twotabs p { margin: 0 16px; }
+  #twotabs .btn { width: calc(100% - 32px); }
   #rotate .card { max-width: 340px; width: 100%; align-items: center; text-align: center; gap: 12px; background: var(--panel);
     border: 3px solid var(--frame); border-radius: 16px; box-shadow: 0 0 0 1px #1d6b2f, 0 14px 40px rgba(5, 25, 60, 0.45); padding: 0 0 16px; overflow: hidden; }
   #rotate h2 { margin: 0; width: 100%; color: var(--gold); justify-content: center; border-radius: 0; border-width: 0 0 1px; font-size: 21px; line-height: 1.25; padding: 8px 12px; }
@@ -431,7 +453,8 @@
   @media (max-width: 760px) {
     .site { margin: 0; border-radius: 0; border: 0; box-shadow: none; }
     .cols { grid-template-columns: minmax(0, 1fr); }
-    .shot { width: 150px; height: 104px; }
+    .shot { width: 176px; height: 110px; }
+    .shot .inset { width: 72px; height: 45px; border-width: 2px; }
     .cd { --cd: 150px; }
     .side { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0 14px; }
     body { font-size: 15px; }
@@ -461,8 +484,9 @@
 .trailer .play{position:absolute;left:50%;top:50%;width:84px;height:60px;margin:-30px 0 0 -42px;border-radius:14px;background:rgba(204,0,0,.9);color:#fff;font-size:30px;line-height:60px;text-align:center}
 .trailer:hover .play,.trailer:focus .play{background:#e00}
 </style>
-<!-- Visit counter: GoatCounter (no cookies, no personal data); counts page visits, which start button is used and the game's
-     play-time count (sent by the game itself: opensgolf.js sg_playcount, which honours the #playcount tick below) -->
+<!-- Visit counter: GoatCounter (no cookies, no personal data); counts page visits and which start
+     button is used; the game's play-time count goes to the project's own counter instead (stats/; opensgolf.js sg_playcount,
+     which honours the #playcount tick below) -->
 <script data-goatcounter="https://opensgolf.goatcounter.com/count" async src="https://gc.zgo.at/count.js"></script>
 <script>
   // counts which way people start the game (free graphics, a folder or a zip); does nothing if the counter is blocked
@@ -517,6 +541,7 @@
   <div class="site" id="top">
     <div class="mast">
       <nav class="toplinks" aria-label="Links">
+        <a href="guide.html">Feature guide</a>
         <a href="https://github.com/crspytopgn/opensgolf#download">Downloads</a>
         <a href="https://github.com/crspytopgn/opensgolf">GitHub</a>
         <a class="coffee" href="https://buymeacoffee.com/crspytopgn">☕ Buy me a coffee</a>
@@ -551,7 +576,7 @@
             <a class="whatsnew" href="https://github.com/crspytopgn/opensgolf/blob/main/CHANGELOG.md" target="_blank" rel="noopener">★ What's new</a>
           </div>
         </div>
-        <div class="shot" role="img" aria-label="OpenSGolf playing with the original SimGolf files"></div>
+        <div class="shot" role="img" aria-label="OpenSGolf: a course from above, and in the corner the first-person view of your pro walking in front of the clubhouse"><div class="inset"></div></div>
       </div>
       <svg class="hills" viewBox="0 0 800 56" preserveAspectRatio="none" aria-hidden="true">
         <defs><pattern id="mow3" width="40" height="40" patternUnits="userSpaceOnUse" patternTransform="rotate(-30)">
@@ -619,7 +644,7 @@
                   <p class="hint"><b>Insert your SimGolf</b>Click the disc, or drop your game folder, a .zip or a CD image onto it.</p>
                   <div class="actions">
                     <label class="btn">Choose game folder<input id="folder" type="file" webkitdirectory directory multiple></label>
-                    <label class="btn ghost">Or a .zip or CD image<input id="zip" type="file" accept=".zip,.iso,.cdr,.dmg"></label>
+                    <label class="btn ghost">Or a .zip, .7z or CD image<input id="zip" type="file" accept=".zip,.7z,.iso,.cdr,.dmg"></label>
                   </div>
                   <div class="progress" id="prog" hidden aria-hidden="true">
                     <p class="pstage"><b id="pstage">Working</b><span id="pcount"></span></p>
@@ -649,6 +674,7 @@
           <label class="remember"><input type="checkbox" id="remember" checked> Keep my files in this browser so next time starts at once</label>
           <label class="remember"><input type="checkbox" id="playcount" checked> Count my play time, anonymously (one count per 15 minutes played and one at start; no cookies, no personal data)</label>
           <div id="status" role="status" aria-live="polite"></div>
+          <p class="trouble" id="install" hidden><span id="installtext"></span> <button class="linkish" id="installbtn" hidden>Install OpenSGolf</button></p>
           <p class="trouble">Game stuck on its first picture? <button class="linkish" id="resetgfx" onclick="sgResetGraphics(); return false;">Reset graphics settings</button> (your saved games are kept)</p>
         </section>
 
@@ -765,6 +791,7 @@
                 <li><kbd>Esc</kbd> menu, <kbd>⇧</kbd>+<kbd>S</kbd> / <kbd>⇧</kbd>+<kbd>L</kbd> save and load, <kbd>]</kbd> game
                   speed</li>
                 <li>Sharper 4K and widescreen: Preferences → Enhanced graphics</li>
+                <li>Every feature OpenSGolf adds, and where to switch it on: the <a href="guide.html">feature guide</a></li>
               </ul>
             </section>
             <section class="card">
@@ -807,6 +834,15 @@
             </dl>
           </div>
         </div>
+        <div class="box support">
+          <h2 class="bar"><svg aria-hidden="true"><use href="#i-ball"/></svg>Support future updates</h2>
+          <div class="in">
+            <p>OpenSGolf is free and always will be, with no ads. It's made by one person with the help of paid AI tools,
+              which cost money every month, so a coffee goes straight into future updates.</p>
+            <p class="get"><a class="btn coffee" href="https://buymeacoffee.com/crspytopgn">☕ Buy me a coffee</a>
+              <a class="btn ghost" href="https://github.com/sponsors/crspytopgn">💖 Sponsor on GitHub</a></p>
+          </div>
+        </div>
         <div class="box">
           <h2 class="bar"><svg aria-hidden="true"><use href="#i-ball"/></svg>Get it</h2>
           <div class="in get">
@@ -835,13 +871,22 @@
         SimGolf's art, sounds and data belong to Electronic Arts and are not included; the page reads them from your own copy.
         The picture at the top is from the game running with the original SimGolf files.</p>
       <p>Visits and play time are counted with <a href="https://www.goatcounter.com">GoatCounter</a>: no cookies and no
-        personal data. The game counts play time anonymously: one count per 15 minutes played and one at start, with only the
-        system and version. The tick under the start buttons or the game's Preferences &gt; More turns it off.</p>
+        personal data. The game counts play time anonymously with the project's own counter: one count per 15 minutes played
+        and one at start, with only the system, the version and a random number made fresh each time the game starts. The tick under the start buttons or the game's Preferences &gt; More turns it off.</p>
       <p class="viewed">Best viewed at any resolution, on any screen, with the sound on.</p>
     </footer>
   </div>
 </div>
 <canvas id="glcanvas" tabindex="1"></canvas>
+<div id="twotabs" hidden role="dialog" aria-modal="true" aria-labelledby="twotabstitle">
+  <section class="card">
+    <h2 class="bar" id="twotabstitle">OpenSGolf is already open</h2>
+    <p>The game is running in another tab or window of this browser. Two games at once share one save folder, so each can
+      overwrite what the other saved. Close the other one first.</p>
+    <button class="btn green" id="twotabsagain">I closed it: play</button>
+    <button class="btn ghost" id="twotabsanyway">Play here anyway</button>
+  </section>
+</div>
 <div id="rotate" hidden role="dialog" aria-modal="true" aria-labelledby="rotatetitle">
   <section class="card">
     <h2 class="bar" id="rotatetitle">Turn your device sideways to play</h2>

@@ -35,6 +35,10 @@ pub enum PopupKind {
     SetPar,
     /// Quick load's confirmation (the port's own, comfort.rs): load the quick save, yes or no.
     QuickLoad,
+    /// The Eyesore demolition extra's confirmation (the port's own, demolish.rs): pull it down, yes or no.
+    Demolish,
+    /// The Move the clubhouse extra's question (the port's own, clubhouse_move.rs): pick a new spot, yes or no.
+    MoveClubhouse,
     /// Preferences > Search (the port's own, prefs_search.rs): find an option on any page, show only the changed ones,
     /// reset to the original.
     Search,
@@ -793,6 +797,8 @@ impl App {
         let prefs_lines =
             if crate::prefs_ui::is_prefs_box(kind) { crate::prefs_ui::lines(kind, &ctx, crate::textsize::pct()) } else { Vec::new() };
         let set_par_lines: [String; 2];
+        let demolish_lines: [String; 4];
+        let move_lines: [String; 4];
         let cheat_lines: Vec<String>;
         let report_lines: Vec<String>;
         let support_lines: Vec<String>;
@@ -902,6 +908,14 @@ impl App {
                 cheat_lines = l;
                 (cheat_lines.iter().map(|l| l.as_str()).collect(), disabled, 400.0, 120.0)
             }
+            PopupKind::Demolish => {
+                demolish_lines = self.demolish_lines();
+                (demolish_lines.iter().map(|l| l.as_str()).collect(), 0, 400.0, 200.0)
+            }
+            PopupKind::MoveClubhouse => {
+                move_lines = self.move_clubhouse_lines();
+                (move_lines.iter().map(|l| l.as_str()).collect(), 0, 400.0, 200.0)
+            }
             PopupKind::QuickLoad => {
                 (vec![tr("STR_QUICK_LOAD_1"), tr("STR_QUICK_LOAD_2"), tr("STR_QUICK_LOAD_YES"), tr("STR_QUICK_LOAD_NO")], 0, 400.0, 200.0)
             }
@@ -930,7 +944,10 @@ impl App {
                 (crate::extras::history(), "STR_MENU_INFO_HISTORY"),
                 (crate::extras::path_help(), "STR_MENU_INFO_PATH_VIEW"),
                 (crate::extras::landing_map(), "STR_MENU_INFO_LANDING_MAP"),
+                (crate::extras::landing_map(), "STR_MENU_INFO_HEIGHT_VIEW"),
                 (crate::extras::hole_comments(), "STR_MENU_INFO_HOLE_COMMENTS"),
+                (crate::extras::hole_comments(), "STR_MENU_INFO_REVIEW"),
+                (crate::extras::challenges(), "STR_MENU_INFO_CHALLENGES"),
                 (crate::extras::graphs(), "STR_MENU_INFO_GRAPHS"),
             ] {
                 if on {
@@ -1350,6 +1367,7 @@ impl App {
                     Some(usize::MAX)
                 }
                 Some(crate::bugreport::BOX_CANCEL) => None,
+                Some(crate::bugreport::BOX_COPY) => Some(crate::bugreport::BOX_COPY),
                 _ => Some(crate::bugreport::BOX_GO),
             };
         }
@@ -1466,6 +1484,10 @@ impl App {
                                 self.xs.kept.staff_names.insert(i, n);
                             }
                         }
+                        crate::extras::RenameFor::Hole(h) => {
+                            // the hole's record is the club's: an action (replay.rs); empty gives the original's name back
+                            self.act(sg_core::action::Action::HoleName { hole: h, name: n });
+                        }
                         crate::extras::RenameFor::Bio(r) => {
                             // the person's record is the club's: an action (replay.rs)
                             let rec = r.max(0) as usize;
@@ -1506,7 +1528,11 @@ impl App {
 
     pub fn rename_char(&mut self, c: char) {
         // an employee's name as long as the course's, a bio as long as the person record keeps (500)
-        let most = if matches!(self.xs.rename_for, Some(crate::extras::RenameFor::Bio(_))) { 500 } else { 32 };
+        let most = match self.xs.rename_for {
+            Some(crate::extras::RenameFor::Bio(_)) => 500,
+            Some(crate::extras::RenameFor::Hole(_)) => 24,
+            _ => 32,
+        };
         if let Some(name) = self.rename.as_mut() {
             if !c.is_control() && name.chars().count() < most {
                 name.push(c);
@@ -1528,6 +1554,7 @@ impl App {
         let title = match self.xs.rename_for {
             Some(crate::extras::RenameFor::Employee(_)) => tr("STR_RENAME_EMPLOYEE"),
             Some(crate::extras::RenameFor::Bio(_)) => tr("STR_RENAME_BIO"),
+            Some(crate::extras::RenameFor::Hole(_)) => tr("STR_RENAME_HOLE"),
             None => tr("STR_RENAME_COURSE"),
         };
         if free {

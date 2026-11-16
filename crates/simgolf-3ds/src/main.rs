@@ -238,6 +238,31 @@ mod tees;
 mod textsize;
 #[path = "../../simgolf/src/welcome.rs"]
 mod welcome;
+// added with the upstream catch-up of Nov 16 2026 (OpenSGolf 0.7.3 to 0.8.2)
+#[path = "../../simgolf/src/backups.rs"]
+mod backups;
+#[path = "../../simgolf/src/challenges.rs"]
+mod challenges;
+#[path = "../../simgolf/src/clubhouse_move.rs"]
+mod clubhouse_move;
+#[path = "../../simgolf/src/demolish.rs"]
+mod demolish;
+#[path = "../../simgolf/src/guide.rs"]
+mod guide;
+#[path = "../../simgolf/src/heightview_ui.rs"]
+mod heightview_ui;
+#[path = "../../simgolf/src/portrait.rs"]
+mod portrait;
+#[path = "../../simgolf/src/records.rs"]
+mod records;
+#[path = "../../simgolf/src/review_ui.rs"]
+mod review_ui;
+#[path = "../../simgolf/src/shortcut.rs"]
+mod shortcut;
+/// The desktop's walk camera (walk*.rs) stays off on the 3DS; app.rs's walk_hearing reads its metre, so that is here.
+mod walk {
+    pub const METRE: f32 = sg_core::terrain::TILE_SIZE / (25.0 * 0.9144);
+}
 mod compat;
 pub use compat::{apply_edit_spec, ints, load_art, Stage};
 pub use render::Rect;

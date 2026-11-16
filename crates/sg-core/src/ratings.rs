@@ -361,6 +361,9 @@ const NAMES_OTHER: [&str; 18] = [
 /// flag 0x80) the name the player gave it, else the proper name of its number in the table of its par. (The port keeps no
 /// player-given hole names.)
 pub fn hole_name(h: usize, hole: &Hole) -> String {
+    if !hole.name.is_empty() {
+        return hole.name.clone();
+    }
     name_of(h, hole.par, hole.flags)
 }
 
@@ -493,6 +496,9 @@ mod tests {
         assert_eq!(hole_name(18, &h), "Zelda");
         h.par = 5;
         assert_eq!(hole_name(1, &h), "Pride");
+        // the player's own name wins, for any hole
+        h.name = "Murphy's Revenge".into();
+        assert_eq!(hole_name(1, &h), "Murphy's Revenge");
         assert_eq!(demand_word(57), "very good");
     }
 
