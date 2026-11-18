@@ -8,7 +8,8 @@
 //!   * Continue      the newest save (the autosave written when the game is left, or any later one)
 //!   * New Course    the plots of land on offer, with their size and price and what is left to build with
 //!   * Load Game     every save, newest first
-//!   * Settings      golfers' thoughts on the top screen, sound volume, game art: your copy of SimGolf or the free set
+//!   * Settings      golfers' thoughts on the top screen, sound volume, game art: your copy of SimGolf or the free set;
+//!                   Extras: OpenSGolf's staff names, design names, staff limit and staff reach
 //!                   (kept on the card; the art changes the next time the game starts)
 //!   * Controls      the controls page (hud.rs)
 //!   * Manual        the instruction manual (manual.rs, run by main.rs)
@@ -56,6 +57,7 @@ enum Page {
     Plots,
     Saves,
     Settings,
+    Extras,
     Controls,
 }
 
@@ -97,6 +99,37 @@ pub struct Settings {
     pub volume: usize,
     /// Play on the free art set even when a copy of SimGolf is on the card (read at start-up, by main.rs's game_dir).
     pub free_art: bool,
+    /// OpenSGolf's optional extras (0.8.4) that the 3DS offers: each employee's own name, names of benches, flower beds
+    /// and scenic trees, the staff limit (0 = the original's 20, 1 = higher, 2 = highest) and staff reach growing with
+    /// the map. All off by default, as in OpenSGolf.
+    pub staff_names: bool,
+    pub design_names: bool,
+    pub staff_level: u8,
+    pub staff_reach: bool,
+}
+
+const STAFF_LEVELS: [&str; 3] = ["20 (original)", "Higher", "Highest"];
+
+fn on_off(b: bool) -> &'static str {
+    if b { "On" } else { "Off" }
+}
+
+/// Hands the Extras page's choices to the game: the two name extras at once, the staff ones to new games and, with a
+/// game open, to that game too (OpenSGolf's Extras box changes them in a game in play the same way).
+pub fn apply_extras(s: &Settings, app: &mut App, game_open: bool) {
+    let mut x = crate::extras::settings();
+    if x.staff_names != s.staff_names || x.design_names != s.design_names {
+        x.staff_names = s.staff_names;
+        x.design_names = s.design_names;
+        crate::extras::set(x);
+    }
+    app.extras_next.set_option(sg_core::extras::MORE_STAFF, s.staff_level);
+    app.extras_next.set_option(sg_core::extras::STAFF_REACH, s.staff_reach as u8);
+    if game_open {
+        app.club.extras.set_option(sg_core::extras::MORE_STAFF, s.staff_level);
+        app.club.extras.set_option(sg_core::extras::STAFF_REACH, s.staff_reach as u8);
+        app.econ.extras = app.club.extras;
+    }
 }
 
 const VOLUMES: [(&str, f32); 4] = [("Off", 0.0), ("Low", 0.3), ("Medium", 0.55), ("High", 0.8)];
@@ -104,13 +137,17 @@ const SETTINGS_FILE: &str = "sdmc:/3ds/opensgolf/settings.txt";
 
 impl Settings {
     pub fn load() -> Settings {
-        let mut s = Settings { thoughts: true, volume: 3, free_art: false };
+        let mut s = Settings { thoughts: true, volume: 3, free_art: false, staff_names: false, design_names: false, staff_level: 0, staff_reach: false };
         if let Ok(t) = std::fs::read_to_string(SETTINGS_FILE) {
             for line in t.lines() {
                 match line.split_once('=') {
                     Some(("thoughts", v)) => s.thoughts = v.trim() != "0",
                     Some(("volume", v)) => s.volume = v.trim().parse::<usize>().unwrap_or(3).min(VOLUMES.len() - 1),
                     Some(("art", v)) => s.free_art = v.trim() == "free",
+                    Some(("staff_names", v)) => s.staff_names = v.trim() == "1",
+                    Some(("design_names", v)) => s.design_names = v.trim() == "1",
+                    Some(("staff_limit", v)) => s.staff_level = v.trim().parse::<u8>().unwrap_or(0).min(2),
+                    Some(("staff_reach", v)) => s.staff_reach = v.trim() == "1",
                     _ => {}
                 }
             }
@@ -120,7 +157,18 @@ impl Settings {
 
     pub fn save(&self) {
         let art = if self.free_art { "free" } else { "original" };
-        let _ = std::fs::write(SETTINGS_FILE, format!("thoughts={}\nvolume={}\nart={art}\n", self.thoughts as u8, self.volume));
+        let _ = std::fs::write(
+            SETTINGS_FILE,
+            format!(
+                "thoughts={}\nvolume={}\nart={art}\nstaff_names={}\ndesign_names={}\nstaff_limit={}\nstaff_reach={}\n",
+                self.thoughts as u8,
+                self.volume,
+                self.staff_names as u8,
+                self.design_names as u8,
+                self.staff_level,
+                self.staff_reach as u8
+            ),
+        );
     }
 
     /// The mixer's master volume.
@@ -254,6 +302,14 @@ impl Title {
                 row(&format!("Golfer thoughts: {}", if self.settings.thoughts { "On" } else { "Off" })),
                 row(&format!("Sound: {}", VOLUMES[self.settings.volume].0)),
                 row(&format!("Game art: {}", if self.settings.free_art || !self.has_original { "Free set" } else { "Original SimGolf" })),
+                row("Extras"),
+                back,
+            ],
+            Page::Extras => vec![
+                row(&format!("Staff names: {}", on_off(self.settings.staff_names))),
+                row(&format!("Design names: {}", on_off(self.settings.design_names))),
+                row(&format!("Staff limit: {}", STAFF_LEVELS[self.settings.staff_level as usize])),
+                row(&format!("Staff reach: {}", if self.settings.staff_reach { "Grows with map" } else { "Normal" })),
                 back,
             ],
             Page::Controls => vec![back],
@@ -333,7 +389,11 @@ impl Title {
             Event::KeyDown(KeyCode::Escape, _) if self.page == Page::Main => pick = Some(self.sel),
             // B or Start: back a page
             Event::MouseDown(MouseButton::Right, _, _) | Event::KeyDown(KeyCode::Escape, _) => {
-                if self.page != Page::Main {
+                if self.page == Page::Extras {
+                    mixer.play("Interface/Button2.wav", 0.6, false);
+                    self.go(Page::Settings);
+                    self.sel = 3;
+                } else if self.page != Page::Main {
                     mixer.play("Interface/Button2.wav", 0.6, false);
                     self.go(Page::Main);
                 }
@@ -407,6 +467,28 @@ impl Title {
                 self.settings.save();
                 mixer.play("Interface/Button1.wav", 0.7, false);
             }
+            Page::Settings if i == 3 => self.go(Page::Extras),
+            Page::Extras if i == 0 => {
+                self.settings.staff_names = !self.settings.staff_names;
+                self.settings.save();
+            }
+            Page::Extras if i == 1 => {
+                self.settings.design_names = !self.settings.design_names;
+                self.settings.save();
+            }
+            Page::Extras if i == 2 => {
+                self.settings.staff_level = (self.settings.staff_level + 1) % 3;
+                self.settings.save();
+            }
+            Page::Extras if i == 3 => {
+                self.settings.staff_reach = !self.settings.staff_reach;
+                self.settings.save();
+            }
+            Page::Extras => {
+                // Back: to Settings, on the Extras row
+                self.go(Page::Settings);
+                self.sel = 3;
+            }
             Page::Settings if i == 2 => {
                 if self.has_original {
                     self.settings.free_art = !self.settings.free_art;
@@ -445,7 +527,7 @@ impl Title {
                 }
                 Some(Item::New) => "Choose a plot of land and build a new course on it.".into(),
                 Some(Item::Load) => format!("Choose from your {} saved games, newest first.", self.saves.len()),
-                Some(Item::Settings) => "Golfers' thoughts, the sound volume, and the game art: the original SimGolf or the free set.".into(),
+                Some(Item::Settings) => "Golfers' thoughts, the sound volume, the game art, and OpenSGolf's optional extras.".into(),
                 Some(Item::Controls) => "How to play with the stylus, a fingertip and the buttons.".into(),
                 Some(Item::Manual) => "The instruction manual: building holes, staff, golfers, money and tips.".into(),
                 Some(Item::Quit) => "Back to the Homebrew Launcher.".into(),
@@ -478,6 +560,12 @@ impl Title {
                     "Playing with your copy of SimGolf: its art, sounds and golfers. Tap to use the free set instead.".into()
                 }
             }
+            Page::Settings if self.sel == 3 => "OpenSGolf's optional extras: staff names, design names, the staff limit and staff reach. All off in the original.".into(),
+            Page::Extras if self.sel == 0 => "Each employee gets a first and last name of their own (in the original every employee of a job shares one name).".into(),
+            Page::Extras if self.sel == 1 => "Benches, flower beds and scenic trees are named for what they are when you build and point at them.".into(),
+            Page::Extras if self.sel == 2 => "How many employees the club may hire: the original's 20, or more. Applies to new courses and the course you open.".into(),
+            Page::Extras if self.sel == 3 => "On a map bigger than the original's, each employee looks after a bigger area. Applies to new courses and the course you open.".into(),
+            Page::Extras => "Back to Settings.".into(),
             _ => "Back to the title.".into(),
         }
     }
@@ -537,7 +625,10 @@ impl Title {
             };
             match &row.sub {
                 None => {
-                    let size = if h >= 26.0 { Size::Large } else { Size::Normal };
+                    let mut size = if h >= 26.0 { Size::Large } else { Size::Normal };
+                    if text.width(&row.title, size) > w - 12.0 {
+                        size = Size::Normal; // a long setting line: one size down rather than cut off
+                    }
                     let lw = text.width(&row.title, size);
                     let ly = y + (h - text.line_height(size)) * 0.5;
                     text.draw(g, &u, x + (w - lw) * 0.5, ly, &row.title, size, c);

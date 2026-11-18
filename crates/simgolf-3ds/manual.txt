@@ -35,7 +35,7 @@ The first time you open a course it takes about 19 seconds while the game decode
 | Continue | Opens your newest save.
 | New Course | Lists the Parkland plots with their size and price. Plots you cannot afford are greyed out.
 | Load Game | Lists your saved games, newest first.
-| Settings | Golfer thoughts on or off; sound Off, Low, Medium or High; game art Original SimGolf or Free set.
+| Settings | Golfer thoughts on or off; sound Off, Low, Medium or High; game art Original SimGolf or Free set. Extras opens OpenSGolf's optional extras: Staff names (each employee gets their own name), Design names (benches, flower beds and scenic trees are named), Staff limit (the original 20, Higher or Highest) and Staff reach (grows with bigger maps). All are off at first, as in the original; the staff ones also apply to the course you open.
 | Controls | The button chart.
 | Manual | This manual.
 | Quit | Back to the Homebrew Launcher.

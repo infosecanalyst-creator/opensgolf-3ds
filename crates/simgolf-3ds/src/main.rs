@@ -1066,6 +1066,8 @@ fn open_game(choice: title::Choice, g: &mut Gfx, app: &mut app::App, demo: &mut 
         title::Choice::Open(path, _) => app.load_game(g, &path)?,
         title::Choice::Quit | title::Choice::Manual => return Ok(()),
     }
+    // the Extras page's staff choices also apply to the course just opened (a loaded game otherwise keeps its own)
+    title::apply_extras(&title::Settings::load(), app, true);
     drop_ground_batches(app, g);
     // the PC game's nearest level: tiles big enough to hit with the stylus (ZL zooms out for the whole course)
     app.zoom = app::ZOOM_UNIT * 4.0;
@@ -1206,6 +1208,7 @@ fn main() {
     let mut manual_was_paused = false;
     mixer.set_master(title.settings.master());
     plan.thoughts = title.settings.thoughts;
+    title::apply_extras(&title.settings, &mut app, false);
     // a game is being played (else the title is up); one has been played this run (the title's fly-over shows its course)
     let mut in_game = false;
     let mut played = false;
@@ -1252,6 +1255,7 @@ fn main() {
                 }
             }
             plan.thoughts = title.settings.thoughts;
+            title::apply_extras(&title.settings, &mut app, false);
             let opening = match &choice {
                 Some(title::Choice::Quit) => break,
                 Some(title::Choice::Open(_, name)) | Some(title::Choice::New(_, name)) => {
