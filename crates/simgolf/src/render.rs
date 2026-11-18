@@ -308,7 +308,7 @@ impl App {
         let smooth = crate::enhanced::smooth_motion();
         let shown: Vec<(f32, f32, f32)> = if smooth { self.props.iter().map(|p| self.shown_at(p)).collect() } else { Vec::new() };
         for (i, p) in self.props.iter().enumerate() {
-            if p.hidden {
+            if p.hidden || self.scenery_hidden(p) {
                 continue;
             }
             let (x, z) = if smooth { (shown[i].0, shown[i].1) } else { (p.x, p.z) };
@@ -1052,6 +1052,7 @@ impl App {
             self.draw_staff_view(g, &s);
             self.draw_landing_legend(g, &s);
             self.draw_name_tag(g, &s);
+            self.draw_design_tag(g, &s);
             self.draw_home_details(g, &s);
         }
         // the great-shot SimFoto is drawn over the course alone: footage of the original shows the frozen frame without

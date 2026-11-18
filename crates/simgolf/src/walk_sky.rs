@@ -11,37 +11,37 @@
 use crate::gfx::Vert;
 use std::f32::consts::{PI, TAU};
 
-type V = [f32; 3];
-type Rgb = [f32; 3];
+pub(crate) type V = [f32; 3];
+pub(crate) type Rgb = [f32; 3];
 
-fn add(a: V, b: V) -> V {
+pub(crate) fn add(a: V, b: V) -> V {
     [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
 }
-fn sub(a: V, b: V) -> V {
+pub(crate) fn sub(a: V, b: V) -> V {
     [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }
-fn mul(a: V, k: f32) -> V {
+pub(crate) fn mul(a: V, k: f32) -> V {
     [a[0] * k, a[1] * k, a[2] * k]
 }
-fn dot(a: V, b: V) -> f32 {
+pub(crate) fn dot(a: V, b: V) -> f32 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
-fn cross(a: V, b: V) -> V {
+pub(crate) fn cross(a: V, b: V) -> V {
     [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
 }
-fn norm(a: V) -> V {
+pub(crate) fn norm(a: V) -> V {
     let l = dot(a, a).sqrt().max(1e-6);
     mul(a, 1.0 / l)
 }
 
-fn vert(p: V, n: V, c: Rgb) -> Vert {
+pub(crate) fn vert(p: V, n: V, c: Rgb) -> Vert {
     let mut v = Vert::new(p[0], p[1], p[2], 0.0, 0.0).col([c[0], c[1], c[2], 1.0]);
     v.normal = n;
     v
 }
 
 /// Two unit vectors square to `axis` and to each other.
-fn frame(axis: V) -> (V, V) {
+pub(crate) fn frame(axis: V) -> (V, V) {
     let a = norm(axis);
     let h = if a[1].abs() < 0.9 { [0.0, 1.0, 0.0] } else { [1.0, 0.0, 0.0] };
     let u = norm(cross(a, h));
@@ -51,7 +51,7 @@ fn frame(axis: V) -> (V, V) {
 /// A body of revolution about the line from `base` along `axis` (unit): `profile` is (distance along the axis, radius)
 /// from one end to the other, `seg` the divisions round it, `paint(around 0..1, along index)` its colour. Smooth: each
 /// point's normal is the profile's own, so it shades round.
-fn lathe(out: &mut Vec<Vert>, base: V, axis: V, profile: &[(f32, f32)], seg: usize, paint: impl Fn(f32, usize) -> Rgb) {
+pub(crate) fn lathe(out: &mut Vec<Vert>, base: V, axis: V, profile: &[(f32, f32)], seg: usize, paint: impl Fn(f32, usize) -> Rgb) {
     let (u, w) = frame(axis);
     let n = profile.len();
     // each profile point's normal in the (along, out) plane, from the slope either side
@@ -86,7 +86,7 @@ fn lathe(out: &mut Vec<Vert>, base: V, axis: V, profile: &[(f32, f32)], seg: usi
 }
 
 /// A round rod from `a` to `b`, radii `ra` and `rb`, capped.
-fn rod(out: &mut Vec<Vert>, a: V, b: V, ra: f32, rb: f32, seg: usize, col: Rgb) {
+pub(crate) fn rod(out: &mut Vec<Vert>, a: V, b: V, ra: f32, rb: f32, seg: usize, col: Rgb) {
     let d = sub(b, a);
     let l = dot(d, d).sqrt();
     let prof = [(0.0, 0.0), (0.0, ra), (l, rb), (l, 0.0)];
@@ -94,7 +94,7 @@ fn rod(out: &mut Vec<Vert>, a: V, b: V, ra: f32, rb: f32, seg: usize, col: Rgb) 
 }
 
 /// A box with its centre `c`, half sizes `h` along the unit axes `x` and `y` (and their cross product), flat faced.
-fn block(out: &mut Vec<Vert>, c: V, h: V, x: V, y: V, col: Rgb) {
+pub(crate) fn block(out: &mut Vec<Vert>, c: V, h: V, x: V, y: V, col: Rgb) {
     let z = cross(x, y);
     let axes = [x, y, z];
     for (k, &ax) in axes.iter().enumerate() {
@@ -115,7 +115,7 @@ fn block(out: &mut Vec<Vert>, c: V, h: V, x: V, y: V, col: Rgb) {
 }
 
 /// A box between `a` and `b` (its long axis), `w` wide (across, square to `up`) and `t` thick (along `up`).
-fn beam(out: &mut Vec<Vert>, a: V, b: V, w: f32, t: f32, up: V, col: Rgb) {
+pub(crate) fn beam(out: &mut Vec<Vert>, a: V, b: V, w: f32, t: f32, up: V, col: Rgb) {
     let d = sub(b, a);
     let l = dot(d, d).sqrt();
     let x = norm(d);

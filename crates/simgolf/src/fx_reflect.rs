@@ -97,7 +97,7 @@ impl App {
         // what is mirrored: standing sprites near water, not in it (the water's own sprites), on or just off the screen
         let mut items: Vec<(f32, usize, f32, f32, f32, f32)> = Vec::new();
         for (i, p) in self.props.iter().enumerate() {
-            if p.hidden || p.flat || p.bed.is_some() || p.weed || p.body.is_none() {
+            if p.hidden || p.flat || p.bed.is_some() || p.weed || p.body.is_none() || self.scenery_hidden(p) {
                 continue;
             }
             let (x, z, lift) = if smooth { self.shown_at(p) } else { (p.x, p.z, p.lift) };

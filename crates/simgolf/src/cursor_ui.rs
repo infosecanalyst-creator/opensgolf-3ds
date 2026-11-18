@@ -595,7 +595,14 @@ impl App {
             self.draw_reach_ring(g, s, e.x, e.y, 12, WHITE);
         }
         let Some((a, b)) = self.hover_tile.filter(|&(a, b)| self.terrain.inside(a, b)) else { return };
-        self.draw_reach_ring(g, s, a * 1024 + 512, b * 1024 + 512, work_tiles(e) * 25, work_colour(e.job));
+        self.draw_reach_ring(
+            g,
+            s,
+            a * 1024 + 512,
+            b * 1024 + 512,
+            work_tiles(e, self.club.extras.staff_reach_percent()) * 25,
+            work_colour(e.job),
+        );
     }
 
     /// The landmark's reach and the staff's work area (0x407c60): a ring 2 pixels wide at alpha 7 tenths, `yards` round a map
@@ -630,13 +637,15 @@ impl App {
     }
 }
 
-/// An employee's work area while being moved (0x403d87): a radius of 4 tiles, 6 for a Groundskeeper and 8 for a skilled one.
-pub(crate) fn work_tiles(e: &sg_core::staff::Employee) -> i32 {
-    match e.job {
+/// An employee's work area while being moved (0x403d87): a radius of 4 tiles, 6 for a Groundskeeper and 8 for a skilled one;
+/// `pct` percent of that with the Staff reach grows with the map extra (`Extras::staff_reach_percent`, 100 otherwise).
+pub(crate) fn work_tiles(e: &sg_core::staff::Employee, pct: i32) -> i32 {
+    let t = match e.job {
         job::GROUNDSKEEPER if e.upgraded => 8,
         job::GROUNDSKEEPER => 6,
         _ => 4,
-    }
+    };
+    t * pct.max(100) / 100
 }
 
 /// The work area's colour by job (0x403d87; the routing map's ellipse colours).

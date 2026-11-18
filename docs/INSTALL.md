@@ -24,7 +24,7 @@ by Windows' own zipper, which uses Deflate64 for big files such as the sounds, o
 Unarchiver's stronger settings (BZip2, LZMA, PPMd): iPad's Files app cannot unpack those and shows the folders empty;
 OpenSGolf can, in the browser, the desktop app and Android alike. Files in other compressions (Zstandard, XZ) and
 encrypted ones are left out and the game says how many; unpack such a zip (or a .7z or .rar) on a computer and pick the
-folder, or zip it again with normal compression. The browser page shows its version at the bottom (OpenSGolf 0.8.2):
+folder, or zip it again with normal compression. The browser page shows its version at the bottom (OpenSGolf 0.8.4):
 an older one there is a copy the browser kept; reload the page.
 
 * **Windows**: unzip `opensgolf-windows.zip` anywhere and double-click `opensgolf.exe` (no console window opens). Windows

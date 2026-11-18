@@ -44,11 +44,12 @@ impl App {
     }
 
     pub(crate) fn staff_marks(&self) -> Marks {
+        let pct = self.club.extras.staff_reach_percent();
         let rings: Vec<((i32, i32), i32, i8)> = self
             .employees
             .iter()
             .filter(|e| e.active && !e.going_home && e.job != job::OWNER)
-            .filter_map(|e| e.post.map(|p| (p, work_tiles(e), e.job)))
+            .filter_map(|e| e.post.map(|p| (p, work_tiles(e, pct), e.job)))
             .collect();
         let keepers: Vec<((i32, i32), i32)> = rings.iter().filter(|r| r.2 == job::GROUNDSKEEPER).map(|r| (r.0, r.1)).collect();
         let t = &self.terrain;

@@ -134,7 +134,7 @@ impl App {
         for &(_, i) in items {
             let p: Prop = self.props[i].clone();
             let Some(si) = p.body else { continue };
-            if p.flat || p.hidden || p.bed.is_some() || p.weed || (!all && p.shadow.is_some()) {
+            if p.flat || p.hidden || p.bed.is_some() || p.weed || (!all && p.shadow.is_some()) || self.scenery_hidden(&p) {
                 continue;
             }
             let (x, z, lift) = shown.get(i).copied().unwrap_or((p.x, p.z, p.lift));

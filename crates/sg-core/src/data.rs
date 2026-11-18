@@ -328,6 +328,9 @@ pub struct EconomyDef {
     pub staff_limit: i64,
     #[serde(default = "d_staff_limit_high")]
     pub staff_limit_high: i64,
+    /// The limit at the top step of Higher staff limits.
+    #[serde(default = "d_staff_limit_most")]
+    pub staff_limit_most: i64,
     #[serde(default = "d_hardcore_staff_limit")]
     pub hardcore_staff_limit: i64,
     #[serde(default = "d_hardcore_wage_percent")]
@@ -434,6 +437,9 @@ fn d_staff_limit() -> i64 {
 fn d_staff_limit_high() -> i64 {
     40
 }
+fn d_staff_limit_most() -> i64 {
+    100
+}
 fn d_hardcore_staff_limit() -> i64 {
     12
 }
@@ -475,6 +481,7 @@ impl EconomyDef {
         let max = crate::extras::MAX_STAFF as i64;
         in_range(self.staff_limit, 1, max, "staff_limit")?;
         in_range(self.staff_limit_high, 1, max, "staff_limit_high")?;
+        in_range(self.staff_limit_most, 1, max, "staff_limit_most")?;
         in_range(self.hardcore_staff_limit, 1, max, "hardcore_staff_limit")?;
         in_range(self.hardcore_wage_percent, 0, 1000, "hardcore_wage_percent")?;
         in_range(self.hardcore_maintenance_percent, 0, 1000, "hardcore_maintenance_percent")?;
@@ -586,6 +593,7 @@ impl Tables {
             rank_holes: vec![6, 10, 18],
             staff_limit: d_staff_limit(),
             staff_limit_high: d_staff_limit_high(),
+            staff_limit_most: d_staff_limit_most(),
             hardcore_staff_limit: d_hardcore_staff_limit(),
             hardcore_wage_percent: d_hardcore_wage_percent(),
             hardcore_maintenance_percent: d_hardcore_maintenance_percent(),
@@ -824,6 +832,7 @@ pub struct EconomyData {
     /// The extras' numbers (sg_core::extras); the fee cap in units.
     pub staff_limit: usize,
     pub staff_limit_high: usize,
+    pub staff_limit_most: usize,
     pub hardcore_staff_limit: usize,
     pub hardcore_wage_percent: i32,
     pub hardcore_maintenance_percent: i32,
@@ -962,6 +971,7 @@ impl Data {
                 rank_holes: std::array::from_fn(|i| e.rank_holes[i] as usize),
                 staff_limit: e.staff_limit as usize,
                 staff_limit_high: e.staff_limit_high as usize,
+                staff_limit_most: e.staff_limit_most as usize,
                 hardcore_staff_limit: e.hardcore_staff_limit as usize,
                 hardcore_wage_percent: e.hardcore_wage_percent as i32,
                 hardcore_maintenance_percent: e.hardcore_maintenance_percent as i32,
@@ -1168,7 +1178,8 @@ pub fn file_header(file: &str) -> &'static str {
 #   rank_holes             holes for Daily Fee, Country Club, Championship (fewer than the first: Municipal)
 # The port's extras (all off by default; docs/PLAYING.md, OpenSGolf extras):
 #   staff_limit                   most employees (the original's 20)
-#   staff_limit_high              most employees with Higher staff limits (at most 63)
+#   staff_limit_high              most employees with Higher staff limits (at most 100)
+#   staff_limit_most              most employees with Higher staff limits at its top step (at most 100)
 #   hardcore_staff_limit          most employees with Hardcore economy (Higher staff limits wins over it)
 #   hardcore_wage_percent         wages under Hardcore, in percent of the normal wage
 #   hardcore_maintenance_percent  hole maintenance under Hardcore, in percent

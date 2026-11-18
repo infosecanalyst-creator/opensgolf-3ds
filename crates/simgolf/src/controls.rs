@@ -297,6 +297,9 @@ pub const ACTIONS: &[Action] = {
         act!("staff_view", "STR_CTL_STAFF_VIEW", shifted(A)),
         act!("landing_map", "STR_CTL_LANDING_MAP", shifted(D)),
         act!("height_view", "STR_CTL_HEIGHT_VIEW", shifted(K)),
+        // the port's own: trees and scenery hidden while building (App::toggle_scenery), on Shift+X, which the original
+        // leaves unused
+        act!("hide_scenery", "STR_CTL_HIDE_SCENERY", shifted(X)),
         act!("hole_comments", "STR_CTL_HOLE_COMMENTS", shifted(I)),
         // the history graphs (graphs.rs), and the camera bookmarks (views.rs) on Shift+F1 to F4, which the original leaves
         // unused (Ctrl with a bookmark's key keeps the view there)
@@ -529,6 +532,7 @@ const ROW_ACTIONS: &[(&str, &[&str])] = &[
     ("STR_KEYS_K_QUICK_LOAD", &["quick_load"]),
     ("STR_KEYS_K_STAFF_VIEW", &["staff_view"]),
     ("STR_KEYS_K_HEIGHT_VIEW", &["height_view"]),
+    ("STR_KEYS_K_HIDE_SCENERY", &["hide_scenery"]),
     ("STR_KEYS_K_LANDING_MAP", &["landing_map"]),
     ("STR_KEYS_K_HOLE_COMMENTS", &["hole_comments"]),
     ("STR_KEYS_K_GRAPHS", &["graphs"]),

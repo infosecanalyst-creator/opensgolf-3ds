@@ -171,13 +171,15 @@ const PAGE_LINES: [&[ExtrasLine]; 6] = {
             G(CUT),
         ],
         // unlock all, no new dandelions, freeze moods, the calendar (slower seasons, pause), keeping the commissioner's
-        // approval (moved here when the Gameplay page grew too long for the box), eyesore demolition, moving the clubhouse
-        &[G(9), G(x::NO_WEEDS), G(8), Calendar, G(x::KEEP_LAND), G(x::DEMOLISH), G(x::MOVE_CLUBHOUSE)],
+        // approval (moved here when the Gameplay page grew too long for the box), eyesore demolition, moving the clubhouse,
+        // the staff's reach on bigger maps
+        &[G(9), G(x::NO_WEEDS), G(8), Calendar, G(x::KEEP_LAND), G(x::DEMOLISH), G(x::MOVE_CLUBHOUSE), G(x::STAFF_REACH)],
         // the interface at the edges, path styles and lamps, random trees, Tab turns buildings (only the picture turns),
-        // home names on hover, the hole flyover, playing upright, the first-person view (computers only)
-        &[U(26), G(x::PATHS), U(21), G(0), U(28), U(29), U(34), U(FIRST_PERSON)],
-        // People, extra reports, messages, home-site details, path help, unlock info, challenges and the design lab
-        &[Group(0), Group(1), Group(2), U(19), U(4), U(32), U(33)],
+        // home names on hover, the hole flyover, playing upright, the first-person view (computers only), staff names
+        &[U(26), G(x::PATHS), U(21), G(0), U(28), U(29), U(34), U(FIRST_PERSON), U(36)],
+        // People, extra reports, messages, home-site details, path help, unlock info, challenges and the design lab, design
+        // names
+        &[Group(0), Group(1), Group(2), U(19), U(4), U(32), U(33), U(37)],
         // autosave, the Load list newest first (with backups), import and export saved games, sharing, save pictures
         &[U(5), U(31), U(22), U(7), U(6)],
         // zoom towards the pointer, right click puts the tool away, drag to place, right-drag panning, mouse aim and swing
@@ -236,7 +238,8 @@ pub fn tag(l: ExtrasLine) -> Option<Tag> {
                 || i == sg_core::extras::KEEP_LAND
                 || i == sg_core::extras::TEES
                 || i == sg_core::extras::DEMOLISH
-                || i == sg_core::extras::MOVE_CLUBHOUSE =>
+                || i == sg_core::extras::MOVE_CLUBHOUSE
+                || i == sg_core::extras::STAFF_REACH =>
         {
             Tag::Light
         }
@@ -271,6 +274,7 @@ const GAME_DESC: [&str; sg_core::extras::OPTION_KEYS.len()] = [
     "STR_EXTRAS_DESC_TEES",
     "STR_EXTRAS_DESC_DEMOLISH",
     "STR_EXTRAS_DESC_MOVE_CLUBHOUSE",
+    "STR_EXTRAS_DESC_STAFF_REACH",
 ];
 const UI_DESC: [&str; crate::extras::UI_KEYS.len()] = [
     "STR_EXTRAS_DESC_PEOPLE",
@@ -309,6 +313,8 @@ const UI_DESC: [&str; crate::extras::UI_KEYS.len()] = [
     "STR_EXTRAS_DESC_CHALLENGES",
     "STR_EXTRAS_DESC_PORTRAIT",
     "STR_EXTRAS_DESC_FIRST_PERSON",
+    "STR_EXTRAS_DESC_STAFF_NAMES",
+    "STR_EXTRAS_DESC_DESIGN_NAMES",
 ];
 
 /// A line's description (what ticking it changes; for the preset line, what the preset in use is).
@@ -379,12 +385,18 @@ pub fn line_value(l: ExtrasLine, e: &Extras, ui: &crate::extras::Settings) -> u8
 
 /// A line's text (with its value for a setting) and whether it is on (a group only with all its ticks on).
 pub fn line_text(l: ExtrasLine, e: &Extras, ui: &crate::extras::Settings) -> (String, bool) {
-    use sg_core::extras::{CALENDAR_KEYS, OPTION_KEYS, PATHS, PATH_STYLE_KEYS, SEASON_SPEED, SPEED_KEYS};
+    use sg_core::extras::{CALENDAR_KEYS, MORE_STAFF, OPTION_KEYS, PATHS, PATH_STYLE_KEYS, SEASON_SPEED, SPEED_KEYS, STAFF_KEYS};
     use sg_core::lang::{tr, trf};
     let v = line_value(l, e, ui);
     match l {
         ExtrasLine::Game(i) if i == SEASON_SPEED => (trf(OPTION_KEYS[i], &[("VALUE", &tr(SPEED_KEYS[v as usize]))]), v != 0),
         ExtrasLine::Game(i) if i == PATHS => (trf(OPTION_KEYS[i], &[("VALUE", &tr(PATH_STYLE_KEYS[v as usize]))]), v != 0),
+        ExtrasLine::Game(i) if i == MORE_STAFF => {
+            // the steps' limits from data/economy.toml
+            let ec = sg_core::data::economy();
+            let n = [ec.staff_limit, ec.staff_limit_high, ec.staff_limit_most][v.min(2) as usize].to_string();
+            (trf(OPTION_KEYS[i], &[("VALUE", &trf(STAFF_KEYS[v.min(2) as usize], &[("N", &n)]))]), v != 0)
+        }
         ExtrasLine::Game(i) => (tr(OPTION_KEYS[i]).to_string(), v != 0),
         ExtrasLine::Ui(i) => (tr(crate::extras::UI_KEYS[i]).to_string(), v != 0),
         ExtrasLine::Calendar => (trf("STR_EXTRAS_CALENDAR", &[("VALUE", &tr(CALENDAR_KEYS[v as usize]))]), v != 0),
@@ -1014,7 +1026,7 @@ mod tests {
         }
         assert_eq!(PAGES.len(), PAGE_LINES.len());
         assert_eq!(BANNERS.len(), PAGES.len());
-        assert_eq!(page_lines(3).len(), 7, "the Info page's seven lines");
+        assert_eq!(page_lines(3).len(), 8, "the Info page's eight lines");
     }
 
     #[test]
@@ -1079,7 +1091,7 @@ mod tests {
         assert_eq!(foot_text(2, Some(2), &e, &ui), (sg_core::lang::tr("STR_EXTRAS_DESC_PATHS"), true));
         assert_eq!(foot_text(2, Some(0), &e, &ui), (sg_core::lang::tr("STR_PRESET_DESC_ORIGINAL"), true));
         assert_eq!(foot_text(0, Some(0), &Extras::OPENSGOLF, &Settings::HELPERS).0, sg_core::lang::tr("STR_PRESET_DESC_OPENSGOLF"));
-        assert!(!foot_text(2, Some(9), &e, &ui).1);
+        assert!(!foot_text(2, Some(10), &e, &ui).1);
         assert!(!foot_text(3, None, &e, &ui).1);
     }
 
@@ -1113,7 +1125,8 @@ mod tests {
         assert!(o.more_staff && o.animals && o.rotate && o.path_style == 1 && o.weather && o.tees && o.second_course);
         assert!(!o.more_visitors && !o.hardcore && !o.lefties && !o.set_par && !o.cut_content && !o.keep_land);
         assert!(o.calendar() == 0 && !o.freeze_moods && !o.unlock_all && !o.no_weeds);
-        let fewer = Extras { more_staff: false, animals: false, weather: false, tees: false, second_course: false, ..o };
+        let fewer =
+            Extras { more_staff: false, animals: false, weather: false, tees: false, second_course: false, staff_reach: false, ..o };
         assert_eq!(fewer, Extras::LOOKS);
         // the kept ticks (pauses, update check, controls presets) do not count
         let kept = Settings {

@@ -48,6 +48,23 @@ impl App {
         self.show_toast(tr(if self.comfort.height_view { "STR_HEIGHT_VIEW_ON" } else { "STR_HEIGHT_VIEW_OFF" }));
     }
 
+    /// Shift+X: the clear view on or off: the trees and scenic trees are not drawn, so the ground, paths and holes under
+    /// them show while building. Nothing of the game changes.
+    pub fn toggle_scenery(&mut self) {
+        self.hide_scenery = !self.hide_scenery;
+        let t = if self.hide_scenery {
+            trf("STR_SCENERY_HIDDEN", &[("KEY", &crate::controls::key_label("hide_scenery"))])
+        } else {
+            tr("STR_SCENERY_SHOWN").to_string()
+        };
+        self.show_toast(&t);
+    }
+
+    /// Whether the clear view leaves a prop out (a tree, or a scenic tree on its tile).
+    pub fn scenery_hidden(&self, p: &Prop) -> bool {
+        self.hide_scenery && (p.tree || p.scenic)
+    }
+
     /// A tile's height: the mean of its four corners (terrain levels).
     pub fn tile_height(&self, a: i32, b: i32) -> f32 {
         let t = &self.terrain;

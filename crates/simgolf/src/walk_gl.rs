@@ -116,9 +116,19 @@ vec3 fogged(vec3 c, float dist, vec3 v) {
 
 // the terrain lighting of the overhead view (gfx.rs), in world space: OpenGL's default material under one light
 vec3 lit(vec3 c, vec3 n) {
-    float d = dot(normalize(n), sun.xyz);
+    // the sun's light on a slope eased towards the flat ground's, so neighbouring triangles of the ground (a tee's bevel, the
+    // slope off a raised green) do not change from lit to dark at their shared edge
+    // (eased towards what flat ground takes, which keeps its light)
+    float d = mix(dot(normalize(n), sun.xyz), sun.y, 0.4);
     vec3 s = vec3(0.04) + 0.2 * amb.rgb + 0.8 * dif.rgb * max(d, 0.0);
     return c * min(s, vec3(1.0));
+}
+
+// a wall's light: as the ground's, with the sky's light on it too, so a face turned from the sun is in shade, not black
+vec3 lit_wall(vec3 c, vec3 n) {
+    vec3 nn = normalize(n);
+    float side = 1.0 - abs(nn.y);
+    return lit(c, nn) + c * (0.22 * amb.rgb + 0.2 * dif.rgb) * side;
 }
 
 // the art's colour, its painted features faded out near the eye: there each texel covers many pixels and a painted bush or
@@ -357,7 +367,7 @@ void main() {
     } else {
         vec4 c = texture2D(tex, uv) * color;
         if (c.a < zenith.w) discard;
-        o = vec4(lit(c.rgb * grain(info.y, dist), nrm), c.a);
+        o = vec4(lit_wall(c.rgb * grain(info.y, dist), nrm), c.a);
     }
     // what lies on the ground or is blended fades into the haze by its alpha: the haze is drawn under it already
     vec3 f = fogged(o.rgb, dist, v);

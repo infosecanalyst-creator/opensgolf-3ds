@@ -4,7 +4,9 @@
 //! camera's pitch, from one of its four quarter turns). Stood upright at eye level such a picture shows its roof and leans
 //! wrongly, so here:
 //!
-//! * a building or landmark gets a simple solid (a box, with a flat, ridged or pointed roof) fitted to its sprite's
+//! * a building is drawn as its model (walk_models.rs) and most landmarks as theirs (walk_landmarks.rs); a landmark with
+//!   no model stands as its picture, upright;
+//! * a small object gets a simple solid (a box, with a flat, ridged or pointed roof) fitted to its sprite's
 //!   outline (`fit_proxy`), and the sprite itself is projected onto it from the direction the overhead camera saw it
 //!   from, so each face carries the player's own art; a face the sprite never shows takes the view of the quarter turn
 //!   that does show it (the object's own art for that turn, or the same picture again for art with one view). Objects
@@ -38,6 +40,8 @@ enum Sky {
     Blimp,
     Balloon,
     Pump,
+    /// A landmark with a model of its own (walk_landmarks.rs).
+    Mark(crate::walk_landmarks::Landmark),
 }
 /// How much bigger than the game's own scale a 3D golfer is drawn, so seen from eye height they stand as tall as the
 /// walker rather than looking like children (the sprites are drawn small against the course).
@@ -623,6 +627,8 @@ pub struct Objects {
     person_scale: HashMap<usize, f32>,
     /// The buildings' models (walk_models.rs) by kind and theme, built once.
     models: HashMap<(usize, usize, usize), Option<Vec<Vert>>>,
+    /// The landmarks' models (walk_landmarks.rs), built once.
+    marks: HashMap<crate::walk_landmarks::Landmark, Vec<Vert>>,
     /// The trees' solids (walk_trees.rs) by sprite and frame, in the picture's pixels, built once.
     trees: HashMap<(usize, usize), Option<Vec<Vert>>>,
     /// People's frames raised in relief (walk_relief.rs) by sprite and frame, in the picture's pixels, built once.
@@ -1138,12 +1144,30 @@ impl App {
                     } else if name.starts_with("Landmarks/Red Oil Pump") && !name.contains("Shadow") {
                         Sky::Pump
                     } else {
-                        return None;
+                        Sky::Mark(crate::walk_landmarks::Landmark::of_picture(name)?)
                     };
                     v.map(|si| (si, kind))
                 })
                 .collect()
         };
+        // the landmarks with no model of their own stand as their pictures, upright: a box fitted to one and wearing it
+        // shows its top smeared down its sides and its stripes leaning across the faces
+        // (their flat bases, pictures of their own, lie on the ground as before)
+        let mark_cards: std::collections::HashSet<usize> = self
+            .sprite_index
+            .iter()
+            .filter_map(|(k, v)| {
+                let name = k.split('|').next().unwrap_or("").to_ascii_lowercase();
+                let name = name.strip_suffix(".flc").unwrap_or(&name);
+                let mark = (name.starts_with("landmarks/") || name.starts_with("scenic/"))
+                    && !name.contains("shadow")
+                    && !name.contains("base")
+                    && crate::walk_landmarks::Landmark::of_picture(name).is_none();
+                let cut = sg_core::objects::CUT_LANDMARKS.iter().any(|c| c.0.eq_ignore_ascii_case(name));
+                let landmark = sg_core::objects::LANDMARKS.iter().any(|l| l.eq_ignore_ascii_case(name));
+                (mark && (cut || landmark)).then_some(*v).flatten()
+            })
+            .collect();
         for idx in 0..self.props.len() {
             let p = self.props[idx].clone();
             if p.hidden {
@@ -1186,12 +1210,14 @@ impl App {
                     Sky::Blimp => (crate::walk_sky::blimp(), 52.0, 0.0),
                     Sky::Balloon => (crate::walk_sky::balloon(p.view.unwrap_or(0).rem_euclid(4) as usize), 22.0, 0.0),
                     Sky::Pump => (crate::walk_sky::pump_jack(sc.time), 9.0, 0.0),
+                    Sky::Mark(l) => (Vec::new(), l.span(), 0.0),
                 };
                 let span = match kind {
                     Sky::Balloon => h * s * 0.85,
                     _ => w * s * 0.8,
                 };
-                let k = span / size;
+                // (a landmark is built to its size in metres, as the buildings are)
+                let k = if matches!(kind, Sky::Mark(_)) { M * p.scale } else { span / size };
                 let at = [x, ground + p.lift + foot, z];
                 if !sphere_visible(&sc.planes, at, span) {
                     o.culled += 1;
@@ -1202,9 +1228,15 @@ impl App {
                     Sky::Blimp => p.heading.to_radians(),
                     // the pump stands as the picture's quarter turn has it, its head towards the camera's right
                     Sky::Pump => p.facing as f32 * std::f32::consts::FRAC_PI_2 + std::f32::consts::FRAC_PI_4,
+                    // a landmark faces the way the picture's quarter turn has its front
+                    Sky::Mark(_) => p.facing as f32 * std::f32::consts::FRAC_PI_2 + std::f32::consts::FRAC_PI_4,
                     Sky::Balloon => 0.0,
                 };
-                let mut mv: Vec<Vert> = crate::walk_sky::place(&model, heading, k, at).collect();
+                let model = match kind {
+                    Sky::Mark(l) => o.marks.entry(l).or_insert_with(|| l.model()),
+                    _ => &model,
+                };
+                let mut mv: Vec<Vert> = crate::walk_sky::place(model, heading, k, at).collect();
                 if toon {
                     crate::walk_toon::outline(&mv, crate::walk_toon::width(dist, 0.04 * M), &mut inks);
                     crate::walk_toon::soft(&mut mv, sun, eye);
@@ -1214,10 +1246,15 @@ impl App {
                     Sky::Blimp => 14.0,
                     Sky::Balloon => 4.0,
                     Sky::Pump => 5.5,
+                    Sky::Mark(l) => l.foot() * 1.4,
                 } * k;
-                blob(self, x, z, r, if kind == Sky::Pump { 0.4 } else { 0.25 }, &mut blobs);
+                let grounded = matches!(kind, Sky::Pump | Sky::Mark(_));
+                blob(self, x, z, r, if grounded { 0.4 } else { 0.25 }, &mut blobs);
                 if kind == Sky::Pump && dist < near_obstacle {
                     o.obstacles.push(Obstacle::Box { cx: x, cz: z, hx: 3.0 * k, hz: 3.0 * k });
+                }
+                if let (Sky::Mark(l), true) = (kind, dist < near_obstacle) {
+                    o.obstacles.push(Obstacle::Circle { x, z, r: l.foot() * k });
                 }
                 continue;
             }
@@ -1293,6 +1330,7 @@ impl App {
                     // (a building of several tiles with no model of its own stands as its picture: a solid fitted to one
                     // picture from above wears its roofs and garden smeared down its walls)
                     None if half.is_some_and(|hf| hf > TILE_SIZE * 0.75) => None,
+                    None if mark_cards.contains(&si) => None,
                     None => self.walk_fit(o, si, frames, p.scale, half),
                 };
                 let radius = (w.max(h)) * s;
@@ -1305,7 +1343,7 @@ impl App {
                 }
                 o.drawn += 1;
                 // (a small thing with no solid is drawn shrunk, with its shadow)
-                let small = fit.is_none() && !half.is_some_and(|hf| hf > TILE_SIZE * 0.75);
+                let small = fit.is_none() && !half.is_some_and(|hf| hf > TILE_SIZE * 0.75) && !mark_cards.contains(&si);
                 if let (Some(sh), true) = (p.shadow, layer.is_none()) {
                     let i = self.sprites[sh].s.frame_index(self.prop_view(&p, sh, 0), p.frame);
                     let t = self.walk_tex(g, o, sh, i);

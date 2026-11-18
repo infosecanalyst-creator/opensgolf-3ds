@@ -107,6 +107,16 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.8.4" date="2026-11-16">
+      <description>
+        <p>New optional extras: names for each employee, staff reach that grows with the map, names for benches, flower beds and scenic trees, a key to hide trees and scenery, brighter nights, and up to 100 staff.</p>
+      </description>
+    </release>
+    <release version="0.8.3" date="2026-11-16">
+      <description>
+        <p>The first-person view (beta) draws landmarks as 3D models, shows the walls under raised ground on every side, shades slopes more softly and lowers water below its banks. Golfers' faces are smoother.</p>
+      </description>
+    </release>
     <release version="0.8.2" date="2026-11-15">
       <description>
         <p>The anonymous play-time count now goes to the project's own counter and can tell how long people play at a time.</p>

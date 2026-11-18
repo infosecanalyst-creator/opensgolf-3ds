@@ -58,6 +58,11 @@ impl App {
         best.map(|b| (b.1, b.2, b.3))
     }
 
+    /// Whether a golfer or employee is under the pointer for a name tag (the design names' tag gives way to it).
+    pub fn name_tag_shown(&self) -> bool {
+        self.tag_target().is_some()
+    }
+
     /// The tag for this frame (draw_hud, over the golfers' names and thoughts).
     pub fn draw_name_tag(&self, g: &mut Gfx, s: &Ui) {
         if !crate::extras::name_tags()

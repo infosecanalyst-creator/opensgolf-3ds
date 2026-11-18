@@ -215,6 +215,10 @@ impl App {
         if e.job == staff::job::OWNER {
             return self.pro_name();
         }
+        // the Staff names extra's own name (staff_names.rs)
+        if let Some(n) = crate::staff_names::own_name(e) {
+            return n;
+        }
         let job = (-2 - e.job as i32).clamp(0, 3) as usize;
         trf(FIRST_NAMES[job * 2 + e.upgraded as usize], &[("TITLE", &staff_title(job, e.upgraded))])
     }

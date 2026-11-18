@@ -51,6 +51,14 @@
 //!   to Build course; the tile is free to build on. The port's own.
 //! * `move_clubhouse`: Move the clubhouse: a right click on it offers to move it, for a new clubhouse's price, to a spot
 //!   the player picks with the building tool (simgolf's clubhouse_move.rs). The port's own.
+//! * `most_staff`: with Higher staff limits, the limit is data/economy.toml's `staff_limit_most` (100) instead of
+//!   `staff_limit_high`; the Extras box shows the two as one line, *Higher staff limits: off / 40 / 100*
+//!   (`Extras::staff_level`). The port's own.
+//! * `staff_reach`: Staff reach grows with the map: on a map larger than the original's, every employee's work area (the
+//!   golfers a Club Pro, Ranger or Soda Vendor walks to, the weeds a Groundskeeper looks for, the ring drawn round them)
+//!   grows by half as much as the map's edge (`Extras::staff_reach_percent`: 124% on Large, 148% on Huge, 178% on Giant),
+//!   so a club on a big map is not left needing several times the staff. On the original's map nothing changes. The
+//!   port's own.
 //!
 //! Freeze happiness and Unlock all are named "Sandbox: ..." in the Extras box as they are what a sandbox player wants
 //! most, but each works in a normal game too. The Extras box shows Slower seasons and Pause the calendar as one line,
@@ -95,13 +103,19 @@ pub struct Extras {
     /// Move the clubhouse (its price is a new clubhouse's). Saved only when on.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub move_clubhouse: bool,
+    /// Higher staff limits at their top step (`staff_limit_most`); only counts with `more_staff`. Saved only when on.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub most_staff: bool,
+    /// Staff reach grows with the map (`staff_reach_percent`). Saved only when on.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub staff_reach: bool,
 }
 
 /// The options in the order the Extras box lists them (text keys of their lines). Option 6 has three values (a line with
 /// {VALUE}, `SPEED_KEYS`), the others are ticks; `Extras::option` and `Extras::set_option` read and set them by index.
 /// New options are appended so bits and saves keep working; the page each is shown on (Gameplay, Sandbox or Looks) is
 /// extras_ui.rs `PAGE_LINES`'s.
-pub const OPTION_KEYS: [&str; 20] = [
+pub const OPTION_KEYS: [&str; 21] = [
     "STR_EXTRAS_ROTATE",
     "STR_EXTRAS_CUT_CONTENT",
     "STR_EXTRAS_HARDCORE",
@@ -122,7 +136,18 @@ pub const OPTION_KEYS: [&str; 20] = [
     "STR_EXTRAS_TEES",
     "STR_EXTRAS_DEMOLISH",
     "STR_EXTRAS_MOVE_CLUBHOUSE",
+    "STR_EXTRAS_STAFF_REACH",
 ];
+
+/// The option of `OPTION_KEYS` that is Higher staff limits (several values: `STAFF_KEYS`).
+pub const MORE_STAFF: usize = 3;
+
+/// The Higher staff limits line's values ({VALUE} of STR_EXTRAS_MORE_STAFF), by `Extras::staff_level`: off (the
+/// original's 20), `staff_limit_high` and `staff_limit_most`.
+pub const STAFF_KEYS: [&str; 3] = ["STR_EXTRAS_STAFF_OFF", "STR_EXTRAS_STAFF_HIGH", "STR_EXTRAS_STAFF_MOST"];
+
+/// The option of `OPTION_KEYS` that is Staff reach grows with the map.
+pub const STAFF_REACH: usize = 20;
 
 /// The option of `OPTION_KEYS` that is Move the clubhouse.
 pub const MOVE_CLUBHOUSE: usize = 19;
@@ -191,6 +216,8 @@ impl Extras {
         tees: false,
         demolish: false,
         move_clubhouse: false,
+        most_staff: false,
+        staff_reach: false,
     };
 
     /// The extras of the "OpenSGolf" preset, the game with OpenSGolf's own additions: the looks, higher staff limits,
@@ -223,6 +250,10 @@ impl Extras {
         // it changes what can be removed: not part of the preset
         demolish: false,
         move_clubhouse: false,
+        // the 40 of the higher limits, not the 100
+        most_staff: false,
+        // nothing changes on the original's map, and on a bigger one the staff keep up with it
+        staff_reach: true,
     };
 
     /// Everything off (the original game).
@@ -233,7 +264,8 @@ impl Extras {
     /// The options as bits (the `X:` test hook and `--extras`): one bit per tick in `OPTION_KEYS` order, except that the
     /// calendar speed takes two (bits 6 and 7), so the ticks after it sit one bit further on (8 to 12), Path styles and lamps
     /// takes three (13 to 15), More visitors is bit 16, Sandbox: no new dandelions bit 17, Keep the land offer bit 18,
-    /// Second course bit 19 and Multiple tees bit 20. The first six keep the bits they always had.
+    /// Second course bit 19 and Multiple tees bit 20, Eyesore demolition bit 21, Move the clubhouse bit 22, the top step
+    /// of Higher staff limits bit 23 and Staff reach grows with the map bit 24. The first six keep the bits they always had.
     pub fn bits(&self) -> u32 {
         self.rotate as u32
             | (self.cut_content as u32) << 1
@@ -255,6 +287,8 @@ impl Extras {
             | (self.tees as u32) << 20
             | (self.demolish as u32) << 21
             | (self.move_clubhouse as u32) << 22
+            | (self.most_staff as u32) << 23
+            | (self.staff_reach as u32) << 24
     }
 
     pub fn from_bits(b: u32) -> Extras {
@@ -279,6 +313,8 @@ impl Extras {
             tees: b & 1 << 20 != 0,
             demolish: b & 1 << 21 != 0,
             move_clubhouse: b & 1 << 22 != 0,
+            most_staff: b & 1 << 23 != 0,
+            staff_reach: b & 1 << 24 != 0,
         }
     }
 
@@ -288,7 +324,7 @@ impl Extras {
             0 => self.rotate as u8,
             1 => self.cut_content as u8,
             2 => self.hardcore as u8,
-            3 => self.more_staff as u8,
+            MORE_STAFF => self.staff_level(),
             4 => self.animals as u8,
             5 => self.set_par as u8,
             SEASON_SPEED => self.season_speed.min(2),
@@ -305,6 +341,7 @@ impl Extras {
             TEES => self.tees as u8,
             DEMOLISH => self.demolish as u8,
             MOVE_CLUBHOUSE => self.move_clubhouse as u8,
+            STAFF_REACH => self.staff_reach as u8,
             _ => 0,
         }
     }
@@ -316,7 +353,10 @@ impl Extras {
             0 => self.rotate = on,
             1 => self.cut_content = on,
             2 => self.hardcore = on,
-            3 => self.more_staff = on,
+            MORE_STAFF => {
+                self.more_staff = on;
+                self.most_staff = v >= 2;
+            }
             4 => self.animals = on,
             5 => self.set_par = on,
             SEASON_SPEED => self.season_speed = v.min(2),
@@ -333,6 +373,7 @@ impl Extras {
             TEES => self.tees = on,
             DEMOLISH => self.demolish = on,
             MOVE_CLUBHOUSE => self.move_clubhouse = on,
+            STAFF_REACH => self.staff_reach = on,
             _ => {}
         }
     }
@@ -343,6 +384,8 @@ impl Extras {
             SPEED_KEYS.len() as u8
         } else if i == PATHS {
             PATH_STYLES + 1
+        } else if i == MORE_STAFF {
+            STAFF_KEYS.len() as u8
         } else {
             2
         }
@@ -387,11 +430,23 @@ impl Extras {
         1 << self.season_speed.min(2)
     }
 
+    /// The Higher staff limits line: 0 off, 1 `staff_limit_high`, 2 `staff_limit_most` (the top step only counts with
+    /// the line on, so a save that has `most_staff` without `more_staff` reads as off).
+    pub fn staff_level(&self) -> u8 {
+        match (self.more_staff, self.most_staff) {
+            (false, _) => 0,
+            (true, false) => 1,
+            (true, true) => 2,
+        }
+    }
+
     /// How many employees the club may have (the original: 20, the Employee panel's limit). Hardcore lowers it, the higher
-    /// staff limits raise it; never above 63, the original's walker table of 64 records less the player's own pro.
+    /// staff limits raise it; never above `MAX_STAFF`.
     pub fn staff_limit(&self) -> usize {
         let e = crate::data::economy();
-        let n = if self.more_staff {
+        let n = if self.more_staff && self.most_staff {
+            e.staff_limit_most
+        } else if self.more_staff {
             e.staff_limit_high
         } else if self.hardcore {
             e.hardcore_staff_limit
@@ -399,6 +454,17 @@ impl Extras {
             e.staff_limit
         };
         n.clamp(1, MAX_STAFF)
+    }
+
+    /// How far the staff reach, in percent of the original's, with Staff reach grows with the map: 100 plus the map's
+    /// edge beyond the original's 50 tiles (124 on Large, 148 on Huge, 178 on Giant), half the map's own growth; 100 with
+    /// the extra off or on the original's map.
+    pub fn staff_reach_percent(&self) -> i32 {
+        if self.staff_reach {
+            (100 + crate::mapsize::n() - 50).max(100)
+        } else {
+            100
+        }
     }
 
     /// A cost scaled by a hardcore percentage (unchanged when hardcore is off).
@@ -520,8 +586,14 @@ impl Calendar {
     }
 }
 
-/// The most employees any setting allows (the original keeps its walkers, the player's pro first, in 64 records).
-pub const MAX_STAFF: usize = 63;
+/// The most employees any setting allows. The original keeps its walkers, the player's pro first, in 64 records, so its
+/// limit can never pass 63; the port keeps its employees in a list of any length, and allows up to the top step of Higher
+/// staff limits (`staff_limit_most`).
+pub const MAX_STAFF: usize = 100;
+
+/// The most employees a bigger map's own growth of the limit gives (simgolf's panels_ui.rs `max_employees`): the
+/// original's 63, so that only a limit set above it (`staff_limit_most`) goes further.
+pub const RECORDS_STAFF: usize = 63;
 
 /// The pars the Set par extra offers (the game itself gives 2 to very short holes and 6 to very long ones).
 pub const PAR_RANGE: std::ops::RangeInclusive<i32> = 2..=6;
@@ -625,6 +697,16 @@ mod tests {
         assert_eq!(h.mood_change(1), 1);
         let m = Extras { more_staff: true, hardcore: true, ..Default::default() };
         assert_eq!(m.staff_limit(), 40);
+        // the line's three steps
+        let mut s = Extras::default();
+        assert_eq!(s.staff_level(), 0);
+        s.step_option(MORE_STAFF);
+        assert_eq!((s.staff_level(), s.staff_limit()), (1, 40));
+        s.step_option(MORE_STAFF);
+        assert_eq!((s.staff_level(), s.staff_limit()), (2, 100));
+        s.step_option(MORE_STAFF);
+        assert_eq!((s.staff_level(), s.staff_limit(), s.most_staff), (0, 20, false));
+        assert_eq!(Extras { most_staff: true, ..Default::default() }.staff_limit(), 20);
         for b in 0..64 {
             assert_eq!(Extras::from_bits(b).bits(), b);
         }
@@ -648,6 +730,7 @@ mod tests {
             assert_eq!(e.option(i), 1, "option {i}");
         }
         assert_eq!(e.season_speed, 1);
+        assert!(e.more_staff && !e.most_staff);
         e.step_option(SEASON_SPEED);
         assert_eq!(e.season_speed, 2);
         e.step_option(SEASON_SPEED);

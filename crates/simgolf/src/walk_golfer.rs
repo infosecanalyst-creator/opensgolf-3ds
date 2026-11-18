@@ -610,6 +610,57 @@ fn shell(out: &mut Vec<Vert>, c: V, ax: [V; 3], r: V, ph0: f32, ph1: f32, th: (f
     });
 }
 
+/// How far the face stands out of the head's ellipsoid (radii `r`) at the point `q` on it (in the head's frame: x right, y
+/// up, z forward): full cheeks and a rounded chin, soft swellings that fade into the rest so the skin stays one smooth
+/// surface.
+fn fullness(r: V, q: V) -> f32 {
+    let front = smooth(((q[2] / r[2] - 0.2) / 0.5).clamp(0.0, 1.0));
+    if front <= 0.0 {
+        return 0.0;
+    }
+    let g = |dx: f32, dy: f32, sx: f32, sy: f32| (-(dx * dx / (sx * sx) + dy * dy / (sy * sy))).exp();
+    let cheeks = g(q[0] - 0.072, q[1] + 0.055, 0.045, 0.04) + g(q[0] + 0.072, q[1] + 0.055, 0.045, 0.04);
+    let chin = g(q[0], q[1] + 0.115, 0.05, 0.035);
+    front * (0.012 * cheeks + 0.01 * chin)
+}
+
+/// The head's skin, or what is fitted over it (`k` times as big: a beard): the ellipsoid of `shell` with the face's
+/// `fullness` raised out of it, from polar angle `ph.0` to `ph.1` and round from `th.0` to `th.1`. Its normals are the
+/// surface's own (worked out across it), so the light runs smoothly over cheek and chin with no seam.
+#[allow(clippy::too_many_arguments)]
+fn face_shell(out: &mut Vec<Vert>, c: V, ax: [V; 3], r: V, k: f32, ph: (f32, f32), th: (f32, f32), col: [f32; 3]) {
+    let big = r[0].max(r[1]).max(r[2]) * k / 0.16;
+    // finer than a plain shell, so the swellings are round rather than faceted
+    let (seg, rings) = (sized(40, 6, big), sized(24, 4, big));
+    let local = |t: f32, p: f32| {
+        let n = [p.sin() * t.cos(), p.cos(), p.sin() * t.sin()];
+        let q = [n[0] * r[0], n[1] * r[1], n[2] * r[2]];
+        let up = norm([n[0] / r[0], n[1] / r[1], n[2] / r[2]]);
+        (add(mul(q, k), mul(up, fullness(r, q) * k)), up)
+    };
+    let world = |v: V| add(add(mul(ax[0], v[0]), mul(ax[1], v[1])), mul(ax[2], v[2]));
+    grid(out, seg, rings, ph.0 <= 1e-4, ph.1 >= PI - 1e-4, col, r[0].max(r[2]) * k, |i, j| {
+        let t = th.0 + (th.1 - th.0) * i as f32 / seg as f32;
+        let p = ph.0 + (ph.1 - ph.0) * j as f32 / rings as f32;
+        let (q, up) = local(t, p);
+        // the normal across the surface; at the poles (where nothing is raised) the ellipsoid's
+        let e = 1e-3;
+        let n = if p.sin() < 0.02 {
+            up
+        } else {
+            let dt = sub(local(t + e, p).0, local(t - e, p).0);
+            let dp = sub(local(t, p + e).0, local(t, p - e).0);
+            let n = norm(cross(dt, dp));
+            if dot(n, up) < 0.0 {
+                mul(n, -1.0)
+            } else {
+                n
+            }
+        };
+        (add(c, world(q)), world(n))
+    });
+}
+
 /// A surface from a (seg + 1) x (rings + 1) grid of points and normals, each worked out once; where the first or last
 /// row is a pole (`top`, `bottom`) its quads are single triangles.
 #[allow(clippy::too_many_arguments)]
@@ -963,27 +1014,35 @@ fn head(o: &mut Vec<Vert>, who: &Who, act: Act, neck: V, spine: V, face: V) {
     let c = add(add(neck, mul(crown, r[1] * 0.92 + 0.025)), mul(face, 0.015));
     // a point by the head's frame: `x` right, `y` up, `z` forward, from the head's middle
     let at = |x: f32, y: f32, z: f32| add(add(add(c, mul(side, x)), mul(crown, y)), mul(face, z));
-    // on the head's surface (ahead), at `x` right and `y` up, `out` beyond it
+    // on the head's surface (ahead, the face's fullness included), at `x` right and `y` up, `out` beyond it
     let on = |x: f32, y: f32, out: f32| {
         let (u, v) = (x / r[0], y / r[1]);
         let z = r[2] * (1.0 - u * u - v * v).max(0.0).sqrt();
-        at(x, y, z + out)
+        at(x, y, z + fullness(r, [x, y, z]) + out)
     };
     let full = (0.0, TAU);
-    shell(o, c, ax, r, 0.0, PI, full, look.skin);
+    // one smooth skin, the full cheeks and rounded chin raised out of it (`fullness`): separate balls for them would
+    // meet the head in creases, each with its own rim of light and outline, and read as lumps on the face
+    let skin_at = o.len();
+    face_shell(o, c, ax, r, 1.0, (0.0, PI), full, look.skin);
+    // a little rosy on the cheeks, blended into the skin's own colour
+    let rosy = mix(look.skin, [0.95, 0.45, 0.45], 0.3);
+    for v in o[skin_at..].iter_mut() {
+        let d = sub(v.pos, c);
+        let (x, y, z) = (dot(d, side), dot(d, crown), dot(d, face));
+        if z > 0.0 {
+            let w = (-((x.abs() - 0.085).powi(2) / 0.03f32.powi(2) + (y + 0.048).powi(2) / 0.022f32.powi(2))).exp();
+            let k = smooth(w.min(1.0)) * 0.9;
+            for i in 0..3 {
+                v.color[i] += (rosy[i] - v.color[i]) * k;
+            }
+        }
+    }
     // ears and a big round nose
     for sx in [-1.0f32, 1.0] {
         shell(o, at(sx * r[0] * 0.96, -0.01, -0.005), ax, [0.03, 0.045, 0.035], 0.0, PI, full, look.skin);
     }
-    shell(o, on(0.0, -0.03, 0.0), ax, [0.027, 0.025, 0.03], 0.0, PI, full, look.skin);
-    // full cheeks, a little rosy, and a rounded chin: a soft, friendly face
-    for sx in [-1.0f32, 1.0] {
-        shell(o, at(sx * 0.07, -0.055, 0.06), ax, [0.055, 0.05, 0.055], 0.0, PI, full, look.skin);
-        if fine() {
-            shell(o, on(sx * 0.085, -0.045, -0.004), ax, [0.026, 0.017, 0.008], 0.0, PI, full, mix(look.skin, [0.95, 0.45, 0.45], 0.28));
-        }
-    }
-    shell(o, at(0.0, -0.11, 0.06), ax, [0.07, 0.05, 0.07], 0.0, PI, full, look.skin);
+    shell(o, on(0.0, -0.03, -0.004), ax, [0.027, 0.025, 0.03], 0.0, PI, full, look.skin);
     cloth(Cloth::Plain);
     // eyes: white ovals with dark brown irises and a glint, looking where the head looks
     let iris = [0.16, 0.1, 0.07];
@@ -1014,7 +1073,7 @@ fn head(o: &mut Vec<Vert>, who: &Who, act: Act, neck: V, spine: V, face: V) {
     if jaw {
         // from ear to ear round the front of the jaw and under the chin, the sideburns up to the ears
         let k = if who.beard == Beard::Full { 1.07 } else { 1.025 };
-        shell(o, c, ax, [r[0] * k, r[1] * (k - 0.01), r[2] * k], 1.95, 2.75, (-0.15, PI + 0.15), whisk);
+        face_shell(o, c, ax, r, k, (1.95, 2.75), (-0.15, PI + 0.15), whisk);
         for sx in [-1.0f32, 1.0] {
             let a = at(sx * r[0] * 0.93, 0.0, -0.01);
             tube(o, a, at(sx * r[0] * 0.86, -0.075, 0.035), 0.022, 0.03, whisk, face, 0.6, 8);
@@ -1089,12 +1148,16 @@ fn head(o: &mut Vec<Vert>, who: &Who, act: Act, neck: V, spine: V, face: V) {
             if who.star {
                 // aviators pushed up on the visor's band: two dark teardrop lenses in gold rims and the bridge between
                 let gold = [0.95, 0.76, 0.25];
+                // (lying back along the head's slope there and clear of the hair, so they don't sink into it)
+                let tilt = norm(add(face, mul(crown, 0.75)));
+                let lx = [side, norm(cross(tilt, side)), tilt];
+                let lens = |x: f32| add(on(x, y + 0.04, 0.0), mul(tilt, 0.016));
                 for sx in [-1.0f32, 1.0] {
-                    let l = on(sx * 0.055, y + 0.045, 0.012);
-                    shell(o, l, ax, [0.04, 0.03, 0.012], 0.0, PI, full, gold);
-                    shell(o, add(l, mul(face, 0.006)), ax, [0.034, 0.025, 0.01], 0.0, PI, full, [0.1, 0.14, 0.2]);
+                    let l = lens(sx * 0.052);
+                    shell(o, l, lx, [0.04, 0.03, 0.01], 0.0, PI, full, gold);
+                    shell(o, add(l, mul(tilt, 0.005)), lx, [0.034, 0.025, 0.008], 0.0, PI, full, [0.1, 0.14, 0.2]);
                 }
-                tube(o, on(-0.02, y + 0.052, 0.018), on(0.02, y + 0.052, 0.018), 0.005, 0.005, gold, crown, 1.0, 6);
+                tube(o, add(lens(-0.02), mul(tilt, 0.006)), add(lens(0.02), mul(tilt, 0.006)), 0.005, 0.005, gold, crown, 1.0, 6);
             }
         }
         _ if look.female => {}

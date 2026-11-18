@@ -895,8 +895,8 @@ impl App {
             u.zenith[3] = r;
             u
         };
-        for bt in &self.wall_batches {
-            gpu.draw_mesh(g, Pipe::Solid, &bt.mesh, bt.tex, bt.tex, &art(cat::ROCK, 0.04));
+        for w in &ground.walls {
+            gpu.draw_mesh(g, Pipe::Solid, &w.mesh, w.tex, w.clean, &art(cat::ROCK, 0.04));
         }
         let water = base.with_mode(mode::WATER);
         for c in &ground.water {
@@ -1003,7 +1003,8 @@ impl App {
             g.flush();
             return;
         }
-        let help = "Walk camera: W A S D or arrows walk, Shift run, drag to look, G follow a golfer (Shift+G back), F12, ` or Esc back";
+        let help =
+            "Walk camera (beta): W A S D or arrows walk, Shift run, drag to look, G follow a golfer (Shift+G back), F12, ` or Esc back";
         let w = F_ARIAL10.width(help) + 12.0;
         s.fill(g, l + 6.0, bt - 20.0, w, 14.0, shade);
         s.put(g, F_ARIAL10, l + 12.0, bt - 18.0, help, rgba(1.0, 1.0, 1.0, 0.85));

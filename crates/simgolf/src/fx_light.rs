@@ -264,6 +264,20 @@ const DAY: [Key; 9] = [
     },
 ];
 
+/// Brighter, bluer nights (the port's own option): at full night (`k` 1, `fx_night::night_at`) the light is a clear moonlit
+/// blue about a third brighter than the dusk key's, the sky a deeper blue with more light low down; between, a share.
+fn bright_night(a: &mut Atmos, k: f32) {
+    if k <= 0.0 {
+        return;
+    }
+    a.sun = lerp3(a.sun, [0.46, 0.56, 0.96], k);
+    a.amb = lerp3(a.amb, [0.98, 1.08, 1.42], k);
+    a.sprite = lerp3(a.sprite, [0.80, 0.88, 1.12], k);
+    a.sky_top = lerp3(a.sky_top, [0.14, 0.22, 0.50], k);
+    a.sky_low = lerp3(a.sky_low, [0.42, 0.52, 0.80], k);
+    a.haze_col = a.sky_low;
+}
+
 pub(crate) fn lerp3(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
     [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
 }
@@ -531,6 +545,9 @@ impl App {
             a.below = lerp3(look.below, mul3(low, [0.55, 0.55, 0.62]), w * 0.8);
             a.haze_col = a.sky_low;
             a.tinted = true;
+            if s.bright_night {
+                bright_night(&mut a, crate::fx_night::night_at(phase));
+            }
         }
         if rain > 0.0 {
             // overcast: the sun dimmed and its shadows faint, the sky and the colours greyer

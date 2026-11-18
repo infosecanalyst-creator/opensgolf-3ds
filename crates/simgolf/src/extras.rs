@@ -80,6 +80,12 @@
 //!   pointer is on the lot, instead of the original's taking turns over every lot at the closest zoom (issue #160). A look,
 //!   on the Looks page; left alone by the presets, as it takes the original's labels away.
 //!
+//! * staff names (staff_names.rs): each employee gets a first and last name of their own, kept with the game, instead
+//!   of the one name every employee of a job shares in the original. A look, on the Looks page.
+//! * design names (design_names.rs): the design strip names each bench, flower bed and scenic tree design under the
+//!   pointer, and the pointer on one of them on the course names it ("Japanese maple", "Purple irises, walled bed"),
+//!   where the original names none of them. On the Info page.
+//!
 //! With every extra off the game draws and plays exactly as before they existed (each hook asks its switch first).
 use serde::{Deserialize, Serialize};
 use std::cell::Cell;
@@ -159,6 +165,14 @@ pub struct Settings {
     /// overhead view.
     #[serde(default)]
     pub first_person: bool,
+    /// Each employee has a first and last name of their own (staff_names.rs). Off by default: in the original every
+    /// employee of a job shares one name.
+    #[serde(default)]
+    pub staff_names: bool,
+    /// Benches, flower beds and scenic trees are named for what they are, in the design strip and on the course under the
+    /// pointer (design_names.rs). Off by default: the original names none of them.
+    #[serde(default)]
+    pub design_names: bool,
 }
 
 impl Settings {
@@ -204,6 +218,8 @@ impl Settings {
         challenges: true,
         portrait: false,
         first_person: false,
+        staff_names: true,
+        design_names: true,
     };
     pub const ALL_OFF: Settings = Settings {
         people: false,
@@ -242,6 +258,8 @@ impl Settings {
         challenges: false,
         portrait: false,
         first_person: false,
+        staff_names: false,
+        design_names: false,
     };
 
     /// The ticks as the Extras box's checkbox bits (in `UI_KEYS` order).
@@ -283,6 +301,8 @@ impl Settings {
             self.challenges,
             self.portrait,
             self.first_person,
+            self.staff_names,
+            self.design_names,
         ]
         .iter()
         .enumerate()
@@ -328,6 +348,8 @@ impl Settings {
             challenges: on(33),
             portrait: on(34),
             first_person: on(35),
+            staff_names: on(36),
+            design_names: on(37),
         }
     }
 
@@ -369,7 +391,7 @@ impl Default for Settings {
 
 /// The interface extras' lines on the Extras box's Interface page (extras_ui.rs), one tick per extra in `Settings::bits`
 /// order (text keys in lang/en.txt).
-pub const UI_KEYS: [&str; 36] = [
+pub const UI_KEYS: [&str; 38] = [
     "STR_EXTRAS_PEOPLE",
     "STR_EXTRAS_HISTORY",
     "STR_EXTRAS_NAME_TAGS",
@@ -406,6 +428,8 @@ pub const UI_KEYS: [&str; 36] = [
     "STR_EXTRAS_CHALLENGES",
     "STR_EXTRAS_PORTRAIT",
     "STR_EXTRAS_FIRST_PERSON",
+    "STR_EXTRAS_STAFF_NAMES",
+    "STR_EXTRAS_DESIGN_NAMES",
 ];
 
 /// The update check's value when settings.json has none (`Settings::update_check`).
@@ -547,6 +571,14 @@ pub fn unlock_info() -> bool {
 /// Whether Information > Challenges and Hole Stats' design lab are on (challenges.rs).
 pub fn challenges() -> bool {
     settings().challenges
+}
+/// Whether employees have their own names (staff_names.rs).
+pub fn staff_names() -> bool {
+    settings().staff_names
+}
+/// Whether benches, flower beds and scenic trees are named for what they are (design_names.rs).
+pub fn design_names() -> bool {
+    settings().design_names
 }
 pub fn random_trees() -> bool {
     settings().random_trees
@@ -1367,7 +1399,7 @@ mod tests {
         let f = Settings { save_files: true, ..Settings::ALL_OFF };
         assert_eq!(f.bits(), 1 << 22);
         assert_eq!(Settings::from_bits(f.bits()), f);
-        assert_eq!(UI_KEYS.len(), 36);
+        assert_eq!(UI_KEYS.len(), 38);
     }
 
     #[test]

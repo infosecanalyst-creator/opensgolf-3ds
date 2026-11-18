@@ -425,6 +425,18 @@
         <p class="meta"><span class="pill act">Always there</span> <b>Key:</b> <kbd>Shift+A</kbd></p>
         <p>Shows every employee's work ring at once, and the fairways and greens no groundskeeper reaches.</p>
       </article>
+      <article class="feat" id="staff-names" data-since="0.8.4">
+        <h3>Staff names</h3>
+        <p class="meta"><span class="pill off">Off</span> (on in both helper presets). <b>Where:</b> Preferences › Game options › Looks</p>
+        <p>Every employee gets a first and last name of their own, kept with the game, instead of every groundskeeper being
+          the same Randy. Rename still wins. <a href="#opt-extras-staff-names">Reference</a>.</p>
+      </article>
+      <article class="feat" id="clear-view" data-since="0.8.4">
+        <h3>Clear view</h3>
+        <p class="meta"><span class="pill act">Always there</span> <b>Key:</b> <kbd>Shift+X</kbd></p>
+        <p>Hides the trees and scenic trees so you can see the ground, paths and holes under them while you build.
+          Buildings, golfers and staff stay. Press it again to bring them back. View only.</p>
+      </article>
       <article class="feat" id="flyover" data-since="0.7">
         <h3>Hole flyover and showcase</h3>
         <p class="meta">Flyover <span class="pill off">Off</span> (Preferences › Game options › Looks); showcase <span class="pill act">Always there</span> (<kbd>Shift+O</kbd>)</p>
@@ -459,8 +471,14 @@
       <article class="feat" id="staff-animals">
         <h3>More staff, animals to buy</h3>
         <p class="meta"><span class="pill off">Off</span> (both on in the OpenSGolf preset)</p>
-        <p>Hire up to 40 employees instead of 20, and buy pairs of the theme's animals from the landmark strip to cheer
-          golfers up.</p>
+        <p>Hire up to 40 or up to 100 employees instead of 20, and buy pairs of the theme's animals from the landmark
+          strip to cheer golfers up.</p>
+      </article>
+      <article class="feat" id="staff-reach" data-since="0.8.4">
+        <h3>Staff reach grows with the map</h3>
+        <p class="meta"><span class="pill off">Off</span> (on in the OpenSGolf preset). <b>Where:</b> the Sandbox page <span class="tag">Light touch</span></p>
+        <p>On a Large, Huge or Giant map every employee covers more ground (up to three quarters more), so a big course
+          does not need several times the staff. The original's map is unchanged. <a href="#opt-extras-staff-reach">Reference</a>.</p>
       </article>
       <article class="feat" id="hardcore">
         <h3>Hardcore economy</h3>
@@ -545,6 +563,12 @@
         <p class="meta"><span class="pill act">Always there</span> <b>Key:</b> <kbd>Shift+K</kbd> (with the Landing map on, also in the Information menu)</p>
         <p>Tints the land by how high it stands against the usual ground, so you can see slopes, hollows and ridges before you build. View only.</p>
       </article>
+      <article class="feat" id="design-names" data-since="0.8.4">
+        <h3>Design names</h3>
+        <p class="meta"><span class="pill off">Off</span> (on in the helper presets). <b>Where:</b> Preferences › Game options › Info</p>
+        <p>The design strip names each bench, flower bed and scenic tree ("Japanese maple", "Purple irises, curved bed"),
+          and pointing at one on the course says what it is. <a href="#opt-extras-design-names">Reference</a>.</p>
+      </article>
       <article class="feat" id="unlock-info" data-since="0.8">
         <h3>What unlocks it</h3>
         <p class="meta"><span class="pill off">Off</span> (on in the helper presets). <b>Where:</b> Preferences › Game options › Info</p>
@@ -607,8 +631,8 @@
       together. None of them changes how the game plays.</p>
     <div class="feats">
       <article class="feat" id="first-person" data-since="0.8">
-        <h3>Walk your course in first person</h3>
-        <p class="meta"><span class="pill off">Off</span> <b>Where:</b> Preferences › Game options › Looks › First-person view (F12), on computers</p>
+        <h3>Walk your course in first person (beta)</h3>
+        <p class="meta"><span class="pill off">Off</span> <b>Where:</b> Preferences › Game options › Looks › First-person view (beta, F12), on computers</p>
         <p>F12 on the course puts you on the ground at a golfer's eye height, with 3D buildings for every theme, trees in the
           round and cartoon 3D golfers that swing, putt and cheer. <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> walk,
           a drag looks round, <kbd>G</kbd> follows a golfer and their shot, <kbd>F12</kbd> or <kbd>Esc</kbd> goes back.
@@ -621,6 +645,12 @@
           zoom and motion, and over fifty optional effects on five pages (Display, Effects, Atmosphere, Weather, Water):
           living water with ducks and reeds, shadows, time of day, rain, mist, wind, seasons, late-winter snow, lit windows
           and more. If the game runs slowly it eases off by itself. <a href="#ref-enhanced">Every option</a>.</p>
+      </article>
+      <article class="feat" id="bright-night" data-since="0.8.4">
+        <h3>Brighter, bluer nights</h3>
+        <p class="meta"><span class="pill off">Off</span> <b>Where:</b> Enhanced graphics settings › Atmosphere (with Time of day)</p>
+        <p>The night after dusk becomes a clearer moonlit blue and about a third brighter, so the course stays easy to see
+          and build on in the dark. Looks only. <a href="#opt-enhanced-fx-bright-night">Reference</a>.</p>
       </article>
       <article class="feat" id="hd">
         <h3>HD graphics, made from your files</h3>
@@ -766,7 +796,7 @@
 <tr id="opt-extras-weather"><td><b>Weather that matters (rain, snow, heat, storms)</b> <span class="tag">Noticeable</span></td><td>Rain and snow slow the ball and keep some golfers at home; desert heat waves speed it up. Gentle over a year.</td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td><td><span class="pill on">On</span></td></tr>
 <tr id="opt-extras-more-visitors"><td><b>More visitors: touring pros and celebrities</b> <span class="tag">Noticeable</span></td><td>Touring pros and celebrities drop in now and then. They pay more, draw crowds and say what they thought of your course.</td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td></tr>
 <tr id="opt-extras-lefties"><td><b>Left-handed golfers</b> <span class="tag">Light touch</span></td><td>About one golfer in ten is left-handed: a mirrored swing, and the ball curves the other way. Your pro can be one too.</td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td></tr>
-<tr id="opt-extras-more-staff"><td><b>Higher staff limits</b> <span class="tag">Noticeable</span></td><td>Your club may hire up to 40 employees instead of the original's 20.</td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-extras-more-staff"><td><b>Higher staff limits</b> <span class="tag">Noticeable</span></td><td>A click steps it: off (the original's 20 employees), up to 40, or up to 100 for a big club. A bigger map allows more on its own.</td><td><span class="pill off">off</span></td><td><span class="pill off">off</span></td><td><span class="pill on">up to 40</span></td></tr>
 <tr id="opt-extras-set-par"><td><b>Set par: change a hole's par on its Hole Stats</b> <span class="tag">Noticeable</span></td><td>Minus and plus buttons on Hole Stats change a hole's par (2 to 6), and golfers are scored against your par.</td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td></tr>
 <tr id="opt-extras-tees"><td><b>Multiple tees: forward and middle tees</b> <span class="tag">Light touch</span></td><td>Tab with the Tees tool places a forward or middle tee in front of a hole's tee. Weaker golfers play the shorter tees; par, length and tournaments stay as they were.</td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td><td><span class="pill on">On</span></td></tr>
 <tr id="opt-extras-animals"><td><b>Buyable animals</b> <span class="tag">Light touch</span></td><td>Buy pairs of the theme's animals from the landmark strip. They stay near where you set them down and cheer golfers up.</td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td><td><span class="pill on">On</span></td></tr>
@@ -785,6 +815,7 @@
 <tr id="opt-extras-keep-land"><td><b>Keep the land offer: buy land when you like</b> <span class="tag">Light touch</span></td><td>Saying No to the County commissioner's land offer keeps his approval: Information, Buy land opens the land for sale until you buy a tract.</td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td></tr>
 <tr id="opt-extras-demolish"><td><b>Eyesore demolition: pull down water towers and oil pumps</b> <span class="tag">Light touch</span></td><td>A right click (a long press) on an eyesore on your land offers to pull it down for §10,000, booked to Build course.</td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td></tr>
 <tr id="opt-extras-move-clubhouse"><td><b>Move the clubhouse</b> <span class="tag">Light touch</span></td><td>A right click (a long press) on the clubhouse offers to move it anywhere on your land, for what a new clubhouse costs.</td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td></tr>
+<tr id="opt-extras-staff-reach"><td><b>Staff reach grows with the map</b> <span class="tag">Light touch</span></td><td>On a map bigger than the original's, every employee covers more ground: about a quarter more on Large, half as much again on Huge, three quarters more on Giant. The original's map is unchanged.</td><td><span class="pill off">Off</span></td><td><span class="pill off">Off</span></td><td><span class="pill on">On</span></td></tr>
 </tbody></table></div>
 <h4 id="ref-game-options-looks">Looks <span class="banner">Changes how it looks. Play is unchanged.</span></h4>
 <div class="tw"><table>
@@ -797,7 +828,8 @@
 <tr id="opt-extras-home-labels-hover"><td><b>Home names only under the pointer</b></td><td>A celebrity's name shows over a home site only while the pointer is on it, instead of the names taking turns over every home.</td><td><span class="pill off">Off</span></td><td><span class="pill kept">Your choice</span></td><td><span class="pill kept">Your choice</span></td></tr>
 <tr id="opt-extras-hole-flyover"><td><b>Hole flyover: fly down a hole from its Hole Stats</b></td><td>Hole Stats gets a Fly over button: the camera flies from the tee down the hole to the green, then back. A key or a click ends it.</td><td><span class="pill off">Off</span></td><td><span class="pill on">On</span></td><td><span class="pill on">On</span></td></tr>
 <tr id="opt-extras-portrait"><td><b>Play upright on phones and tablets</b></td><td>A phone or tablet held upright plays on the whole tall screen, with the dock, panels and money at its edges, instead of asking you to turn it sideways.</td><td><span class="pill off">Off</span></td><td><span class="pill kept">Your choice</span></td><td><span class="pill kept">Your choice</span></td></tr>
-<tr id="opt-extras-first-person"><td><b>First-person view (F12 or `)</b></td><td>On a computer, F12 (or `, handy on a Mac) on the course walks it at a golfer's eye height in 3D: W A S D walk, a drag looks round, G follows a golfer's shot, F12, ` or Esc goes back.</td><td><span class="pill off">Off</span></td><td><span class="pill kept">Your choice</span></td><td><span class="pill kept">Your choice</span></td></tr>
+<tr id="opt-extras-first-person"><td><b>First-person view (beta, F12 or `)</b></td><td>On a computer, F12 (or `, handy on a Mac) on the course walks it at a golfer's eye height in 3D: W A S D walk, a drag looks round, G follows a golfer's shot, F12, ` or Esc goes back.</td><td><span class="pill off">Off</span></td><td><span class="pill kept">Your choice</span></td><td><span class="pill kept">Your choice</span></td></tr>
+<tr id="opt-extras-staff-names"><td><b>Staff names: every employee has a name of their own</b></td><td>Each employee you hire gets a first and last name of their own, kept with the game, instead of every groundskeeper sharing one name. A name you give with Rename still wins.</td><td><span class="pill off">Off</span></td><td><span class="pill on">On</span></td><td><span class="pill on">On</span></td></tr>
 </tbody></table></div>
 <h4 id="ref-game-options-info">Info <span class="banner">Shows more about your club. Play is unchanged.</span></h4>
 <div class="tw"><table>
@@ -810,6 +842,7 @@
 <tr id="opt-extras-path-help"><td><b>Path help: path view (Shift+V) and Show buttons</b></td><td>Path view (Shift+V) marks paths that reach the clubhouse and buildings they miss; a Show button finds a closed building.</td><td><span class="pill off">Off</span></td><td><span class="pill on">On</span></td><td><span class="pill on">On</span></td></tr>
 <tr id="opt-extras-unlock-info"><td><b>What unlocks it: how many holes open a building</b></td><td>A locked building says how many holes open it and how many the course has, where the original only asks for more holes.</td><td><span class="pill off">Off</span></td><td><span class="pill on">On</span></td><td><span class="pill on">On</span></td></tr>
 <tr id="opt-extras-challenges"><td><b>Challenges and the design lab</b></td><td>Information &gt; Challenges sets design and business aims to take on, and Hole Stats' Mark before keeps a hole's figures to compare after you change it.</td><td><span class="pill off">Off</span></td><td><span class="pill on">On</span></td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-extras-design-names"><td><b>Design names for benches, flower beds and scenic trees</b></td><td>The design strip names each bench, flower bed and scenic tree design under the pointer, and pointing at one on the course says what it is.</td><td><span class="pill off">Off</span></td><td><span class="pill on">On</span></td><td><span class="pill on">On</span></td></tr>
 </tbody></table></div>
 <h4 id="ref-game-options-saves">Saves <span class="banner">Keeps, shows and shares your games. Play is unchanged.</span></h4>
 <div class="tw"><table>
@@ -887,6 +920,7 @@
 <tr id="opt-enhanced-fx-bloom"><td><b>Bloom</b></td><td>The brightest parts (sparkle, white sand, highlights) glow a little.</td><td><span class="pill on">On</span></td></tr>
 <tr id="opt-enhanced-fx-window-lights"><td><b>Warm light in the buildings' windows at night</b></td><td>With Time of day: a warm light in the buildings' windows at night.</td><td><span class="pill on">On</span></td></tr>
 <tr id="opt-enhanced-fx-sprinklers"><td><b>Sprinklers on the fairways and greens at dawn</b></td><td>With Time of day: sprinklers watering the fairways and greens at first light.</td><td><span class="pill on">On</span></td></tr>
+<tr id="opt-enhanced-fx-bright-night"><td><b>Brighter, bluer nights</b></td><td>With Time of day: the night is a clearer moonlit blue and brighter, so the course stays easy to see and build on after dark.</td><td><span class="pill off">Off</span></td></tr>
 </tbody></table></div>
 <h4 id="ref-enhanced-weather">Weather</h4>
 <div class="tw"><table>
@@ -989,6 +1023,7 @@
 <tr><td>Staff areas off / on</td><td><kbd>Shift+A</kbd></td></tr>
 <tr><td>Landing map off / on</td><td><kbd>Shift+D</kbd></td></tr>
 <tr><td>Height map off / on</td><td><kbd>Shift+K</kbd></td></tr>
+<tr><td>Trees and scenery hidden / shown</td><td><kbd>Shift+X</kbd></td></tr>
 <tr><td>Comments by hole</td><td><kbd>Shift+I</kbd></td></tr>
 <tr><td>History graphs</td><td><kbd>Shift+Y</kbd></td></tr>
 <tr><td>Camera bookmark 1 (Ctrl+key keeps it)</td><td><kbd>Shift+F1</kbd></td></tr>

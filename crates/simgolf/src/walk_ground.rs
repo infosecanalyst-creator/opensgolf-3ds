@@ -139,6 +139,8 @@ pub struct Ground {
     pub skirt: Option<Part>,
     /// The sea beyond the edge where the course meets it.
     pub sea: Option<Part>,
+    /// The retaining walls where the ground steps and the cliff round the property, every side of them (`walk_walls`).
+    pub walls: Vec<Part>,
     /// The textures made for the walk (the skirt's, the de-featured copies), freed with it.
     own: Vec<TextureId>,
     /// The land beyond the edge.
@@ -154,7 +156,7 @@ impl Ground {
                 g.delete_mesh(p.mesh);
             }
         }
-        for p in self.skirt.into_iter().chain(self.sea) {
+        for p in self.skirt.into_iter().chain(self.sea).chain(self.walls) {
             g.delete_mesh(p.mesh);
         }
         for t in self.own {
@@ -174,6 +176,7 @@ pub fn ground_key(app: &App) -> u64 {
     t.corner.hash(&mut h);
     t.tile_corner.hash(&mut h);
     t.path_kind.hash(&mut h);
+    t.wall_mask.hash(&mut h);
     app.batches.len().hash(&mut h);
     h.finish()
 }
@@ -459,7 +462,11 @@ impl App {
                                     vv.color[3] += 0.5;
                                 }
                                 if self.terrain.type_at(x, y) == 17 {
-                                    sea_level = sea_level.min(v.y);
+                                    // open water lies a little below its banks (a vertex every tile round which is water)
+                                    if all_water_round(&self.terrain, v.x, v.z) {
+                                        vv.pos[1] -= WATER_DROP;
+                                    }
+                                    sea_level = sea_level.min(vv.pos[1]);
                                 }
                                 land.entry(tex).or_default().push(vv);
                             }
@@ -503,8 +510,100 @@ impl App {
         let beyond = Beyond::new(&self.terrain, theme, sea_level);
         let skirt_colour = if cat_sum[skirt_cat as usize][3] > 0.0 { cat_avg[skirt_cat as usize] } else { skirt_avg.unwrap_or([0.5; 3]) };
         let (skirt, sea) = walk_skirt(g, &beyond, skirt_tex, sea_tex, sea_level, skirt_cat, skirt_colour, wa);
-        Ground { key, chunks, water, skirt, sea, own, beyond, water_colour: wa }
+        let walls = self.walk_walls(g);
+        Ground { key, chunks, water, skirt, sea, walls, own, beyond, water_colour: wa }
     }
+
+    /// The walls the ground's steps and the property's edge show from eye level. The overhead view builds them only on the
+    /// sides its camera faces, with the original's lighting normals for that view (app.rs `build_walls`,
+    /// `build_edge_walls`); walking round them the other sides were missing, so the step's hollow showed under a raised
+    /// tee or building, and the faces that were there took the light from the wrong side and stood black. Here every side
+    /// is built, each facing out from the higher ground with its true normal: the same pictures, stretched the same way.
+    pub(crate) fn walk_walls(&mut self, g: &mut Gfx) -> Vec<Part> {
+        let (retain, cliff, strata) =
+            (self.theme_texture(g, "RetainWallA.bmp"), self.theme_texture(g, "CliffTest.bmp"), self.theme_texture(g, "strata.bmp"));
+        let t = &self.terrain;
+        let (ox, oz) = (-t.w as f32 * TILE_SIZE * 0.5, -t.h as f32 * TILE_SIZE * 0.5);
+        let (mut on_ground, mut on_water, mut edge) = (Vec::new(), Vec::new(), Vec::new());
+        // per side (0 north = -z, 1 east, 2 south, 3 west): the step to the neighbour, the face's normal (towards this,
+        // the lower tile) and its three vertices as (row, column) of the tile's 3 x 3 patch
+        type Side = ((i32, i32), [f32; 3], [(usize, usize); 3]);
+        const SIDES: [Side; 4] = [
+            ((0, -1), [0.0, 0.0, 1.0], [(0, 0), (0, 1), (0, 2)]),
+            ((1, 0), [-1.0, 0.0, 0.0], [(0, 2), (1, 2), (2, 2)]),
+            ((0, 1), [0.0, 0.0, -1.0], [(2, 2), (2, 1), (2, 0)]),
+            ((-1, 0), [1.0, 0.0, 0.0], [(2, 0), (1, 0), (0, 0)]),
+        ];
+        let vtx = |tx: i32, ty: i32, (r, c): (usize, usize), y: f32, u: f32, v: f32, n: [f32; 3]| {
+            let x = ox + tx as f32 * TILE_SIZE + c as f32 * TILE_SIZE * 0.5;
+            let z = oz + ty as f32 * TILE_SIZE + r as f32 * TILE_SIZE * 0.5;
+            let mut q = Vert::new(x, y, z, u, v);
+            q.normal = n;
+            q
+        };
+        for ty in 0..t.h {
+            for tx in 0..t.w {
+                for (dir, ((dx, dy), n, verts)) in SIDES.iter().enumerate() {
+                    let (na, nb) = (tx + dx, ty + dy);
+                    if !t.inside(na, nb) {
+                        continue;
+                    }
+                    if t.wall_at(tx, ty, dir as i32) {
+                        let (own, theirs) = (t.patch_heights(tx, ty), t.patch_heights(na, nb));
+                        // the neighbour's vertex on the same spot: across a north or south side the other row, else the
+                        // other column
+                        let facing = |(r, c): (usize, usize)| if dir % 2 == 0 { (2 - r, c) } else { (r, 2 - c) };
+                        let p: Vec<Vert> =
+                            verts.iter().enumerate().map(|(i, &(r, c))| vtx(tx, ty, (r, c), own[r][c], i as f32 * 0.5, 1.0, *n)).collect();
+                        let q: Vec<Vert> = verts
+                            .iter()
+                            .enumerate()
+                            .map(|(i, &rc)| {
+                                let (fr, fc) = facing(rc);
+                                vtx(tx, ty, rc, theirs[fr][fc], i as f32 * 0.5, 0.0, *n)
+                            })
+                            .collect();
+                        let out = if t.type_at(tx, ty) == 17 { &mut on_water } else { &mut on_ground };
+                        out.extend_from_slice(&[q[0], p[0], p[1], q[0], p[1], q[1], q[1], p[1], p[2], q[1], p[2], q[2]]);
+                    }
+                    // the cliff where the property meets land out of bounds, from this tile's edge down out of sight
+                    if t.type_at(tx, ty) != 20 && t.type_at(na, nb) == 20 {
+                        const BOTTOM: f32 = -75.0;
+                        let out_n = n.map(|v| -v);
+                        let own = t.patch_heights(tx, ty);
+                        let (a, b) = (verts[0], verts[2]);
+                        let top0 = vtx(tx, ty, a, own[a.0][a.1], 0.0, 0.0, out_n);
+                        let top1 = vtx(tx, ty, b, own[b.0][b.1], 1.0, 0.0, out_n);
+                        let mut bot0 = top0;
+                        let mut bot1 = top1;
+                        (bot0.pos[1], bot0.uv) = (BOTTOM, [0.0, 1.0]);
+                        (bot1.pos[1], bot1.uv) = (BOTTOM, [1.0, 1.0]);
+                        edge.extend_from_slice(&[top0, bot0, bot1, top0, bot1, top1]);
+                    }
+                }
+            }
+        }
+        [(retain, on_ground), (cliff, on_water), (strata, edge)]
+            .into_iter()
+            .filter_map(|(tex, v)| {
+                let tex = tex?;
+                (!v.is_empty()).then(|| Part { tex, clean: tex, mesh: g.mesh(&v), size: g.ctx.texture_size(tex).0 as f32 })
+            })
+            .collect()
+    }
+}
+
+/// How far open water lies below its banks, world units.
+const WATER_DROP: f32 = 1.6 * crate::walk::METRE;
+
+/// Whether every tile meeting the point (x, z) is water: a vertex inside a pond, not on its bank.
+fn all_water_round(t: &Terrain, x: f32, z: f32) -> bool {
+    let (hx, hz) = (t.w as f32 * TILE_SIZE * 0.5, t.h as f32 * TILE_SIZE * 0.5);
+    let e = TILE_SIZE * 0.01;
+    [(-e, -e), (e, -e), (-e, e), (e, e)].iter().all(|&(dx, dz)| {
+        let (tx, ty) = (((x + dx + hx) / TILE_SIZE).floor() as i32, ((z + dz + hz) / TILE_SIZE).floor() as i32);
+        is_water(t, tx, ty)
+    })
 }
 
 /// The land beyond the map's edge (and the sea, where the course's edge is water).

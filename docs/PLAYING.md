@@ -552,8 +552,10 @@ On the **Gameplay** page:
 - **Hardcore economy.** *(Big change)* Tighter money and choosier golfers: by default wages 150%, hole maintenance 200%, land (the
   property and tracts) 150%, debt interest 5% a month, at most $600 per golfer per hole in fees, every bad moment costs a
   golfer one more mood step, and at most 12 employees. The numbers are data/economy.toml's `hardcore_*` fields (docs/MODDING.md).
-- **Higher staff limits.** *(Noticeable)* The club may have 40 employees instead of the original's 20 (data/economy.toml's
-  `staff_limit_high`, at most 63: the original keeps its walkers in 64 records).
+- **Higher staff limits: off / up to 40 / up to 100.** *(Noticeable)* A click steps it: the club may have 40 employees
+  instead of the original's 20, or 100 for a very big club (data/economy.toml's `staff_limit_high` and `staff_limit_most`,
+  each at most 100; the original keeps its walkers in 64 records, so it never passes 63). A map larger than the
+  original's already allows more on its own (in proportion to its area, up to 63). The OpenSGolf preset uses 40.
 - **Buyable animals.** *(Light touch)* The landmark strip gets a page of the theme's animals (elk and cranes in Parkland, snakes, gila
   monsters and road runners in the Desert, flamingos, crocodiles, snakes and ducks in the Tropics, elk, sheep and ducks on
   the Links). A click on open ground of your course buys a pair (leader and young, $2,000) that drops in as wild animals do
@@ -622,6 +624,11 @@ On the **Gameplay** page:
   spot goes back to rough. Paths are not moved, so buildings joined only through the old spot show as unjoined until a path
   reaches the new one; golfers already out finish their round, and the next pair starts from the new clubhouse. Not
   during a tournament.
+- **Staff reach grows with the map.** *(Light touch; on the Sandbox page)* On a map larger than the original's (see
+  *Course size*), every employee covers more ground: the golfers a Club Pro, Ranger or Soda Vendor walks over to, the
+  weeds a Groundskeeper looks for, and the work ring drawn round them (moving one, Shift+A's staff areas) all grow by half
+  as much as the map's edge: 124% on Large, 148% on Huge, 178% on Giant. On the original's map nothing changes. In the
+  OpenSGolf preset.
 - **Left-handed golfers.** *(Light touch)* About one golfer in ten who arrives from now on is left-handed (decided by the game's own
   random draws when the golfer is made, and kept with the saved game). A left-hander is drawn as the mirror image of a
   right-hander while addressing the ball, swinging and following through, still facing the shot's target; walking,
@@ -748,6 +755,12 @@ On the **Looks** page:
   random design when you pick a flower bed, scenic tree or bridge (and the first bench); you then choose from the strip.
 - **Random trees.** Every tree the brushes plant takes a random look of its kind (see *Random trees* under *Camera
   bookmarks and the mouse*).
+- **Staff names** (on in the helper presets). In the original every employee of a job shares one name ("Randy
+  Groundskeeper", "Sally Soda Vendor"). With this on each employee gets a first and last name of their own when hired
+  (employees hired before it was ticked get one too), kept with the game and shown wherever the original names them: the
+  Employee panel, People, name tags, the routing map's list, the advisor. Soda Vendors are women and the others men, as
+  the original's pictures have them. A name given with Rename still wins, and a new hire in a fired employee's place starts
+  afresh. Kept as `staff_names` under `ui_extras` in `settings.json`.
 - **Home names only under the pointer** (issue #160; off by default, and no preset sets it: it takes the original's
   labels away). The original names the celebrity of each home site over the lot at the closest zoom, the lots taking
   turns ("Name's" over "Home", a few seconds each). With this on the names stay hidden until the pointer is on a home site,
@@ -1102,6 +1115,12 @@ compare pixel for pixel with the build before the extras).
   over the months since (both kept from the moment the extra is on), what a lot there is worth now, what buying it back
   would cost (demolishing it), and which hole sets its value and how much of it that hole makes. Test hook: the edit spec
   `b:X,Y,5` places a home site, `SG_POINTER=x,y` points at it.
+- **Design names** (its own line on the Info page; on in the helper presets): the original names a landmark in its design
+  strip but not the benches, flower beds and scenic trees. With this on the strip names the design under the pointer
+  ("Japanese maple", "Box bench", "Purple irises, curved bed"), and with no tool in hand the pointer on a bench, flower
+  bed or scenic tree on the course names it in a small tag (a golfer's or employee's name tag goes first). The names
+  come from the art itself: the scenic trees' and benches' picture files, and each theme's five flower colours in its
+  three bed shapes (open, curved, walled). Test hook: `SG_POINTER=x,y` points at a tile.
 
 These four only show or move the camera; nothing of the game changes. Ticks saved before them read as off. The landing
 map, comments by hole and history graphs only watch the game too: the golfers play exactly the same with them on or off.
@@ -1135,6 +1154,10 @@ The port's own keys, not in the original; nothing changes until you press them, 
   or below the usual ground. With the Landing map extra on, the Information menu has a Height map line too (for touch
   screens). It shares the legend's place with Staff areas and the Landing map, so turning it on puts those away. It only
   shows; nothing of the game changes. Test hook: `SG_HEIGHT_VIEW=1`.
+- **Clear view (Shift+X)** hides the trees, pines, palms and scenic trees, so the ground, paths and holes under them show
+  while you build; buildings, golfers, staff, flags, benches and flower beds stay. Press Shift+X again to bring them
+  back (the original's Shift+T hides everything standing on the course at once). It only shows; nothing of the game
+  changes, and it is not saved. Test hook: `SG_HIDE_SCENERY=1`.
 
 ## Camera bookmarks and the mouse
 
@@ -1474,9 +1497,12 @@ plays upright for the rest of the browser tab's session: the whole game in a 4:3
 black above and below (web/files.js `sgPortraitAsk`, `sgCanvasRect`). Only touch devices are asked (a coarse pointer, or
 an iPad); a desktop window, however tall, never is. The Android app is held in landscape by the system (either way up).
 
-**First-person view (F12)** (an interface extra on the Extras box's Looks page, off by default; on computers, not in
+**First-person view (beta, F12)** (an interface extra on the Extras box's Looks page, off by default; on computers, not in
 the browser or on Android; walk.rs): F12 on the course walks it at a golfer's eye height in a perspective view. Every
-building has a 3D model of the project's own in each theme (walk_models.rs), trees near the eye are solids built from
+building has a 3D model of the project's own in each theme (walk_models.rs), and so do most landmarks (the lighthouses,
+standing stones, windmills, towers, statues and the rest, walk_landmarks.rs; the few without one stand as their upright
+picture), the steps in the ground under tees, greens and buildings show their retaining walls on every side, open water
+lies a little below its banks, trees near the eye are solids built from
 their own pictures (walk_trees.rs), golfers within 220 m are jointed cartoon 3D figures coloured from their outfits and
 posed by what they are doing (walk_golfer.rs), and staff and residents are drawn in relief. W A S D or the arrows walk
 (Shift runs), a drag with a mouse button held looks round, G follows the golfers one after another (Shift+G back) and
@@ -1625,7 +1651,7 @@ animated water, terrain light with occlusion and shadows, a sky beyond the map, 
 `sky`, `tilt-shift`, `grading`, `bloom`, `vignette`, `cast-shadows`, `time-of-day`, `clouds`, `haze`, `rain`, `mist`,
 `ball-trail`, `ball-impacts`, `reflections`, `wind`, `evening-lights`, `seasons`, `after-rain`, `lightning`, `heat`, `life`, `crowds`, `winter`, `sharpen`, `grass`,
 `water-colour`, `waves`, `shoreline`, `caustics`, `rain-rings`, `water-life`, `ice`, `spray`, `window-lights`,
-`sprinklers`, `frost` = on/off,
+`sprinklers`, `frost`, `bright-night` = on/off,
 `quality=low|medium|high`, `day-length=short|normal|long`), `--fx-list` prints them, and `OPENSGOLF_FX` does the
 same from the environment. Without them the game looks exactly as before. Test hooks: `SG_FX_BENCH=N` with `--png` prints
 the frame time over N frames, `SG_FX_LOG=1` the light map's build time, each ball's landing (where, on what, at which
@@ -1652,7 +1678,9 @@ easy-to-read dusk; the interface is not touched. *Rain* follows the property's c
 whenever the save is loaded; the light dims and the shadows fade while it rains. *Mist* lies in
 hollows and over water, thick at dawn and gone by late morning with the time of day (a light mist all day without it).
 *Cloud shadows* drift over the course, *haze* pales the far (upper) part of the view, more when zoomed out. None of these
-changes the game: golfers play the same in rain or at dusk. Rain spells, the cloud cover and the wind last a whole day of
+changes the game: golfers play the same in rain or at dusk. *Brighter, bluer nights* (Atmosphere page, off by default;
+the port's own) makes the night after dusk a clearer moonlit blue and about a third brighter, so the course stays easy to
+see and build on in the dark. Rain spells, the cloud cover and the wind last a whole day of
 light and blend into the next day's over the first and last eighth of it, so the weather comes and goes gently (the short
 day length keeps the first versions' sudden changes).
 

@@ -106,6 +106,8 @@ pub struct FxSettings {
     pub sprinklers: bool,
     /// Frost on the grass on cold mornings where the theme has a winter, with the time of day (fx_nature.rs).
     pub frost: bool,
+    /// A brighter, bluer night, with the time of day (fx_light.rs `bright_night`; the port's own).
+    pub bright_night: bool,
 }
 
 impl Default for FxSettings {
@@ -159,6 +161,7 @@ impl Default for FxSettings {
             window_lights: true,
             sprinklers: true,
             frost: true,
+            bright_night: false,
         }
     }
 }
@@ -222,7 +225,7 @@ macro_rules! flag {
     };
 }
 
-static OPTIONS: [FxOption; 45] = [
+static OPTIONS: [FxOption; 46] = [
     FxOption { key: "effects", label: "STR_FX_EFFECTS", choices: ON_OFF, get: |s| s.enabled as usize, set: |s, v| s.enabled = v != 0 },
     FxOption {
         key: "scaler",
@@ -286,6 +289,7 @@ static OPTIONS: [FxOption; 45] = [
     flag!("window-lights", "STR_FX_WINDOW_LIGHTS", window_lights),
     flag!("sprinklers", "STR_FX_SPRINKLERS", sprinklers),
     flag!("frost", "STR_FX_FROST", frost),
+    flag!("bright-night", "STR_FX_BRIGHT_NIGHT", bright_night),
 ];
 
 /// The options in the order a preferences screen lists them; the first is the master switch.
@@ -406,6 +410,7 @@ pub fn from_enhanced(e: &crate::enhanced::Settings) -> FxSettings {
     s.window_lights = e.fx_window_lights;
     s.sprinklers = e.fx_sprinklers;
     s.frost = e.fx_frost;
+    s.bright_night = e.fx_bright_night;
     s
 }
 

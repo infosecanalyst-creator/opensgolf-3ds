@@ -140,6 +140,9 @@ pub struct Settings {
     /// Pixel-perfect scaling (the port's own): the 800 x 600 picture scaled by whole numbers only, its art sharp
     /// (nearest-neighbour), a border round it. Off by default; counts in Classic too, like the frame rate cap.
     pub pixel_perfect: bool,
+    /// A brighter, bluer night with the time of day, so the course stays easy to read after dark (fx_light.rs; the
+    /// port's own). Off by default.
+    pub fx_bright_night: bool,
 }
 
 impl Settings {
@@ -205,6 +208,8 @@ impl Settings {
         fx_frost: true,
         // a different look of the whole picture: offered, not on by default
         pixel_perfect: false,
+        // a different night than the effects have had: offered, not on by default
+        fx_bright_night: false,
     };
 }
 
@@ -485,6 +490,8 @@ pub const OPTIONS: &[OptionEntry] = &[
     tick!("fx_window_lights", "STR_ENHANCED_FX_WINDOW_LIGHTS", ATMOSPHERE, fx_window_lights),
     tick!("fx_sprinklers", "STR_ENHANCED_FX_SPRINKLERS", ATMOSPHERE, fx_sprinklers),
     tick!("fx_frost", "STR_ENHANCED_FX_FROST", WEATHER, fx_frost),
+    // the port's own of 0.8.4: a brighter, bluer night (with the time of day)
+    tick!("fx_bright_night", "STR_ENHANCED_FX_BRIGHT_NIGHT", ATMOSPHERE, fx_bright_night),
     tick!("pixel_perfect", "STR_ENHANCED_PIXEL_PERFECT", DISPLAY, pixel_perfect, Reload::Art),
 ];
 
@@ -788,6 +795,7 @@ pub fn desc_key(key: &str) -> Option<&'static str> {
         "fx_heat" => "STR_ENHANCED_DESC_FX_HEAT",
         "fx_winter" => "STR_ENHANCED_DESC_FX_WINTER",
         "fx_frost" => "STR_ENHANCED_DESC_FX_FROST",
+        "fx_bright_night" => "STR_ENHANCED_DESC_FX_BRIGHT_NIGHT",
         "fx_mist" => "STR_ENHANCED_DESC_FX_MIST",
         "fx_wind" => "STR_ENHANCED_DESC_FX_WIND",
         "fx_seasons" => "STR_ENHANCED_DESC_FX_SEASONS",

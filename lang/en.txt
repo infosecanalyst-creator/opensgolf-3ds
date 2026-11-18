@@ -1389,7 +1389,10 @@ STR_EXTRAS_TITLE                        :OpenSGolf extras (not in the original)
 STR_EXTRAS_ROTATE                       : Tab turns placed buildings and the clubhouse
 STR_EXTRAS_CUT_CONTENT                  : Cut content: unused landmarks (decoration only)
 STR_EXTRAS_HARDCORE                     : Hardcore economy
-STR_EXTRAS_MORE_STAFF                   : Higher staff limits
+STR_EXTRAS_MORE_STAFF                   : Higher staff limits: {VALUE}
+STR_EXTRAS_STAFF_OFF                    :off
+STR_EXTRAS_STAFF_HIGH                   :up to {N}
+STR_EXTRAS_STAFF_MOST                   :up to {N}
 STR_EXTRAS_ANIMALS                      : Buyable animals
 STR_EXTRAS_SET_PAR                      : Set par: change a hole's par on its Hole Stats
 # The extras box's pages (tabs), by what their ticks change: how the game plays, relaxed play, the look, information, effort
@@ -1417,7 +1420,7 @@ STR_EXTRAS_HINT_PLAIN                   :Point at an option, or tap it, to read 
 STR_EXTRAS_DESC_ROTATE                  :Tab turns a placed building or the clubhouse a quarter, or steps through the designs of the item in hand. Only the picture turns.
 STR_EXTRAS_DESC_CUT_CONTENT             :Experimental: decoration only, no landmark powers. Fourteen landmarks the original never used join the landmark strip; golfers enjoy the view.
 STR_EXTRAS_DESC_HARDCORE                :Tighter money and choosier golfers: higher wages, upkeep and land prices, more interest, lower fees and at most 12 staff.
-STR_EXTRAS_DESC_MORE_STAFF              :Your club may hire up to 40 employees instead of the original's 20.
+STR_EXTRAS_DESC_MORE_STAFF              :A click steps it: off (the original's 20 employees), up to 40, or up to 100 for a big club. A bigger map allows more on its own.
 STR_EXTRAS_DESC_ANIMALS                 :Buy pairs of the theme's animals from the landmark strip. They stay near where you set them down and cheer golfers up.
 STR_EXTRAS_DESC_SET_PAR                 :Minus and plus buttons on Hole Stats change a hole's par (2 to 6), and golfers are scored against your par.
 STR_EXTRAS_DESC_SEASON_SPEED            :The calendar runs at half or a quarter speed while golfers, staff and bills keep their pace, so each year holds more golf.
@@ -1488,6 +1491,8 @@ STR_DEMOLISH_RADIO_MAST                 :radio mast
 STR_DEMOLISH_OIL_PUMP                   :oil pump
 STR_EXTRAS_MOVE_CLUBHOUSE               : Move the clubhouse
 STR_EXTRAS_DESC_MOVE_CLUBHOUSE          :A right click (a long press) on the clubhouse offers to move it anywhere on your land, for what a new clubhouse costs.
+STR_EXTRAS_STAFF_REACH                  : Staff reach grows with the map
+STR_EXTRAS_DESC_STAFF_REACH             :On a map bigger than the original's, every employee covers more ground: about a quarter more on Large, half as much again on Huge, three quarters more on Giant. The original's map is unchanged.
 STR_MOVE_CLUBHOUSE_1                    :Move the clubhouse for {COST}?
 STR_MOVE_CLUBHOUSE_2                    :Pick its new spot next. Paths to the old spot stay where they are.
 STR_MOVE_CLUBHOUSE_YES                  : Yes, pick a spot
@@ -2736,6 +2741,7 @@ STR_CTL_QUICK_SAVE                      :Quick save
 STR_CTL_QUICK_LOAD                      :Quick load
 STR_CTL_STAFF_VIEW                      :Staff areas off / on
 STR_CTL_HEIGHT_VIEW                     :Height map off / on
+STR_CTL_HIDE_SCENERY                    :Trees and scenery hidden / shown
 STR_CTL_LANDING_MAP                     :Landing map off / on
 STR_CTL_HOLE_COMMENTS                   :Comments by hole
 STR_CTL_GRAPHS                          :History graphs
@@ -3190,6 +3196,8 @@ STR_KEYS_K_STAFF_VIEW                   :Shift+A
 STR_KEYS_STAFF_VIEW                     :Staff areas: every employee's ring, and the course no groundskeeper reaches
 STR_KEYS_K_HEIGHT_VIEW                  :Shift+K
 STR_KEYS_HEIGHT_VIEW                    :Height map: the course tinted from its lowest ground to its highest
+STR_KEYS_K_HIDE_SCENERY                 :Shift+X
+STR_KEYS_HIDE_SCENERY                   :Clear view: trees and scenic trees hidden, to see the ground while you build
 STR_KEYS_K_VIEWS                        :Shift+F1 .. F4
 STR_KEYS_VIEWS                          :Camera bookmarks: back to a kept view (centre, zoom and turn)
 STR_KEYS_K_VIEW_KEEP                    :Ctrl+bookmark key
@@ -3223,6 +3231,8 @@ STR_HEIGHT_VIEW_HERE                    :Under the pointer: {LEVEL} levels (gree
 STR_HEIGHT_VIEW_CLOSE                   :Shift+K or the Information menu hides it.
 STR_HEIGHT_VIEW_ON                      :Height map on: Shift+K hides it.
 STR_HEIGHT_VIEW_OFF                     :Height map off.
+STR_SCENERY_HIDDEN                      :Trees and scenery hidden: {KEY} shows them again.
+STR_SCENERY_SHOWN                       :Trees and scenery shown.
 # The course editor (editor.rs; the port's own): the title button, the editor box, heightmap import, saving scenarios
 STR_EDITOR_HM_NOT_PNG                   :This is not a PNG picture OpenSGolf can read (8 or 16 bits per channel, not interlaced).
 STR_EDITOR_TITLE_BUTTON                 :Course editor...
@@ -3486,6 +3496,9 @@ STR_ENHANCED_PIXEL_PERFECT              : Pixel-perfect scaling: whole sizes onl
 STR_FX_WINDOW_LIGHTS                    :Lit windows
 STR_FX_SPRINKLERS                       :Dawn sprinklers
 STR_FX_FROST                            :Morning frost
+STR_ENHANCED_FX_BRIGHT_NIGHT            : Brighter, bluer nights
+STR_ENHANCED_DESC_FX_BRIGHT_NIGHT       :With Time of day: the night is a clearer moonlit blue and brighter, so the course stays easy to see and build on after dark.
+STR_FX_BRIGHT_NIGHT                     :Bright nights
 
 # The showcase fly-over (the port's own, showcase.rs; docs/PLAYING.md)
 STR_CTL_SHOWCASE                        :Showcase: fly over the course hole by hole
@@ -3626,7 +3639,7 @@ STR_WHATSNEW_DOUBLE                     : Double-click a save to load it
 STR_WHATSNEW_DOUBLE_NOTE                :Or double-tap it on a touch screen.
 STR_WHATSNEW_MORE07                     : And more
 STR_WHATSNEW_MORE07_NOTE                :Longer translations fit, replays in problem reports, controller fixes.
-STR_WHATSNEW_FIRSTPERSON                : Walk your course in first person
+STR_WHATSNEW_FIRSTPERSON                : Walk your course in first person (beta)
 STR_WHATSNEW_FIRSTPERSON_NOTE           :On a computer, F12 walks the course in 3D and G follows a golfer's shot.
 STR_WHATSNEW_WEBAPP                     : Play offline in the browser
 STR_WHATSNEW_WEBAPP_NOTE                :Add the web version to your home screen; it plays with no connection.
@@ -3697,8 +3710,46 @@ STR_EXTRAS_WIDE_UI                      : Interface at the screen's edges
 STR_EXTRAS_DESC_WIDE_UI                 :On a wide screen the dock, panels and money sit at the screen's edges (on by default; off keeps them in the 4:3 middle).
 STR_EXTRAS_PORTRAIT                     : Play upright on phones and tablets
 STR_EXTRAS_DESC_PORTRAIT                :A phone or tablet held upright plays on the whole tall screen, with the dock, panels and money at its edges, instead of asking you to turn it sideways.
-STR_EXTRAS_FIRST_PERSON                 : First-person view (F12 or `)
+STR_EXTRAS_FIRST_PERSON                 : First-person view (beta, F12 or `)
 STR_EXTRAS_DESC_FIRST_PERSON            :On a computer, F12 (or `, handy on a Mac) on the course walks it at a golfer's eye height in 3D: W A S D walk, a drag looks round, G follows a golfer's shot, F12, ` or Esc goes back.
+STR_EXTRAS_STAFF_NAMES                  : Staff names: every employee has a name of their own
+STR_EXTRAS_DESC_STAFF_NAMES             :Each employee you hire gets a first and last name of their own, kept with the game, instead of every groundskeeper sharing one name. A name you give with Rename still wins.
+STR_EXTRAS_DESIGN_NAMES                 : Design names for benches, flower beds and scenic trees
+STR_EXTRAS_DESC_DESIGN_NAMES            :The design strip names each bench, flower bed and scenic tree design under the pointer, and pointing at one on the course says what it is.
+# The Design names extra's names (design_names.rs; the port's own, from the art's own file names)
+STR_DESIGN_BENCH_PARK                   :Wooden park bench
+STR_DESIGN_BENCH_BOX                    :Box bench
+STR_DESIGN_BENCH_RED                    :Red bench
+STR_DESIGN_BENCH_ROUND                  :Round wooden bench
+STR_DESIGN_BENCH_BACKLESS               :Backless bench
+STR_DESIGN_BENCH_LOVERS                 :Lovers' bench
+STR_DESIGN_TREE_WILLOW                  :Weeping willow
+STR_DESIGN_TREE_PLUM                    :Flowering plum
+STR_DESIGN_TREE_DOGWOOD                 :Dogwood
+STR_DESIGN_TREE_ELM                     :Elm
+STR_DESIGN_TREE_MAPLE                   :Japanese maple
+STR_DESIGN_TREE_CYPRESS                 :Cypress
+STR_DESIGN_TREE_ORNAMENTAL              :Ornamental tree
+STR_DESIGN_TREE_PEACH                   :Peach tree
+STR_DESIGN_FLOWERS_YELLOW               :Yellow daisies
+STR_DESIGN_FLOWERS_ORANGE               :Orange marigolds
+STR_DESIGN_FLOWERS_PURPLE               :Purple irises
+STR_DESIGN_FLOWERS_WHITE                :White carnations
+STR_DESIGN_FLOWERS_RED                  :Red roses
+STR_DESIGN_FLOWERS_DESERT_RED           :Red poppies
+STR_DESIGN_FLOWERS_DESERT_ORANGE        :Orange desert mallow
+STR_DESIGN_FLOWERS_DESERT_PURPLE        :Purple irises
+STR_DESIGN_FLOWERS_DESERT_BLUE          :Blue foxgloves
+STR_DESIGN_FLOWERS_DESERT_PINK          :Pink sage
+STR_DESIGN_FLOWERS_TROPICAL_AQUA        :Aqua hibiscus
+STR_DESIGN_FLOWERS_TROPICAL_ORANGE      :Orange bougainvillea
+STR_DESIGN_FLOWERS_TROPICAL_PURPLE      :Purple orchids
+STR_DESIGN_FLOWERS_TROPICAL_BLUE        :Blue hydrangeas
+STR_DESIGN_FLOWERS_TROPICAL_RED         :Red roses
+STR_DESIGN_BED_PLAIN                    :open bed
+STR_DESIGN_BED_CURVED                   :curved bed
+STR_DESIGN_BED_WALLED                   :walled bed
+STR_DESIGN_FLOWER_BED                   :{FLOWERS}, {BED}
 # Edge scrolling (OpenSGolf extras, extras.rs edge_scroll; main.rs edge_scroll)
 STR_EXTRAS_EDGE_SCROLL                  : Edge scrolling
 STR_EXTRAS_DESC_EDGE_SCROLL             :In full screen the pointer at the screen's edge scrolls the view, as in the original (on by default).

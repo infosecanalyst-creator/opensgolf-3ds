@@ -95,6 +95,9 @@ pub struct Prop {
     pub hidden: bool,
     /// Scenery regenerated from the terrain after edits.
     pub tree: bool,
+    /// A scenic tree (and the flowers round its foot) on a scenic tile: hidden with the trees by the clear view
+    /// (`App::scenery_hidden`).
+    pub scenic: bool,
     /// A ball washer on this tile (x, y) that plays its frames while a golfer washes (the tile's counter).
     pub grow_tile: Option<(i32, i32)>,
     /// A newly planted tree, scenic tree or flower bed on this tile (x, y) that shows its growth as its frame
@@ -151,6 +154,7 @@ impl Default for Prop {
             golfer: None,
             hidden: false,
             tree: false,
+            scenic: false,
             grow_tile: None,
             sprout: None,
             decor: false,
@@ -607,6 +611,9 @@ pub struct App {
     pub pack_art: HashMap<usize, sg_core::hires::SheetSprite>,
     pub props: Vec<Prop>,
     pub show_props: bool,
+    /// The clear view (Shift+X, the port's own): trees and scenic trees are not drawn (`scenery_hidden`); buildings,
+    /// golfers, staff, flags and the rest stay. Not saved.
+    pub hide_scenery: bool,
     /// Seconds, drives animation.
     pub time: f64,
     /// The golfers and the course as they see it (the exe's golfer table and tile arrays).
@@ -1053,6 +1060,7 @@ impl App {
             pack_art: HashMap::new(),
             props: Vec::new(),
             show_props: true,
+            hide_scenery: false,
             time: 0.0,
             club: Club::default(),
             course: Course::default(),
@@ -1573,7 +1581,7 @@ impl App {
         id
     }
 
-    fn theme_texture(&mut self, g: &mut Gfx, file: &str) -> Option<TextureId> {
+    pub(crate) fn theme_texture(&mut self, g: &mut Gfx, file: &str) -> Option<TextureId> {
         let p = self.game_path(&format!("Data/Textures/{}/{}", THEMES[self.theme], file));
         self.texture_for(g, &p)
     }
@@ -4866,6 +4874,10 @@ impl App {
         let club = self.club_anchor();
         let i = staff::hire(&mut self.employees, kind, skilled, club, &mut self.exe_rng);
         self.employees[i].hired = (self.club.date() >> 10) as i32;
+        // a new hire in a fired employee's slot is someone else: the old Rename goes (People extras), and with the Staff
+        // names extra the new one gets a name of their own (staff_names.rs)
+        self.xs.kept.staff_names.remove(&i);
+        self.name_staff();
         true
     }
 
@@ -4956,6 +4968,8 @@ impl App {
             sg.pause = g.pause;
             sg.face = -1;
         }
+        // the Staff names extra: anyone hired before it was ticked gets a name too (staff_names.rs)
+        self.name_staff();
         let mut out = Vec::new();
         {
             let weed_frames = self.weed_sprite.map(|w| self.sprites[w].s.frames_per_view).unwrap_or(1);
@@ -4970,6 +4984,7 @@ impl App {
                 tick: self.game_tick,
                 difficulty: self.difficulty,
                 weed_frames,
+                reach: self.club.extras.staff_reach_percent(),
             };
             // the pro's employee is away while he plays a round (staff routine 0x402a40)
             let away = self.club.gary != -1;
@@ -5318,6 +5333,10 @@ impl App {
         for (a, b, d) in draws {
             let n = self.props.len();
             self.push_decor(a, b, d, true, false);
+            // a scenic tree, the willow, and the flowers at their foot (decor::ornamental): hidden by the clear view
+            if self.props.len() > n && (d.sprite == 0xf9 || d.sprite == 0xfc || (0x12f..=0x135).contains(&d.sprite)) {
+                self.props[n].scenic = true;
+            }
             // the beds go straight onto the frame in the exe's tile loop, under the queued sprites
             if (0x1a2..=0x1b3).contains(&d.sprite) && self.props.len() > n {
                 self.props[n].flat = true;

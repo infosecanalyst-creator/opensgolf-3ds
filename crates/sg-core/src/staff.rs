@@ -61,6 +61,14 @@ pub struct Employee {
     pub hired: i32,
     #[serde(default)]
     pub paid: i32,
+    /// The Staff names extra's choice of this employee's first and last name (simgolf's staff_names.rs), 0 until one is
+    /// chosen: only while the extra is on, so saves made without it are as before. A new hire in the slot starts at 0.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub name_seed: u32,
+}
+
+fn is_zero(v: &u32) -> bool {
+    *v == 0
 }
 
 /// What the staff code needs to know about, and may change on, a golfer.
@@ -436,6 +444,9 @@ pub struct World<'a> {
     pub difficulty: i32,
     /// Frames in the theme's weed animation (a weed being worked on starts its counter at this minus 3).
     pub weed_frames: i32,
+    /// How far the staff reach, in percent of the original's (100; more with the Staff reach grows with the map extra,
+    /// `Extras::staff_reach_percent`): the Groundskeeper's weed search and the golfers the others walk to.
+    pub reach: i32,
 }
 
 /// One game tick for every employee.
@@ -505,10 +516,13 @@ fn decide(list: &mut [Employee], i: usize, w: &mut World, rng: &mut ExeRng, out:
         tx = post.0 * UNIT + 0x200;
         ty = post.1 * UNIT + 0x200;
     }
+    // the extras' wider reach (100 in the original: the box of 16 tiles each way, the golfers within 100 yards)
+    let pct = w.reach.max(100);
     if jb == job::GROUNDSKEEPER || jb == job::OWNER {
-        let mut reach = if e.upgraded { 0x20 } else { 0x18 };
-        for da in -16..=16 {
-            for db in -16..=16 {
+        let mut reach = (if e.upgraded { 0x20 } else { 0x18 }) * pct / 100;
+        let span = 16 * pct / 100;
+        for da in -span..=span {
+            for db in -span..=span {
                 let (a, b) = (post.0 + da, post.1 + db);
                 if !tile_ok(w.terrain, a, b) || w.tiles.flags[w.tiles.i(a, b)] & WEEDS == 0 {
                     continue;
@@ -551,7 +565,7 @@ fn decide(list: &mut [Employee], i: usize, w: &mut World, rng: &mut ExeRng, out:
                 best = d;
             }
         }
-        if best < 100 {
+        if best < 100 * pct / 100 {
             let g = &w.golfers[pick as usize];
             tx = g.x;
             ty = g.y;
@@ -910,6 +924,7 @@ mod tests {
                 tick,
                 difficulty: 1,
                 weed_frames: 8,
+                reach: 100,
             };
             tick_all(&mut staff, &mut world, &mut rng, &mut out);
             if out.iter().any(|e| matches!(e, StaffEvent::DrinkSold { .. })) {
@@ -952,6 +967,7 @@ mod tests {
                 tick,
                 difficulty: 0,
                 weed_frames: 8,
+                reach: 100,
             };
             tick_all(&mut staff, &mut world, &mut rng, &mut out);
             if out.iter().any(|e| matches!(e, StaffEvent::WeedPulled { a, b } if (*a, *b) == weed)) {

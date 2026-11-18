@@ -452,8 +452,9 @@ cheapest a Parkland one), so a pack that changes themes changes the deal too.
 | `hole_maintenance` | money | 100 | Maintenance of each active hole, charged with the wages. |
 | `debt_interest_percent` | percent | 2 | Interest on debt at each month start (whole hundreds, rounded toward zero). |
 | `rank_holes` | holes x 3 | [6, 10, 18] | Holes for Daily Fee, Country Club and Championship; fewer than the first is Municipal. |
-| `staff_limit` | employees | 20 | The most employees a club may have (the original's 20). At most 63. |
-| `staff_limit_high` | employees | 40 | The limit with the *Higher staff limits* extra (docs/PLAYING.md, OpenSGolf extras). At most 63. |
+| `staff_limit` | employees | 20 | The most employees a club may have (the original's 20). At most 100. |
+| `staff_limit_high` | employees | 40 | The limit with the *Higher staff limits* extra (docs/PLAYING.md, OpenSGolf extras). At most 100. |
+| `staff_limit_most` | employees | 100 | The limit with *Higher staff limits* at its top step. At most 100. |
 | `hardcore_staff_limit` | employees | 12 | The limit under the *Hardcore economy* extra (*Higher staff limits* wins over it). |
 | `hardcore_wage_percent` | percent | 150 | Wages under Hardcore, in percent of the normal wage. |
 | `hardcore_maintenance_percent` | percent | 200 | Hole maintenance under Hardcore. |

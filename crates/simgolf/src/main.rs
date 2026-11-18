@@ -98,6 +98,7 @@ mod popup_ui;
 mod portrait;
 mod prefs_search;
 // the web site's feature guide's reference (web/guide.html), made and checked by its tests
+mod design_names;
 #[cfg(test)]
 mod guide;
 mod prefs_ui;
@@ -116,6 +117,7 @@ mod selfcheck;
 mod share;
 mod shortcut;
 mod showcase;
+mod staff_names;
 mod staffview_ui;
 mod support;
 mod sysdiag;
@@ -133,6 +135,7 @@ mod walk;
 mod walk_gl;
 mod walk_golfer;
 mod walk_ground;
+mod walk_landmarks;
 mod walk_models;
 mod walk_objects;
 mod walk_relief;
@@ -814,6 +817,10 @@ fn panel_test_hooks(app: &mut App) {
         app.dock_hover = dock_hit(v[0] as f32, v[1] as f32);
         app.info.pointer = (v[0] as f32, v[1] as f32);
         app.dock_tip = (app.dock_hover, 12);
+    }
+    // SG_PANEL_ALT=1 turns the open panel to its other side (Course Terrain to Amenities, Buildings to Elevation)
+    if std::env::var_os("SG_PANEL_ALT").is_some() {
+        app.pstate.alt = true;
     }
     // SG_BUILD=kind arms the building tool with that exe object kind (stills of the pointer's previews), SG_DESIGN=n picks
     // design n of a garden item as its strip would
@@ -1738,6 +1745,10 @@ impl Stage {
         // SG_HEIGHT_VIEW=1 shows the height map (Shift+K, heightview_ui.rs), for stills
         if std::env::var_os("SG_HEIGHT_VIEW").is_some() {
             app.comfort.height_view = true;
+        }
+        // SG_HIDE_SCENERY=1 starts with the clear view (Shift+X, heightview_ui.rs), for stills
+        if std::env::var_os("SG_HIDE_SCENERY").is_some() {
+            app.hide_scenery = true;
         }
         if let Some(f) = &o.save {
             if let Err(e) = app.terrain.save(f) {
@@ -2872,6 +2883,8 @@ impl Stage {
                 KeyCode::F9 => app.ask_quick_load(),
                 KeyCode::A => app.toggle_staff_view(),
                 KeyCode::K => app.toggle_height_view(),
+                // trees and scenery hidden while building (the port's own)
+                KeyCode::X => app.toggle_scenery(),
                 // the insight extras (insight.rs): the landing map and comments by hole
                 KeyCode::D if extras::landing_map() => app.toggle_landing_map(),
                 KeyCode::I if extras::hole_comments() => app.open_hole_comments(),
