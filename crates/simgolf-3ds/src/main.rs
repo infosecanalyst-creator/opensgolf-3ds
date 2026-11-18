@@ -258,6 +258,12 @@ mod records;
 mod review_ui;
 #[path = "../../simgolf/src/shortcut.rs"]
 mod shortcut;
+// added with the upstream catch-up of Nov 18 2026 (OpenSGolf 0.8.2 to 0.8.4)
+// (not here: walk_landmarks.rs, part of the desktop walk camera)
+#[path = "../../simgolf/src/design_names.rs"]
+mod design_names;
+#[path = "../../simgolf/src/staff_names.rs"]
+mod staff_names;
 /// The desktop's walk camera (walk*.rs) stays off on the 3DS; app.rs's walk_hearing reads its metre, so that is here.
 mod walk {
     pub const METRE: f32 = sg_core::terrain::TILE_SIZE / (25.0 * 0.9144);
