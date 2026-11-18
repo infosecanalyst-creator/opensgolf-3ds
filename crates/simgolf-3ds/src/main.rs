@@ -239,6 +239,7 @@ mod textsize;
 #[path = "../../simgolf/src/welcome.rs"]
 mod welcome;
 // added with the upstream catch-up of Nov 16 2026 (OpenSGolf 0.7.3 to 0.8.2)
+// (not here: guide.rs, the website feature guide made by a desktop test)
 #[path = "../../simgolf/src/backups.rs"]
 mod backups;
 #[path = "../../simgolf/src/challenges.rs"]
@@ -247,8 +248,6 @@ mod challenges;
 mod clubhouse_move;
 #[path = "../../simgolf/src/demolish.rs"]
 mod demolish;
-#[path = "../../simgolf/src/guide.rs"]
-mod guide;
 #[path = "../../simgolf/src/heightview_ui.rs"]
 mod heightview_ui;
 #[path = "../../simgolf/src/portrait.rs"]
