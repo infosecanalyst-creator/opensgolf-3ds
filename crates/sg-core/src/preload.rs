@@ -27,6 +27,8 @@ struct State {
 static STATE: Mutex<Option<State>> = Mutex::new(None);
 /// Set to stop the worker at its next file (the program is quitting).
 pub static STOP: AtomicBool = AtomicBool::new(false);
+/// True while the worker runs (the program waits for it to finish its file before quitting).
+pub static RUNNING: AtomicBool = AtomicBool::new(false);
 
 fn with<R>(f: impl FnOnce(&mut State) -> R) -> R {
     let mut g = STATE.lock().unwrap_or_else(|e| e.into_inner());
@@ -35,6 +37,12 @@ fn with<R>(f: impl FnOnce(&mut State) -> R) -> R {
 
 /// Decodes the sprites in order, skipping any the game has claimed or already queued twice. Runs until done or `STOP`.
 pub fn run(jobs: Vec<Job>) {
+    RUNNING.store(true, Ordering::Relaxed);
+    run_jobs(jobs);
+    RUNNING.store(false, Ordering::Relaxed);
+}
+
+fn run_jobs(jobs: Vec<Job>) {
     for (path, shadow, pal) in jobs {
         if STOP.load(Ordering::Relaxed) {
             break;
