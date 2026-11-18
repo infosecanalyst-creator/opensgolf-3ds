@@ -17,7 +17,7 @@ The game opens on a title screen (no "press Start": straight to the menu, with C
 | Continue | the newest save: the autosave written when you leave a game, or any later one |
 | New Course | the Parkland plots on offer, with acres, price and what is left to build with (plots the club cannot afford are greyed out) |
 | Load Game | the saves, newest first |
-| Settings | golfers' thoughts on or off, sound volume, game art: your copy of SimGolf or the free set (kept in `sdmc:/3ds/opensgolf/settings.txt`; the art changes the next time the game starts) |
+| Settings | golfers' thoughts on or off, sound volume, game art: your copy of SimGolf or the free set (kept in `sdmc:/3ds/opensgolf/settings.txt`; the art changes the next time the game starts); Extras: staff names, design names, staff limit and staff reach (OpenSGolf 0.8.4's optional extras, all off at first) |
 | Controls | the controls page |
 | Manual | the instruction manual (see below) |
 | Quit | back to the Homebrew Launcher |
