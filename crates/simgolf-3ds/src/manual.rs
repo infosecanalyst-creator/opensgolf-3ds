@@ -70,6 +70,12 @@ pub struct Manual {
     laid: Option<usize>,
     /// The press began on this button (it is picked on release only if it ends there).
     pressed: Option<usize>,
+    /// Drag to scroll (rule 13): where the touch started, its last y, whether it became a
+    /// drag (moved more than 6 px, so it presses nothing), and the momentum after release.
+    drag_from: (f32, f32),
+    drag_last_y: f32,
+    dragging: bool,
+    momentum: f32,
 }
 
 impl Manual {
@@ -77,7 +83,20 @@ impl Manual {
         let src = std::fs::read_to_string(ON_CARD).ok().filter(|t| t.contains("# ")).unwrap_or_else(|| BUILT_IN.to_string());
         let sections = parse(&src);
         let n = sections.len();
-        Manual { sections, open: false, cur: 0, scroll: vec![0.0; n], lines: Vec::new(), height: 0.0, laid: None, pressed: None }
+        Manual {
+            sections,
+            open: false,
+            cur: 0,
+            scroll: vec![0.0; n],
+            lines: Vec::new(),
+            height: 0.0,
+            laid: None,
+            pressed: None,
+            drag_from: (0.0, 0.0),
+            drag_last_y: 0.0,
+            dragging: false,
+            momentum: 0.0,
+        }
     }
 
     pub fn show(&mut self) {
@@ -151,8 +170,29 @@ impl Manual {
             Event::Pen(phase, x, y) => {
                 let at = self.hit(x, y);
                 match phase {
-                    TouchPhase::Started => self.pressed = at,
-                    TouchPhase::Moved => {}
+                    TouchPhase::Started => {
+                        self.pressed = at;
+                        self.drag_from = (x, y);
+                        self.drag_last_y = y;
+                        self.dragging = false;
+                        self.momentum = 0.0;
+                    }
+                    TouchPhase::Moved => {
+                        if !self.dragging && ((x - self.drag_from.0).abs() > 6.0 || (y - self.drag_from.1).abs() > 6.0) {
+                            self.dragging = true;
+                            self.pressed = None;
+                        }
+                        if self.dragging {
+                            let d = self.drag_last_y - y;
+                            self.scroll_by(d);
+                            self.momentum = d;
+                        }
+                        self.drag_last_y = y;
+                    }
+                    _ if self.dragging => {
+                        self.dragging = false;
+                        self.pressed = None;
+                    }
                     _ => {
                         if let (Some(i), true) = (at, at == self.pressed) {
                             if i == n {
@@ -257,6 +297,12 @@ impl Manual {
     /// The top screen: the section's title, its text, a scroll bar and the controls.
     pub fn render_top(&mut self, g: &mut Gfx, text: &Text) {
         self.lay_out(text);
+        if !self.dragging && self.momentum.abs() > 0.5 {
+            // coast a little after a drag
+            let m = self.momentum;
+            self.scroll_by(m);
+            self.momentum *= 0.88;
+        }
         let u = ui(TW);
         let n = self.sections.len();
         let title = self.sections.get(self.cur).map(|s| s.title.as_str()).unwrap_or("");

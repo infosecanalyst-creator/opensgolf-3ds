@@ -7,7 +7,7 @@ Golfers arrive, play your holes and tell you what they think, out loud. Happy go
 
 ## Reading this manual
 - Tap a section on the touch screen to open it.
-- Circle Pad or D-pad up and down: scroll.
+- Circle Pad or D-pad up and down: scroll. You can also drag the stylus up or down on the touch screen.
 - L and R: previous and next section.
 - B or Start: close. The manual opens again where you left it.
 
