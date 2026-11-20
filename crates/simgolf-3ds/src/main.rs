@@ -1087,16 +1087,31 @@ fn open_game(choice: title::Choice, g: &mut Gfx, app: &mut app::App, demo: &mut 
 /// only run once the console wakes (the system suspends the game before its main loop sees the flag).
 const AUTOSAVE_SECS: u64 = 120;
 
-/// Saves the game in play as the autosave ("&Latest.sgs"; the two before it move along, autosave.rs).
-fn autosave_now(app: &app::App) {
+/// Saves the game in play as the autosave ("&Latest.sgs"; the two before it move along, autosave.rs). False if it failed.
+/// SG-03: the game is written to "&Latest.tmp" first and the older autosaves move along only once that worked, so a
+/// failed save (SD card full) never pushes the good copies out.
+fn autosave_now(app: &app::App) -> bool {
     let dir = files_ui::saved_games_dir();
     let _ = std::fs::create_dir_all(&dir);
-    autosave::rotate(&dir);
-    match app.save_game(&dir.join(autosave::FILE)) {
-        Ok(()) => gfx::trace("autosaved"),
-        Err(e) => gfx::trace(&format!("autosave failed: {e}")),
+    let tmp = dir.join("&Latest.tmp");
+    if let Err(e) = app.save_game(&tmp) {
+        gfx::trace(&format!("autosave failed: {e}"));
+        let _ = std::fs::remove_file(&tmp);
+        return false;
     }
+    autosave::rotate(&dir);
+    let dst = dir.join(autosave::FILE);
+    if std::fs::rename(&tmp, &dst).is_err() {
+        // the SD card refuses to rename over a file: the rotation could not free the name
+        gfx::trace("autosave failed: could not move &Latest.tmp into place");
+        return false;
+    }
+    gfx::trace("autosaved");
+    true
 }
+
+/// SG-02: an autosave during play that failed says so on screen.
+const AUTOSAVE_FAILED: &str = "Autosave failed - is the SD card full?";
 
 /// Set by the system when the HOME Menu opens or the console goes to sleep: the main loop saves the game.
 static SUSPENDING: AtomicBool = AtomicBool::new(false);
@@ -1329,11 +1344,15 @@ fn main() {
         app.draw_w = VIEW_W;
         app.draw_h = VIEW_H;
         if SUSPENDING.swap(false, Ordering::Relaxed) {
-            autosave_now(&app);
+            if !autosave_now(&app) {
+                hud.note(AUTOSAVE_FAILED);
+            }
             last_autosave = std::time::Instant::now();
         }
         if !app.paused && last_autosave.elapsed().as_secs() >= AUTOSAVE_SECS {
-            autosave_now(&app);
+            if !autosave_now(&app) {
+                hud.note(AUTOSAVE_FAILED);
+            }
             last_autosave = std::time::Instant::now();
         }
         demo.sync_view(&app);
@@ -1551,7 +1570,7 @@ fn main() {
                 }
                 5 => {
                     // back to the title, the game saved first (Continue opens it again)
-                    autosave_now(&app);
+                    let _ = autosave_now(&app);
                     plan.reset(&mut app);
                     title.settings.thoughts = plan.thoughts;
                     title.settings.save();
@@ -1791,7 +1810,7 @@ fn main() {
         }
     }
     if in_game {
-        autosave_now(&app);
+        let _ = autosave_now(&app);
         title.settings.thoughts = plan.thoughts;
         title.settings.save();
     }
