@@ -1083,8 +1083,7 @@ fn open_game(choice: title::Choice, g: &mut Gfx, app: &mut app::App, demo: &mut 
     Ok(())
 }
 
-/// Seconds of play between autosaves: shorter than the desktop's five minutes, as the save on sleep or the HOME Menu can
-/// only run once the console wakes (the system suspends the game before its main loop sees the flag).
+/// Seconds of play between autosaves (besides the saves on leaving the game, on HOME / sleep and on HOME -> Close).
 const AUTOSAVE_SECS: u64 = 120;
 
 /// Saves the game in play as the autosave ("&Latest.sgs"; the two before it move along, autosave.rs). False if it failed.
@@ -1113,12 +1112,29 @@ fn autosave_now(app: &app::App) -> bool {
 /// SG-02: an autosave during play that failed says so on screen.
 const AUTOSAVE_FAILED: &str = "Autosave failed - is the SD card full?";
 
-/// Set by the system when the HOME Menu opens or the console goes to sleep: the main loop saves the game.
-static SUSPENDING: AtomicBool = AtomicBool::new(false);
+/// SG-06: the game in play while the main loop is inside `aptMainLoop()` (null otherwise: the title, or a system applet
+/// opened mid-frame). libctru calls the APT hooks for the HOME Menu (ONSUSPEND) and for sleep (ONSLEEP) from inside
+/// `aptMainLoop()`, on the main thread, between two frames, just before it hands the console over and stops the program.
+/// So the hook can save the game right then, on the main thread, with nothing half-done; saving after the wake (as
+/// before) lost the game if the console was turned off or HOME -> Close was chosen while it was suspended.
+static SAVE_TARGET: std::sync::atomic::AtomicPtr<app::App> = std::sync::atomic::AtomicPtr::new(std::ptr::null_mut());
+/// Set when the program comes back from the HOME Menu or sleep: the main loop restarts the game's clock and redraws.
+static RESUMED: AtomicBool = AtomicBool::new(false);
+/// The save on HOME / sleep failed: said on screen once the game is back.
+static SUSPEND_SAVE_FAILED: AtomicBool = AtomicBool::new(false);
 
 unsafe extern "C" fn on_apt(hook: ctru_sys::APT_HookType, _param: *mut core::ffi::c_void) {
     if hook == ctru_sys::APTHOOK_ONSUSPEND || hook == ctru_sys::APTHOOK_ONSLEEP {
-        SUSPENDING.store(true, Ordering::Relaxed);
+        let p = SAVE_TARGET.swap(std::ptr::null_mut(), Ordering::Relaxed);
+        if !p.is_null() {
+            // main thread, between frames (see SAVE_TARGET); one save per suspension
+            gfx::trace(if hook == ctru_sys::APTHOOK_ONSLEEP { "suspend: sleep, saving" } else { "suspend: HOME Menu, saving" });
+            if !autosave_now(unsafe { &*p }) {
+                SUSPEND_SAVE_FAILED.store(true, Ordering::Relaxed);
+            }
+        }
+    } else if hook == ctru_sys::APTHOOK_ONRESTORE || hook == ctru_sys::APTHOOK_ONWAKEUP {
+        RESUMED.store(true, Ordering::Relaxed);
     }
 }
 
@@ -1248,7 +1264,29 @@ fn main() {
     // a once-every-two-seconds performance line for the PC log (3dslink): frames drawn, average CPU time per frame, draws
     let (mut perf_t, mut perf_frames, mut perf_cpu, mut perf_draws) = (std::time::Instant::now(), 0u32, 0.0f32, 0u32);
     let (mut perf_sim, mut perf_loops, mut perf_reports) = (0.0f32, 0u32, 0u32);
-    while apt.main_loop() && !QUIT.load(Ordering::Relaxed) {
+    // SG-06: the game was already saved by the HOME / sleep hook just before HOME -> Close
+    let mut exit_saved = false;
+    loop {
+        // SG-06: the game in play can be saved by the HOME / sleep hook while aptMainLoop() runs (on_apt), and only then
+        SAVE_TARGET.store(if in_game { &app as *const app::App as *mut app::App } else { std::ptr::null_mut() }, Ordering::Relaxed);
+        let go_on = apt.main_loop();
+        // the hook took the pointer if it saved: HOME -> Close right after that needs no second save (it would push an
+        // older autosave out for the same game)
+        let hook_saved = in_game && SAVE_TARGET.swap(std::ptr::null_mut(), Ordering::Relaxed).is_null() && !SUSPEND_SAVE_FAILED.load(Ordering::Relaxed);
+        if !go_on || QUIT.load(Ordering::Relaxed) {
+            if hook_saved {
+                exit_saved = true;
+            }
+            break;
+        }
+        if RESUMED.swap(false, Ordering::Relaxed) {
+            // back from the HOME Menu or sleep: no game time passed while away, and the screens are drawn again
+            last_step = std::time::Instant::now();
+            dirty = true;
+            if in_game {
+                last_autosave = std::time::Instant::now();
+            }
+        }
         hid.scan_input();
         if cstick {
             unsafe { ctru_sys::irrstScanInput() };
@@ -1343,11 +1381,8 @@ fn main() {
         // the game draws its sprites for the course view's size (the title's fly-over draws them for the top screen)
         app.draw_w = VIEW_W;
         app.draw_h = VIEW_H;
-        if SUSPENDING.swap(false, Ordering::Relaxed) {
-            if !autosave_now(&app) {
-                hud.note(AUTOSAVE_FAILED);
-            }
-            last_autosave = std::time::Instant::now();
+        if SUSPEND_SAVE_FAILED.swap(false, Ordering::Relaxed) {
+            hud.note(AUTOSAVE_FAILED);
         }
         if !app.paused && last_autosave.elapsed().as_secs() >= AUTOSAVE_SECS {
             if !autosave_now(&app) {
@@ -1809,8 +1844,12 @@ fn main() {
             (perf_sim, perf_loops) = (0.0, 0);
         }
     }
+    // HOME -> Close (aptMainLoop false), the title's Quit or the self-test's end: the game in play is saved, then the
+    // preloader is stopped below before the program ends
     if in_game {
-        let _ = autosave_now(&app);
+        if !exit_saved {
+            let _ = autosave_now(&app);
+        }
         title.settings.thoughts = plan.thoughts;
         title.settings.save();
     }

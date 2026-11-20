@@ -1,6 +1,6 @@
 // Heap set-up for a 3DS homebrew app (replaces libctru's __system_allocateHeaps).
 // Two fixes from real hardware (Nov 13-15 2026):
-//  - wait up to 3 s for the previous app's memory to be released before sizing the heaps;
+//  - wait (up to 3 s) for the previous app's memory to be released, until the free amount settles;
 //  - leave a few MB uncommitted. With every byte committed, the next program the Homebrew
 //    loader starts after this one quits fails to load (D86007F3 in the "loader" process, or a
 //    svcBreak in the Homebrew Menu's own heap set-up).
@@ -19,10 +19,18 @@ void __system_allocateHeaps(void) {
     if (R_FAILED(svcGetResourceLimit(&reslimit, CUR_PROCESS_HANDLE))) svcBreak(USERBREAK_PANIC);
     s64 maxCommit = 0, currentCommit = 0;
     ResourceLimitType type = RESLIMIT_COMMIT;
+    // SG-08: wait until the free amount has settled rather than for a fixed 64 MB. The old test took the first reading
+    // over 64 MB, even mid-release, and on a console whose app memory never frees 64 MB (an old 3DS) it waited the full
+    // 3 s on every start. Now: 64 MB or more that held for 50 ms, or any amount that held for 300 ms; 3 s at most.
+    s64 last = -1;
+    int stable = 0;
     for (int tries = 0; tries < 300; tries++) {
         svcGetResourceLimitLimitValues(&maxCommit, reslimit, &type, 1);
         svcGetResourceLimitCurrentValues(&currentCommit, reslimit, &type, 1);
-        if (maxCommit - currentCommit >= (64ll << 20)) break;
+        s64 freeNow = maxCommit - currentCommit;
+        stable = (freeNow == last) ? stable + 1 : 0;
+        last = freeNow;
+        if ((freeNow >= (64ll << 20) && stable >= 5) || stable >= 30) break;
         svcSleepThread(10000000LL);
     }
     svcCloseHandle(reslimit);
