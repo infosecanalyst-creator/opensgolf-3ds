@@ -1083,7 +1083,7 @@ fn open_game(choice: title::Choice, g: &mut Gfx, app: &mut app::App, demo: &mut 
     Ok(())
 }
 
-/// Seconds of play between autosaves (besides the saves on leaving the game, on HOME / sleep and on HOME -> Close).
+/// Seconds of play between autosaves (besides the saves on leaving the game and on HOME -> Close / START > Exit).
 const AUTOSAVE_SECS: u64 = 120;
 
 /// Saves the game in play as the autosave ("&Latest.sgs"; the two before it move along, autosave.rs). False if it failed.
@@ -1112,28 +1112,15 @@ fn autosave_now(app: &app::App) -> bool {
 /// SG-02: an autosave during play that failed says so on screen.
 const AUTOSAVE_FAILED: &str = "Autosave failed - is the SD card full?";
 
-/// SG-06: the game in play while the main loop is inside `aptMainLoop()` (null otherwise: the title, or a system applet
-/// opened mid-frame). libctru calls the APT hooks for the HOME Menu (ONSUSPEND) and for sleep (ONSLEEP) from inside
-/// `aptMainLoop()`, on the main thread, between two frames, just before it hands the console over and stops the program.
-/// So the hook can save the game right then, on the main thread, with nothing half-done; saving after the wake (as
-/// before) lost the game if the console was turned off or HOME -> Close was chosen while it was suspended.
-static SAVE_TARGET: std::sync::atomic::AtomicPtr<app::App> = std::sync::atomic::AtomicPtr::new(std::ptr::null_mut());
 /// Set when the program comes back from the HOME Menu or sleep: the main loop restarts the game's clock and redraws.
 static RESUMED: AtomicBool = AtomicBool::new(false);
-/// The save on HOME / sleep failed: said on screen once the game is back.
-static SUSPEND_SAVE_FAILED: AtomicBool = AtomicBool::new(false);
 
+/// The APT hooks only set a flag. libctru calls ONSUSPEND / ONSLEEP from inside aptJumpToHomeMenu() / aptHandleSleep(),
+/// after the HOME transition has begun; a save (or any wait) in there froze HOME on real hardware in Star Fleet II
+/// (Nov 20 2026). The game is saved on the main thread instead: every AUTOSAVE_SECS of play, on leaving the game, and
+/// after the loop when aptMainLoop() says the program must end (HOME -> Close, power off), the same save as START > Exit.
 unsafe extern "C" fn on_apt(hook: ctru_sys::APT_HookType, _param: *mut core::ffi::c_void) {
-    if hook == ctru_sys::APTHOOK_ONSUSPEND || hook == ctru_sys::APTHOOK_ONSLEEP {
-        let p = SAVE_TARGET.swap(std::ptr::null_mut(), Ordering::Relaxed);
-        if !p.is_null() {
-            // main thread, between frames (see SAVE_TARGET); one save per suspension
-            gfx::trace(if hook == ctru_sys::APTHOOK_ONSLEEP { "suspend: sleep, saving" } else { "suspend: HOME Menu, saving" });
-            if !autosave_now(unsafe { &*p }) {
-                SUSPEND_SAVE_FAILED.store(true, Ordering::Relaxed);
-            }
-        }
-    } else if hook == ctru_sys::APTHOOK_ONRESTORE || hook == ctru_sys::APTHOOK_ONWAKEUP {
+    if hook == ctru_sys::APTHOOK_ONRESTORE || hook == ctru_sys::APTHOOK_ONWAKEUP {
         RESUMED.store(true, Ordering::Relaxed);
     }
 }
@@ -1243,7 +1230,7 @@ fn main() {
     // a game is being played (else the title is up); one has been played this run (the title's fly-over shows its course)
     let mut in_game = false;
     let mut played = false;
-    // autosaves: every five minutes of play, on leaving the game, and when the console sleeps or goes to the HOME Menu
+    // autosaves: every AUTOSAVE_SECS of play, on leaving the game, and after the loop (HOME -> Close, START > Exit)
     let mut last_autosave = std::time::Instant::now();
     install_suspend_hook();
     gfx::trace("main: title up");
@@ -1264,19 +1251,9 @@ fn main() {
     // a once-every-two-seconds performance line for the PC log (3dslink): frames drawn, average CPU time per frame, draws
     let (mut perf_t, mut perf_frames, mut perf_cpu, mut perf_draws) = (std::time::Instant::now(), 0u32, 0.0f32, 0u32);
     let (mut perf_sim, mut perf_loops, mut perf_reports) = (0.0f32, 0u32, 0u32);
-    // SG-06: the game was already saved by the HOME / sleep hook just before HOME -> Close
-    let mut exit_saved = false;
     loop {
-        // SG-06: the game in play can be saved by the HOME / sleep hook while aptMainLoop() runs (on_apt), and only then
-        SAVE_TARGET.store(if in_game { &app as *const app::App as *mut app::App } else { std::ptr::null_mut() }, Ordering::Relaxed);
-        let go_on = apt.main_loop();
-        // the hook took the pointer if it saved: HOME -> Close right after that needs no second save (it would push an
-        // older autosave out for the same game)
-        let hook_saved = in_game && SAVE_TARGET.swap(std::ptr::null_mut(), Ordering::Relaxed).is_null() && !SUSPEND_SAVE_FAILED.load(Ordering::Relaxed);
-        if !go_on || QUIT.load(Ordering::Relaxed) {
-            if hook_saved {
-                exit_saved = true;
-            }
+        // false: HOME -> Close or power off (the game is saved after the loop, on this thread, as for START > Exit)
+        if !apt.main_loop() || QUIT.load(Ordering::Relaxed) {
             break;
         }
         if RESUMED.swap(false, Ordering::Relaxed) {
@@ -1381,9 +1358,6 @@ fn main() {
         // the game draws its sprites for the course view's size (the title's fly-over draws them for the top screen)
         app.draw_w = VIEW_W;
         app.draw_h = VIEW_H;
-        if SUSPEND_SAVE_FAILED.swap(false, Ordering::Relaxed) {
-            hud.note(AUTOSAVE_FAILED);
-        }
         if !app.paused && last_autosave.elapsed().as_secs() >= AUTOSAVE_SECS {
             if !autosave_now(&app) {
                 hud.note(AUTOSAVE_FAILED);
@@ -1844,21 +1818,21 @@ fn main() {
             (perf_sim, perf_loops) = (0.0, 0);
         }
     }
-    // HOME -> Close (aptMainLoop false), the title's Quit or the self-test's end: the game in play is saved, then the
-    // preloader is stopped below before the program ends
+    // HOME -> Close / power off (aptMainLoop false), START > Exit, the title's Quit or the self-test's end. All on the main
+    // thread, outside the APT hooks. The preloader on the other core is told to stop first (it finishes the file it is
+    // reading while the game saves); the game in play is saved (only while a game is open: in_game is set once open_game
+    // has finished, so never mid-load); then the preloader gets what is left of 3 s from here (at least 0.5 s), and the
+    // program never waits longer than that on it.
+    let exit_start = std::time::Instant::now();
+    sg_core::preload::STOP.store(true, Ordering::Relaxed);
     if in_game {
-        if !exit_saved {
-            let _ = autosave_now(&app);
-        }
+        let ok = autosave_now(&app);
         title.settings.thoughts = plan.thoughts;
         title.settings.save();
+        gfx::trace(&format!("exit: save {} in {} ms", if ok { "done" } else { "FAILED" }, exit_start.elapsed().as_millis()));
     }
-    sg_core::preload::STOP.store(true, Ordering::Relaxed);
-    // let the preloader on the other core finish the file it is reading before the program ends (up to 3 s)
-    for _ in 0..300 {
-        if !sg_core::preload::RUNNING.load(Ordering::Relaxed) {
-            break;
-        }
+    let deadline = (exit_start + std::time::Duration::from_secs(3)).max(std::time::Instant::now() + std::time::Duration::from_millis(500));
+    while sg_core::preload::RUNNING.load(Ordering::Relaxed) && std::time::Instant::now() < deadline {
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
     drop(audio);
