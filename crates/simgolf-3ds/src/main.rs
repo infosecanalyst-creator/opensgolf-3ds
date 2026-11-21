@@ -1100,6 +1100,7 @@ const AUTOSAVE_SECS: u64 = 120;
 /// SG-03: the game is written to "&Latest.tmp" first and the older autosaves move along only once that worked, so a
 /// failed save (SD card full) never pushes the good copies out.
 fn autosave_now(app: &app::App) -> bool {
+    let t0 = std::time::Instant::now();   // debug.txt: "autosaved in N ms"
     let dir = files_ui::saved_games_dir();
     let _ = std::fs::create_dir_all(&dir);
     let tmp = dir.join("&Latest.tmp");
@@ -1108,15 +1109,36 @@ fn autosave_now(app: &app::App) -> bool {
         let _ = std::fs::remove_file(&tmp);
         return false;
     }
-    autosave::rotate(&dir);
+    rotate_by_rename(&dir);
     let dst = dir.join(autosave::FILE);
     if std::fs::rename(&tmp, &dst).is_err() {
         // the SD card refuses to rename over a file: the rotation could not free the name
         gfx::note("autosave failed: could not move &Latest.tmp into place");
         return false;
     }
-    gfx::trace("autosaved");
+    gfx::trace(&format!("autosaved in {} ms", t0.elapsed().as_millis()));
     true
+}
+
+/// SG-04: the kept autosaves move one along by renaming, not copying. autosave.rs's `rotate` (shared with the browser
+/// build, whose store has no rename) reads each kept autosave and writes it again under the next name: with the new
+/// save that made three full writes on the SD card every two minutes. Here: the oldest slot's file is replaced (the
+/// slots are fixed names, as before: nothing else is ever removed), then two renames. The 3DS SD card will not rename
+/// over a file, hence the remove first. A rename that fails falls back to a copy.
+fn rotate_by_rename(dir: &std::path::Path) {
+    let kept = autosave::KEPT;
+    for i in (0..kept.len() - 1).rev() {
+        let (from, to) = (dir.join(kept[i]), dir.join(kept[i + 1]));
+        if !from.exists() {
+            continue;
+        }
+        if to.exists() {
+            let _ = std::fs::remove_file(&to);
+        }
+        if std::fs::rename(&from, &to).is_err() && std::fs::copy(&from, &to).is_ok() {
+            let _ = std::fs::remove_file(&from);
+        }
+    }
 }
 
 /// SG-02: an autosave during play that failed says so on screen.
