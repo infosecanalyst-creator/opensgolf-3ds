@@ -54,6 +54,8 @@ fn port_version() {
 fn selftest(out: &PathBuf) {
     println!("cargo:rerun-if-changed=selftest3ds.c");
     println!("cargo:rerun-if-changed=heap3ds.c");
+    println!("cargo:rerun-if-changed=selftest_port.h");
+    println!("cargo:rerun-if-changed=restartguard.c");
     let dkp = env::var("DEVKITPRO").unwrap_or_else(|_| "/opt/devkitpro".into());
     let arm = env::var("DEVKITARM").unwrap_or_else(|_| format!("{dkp}/devkitARM"));
     let mut objs = Vec::new();
