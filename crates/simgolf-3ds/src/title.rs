@@ -157,7 +157,7 @@ impl Settings {
 
     pub fn save(&self) {
         let art = if self.free_art { "free" } else { "original" };
-        let _ = std::fs::write(
+        if let Err(e) = std::fs::write(
             SETTINGS_FILE,
             format!(
                 "thoughts={}\nvolume={}\nart={art}\nstaff_names={}\ndesign_names={}\nstaff_limit={}\nstaff_reach={}\n",
@@ -168,7 +168,9 @@ impl Settings {
                 self.staff_level,
                 self.staff_reach as u8
             ),
-        );
+        ) {
+            crate::gfx::note(&format!("settings not saved: {e}"));   // SG-11
+        }
     }
 
     /// The mixer's master volume.

@@ -521,7 +521,9 @@ fn write_free_set(say: &mut dyn FnMut(&str), free: &Path) {
         }
     }
     let index = files.join("\n");
-    let _ = sg_core::fsutil::write_file(free.join(sg_core::vfs::INDEX_FILE), index.as_bytes());
+    if !sg_core::fsutil::write_file(free.join(sg_core::vfs::INDEX_FILE), index.as_bytes()) {
+        say("could not write the file index (SD card full?)");   // SG-11: the free art set is incomplete
+    }
     say(&format!("done: {written} files"));
 }
 
@@ -532,7 +534,13 @@ impl Demo {
         let theme = "Parkland";
         let theme_dir = sg_core::fsutil::resolve(game, &format!("Data/Textures/{theme}"));
         say(&format!("textures: {}", theme_dir.display()));
-        let catalog = TextureCatalog::load(&theme_dir).unwrap_or_else(|e| panic!("textures in {}: {e}", theme_dir.display()));
+        // SG-09: missing ground textures end here with a message that says what to do, not a bare unwrap
+        let catalog = TextureCatalog::load(&theme_dir).unwrap_or_else(|e| {
+            panic!(
+                "The ground textures are missing or unreadable.\n\nLooked in:\n{}\n({e})\n\nCopy your SimGolf Data/Textures folder there, or choose the free art set in Settings.",
+                theme_dir.display()
+            )
+        });
         let light = sg_core::fsutil::read_file(sg_core::fsutil::resolve(game, &format!("{theme}Lighting.txt")))
             .map(|d| sg_core::terrain::parse_lighting(&sg_core::formats::latin1(&d)))
             .unwrap_or_default();
@@ -720,7 +728,9 @@ impl Demo {
             images.insert(p.clone(), img);
         }
         if decoded > 0 {
-            let _ = texcache::write(&self.cache_file, &self.cache);
+            if let Err(e) = texcache::write(&self.cache_file, &self.cache) {
+                gfx::note(&format!("texture cache not written: {e}"));   // SG-11: the next start decodes again
+            }
         }
         let n = images.len();
         self.upload(g, images);
@@ -1580,7 +1590,13 @@ fn main() {
                 }
                 5 => {
                     // back to the title, the game saved first (Continue opens it again)
-                    let _ = autosave_now(&app);
+                    // SG-11: a failed save is not ignored: say so and stay; choosing it again leaves without saving
+                    static LEAVE_WARNED: AtomicBool = AtomicBool::new(false);
+                    if !autosave_now(&app) && !LEAVE_WARNED.swap(true, Ordering::Relaxed) {
+                        hud.note("Not saved - SD card full? Choose it again to leave anyway");
+                        continue;
+                    }
+                    LEAVE_WARNED.store(false, Ordering::Relaxed);
                     plan.reset(&mut app);
                     title.settings.thoughts = plan.thoughts;
                     title.settings.save();
@@ -1884,7 +1900,9 @@ fn keep_sprite_list() {
         let pal = pal.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
         out.push_str(&format!("{}\t{}\t{}\n", *shadow as u8, path.display(), pal));
     }
-    let _ = std::fs::write(sprite_list(), out);
+    if let Err(e) = std::fs::write(sprite_list(), out) {
+        gfx::note(&format!("sprite list not written: {e}"));   // SG-11
+    }
     gfx::trace(&format!("preload: kept {} course sprites for the next start", list.len()));
 }
 

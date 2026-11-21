@@ -57,10 +57,10 @@ pub fn lh(s: &'static str) -> &'static str {
 
 pub fn set_lefty(on: bool) {
     LEFTY.store(on as u8, Ordering::Relaxed);
-    if on {
-        let _ = std::fs::write(LEFTY_FILE, b"1");
-    } else {
-        let _ = std::fs::remove_file(LEFTY_FILE);
+    // SG-11: a failure is logged (the setting still holds until the game ends)
+    let r = if on { std::fs::write(LEFTY_FILE, b"1") } else { std::fs::remove_file(LEFTY_FILE).or_else(|e| if e.kind() == std::io::ErrorKind::NotFound { Ok(()) } else { Err(e) }) };
+    if let Err(e) = r {
+        crate::gfx::note(&format!("left-hand setting not saved: {e}"));
     }
 }
 
