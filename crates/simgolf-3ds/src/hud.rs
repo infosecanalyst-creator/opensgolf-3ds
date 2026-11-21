@@ -13,7 +13,8 @@
 //!     feedback on a course ("This hole is too short!"), plus short notes from the tools;
 //!   * a card for whatever a long press on the course inspected (golfer, hole, building, ground);
 //!   * the help page (INFO row), over the whole screen;
-//!   * Start's pause menu: on the top screen for the buttons, and as big rows on the bottom screen for the stylus.
+//!   * Start's pause menu: big rows on the bottom screen (stylus, or D-pad and A); the top screen shows the course,
+//!     the date, the cash and what the chosen row does.
 //! All of it sits at the screen's depth (no stereo shear), drawn after the world for each eye.
 
 use crate::app::App;
@@ -649,8 +650,8 @@ impl Hud {
             }
         }
 
-        // Start's pause menu
-        self.draw_menu_top(g, text);
+        // Start's pause menu: its information card (the list is on the touch screen)
+        self.draw_menu_top(g, text, app);
     }
 
     /// A panel over the top screen below the bar, with a hint in its top-right corner (also the title screen's Controls).
@@ -686,35 +687,56 @@ impl Hud {
         }
     }
 
-    /// Start's pause menu on the top screen.
-    fn draw_menu_top(&self, g: &mut Gfx, text: &Text) {
+    /// While Start's pause menu is open the top screen is its information card: the course, the date and the cash, and
+    /// what the row chosen on the touch screen does. The list itself is only on the touch screen (never the same thing on
+    /// both screens).
+    fn draw_menu_top(&self, g: &mut Gfx, text: &Text, app: &App) {
         let u = Uniforms::flat(&Mat4::ortho(0.0, W, H, 0.0, -1.0, 1.0), &Mat4::identity());
         let rect = |g: &mut Gfx, x: f32, y: f32, w: f32, h: f32, c: [f32; 4]| {
             let v = |x: f32, y: f32| Vert::new(x, y, 0.0, 0.0, 0.0).col(c);
             g.quad(Mode::Flat, None, &u, [v(x, y), v(x + w, y), v(x + w, y + h), v(x, y + h)]);
         };
+        let Some(sel) = self.menu else { return };
+        const ABOUT: [&str; 7] = [
+            "Back to your course.",
+            "Save this course in one of the slots.",
+            "Open a saved course.",
+            "What every button and the stylus do.",
+            "How to play, chapter by chapter.",
+            "Back to the title screen. The game is saved first.",
+            "Close SimGolf. The game is saved first.",
+        ];
         let lh = text.line_height(Size::Normal);
-        if let Some(sel) = self.menu {
-            rect(g, 0.0, BAR_H, W, H - BAR_H, [0.0, 0.0, 0.0, 0.45]);
-            let rh = lh + 6.0;
-            let (w, h) = (190.0, 30.0 + MENU.len() as f32 * rh + 16.0);
-            let (x, y) = ((W - w) * 0.5, (H - h) * 0.5 + 6.0);
-            rect(g, x, y, w, h, [0.02, 0.06, 0.03, 0.94]);
-            rect(g, x, y, w, 1.5, [1.0, 0.9, 0.3, 1.0]);
-            let t = "PAUSED";
-            text.draw(g, &u, x + (w - text.width(t, Size::Normal)) * 0.5, y + 6.0, t, Size::Normal, [1.0, 0.85, 0.3, 1.0]);
-            for (i, label) in MENU.iter().enumerate() {
-                let ry = y + 26.0 + i as f32 * rh;
-                let on = i == sel;
-                if on {
-                    rect(g, x + 10.0, ry, w - 20.0, rh - 2.0, [0.95, 0.8, 0.25, 1.0]);
+        let sl = text.line_height(Size::Small);
+        let gold = [1.0, 0.85, 0.3, 1.0];
+        let white = [1.0, 1.0, 1.0, 1.0];
+        let dim = [0.65, 0.7, 0.65, 1.0];
+        rect(g, 0.0, BAR_H, W, H - BAR_H, [0.0, 0.0, 0.0, 0.45]);
+        let (w, h) = (300.0, 150.0);
+        let (x, y) = ((W - w) * 0.5, (H - h) * 0.5 + 6.0);
+        rect(g, x, y, w, h, [0.02, 0.06, 0.03, 0.94]);
+        rect(g, x, y, w, 1.5, [1.0, 0.9, 0.3, 1.0]);
+        let centre = |g: &mut Gfx, yy: f32, t: &str, size: Size, c: [f32; 4]| {
+            // a line too long for the card is shortened with "..." (a long course name), never drawn over the edge
+            let mut t = t.to_string();
+            if text.width(&t, size) > w - 16.0 {
+                while t.chars().count() > 1 && text.width(&format!("{t}..."), size) > w - 16.0 {
+                    t.pop();
                 }
-                let c = if on { [0.08, 0.08, 0.05, 1.0] } else { [1.0, 1.0, 1.0, 1.0] };
-                text.draw(g, &u, x + (w - text.width(label, Size::Normal)) * 0.5, ry + 2.0, label, Size::Normal, c);
+                t.push_str("...");
             }
-            let hint = crate::input::lh("D-pad choose   A select   B back");
-            text.draw(g, &u, x + (w - text.width(hint, Size::Small)) * 0.5, y + h - 14.0, hint, Size::Small, [0.65, 0.7, 0.65, 1.0]);
-        }
+            text.draw(g, &u, x + (w - text.width(&t, size)) * 0.5, yy, &t, size, c);
+        };
+        centre(g, y + 6.0, "PAUSED", Size::Normal, gold);
+        centre(g, y + 10.0 + lh, &app.course_name, Size::Normal, white);
+        let status = format!("{}   Cash {}", date_text(app), money(app.econ.cash.round() as i64));
+        centre(g, y + 12.0 + 2.0 * lh, &status, Size::Small, dim);
+        rect(g, x + 10.0, y + 18.0 + 2.0 * lh + sl, w - 20.0, 1.0, [0.3, 0.4, 0.3, 1.0]);
+        let ry = y + 26.0 + 2.0 * lh + sl;
+        centre(g, ry, MENU[sel.min(MENU.len() - 1)], Size::Normal, gold);
+        centre(g, ry + lh + 3.0, if self.confirm.is_some() { "Exit SimGolf? Choose YES or NO below." } else { ABOUT[sel.min(ABOUT.len() - 1)] }, Size::Small, white);
+        centre(g, y + h - 2.0 * sl - 8.0, "The menu is on the touch screen: tap a row.", Size::Small, dim);
+        centre(g, y + h - sl - 5.0, crate::input::lh("D-pad choose   A select   B back"), Size::Small, dim);
     }
 
     /// A panel's title and rows (left text, right text, colour).
