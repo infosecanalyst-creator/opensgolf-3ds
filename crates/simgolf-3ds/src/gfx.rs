@@ -568,11 +568,6 @@ pub fn note(stage: &str) {
     }
     stage_write(stage, true);
 }
-    use std::io::Write;
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open("sdmc:/3ds/opensgolf/stage.txt") {
-        let _ = writeln!(f, "{stage}");
-    }
-}
 
 /// A shader program parsed from a picasso binary embedded at build time.
 struct Program {
