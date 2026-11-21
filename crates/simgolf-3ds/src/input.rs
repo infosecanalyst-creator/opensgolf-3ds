@@ -45,7 +45,7 @@ pub fn lh(s: &'static str) -> &'static str {
         ("choose it, then A", "choose it, then D-Right"),
         ("B", "D-Down"),
         ("X / Y", "D-Left / D-Up"),
-        ("Circle Pad: scroll    L / R: section    B: close", "Circle Pad: scroll    L / R: section    D-Down: close"),
+        ("Sticks: scroll   D-Pad, L / R: section   B / START: close", "Sticks: scroll   A/B/X/Y, L / R: section   D-Down / START: close"),
         ("B: back", "D-Down: back"),
         ("A", "D-Right"),
     ];

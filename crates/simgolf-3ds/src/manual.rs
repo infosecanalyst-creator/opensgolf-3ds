@@ -76,6 +76,8 @@ pub struct Manual {
     drag_last_y: f32,
     dragging: bool,
     momentum: f32,
+    /// D-pad focus on the last row: 0 = a section, 1 = Left hand, 2 = Close (A presses it).
+    bar: u8,
 }
 
 impl Manual {
@@ -96,12 +98,14 @@ impl Manual {
             drag_last_y: 0.0,
             dragging: false,
             momentum: 0.0,
+            bar: 0,
         }
     }
 
     pub fn show(&mut self) {
         self.open = true;
         self.pressed = None;
+        self.bar = 0;
     }
 
     fn go(&mut self, i: usize) {
@@ -146,8 +150,49 @@ impl Manual {
     pub fn event(&mut self, ev: &Event, mixer: &sg_core::mixer::Mixer) -> bool {
         let n = self.sections.len();
         match *ev {
-            Event::KeyDown(KeyCode::Up, _) => self.scroll_by(-36.0),
-            Event::KeyDown(KeyCode::Down, _) => self.scroll_by(36.0),
+            // House standard: the D-pad moves between the section buttons (two columns; a section opens as it is
+            // picked) and down onto Left hand / Close, which A presses. It never scrolls: the sticks do that.
+            Event::KeyDown(KeyCode::Up, _) => {
+                if self.bar != 0 {
+                    self.bar = 0;
+                } else if self.cur >= 2 {
+                    self.go(self.cur - 2);
+                }
+            }
+            Event::KeyDown(KeyCode::Down, _) => {
+                if self.bar == 0 {
+                    if self.cur + 2 < n {
+                        self.go(self.cur + 2);
+                    } else if self.cur % 2 == 0 && self.cur + 1 < n && self.cur / 2 < (n - 1) / 2 {
+                        self.go(n - 1);
+                    } else {
+                        self.bar = if self.cur % 2 == 0 { 1 } else { 2 };
+                    }
+                }
+            }
+            Event::KeyDown(KeyCode::Left, _) => {
+                if self.bar == 2 {
+                    self.bar = 1;
+                } else if self.bar == 0 && self.cur % 2 == 1 {
+                    self.go(self.cur - 1);
+                }
+            }
+            Event::KeyDown(KeyCode::Right, _) => {
+                if self.bar == 1 {
+                    self.bar = 2;
+                } else if self.bar == 0 && self.cur % 2 == 0 && self.cur + 1 < n {
+                    self.go(self.cur + 1);
+                }
+            }
+            Event::MouseDown(MouseButton::Left, _, _) if self.bar != 0 => {
+                if self.bar == 1 {
+                    crate::input::set_lefty(!crate::input::lefty());
+                    mixer.play("Interface/Button1.wav", 0.6, false);
+                } else {
+                    self.open = false;
+                    mixer.play("Interface/Button2.wav", 0.6, false);
+                }
+            }
             // the Circle Pad and C-stick (top-screen pixels per frame)
             Event::Pan(_, dy) => {
                 if dy.abs() < 0.5 {
@@ -155,11 +200,13 @@ impl Manual {
                 }
                 self.scroll_by(dy * 0.8);
             }
-            Event::KeyDown(KeyCode::PageUp | KeyCode::Left, _) => {
+            Event::KeyDown(KeyCode::PageUp, _) => {
+                self.bar = 0;
                 self.go((self.cur + n - 1) % n);
                 mixer.play("Interface/Button2.wav", 0.5, false);
             }
-            Event::KeyDown(KeyCode::PageDown | KeyCode::Right, _) => {
+            Event::KeyDown(KeyCode::PageDown, _) => {
+                self.bar = 0;
                 self.go((self.cur + 1) % n);
                 mixer.play("Interface/Button2.wav", 0.5, false);
             }
@@ -327,7 +374,7 @@ impl Manual {
         let page = format!("{} / {}", self.cur + 1, n);
         text.draw(g, &u, TW - MX - text.width(&page, Size::Small), 6.0, &page, Size::Small, DIM);
         rect(g, &u, 0.0, body_bot, TW, FOOT, [0.0, 0.05, 0.02, 1.0]);
-        let hint = crate::input::lh("Circle Pad: scroll    L / R: section    B: close");
+        let hint = crate::input::lh("Sticks: scroll   D-Pad, L / R: section   B / START: close");
         text.draw(g, &u, (TW - text.width(hint, Size::Small)) * 0.5, body_bot + 3.0, hint, Size::Small, DIM);
         // the scroll bar
         let m = self.max_scroll();
@@ -347,10 +394,10 @@ impl Manual {
         let lay = self.layout();
         let n = self.sections.len();
         for (i, &(x, y, w, h)) in lay.iter().enumerate() {
-            let on = i == self.cur;
             let close = i == n + 1;
             let toggle = i == n;
-            let on = on || (toggle && crate::input::lefty());
+            // the D-pad focus: the open section, or Left hand / Close on the last row
+            let on = if self.bar == 0 { i == self.cur } else { (toggle && self.bar == 1) || (close && self.bar == 2) };
             let label = if close {
                 "Close"
             } else if toggle {

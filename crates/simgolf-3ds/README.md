@@ -25,7 +25,7 @@ The game opens on a title screen (no "press Start": straight to the menu, with C
 | Quit | back to the Homebrew Launcher |
 
 The instruction manual opens from the title screen, the pause menu and INFO's HELP button: the text on the top screen
-(Circle Pad or D-pad to scroll, L / R for the previous or next section), a button per section on the touch screen, B or
+(Circle Pad or C-Stick to scroll, D-pad to move between the section buttons, L / R for the previous or next section), a button per section on the touch screen, B or
 Start to close; it reopens where it was left, and the game waits under it. Its text is `manual.txt` (built in); a
 `manual.txt` in `sdmc:/3ds/opensgolf/` replaces it.
 

@@ -6,9 +6,10 @@ OpenSGolf is an open-source engine that plays Sid Meier's SimGolf (2002). On the
 Golfers arrive, play your holes and tell you what they think, out loud. Happy golfers play more rounds, pay green fees and bring members. Bored or frustrated golfers leave. Everything in this manual is about making more of the first kind.
 
 ## Reading this manual
-- Tap a section on the touch screen to open it.
-- Circle Pad or D-pad up and down: scroll. You can also drag the stylus up or down on the touch screen.
+- Circle Pad or C-Stick up and down: scroll the text (hold to keep scrolling). You can also drag the stylus up or down on the touch screen.
+- D-pad: move between the section buttons on the touch screen; a section opens as you pick it. On Left hand or Close, press A.
 - L and R: previous and next section.
+- Tap a section on the touch screen to open it.
 - B or Start: close. The manual opens again where you left it.
 
 # Getting started
