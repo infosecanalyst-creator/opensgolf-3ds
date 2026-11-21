@@ -37,9 +37,9 @@ if ($Mode -eq "check") {
     cargo +nightly 3ds check -p sg-core 2>&1 | Tee-Object -FilePath $log
     exit $LASTEXITCODE
 }
-cargo +nightly 3ds build --release -p simgolf-3ds 2>&1 | Tee-Object -FilePath $log
+cargo +nightly 3ds build --profile release-3ds -p simgolf-3ds 2>&1 | Tee-Object -FilePath $log
 if ($LASTEXITCODE -ne 0) { Write-Host "Build failed; the full log is in build-log.txt" -ForegroundColor Yellow; exit $LASTEXITCODE }
-$out = Join-Path $env:CARGO_TARGET_DIR "armv6k-nintendo-3ds\release\simgolf-3ds.3dsx"
+$out = Join-Path $env:CARGO_TARGET_DIR "armv6k-nintendo-3ds\release-3ds\simgolf-3ds.3dsx"
 Copy-Item $out (Join-Path $PSScriptRoot "simgolf-3ds.3dsx") -Force
 Write-Host ""
 Write-Host "Built: $PSScriptRoot\simgolf-3ds.3dsx  (open it in Azahar, or copy to the SD card's 3ds folder)"

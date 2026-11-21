@@ -117,8 +117,8 @@ libclang (ctru-sys runs bindgen at build time).
 ```sh
 rustup toolchain install nightly -c rust-src
 cargo install --locked cargo-3ds
-cargo +nightly 3ds build --release -p simgolf-3ds
-# target/armv6k-nintendo-3ds/release/simgolf-3ds.3dsx
+cargo +nightly 3ds build --profile release-3ds -p simgolf-3ds
+# target/armv6k-nintendo-3ds/release-3ds/simgolf-3ds.3dsx
 ```
 
 GitHub Actions builds it on every push (`.github/workflows/3ds.yml`, in the devkitpro/devkitarm container).

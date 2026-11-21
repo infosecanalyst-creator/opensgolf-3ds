@@ -11,6 +11,16 @@ license = "GPL-2.0-or-later"
 [profile.release]
 opt-level = 3
 
+# The New 3DS build: `cargo 3ds build --profile release-3ds -p simgolf-3ds` (SG-01). Cargo only reads profiles from
+# this workspace root, so the [profile.release] in crates/simgolf-3ds/Cargo.toml was ignored. Whole-program LTO and one
+# codegen unit make the ARM11 code smaller and faster. panic stays "unwind": the game catches worker-thread panics
+# (game-file import, HD make) and reports them, and the 3DS panic hook shows the error applet and then unwinds to a
+# clean exit; with "abort" both would become crashes (and cargo-3ds's build-std list has no panic_abort).
+[profile.release-3ds]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+
 # The course report simulates hundreds of rounds; keep debug builds usable.
 [profile.dev]
 opt-level = 1

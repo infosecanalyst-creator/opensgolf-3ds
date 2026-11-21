@@ -53,9 +53,13 @@ jobs:
       - name: Build
         run: |
           rustc --version
-          cargo 3ds build --release -p simgolf-3ds
-          cp target/armv6k-nintendo-3ds/release/simgolf-3ds.3dsx .
+          cargo 3ds build --profile release-3ds -p simgolf-3ds
+          cp target/armv6k-nintendo-3ds/release-3ds/simgolf-3ds.3dsx .
           ls -l simgolf-3ds.3dsx
+          # symbols for reading crash addresses: gzipped ELF (addr2line) and a demangled nm map
+          gzip -9c target/armv6k-nintendo-3ds/release-3ds/simgolf-3ds.elf > simgolf-3ds.elf.gz
+          arm-none-eabi-nm -C -n target/armv6k-nintendo-3ds/release-3ds/simgolf-3ds.elf | gzip -9 > simgolf-3ds.sym.gz
+          ls -l simgolf-3ds.elf.gz simgolf-3ds.sym.gz
 
 
       # Private delivery to Ryan's own 3DS: the private repo's `builds` branch (3dsx + SOURCE_COMMIT), as in every port.
@@ -63,7 +67,7 @@ jobs:
         if: github.event_name != 'pull_request'
         run: |
           git config --global --add safe.directory '*'
-          mkdir -p out && cp simgolf-3ds.3dsx out/ && echo "$GITHUB_SHA" > out/SOURCE_COMMIT
+          mkdir -p out && cp simgolf-3ds.3dsx simgolf-3ds.elf.gz simgolf-3ds.sym.gz out/ && echo "$GITHUB_SHA" > out/SOURCE_COMMIT
           cd out
           git init -q -b builds
           git config user.name "build-bot"; git config user.email "build-bot@users.noreply.github.com"

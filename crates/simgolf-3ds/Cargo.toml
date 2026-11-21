@@ -46,8 +46,4 @@ author = "OpenSGolf contributors"
 icon = "icon.png"
 # romfs_dir = "romfs"
 
-[profile.release]
-opt-level = 3
-lto = "fat"
-codegen-units = 1
-panic = "abort"
+# Build profile: [profile.release-3ds] in the workspace root Cargo.toml (cargo ignores profiles in member crates).

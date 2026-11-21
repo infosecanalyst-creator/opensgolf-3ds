@@ -235,6 +235,11 @@ impl Hud {
         rect(g, 0.0, 22.0, 320.0, 1.0, edge);
         let title = if self.confirm.is_some() { "EXIT GAME" } else { "MENU" };
         text.draw(g, &u, 8.0, 3.0, title, Size::Normal, gold);
+        if self.confirm.is_none() {
+            // the port version (git describe of opensgolf-3ds, build.rs), right of the title
+            let ver = concat!("Build ", env!("PORT_VERSION"));
+            text.draw(g, &u, 320.0 - 8.0 - text.width(ver, Size::Small), 6.0, ver, Size::Small, edge);
+        }
         rect(g, 0.0, 224.0, 320.0, 16.0, face);
         rect(g, 0.0, 224.0, 320.0, 1.0, edge);
         let hint = "A Select   B Back";

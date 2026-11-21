@@ -21,6 +21,31 @@ fn main() {
         assert!(status.success(), "picasso failed on {}", src.display());
     }
     selftest(&out);
+    port_version();
+}
+
+/// PORT_VERSION for the START menu: `git describe --always --dirty` of this repository (or the PORT_VERSION
+/// environment variable when set). Re-run when HEAD or the index moves so the string follows new commits.
+fn port_version() {
+    println!("cargo:rerun-if-env-changed=PORT_VERSION");
+    let v = env::var("PORT_VERSION").ok().filter(|v| !v.is_empty()).unwrap_or_else(|| {
+        Command::new("git")
+            .args(["-c", "safe.directory=*", "describe", "--always", "--dirty"])
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| "unknown".into())
+    });
+    if let Ok(top) = Command::new("git").args(["-c", "safe.directory=*", "rev-parse", "--git-dir"]).output() {
+        let gd = PathBuf::from(String::from_utf8_lossy(&top.stdout).trim());
+        if top.status.success() {
+            println!("cargo:rerun-if-changed={}", gd.join("HEAD").display());
+            println!("cargo:rerun-if-changed={}", gd.join("index").display());
+        }
+    }
+    println!("cargo:rustc-env=PORT_VERSION={v}");
 }
 
 /// Hardware test hooks (3ds-test-suite hwtest/selftest): inactive unless the test agent starts the game with
