@@ -107,6 +107,8 @@ Copy `simgolf-3ds.3dsx` (from your own build) to `sdmc:/3ds/` and start it from 
 Homebrew Launcher, or send it over Wi-Fi with `3dslink` (Homebrew Launcher, Y for NetLoader). The console needs custom firmware
 (<https://3ds.hacks.guide>) and, for sound, its DSP firmware dumped once with DSP1.
 
+Log: `sdmc:/3ds/opensgolf/stage.txt` gets only start, course-opened, exit-save and failure lines; an empty `sdmc:/3ds/opensgolf/debug.txt` turns on the full trace (start-up stages, first frames, performance every 2 s), buffered and rolled over at 1 MB.
+
 ## Building
 
 You need devkitPro's `3ds-dev` group (devkitARM, libctru, citro3d, picasso), Rust nightly with `rust-src`, `cargo-3ds`, and

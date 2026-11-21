@@ -467,8 +467,6 @@ unsafe fn blit_swizzled(dst: *mut u8, page: u32, fmt: TexFormat, img: &Rgba, ox:
 /// Set when stdout goes to the PC over 3dslink (`run-console.ps1`): `trace` then prints there instead of writing the card.
 pub static NET_LOG: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// A startup or first-frame marker: to the PC over 3dslink when launched that way, else appended to
-/// `sdmc:/3ds/opensgolf/stage.txt` (so a hang on the console leaves a trail). Only startup and frame 1 call it.
 /// newlib's `mallinfo`: what the heap has handed out and what it holds free.
 #[repr(C)]
 struct Mallinfo {
@@ -498,11 +496,78 @@ pub fn mem_line() -> String {
     format!("heap {:.1} MB used, {:.1} MB free of {:.0}; linear {:.1} MB free", mi.uordblks as f32 / 1048576.0, free as f32 / 1048576.0, heap as f32 / 1048576.0, linear as f32 / 1048576.0)
 }
 
+// SG-05: stage.txt used to get every trace line appended with an open + append + close each (100-200 ms on the real SD
+// card): a performance line every 2 s for the first 20 minutes, the first frames, every autosave. It also never shrank.
+// Now `trace` lines are written only when sdmc:/3ds/opensgolf/debug.txt exists (checked once, at start-up), buffered;
+// `note` lines (start, course opened, autosave failures, "exit: save done", the panic hook) are always written and
+// flushed at once. The file stays open and rolls over to stage.old.txt past 1 MB (also checked when it is opened).
+const STAGE_FILE: &str = "sdmc:/3ds/opensgolf/stage.txt";
+const STAGE_OLD: &str = "sdmc:/3ds/opensgolf/stage.old.txt";
+const STAGE_CAP: u64 = 1024 * 1024;
+static DEBUG_LOG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+static STAGE: std::sync::Mutex<Option<(std::io::BufWriter<std::fs::File>, u64)>> = std::sync::Mutex::new(None);
+
+/// sdmc:/3ds/opensgolf/debug.txt existed at start-up (the first call decides).
+pub fn debug_log() -> bool {
+    *DEBUG_LOG.get_or_init(|| std::path::Path::new("sdmc:/3ds/opensgolf/debug.txt").exists())
+}
+
+fn stage_write(line: &str, flush: bool) {
+    use std::io::Write;
+    let Ok(mut g) = STAGE.lock() else { return };
+    if matches!(&*g, Some((_, n)) if *n > STAGE_CAP) {
+        if let Some((mut w, _)) = g.take() {
+            let _ = w.flush();
+        }
+        let _ = std::fs::remove_file(STAGE_OLD);
+        let _ = std::fs::rename(STAGE_FILE, STAGE_OLD);
+    }
+    if g.is_none() {
+        if std::fs::metadata(STAGE_FILE).map(|m| m.len() > STAGE_CAP).unwrap_or(false) {
+            let _ = std::fs::remove_file(STAGE_OLD);
+            let _ = std::fs::rename(STAGE_FILE, STAGE_OLD);
+        }
+        let Ok(f) = std::fs::OpenOptions::new().create(true).append(true).open(STAGE_FILE) else { return };
+        let n = f.metadata().map(|m| m.len()).unwrap_or(0);
+        *g = Some((std::io::BufWriter::with_capacity(16 * 1024, f), n));
+    }
+    if let Some((w, n)) = g.as_mut() {
+        let _ = writeln!(w, "{line}");
+        *n += line.len() as u64 + 1;
+        if flush {
+            let _ = w.flush();
+        }
+    }
+}
+
+/// Writes out buffered debug lines (the panic hook). Never blocks: skipped if the log is busy.
+pub fn stage_flush() {
+    use std::io::Write;
+    if let Ok(mut g) = STAGE.try_lock() {
+        if let Some((w, _)) = g.as_mut() {
+            let _ = w.flush();
+        }
+    }
+}
+
+/// A debug marker (stages, first frames, performance): to the PC over 3dslink when launched that way, else to stage.txt
+/// on the card, only with debug.txt.
 pub fn trace(stage: &str) {
+    println!("[stage] {stage}");
+    if NET_LOG.load(std::sync::atomic::Ordering::Relaxed) || !debug_log() {
+        return;
+    }
+    stage_write(stage, false);
+}
+
+/// A rare line kept on the card in every run (start, exit save, failures).
+pub fn note(stage: &str) {
     println!("[stage] {stage}");
     if NET_LOG.load(std::sync::atomic::Ordering::Relaxed) {
         return;
     }
+    stage_write(stage, true);
+}
     use std::io::Write;
     if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open("sdmc:/3ds/opensgolf/stage.txt") {
         let _ = writeln!(f, "{stage}");

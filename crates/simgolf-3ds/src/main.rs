@@ -1079,7 +1079,7 @@ fn open_game(choice: title::Choice, g: &mut Gfx, app: &mut app::App, demo: &mut 
     app.refresh_trees();
     plan.reset(app);
     hud.reset();
-    gfx::trace(&format!("game: {} open in {:.1}s ({}x{} map)", app.course_name, t0.elapsed().as_secs_f32(), app.terrain.w, app.terrain.h));
+    gfx::note(&format!("game: {} open in {:.1}s ({}x{} map)", app.course_name, t0.elapsed().as_secs_f32(), app.terrain.w, app.terrain.h));
     Ok(())
 }
 
@@ -1094,7 +1094,7 @@ fn autosave_now(app: &app::App) -> bool {
     let _ = std::fs::create_dir_all(&dir);
     let tmp = dir.join("&Latest.tmp");
     if let Err(e) = app.save_game(&tmp) {
-        gfx::trace(&format!("autosave failed: {e}"));
+        gfx::note(&format!("autosave failed: {e}"));
         let _ = std::fs::remove_file(&tmp);
         return false;
     }
@@ -1102,7 +1102,7 @@ fn autosave_now(app: &app::App) -> bool {
     let dst = dir.join(autosave::FILE);
     if std::fs::rename(&tmp, &dst).is_err() {
         // the SD card refuses to rename over a file: the rotation could not free the name
-        gfx::trace("autosave failed: could not move &Latest.tmp into place");
+        gfx::note("autosave failed: could not move &Latest.tmp into place");
         return false;
     }
     gfx::trace("autosaved");
@@ -1152,7 +1152,7 @@ fn main() {
     // launcher. Without a network this does nothing.
     let soc = ctru::services::soc::Soc::new().ok().and_then(|mut s| s.redirect_to_3dslink(true, true).ok().map(|_| s));
     gfx::NET_LOG.store(soc.is_some(), Ordering::Relaxed);
-    gfx::trace("main: start");
+    gfx::note(if gfx::debug_log() { "main: start (debug log on: debug.txt)" } else { "main: start" });
     let mut hid = Hid::new().expect("hid");
     // the graphics service lives for the whole program: the render targets borrow its screens (gfx.rs)
     let gfx_svc: &'static ctru::services::gfx::Gfx = Box::leak(Box::new(ctru::services::gfx::Gfx::new().expect("gfx")));
@@ -1165,6 +1165,7 @@ fn main() {
         };
         std::panic::set_hook(Box::new(move |info| {
             let _ = std::fs::write(format!("{SD_ROOT}/panic.txt"), format!("{info}\n"));
+            gfx::stage_flush();
             applet_hook(info);
         }));
     }
@@ -1829,7 +1830,7 @@ fn main() {
         let ok = autosave_now(&app);
         title.settings.thoughts = plan.thoughts;
         title.settings.save();
-        gfx::trace(&format!("exit: save {} in {} ms", if ok { "done" } else { "FAILED" }, exit_start.elapsed().as_millis()));
+        gfx::note(&format!("exit: save {} in {} ms", if ok { "done" } else { "FAILED" }, exit_start.elapsed().as_millis()));
     }
     let deadline = (exit_start + std::time::Duration::from_secs(3)).max(std::time::Instant::now() + std::time::Duration::from_millis(500));
     while sg_core::preload::RUNNING.load(Ordering::Relaxed) && std::time::Instant::now() < deadline {
@@ -1842,6 +1843,7 @@ fn main() {
     // stdout/stderr still point at the 3dslink socket and are closed during process exit, after main returns; tearing the
     // socket service down here made that close fault (data abort in _close_r on quitting a network-launched run)
     std::mem::forget(soc);
+    gfx::stage_flush(); // debug.txt: the buffered lines (statics are not dropped at exit)
 }
 
 /// The sprites the last opened course asked for (its trees, buildings, staff), one per line: shadow flag, file, palette.

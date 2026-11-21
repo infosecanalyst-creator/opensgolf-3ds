@@ -257,5 +257,7 @@ Read the status line on the top screen. It says why: not your land, not enough m
 ## The game crashed
 Look in sdmc:/3ds/opensgolf/ for panic.txt and stage.txt and send them with a note of what you were doing. Your last autosave is at most 2 minutes old.
 
+For a detailed stage.txt, create an empty file named debug.txt in sdmc:/3ds/opensgolf/ and start the game again. Delete it afterwards: the detailed log slows the game.
+
 ## Changing this manual
 A file named manual.txt in sdmc:/3ds/opensgolf/ replaces the built-in text. Sections start with "# ", headings with "## ", list items with "- ", and table rows with "| ".
