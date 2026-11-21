@@ -89,8 +89,8 @@ The Left hand button at the bottom of this manual's touch screen swaps the D-pad
 | Load game | Opens the Quick save.
 | Controls | The button chart.
 | Manual | This manual.
-| Title screen | Saves, then returns to the title.
-| Quit | Saves, then returns to the Homebrew Launcher.
+| Title screen | Saves, then returns to the title. If the save fails it says so and stays; choose it again to leave anyway.
+| Exit game | Asks "Exit SimGolf?" with NO chosen. YES saves the game first, then returns to the Homebrew Launcher.
 
 The hint at the right of the status line always shows what A does right now, for example A: SEE BOB.
 
@@ -215,7 +215,11 @@ If cash runs low, build less and let the green fees catch up. Painting refuses t
 
 # Saving and loading
 ## Autosave
-The game saves for you every 2 minutes of play, when you choose Title screen or Quit, when the game closes, and when the 3DS goes to sleep. The autosave is called Latest. Continue on the title screen opens whichever save is newest.
+The game saves for you every 2 minutes of play, when you choose Title screen, and when you exit with Exit game or close the game from the HOME menu (HOME, then Close). Pressing HOME alone, or putting the 3DS to sleep, does not save by itself: the game waits where it was.
+
+The autosave is written to a temporary file first and the older autosaves move along only when it worked, so a full SD card cannot cost you the good copies. If an autosave fails, the screen says "Autosave failed - is the SD card full?".
+
+The game keeps the last three autosaves. The Load list names them Autosave (the newest), Earlier autosave and Oldest autosave. Continue on the title screen opens whichever save is newest.
 
 ## Saving yourself
 Press Start and choose Save game, or choose SAVE in the INFO row and press A. This writes the Quick slot.
@@ -224,7 +228,7 @@ Press Start and choose Save game, or choose SAVE in the INFO row and press A. Th
 Choose Load game from the pause menu, LOAD in the INFO row, or Load Game on the title screen.
 
 ## Where saves live
-Saves are in sdmc:/3ds/opensgolf/saves/Saved Games/ in SimGolf's own .sgs format. A save from the PC game opens on the 3DS, and the other way round.
+Saves are in sdmc:/3ds/opensgolf/saves/Saved Games/ in SimGolf's own .sgs format. A save from the PC game opens on the 3DS, and the other way round. The autosaves are the files &Latest.sgs, &Latest-2.sgs and &Latest-3.sgs there.
 
 # Tips
 - Start small. Build three or four short holes first. Golfers arrive sooner and money starts flowing.
@@ -249,7 +253,7 @@ Homebrew needs a dump of the 3DS sound firmware. Run DSP1 from the Homebrew Laun
 Start ftpd on the 3DS, then run ftp-send.cmd on the PC.
 
 ## It can't find the game files
-Put your SimGolf files in sdmc:/3ds/opensgolf/game, or leave about 100 MB free on the SD card for the free set.
+Put your SimGolf files in sdmc:/3ds/opensgolf/game, or leave about 100 MB free on the SD card for the free set. If the ground textures are missing the game stops with a message that says where it looked and what to do.
 
 ## A tool won't place anything
 Read the status line on the top screen. It says why: not your land, not enough money, something in the way, or a building still locked.
@@ -257,7 +261,11 @@ Read the status line on the top screen. It says why: not your land, not enough m
 ## The game crashed
 Look in sdmc:/3ds/opensgolf/ for panic.txt and stage.txt and send them with a note of what you were doing. Your last autosave is at most 2 minutes old.
 
-For a detailed stage.txt, create an empty file named debug.txt in sdmc:/3ds/opensgolf/ and start the game again. Delete it afterwards: the detailed log slows the game.
+stage.txt normally holds only the start, course-opened, exit-save and failure lines. For a detailed one (start-up stages, first frames, performance every 2 seconds), create an empty file named debug.txt in sdmc:/3ds/opensgolf/ and start the game again. The log rolls over at 1 MB. Delete debug.txt afterwards: the detailed log slows the game.
+
+## Where everything is
+- The program: sdmc:/3ds/simgolf-3ds.3dsx (directly in /3ds).
+- Everything else: sdmc:/3ds/opensgolf/ (game, free, saves, settings.txt, cache, stage.txt).
 
 ## Changing this manual
 A file named manual.txt in sdmc:/3ds/opensgolf/ replaces the built-in text. Sections start with "# ", headings with "## ", list items with "- ", and table rows with "| ".

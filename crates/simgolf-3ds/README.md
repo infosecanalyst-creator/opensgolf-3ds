@@ -1,5 +1,7 @@
 # OpenSGolf on the New Nintendo 3DS
 
+**Bring your own game files.** No SimGolf art or sound is included: use your own copy of SimGolf (copied to `sdmc:/3ds/opensgolf/game`) or the free set the game writes itself. See Game files and Installing below.
+
 A 3DS frontend for [OpenSGolf](https://github.com/crspytopgn/opensgolf), the open-source engine that plays Sid Meier's SimGolf.
 The course is on the touch screen, built with the stylus as the PC game is with the mouse; the top screen is the club's
 dashboard: the tools, the money and the course's state. Target hardware: New 3DS / New 3DS XL (an Old 3DS is not supported yet).
@@ -27,8 +29,7 @@ The instruction manual opens from the title screen, the pause menu and INFO's HE
 Start to close; it reopens where it was left, and the game waits under it. Its text is `manual.txt` (built in); a
 `manual.txt` in `sdmc:/3ds/opensgolf/` replaces it.
 
-Tap a row, or use the D-pad and A; B goes back. The game is saved to the autosave when you choose Title screen or Quit from
-the pause menu, when the console sleeps or goes to the HOME Menu, and every five minutes of play.
+Tap a row, or use the D-pad and A; B goes back. The game is saved to the autosave every two minutes of play, when you choose Title screen (it warns and stays if the save fails; choose it again to leave anyway), and on EXIT GAME (asks YES / NO first) and HOME > Close. Pressing HOME alone or sleeping does not save. The autosave is written to a temporary file first; the three newest autosaves are kept (Autosave, Earlier autosave, Oldest autosave in the Load list), moved along by renaming.
 
 Opening a course takes about 5 seconds on a start after the first: the sprites a course needed are listed in
 `sdmc:/3ds/opensgolf/cache/sprites.txt` and decoded on a spare CPU core while the title is up.
@@ -84,10 +85,8 @@ the land.
 | ZL | swap the screens (3D and touch off while swapped) |
 | ZR | tap: zoom in (three steps closer than the PC game); hold: zoom out |
 | Select | the money, holes, golfers and staff pages, then the overview |
-| Start | pause menu: resume, save, load, controls, manual, title screen, quit (D-pad and A, or tap a row) |
+| Start | pause menu: RESUME, SAVE GAME, LOAD GAME, CONTROLS, MANUAL, TITLE SCREEN, EXIT GAME (D-pad and A, or tap a row; EXIT GAME asks first) |
 | 3D slider | the dashboard's tools and pages stand out of the screen a little |
-
-The game saves itself every two minutes of play as well as when you leave it.
 
 ### Game files
 
@@ -103,7 +102,7 @@ Electronic Arts; for that reason this fork does not publish builds. Build it you
 
 ### Installing
 
-Copy `simgolf-3ds.3dsx` (from your own build) to `sdmc:/3ds/` and start it from the
+Copy `simgolf-3ds.3dsx` (from your own build) directly into `sdmc:/3ds/` (as `sdmc:/3ds/simgolf-3ds.3dsx`; the data lives in `sdmc:/3ds/opensgolf/`) and start it from the
 Homebrew Launcher, or send it over Wi-Fi with `3dslink` (Homebrew Launcher, Y for NetLoader). The console needs custom firmware
 (<https://3ds.hacks.guide>) and, for sound, its DSP firmware dumped once with DSP1.
 
