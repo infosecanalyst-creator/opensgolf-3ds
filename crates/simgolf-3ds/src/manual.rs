@@ -26,14 +26,16 @@ const MX: f32 = 14.0;
 
 const GOLD: [f32; 4] = [1.0, 0.86, 0.35, 1.0];
 const WHITE: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
-const BODY: [f32; 4] = [0.9, 0.93, 0.88, 1.0];
-const DIM: [f32; 4] = [0.65, 0.72, 0.65, 1.0];
+const BODY: [f32; 4] = [0.92, 0.94, 0.98, 1.0];
+const DIM: [f32; 4] = [0.67, 0.73, 0.88, 1.0];
 const KEY: [f32; 4] = [0.75, 0.92, 1.0, 1.0];
-const ROW: [f32; 4] = [0.12, 0.3, 0.16, 1.0];
+// SG-U4: the house navy palette (claude/3ds-look-and-feel.md), as Start's menu has
+const ROW: [f32; 4] = [0.157, 0.22, 0.47, 1.0];
+const BAND: [f32; 4] = [0.157, 0.22, 0.47, 1.0];
 const ROW_ON: [f32; 4] = [0.95, 0.8, 0.25, 1.0];
 const INK: [f32; 4] = [0.08, 0.08, 0.05, 1.0];
-pub const BG_TOP: [u8; 3] = [0x10, 0x1a, 0x12];
-pub const BG_BOTTOM: [u8; 3] = [0x0c, 0x16, 0x0e];
+pub const BG_TOP: [u8; 3] = [0x08, 0x0c, 0x28];
+pub const BG_BOTTOM: [u8; 3] = [0x08, 0x0c, 0x28];
 
 enum Block {
     Para(String),
@@ -366,18 +368,25 @@ impl Manual {
             text.draw(g, &u, l.x, y, &l.s, l.size, l.c);
         }
         // the bands
-        rect(g, &u, 0.0, 0.0, TW, HEAD, [0.0, 0.05, 0.02, 1.0]);
+        rect(g, &u, 0.0, 0.0, TW, HEAD, BAND);
         rect(g, &u, 0.0, HEAD, TW, 1.5, [1.0, 0.86, 0.35, 0.8]);
         text.draw(g, &u, MX, 5.0, "MANUAL", Size::Small, DIM);
         let tx = MX + text.width("MANUAL", Size::Small) + 10.0;
         text.draw(g, &u, tx, 4.0, title, Size::Large, WHITE);
         let page = format!("{} / {}", self.cur + 1, n);
         text.draw(g, &u, TW - MX - text.width(&page, Size::Small), 6.0, &page, Size::Small, DIM);
-        rect(g, &u, 0.0, body_bot, TW, FOOT, [0.0, 0.05, 0.02, 1.0]);
+        rect(g, &u, 0.0, body_bot, TW, FOOT, BAND);
         let hint = crate::input::lh("Sticks: scroll   D-Pad, L / R: section   B / START: close");
         text.draw(g, &u, (TW - text.width(hint, Size::Small)) * 0.5, body_bot + 3.0, hint, Size::Small, DIM);
         // the scroll bar
         let m = self.max_scroll();
+        if m > 0.0 && scroll < m - 0.5 {
+            // SG-U7: more text below: a gold arrow at the right of the footer
+            for i in 0..5 {
+                let w = 9.0 - 2.0 * i as f32;
+                rect(g, &u, TW - 20.0 + i as f32, body_bot + 5.0 + i as f32, w, 1.0, GOLD);
+            }
+        }
         if m > 0.0 {
             let track = body_bot - body_top - 4.0;
             let view = H - HEAD - FOOT - 8.0;

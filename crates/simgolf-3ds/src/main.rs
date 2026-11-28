@@ -19,6 +19,7 @@ mod hud;
 mod text;
 mod title;
 mod manual;
+mod saveset;
 mod screens;
 mod shim;
 
@@ -1071,16 +1072,37 @@ fn merge(a: Option<[i32; 4]>, b: [i32; 4]) -> [i32; 4] {
 /// Starts or opens the game picked on the title screen, and brings the frontend's ground, plan and top screen up to it.
 fn open_game(choice: title::Choice, g: &mut Gfx, app: &mut app::App, demo: &mut Demo, plan: &mut plan::Plan, hud: &mut hud::Hud) -> Result<(), String> {
     let t0 = std::time::Instant::now();
-    match choice {
-        title::Choice::New(prop, _) => app.start_game(g, prop, false),
-        title::Choice::Open(path, _) => app.load_game(g, &path)?,
+    // SG-Q1: the course's own set of save files (a new course gets a new set; a save goes on in its own)
+    let opened: Option<std::path::PathBuf> = match choice {
+        title::Choice::New(prop, _) => {
+            app.start_game(g, prop, false);
+            None
+        }
+        title::Choice::Open(path, _) => {
+            app.load_game(g, &path)?;
+            Some(path)
+        }
         title::Choice::Quit | title::Choice::Manual => return Ok(()),
+    };
+    match &opened {
+        Some(path) => saveset::begin_open(path, &app.course_name),
+        None => saveset::begin_new(&app.course_name),
     }
     // the Extras page's staff choices also apply to the course just opened (a loaded game otherwise keeps its own)
     title::apply_extras(&title::Settings::load(), app, true);
     drop_ground_batches(app, g);
     // the PC game's nearest level: tiles big enough to hit with the stylus (ZL zooms out for the whole course)
     app.zoom = app::ZOOM_UNIT * 4.0;
+    // SG-Q8: a saved course opens where the view was when it was last saved
+    if opened.is_some() {
+        if let Some((x, z, zoom)) = saveset::read_view() {
+            let (hx, hz) = (app.terrain.w as f32 * sg_core::terrain::TILE_SIZE * 0.5, app.terrain.h as f32 * sg_core::terrain::TILE_SIZE * 0.5);
+            let (near, far) = (app::ZOOM_UNIT * 4.0 * 2f32.powf(1.5), app::ZOOM_UNIT * (app::far_level() as f32).exp2());
+            app.cam_x = x.clamp(-hx, hx);
+            app.cam_z = z.clamp(-hz, hz);
+            app.zoom = zoom.clamp(far * 0.999, near * 1.001);
+        }
+    }
     app.paused = false;
     demo.adopt(g, app);
     demo.sync_view(app);
@@ -1096,39 +1118,40 @@ fn open_game(choice: title::Choice, g: &mut Gfx, app: &mut app::App, demo: &mut 
 /// Seconds of play between autosaves (besides the saves on leaving the game and on HOME -> Close / START > Exit).
 const AUTOSAVE_SECS: u64 = 120;
 
-/// Saves the game in play as the autosave ("&Latest.sgs"; the two before it move along, autosave.rs). False if it failed.
-/// SG-03: the game is written to "&Latest.tmp" first and the older autosaves move along only once that worked, so a
+/// Saves the game in play as its course's newest autosave ("&<set>~auto.sgs"; the two before it move along). False if
+/// it failed. SG-Q1: every course has its own three autosaves (saveset.rs), so one course never pushes another's out.
+/// SG-03: the game is written to a temporary file first and the older autosaves move along only once that worked, so a
 /// failed save (SD card full) never pushes the good copies out.
 fn autosave_now(app: &app::App) -> bool {
     let t0 = std::time::Instant::now();   // debug.txt: "autosaved in N ms"
     let dir = files_ui::saved_games_dir();
     let _ = std::fs::create_dir_all(&dir);
-    let tmp = dir.join("&Latest.tmp");
+    let set = saveset::current();
+    let tmp = dir.join(format!("&{set}~auto.tmp"));
     if let Err(e) = app.save_game(&tmp) {
         gfx::note(&format!("autosave failed: {e}"));
         let _ = std::fs::remove_file(&tmp);
         return false;
     }
-    rotate_by_rename(&dir);
-    let dst = dir.join(autosave::FILE);
+    rotate_by_rename(&set);
+    let dst = saveset::file(&set, saveset::AUTO[0]);
     if std::fs::rename(&tmp, &dst).is_err() {
         // the SD card refuses to rename over a file: the rotation could not free the name
-        gfx::note("autosave failed: could not move &Latest.tmp into place");
+        gfx::note("autosave failed: could not move the new autosave into place");
         return false;
     }
-    gfx::trace(&format!("autosaved in {} ms", t0.elapsed().as_millis()));
+    saveset::write_view(app.cam_x, app.cam_z, app.zoom);
+    gfx::trace(&format!("autosaved {} in {} ms", dst.display(), t0.elapsed().as_millis()));
     true
 }
 
-/// SG-04: the kept autosaves move one along by renaming, not copying. autosave.rs's `rotate` (shared with the browser
-/// build, whose store has no rename) reads each kept autosave and writes it again under the next name: with the new
-/// save that made three full writes on the SD card every two minutes. Here: the oldest slot's file is replaced (the
-/// slots are fixed names, as before: nothing else is ever removed), then two renames. The 3DS SD card will not rename
-/// over a file, hence the remove first. A rename that fails falls back to a copy.
-fn rotate_by_rename(dir: &std::path::Path) {
-    let kept = autosave::KEPT;
+/// SG-04: the kept autosaves move one along by renaming, not copying: the oldest slot's file is replaced (the slots are
+/// fixed names of this course's set: no other course's file is ever touched), then two renames. The 3DS SD card will not
+/// rename over a file, hence the remove first. A rename that fails falls back to a copy.
+fn rotate_by_rename(set: &str) {
+    let kept = saveset::AUTO;
     for i in (0..kept.len() - 1).rev() {
-        let (from, to) = (dir.join(kept[i]), dir.join(kept[i + 1]));
+        let (from, to) = (saveset::file(set, kept[i]), saveset::file(set, kept[i + 1]));
         if !from.exists() {
             continue;
         }
@@ -1139,6 +1162,70 @@ fn rotate_by_rename(dir: &std::path::Path) {
             let _ = std::fs::remove_file(&from);
         }
     }
+}
+
+/// SAVE GAME: the game in play written to its course's own save ("&<set>~quick.sgs"). Temporary file first; the save
+/// it replaces is kept beside it as .bak. False if it failed (the save that was there is still there).
+fn quick_save_now(app: &app::App) -> bool {
+    let dir = files_ui::saved_games_dir();
+    let _ = std::fs::create_dir_all(&dir);
+    let set = saveset::current();
+    let tmp = dir.join(format!("&{set}~quick.tmp"));
+    if let Err(e) = app.save_game(&tmp) {
+        gfx::note(&format!("save failed: {e}"));
+        let _ = std::fs::remove_file(&tmp);
+        return false;
+    }
+    let dst = saveset::quick();
+    let bak = dir.join(format!("&{set}~quick.bak"));
+    let had = dst.exists();
+    if had {
+        let _ = std::fs::remove_file(&bak);
+        if std::fs::rename(&dst, &bak).is_err() {
+            gfx::note("save failed: could not set the save before it aside");
+            let _ = std::fs::remove_file(&tmp);
+            return false;
+        }
+    }
+    if std::fs::rename(&tmp, &dst).is_err() {
+        gfx::note("save failed: could not move the new save into place");
+        if had {
+            let _ = std::fs::rename(&bak, &dst);
+        }
+        let _ = std::fs::remove_file(&tmp);
+        return false;
+    }
+    saveset::write_view(app.cam_x, app.cam_z, app.zoom);
+    gfx::note(&format!("saved {}", dst.display()));
+    true
+}
+
+/// The line the LOAD GAME question shows about this course's save: "Jul 2001   $47,900". None when there is no save.
+fn quick_save_line() -> Option<String> {
+    let path = saveset::quick();
+    if !path.exists() {
+        return None;
+    }
+    let s = app::read_save(&path).ok()?;
+    Some(format!("Saved at {}, cash {}", hud::month_text(s.econ.month_index() as i32), text::money(s.econ.cash.round() as i64)))
+}
+
+/// Work that takes a moment and is done right after a frame that says so ("Loading...", "Saving...").
+#[derive(Clone, Copy, PartialEq)]
+enum Pending {
+    Load,
+    Exit,
+}
+
+/// The pause menu's SETTINGS rows as they read now.
+fn settings_labels(s: &title::Settings, thoughts: bool) -> [String; 5] {
+    [
+        format!("GOLFER THOUGHTS: {}", if thoughts { "ON" } else { "OFF" }),
+        format!("SOUND: {}", s.volume_name().to_uppercase()),
+        format!("LEFT HAND: {}", if input::lefty() { "ON" } else { "OFF" }),
+        "CONTROLS".to_string(),
+        "BACK".to_string(),
+    ]
 }
 
 /// SG-02: an autosave during play that failed says so on screen.
@@ -1270,6 +1357,14 @@ fn main() {
     let mut last_step = std::time::Instant::now();
     // Start's pause menu: whether the game was paused before it opened (it is put back on Resume)
     let mut menu_was_paused = false;
+    // SG-Q2 / SG-Q3: a load or the exit save waiting for the frame that says "Loading..." / "Saving..." to be drawn
+    let mut pending: Option<Pending> = None;
+    // the exit save was made (and worked) from the exit question: it is not made again after the loop
+    let mut exit_saved = false;
+    // SG-Q6: TITLE SCREEN's failed save was shown; choosing it again leaves. Forgotten whenever the menu opens again.
+    let mut leave_warned = false;
+    // SG-X5: the holes open when last looked, for the one-line hint after the first hole opens
+    let mut holes_open: Option<usize> = None;
     // the stylus went down while the pause menu was open (a press from before it opened picks nothing when it lifts)
     let mut menu_pen = false;
     // the tiles the strokes of this frame changed (the ground is rebuilt there when the game marks the course changed)
@@ -1363,7 +1458,7 @@ fn main() {
                 g.stereo_world(false);
                 title.render_top(&mut g, &text, &app, &hud);
             }
-            g.begin_screen(Screen::Bottom, Eye::Left, [0x0c, 0x16, 0x0e]);
+            g.begin_screen(Screen::Bottom, Eye::Left, [0x08, 0x0c, 0x28]);
             title.render_bottom(&mut g, &text);
             g.end_frame();
             if opening {
@@ -1376,6 +1471,7 @@ fn main() {
                         }
                         in_game = true;
                         played = true;
+                        holes_open = None;
                         menu_was_paused = false;
                         changed = None;
                         dirty = true;
@@ -1418,6 +1514,9 @@ fn main() {
             }
             // Start's pause menu takes the controls while it is open: D-pad or a tap to choose, A or a tap to pick, B or
             // Start to go back
+            if hud.busy.is_some() {
+                continue; // "Loading..." / "Saving..." is up: nothing is pressed meanwhile
+            }
             if let (Some(_), Some(c)) = (hud.menu, hud.confirm) {
                 // the exit question: Left / Right choose, A or a tap picks, B goes back to the menu (on EXIT GAME)
                 let mut picked: Option<usize> = None;
@@ -1453,20 +1552,41 @@ fn main() {
                     mixer.play("Interface/Button1.wav", 0.7, false);
                     hud.confirm = None;
                     if p == 0 {
+                        match hud.ask {
+                            // SG-Q3: the game is saved now, while the player can still be told if it fails
+                            hud::Ask::Exit => {
+                                hud.busy = Some("Saving...");
+                                pending = Some(Pending::Exit);
+                            }
+                            hud::Ask::ExitFailed => {
+                                hud.menu = None;
+                                app.paused = menu_was_paused;
+                                QUIT.store(true, Ordering::Relaxed);
+                            }
+                            // SG-Q2: the frame drawn next says "Loading..."; the load follows it
+                            hud::Ask::Load => {
+                                hud.busy = Some("Loading...");
+                                pending = Some(Pending::Load);
+                            }
+                        }
+                    } else if hud.ask == hud::Ask::ExitFailed {
+                        // NO after a failed exit save: back to the course
                         hud.menu = None;
                         app.paused = menu_was_paused;
-                        QUIT.store(true, Ordering::Relaxed);   // the game is saved after the loop
                     }
                 }
                 continue;
             }
             if let Some(sel) = hud.menu {
-                let n = hud::MENU.len();
+                let n = hud.rows();
                 match ev {
                     input::Event::KeyDown(shim::KeyCode::Up, _) => hud.menu = Some((sel + n - 1) % n),
                     input::Event::KeyDown(shim::KeyCode::Down, _) => hud.menu = Some((sel + 1) % n),
                     input::Event::MouseDown(shim::MouseButton::Left, _, _) => menu_pick = Some(sel),
-                    input::Event::MouseDown(shim::MouseButton::Right, _, _) | input::Event::KeyDown(shim::KeyCode::Escape, _) => {
+                    // B: back a page (SETTINGS to the menu, the menu to the course); Start: back to the course
+                    input::Event::MouseDown(shim::MouseButton::Right, _, _) => menu_pick = Some(if hud.settings { hud::SET_BACK } else { 0 }),
+                    input::Event::KeyDown(shim::KeyCode::Escape, _) => {
+                        hud.settings = false;
                         menu_pick = Some(0)
                     }
                     input::Event::Pen(phase, x, y) => {
@@ -1475,7 +1595,7 @@ fn main() {
                         }
                         let ended = matches!(phase, shim::TouchPhase::Ended | shim::TouchPhase::Cancelled);
                         if menu_pen {
-                            if let Some(i) = hud::Hud::menu_hit(x, y) {
+                            if let Some(i) = hud.menu_hit(x, y) {
                                 hud.menu = Some(i);
                                 if ended {
                                     menu_pick = Some(i);
@@ -1529,6 +1649,8 @@ fn main() {
                     app.paused = true;
                     hud.close();
                     hud.menu = Some(0);
+                    hud.settings = false;
+                    leave_warned = false;
                     mixer.play("Interface/Button1.wav", 0.7, false);
                 }
                 input::Event::KeyDown(shim::KeyCode::F1, _) => {
@@ -1599,26 +1721,58 @@ fn main() {
             app.cam_z = demo.cam_z;
         }
         if let Some(pick) = menu_pick {
+            if hud.settings {
+                // SETTINGS (SG-X3, SG-X4): the rows change in place; BACK (or B) returns to the menu on its row
+                match pick {
+                    0 => {
+                        plan.thoughts = !plan.thoughts;
+                        title.settings.thoughts = plan.thoughts;
+                        title.settings.save();
+                    }
+                    1 => {
+                        title.settings.next_volume();
+                        mixer.set_master(title.settings.master());
+                        title.settings.save();
+                    }
+                    2 => input::set_lefty(!input::lefty()),
+                    3 => {
+                        hud.settings = false;
+                        hud.menu = None;
+                        app.paused = menu_was_paused;
+                        hud.show(plan::Panel::Help);
+                    }
+                    _ => {
+                        hud.settings = false;
+                        hud.menu = Some(4);
+                    }
+                }
+                hud.set_labels = settings_labels(&title.settings, plan.thoughts);
+            } else {
             hud.menu = None;
             app.paused = menu_was_paused;
             match pick {
-                1 => strokes.push(plan::Stroke { action: Some(plan::Action::Save), ..Default::default() }),
-                2 => strokes.push(plan::Stroke { action: Some(plan::Action::Load), ..Default::default() }),
-                3 => hud.show(plan::Panel::Help),
-                4 => {
+                1 => {
                     manual_was_paused = menu_was_paused;
                     app.paused = true;
                     manual.show();
                 }
+                2 => strokes.push(plan::Stroke { action: Some(plan::Action::Save), ..Default::default() }),
+                3 => strokes.push(plan::Stroke { action: Some(plan::Action::Load), ..Default::default() }),
+                4 => {
+                    hud.set_labels = settings_labels(&title.settings, plan.thoughts);
+                    hud.settings = true;
+                    hud.menu = Some(0);
+                    app.paused = true;
+                }
                 5 => {
                     // back to the title, the game saved first (Continue opens it again)
                     // SG-11: a failed save is not ignored: say so and stay; choosing it again leaves without saving
-                    static LEAVE_WARNED: AtomicBool = AtomicBool::new(false);
-                    if !autosave_now(&app) && !LEAVE_WARNED.swap(true, Ordering::Relaxed) {
+                    if !autosave_now(&app) && !leave_warned {
+                        leave_warned = true;
                         hud.note("Not saved - SD card full? Choose it again to leave anyway");
                         continue;
                     }
-                    LEAVE_WARNED.store(false, Ordering::Relaxed);
+                    leave_warned = false;
                     plan.reset(&mut app);
                     title.settings.thoughts = plan.thoughts;
                     title.settings.save();
@@ -1627,13 +1781,15 @@ fn main() {
                     in_game = false;
                     continue;
                 }
-                // Exit game: asks first (YES / NO, NO chosen); the game is saved after the loop
+                // Exit game: asks first (YES / NO, NO chosen); YES saves the game, then the program ends
                 6 => {
                     hud.menu = Some(6);
+                    hud.ask = hud::Ask::Exit;
                     hud.confirm = Some(1);
                     app.paused = true;
                 }
                 _ => {}
+            }
             }
         }
         // a pen held at the plan's edge slides the view and paints on (plan.rs); not under the pause menu
@@ -1659,7 +1815,18 @@ fn main() {
             match action {
                 plan::Action::Undo => {
                     // the course and the money as they were before the last stroke, up to 30 back
+                    let cash_before = app.econ.cash;
                     if app.undo_step(&mut g) {
+                        // SG-X1: B is "back" everywhere else: say that something was undone, and the money it gave back
+                        let back = (app.econ.cash - cash_before).round() as i64;
+                        let again = input::lh("B");
+                        if back > 0 {
+                            hud.note(&format!("Undone: your last step ({} back). {again} again: one more", text::money(back)));
+                        } else if back < 0 {
+                            hud.note(&format!("Undone: your last step ({}). {again} again: one more", text::money(back)));
+                        } else {
+                            hud.note(&format!("Undone: your last step. {again} again: one more"));
+                        }
                         drop_ground_batches(&mut app, &mut g);
                         app.dirty = true;
                         full_rebuild = true;
@@ -1692,27 +1859,30 @@ fn main() {
                 plan::Action::Panel(p) => hud.toggle(p),
                 plan::Action::Staffed => hud.show(plan::Panel::Staff),
                 plan::Action::Save => {
-                    app.quick_save();
-                    // the game's message names the desktop's keys
-                    if app.ticker.text.starts_with("Quick saved") {
-                        app.ticker.text = "Game saved. INFO tab, LOAD brings it back.".into();
+                    // SG-Q1: this course's own save; no other course's files are touched
+                    if quick_save_now(&app) {
+                        hud.note("Game saved. LOAD GAME brings it back.");
+                    } else {
+                        hud.note("Not saved - is the SD card full?");
                     }
                 }
                 plan::Action::Load => {
-                    let path = files_ui::saved_games_dir().join(comfort::QUICK_FILE);
-                    match app.load_game(&mut g, &path) {
-                        Ok(()) => {
-                            drop_ground_batches(&mut app, &mut g);
-                            demo.adopt(&mut g, &app);
-                            demo.sync_view(&app);
-                            app.dirty = false;
-                            app.refresh_trees();
-                            plan.reset(&mut app);
-                            hud.reset();
-                            changed = None;
-                            hud.note("Loaded the saved game");
+                    // SG-Q2: asks first (NO chosen), and says what would be loaded; nothing is loaded here
+                    match quick_save_line() {
+                        Some(line) => {
+                            plan.drop_press(&mut app);
+                            if hud.menu.is_none() {
+                                menu_was_paused = app.paused;
+                            }
+                            app.paused = true;
+                            hud.close();
+                            hud.settings = false;
+                            hud.menu = Some(3);
+                            hud.ask = hud::Ask::Load;
+                            hud.ask_line = line;
+                            hud.confirm = Some(1);
                         }
-                        Err(e) => hud.note(&format!("No save to load ({e})")),
+                        None => hud.note("No saved game for this course yet: SAVE GAME makes one"),
                     }
                 }
                 plan::Action::Thoughts => hud.note(if plan.thoughts { "Golfers' thoughts on" } else { "Golfers' thoughts off" }),
@@ -1739,6 +1909,14 @@ fn main() {
             plan.golfers.push(app.units_to_world(gg.x, gg.y));
         }
         hud.update(&app, plan.thoughts);
+        {
+            // SG-X5: once the first hole opens, one line about what comes next
+            let open = (1..19).filter(|&h| app.club.holes[h].par > 0).count();
+            if holes_open == Some(0) && open == 1 {
+                hud.note("Hole 1 is open: golfers are on their way. Build hole 2 next.");
+            }
+            holes_open = Some(open);
+        }
         if hud.animating() || app.ticker.showing {
             dirty = true;
         }
@@ -1836,6 +2014,58 @@ fn main() {
         let cpu = t.elapsed().as_secs_f32();
         let draws = g.draws;
         g.end_frame();
+        // the frame above says "Loading..." or "Saving...": now the work
+        if let Some(p) = pending.take() {
+            hud.busy = None;
+            dirty = true;
+            match p {
+                Pending::Exit => {
+                    if autosave_now(&app) {
+                        exit_saved = true;
+                        hud.menu = None;
+                        app.paused = menu_was_paused;
+                        QUIT.store(true, Ordering::Relaxed);
+                    } else {
+                        // SG-Q3: not saved: say so and ask (NO chosen); the game stays open
+                        hud.menu = Some(6);
+                        hud.ask = hud::Ask::ExitFailed;
+                        hud.confirm = Some(1);
+                    }
+                }
+                Pending::Load => {
+                    let path = saveset::quick();
+                    // the game in play goes to this course's autosaves first, so loading can be taken back from the
+                    // title's Load Game
+                    if !autosave_now(&app) {
+                        hud.menu = None;
+                        app.paused = menu_was_paused;
+                        hud.note("Not loaded: the game in play could not be autosaved first");
+                    } else {
+                        match app.load_game(&mut g, &path) {
+                            Ok(()) => {
+                                drop_ground_batches(&mut app, &mut g);
+                                demo.adopt(&mut g, &app);
+                                demo.sync_view(&app);
+                                app.dirty = false;
+                                app.refresh_trees();
+                                plan.reset(&mut app);
+                                hud.reset();
+                                changed = None;
+                                holes_open = None;
+                                hud.note("Loaded your saved game");
+                            }
+                            Err(e) => {
+                                hud.menu = None;
+                                hud.note(&format!("Not loaded ({e})"));
+                            }
+                        }
+                        app.paused = menu_was_paused;
+                        last_autosave = std::time::Instant::now();
+                        last_step = std::time::Instant::now();
+                    }
+                }
+            }
+        }
 
         perf_frames += 1;
         perf_cpu += cpu;
@@ -1864,7 +2094,7 @@ fn main() {
     // program never waits longer than that on it.
     let exit_start = std::time::Instant::now();
     sg_core::preload::STOP.store(true, Ordering::Relaxed);
-    if in_game {
+    if in_game && !exit_saved {
         let ok = autosave_now(&app);
         title.settings.thoughts = plan.thoughts;
         title.settings.save();

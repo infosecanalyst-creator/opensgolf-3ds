@@ -29,7 +29,7 @@ The instruction manual opens from the title screen, the pause menu and INFO's HE
 Start to close; it reopens where it was left, and the game waits under it. Its text is `manual.txt` (built in); a
 `manual.txt` in `sdmc:/3ds/opensgolf/` replaces it.
 
-Tap a row, or use the D-pad and A; B goes back. The game is saved to the autosave every two minutes of play, when you choose Title screen (it warns and stays if the save fails; choose it again to leave anyway), and on EXIT GAME (asks YES / NO first) and HOME > Close. Pressing HOME alone or sleeping does not save. The autosave is written to a temporary file first; the three newest autosaves are kept (Autosave, Earlier autosave, Oldest autosave in the Load list), moved along by renaming.
+Tap a row, or use the D-pad and A; B goes back. The game is saved to the autosave every two minutes of play, when you choose Title screen (it warns and stays if the save fails; choose it again to leave anyway), and on EXIT GAME (asks YES / NO first) and HOME > Close. Pressing HOME alone or sleeping does not save. The autosave is written to a temporary file first; the three newest autosaves are kept (Autosave, Earlier autosave, Oldest autosave in the Load list), moved along by renaming. Saves are per course (`&<course>~auto.sgs`, `~auto2`, `~auto3`, `~quick.sgs` in Saved Games): one course's saves never replace another's. Older builds' shared `&Latest*.sgs` and `&Quick.sgs` still load and are never written again.
 
 Opening a course takes about 5 seconds on a start after the first: the sprites a course needed are listed in
 `sdmc:/3ds/opensgolf/cache/sprites.txt` and decoded on a spare CPU core while the title is up.
@@ -85,7 +85,7 @@ the land.
 | ZL | swap the screens (3D and touch off while swapped) |
 | ZR | tap: zoom in (three steps closer than the PC game); hold: zoom out |
 | Select | the money, holes, golfers and staff pages, then the overview |
-| Start | pause menu: RESUME, SAVE GAME, LOAD GAME, CONTROLS, MANUAL, TITLE SCREEN, EXIT GAME (D-pad and A, or tap a row; EXIT GAME asks first) |
+| Start | pause menu: RESUME, MANUAL, SAVE GAME, LOAD GAME, SETTINGS, TITLE SCREEN, EXIT GAME (D-pad and A, or tap a row; LOAD GAME and EXIT GAME ask first) |
 | 3D slider | the dashboard's tools and pages stand out of the screen a little |
 
 ### Game files

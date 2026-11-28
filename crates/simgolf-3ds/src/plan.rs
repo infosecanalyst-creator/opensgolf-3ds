@@ -1298,8 +1298,15 @@ impl Plan {
         p2.rect(g, 0.0, ry, W, BTN_H + 1.0, [0.1, 0.14, 0.1, 0.94]);
         for (k, &tool) in row.iter().enumerate().skip(first).take(ROW_SHOWN) {
             let bx = (k - first) as f32 * BTN_W;
-            let armed = tool == self.tool || (tool == Tool::Thoughts && self.thoughts);
+            // SG-U5: THINK is a switch, not a tool in hand: it says ON or OFF in words instead of taking the "chosen" colour
+            let armed = tool == self.tool;
             self.draw_tool(g, ui, app, text, tool, bx, ry, armed);
+            if tool == Tool::Thoughts {
+                let word = if self.thoughts { "ON" } else { "OFF" };
+                let ww = text.width(word, Size::Small);
+                p2.rect(g, bx + BTN_W - ww - 6.0, ry + 1.0, ww + 4.0, 11.0, [0.0, 0.0, 0.0, 0.8]);
+                text.draw(g, ui, bx + BTN_W - ww - 4.0, ry + 1.0, word, Size::Small, if self.thoughts { [0.6, 1.0, 0.55, 1.0] } else { [0.75, 0.75, 0.75, 1.0] });
+            }
             if k == sel && !armed {
                 p2.outline(g, [(bx + 1.0, ry + 0.5), (bx + BTN_W - 1.0, ry + 0.5), (bx + BTN_W - 1.0, ry + BTN_H - 0.5), (bx + 1.0, ry + BTN_H - 0.5)], 1.5, WHITE);
             }

@@ -55,6 +55,15 @@ pub struct Hud {
     pub menu: Option<usize>,
     /// Quit was picked: the YES / NO question is up, with this one chosen (0 YES, 1 NO).
     pub confirm: Option<usize>,
+    /// What the question is about (while `confirm` is set).
+    pub ask: Ask,
+    /// The LOAD GAME question's line about the save ("Saved at Jul 2001, cash $47,900").
+    pub ask_line: String,
+    /// The pause menu shows its SETTINGS page (rows: `set_labels`).
+    pub settings: bool,
+    pub set_labels: [String; 5],
+    /// "Loading..." / "Saving...": drawn over the menu for the frame before the work starts (SG-Q2).
+    pub busy: Option<&'static str>,
     /// The game month now, and the cash when it began: this month's cash flow.
     month: Option<(i32, f64)>,
     /// Golfers who just had a thought: who (golfer slot), the thought's colour, when. A bubble shows over each on the course
@@ -66,8 +75,21 @@ pub struct Hud {
 const BUBBLE_FOR: Duration = Duration::from_millis(2500);
 const SPEAKER_FOR: Duration = Duration::from_secs(20);
 
-/// Start's pause menu, in order.
-pub const MENU: [&str; 7] = ["RESUME", "SAVE GAME", "LOAD GAME", "CONTROLS", "MANUAL", "TITLE SCREEN", "EXIT GAME"];
+/// Start's pause menu, in the house order (claude/3ds-look-and-feel.md).
+pub const MENU: [&str; 7] = ["RESUME", "MANUAL", "SAVE GAME", "LOAD GAME", "SETTINGS", "TITLE SCREEN", "EXIT GAME"];
+/// The SETTINGS page's BACK row.
+pub const SET_BACK: usize = 4;
+
+/// The pause menu's questions (YES / NO, NO chosen first).
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Ask {
+    /// EXIT GAME: the game is saved, then the program ends.
+    Exit,
+    /// The exit save failed: EXIT ANYWAY / NO.
+    ExitFailed,
+    /// LOAD GAME: this course's saved game replaces the game in play (which is autosaved first).
+    Load,
+}
 /// The menu's rows on the bottom screen (320 x 240): x, first y, width, height, pitch.
 const MB: (f32, f32, f32, f32, f32) = (50.0, 28.0, 220.0, 24.0, 27.5);
 /// The YES and NO buttons of the exit question: x of YES (NO mirrors it), y, w, h.
@@ -133,7 +155,7 @@ fn ty_name(ty: i32) -> &'static str {
 
 impl Hud {
     pub fn new() -> Hud {
-        Hud { panel: None, card: None, note: None, thoughts: VecDeque::new(), seen: vec![(0, 0); SLOTS], last_cash: None, flash: None, menu: None, confirm: None, month: None, spoke: Vec::new() }
+        Hud { panel: None, card: None, note: None, thoughts: VecDeque::new(), seen: vec![(0, 0); SLOTS], last_cash: None, flash: None, menu: None, confirm: None, ask: Ask::Exit, ask_line: String::new(), settings: false, set_labels: Default::default(), busy: None, month: None, spoke: Vec::new() }
     }
 
     pub fn toggle(&mut self, p: Panel) {
@@ -156,6 +178,9 @@ impl Hud {
     pub fn reset(&mut self) {
         self.close();
         self.menu = None;
+        self.confirm = None;
+        self.settings = false;
+        self.busy = None;
         self.note = None;
         self.thoughts.clear();
         self.seen = vec![(0, 0); SLOTS];
@@ -180,13 +205,22 @@ impl Hud {
     }
 
     /// The menu row under a bottom-screen point.
-    pub fn menu_hit(x: f32, y: f32) -> Option<usize> {
+    pub fn menu_hit(&self, x: f32, y: f32) -> Option<usize> {
         let (mx, my, w, h, pitch) = MB;
         if x < mx || x > mx + w || y < my {
             return None;
         }
         let i = ((y - my) / pitch) as usize;
-        (i < MENU.len() && y - my - i as f32 * pitch <= h).then_some(i)
+        (i < self.rows() && y - my - i as f32 * pitch <= h).then_some(i)
+    }
+
+    /// How many rows the pause menu's page has.
+    pub fn rows(&self) -> usize {
+        if self.settings {
+            self.set_labels.len()
+        } else {
+            MENU.len()
+        }
     }
 
     /// Swapped (UI rule 7): the touchpad's pointer, a white arrow with a black edge, over the course picture on top.
@@ -234,28 +268,54 @@ impl Hud {
         rect(g, 0.0, 0.0, 320.0, 240.0, navy);
         rect(g, 0.0, 0.0, 320.0, 22.0, face);
         rect(g, 0.0, 22.0, 320.0, 1.0, edge);
-        let title = if self.confirm.is_some() { "EXIT GAME" } else { "MENU" };
+        // the question's words: title, the question, a line under it, the YES button's label
+        let (qt, q, q2, yes): (&str, &str, &str, &str) = match self.ask {
+            Ask::Exit => ("EXIT GAME", "Exit OpenSGolf?", "The game is saved first.", "YES"),
+            Ask::ExitFailed => ("NOT SAVED", "The game could not be saved.", "Is the SD card full? Exit anyway?", "EXIT ANYWAY"),
+            Ask::Load => ("LOAD GAME", "Load your saved game?", "The game in play is autosaved first.", "YES"),
+        };
+        let title = if self.confirm.is_some() { qt } else if self.settings { "SETTINGS" } else { "MENU" };
         text.draw(g, &u, 8.0, 3.0, title, Size::Normal, gold);
-        if self.confirm.is_none() {
+        if self.confirm.is_none() && !self.settings {
             // the port version (git describe of opensgolf-3ds, build.rs), right of the title
             let ver = concat!("Build ", env!("PORT_VERSION"));
             text.draw(g, &u, 320.0 - 8.0 - text.width(ver, Size::Small), 6.0, ver, Size::Small, edge);
         }
         rect(g, 0.0, 224.0, 320.0, 16.0, face);
         rect(g, 0.0, 224.0, 320.0, 1.0, edge);
-        let hint = "A Select   B Back";
+        // the hint names the buttons really pressed (left hand: the D-pad does A and B's jobs)
+        let hint = if crate::input::lefty() { "D-Right Select   D-Down Back" } else { "A Select   B Back" };
         text.draw(g, &u, (320.0 - text.width(hint, Size::Small)) * 0.5, 226.0, hint, Size::Small, gold);
+        let centred = |g: &mut Gfx, y: f32, t: &str, size: Size, c: [f32; 4]| {
+            // a line too long for the screen goes one size down rather than off the edge
+            let size = if text.width(t, size) > 308.0 { Size::Small } else { size };
+            let t = text.fit(t, size, 308.0);
+            text.draw(g, &u, (320.0 - text.width(&t, size)) * 0.5, y, &t, size, c);
+        };
+        if let Some(b) = self.busy {
+            centred(g, 104.0, b, Size::Large, white);
+            return;
+        }
         if let Some(c) = self.confirm {
-            let q = "Exit SimGolf?";
-            text.draw(g, &u, (320.0 - text.width(q, Size::Normal)) * 0.5, 70.0, q, Size::Normal, white);
-            let q2 = "The game is saved first.";
-            text.draw(g, &u, (320.0 - text.width(q2, Size::Small)) * 0.5, 96.0, q2, Size::Small, edge);
+            centred(g, 62.0, q, Size::Normal, white);
+            if self.ask == Ask::Load {
+                centred(g, 86.0, &self.ask_line, Size::Small, white);
+                centred(g, 104.0, q2, Size::Small, edge);
+            } else {
+                centred(g, 90.0, q2, Size::Small, edge);
+            }
             let (x0, y, w, h) = CB;
-            button(g, x0, y, w, h, "YES", c == 0);
+            button(g, x0, y, w, h, yes, c == 0);
             button(g, 320.0 - x0 - w, y, w, h, "NO", c == 1);
             return;
         }
         let (mx, my, w, h, pitch) = MB;
+        if self.settings {
+            for (i, label) in self.set_labels.iter().enumerate() {
+                button(g, mx, my + i as f32 * pitch, w, h, label, i == sel);
+            }
+            return;
+        }
         for (i, label) in MENU.iter().enumerate() {
             button(g, mx, my + i as f32 * pitch, w, h, label, i == sel);
         }
@@ -547,9 +607,22 @@ impl Hud {
                         let row = sg_core::ratings::report_row(h, &app.club.holes[h], app.difficulty, false);
                         let fw = sg_core::ratings::fun_word(row.fun);
                         let fwd = text.width(fw, Size::Small);
-                        let l = text.fit(&format!("H{h} par {}  {}", row.par, row.type_name), Size::Small, mw - fwd - 14.0);
+                        // SG-U1: the hole's type is never cut to "Bre...": the line is spelled shorter ("p3") first, and
+                        // if that is still too long the fun word gives way (the HOLES page has it)
+                        let room = mw - fwd - 14.0;
+                        let long = format!("H{h} par {}  {}", row.par, row.type_name);
+                        let short = format!("H{h} p{} {}", row.par, row.type_name);
+                        let (l, with_fun) = if text.width(&long, Size::Small) <= room {
+                            (long, true)
+                        } else if text.width(&short, Size::Small) <= room {
+                            (short, true)
+                        } else {
+                            (text.fit(&short, Size::Small, mw - 8.0), false)
+                        };
                         text.draw(g, &uo, 7.0, hy, &l, Size::Small, WHITE);
-                        text.draw(g, &uo, 4.0 + mw - fwd - 3.0, hy, fw, Size::Small, dimc);
+                        if with_fun {
+                            text.draw(g, &uo, 4.0 + mw - fwd - 3.0, hy, fw, Size::Small, dimc);
+                        }
                         hy += sl;
                     }
                 }
@@ -699,22 +772,30 @@ impl Hud {
         let Some(sel) = self.menu else { return };
         const ABOUT: [&str; 7] = [
             "Back to your course.",
-            "Save this course in one of the slots.",
-            "Open a saved course.",
-            "What every button and the stylus do.",
             "How to play, chapter by chapter.",
+            "Save this course. Each course has its own save.",
+            "Go back to this course's saved game. Asks first.",
+            "Golfer thoughts, sound, left hand, the controls.",
             "Back to the title screen. The game is saved first.",
-            "Close SimGolf. The game is saved first.",
+            "Close OpenSGolf. The game is saved first.",
+        ];
+        const SET_ABOUT: [&str; 5] = [
+            "Golfers' thoughts along the foot of this screen.",
+            "Sound effects and the course's ambience.",
+            "The D-pad and A / B / X / Y swap jobs.",
+            "What every button and the stylus do.",
+            "Back to the menu.",
         ];
         let lh = text.line_height(Size::Normal);
         let sl = text.line_height(Size::Small);
         let gold = [1.0, 0.85, 0.3, 1.0];
         let white = [1.0, 1.0, 1.0, 1.0];
         let dim = [0.65, 0.7, 0.65, 1.0];
-        rect(g, 0.0, BAR_H, W, H - BAR_H, [0.0, 0.0, 0.0, 0.45]);
+        // SG-U3: the card is opaque: nothing of the dashboard under it shows through or beside it
+        rect(g, 0.0, BAR_H, W, H - BAR_H, [0.03, 0.05, 0.04, 1.0]);
         let (w, h) = (300.0, 150.0);
         let (x, y) = ((W - w) * 0.5, (H - h) * 0.5 + 6.0);
-        rect(g, x, y, w, h, [0.02, 0.06, 0.03, 0.94]);
+        rect(g, x, y, w, h, [0.02, 0.06, 0.03, 1.0]);
         rect(g, x, y, w, 1.5, [1.0, 0.9, 0.3, 1.0]);
         let centre = |g: &mut Gfx, yy: f32, t: &str, size: Size, c: [f32; 4]| {
             // a line too long for the card is shortened with "..." (a long course name), never drawn over the edge
@@ -733,8 +814,32 @@ impl Hud {
         centre(g, y + 12.0 + 2.0 * lh, &status, Size::Small, dim);
         rect(g, x + 10.0, y + 18.0 + 2.0 * lh + sl, w - 20.0, 1.0, [0.3, 0.4, 0.3, 1.0]);
         let ry = y + 26.0 + 2.0 * lh + sl;
-        centre(g, ry, MENU[sel.min(MENU.len() - 1)], Size::Normal, gold);
-        centre(g, ry + lh + 3.0, if self.confirm.is_some() { "Exit SimGolf? Choose YES or NO below." } else { ABOUT[sel.min(ABOUT.len() - 1)] }, Size::Small, white);
+        let head: &str = if self.confirm.is_some() || self.busy.is_some() {
+            match self.ask {
+                Ask::Exit => "EXIT GAME",
+                Ask::ExitFailed => "NOT SAVED",
+                Ask::Load => "LOAD GAME",
+            }
+        } else if self.settings {
+            self.set_labels[sel.min(self.set_labels.len() - 1)].as_str()
+        } else {
+            MENU[sel.min(MENU.len() - 1)]
+        };
+        let about: &str = if let Some(b) = self.busy {
+            b
+        } else if self.confirm.is_some() {
+            match self.ask {
+                Ask::Exit => "Exit OpenSGolf? Choose YES or NO below.",
+                Ask::ExitFailed => "The save failed. Choose EXIT ANYWAY or NO below.",
+                Ask::Load => "Load this course's saved game? YES or NO below.",
+            }
+        } else if self.settings {
+            SET_ABOUT[sel.min(SET_ABOUT.len() - 1)]
+        } else {
+            ABOUT[sel.min(ABOUT.len() - 1)]
+        };
+        centre(g, ry, head, Size::Normal, gold);
+        centre(g, ry + lh + 3.0, about, Size::Small, white);
         centre(g, y + h - 2.0 * sl - 8.0, "The menu is on the touch screen: tap a row.", Size::Small, dim);
         centre(g, y + h - sl - 5.0, crate::input::lh("D-pad choose   A select   B back"), Size::Small, dim);
     }

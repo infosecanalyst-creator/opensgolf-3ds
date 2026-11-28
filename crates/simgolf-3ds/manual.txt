@@ -17,7 +17,7 @@ OpenSGolf runs on the New Nintendo 3DS and New 3DS XL only.
 
 ## Installing over Wi-Fi
 1. On the 3DS, open the Homebrew Launcher and start ftpd.
-2. On the PC, run ftp-send.cmd in the Simgolf folder. It uploads simgolf-3ds.3dsx to sdmc:/3ds/ and writes the result to ftp-out.txt.
+2. On the PC, send simgolf-3ds.3dsx to sdmc:/3ds/ with any FTP program.
 3. Close ftpd and start OpenSGolf from the Homebrew Launcher.
 
 The same steps install every update. You never need to take the SD card out.
@@ -35,8 +35,8 @@ The first time you open a course it takes about 19 seconds while the game decode
 ## The title screen
 | Continue | Opens your newest save.
 | New Course | Lists the Parkland plots with their size and price. Plots you cannot afford are greyed out.
-| Load Game | Lists your saved games, newest first.
-| Settings | Golfer thoughts on or off; sound Off, Low, Medium or High; game art Original SimGolf or Free set. Extras opens OpenSGolf's optional extras: Staff names (each employee gets their own name), Design names (benches, flower beds and scenic trees are named), Staff limit (the original 20, Higher or Highest) and Staff reach (grows with bigger maps). All are off at first, as in the original; the staff ones also apply to the course you open.
+| Load Game | Lists your courses, the one played last first. Choose a course to see its saves.
+| Settings | Golfer thoughts on or off; sound Off, Low, Medium or High; game art Original SimGolf or Free set; Left hand on or off. Extras opens OpenSGolf's optional extras: Staff names (each employee gets their own name), Design names (benches, flower beds and scenic trees are named), Staff limit (the original 20, Higher or Highest) and Staff reach (grows with bigger maps). All are off at first, as in the original; the staff ones also apply to the course you open.
 | Controls | The button chart.
 | Manual | This manual.
 | Quit | Back to the Homebrew Launcher.
@@ -82,16 +82,18 @@ With the 3D slider up, the tools and pages float slightly in front of the screen
 | Select | Next dashboard page.
 
 ## Left-handed play
-The Left hand button at the bottom of this manual's touch screen swaps the D-pad with the face buttons: Y and Up, A and Right, B and Down, X and Left. So the D-pad does A, B, X and Y's jobs, and the face buttons pick tools and brush size. The setting is saved and applies everywhere.
+The Left hand button at the bottom of this manual's touch screen (also in Settings on the title screen, and in the pause menu's SETTINGS) swaps the D-pad with the face buttons: Y and Up, A and Right, B and Down, X and Left. So the D-pad does A, B, X and Y's jobs, and the face buttons pick tools and brush size. The setting is saved and applies everywhere.
 
 ## Pause menu (Start)
 | Resume | Back to the game.
-| Save game | Saves to the Quick slot.
-| Load game | Opens the Quick save.
-| Controls | The button chart.
 | Manual | This manual.
+| Save game | Saves this course to its own save. Each course has one; the save before it is kept as a spare.
+| Load game | Goes back to this course's saved game. It asks first, with NO chosen, and says what it would load. On YES the game in play is autosaved first, then the screen says Loading.
+| Settings | Golfer thoughts, sound, left hand, and the button chart (Controls).
 | Title screen | Saves, then returns to the title. If the save fails it says so and stays; choose it again to leave anyway.
-| Exit game | Asks "Exit SimGolf?" with NO chosen. YES saves the game first, then returns to the Homebrew Launcher.
+| Exit game | Asks "Exit OpenSGolf?" with NO chosen. YES saves the game first, then returns to the Homebrew Launcher. If that save fails it says so and asks EXIT ANYWAY or NO.
+
+B goes back one page; Start goes back to the course.
 
 The hint at the right of the status line always shows what A does right now, for example A: SEE BOB.
 
@@ -126,7 +128,7 @@ The status line shows the price per tile before you paint, and what the stroke c
 - SOMETHING IS IN THE WAY: a building, path or golfer is on the tile.
 
 ## Undo
-Press B to undo. The game keeps the last 30 steps, and an undo gives the money back too.
+Press B to undo. The status line says "Undone: your last step" and how much money came back. The game keeps the last 30 steps. There is no redo: build it again.
 
 # Paths, items and buildings
 Press L or R until BUILD is lit.
@@ -178,7 +180,7 @@ Golfers say what they think as they play. A speech bubble pops up over the golfe
 
 When someone has just spoken, the status line shows A: SEE and their name. Press A to jump the view to them, then touch and hold the golfer to open their card.
 
-Turn thoughts off in Settings or with the THINK button in the INFO row.
+Turn thoughts off in Settings or with the THINK button in the INFO row; the button shows ON or OFF.
 
 ## Mood
 The overview shows how golfers feel on average: Happy, Content, Unhappy or Angry. Happy golfers come back and play more. Angry golfers leave.
@@ -220,16 +222,16 @@ The game saves for you every 2 minutes of play, when you choose Title screen, an
 
 The autosave is written to a temporary file first and the older autosaves move along only when it worked, so a full SD card cannot cost you the good copies. If an autosave fails, the screen says "Autosave failed - is the SD card full?".
 
-The game keeps the last three autosaves. The Load list names them Autosave (the newest), Earlier autosave and Oldest autosave. Continue on the title screen opens whichever save is newest.
+Every course has its own saves: its last three autosaves and its own saved game. Starting or playing another course never touches them. The Load list names a course's saves Autosave (the newest), Earlier autosave, Oldest autosave and Saved game. Continue on the title screen opens whichever save is newest. A course opens with the view where you left it.
 
 ## Saving yourself
-Press Start and choose Save game, or choose SAVE in the INFO row and press A. This writes the Quick slot.
+Press Start and choose Save game, or choose SAVE in the INFO row and press A. This writes the course's own saved game; the one before it is kept beside it as a spare file.
 
 ## Loading
-Choose Load game from the pause menu, LOAD in the INFO row, or Load Game on the title screen.
+Load game in the pause menu (or LOAD in the INFO row) goes back to this course's saved game. It asks first and autosaves the game in play before it loads. Load Game on the title screen lists every course; choose one to see its saves.
 
 ## Where saves live
-Saves are in sdmc:/3ds/opensgolf/saves/Saved Games/ in SimGolf's own .sgs format. A save from the PC game opens on the 3DS, and the other way round. The autosaves are the files &Latest.sgs, &Latest-2.sgs and &Latest-3.sgs there.
+Saves are in sdmc:/3ds/opensgolf/saves/Saved Games/ in SimGolf's own .sgs format. A save from the PC game opens on the 3DS, and the other way round. A course's files start with & and its name: "&Name~auto.sgs", "~auto2", "~auto3" (autosaves) and "~quick.sgs" (saved game; "~quick.bak" is the one before). Saves made by older versions of this port (&Latest.sgs, &Latest-2.sgs, &Latest-3.sgs, &Quick.sgs) stay in the list marked (old) and still open; they are never written over.
 
 # Tips
 - Start small. Build three or four short holes first. Golfers arrive sooner and money starts flowing.
@@ -251,7 +253,7 @@ The first time takes about 19 seconds while sprites are decoded. After that, abo
 Homebrew needs a dump of the 3DS sound firmware. Run DSP1 from the Homebrew Launcher once, then restart OpenSGolf. Also check Sound in Settings.
 
 ## Installing an update
-Start ftpd on the 3DS, then run ftp-send.cmd on the PC.
+Start ftpd on the 3DS, then send the new simgolf-3ds.3dsx to sdmc:/3ds/ with any FTP program.
 
 ## It can't find the game files
 Put your SimGolf files in sdmc:/3ds/opensgolf/game, or leave about 100 MB free on the SD card for the free set. If the ground textures are missing the game stops with a message that says where it looked and what to do.

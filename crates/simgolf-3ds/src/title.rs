@@ -35,12 +35,13 @@ const TAGLINE: &str = "Build a golf club, on two screens";
 
 const GOLD: [f32; 4] = [1.0, 0.86, 0.35, 1.0];
 const WHITE: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
-const DIM: [f32; 4] = [0.72, 0.78, 0.72, 1.0];
-const ROW: [f32; 4] = [0.12, 0.3, 0.16, 1.0];
-const ROW_OFF: [f32; 4] = [0.1, 0.16, 0.11, 1.0];
+const DIM: [f32; 4] = [0.67, 0.73, 0.88, 1.0];
+// SG-U4: the house navy palette (claude/3ds-look-and-feel.md), as Start's menu has
+const ROW: [f32; 4] = [0.157, 0.22, 0.47, 1.0];
+const ROW_OFF: [f32; 4] = [0.08, 0.11, 0.24, 1.0];
 const ROW_ON: [f32; 4] = [0.95, 0.8, 0.25, 1.0];
-const BG_TOP: [u8; 3] = [0x14, 0x2a, 0x1a];
-const BG_BOTTOM: [u8; 3] = [0x0c, 0x16, 0x0e];
+const BG_TOP: [u8; 3] = [0x08, 0x0c, 0x28];
+const BG_BOTTOM: [u8; 3] = [0x08, 0x0c, 0x28];
 
 /// What the player picked: a save to open, a plot to start a new course on, or leaving.
 pub enum Choice {
@@ -55,7 +56,10 @@ pub enum Choice {
 enum Page {
     Main,
     Plots,
+    /// Load Game: one row per course that has saves.
     Saves,
+    /// One course's saves.
+    Course,
     Settings,
     Extras,
     Controls,
@@ -81,7 +85,12 @@ struct SaveEntry {
     detail: String,
     /// When it was written, as "Oct 25, 7:03 PM".
     when: String,
+    /// The course it belongs to in the Load list: its save set (saveset.rs), or the course's name for an older build's save.
+    group: String,
 }
+
+/// How many courses the Load list shows on a page when there are more than five (the fifth row is then "More courses").
+const GROUPS_SHOWN: usize = 4;
 
 struct Plot {
     prop: usize,
@@ -173,6 +182,16 @@ impl Settings {
         }
     }
 
+    /// The sound volume's name ("Off", "Low", "Medium", "High").
+    pub fn volume_name(&self) -> &'static str {
+        VOLUMES[self.volume].0
+    }
+
+    /// The next sound volume, round and round.
+    pub fn next_volume(&mut self) {
+        self.volume = (self.volume + 1) % VOLUMES.len();
+    }
+
     /// The mixer's master volume.
     pub fn master(&self) -> f32 {
         VOLUMES[self.volume].1
@@ -190,6 +209,11 @@ pub struct Title {
     page: Page,
     sel: usize,
     saves: Vec<SaveEntry>,
+    /// The courses with saves, the one played last first: its name and its saves (indices into `saves`, newest first).
+    groups: Vec<(String, Vec<usize>)>,
+    /// Load Game: the first course shown (when there are more than five), and the course whose saves are listed.
+    group_off: usize,
+    group: usize,
     plots: Vec<Plot>,
     pub settings: Settings,
     /// A line in place of the chosen row's description (a save that would not open).
@@ -210,6 +234,9 @@ impl Title {
             page: Page::Main,
             sel: 0,
             saves: Vec::new(),
+            groups: Vec::new(),
+            group_off: 0,
+            group: 0,
             plots: Vec::new(),
             settings: Settings::load(),
             note: None,
@@ -226,6 +253,15 @@ impl Title {
     /// Reads the saves and the plots on offer again (at start, and on coming back from a game), and goes to the main page.
     pub fn refresh(&mut self, app: &App) {
         self.saves = scan_saves();
+        self.groups = Vec::new();
+        for (i, s) in self.saves.iter().enumerate() {
+            match self.groups.iter_mut().find(|(name, _)| name.eq_ignore_ascii_case(&s.group)) {
+                Some((_, v)) => v.push(i),
+                None => self.groups.push((s.group.clone(), vec![i])),
+            }
+        }
+        self.group_off = 0;
+        self.group = 0;
         self.plots = plots(app);
         self.page = Page::Main;
         self.sel = 0;
@@ -291,11 +327,30 @@ impl Title {
                 v
             }
             Page::Saves => {
+                // SG-Q1: one row per course (each course has its own saves); a course's row opens its list
                 let mut v: Vec<Row> = self
-                    .saves
+                    .shown_groups()
+                    .map(|gi| {
+                        let (name, idx) = &self.groups[gi];
+                        let s = &self.saves[idx[0]];
+                        let n = if idx.len() == 1 { "1 save".to_string() } else { format!("{} saves", idx.len()) };
+                        Row { title: name.clone(), sub: Some(format!("{}   {}   {}", s.detail, n, s.when).trim_end().to_string()), enabled: true }
+                    })
+                    .collect();
+                if self.groups.len() > GROUPS_SHOWN + 1 {
+                    v.push(row("More courses"));
+                }
+                v.push(back);
+                v
+            }
+            Page::Course => {
+                let mut v: Vec<Row> = self
+                    .course_saves()
                     .iter()
-                    .take(5)
-                    .map(|s| Row { title: format!("{}: {}", s.label, s.course), sub: Some(format!("{}   {}", s.detail, s.when).trim_end().to_string()), enabled: true })
+                    .map(|&i| {
+                        let s = &self.saves[i];
+                        Row { title: s.label.clone(), sub: Some(format!("{}   {}", s.detail, s.when).trim_end().to_string()), enabled: true }
+                    })
                     .collect();
                 v.push(back);
                 v
@@ -304,6 +359,7 @@ impl Title {
                 row(&format!("Golfer thoughts: {}", if self.settings.thoughts { "On" } else { "Off" })),
                 row(&format!("Sound: {}", VOLUMES[self.settings.volume].0)),
                 row(&format!("Game art: {}", if self.settings.free_art || !self.has_original { "Free set" } else { "Original SimGolf" })),
+                row(&format!("Left hand: {}", if crate::input::lefty() { "On" } else { "Off" })),
                 row("Extras"),
                 back,
             ],
@@ -315,6 +371,25 @@ impl Title {
                 back,
             ],
             Page::Controls => vec![back],
+        }
+    }
+
+    /// The courses on the Load list's page now (indices into `groups`): all of them up to five, else four at a time.
+    fn shown_groups(&self) -> std::ops::Range<usize> {
+        let n = self.groups.len();
+        if n <= GROUPS_SHOWN + 1 {
+            0..n
+        } else {
+            let from = self.group_off.min(n - 1);
+            from..(from + GROUPS_SHOWN).min(n)
+        }
+    }
+
+    /// The saves of the course opened from the Load list, newest first (five at most: a set has four, plus older builds').
+    fn course_saves(&self) -> &[usize] {
+        match self.groups.get(self.group) {
+            Some((_, v)) => &v[..v.len().min(5)],
+            None => &[],
         }
     }
 
@@ -394,7 +469,13 @@ impl Title {
                 if self.page == Page::Extras {
                     mixer.play("Interface/Button2.wav", 0.6, false);
                     self.go(Page::Settings);
-                    self.sel = 3;
+                    self.sel = 4;
+                } else if self.page == Page::Course {
+                    // back to the list of courses, on the course that was open
+                    mixer.play("Interface/Button2.wav", 0.6, false);
+                    let at = self.group;
+                    self.go(Page::Saves);
+                    self.sel = self.shown_groups().position(|g| g == at).unwrap_or(0);
                 } else if self.page != Page::Main {
                     mixer.play("Interface/Button2.wav", 0.6, false);
                     self.go(Page::Main);
@@ -456,8 +537,24 @@ impl Title {
                 return Some(Choice::New(p.prop, p.course.clone()));
             }
             Page::Saves if i < last => {
-                let s = &self.saves[i];
+                let shown = self.shown_groups();
+                if i < shown.len() {
+                    self.group = shown.start + i;
+                    self.go(Page::Course);
+                } else {
+                    // More courses: the next four, round and round
+                    self.group_off = if self.group_off + GROUPS_SHOWN >= self.groups.len() { 0 } else { self.group_off + GROUPS_SHOWN };
+                    self.sel = 0;
+                }
+            }
+            Page::Course if i < last => {
+                let s = &self.saves[self.course_saves()[i]];
                 return Some(Choice::Open(s.path.clone(), s.course.clone()));
+            }
+            Page::Course => {
+                let at = self.group;
+                self.go(Page::Saves);
+                self.sel = self.shown_groups().position(|g| g == at).unwrap_or(0);
             }
             Page::Settings if i == 0 => {
                 self.settings.thoughts = !self.settings.thoughts;
@@ -469,7 +566,8 @@ impl Title {
                 self.settings.save();
                 mixer.play("Interface/Button1.wav", 0.7, false);
             }
-            Page::Settings if i == 3 => self.go(Page::Extras),
+            Page::Settings if i == 3 => crate::input::set_lefty(!crate::input::lefty()),
+            Page::Settings if i == 4 => self.go(Page::Extras),
             Page::Extras if i == 0 => {
                 self.settings.staff_names = !self.settings.staff_names;
                 self.settings.save();
@@ -489,7 +587,7 @@ impl Title {
             Page::Extras => {
                 // Back: to Settings, on the Extras row
                 self.go(Page::Settings);
-                self.sel = 3;
+                self.sel = 4;
             }
             Page::Settings if i == 2 => {
                 if self.has_original {
@@ -505,7 +603,7 @@ impl Title {
                 self.go(Page::Main);
                 // back on the row that led there
                 if let Some(k) = self.items().iter().position(|&it| {
-                    matches!((from, it), (Page::Plots, Item::New) | (Page::Saves, Item::Load) | (Page::Settings, Item::Settings) | (Page::Controls, Item::Controls))
+                    matches!((from, it), (Page::Plots, Item::New) | (Page::Saves, Item::Load) | (Page::Course, Item::Load) | (Page::Settings, Item::Settings) | (Page::Controls, Item::Controls))
                 }) {
                     self.sel = k;
                 }
@@ -528,7 +626,10 @@ impl Title {
                     format!("Go on with {}: {}. {}{}.", s.course, s.detail, s.label, saved_when(&s.when))
                 }
                 Some(Item::New) => "Choose a plot of land and build a new course on it.".into(),
-                Some(Item::Load) => format!("Choose from your {} saved games, newest first.", self.saves.len()),
+                Some(Item::Load) => {
+                    let n = self.groups.len();
+                    format!("Your saved games, by course ({} {}). Each course keeps its own saves.", n, if n == 1 { "course" } else { "courses" })
+                }
                 Some(Item::Settings) => "Golfers' thoughts, the sound volume, the game art, and OpenSGolf's optional extras.".into(),
                 Some(Item::Controls) => "How to play with the stylus, a fingertip and the buttons.".into(),
                 Some(Item::Manual) => "The instruction manual: building holes, staff, golfers, money and tips.".into(),
@@ -544,7 +645,17 @@ impl Title {
                 }
             }
             Page::Saves if !back => {
-                let s = &self.saves[self.sel];
+                let shown = self.shown_groups();
+                match self.groups.get(shown.start + self.sel).filter(|_| self.sel < shown.len()) {
+                    Some((name, idx)) => {
+                        let s = &self.saves[idx[0]];
+                        format!("{}: {}{}. Choose it to see its saves; each course has its own.", name, s.detail, saved_when(&s.when))
+                    }
+                    None => "Shows the next courses.".into(),
+                }
+            }
+            Page::Course if !back => {
+                let s = &self.saves[self.course_saves()[self.sel]];
                 format!("{}: {}, {}{}.", s.label, s.course, s.detail, saved_when(&s.when))
             }
             Page::Settings if self.sel == 0 => "Golfers say what they think of the course along the foot of the top screen.".into(),
@@ -562,12 +673,14 @@ impl Title {
                     "Playing with your copy of SimGolf: its art, sounds and golfers. Tap to use the free set instead.".into()
                 }
             }
-            Page::Settings if self.sel == 3 => "OpenSGolf's optional extras: staff names, design names, the staff limit and staff reach. All off in the original.".into(),
+            Page::Settings if self.sel == 3 => "Left hand: the D-pad and the A, B, X, Y buttons swap jobs, so the stylus can be held in the left hand.".into(),
+            Page::Settings if self.sel == 4 => "OpenSGolf's optional extras: staff names, design names, the staff limit and staff reach. All off in the original.".into(),
             Page::Extras if self.sel == 0 => "Each employee gets a first and last name of their own (in the original every employee of a job shares one name).".into(),
             Page::Extras if self.sel == 1 => "Benches, flower beds and scenic trees are named for what they are when you build and point at them.".into(),
             Page::Extras if self.sel == 2 => "How many employees the club may hire: the original's 20, or more. Applies to new courses and the course you open.".into(),
             Page::Extras if self.sel == 3 => "On a map bigger than the original's, each employee looks after a bigger area. Applies to new courses and the course you open.".into(),
             Page::Extras => "Back to Settings.".into(),
+            Page::Course => "Back to the list of courses.".into(),
             _ => "Back to the title.".into(),
         }
     }
@@ -580,7 +693,7 @@ impl Title {
             return;
         }
         // the name, on a dark band
-        rect(g, &u, 0.0, 0.0, W, 60.0, [0.0, 0.05, 0.02, 0.62]);
+        rect(g, &u, 0.0, 0.0, W, 60.0, [0.02, 0.03, 0.12, 0.66]);
         rect(g, &u, 0.0, 60.0, W, 1.5, [1.0, 0.86, 0.35, 0.8]);
         let nw = text.width(NAME, Size::Title);
         text.draw(g, &u, (W - nw) * 0.5 + 2.0, 8.0 + 2.0, NAME, Size::Title, [0.0, 0.0, 0.0, 0.6]);
@@ -593,7 +706,7 @@ impl Title {
             let lines = text.wrap(&self.describe(), Size::Normal, W - 24.0);
             let lh = text.line_height(Size::Normal);
             let top = H - lh * lines.len().max(1) as f32 - 10.0;
-            rect(g, &u, 0.0, top - 4.0, W, H - top + 4.0, [0.0, 0.05, 0.02, 0.62]);
+            rect(g, &u, 0.0, top - 4.0, W, H - top + 4.0, [0.02, 0.03, 0.12, 0.66]);
             let c = if self.note.is_some() { [1.0, 0.6, 0.5, 1.0] } else { WHITE };
             for (i, l) in lines.iter().enumerate() {
                 text.draw_shadowed(g, &u, 12.0, top + i as f32 * lh, l, Size::Normal, c);
@@ -614,6 +727,13 @@ impl Title {
         let rows = self.rows();
         let lay = self.layout(rows.len());
         let grid = self.grid(rows.len());
+        if self.page == Page::Controls {
+            // SG-U6: the touch screen says where the chart is, rather than being empty but for Back
+            for (i, l) in ["The controls are listed on the top screen.", "The Manual has a chapter on each part of the game."].iter().enumerate() {
+                let lw = text.width(l, Size::Small);
+                text.draw(g, &u, (320.0 - lw) * 0.5, 40.0 + i as f32 * 16.0, l, Size::Small, DIM);
+            }
+        }
         for (i, (row, &(x, y, w, h))) in rows.iter().zip(lay.iter()).enumerate() {
             let on = i == self.sel;
             rect(g, &u, x, y, w, h, if on { ROW_ON } else if row.enabled { ROW } else { ROW_OFF });
@@ -623,7 +743,7 @@ impl Title {
             } else if row.enabled {
                 WHITE
             } else {
-                [0.5, 0.55, 0.5, 1.0]
+                [0.5, 0.54, 0.66, 1.0]
             };
             match &row.sub {
                 None => {
@@ -690,7 +810,7 @@ pub fn splash(g: &mut Gfx, text: &Text, line: &str, secs: f32) {
         (m > 0.0).then(|| (n / m).clamp(0.0, 1.0))
     });
     let f = counted.unwrap_or_else(|| (1.0 - (-secs / 6.0).exp()) * 0.95);
-    rect(g, &u, 60.0, 170.0, 200.0, 6.0, [0.18, 0.26, 0.2, 1.0]);
+    rect(g, &u, 60.0, 170.0, 200.0, 6.0, [0.157, 0.22, 0.47, 1.0]);
     rect(g, &u, 60.0, 170.0, 200.0 * f, 6.0, GOLD);
     g.end_frame();
 }
@@ -709,21 +829,31 @@ fn scan_saves() -> Vec<SaveEntry> {
         let secs = modified(&path);
         let Ok(s) = crate::app::read_save(&path) else { continue };
         let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-        let label = match stem.as_str() {
-            "&Latest" => "Autosave".to_string(),
-            "&Latest-2" => "Earlier autosave".to_string(),
-            "&Latest-3" => "Oldest autosave".to_string(),
-            "&Quick" => "Quick save".to_string(),
-            "&QuitSave" => "End of career".to_string(),
-            other => other.trim_start_matches('&').to_string(),
+        let set = crate::saveset::parse(&stem);
+        let label = match (stem.as_str(), &set) {
+            (_, Some((_, "auto"))) => "Autosave".to_string(),
+            (_, Some((_, "auto2"))) => "Earlier autosave".to_string(),
+            (_, Some((_, "auto3"))) => "Oldest autosave".to_string(),
+            (_, Some((_, _))) => "Saved game".to_string(),
+            // an older build's saves, which every course shared
+            ("&Latest", _) => "Autosave (old)".to_string(),
+            ("&Latest-2", _) => "Earlier autosave (old)".to_string(),
+            ("&Latest-3", _) => "Oldest autosave (old)".to_string(),
+            ("&Quick", _) => "Quick save (old)".to_string(),
+            ("&QuitSave", _) => "End of career".to_string(),
+            (other, _) => other.trim_start_matches('&').to_string(),
+        };
+        let group = match &set {
+            Some((name, _)) => name.clone(),
+            None => crate::saveset::clean(&s.course_name),
         };
         let detail = format!("{}   {}", month_text(s.econ.month_index() as i32), money(s.econ.cash.round() as i64));
-        let rank = match stem.as_str() {
-            "&Latest" => 3,
-            "&Quick" => 2,
+        let rank = match (stem.as_str(), &set) {
+            ("&Latest", _) | (_, Some((_, "auto"))) => 3,
+            ("&Quick", _) | (_, Some((_, "quick"))) => 2,
             _ => 1,
         };
-        v.push((secs, rank, SaveEntry { path, label, course: s.course_name.clone(), detail, when: when_text(secs) }));
+        v.push((secs, rank, SaveEntry { path, label, course: s.course_name.clone(), detail, when: when_text(secs), group }));
     }
     v.sort_by(|a, b| (b.0, b.1).cmp(&(a.0, a.1)));
     v.into_iter().map(|(_, _, e)| e).collect()
