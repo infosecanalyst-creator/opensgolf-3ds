@@ -210,8 +210,11 @@ static void st_bmp(u8* out, const u8* fb, int fmt, int w, int h, int stride) {
 static void st_write_file(const char* path, const u8* data, u32 size) {
     FILE* f = fopen(path, "wb");
     if (!f) return;
+    // Write from a fresh copy, not straight from the long-lived shot buffer: on the real 3DS that
+    // made every file take 2-5 s (16 files 24-65 s) instead of ~110 ms (16 files 1.7 s). Bisected Nov 28 2026.
     setvbuf(f, NULL, _IONBF, 0);       // straight to the card: the whole file in one request
-    fwrite(data, 1, size, f);
+    u8* cp = (u8*)malloc(size);
+    if (cp) { memcpy(cp, data, size); fwrite(cp, 1, size, f); free(cp); } else fwrite(data, 1, size, f);
     fclose(f);
 }
 
