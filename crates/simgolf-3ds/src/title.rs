@@ -334,7 +334,9 @@ impl Title {
                         let (name, idx) = &self.groups[gi];
                         let s = &self.saves[idx[0]];
                         let n = if idx.len() == 1 { "1 save".to_string() } else { format!("{} saves", idx.len()) };
-                        Row { title: name.clone(), sub: Some(format!("{}   {}   {}", s.detail, n, s.when).trim_end().to_string()), enabled: true }
+                        // the course's own name ("Ocean's Edge"), not the file-name form of it ("Oceans Edge")
+                        let _ = name;
+                        Row { title: s.course.clone(), sub: Some(format!("{}   {}   {}", s.detail, n, s.when).trim_end().to_string()), enabled: true }
                     })
                     .collect();
                 if self.groups.len() > GROUPS_SHOWN + 1 {
@@ -647,9 +649,9 @@ impl Title {
             Page::Saves if !back => {
                 let shown = self.shown_groups();
                 match self.groups.get(shown.start + self.sel).filter(|_| self.sel < shown.len()) {
-                    Some((name, idx)) => {
+                    Some((_, idx)) => {
                         let s = &self.saves[idx[0]];
-                        format!("{}: {}{}. Choose it to see its saves; each course has its own.", name, s.detail, saved_when(&s.when))
+                        format!("{}: {}{}. Choose it to see its saves; each course has its own.", s.course, s.detail, saved_when(&s.when))
                     }
                     None => "Shows the next courses.".into(),
                 }
